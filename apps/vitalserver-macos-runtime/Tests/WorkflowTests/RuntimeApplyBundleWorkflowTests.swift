@@ -18,14 +18,14 @@ final class RuntimeApplyBundleWorkflowTests: XCTestCase {
         XCTAssertEqual(harness.freeSpaceRequests.map(\.operation), [.applyBundle])
         XCTAssertEqual(harness.backupReasons, ["before-0.2.0"])
         XCTAssertEqual(harness.stepCalls, [
-            "stopRuntimeServices",
+            "stopRuntimeServices:direct",
             "replaceUpdateArtifacts",
             "runMigrations",
-            "refreshCloudInitSeedIfNeeded",
+            "refreshCloudInitSeed",
             "writeRuntimeVersion",
             "startRuntimeServices",
-            "activateGuestUpdateIfNeeded",
-            "waitForHealth",
+            "activateGuestUpdate",
+            "waitRuntimeHealth",
         ])
         XCTAssertEqual(harness.statuses.last?.level, .healthy)
         XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
@@ -121,13 +121,6 @@ private final class ApplyBundleWorkflowHarness {
                     }
                     self.createdDirectories.append((url: url, withIntermediateDirectories: withIntermediateDirectories))
                 },
-                observeRootfsReplacement: { stagedRootfs, rootfsBase in
-                    ApplyRuntimeBundleRootfsReplacementObservation(
-                        stagedRootfs: stagedRootfs,
-                        rootfsBase: rootfsBase,
-                        stagedRootfsBytes: 1
-                    )
-                },
                 directorySize: { url in
                     url == self.backup ? 5 : 42
                 },
@@ -171,42 +164,8 @@ private final class ApplyBundleWorkflowHarness {
                 pruneOldRuntimeArtifacts: {
                     self.pruneCount += 1
                 },
-                stopRuntimeServices: {
-                    self.stepCalls.append("stopRuntimeServices")
-                },
-                runningVMProcessID: {
-                    XCTFail("VM pid should not be read when restartVM is false")
-                    return 0
-                },
-                stopRuntimeServicesAfterGuestPoweroff: { _ in
-                    XCTFail("guest poweroff path should not run when restartVM is false")
-                },
-                prepareGuestShutdownForUpdate: { _ in
-                    XCTFail("guest shutdown preparation should not run when restartVM is false")
-                },
-                clearGuestShutdownPreparation: {},
-                replaceFile: { _, _ in
-                    XCTFail("rootfs replacement should not run without a staged rootfs")
-                },
-                replaceUpdateArtifacts: { _, _ in
-                    self.stepCalls.append("replaceUpdateArtifacts")
-                },
-                runMigrations: { _, _ in
-                    self.stepCalls.append("runMigrations")
-                },
-                refreshCloudInitSeedIfNeeded: { _ in
-                    self.stepCalls.append("refreshCloudInitSeedIfNeeded")
-                },
-                writeRuntimeVersion: { version, stagedBundle in
-                    XCTAssertEqual(version, "0.2.0")
-                    XCTAssertEqual(stagedBundle, self.stagedBundle)
-                    self.stepCalls.append("writeRuntimeVersion")
-                },
-                activateGuestUpdateIfNeeded: { _ in
-                    self.stepCalls.append("activateGuestUpdateIfNeeded")
-                },
-                waitForHealth: { _ in
-                    self.stepCalls.append("waitForHealth")
+                executeApplyBundleStepPlan: { plan in
+                    self.stepCalls.append(stepPlanLabel(plan))
                 },
                 describeError: { String(describing: $0) },
                 log: { message in
@@ -239,4 +198,41 @@ private final class ApplyBundleWorkflowHarness {
 
 private enum TestApplyBundleWorkflowError: Error {
     case rotation
+}
+
+private func stepPlanLabel(_ plan: ApplyRuntimeBundleStepExecutionPlan) -> String {
+    switch plan {
+    case .stopRuntimeServices(let stopPlan):
+        switch stopPlan {
+        case .prepareGuestShutdownAndStopServicesAfterPoweroff:
+            return "stopRuntimeServices:guestPoweroff"
+        case .stopServicesDirectly:
+            return "stopRuntimeServices:direct"
+        }
+    case .replaceRootfsBase(let rootfsPlan):
+        switch rootfsPlan {
+        case .skip:
+            return "replaceRootfsBase:skip"
+        case .replace:
+            return "replaceRootfsBase:replace"
+        }
+    case .replaceUpdateArtifacts:
+        return "replaceUpdateArtifacts"
+    case .runMigrations:
+        return "runMigrations"
+    case .refreshCloudInitSeed:
+        return "refreshCloudInitSeed"
+    case .writeRuntimeVersion(let version, let stagedBundle):
+        XCTAssertEqual(version, "0.2.0")
+        XCTAssertEqual(stagedBundle.path, "/product/bundles/update-bundle-0.2.0")
+        return "writeRuntimeVersion"
+    case .startRuntimeServices:
+        return "startRuntimeServices"
+    case .activateGuestUpdate:
+        return "activateGuestUpdate"
+    case .waitRuntimeHealth:
+        return "waitRuntimeHealth"
+    case .unsupported(let failureMessage):
+        return "unsupported:\(failureMessage)"
+    }
 }

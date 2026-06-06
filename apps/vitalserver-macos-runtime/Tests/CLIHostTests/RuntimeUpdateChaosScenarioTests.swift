@@ -293,17 +293,13 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     return URL(fileURLWithPath: "/unused")
                 }
             },
-            observeBackupDirectory: { selectedBackup in
-                RollbackRuntimeBackupDirectoryObservation(
-                    backup: selectedBackup,
-                    directoryExists: selectedBackup == backup
-                )
+            resolveBackupDirectory: { selectedBackup in
+                selectedBackup == backup
+                    ? .loadManifest(selectedBackup)
+                    : .failed(message: "missing file: \(selectedBackup.path)")
             },
-            observeBackupRootfs: { backupPlan in
-                RollbackRuntimeBackupRootfsObservation(
-                    backupPlan: backupPlan,
-                    backupRootfsExists: false
-                )
+            resolveBackupRootfs: { _ in
+                .failed(message: "missing file: \(missingRootfs.path)")
             },
             loadManifest: { _ in
                 BackupManifest(

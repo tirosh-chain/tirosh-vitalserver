@@ -63,8 +63,58 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         XCTAssertTrue(logs.contains { $0.contains("copying bundle to managed storage") })
     }
 
+    func testApplyBundleGuestShutdownCleanupFailureIsLoggedWithoutHidingStopFailure() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let source = URL(fileURLWithPath: "/input/update-bundle")
+        try writeEmptyBundle(at: source, to: fileStore)
+        var events: [String] = []
+        var logs: [String] = []
+        let workflow = makeWorkflow(
+            fileStore: fileStore,
+            startRuntimeServices: { _ in events.append("start") },
+            runningVMProcessID: {
+                events.append("pid")
+                return 123
+            },
+            stopRuntimeServicesAfterGuestPoweroff: { pid in
+                events.append("stop-after-poweroff:\(pid)")
+                throw TestRuntimeBundleCompositionError.vmStopFailed
+            },
+            prepareGuestShutdownForUpdate: { _ in events.append("shutdown") },
+            clearGuestShutdownPreparation: {
+                events.append("clear-shutdown")
+                throw TestRuntimeBundleCompositionError.cleanupFailed
+            },
+            isLaunchdLoaded: { service in service == .vm },
+            rollback: { _ in events.append("rollback") },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try workflow.applyBundle(source)) { error in
+            XCTAssertEqual(error as? TestRuntimeBundleCompositionError, .vmStopFailed)
+        }
+
+        XCTAssertEqual(events, [
+            "pid",
+            "shutdown",
+            "stop-after-poweroff:123",
+            "clear-shutdown",
+            "rollback",
+            "start",
+        ])
+        XCTAssertTrue(logs.contains { $0.contains("guest shutdown preparation cleanup failed") })
+        XCTAssertTrue(logs.contains { $0.contains("cleanupFailed") })
+    }
+
     private func makeWorkflow(
         fileStore: RuntimeFileStore,
+        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void = { _ in },
+        runningVMProcessID: @escaping () throws -> pid_t = { 123 },
+        stopRuntimeServicesAfterGuestPoweroff: @escaping (pid_t) throws -> Void = { _ in },
+        prepareGuestShutdownForUpdate: @escaping (UpdateBundleManifest) throws -> Void = { _ in },
+        clearGuestShutdownPreparation: @escaping () throws -> Void = {},
+        isLaunchdLoaded: @escaping (RuntimeManagedService) -> Bool = { _ in false },
+        rollback: @escaping (URL?) throws -> Void = { _ in },
         rotateRuntimeLogs: @escaping () throws -> Void = {},
         log: @escaping (String) -> Void = { _ in }
     ) -> RuntimeBundleComposition {
@@ -82,14 +132,14 @@ final class RuntimeBundleCompositionTests: XCTestCase {
                 fileStore: fileStore,
                 runtimeHealthSnapshot: { Self.healthSnapshot() },
                 rotateRuntimeLogs: rotateRuntimeLogs,
-                rollback: { _ in },
-                startRuntimeServices: { _ in },
+                rollback: rollback,
+                startRuntimeServices: startRuntimeServices,
                 stopRuntimeServices: {},
-                runningVMProcessID: { 123 },
-                stopRuntimeServicesAfterGuestPoweroff: { _ in },
-                prepareGuestShutdownForUpdate: { _ in },
-                clearGuestShutdownPreparation: {},
-                isLaunchdLoaded: { _ in false },
+                runningVMProcessID: runningVMProcessID,
+                stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
+                prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
+                clearGuestShutdownPreparation: clearGuestShutdownPreparation,
+                isLaunchdLoaded: isLaunchdLoaded,
                 createBackup: { _ in URL(fileURLWithPath: "/product/backups/backup") },
                 statusReporter: RuntimeWorkflowStatusReporter(
                     writeStatus: { _, _, _ in },
@@ -159,4 +209,9 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         XCTAssertEqual(nsError.domain, NSCocoaErrorDomain, file: file, line: line)
         XCTAssertEqual(nsError.code, CocoaError.Code.fileWriteNoPermission.rawValue, file: file, line: line)
     }
+}
+
+private enum TestRuntimeBundleCompositionError: Error, Equatable {
+    case vmStopFailed
+    case cleanupFailed
 }

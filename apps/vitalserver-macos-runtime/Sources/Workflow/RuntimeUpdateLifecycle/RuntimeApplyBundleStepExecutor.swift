@@ -5,63 +5,15 @@ import Foundation
 import Errors
 
 public struct RuntimeApplyBundleStepExecutor {
-    public var stopRuntimeServices: () throws -> Void
-    public var runningVMProcessID: () throws -> pid_t
-    public var stopRuntimeServicesAfterGuestPoweroff: (pid_t) throws -> Void
-    public var prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
-    public var clearGuestShutdownPreparation: () throws -> Void
-    public var createDirectory: (URL, Bool) throws -> Void
-    public var observeRootfsReplacement: (URL, URL) throws -> ApplyRuntimeBundleRootfsReplacementObservation
-    public var replaceFile: (URL, URL) throws -> Void
-    public var replaceUpdateArtifacts: ([UpdateBundleArtifact], URL) throws -> Void
-    public var runMigrations: ([UpdateBundleMigration], URL) throws -> Void
-    public var refreshCloudInitSeedIfNeeded: (UpdateBundleManifest) throws -> Void
-    public var writeRuntimeVersion: (String, URL) throws -> Void
-    public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
-    public var activateGuestUpdateIfNeeded: (UpdateBundleManifest) throws -> Void
-    public var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
-    public var describeError: (Error) -> String
-    public var log: (String) -> Void
+    public var executeStepPlan: (ApplyRuntimeBundleStepExecutionPlan) throws -> Void
     private var useCase: UpdateRuntimeUseCase {
         UpdateRuntimeUseCase()
     }
 
     public init(
-        stopRuntimeServices: @escaping () throws -> Void,
-        runningVMProcessID: @escaping () throws -> pid_t,
-        stopRuntimeServicesAfterGuestPoweroff: @escaping (pid_t) throws -> Void,
-        prepareGuestShutdownForUpdate: @escaping (UpdateBundleManifest) throws -> Void,
-        clearGuestShutdownPreparation: @escaping () throws -> Void,
-        createDirectory: @escaping (URL, Bool) throws -> Void,
-        observeRootfsReplacement: @escaping (URL, URL) throws -> ApplyRuntimeBundleRootfsReplacementObservation,
-        replaceFile: @escaping (URL, URL) throws -> Void,
-        replaceUpdateArtifacts: @escaping ([UpdateBundleArtifact], URL) throws -> Void,
-        runMigrations: @escaping ([UpdateBundleMigration], URL) throws -> Void,
-        refreshCloudInitSeedIfNeeded: @escaping (UpdateBundleManifest) throws -> Void,
-        writeRuntimeVersion: @escaping (String, URL) throws -> Void,
-        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
-        activateGuestUpdateIfNeeded: @escaping (UpdateBundleManifest) throws -> Void,
-        waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
-        describeError: @escaping (Error) -> String,
-        log: @escaping (String) -> Void
+        executeStepPlan: @escaping (ApplyRuntimeBundleStepExecutionPlan) throws -> Void
     ) {
-        self.stopRuntimeServices = stopRuntimeServices
-        self.runningVMProcessID = runningVMProcessID
-        self.stopRuntimeServicesAfterGuestPoweroff = stopRuntimeServicesAfterGuestPoweroff
-        self.prepareGuestShutdownForUpdate = prepareGuestShutdownForUpdate
-        self.clearGuestShutdownPreparation = clearGuestShutdownPreparation
-        self.createDirectory = createDirectory
-        self.observeRootfsReplacement = observeRootfsReplacement
-        self.replaceFile = replaceFile
-        self.replaceUpdateArtifacts = replaceUpdateArtifacts
-        self.runMigrations = runMigrations
-        self.refreshCloudInitSeedIfNeeded = refreshCloudInitSeedIfNeeded
-        self.writeRuntimeVersion = writeRuntimeVersion
-        self.startRuntimeServices = startRuntimeServices
-        self.activateGuestUpdateIfNeeded = activateGuestUpdateIfNeeded
-        self.waitForHealth = waitForHealth
-        self.describeError = describeError
-        self.log = log
+        self.executeStepPlan = executeStepPlan
     }
 
     public func execute(
@@ -75,59 +27,6 @@ public struct RuntimeApplyBundleStepExecutor {
             rootfsBase: rootfsBase
         )
 
-        switch executionPlan {
-        case .stopRuntimeServices(let stopPlan):
-            switch stopPlan {
-            case .prepareGuestShutdownAndStopServicesAfterPoweroff(let manifest):
-                let expectedVMProcessID = try runningVMProcessID()
-                log(useCase.capturedVMProcessBeforeGuestUpdateShutdownLogMessage(processID: expectedVMProcessID))
-                try prepareGuestShutdownForUpdate(manifest)
-                do {
-                    defer { clearGuestShutdownPreparationAfterRuntimeStop() }
-                    try stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID)
-                }
-                return
-            case .stopServicesDirectly:
-                try stopRuntimeServices()
-            }
-        case .replaceRootfsBase(let rootfsPlan):
-            switch rootfsPlan {
-            case .skip(let logMessage):
-                log(logMessage)
-                return
-            case .replace(let stagedRootfs, let rootfsBase):
-                try createDirectory(rootfsBase.deletingLastPathComponent(), true)
-                let executionPlan = useCase.rootfsReplacementExecutionPlan(
-                    observation: try observeRootfsReplacement(stagedRootfs, rootfsBase)
-                )
-                log(executionPlan.startedLogMessage)
-                try replaceFile(stagedRootfs, rootfsBase)
-                log(executionPlan.completedLogMessage)
-            }
-        case .replaceUpdateArtifacts(let artifacts, let stagedBundle):
-            try replaceUpdateArtifacts(artifacts, stagedBundle)
-        case .runMigrations(let migrations, let stagedBundle):
-            try runMigrations(migrations, stagedBundle)
-        case .refreshCloudInitSeed(let manifest):
-            try refreshCloudInitSeedIfNeeded(manifest)
-        case .writeRuntimeVersion(let version, let stagedBundle):
-            try writeRuntimeVersion(version, stagedBundle)
-        case .startRuntimeServices(let restartPolicy):
-            try startRuntimeServices(restartPolicy)
-        case .activateGuestUpdate(let manifest):
-            try activateGuestUpdateIfNeeded(manifest)
-        case .waitRuntimeHealth(let restartPolicy):
-            try waitForHealth(restartPolicy)
-        case .unsupported(let failureMessage):
-            throw RuntimeApplyBundleWorkflowError.operationFailed(failureMessage)
-        }
-    }
-
-    private func clearGuestShutdownPreparationAfterRuntimeStop() {
-        do {
-            try clearGuestShutdownPreparation()
-        } catch {
-            log(useCase.guestShutdownPreparationCleanupFailedLogMessage(reason: describeError(error)))
-        }
+        try executeStepPlan(executionPlan)
     }
 }

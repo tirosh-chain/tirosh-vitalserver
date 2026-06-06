@@ -27,17 +27,15 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
                         throw TestError.unexpectedLatestBackup
                     }
                 },
-                observeBackupDirectory: { selectedBackup in
-                    RollbackRuntimeBackupDirectoryObservation(
-                        backup: selectedBackup,
-                        directoryExists: selectedBackup == backup
-                    )
+                resolveBackupDirectory: { selectedBackup in
+                    selectedBackup == backup
+                        ? .loadManifest(selectedBackup)
+                        : .failed(message: "missing file: \(selectedBackup.path)")
                 },
-                observeBackupRootfs: { backupPlan in
-                    RollbackRuntimeBackupRootfsObservation(
-                        backupPlan: backupPlan,
-                        backupRootfsExists: backupPlan.backupRootfs == backupRootfs
-                    )
+                resolveBackupRootfs: { backupPlan in
+                    backupPlan.backupRootfs == backupRootfs
+                        ? .proceed(backupPlan)
+                        : .failed(message: "missing file: \(backupPlan.backupRootfs?.path ?? "unknown")")
                 },
                 observeRequiredInput: { requiredInput in
                     switch requiredInput {
@@ -140,18 +138,14 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
                         throw TestError.unexpectedLatestBackup
                     }
                 },
-                observeBackupDirectory: { selectedBackup in
-                    RollbackRuntimeBackupDirectoryObservation(
-                        backup: selectedBackup,
-                        directoryExists: selectedBackup == backup
-                    )
+                resolveBackupDirectory: { selectedBackup in
+                    selectedBackup == backup
+                        ? .loadManifest(selectedBackup)
+                        : .failed(message: "missing file: \(selectedBackup.path)")
                 },
-                observeBackupRootfs: { backupPlan in
+                resolveBackupRootfs: { backupPlan in
                     XCTFail("missing manifest should stop before rootfs observation")
-                    return RollbackRuntimeBackupRootfsObservation(
-                        backupPlan: backupPlan,
-                        backupRootfsExists: false
-                    )
+                    return .proceed(backupPlan)
                 },
                 observeRequiredInput: { requiredInput in
                     XCTFail("missing manifest should stop before rollback step input observation")

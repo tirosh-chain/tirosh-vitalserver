@@ -83,16 +83,20 @@ public enum RuntimeRollbackComposition {
                         return backup
                     }
                 },
-                observeBackupDirectory: { backup in
-                    RollbackRuntimeBackupDirectoryObservation(
-                        backup: backup,
-                        directoryExists: operations.fileStore.directoryExists(backup)
+                resolveBackupDirectory: { backup in
+                    UpdateRuntimeUseCase().rollbackBackupDirectoryDecision(
+                        observation: RollbackRuntimeBackupDirectoryObservation(
+                            backup: backup,
+                            directoryExists: operations.fileStore.directoryExists(backup)
+                        )
                     )
                 },
-                observeBackupRootfs: { backupPlan in
-                    RollbackRuntimeBackupRootfsObservation(
-                        backupPlan: backupPlan,
-                        backupRootfsExists: backupPlan.backupRootfs.map(operations.fileStore.fileExists)
+                resolveBackupRootfs: { backupPlan in
+                    UpdateRuntimeUseCase().rollbackBackupRootfsDecision(
+                        observation: RollbackRuntimeBackupRootfsObservation(
+                            backupPlan: backupPlan,
+                            backupRootfsExists: backupPlan.backupRootfs.map(operations.fileStore.fileExists)
+                        )
                     )
                 },
                 observeRequiredInput: { requiredInput in

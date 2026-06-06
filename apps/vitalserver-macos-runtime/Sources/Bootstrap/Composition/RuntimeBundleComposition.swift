@@ -280,7 +280,6 @@ public struct RuntimeBundleComposition {
                 createDirectory: { url, withIntermediateDirectories in
                     try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
                 },
-                observeRootfsReplacement: observeRootfsReplacement,
                 directorySize: directorySize,
                 requireFreeSpace: operations.requireFreeSpace,
                 checkCompatibility: { manifest in
@@ -309,22 +308,7 @@ public struct RuntimeBundleComposition {
                 startRuntimeServices: operations.startRuntimeServices,
                 statusReporter: operations.statusReporter,
                 pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
-                stopRuntimeServices: operations.stopRuntimeServices,
-                runningVMProcessID: operations.runningVMProcessID,
-                stopRuntimeServicesAfterGuestPoweroff: operations.stopRuntimeServicesAfterGuestPoweroff,
-                prepareGuestShutdownForUpdate: operations.prepareGuestShutdownForUpdate,
-                clearGuestShutdownPreparation: operations.clearGuestShutdownPreparation,
-                replaceFile: operations.replaceFile,
-                replaceUpdateArtifacts: { artifacts, stagedBundle in
-                    try replaceUpdateArtifacts(artifacts, stagedBundle: stagedBundle)
-                },
-                runMigrations: { migrations, stagedBundle in
-                    try runMigrations(migrations, stagedBundle: stagedBundle)
-                },
-                refreshCloudInitSeedIfNeeded: operations.refreshCloudInitSeedIfNeeded,
-                writeRuntimeVersion: operations.writeRuntimeVersion,
-                activateGuestUpdateIfNeeded: operations.activateGuestUpdateIfNeeded,
-                waitForHealth: operations.waitForHealth,
+                executeApplyBundleStepPlan: executeApplyBundleStepPlan,
                 describeError: RuntimeErrorDescription.describe,
                 log: operations.log
             )
@@ -382,6 +366,74 @@ public struct RuntimeBundleComposition {
         case .blocked(_, let logMessage, let failureMessage):
             operations.log(logMessage)
             throw RuntimeApplyBundleWorkflowError.operationFailed(failureMessage)
+        }
+    }
+
+    private func executeApplyBundleStepPlan(_ executionPlan: ApplyRuntimeBundleStepExecutionPlan) throws {
+        switch executionPlan {
+        case .stopRuntimeServices(let stopPlan):
+            try executeApplyBundleStopPlan(stopPlan)
+        case .replaceRootfsBase(let rootfsPlan):
+            try executeApplyBundleRootfsReplacementPlan(rootfsPlan)
+        case .replaceUpdateArtifacts(let artifacts, let stagedBundle):
+            try replaceUpdateArtifacts(artifacts, stagedBundle: stagedBundle)
+        case .runMigrations(let migrations, let stagedBundle):
+            try runMigrations(migrations, stagedBundle: stagedBundle)
+        case .refreshCloudInitSeed(let manifest):
+            try operations.refreshCloudInitSeedIfNeeded(manifest)
+        case .writeRuntimeVersion(let version, let stagedBundle):
+            try operations.writeRuntimeVersion(version, stagedBundle)
+        case .startRuntimeServices(let restartPolicy):
+            try operations.startRuntimeServices(restartPolicy)
+        case .activateGuestUpdate(let manifest):
+            try operations.activateGuestUpdateIfNeeded(manifest)
+        case .waitRuntimeHealth(let restartPolicy):
+            try operations.waitForHealth(restartPolicy)
+        case .unsupported(let failureMessage):
+            throw RuntimeApplyBundleWorkflowError.operationFailed(failureMessage)
+        }
+    }
+
+    private func executeApplyBundleStopPlan(_ stopPlan: ApplyRuntimeBundleStopExecutionPlan) throws {
+        switch stopPlan {
+        case .prepareGuestShutdownAndStopServicesAfterPoweroff(let manifest):
+            let expectedVMProcessID = try operations.runningVMProcessID()
+            operations.log(UpdateRuntimeUseCase().capturedVMProcessBeforeGuestUpdateShutdownLogMessage(
+                processID: expectedVMProcessID
+            ))
+            try operations.prepareGuestShutdownForUpdate(manifest)
+            defer { clearGuestShutdownPreparationAfterRuntimeStop() }
+            try operations.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID)
+        case .stopServicesDirectly:
+            try operations.stopRuntimeServices()
+        }
+    }
+
+    private func executeApplyBundleRootfsReplacementPlan(_ rootfsPlan: ApplyRuntimeBundleRootfsReplacementPlan) throws {
+        switch rootfsPlan {
+        case .skip(let logMessage):
+            operations.log(logMessage)
+        case .replace(let stagedRootfs, let rootfsBase):
+            try operations.fileStore.createDirectory(
+                at: rootfsBase.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let executionPlan = UpdateRuntimeUseCase().rootfsReplacementExecutionPlan(
+                observation: try observeRootfsReplacement(stagedRootfs: stagedRootfs, rootfsBase: rootfsBase)
+            )
+            operations.log(executionPlan.startedLogMessage)
+            try operations.replaceFile(stagedRootfs, rootfsBase)
+            operations.log(executionPlan.completedLogMessage)
+        }
+    }
+
+    private func clearGuestShutdownPreparationAfterRuntimeStop() {
+        do {
+            try operations.clearGuestShutdownPreparation()
+        } catch {
+            operations.log(UpdateRuntimeUseCase().guestShutdownPreparationCleanupFailedLogMessage(
+                reason: RuntimeErrorDescription.describe(error)
+            ))
         }
     }
 

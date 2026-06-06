@@ -441,7 +441,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
-    func testRuntimeApplyBundleStepExecutorDoesNotOwnRootfsReplacementFileObservation() throws {
+    func testRuntimeApplyBundleStepExecutorDoesNotOwnApplyBundleEffects() throws {
         let file = packageRoot().appendingPathComponent(
             "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleStepExecutor.swift"
         )
@@ -450,12 +450,36 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "fileSize",
             "stagedRootfsBytes: try",
             "rootfsReplacementExecutionPlan(stagedRootfs:",
+            "switch executionPlan",
+            "switch stopPlan",
+            "switch rootfsPlan",
+            "case .stopRuntimeServices",
+            "case .replaceRootfsBase",
+            "case .replaceUpdateArtifacts",
+            "case .runMigrations",
+            "case .refreshCloudInitSeed",
+            "case .writeRuntimeVersion",
+            "case .startRuntimeServices",
+            "case .activateGuestUpdate",
+            "case .waitRuntimeHealth",
+            "runningVMProcessID",
+            "stopRuntimeServicesAfterGuestPoweroff",
+            "prepareGuestShutdownForUpdate",
+            "clearGuestShutdownPreparation",
+            "observeRootfsReplacement",
+            "replaceFile",
+            "replaceUpdateArtifacts",
+            "runMigrations",
+            "refreshCloudInitSeedIfNeeded",
+            "writeRuntimeVersion",
+            "activateGuestUpdateIfNeeded",
+            "waitForHealth",
         ]
 
         for token in forbiddenTokens {
             XCTAssertFalse(
                 text.contains(token),
-                "RuntimeApplyBundleStepExecutor must receive explicit rootfs replacement observations from a port instead of using \(token)"
+                "RuntimeApplyBundleStepExecutor must create a UseCase plan and pass it to an execution port instead of owning \(token)"
             )
         }
     }
@@ -506,6 +530,10 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "fileExists",
             "directoryExists",
             "rollbackBackupRootfsObservationRequirement",
+            "rollbackBackupDirectoryDecision",
+            "rollbackBackupRootfsDecision",
+            "RollbackRuntimeBackupDirectoryObservation",
+            "RollbackRuntimeBackupRootfsObservation",
         ]
 
         for token in forbiddenTokens {

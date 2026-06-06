@@ -31,7 +31,6 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public var loadStagedManifest: (URL) throws -> UpdateBundleManifest
     public var resolveRootfsStorage: (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStorageDecision
     public var createDirectory: (URL, Bool) throws -> Void
-    public var observeRootfsReplacement: (URL, URL) throws -> ApplyRuntimeBundleRootfsReplacementObservation
     public var directorySize: (URL) throws -> UInt64
     public var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
     public var checkCompatibility: (UpdateBundleManifest) throws -> Void
@@ -44,18 +43,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     public var statusReporter: RuntimeWorkflowStatusReporter
     public var pruneOldRuntimeArtifacts: () throws -> Void
-    public var stopRuntimeServices: () throws -> Void
-    public var runningVMProcessID: () throws -> pid_t
-    public var stopRuntimeServicesAfterGuestPoweroff: (pid_t) throws -> Void
-    public var prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
-    public var clearGuestShutdownPreparation: () throws -> Void
-    public var replaceFile: (URL, URL) throws -> Void
-    public var replaceUpdateArtifacts: ([UpdateBundleArtifact], URL) throws -> Void
-    public var runMigrations: ([UpdateBundleMigration], URL) throws -> Void
-    public var refreshCloudInitSeedIfNeeded: (UpdateBundleManifest) throws -> Void
-    public var writeRuntimeVersion: (String, URL) throws -> Void
-    public var activateGuestUpdateIfNeeded: (UpdateBundleManifest) throws -> Void
-    public var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
+    public var executeApplyBundleStepPlan: (ApplyRuntimeBundleStepExecutionPlan) throws -> Void
     public var describeError: (Error) -> String
     public var log: (String) -> Void
 
@@ -64,7 +52,6 @@ public struct RuntimeApplyBundleWorkflowOperations {
         loadStagedManifest: @escaping (URL) throws -> UpdateBundleManifest,
         resolveRootfsStorage: @escaping (ApplyRuntimeBundleRootfsStorageObservationPlan) throws -> ApplyRuntimeBundleRootfsStorageDecision,
         createDirectory: @escaping (URL, Bool) throws -> Void,
-        observeRootfsReplacement: @escaping (URL, URL) throws -> ApplyRuntimeBundleRootfsReplacementObservation,
         directorySize: @escaping (URL) throws -> UInt64,
         requireFreeSpace: @escaping (URL, UInt64, RuntimeOperation) throws -> Void,
         checkCompatibility: @escaping (UpdateBundleManifest) throws -> Void,
@@ -77,18 +64,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         statusReporter: RuntimeWorkflowStatusReporter,
         pruneOldRuntimeArtifacts: @escaping () throws -> Void,
-        stopRuntimeServices: @escaping () throws -> Void,
-        runningVMProcessID: @escaping () throws -> pid_t,
-        stopRuntimeServicesAfterGuestPoweroff: @escaping (pid_t) throws -> Void,
-        prepareGuestShutdownForUpdate: @escaping (UpdateBundleManifest) throws -> Void,
-        clearGuestShutdownPreparation: @escaping () throws -> Void,
-        replaceFile: @escaping (URL, URL) throws -> Void,
-        replaceUpdateArtifacts: @escaping ([UpdateBundleArtifact], URL) throws -> Void,
-        runMigrations: @escaping ([UpdateBundleMigration], URL) throws -> Void,
-        refreshCloudInitSeedIfNeeded: @escaping (UpdateBundleManifest) throws -> Void,
-        writeRuntimeVersion: @escaping (String, URL) throws -> Void,
-        activateGuestUpdateIfNeeded: @escaping (UpdateBundleManifest) throws -> Void,
-        waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        executeApplyBundleStepPlan: @escaping (ApplyRuntimeBundleStepExecutionPlan) throws -> Void,
         describeError: @escaping (Error) -> String,
         log: @escaping (String) -> Void
     ) {
@@ -96,7 +72,6 @@ public struct RuntimeApplyBundleWorkflowOperations {
         self.loadStagedManifest = loadStagedManifest
         self.resolveRootfsStorage = resolveRootfsStorage
         self.createDirectory = createDirectory
-        self.observeRootfsReplacement = observeRootfsReplacement
         self.directorySize = directorySize
         self.requireFreeSpace = requireFreeSpace
         self.checkCompatibility = checkCompatibility
@@ -109,18 +84,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         self.startRuntimeServices = startRuntimeServices
         self.statusReporter = statusReporter
         self.pruneOldRuntimeArtifacts = pruneOldRuntimeArtifacts
-        self.stopRuntimeServices = stopRuntimeServices
-        self.runningVMProcessID = runningVMProcessID
-        self.stopRuntimeServicesAfterGuestPoweroff = stopRuntimeServicesAfterGuestPoweroff
-        self.prepareGuestShutdownForUpdate = prepareGuestShutdownForUpdate
-        self.clearGuestShutdownPreparation = clearGuestShutdownPreparation
-        self.replaceFile = replaceFile
-        self.replaceUpdateArtifacts = replaceUpdateArtifacts
-        self.runMigrations = runMigrations
-        self.refreshCloudInitSeedIfNeeded = refreshCloudInitSeedIfNeeded
-        self.writeRuntimeVersion = writeRuntimeVersion
-        self.activateGuestUpdateIfNeeded = activateGuestUpdateIfNeeded
-        self.waitForHealth = waitForHealth
+        self.executeApplyBundleStepPlan = executeApplyBundleStepPlan
         self.describeError = describeError
         self.log = log
     }
@@ -200,23 +164,7 @@ public struct RuntimeApplyBundleWorkflow {
         preflight: ApplyBundlePreflightContext
     ) throws {
         try RuntimeApplyBundleStepExecutor(
-            stopRuntimeServices: operations.stopRuntimeServices,
-            runningVMProcessID: operations.runningVMProcessID,
-            stopRuntimeServicesAfterGuestPoweroff: operations.stopRuntimeServicesAfterGuestPoweroff,
-            prepareGuestShutdownForUpdate: operations.prepareGuestShutdownForUpdate,
-            clearGuestShutdownPreparation: operations.clearGuestShutdownPreparation,
-            createDirectory: operations.createDirectory,
-            observeRootfsReplacement: operations.observeRootfsReplacement,
-            replaceFile: operations.replaceFile,
-            replaceUpdateArtifacts: operations.replaceUpdateArtifacts,
-            runMigrations: operations.runMigrations,
-            refreshCloudInitSeedIfNeeded: operations.refreshCloudInitSeedIfNeeded,
-            writeRuntimeVersion: operations.writeRuntimeVersion,
-            startRuntimeServices: operations.startRuntimeServices,
-            activateGuestUpdateIfNeeded: operations.activateGuestUpdateIfNeeded,
-            waitForHealth: operations.waitForHealth,
-            describeError: operations.describeError,
-            log: operations.log
+            executeStepPlan: operations.executeApplyBundleStepPlan
         ).execute(step, preflight: preflight, rootfsBase: context.rootfsBase)
     }
 }
