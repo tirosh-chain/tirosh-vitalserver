@@ -404,6 +404,12 @@ public struct RuntimeGuestWaitResultPlan: Equatable, Sendable {
     }
 }
 
+public enum RuntimeGuestWaitResultExecutionPlan: Equatable, Sendable {
+    case completed(logMessage: String)
+    case failed(logMessage: String, failureMessage: String)
+    case failedWithoutLog(failureMessage: String)
+}
+
 public struct RuntimeGuestCapabilityDecision: Equatable, Sendable {
     public let isSupported: Bool
     public let failure: RuntimeGuestCapabilityCheckError?
@@ -1095,6 +1101,22 @@ public struct UpdateRuntimeUseCase {
         }
     }
 
+    public func guestActivationWaitResultExecutionPlan(
+        _ result: GuestActivationWaitResult
+    ) -> RuntimeGuestWaitResultExecutionPlan {
+        switch result {
+        case .completed(let message):
+            return .completed(logMessage: "guest update activation result completed message=\(message)")
+        case .failed(let message):
+            return .failed(
+                logMessage: "guest update activation result failed message=\(message)",
+                failureMessage: "runtime health check failed"
+            )
+        case .timedOut:
+            return .failedWithoutLog(failureMessage: "runtime health check failed")
+        }
+    }
+
     public func guestShutdownPlan(version: String) -> RuntimeGuestShutdownPlan {
         RuntimeGuestShutdownPlan(
             version: version,
@@ -1165,6 +1187,22 @@ public struct UpdateRuntimeUseCase {
                 logMessage: nil,
                 failureMessage: "guest update shutdown timed out"
             )
+        }
+    }
+
+    public func guestShutdownWaitResultExecutionPlan(
+        _ result: GuestShutdownWaitResult
+    ) -> RuntimeGuestWaitResultExecutionPlan {
+        switch result {
+        case .ready(let message):
+            return .completed(logMessage: "guest update shutdown result ready message=\(message)")
+        case .failed(let message):
+            return .failed(
+                logMessage: "guest update shutdown result failed message=\(message)",
+                failureMessage: message
+            )
+        case .timedOut:
+            return .failedWithoutLog(failureMessage: "guest update shutdown timed out")
         }
     }
 

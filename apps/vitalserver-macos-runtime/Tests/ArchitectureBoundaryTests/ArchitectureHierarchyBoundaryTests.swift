@@ -352,6 +352,9 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "!isVMServiceLoaded",
             "ceil(",
             "GuestActivationWaitConfiguration(",
+            "guestActivationWaitResultPlan(",
+            "if let logMessage",
+            "failureMessage =",
         ]
 
         for token in forbiddenTokens {
@@ -373,6 +376,9 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "readyLogMessage",
             "ceil(",
             "GuestShutdownWaitConfiguration(",
+            "guestShutdownWaitResultPlan(",
+            "if let logMessage",
+            "failureMessage =",
         ]
 
         for token in forbiddenTokens {

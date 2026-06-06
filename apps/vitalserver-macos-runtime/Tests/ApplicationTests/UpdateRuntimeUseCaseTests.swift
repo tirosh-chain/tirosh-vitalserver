@@ -1047,8 +1047,19 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             )
         )
         XCTAssertEqual(
+            useCase.guestActivationWaitResultExecutionPlan(.completed(message: "done")),
+            .completed(logMessage: "guest update activation result completed message=done")
+        )
+        XCTAssertEqual(
             useCase.guestActivationWaitResultPlan(.failed(message: "compose failed")),
             RuntimeGuestWaitResultPlan(
+                logMessage: "guest update activation result failed message=compose failed",
+                failureMessage: "runtime health check failed"
+            )
+        )
+        XCTAssertEqual(
+            useCase.guestActivationWaitResultExecutionPlan(.failed(message: "compose failed")),
+            .failed(
                 logMessage: "guest update activation result failed message=compose failed",
                 failureMessage: "runtime health check failed"
             )
@@ -1059,6 +1070,10 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 logMessage: nil,
                 failureMessage: "runtime health check failed"
             )
+        )
+        XCTAssertEqual(
+            useCase.guestActivationWaitResultExecutionPlan(.timedOut),
+            .failedWithoutLog(failureMessage: "runtime health check failed")
         )
     }
 
@@ -1120,8 +1135,19 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             )
         )
         XCTAssertEqual(
+            useCase.guestShutdownWaitResultExecutionPlan(.ready(message: "poweroff requested")),
+            .completed(logMessage: "guest update shutdown result ready message=poweroff requested")
+        )
+        XCTAssertEqual(
             useCase.guestShutdownWaitResultPlan(.failed(message: "backup failed")),
             RuntimeGuestWaitResultPlan(
+                logMessage: "guest update shutdown result failed message=backup failed",
+                failureMessage: "backup failed"
+            )
+        )
+        XCTAssertEqual(
+            useCase.guestShutdownWaitResultExecutionPlan(.failed(message: "backup failed")),
+            .failed(
                 logMessage: "guest update shutdown result failed message=backup failed",
                 failureMessage: "backup failed"
             )
@@ -1132,6 +1158,10 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 logMessage: nil,
                 failureMessage: "guest update shutdown timed out"
             )
+        )
+        XCTAssertEqual(
+            useCase.guestShutdownWaitResultExecutionPlan(.timedOut),
+            .failedWithoutLog(failureMessage: "guest update shutdown timed out")
         )
     }
 
