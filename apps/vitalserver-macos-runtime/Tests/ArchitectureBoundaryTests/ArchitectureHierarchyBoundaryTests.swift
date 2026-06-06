@@ -359,6 +359,32 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeVMDiskRepairWorkflowDoesNotOwnFileObservationOrReplacementExecution() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeRepairLifecycle/RuntimeVMDiskRepairWorkflow.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "fileExists",
+            "fileSize",
+            "removeItem",
+            "moveItem",
+            "createRedisBackup",
+            "stopRuntimeServicesForVMDiskReplacement",
+            "startRuntimeServices",
+            "waitForHealth",
+            "RepairRuntimeVMDiskReplacementObservation",
+            "error.localizedDescription",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeVMDiskRepairWorkflow must delegate file observation and replacement execution instead of owning \(token)"
+            )
+        }
+    }
+
     func testRuntimeWatchdogRunnerDoesNotInterpretInitialSnapshotDecisionDirectly() throws {
         let file = packageRoot().appendingPathComponent(
             "Sources/Workflow/RuntimeWatchdog/RuntimeWatchdogRunner.swift"
@@ -608,6 +634,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "startRuntimeServicesBestEffort",
             "try rollback(",
             "try startRuntimeServices(",
+            "writeBestEffort",
+            "failedPlan.status",
         ]
 
         for token in forbiddenTokens {

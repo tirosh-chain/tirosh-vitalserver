@@ -80,6 +80,16 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             )
         )
         XCTAssertEqual(
+            useCase.applyBundlePreflightFailurePlan(reason: "manifest missing"),
+            ApplyRuntimeBundlePreflightFailurePlan(
+                statusPlan: UpdateRuntimeStatusPlan(
+                    status: .critical,
+                    operation: .applyBundle,
+                    message: "bundle apply preflight failed: manifest missing"
+                )
+            )
+        )
+        XCTAssertEqual(
             useCase.applyBundleRollbackStartedPlan(reason: "replace failed"),
             UpdateRuntimeLoggedStatusPlan(
                 logMessage: "bundle apply failed; rolling back error=replace failed",

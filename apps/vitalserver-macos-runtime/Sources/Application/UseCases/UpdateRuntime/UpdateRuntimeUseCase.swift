@@ -45,6 +45,14 @@ public struct ApplyRuntimeBundleFailureRecoveryPlan: Equatable, Sendable {
     }
 }
 
+public struct ApplyRuntimeBundlePreflightFailurePlan: Equatable, Sendable {
+    public let statusPlan: UpdateRuntimeStatusPlan
+
+    public init(statusPlan: UpdateRuntimeStatusPlan) {
+        self.statusPlan = statusPlan
+    }
+}
+
 public enum RuntimeBundleMaterializationCleanupPlan: Equatable, Sendable {
     case none
     case cleanupTemporaryRoot(URL)
@@ -498,6 +506,12 @@ public struct UpdateRuntimeUseCase {
             status: .critical,
             operation: .applyBundle,
             message: "bundle apply preflight failed: \(reason)"
+        )
+    }
+
+    public func applyBundlePreflightFailurePlan(reason: String) -> ApplyRuntimeBundlePreflightFailurePlan {
+        ApplyRuntimeBundlePreflightFailurePlan(
+            statusPlan: applyBundlePreflightFailedStatusPlan(reason: reason)
         )
     }
 

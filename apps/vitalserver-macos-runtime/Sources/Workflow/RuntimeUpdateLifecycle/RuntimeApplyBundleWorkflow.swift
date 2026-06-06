@@ -38,6 +38,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public var runtimeHealthSnapshot: () -> RuntimeHealthSnapshot
     public var executeInitialHealthWarningPlan: (ApplyRuntimeBundleInitialHealthWarningPlan) throws -> Void
     public var executePreflightCapabilityInstruction: (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void
+    public var executePreflightFailurePlan: (ApplyRuntimeBundlePreflightFailurePlan) -> Void
     public var createBackup: (String) throws -> URL
     public var rotateRuntimeLogs: () throws -> Void
     public var executeFailureRecoveryPlan: (ApplyRuntimeBundleFailureRecoveryPlan) -> Void
@@ -59,6 +60,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         runtimeHealthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         executeInitialHealthWarningPlan: @escaping (ApplyRuntimeBundleInitialHealthWarningPlan) throws -> Void,
         executePreflightCapabilityInstruction: @escaping (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void,
+        executePreflightFailurePlan: @escaping (ApplyRuntimeBundlePreflightFailurePlan) -> Void,
         createBackup: @escaping (String) throws -> URL,
         rotateRuntimeLogs: @escaping () throws -> Void,
         executeFailureRecoveryPlan: @escaping (ApplyRuntimeBundleFailureRecoveryPlan) -> Void,
@@ -79,6 +81,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         self.runtimeHealthSnapshot = runtimeHealthSnapshot
         self.executeInitialHealthWarningPlan = executeInitialHealthWarningPlan
         self.executePreflightCapabilityInstruction = executePreflightCapabilityInstruction
+        self.executePreflightFailurePlan = executePreflightFailurePlan
         self.createBackup = createBackup
         self.rotateRuntimeLogs = rotateRuntimeLogs
         self.executeFailureRecoveryPlan = executeFailureRecoveryPlan
@@ -113,6 +116,7 @@ public struct RuntimeApplyBundleWorkflow {
             initialHealthSnapshot: operations.runtimeHealthSnapshot,
             executeInitialHealthWarningPlan: operations.executeInitialHealthWarningPlan,
             preparePreflight: prepareApplyBundlePreflight,
+            executePreflightFailurePlan: operations.executePreflightFailurePlan,
             executeStep: executeApplyBundleStep,
             executeFailureRecoveryPlan: operations.executeFailureRecoveryPlan,
             statusReporter: operations.statusReporter,

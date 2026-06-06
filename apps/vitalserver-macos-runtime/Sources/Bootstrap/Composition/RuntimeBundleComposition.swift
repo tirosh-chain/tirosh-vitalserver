@@ -310,6 +310,7 @@ public struct RuntimeBundleComposition {
                 runtimeHealthSnapshot: operations.runtimeHealthSnapshot,
                 executeInitialHealthWarningPlan: executeInitialHealthWarningPlan,
                 executePreflightCapabilityInstruction: executePreflightCapabilityInstruction,
+                executePreflightFailurePlan: executeApplyBundlePreflightFailurePlan,
                 createBackup: operations.createBackup,
                 rotateRuntimeLogs: operations.rotateRuntimeLogs,
                 executeFailureRecoveryPlan: executeApplyBundleFailureRecoveryPlan,
@@ -384,6 +385,14 @@ public struct RuntimeBundleComposition {
         case .continueWithWarning(let logMessage):
             operations.log(logMessage)
         }
+    }
+
+    private func executeApplyBundlePreflightFailurePlan(_ plan: ApplyRuntimeBundlePreflightFailurePlan) {
+        operations.statusReporter.writeBestEffort(
+            plan.statusPlan.status,
+            operation: plan.statusPlan.operation,
+            message: plan.statusPlan.message
+        )
     }
 
     private func executeApplyBundleFailureRecoveryPlan(_ plan: ApplyRuntimeBundleFailureRecoveryPlan) {

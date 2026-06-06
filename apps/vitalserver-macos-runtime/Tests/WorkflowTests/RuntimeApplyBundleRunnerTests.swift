@@ -107,6 +107,7 @@ private final class ApplyBundleHarness {
     var progressEvents: [RuntimeStepExecutionEvent] = []
     var executedSteps: [RuntimeWorkflowStep] = []
     var logs: [String] = []
+    var preflightFailurePlans: [ApplyRuntimeBundlePreflightFailurePlan] = []
     var recoveryPlans: [ApplyRuntimeBundleFailureRecoveryPlan] = []
     var pruneCount = 0
     var rollbackBackup: URL?
@@ -148,6 +149,14 @@ private final class ApplyBundleHarness {
                     throw preflightError
                 }
                 return self.preflight
+            },
+            executePreflightFailurePlan: { plan in
+                self.preflightFailurePlans.append(plan)
+                self.statuses.append((
+                    level: plan.statusPlan.status,
+                    operation: plan.statusPlan.operation,
+                    message: plan.statusPlan.message
+                ))
             },
             executeStep: { step, _ in
                 self.executedSteps.append(step)

@@ -142,6 +142,9 @@ private final class ApplyBundleWorkflowHarness {
                 executePreflightCapabilityInstruction: { _ in
                     XCTFail("preflight capability instruction should not run when VM is not being restarted and bundle has no guest deploy")
                 },
+                executePreflightFailurePlan: { _ in
+                    XCTFail("preflight failure should not run on successful apply")
+                },
                 createBackup: { reason in
                     self.backupReasons.append(reason)
                     return self.backup

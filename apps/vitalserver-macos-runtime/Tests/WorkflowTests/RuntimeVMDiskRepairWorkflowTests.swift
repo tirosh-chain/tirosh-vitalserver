@@ -1,6 +1,9 @@
 import Contracts
+import Application
 import Domain
 import Foundation
+import Bootstrap
+import OutboundAdapters
 import Workflow
 import XCTest
 import Errors
@@ -26,7 +29,7 @@ final class RuntimeVMDiskRepairWorkflowTests: XCTestCase {
             "status:recovering:repair-vm-disk:Redis backup completed before VM disk repair",
             "mkdir:runtime:true",
             "mkdir:backups:true",
-            "space:runtime:1036:repair-vm-disk",
+            "space:runtime:4294967308:repair-vm-disk",
             "status:recovering:repair-vm-disk:Creating replacement VM disk",
             "gunzip:-c rootfs-base.raw.gz:.vm-disk.img.repair.tmp",
             "truncate:-s 40G \(harness.vmDisk.deletingLastPathComponent().appendingPathComponent(".vm-disk.img.repair.tmp").path)",
@@ -84,11 +87,12 @@ final class RuntimeVMDiskRepairWorkflowTests: XCTestCase {
 
 private final class VMDiskRepairHarness {
     let root: URL
+    let installedPaths: InstalledRuntimePaths
     let runtimeDirectory: URL
     let backupsDirectory: URL
     let rootfsBase: URL
     let vmDisk: URL
-    let bytesPerGiB: UInt64 = 1024
+    let bytesPerGiB: UInt64 = 1024 * 1024 * 1024
     var events: [String] = []
     var archivedDisk: URL?
     var redisBackupError: Error?
@@ -97,10 +101,11 @@ private final class VMDiskRepairHarness {
     init() throws {
         root = FileManager.default.temporaryDirectory
             .appendingPathComponent("RuntimeVMDiskRepairRunnerTests-\(UUID().uuidString)")
-        runtimeDirectory = root.appendingPathComponent("runtime")
-        backupsDirectory = root.appendingPathComponent("backups")
-        rootfsBase = runtimeDirectory.appendingPathComponent("rootfs-base.raw.gz")
-        vmDisk = runtimeDirectory.appendingPathComponent("vm-disk.img")
+        installedPaths = InstalledRuntimePaths(runtimeHome: root.appendingPathComponent("vm"))
+        runtimeDirectory = installedPaths.runtimeDirectory
+        backupsDirectory = installedPaths.backupsDirectory
+        rootfsBase = runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)
+        vmDisk = runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)
         try FileManager.default.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
     }
 
@@ -109,41 +114,17 @@ private final class VMDiskRepairHarness {
     }
 
     var runner: RuntimeVMDiskRepairRunner {
-        RuntimeVMDiskRepairRunner(
-            context: RuntimeVMDiskRepairContext(
-                rootfsBase: rootfsBase,
-                vmDisk: vmDisk,
-                backupsDirectory: backupsDirectory,
-                defaultDiskGiB: 32,
-                bytesPerGiB: bytesPerGiB,
-                freeSpaceMarginBytes: 1024,
-                gunzipExecutable: "/usr/bin/gunzip",
-                truncateExecutable: "/usr/bin/truncate"
+        RuntimeVMDiskRepairComposition.make(
+            context: RuntimeVMDiskRepairCompositionContext(
+                installedPaths: installedPaths
             ),
-            operations: RuntimeVMDiskRepairOperations(
-                fileExists: fileExists,
-                fileSize: fileSize,
-                createDirectory: { [self] url, withIntermediateDirectories in
-                    events.append("mkdir:\(url.lastPathComponent):\(withIntermediateDirectories)")
-                    try FileManager.default.createDirectory(
-                        at: url,
-                        withIntermediateDirectories: withIntermediateDirectories
-                    )
-                },
-                removeItem: { [self] url in
-                    events.append("remove:\(url.lastPathComponent)")
-                    try FileManager.default.removeItem(at: url)
-                },
-                moveItem: { [self] source, destination in
-                    events.append("move:\(source.lastPathComponent):\(destination.lastPathComponent)")
-                    if destination.deletingLastPathComponent().lastPathComponent.hasPrefix("vm-disk-repair") {
-                        archivedDisk = destination
-                    }
-                    try FileManager.default.moveItem(at: source, to: destination)
-                    if dropReplacementDiskAfterMove, destination == vmDisk {
-                        try FileManager.default.removeItem(at: destination)
-                    }
-                },
+            operations: RuntimeVMDiskRepairCompositionOperations(
+                fileStore: ObservingRuntimeFileStore(
+                    events: { [self] event in events.append(event) },
+                    archivedDisk: { [self] url in archivedDisk = url },
+                    dropReplacementDiskAfterMove: { [self] in dropReplacementDiskAfterMove },
+                    vmDisk: vmDisk
+                ),
                 requireFreeSpace: { [self] url, minimumBytes, operation in
                     events.append("space:\(url.lastPathComponent):\(minimumBytes):\(operation)")
                 },
@@ -185,10 +166,6 @@ private final class VMDiskRepairHarness {
         )
     }
 
-    func fileExists(_ url: URL) -> Bool {
-        FileManager.default.fileExists(atPath: url.path)
-    }
-
     func fileSize(_ url: URL) throws -> UInt64 {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         return (attributes[.size] as? NSNumber)?.uint64Value ?? 0
@@ -199,6 +176,95 @@ private final class VMDiskRepairHarness {
         let handle = try FileHandle(forWritingTo: url)
         try handle.truncate(atOffset: bytes)
         try handle.close()
+    }
+}
+
+private struct ObservingRuntimeFileStore: RuntimeFileStore {
+    var events: (String) -> Void
+    var archivedDisk: (URL) -> Void
+    var dropReplacementDiskAfterMove: () -> Bool
+    var vmDisk: URL
+    private let store = SystemRuntimeFileStore()
+
+    var temporaryDirectory: URL {
+        store.temporaryDirectory
+    }
+
+    func fileExists(_ url: URL) -> Bool {
+        store.fileExists(url)
+    }
+
+    func directoryExists(_ url: URL) -> Bool {
+        store.directoryExists(url)
+    }
+
+    func isExecutableFile(atPath path: String) -> Bool {
+        store.isExecutableFile(atPath: path)
+    }
+
+    func readData(_ url: URL) throws -> Data {
+        try store.readData(url)
+    }
+
+    func readUTF8Text(_ url: URL) throws -> String {
+        try store.readUTF8Text(url)
+    }
+
+    func fileSize(_ url: URL) throws -> UInt64 {
+        try store.fileSize(url)
+    }
+
+    func modificationDate(_ url: URL) throws -> Date {
+        try store.modificationDate(url)
+    }
+
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {
+        try store.writeData(data, to: url, options: options)
+    }
+
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {
+        try store.writeData(data, to: url, options: options, posixPermissions: posixPermissions)
+    }
+
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {
+        events("mkdir:\(url.lastPathComponent):\(withIntermediateDirectories)")
+        try store.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+    }
+
+    func removeItem(at url: URL) throws {
+        events("remove:\(url.lastPathComponent)")
+        try store.removeItem(at: url)
+    }
+
+    func copyItem(at source: URL, to destination: URL) throws {
+        try store.copyItem(at: source, to: destination)
+    }
+
+    func moveItem(at source: URL, to destination: URL) throws {
+        events("move:\(source.lastPathComponent):\(destination.lastPathComponent)")
+        if destination.deletingLastPathComponent().lastPathComponent.hasPrefix("vm-disk-repair") {
+            archivedDisk(destination)
+        }
+        try store.moveItem(at: source, to: destination)
+        if dropReplacementDiskAfterMove(), destination == vmDisk {
+            try store.removeItem(at: destination)
+        }
+    }
+
+    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] {
+        try store.contentsOfDirectory(at: url, skipsHiddenFiles: skipsHiddenFiles)
+    }
+
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] {
+        try store.childDirectories(at: url, nameContains: fragment, skipsHiddenFiles: skipsHiddenFiles)
+    }
+
+    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 {
+        try store.recursiveRegularFileSize(at: url, skipsHiddenFiles: skipsHiddenFiles)
+    }
+
+    func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
+        try store.fileSystemAttributes(forPath: path)
     }
 }
 

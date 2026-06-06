@@ -171,6 +171,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 }
             },
             preparePreflight: { _ in preflight },
+            executePreflightFailurePlan: { _ in },
             executeStep: { step, _ in
                 executedSteps.append(step)
                 if step == .replaceUpdateArtifacts {

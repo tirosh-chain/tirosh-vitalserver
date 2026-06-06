@@ -9,6 +9,7 @@ public struct RuntimeApplyBundleRunner {
     public var initialHealthSnapshot: () -> RuntimeHealthSnapshot
     public var executeInitialHealthWarningPlan: (ApplyRuntimeBundleInitialHealthWarningPlan) throws -> Void
     public var preparePreflight: (URL) throws -> ApplyBundlePreflightContext
+    public var executePreflightFailurePlan: (ApplyRuntimeBundlePreflightFailurePlan) -> Void
     public var executeStep: (RuntimeWorkflowStep, ApplyBundlePreflightContext) throws -> Void
     public var executeFailureRecoveryPlan: (ApplyRuntimeBundleFailureRecoveryPlan) -> Void
     public var statusReporter: RuntimeWorkflowStatusReporter
@@ -23,6 +24,7 @@ public struct RuntimeApplyBundleRunner {
         initialHealthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         executeInitialHealthWarningPlan: @escaping (ApplyRuntimeBundleInitialHealthWarningPlan) throws -> Void,
         preparePreflight: @escaping (URL) throws -> ApplyBundlePreflightContext,
+        executePreflightFailurePlan: @escaping (ApplyRuntimeBundlePreflightFailurePlan) -> Void,
         executeStep: @escaping (RuntimeWorkflowStep, ApplyBundlePreflightContext) throws -> Void,
         executeFailureRecoveryPlan: @escaping (ApplyRuntimeBundleFailureRecoveryPlan) -> Void,
         statusReporter: RuntimeWorkflowStatusReporter,
@@ -33,6 +35,7 @@ public struct RuntimeApplyBundleRunner {
         self.initialHealthSnapshot = initialHealthSnapshot
         self.executeInitialHealthWarningPlan = executeInitialHealthWarningPlan
         self.preparePreflight = preparePreflight
+        self.executePreflightFailurePlan = executePreflightFailurePlan
         self.executeStep = executeStep
         self.executeFailureRecoveryPlan = executeFailureRecoveryPlan
         self.statusReporter = statusReporter
@@ -52,12 +55,7 @@ public struct RuntimeApplyBundleRunner {
         do {
             preflight = try preparePreflight(bundleURL)
         } catch {
-            let failedPlan = useCase.applyBundlePreflightFailedStatusPlan(reason: describeError(error))
-            statusReporter.writeBestEffort(
-                failedPlan.status,
-                operation: failedPlan.operation,
-                message: failedPlan.message
-            )
+            executePreflightFailurePlan(useCase.applyBundlePreflightFailurePlan(reason: describeError(error)))
             throw error
         }
 
