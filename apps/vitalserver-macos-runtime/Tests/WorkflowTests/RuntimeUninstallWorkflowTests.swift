@@ -18,6 +18,7 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             "state:stop-services-requested:service stop requested:",
             "stop",
             "log:step=stop-launchd-services status=completed",
+            "state:files-removal-started:file removal started:",
             "log:step=remove-plists status=started",
             "remove:/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.watchdog.plist",
             "remove:/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.guest-log-sync.plist",
@@ -26,7 +27,6 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             "remove:/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.sleep-prevention.plist",
             "log:step=remove-plists status=completed",
             "log:step=remove-installed-files status=started",
-            "state:files-removal-started:file removal started:",
             "remove:/Applications/VitalServer Helper.app",
             "remove:/product",
             "remove:/external-vital-files",
@@ -311,12 +311,6 @@ private final class RuntimeUninstallWorkflowHarness {
                 vmProcessState: {
                     self.vmProcessState
                 },
-                fileExists: { url in
-                    self.existing.contains(url.path)
-                },
-                directoryExists: { url in
-                    self.existing.contains(url.path)
-                },
                 packageReceiptStates: {
                     self.receiptStates
                 },
@@ -342,39 +336,17 @@ private final class RuntimeUninstallWorkflowHarness {
                         throw stopError
                     }
                 },
-                createDirectory: { url, _ in
-                    self.events.append("mkdir:\(url.path)")
-                    self.existing.insert(url.path)
+                describeError: { error in
+                    error.localizedDescription
                 },
-                removeItem: { url in
-                    self.events.append("remove:\(url.path)")
-                    if self.removeErrorPath == url.path {
-                        throw RuntimeUninstallTestError.remove
-                    }
-                    self.existing.remove(url.path)
+                executeFileRemoval: { paths, clean in
+                    self.executeFileRemoval(paths: paths, clean: clean)
                 },
-                moveItem: { source, destination in
-                    self.events.append("move:\(source.path)->\(destination.path)")
-                    if destination.path == self.moveErrorDestination {
-                        throw RuntimeUninstallTestError.restore
-                    }
-                    self.existing.remove(source.path)
-                    self.existing.insert(destination.path)
-                },
-                forgetPackageReceipt: { identifier in
-                    self.events.append("forget:\(identifier)")
-                    let result = self.receiptForgetResults[identifier] ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
-                    if result.exitCode == 0 && self.updateReceiptsOnForget {
-                        self.receiptStates = self.receiptStates.map { state in
-                            switch state {
-                            case .present(let existingIdentifier) where existingIdentifier == identifier:
-                                return .absent(identifier: identifier)
-                            default:
-                                return state
-                            }
-                        }
-                    }
-                    return result
+                executeReceiptForgetting: { identifiers, observedReceiptStates in
+                    self.executeReceiptForgetting(
+                        identifiers: identifiers,
+                        observedReceiptStates: observedReceiptStates
+                    )
                 }
             ),
             writer: RuntimeUninstallStateWriter(
@@ -382,25 +354,225 @@ private final class RuntimeUninstallWorkflowHarness {
                     self.events.append("state:\(state.rawValue):\(message ?? ""):\(blockers.joined(separator: "|"))")
                 }
             ),
-            diagnostics: RuntimeUninstallDiagnostics(
-                contentsOfDirectory: { _ in
-                    if let contentsOfDirectoryError = self.contentsOfDirectoryError {
-                        throw contentsOfDirectoryError
-                    }
-                    return []
-                },
-                openFileDiagnosticExecutable: "/usr/sbin/lsof",
-                runProcess: { _, _ in
-                    RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")
-                },
-                log: { message in
-                    self.events.append("log:\(message)")
-                }
-            ),
+            diagnostics: RuntimeUninstallDiagnostics(log: { message in
+                self.events.append("log:\(message)")
+            }),
             packageReceiptIdentifiers: [
                 "ai.tirosh.vitalserver.helper",
             ]
         )
+    }
+
+    private func executeFileRemoval(
+        paths: RuntimeUninstallPaths,
+        clean: Bool
+    ) -> RuntimeUninstallFileRemovalExecutionResult {
+        let useCase = UninstallRuntimeUseCase()
+        var preserved: RuntimeUninstallPreservedPaths?
+        do {
+            events.append("log:\(useCase.stepLogMessage(step: .removePlists, status: .started))")
+            for plist in paths.launchDaemonPlists {
+                try removeIfPresent(plist, useCase: useCase)
+            }
+            events.append("log:\(useCase.stepLogMessage(step: .removePlists, status: .completed))")
+
+            if !clean {
+                preserved = try preserveUserData(paths: paths, useCase: useCase)
+            }
+
+            events.append("log:\(useCase.stepLogMessage(step: .removeInstalledFiles, status: .started))")
+            let removalPlan = useCase.removalPlan(
+                clean: clean,
+                managerApp: paths.managerApp,
+                productRoot: paths.productRoot,
+                externalVitalFilesDirectory: paths.externalVitalFilesDirectory,
+                configuredVitalFilesDirectoryReadFailure: paths.configuredVitalFilesDirectoryReadFailure
+            )
+            for target in removalPlan.targets {
+                try safeRemove(target, useCase: useCase)
+            }
+            if let skippedExternalDirectoryLogMessage = removalPlan.skippedExternalDirectoryLogMessage {
+                events.append("log:\(skippedExternalDirectoryLogMessage)")
+            }
+            events.append("log:\(useCase.stepLogMessage(step: .removeInstalledFiles, status: .completed))")
+
+            events.append("log:\(useCase.stepLogMessage(step: .removeRuntimeTools, status: .started))")
+            for tool in paths.runtimeTools {
+                try removeIfPresent(tool, useCase: useCase)
+            }
+            events.append("log:\(useCase.stepLogMessage(step: .removeRuntimeTools, status: .completed))")
+
+            if let preserved {
+                events.append("log:\(useCase.stepLogMessage(step: .restorePreservedUserData, status: .started))")
+                try restorePreservedPaths(preserved, useCase: useCase)
+                events.append("log:\(useCase.stepLogMessage(step: .restorePreservedUserData, status: .completed))")
+            }
+            return .completed
+        } catch {
+            var preservedRestoreFailureReason: String?
+            if let preserved {
+                events.append("log:\(useCase.restoringPreservedUserDataAfterFailureLogMessage())")
+                do {
+                    try restorePreservedPaths(preserved, useCase: useCase)
+                } catch {
+                    events.append("log:\(useCase.preservedUserDataRestoreFailedLogMessage(reason: error.localizedDescription))")
+                    preservedRestoreFailureReason = error.localizedDescription
+                }
+            }
+            return .failed(
+                error: error,
+                blockers: useCase.fileRemovalBlockers(
+                    removalFailureReason: error.localizedDescription,
+                    preservedRestoreFailureReason: preservedRestoreFailureReason
+                )
+            )
+        }
+    }
+
+    private func preserveUserData(
+        paths: RuntimeUninstallPaths,
+        useCase: UninstallRuntimeUseCase
+    ) throws -> RuntimeUninstallPreservedPaths {
+        events.append("log:\(useCase.stepLogMessage(step: .preserveUserData, status: .started))")
+        let preserveRoot = useCase.preserveRootDirectory(
+            temporaryDirectory: URL(fileURLWithPath: NSTemporaryDirectory()),
+            uniqueID: UUID().uuidString
+        )
+        createDirectory(preserveRoot)
+
+        var items: [RuntimeUninstallPreservedPath] = []
+        let plan = useCase.preservePlan(
+            productRoot: paths.productRoot,
+            defaultVitalFilesDirectory: paths.defaultVitalFilesDirectory,
+            externalVitalFilesDirectory: paths.externalVitalFilesDirectory,
+            configuredVitalFilesDirectoryReadFailure: paths.configuredVitalFilesDirectoryReadFailure
+        )
+        for candidate in plan.candidates {
+            guard existing.contains(candidate.source.path) else {
+                continue
+            }
+            let destination = preserveRoot.appendingPathComponent(candidate.token)
+            try removeIfPresent(destination, useCase: useCase)
+            try moveItem(from: candidate.source, to: destination)
+            items.append(RuntimeUninstallPreservedPath(source: candidate.source, destination: destination))
+            events.append("log:\(useCase.preservedSourceLogMessage(path: candidate.source.path))")
+        }
+        if let externalDirectoryLogMessage = plan.externalDirectoryLogMessage {
+            events.append("log:\(externalDirectoryLogMessage)")
+        }
+        if let configuredDirectoryReadFailureLogMessage = plan.configuredDirectoryReadFailureLogMessage {
+            events.append("log:\(configuredDirectoryReadFailureLogMessage)")
+        }
+        events.append("log:\(useCase.stepLogMessage(step: .preserveUserData, status: .completed))")
+        return RuntimeUninstallPreservedPaths(root: preserveRoot, items: items)
+    }
+
+    private func restorePreservedPaths(
+        _ preserved: RuntimeUninstallPreservedPaths,
+        useCase: UninstallRuntimeUseCase
+    ) throws {
+        for item in preserved.items {
+            createDirectory(item.source.deletingLastPathComponent())
+            try removeIfPresent(item.source, useCase: useCase)
+            try moveItem(from: item.destination, to: item.source)
+            events.append("log:\(useCase.restoredPreservedLogMessage(path: item.source.path))")
+        }
+        try removeIfPresent(preserved.root, useCase: useCase)
+    }
+
+    private func safeRemove(_ target: URL, useCase: UninstallRuntimeUseCase) throws {
+        guard target.path != "/" else {
+            throw RuntimeUninstallWorkflowError.operationFailed(
+                useCase.unsafeRemovalTargetFailureMessage(path: target.path)
+            )
+        }
+        guard existing.contains(target.path) else {
+            return
+        }
+        do {
+            try removeItem(target)
+        } catch {
+            logRemovalDiagnostics(target, useCase: useCase)
+            throw error
+        }
+        if existing.contains(target.path) {
+            logRemovalDiagnostics(target, useCase: useCase)
+            throw RuntimeUninstallWorkflowError.operationFailed(
+                useCase.removalIncompleteFailureMessage(path: target.path)
+            )
+        }
+    }
+
+    private func logRemovalDiagnostics(_ target: URL, useCase: UninstallRuntimeUseCase) {
+        events.append("log:\(useCase.removalDiagnosticTargetLogMessage(path: target.path))")
+        if let contentsOfDirectoryError {
+            let message = useCase.removalDiagnosticContentsReadFailedLogMessage(
+                path: target.path,
+                reason: contentsOfDirectoryError.localizedDescription
+            )
+            events.append("log:\(message)")
+        }
+    }
+
+    private func removeIfPresent(_ url: URL, useCase: UninstallRuntimeUseCase) throws {
+        guard existing.contains(url.path) else {
+            return
+        }
+        try removeItem(url)
+    }
+
+    private func createDirectory(_ url: URL) {
+        events.append("mkdir:\(url.path)")
+        existing.insert(url.path)
+    }
+
+    private func removeItem(_ url: URL) throws {
+        events.append("remove:\(url.path)")
+        if removeErrorPath == url.path {
+            throw RuntimeUninstallTestError.remove
+        }
+        existing.remove(url.path)
+    }
+
+    private func moveItem(from source: URL, to destination: URL) throws {
+        events.append("move:\(source.path)->\(destination.path)")
+        if destination.path == moveErrorDestination {
+            throw RuntimeUninstallTestError.restore
+        }
+        existing.remove(source.path)
+        existing.insert(destination.path)
+    }
+
+    private func executeReceiptForgetting(
+        identifiers: [String],
+        observedReceiptStates: [String: RuntimePackageReceiptState]
+    ) -> RuntimeUninstallReceiptForgetExecutionResult {
+        let useCase = UninstallRuntimeUseCase()
+        for identifier in identifiers {
+            switch useCase.receiptForgetDecision(identifier: identifier, observedReceiptStates: observedReceiptStates) {
+            case .skip(let logMessage):
+                events.append("log:\(logMessage)")
+                continue
+            case .forget(let logMessage):
+                events.append("log:\(logMessage)")
+            }
+            events.append("forget:\(identifier)")
+            let result = receiptForgetResults[identifier] ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+            if result.exitCode == 0 && updateReceiptsOnForget {
+                receiptStates = receiptStates.map { state in
+                    switch state {
+                    case .present(let existingIdentifier) where existingIdentifier == identifier:
+                        return .absent(identifier: identifier)
+                    default:
+                        return state
+                    }
+                }
+            }
+            guard result.exitCode == 0 else {
+                return .failed(identifier: identifier, reason: useCase.processFailureReason(result))
+            }
+        }
+        return .completed
     }
 
     private func cleanupArtifactPaths(clean: Bool) -> [String] {
@@ -423,6 +595,16 @@ private final class RuntimeUninstallWorkflowHarness {
         }
         return paths
     }
+}
+
+private struct RuntimeUninstallPreservedPaths {
+    let root: URL
+    let items: [RuntimeUninstallPreservedPath]
+}
+
+private struct RuntimeUninstallPreservedPath {
+    let source: URL
+    let destination: URL
 }
 
 private enum RuntimeUninstallTestError: Error, LocalizedError {

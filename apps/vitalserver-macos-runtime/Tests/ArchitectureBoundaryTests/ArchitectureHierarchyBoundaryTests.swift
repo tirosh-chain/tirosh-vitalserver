@@ -385,6 +385,32 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeUninstallWorkflowDoesNotOwnFileRemovalOrReceiptExecution() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeUninstallLifecycle/RuntimeUninstallWorkflow.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "fileExists",
+            "directoryExists",
+            "createDirectory",
+            "removeItem",
+            "moveItem",
+            "contentsOfDirectory",
+            "runProcess",
+            "receiptForgetDecision",
+            "RuntimeUninstallPreservedPath",
+            "removalDiagnosticOpenFilePlan",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeUninstallWorkflow must delegate file removal and receipt execution instead of owning \(token)"
+            )
+        }
+    }
+
     func testRuntimeWatchdogRunnerDoesNotInterpretInitialSnapshotDecisionDirectly() throws {
         let file = packageRoot().appendingPathComponent(
             "Sources/Workflow/RuntimeWatchdog/RuntimeWatchdogRunner.swift"
