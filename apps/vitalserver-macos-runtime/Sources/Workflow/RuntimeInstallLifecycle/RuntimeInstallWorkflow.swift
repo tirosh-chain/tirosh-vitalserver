@@ -107,7 +107,7 @@ public struct RuntimeInstallWorkflow<Settings> {
             from: startDecision.state,
             event: .settingsLoaded,
             context: context,
-            expectedCommands: setupCommands(installPlan.mode)
+            expectedCommands: try useCase.setupReadCommands(for: installPlan)
         )
 
         var decision = try verifySetup(
@@ -158,9 +158,10 @@ public struct RuntimeInstallWorkflow<Settings> {
                 from: state,
                 event: .freshInstallPreflightObserved(preflight),
                 context: context,
-                expectedCommands: preflight.passed && preflight.blockers.isEmpty
-                    ? firstStepCommand(installPlan.operationPlan)
-                    : []
+                expectedCommands: try useCase.expectedCommandsAfterFreshInstallPreflight(
+                    preflight,
+                    plan: installPlan
+                )
             )
         case .provision:
             let payload = readers.provisionPayload()
@@ -168,9 +169,10 @@ public struct RuntimeInstallWorkflow<Settings> {
                 from: state,
                 event: .provisionPayloadObserved(payload),
                 context: context,
-                expectedCommands: payload.passed && payload.blockers.isEmpty
-                    ? firstStepCommand(installPlan.operationPlan)
-                    : []
+                expectedCommands: try useCase.expectedCommandsAfterProvisionPayload(
+                    payload,
+                    plan: installPlan
+                )
             )
         case .unknown:
             throw RuntimeInstallWorkflowError.operationFailed("install mode unknown value=\(installPlan.mode.rawValue)")
@@ -256,24 +258,6 @@ public struct RuntimeInstallWorkflow<Settings> {
         in decision: RuntimeInstallTransitionDecision
     ) throws {
         try useCase.requireCommands(expectedCommands, in: decision)
-    }
-
-    private func firstStepCommand(_ plan: RuntimeOperationPlan) -> [RuntimeInstallWorkflowCommand] {
-        guard let firstStep = plan.steps.first else {
-            return [.complete]
-        }
-        return [.executeStep(firstStep)]
-    }
-
-    private func setupCommands(_ mode: RuntimeInstallMode) -> [RuntimeInstallWorkflowCommand] {
-        switch mode {
-        case .full:
-            return [.readFreshInstallPreflight]
-        case .provision:
-            return [.readProvisionPayload]
-        case .unknown:
-            return []
-        }
     }
 
     private func event(
