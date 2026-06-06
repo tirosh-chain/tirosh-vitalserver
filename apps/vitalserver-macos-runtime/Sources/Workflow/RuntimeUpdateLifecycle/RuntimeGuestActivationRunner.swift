@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -17,6 +18,9 @@ public struct RuntimeGuestActivationRunner {
     public var sleep: () -> Void
     public var log: (String) -> Void
     public var waitTimeoutSeconds: Double
+    private var useCase: UpdateRuntimeUseCase {
+        UpdateRuntimeUseCase()
+    }
 
     public init(
         requireCapability: @escaping () throws -> Void,
@@ -49,20 +53,27 @@ public struct RuntimeGuestActivationRunner {
     }
 
     public func activateIfNeeded(manifest: UpdateBundleManifest) throws {
-        guard manifest.artifacts.contains(where: { $0.type == .guestDeploy }) else {
-            log("guest update activation not required")
+        let plan = useCase.guestActivationPlan(manifest: manifest)
+        guard plan.requiresActivation else {
+            if let skippedLogMessage = plan.skippedLogMessage {
+                log(skippedLogMessage)
+            }
             return
         }
 
-        log("guest update activation requested version=\(manifest.version)")
+        if let requestedLogMessage = plan.requestedLogMessage {
+            log(requestedLogMessage)
+        }
         try requireCapability()
         try createRunDirectory()
         try removePreviousResult()
-        let request = RuntimeGuestActivationRequest(
-            id: requestID(),
-            requestedAt: timestamp(),
-            version: manifest.version
-        )
+        guard let request = useCase.guestActivationRequest(
+            plan: plan,
+            requestID: requestID(),
+            requestedAt: timestamp()
+        ) else {
+            throw RuntimeGuestActivationWorkflowError.operationFailed("guest activation request missing for required activation")
+        }
         try writeRequest(request)
 
         if !isVMServiceLoaded() {
@@ -70,7 +81,9 @@ public struct RuntimeGuestActivationRunner {
         }
 
         try waitForActivationResult(request)
-        log("guest update activation completed version=\(manifest.version)")
+        if let completedLogMessage = plan.completedLogMessage {
+            log(completedLogMessage)
+        }
     }
 
     private func waitForActivationResult(_ request: RuntimeGuestActivationRequest) throws {

@@ -177,6 +177,57 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.backupVersion, backup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
         XCTAssertFalse(plan.restoresRootfsBase)
     }
+
+    func testGuestActivationPlanRequiresActivationOnlyForGuestDeployArtifact() {
+        let useCase = UpdateRuntimeUseCase()
+
+        let plan = useCase.guestActivationPlan(manifest: manifest(artifacts: [
+            UpdateBundleArtifact(name: "guest-deploy.tar.gz", type: .guestDeploy, sha256: "abc", size: 10),
+        ]))
+
+        XCTAssertTrue(plan.requiresActivation)
+        XCTAssertEqual(plan.version, "test")
+        XCTAssertNil(plan.skippedLogMessage)
+        XCTAssertEqual(plan.requestedLogMessage, "guest update activation requested version=test")
+        XCTAssertEqual(plan.completedLogMessage, "guest update activation completed version=test")
+    }
+
+    func testGuestActivationPlanPreservesNoGuestDeployAsExplicitSkipWithoutRequestFallback() {
+        let useCase = UpdateRuntimeUseCase()
+
+        let plan = useCase.guestActivationPlan(manifest: manifest(artifacts: [
+            UpdateBundleArtifact(name: "app.tar.gz", type: .appBundle, sha256: "abc", size: 10),
+        ]))
+        let request = useCase.guestActivationRequest(
+            plan: plan,
+            requestID: "request-1",
+            requestedAt: "2026-06-06T00:00:00Z"
+        )
+
+        XCTAssertFalse(plan.requiresActivation)
+        XCTAssertEqual(plan.version, "test")
+        XCTAssertEqual(plan.skippedLogMessage, "guest update activation not required")
+        XCTAssertNil(plan.requestedLogMessage)
+        XCTAssertNil(plan.completedLogMessage)
+        XCTAssertNil(request)
+    }
+
+    func testGuestActivationRequestUsesExplicitRequestStateAndPlannedVersion() {
+        let useCase = UpdateRuntimeUseCase()
+        let plan = useCase.guestActivationPlan(manifest: manifest(artifacts: [
+            UpdateBundleArtifact(name: "guest-deploy.tar.gz", type: .guestDeploy, sha256: "abc", size: 10),
+        ]))
+
+        let request = useCase.guestActivationRequest(
+            plan: plan,
+            requestID: "request-1",
+            requestedAt: "2026-06-06T00:00:00Z"
+        )
+
+        XCTAssertEqual(request?.id, "request-1")
+        XCTAssertEqual(request?.requestedAt, "2026-06-06T00:00:00Z")
+        XCTAssertEqual(request?.version, "test")
+    }
 }
 
 private func applyBundlePreflight(stagedRootfs: URL?) -> ApplyBundlePreflightContext {
