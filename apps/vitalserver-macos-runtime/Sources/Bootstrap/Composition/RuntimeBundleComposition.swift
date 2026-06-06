@@ -312,10 +312,7 @@ public struct RuntimeBundleComposition {
                 executePreflightCapabilityInstruction: executePreflightCapabilityInstruction,
                 createBackup: operations.createBackup,
                 rotateRuntimeLogs: operations.rotateRuntimeLogs,
-                rollback: { backup in
-                    try operations.rollback(backup)
-                },
-                startRuntimeServices: operations.startRuntimeServices,
+                executeFailureRecoveryPlan: executeApplyBundleFailureRecoveryPlan,
                 statusReporter: operations.statusReporter,
                 pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
                 executeApplyBundleStepPlan: executeApplyBundleStepPlan,
@@ -386,6 +383,45 @@ public struct RuntimeBundleComposition {
             return
         case .continueWithWarning(let logMessage):
             operations.log(logMessage)
+        }
+    }
+
+    private func executeApplyBundleFailureRecoveryPlan(_ plan: ApplyRuntimeBundleFailureRecoveryPlan) {
+        operations.log(plan.rollbackStartedPlan.logMessage)
+        operations.statusReporter.writeBestEffort(
+            plan.rollbackStartedPlan.status,
+            operation: plan.rollbackStartedPlan.operation,
+            message: plan.rollbackStartedPlan.statusMessage
+        )
+        do {
+            try operations.rollback(plan.backup)
+            try operations.startRuntimeServices(plan.restartPolicy)
+            operations.statusReporter.writeBestEffort(
+                plan.rollbackCompletedPlan.status,
+                operation: plan.rollbackCompletedPlan.operation,
+                message: plan.rollbackCompletedPlan.message
+            )
+        } catch {
+            let rollbackFailedPlan = UpdateRuntimeUseCase().applyBundleRollbackFailedPlan(
+                reason: RuntimeErrorDescription.describe(error)
+            )
+            operations.log(rollbackFailedPlan.logMessage)
+            startRuntimeServicesBestEffort(plan.restartPolicy)
+            operations.statusReporter.writeBestEffort(
+                rollbackFailedPlan.status,
+                operation: rollbackFailedPlan.operation,
+                message: rollbackFailedPlan.statusMessage
+            )
+        }
+    }
+
+    private func startRuntimeServicesBestEffort(_ policy: RuntimeServiceRestartPolicy) {
+        do {
+            try operations.startRuntimeServices(policy)
+        } catch {
+            operations.log(UpdateRuntimeUseCase().applyBundleRollbackFailureServiceRestartFailedLogMessage(
+                reason: RuntimeErrorDescription.describe(error)
+            ))
         }
     }
 

@@ -177,12 +177,24 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     throw RuntimeChaosError.applyArtifactWriteDenied
                 }
             },
-            rollback: { backup in
-                rollbackBackup = backup
-                throw RuntimeChaosError.rollbackRestoreDenied
-            },
-            startRuntimeServices: { policy in
-                restartedPolicy = policy
+            executeFailureRecoveryPlan: { plan in
+                logs.append(plan.rollbackStartedPlan.logMessage)
+                statuses.append((
+                    level: plan.rollbackStartedPlan.status,
+                    operation: plan.rollbackStartedPlan.operation,
+                    message: plan.rollbackStartedPlan.statusMessage
+                ))
+                rollbackBackup = plan.backup
+                let failedPlan = UpdateRuntimeUseCase().applyBundleRollbackFailedPlan(
+                    reason: RuntimeErrorDescription.describe(RuntimeChaosError.rollbackRestoreDenied)
+                )
+                logs.append(failedPlan.logMessage)
+                restartedPolicy = plan.restartPolicy
+                statuses.append((
+                    level: failedPlan.status,
+                    operation: failedPlan.operation,
+                    message: failedPlan.statusMessage
+                ))
             },
             statusReporter: RuntimeWorkflowStatusReporter(
                 writeStatus: { level, operation, message in

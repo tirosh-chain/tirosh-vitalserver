@@ -319,6 +319,26 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeInstallStepExecutorDoesNotInterpretStepExecutionPlansDirectly() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeInstallLifecycle/RuntimeInstallStepExecutor.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "switch InstallRuntimeUseCase().stepExecutionPlan",
+            "case .prepareInstallDirectories",
+            "case .unsupported",
+            "RuntimeInstallStepExecutionError",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeInstallStepExecutor must delegate UseCase step execution plans instead of interpreting \(token) directly"
+            )
+        }
+    }
+
     func testRuntimeUpdateWorkflowDoesNotInterpretRollbackBackupSelectionDirectly() throws {
         let updateWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeUpdateLifecycle")
         let forbiddenTokens = [
@@ -508,6 +528,29 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             XCTAssertFalse(
                 text.contains(token),
                 "RuntimeApplyBundleRunner must execute UseCase initial health warning plans instead of interpreting \(token) directly"
+            )
+        }
+    }
+
+    func testRuntimeApplyBundleRunnerDoesNotExecuteFailureRecoveryDirectly() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleRunner.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "applyBundleRollbackStartedPlan",
+            "applyBundleRollbackCompletedStatusPlan",
+            "applyBundleRollbackFailedPlan",
+            "applyBundleRollbackFailureServiceRestartFailedLogMessage",
+            "startRuntimeServicesBestEffort",
+            "try rollback(",
+            "try startRuntimeServices(",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeApplyBundleRunner must delegate failure recovery plans instead of owning \(token)"
             )
         }
     }

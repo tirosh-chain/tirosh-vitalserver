@@ -191,48 +191,54 @@ public struct RuntimeInstallComposition {
 
     private func runtimeInstallStepExecutor() -> RuntimeInstallStepExecutor<InstallSettings> {
         RuntimeInstallStepExecutor(
-            prepareInstallDirectories: { settings in
-                try runtimeInstallDirectoryPreparer().prepare(settings: settings)
-            },
-            rotateRuntimeLogs: operations.rotateRuntimeLogs,
-            configureDeployEnvironment: { settings in
-                try configureDeployEnvironment(settings)
-            },
-            prepareInstalledExecutables: {
-                try prepareInstalledExecutables()
-            },
-            provisionVMDisk: { settings in
-                try provisionVMDisk(settings)
-            },
-            configureInstalledVMRuntime: { settings in
-                try configureInstalledVMRuntime(settings)
-            },
-            createCloudInitSeed: { settings in
-                try createCloudInitSeed(settings)
-            },
-            writeInstalledRuntimeVersion: operations.writeInstalledRuntimeVersion,
-            configureInstalledPermissions: { settings in
-                try configureInstalledPermissions(settings)
-            },
-            startInstalledServices: { settings in
-                try startInstalledServices(settings)
-            },
-            applyStartOnBootPolicy: { settings in
-                try applyStartOnBootPolicy(settings)
-            },
-            runtimeServiceRestartPolicy: { settings in
-                RuntimeServiceRestartPolicy(
-                    restartVM: settings.startAfterInstall,
-                    restartGuestLogSync: settings.startAfterInstall,
-                    restartProxy: settings.startAfterInstall,
-                    restartWatchdog: settings.startAfterInstall
-                )
-            },
-            waitForHealth: operations.waitForHealth,
-            cleanupInstallSettings: {
-                try cleanupInstallSettings()
-            },
-            log: operations.log
+            executeStepPlan: executeInstallStepPlan
+        )
+    }
+
+    private func executeInstallStepPlan(
+        _ plan: InstallRuntimeStepExecutionPlan,
+        settings: InstallSettings
+    ) throws {
+        switch plan {
+        case .log(let message):
+            operations.log(message)
+        case .prepareInstallDirectories:
+            try runtimeInstallDirectoryPreparer().prepare(settings: settings)
+        case .rotateRuntimeLogs:
+            try operations.rotateRuntimeLogs()
+        case .configureDeployEnvironment:
+            try configureDeployEnvironment(settings)
+        case .prepareInstalledExecutables:
+            try prepareInstalledExecutables()
+        case .provisionVMDisk:
+            try provisionVMDisk(settings)
+        case .configureInstalledVMRuntime:
+            try configureInstalledVMRuntime(settings)
+        case .createCloudInitSeed:
+            try createCloudInitSeed(settings)
+        case .writeInstalledRuntimeVersion:
+            try operations.writeInstalledRuntimeVersion()
+        case .configureInstalledPermissions:
+            try configureInstalledPermissions(settings)
+        case .startInstalledServices:
+            try startInstalledServices(settings)
+        case .applyStartOnBootPolicy:
+            try applyStartOnBootPolicy(settings)
+        case .waitInstallRuntimeHealth:
+            try operations.waitForHealth(runtimeServiceRestartPolicy(settings))
+        case .cleanupInstallSettings:
+            try cleanupInstallSettings()
+        case .unsupported(let message):
+            throw RuntimeInstallStepExecutionError(message)
+        }
+    }
+
+    private func runtimeServiceRestartPolicy(_ settings: InstallSettings) -> RuntimeServiceRestartPolicy {
+        RuntimeServiceRestartPolicy(
+            restartVM: settings.startAfterInstall,
+            restartGuestLogSync: settings.startAfterInstall,
+            restartProxy: settings.startAfterInstall,
+            restartWatchdog: settings.startAfterInstall
         )
     }
 

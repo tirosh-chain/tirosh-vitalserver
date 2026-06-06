@@ -97,6 +97,27 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             )
         )
         XCTAssertEqual(
+            useCase.applyBundleFailureRecoveryPlan(
+                preflight: applyBundlePreflight(),
+                applyFailureReason: "replace failed"
+            ),
+            ApplyRuntimeBundleFailureRecoveryPlan(
+                backup: URL(fileURLWithPath: "/tmp/backup"),
+                restartPolicy: restartPolicy(),
+                rollbackStartedPlan: UpdateRuntimeLoggedStatusPlan(
+                    logMessage: "bundle apply failed; rolling back error=replace failed",
+                    status: .recovering,
+                    operation: .applyBundle,
+                    statusMessage: "bundle apply failed; rolling back: replace failed"
+                ),
+                rollbackCompletedPlan: UpdateRuntimeStatusPlan(
+                    status: .degraded,
+                    operation: .applyBundle,
+                    message: "bundle apply failed; rollback completed: replace failed"
+                )
+            )
+        )
+        XCTAssertEqual(
             useCase.applyBundleRollbackFailedPlan(reason: "rollback failed"),
             UpdateRuntimeLoggedStatusPlan(
                 logMessage: "bundle apply rollback failed error=rollback failed",
@@ -1252,7 +1273,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
     }
 }
 
-private func applyBundlePreflight(stagedRootfs: URL?) -> ApplyBundlePreflightContext {
+private func applyBundlePreflight(stagedRootfs: URL? = nil) -> ApplyBundlePreflightContext {
     ApplyBundlePreflightContext(
         stagedBundle: URL(fileURLWithPath: "/tmp/bundle"),
         manifest: UpdateBundleManifest(

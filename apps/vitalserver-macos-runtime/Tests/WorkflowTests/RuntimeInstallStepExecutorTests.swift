@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Workflow
@@ -9,55 +10,10 @@ final class RuntimeInstallStepExecutorTests: XCTestCase {
         let settings = TestInstallSettings(vitalFilesDirectory: "/vital-files")
         var events: [String] = []
         let executor = RuntimeInstallStepExecutor<TestInstallSettings>(
-            prepareInstallDirectories: { settings in
-                events.append("prepare-directories:\(settings.vitalFilesDirectory)")
-            },
-            rotateRuntimeLogs: {
-                events.append("rotate-logs")
-            },
-            configureDeployEnvironment: { settings in
-                events.append("guest-config:\(settings.vitalFilesDirectory)")
-            },
-            prepareInstalledExecutables: {
-                events.append("executables")
-            },
-            provisionVMDisk: { settings in
-                events.append("disk:\(settings.diskGiB)")
-            },
-            configureInstalledVMRuntime: { settings in
-                events.append("vm-runtime:\(settings.cpuCount)")
-            },
-            createCloudInitSeed: { settings in
-                events.append("cloud-init:\(settings.vmHostname)")
-            },
-            writeInstalledRuntimeVersion: {
-                events.append("version")
-            },
-            configureInstalledPermissions: { settings in
-                events.append("permissions:\(settings.proxyPort)")
-            },
-            startInstalledServices: { settings in
-                events.append("start:\(settings.startAfterInstall)")
-            },
-            applyStartOnBootPolicy: { settings in
-                events.append("boot:\(settings.startOnBoot)")
-            },
-            runtimeServiceRestartPolicy: { settings in
-                RuntimeServiceRestartPolicy(
-                    restartVM: settings.startAfterInstall,
-                    restartGuestLogSync: settings.startAfterInstall,
-                    restartProxy: settings.startAfterInstall,
-                    restartWatchdog: settings.startAfterInstall
-                )
-            },
-            waitForHealth: { policy in
-                events.append("wait-health:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")
-            },
-            cleanupInstallSettings: {
-                events.append("cleanup")
-            },
-            log: { message in
-                events.append("log:\(message)")
+            executeStepPlan: { plan, settings in
+                try executeInstallStepPlan(plan, settings: settings) { event in
+                    events.append(event)
+                }
             }
         )
 
@@ -85,28 +41,9 @@ final class RuntimeInstallStepExecutorTests: XCTestCase {
 
     func testRejectsNonInstallStep() {
         let executor = RuntimeInstallStepExecutor<TestInstallSettings>(
-            prepareInstallDirectories: { _ in },
-            rotateRuntimeLogs: {},
-            configureDeployEnvironment: { _ in },
-            prepareInstalledExecutables: {},
-            provisionVMDisk: { _ in },
-            configureInstalledVMRuntime: { _ in },
-            createCloudInitSeed: { _ in },
-            writeInstalledRuntimeVersion: {},
-            configureInstalledPermissions: { _ in },
-            startInstalledServices: { _ in },
-            applyStartOnBootPolicy: { _ in },
-            runtimeServiceRestartPolicy: { _ in
-                RuntimeServiceRestartPolicy(
-                    restartVM: false,
-                    restartGuestLogSync: false,
-                    restartProxy: false,
-                    restartWatchdog: false
-                )
-            },
-            waitForHealth: { _ in },
-            cleanupInstallSettings: {},
-            log: { _ in }
+            executeStepPlan: { plan, _ in
+                try executeUnsupportedInstallStepPlan(plan)
+            }
         )
 
         XCTAssertThrowsError(try executor.execute(
@@ -115,6 +52,73 @@ final class RuntimeInstallStepExecutorTests: XCTestCase {
         )) { error in
             XCTAssertEqual(String(describing: error), "unsupported command: install step stop-runtime-services")
         }
+    }
+}
+
+private func executeInstallStepPlan(
+    _ plan: InstallRuntimeStepExecutionPlan,
+    settings: TestInstallSettings,
+    append: (String) -> Void
+) throws {
+    switch plan {
+    case .log(let message):
+        append("log:\(message)")
+    case .prepareInstallDirectories:
+        append("prepare-directories:\(settings.vitalFilesDirectory)")
+    case .rotateRuntimeLogs:
+        append("rotate-logs")
+    case .configureDeployEnvironment:
+        append("guest-config:\(settings.vitalFilesDirectory)")
+    case .prepareInstalledExecutables:
+        append("executables")
+    case .provisionVMDisk:
+        append("disk:\(settings.diskGiB)")
+    case .configureInstalledVMRuntime:
+        append("vm-runtime:\(settings.cpuCount)")
+    case .createCloudInitSeed:
+        append("cloud-init:\(settings.vmHostname)")
+    case .writeInstalledRuntimeVersion:
+        append("version")
+    case .configureInstalledPermissions:
+        append("permissions:\(settings.proxyPort)")
+    case .startInstalledServices:
+        append("start:\(settings.startAfterInstall)")
+    case .applyStartOnBootPolicy:
+        append("boot:\(settings.startOnBoot)")
+    case .waitInstallRuntimeHealth:
+        let policy = RuntimeServiceRestartPolicy(
+            restartVM: settings.startAfterInstall,
+            restartGuestLogSync: settings.startAfterInstall,
+            restartProxy: settings.startAfterInstall,
+            restartWatchdog: settings.startAfterInstall
+        )
+        append("wait-health:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")
+    case .cleanupInstallSettings:
+        append("cleanup")
+    case .unsupported(let message):
+        throw RuntimeInstallStepExecutionError(message)
+    }
+}
+
+private func executeUnsupportedInstallStepPlan(_ plan: InstallRuntimeStepExecutionPlan) throws {
+    switch plan {
+    case .unsupported(let message):
+        throw RuntimeInstallStepExecutionError(message)
+    case .log,
+         .prepareInstallDirectories,
+         .rotateRuntimeLogs,
+         .configureDeployEnvironment,
+         .prepareInstalledExecutables,
+         .provisionVMDisk,
+         .configureInstalledVMRuntime,
+         .createCloudInitSeed,
+         .writeInstalledRuntimeVersion,
+         .configureInstalledPermissions,
+         .startInstalledServices,
+         .applyStartOnBootPolicy,
+         .waitInstallRuntimeHealth,
+         .cleanupInstallSettings:
+        return
     }
 }
 

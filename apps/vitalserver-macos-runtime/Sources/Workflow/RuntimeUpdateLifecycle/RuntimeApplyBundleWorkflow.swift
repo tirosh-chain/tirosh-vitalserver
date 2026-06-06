@@ -40,8 +40,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public var executePreflightCapabilityInstruction: (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void
     public var createBackup: (String) throws -> URL
     public var rotateRuntimeLogs: () throws -> Void
-    public var rollback: (URL) throws -> Void
-    public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
+    public var executeFailureRecoveryPlan: (ApplyRuntimeBundleFailureRecoveryPlan) -> Void
     public var statusReporter: RuntimeWorkflowStatusReporter
     public var pruneOldRuntimeArtifacts: () throws -> Void
     public var executeApplyBundleStepPlan: (ApplyRuntimeBundleStepExecutionPlan) throws -> Void
@@ -62,8 +61,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         executePreflightCapabilityInstruction: @escaping (ApplyRuntimeBundlePreflightCapabilityInstruction) throws -> Void,
         createBackup: @escaping (String) throws -> URL,
         rotateRuntimeLogs: @escaping () throws -> Void,
-        rollback: @escaping (URL) throws -> Void,
-        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        executeFailureRecoveryPlan: @escaping (ApplyRuntimeBundleFailureRecoveryPlan) -> Void,
         statusReporter: RuntimeWorkflowStatusReporter,
         pruneOldRuntimeArtifacts: @escaping () throws -> Void,
         executeApplyBundleStepPlan: @escaping (ApplyRuntimeBundleStepExecutionPlan) throws -> Void,
@@ -83,8 +81,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         self.executePreflightCapabilityInstruction = executePreflightCapabilityInstruction
         self.createBackup = createBackup
         self.rotateRuntimeLogs = rotateRuntimeLogs
-        self.rollback = rollback
-        self.startRuntimeServices = startRuntimeServices
+        self.executeFailureRecoveryPlan = executeFailureRecoveryPlan
         self.statusReporter = statusReporter
         self.pruneOldRuntimeArtifacts = pruneOldRuntimeArtifacts
         self.executeApplyBundleStepPlan = executeApplyBundleStepPlan
@@ -117,8 +114,7 @@ public struct RuntimeApplyBundleWorkflow {
             executeInitialHealthWarningPlan: operations.executeInitialHealthWarningPlan,
             preparePreflight: prepareApplyBundlePreflight,
             executeStep: executeApplyBundleStep,
-            rollback: operations.rollback,
-            startRuntimeServices: operations.startRuntimeServices,
+            executeFailureRecoveryPlan: operations.executeFailureRecoveryPlan,
             statusReporter: operations.statusReporter,
             pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
             describeError: operations.describeError

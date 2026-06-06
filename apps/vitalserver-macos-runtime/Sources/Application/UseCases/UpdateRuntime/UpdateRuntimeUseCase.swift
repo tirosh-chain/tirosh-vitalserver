@@ -26,6 +26,25 @@ public struct ApplyRuntimeBundlePlan: Equatable, Sendable {
     }
 }
 
+public struct ApplyRuntimeBundleFailureRecoveryPlan: Equatable, Sendable {
+    public let backup: URL
+    public let restartPolicy: RuntimeServiceRestartPolicy
+    public let rollbackStartedPlan: UpdateRuntimeLoggedStatusPlan
+    public let rollbackCompletedPlan: UpdateRuntimeStatusPlan
+
+    public init(
+        backup: URL,
+        restartPolicy: RuntimeServiceRestartPolicy,
+        rollbackStartedPlan: UpdateRuntimeLoggedStatusPlan,
+        rollbackCompletedPlan: UpdateRuntimeStatusPlan
+    ) {
+        self.backup = backup
+        self.restartPolicy = restartPolicy
+        self.rollbackStartedPlan = rollbackStartedPlan
+        self.rollbackCompletedPlan = rollbackCompletedPlan
+    }
+}
+
 public enum RuntimeBundleMaterializationCleanupPlan: Equatable, Sendable {
     case none
     case cleanupTemporaryRoot(URL)
@@ -496,6 +515,18 @@ public struct UpdateRuntimeUseCase {
             status: .degraded,
             operation: .applyBundle,
             message: "bundle apply failed; rollback completed: \(reason)"
+        )
+    }
+
+    public func applyBundleFailureRecoveryPlan(
+        preflight: ApplyBundlePreflightContext,
+        applyFailureReason: String
+    ) -> ApplyRuntimeBundleFailureRecoveryPlan {
+        ApplyRuntimeBundleFailureRecoveryPlan(
+            backup: preflight.backup,
+            restartPolicy: preflight.restartPolicy,
+            rollbackStartedPlan: applyBundleRollbackStartedPlan(reason: applyFailureReason),
+            rollbackCompletedPlan: applyBundleRollbackCompletedStatusPlan(reason: applyFailureReason)
         )
     }
 

@@ -1,4 +1,5 @@
 import Contracts
+import Application
 import Domain
 import Foundation
 import Workflow
@@ -38,6 +39,7 @@ final class RuntimeApplyBundleRunnerTests: XCTestCase {
 
         XCTAssertThrowsError(try harness.runner.run(bundleURL: harness.inputBundle))
 
+        XCTAssertEqual(harness.recoveryPlans.map(\.backup), [harness.preflight.backup])
         XCTAssertEqual(harness.rollbackBackup, harness.preflight.backup)
         XCTAssertEqual(harness.restartedPolicy, harness.preflight.restartPolicy)
         XCTAssertEqual(harness.statuses.last?.level, .degraded)
@@ -53,6 +55,7 @@ final class RuntimeApplyBundleRunnerTests: XCTestCase {
 
         XCTAssertThrowsError(try harness.runner.run(bundleURL: harness.inputBundle))
 
+        XCTAssertEqual(harness.recoveryPlans.map(\.restartPolicy), [harness.preflight.restartPolicy])
         XCTAssertEqual(harness.restartedPolicy, harness.preflight.restartPolicy)
         XCTAssertEqual(harness.statuses.last?.level, .critical)
         XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
@@ -104,6 +107,7 @@ private final class ApplyBundleHarness {
     var progressEvents: [RuntimeStepExecutionEvent] = []
     var executedSteps: [RuntimeWorkflowStep] = []
     var logs: [String] = []
+    var recoveryPlans: [ApplyRuntimeBundleFailureRecoveryPlan] = []
     var pruneCount = 0
     var rollbackBackup: URL?
     var restartedPolicy: RuntimeServiceRestartPolicy?
@@ -151,14 +155,34 @@ private final class ApplyBundleHarness {
                     throw stepError
                 }
             },
-            rollback: { backup in
-                self.rollbackBackup = backup
+            executeFailureRecoveryPlan: { plan in
+                self.recoveryPlans.append(plan)
+                self.logs.append(plan.rollbackStartedPlan.logMessage)
+                self.statuses.append((
+                    level: plan.rollbackStartedPlan.status,
+                    operation: plan.rollbackStartedPlan.operation,
+                    message: plan.rollbackStartedPlan.statusMessage
+                ))
+                self.rollbackBackup = plan.backup
                 if let rollbackError = self.rollbackError {
-                    throw rollbackError
+                    let failedPlan = UpdateRuntimeUseCase().applyBundleRollbackFailedPlan(
+                        reason: "described:\(String(describing: rollbackError))"
+                    )
+                    self.logs.append(failedPlan.logMessage)
+                    self.restartedPolicy = plan.restartPolicy
+                    self.statuses.append((
+                        level: failedPlan.status,
+                        operation: failedPlan.operation,
+                        message: failedPlan.statusMessage
+                    ))
+                    return
                 }
-            },
-            startRuntimeServices: { policy in
-                self.restartedPolicy = policy
+                self.restartedPolicy = plan.restartPolicy
+                self.statuses.append((
+                    level: plan.rollbackCompletedPlan.status,
+                    operation: plan.rollbackCompletedPlan.operation,
+                    message: plan.rollbackCompletedPlan.message
+                ))
             },
             statusReporter: RuntimeWorkflowStatusReporter(
                 writeStatus: { level, operation, message in

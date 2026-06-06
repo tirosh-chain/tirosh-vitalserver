@@ -151,9 +151,8 @@ private final class ApplyBundleWorkflowHarness {
                         throw error
                     }
                 },
-                rollback: { _ in },
-                startRuntimeServices: { _ in
-                    self.stepCalls.append("startRuntimeServices")
+                executeFailureRecoveryPlan: { _ in
+                    XCTFail("failure recovery should not run on successful apply")
                 },
                 statusReporter: RuntimeWorkflowStatusReporter(
                     writeStatus: { level, operation, message in

@@ -10,8 +10,7 @@ public struct RuntimeApplyBundleRunner {
     public var executeInitialHealthWarningPlan: (ApplyRuntimeBundleInitialHealthWarningPlan) throws -> Void
     public var preparePreflight: (URL) throws -> ApplyBundlePreflightContext
     public var executeStep: (RuntimeWorkflowStep, ApplyBundlePreflightContext) throws -> Void
-    public var rollback: (URL) throws -> Void
-    public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
+    public var executeFailureRecoveryPlan: (ApplyRuntimeBundleFailureRecoveryPlan) -> Void
     public var statusReporter: RuntimeWorkflowStatusReporter
     public var pruneOldRuntimeArtifacts: () throws -> Void
     public var describeError: (Error) -> String
@@ -25,8 +24,7 @@ public struct RuntimeApplyBundleRunner {
         executeInitialHealthWarningPlan: @escaping (ApplyRuntimeBundleInitialHealthWarningPlan) throws -> Void,
         preparePreflight: @escaping (URL) throws -> ApplyBundlePreflightContext,
         executeStep: @escaping (RuntimeWorkflowStep, ApplyBundlePreflightContext) throws -> Void,
-        rollback: @escaping (URL) throws -> Void,
-        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        executeFailureRecoveryPlan: @escaping (ApplyRuntimeBundleFailureRecoveryPlan) -> Void,
         statusReporter: RuntimeWorkflowStatusReporter,
         pruneOldRuntimeArtifacts: @escaping () throws -> Void,
         describeError: @escaping (Error) -> String
@@ -36,8 +34,7 @@ public struct RuntimeApplyBundleRunner {
         self.executeInitialHealthWarningPlan = executeInitialHealthWarningPlan
         self.preparePreflight = preparePreflight
         self.executeStep = executeStep
-        self.rollback = rollback
-        self.startRuntimeServices = startRuntimeServices
+        self.executeFailureRecoveryPlan = executeFailureRecoveryPlan
         self.statusReporter = statusReporter
         self.pruneOldRuntimeArtifacts = pruneOldRuntimeArtifacts
         self.describeError = describeError
@@ -78,32 +75,10 @@ public struct RuntimeApplyBundleRunner {
             )
         } catch {
             let applyFailureReason = describeError(error)
-            let rollbackStartedPlan = useCase.applyBundleRollbackStartedPlan(reason: applyFailureReason)
-            statusReporter.log(rollbackStartedPlan.logMessage)
-            statusReporter.writeBestEffort(
-                rollbackStartedPlan.status,
-                operation: rollbackStartedPlan.operation,
-                message: rollbackStartedPlan.statusMessage
-            )
-            do {
-                try rollback(preflight.backup)
-                try startRuntimeServices(preflight.restartPolicy)
-                let rollbackCompletedPlan = useCase.applyBundleRollbackCompletedStatusPlan(reason: applyFailureReason)
-                statusReporter.writeBestEffort(
-                    rollbackCompletedPlan.status,
-                    operation: rollbackCompletedPlan.operation,
-                    message: rollbackCompletedPlan.message
-                )
-            } catch {
-                let rollbackFailedPlan = useCase.applyBundleRollbackFailedPlan(reason: describeError(error))
-                statusReporter.log(rollbackFailedPlan.logMessage)
-                startRuntimeServicesBestEffort(preflight.restartPolicy)
-                statusReporter.writeBestEffort(
-                    rollbackFailedPlan.status,
-                    operation: rollbackFailedPlan.operation,
-                    message: rollbackFailedPlan.statusMessage
-                )
-            }
+            executeFailureRecoveryPlan(useCase.applyBundleFailureRecoveryPlan(
+                preflight: preflight,
+                applyFailureReason: applyFailureReason
+            ))
             throw error
         }
 
@@ -121,14 +96,6 @@ public struct RuntimeApplyBundleRunner {
             try pruneOldRuntimeArtifacts()
         } catch {
             statusReporter.log(useCase.applyBundleArtifactCleanupFailedLogMessage(reason: describeError(error)))
-        }
-    }
-
-    private func startRuntimeServicesBestEffort(_ policy: RuntimeServiceRestartPolicy) {
-        do {
-            try startRuntimeServices(policy)
-        } catch {
-            statusReporter.log(useCase.applyBundleRollbackFailureServiceRestartFailedLogMessage(reason: describeError(error)))
         }
     }
 

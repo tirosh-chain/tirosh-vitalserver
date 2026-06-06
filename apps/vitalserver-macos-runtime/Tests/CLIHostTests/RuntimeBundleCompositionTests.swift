@@ -106,9 +106,42 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         XCTAssertTrue(logs.contains { $0.contains("cleanupFailed") })
     }
 
+    func testApplyBundleRecoveryLogsRollbackAndRestartFailuresWithoutHidingApplyFailure() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let source = URL(fileURLWithPath: "/input/update-bundle")
+        try writeEmptyBundle(at: source, to: fileStore)
+        var events: [String] = []
+        var logs: [String] = []
+        let workflow = makeWorkflow(
+            fileStore: fileStore,
+            startRuntimeServices: { _ in
+                events.append("start")
+                throw TestRuntimeBundleCompositionError.restartFailed
+            },
+            stopRuntimeServices: {
+                events.append("stop")
+                throw TestRuntimeBundleCompositionError.vmStopFailed
+            },
+            rollback: { _ in
+                events.append("rollback")
+                throw TestRuntimeBundleCompositionError.rollbackFailed
+            },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try workflow.applyBundle(source)) { error in
+            XCTAssertEqual(error as? TestRuntimeBundleCompositionError, .vmStopFailed)
+        }
+
+        XCTAssertEqual(events, ["stop", "rollback", "start"])
+        XCTAssertTrue(logs.contains { $0.contains("bundle apply rollback failed error=rollbackFailed") })
+        XCTAssertTrue(logs.contains { $0.contains("failed to restart runtime services after rollback failure error=restartFailed") })
+    }
+
     private func makeWorkflow(
         fileStore: RuntimeFileStore,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void = { _ in },
+        stopRuntimeServices: @escaping () throws -> Void = {},
         runningVMProcessID: @escaping () throws -> pid_t = { 123 },
         stopRuntimeServicesAfterGuestPoweroff: @escaping (pid_t) throws -> Void = { _ in },
         prepareGuestShutdownForUpdate: @escaping (UpdateBundleManifest) throws -> Void = { _ in },
@@ -134,7 +167,7 @@ final class RuntimeBundleCompositionTests: XCTestCase {
                 rotateRuntimeLogs: rotateRuntimeLogs,
                 rollback: rollback,
                 startRuntimeServices: startRuntimeServices,
-                stopRuntimeServices: {},
+                stopRuntimeServices: stopRuntimeServices,
                 runningVMProcessID: runningVMProcessID,
                 stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
                 prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
@@ -214,4 +247,6 @@ final class RuntimeBundleCompositionTests: XCTestCase {
 private enum TestRuntimeBundleCompositionError: Error, Equatable {
     case vmStopFailed
     case cleanupFailed
+    case rollbackFailed
+    case restartFailed
 }
