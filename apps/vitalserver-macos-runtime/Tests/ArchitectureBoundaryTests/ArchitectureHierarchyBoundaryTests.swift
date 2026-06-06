@@ -383,6 +383,21 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeServiceLifecycleExecutionDoesNotRemainInWorkflow() throws {
+        let root = packageRoot()
+        let forbiddenFiles = [
+            "Sources/Workflow/RuntimeServiceLifecycle/RuntimeServiceLifecycleWorkflow.swift",
+            "Sources/Errors/Definitions/RuntimeServiceLifecycleWorkflowError.swift",
+        ]
+
+        for path in forbiddenFiles {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path),
+                "\(path) must not own runtime service lifecycle execution"
+            )
+        }
+    }
+
     func testRuntimeRedisBackupWorkflowDoesNotInterpretResultDecisionDirectly() throws {
         let file = packageRoot().appendingPathComponent(
             "Sources/Workflow/RuntimeRepairLifecycle/RuntimeRedisBackupWorkflow.swift"
@@ -445,6 +460,10 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "receiptForgetDecision",
             "RuntimeUninstallPreservedPath",
             "removalDiagnosticOpenFilePlan",
+            "RuntimeUninstallFileRemovalExecutionResult",
+            "RuntimeUninstallReceiptForgetExecutionResult",
+            "switch effects.executeFileRemoval",
+            "switch effects.executeReceiptForgetting",
         ]
 
         for token in forbiddenTokens {

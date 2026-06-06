@@ -340,10 +340,10 @@ private final class RuntimeUninstallWorkflowHarness {
                     error.localizedDescription
                 },
                 executeFileRemoval: { paths, clean in
-                    self.executeFileRemoval(paths: paths, clean: clean)
+                    try self.executeFileRemoval(paths: paths, clean: clean)
                 },
                 executeReceiptForgetting: { identifiers, observedReceiptStates in
-                    self.executeReceiptForgetting(
+                    try self.executeReceiptForgetting(
                         identifiers: identifiers,
                         observedReceiptStates: observedReceiptStates
                     )
@@ -366,7 +366,7 @@ private final class RuntimeUninstallWorkflowHarness {
     private func executeFileRemoval(
         paths: RuntimeUninstallPaths,
         clean: Bool
-    ) -> RuntimeUninstallFileRemovalExecutionResult {
+    ) throws {
         let useCase = UninstallRuntimeUseCase()
         var preserved: RuntimeUninstallPreservedPaths?
         do {
@@ -407,7 +407,6 @@ private final class RuntimeUninstallWorkflowHarness {
                 try restorePreservedPaths(preserved, useCase: useCase)
                 events.append("log:\(useCase.stepLogMessage(step: .restorePreservedUserData, status: .completed))")
             }
-            return .completed
         } catch {
             var preservedRestoreFailureReason: String?
             if let preserved {
@@ -419,8 +418,8 @@ private final class RuntimeUninstallWorkflowHarness {
                     preservedRestoreFailureReason = error.localizedDescription
                 }
             }
-            return .failed(
-                error: error,
+            throw RuntimeUninstallFileRemovalExecutionError(
+                underlyingError: error,
                 blockers: useCase.fileRemovalBlockers(
                     removalFailureReason: error.localizedDescription,
                     preservedRestoreFailureReason: preservedRestoreFailureReason
@@ -546,7 +545,7 @@ private final class RuntimeUninstallWorkflowHarness {
     private func executeReceiptForgetting(
         identifiers: [String],
         observedReceiptStates: [String: RuntimePackageReceiptState]
-    ) -> RuntimeUninstallReceiptForgetExecutionResult {
+    ) throws {
         let useCase = UninstallRuntimeUseCase()
         for identifier in identifiers {
             switch useCase.receiptForgetDecision(identifier: identifier, observedReceiptStates: observedReceiptStates) {
@@ -569,10 +568,12 @@ private final class RuntimeUninstallWorkflowHarness {
                 }
             }
             guard result.exitCode == 0 else {
-                return .failed(identifier: identifier, reason: useCase.processFailureReason(result))
+                throw RuntimeUninstallReceiptForgetExecutionError(
+                    identifier: identifier,
+                    reason: useCase.processFailureReason(result)
+                )
             }
         }
-        return .completed
     }
 
     private func cleanupArtifactPaths(clean: Bool) -> [String] {

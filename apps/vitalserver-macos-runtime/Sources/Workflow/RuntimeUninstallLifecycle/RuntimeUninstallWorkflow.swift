@@ -69,35 +69,25 @@ public struct RuntimeUninstallStateReaders {
     }
 }
 
-public enum RuntimeUninstallFileRemovalExecutionResult {
-    case completed
-    case failed(error: Error, blockers: [String])
-}
-
-public enum RuntimeUninstallReceiptForgetExecutionResult: Equatable {
-    case completed
-    case failed(identifier: String, reason: String)
-}
-
 public struct RuntimeUninstallEffects {
     public var createRedisBackup: () throws -> Void
     public var stopRuntimeServices: () throws -> Void
     public var describeError: (Error) -> String
-    public var executeFileRemoval: (RuntimeUninstallPaths, Bool) -> RuntimeUninstallFileRemovalExecutionResult
+    public var executeFileRemoval: (RuntimeUninstallPaths, Bool) throws -> Void
     public var executeReceiptForgetting: (
         [String],
         [String: RuntimePackageReceiptState]
-    ) -> RuntimeUninstallReceiptForgetExecutionResult
+    ) throws -> Void
 
     public init(
         createRedisBackup: @escaping () throws -> Void,
         stopRuntimeServices: @escaping () throws -> Void,
         describeError: @escaping (Error) -> String,
-        executeFileRemoval: @escaping (RuntimeUninstallPaths, Bool) -> RuntimeUninstallFileRemovalExecutionResult,
+        executeFileRemoval: @escaping (RuntimeUninstallPaths, Bool) throws -> Void,
         executeReceiptForgetting: @escaping (
             [String],
             [String: RuntimePackageReceiptState]
-        ) -> RuntimeUninstallReceiptForgetExecutionResult
+        ) throws -> Void
     ) {
         self.createRedisBackup = createRedisBackup
         self.stopRuntimeServices = stopRuntimeServices
@@ -258,18 +248,18 @@ public struct RuntimeUninstallWorkflow {
             clean: command.clean,
             expectedCommands: []
         )
-        switch effects.executeFileRemoval(paths, command.clean) {
-        case .completed:
+        do {
+            try effects.executeFileRemoval(paths, command.clean)
             let cleanupDecision = try verifyCleanupArtifacts(from: fileRemovalDecision.state, clean: command.clean)
             return cleanupDecision
-        case .failed(let error, let blockers):
+        } catch let error as RuntimeUninstallFileRemovalExecutionError {
             try writer.writeState(
                 .filesRemovalBlocked,
                 command.clean,
                 useCase.fileRemovalBlockedMessage(),
-                blockers
+                error.blockers
             )
-            throw error
+            throw error.underlyingError
         }
     }
 
@@ -287,18 +277,17 @@ public struct RuntimeUninstallWorkflow {
         )
 
         let observedReceiptStates = useCase.packageReceiptStateMap(readers.packageReceiptStates())
-        switch effects.executeReceiptForgetting(packageReceiptIdentifiers, observedReceiptStates) {
-        case .completed:
-            break
-        case .failed(let identifier, let reason):
+        do {
+            try effects.executeReceiptForgetting(packageReceiptIdentifiers, observedReceiptStates)
+        } catch let error as RuntimeUninstallReceiptForgetExecutionError {
             _ = try transitionAndPersist(
                 from: receiptsStartDecision.state,
-                event: .receiptForgetFailed(identifier: identifier, reason: reason),
+                event: .receiptForgetFailed(identifier: error.identifier, reason: error.reason),
                 clean: clean,
                 expectedCommands: []
             )
             throw RuntimeUninstallWorkflowError.operationFailed(
-                useCase.packageReceiptForgetFailureMessage(identifier: identifier, reason: reason)
+                useCase.packageReceiptForgetFailureMessage(identifier: error.identifier, reason: error.reason)
             )
         }
         let receiptDecision = try transition(

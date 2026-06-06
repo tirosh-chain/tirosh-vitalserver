@@ -108,14 +108,14 @@ public enum RuntimeUninstallComposition {
                 },
                 describeError: RuntimeErrorDescription.describe,
                 executeFileRemoval: { paths, clean in
-                    executeFileRemoval(
+                    try executeFileRemoval(
                         paths: paths,
                         clean: clean,
                         operations: operations
                     )
                 },
                 executeReceiptForgetting: { identifiers, observedReceiptStates in
-                    executeReceiptForgetting(
+                    try executeReceiptForgetting(
                         identifiers: identifiers,
                         observedReceiptStates: observedReceiptStates,
                         operations: operations
@@ -145,7 +145,7 @@ public enum RuntimeUninstallComposition {
         paths: RuntimeUninstallPaths,
         clean: Bool,
         operations: RuntimeUninstallCompositionOperations
-    ) -> RuntimeUninstallFileRemovalExecutionResult {
+    ) throws {
         let useCase = UninstallRuntimeUseCase()
         var preservedPaths: RuntimeUninstallPreservedPaths?
         do {
@@ -156,7 +156,6 @@ public enum RuntimeUninstallComposition {
                 useCase: useCase,
                 operations: operations
             )
-            return .completed
         } catch {
             let blockers = restorePreservedDataAfterFailureIfNeeded(
                 error: error,
@@ -164,7 +163,10 @@ public enum RuntimeUninstallComposition {
                 useCase: useCase,
                 operations: operations
             )
-            return .failed(error: error, blockers: blockers)
+            throw RuntimeUninstallFileRemovalExecutionError(
+                underlyingError: error,
+                blockers: blockers
+            )
         }
     }
 
@@ -380,7 +382,7 @@ public enum RuntimeUninstallComposition {
         identifiers: [String],
         observedReceiptStates: [String: RuntimePackageReceiptState],
         operations: RuntimeUninstallCompositionOperations
-    ) -> RuntimeUninstallReceiptForgetExecutionResult {
+    ) throws {
         let useCase = UninstallRuntimeUseCase()
         for identifier in identifiers {
             switch useCase.receiptForgetDecision(identifier: identifier, observedReceiptStates: observedReceiptStates) {
@@ -392,10 +394,12 @@ public enum RuntimeUninstallComposition {
             }
             let result = operations.runProcess(Constants.Commands.pkgutil, ["--forget", identifier])
             guard result.exitCode == 0 else {
-                return .failed(identifier: identifier, reason: useCase.processFailureReason(result))
+                throw RuntimeUninstallReceiptForgetExecutionError(
+                    identifier: identifier,
+                    reason: useCase.processFailureReason(result)
+                )
             }
         }
-        return .completed
     }
 
     private static func cleanupArtifactPaths(clean: Bool, paths: RuntimeUninstallPaths) -> [URL] {

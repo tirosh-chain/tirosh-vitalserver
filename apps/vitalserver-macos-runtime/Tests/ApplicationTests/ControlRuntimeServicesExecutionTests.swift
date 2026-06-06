@@ -1,15 +1,14 @@
 import Application
 import Contracts
 import Domain
-import Workflow
 import XCTest
 import Errors
 
-final class RuntimeServiceLifecycleWorkflowTests: XCTestCase {
+final class ControlRuntimeServicesExecutionTests: XCTestCase {
     func testStartAllCompletesOnlyAfterRequiredServicesAreObservedLoaded() throws {
         let harness = RuntimeServiceLifecycleHarness()
 
-        try harness.workflow.run(.startAll)
+        try harness.run(.startAll)
 
         XCTAssertEqual(harness.events, [
             "log:runtime services start requested",
@@ -25,7 +24,7 @@ final class RuntimeServiceLifecycleWorkflowTests: XCTestCase {
         let harness = RuntimeServiceLifecycleHarness()
         harness.startLeavesServiceNotLoaded = .guestLogSync
 
-        XCTAssertThrowsError(try harness.workflow.run(.startAll)) { error in
+        XCTAssertThrowsError(try harness.run(.startAll)) { error in
             XCTAssertTrue(String(describing: error).contains("launchd-service-not-loaded"))
             XCTAssertTrue(String(describing: error).contains(RuntimeManagedService.guestLogSync.label))
         }
@@ -38,7 +37,7 @@ final class RuntimeServiceLifecycleWorkflowTests: XCTestCase {
         let harness = RuntimeServiceLifecycleHarness()
         harness.states = Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { ($0, .loaded) })
 
-        try harness.workflow.run(.repairAll)
+        try harness.run(.repairAll)
 
         XCTAssertEqual(Array(harness.events.prefix(5)), [
             "log:runtime services repair requested",
@@ -54,7 +53,7 @@ final class RuntimeServiceLifecycleWorkflowTests: XCTestCase {
         let harness = RuntimeServiceLifecycleHarness()
         harness.states = Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { ($0, .loaded) })
 
-        try harness.workflow.run(.stopAll)
+        try harness.run(.stopAll)
 
         XCTAssertEqual(harness.events, [
             "log:runtime services stop requested",
@@ -69,7 +68,7 @@ final class RuntimeServiceLifecycleWorkflowTests: XCTestCase {
         let harness = RuntimeServiceLifecycleHarness()
         harness.stopLeavesServiceLoaded = .proxy
 
-        XCTAssertThrowsError(try harness.workflow.run(.stopAll)) { error in
+        XCTAssertThrowsError(try harness.run(.stopAll)) { error in
             XCTAssertTrue(String(describing: error).contains("launchd-service-not-stopped"))
             XCTAssertTrue(String(describing: error).contains(RuntimeManagedService.proxy.label))
         }
@@ -85,38 +84,37 @@ private final class RuntimeServiceLifecycleHarness {
     var startLeavesServiceNotLoaded: RuntimeManagedService?
     var stopLeavesServiceLoaded: RuntimeManagedService?
 
-    var workflow: RuntimeServiceLifecycleWorkflow {
-        RuntimeServiceLifecycleWorkflow(
-            useCase: ControlRuntimeServicesUseCase(),
-            effects: RuntimeServiceLifecycleEffects(
-                startRuntimeServices: { policy in
-                    let services = RuntimeRequiredServicePolicy.requiredServices(for: policy)
-                    self.events.append("start:\(services.map(\.label).joined(separator: ","))")
-                    for service in services {
-                        self.states[service] = service == self.startLeavesServiceNotLoaded ? .notLoaded : .loaded
-                    }
-                },
-                stopRuntimeServices: {
-                    self.events.append("stop")
-                    for service in RuntimeManagedService.stopOrder {
-                        self.states[service] = service == self.stopLeavesServiceLoaded ? .loaded : .notLoaded
-                    }
-                },
-                serviceStates: { services in
-                    self.events.append("observe:\(services.map(\.label).joined(separator: ","))")
-                    return Dictionary(uniqueKeysWithValues: services.map { service in
-                        (service, self.states[service] ?? .notLoaded)
-                    })
+    func run(_ request: RuntimeServiceControlRequest) throws {
+        try ControlRuntimeServicesUseCase().run(request, operations: operations)
+    }
+
+    var operations: RuntimeServiceControlOperations {
+        RuntimeServiceControlOperations(
+            startRuntimeServices: { policy in
+                let services = RuntimeRequiredServicePolicy.requiredServices(for: policy)
+                self.events.append("start:\(services.map(\.label).joined(separator: ","))")
+                for service in services {
+                    self.states[service] = service == self.startLeavesServiceNotLoaded ? .notLoaded : .loaded
                 }
-            ),
-            writer: RuntimeServiceLifecycleWriter(
-                writeStatus: { level, operation, message in
-                    self.events.append("status:\(level.rawValue):\(operation.rawValue):\(message)")
-                },
-                log: { message in
-                    self.events.append("log:\(message)")
+            },
+            stopRuntimeServices: {
+                self.events.append("stop")
+                for service in RuntimeManagedService.stopOrder {
+                    self.states[service] = service == self.stopLeavesServiceLoaded ? .loaded : .notLoaded
                 }
-            )
+            },
+            serviceStates: { services in
+                self.events.append("observe:\(services.map(\.label).joined(separator: ","))")
+                return Dictionary(uniqueKeysWithValues: services.map { service in
+                    (service, self.states[service] ?? .notLoaded)
+                })
+            },
+            writeStatus: { level, operation, message in
+                self.events.append("status:\(level.rawValue):\(operation.rawValue):\(message)")
+            },
+            log: { message in
+                self.events.append("log:\(message)")
+            }
         )
     }
 }

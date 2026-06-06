@@ -88,8 +88,44 @@ public struct RuntimeServiceControlResult: Equatable {
     }
 }
 
+public struct RuntimeServiceControlOperations {
+    public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
+    public var stopRuntimeServices: () throws -> Void
+    public var serviceStates: ([RuntimeManagedService]) throws -> [RuntimeManagedService: RuntimeServiceState]
+    public var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
+    public var log: (String) -> Void
+
+    public init(
+        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        stopRuntimeServices: @escaping () throws -> Void,
+        serviceStates: @escaping ([RuntimeManagedService]) throws -> [RuntimeManagedService: RuntimeServiceState],
+        writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
+        log: @escaping (String) -> Void
+    ) {
+        self.startRuntimeServices = startRuntimeServices
+        self.stopRuntimeServices = stopRuntimeServices
+        self.serviceStates = serviceStates
+        self.writeStatus = writeStatus
+        self.log = log
+    }
+}
+
 public struct ControlRuntimeServicesUseCase {
     public init() {}
+
+    public func run(
+        _ request: RuntimeServiceControlRequest,
+        operations: RuntimeServiceControlOperations
+    ) throws {
+        switch request {
+        case .repairAll:
+            try repairAll(operations: operations)
+        case .startAll:
+            try startAll(operations: operations)
+        case .stopAll:
+            try stopAll(operations: operations)
+        }
+    }
 
     public func plan(_ request: RuntimeServiceControlRequest) -> RuntimeServiceControlPlan {
         let allRuntimeServices = RuntimeRequiredServicePolicy.allRuntimeServices
@@ -157,6 +193,68 @@ public struct ControlRuntimeServicesUseCase {
                 )
             )
         }
+    }
+
+    private func repairAll(operations: RuntimeServiceControlOperations) throws {
+        let controlPlan = plan(.repairAll)
+        try reportRequested(controlPlan, operations: operations)
+        try operations.stopRuntimeServices()
+        try requireServicesStopped(controlPlan.requiredStoppedServices, operations: operations)
+        let policy = try requireStartPolicy(in: controlPlan, operationName: "repair")
+        try operations.startRuntimeServices(policy)
+        try requireServicesLoaded(controlPlan.requiredStartedServices, operations: operations)
+        try reportCompleted(controlPlan.completedStatusPlan, operations: operations)
+    }
+
+    private func startAll(operations: RuntimeServiceControlOperations) throws {
+        let controlPlan = plan(.startAll)
+        try reportRequested(controlPlan, operations: operations)
+        let policy = try requireStartPolicy(in: controlPlan, operationName: "start")
+        try operations.startRuntimeServices(policy)
+        try requireServicesLoaded(controlPlan.requiredStartedServices, operations: operations)
+        try reportCompleted(controlPlan.completedStatusPlan, operations: operations)
+    }
+
+    private func stopAll(operations: RuntimeServiceControlOperations) throws {
+        let controlPlan = plan(.stopAll)
+        try reportRequested(controlPlan, operations: operations)
+        try operations.stopRuntimeServices()
+        try requireServicesStopped(controlPlan.requiredStoppedServices, operations: operations)
+        try reportCompleted(controlPlan.completedStatusPlan, operations: operations)
+    }
+
+    private func reportRequested(
+        _ controlPlan: RuntimeServiceControlPlan,
+        operations: RuntimeServiceControlOperations
+    ) throws {
+        operations.log(controlPlan.requestedLogMessage)
+        if let statusPlan = controlPlan.requestedStatusPlan {
+            try operations.writeStatus(statusPlan.status, statusPlan.operation, statusPlan.statusMessage)
+        }
+    }
+
+    private func reportCompleted(
+        _ statusPlan: RuntimeServiceControlStatusPlan,
+        operations: RuntimeServiceControlOperations
+    ) throws {
+        try operations.writeStatus(statusPlan.status, statusPlan.operation, statusPlan.statusMessage)
+        operations.log(statusPlan.logMessage)
+    }
+
+    private func requireServicesLoaded(
+        _ services: [RuntimeManagedService],
+        operations: RuntimeServiceControlOperations
+    ) throws {
+        let states = try operations.serviceStates(services)
+        try requireServicesLoaded(services, observation: observation(states: states))
+    }
+
+    private func requireServicesStopped(
+        _ services: [RuntimeManagedService],
+        operations: RuntimeServiceControlOperations
+    ) throws {
+        let states = try operations.serviceStates(services)
+        try requireServicesStopped(services, observation: observation(states: states))
     }
 
     public func requireStartPolicy(
