@@ -145,6 +145,11 @@ final class RuntimeRedisBackupWorkflowTests: XCTestCase {
                     }
                     return results.removeFirst()
                 },
+                executeResultDecision: { [self] decision in
+                    try executeRedisBackupResultDecision(decision) { event in
+                        events.append(event)
+                    }
+                },
                 sleep: { [self] seconds in events.append("sleep:\(seconds)") },
                 log: { [self] message in events.append("log:\(message)") }
             )
@@ -153,5 +158,31 @@ final class RuntimeRedisBackupWorkflowTests: XCTestCase {
         init(results: [RuntimeRedisBackupResultLoadResult]) {
             self.results = results
         }
+    }
+}
+
+private func executeRedisBackupResultDecision(
+    _ decision: RepairRuntimeRedisBackupResultDecision,
+    append: (String) -> Void
+) throws -> RuntimeRedisBackupResult? {
+    switch decision {
+    case .ignoreStaleResult(let logMessage):
+        append("log:\(logMessage)")
+        return nil
+    case .completed(let message, let archive):
+        append("status:healthy:redis-backup:\(message)")
+        append("log:\(RepairRuntimeUseCase().redisBackupCompletedLogMessage())")
+        return RuntimeRedisBackupResult(message: message, archive: archive)
+    case .failed(let message):
+        append("status:degraded:redis-backup:\(message)")
+        throw RuntimeRedisBackupWorkflowError.operationFailed(message)
+    case .waiting(let logMessage):
+        if let logMessage {
+            append("log:\(logMessage)")
+        }
+        return nil
+    case .readFailed(let message):
+        append("status:degraded:redis-backup:\(message)")
+        throw RuntimeRedisBackupWorkflowError.operationFailed(message)
     }
 }

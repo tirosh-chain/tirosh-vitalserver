@@ -339,6 +339,44 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeRedisBackupWorkflowDoesNotInterpretResultDecisionDirectly() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeRepairLifecycle/RuntimeRedisBackupWorkflow.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "switch decision",
+            "case .ignoreStaleResult",
+            "case .completed",
+            "case .readFailed",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeRedisBackupWorkflow must delegate result decision execution instead of interpreting \(token) directly"
+            )
+        }
+    }
+
+    func testRuntimeWatchdogRunnerDoesNotInterpretInitialSnapshotDecisionDirectly() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeWatchdog/RuntimeWatchdogRunner.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "switch useCase.initialSnapshotDecision",
+            "case .needsRecoveryProbe:",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeWatchdogRunner must delegate initial snapshot decision execution instead of owning \(token)"
+            )
+        }
+    }
+
     func testRuntimeUpdateWorkflowDoesNotInterpretRollbackBackupSelectionDirectly() throws {
         let updateWorkflowRoot = packageRoot().appendingPathComponent("Sources/Workflow/RuntimeUpdateLifecycle")
         let forbiddenTokens = [

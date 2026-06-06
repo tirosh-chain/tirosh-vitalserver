@@ -113,6 +113,14 @@ public enum RuntimeWatchdogRunnerComposition {
                 },
                 activeManagedOperation: operations.activeManagedOperation,
                 healthSnapshot: operations.healthSnapshot,
+                executeInitialSnapshotDecision: { decision, snapshot in
+                    try executeInitialSnapshotDecision(
+                        decision,
+                        snapshot: snapshot,
+                        context: context,
+                        operations: operations
+                    )
+                },
                 proxyLivenessHTTP: { port in
                     operations.httpStatusCode(Constants.Runtime.proxyLivenessURL(port: port))
                 },
@@ -142,6 +150,73 @@ public enum RuntimeWatchdogRunnerComposition {
             log: operations.log,
             printLine: operations.printLine
         )
+    }
+
+    private static func executeInitialSnapshotDecision(
+        _ decision: WatchdogRuntimeInitialSnapshotDecision,
+        snapshot: RuntimeHealthSnapshot,
+        context: RuntimeWatchdogRunnerCompositionContext,
+        operations: RuntimeWatchdogRunnerCompositionOperations
+    ) throws -> RuntimeWatchdogInitialSnapshotExecutionResult {
+        switch decision {
+        case .healthy(let plan):
+            let finalized = completeHealthyVMLifecycleIfNeeded(snapshot, context: context, operations: operations)
+            try operations.writeRuntimeStatus(.healthy, .watchdog, plan.statusMessage)
+            operations.recordObservedStatus(.healthy, .watchdog, plan.statusMessage, finalized)
+            operations.printLine(plan.printMessage)
+            return .handled
+        case .recoverySuppressed(let plan):
+            try writeObservedStatus(plan, snapshot: snapshot, operations: operations)
+            return .handled
+        case .recoveryDeferred(let plan):
+            try writeObservedStatus(plan, snapshot: snapshot, operations: operations)
+            return .handled
+        case .needsRecoveryProbe:
+            return .needsRecoveryProbe
+        }
+    }
+
+    private static func writeObservedStatus(
+        _ plan: WatchdogRuntimeObservedStatusPlan,
+        snapshot: RuntimeHealthSnapshot,
+        operations: RuntimeWatchdogRunnerCompositionOperations
+    ) throws {
+        if let logMessage = plan.logMessage {
+            operations.log(logMessage)
+        }
+        try operations.writeRuntimeStatus(plan.status, .watchdog, plan.message)
+        operations.recordObservedStatus(plan.status, .watchdog, plan.message, snapshot)
+        operations.recordObservedEvent(plan.status, .watchdog, plan.message, snapshot, plan.eventType)
+        operations.printLine(plan.printMessage)
+    }
+
+    private static func completeHealthyVMLifecycleIfNeeded(
+        _ snapshot: RuntimeHealthSnapshot,
+        context: RuntimeWatchdogRunnerCompositionContext,
+        operations: RuntimeWatchdogRunnerCompositionOperations
+    ) -> RuntimeHealthSnapshot {
+        let useCase = WatchdogRuntimeUseCase()
+        let plan = useCase.lifecycleMarkPlan(snapshot)
+        guard let lifecycle = plan.lifecycle else {
+            return snapshot
+        }
+        do {
+            let timestamp = operations.now()
+            try RuntimeVMLifecycleStore(
+                url: context.installedPaths.vmLifecycle,
+                fileStore: operations.fileStore,
+                now: { timestamp }
+            ).write(
+                state: .running,
+                operation: lifecycle.operation,
+                message: "Guest runtime reported healthy"
+            )
+            operations.recordLifecycleEvent(.watchdog, plan.eventMessage, .statusChanged)
+            return operations.healthSnapshot()
+        } catch {
+            operations.log(useCase.lifecycleMarkFailedLogMessage(error: error))
+            return snapshot
+        }
     }
 
     private static func prepareLogs(

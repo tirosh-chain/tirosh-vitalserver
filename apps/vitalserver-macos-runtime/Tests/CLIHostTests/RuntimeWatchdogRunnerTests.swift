@@ -1,4 +1,5 @@
 import Contracts
+import Application
 import Domain
 import Workflow
 import XCTest
@@ -218,6 +219,9 @@ private final class WatchdogHarness {
                     self.healthCalls += 1
                     return self.snapshots.removeFirst()
                 },
+                executeInitialSnapshotDecision: { decision, snapshot in
+                    try self.executeInitialSnapshotDecision(decision, snapshot: snapshot)
+                },
                 proxyLivenessHTTP: { port in
                     self.proxyLivenessPorts.append(port)
                     return "204"
@@ -253,6 +257,50 @@ private final class WatchdogHarness {
             },
             printLine: { _ in }
         )
+    }
+
+    private func executeInitialSnapshotDecision(
+        _ decision: WatchdogRuntimeInitialSnapshotDecision,
+        snapshot: RuntimeHealthSnapshot
+    ) throws -> RuntimeWatchdogInitialSnapshotExecutionResult {
+        switch decision {
+        case .healthy(let plan):
+            let finalized = completeHealthyVMLifecycleIfNeeded(snapshot)
+            writtenStatuses.append((.healthy, .watchdog, plan.statusMessage))
+            observedStatuses.append((.healthy, .watchdog, plan.statusMessage, finalized))
+            return .handled
+        case .recoverySuppressed(let plan):
+            writeObservedStatus(plan, snapshot: snapshot)
+            return .handled
+        case .recoveryDeferred(let plan):
+            writeObservedStatus(plan, snapshot: snapshot)
+            return .handled
+        case .needsRecoveryProbe:
+            return .needsRecoveryProbe
+        }
+    }
+
+    private func writeObservedStatus(
+        _ plan: WatchdogRuntimeObservedStatusPlan,
+        snapshot: RuntimeHealthSnapshot
+    ) {
+        if let logMessage = plan.logMessage {
+            logs.append(logMessage)
+        }
+        writtenStatuses.append((plan.status, .watchdog, plan.message))
+        observedStatuses.append((plan.status, .watchdog, plan.message, snapshot))
+        observedEvents.append((plan.status, .watchdog, plan.message, snapshot, plan.eventType))
+    }
+
+    private func completeHealthyVMLifecycleIfNeeded(_ snapshot: RuntimeHealthSnapshot) -> RuntimeHealthSnapshot {
+        let plan = WatchdogRuntimeUseCase().lifecycleMarkPlan(snapshot)
+        guard let lifecycle = plan.lifecycle else {
+            return snapshot
+        }
+        runningLifecycleStates.append(lifecycle.state)
+        lifecycleEvents.append((.watchdog, plan.eventMessage, .statusChanged))
+        healthCalls += 1
+        return snapshots.removeFirst()
     }
 }
 

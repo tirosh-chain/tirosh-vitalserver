@@ -102,10 +102,36 @@ public struct RuntimeRedisBackupComposition {
                 loadResult: { url in
                     RedisBackupResultReader.load(from: url, fileStore: operations.fileStore)
                 },
+                executeResultDecision: executeResultDecision,
                 sleep: operations.sleep,
                 log: operations.log
             )
         )
+    }
+
+    private func executeResultDecision(
+        _ decision: RepairRuntimeRedisBackupResultDecision
+    ) throws -> RuntimeRedisBackupResult? {
+        switch decision {
+        case .ignoreStaleResult(let logMessage):
+            operations.log(logMessage)
+            return nil
+        case .completed(let message, let archive):
+            try operations.writeRuntimeStatus(.healthy, .redisBackup, message)
+            operations.log(RepairRuntimeUseCase().redisBackupCompletedLogMessage())
+            return RuntimeRedisBackupResult(message: message, archive: archive)
+        case .failed(let message):
+            try operations.writeRuntimeStatus(.degraded, .redisBackup, message)
+            throw RuntimeRedisBackupWorkflowError.operationFailed(message)
+        case .waiting(let logMessage):
+            if let logMessage {
+                operations.log(logMessage)
+            }
+            return nil
+        case .readFailed(let message):
+            try operations.writeRuntimeStatus(.degraded, .redisBackup, message)
+            throw RuntimeRedisBackupWorkflowError.operationFailed(message)
+        }
     }
 
     private static func prettyJSONEncoder() -> JSONEncoder {

@@ -11,10 +11,19 @@ public struct RuntimeWatchdogContext: Equatable, Sendable {
     }
 }
 
+public enum RuntimeWatchdogInitialSnapshotExecutionResult: Equatable, Sendable {
+    case handled
+    case needsRecoveryProbe
+}
+
 public struct RuntimeWatchdogActions {
     public let prepareLogs: () throws -> Void
     public let activeManagedOperation: () -> RuntimeOperation?
     public let healthSnapshot: () -> RuntimeHealthSnapshot
+    public let executeInitialSnapshotDecision: (
+        WatchdogRuntimeInitialSnapshotDecision,
+        RuntimeHealthSnapshot
+    ) throws -> RuntimeWatchdogInitialSnapshotExecutionResult
     public let proxyLivenessHTTP: (Int) -> String
     public let automaticRecoveryEnabled: () -> Bool
     public let restartVMRuntime: () throws -> Void
@@ -35,6 +44,10 @@ public struct RuntimeWatchdogActions {
         prepareLogs: @escaping () throws -> Void,
         activeManagedOperation: @escaping () -> RuntimeOperation?,
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
+        executeInitialSnapshotDecision: @escaping (
+            WatchdogRuntimeInitialSnapshotDecision,
+            RuntimeHealthSnapshot
+        ) throws -> RuntimeWatchdogInitialSnapshotExecutionResult,
         proxyLivenessHTTP: @escaping (Int) -> String,
         automaticRecoveryEnabled: @escaping () -> Bool,
         restartVMRuntime: @escaping () throws -> Void,
@@ -59,6 +72,7 @@ public struct RuntimeWatchdogActions {
         self.prepareLogs = prepareLogs
         self.activeManagedOperation = activeManagedOperation
         self.healthSnapshot = healthSnapshot
+        self.executeInitialSnapshotDecision = executeInitialSnapshotDecision
         self.proxyLivenessHTTP = proxyLivenessHTTP
         self.automaticRecoveryEnabled = automaticRecoveryEnabled
         self.restartVMRuntime = restartVMRuntime
@@ -104,20 +118,12 @@ public struct RuntimeWatchdogRunner {
         }
 
         let initial = actions.healthSnapshot()
-        switch useCase.initialSnapshotDecision(initial) {
-        case .healthy(let plan):
-            let finalized = completeHealthyVMLifecycleIfNeeded(initial)
-            try actions.writeObservedStatus(.healthy, .watchdog, plan.statusMessage, finalized)
-            printLine(plan.printMessage)
+        let initialSnapshotResult = try actions.executeInitialSnapshotDecision(
+            useCase.initialSnapshotDecision(initial),
+            initial
+        )
+        if initialSnapshotResult == .handled {
             return
-        case .recoverySuppressed(let plan):
-            try writeObservedStatus(plan, snapshot: initial)
-            return
-        case .recoveryDeferred(let plan):
-            try writeObservedStatus(plan, snapshot: initial)
-            return
-        case .needsRecoveryProbe:
-            break
         }
 
         let proxyLivenessHTTP = actions.proxyLivenessHTTP(initial.proxyPort)

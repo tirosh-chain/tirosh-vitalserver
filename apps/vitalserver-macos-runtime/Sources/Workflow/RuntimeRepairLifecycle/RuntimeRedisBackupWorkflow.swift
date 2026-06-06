@@ -49,6 +49,7 @@ public struct RuntimeRedisBackupWorkflowOperations {
     public let isVMServiceLoaded: () -> Bool
     public let startVMService: () throws -> Void
     public let loadResult: (URL) -> RuntimeRedisBackupResultLoadResult
+    public let executeResultDecision: (RepairRuntimeRedisBackupResultDecision) throws -> RuntimeRedisBackupResult?
     public let sleep: (TimeInterval) -> Void
     public let log: (String) -> Void
 
@@ -63,6 +64,7 @@ public struct RuntimeRedisBackupWorkflowOperations {
         isVMServiceLoaded: @escaping () -> Bool,
         startVMService: @escaping () throws -> Void,
         loadResult: @escaping (URL) -> RuntimeRedisBackupResultLoadResult,
+        executeResultDecision: @escaping (RepairRuntimeRedisBackupResultDecision) throws -> RuntimeRedisBackupResult?,
         sleep: @escaping (TimeInterval) -> Void,
         log: @escaping (String) -> Void
     ) {
@@ -76,6 +78,7 @@ public struct RuntimeRedisBackupWorkflowOperations {
         self.isVMServiceLoaded = isVMServiceLoaded
         self.startVMService = startVMService
         self.loadResult = loadResult
+        self.executeResultDecision = executeResultDecision
         self.sleep = sleep
         self.log = log
     }
@@ -126,28 +129,12 @@ public struct RuntimeRedisBackupWorkflow {
 
         let maxAttempts = Int(ceil(context.waitTimeoutSeconds / context.pollIntervalSeconds))
         for attempt in 0..<maxAttempts {
-            let decision = useCase.redisBackupResultDecision(
+            if let result = try operations.executeResultDecision(useCase.redisBackupResultDecision(
                 loadResult: operations.loadResult(resultURL),
                 expectedRequestID: requestID,
                 shouldReportProgress: attempt % 10 == 0
-            )
-            switch decision {
-            case .ignoreStaleResult(let logMessage):
-                operations.log(logMessage)
-            case .completed(let message, let archive):
-                try operations.writeStatus(.healthy, .redisBackup, message)
-                operations.log(useCase.redisBackupCompletedLogMessage())
-                return RuntimeRedisBackupResult(message: message, archive: archive)
-            case .failed(let message):
-                try operations.writeStatus(.degraded, .redisBackup, message)
-                throw RuntimeRedisBackupWorkflowError.operationFailed(message)
-            case .waiting(let logMessage):
-                if let logMessage {
-                    operations.log(logMessage)
-                }
-            case .readFailed(let message):
-                try operations.writeStatus(.degraded, .redisBackup, message)
-                throw RuntimeRedisBackupWorkflowError.operationFailed(message)
+            )) {
+                return result
             }
             if attempt < maxAttempts - 1 {
                 operations.sleep(context.pollIntervalSeconds)
