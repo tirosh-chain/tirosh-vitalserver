@@ -65,6 +65,38 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
         }
     }
 
+    func testUseCaseOwnsInstallWorkflowMessagesAndProgressEvents() {
+        let useCase = InstallRuntimeUseCase()
+        let plan = useCase.plan(for: InstallRuntimeRequest(mode: .full))
+        let start = useCase.startPlan(runtimeHomePath: "/runtime")
+        let event = useCase.stepProgressEvent(
+            step: .startInstalledServices,
+            stepStatus: .started,
+            phase: .running,
+            message: useCase.stepStartedMessage(.startInstalledServices)
+        )
+
+        XCTAssertEqual(start.logMessage, "runtime install started home=/runtime")
+        XCTAssertEqual(start.statusMessage, "runtime install started")
+        XCTAssertEqual(useCase.setupBlockedStatusMessage(blockers: ["missing-settings"]), "runtime install setup blocked: missing-settings")
+        XCTAssertEqual(useCase.setupBlockedFailureMessage(blockers: ["missing-settings"]), "runtime install setup blocked blockers=missing-settings")
+        XCTAssertEqual(
+            useCase.missingCommandMessage(state: .preflightVerified),
+            "install workflow missing command state=preflightVerified"
+        )
+        XCTAssertEqual(
+            useCase.postSetupCommandFailureMessage(.loadSettings),
+            "install workflow command appeared after setup command=loadSettings"
+        )
+        XCTAssertEqual(useCase.completionLogMessage(plan: plan, runtimeHomePath: "/runtime"), "runtime install completed home=/runtime")
+        XCTAssertEqual(event.operation, .install)
+        XCTAssertEqual(event.status, .installing)
+        XCTAssertEqual(event.step, .startInstalledServices)
+        XCTAssertEqual(event.message, "step started: start-installed-services")
+        XCTAssertEqual(useCase.stepCompletedMessage(.startInstalledServices), "step completed: start-installed-services")
+        XCTAssertEqual(useCase.stepCompletedLogMessage(.startInstalledServices), "step=start-installed-services status=completed")
+    }
+
     func testSetupObservationCommandsUseFirstPlanStepOnlyWhenExplicitlyPassed() throws {
         let useCase = InstallRuntimeUseCase()
         let fullPlan = useCase.plan(for: InstallRuntimeRequest(mode: .full))

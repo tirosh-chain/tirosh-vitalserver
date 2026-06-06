@@ -32,6 +32,16 @@ public struct InstallRuntimePlan: Equatable, Sendable {
     }
 }
 
+public struct InstallRuntimeStartPlan: Equatable, Sendable {
+    public let logMessage: String
+    public let statusMessage: String
+
+    public init(logMessage: String, statusMessage: String) {
+        self.logMessage = logMessage
+        self.statusMessage = statusMessage
+    }
+}
+
 public struct InstallRuntimeUseCase {
     public init() {}
 
@@ -59,6 +69,81 @@ public struct InstallRuntimeUseCase {
                 completionMessage: "runtime install failed"
             )
         }
+    }
+
+    public func startPlan(runtimeHomePath: String) -> InstallRuntimeStartPlan {
+        InstallRuntimeStartPlan(
+            logMessage: "runtime install started home=\(runtimeHomePath)",
+            statusMessage: "runtime install started"
+        )
+    }
+
+    public func settingsLoadFailedStatusMessage(error: Error) -> String {
+        "runtime install failed: \(error)"
+    }
+
+    public func setupBlockedStatusMessage(blockers: [String]) -> String {
+        "runtime install setup blocked: \(blockers.joined(separator: ","))"
+    }
+
+    public func setupBlockedFailureMessage(blockers: [String]) -> String {
+        "runtime install setup blocked blockers=\(blockers.joined(separator: ","))"
+    }
+
+    public func missingCommandMessage(state: RuntimeInstallWorkflowState) -> String {
+        "install workflow missing command state=\(state)"
+    }
+
+    public func postSetupCommandFailureMessage(_ command: RuntimeInstallWorkflowCommand) -> String {
+        "install workflow command appeared after setup command=\(command)"
+    }
+
+    public func completionLogMessage(plan: InstallRuntimePlan, runtimeHomePath: String) -> String {
+        "\(plan.completionMessage) home=\(runtimeHomePath)"
+    }
+
+    public func stepProgressEvent(
+        step: RuntimeWorkflowStep,
+        stepStatus: RuntimeProgressStepStatus,
+        phase: RuntimeProgressPhase,
+        message: String
+    ) -> RuntimeStepExecutionEvent {
+        RuntimeStepExecutionEvent(
+            operation: .install,
+            status: .installing,
+            step: step,
+            stepStatus: stepStatus,
+            phase: phase,
+            message: message
+        )
+    }
+
+    public func stepStartedMessage(_ step: RuntimeWorkflowStep) -> String {
+        "step started: \(step.rawValue)"
+    }
+
+    public func stepCompletedMessage(_ step: RuntimeWorkflowStep) -> String {
+        "step completed: \(step.rawValue)"
+    }
+
+    public func stepFailedMessage(_ step: RuntimeWorkflowStep, error: Error) -> String {
+        "step failed: \(step.rawValue): \(error)"
+    }
+
+    public func stepCompletedLogMessage(_ step: RuntimeWorkflowStep) -> String {
+        "step=\(step.rawValue) status=completed"
+    }
+
+    public func installFailedStatusMessage(error: Error) -> String {
+        "runtime install failed: \(error)"
+    }
+
+    public func progressWriteFailedLogMessage(event: RuntimeStepExecutionEvent, error: Error) -> String {
+        "runtime install progress write failed step=\(event.step.rawValue) status=\(event.stepStatus.rawValue) error=\(error.localizedDescription)"
+    }
+
+    public func criticalStatusWriteFailedLogMessage(error: Error) -> String {
+        "runtime install status write failed status=critical error=\(error.localizedDescription)"
     }
 
     public func transition(

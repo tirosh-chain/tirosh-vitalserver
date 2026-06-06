@@ -86,8 +86,9 @@ public struct RuntimeInstallWorkflow<Settings> {
             context: context,
             expectedCommands: [.loadSettings]
         )
-        log("runtime install started home=\(runtimeHomePath())")
-        try writer.writeStatus(.installing, .install, "runtime install started")
+        let startPlan = useCase.startPlan(runtimeHomePath: runtimeHomePath())
+        log(startPlan.logMessage)
+        try writer.writeStatus(.installing, .install, startPlan.statusMessage)
 
         let settings: Settings
         do {
@@ -99,7 +100,7 @@ public struct RuntimeInstallWorkflow<Settings> {
                 context: context,
                 expectedCommands: []
             )
-            writeCriticalStatusBestEffort("runtime install failed: \(error)")
+            writeCriticalStatusBestEffort(useCase.settingsLoadFailedStatusMessage(error: error))
             throw error
         }
 
@@ -117,16 +118,16 @@ public struct RuntimeInstallWorkflow<Settings> {
         )
 
         guard decision.blockers.isEmpty else {
-            writeCriticalStatusBestEffort("runtime install setup blocked: \(decision.blockers.joined(separator: ","))")
+            writeCriticalStatusBestEffort(useCase.setupBlockedStatusMessage(blockers: decision.blockers))
             throw RuntimeInstallWorkflowError.operationFailed(
-                "runtime install setup blocked blockers=\(decision.blockers.joined(separator: ","))"
+                useCase.setupBlockedFailureMessage(blockers: decision.blockers)
             )
         }
 
         while true {
             guard let nextCommand = decision.commands.first else {
                 throw RuntimeInstallWorkflowError.operationFailed(
-                    "install workflow missing command state=\(decision.state)"
+                    useCase.missingCommandMessage(state: decision.state)
                 )
             }
             switch nextCommand {
@@ -136,11 +137,11 @@ public struct RuntimeInstallWorkflow<Settings> {
             case .complete:
                 try requireCommands([.complete], in: decision)
                 try writer.writeStatus(installPlan.completionStatus, .install, installPlan.completionMessage)
-                log("\(installPlan.completionMessage) home=\(runtimeHomePath())")
+                log(useCase.completionLogMessage(plan: installPlan, runtimeHomePath: runtimeHomePath()))
                 return
             case .loadSettings, .readFreshInstallPreflight, .readProvisionPayload:
                 throw RuntimeInstallWorkflowError.operationFailed(
-                    "install workflow command appeared after setup command=\(nextCommand)"
+                    useCase.postSetupCommandFailureMessage(nextCommand)
                 )
             }
         }
@@ -192,23 +193,38 @@ public struct RuntimeInstallWorkflow<Settings> {
             expectedCommands: []
         )
         writeProgressBestEffort(
-            event(step: step, stepStatus: .started, phase: .running, message: "step started: \(step.rawValue)")
+            useCase.stepProgressEvent(
+                step: step,
+                stepStatus: .started,
+                phase: .running,
+                message: useCase.stepStartedMessage(step)
+            )
         )
         do {
             try effects.executeStep(step, settings)
             writeProgressBestEffort(
-                event(step: step, stepStatus: .completed, phase: .running, message: "step completed: \(step.rawValue)")
+                useCase.stepProgressEvent(
+                    step: step,
+                    stepStatus: .completed,
+                    phase: .running,
+                    message: useCase.stepCompletedMessage(step)
+                )
             )
             let decision = try transitionAndPersist(
                 from: startedDecision.state,
                 event: .stepSucceeded(step),
                 context: context
             )
-            log("step=\(step.rawValue) status=completed")
+            log(useCase.stepCompletedLogMessage(step))
             return decision
         } catch {
             writeProgressBestEffort(
-                event(step: step, stepStatus: .failed, phase: .failed, message: "step failed: \(step.rawValue): \(error)")
+                useCase.stepProgressEvent(
+                    step: step,
+                    stepStatus: .failed,
+                    phase: .failed,
+                    message: useCase.stepFailedMessage(step, error: error)
+                )
             )
             _ = try transitionAndPersist(
                 from: startedDecision.state,
@@ -216,7 +232,7 @@ public struct RuntimeInstallWorkflow<Settings> {
                 context: context,
                 expectedCommands: []
             )
-            writeCriticalStatusBestEffort("runtime install failed: \(error)")
+            writeCriticalStatusBestEffort(useCase.installFailedStatusMessage(error: error))
             throw error
         }
     }
@@ -260,27 +276,11 @@ public struct RuntimeInstallWorkflow<Settings> {
         try useCase.requireCommands(expectedCommands, in: decision)
     }
 
-    private func event(
-        step: RuntimeWorkflowStep,
-        stepStatus: RuntimeProgressStepStatus,
-        phase: RuntimeProgressPhase,
-        message: String
-    ) -> RuntimeStepExecutionEvent {
-        RuntimeStepExecutionEvent(
-            operation: .install,
-            status: .installing,
-            step: step,
-            stepStatus: stepStatus,
-            phase: phase,
-            message: message
-        )
-    }
-
     private func writeProgressBestEffort(_ event: RuntimeStepExecutionEvent) {
         do {
             try writer.writeProgress(event)
         } catch {
-            log("runtime install progress write failed step=\(event.step.rawValue) status=\(event.stepStatus.rawValue) error=\(error.localizedDescription)")
+            log(useCase.progressWriteFailedLogMessage(event: event, error: error))
         }
     }
 
@@ -288,7 +288,7 @@ public struct RuntimeInstallWorkflow<Settings> {
         do {
             try writer.writeStatus(.critical, .install, message)
         } catch {
-            log("runtime install status write failed status=critical error=\(error.localizedDescription)")
+            log(useCase.criticalStatusWriteFailedLogMessage(error: error))
         }
     }
 
