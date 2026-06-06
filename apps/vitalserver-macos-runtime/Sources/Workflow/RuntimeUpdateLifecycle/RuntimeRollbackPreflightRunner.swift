@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -10,6 +11,9 @@ public struct RuntimeRollbackPreflightRunner {
     public var loadManifest: (URL) throws -> BackupManifest
     public var serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
     public var log: (String) -> Void
+    private var useCase: UpdateRuntimeUseCase {
+        UpdateRuntimeUseCase()
+    }
 
     public init(
         requireLatestBackup: @escaping () throws -> URL,
@@ -29,14 +33,13 @@ public struct RuntimeRollbackPreflightRunner {
 
     public func prepare(_ command: RuntimeRollbackCommand) throws -> RollbackPreflightContext {
         let backup = try backupURL(for: command)
-        let backupVersion = backup.appendingPathComponent(RuntimeFileNames.runtimeVersion)
 
         guard directoryExists(backup) else {
             throw RuntimeRollbackWorkflowError.operationFailed("missing file: \(backup.path)")
         }
         let manifest = try loadManifest(backup)
-        let backupRootfs = manifest.rootfsBase.map { backup.appendingPathComponent($0) }
-        if let backupRootfs, !fileExists(backupRootfs) {
+        let backupPlan = useCase.rollbackBackupPlan(backup: backup, manifest: manifest)
+        if let backupRootfs = backupPlan.backupRootfs, !fileExists(backupRootfs) {
             throw RuntimeRollbackWorkflowError.operationFailed("missing file: \(backupRootfs.path)")
         }
 
@@ -46,10 +49,10 @@ public struct RuntimeRollbackPreflightRunner {
         )
 
         return RollbackPreflightContext(
-            backup: backup,
-            backupRootfs: backupRootfs,
-            backupVersion: backupVersion,
-            restoresRootfsBase: backupRootfs != nil,
+            backup: backupPlan.backup,
+            backupRootfs: backupPlan.backupRootfs,
+            backupVersion: backupPlan.backupVersion,
+            restoresRootfsBase: backupPlan.restoresRootfsBase,
             restartPolicy: restartPolicy
         )
     }

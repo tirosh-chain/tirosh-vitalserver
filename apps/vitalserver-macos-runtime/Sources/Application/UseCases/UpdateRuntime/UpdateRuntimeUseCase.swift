@@ -1,5 +1,6 @@
 import Contracts
 import Domain
+import Foundation
 import Errors
 
 public struct ApplyRuntimeBundleInitialHealthDecision: Equatable, Sendable {
@@ -60,6 +61,25 @@ public struct RollbackRuntimePlan: Equatable, Sendable {
 
     public init(operationPlan: RuntimeOperationPlan) {
         self.operationPlan = operationPlan
+    }
+}
+
+public struct RollbackRuntimeBackupPlan: Equatable, Sendable {
+    public let backup: URL
+    public let backupRootfs: URL?
+    public let backupVersion: URL
+    public let restoresRootfsBase: Bool
+
+    public init(
+        backup: URL,
+        backupRootfs: URL?,
+        backupVersion: URL,
+        restoresRootfsBase: Bool
+    ) {
+        self.backup = backup
+        self.backupRootfs = backupRootfs
+        self.backupVersion = backupVersion
+        self.restoresRootfsBase = restoresRootfsBase
     }
 }
 
@@ -132,6 +152,19 @@ public struct UpdateRuntimeUseCase {
     public func planRollback(for preflight: RollbackPreflightContext) -> RollbackRuntimePlan {
         RollbackRuntimePlan(
             operationPlan: RuntimeOperationPlans.rollback(restoresRootfsBase: preflight.restoresRootfsBase)
+        )
+    }
+
+    public func rollbackBackupPlan(
+        backup: URL,
+        manifest: BackupManifest
+    ) -> RollbackRuntimeBackupPlan {
+        let backupRootfs = manifest.rootfsBase.map { backup.appendingPathComponent($0) }
+        return RollbackRuntimeBackupPlan(
+            backup: backup,
+            backupRootfs: backupRootfs,
+            backupVersion: backup.appendingPathComponent(RuntimeFileNames.runtimeVersion),
+            restoresRootfsBase: backupRootfs != nil
         )
     }
 

@@ -147,6 +147,36 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertFalse(plan.operationPlan.steps.contains(.rollbackRestoreRootfsBase))
         XCTAssertEqual(plan.operationPlan, RuntimeOperationPlans.rollback(restoresRootfsBase: false))
     }
+
+    func testRollbackBackupPlanPreservesManifestRootfsAsExplicitRestoreState() {
+        let useCase = UpdateRuntimeUseCase()
+        let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
+
+        let plan = useCase.rollbackBackupPlan(
+            backup: backup,
+            manifest: backupManifest(rootfsBase: "rootfs-base.raw.gz")
+        )
+
+        XCTAssertEqual(plan.backup, backup)
+        XCTAssertEqual(plan.backupRootfs, backup.appendingPathComponent("rootfs-base.raw.gz"))
+        XCTAssertEqual(plan.backupVersion, backup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
+        XCTAssertTrue(plan.restoresRootfsBase)
+    }
+
+    func testRollbackBackupPlanPreservesMissingRootfsAsNoRestoreWithoutFallback() {
+        let useCase = UpdateRuntimeUseCase()
+        let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
+
+        let plan = useCase.rollbackBackupPlan(
+            backup: backup,
+            manifest: backupManifest(rootfsBase: nil)
+        )
+
+        XCTAssertEqual(plan.backup, backup)
+        XCTAssertNil(plan.backupRootfs)
+        XCTAssertEqual(plan.backupVersion, backup.appendingPathComponent(RuntimeFileNames.runtimeVersion))
+        XCTAssertFalse(plan.restoresRootfsBase)
+    }
 }
 
 private func applyBundlePreflight(stagedRootfs: URL?) -> ApplyBundlePreflightContext {
@@ -190,6 +220,17 @@ private func rollbackPreflight(restoresRootfsBase: Bool) -> RollbackPreflightCon
         backupVersion: URL(fileURLWithPath: "/tmp/backup/version.json"),
         restoresRootfsBase: restoresRootfsBase,
         restartPolicy: restartPolicy()
+    )
+}
+
+private func backupManifest(rootfsBase: String?) -> BackupManifest {
+    BackupManifest(
+        product: "ai.tirosh.vitalserver.helper",
+        createdAt: "2026-06-06T00:00:00Z",
+        reason: "before-1.2.3",
+        rootfsBase: rootfsBase,
+        vmDisk: "vm-disk.img",
+        vmDiskPreserved: true
     )
 }
 
