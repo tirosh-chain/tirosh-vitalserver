@@ -70,6 +70,33 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.guestRuntimeSettings.redisBackupRetentionCount, 20)
     }
 
+    func testEffectExecutionPlanKeepsPreAndPostWriteOrderingOutOfWorkflow() {
+        let harness = Harness()
+        let effects: [ConfigureRuntimeEffect] = [
+            .resizeVMDiskIfNeeded(64),
+            .restrictSecretFile(harness.guestConfigURL),
+            .setInstalledProxyPort(18080),
+            .restartRuntimeServices,
+            .createDirectory(URL(fileURLWithPath: "/data/vital-files"), withIntermediateDirectories: true),
+            .setStartOnBoot(false),
+            .setSystemSleepPrevention(false),
+        ]
+
+        let plan = harness.useCase.effectExecutionPlan(effects)
+
+        XCTAssertEqual(plan.preWriteEffects, [
+            .resizeVMDiskIfNeeded(64),
+            .setInstalledProxyPort(18080),
+            .createDirectory(URL(fileURLWithPath: "/data/vital-files"), withIntermediateDirectories: true),
+            .setStartOnBoot(false),
+            .setSystemSleepPrevention(false),
+        ])
+        XCTAssertEqual(plan.postWriteEffects, [
+            .restrictSecretFile(harness.guestConfigURL),
+            .restartRuntimeServices,
+        ])
+    }
+
     func testRejectsAdminPasswordFileBeforeWorkflowResolvesIt() {
         let harness = Harness()
 

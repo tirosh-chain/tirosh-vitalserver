@@ -135,6 +135,19 @@ public enum ConfigureRuntimeEffect: Equatable, Sendable {
     case restartRuntimeServices
 }
 
+public struct ConfigureRuntimeEffectExecutionPlan: Equatable, Sendable {
+    public let preWriteEffects: [ConfigureRuntimeEffect]
+    public let postWriteEffects: [ConfigureRuntimeEffect]
+
+    public init(
+        preWriteEffects: [ConfigureRuntimeEffect],
+        postWriteEffects: [ConfigureRuntimeEffect]
+    ) {
+        self.preWriteEffects = preWriteEffects
+        self.postWriteEffects = postWriteEffects
+    }
+}
+
 public struct ConfigureRuntimePlan<VMConfig: ConfigureRuntimeMutableVMRuntimeConfiguration> {
     public let vmConfig: VMConfig
     public let guestRuntimeConfig: GuestRuntimeConfigDocument
@@ -170,6 +183,39 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
             throw invalid("--admin-password-file must contain a non-empty single-line password path=\(input.path)")
         }
         return .adminPassword(input.contents)
+    }
+
+    public func effectExecutionPlan(
+        _ effects: [ConfigureRuntimeEffect]
+    ) -> ConfigureRuntimeEffectExecutionPlan {
+        ConfigureRuntimeEffectExecutionPlan(
+            preWriteEffects: effects.filter { effect in
+                switch effect {
+                case .createDirectory,
+                     .resizeVMDiskIfNeeded,
+                     .setInstalledProxyPort,
+                     .setStartOnBoot,
+                     .setSystemSleepPrevention:
+                    return true
+                case .restrictSecretFile,
+                     .restartRuntimeServices:
+                    return false
+                }
+            },
+            postWriteEffects: effects.filter { effect in
+                switch effect {
+                case .restrictSecretFile,
+                     .restartRuntimeServices:
+                    return true
+                case .createDirectory,
+                     .resizeVMDiskIfNeeded,
+                     .setInstalledProxyPort,
+                     .setStartOnBoot,
+                     .setSystemSleepPrevention:
+                    return false
+                }
+            }
+        )
     }
 
     public func plan(

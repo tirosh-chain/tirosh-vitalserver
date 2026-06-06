@@ -104,8 +104,9 @@ public struct RuntimeConfigureWorkflow<VMConfig: ConfigureRuntimeMutableVMRuntim
             currentVMConfig: currentVMConfig,
             currentGuestRuntimeConfig: currentGuestRuntimeConfig
         )
+        let effectPlan = useCase.effectExecutionPlan(plan.effects)
 
-        try executePreWriteEffects(plan.effects)
+        try executeEffects(effectPlan.preWriteEffects)
 
         var vmConfig = plan.vmConfig
         effects.ensureRuntimeDefaults(&vmConfig)
@@ -122,7 +123,7 @@ public struct RuntimeConfigureWorkflow<VMConfig: ConfigureRuntimeMutableVMRuntim
         )
         effects.log(plan.logMessage)
 
-        try executePostWriteEffects(plan.effects)
+        try executeEffects(effectPlan.postWriteEffects)
         return ConfigureRuntimeResult(restart: plan.restart)
     }
 
@@ -143,7 +144,7 @@ public struct RuntimeConfigureWorkflow<VMConfig: ConfigureRuntimeMutableVMRuntim
         return ConfigureRuntimeRequest(changes: changes, restart: request.restart)
     }
 
-    private func executePreWriteEffects(_ plannedEffects: [ConfigureRuntimeEffect]) throws {
+    private func executeEffects(_ plannedEffects: [ConfigureRuntimeEffect]) throws {
         for effect in plannedEffects {
             switch effect {
             case .createDirectory(let url, let withIntermediateDirectories):
@@ -156,25 +157,10 @@ public struct RuntimeConfigureWorkflow<VMConfig: ConfigureRuntimeMutableVMRuntim
                 try effects.setStartOnBoot(enabled)
             case .setSystemSleepPrevention(let enabled):
                 try effects.setSystemSleepPrevention(enabled)
-            case .restrictSecretFile, .restartRuntimeServices:
-                continue
-            }
-        }
-    }
-
-    private func executePostWriteEffects(_ plannedEffects: [ConfigureRuntimeEffect]) throws {
-        for effect in plannedEffects {
-            switch effect {
             case .restrictSecretFile(let url):
                 try effects.restrictSecretFile(url)
             case .restartRuntimeServices:
                 try effects.restartRuntimeServices()
-            case .createDirectory,
-                 .resizeVMDiskIfNeeded,
-                 .setInstalledProxyPort,
-                 .setStartOnBoot,
-                 .setSystemSleepPrevention:
-                continue
             }
         }
     }
