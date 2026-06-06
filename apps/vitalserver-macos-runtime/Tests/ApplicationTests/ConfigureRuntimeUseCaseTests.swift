@@ -86,6 +86,35 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
         }
     }
 
+    func testResolvesSecretFileContentIntoAdminPasswordChange() throws {
+        let harness = Harness()
+
+        let change = try harness.useCase.resolvedAdminPasswordChange(from: ConfigureRuntimeSecretFileInput(
+            path: "/tmp/admin-password",
+            contents: "secret"
+        ))
+
+        XCTAssertEqual(change, ConfigureRuntimeChange<ConfigureTestNetworkMode>.adminPassword("secret"))
+    }
+
+    func testRejectsInvalidSecretFileContentWithoutFallbackPassword() {
+        let harness = Harness()
+
+        for contents in ["", "line1\nline2"] {
+            XCTAssertThrowsError(try harness.useCase.resolvedAdminPasswordChange(from: ConfigureRuntimeSecretFileInput(
+                path: "/tmp/admin-password",
+                contents: contents
+            ))) { error in
+                XCTAssertEqual(
+                    error as? ConfigureRuntimeError,
+                    .invalidArgument(
+                        "--admin-password-file must contain a non-empty single-line password path=/tmp/admin-password"
+                    )
+                )
+            }
+        }
+    }
+
     func testRejectsInvalidAdvertisedURL() {
         let harness = Harness()
 

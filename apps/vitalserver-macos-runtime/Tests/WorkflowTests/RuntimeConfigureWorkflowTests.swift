@@ -62,9 +62,27 @@ final class RuntimeConfigureWorkflowTests: XCTestCase {
         )) { error in
             XCTAssertEqual(
                 error as? ConfigureRuntimeError,
-                .invalidArgument("--admin-password-file must contain a non-empty single-line password")
+                .invalidArgument(
+                    "--admin-password-file must contain a non-empty single-line password path=/tmp/admin-password"
+                )
             )
         }
+        XCTAssertTrue(harness.writes.isEmpty)
+        XCTAssertTrue(harness.preWriteEffects.isEmpty)
+        XCTAssertTrue(harness.postWriteEffects.isEmpty)
+    }
+
+    func testSecretFileReadFailurePropagatesBeforeWrites() {
+        let harness = Harness()
+        harness.secretFileError = RuntimeConfigureWorkflowTestError.secretReadFailed
+
+        XCTAssertThrowsError(try harness.workflow.configure(
+            ConfigureRuntimeRequest(changes: [.adminPasswordFile(URL(fileURLWithPath: "/tmp/admin-password"))]),
+            context: harness.context
+        )) { error in
+            XCTAssertEqual(error as? RuntimeConfigureWorkflowTestError, .secretReadFailed)
+        }
+        XCTAssertEqual(harness.readSecretFiles, [URL(fileURLWithPath: "/tmp/admin-password")])
         XCTAssertTrue(harness.writes.isEmpty)
         XCTAssertTrue(harness.preWriteEffects.isEmpty)
         XCTAssertTrue(harness.postWriteEffects.isEmpty)
@@ -75,6 +93,7 @@ final class RuntimeConfigureWorkflowTests: XCTestCase {
         let guestConfigURL = URL(fileURLWithPath: "/runtime/runtime-config.json")
         let guestSettingsURL = URL(fileURLWithPath: "/runtime/runtime-settings.json")
         var secretFileContents = "secret"
+        var secretFileError: RuntimeConfigureWorkflowTestError?
         var readSecretFiles: [URL] = []
         var preWriteEffects: [String] = []
         var postWriteEffects: [String] = []
@@ -126,6 +145,9 @@ final class RuntimeConfigureWorkflowTests: XCTestCase {
                 },
                 readSecretFile: { url in
                     self.readSecretFiles.append(url)
+                    if let secretFileError = self.secretFileError {
+                        throw secretFileError
+                    }
                     return self.secretFileContents
                 },
                 restrictSecretFile: { url in
@@ -173,6 +195,10 @@ final class RuntimeConfigureWorkflowTests: XCTestCase {
             testkitEnabled: false
         )
     }
+}
+
+enum RuntimeConfigureWorkflowTestError: Error, Equatable {
+    case secretReadFailed
 }
 
 enum ConfigureWorkflowTestNetworkMode: String, Codable, Equatable {

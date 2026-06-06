@@ -107,6 +107,16 @@ public enum ConfigureRuntimeChange<NetworkMode: Equatable>: Equatable {
     case redisBackupRetention(Int)
 }
 
+public struct ConfigureRuntimeSecretFileInput: Equatable, Sendable {
+    public let path: String
+    public let contents: String
+
+    public init(path: String, contents: String) {
+        self.path = path
+        self.contents = contents
+    }
+}
+
 public struct ConfigureRuntimeResult: Equatable, Sendable {
     public let restart: Bool
 
@@ -152,6 +162,15 @@ public struct ConfigureRuntimePlan<VMConfig: ConfigureRuntimeMutableVMRuntimeCon
 
 public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntimeConfiguration> {
     public init() {}
+
+    public func resolvedAdminPasswordChange(
+        from input: ConfigureRuntimeSecretFileInput
+    ) throws -> ConfigureRuntimeChange<VMConfig.ConfigureNetworkMode> {
+        guard !input.contents.isEmpty, RuntimeTextValidator.isSingleLine(input.contents) else {
+            throw invalid("--admin-password-file must contain a non-empty single-line password path=\(input.path)")
+        }
+        return .adminPassword(input.contents)
+    }
 
     public func plan(
         _ request: ConfigureRuntimeRequest<VMConfig.ConfigureNetworkMode>,

@@ -132,13 +132,10 @@ public struct RuntimeConfigureWorkflow<VMConfig: ConfigureRuntimeMutableVMRuntim
         let changes = try request.changes.map { change in
             switch change {
             case .adminPasswordFile(let url):
-                let password = try effects.readSecretFile(url)
-                guard !password.isEmpty, RuntimeTextValidator.isSingleLine(password) else {
-                    throw ConfigureRuntimeError.invalidArgument(
-                        "--admin-password-file must contain a non-empty single-line password"
-                    )
-                }
-                return ConfigureRuntimeChange<VMConfig.ConfigureNetworkMode>.adminPassword(password)
+                return try useCase.resolvedAdminPasswordChange(from: ConfigureRuntimeSecretFileInput(
+                    path: url.path,
+                    contents: effects.readSecretFile(url)
+                ))
             default:
                 return change
             }
