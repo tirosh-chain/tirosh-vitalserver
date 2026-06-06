@@ -51,7 +51,9 @@ public struct RuntimeRollbackStepExecutor {
             try stopRuntimeServices()
         case .rollbackRestoreRootfsBase:
             guard let backupRootfs = preflight.backupRootfs else {
-                throw RuntimeRollbackWorkflowError.operationFailed("rollback rootfs restore requested without backup rootfs")
+                throw RuntimeRollbackWorkflowError.operationFailed(
+                    useCase.rollbackRootfsRestoreMissingBackupRootfsFailureMessage()
+                )
             }
             try replaceFile(backupRootfs, rootfsBase)
         case .rollbackRestoreRuntimeVersion:

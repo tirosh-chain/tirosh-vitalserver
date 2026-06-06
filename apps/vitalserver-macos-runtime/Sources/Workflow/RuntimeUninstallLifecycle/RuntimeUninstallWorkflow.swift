@@ -191,7 +191,7 @@ public struct RuntimeUninstallWorkflow {
             return state
         }
 
-        log(useCase.stepLogMessage(step: "create-redis-backup", status: "started"))
+        log(useCase.stepLogMessage(step: .createRedisBackup, status: .started))
         let backupRequestDecision = try transitionAndPersist(
             from: state,
             event: .redisBackupRequested,
@@ -200,7 +200,7 @@ public struct RuntimeUninstallWorkflow {
         )
         do {
             try effects.createRedisBackup()
-            log(useCase.stepLogMessage(step: "create-redis-backup", status: "completed"))
+            log(useCase.stepLogMessage(step: .createRedisBackup, status: .completed))
             let backupCompletedDecision = try transitionAndPersist(
                 from: backupRequestDecision.state,
                 event: .redisBackupSucceeded,
@@ -225,7 +225,7 @@ public struct RuntimeUninstallWorkflow {
         from state: RuntimeUninstallWorkflowState,
         clean: Bool
     ) throws -> RuntimeUninstallTransitionDecision {
-        log(useCase.stepLogMessage(step: "stop-launchd-services", status: "started"))
+        log(useCase.stepLogMessage(step: .stopLaunchdServices, status: .started))
         let stopRequestDecision = try transitionAndPersist(
             from: state,
             event: .stopServicesRequested,
@@ -246,7 +246,7 @@ public struct RuntimeUninstallWorkflow {
             )
             throw error
         }
-        log(useCase.stepLogMessage(step: "stop-launchd-services", status: "completed"))
+        log(useCase.stepLogMessage(step: .stopLaunchdServices, status: .completed))
         return try verifyRuntimeStopped(from: stopRequestDecision.state, clean: clean)
     }
 
@@ -255,15 +255,15 @@ public struct RuntimeUninstallWorkflow {
         command: RuntimeUninstallCommand
     ) throws -> RuntimeUninstallTransitionDecision {
         try requireCommands([.removeFiles], in: stoppedDecision)
-        log(useCase.stepLogMessage(step: "remove-plists", status: "started"))
+        log(useCase.stepLogMessage(step: .removePlists, status: .started))
         for plist in paths.launchDaemonPlists {
             try removeIfPresent(plist)
         }
-        log(useCase.stepLogMessage(step: "remove-plists", status: "completed"))
+        log(useCase.stepLogMessage(step: .removePlists, status: .completed))
 
         let preserved = command.clean ? nil : try preserveUserData()
         do {
-            log(useCase.stepLogMessage(step: "remove-installed-files", status: "started"))
+            log(useCase.stepLogMessage(step: .removeInstalledFiles, status: .started))
             let fileRemovalDecision = try transitionAndPersist(
                 from: stoppedDecision.state,
                 event: .filesRemovalStarted,
@@ -271,19 +271,19 @@ public struct RuntimeUninstallWorkflow {
                 expectedCommands: []
             )
             try removeInstalledFiles(clean: command.clean)
-            log(useCase.stepLogMessage(step: "remove-installed-files", status: "completed"))
+            log(useCase.stepLogMessage(step: .removeInstalledFiles, status: .completed))
 
-            log(useCase.stepLogMessage(step: "remove-runtime-tools", status: "started"))
+            log(useCase.stepLogMessage(step: .removeRuntimeTools, status: .started))
             for tool in paths.runtimeTools {
                 try removeIfPresent(tool)
             }
-            log(useCase.stepLogMessage(step: "remove-runtime-tools", status: "completed"))
+            log(useCase.stepLogMessage(step: .removeRuntimeTools, status: .completed))
             let cleanupDecision = try verifyCleanupArtifacts(from: fileRemovalDecision.state, clean: command.clean)
 
             if let preserved {
-                log(useCase.stepLogMessage(step: "restore-preserved-user-data", status: "started"))
+                log(useCase.stepLogMessage(step: .restorePreservedUserData, status: .started))
                 try restorePreservedPaths(preserved)
-                log(useCase.stepLogMessage(step: "restore-preserved-user-data", status: "completed"))
+                log(useCase.stepLogMessage(step: .restorePreservedUserData, status: .completed))
             }
 
             return cleanupDecision
@@ -316,7 +316,7 @@ public struct RuntimeUninstallWorkflow {
         clean: Bool
     ) throws -> RuntimeUninstallTransitionDecision {
         try requireCommands([.forgetPackageReceipts], in: cleanupDecision)
-        log(useCase.stepLogMessage(step: "forget-package-receipt", status: "started"))
+        log(useCase.stepLogMessage(step: .forgetPackageReceipt, status: .started))
         let receiptsStartDecision = try transitionAndPersist(
             from: cleanupDecision.state,
             event: .receiptsForgetStarted,
@@ -367,15 +367,17 @@ public struct RuntimeUninstallWorkflow {
         clean: Bool
     ) throws {
         try requireCommands([.complete], in: receiptDecision)
-        log(useCase.stepLogMessage(step: "forget-package-receipt", status: "completed"))
+        log(useCase.stepLogMessage(step: .forgetPackageReceipt, status: .completed))
         log(useCase.completedLogMessage())
         try writePersistedState(receiptDecision, clean: clean)
     }
 
     private func preserveUserData() throws -> RuntimeUninstallPreservedPaths {
-        log(useCase.stepLogMessage(step: "preserve-user-data", status: "started"))
-        let preserveRoot = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("tirosh-vitalserver-uninstall-\(UUID().uuidString)")
+        log(useCase.stepLogMessage(step: .preserveUserData, status: .started))
+        let preserveRoot = useCase.preserveRootDirectory(
+            temporaryDirectory: URL(fileURLWithPath: NSTemporaryDirectory()),
+            uniqueID: UUID().uuidString
+        )
         try effects.createDirectory(preserveRoot, true)
 
         var items: [RuntimeUninstallPreservedPath] = []
@@ -395,7 +397,7 @@ public struct RuntimeUninstallWorkflow {
             log(configuredDirectoryReadFailureLogMessage)
         }
 
-        log(useCase.stepLogMessage(step: "preserve-user-data", status: "completed"))
+        log(useCase.stepLogMessage(step: .preserveUserData, status: .completed))
         return RuntimeUninstallPreservedPaths(root: preserveRoot, items: items)
     }
 

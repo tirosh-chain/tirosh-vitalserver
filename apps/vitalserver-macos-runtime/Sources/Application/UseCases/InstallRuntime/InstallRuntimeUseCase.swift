@@ -114,6 +114,10 @@ public struct InstallRuntimeUseCase {
         "install workflow command appeared after setup command=\(command)"
     }
 
+    public func unknownInstallModeFailureMessage(_ mode: RuntimeInstallMode) -> String {
+        "install mode unknown value=\(mode.rawValue)"
+    }
+
     public func completionLogMessage(plan: InstallRuntimePlan, runtimeHomePath: String) -> String {
         "\(plan.completionMessage) home=\(runtimeHomePath)"
     }

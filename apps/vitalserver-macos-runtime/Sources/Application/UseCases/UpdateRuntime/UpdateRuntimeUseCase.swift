@@ -498,6 +498,10 @@ public struct UpdateRuntimeUseCase {
         "unsupported command: rollback step \(step.rawValue)"
     }
 
+    public func rollbackRootfsRestoreMissingBackupRootfsFailureMessage() -> String {
+        "rollback rootfs restore requested without backup rootfs"
+    }
+
     public func guestShutdownPreparationCleanupFailedLogMessage(reason: String) -> String {
         "guest shutdown preparation cleanup failed error=\(reason)"
     }
@@ -668,6 +672,10 @@ public struct UpdateRuntimeUseCase {
 
     public func guestActivationWaitStartedLogMessage(timeoutSeconds: Double) -> String {
         "waiting for guest update activation result timeoutSeconds=\(timeoutSeconds)"
+    }
+
+    public func guestActivationRequiredRequestMissingFailureMessage() -> String {
+        "guest activation request missing for required activation"
     }
 
     public func guestActivationWaitResultPlan(

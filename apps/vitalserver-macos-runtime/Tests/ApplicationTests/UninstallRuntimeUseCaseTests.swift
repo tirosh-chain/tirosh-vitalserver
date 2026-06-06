@@ -161,7 +161,15 @@ final class UninstallRuntimeUseCaseTests: XCTestCase {
     func testWorkflowMessagesComeFromUseCase() {
         let useCase = UninstallRuntimeUseCase()
 
-        XCTAssertEqual(useCase.stepLogMessage(step: "remove-plists", status: "started"), "step=remove-plists status=started")
+        XCTAssertEqual(useCase.stepLogMessage(step: .removePlists, status: .started), "step=remove-plists status=started")
+        XCTAssertEqual(useCase.stepLogMessage(step: .createRedisBackup, status: .completed), "step=create-redis-backup status=completed")
+        XCTAssertEqual(
+            useCase.preserveRootDirectory(
+                temporaryDirectory: URL(fileURLWithPath: "/tmp"),
+                uniqueID: "id-1"
+            ),
+            URL(fileURLWithPath: "/tmp/tirosh-vitalserver-uninstall-id-1")
+        )
         XCTAssertEqual(
             useCase.redisBackupAbortLogMessage(reason: "backup failed"),
             "standard uninstall aborted because Redis backup did not complete error=backup failed"

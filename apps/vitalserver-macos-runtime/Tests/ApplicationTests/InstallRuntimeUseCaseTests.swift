@@ -88,6 +88,10 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
             useCase.postSetupCommandFailureMessage(.loadSettings),
             "install workflow command appeared after setup command=loadSettings"
         )
+        XCTAssertEqual(
+            useCase.unknownInstallModeFailureMessage(.unknown("future")),
+            "install mode unknown value=future"
+        )
         XCTAssertEqual(useCase.completionLogMessage(plan: plan, runtimeHomePath: "/runtime"), "runtime install completed home=/runtime")
         XCTAssertEqual(event.operation, .install)
         XCTAssertEqual(event.status, .installing)

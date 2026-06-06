@@ -364,6 +364,10 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             "unsupported command: rollback step load-install-settings"
         )
         XCTAssertEqual(
+            useCase.rollbackRootfsRestoreMissingBackupRootfsFailureMessage(),
+            "rollback rootfs restore requested without backup rootfs"
+        )
+        XCTAssertEqual(
             useCase.guestShutdownPreparationCleanupFailedLogMessage(reason: "permission denied"),
             "guest shutdown preparation cleanup failed error=permission denied"
         )
@@ -618,6 +622,10 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(
             useCase.guestActivationWaitStartedLogMessage(timeoutSeconds: 180),
             "waiting for guest update activation result timeoutSeconds=180.0"
+        )
+        XCTAssertEqual(
+            useCase.guestActivationRequiredRequestMissingFailureMessage(),
+            "guest activation request missing for required activation"
         )
         XCTAssertEqual(
             useCase.guestActivationWaitResultPlan(.completed(message: "done")),

@@ -176,7 +176,7 @@ public struct RuntimeInstallWorkflow<Settings> {
                 )
             )
         case .unknown:
-            throw RuntimeInstallWorkflowError.operationFailed("install mode unknown value=\(installPlan.mode.rawValue)")
+            throw RuntimeInstallWorkflowError.operationFailed(useCase.unknownInstallModeFailureMessage(installPlan.mode))
         }
     }
 

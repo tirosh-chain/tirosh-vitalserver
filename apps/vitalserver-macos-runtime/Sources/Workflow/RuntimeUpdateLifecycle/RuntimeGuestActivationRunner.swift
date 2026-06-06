@@ -72,7 +72,9 @@ public struct RuntimeGuestActivationRunner {
             requestID: requestID(),
             requestedAt: timestamp()
         ) else {
-            throw RuntimeGuestActivationWorkflowError.operationFailed("guest activation request missing for required activation")
+            throw RuntimeGuestActivationWorkflowError.operationFailed(
+                useCase.guestActivationRequiredRequestMissingFailureMessage()
+            )
         }
         try writeRequest(request)
 

@@ -54,6 +54,22 @@ public enum UninstallRuntimeReceiptForgetDecision: Equatable, Sendable {
     case forget(logMessage: String)
 }
 
+public enum UninstallRuntimeWorkflowLogStep: String, Sendable {
+    case createRedisBackup = "create-redis-backup"
+    case stopLaunchdServices = "stop-launchd-services"
+    case removePlists = "remove-plists"
+    case removeInstalledFiles = "remove-installed-files"
+    case removeRuntimeTools = "remove-runtime-tools"
+    case restorePreservedUserData = "restore-preserved-user-data"
+    case forgetPackageReceipt = "forget-package-receipt"
+    case preserveUserData = "preserve-user-data"
+}
+
+public enum UninstallRuntimeWorkflowLogStepStatus: String, Sendable {
+    case started
+    case completed
+}
+
 public struct UninstallRuntimeUseCase {
     public init() {}
 
@@ -70,8 +86,15 @@ public struct UninstallRuntimeUseCase {
         !clean
     }
 
-    public func stepLogMessage(step: String, status: String) -> String {
-        "step=\(step) status=\(status)"
+    public func stepLogMessage(
+        step: UninstallRuntimeWorkflowLogStep,
+        status: UninstallRuntimeWorkflowLogStepStatus
+    ) -> String {
+        "step=\(step.rawValue) status=\(status.rawValue)"
+    }
+
+    public func preserveRootDirectory(temporaryDirectory: URL, uniqueID: String) -> URL {
+        temporaryDirectory.appendingPathComponent("tirosh-vitalserver-uninstall-\(uniqueID)")
     }
 
     public func redisBackupAbortLogMessage(reason: String) -> String {
