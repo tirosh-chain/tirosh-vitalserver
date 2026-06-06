@@ -3,7 +3,6 @@ import Bootstrap
 import Contracts
 import Foundation
 import OutboundAdapters
-import Workflow
 import XCTest
 
 final class RuntimeGuestActivationCompositionTests: XCTestCase {
@@ -18,7 +17,7 @@ final class RuntimeGuestActivationCompositionTests: XCTestCase {
         var events: [String] = []
         var statuses: [(RuntimeStatusLevel, RuntimeOperation, String)] = []
         var logs: [String] = []
-        let workflow = RuntimeGuestActivationComposition(
+        let composition = RuntimeGuestActivationComposition(
             context: RuntimeGuestActivationCompositionContext(guestRunDirectory: guestRunDirectory),
             operations: RuntimeGuestActivationCompositionOperations(
                 fileStore: fileStore,
@@ -34,9 +33,9 @@ final class RuntimeGuestActivationCompositionTests: XCTestCase {
                 sleep: { events.append("sleep") },
                 log: { logs.append($0) }
             )
-        ).workflow()
+        )
 
-        try workflow.activateIfNeeded(manifest: manifest(artifacts: [.guestDeploy]))
+        try composition.activateIfNeeded(manifest: manifest(artifacts: [.guestDeploy]))
 
         XCTAssertTrue(fileStore.directories.contains(guestRunDirectory))
         XCTAssertEqual(gateway.events, [

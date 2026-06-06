@@ -3,7 +3,6 @@ import Bootstrap
 import Contracts
 import Foundation
 import OutboundAdapters
-import Workflow
 import XCTest
 
 final class RuntimeGuestShutdownCompositionTests: XCTestCase {
@@ -23,7 +22,7 @@ final class RuntimeGuestShutdownCompositionTests: XCTestCase {
         var events: [String] = []
         var statuses: [(RuntimeStatusLevel, RuntimeOperation, String)] = []
         var logs: [String] = []
-        let workflow = RuntimeGuestShutdownComposition(
+        let composition = RuntimeGuestShutdownComposition(
             context: RuntimeGuestShutdownCompositionContext(guestRunDirectory: guestRunDirectory),
             operations: RuntimeGuestShutdownCompositionOperations(
                 fileStore: fileStore,
@@ -37,9 +36,9 @@ final class RuntimeGuestShutdownCompositionTests: XCTestCase {
                 sleep: { events.append("sleep") },
                 log: { logs.append($0) }
             )
-        ).workflow()
+        )
 
-        try workflow.prepareForUpdate(manifest: manifest())
+        try composition.prepareForUpdate(manifest: manifest())
 
         XCTAssertTrue(fileStore.directories.contains(guestRunDirectory))
         XCTAssertEqual(gateway.events, [

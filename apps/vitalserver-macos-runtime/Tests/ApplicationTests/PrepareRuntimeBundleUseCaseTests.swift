@@ -1,18 +1,16 @@
 import Application
 import Contracts
 import Foundation
-import Workflow
 import XCTest
-import Errors
 
-final class RuntimeBundlePreparationWorkflowTests: XCTestCase {
+final class PrepareRuntimeBundleUseCaseTests: XCTestCase {
     func testVerifyMaterializesVerifiesAndCleansTemporaryRoot() throws {
         let sourceURL = URL(fileURLWithPath: "/input/update-bundle.tar.gz")
         let bundleURL = URL(fileURLWithPath: "/tmp/update-bundle")
         let temporaryRoot = URL(fileURLWithPath: "/tmp/materialized")
         let manifest = Self.makeManifest(version: "1.2.3")
         var events: [String] = []
-        let workflow = makeWorkflow(
+        let operations = makeOperations(
             materialize: { url in
                 events.append("materialize:\(url.path)")
                 return RuntimeMaterializedBundle(bundleURL: bundleURL, temporaryRoot: temporaryRoot)
@@ -29,7 +27,7 @@ final class RuntimeBundlePreparationWorkflowTests: XCTestCase {
             }
         )
 
-        let result = try workflow.verifyBundle(sourceURL)
+        let result = try PrepareRuntimeBundleUseCase().verifyBundle(sourceURL, operations: operations)
 
         XCTAssertEqual(result, RuntimeBundlePreparationVerification(
             sourceURL: sourceURL,
@@ -51,7 +49,7 @@ final class RuntimeBundlePreparationWorkflowTests: XCTestCase {
         let temporaryRoot = URL(fileURLWithPath: "/tmp/materialized")
         let manifest = Self.makeManifest(version: "2.0.0")
         var events: [String] = []
-        let workflow = makeWorkflow(
+        let operations = makeOperations(
             materialize: { url in
                 events.append("materialize:\(url.path)")
                 return RuntimeMaterializedBundle(bundleURL: bundleURL, temporaryRoot: temporaryRoot)
@@ -74,7 +72,7 @@ final class RuntimeBundlePreparationWorkflowTests: XCTestCase {
             }
         )
 
-        let result = try workflow.stageBundle(sourceURL)
+        let result = try PrepareRuntimeBundleUseCase().stageBundle(sourceURL, operations: operations)
 
         XCTAssertEqual(result, RuntimeBundlePreparationStageResult(
             sourceURL: sourceURL,
@@ -95,7 +93,7 @@ final class RuntimeBundlePreparationWorkflowTests: XCTestCase {
         let sourceURL = URL(fileURLWithPath: "/input/update-bundle")
         let manifest = Self.makeManifest(version: "1.2.3")
         var cleaned = false
-        let workflow = makeWorkflow(
+        let operations = makeOperations(
             materialize: { url in
                 RuntimeMaterializedBundle(bundleURL: url, temporaryRoot: nil)
             },
@@ -103,7 +101,7 @@ final class RuntimeBundlePreparationWorkflowTests: XCTestCase {
             cleanupTemporaryRoot: { _ in cleaned = true }
         )
 
-        _ = try workflow.verifyBundle(sourceURL)
+        _ = try PrepareRuntimeBundleUseCase().verifyBundle(sourceURL, operations: operations)
 
         XCTAssertFalse(cleaned)
     }
@@ -112,7 +110,7 @@ final class RuntimeBundlePreparationWorkflowTests: XCTestCase {
         let sourceURL = URL(fileURLWithPath: "/input/update-bundle.tar.gz")
         let temporaryRoot = URL(fileURLWithPath: "/tmp/materialized")
         var events: [String] = []
-        let workflow = makeWorkflow(
+        let operations = makeOperations(
             materialize: { _ in
                 RuntimeMaterializedBundle(
                     bundleURL: URL(fileURLWithPath: "/tmp/update-bundle"),
@@ -121,7 +119,7 @@ final class RuntimeBundlePreparationWorkflowTests: XCTestCase {
             },
             verifyDirectory: { _, _ in
                 events.append("verify")
-                throw TestBundlePreparationWorkflowError.verifyFailed
+                throw TestBundlePreparationUseCaseError.verifyFailed
             },
             stageBundle: { _ in
                 events.append("stage")
@@ -132,35 +130,33 @@ final class RuntimeBundlePreparationWorkflowTests: XCTestCase {
             }
         )
 
-        XCTAssertThrowsError(try workflow.stageBundle(sourceURL)) { error in
-            XCTAssertEqual(error as? TestBundlePreparationWorkflowError, .verifyFailed)
+        XCTAssertThrowsError(try PrepareRuntimeBundleUseCase().stageBundle(sourceURL, operations: operations)) { error in
+            XCTAssertEqual(error as? TestBundlePreparationUseCaseError, .verifyFailed)
         }
         XCTAssertEqual(events, ["verify", "cleanup:/tmp/materialized"])
     }
 
-    private func makeWorkflow(
+    private func makeOperations(
         materialize: @escaping (URL) throws -> RuntimeMaterializedBundle = { url in
             RuntimeMaterializedBundle(bundleURL: url, temporaryRoot: nil)
         },
         verifyDirectory: @escaping (URL, URL) throws -> UpdateBundleManifest = { _, _ in
-            RuntimeBundlePreparationWorkflowTests.makeManifest(version: "1.2.3")
+            PrepareRuntimeBundleUseCaseTests.makeManifest(version: "1.2.3")
         },
         stageBundle: @escaping (RuntimeBundleStagingInput) throws -> URL = { _ in
             URL(fileURLWithPath: "/product/bundles/update-bundle-1.2.3")
         },
         cleanupTemporaryRoot: @escaping (URL) -> Void = { _ in },
         log: @escaping (String) -> Void = { _ in }
-    ) -> RuntimeBundlePreparationWorkflow {
-        RuntimeBundlePreparationWorkflow(
-            operations: RuntimeBundlePreparationWorkflowOperations(
-                materialize: materialize,
-                executeMaterializationCleanupPlan: { plan in
-                    executeMaterializationCleanupPlan(plan, cleanupTemporaryRoot: cleanupTemporaryRoot)
-                },
-                verifyDirectory: verifyDirectory,
-                stageBundle: stageBundle,
-                log: log
-            )
+    ) -> RuntimeBundlePreparationOperations {
+        RuntimeBundlePreparationOperations(
+            materialize: materialize,
+            executeMaterializationCleanupPlan: { plan in
+                executeMaterializationCleanupPlan(plan, cleanupTemporaryRoot: cleanupTemporaryRoot)
+            },
+            verifyDirectory: verifyDirectory,
+            stageBundle: stageBundle,
+            log: log
         )
     }
 
@@ -179,7 +175,7 @@ final class RuntimeBundlePreparationWorkflowTests: XCTestCase {
     }
 }
 
-private enum TestBundlePreparationWorkflowError: Error, Equatable {
+private enum TestBundlePreparationUseCaseError: Error, Equatable {
     case verifyFailed
 }
 

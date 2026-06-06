@@ -2,7 +2,6 @@ import Application
 import Contracts
 import Foundation
 import OutboundAdapters
-import Workflow
 import Errors
 
 public struct RuntimeRedisBackupCompositionContext {
@@ -64,9 +63,9 @@ public struct RuntimeRedisBackupComposition {
         self.operations = operations
     }
 
-    public func workflow() -> RuntimeRedisBackupWorkflow {
-        RuntimeRedisBackupWorkflow(
-            context: RuntimeRedisBackupWorkflowContext(
+    public func createBackup() throws -> RuntimeRedisBackupResult {
+        try RepairRuntimeUseCase().createRedisBackup(
+            context: RuntimeRedisBackupContext(
                 guestRunDirectory: context.guestRunDirectory,
                 redisBackupsDirectory: context.redisBackupsDirectory,
                 requestFileName: Constants.Runtime.redisBackupRequestFile,
@@ -74,7 +73,7 @@ public struct RuntimeRedisBackupComposition {
                 waitTimeoutSeconds: Constants.Runtime.redisBackupWaitTimeoutSeconds,
                 pollIntervalSeconds: 3
             ),
-            operations: RuntimeRedisBackupWorkflowOperations(
+            operations: RuntimeRedisBackupOperations(
                 requireCapability: operations.requireCapability,
                 createDirectory: { url, withIntermediateDirectories in
                     try operations.fileStore.createDirectory(
@@ -102,36 +101,10 @@ public struct RuntimeRedisBackupComposition {
                 loadResult: { url in
                     RedisBackupResultReader.load(from: url, fileStore: operations.fileStore)
                 },
-                executeResultDecision: executeResultDecision,
                 sleep: operations.sleep,
                 log: operations.log
             )
         )
-    }
-
-    private func executeResultDecision(
-        _ decision: RepairRuntimeRedisBackupResultDecision
-    ) throws -> RuntimeRedisBackupResult? {
-        switch decision {
-        case .ignoreStaleResult(let logMessage):
-            operations.log(logMessage)
-            return nil
-        case .completed(let message, let archive):
-            try operations.writeRuntimeStatus(.healthy, .redisBackup, message)
-            operations.log(RepairRuntimeUseCase().redisBackupCompletedLogMessage())
-            return RuntimeRedisBackupResult(message: message, archive: archive)
-        case .failed(let message):
-            try operations.writeRuntimeStatus(.degraded, .redisBackup, message)
-            throw RuntimeRedisBackupWorkflowError.operationFailed(message)
-        case .waiting(let logMessage):
-            if let logMessage {
-                operations.log(logMessage)
-            }
-            return nil
-        case .readFailed(let message):
-            try operations.writeRuntimeStatus(.degraded, .redisBackup, message)
-            throw RuntimeRedisBackupWorkflowError.operationFailed(message)
-        }
     }
 
     private static func prettyJSONEncoder() -> JSONEncoder {

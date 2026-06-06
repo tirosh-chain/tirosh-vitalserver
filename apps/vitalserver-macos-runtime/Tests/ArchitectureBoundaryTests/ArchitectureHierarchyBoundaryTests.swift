@@ -398,22 +398,17 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
-    func testRuntimeRedisBackupWorkflowDoesNotInterpretResultDecisionDirectly() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeRepairLifecycle/RuntimeRedisBackupWorkflow.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "switch decision",
-            "case .ignoreStaleResult",
-            "case .completed",
-            "case .readFailed",
+    func testRuntimeRedisBackupExecutionDoesNotRemainInWorkflow() throws {
+        let root = packageRoot()
+        let forbiddenFiles = [
+            "Sources/Workflow/RuntimeRepairLifecycle/RuntimeRedisBackupWorkflow.swift",
+            "Sources/Errors/Definitions/RuntimeRedisBackupWorkflowError.swift",
         ]
 
-        for token in forbiddenTokens {
+        for path in forbiddenFiles {
             XCTAssertFalse(
-                text.contains(token),
-                "RuntimeRedisBackupWorkflow must delegate result decision execution instead of interpreting \(token) directly"
+                FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path),
+                "\(path) must not own redis backup execution"
             )
         }
     }
@@ -536,53 +531,20 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
-    func testRuntimeGuestActivationWorkflowDoesNotInterpretActivationStateDirectly() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeGuestActivationRunner.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "requiresActivation",
-            "skippedLogMessage",
-            "requestedLogMessage",
-            "completedLogMessage",
-            "guard let request",
-            "!isVMServiceLoaded",
-            "ceil(",
-            "GuestActivationWaitConfiguration(",
-            "guestActivationWaitResultPlan(",
-            "if let logMessage",
-            "failureMessage =",
+    func testRuntimeGuestUpdateWorkflowThinWrappersDoNotExist() throws {
+        let forbiddenFiles = [
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeGuestActivationRunner.swift",
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeGuestActivationWorkflow.swift",
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeGuestShutdownRunner.swift",
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeGuestShutdownWorkflow.swift",
+            "Sources/Errors/Definitions/RuntimeGuestActivationWorkflowError.swift",
+            "Sources/Errors/Definitions/RuntimeGuestShutdownWorkflowError.swift",
         ]
 
-        for token in forbiddenTokens {
+        for relativePath in forbiddenFiles {
             XCTAssertFalse(
-                text.contains(token),
-                "RuntimeGuestActivationRunner must execute UseCase activation plans instead of interpreting \(token) directly"
-            )
-        }
-    }
-
-    func testRuntimeGuestShutdownWorkflowDoesNotInterpretShutdownStateDirectly() throws {
-        let file = packageRoot().appendingPathComponent(
-            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeGuestShutdownRunner.swift"
-        )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "guestShutdownPlan",
-            "requestedLogMessage",
-            "readyLogMessage",
-            "ceil(",
-            "GuestShutdownWaitConfiguration(",
-            "guestShutdownWaitResultPlan(",
-            "if let logMessage",
-            "failureMessage =",
-        ]
-
-        for token in forbiddenTokens {
-            XCTAssertFalse(
-                text.contains(token),
-                "RuntimeGuestShutdownRunner must execute UseCase shutdown plans instead of interpreting \(token) directly"
+                FileManager.default.fileExists(atPath: packageRoot().appendingPathComponent(relativePath).path),
+                "Guest update activation/shutdown execution belongs in Application usecases, not Workflow: \(relativePath)"
             )
         }
     }
@@ -760,48 +722,26 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
-    func testRuntimeBundlePreparationWorkflowDoesNotInterpretTemporaryRootDirectly() throws {
+    func testRuntimeBundlePreparationWorkflowDoesNotExist() throws {
         let file = packageRoot().appendingPathComponent(
             "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeBundlePreparationWorkflow.swift"
         )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "guard let temporaryRoot",
-            "materialized.temporaryRoot",
-            "switch useCase.bundleMaterializationCleanupPlan",
-            "case .none",
-            "case .cleanupTemporaryRoot",
-        ]
 
-        for token in forbiddenTokens {
-            XCTAssertFalse(
-                text.contains(token),
-                "RuntimeBundlePreparationWorkflow must execute UseCase cleanup plans instead of interpreting \(token) directly"
-            )
-        }
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: file.path),
+            "Bundle preparation execution belongs in Application usecase, not Workflow"
+        )
     }
 
-    func testRuntimeGuestCapabilityCheckerDoesNotInterpretCapabilityDecisionDirectly() throws {
+    func testRuntimeGuestCapabilityCheckerDoesNotRemainInWorkflow() throws {
         let file = packageRoot().appendingPathComponent(
             "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeGuestCapabilityChecker.swift"
         )
-        let text = try String(contentsOf: file, encoding: .utf8)
-        let forbiddenTokens = [
-            "guestCapabilityDecision",
-            "decision.failure",
-            "if let failure",
-            "switch useCase",
-            "case .supported",
-            "case .failed",
-            "throw failure",
-        ]
 
-        for token in forbiddenTokens {
-            XCTAssertFalse(
-                text.contains(token),
-                "RuntimeGuestCapabilityChecker must execute UseCase capability plans instead of interpreting \(token) directly"
-            )
-        }
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: file.path),
+            "Guest capability requirement execution belongs in Application usecase, not Workflow"
+        )
     }
 
     func testRuntimeRollbackPreflightRunnerDoesNotOwnBackupFileObservation() throws {

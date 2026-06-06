@@ -38,7 +38,6 @@ final class RuntimeLifecycleProgressEventTests: XCTestCase {
         _ = lifecycle.runtimeVMDiskRepairRunner()
         _ = lifecycle.runtimeServiceControlRunner()
         _ = lifecycle.runtimeRollbackWorkflow()
-        _ = lifecycle.runtimeGuestActivationWorkflow()
     }
 
     func testWriteRuntimeProgressRecordsEventWhenStatusDocumentIsMissing() throws {

@@ -224,12 +224,12 @@ struct RuntimeLifecycle {
 
     func createRedisBackup() throws {
         do {
-            let result = try runtimeRedisBackupWorkflow().createBackup()
+            let result = try runtimeRedisBackupComposition().createBackup()
             print(result.message)
             if let archive = result.archive, !archive.isEmpty {
                 print("archive: \(archive)")
             }
-        } catch RuntimeRedisBackupWorkflowError.operationFailed(let message) {
+        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
             throw LauncherError.runtimeOperationFailed(message)
         }
     }
@@ -271,7 +271,7 @@ struct RuntimeLifecycle {
     }
 
     func activateGuestUpdateIfNeeded(_ manifest: UpdateBundleManifest) throws {
-        try runtimeGuestActivationWorkflow().activateIfNeeded(manifest: manifest)
+        try activateRuntimeGuestUpdateIfNeeded(manifest: manifest)
     }
 
 }

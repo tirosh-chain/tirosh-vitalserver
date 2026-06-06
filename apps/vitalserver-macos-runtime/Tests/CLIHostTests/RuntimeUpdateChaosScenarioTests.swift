@@ -105,11 +105,10 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
     }
 
     func testGuestCapabilityReadChaosPreservesReadFailureReason() {
-        let checker = RuntimeGuestCapabilityCheckerComposition.make(
+        XCTAssertThrowsError(try RuntimeGuestCapabilityCheckerComposition.require(
+            .prepareUpdateShutdown,
             guestGateway: RuntimeUpdateChaosGuestGateway(result: .failed("permission denied"))
-        )
-
-        XCTAssertThrowsError(try checker.require(.prepareUpdateShutdown)) { error in
+        )) { error in
             XCTAssertEqual(
                 String(describing: error),
                 "failed to read guest runtime state for guest capability prepare-update-shutdown: permission denied"

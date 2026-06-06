@@ -1,7 +1,5 @@
-import Application
 import Contracts
 import Foundation
-import Errors
 
 public struct RuntimeBundlePreparationVerification: Equatable, Sendable {
     public let sourceURL: URL
@@ -34,7 +32,7 @@ public struct RuntimeBundlePreparationStageResult: Equatable, Sendable {
     }
 }
 
-public struct RuntimeBundlePreparationWorkflowOperations {
+public struct RuntimeBundlePreparationOperations {
     public let materialize: (URL) throws -> RuntimeMaterializedBundle
     public let executeMaterializationCleanupPlan: (RuntimeBundleMaterializationCleanupPlan) -> Void
     public let verifyDirectory: (URL, URL) throws -> UpdateBundleManifest
@@ -56,20 +54,17 @@ public struct RuntimeBundlePreparationWorkflowOperations {
     }
 }
 
-public struct RuntimeBundlePreparationWorkflow {
-    public let operations: RuntimeBundlePreparationWorkflowOperations
-    private var useCase: UpdateRuntimeUseCase {
-        UpdateRuntimeUseCase()
-    }
+public struct PrepareRuntimeBundleUseCase {
+    public init() {}
 
-    public init(operations: RuntimeBundlePreparationWorkflowOperations) {
-        self.operations = operations
-    }
-
-    public func verifyBundle(_ sourceURL: URL) throws -> RuntimeBundlePreparationVerification {
+    public func verifyBundle(
+        _ sourceURL: URL,
+        operations: RuntimeBundlePreparationOperations
+    ) throws -> RuntimeBundlePreparationVerification {
+        let useCase = UpdateRuntimeUseCase()
         operations.log(useCase.bundleVerificationStartedLogMessage(sourcePath: sourceURL.path))
         let materialized = try operations.materialize(sourceURL)
-        defer { cleanupTemporaryRootIfNeeded(materialized) }
+        defer { cleanupTemporaryRootIfNeeded(materialized, operations: operations, useCase: useCase) }
         let manifest = try operations.verifyDirectory(materialized.bundleURL, sourceURL)
         return RuntimeBundlePreparationVerification(
             sourceURL: sourceURL,
@@ -79,10 +74,14 @@ public struct RuntimeBundlePreparationWorkflow {
     }
 
     @discardableResult
-    public func stageBundle(_ sourceURL: URL) throws -> RuntimeBundlePreparationStageResult {
+    public func stageBundle(
+        _ sourceURL: URL,
+        operations: RuntimeBundlePreparationOperations
+    ) throws -> RuntimeBundlePreparationStageResult {
+        let useCase = UpdateRuntimeUseCase()
         operations.log(useCase.bundleStageStartedLogMessage(sourcePath: sourceURL.path))
         let materialized = try operations.materialize(sourceURL)
-        defer { cleanupTemporaryRootIfNeeded(materialized) }
+        defer { cleanupTemporaryRootIfNeeded(materialized, operations: operations, useCase: useCase) }
         let manifest = try operations.verifyDirectory(materialized.bundleURL, sourceURL)
         let destination = try operations.stageBundle(RuntimeBundleStagingInput(
             sourceURL: sourceURL,
@@ -97,7 +96,11 @@ public struct RuntimeBundlePreparationWorkflow {
         )
     }
 
-    private func cleanupTemporaryRootIfNeeded(_ materialized: RuntimeMaterializedBundle) {
+    private func cleanupTemporaryRootIfNeeded(
+        _ materialized: RuntimeMaterializedBundle,
+        operations: RuntimeBundlePreparationOperations,
+        useCase: UpdateRuntimeUseCase
+    ) {
         operations.executeMaterializationCleanupPlan(
             useCase.bundleMaterializationCleanupPlan(materialized: materialized)
         )

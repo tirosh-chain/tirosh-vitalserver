@@ -1,6 +1,6 @@
 import Foundation
 
-public enum RuntimeRedisBackupWorkflowError: Error, Equatable, CustomStringConvertible, LocalizedError {
+public enum RuntimeGuestUpdateUseCaseError: Error, Equatable, CustomStringConvertible, LocalizedError {
     case operationFailed(String)
 
     public var description: String {

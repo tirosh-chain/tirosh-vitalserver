@@ -1,67 +1,53 @@
 import Contracts
 import Application
 import Bootstrap
-import Domain
-import Workflow
 @testable import CLIHost
 import XCTest
-import Errors
 
 final class RuntimeGuestCapabilityCheckerTests: XCTestCase {
-    func testCheckerDelegatesRequirementPlanToExecutionPort() throws {
-        var plans: [RuntimeGuestCapabilityRequirementPlan] = []
-        let checker = RuntimeGuestCapabilityChecker(
-            loadRuntimeState: {
-                .loaded(GuestRuntimeStateDocument(
-                    capabilities: GuestRuntimeCapabilities(
-                        prepareUpdateShutdown: true,
-                        activateUpdate: true,
-                        redisBackup: true,
-                        repairDatastore: true
-                    ),
-                    vmIP: "192.168.64.2",
-                    guestHTTP: nil,
-                    redisUIHTTP: nil,
-                    swaggerUIHTTP: nil
-                ))
-            },
-            executeRequirementPlan: { plans.append($0) }
-        )
-
-        try checker.require(.prepareUpdateShutdown)
-
-        XCTAssertEqual(plans, [.supported])
-    }
-
     func testRequirePassesWhenCapabilityIsSupported() throws {
-        let checker = RuntimeGuestCapabilityCheckerComposition.make(
+        try RuntimeGuestCapabilityCheckerComposition.require(
+            .prepareUpdateShutdown,
             guestGateway: RuntimeGuestCapabilityGatewaySpy(result: .loaded(supportedState()))
         )
-
-        try checker.require(.prepareUpdateShutdown)
     }
 
     func testRequireFailsWhenCapabilityIsMissingFromState() {
-        let checker = RuntimeGuestCapabilityCheckerComposition.make(
-            guestGateway: RuntimeGuestCapabilityGatewaySpy(result: .loaded(GuestRuntimeStateDocument(
-                    vmIP: "192.168.64.2",
-                    guestHTTP: nil,
-                    redisUIHTTP: nil,
-                    swaggerUIHTTP: nil
-                )))
+        let gateway = RuntimeGuestCapabilityGatewaySpy(
+            result: .loaded(GuestRuntimeStateDocument(
+                vmIP: "192.168.64.2",
+                guestHTTP: nil,
+                redisUIHTTP: nil,
+                swaggerUIHTTP: nil
+            ))
         )
 
-        XCTAssertThrowsError(try checker.require(.prepareUpdateShutdown)) { error in
+        XCTAssertThrowsError(try RuntimeGuestCapabilityCheckerComposition.require(
+            .prepareUpdateShutdown,
+            guestGateway: gateway
+        )) { error in
             XCTAssertEqual(String(describing: error), "guest capability missing: prepare-update-shutdown")
         }
     }
 
     func testRequireFailsWhenRuntimeStateCannotBeLoaded() {
-        let checker = RuntimeGuestCapabilityCheckerComposition.make(
-            guestGateway: RuntimeGuestCapabilityGatewaySpy(result: .failed("permission denied"))
-        )
+        XCTAssertThrowsError(try RuntimeGuestCapabilityCheckerComposition.require(
+            .activateUpdate,
+            guestGateway: RuntimeGuestCapabilityGatewaySpy(result: .loaded(GuestRuntimeStateDocument(
+                capabilities: nil,
+                vmIP: "192.168.64.2",
+                guestHTTP: nil,
+                redisUIHTTP: nil,
+                swaggerUIHTTP: nil
+            ))
+        ))) { error in
+            XCTAssertEqual(String(describing: error), "guest capability missing: activate-update")
+        }
 
-        XCTAssertThrowsError(try checker.require(.activateUpdate)) { error in
+        XCTAssertThrowsError(try RuntimeGuestCapabilityCheckerComposition.require(
+            .activateUpdate,
+            guestGateway: RuntimeGuestCapabilityGatewaySpy(result: .failed("permission denied"))
+        )) { error in
             XCTAssertEqual(
                 String(describing: error),
                 "failed to read guest runtime state for guest capability activate-update: permission denied"

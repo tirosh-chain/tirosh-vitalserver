@@ -1,6 +1,6 @@
 import Foundation
 
-public enum RuntimeGuestActivationWorkflowError: Error, CustomStringConvertible {
+public enum RuntimeRedisBackupUseCaseError: Error, Equatable, CustomStringConvertible, LocalizedError {
     case operationFailed(String)
 
     public var description: String {
@@ -9,4 +9,9 @@ public enum RuntimeGuestActivationWorkflowError: Error, CustomStringConvertible 
             return message
         }
     }
+
+    public var errorDescription: String? {
+        description
+    }
 }
+

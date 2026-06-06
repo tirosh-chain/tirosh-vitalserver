@@ -349,7 +349,7 @@ extension RuntimeLifecycle {
         )
     }
 
-    func runtimeRedisBackupWorkflow() -> RuntimeRedisBackupWorkflow {
+    func runtimeRedisBackupComposition() -> RuntimeRedisBackupComposition {
         RuntimeRedisBackupComposition(
             context: RuntimeRedisBackupCompositionContext(
                 guestRunDirectory: guestRunDirectory,
@@ -378,7 +378,7 @@ extension RuntimeLifecycle {
                 },
                 log: log
             )
-        ).workflow()
+        )
     }
 
     func runtimeRollbackWorkflow() -> RuntimeRollbackWorkflow {
@@ -406,8 +406,8 @@ extension RuntimeLifecycle {
         )
     }
 
-    func runtimeGuestActivationWorkflow() -> RuntimeGuestActivationWorkflow {
-        RuntimeGuestActivationComposition(
+    func activateRuntimeGuestUpdateIfNeeded(manifest: UpdateBundleManifest) throws {
+        try RuntimeGuestActivationComposition(
             context: RuntimeGuestActivationCompositionContext(
                 guestRunDirectory: guestRunDirectory
             ),
@@ -425,7 +425,7 @@ extension RuntimeLifecycle {
                 sleep: workflowPollingSleepAction(),
                 log: log
             )
-        ).workflow()
+        ).activateIfNeeded(manifest: manifest)
     }
 
     func prepareGuestShutdownForUpdate(manifest: UpdateBundleManifest) throws {
@@ -445,13 +445,14 @@ extension RuntimeLifecycle {
                 sleep: workflowPollingSleepAction(),
                 log: log
             )
-        ).workflow().prepareForUpdate(manifest: manifest)
+        ).prepareForUpdate(manifest: manifest)
     }
 
     func requireGuestCapability(_ capability: RuntimeGuestCapabilityRequirement) throws {
-        try RuntimeGuestCapabilityCheckerComposition.make(
+        try RuntimeGuestCapabilityCheckerComposition.require(
+            capability,
             guestGateway: guestGateway
-        ).require(capability)
+        )
     }
 }
 

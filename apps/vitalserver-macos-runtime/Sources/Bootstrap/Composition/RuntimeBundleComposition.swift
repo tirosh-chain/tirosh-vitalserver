@@ -128,13 +128,19 @@ public struct RuntimeBundleComposition {
     }
 
     public func verifyBundle(_ bundleURL: URL) throws {
-        let result = try runtimeBundlePreparationWorkflow().verifyBundle(bundleURL)
+        let result = try PrepareRuntimeBundleUseCase().verifyBundle(
+            bundleURL,
+            operations: runtimeBundlePreparationOperations()
+        )
         print("bundle verified: \(result.sourceURL.path)")
     }
 
     @discardableResult
     public func stageBundle(_ bundleURL: URL) throws -> URL {
-        let result = try runtimeBundlePreparationWorkflow().stageBundle(bundleURL)
+        let result = try PrepareRuntimeBundleUseCase().stageBundle(
+            bundleURL,
+            operations: runtimeBundlePreparationOperations()
+        )
         print("bundle staged: \(result.destinationURL.path)")
         return result.destinationURL
     }
@@ -143,17 +149,15 @@ public struct RuntimeBundleComposition {
         try runtimeApplyBundleWorkflow().applyBundle(bundleURL)
     }
 
-    private func runtimeBundlePreparationWorkflow() -> RuntimeBundlePreparationWorkflow {
-        RuntimeBundlePreparationWorkflow(
-            operations: RuntimeBundlePreparationWorkflowOperations(
-                materialize: { url in
-                    try runtimeBundleMaterializer().materialize(url)
-                },
-                executeMaterializationCleanupPlan: executeMaterializationCleanupPlan,
-                verifyDirectory: verifyBundleDirectory,
-                stageBundle: stageMaterializedBundle,
-                log: operations.log
-            )
+    private func runtimeBundlePreparationOperations() -> RuntimeBundlePreparationOperations {
+        RuntimeBundlePreparationOperations(
+            materialize: { url in
+                try runtimeBundleMaterializer().materialize(url)
+            },
+            executeMaterializationCleanupPlan: executeMaterializationCleanupPlan,
+            verifyDirectory: verifyBundleDirectory,
+            stageBundle: stageMaterializedBundle,
+            log: operations.log
         )
     }
 

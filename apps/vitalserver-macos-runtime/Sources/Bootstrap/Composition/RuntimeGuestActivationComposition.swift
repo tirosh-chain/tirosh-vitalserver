@@ -1,6 +1,5 @@
 import Application
 import Contracts
-import Domain
 import Foundation
 import Workflow
 import Errors
@@ -62,111 +61,37 @@ public struct RuntimeGuestActivationComposition {
         self.operations = operations
     }
 
-    public func workflow() -> RuntimeGuestActivationWorkflow {
-        RuntimeGuestActivationWorkflow(
-            context: RuntimeGuestActivationWorkflowContext(
+    public func activateIfNeeded(manifest: UpdateBundleManifest) throws {
+        try ActivateRuntimeGuestUpdateUseCase().activateIfNeeded(
+            manifest: manifest,
+            context: RuntimeGuestActivationUseCaseContext(
                 guestRunDirectory: context.guestRunDirectory,
                 waitTimeoutSeconds: Constants.Runtime.updateActivationWaitTimeoutSeconds
             ),
-            operations: RuntimeGuestActivationWorkflowOperations(
-                executeGuestActivationPlan: { plan, workflowContext in
-                    try Self.executeGuestActivationPlan(
-                        plan,
-                        workflowContext: workflowContext,
-                        operations: operations
+            operations: RuntimeGuestActivationUseCaseOperations(
+                requireCapability: operations.requireCapability,
+                createGuestRunDirectory: { directory in
+                    try operations.fileStore.createDirectory(at: directory, withIntermediateDirectories: true)
+                },
+                removeActivationResult: operations.guestGateway.removeUpdateActivationResult,
+                writeActivationRequest: operations.guestGateway.writeUpdateActivationRequest,
+                loadActivationResult: operations.guestGateway.loadUpdateActivationResultDocument,
+                isVMServiceLoaded: operations.isVMServiceLoaded,
+                startVMService: operations.startVMService,
+                writeProgressStatus: { status, operation, message in
+                    writeRuntimeStatusBestEffort(
+                        status,
+                        operation: operation,
+                        message: message,
+                        writeStatus: operations.writeStatus,
+                        log: operations.log
                     )
-                }
+                },
+                requestID: operations.requestID,
+                timestamp: operations.timestamp,
+                sleep: operations.sleep,
+                log: operations.log
             )
         )
-    }
-
-    private static func executeGuestActivationPlan(
-        _ plan: RuntimeGuestActivationExecutionPlan,
-        workflowContext: RuntimeGuestActivationWorkflowContext,
-        operations: RuntimeGuestActivationCompositionOperations
-    ) throws {
-        switch plan {
-        case .skip(let logMessage):
-            operations.log(logMessage)
-        case .activate(let version, let requestLog, let completionLog):
-            operations.log(requestLog)
-            try operations.requireCapability()
-            try operations.fileStore.createDirectory(
-                at: workflowContext.guestRunDirectory,
-                withIntermediateDirectories: true
-            )
-            try operations.guestGateway.removeUpdateActivationResult()
-            let request = UpdateRuntimeUseCase().guestActivationRequest(
-                version: version,
-                requestID: operations.requestID(),
-                requestedAt: operations.timestamp()
-            )
-            try operations.guestGateway.writeUpdateActivationRequest(request)
-            try startVMServiceIfNeeded(operations: operations)
-            try waitForActivationResult(
-                request,
-                waitTimeoutSeconds: workflowContext.waitTimeoutSeconds,
-                operations: operations
-            )
-            operations.log(completionLog)
-        }
-    }
-
-    private static func startVMServiceIfNeeded(
-        operations: RuntimeGuestActivationCompositionOperations
-    ) throws {
-        switch UpdateRuntimeUseCase().guestActivationVMStartPlan(isVMServiceLoaded: operations.isVMServiceLoaded()) {
-        case .alreadyLoaded:
-            return
-        case .startService:
-            try operations.startVMService()
-        }
-    }
-
-    private static func waitForActivationResult(
-        _ request: RuntimeGuestActivationRequest,
-        waitTimeoutSeconds: Double,
-        operations: RuntimeGuestActivationCompositionOperations
-    ) throws {
-        let useCase = UpdateRuntimeUseCase()
-        operations.log(useCase.guestActivationWaitStartedLogMessage(timeoutSeconds: waitTimeoutSeconds))
-        let waitResult = GuestActivationWaiter.wait(
-            expectedRequestId: request.id,
-            configuration: useCase.guestActivationWaitConfiguration(timeoutSeconds: waitTimeoutSeconds),
-            loadResult: {
-                operations.guestGateway.loadUpdateActivationResultDocument()
-            },
-            onProgress: { message in
-                operations.log(message)
-                writeRuntimeStatusBestEffort(
-                    .recovering,
-                    operation: .activateGuestUpdate,
-                    message: message,
-                    writeStatus: operations.writeStatus,
-                    log: operations.log
-                )
-            },
-            sleep: operations.sleep
-        )
-
-        try executeGuestActivationWaitResultPlan(
-            useCase.guestActivationWaitResultExecutionPlan(waitResult),
-            operations: operations
-        )
-    }
-
-    private static func executeGuestActivationWaitResultPlan(
-        _ plan: RuntimeGuestWaitResultExecutionPlan,
-        operations: RuntimeGuestActivationCompositionOperations
-    ) throws {
-        switch plan {
-        case .completed(let logMessage):
-            operations.log(logMessage)
-        case .failed(let logMessage, let failureMessage):
-            operations.log(logMessage)
-            throw RuntimeGuestActivationWorkflowError.operationFailed(failureMessage)
-        case .failedWithoutLog(let failureMessage):
-            throw RuntimeGuestActivationWorkflowError.operationFailed(failureMessage)
-        }
     }
 }

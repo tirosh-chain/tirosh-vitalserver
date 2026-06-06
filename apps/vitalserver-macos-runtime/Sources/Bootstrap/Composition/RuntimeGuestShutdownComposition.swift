@@ -1,6 +1,5 @@
 import Application
 import Contracts
-import Domain
 import Foundation
 import Workflow
 import Errors
@@ -56,99 +55,35 @@ public struct RuntimeGuestShutdownComposition {
         self.operations = operations
     }
 
-    public func workflow() -> RuntimeGuestShutdownWorkflow {
-        RuntimeGuestShutdownWorkflow(
-            context: RuntimeGuestShutdownWorkflowContext(
+    public func prepareForUpdate(manifest: UpdateBundleManifest) throws {
+        try PrepareRuntimeGuestShutdownUseCase().prepareForUpdate(
+            manifest: manifest,
+            context: RuntimeGuestShutdownUseCaseContext(
                 guestRunDirectory: context.guestRunDirectory,
                 waitTimeoutSeconds: Constants.Runtime.updateShutdownWaitTimeoutSeconds
             ),
-            operations: RuntimeGuestShutdownWorkflowOperations(
-                executeGuestShutdownPlan: { plan, workflowContext in
-                    try Self.executeGuestShutdownPlan(
-                        plan,
-                        workflowContext: workflowContext,
-                        operations: operations
+            operations: RuntimeGuestShutdownUseCaseOperations(
+                requireCapability: operations.requireCapability,
+                createGuestRunDirectory: { directory in
+                    try operations.fileStore.createDirectory(at: directory, withIntermediateDirectories: true)
+                },
+                removeShutdownResult: operations.guestGateway.removeUpdateShutdownResult,
+                writeShutdownRequest: operations.guestGateway.writeUpdateShutdownRequest,
+                loadShutdownResult: operations.guestGateway.loadUpdateShutdownResultDocument,
+                writeProgressStatus: { status, operation, message in
+                    writeRuntimeStatusBestEffort(
+                        status,
+                        operation: operation,
+                        message: message,
+                        writeStatus: operations.writeStatus,
+                        log: operations.log
                     )
-                }
+                },
+                requestID: operations.requestID,
+                timestamp: operations.timestamp,
+                sleep: operations.sleep,
+                log: operations.log
             )
         )
-    }
-
-    private static func executeGuestShutdownPlan(
-        _ plan: RuntimeGuestShutdownExecutionPlan,
-        workflowContext: RuntimeGuestShutdownWorkflowContext,
-        operations: RuntimeGuestShutdownCompositionOperations
-    ) throws {
-        let useCase = UpdateRuntimeUseCase()
-        switch plan {
-        case .prepare(let version, let requestLog, let readyLog):
-            operations.log(requestLog)
-            try operations.requireCapability()
-            try operations.fileStore.createDirectory(
-                at: workflowContext.guestRunDirectory,
-                withIntermediateDirectories: true
-            )
-            try operations.guestGateway.removeUpdateShutdownResult()
-            let request = useCase.guestShutdownRequest(
-                version: version,
-                requestID: operations.requestID(),
-                requestedAt: operations.timestamp()
-            )
-            try operations.guestGateway.writeUpdateShutdownRequest(request)
-            try waitForShutdownReady(
-                request,
-                waitTimeoutSeconds: workflowContext.waitTimeoutSeconds,
-                operations: operations,
-                useCase: useCase
-            )
-            operations.log(readyLog)
-        }
-    }
-
-    private static func waitForShutdownReady(
-        _ request: RuntimeGuestShutdownRequest,
-        waitTimeoutSeconds: Double,
-        operations: RuntimeGuestShutdownCompositionOperations,
-        useCase: UpdateRuntimeUseCase
-    ) throws {
-        operations.log(useCase.guestShutdownWaitStartedLogMessage(timeoutSeconds: waitTimeoutSeconds))
-        let waitResult = GuestShutdownWaiter.wait(
-            expectedRequestId: request.id,
-            configuration: useCase.guestShutdownWaitConfiguration(timeoutSeconds: waitTimeoutSeconds),
-            loadResult: {
-                operations.guestGateway.loadUpdateShutdownResultDocument()
-            },
-            onProgress: { message in
-                operations.log(message)
-                writeRuntimeStatusBestEffort(
-                    .updating,
-                    operation: .applyBundle,
-                    message: message,
-                    writeStatus: operations.writeStatus,
-                    log: operations.log
-                )
-            },
-            sleep: operations.sleep
-        )
-
-        try executeGuestShutdownWaitResultPlan(
-            useCase.guestShutdownWaitResultExecutionPlan(waitResult),
-            operations: operations
-        )
-    }
-
-    private static func executeGuestShutdownWaitResultPlan(
-        _ plan: RuntimeGuestWaitResultExecutionPlan,
-        operations: RuntimeGuestShutdownCompositionOperations
-    ) throws {
-        switch plan {
-        case .completed(let logMessage):
-            operations.log(logMessage)
-        case .failed(let logMessage, let failureMessage):
-            operations.log(logMessage)
-            throw RuntimeGuestShutdownWorkflowError.operationFailed(failureMessage)
-        case .failedWithoutLog(let failureMessage):
-            throw RuntimeGuestShutdownWorkflowError.operationFailed(failureMessage)
-        }
     }
 }
