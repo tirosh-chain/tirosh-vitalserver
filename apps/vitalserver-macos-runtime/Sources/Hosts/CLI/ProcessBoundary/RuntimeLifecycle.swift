@@ -8,6 +8,7 @@ import InboundAdapters
 import Errors
 
 struct RuntimeLifecycle {
+    let container: RuntimeApplicationContainer
     let paths: LauncherPaths
     let installedPaths: InstalledRuntimePaths
     let clock: RuntimeClock
@@ -31,27 +32,61 @@ struct RuntimeLifecycle {
         guestGateway: RuntimeGuestGateway? = nil,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     ) {
-        let composition = RuntimeLifecycleComposition.resolve(
+        let lifecycleLog: (String) -> Void = { message in
+            print("[\(ISO8601DateFormatter().string(from: clock.now))] \(message)")
+        }
+        let container = RuntimeApplicationContainer(
             paths: paths,
             clock: clock,
+            sleeper: sleeper,
             commandRunner: commandRunner,
             httpProber: httpProber,
             serviceManager: serviceManager,
             runtimeStatusRepository: runtimeStatusRepository,
             guestGateway: guestGateway,
-            fileStore: fileStore
+            fileStore: fileStore,
+            plistBuddyPath: Constants.Commands.plistBuddy,
+            lsofPath: Constants.Commands.lsof,
+            curlPath: Constants.Commands.curl,
+            launchctlPath: Constants.Commands.launchctl,
+            prepareServiceForStop: { service in
+                try RuntimeLifecycle.prepareServiceForStop(
+                    service,
+                    paths: paths,
+                    fileStore: fileStore,
+                    log: lifecycleLog
+                )
+            },
+            waitForVMProcessStoppedAfterServiceUnload: {
+                try ProcessState.waitUntilStoppedAfterServiceUnload(
+                    pidFile: paths.pidFile,
+                    fileStore: fileStore,
+                    timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+                    pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds
+                )
+            },
+            waitForVMProcessExitAfterGuestPoweroff: { expectedVMProcessID in
+                try RuntimeLifecycle.waitForVMProcessExitAfterGuestPoweroff(
+                    expectedVMProcessID: expectedVMProcessID,
+                    paths: paths,
+                    fileStore: fileStore,
+                    log: lifecycleLog
+                )
+            },
+            log: lifecycleLog
         )
-        self.paths = paths
-        self.installedPaths = paths.installed
-        self.clock = clock
-        self.sleeper = sleeper
-        self.commandRunner = commandRunner
-        self.httpProber = composition.httpProber
-        self.fileStore = fileStore
-        self.statusReporter = composition.statusReporter
-        self.guestGateway = composition.guestGateway
-        self.healthChecker = composition.healthChecker
-        self.serviceController = composition.serviceController
+        self.container = container
+        self.paths = container.paths
+        self.installedPaths = container.installedPaths
+        self.clock = container.clock
+        self.sleeper = container.sleeper
+        self.commandRunner = container.commandRunner
+        self.httpProber = container.httpProber
+        self.fileStore = container.fileStore
+        self.statusReporter = container.statusReporter
+        self.guestGateway = container.guestGateway
+        self.healthChecker = container.healthChecker
+        self.serviceController = container.serviceController
     }
 
     var productRoot: URL {
@@ -279,5 +314,54 @@ private extension RuntimeLifecycle {
     func installedSSHAuthorizedKeys() throws -> [String] {
         let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         return config.sshAuthorizedKeys ?? []
+    }
+}
+
+private extension RuntimeLifecycle {
+    static func prepareServiceForStop(
+        _ service: RuntimeManagedService,
+        paths: LauncherPaths,
+        fileStore: RuntimeFileStore,
+        log: (String) -> Void
+    ) throws {
+        guard service == .vm else {
+            return
+        }
+
+        log("requesting graceful VM process stop before launchd unload")
+        try ProcessState.requestStopAndWait(
+            pidFile: paths.pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+            pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
+            log: log
+        )
+        log("VM process stopped before launchd unload")
+        do {
+            try RuntimeVMLifecycleStore(
+                url: paths.installed.vmLifecycle,
+                fileStore: fileStore
+            ).write(state: .stopped, message: "VM process stopped before launchd unload")
+        } catch {
+            log("failed to write VM lifecycle stopped state after process stop error=\(error)")
+        }
+    }
+
+    static func waitForVMProcessExitAfterGuestPoweroff(
+        expectedVMProcessID: pid_t,
+        paths: LauncherPaths,
+        fileStore: RuntimeFileStore,
+        log: (String) -> Void
+    ) throws {
+        log("waiting for VM process to exit after guest poweroff request pid=\(expectedVMProcessID)")
+        try ProcessState.waitUntilObservedProcessStopped(
+            pid: expectedVMProcessID,
+            pidFile: paths.pidFile,
+            fileStore: fileStore,
+            timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+            pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
+            log: log
+        )
+        log("VM process exited after guest poweroff request pid=\(expectedVMProcessID)")
     }
 }

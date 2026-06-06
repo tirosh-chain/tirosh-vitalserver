@@ -5,6 +5,7 @@ import Domain
 import Foundation
 import OutboundAdapters
 import InboundAdapters
+import Workflow
 @testable import CLIHost
 import XCTest
 import Errors
@@ -25,34 +26,28 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                             sha256: "abc",
                             size: 20
                         ),
-                    ]
+                    ],
+                    requiresGuestActivation: true
                 )
             },
-            resolveRootfsStorage: { plan in
-                switch plan {
-                case .unchanged(let rootfsStoragePlan):
-                    return rootfsStoragePlan
-                case .replacing:
-                    XCTFail("rootfs storage should not be observed")
-                    throw LauncherError.runtimeOperationFailed("unexpected rootfs storage observation")
-                }
+            observeRootfsStorage: { _, _ in
+                XCTFail("rootfs storage should not be observed")
+                throw LauncherError.runtimeOperationFailed("unexpected rootfs storage observation")
             },
             createDirectory: { _, _ in events.append("mkdir") },
             requireFreeSpace: { _, _, _ in events.append("space") },
-            checkCompatibility: { _ in events.append("compatibility") },
             serviceRestartPolicy: {
                 events.append("policy")
                 return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
             },
-            executeCapabilityInstruction: { instruction in
-                switch instruction {
-                case .requireRuntimeDiskHealthAllowsUpdate:
-                    return
-                case .requireGuestCapability(let capability):
-                    events.append("capability:\(capability.rawValue)")
-                    if capability == .activateUpdate {
-                        throw LauncherError.runtimeOperationFailed("guest capability missing: \(capability.rawValue)")
-                    }
+            runtimeHealthSnapshot: {
+                events.append("health")
+                return Self.healthSnapshot()
+            },
+            requireGuestCapability: { capability in
+                events.append("capability:\(capability.rawValue)")
+                if capability == .activateUpdate {
+                    throw LauncherError.runtimeOperationFailed("guest capability missing: \(capability.rawValue)")
                 }
             },
             createBackup: { _ in
@@ -68,17 +63,20 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
                 backupsDirectory: URL(fileURLWithPath: "/product/backups"),
                 rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
-                updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
+                updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes,
+                currentUpdaterVersion: "1.0.0",
+                currentChannel: .stable,
+                currentPlatform: "macos-arm64"
             ),
             operations: operations
         )) { error in
             XCTAssertEqual(String(describing: error), "guest capability missing: activate-update")
         }
         XCTAssertEqual(events, [
-            "compatibility",
             "mkdir",
             "space",
             "policy",
+            "health",
             "capability:prepare-update-shutdown",
             "capability:activate-update",
         ])
@@ -166,39 +164,56 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         let operations = ApplyRuntimeBundleOperations(
             prepareLogs: {},
             initialHealthSnapshot: { Self.healthSnapshot() },
-            executeInitialHealthWarningPlan: { plan in
-                if case .continueWithWarning(let warningLogMessage) = plan {
-                    logs.append(warningLogMessage)
-                }
-            },
             preparePreflight: { _ in preflight },
-            executePreflightFailurePlan: { _ in },
-            executeStep: { step, _ in
-                executedSteps.append(step)
-                if step == .replaceUpdateArtifacts {
-                    throw RuntimeChaosError.applyArtifactWriteDenied
+            rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base"),
+            runningVMProcessID: {
+                executedSteps.append(.stopRuntimeServices)
+                return 123
+            },
+            prepareGuestShutdownForUpdate: { _ in },
+            clearGuestShutdownPreparation: {},
+            stopRuntimeServicesAfterGuestPoweroff: { _ in },
+            stopRuntimeServices: {
+                executedSteps.append(.stopRuntimeServices)
+            },
+            createDirectory: { _, _ in },
+            fileSize: { _ in 1 },
+            replaceFile: { _, _ in
+                executedSteps.append(.replaceRootfsBase)
+            },
+            replaceUpdateArtifacts: { _, _ in
+                executedSteps.append(.replaceUpdateArtifacts)
+                throw RuntimeChaosError.applyArtifactWriteDenied
+            },
+            runMigrations: { _, _ in
+                executedSteps.append(.runMigrations)
+            },
+            refreshCloudInitSeedIfNeeded: { _ in
+                executedSteps.append(.refreshCloudInitSeed)
+            },
+            writeRuntimeVersion: { _, _ in
+                executedSteps.append(.writeRuntimeVersion)
+            },
+            startRuntimeServices: { policy in
+                restartedPolicy = policy
+                if rollbackBackup == nil {
+                    executedSteps.append(.startRuntimeServices)
                 }
             },
-            executeFailureRecoveryPlan: { plan in
-                logs.append(plan.rollbackStartedPlan.logMessage)
-                statuses.append((
-                    level: plan.rollbackStartedPlan.status,
-                    operation: plan.rollbackStartedPlan.operation,
-                    message: plan.rollbackStartedPlan.statusMessage
-                ))
-                rollbackBackup = plan.backup
-                let failedPlan = UpdateRuntimeUseCase().applyBundleRollbackFailedPlan(
-                    reason: RuntimeErrorDescription.describe(RuntimeChaosError.rollbackRestoreDenied)
-                )
-                logs.append(failedPlan.logMessage)
-                restartedPolicy = plan.restartPolicy
-                statuses.append((
-                    level: failedPlan.status,
-                    operation: failedPlan.operation,
-                    message: failedPlan.statusMessage
-                ))
+            activateGuestUpdateIfNeeded: { _ in
+                executedSteps.append(.activateGuestUpdate)
+            },
+            waitForHealth: { _ in
+                executedSteps.append(.waitRuntimeHealth)
+            },
+            rollback: { backup in
+                rollbackBackup = backup
+                throw RuntimeChaosError.rollbackRestoreDenied
             },
             writeStatus: { level, operation, message in
+                statuses.append((level, operation, message))
+            },
+            writeBestEffortStatus: { level, operation, message in
                 statuses.append((level, operation, message))
             },
             publishProgress: { event in
@@ -211,7 +226,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             }
         )
 
-        XCTAssertThrowsError(try ApplyRuntimeBundleUseCase().run(
+        XCTAssertThrowsError(try RuntimeApplyBundleWorkflow().run(
             input: ApplyRuntimeBundleInput(bundleURL: URL(fileURLWithPath: "/incoming/update-bundle")),
             operations: operations
         )) { error in
@@ -234,8 +249,8 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         let preflight = rollbackPreflight()
         var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
         var progressEvents: [RuntimeStepExecutionEvent] = []
-        var executedPlans: [RollbackRuntimeStepExecutionPlan] = []
-        let useCase = RollbackRuntimeUseCase()
+        var effects: [String] = []
+        let useCase = RollbackRuntimeWorkflow()
         let context = RollbackRuntimeExecutionContext(
             rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz"),
             runtimeVersion: URL(fileURLWithPath: "/runtime/runtime-version.json"),
@@ -269,11 +284,29 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     backupVersionExists: true
                 )
             },
-            executeRollbackStepPlan: { plan in
-                executedPlans.append(plan)
-                if case .restoreRootfsBase = plan {
+            stopRuntimeServices: {
+                effects.append("stop")
+            },
+            replaceFile: { source, destination in
+                effects.append("replace:\(source.lastPathComponent):\(destination.lastPathComponent)")
+                if destination == context.rootfsBase {
                     throw RuntimeChaosError.rollbackRestoreDenied
                 }
+            },
+            writeRuntimeVersion: { _, _ in
+                XCTFail("rootfs restore failure should stop before runtime version restore")
+            },
+            restoreBackupPathIfExists: { _, _ in
+                XCTFail("rootfs restore failure should stop before artifact restore")
+            },
+            restoreRuntimeToolsIfExists: { _ in
+                XCTFail("rootfs restore failure should stop before runtime tools restore")
+            },
+            startRuntimeServices: { _ in
+                XCTFail("rootfs restore failure should stop before service start")
+            },
+            waitForHealth: { _ in
+                XCTFail("rootfs restore failure should stop before health wait")
             },
             writeStatus: { level, operation, message in
                 statuses.append((level, operation, message))
@@ -281,6 +314,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             writeProgress: { event in
                 progressEvents.append(event)
             },
+            describeError: { _ in "progress write failed" },
             log: { _ in }
         )
 
@@ -288,7 +322,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             XCTAssertEqual(String(describing: error), "rollbackRestoreDenied")
         }
 
-        XCTAssertEqual(executedPlans.map(rollbackChaosPlanStep), [.rollbackStopRuntimeServices, .rollbackRestoreRootfsBase])
+        XCTAssertEqual(effects, ["stop", "replace:rootfs-base.raw.gz:rootfs-base.raw.gz"])
         XCTAssertEqual(progressEvents.last?.step, .rollbackRestoreRootfsBase)
         XCTAssertEqual(progressEvents.last?.stepStatus, .failed)
         XCTAssertEqual(statuses.last?.level, .recovering)
@@ -370,13 +404,20 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             observeStepRequiredInput: { _, _, requiredInput in
                 RollbackRuntimeStepRequiredInputObservation(requiredInput: requiredInput, backupVersionExists: false)
             },
-            executeRollbackStepPlan: { _ in XCTFail("missing restore artifact should stop before step execution") },
+            stopRuntimeServices: { XCTFail("missing restore artifact should stop before step execution") },
+            replaceFile: { _, _ in XCTFail("missing restore artifact should stop before step execution") },
+            writeRuntimeVersion: { _, _ in XCTFail("missing restore artifact should stop before step execution") },
+            restoreBackupPathIfExists: { _, _ in XCTFail("missing restore artifact should stop before step execution") },
+            restoreRuntimeToolsIfExists: { _ in XCTFail("missing restore artifact should stop before step execution") },
+            startRuntimeServices: { _ in XCTFail("missing restore artifact should stop before step execution") },
+            waitForHealth: { _ in XCTFail("missing restore artifact should stop before step execution") },
             writeStatus: { _, _, _ in },
             writeProgress: { _ in },
+            describeError: { _ in "progress write failed" },
             log: { _ in XCTFail("missing restore artifact should stop before logging") }
         )
 
-        XCTAssertThrowsError(try RollbackRuntimeUseCase().preparePreflight(.specificBackup(backup), operations: operations)) { error in
+        XCTAssertThrowsError(try RollbackRuntimeWorkflow().preparePreflight(.specificBackup(backup), operations: operations)) { error in
             XCTAssertEqual(String(describing: error), "missing file: \(missingRootfs.path)")
         }
     }
@@ -459,13 +500,57 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 statusReporter: RuntimeWorkflowStatusReporter(
                     writeStatus: { _, _, _ in },
                     writeProgress: { _ in },
+                    describeError: { _ in "unexpected" },
                     log: log
                 ),
                 pruneOldRuntimeArtifacts: {},
+                materializeBundle: { url in
+                    guard fileStore.directoryExists(url) else {
+                        throw LauncherError.missingFile(url.path)
+                    }
+                    return RuntimeMaterializedBundle(bundleURL: url, temporaryRoot: nil)
+                },
+                executeMaterializationCleanupPlan: { _ in },
+                removeMaterializedBundleTemporaryRoot: { _ in },
+                stageMaterializedBundle: { input in
+                    try RuntimeBundleStager(
+                        context: RuntimeBundleStagingContext(
+                            bundlesDirectory: URL(fileURLWithPath: "/product/bundles"),
+                            updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
+                        ),
+                        operations: RuntimeBundleStagingOperations(
+                            directorySize: { url in
+                                try fileStore.recursiveRegularFileSize(at: url, skipsHiddenFiles: true)
+                            },
+                            compressedSourceSize: { url in
+                                fileStore.fileExists(url) ? try fileStore.fileSize(url) : 0
+                            },
+                            fileExists: fileStore.fileExists,
+                            directoryExists: fileStore.directoryExists,
+                            createDirectory: { url, withIntermediateDirectories in
+                                try fileStore.createDirectory(
+                                    at: url,
+                                    withIntermediateDirectories: withIntermediateDirectories
+                                )
+                            },
+                            removeItem: { url in
+                                try fileStore.removeItem(at: url)
+                            },
+                            copyItem: { source, destination in
+                                try fileStore.copyItem(at: source, to: destination)
+                            },
+                            requireFreeSpace: { _, _, _ in },
+                            log: log
+                        )
+                    ).stage(input: input)
+                },
+                validateUpdateArtifactPayload: { _, _ in },
+                replaceUpdateArtifacts: { _, _ in },
+                runMigrations: { _, _ in },
                 requireFreeSpace: { _, _, _ in },
-                runProcess: { _, _ in RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "") },
-                runRequired: { _, _ in },
-                runProcessToFile: { _, _, _ in },
+                directorySize: { url in
+                    try fileStore.recursiveRegularFileSize(at: url, skipsHiddenFiles: true)
+                },
                 replaceFile: { _, _ in },
                 writeRuntimeVersion: { _, _ in },
                 refreshCloudInitSeedIfNeeded: { _ in },
@@ -499,7 +584,8 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
 
     private func manifest(
         version: String,
-        artifacts: [UpdateBundleArtifact] = []
+        artifacts: [UpdateBundleArtifact] = [],
+        requiresGuestActivation: Bool = false
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
             schemaVersion: 3,
@@ -508,6 +594,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             releaseLabel: version,
             targetPlatform: "macos-arm64",
             components: ["updater": version],
+            requiresGuestActivation: requiresGuestActivation,
             createdAt: "2026-05-31T00:00:00Z",
             artifacts: artifacts,
             migrations: []
@@ -599,25 +686,6 @@ private final class RuntimeUpdateChaosGuestGateway: RuntimeGuestGateway {
     func removeDatastoreRepairResult() throws {}
     func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws {}
     func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> { .missing }
-}
-
-private func rollbackChaosPlanStep(_ plan: RollbackRuntimeStepExecutionPlan) -> RuntimeWorkflowStep {
-    switch plan {
-    case .stopRuntimeServices:
-        return .rollbackStopRuntimeServices
-    case .restoreRootfsBase:
-        return .rollbackRestoreRootfsBase
-    case .restoreRuntimeVersion:
-        return .rollbackRestoreRuntimeVersion
-    case .restoreUpdateArtifacts:
-        return .rollbackRestoreUpdateArtifacts
-    case .startRuntimeServices:
-        return .rollbackStartRuntimeServices
-    case .waitRuntimeHealth:
-        return .rollbackWaitRuntimeHealth
-    case .failed, .unsupported:
-        return .unknown("rollback-plan-failed")
-    }
 }
 
 private enum RuntimeChaosError: Error, CustomStringConvertible {

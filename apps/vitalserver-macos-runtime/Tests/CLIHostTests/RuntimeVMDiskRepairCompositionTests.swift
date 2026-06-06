@@ -4,6 +4,7 @@ import Domain
 import Foundation
 import Bootstrap
 import OutboundAdapters
+@testable import CLIHost
 import XCTest
 import Errors
 
@@ -127,23 +128,18 @@ private final class VMDiskRepairHarness {
                 requireFreeSpace: { [self] url, minimumBytes, operation in
                     events.append("space:\(url.lastPathComponent):\(minimumBytes):\(operation)")
                 },
-                runProcessToFile: { [self] executable, arguments, output in
-                    events.append("\(URL(fileURLWithPath: executable).lastPathComponent):\(arguments.map { URL(fileURLWithPath: $0).lastPathComponent }.joined(separator: " ")):\(output.lastPathComponent)")
-                    try write(output, bytes: bytesPerGiB * 4)
-                },
-                runRequired: { [self] executable, arguments in
-                    events.append("\(URL(fileURLWithPath: executable).lastPathComponent):\(arguments.joined(separator: " "))")
-                    if URL(fileURLWithPath: executable).lastPathComponent == "truncate",
-                       let sizeArgument = arguments.dropFirst().first,
-                       let gib = UInt64(sizeArgument.dropLast()) {
-                        try write(URL(fileURLWithPath: arguments.last!), bytes: bytesPerGiB * gib)
-                    }
+                createReplacementVMDisk: { [self] plan in
+                    events.append("gunzip:-c \(plan.rootfsBase.lastPathComponent):\(plan.temporaryDisk.lastPathComponent)")
+                    try write(plan.temporaryDisk, bytes: bytesPerGiB * 4)
+                    events.append("truncate:-s \(plan.targetDiskGiB)G \(plan.temporaryDisk.path)")
+                    try write(plan.temporaryDisk, bytes: bytesPerGiB * UInt64(plan.targetDiskGiB))
                 },
                 createRedisBackup: { [self] in
                     events.append("redis-backup")
                     if let redisBackupError {
-                        throw redisBackupError
+                        return .failed(reason: RuntimeErrorDescription.describe(redisBackupError))
                     }
+                    return .completed
                 },
                 stopRuntimeServicesForVMDiskReplacement: { [self] in
                     events.append("stop-for-disk-replacement")

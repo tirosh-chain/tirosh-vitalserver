@@ -1,11 +1,13 @@
 # Health Check Contract
 
-Health Check contract는 Vital Server Helper가 확인한 상태의 의미를 고정합니다.
+Health Check contract는 Vital Server Helper가 확인한 상태의 의미를 고정합니다. UI와
+runtime은 이 contract를 통해 missing, invalid, failed, stale, empty를 같은 의미로
+해석합니다.
 
 상태는 추측하지 않습니다. 상태 소유자가 제공한 명시적인 state, event, document,
 command result만 사용합니다.
 
-## 상태 의미
+## State Semantics
 
 | 상태 | 의미 |
 |---|---|
@@ -18,7 +20,7 @@ command result만 사용합니다.
 
 `missing`, `invalid`, `failed`, `stale`, `empty`는 서로 변환하지 않습니다.
 
-## VR/VRecorder 상태
+## VR/VRecorder State
 
 | 상태 | 의미 |
 |---|---|
@@ -31,7 +33,7 @@ command result만 사용합니다.
 Host는 Guest 내부 상태를 추측하지 않습니다. Guest 또는 runtime read model이 제공한
 관측 결과만 표시합니다.
 
-## `.vital` file 상태
+## `.vital` File State
 
 | 상태 | 의미 |
 |---|---|
@@ -46,7 +48,7 @@ Host는 Guest 내부 상태를 추측하지 않습니다. Guest 또는 runtime r
 파일 탐색 실패는 empty가 아닙니다. 권한 실패는 파일 없음이 아닙니다. decode 실패는
 invalid filename과 다릅니다.
 
-## Contract owner
+## Contract Owner
 
 | 영역 | Owner |
 |---|---|

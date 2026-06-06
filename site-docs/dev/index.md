@@ -1,28 +1,48 @@
 # Dev Documentation
 
-이 문서군은 Vital Server Helper를 개발, 패키징, 검증, 유지보수하는 사람을 위한
-기술 문서입니다.
+이 문서군은 Vital Server Helper를 현장 appliance로 운영하기 위해 어떤 설계 선택을
+했는지 기록합니다.
 
-release 문서가 공개/운영 독자를 위한 설명이라면, dev 문서는 실제 repository
-구조와 runtime 계약을 기준으로 작성합니다.
+Release 문서가 도입과 운영 판단에 필요한 내용을 설명한다면, Dev 문서는 그 뒤의
+구조를 설명합니다. Host/Guest 경계, runtime contract, Health Check 상태 의미,
+update와 recovery 검증 방식처럼 운영 안정성에 직접 영향을 주는 부분을 다룹니다.
 
-## 핵심 원칙
+## 읽는 방법
 
-- Host와 Guest 책임을 분리합니다.
-- 상태 소유자가 제공하지 않은 상태를 추측하지 않습니다.
-- missing, invalid, failed, stale, empty를 구분합니다.
-- upstream VitalServer의 전제는 wrapper와 guest service stack에서 명시적으로 흡수합니다.
-- release 문서의 주장과 dev 문서의 구현 근거가 서로 연결되어야 합니다.
+처음 읽는다면 아래 순서가 좋습니다.
+
+1. [Service Catalog](service-catalog.md)에서 repository 안의 실행 단위와 책임을 봅니다.
+2. [Architecture](architecture.md)에서 Host, Linux guest, PWA, Runtime Control API가
+   어떻게 분리되는지 봅니다.
+3. [Health Check Contract](health-check-contract.md)에서 상태 의미를 확인합니다.
+4. [Testing](testing.md)에서 이 구조를 어떤 검증으로 유지하는지 봅니다.
+
+## 설계 기준
+
+- Host는 runtime/process/filesystem 상태를 소유합니다.
+- Guest는 Host가 제공한 명시 contract를 소비합니다.
+- Domain/Core는 외부 상태를 직접 읽지 않습니다.
+- missing, invalid, failed, stale, empty는 서로 다른 의미로 유지합니다.
+- Vital Server integration은 helper runtime contract 뒤에서 명시적으로 연결합니다.
+- release 문서의 운영 주장과 dev 문서의 구현 근거가 서로 어긋나지 않아야 합니다.
+
+## GitHub 사용
+
+GitHub issue와 pull request는 재현 가능한 상태, contract, test 기준으로 다룹니다.
+병원별 설치, 보안, 개인정보 협의는 공개 GitHub issue로 다루지 않습니다.
+
+GitHub Issues: <https://github.com/tirosh-chain/tirosh-vitalserver/issues>
 
 ## 문서 목록
 
 | 문서 | 역할 |
 |---|---|
+| [Repository Workflow](github-issues.md) | GitHub issue와 PR을 다루는 최소 기준 |
 | [Service Catalog](service-catalog.md) | repository 안의 서비스와 package 책임 설명 |
-| [Package Map](package-map.md) | monorepo package 경계와 공개 여부 설명 |
+| [Package Map](package-map.md) | monorepo package 경계와 문서 노출 범위 설명 |
 | [Architecture](architecture.md) | Host/Guest, Linux VM, PWA, Runtime Control 구조 설명 |
 | [Health Check Contract](health-check-contract.md) | Health Check 상태 계약과 실패 의미 설명 |
 | [API Contracts](api-contracts.md) | Runtime Control, Observer, Audit Proxy API 문서 위치 |
 | [Build and Release](build-and-release.md) | build, package, update bundle 생성 흐름 |
 | [Testing](testing.md) | testkit, runtime chaos, unit/integration 검증 |
-| [Troubleshooting](troubleshooting.md) | 내부 장애 조사와 failure pattern 기록 기준 |
+| [Troubleshooting](troubleshooting.md) | 장애 조사와 failure pattern 기록 기준 |

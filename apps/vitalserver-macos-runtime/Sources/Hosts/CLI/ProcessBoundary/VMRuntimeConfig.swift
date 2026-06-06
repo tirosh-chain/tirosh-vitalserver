@@ -7,7 +7,11 @@ import Errors
 
 extension VMRuntimeConfig {
     static func `default`(paths: InstalledRuntimePaths) -> VMRuntimeConfig {
-        VMRuntimeConfigComposition.defaultConfig(paths: paths)
+        VMRuntimeConfigComposition.defaultConfig(
+            paths: paths,
+            processorCount: ProcessInfo.processInfo.processorCount,
+            physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory
+        )
     }
 
     static func load(from url: URL, fileStore: RuntimeFileReading) throws -> VMRuntimeConfig {

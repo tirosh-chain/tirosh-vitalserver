@@ -13,7 +13,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
     func testConfigureUpdatesRuntimeDocumentsAndRunsRequestedActions() throws {
         let harness = try Harness()
         let cpuCount = Constants.Defaults.minimumCPUCount
-        let memoryGiB = Constants.Defaults.maximumAllowedMemoryGiB
+        let memoryGiB = Constants.Defaults.maximumAllowedMemoryGiB(physicalMemoryBytes: 16 * 1_073_741_824)
 
         let result = try harness.runner.configure(RuntimeConfigureCommand(
             changes: [
@@ -213,6 +213,10 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                     restartRuntimeServices: { [weak self] in
                         self?.restartCount += 1
                     }
+                ),
+                maximumAllowedCPUCount: Constants.Defaults.maximumAllowedCPUCount(systemCPUCount: 8),
+                maximumAllowedMemoryGiB: Constants.Defaults.maximumAllowedMemoryGiB(
+                    physicalMemoryBytes: 16 * 1_073_741_824
                 ),
                 log: { _ in }
             )

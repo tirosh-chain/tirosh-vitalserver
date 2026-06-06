@@ -19,12 +19,13 @@ nav:
   - Home: index.md
   - Release:
       - Overview: release/index.md
-      - Research Background: release/background.md
-      - Why Mac Hardware: release/mac-hardware-appliance.md
-      - Vital Server Helper Health Check: release/health-check-service.md
+      - Research Context: release/background.md
       - Deployment Modes: release/deployment-modes.md
+      - Hardware Profile: release/mac-hardware-appliance.md
+      - Health Check Model: release/health-check-service.md
       - Installation: release/installation.md
-      - Operation: release/operation.md
+      - Daily Operation: release/operation.md
+      - Scope and GitHub Issues: release/scope-and-issues.md
       - Troubleshooting: release/troubleshooting.md
       - Release Notes: release/release-notes.md
   - Dev:
@@ -37,3 +38,4 @@ nav:
       - Build and Release: dev/build-and-release.md
       - Testing: dev/testing.md
       - Troubleshooting: dev/troubleshooting.md
+      - Repository Workflow: dev/github-issues.md

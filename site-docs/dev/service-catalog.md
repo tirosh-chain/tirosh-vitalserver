@@ -1,25 +1,26 @@
 # Service Catalog
 
-이 문서는 Vital Server Helper를 구성하는 repository 서비스와 package 책임을 정리합니다.
+이 문서는 Vital Server Helper repository 안의 실행 단위와 책임을 정리합니다. 목적은
+어떤 코드가 어떤 runtime state를 소유하는지 빠르게 확인하는 것입니다.
 
-## 서비스 목록
+## Runtime Units
 
 | 서비스/패키지 | 공개 문서 노출 | 책임 |
 |---|---|---|
-| `apps/vitalserver` | VitalServer service | upstream VitalServer wrapper와 runtime shim |
+| `apps/vitalserver` | Vital Server service | Vital Server integration wrapper와 runtime shim |
 | `apps/vitalserver-macos-runtime` | Vital Server Helper | macOS Helper app, host runtime, VM orchestration, packaging |
 | `apps/vitalserver-runtime-pwa` | Runtime Control UI | browser/PWA 기반 runtime control surface |
 | `apps/vitaldb-observer` | Health Check 내부 collector | Redis/proxy 기반 VitalDB observation snapshot 생성 |
 | `apps/vitalserver-audit-proxy` | command audit 기능 | VRecorder command/audit event sidecar |
 | `packages/vitalserver-testkit` | 검증 도구 | simulated recorder, `.vital` upload, smoke/load validation |
-| `packages/vitalserver-devtools` | dev 전용 | build machine packaging, VM/update bundle tooling |
-| `packages/vitalserver-guest-tools` | dev 전용 | Linux guest-side runtime state, update, logs, repair commands |
+| `packages/vitalserver-devtools` | dev 문서 중심 | build machine packaging, VM/update bundle tooling |
+| `packages/vitalserver-guest-tools` | dev 문서 중심 | Linux guest-side runtime state, update, logs, repair commands |
 | `infra/macos-nginx` | release installation에서 간접 설명 | Mac host proxy config and launchd template |
 
-## 책임 경계
+## Responsibility Notes
 
-`apps/vitalserver`는 upstream VitalServer를 제품 실행 단위로 감쌉니다. upstream code의
-Windows 중심 전제는 wrapper와 preload에서 흡수합니다.
+`apps/vitalserver`는 Vital Server integration을 helper runtime 안에서 실행합니다.
+runtime 입력과 저장 위치는 wrapper와 preload에서 명시합니다.
 
 `apps/vitalserver-macos-runtime`는 Mac hardware appliance 위에서 VM lifecycle,
 host proxy, packaging, update, recovery entrypoint를 관리합니다.

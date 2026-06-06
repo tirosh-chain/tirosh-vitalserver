@@ -1,21 +1,21 @@
-# Health Check Service
+# Health Check Model
 
-Vital Server Helper의 Health Check 서비스는 병원 현장에서 VitalServer 운영 상태,
-VR/VRecorder 동작 유무, 저장 데이터 상태를 확인하기 위한 기능입니다.
+Health Check는 병원 현장에서 Vital Server 운영 상태, VRecorder activity, `.vital`
+저장 상태를 확인하기 위한 read model입니다.
 
 Health Check는 상태를 추측하지 않습니다. 상태 소유자가 제공한 명시적인 상태와
 검사 결과만 표시합니다.
 
-## 확인 대상
+## Observation Targets
 
 | 대상 | 확인 내용 |
 |---|---|
-| VitalServer service | 서비스가 실행 중인지, 병원 내부망에서 접근 가능한지 확인 |
+| Vital Server service | 서비스가 실행 중인지, 병원 내부망에서 접근 가능한지 확인 |
 | VR/VRecorder | 연결, 최근 데이터 전송, stale 여부 확인 |
 | 저장 데이터 | `.vital` 파일 존재, 파일명 형식, 크기, 읽기 가능성, sanity check 결과 확인 |
 | 운영 상태 | proxy, observer, runtime status, log 상태 확인 |
 
-## 결과 상태
+## Result Semantics
 
 Health Check 결과는 서로 다른 의미를 섞지 않습니다.
 
@@ -31,10 +31,9 @@ Health Check 결과는 서로 다른 의미를 섞지 않습니다.
 `missing`, `invalid`, `failed`, `stale`, `empty`는 서로 다른 의미입니다. 예를 들어
 파일 읽기 실패는 빈 파일 목록으로 표시하지 않습니다.
 
-## `.vital` 저장 데이터 sanity check
+## `.vital` Storage Sanity Check
 
-저장 데이터 검사는 `.vital` 파일을 기준으로 합니다. 요구 원문에 있는 `*.vatal`
-표기는 이 문서군에서 사용하지 않습니다.
+저장 데이터 검사는 `.vital` 파일을 기준으로 합니다.
 
 초기 sanity check 범위는 아래와 같습니다.
 
@@ -46,9 +45,9 @@ Health Check 결과는 서로 다른 의미를 섞지 않습니다.
 | 읽기 가능성 | 권한 문제와 decode 문제를 구분 |
 | 저장 흐름 | 파일이 예상 directory 구조에 저장되는지 확인 |
 
-## 확장 가능성
+## Extension Direction
 
-Health Check는 향후 아래 방향으로 확장할 수 있습니다.
+Health Check는 아래 방향으로 확장할 수 있습니다.
 
 - 병원별 VRecorder 목록과 expected recorder 상태 비교
 - 저장 데이터의 시간 범위, 누락 구간, 업로드 지연 확인

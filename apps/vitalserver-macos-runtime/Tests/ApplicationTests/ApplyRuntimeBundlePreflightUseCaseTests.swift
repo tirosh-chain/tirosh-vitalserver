@@ -6,68 +6,56 @@ import XCTest
 import Errors
 
 final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
-    func testPrepareBuildsPreflightContextInOrder() throws {
-        let inputBundle = URL(fileURLWithPath: "/incoming/bundle")
+    func testPrepareBuildsPreflightContextFromExplicitPortsInOrder() throws {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
-        let backupsDirectory = URL(fileURLWithPath: "/product/backups")
-        let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
         let stagedRootfs = stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
+        let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
         let backup = URL(fileURLWithPath: "/product/backups/backup-before-1.2.3")
         var events: [String] = []
         var requiredSpace: (url: URL, bytes: UInt64, operation: RuntimeOperation)?
 
-        let operations = ApplyRuntimeBundlePreflightOperations(
-            stageBundle: { url in
-                events.append("stage:\(url.path)")
-                return stagedBundle
-            },
-            loadStagedManifest: { url in
-                events.append("manifest:\(url.lastPathComponent)")
-                return self.manifest(
-                    version: "1.2.3",
-                    artifacts: [
-                        UpdateBundleArtifact(
-                            name: RuntimeFileNames.rootfsBase,
-                            type: .rootfsBase,
-                            sha256: "abc",
-                            size: 20
-                        ),
-                    ]
+        let operations = operations(
+            stagedBundle: stagedBundle,
+            manifest: manifest(
+                version: "1.2.3",
+                artifacts: [
+                    UpdateBundleArtifact(
+                        name: RuntimeFileNames.rootfsBase,
+                        type: .rootfsBase,
+                        sha256: "abc",
+                        size: 20
+                    ),
+                ]
+            ),
+            observeRootfsStorage: { observedStagedRootfs, observedRootfsBase in
+                events.append("observe-rootfs:\(observedStagedRootfs.lastPathComponent)")
+                XCTAssertEqual(observedStagedRootfs, stagedRootfs)
+                XCTAssertEqual(observedRootfsBase, rootfsBase)
+                return ApplyRuntimeBundleRootfsStorageObservation(
+                    stagedRootfs: stagedRootfs,
+                    stagedRootfsExists: true,
+                    installedRootfsBytes: 10,
+                    incomingRootfsBytes: 20
                 )
-            },
-            resolveRootfsStorage: { plan in
-                try resolveRootfsStorage(plan) { observedStagedRootfs, observedRootfsBase in
-                    XCTAssertEqual(observedStagedRootfs, stagedRootfs)
-                    XCTAssertEqual(observedRootfsBase, rootfsBase)
-                    return ApplyRuntimeBundleRootfsStorageObservation(
-                        stagedRootfs: stagedRootfs,
-                        stagedRootfsExists: true,
-                        installedRootfsBytes: 10,
-                        incomingRootfsBytes: 20
-                    )
-                }
             },
             createDirectory: { url, withIntermediateDirectories in
                 events.append("mkdir:\(url.path):\(withIntermediateDirectories)")
             },
             requireFreeSpace: { url, bytes, operation in
+                events.append("space")
                 requiredSpace = (url, bytes, operation)
-            },
-            checkCompatibility: { manifest in
-                events.append("compatibility:\(manifest.version)")
             },
             serviceRestartPolicy: {
                 events.append("policy")
-                return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: true)
-            },
-            executeCapabilityInstruction: { instruction in
-                try executeCapabilityInstruction(
-                    instruction,
-                    healthSnapshot: { healthySnapshot() },
-                    requireGuestCapability: { capability in
-                        events.append("capability:\(capability.rawValue)")
-                    }
+                return RuntimeServiceRestartPolicy(
+                    restartVM: true,
+                    restartGuestLogSync: true,
+                    restartProxy: false,
+                    restartWatchdog: true
                 )
+            },
+            requireGuestCapability: { capability in
+                events.append("capability:\(capability.rawValue)")
             },
             createBackup: { reason in
                 events.append("backup:\(reason)")
@@ -75,18 +63,14 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
             },
             directorySize: { url in
                 events.append("du:\(url.path)")
-                return 30
+                return url == backup ? 40 : 30
             },
+            event: { events.append($0) },
             log: { _ in }
         )
 
         let context = try ApplyRuntimeBundlePreflightUseCase().prepare(
-            input: ApplyRuntimeBundlePreflightInput(
-                bundleURL: inputBundle,
-                backupsDirectory: backupsDirectory,
-                rootfsBase: rootfsBase,
-                updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes
-            ),
+            input: input(rootfsBase: rootfsBase),
             operations: operations
         )
 
@@ -100,73 +84,87 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
             restartProxy: false,
             restartWatchdog: true
         ))
-        XCTAssertEqual(requiredSpace?.url, backupsDirectory)
+        XCTAssertEqual(requiredSpace?.url, URL(fileURLWithPath: "/product/backups"))
         XCTAssertEqual(requiredSpace?.bytes, 60 + updateFreeSpaceMarginBytes)
         XCTAssertEqual(requiredSpace?.operation, .applyBundle)
         XCTAssertEqual(events, [
             "stage:/incoming/bundle",
             "manifest:update-bundle-1.2.3",
-            "compatibility:1.2.3",
             "du:/managed/update-bundle-1.2.3",
+            "observe-rootfs:rootfs-base.raw.gz",
             "mkdir:/product/backups:true",
+            "space",
             "policy",
+            "health",
             "capability:prepare-update-shutdown",
             "backup:before-1.2.3",
             "du:/product/backups/backup-before-1.2.3",
         ])
     }
 
-    func testPrepareSkipsRootfsPreflightWhenBundleDoesNotIncludeRootfs() throws {
-        let inputBundle = URL(fileURLWithPath: "/incoming/bundle")
-        let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
-        let backupsDirectory = URL(fileURLWithPath: "/product/backups")
-        let backup = URL(fileURLWithPath: "/product/backups/backup-before-1.2.3")
-        var requiredSpace: UInt64?
-
-        let operations = ApplyRuntimeBundlePreflightOperations(
-            stageBundle: { _ in stagedBundle },
-            loadStagedManifest: { _ in self.manifest(version: "1.2.3") },
-            resolveRootfsStorage: { plan in
-                try resolveRootfsStorage(plan) { _, _ in
-                    XCTFail("rootfs storage should not be observed")
-                    return ApplyRuntimeBundleRootfsStorageObservation(
-                        stagedRootfs: URL(fileURLWithPath: "/unused"),
-                        stagedRootfsExists: false,
-                        installedRootfsBytes: nil,
-                        incomingRootfsBytes: nil
-                    )
-                }
+    func testPrepareRejectsIncompatibleManifestBeforeReadingStorageOrCreatingBackup() {
+        var events: [String] = []
+        let operations = operations(
+            manifest: manifest(version: "2.0.0", minUpdaterVersion: "9.0.0"),
+            observeRootfsStorage: { _, _ in
+                XCTFail("rootfs storage should not be observed after compatibility failure")
+                return missingRootfsObservation()
             },
-            createDirectory: { _, _ in },
-            requireFreeSpace: { _, bytes, _ in requiredSpace = bytes },
-            checkCompatibility: { _ in },
+            createDirectory: { _, _ in events.append("mkdir") },
+            requireFreeSpace: { _, _, _ in events.append("space") },
             serviceRestartPolicy: {
-                RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: true, restartWatchdog: false)
+                events.append("policy")
+                return stoppedPolicy()
             },
-            executeCapabilityInstruction: { instruction in
-                try executeCapabilityInstruction(
-                    instruction,
-                    healthSnapshot: {
-                        XCTFail("runtime health should not be checked when VM is not running")
-                        return healthySnapshot()
-                    },
-                    requireGuestCapability: { _ in
-                        XCTFail("guest capability should not be required")
-                    }
-                )
+            createBackup: { _ in
+                events.append("backup")
+                return URL(fileURLWithPath: "/backup")
             },
-            createBackup: { _ in backup },
-            directorySize: { _ in 10 },
-            log: { _ in }
+            directorySize: { url in
+                events.append("du:\(url.path)")
+                return 1
+            },
+            event: { events.append($0) },
+            log: { message in events.append("log:\(message)") }
+        )
+
+        XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
+            input: input(currentUpdaterVersion: "1.0.0"),
+            operations: operations
+        )) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "update bundle requires updater 9.0.0 or newer; current updater is 1.0.0"
+            )
+        }
+
+        XCTAssertEqual(events, [
+            "stage:/incoming/bundle",
+            "manifest:update-bundle-1.2.3",
+            "log:bundle apply manifest version=2.0.0 runtimeVersion=2.0.0 artifacts=0 migrations=0",
+        ])
+    }
+
+    func testPrepareSkipsRootfsObservationWhenBundleDoesNotIncludeRootfs() throws {
+        var requiredSpace: UInt64?
+        let operations = operations(
+            manifest: manifest(version: "1.2.3"),
+            observeRootfsStorage: { _, _ in
+                XCTFail("rootfs storage should not be observed")
+                return missingRootfsObservation()
+            },
+            requireFreeSpace: { _, bytes, _ in requiredSpace = bytes },
+            serviceRestartPolicy: { RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: true, restartWatchdog: false) },
+            runtimeHealthSnapshot: {
+                XCTFail("runtime health should not be checked when VM is not running")
+                return healthySnapshot()
+            },
+            requireGuestCapability: { _ in XCTFail("guest capability should not be required") },
+            directorySize: { _ in 10 }
         )
 
         let context = try ApplyRuntimeBundlePreflightUseCase().prepare(
-            input: ApplyRuntimeBundlePreflightInput(
-                bundleURL: inputBundle,
-                backupsDirectory: backupsDirectory,
-                rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
-                updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes
-            ),
+            input: input(),
             operations: operations
         )
 
@@ -175,61 +173,35 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
         XCTAssertEqual(requiredSpace, 10 + updateFreeSpaceMarginBytes)
     }
 
-    func testPrepareFailsWhenStagedRootfsIsMissing() {
+    func testPrepareFailsWhenStagedRootfsIsExplicitlyMissing() {
         let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
-        let operations = ApplyRuntimeBundlePreflightOperations(
-            stageBundle: { _ in stagedBundle },
-            loadStagedManifest: { _ in
-                self.manifest(
-                    version: "1.2.3",
-                    artifacts: [
-                        UpdateBundleArtifact(
-                            name: RuntimeFileNames.rootfsBase,
-                            type: .rootfsBase,
-                            sha256: "abc",
-                            size: 20
-                        ),
-                    ]
+        let operations = operations(
+            stagedBundle: stagedBundle,
+            manifest: manifest(
+                version: "1.2.3",
+                artifacts: [
+                    UpdateBundleArtifact(
+                        name: RuntimeFileNames.rootfsBase,
+                        type: .rootfsBase,
+                        sha256: "abc",
+                        size: 20
+                    ),
+                ]
+            ),
+            observeRootfsStorage: { stagedRootfs, _ in
+                ApplyRuntimeBundleRootfsStorageObservation(
+                    stagedRootfs: stagedRootfs,
+                    stagedRootfsExists: false,
+                    installedRootfsBytes: nil,
+                    incomingRootfsBytes: nil
                 )
-            },
-            resolveRootfsStorage: { plan in
-                try resolveRootfsStorage(plan) { stagedRootfs, _ in
-                    ApplyRuntimeBundleRootfsStorageObservation(
-                        stagedRootfs: stagedRootfs,
-                        stagedRootfsExists: false,
-                        installedRootfsBytes: nil,
-                        incomingRootfsBytes: nil
-                    )
-                }
             },
             createDirectory: { _, _ in XCTFail("should not create backup directory") },
-            requireFreeSpace: { _, _, _ in },
-            checkCompatibility: { _ in },
-            serviceRestartPolicy: {
-                RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
-            },
-            executeCapabilityInstruction: { instruction in
-                try executeCapabilityInstruction(
-                    instruction,
-                    healthSnapshot: {
-                        XCTFail("runtime health should not be checked after missing rootfs")
-                        return healthySnapshot()
-                    },
-                    requireGuestCapability: { _ in }
-                )
-            },
-            createBackup: { _ in URL(fileURLWithPath: "/backup") },
-            directorySize: { _ in 0 },
-            log: { _ in }
+            requireFreeSpace: { _, _, _ in XCTFail("should not check free space") }
         )
 
         XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
-            input: ApplyRuntimeBundlePreflightInput(
-                bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
-                backupsDirectory: URL(fileURLWithPath: "/product/backups"),
-                rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
-                updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes
-            ),
+            input: input(),
             operations: operations
         )) { error in
             XCTAssertEqual(
@@ -240,59 +212,29 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
     }
 
     func testPreparePropagatesRootfsSizeReadFailureBeforeFreeSpaceCheck() {
-        let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
-        let stagedRootfs = stagedBundle.appendingPathComponent(RuntimeFileNames.rootfsBase)
         let rootfsBase = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz")
-        let operations = ApplyRuntimeBundlePreflightOperations(
-            stageBundle: { _ in stagedBundle },
-            loadStagedManifest: { _ in
-                self.manifest(
-                    version: "1.2.3",
-                    artifacts: [
-                        UpdateBundleArtifact(
-                            name: RuntimeFileNames.rootfsBase,
-                            type: .rootfsBase,
-                            sha256: "abc",
-                            size: 20
-                        ),
-                    ]
-                )
-            },
-            resolveRootfsStorage: { plan in
-                try resolveRootfsStorage(plan) { observedStagedRootfs, observedRootfsBase in
-                    XCTAssertEqual(observedStagedRootfs, stagedRootfs)
-                    XCTAssertEqual(observedRootfsBase, rootfsBase)
-                    throw LauncherError.runtimeOperationFailed("missing file: \(rootfsBase.path)")
-                }
+        let operations = operations(
+            manifest: manifest(
+                version: "1.2.3",
+                artifacts: [
+                    UpdateBundleArtifact(
+                        name: RuntimeFileNames.rootfsBase,
+                        type: .rootfsBase,
+                        sha256: "abc",
+                        size: 20
+                    ),
+                ]
+            ),
+            observeRootfsStorage: { _, observedRootfsBase in
+                XCTAssertEqual(observedRootfsBase, rootfsBase)
+                throw LauncherError.runtimeOperationFailed("missing file: \(rootfsBase.path)")
             },
             createDirectory: { _, _ in XCTFail("should not create backup directory") },
-            requireFreeSpace: { _, _, _ in XCTFail("should not check free space") },
-            checkCompatibility: { _ in },
-            serviceRestartPolicy: {
-                RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
-            },
-            executeCapabilityInstruction: { instruction in
-                try executeCapabilityInstruction(
-                    instruction,
-                    healthSnapshot: {
-                        XCTFail("runtime health should not be checked after rootfs size read failure")
-                        return healthySnapshot()
-                    },
-                    requireGuestCapability: { _ in }
-                )
-            },
-            createBackup: { _ in URL(fileURLWithPath: "/backup") },
-            directorySize: { _ in 30 },
-            log: { _ in }
+            requireFreeSpace: { _, _, _ in XCTFail("should not check free space") }
         )
 
         XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
-            input: ApplyRuntimeBundlePreflightInput(
-                bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
-                backupsDirectory: URL(fileURLWithPath: "/product/backups"),
-                rootfsBase: rootfsBase,
-                updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes
-            ),
+            input: input(rootfsBase: rootfsBase),
             operations: operations
         )) { error in
             XCTAssertEqual(String(describing: error), "missing file: \(rootfsBase.path)")
@@ -300,70 +242,44 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
     }
 
     func testPrepareRequiresGuestCapabilitiesBeforeCreatingBackup() {
-        let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
         var events: [String] = []
-        let operations = ApplyRuntimeBundlePreflightOperations(
-            stageBundle: { _ in stagedBundle },
-            loadStagedManifest: { _ in
-                self.manifest(
-                    version: "1.2.3",
-                    artifacts: [
-                        UpdateBundleArtifact(
-                            name: "guest-deploy.tar.gz",
-                            type: .guestDeploy,
-                            sha256: "abc",
-                            size: 20
-                        ),
-                    ]
-                )
-            },
-            resolveRootfsStorage: { plan in
-                try resolveRootfsStorage(plan) { stagedRootfs, _ in
-                    ApplyRuntimeBundleRootfsStorageObservation(
-                        stagedRootfs: stagedRootfs,
-                        stagedRootfsExists: false,
-                        installedRootfsBytes: nil,
-                        incomingRootfsBytes: nil
-                    )
-                }
-            },
+        let operations = operations(
+            manifest: manifest(
+                version: "1.2.3",
+                artifacts: [
+                    UpdateBundleArtifact(
+                        name: "guest-deploy.tar.gz",
+                        type: .guestDeploy,
+                        sha256: "abc",
+                        size: 20
+                    ),
+                ],
+                requiresGuestActivation: true
+            ),
             createDirectory: { _, _ in events.append("mkdir") },
             requireFreeSpace: { _, _, _ in },
-            checkCompatibility: { _ in },
             serviceRestartPolicy: {
                 RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
             },
-            executeCapabilityInstruction: { instruction in
-                try executeCapabilityInstruction(
-                    instruction,
-                    healthSnapshot: { healthySnapshot() },
-                    requireGuestCapability: { capability in
-                        events.append("capability:\(capability.rawValue)")
-                        if capability == .activateUpdate {
-                            throw LauncherError.runtimeOperationFailed("guest capability missing: \(capability.rawValue)")
-                        }
-                    }
-                )
+            requireGuestCapability: { capability in
+                events.append("capability:\(capability.rawValue)")
+                if capability == .activateUpdate {
+                    throw LauncherError.runtimeOperationFailed("guest capability missing: \(capability.rawValue)")
+                }
             },
             createBackup: { _ in
                 events.append("backup")
                 return URL(fileURLWithPath: "/backup")
-            },
-            directorySize: { _ in 10 },
-            log: { _ in }
+            }
         )
 
         XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
-            input: ApplyRuntimeBundlePreflightInput(
-                bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
-                backupsDirectory: URL(fileURLWithPath: "/product/backups"),
-                rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
-                updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes
-            ),
+            input: input(),
             operations: operations
         )) { error in
             XCTAssertEqual(String(describing: error), "guest capability missing: activate-update")
         }
+
         XCTAssertEqual(events, [
             "mkdir",
             "capability:prepare-update-shutdown",
@@ -372,57 +288,32 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
     }
 
     func testPrepareBlocksUpdateWhenGuestStorageHealthRequiresVMDiskRepair() {
-        let stagedBundle = URL(fileURLWithPath: "/managed/update-bundle-1.2.3")
         var events: [String] = []
-        let operations = ApplyRuntimeBundlePreflightOperations(
-            stageBundle: { _ in stagedBundle },
-            loadStagedManifest: { _ in self.manifest(version: "1.2.3") },
-            resolveRootfsStorage: { plan in
-                try resolveRootfsStorage(plan) { _, _ in
-                    XCTFail("rootfs storage should not be observed")
-                    return ApplyRuntimeBundleRootfsStorageObservation(
-                        stagedRootfs: URL(fileURLWithPath: "/unused"),
-                        stagedRootfsExists: false,
-                        installedRootfsBytes: nil,
-                        incomingRootfsBytes: nil
-                    )
-                }
-            },
+        let operations = operations(
+            manifest: manifest(version: "1.2.3"),
             createDirectory: { _, _ in events.append("mkdir") },
             requireFreeSpace: { _, _, _ in events.append("space") },
-            checkCompatibility: { _ in events.append("compatibility") },
             serviceRestartPolicy: {
                 events.append("policy")
                 return RuntimeServiceRestartPolicy(restartVM: true, restartGuestLogSync: true, restartProxy: false, restartWatchdog: false)
             },
-            executeCapabilityInstruction: { instruction in
-                try executeCapabilityInstruction(
-                    instruction,
-                    healthSnapshot: {
-                        events.append("health")
-                        return healthySnapshot(vmErrors: [.guestFilesystemError])
-                    },
-                    requireGuestCapability: { capability in
-                        events.append("capability:\(capability.rawValue)")
-                    },
-                    log: { message in events.append("log:\(message)") }
-                )
+            runtimeHealthSnapshot: {
+                return healthySnapshot(vmErrors: [.guestFilesystemError])
+            },
+            requireGuestCapability: { capability in
+                events.append("capability:\(capability.rawValue)")
             },
             createBackup: { reason in
                 events.append("backup:\(reason)")
                 return URL(fileURLWithPath: "/backup")
             },
             directorySize: { _ in 10 },
+            event: { events.append($0) },
             log: { message in events.append("log:\(message)") }
         )
 
         XCTAssertThrowsError(try ApplyRuntimeBundlePreflightUseCase().prepare(
-            input: ApplyRuntimeBundlePreflightInput(
-                bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
-                backupsDirectory: URL(fileURLWithPath: "/product/backups"),
-                rootfsBase: URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
-                updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes
-            ),
+            input: input(),
             operations: operations
         )) { error in
             XCTAssertEqual(
@@ -430,9 +321,11 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
                 "VM disk health blocks update; run Repair VM Disk before applying update. errors=vm-guest-filesystem-error"
             )
         }
+
         XCTAssertEqual(events, [
+            "stage:/incoming/bundle",
+            "manifest:update-bundle-1.2.3",
             "log:bundle apply manifest version=1.2.3 runtimeVersion=1.2.3 artifacts=0 migrations=0",
-            "compatibility",
             "log:bundle apply storage preflight stagedBundle=0.0 MiB",
             "log:bundle apply storage preflight rootfsBase=unchanged",
             "mkdir",
@@ -444,9 +337,66 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
         ])
     }
 
+    private func input(
+        rootfsBase: URL = URL(fileURLWithPath: "/product/runtime/rootfs-base.raw.gz"),
+        currentUpdaterVersion: String = "1.2.3"
+    ) -> ApplyRuntimeBundlePreflightInput {
+        ApplyRuntimeBundlePreflightInput(
+            bundleURL: URL(fileURLWithPath: "/incoming/bundle"),
+            backupsDirectory: URL(fileURLWithPath: "/product/backups"),
+            rootfsBase: rootfsBase,
+            updateFreeSpaceMarginBytes: updateFreeSpaceMarginBytes,
+            currentUpdaterVersion: currentUpdaterVersion,
+            currentChannel: .stable,
+            currentPlatform: "macos-arm64"
+        )
+    }
+
+    private func operations(
+        stagedBundle: URL = URL(fileURLWithPath: "/managed/update-bundle-1.2.3"),
+        manifest: UpdateBundleManifest,
+        observeRootfsStorage: @escaping (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation = { _, _ in missingRootfsObservation() },
+        createDirectory: @escaping (URL, Bool) throws -> Void = { _, _ in },
+        requireFreeSpace: @escaping (URL, UInt64, RuntimeOperation) throws -> Void = { _, _, _ in },
+        serviceRestartPolicy: @escaping () -> RuntimeServiceRestartPolicy = stoppedPolicy,
+        runtimeHealthSnapshot: @escaping () -> RuntimeHealthSnapshot = {
+            healthySnapshot()
+        },
+        requireGuestCapability: @escaping (RuntimeGuestCapabilityRequirement) throws -> Void = { _ in },
+        createBackup: @escaping (String) throws -> URL = { _ in URL(fileURLWithPath: "/product/backups/backup-before-1.2.3") },
+        directorySize: @escaping (URL) throws -> UInt64 = { _ in 10 },
+        event: @escaping (String) -> Void = { _ in },
+        log: @escaping (String) -> Void = { _ in }
+    ) -> ApplyRuntimeBundlePreflightOperations {
+        ApplyRuntimeBundlePreflightOperations(
+            stageBundle: { url in
+                event("stage:\(url.path)")
+                return stagedBundle
+            },
+            loadStagedManifest: { url in
+                event("manifest:\(url.lastPathComponent)")
+                return manifest
+            },
+            observeRootfsStorage: observeRootfsStorage,
+            createDirectory: createDirectory,
+            requireFreeSpace: requireFreeSpace,
+            serviceRestartPolicy: serviceRestartPolicy,
+            runtimeHealthSnapshot: {
+                event("health")
+                return runtimeHealthSnapshot()
+            },
+            requireGuestCapability: requireGuestCapability,
+            createBackup: createBackup,
+            directorySize: directorySize,
+            log: log
+        )
+    }
+
     private func manifest(
         version: String,
-        artifacts: [UpdateBundleArtifact] = []
+        artifacts: [UpdateBundleArtifact] = [],
+        minUpdaterVersion: String? = nil,
+        requiresGuestActivation: Bool = false
     ) -> UpdateBundleManifest {
         UpdateBundleManifest(
             schemaVersion: 3,
@@ -455,7 +405,8 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
             releaseLabel: version,
             targetPlatform: "macos-arm64",
             components: ["updater": version],
-            requiresGuestActivation: false,
+            minUpdaterVersion: minUpdaterVersion,
+            requiresGuestActivation: requiresGuestActivation,
             createdAt: "2026-05-22T00:00:00Z",
             artifacts: artifacts,
             migrations: []
@@ -465,45 +416,17 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
 
 private let updateFreeSpaceMarginBytes: UInt64 = 2 * 1024 * 1024 * 1024
 
-private func resolveRootfsStorage(
-    _ plan: ApplyRuntimeBundleRootfsStorageObservationPlan,
-    observe: (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation
-) throws -> ApplyRuntimeBundleRootfsStoragePreflightPlan {
-    let decision: ApplyRuntimeBundleRootfsStorageDecision
-    switch plan {
-    case .unchanged(let rootfsStoragePlan):
-        decision = .planned(rootfsStoragePlan)
-    case .replacing(let stagedRootfs, let rootfsBase):
-        decision = UpdateRuntimeUseCase().rootfsStorageDecision(
-            observation: try observe(stagedRootfs, rootfsBase)
-        )
-    }
-    switch decision {
-    case .planned(let rootfsStoragePlan):
-        return rootfsStoragePlan
-    case .failed(let message):
-        throw LauncherError.runtimeOperationFailed(message)
-    }
+private func missingRootfsObservation() -> ApplyRuntimeBundleRootfsStorageObservation {
+    ApplyRuntimeBundleRootfsStorageObservation(
+        stagedRootfs: URL(fileURLWithPath: "/unused"),
+        stagedRootfsExists: false,
+        installedRootfsBytes: nil,
+        incomingRootfsBytes: nil
+    )
 }
 
-private func executeCapabilityInstruction(
-    _ instruction: ApplyRuntimeBundlePreflightCapabilityInstruction,
-    healthSnapshot: () -> RuntimeHealthSnapshot,
-    requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void,
-    log: (String) -> Void = { _ in }
-) throws {
-    switch instruction {
-    case .requireRuntimeDiskHealthAllowsUpdate:
-        switch UpdateRuntimeUseCase().diskHealthDecision(snapshot: healthSnapshot()) {
-        case .allowed:
-            return
-        case .blocked(_, let logMessage, let failureMessage):
-            log(logMessage)
-            throw LauncherError.runtimeOperationFailed(failureMessage)
-        }
-    case .requireGuestCapability(let capability):
-        try requireGuestCapability(capability)
-    }
+private func stoppedPolicy() -> RuntimeServiceRestartPolicy {
+    RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
 }
 
 private func healthySnapshot(vmErrors: [RuntimeVMError] = []) -> RuntimeHealthSnapshot {

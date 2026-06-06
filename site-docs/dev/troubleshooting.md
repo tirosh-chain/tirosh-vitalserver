@@ -1,12 +1,14 @@
 # Dev Troubleshooting
 
-이 문서는 개발/운영 지원자가 내부 장애를 조사하고 문서화하는 기준을 설명합니다.
+이 문서는 장애를 조사하고 문서화하는 기준을 설명합니다. troubleshooting 문서는 단순
+사후 기록이 아니라, 반복되는 failure pattern을 regression test와 설계 원칙으로
+되돌리는 연결점입니다.
 
 정식 troubleshooting index는 `docs/troubleshooting/index.md`와 `docs/troubleshooting/*.md`를
-사용합니다. 이 초안은 Vital Server Helper release/dev 문서군에 맞춘 작성 기준을
-정리합니다.
+사용합니다. 이 문서는 공개 dev 문서에서 GitHub issue와 failure pattern 기록을
+연결하는 기준을 정리합니다.
 
-## 작성 형식
+## Record Format
 
 ```text
 Symptom:
@@ -17,7 +19,7 @@ Evidence:
 Related tests:
 ```
 
-## 기록해야 하는 장애
+## Failures Worth Recording
 
 | 장애 유형 | 기록 이유 |
 |---|---|
@@ -28,7 +30,7 @@ Related tests:
 | observer failure | Health Check와 runtime read model에 영향 |
 | stale state | old command output이나 log inference로 잘못 복구될 수 있음 |
 
-## 조사 원칙
+## Investigation Rules
 
 - 로그에서 state를 추측하지 않습니다.
 - absence를 default success로 바꾸지 않습니다.
@@ -36,7 +38,13 @@ Related tests:
 - UI가 domain transition을 결정하지 않습니다.
 - recurring failure는 troubleshooting 문서에 남깁니다.
 
-## 기존 문서 연결
+## Existing Records
 
 기존 failure pattern은 `docs/troubleshooting/index.md`와 `docs/troubleshooting/*.md`를
 기준으로 확인합니다.
+
+## GitHub Issue Linkage
+
+외부 issue에서 반복 failure pattern이 확인되면, 공개 issue에는 개인정보와 현장
+식별 정보를 제거한 재현 절차를 남깁니다. 원인, 예방 원칙, 관련 regression test는
+troubleshooting 문서에 연결합니다.

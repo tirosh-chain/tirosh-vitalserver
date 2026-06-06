@@ -24,7 +24,7 @@ final class RuntimeCloudInitSeedWriterTests: XCTestCase {
             "write:/runtime/cloud-init-seed/meta-data:true",
             "write:/runtime/cloud-init-seed/user-data:true",
             "remove:/runtime/seed.iso",
-            "run:/usr/bin/hdiutil makehybrid -iso -joliet -default-volume-name cidata -o /runtime/seed.iso /runtime/cloud-init-seed",
+            "build-seed-image:/runtime/cloud-init-seed:/runtime/seed.iso:cidata",
         ])
         XCTAssertEqual(events.writes["/runtime/cloud-init-seed/meta-data"], """
         instance-id: tirosh-instance-1
@@ -93,8 +93,7 @@ final class RuntimeCloudInitSeedWriterTests: XCTestCase {
             context: RuntimeCloudInitSeedContext(
                 runtimeDirectory: runtimeDirectory,
                 seedImageName: "seed.iso",
-                seedVolumeName: "cidata",
-                hdiutilExecutable: "/usr/bin/hdiutil"
+                seedVolumeName: "cidata"
             ),
             operations: RuntimeCloudInitSeedOperations(
                 directoryExists: { url in
@@ -113,8 +112,10 @@ final class RuntimeCloudInitSeedWriterTests: XCTestCase {
                     events.append("write:\(url.path):\(options.contains(.atomic))")
                     events.writes[url.path] = String(decoding: data, as: UTF8.self)
                 },
-                runRequired: { executable, arguments in
-                    events.append("run:\(executable) \(arguments.joined(separator: " "))")
+                buildSeedImage: { request in
+                    events.append(
+                        "build-seed-image:\(request.sourceDirectory.path):\(request.outputImage.path):\(request.volumeName)"
+                    )
                 },
                 instanceID: {
                     "tirosh-instance-1"

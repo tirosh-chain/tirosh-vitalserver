@@ -1,15 +1,16 @@
 # API Contracts
 
-이 문서는 Vital Server Helper 관련 API 계약의 위치와 역할을 정리합니다.
+이 문서는 Vital Server Helper 관련 API surface와 계약 위치를 정리합니다. UI와 runtime
+사이에서 상태 의미가 바뀌지 않도록 request, response, failure state를 분리합니다.
 
-## API 목록
+## API Surfaces
 
 | API | 위치 | 역할 |
 |---|---|---|
 | Runtime Control API | `docs/runtime/macos/runtime-control.openapi.json` | PWA/native shell과 host runtime 사이의 contract |
 | VitalDB Observer API | `docs/api/vitaldb-observer.openapi.yaml` | observer container 내부 API |
 | Audit Proxy API | `docs/api/audit-proxy.openapi.yaml` | command audit sidecar endpoint |
-| VitalServer API | `docs/api/vitalserver.openapi.yaml` | upstream VitalServer route에서 추출한 API 문서 |
+| Vital Server API | `docs/api/vitalserver.openapi.yaml` | Vital Server integration surface를 기록한 API 문서 |
 
 ## Runtime Control API
 
@@ -29,7 +30,7 @@ observability read model입니다.
 Audit Proxy API는 VRecorder command 흐름과 audit event를 관측하기 위한 sidecar
 contract입니다.
 
-## 문서 작성 기준
+## Contract Rules
 
 - API 문서에는 request, response, failure state를 구분해서 적습니다.
 - read failure를 empty success로 표현하지 않습니다.

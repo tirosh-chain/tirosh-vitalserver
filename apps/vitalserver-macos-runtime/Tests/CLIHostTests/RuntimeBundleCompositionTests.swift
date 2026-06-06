@@ -4,6 +4,7 @@ import Bootstrap
 import Contracts
 import Domain
 import OutboundAdapters
+import Workflow
 @testable import CLIHost
 import XCTest
 import Errors
@@ -176,13 +177,74 @@ final class RuntimeBundleCompositionTests: XCTestCase {
                 statusReporter: RuntimeWorkflowStatusReporter(
                     writeStatus: { _, _, _ in },
                     writeProgress: { _ in },
+                    describeError: { _ in "unexpected" },
                     log: log
                 ),
                 pruneOldRuntimeArtifacts: {},
+                materializeBundle: { url in
+                    guard fileStore.directoryExists(url) else {
+                        throw LauncherError.missingFile(url.path)
+                    }
+                    return RuntimeMaterializedBundle(bundleURL: url, temporaryRoot: nil)
+                },
+                executeMaterializationCleanupPlan: { plan in
+                    switch plan {
+                    case .none:
+                        return
+                    case .cleanupTemporaryRoot(let temporaryRoot):
+                        do {
+                            try fileStore.removeItem(at: temporaryRoot)
+                        } catch {
+                            log("bundle temporary directory cleanup failed path=\(temporaryRoot.path) error=\(RuntimeErrorDescription.describe(error))")
+                        }
+                    }
+                },
+                removeMaterializedBundleTemporaryRoot: { temporaryRoot in
+                    do {
+                        try fileStore.removeItem(at: temporaryRoot)
+                    } catch {
+                        log("bundle temporary directory cleanup failed path=\(temporaryRoot.path) error=\(RuntimeErrorDescription.describe(error))")
+                    }
+                },
+                stageMaterializedBundle: { input in
+                    try RuntimeBundleStager(
+                        context: RuntimeBundleStagingContext(
+                            bundlesDirectory: URL(fileURLWithPath: "/product/bundles"),
+                            updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
+                        ),
+                        operations: RuntimeBundleStagingOperations(
+                            directorySize: { url in
+                                try fileStore.recursiveRegularFileSize(at: url, skipsHiddenFiles: true)
+                            },
+                            compressedSourceSize: { url in
+                                fileStore.fileExists(url) ? try fileStore.fileSize(url) : 0
+                            },
+                            fileExists: fileStore.fileExists,
+                            directoryExists: fileStore.directoryExists,
+                            createDirectory: { url, withIntermediateDirectories in
+                                try fileStore.createDirectory(
+                                    at: url,
+                                    withIntermediateDirectories: withIntermediateDirectories
+                                )
+                            },
+                            removeItem: { url in
+                                try fileStore.removeItem(at: url)
+                            },
+                            copyItem: { source, destination in
+                                try fileStore.copyItem(at: source, to: destination)
+                            },
+                            requireFreeSpace: { _, _, _ in },
+                            log: log
+                        )
+                    ).stage(input: input)
+                },
+                validateUpdateArtifactPayload: { _, _ in },
+                replaceUpdateArtifacts: { _, _ in },
+                runMigrations: { _, _ in },
                 requireFreeSpace: { _, _, _ in },
-                runProcess: { _, _ in RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "") },
-                runRequired: { _, _ in },
-                runProcessToFile: { _, _, _ in },
+                directorySize: { url in
+                    try fileStore.recursiveRegularFileSize(at: url, skipsHiddenFiles: true)
+                },
                 replaceFile: { _, _ in },
                 writeRuntimeVersion: { _, _ in },
                 refreshCloudInitSeedIfNeeded: { _ in },

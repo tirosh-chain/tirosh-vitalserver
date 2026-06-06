@@ -5,21 +5,25 @@ import Bootstrap
 import Contracts
 import Domain
 import InboundAdapters
+import Workflow
 import Errors
 
 extension RuntimeLifecycle {
-    func runtimeInstallComposition() -> RuntimeInstallComposition {
+    func runtimeInstallComposition() -> RuntimeInstallComposition<RuntimeInstallSettings> {
         RuntimeInstallComposition(
             context: RuntimeInstallCompositionContext(
                 paths: paths,
-                installedPaths: installedPaths,
-                productRoot: productRoot,
-                rootfsBase: rootfsBase,
-                vmDisk: vmDisk
+                installedPaths: installedPaths
             ),
             operations: RuntimeInstallCompositionOperations(
                 fileStore: fileStore,
                 now: { clock.now },
+                loadInstallSettings: {
+                    try RuntimeInstallSettings.load(
+                        defaultVitalFilesDirectory: installedPaths.vitalFilesDirectory.path,
+                        fileStore: fileStore
+                    )
+                },
                 freshInstallPreflight: {
                     runtimeFreshInstallPreflight()
                 },
@@ -32,24 +36,25 @@ extension RuntimeLifecycle {
                 },
                 writeRuntimeStatus: runtimeStatusWriterAction(),
                 writeRuntimeProgress: runtimeProgressWriterAction(),
-                rotateRuntimeLogs: rotateRuntimeLogs,
-                requireFreeSpace: { url, minimumBytes, operation in
-                    try storageMaintenance().requireFreeSpace(
-                        at: url,
-                        minimumBytes: minimumBytes,
-                        operation: operation
-                    )
+                prepareInstallDirectories: { settings in
+                    try runtimeInstallDirectoryPreparer().prepare(settings: settings)
                 },
-                runRequired: runRequired,
-                runProcessToFile: runProcessToFile,
+                rotateRuntimeLogs: rotateRuntimeLogs,
+                configureDeployEnvironment: configureDeployEnvironment,
+                prepareInstalledExecutables: prepareInstalledExecutables,
+                provisionVMDisk: provisionVMDisk,
+                configureInstalledVMRuntime: configureInstalledVMRuntime,
+                createCloudInitSeed: createCloudInitSeed,
                 writeInstalledRuntimeVersion: {
                     try runtimeVersionStore().writeInstalledVersion(version: Constants.launcherVersion)
                 },
-                setStartOnBoot: setStartOnBoot,
-                startLaunchdService: startLaunchdService,
-                cleanupHostProxyPortBeforeStart: cleanupHostProxyPortBeforeStart,
-                waitForHealth: waitForHealth,
-                restrictSecretFile: restrictSecretFile,
+                configureInstalledPermissions: configureInstalledPermissions,
+                startInstalledServices: startInstalledServices,
+                applyStartOnBootPolicy: applyStartOnBootPolicy,
+                waitInstallRuntimeHealth: { settings in
+                    try waitForHealth(runtimeServiceRestartPolicy(settings))
+                },
+                cleanupInstallSettings: cleanupInstallSettings,
                 log: log
             )
         )
@@ -87,7 +92,7 @@ extension RuntimeLifecycle {
         RuntimeCloudInitSeedComposition.make(
             runtimeDirectory: installedPaths.runtimeDirectory,
             fileStore: fileStore,
-            runRequired: runRequired
+            buildSeedImage: buildCloudInitSeedImage
         )
     }
 
@@ -127,8 +132,7 @@ extension RuntimeLifecycle {
     func runtimeWatchdogRunner() -> RuntimeWatchdogRunnerComposition {
         RuntimeWatchdogRunnerComposition(
             context: RuntimeWatchdogRunnerCompositionContext(
-                installedPaths: installedPaths,
-                logsDirectory: logsDirectory
+                installedPaths: installedPaths
             ),
             operations: RuntimeWatchdogRunnerCompositionOperations(
                 fileStore: fileStore,
@@ -142,6 +146,9 @@ extension RuntimeLifecycle {
                 httpStatusCode: { url in
                     httpProber.statusCode(url: url)
                 },
+                proxyLivenessURL: { port in
+                    Constants.Runtime.proxyLivenessURL(port: port)
+                },
                 automaticRecoveryEnabled: {
                     automaticRecoveryEnabled()
                 },
@@ -151,8 +158,21 @@ extension RuntimeLifecycle {
                 restartService: { service in
                     try restartOrStartLaunchdService(service)
                 },
-                rotateRuntimeLogs: rotateRuntimeLogs,
-                collectGuestLogs: collectGuestLogs,
+                createLogsDirectory: {
+                    runtimeBestEffortResult {
+                        try fileStore.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+                    }
+                },
+                rotateRuntimeLogs: {
+                    runtimeBestEffortResult {
+                        try rotateRuntimeLogs()
+                    }
+                },
+                collectGuestLogs: {
+                    runtimeBestEffortResult {
+                        try collectGuestLogs()
+                    }
+                },
                 writeRuntimeStatus: runtimeStatusWriterAction(),
                 recordObservedStatus: { status, operation, message, snapshot in
                     runtimeObservedEventPublisher().recordObservedEventBestEffort(
@@ -178,6 +198,7 @@ extension RuntimeLifecycle {
                         eventType: eventType
                     )
                 },
+                recoveryWaitSeconds: Constants.Runtime.watchdogRecoveryWaitSeconds,
                 sleep: { interval in
                     sleeper.sleep(forTimeInterval: interval)
                 },
@@ -190,7 +211,13 @@ extension RuntimeLifecycle {
         RuntimeConfigureComposition.make(
             context: RuntimeConfigureCompositionContext(
                 installedPaths: installedPaths,
-                configURL: paths.config
+                configURL: paths.config,
+                maximumAllowedCPUCount: Constants.Defaults.maximumAllowedCPUCount(
+                    systemCPUCount: ProcessInfo.processInfo.processorCount
+                ),
+                maximumAllowedMemoryGiB: Constants.Defaults.maximumAllowedMemoryGiB(
+                    physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory
+                )
             ),
             operations: RuntimeConfigureCompositionOperations(
                 fileStore: fileStore,
@@ -256,6 +283,13 @@ extension RuntimeLifecycle {
                         bundlesDirectory: bundlesDirectory
                     )
                 },
+                materializeBundle: materializeRuntimeUpdateBundle,
+                executeMaterializationCleanupPlan: executeBundleMaterializationCleanupPlan,
+                removeMaterializedBundleTemporaryRoot: removeMaterializedBundleTemporaryRoot,
+                stageMaterializedBundle: stageRuntimeUpdateBundle,
+                validateUpdateArtifactPayload: validateRuntimeUpdateArtifactPayload,
+                replaceUpdateArtifacts: replaceRuntimeUpdateArtifacts,
+                runMigrations: runRuntimeUpdateMigrations,
                 requireFreeSpace: { url, minimumBytes, operation in
                     try storageMaintenance().requireFreeSpace(
                         at: url,
@@ -263,9 +297,9 @@ extension RuntimeLifecycle {
                         operation: operation.rawValue
                     )
                 },
-                runProcess: runProcess,
-                runRequired: runRequired,
-                runProcessToFile: runProcessToFile,
+                directorySize: { url in
+                    try fileStore.recursiveRegularFileSize(at: url, skipsHiddenFiles: true)
+                },
                 replaceFile: { source, destination in try storageMaintenance().replaceFile(from: source, to: destination) },
                 writeRuntimeVersion: { version, bundle in try writeRuntimeVersion(version: version, bundle: bundle) },
                 refreshCloudInitSeedIfNeeded: refreshCloudInitSeedIfNeeded,
@@ -278,60 +312,11 @@ extension RuntimeLifecycle {
     }
 
     func runtimeDatastoreRepairComposition() -> RuntimeDatastoreRepairComposition {
-        RuntimeDatastoreRepairComposition(
-            context: RuntimeDatastoreRepairCompositionContext(
-                guestRunDirectory: guestRunDirectory
-            ),
-            operations: RuntimeDatastoreRepairCompositionOperations(
-                fileStore: fileStore,
-                guestGateway: guestGateway,
-                requireCapability: {
-                    try requireGuestCapability(.repairDatastore)
-                },
-                isVMServiceLoaded: vmServiceLoadedAction(),
-                startVMService: startVMServiceAction(),
-                restartVMService: restartVMServiceAction(),
-                restartProxyService: {
-                    try restartOrStartLaunchdService(.proxy)
-                },
-                restartWatchdogService: {
-                    try restartOrStartLaunchdService(.watchdog)
-                },
-                waitForHealth: waitForHealth,
-                writeStatus: runtimeStatusWriterAction(),
-                requestID: requestIDAction(),
-                timestamp: isoTimestamp,
-                sleep: workflowPollingSleepAction(),
-                log: log
-            )
-        )
+        container.makeRuntimeDatastoreRepairComposition(actions: runtimeRepairCompositionActions())
     }
 
     func runtimeVMDiskRepairComposition() -> RuntimeVMDiskRepairComposition {
-        RuntimeVMDiskRepairComposition(
-            context: RuntimeVMDiskRepairCompositionContext(
-                installedPaths: installedPaths
-            ),
-            operations: RuntimeVMDiskRepairCompositionOperations(
-                fileStore: fileStore,
-                requireFreeSpace: { url, minimumBytes, operation in
-                    try storageMaintenance().requireFreeSpace(
-                        at: url,
-                        minimumBytes: minimumBytes,
-                        operation: operation
-                    )
-                },
-                runProcessToFile: runProcessToFile,
-                runRequired: runRequired,
-                createRedisBackup: createRedisBackup,
-                stopRuntimeServicesForVMDiskReplacement: stopRuntimeServicesForVMDiskReplacement,
-                startRuntimeServices: startRuntimeServices,
-                waitForHealth: waitForHealth,
-                writeStatus: runtimeStatusWriterAction(),
-                timestamp: backupTimestamp,
-                log: log
-            )
-        )
+        container.makeRuntimeVMDiskRepairComposition(actions: runtimeRepairCompositionActions())
     }
 
     func runtimeServiceControlRunner() -> RuntimeServiceControlRunner {
@@ -456,6 +441,59 @@ extension RuntimeLifecycle {
 }
 
 private extension RuntimeLifecycle {
+    func runtimeBestEffortResult(_ action: () throws -> Void) -> RuntimeBestEffortOperationResult {
+        do {
+            try action()
+            return .completed
+        } catch {
+            return .failed(reason: RuntimeErrorDescription.describe(error))
+        }
+    }
+
+    func runtimeRepairCompositionActions() -> RuntimeRepairCompositionActions {
+        RuntimeRepairCompositionActions(
+            requireDatastoreRepairCapability: {
+                try requireGuestCapability(.repairDatastore)
+            },
+            requireRedisBackupCapability: {
+                try requireGuestCapability(.redisBackup)
+            },
+            isVMServiceLoaded: vmServiceLoadedAction(),
+            startVMService: startVMServiceAction(),
+            restartVMService: restartVMServiceAction(),
+            restartProxyService: {
+                try restartOrStartLaunchdService(.proxy)
+            },
+            restartWatchdogService: {
+                try restartOrStartLaunchdService(.watchdog)
+            },
+            waitForHealth: waitForHealth,
+            writeStatus: runtimeStatusWriterAction(),
+            requestID: requestIDAction(),
+            timestamp: isoTimestamp,
+            backupTimestamp: backupTimestamp,
+            requireFreeSpace: { url, minimumBytes, operation in
+                try storageMaintenance().requireFreeSpace(
+                    at: url,
+                    minimumBytes: minimumBytes,
+                    operation: operation
+                )
+            },
+            createReplacementVMDisk: createReplacementVMDisk,
+            createRedisBackup: {
+                do {
+                    try createRedisBackup()
+                    return .completed
+                } catch {
+                    return .failed(reason: RuntimeErrorDescription.describe(error))
+                }
+            },
+            stopRuntimeServicesForVMDiskReplacement: stopRuntimeServicesForVMDiskReplacement,
+            startRuntimeServices: startRuntimeServices,
+            log: log
+        )
+    }
+
     func runtimeWorkflowStatusReporter() -> RuntimeWorkflowStatusReporter {
         RuntimeWorkflowStatusReporterComposition.make(
             writeStatus: runtimeStatusWriterAction(),

@@ -21,8 +21,8 @@ public struct LauncherPaths {
     }
 
     public static func resolve(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        environment: [String: String],
+        homeDirectory: URL,
         vmHomeEnvironmentKey: String,
         defaultHomePathComponents: [String]
     ) -> LauncherPaths {
@@ -37,13 +37,6 @@ public struct LauncherPaths {
             installed: installed,
             config: installed.vmConfig,
             pidFile: installed.pidFile
-        )
-    }
-
-    public static func resolve() -> LauncherPaths {
-        resolve(
-            vmHomeEnvironmentKey: Constants.Environment.vmHome,
-            defaultHomePathComponents: Constants.Paths.defaultHomePathComponents
         )
     }
 

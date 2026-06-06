@@ -2,10 +2,10 @@
 
 Vital Server Helper는 host platform과 service appliance를 분리합니다.
 
-Mac hardware appliance는 1차 현장 배포 target입니다. Linux VM은 macOS/Linux/Windows
-host 어디서든 동일한 Vital Server Helper service appliance를 실행하기 위한 guest
-표준화 계층입니다. PWA는 host별 native UI 중복을 피하고 같은 Runtime Control UI를
-제공하기 위한 primary UI입니다.
+Mac hardware appliance는 공개 release의 1차 현장 배포 target입니다. Linux VM은
+macOS/Linux/Windows host 어디서든 동일한 Vital Server Helper service appliance를
+실행하기 위한 architecture direction입니다. PWA는 host별 native UI 중복을 피하고
+같은 Runtime Control UI를 제공하기 위한 운영 UI입니다.
 
 ## 핵심 구조
 
@@ -15,7 +15,7 @@ Browser / PWA / Native shell
       -> Host runtime adapter
           -> VM provider
               -> Linux guest service stack
-                  -> VitalServer wrapper
+                  -> Vital Server wrapper
                   -> Redis
                   -> Audit Proxy
                   -> VitalDB Observer
@@ -27,25 +27,24 @@ Browser / PWA / Native shell
 Linux VM은 host OS를 Linux로 한정하기 위한 선택이 아닙니다.
 
 Linux VM은 macOS/Linux/Windows 어디서든 동일한 Vital Server Helper service appliance를
-실행하기 위한 guest 표준화 계층입니다. upstream VitalServer의 Windows 중심 전제는
-wrapper와 guest service stack에서 흡수하고, host별 차이는 VM provider adapter가
-처리합니다.
+실행하기 위한 guest 표준화 계층입니다. Vital Server integration은 guest service
+stack의 명시 contract 뒤에 두고, host별 차이는 VM provider adapter가 처리합니다.
 
-## Upstream compatibility evidence
+## Vital Server Integration Inputs
 
-upstream VitalServer는 Linux native compatible이라고 보기 어렵습니다.
+Vital Server Helper는 Vital Server가 제공하는 연구와 데이터 수집 기능을 전제로,
+현장 appliance 운영에 필요한 runtime 입력을 명시 contract로 연결합니다.
 
-| 근거 | 의미 |
+| 입력 | 의미 |
 |---|---|
-| `vendor/vitalserver/vitalserver-old/server_start.bat` | upstream 실행 스크립트가 Windows batch 기준 |
-| `vendor/vitalserver/vitalserver-old/install/*.msi` | Node와 Redis 설치물이 Windows MSI 기준 |
-| `vendor/vitalserver/vitalserver-old/service/include/config.js` | 기본 저장 경로가 `Z:/` drive 기준 |
-| `apps/vitalserver/docker/Dockerfile` | Linux container 안에 `Z:` symlink를 만들어 upstream path 전제를 흡수 |
-| `apps/vitalserver/runtime/node-preload.js` | Redis host/port, CPU-count assumption, admin password 같은 runtime 전제를 보정 |
+| launch entrypoint | service 시작 방식을 guest runtime에서 일관되게 실행 |
+| runtime dependencies | Node, Redis, proxy, sidecar dependency를 guest 기준으로 묶음 |
+| storage path | `.vital` 저장 위치를 host/guest contract로 명시 |
+| container wrapper | guest 안에서 Vital Server integration surface를 고정 |
+| runtime preload | Redis host/port, CPU-count, admin password 같은 runtime 입력을 명시화 |
 
-따라서 Linux VM은 upstream이 Linux 친화적이라서 선택된 것이 아닙니다. Windows-oriented
-upstream을 제품용 Linux guest service stack으로 정규화하고, 그 guest를 여러 host
-platform에서 동일하게 운영하기 위한 선택입니다.
+따라서 Linux VM은 Vital Server의 목적이나 구현 방향에 대한 판단이 아닙니다. 병원
+현장 appliance에서 같은 운영 표면을 제공하기 위한 integration boundary입니다.
 
 ## Linux guest strength
 
@@ -53,11 +52,11 @@ Linux guest는 Vital Server Helper backend service stack을 고정하기 좋은 
 
 | 강점 | 설명 |
 |---|---|
-| backend service appliance 운영체제 | desktop OS가 아니라 VitalServer backend stack을 고정하는 guest runtime으로 사용 |
+| backend service appliance 운영체제 | desktop OS가 아니라 Vital Server backend stack을 고정하는 guest runtime으로 사용 |
 | container/service 생태계 | Docker/Compose, nginx, Redis, Node service, sidecar, observer, testkit을 같은 guest 기준으로 묶기 쉬움 |
 | headless service 운영 | systemd, journald, timer, log collection, file permission, mount, network namespace 같은 운영 모델이 명확함 |
 | image/update 재현성 | golden rootfs, cloud-init, Docker image bundle, offline update bundle과 잘 맞음 |
-| upstream 보정 단일화 | Windows path, Windows installer, Redis host, CPU-count assumption을 각 host별로 고치지 않고 guest wrapper/preload에서 흡수 |
+| integration input 명시화 | storage path, Redis host, CPU-count, credential input을 host별 추측 없이 guest wrapper/preload에서 명시 |
 
 ## Host platform strengths
 
@@ -98,3 +97,21 @@ vitaldb-observer
 ```
 
 Log, filename, missing file, old command output에서 domain state를 추측하지 않습니다.
+
+## Layer Boundaries
+
+Runtime control flow는 상태 소유자와 판단 책임을 분리합니다.
+
+| Layer | 책임 |
+|---|---|
+| Contracts | state, event, command, document type을 정의하고 실패/부재/오래됨/빈 값의 의미를 보존 |
+| Domain/Core | complete explicit input만 받아 policy, guard, invariant, state transition을 순수하게 계산 |
+| Application/Usecase | stateless decision layer. explicit state와 port result를 받아 Domain/Core를 호출하고 command/effect/event를 결정 |
+| Workflow | stateful orchestration layer. Usecase 호출 순서, wait/retry loop, progress, persisted workflow status를 관리 |
+| Adapters | inbound/outbound boundary에서 decode, format, filesystem, process, network, repository effect를 수행 |
+| Bootstrap | concrete dependency graph, constants, path composition만 조립 |
+| Hosts | process/environment/filesystem boundary와 host-owned effect closure를 연결 |
+
+Usecase는 class나 hidden state로 operation state를 소유하지 않습니다. Workflow는 operation
+state와 진행률을 관리할 수 있지만, domain 판단을 직접 수행하거나 Host effect를 직접 실행하지
+않습니다. Bootstrap은 실행 경계가 아니라 조립 경계입니다.

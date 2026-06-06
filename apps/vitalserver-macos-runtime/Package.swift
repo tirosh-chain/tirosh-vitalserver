@@ -37,7 +37,7 @@ let package = Package(
         ),
         .target(
             name: "Workflow",
-            dependencies: []
+            dependencies: ["Contracts", "Errors", "Domain", "Application"]
         ),
         .target(
             name: "InboundAdapters",
@@ -59,6 +59,7 @@ let package = Package(
                 "Errors",
                 "Domain",
                 "Application",
+                "Workflow",
                 "InboundAdapters",
                 "OutboundAdapters",
             ]
@@ -75,6 +76,7 @@ let package = Package(
                 "Errors",
                 "Domain",
                 "Application",
+                "Workflow",
                 "InboundAdapters",
                 "OutboundAdapters",
                 "Bootstrap",
@@ -92,7 +94,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ContractsTests",
-            dependencies: ["Contracts"],
+            dependencies: ["Contracts", "Errors"],
             resources: [
                 .process("Fixtures")
             ]
@@ -106,12 +108,13 @@ let package = Package(
             dependencies: ["Contracts", "Errors", "Domain", "Application"]
         ),
         .testTarget(
-            name: "BootstrapTests",
+            name: "WorkflowTests",
             dependencies: [
                 "Contracts",
                 "Errors",
                 "Domain",
                 "Application",
+                "Workflow",
                 "InboundAdapters",
                 "OutboundAdapters",
                 "Bootstrap",
@@ -124,6 +127,7 @@ let package = Package(
                 "Errors",
                 "Domain",
                 "Application",
+                "Workflow",
                 "InboundAdapters",
                 "OutboundAdapters",
                 "Bootstrap",
@@ -148,6 +152,7 @@ let package = Package(
                 "Errors",
                 "Domain",
                 "Application",
+                "Workflow",
                 "InboundAdapters",
                 "OutboundAdapters",
                 "Bootstrap",

@@ -57,8 +57,7 @@ public enum Constants {
         public static let minimumCPUCount = 7
         public static let maximumCPUCount = 64
         public static let minimumSystemCPUCountForDynamicLimit = 8
-        public static var maximumAllowedCPUCount: Int {
-            let systemCPUCount = ProcessInfo.processInfo.processorCount
+        public static func maximumAllowedCPUCount(systemCPUCount: Int) -> Int {
             guard systemCPUCount >= minimumSystemCPUCountForDynamicLimit else {
                 return minimumCPUCount
             }
@@ -72,21 +71,21 @@ public enum Constants {
         public static let maximumMemoryGiB = 64
         public static let reservedHostMemoryGiB = 4
         public static let memoryStepGiB = 4
-        public static var maximumAllowedMemoryGiB: Int {
-            let physicalMemoryGiB = Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824)
+        public static func maximumAllowedMemoryGiB(physicalMemoryBytes: UInt64) -> Int {
+            let physicalMemoryGiB = Int(physicalMemoryBytes / 1_073_741_824)
             let hostAwareMaximum = physicalMemoryGiB - reservedHostMemoryGiB
             let cappedMaximum = min(maximumMemoryGiB, hostAwareMaximum)
             let steppedMaximum = (cappedMaximum / memoryStepGiB) * memoryStepGiB
             return max(minimumMemoryGiB, steppedMaximum)
         }
-        public static var defaultMemoryGiB: Int {
-            min(8, maximumAllowedMemoryGiB)
+        public static func defaultMemoryGiB(physicalMemoryBytes: UInt64) -> Int {
+            min(8, maximumAllowedMemoryGiB(physicalMemoryBytes: physicalMemoryBytes))
         }
-        public static var maximumAllowedMemoryMiB: UInt64 {
-            UInt64(maximumAllowedMemoryGiB * 1024)
+        public static func maximumAllowedMemoryMiB(physicalMemoryBytes: UInt64) -> UInt64 {
+            UInt64(maximumAllowedMemoryGiB(physicalMemoryBytes: physicalMemoryBytes) * 1024)
         }
-        public static var memoryMiB: UInt64 {
-            UInt64(defaultMemoryGiB * 1024)
+        public static func memoryMiB(physicalMemoryBytes: UInt64) -> UInt64 {
+            UInt64(defaultMemoryGiB(physicalMemoryBytes: physicalMemoryBytes) * 1024)
         }
         public static let sharedDirectoryTag = "tirosh"
         public static let sharedDirectoryGuestMountPath = "/mnt/tirosh"

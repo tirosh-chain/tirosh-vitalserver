@@ -1,6 +1,7 @@
 import Contracts
 import Application
 import Domain
+import Workflow
 import XCTest
 import Errors
 
@@ -17,6 +18,20 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertTrue(harness.restartedServices.isEmpty)
         XCTAssertTrue(harness.writtenStatuses.isEmpty)
         XCTAssertEqual(harness.lifecycleEvents.map(\.eventType), [.watchdogSkipped])
+    }
+
+    func testPrepareLogFailuresAreReportedFromExplicitResultsWithoutStoppingWatchdog() throws {
+        let harness = WatchdogHarness(snapshots: [healthSnapshot()])
+        harness.createLogsDirectoryResult = .failed(reason: "mkdir denied")
+        harness.rotateRuntimeLogsResult = .failed(reason: "rotate denied")
+        harness.collectGuestLogsResult = .failed(reason: "collect denied")
+
+        try harness.runner.run()
+
+        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.healthy])
+        XCTAssertTrue(harness.logs.contains("watchdog log directory preparation failed error=mkdir denied"))
+        XCTAssertTrue(harness.logs.contains("watchdog log rotation failed error=rotate denied"))
+        XCTAssertTrue(harness.logs.contains("watchdog guest log collection failed error=collect denied"))
     }
 
     func testHealthyRuntimeWritesHealthyStatusWithoutRecovery() throws {
@@ -162,6 +177,53 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.writtenStatuses.map(\.status), [.degraded])
         XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoveryDeferred])
     }
+
+    func testVMLifecycleMarkFailureKeepsOriginalHealthySnapshotVisible() throws {
+        let lifecycle = RuntimeVMLifecycleDocument(
+            state: .bootstrapping,
+            operation: .startServices,
+            startedAt: "2026-05-31T00:00:00Z",
+            updatedAt: "2026-05-31T00:00:01Z",
+            deadlineAt: "2026-05-31T00:10:00Z"
+        )
+        let harness = WatchdogHarness(
+            lifecycleMarkError: WatchdogTestError.lifecycleWriteFailed,
+            snapshots: [
+                healthSnapshot(vmLifecycle: lifecycle, vmState: .starting),
+            ]
+        )
+
+        try harness.runner.run()
+
+        XCTAssertEqual(harness.healthCalls, 1)
+        XCTAssertEqual(harness.runningLifecycleStates, [.bootstrapping])
+        XCTAssertTrue(harness.lifecycleEvents.isEmpty)
+        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.healthy])
+        XCTAssertEqual(harness.observedStatuses.last?.snapshot.vmLifecycle?.state, .bootstrapping)
+        XCTAssertTrue(harness.logs.contains { $0.contains("watchdog failed to mark VM lifecycle running") })
+    }
+
+    func testVMRestartFailureWritesCommandFailureAndStopsRecoverySequence() throws {
+        let harness = WatchdogHarness(
+            vmRestartError: WatchdogTestError.vmRestartFailed,
+            snapshots: [
+                healthSnapshot(
+                    vmLifecycle: runningLifecycle(),
+                    hostProxyHTTP: "502",
+                    guestHTTP: "503",
+                    failureReasons: [.hostProxyHTTP("502"), .guestHTTP("503")]
+                ),
+            ]
+        )
+
+        try harness.runner.run()
+
+        XCTAssertEqual(harness.vmRuntimeRestartCalls, 1)
+        XCTAssertTrue(harness.restartedServices.isEmpty)
+        XCTAssertTrue(harness.sleepCalls.isEmpty)
+        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.recovering, .critical])
+        XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoveryPlanned, .serviceRestartDispatched, .runtimeCommandFailed])
+    }
 }
 
 private final class WatchdogHarness {
@@ -187,26 +249,45 @@ private final class WatchdogHarness {
     ] = []
     var lifecycleEvents: [(operation: RuntimeOperation, message: String, eventType: RuntimeEventType)] = []
     var logs: [String] = []
+    var createLogsDirectoryResult: RuntimeBestEffortOperationResult = .completed
+    var rotateRuntimeLogsResult: RuntimeBestEffortOperationResult = .completed
+    var collectGuestLogsResult: RuntimeBestEffortOperationResult = .completed
 
     private let activeOperation: RuntimeOperation?
     private let automaticRecoveryEnabled: Bool
+    private let lifecycleMarkError: Error?
+    private let vmRestartError: Error?
+    private let proxyRestartError: Error?
     private var snapshots: [RuntimeHealthSnapshot]
 
     init(
         activeOperation: RuntimeOperation? = nil,
         automaticRecoveryEnabled: Bool = true,
+        lifecycleMarkError: Error? = nil,
+        vmRestartError: Error? = nil,
+        proxyRestartError: Error? = nil,
         snapshots: [RuntimeHealthSnapshot] = [healthSnapshot()]
     ) {
         self.activeOperation = activeOperation
         self.automaticRecoveryEnabled = automaticRecoveryEnabled
+        self.lifecycleMarkError = lifecycleMarkError
+        self.vmRestartError = vmRestartError
+        self.proxyRestartError = proxyRestartError
         self.snapshots = snapshots
     }
 
     var runner: WatchdogHarnessRunner {
         WatchdogHarnessRunner(
-            operations: RunWatchdogRuntimeOperations(
-                prepareLogs: {
+            operations: RuntimeWatchdogActions(
+                createLogsDirectory: {
                     self.prepareLogCalls += 1
+                    return self.createLogsDirectoryResult
+                },
+                rotateRuntimeLogs: {
+                    self.rotateRuntimeLogsResult
+                },
+                collectGuestLogs: {
+                    self.collectGuestLogsResult
                 },
                 activeManagedOperation: {
                     self.activeOperation
@@ -215,9 +296,6 @@ private final class WatchdogHarness {
                     self.healthCalls += 1
                     return self.snapshots.removeFirst()
                 },
-                executeInitialSnapshotDecision: { decision, snapshot in
-                    try self.executeInitialSnapshotDecision(decision, snapshot: snapshot)
-                },
                 proxyLivenessHTTP: { port in
                     self.proxyLivenessPorts.append(port)
                     return "204"
@@ -225,11 +303,39 @@ private final class WatchdogHarness {
                 automaticRecoveryEnabled: {
                     self.automaticRecoveryEnabled
                 },
-                executeRecoveryDecision: { decision, snapshot in
-                    try self.executeRecoveryDecision(decision, snapshot: snapshot)
+                restartVMRuntime: {
+                    self.vmRuntimeRestartCalls += 1
+                    if let vmRestartError = self.vmRestartError {
+                        throw vmRestartError
+                    }
+                },
+                restartService: { service in
+                    self.restartedServices.append(service)
+                    if let proxyRestartError = self.proxyRestartError {
+                        throw proxyRestartError
+                    }
+                },
+                writeRuntimeStatus: { status, operation, message in
+                    self.writtenStatuses.append((status, operation, message))
+                },
+                recordObservedStatus: { status, operation, message, snapshot in
+                    self.observedStatuses.append((status, operation, message, snapshot))
+                },
+                recordObservedEvent: { status, operation, message, snapshot, eventType in
+                    self.observedEvents.append((status, operation, message, snapshot, eventType))
                 },
                 recordLifecycleEvent: { operation, message, eventType in
                     self.lifecycleEvents.append((operation, message, eventType))
+                },
+                markVMLifecycleRunning: { lifecycle, _ in
+                    self.runningLifecycleStates.append(lifecycle.state)
+                    if let lifecycleMarkError = self.lifecycleMarkError {
+                        throw lifecycleMarkError
+                    }
+                },
+                recoveryWaitSeconds: watchdogRecoveryWaitSeconds,
+                sleep: { seconds in
+                    self.sleepCalls.append(seconds)
                 }
             ),
             log: { message in
@@ -238,125 +344,25 @@ private final class WatchdogHarness {
             printLine: { _ in }
         )
     }
-
-    private func executeInitialSnapshotDecision(
-        _ decision: WatchdogRuntimeInitialSnapshotDecision,
-        snapshot: RuntimeHealthSnapshot
-    ) throws -> RunWatchdogRuntimeInitialSnapshotExecutionResult {
-        switch decision {
-        case .healthy(let plan):
-            let finalized = completeHealthyVMLifecycleIfNeeded(snapshot)
-            writtenStatuses.append((.healthy, .watchdog, plan.statusMessage))
-            observedStatuses.append((.healthy, .watchdog, plan.statusMessage, finalized))
-            return .handled
-        case .recoverySuppressed(let plan):
-            writeObservedStatus(plan, snapshot: snapshot)
-            return .handled
-        case .recoveryDeferred(let plan):
-            writeObservedStatus(plan, snapshot: snapshot)
-            return .handled
-        case .needsRecoveryProbe:
-            return .needsRecoveryProbe
-        }
-    }
-
-    private func writeObservedStatus(
-        _ plan: WatchdogRuntimeObservedStatusPlan,
-        snapshot: RuntimeHealthSnapshot
-    ) {
-        if let logMessage = plan.logMessage {
-            logs.append(logMessage)
-        }
-        writtenStatuses.append((plan.status, .watchdog, plan.message))
-        observedStatuses.append((plan.status, .watchdog, plan.message, snapshot))
-        observedEvents.append((plan.status, .watchdog, plan.message, snapshot, plan.eventType))
-    }
-
-    private func completeHealthyVMLifecycleIfNeeded(_ snapshot: RuntimeHealthSnapshot) -> RuntimeHealthSnapshot {
-        let plan = WatchdogRuntimeUseCase().lifecycleMarkPlan(snapshot)
-        guard let lifecycle = plan.lifecycle else {
-            return snapshot
-        }
-        runningLifecycleStates.append(lifecycle.state)
-        lifecycleEvents.append((.watchdog, plan.eventMessage, .statusChanged))
-        healthCalls += 1
-        return snapshots.removeFirst()
-    }
-
-    private func executeRecoveryDecision(
-        _ decision: WatchdogRuntimeRecoveryDecision,
-        snapshot: RuntimeHealthSnapshot
-    ) throws {
-        switch decision {
-        case .healthy(let plan):
-            let finalized = completeHealthyVMLifecycleIfNeeded(snapshot)
-            writtenStatuses.append((.healthy, .watchdog, plan.statusMessage))
-            observedStatuses.append((.healthy, .watchdog, plan.statusMessage, finalized))
-        case .recoveryDisabled(let plan):
-            writeTerminalRecoveryStatus(plan, snapshot: snapshot)
-        case .recoveryDeferred(let plan):
-            writeObservedStatus(plan, snapshot: snapshot)
-        case .recoverySuppressed(let plan):
-            writeObservedStatus(plan, snapshot: snapshot)
-        case .unrecoverable(let plan):
-            writeTerminalRecoveryStatus(plan, snapshot: snapshot)
-        case .recover(let plan):
-            try recover(plan, initial: snapshot)
-        }
-    }
-
-    private func writeTerminalRecoveryStatus(
-        _ plan: WatchdogRuntimeTerminalRecoveryPlan,
-        snapshot: RuntimeHealthSnapshot
-    ) {
-        logs.append(plan.detectedLogMessage)
-        writtenStatuses.append((.recovering, .watchdog, plan.startedStatusMessage))
-        observedStatuses.append((.recovering, .watchdog, plan.startedStatusMessage, snapshot))
-        writtenStatuses.append((plan.finalStatus, .watchdog, plan.finalStatusMessage))
-        observedStatuses.append((plan.finalStatus, .watchdog, plan.finalStatusMessage, snapshot))
-    }
-
-    private func recover(
-        _ plan: WatchdogRuntimeRecoveryExecutionPlan,
-        initial: RuntimeHealthSnapshot
-    ) throws {
-        let useCase = WatchdogRuntimeUseCase()
-        logs.append(plan.detectedLogMessage)
-        writtenStatuses.append((.recovering, .watchdog, plan.startedStatusMessage))
-        observedStatuses.append((.recovering, .watchdog, plan.startedStatusMessage, initial))
-        logs.append(plan.planLogMessage)
-        observedEvents.append((.recovering, .watchdog, plan.plannedEventMessage, initial, .recoveryPlanned))
-
-        if let vmRestartEventMessage = plan.vmRestartEventMessage {
-            observedEvents.append((.recovering, .watchdog, vmRestartEventMessage, initial, .serviceRestartDispatched))
-            vmRuntimeRestartCalls += 1
-        }
-        if let proxyRestartEventMessage = plan.proxyRestartEventMessage {
-            observedEvents.append((.recovering, .watchdog, proxyRestartEventMessage, initial, .serviceRestartDispatched))
-            restartedServices.append(.proxy)
-        }
-
-        sleepCalls.append(watchdogRecoveryWaitSeconds)
-        healthCalls += 1
-        let recovered = snapshots.removeFirst()
-        let completionPlan = useCase.recoveryCompletionPlan(recovered)
-        writtenStatuses.append((completionPlan.status, .watchdog, completionPlan.message))
-        observedStatuses.append((completionPlan.status, .watchdog, completionPlan.message, recovered))
-    }
 }
 
 private struct WatchdogHarnessRunner {
-    let operations: RunWatchdogRuntimeOperations
+    let operations: RuntimeWatchdogActions
     let log: (String) -> Void
     let printLine: (String) -> Void
 
     func run() throws {
-        try RunWatchdogRuntimeUseCase().run(
+        try RuntimeWatchdogRunner().run(
             operations: operations,
             log: log,
             printLine: printLine
         )
     }
+}
+
+private enum WatchdogTestError: Error {
+    case lifecycleWriteFailed
+    case vmRestartFailed
 }
 
 private func healthSnapshot(

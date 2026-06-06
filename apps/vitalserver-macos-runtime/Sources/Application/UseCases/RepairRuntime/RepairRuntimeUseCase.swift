@@ -69,56 +69,34 @@ public struct RepairRuntimeVMDiskExecutionPlan: Equatable, Sendable {
     }
 }
 
-public struct RepairRuntimeProcessOutputPlan: Equatable, Sendable {
-    public let executable: String
-    public let arguments: [String]
-    public let output: URL
-
-    public init(executable: String, arguments: [String], output: URL) {
-        self.executable = executable
-        self.arguments = arguments
-        self.output = output
-    }
-}
-
-public struct RepairRuntimeProcessPlan: Equatable, Sendable {
-    public let executable: String
-    public let arguments: [String]
-
-    public init(executable: String, arguments: [String]) {
-        self.executable = executable
-        self.arguments = arguments
-    }
-}
-
 public struct RepairRuntimeVMDiskReplacementBuildPlan: Equatable, Sendable {
+    public let rootfsBase: URL
     public let vmDiskDirectory: URL
     public let backupsDirectory: URL
     public let temporaryDisk: URL
     public let freeSpaceDirectory: URL
     public let requiredFreeSpaceBytes: UInt64
     public let operation: RuntimeOperation
-    public let decompression: RepairRuntimeProcessOutputPlan
-    public let resize: RepairRuntimeProcessPlan
+    public let targetDiskGiB: Int
 
     public init(
+        rootfsBase: URL,
         vmDiskDirectory: URL,
         backupsDirectory: URL,
         temporaryDisk: URL,
         freeSpaceDirectory: URL,
         requiredFreeSpaceBytes: UInt64,
         operation: RuntimeOperation,
-        decompression: RepairRuntimeProcessOutputPlan,
-        resize: RepairRuntimeProcessPlan
+        targetDiskGiB: Int
     ) {
+        self.rootfsBase = rootfsBase
         self.vmDiskDirectory = vmDiskDirectory
         self.backupsDirectory = backupsDirectory
         self.temporaryDisk = temporaryDisk
         self.freeSpaceDirectory = freeSpaceDirectory
         self.requiredFreeSpaceBytes = requiredFreeSpaceBytes
         self.operation = operation
-        self.decompression = decompression
-        self.resize = resize
+        self.targetDiskGiB = targetDiskGiB
     }
 }
 
@@ -190,31 +168,6 @@ public enum RepairRuntimeRedisBackupResultDecision: Equatable, Sendable {
     case readFailed(message: String)
 }
 
-public struct RuntimeRedisBackupContext: Equatable, Sendable {
-    public let guestRunDirectory: URL
-    public let redisBackupsDirectory: URL
-    public let requestFileName: String
-    public let resultFileName: String
-    public let waitTimeoutSeconds: TimeInterval
-    public let pollIntervalSeconds: TimeInterval
-
-    public init(
-        guestRunDirectory: URL,
-        redisBackupsDirectory: URL,
-        requestFileName: String,
-        resultFileName: String,
-        waitTimeoutSeconds: TimeInterval,
-        pollIntervalSeconds: TimeInterval
-    ) {
-        self.guestRunDirectory = guestRunDirectory
-        self.redisBackupsDirectory = redisBackupsDirectory
-        self.requestFileName = requestFileName
-        self.resultFileName = resultFileName
-        self.waitTimeoutSeconds = waitTimeoutSeconds
-        self.pollIntervalSeconds = pollIntervalSeconds
-    }
-}
-
 public struct RuntimeRedisBackupResult: Equatable, Sendable {
     public let message: String
     public let archive: String?
@@ -222,49 +175,6 @@ public struct RuntimeRedisBackupResult: Equatable, Sendable {
     public init(message: String, archive: String?) {
         self.message = message
         self.archive = archive
-    }
-}
-
-public struct RuntimeRedisBackupOperations {
-    public let requireCapability: () throws -> Void
-    public let createDirectory: (URL, Bool) throws -> Void
-    public let removePreviousResult: (URL) throws -> Void
-    public let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
-    public let requestID: () -> String
-    public let timestamp: () -> String
-    public let writeRequest: (RedisBackupRequestDocument, URL) throws -> Void
-    public let isVMServiceLoaded: () -> Bool
-    public let startVMService: () throws -> Void
-    public let loadResult: (URL) -> RuntimeRedisBackupResultLoadResult
-    public let sleep: (TimeInterval) -> Void
-    public let log: (String) -> Void
-
-    public init(
-        requireCapability: @escaping () throws -> Void,
-        createDirectory: @escaping (URL, Bool) throws -> Void,
-        removePreviousResult: @escaping (URL) throws -> Void,
-        writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
-        requestID: @escaping () -> String,
-        timestamp: @escaping () -> String,
-        writeRequest: @escaping (RedisBackupRequestDocument, URL) throws -> Void,
-        isVMServiceLoaded: @escaping () -> Bool,
-        startVMService: @escaping () throws -> Void,
-        loadResult: @escaping (URL) -> RuntimeRedisBackupResultLoadResult,
-        sleep: @escaping (TimeInterval) -> Void,
-        log: @escaping (String) -> Void
-    ) {
-        self.requireCapability = requireCapability
-        self.createDirectory = createDirectory
-        self.removePreviousResult = removePreviousResult
-        self.writeStatus = writeStatus
-        self.requestID = requestID
-        self.timestamp = timestamp
-        self.writeRequest = writeRequest
-        self.isVMServiceLoaded = isVMServiceLoaded
-        self.startVMService = startVMService
-        self.loadResult = loadResult
-        self.sleep = sleep
-        self.log = log
     }
 }
 
@@ -311,45 +221,6 @@ public struct RepairRuntimeWaitResultPlan: Equatable, Sendable {
         self.logMessage = logMessage
         self.failureMessage = failureMessage
     }
-}
-
-public struct DatastoreRepairWaitExecutionContext: Equatable, Sendable {
-    public let waitTimeoutSeconds: Double
-    public let pollIntervalSeconds: Double
-    public let progressEveryAttempts: Int
-
-    public init(
-        waitTimeoutSeconds: Double,
-        pollIntervalSeconds: Double,
-        progressEveryAttempts: Int
-    ) {
-        self.waitTimeoutSeconds = waitTimeoutSeconds
-        self.pollIntervalSeconds = pollIntervalSeconds
-        self.progressEveryAttempts = progressEveryAttempts
-    }
-}
-
-public struct DatastoreRepairWaitOperations {
-    public let loadResult: () -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>
-    public let writeStatusBestEffort: (RuntimeStatusLevel, RuntimeOperation, String) -> Void
-    public let sleep: () -> Void
-    public let log: (String) -> Void
-
-    public init(
-        loadResult: @escaping () -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>,
-        writeStatusBestEffort: @escaping (RuntimeStatusLevel, RuntimeOperation, String) -> Void,
-        sleep: @escaping () -> Void,
-        log: @escaping (String) -> Void
-    ) {
-        self.loadResult = loadResult
-        self.writeStatusBestEffort = writeStatusBestEffort
-        self.sleep = sleep
-        self.log = log
-    }
-}
-
-public enum DatastoreRepairWaitExecutionOutcome: Equatable, Sendable {
-    case completed
 }
 
 public struct RepairRuntimeFailureStatusPlan: Equatable, Sendable {
@@ -428,27 +299,18 @@ public struct RepairRuntimeUseCase {
         rootfsBase: URL,
         vmDisk: URL,
         backupsDirectory: URL,
-        gunzipExecutable: String,
-        truncateExecutable: String,
         repairPlan: RepairRuntimeVMDiskPlan,
         executionPlan: RepairRuntimeVMDiskExecutionPlan
     ) -> RepairRuntimeVMDiskReplacementBuildPlan {
         RepairRuntimeVMDiskReplacementBuildPlan(
+            rootfsBase: rootfsBase,
             vmDiskDirectory: vmDisk.deletingLastPathComponent(),
             backupsDirectory: backupsDirectory,
             temporaryDisk: executionPlan.temporaryDisk,
             freeSpaceDirectory: vmDisk.deletingLastPathComponent(),
             requiredFreeSpaceBytes: repairPlan.requiredFreeSpaceBytes,
             operation: repairPlan.operation,
-            decompression: RepairRuntimeProcessOutputPlan(
-                executable: gunzipExecutable,
-                arguments: ["-c", rootfsBase.path],
-                output: executionPlan.temporaryDisk
-            ),
-            resize: RepairRuntimeProcessPlan(
-                executable: truncateExecutable,
-                arguments: ["-s", "\(repairPlan.targetDiskGiB)G", executionPlan.temporaryDisk.path]
-            )
+            targetDiskGiB: repairPlan.targetDiskGiB
         )
     }
 
@@ -607,39 +469,6 @@ public struct RepairRuntimeUseCase {
         }
     }
 
-    @discardableResult
-    public func waitForDatastoreRepairResult(
-        request: RuntimeDatastoreRepairRequest,
-        context: DatastoreRepairWaitExecutionContext,
-        operations: DatastoreRepairWaitOperations
-    ) throws -> DatastoreRepairWaitExecutionOutcome {
-        operations.log(datastoreRepairWaitStartedLogMessage(timeoutSeconds: context.waitTimeoutSeconds))
-        let waitResult = DatastoreRepairWaiter.wait(
-            expectedRequestId: request.id,
-            configuration: datastoreRepairWaitConfiguration(context),
-            loadResult: operations.loadResult,
-            onProgress: { message in
-                let progressPlan = datastoreRepairWaitProgressPlan(message: message)
-                operations.log(message)
-                operations.writeStatusBestEffort(
-                    progressPlan.status,
-                    progressPlan.operation,
-                    progressPlan.message
-                )
-            },
-            sleep: operations.sleep
-        )
-
-        let resultPlan = datastoreRepairWaitResultPlan(waitResult)
-        if let logMessage = resultPlan.logMessage {
-            operations.log(logMessage)
-        }
-        if let failureMessage = resultPlan.failureMessage {
-            throw RepairRuntimeUseCaseError.operationFailed(failureMessage)
-        }
-        return .completed
-    }
-
     public func redisBackupRequestedPlan() -> RepairRuntimeLoggedStatusPlan {
         RepairRuntimeLoggedStatusPlan(
             logMessage: "redis backup requested",
@@ -660,61 +489,6 @@ public struct RepairRuntimeUseCase {
             statusMessage: "redis backup timed out",
             failureMessage: "redis backup timed out"
         )
-    }
-
-    public func createRedisBackup(
-        context: RuntimeRedisBackupContext,
-        operations: RuntimeRedisBackupOperations
-    ) throws -> RuntimeRedisBackupResult {
-        let requestedPlan = redisBackupRequestedPlan()
-        operations.log(requestedPlan.logMessage)
-        try operations.requireCapability()
-        try operations.createDirectory(context.guestRunDirectory, true)
-        try operations.createDirectory(context.redisBackupsDirectory, true)
-
-        let resultURL = context.guestRunDirectory.appendingPathComponent(context.resultFileName)
-        try operations.removePreviousResult(resultURL)
-
-        try operations.writeStatus(
-            requestedPlan.status,
-            requestedPlan.operation,
-            requestedPlan.statusMessage
-        )
-
-        let requestID = operations.requestID()
-        let request = RedisBackupRequestDocument(
-            requestId: requestID,
-            requestedAt: operations.timestamp()
-        )
-        let requestURL = context.guestRunDirectory.appendingPathComponent(context.requestFileName)
-        try operations.writeRequest(request, requestURL)
-
-        if !operations.isVMServiceLoaded() {
-            try operations.startVMService()
-        }
-
-        let maxAttempts = Int(ceil(context.waitTimeoutSeconds / context.pollIntervalSeconds))
-        for attempt in 0..<maxAttempts {
-            let decision = redisBackupResultDecision(
-                loadResult: operations.loadResult(resultURL),
-                expectedRequestID: requestID,
-                shouldReportProgress: attempt % 10 == 0
-            )
-            if let result = try executeRedisBackupResultDecision(decision, operations: operations) {
-                return result
-            }
-            if attempt < maxAttempts - 1 {
-                operations.sleep(context.pollIntervalSeconds)
-            }
-        }
-
-        let timedOutPlan = redisBackupTimedOutPlan()
-        try operations.writeStatus(
-            timedOutPlan.status,
-            timedOutPlan.operation,
-            timedOutPlan.statusMessage
-        )
-        throw RuntimeRedisBackupUseCaseError.operationFailed(timedOutPlan.failureMessage)
     }
 
     public func redisBackupResultDecision(
@@ -738,32 +512,6 @@ public struct RepairRuntimeUseCase {
             return .waiting(logMessage: shouldReportProgress ? "waiting for redis backup guest worker" : nil)
         case .failed(let message):
             return .readFailed(message: "failed to read redis backup result: \(message)")
-        }
-    }
-
-    private func executeRedisBackupResultDecision(
-        _ decision: RepairRuntimeRedisBackupResultDecision,
-        operations: RuntimeRedisBackupOperations
-    ) throws -> RuntimeRedisBackupResult? {
-        switch decision {
-        case .ignoreStaleResult(let logMessage):
-            operations.log(logMessage)
-            return nil
-        case .completed(let message, let archive):
-            try operations.writeStatus(.healthy, .redisBackup, message)
-            operations.log(redisBackupCompletedLogMessage())
-            return RuntimeRedisBackupResult(message: message, archive: archive)
-        case .failed(let message):
-            try operations.writeStatus(.degraded, .redisBackup, message)
-            throw RuntimeRedisBackupUseCaseError.operationFailed(message)
-        case .waiting(let logMessage):
-            if let logMessage {
-                operations.log(logMessage)
-            }
-            return nil
-        case .readFailed(let message):
-            try operations.writeStatus(.degraded, .redisBackup, message)
-            throw RuntimeRedisBackupUseCaseError.operationFailed(message)
         }
     }
 
@@ -792,15 +540,6 @@ public struct RepairRuntimeUseCase {
             throw RepairRuntimeUseCaseError.operationFailed("required free space calculation overflowed")
         }
         return added.partialValue
-    }
-
-    private func datastoreRepairWaitConfiguration(
-        _ context: DatastoreRepairWaitExecutionContext
-    ) -> DatastoreRepairWaitConfiguration {
-        DatastoreRepairWaitConfiguration(
-            maxAttempts: Int(ceil(context.waitTimeoutSeconds / context.pollIntervalSeconds)),
-            progressEveryAttempts: context.progressEveryAttempts
-        )
     }
 
     private func sanitizedTimestamp(_ timestamp: String) -> String {

@@ -2,6 +2,7 @@ import Application
 import Bootstrap
 import Contracts
 import Domain
+import Foundation
 import InboundAdapters
 import Errors
 
@@ -38,9 +39,11 @@ extension RuntimeInstallSettings {
 
 extension RuntimeInstallSettingsDefaults {
     static var hostCLI: RuntimeInstallSettingsDefaults {
-        RuntimeInstallSettingsDefaults(
+        let processorCount = ProcessInfo.processInfo.processorCount
+        let physicalMemoryBytes = ProcessInfo.processInfo.physicalMemory
+        return RuntimeInstallSettingsDefaults(
             cpuCount: 8,
-            memoryGiB: Constants.Defaults.defaultMemoryGiB,
+            memoryGiB: Constants.Defaults.defaultMemoryGiB(physicalMemoryBytes: physicalMemoryBytes),
             diskGiB: Constants.Defaults.defaultDiskGiB,
             networkMode: .shared,
             proxyPort: Constants.Guest.publicPort,
@@ -48,9 +51,9 @@ extension RuntimeInstallSettingsDefaults {
             vmHostname: Constants.Guest.hostname,
             publicPort: Constants.Guest.publicPort,
             minimumCPUCount: Constants.Defaults.minimumCPUCount,
-            maximumAllowedCPUCount: Constants.Defaults.maximumAllowedCPUCount,
+            maximumAllowedCPUCount: Constants.Defaults.maximumAllowedCPUCount(systemCPUCount: processorCount),
             minimumMemoryGiB: Constants.Defaults.minimumMemoryGiB,
-            maximumAllowedMemoryGiB: Constants.Defaults.maximumAllowedMemoryGiB,
+            maximumAllowedMemoryGiB: Constants.Defaults.maximumAllowedMemoryGiB(physicalMemoryBytes: physicalMemoryBytes),
             memoryStepGiB: Constants.Defaults.memoryStepGiB,
             minimumDiskGiB: Constants.Defaults.minimumDiskGiB,
             maximumDiskGiB: Constants.Defaults.maximumDiskGiB,

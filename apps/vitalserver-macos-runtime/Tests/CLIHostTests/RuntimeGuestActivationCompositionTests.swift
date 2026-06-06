@@ -3,6 +3,7 @@ import Bootstrap
 import Contracts
 import Foundation
 import OutboundAdapters
+@testable import CLIHost
 import XCTest
 
 final class RuntimeGuestActivationCompositionTests: XCTestCase {

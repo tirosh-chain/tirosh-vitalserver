@@ -21,6 +21,9 @@ extension RuntimeHealthChecker {
             commandRunner: commandRunner,
             httpProber: httpProber,
             guestGateway: guestGateway,
+            plistBuddyPath: Constants.Commands.plistBuddy,
+            lsofPath: Constants.Commands.lsof,
+            curlPath: Constants.Commands.curl,
             now: now
         )
     }

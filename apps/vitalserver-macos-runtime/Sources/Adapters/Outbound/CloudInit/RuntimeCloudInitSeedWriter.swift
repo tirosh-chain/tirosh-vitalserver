@@ -5,18 +5,31 @@ public struct RuntimeCloudInitSeedContext {
     public let runtimeDirectory: URL
     public let seedImageName: String
     public let seedVolumeName: String
-    public let hdiutilExecutable: String
 
     public init(
         runtimeDirectory: URL,
         seedImageName: String,
-        seedVolumeName: String,
-        hdiutilExecutable: String
+        seedVolumeName: String
     ) {
         self.runtimeDirectory = runtimeDirectory
         self.seedImageName = seedImageName
         self.seedVolumeName = seedVolumeName
-        self.hdiutilExecutable = hdiutilExecutable
+    }
+}
+
+public struct RuntimeCloudInitSeedImageBuildRequest: Equatable {
+    public let sourceDirectory: URL
+    public let outputImage: URL
+    public let volumeName: String
+
+    public init(
+        sourceDirectory: URL,
+        outputImage: URL,
+        volumeName: String
+    ) {
+        self.sourceDirectory = sourceDirectory
+        self.outputImage = outputImage
+        self.volumeName = volumeName
     }
 }
 
@@ -26,7 +39,7 @@ public struct RuntimeCloudInitSeedOperations {
     public let removeItem: (URL) throws -> Void
     public let createDirectory: (URL, Bool) throws -> Void
     public let writeData: (Data, URL, Data.WritingOptions) throws -> Void
-    public let runRequired: (String, [String]) throws -> Void
+    public let buildSeedImage: (RuntimeCloudInitSeedImageBuildRequest) throws -> Void
     public let instanceID: () -> String
 
     public init(
@@ -35,7 +48,7 @@ public struct RuntimeCloudInitSeedOperations {
         removeItem: @escaping (URL) throws -> Void,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         writeData: @escaping (Data, URL, Data.WritingOptions) throws -> Void,
-        runRequired: @escaping (String, [String]) throws -> Void,
+        buildSeedImage: @escaping (RuntimeCloudInitSeedImageBuildRequest) throws -> Void,
         instanceID: @escaping () -> String
     ) {
         self.directoryExists = directoryExists
@@ -43,7 +56,7 @@ public struct RuntimeCloudInitSeedOperations {
         self.removeItem = removeItem
         self.createDirectory = createDirectory
         self.writeData = writeData
-        self.runRequired = runRequired
+        self.buildSeedImage = buildSeedImage
         self.instanceID = instanceID
     }
 }
@@ -77,18 +90,12 @@ public struct RuntimeCloudInitSeedWriter {
         if operations.fileExists(seedISO) {
             try operations.removeItem(seedISO)
         }
-        try operations.runRequired(
-            context.hdiutilExecutable,
-            [
-                "makehybrid",
-                "-iso",
-                "-joliet",
-                "-default-volume-name",
-                context.seedVolumeName,
-                "-o",
-                seedISO.path,
-                seedDir.path,
-            ]
+        try operations.buildSeedImage(
+            RuntimeCloudInitSeedImageBuildRequest(
+                sourceDirectory: seedDir,
+                outputImage: seedISO,
+                volumeName: context.seedVolumeName
+            )
         )
     }
 

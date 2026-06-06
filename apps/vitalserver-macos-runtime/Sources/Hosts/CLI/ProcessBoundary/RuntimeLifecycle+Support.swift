@@ -5,6 +5,7 @@ import Contracts
 import Domain
 import OutboundAdapters
 import InboundAdapters
+import Workflow
 import Errors
 
 extension RuntimeLifecycle {
@@ -26,11 +27,29 @@ extension RuntimeLifecycle {
                 fileStore: fileStore,
                 timestamp: backupTimestamp,
                 isoTimestamp: isoTimestamp,
-                runRequired: { executable, arguments in
-                    _ = try runRequired(executable, arguments: arguments)
-                },
+                chmodExecutable: chmodRuntimeBackupExecutable,
                 log: log
             )
+        )
+    }
+
+    func chmodRuntimeBackupExecutable(_ url: URL) throws {
+        try runRequired(Constants.Commands.chmod, arguments: ["0755", url.path])
+    }
+
+    func buildCloudInitSeedImage(_ request: RuntimeCloudInitSeedImageBuildRequest) throws {
+        try runRequired(
+            Constants.Commands.hdiutil,
+            arguments: [
+                "makehybrid",
+                "-iso",
+                "-joliet",
+                "-default-volume-name",
+                request.volumeName,
+                "-o",
+                request.outputImage.path,
+                request.sourceDirectory.path,
+            ]
         )
     }
 
@@ -239,7 +258,9 @@ extension RuntimeLifecycle {
                 },
                 stopRuntimeServices: stopRuntimeServices,
                 cleanupHostProxyPortAfterStop: cleanupHostProxyPortAfterStop,
-                runProcess: runProcess,
+                packageReceiptStates: runtimePackageReceiptStates,
+                openFilesInDirectory: openFilesInDirectory,
+                forgetPackageReceipt: forgetPackageReceipt,
                 now: { clock.now },
                 log: log
             )
@@ -260,11 +281,35 @@ extension RuntimeLifecycle {
                 serviceState: { service in
                     healthChecker.launchdState(service)
                 },
-                runProcess: { executable, arguments in
-                    runProcess(executable, arguments: arguments)
+                packageReceiptStates: runtimePackageReceiptStates,
+                proxyPortState: { port in
+                    RuntimeHostProxyPortStateReader.state(
+                        port: port,
+                        lsofPath: Constants.Commands.lsof,
+                        runProcess: { executable, arguments in
+                            runProcess(executable, arguments: arguments)
+                        }
+                    )
                 }
             )
         )
+    }
+
+    func runtimePackageReceiptStates() -> [RuntimePackageReceiptState] {
+        RuntimePackageReceiptStateReader.states(
+            identifiers: Constants.Product.packageReceiptIdentifiers,
+            runProcess: { executable, arguments in
+                runProcess(executable, arguments: arguments)
+            }
+        )
+    }
+
+    func openFilesInDirectory(_ target: URL) -> RuntimeProcessResult {
+        runProcess(Constants.Commands.lsof, arguments: ["+D", target.path])
+    }
+
+    func forgetPackageReceipt(_ identifier: String) -> RuntimeProcessResult {
+        runProcess(Constants.Commands.pkgutil, arguments: ["--forget", identifier])
     }
 
     func freshInstallArtifactPaths() -> [URL] {
@@ -302,8 +347,408 @@ extension RuntimeLifecycle {
         ).rotate()
     }
 
+    func executeBundleMaterializationCleanupPlan(_ plan: RuntimeBundleMaterializationCleanupPlan) {
+        switch plan {
+        case .none:
+            return
+        case .cleanupTemporaryRoot(let temporaryRoot):
+            removeMaterializedBundleTemporaryRoot(temporaryRoot)
+        }
+    }
+
+    func removeMaterializedBundleTemporaryRoot(_ temporaryRoot: URL) {
+        do {
+            try fileStore.removeItem(at: temporaryRoot)
+        } catch {
+            log(
+                "bundle temporary directory cleanup failed path=\(temporaryRoot.path) error=\(RuntimeErrorDescription.describe(error))"
+            )
+        }
+    }
+
+    func runtimeInstallDirectoryPreparer() -> RuntimeInstallDirectoryPreparer<RuntimeInstallSettings> {
+        RuntimeInstallDirectoryPreparer(
+            context: RuntimeInstallDirectoryPreparationContext(
+                fixedDirectories: [
+                    installedPaths.runtimeDirectory,
+                    installedPaths.deployDirectory,
+                    installedPaths.guestRunDirectory,
+                    installedPaths.vrReleaseDirectory,
+                    installedPaths.backupsDirectory,
+                    installedPaths.redisBackupsDirectory,
+                    installedPaths.productLogsDirectory,
+                    installedPaths.centralRuntimeLogsDirectory,
+                    installedPaths.centralGuestLogsDirectory,
+                    installedPaths.logArchiveDirectory,
+                    installedPaths.hostRunDirectory,
+                    installedPaths.statusDirectory,
+                    installedPaths.nginxLogsDirectory,
+                ],
+                staleGuestRunDocuments: [
+                    installedPaths.vmIPFile,
+                    installedPaths.runtimeState,
+                    installedPaths.bootstrapResult,
+                    installedPaths.updateActivationResult,
+                    installedPaths.updateShutdownResult,
+                    installedPaths.datastoreRepairResult,
+                ],
+                vitalFilesDirectory: { settings in
+                    URL(fileURLWithPath: settings.vitalFilesDirectory)
+                }
+            ),
+            operations: RuntimeInstallDirectoryPreparationOperations(
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                fileExists: { url in
+                    fileStore.fileExists(url)
+                },
+                removeItem: { url in
+                    try fileStore.removeItem(at: url)
+                }
+            )
+        )
+    }
+
+    func runtimeGuestConfigWriter() -> RuntimeGuestConfigWriter {
+        RuntimeGuestConfigWriter(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            restrictSecretFile: restrictSecretFile
+        )
+    }
+
+    func configureDeployEnvironment(_ settings: RuntimeInstallSettings) throws {
+        try runtimeGuestConfigWriter().write(runtimeConfig: guestRuntimeConfigDocument(settings))
+    }
+
+    func guestRuntimeConfigDocument(_ settings: RuntimeInstallSettings) throws -> GuestRuntimeConfigDocument {
+        guard let adminPassword = settings.adminPassword else {
+            throw LauncherError.missingArgument("install settings adminPassword is required")
+        }
+        return GuestRuntimeConfigDocument(
+            vitalserverHttpPort: Constants.Guest.vitalserverHTTPPort,
+            redisHost: Constants.Guest.redisHost,
+            redisPort: Constants.Guest.redisPort,
+            trustProxy: true,
+            vitalServerURL: settings.vitalServerURL,
+            remoteConsoleURL: settings.remoteConsoleURL,
+            publicHost: settings.publicHost,
+            publicPort: settings.publicPort,
+            adminPassword: adminPassword,
+            vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
+            redisBackupRetentionCount: Constants.Defaults.redisBackupRetentionCount,
+            redisUiPort: Constants.Guest.redisUIPort,
+            swaggerUiPort: Constants.Guest.swaggerUIPort,
+            testkitEnabled: Constants.testkitContainerIncluded
+        )
+    }
+
+    func prepareInstalledExecutables() throws {
+        try RuntimeInstallExecutablePreparer(
+            context: RuntimeInstallExecutablePreparationContext(
+                executablePaths: [
+                    Constants.InstallPaths.vmBin,
+                    Constants.InstallPaths.proxyRun,
+                    installedPaths.nginxExecutable.path,
+                ],
+                chmodExecutable: Constants.Commands.chmod
+            ),
+            operations: RuntimeInstallExecutablePreparationOperations(
+                runRequired: runRequired
+            )
+        ).prepare()
+    }
+
+    func provisionVMDisk(_ settings: RuntimeInstallSettings) throws {
+        try RuntimeInstallVMDiskProvisioner(
+            context: RuntimeInstallVMDiskProvisioningContext(
+                rootfsBase: rootfsBase,
+                vmDisk: vmDisk,
+                gunzipExecutable: Constants.Commands.gunzip,
+                truncateExecutable: Constants.Commands.truncate,
+                freeSpaceMarginBytes: Constants.Runtime.freeSpaceMarginBytes
+            ),
+            operations: RuntimeInstallVMDiskProvisioningOperations(
+                fileExists: fileExists,
+                fileSize: { url in
+                    try fileStore.fileSize(url)
+                },
+                requireFreeSpace: { url, minimumBytes, operation in
+                    try storageMaintenance().requireFreeSpace(
+                        at: url,
+                        minimumBytes: minimumBytes,
+                        operation: operation
+                    )
+                },
+                removeItem: { url in
+                    try fileStore.removeItem(at: url)
+                },
+                runProcessToFile: runProcessToFile,
+                moveItem: { source, destination in
+                    try fileStore.moveItem(at: source, to: destination)
+                },
+                runRequired: runRequired,
+                log: log
+            )
+        ).provision(diskGiB: settings.diskGiB)
+    }
+
+    func configureInstalledVMRuntime(_ settings: RuntimeInstallSettings) throws {
+        try RuntimeInstallVMRuntimeConfigurator<VMRuntimeConfig>(
+            context: RuntimeInstallVMRuntimeConfigurationContext(
+                configURL: paths.config,
+                requiredDirectories: [
+                    installedPaths.runtimeDirectory,
+                    installedPaths.vitalFilesDirectory,
+                    installedPaths.vrReleaseDirectory,
+                    installedPaths.hostRunDirectory,
+                ]
+            ),
+            operations: RuntimeInstallVMRuntimeConfigurationOperations(
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                fileExists: fileExists,
+                loadConfig: { url in
+                    try VMRuntimeConfigComposition.load(from: url, fileStore: fileStore)
+                },
+                defaultConfig: {
+                    VMRuntimeConfig.default(paths: installedPaths)
+                },
+                ensureRuntimeDefaults: { config in
+                    VMRuntimeConfigComposition.ensureRuntimeDefaults(&config, paths: installedPaths)
+                },
+                encodeConfig: { config in
+                    try VMRuntimeConfigComposition.prettyJSONEncoder().encode(config)
+                },
+                writeData: { data, url, options in
+                    try fileStore.writeData(data, to: url, options: options)
+                }
+            )
+        ).configure(input: RuntimeInstallVMRuntimeConfigurationInput(
+            cpuCount: settings.cpuCount,
+            memoryGiB: settings.memoryGiB,
+            networkMode: settings.networkMode,
+            sharedNetworkMode: .shared,
+            dataDirectoryPath: installedPaths.dataDirectory.path,
+            sharedDirectoryTag: Constants.Defaults.sharedDirectoryTag,
+            sharedDirectoryGuestMountPath: Constants.Defaults.sharedDirectoryGuestMountPath,
+            vitalFilesDirectoryPath: settings.vitalFilesDirectory,
+            vitalFilesDirectoryTag: Constants.Defaults.vitalFilesDirectoryTag,
+            vitalFilesDirectoryGuestMountPath: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
+            preventSystemSleep: settings.preventSystemSleep,
+            sshAuthorizedKeys: settings.sshAuthorizedKeys
+        ))
+    }
+
+    func createCloudInitSeed(_ settings: RuntimeInstallSettings) throws {
+        try runtimeCloudInitSeedWriter().create(
+            hostname: settings.vmHostname,
+            sshAuthorizedKeys: settings.sshAuthorizedKeys
+        )
+    }
+
+    func configureInstalledPermissions(_ settings: RuntimeInstallSettings) throws {
+        try RuntimeInstallPermissionConfigurator(
+            context: RuntimeInstallPermissionContext(
+                runtimeHome: paths.home,
+                nginxDirectory: productRoot.appendingPathComponent("nginx"),
+                proxyLaunchDaemonPlist: RuntimeManagedServicePaths.launchDaemonPlist(.proxy),
+                serviceLaunchDaemonPlists: [
+                    RuntimeManagedServicePaths.launchDaemonPlist(.vm),
+                    RuntimeManagedServicePaths.launchDaemonPlist(.proxy),
+                    RuntimeManagedServicePaths.launchDaemonPlist(.guestLogSync),
+                    RuntimeManagedServicePaths.launchDaemonPlist(.sleepPrevention),
+                    RuntimeManagedServicePaths.launchDaemonPlist(.watchdog),
+                ],
+                chownExecutable: Constants.Commands.chown,
+                chmodExecutable: Constants.Commands.chmod,
+                plistBuddyExecutable: Constants.Commands.plistBuddy
+            ),
+            operations: RuntimeInstallPermissionOperations(
+                runRequired: runRequired
+            )
+        ).configure(input: RuntimeInstallPermissionInput(
+            proxyPort: settings.proxyPort
+        ))
+    }
+
+    func startInstalledServices(_ settings: RuntimeInstallSettings) throws {
+        try RuntimeInstallServiceStarter(
+            operations: RuntimeInstallServiceStartOperations(
+                startLaunchdService: startLaunchdService,
+                cleanupHostProxyPortBeforeStart: cleanupHostProxyPortBeforeStart,
+                log: log
+            )
+        ).start(input: RuntimeInstallServiceStartInput(
+            startAfterInstall: settings.startAfterInstall,
+            preventSystemSleep: settings.preventSystemSleep
+        ))
+    }
+
+    func applyStartOnBootPolicy(_ settings: RuntimeInstallSettings) throws {
+        try RuntimeInstallStartOnBootPolicyApplier(
+            context: RuntimeInstallStartOnBootPolicyContext(
+                launchctlExecutable: Constants.Commands.launchctl
+            ),
+            operations: RuntimeInstallStartOnBootPolicyOperations(
+                setStartOnBoot: setStartOnBoot,
+                runRequired: runRequired
+            )
+        ).apply(input: RuntimeInstallStartOnBootPolicyInput(
+            startOnBoot: settings.startOnBoot,
+            preventSystemSleep: settings.preventSystemSleep
+        ))
+    }
+
+    func cleanupInstallSettings() throws {
+        try RuntimeInstallSettingsCleaner(
+            context: RuntimeInstallSettingsCleanupContext(
+                settingsFile: URL(fileURLWithPath: Constants.InstallPaths.settingsPath)
+            ),
+            operations: RuntimeInstallSettingsCleanupOperations(
+                fileExists: fileExists,
+                removeItem: { url in
+                    try fileStore.removeItem(at: url)
+                }
+            )
+        ).cleanup()
+    }
+
+    func runtimeServiceRestartPolicy(_ settings: RuntimeInstallSettings) -> RuntimeServiceRestartPolicy {
+        RuntimeServiceRestartPolicy(
+            restartVM: settings.startAfterInstall,
+            restartGuestLogSync: settings.startAfterInstall,
+            restartProxy: settings.startAfterInstall,
+            restartWatchdog: settings.startAfterInstall
+        )
+    }
+
     func fileSize(_ url: URL) throws -> UInt64 {
         try fileStore.fileSize(url)
+    }
+
+    func materializeRuntimeUpdateBundle(_ bundleURL: URL) throws -> RuntimeMaterializedBundle {
+        try RuntimeBundleMaterializer(
+            context: RuntimeBundleMaterializationContext(
+                tarExecutable: Constants.Commands.tar
+            ),
+            operations: RuntimeBundleMaterializationOperations(
+                directoryExists: directoryExists,
+                fileExists: fileExists,
+                temporaryRoot: {
+                    fileStore.temporaryDirectory
+                        .appendingPathComponent("tirosh-update-bundle-\(UUID().uuidString)", isDirectory: true)
+                },
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                runProcess: runProcess,
+                runRequired: runRequired,
+                missingFileError: { url in
+                    LauncherError.missingFile(url.path)
+                },
+                invalidArchiveError: { url in
+                    LauncherError.bundleVerificationFailed("invalid update bundle archive: \(url.path)")
+                },
+                archiveValidationError: { error in
+                    LauncherError.bundleVerificationFailed(error.description)
+                },
+                log: log
+            )
+        ).materialize(bundleURL)
+    }
+
+    func stageRuntimeUpdateBundle(_ input: RuntimeBundleStagingInput) throws -> URL {
+        try RuntimeBundleStager(
+            context: RuntimeBundleStagingContext(
+                bundlesDirectory: bundlesDirectory,
+                updateFreeSpaceMarginBytes: Constants.Runtime.updateFreeSpaceMarginBytes
+            ),
+            operations: RuntimeBundleStagingOperations(
+                directorySize: directorySize,
+                compressedSourceSize: compressedBundleSize,
+                fileExists: fileExists,
+                directoryExists: directoryExists,
+                createDirectory: { url, withIntermediateDirectories in
+                    try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+                },
+                removeItem: { url in
+                    try fileStore.removeItem(at: url)
+                },
+                copyItem: { source, destination in
+                    try fileStore.copyItem(at: source, to: destination)
+                },
+                requireFreeSpace: { url, minimumBytes, operation in
+                    try storageMaintenance().requireFreeSpace(
+                        at: url,
+                        minimumBytes: minimumBytes,
+                        operation: operation.rawValue
+                    )
+                },
+                log: log
+            )
+        ).stage(input: input)
+    }
+
+    private func compressedBundleSize(_ url: URL) throws -> UInt64 {
+        fileExists(url) ? try fileSize(url) : 0
+    }
+
+    private func directorySize(_ url: URL) throws -> UInt64 {
+        try fileStore.recursiveRegularFileSize(at: url, skipsHiddenFiles: true)
+    }
+
+    func replaceRuntimeUpdateArtifacts(_ artifacts: [UpdateBundleArtifact], stagedBundle: URL) throws {
+        try runtimeArtifactReplacer().replace(artifacts, stagedBundle: stagedBundle)
+    }
+
+    func runRuntimeUpdateMigrations(_ migrations: [UpdateBundleMigration], stagedBundle: URL) throws {
+        try RuntimeMigrationRunner(
+            isExecutableFile: { path in fileStore.isExecutableFile(atPath: path) },
+            runRequired: runRequired,
+            log: log
+        ).run(migrations, stagedBundle: stagedBundle)
+    }
+
+    func validateRuntimeUpdateArtifactPayload(_ artifact: UpdateBundleArtifact, source: URL) throws {
+        try runtimeArtifactReplacer().validatePayload(artifact, source: source)
+    }
+
+    private func runtimeArtifactReplacer() -> RuntimeArtifactReplacer {
+        RuntimeArtifactReplacer(
+            destinations: RuntimeArtifactReplacementDestinations(
+                managerApp: URL(fileURLWithPath: Constants.Product.managerAppPath),
+                nginxBundle: installedPaths.nginxDirectory,
+                guestDeploy: installedPaths.deployDirectory,
+                runtimeTools: URL(fileURLWithPath: "/usr/local/bin")
+            ),
+            rules: RuntimeArtifactReplacementRules(
+                tarCommand: Constants.Commands.tar,
+                appBundleRoot: Constants.Product.managerAppName,
+                nginxBundleRoot: "nginx",
+                guestDeployRoot: "deploy",
+                runtimeToolsAllowedRootEntries: [
+                    "vitalserver-vm",
+                    "vitalserver-proxy-run",
+                    URL(fileURLWithPath: Constants.InstallPaths.uninstall).lastPathComponent,
+                ]
+            ),
+            temporaryDirectory: fileStore.temporaryDirectory,
+            fileExists: fileExists,
+            directoryExists: directoryExists,
+            fileSize: fileSize,
+            createDirectory: { url, withIntermediateDirectories in
+                try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
+            },
+            removeItem: { url in try fileStore.removeItem(at: url) },
+            moveItem: { source, destination in try fileStore.moveItem(at: source, to: destination) },
+            readUTF8Text: { url in try fileStore.readUTF8Text(url) },
+            runRequired: runRequired,
+            runProcessToFile: runProcessToFile,
+            log: log
+        )
     }
 
     func resizeVMDiskIfNeeded(diskGiB: Int) throws {
@@ -322,6 +767,18 @@ extension RuntimeLifecycle {
         }
         try runRequired(Constants.Commands.truncate, arguments: ["-s", "\(diskGiB)G", vmDisk.path])
         log("resized vm disk path=\(vmDisk.path) from=\(currentGiB) GiB to=\(diskGiB) GiB")
+    }
+
+    func createReplacementVMDisk(_ plan: RepairRuntimeVMDiskReplacementBuildPlan) throws {
+        try runProcessToFile(
+            Constants.Commands.gunzip,
+            arguments: ["-c", plan.rootfsBase.path],
+            output: plan.temporaryDisk
+        )
+        try runRequired(
+            Constants.Commands.truncate,
+            arguments: ["-s", "\(plan.targetDiskGiB)G", plan.temporaryDisk.path]
+        )
     }
 
     func storageMaintenance() -> RuntimeStorageMaintenance {

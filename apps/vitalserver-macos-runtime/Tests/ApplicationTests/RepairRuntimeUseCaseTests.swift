@@ -98,7 +98,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.archivedDisk, URL(fileURLWithPath: "/runtime/backups/vm-disk-repair-20260606T051011Z/vm-disk.img"))
     }
 
-    func testPlansVMDiskReplacementBuildCommandsWithoutWorkflowArgumentConstruction() throws {
+    func testPlansVMDiskReplacementBuildInputsWithoutWorkflowArgumentConstruction() throws {
         let useCase = RepairRuntimeUseCase()
         let vmDisk = URL(fileURLWithPath: "/runtime/vm/vm-disk.img")
         let backupsDirectory = URL(fileURLWithPath: "/runtime/backups")
@@ -116,33 +116,18 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
             rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base.raw.gz"),
             vmDisk: vmDisk,
             backupsDirectory: backupsDirectory,
-            gunzipExecutable: "/usr/bin/gunzip",
-            truncateExecutable: "/usr/bin/truncate",
             repairPlan: repairPlan,
             executionPlan: executionPlan
         )
 
+        XCTAssertEqual(buildPlan.rootfsBase.path, "/runtime/rootfs-base.raw.gz")
         XCTAssertEqual(buildPlan.vmDiskDirectory.path, "/runtime/vm")
         XCTAssertEqual(buildPlan.backupsDirectory, backupsDirectory)
         XCTAssertEqual(buildPlan.temporaryDisk, URL(fileURLWithPath: "/runtime/vm/.vm-disk.img.repair.tmp"))
         XCTAssertEqual(buildPlan.freeSpaceDirectory.path, "/runtime/vm")
         XCTAssertEqual(buildPlan.requiredFreeSpaceBytes, 1036)
         XCTAssertEqual(buildPlan.operation, .repairVMDisk)
-        XCTAssertEqual(
-            buildPlan.decompression,
-            RepairRuntimeProcessOutputPlan(
-                executable: "/usr/bin/gunzip",
-                arguments: ["-c", "/runtime/rootfs-base.raw.gz"],
-                output: URL(fileURLWithPath: "/runtime/vm/.vm-disk.img.repair.tmp")
-            )
-        )
-        XCTAssertEqual(
-            buildPlan.resize,
-            RepairRuntimeProcessPlan(
-                executable: "/usr/bin/truncate",
-                arguments: ["-s", "40G", "/runtime/vm/.vm-disk.img.repair.tmp"]
-            )
-        )
+        XCTAssertEqual(buildPlan.targetDiskGiB, 40)
     }
 
     func testReplacementDiskVerificationPreservesMissingAndUndersizedFailures() {
@@ -327,108 +312,6 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         )
     }
 
-    func testWaitForDatastoreRepairResultExecutesPortsAndCompletes() throws {
-        var results: [RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>] = [
-            .missing,
-            .loaded(datastoreRepairResult(status: .running, requestId: "request-1", message: "repairing")),
-            .loaded(datastoreRepairResult(status: .completed, requestId: "request-1", message: "done")),
-        ]
-        var events: [String] = []
-        let operations = DatastoreRepairWaitOperations(
-            loadResult: {
-                events.append("load")
-                if results.count > 1 {
-                    return results.removeFirst()
-                }
-                return results[0]
-            },
-            writeStatusBestEffort: { status, operation, message in
-                events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
-            },
-            sleep: { events.append("sleep") },
-            log: { message in events.append("log:\(message)") }
-        )
-
-        let outcome = try RepairRuntimeUseCase().waitForDatastoreRepairResult(
-            request: RuntimeDatastoreRepairRequest(id: "request-1", requestedAt: "2026-05-22T00:00:00Z"),
-            context: DatastoreRepairWaitExecutionContext(
-                waitTimeoutSeconds: 9,
-                pollIntervalSeconds: 3,
-                progressEveryAttempts: 1
-            ),
-            operations: operations
-        )
-
-        XCTAssertEqual(outcome, .completed)
-        XCTAssertEqual(events, [
-            "log:waiting for datastore repair result timeoutSeconds=9.0",
-            "load",
-            "log:waiting for datastore repair guest worker",
-            "status:recovering:repair-datastore:waiting for datastore repair guest worker",
-            "sleep",
-            "load",
-            "log:repairing",
-            "status:recovering:repair-datastore:repairing",
-            "sleep",
-            "load",
-            "log:datastore repair guest result completed message=done",
-        ])
-    }
-
-    func testWaitForDatastoreRepairResultPreservesReadFailureAndTimeoutMeanings() {
-        var failedEvents: [String] = []
-        let failedOperations = DatastoreRepairWaitOperations(
-            loadResult: { .failed("permission denied") },
-            writeStatusBestEffort: { _, _, _ in XCTFail("read failure should stop before progress status") },
-            sleep: { XCTFail("read failure should stop before sleep") },
-            log: { message in failedEvents.append("log:\(message)") }
-        )
-
-        XCTAssertThrowsError(try RepairRuntimeUseCase().waitForDatastoreRepairResult(
-            request: RuntimeDatastoreRepairRequest(id: "request-1", requestedAt: "2026-05-22T00:00:00Z"),
-            context: DatastoreRepairWaitExecutionContext(
-                waitTimeoutSeconds: 3,
-                pollIntervalSeconds: 3,
-                progressEveryAttempts: 1
-            ),
-            operations: failedOperations
-        )) { error in
-            XCTAssertEqual(error as? RepairRuntimeUseCaseError, .operationFailed("runtime health check failed"))
-        }
-        XCTAssertEqual(failedEvents, [
-            "log:waiting for datastore repair result timeoutSeconds=3.0",
-            "log:datastore repair guest result failed message=failed to read datastore repair result: permission denied",
-        ])
-
-        var timeoutStatuses: [String] = []
-        var timeoutSleeps = 0
-        let timeoutOperations = DatastoreRepairWaitOperations(
-            loadResult: { .missing },
-            writeStatusBestEffort: { status, operation, message in
-                timeoutStatuses.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
-            },
-            sleep: { timeoutSleeps += 1 },
-            log: { _ in }
-        )
-
-        XCTAssertThrowsError(try RepairRuntimeUseCase().waitForDatastoreRepairResult(
-            request: RuntimeDatastoreRepairRequest(id: "request-1", requestedAt: "2026-05-22T00:00:00Z"),
-            context: DatastoreRepairWaitExecutionContext(
-                waitTimeoutSeconds: 6,
-                pollIntervalSeconds: 3,
-                progressEveryAttempts: 1
-            ),
-            operations: timeoutOperations
-        )) { error in
-            XCTAssertEqual(error as? RepairRuntimeUseCaseError, .operationFailed("runtime health check failed"))
-        }
-        XCTAssertEqual(timeoutStatuses, [
-            "status:recovering:repair-datastore:waiting for datastore repair guest worker",
-            "status:recovering:repair-datastore:waiting for datastore repair guest worker",
-        ])
-        XCTAssertEqual(timeoutSleeps, 1)
-    }
-
     func testRedisBackupResultDecisionPreservesStaleMissingFailedAndDefaultDisplayMessages() {
         let useCase = RepairRuntimeUseCase()
 
@@ -498,73 +381,6 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         )
     }
 
-    func testCreateRedisBackupExecutesPortsAndReturnsCompletedResult() throws {
-        let harness = RedisBackupHarness(results: [
-            .missing,
-            .loaded(redisResult(status: .completed, requestId: "request-1", message: "done", archive: "/backups/redis.tar")),
-        ])
-
-        let result = try harness.useCase.createRedisBackup(context: harness.context, operations: harness.operations)
-
-        XCTAssertEqual(result, RuntimeRedisBackupResult(message: "done", archive: "/backups/redis.tar"))
-        XCTAssertEqual(harness.events, [
-            "log:redis backup requested",
-            "capability",
-            "create:/guest/run:true",
-            "create:/redis/backups:true",
-            "remove-previous:/guest/run/redis-backup-result.json",
-            "status:recovering:redis-backup:redis backup requested",
-            "request:/guest/run/redis-backup-request.json:request-1:2026-06-05T00:00:00Z",
-            "vm-loaded",
-            "start-vm",
-            "load:/guest/run/redis-backup-result.json",
-            "log:waiting for redis backup guest worker",
-            "sleep:3.0",
-            "load:/guest/run/redis-backup-result.json",
-            "status:healthy:redis-backup:done",
-            "log:redis backup completed",
-        ])
-    }
-
-    func testCreateRedisBackupPreservesStaleFailureUnreadableAndTimeoutMeanings() throws {
-        let stale = RedisBackupHarness(results: [
-            .loaded(redisResult(status: .completed, requestId: "stale-request", message: "stale")),
-            .loaded(redisResult(status: .completed, requestId: "request-1", message: nil)),
-        ])
-        stale.vmLoaded = true
-
-        let staleResult = try stale.useCase.createRedisBackup(context: stale.context, operations: stale.operations)
-
-        XCTAssertEqual(staleResult, RuntimeRedisBackupResult(message: "Redis backup completed.", archive: nil))
-        XCTAssertTrue(stale.events.contains("log:stale redis backup result ignored"))
-        XCTAssertFalse(stale.events.contains("start-vm"))
-
-        let failed = RedisBackupHarness(results: [
-            .loaded(redisResult(status: .failed, requestId: "request-1", message: "backup failed")),
-        ])
-        XCTAssertThrowsError(try failed.useCase.createRedisBackup(context: failed.context, operations: failed.operations)) { error in
-            XCTAssertEqual(error as? RuntimeRedisBackupUseCaseError, .operationFailed("backup failed"))
-        }
-        XCTAssertTrue(failed.events.contains("status:degraded:redis-backup:backup failed"))
-
-        let unreadable = RedisBackupHarness(results: [.failed("permission denied")])
-        XCTAssertThrowsError(try unreadable.useCase.createRedisBackup(context: unreadable.context, operations: unreadable.operations)) { error in
-            XCTAssertEqual(
-                error as? RuntimeRedisBackupUseCaseError,
-                .operationFailed("failed to read redis backup result: permission denied")
-            )
-        }
-        XCTAssertTrue(unreadable.events.contains(
-            "status:degraded:redis-backup:failed to read redis backup result: permission denied"
-        ))
-
-        let timeout = RedisBackupHarness(results: [.missing, .missing])
-        XCTAssertThrowsError(try timeout.useCase.createRedisBackup(context: timeout.context, operations: timeout.operations)) { error in
-            XCTAssertEqual(error as? RuntimeRedisBackupUseCaseError, .operationFailed("redis backup timed out"))
-        }
-        XCTAssertTrue(timeout.events.contains("status:degraded:redis-backup:redis backup timed out"))
-    }
-
     private func input(
         rootfsBasePath: String = "/runtime/rootfs-base.raw.gz",
         rootfsBaseExists: Bool = true,
@@ -614,54 +430,4 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         )
     }
 
-    final class RedisBackupHarness {
-        let useCase = RepairRuntimeUseCase()
-        let context = RuntimeRedisBackupContext(
-            guestRunDirectory: URL(fileURLWithPath: "/guest/run"),
-            redisBackupsDirectory: URL(fileURLWithPath: "/redis/backups"),
-            requestFileName: "redis-backup-request.json",
-            resultFileName: "redis-backup-result.json",
-            waitTimeoutSeconds: 6,
-            pollIntervalSeconds: 3
-        )
-        var events: [String] = []
-        var results: [RuntimeRedisBackupResultLoadResult]
-        var vmLoaded = false
-
-        lazy var operations = RuntimeRedisBackupOperations(
-            requireCapability: { [self] in events.append("capability") },
-            createDirectory: { [self] url, withIntermediateDirectories in
-                events.append("create:\(url.path):\(withIntermediateDirectories)")
-            },
-            removePreviousResult: { [self] url in
-                events.append("remove-previous:\(url.path)")
-            },
-            writeStatus: { [self] status, operation, message in
-                events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
-            },
-            requestID: { "request-1" },
-            timestamp: { "2026-06-05T00:00:00Z" },
-            writeRequest: { [self] request, url in
-                events.append("request:\(url.path):\(request.requestId):\(request.requestedAt)")
-            },
-            isVMServiceLoaded: { [self] in
-                events.append("vm-loaded")
-                return vmLoaded
-            },
-            startVMService: { [self] in events.append("start-vm") },
-            loadResult: { [self] url in
-                events.append("load:\(url.path)")
-                guard !results.isEmpty else {
-                    return .missing
-                }
-                return results.removeFirst()
-            },
-            sleep: { [self] seconds in events.append("sleep:\(seconds)") },
-            log: { [self] message in events.append("log:\(message)") }
-        )
-
-        init(results: [RuntimeRedisBackupResultLoadResult]) {
-            self.results = results
-        }
-    }
 }

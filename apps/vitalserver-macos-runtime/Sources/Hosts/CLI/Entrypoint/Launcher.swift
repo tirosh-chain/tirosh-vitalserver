@@ -16,7 +16,12 @@ struct Launcher {
             return
         }
 
-        let paths = LauncherPaths.resolve()
+        let paths = LauncherPaths.resolve(
+            environment: ProcessInfo.processInfo.environment,
+            homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
+            vmHomeEnvironmentKey: Constants.Environment.vmHome,
+            defaultHomePathComponents: Constants.Paths.defaultHomePathComponents
+        )
         switch Command.parse(command) {
         case .initialize:
             try initialize(paths: paths)
@@ -271,20 +276,26 @@ struct Launcher {
 
             switch key {
             case "--cpu":
+                let maximumAllowedCPUCount = Constants.Defaults.maximumAllowedCPUCount(
+                    systemCPUCount: ProcessInfo.processInfo.processorCount
+                )
                 guard let cpu = Int(value),
                       cpu >= Constants.Defaults.minimumCPUCount,
-                      cpu <= Constants.Defaults.maximumAllowedCPUCount else {
+                      cpu <= maximumAllowedCPUCount else {
                     throw LauncherError.missingArgument(
-                        "--cpu must be between \(Constants.Defaults.minimumCPUCount) and \(Constants.Defaults.maximumAllowedCPUCount)"
+                        "--cpu must be between \(Constants.Defaults.minimumCPUCount) and \(maximumAllowedCPUCount)"
                     )
                 }
                 config.cpuCount = cpu
             case "--memory-mib":
+                let maximumAllowedMemoryMiB = Constants.Defaults.maximumAllowedMemoryMiB(
+                    physicalMemoryBytes: ProcessInfo.processInfo.physicalMemory
+                )
                 guard let memory = UInt64(value),
                       memory >= UInt64(Constants.Defaults.minimumMemoryGiB * 1024),
-                      memory <= Constants.Defaults.maximumAllowedMemoryMiB else {
+                      memory <= maximumAllowedMemoryMiB else {
                     throw LauncherError.missingArgument(
-                        "--memory-mib must be between \(Constants.Defaults.minimumMemoryGiB * 1024) and \(Constants.Defaults.maximumAllowedMemoryMiB)"
+                        "--memory-mib must be between \(Constants.Defaults.minimumMemoryGiB * 1024) and \(maximumAllowedMemoryMiB)"
                     )
                 }
                 config.memoryMiB = memory
