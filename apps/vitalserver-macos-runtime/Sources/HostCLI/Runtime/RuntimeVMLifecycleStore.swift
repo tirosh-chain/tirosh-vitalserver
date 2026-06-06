@@ -1,3 +1,0 @@
-import Infrastructure
-
-typealias RuntimeVMLifecycleStore = Infrastructure.RuntimeVMLifecycleStore

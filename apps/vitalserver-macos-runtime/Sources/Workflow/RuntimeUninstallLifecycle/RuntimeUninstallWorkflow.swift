@@ -1,21 +1,8 @@
+import Application
 import Contracts
 import Domain
 import Foundation
-
-public enum RuntimeUninstallWorkflowError: Error, Equatable, CustomStringConvertible, LocalizedError {
-    case operationFailed(String)
-
-    public var description: String {
-        switch self {
-        case .operationFailed(let message):
-            return message
-        }
-    }
-
-    public var errorDescription: String? {
-        description
-    }
-}
+import Errors
 
 public struct RuntimeUninstallCommand: Equatable {
     public let clean: Bool
@@ -149,6 +136,9 @@ public struct RuntimeUninstallWorkflow {
     public var writer: RuntimeUninstallStateWriter
     public var diagnostics: RuntimeUninstallDiagnostics
     public var packageReceiptIdentifiers: [String]
+    private var useCase: UninstallRuntimeUseCase {
+        UninstallRuntimeUseCase()
+    }
 
     public init(
         paths: RuntimeUninstallPaths,
@@ -549,11 +539,11 @@ public struct RuntimeUninstallWorkflow {
         clean: Bool,
         expectedCommands: [RuntimeUninstallWorkflowCommand]
     ) throws -> RuntimeUninstallTransitionDecision {
-        let decision = try RuntimeUninstallTransitionPolicy.transition(
+        let decision = try useCase.transition(
             from: state,
-            event: event
+            event: event,
+            expectedCommands: expectedCommands
         )
-        try requireCommands(expectedCommands, in: decision)
         try writePersistedState(decision, clean: clean)
         return decision
     }
@@ -563,26 +553,18 @@ public struct RuntimeUninstallWorkflow {
         event: RuntimeUninstallWorkflowEvent,
         expectedCommandsWhenAllowed: [RuntimeUninstallWorkflowCommand]
     ) throws -> RuntimeUninstallTransitionDecision {
-        let decision = try RuntimeUninstallTransitionPolicy.transition(
+        try useCase.transition(
             from: state,
-            event: event
+            event: event,
+            expectedCommandsWhenAllowed: expectedCommandsWhenAllowed
         )
-        try requireCommands(
-            decision.blockers.isEmpty ? expectedCommandsWhenAllowed : [],
-            in: decision
-        )
-        return decision
     }
 
     private func requireCommands(
         _ expectedCommands: [RuntimeUninstallWorkflowCommand],
         in decision: RuntimeUninstallTransitionDecision
     ) throws {
-        guard decision.commands == expectedCommands else {
-            throw RuntimeUninstallWorkflowError.operationFailed(
-                "unexpected uninstall workflow commands state=\(decision.state) expected=\(expectedCommands) actual=\(decision.commands)"
-            )
-        }
+        try useCase.requireCommands(expectedCommands, in: decision)
     }
 
     private func writePersistedState(

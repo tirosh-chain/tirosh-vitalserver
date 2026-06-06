@@ -1,8 +1,0 @@
-import Bootstrap
-
-typealias RuntimeConfigureCompositionContext = Bootstrap.RuntimeConfigureCompositionContext
-typealias RuntimeConfigureCompositionOperations = Bootstrap.RuntimeConfigureCompositionOperations
-typealias RuntimeConfigureComposition = Bootstrap.RuntimeConfigureComposition
-typealias RuntimeConfigureActions = Bootstrap.RuntimeConfigureActions
-typealias RuntimeConfigureResult = Bootstrap.RuntimeConfigureResult
-typealias RuntimeConfigureRunner = Bootstrap.RuntimeConfigureRunner

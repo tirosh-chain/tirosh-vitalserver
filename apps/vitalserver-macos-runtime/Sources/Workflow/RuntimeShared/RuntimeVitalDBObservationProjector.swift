@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 
 public struct RuntimeVitalDBObservationProjector {
     public let appendObservation: (VitalDBObservationDocument) throws -> Void

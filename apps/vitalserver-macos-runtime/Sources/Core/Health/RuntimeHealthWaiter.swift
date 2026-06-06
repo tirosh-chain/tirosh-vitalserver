@@ -1,6 +1,0 @@
-import Domain
-
-public typealias RuntimeHealthWaitConfiguration = Domain.RuntimeHealthWaitConfiguration
-public typealias RuntimeHealthWaitObservation = Domain.RuntimeHealthWaitObservation
-public typealias RuntimeHealthWaitResult = Domain.RuntimeHealthWaitResult
-public typealias RuntimeHealthWaiter = Domain.RuntimeHealthWaiter

@@ -1,17 +1,7 @@
 import Contracts
 import Domain
 import Foundation
-
-public enum RuntimeVMDiskRepairWorkflowError: Error, CustomStringConvertible {
-    case operationFailed(String)
-
-    public var description: String {
-        switch self {
-        case .operationFailed(let message):
-            return message
-        }
-    }
-}
+import Errors
 
 public struct RuntimeVMDiskRepairContext {
     public let rootfsBase: URL

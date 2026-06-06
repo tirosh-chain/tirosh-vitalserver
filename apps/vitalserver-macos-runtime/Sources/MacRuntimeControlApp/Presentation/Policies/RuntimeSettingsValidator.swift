@@ -1,4 +1,0 @@
-import Interfaces
-
-typealias RuntimeSettingsValidator = Interfaces.RuntimeSettingsValidator
-typealias RuntimeSettingsValidationResult = Interfaces.RuntimeSettingsValidationResult

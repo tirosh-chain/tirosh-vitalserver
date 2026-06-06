@@ -1,3 +1,0 @@
-import Interfaces
-
-typealias RuntimeBackupSelectionPolicy = Interfaces.RuntimeBackupSelectionPolicy

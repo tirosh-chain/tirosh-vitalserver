@@ -1,40 +1,8 @@
 import Foundation
+import Application
 import Contracts
 import Domain
-
-public enum RuntimeInstallWorkflowError: Error, Equatable, CustomStringConvertible, LocalizedError {
-    case operationFailed(String)
-
-    public var description: String {
-        switch self {
-        case .operationFailed(let message):
-            return message
-        }
-    }
-
-    public var errorDescription: String? {
-        description
-    }
-}
-
-public struct RuntimeInstallCommand: Equatable, Sendable {
-    public let mode: RuntimeInstallMode
-    public let plan: RuntimeOperationPlan
-    public let completionStatus: RuntimeStatusLevel
-    public let completionMessage: String
-
-    public init(
-        mode: RuntimeInstallMode,
-        plan: RuntimeOperationPlan,
-        completionStatus: RuntimeStatusLevel,
-        completionMessage: String
-    ) {
-        self.mode = mode
-        self.plan = plan
-        self.completionStatus = completionStatus
-        self.completionMessage = completionMessage
-    }
-}
+import Errors
 
 public struct RuntimeInstallStateReaders<Settings> {
     public var loadSettings: () throws -> Settings
@@ -92,6 +60,9 @@ public struct RuntimeInstallWorkflow<Settings> {
     public var writer: RuntimeInstallStateWriter
     public var diagnostics: RuntimeInstallDiagnostics
     public var runtimeHomePath: () -> String
+    private var useCase: InstallRuntimeUseCase {
+        InstallRuntimeUseCase()
+    }
 
     public init(
         readers: RuntimeInstallStateReaders<Settings>,
@@ -107,8 +78,8 @@ public struct RuntimeInstallWorkflow<Settings> {
         self.runtimeHomePath = runtimeHomePath
     }
 
-    public func run(_ command: RuntimeInstallCommand) throws {
-        let context = RuntimeInstallTransitionContext(mode: command.mode, plan: command.plan)
+    public func run(_ installPlan: InstallRuntimePlan) throws {
+        let context = RuntimeInstallTransitionContext(mode: installPlan.mode, plan: installPlan.operationPlan)
         let startDecision = try transitionAndPersist(
             from: .notStarted,
             event: .start,
@@ -136,12 +107,12 @@ public struct RuntimeInstallWorkflow<Settings> {
             from: startDecision.state,
             event: .settingsLoaded,
             context: context,
-            expectedCommands: setupCommands(command.mode)
+            expectedCommands: setupCommands(installPlan.mode)
         )
 
         var decision = try verifySetup(
             from: settingsDecision.state,
-            command: command,
+            installPlan: installPlan,
             context: context
         )
 
@@ -164,8 +135,8 @@ public struct RuntimeInstallWorkflow<Settings> {
                 decision = try execute(step, settings: settings, from: decision.state, context: context)
             case .complete:
                 try requireCommands([.complete], in: decision)
-                try writer.writeStatus(command.completionStatus, .install, command.completionMessage)
-                log("\(command.completionMessage) home=\(runtimeHomePath())")
+                try writer.writeStatus(installPlan.completionStatus, .install, installPlan.completionMessage)
+                log("\(installPlan.completionMessage) home=\(runtimeHomePath())")
                 return
             case .loadSettings, .readFreshInstallPreflight, .readProvisionPayload:
                 throw RuntimeInstallWorkflowError.operationFailed(
@@ -177,10 +148,10 @@ public struct RuntimeInstallWorkflow<Settings> {
 
     private func verifySetup(
         from state: RuntimeInstallWorkflowState,
-        command: RuntimeInstallCommand,
+        installPlan: InstallRuntimePlan,
         context: RuntimeInstallTransitionContext
     ) throws -> RuntimeInstallTransitionDecision {
-        switch command.mode {
+        switch installPlan.mode {
         case .full:
             let preflight = readers.freshInstallPreflight()
             return try transitionAndPersist(
@@ -188,7 +159,7 @@ public struct RuntimeInstallWorkflow<Settings> {
                 event: .freshInstallPreflightObserved(preflight),
                 context: context,
                 expectedCommands: preflight.passed && preflight.blockers.isEmpty
-                    ? firstStepCommand(command.plan)
+                    ? firstStepCommand(installPlan.operationPlan)
                     : []
             )
         case .provision:
@@ -198,11 +169,11 @@ public struct RuntimeInstallWorkflow<Settings> {
                 event: .provisionPayloadObserved(payload),
                 context: context,
                 expectedCommands: payload.passed && payload.blockers.isEmpty
-                    ? firstStepCommand(command.plan)
+                    ? firstStepCommand(installPlan.operationPlan)
                     : []
             )
         case .unknown:
-            throw RuntimeInstallWorkflowError.operationFailed("install mode unknown value=\(command.mode.rawValue)")
+            throw RuntimeInstallWorkflowError.operationFailed("install mode unknown value=\(installPlan.mode.rawValue)")
         }
     }
 
@@ -254,14 +225,12 @@ public struct RuntimeInstallWorkflow<Settings> {
         context: RuntimeInstallTransitionContext,
         expectedCommands: [RuntimeInstallWorkflowCommand]? = nil
     ) throws -> RuntimeInstallTransitionDecision {
-        let decision = try RuntimeInstallTransitionPolicy.transition(
+        let decision = try useCase.transition(
             from: state,
             event: event,
-            context: context
+            context: context,
+            expectedCommands: expectedCommands
         )
-        if let expectedCommands {
-            try requireCommands(expectedCommands, in: decision)
-        }
         try persist(decision, mode: context.mode)
         return decision
     }
@@ -286,11 +255,7 @@ public struct RuntimeInstallWorkflow<Settings> {
         _ expectedCommands: [RuntimeInstallWorkflowCommand],
         in decision: RuntimeInstallTransitionDecision
     ) throws {
-        guard decision.commands == expectedCommands else {
-            throw RuntimeInstallWorkflowError.operationFailed(
-                "unexpected install workflow commands state=\(decision.state) expected=\(expectedCommands) actual=\(decision.commands)"
-            )
-        }
+        try useCase.requireCommands(expectedCommands, in: decision)
     }
 
     private func firstStepCommand(_ plan: RuntimeOperationPlan) -> [RuntimeInstallWorkflowCommand] {

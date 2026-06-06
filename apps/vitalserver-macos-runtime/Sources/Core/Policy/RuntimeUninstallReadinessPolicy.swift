@@ -1,4 +1,0 @@
-import Domain
-
-public typealias RuntimeUninstallReadinessInput = Domain.RuntimeUninstallReadinessInput
-public typealias RuntimeUninstallReadinessPolicy = Domain.RuntimeUninstallReadinessPolicy

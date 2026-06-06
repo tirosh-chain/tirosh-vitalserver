@@ -1,9 +1,9 @@
 import Application
 import Contracts
 import Foundation
-import HostAdapters
-import Infrastructure
+import OutboundAdapters
 import Workflow
+import Errors
 
 public struct RuntimeUninstallCompositionContext {
     let installedPaths: InstalledRuntimePaths

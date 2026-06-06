@@ -1,3 +1,0 @@
-import Infrastructure
-
-typealias RuntimePackageReceiptStateReader = Infrastructure.RuntimePackageReceiptStateReader

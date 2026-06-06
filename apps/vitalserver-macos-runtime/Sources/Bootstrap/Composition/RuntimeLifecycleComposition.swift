@@ -1,10 +1,10 @@
 import Application
 import Foundation
 import Contracts
-import HostAdapters
-import Infrastructure
-import Interfaces
+import OutboundAdapters
+import InboundAdapters
 import Workflow
+import Errors
 
 public struct RuntimeLifecycleComposition {
     public let httpProber: RuntimeHTTPProber

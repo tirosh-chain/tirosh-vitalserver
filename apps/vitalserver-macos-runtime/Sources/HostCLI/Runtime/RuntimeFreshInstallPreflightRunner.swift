@@ -1,6 +1,0 @@
-import HostAdapters
-import Infrastructure
-
-typealias RuntimeInstallSettingsStateReader = Infrastructure.RuntimeInstallSettingsStateReader
-typealias RuntimeInstallArtifactStateReader = Infrastructure.RuntimeInstallArtifactStateReader
-typealias RuntimeHostProxyPortStateReader = HostAdapters.RuntimeHostProxyPortStateReader

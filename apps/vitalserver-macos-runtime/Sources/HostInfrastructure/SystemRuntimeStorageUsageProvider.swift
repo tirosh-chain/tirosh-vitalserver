@@ -1,4 +1,0 @@
-import Infrastructure
-
-public typealias RuntimeStorageCapacityValues = Infrastructure.RuntimeStorageCapacityValues
-public typealias SystemRuntimeStorageUsageProvider = Infrastructure.SystemRuntimeStorageUsageProvider

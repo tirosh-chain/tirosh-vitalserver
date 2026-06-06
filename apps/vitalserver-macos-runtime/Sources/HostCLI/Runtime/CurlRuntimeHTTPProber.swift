@@ -1,3 +1,0 @@
-import HostAdapters
-
-typealias CurlRuntimeHTTPProber = HostAdapters.CurlRuntimeHTTPProber

@@ -1,5 +1,0 @@
-import Domain
-
-public typealias RuntimeOperationPlan = Domain.RuntimeOperationPlan
-public typealias RuntimeOperationPlanValidationError = Domain.RuntimeOperationPlanValidationError
-public typealias RuntimeOperationPlans = Domain.RuntimeOperationPlans

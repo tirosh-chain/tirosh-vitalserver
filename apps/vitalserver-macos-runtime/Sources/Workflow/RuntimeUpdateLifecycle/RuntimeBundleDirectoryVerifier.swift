@@ -1,6 +1,7 @@
 import Contracts
 import Domain
 import Foundation
+import Errors
 
 public struct RuntimeBundleDirectoryVerificationContext: Equatable, Sendable {
     public let manifestFileName: String

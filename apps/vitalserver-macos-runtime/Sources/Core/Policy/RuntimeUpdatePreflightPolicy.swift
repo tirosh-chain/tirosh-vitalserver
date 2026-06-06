@@ -1,5 +1,0 @@
-import Domain
-
-public typealias RuntimeUpdateStorageRequirement = Domain.RuntimeUpdateStorageRequirement
-public typealias RuntimeUpdateRootfsStorageInput = Domain.RuntimeUpdateRootfsStorageInput
-public typealias RuntimeUpdatePreflightPolicy = Domain.RuntimeUpdatePreflightPolicy

@@ -1,4 +1,0 @@
-import Domain
-
-public typealias RuntimeFreshInstallPreflightInput = Domain.RuntimeFreshInstallPreflightInput
-public typealias RuntimeFreshInstallPreflightPolicy = Domain.RuntimeFreshInstallPreflightPolicy

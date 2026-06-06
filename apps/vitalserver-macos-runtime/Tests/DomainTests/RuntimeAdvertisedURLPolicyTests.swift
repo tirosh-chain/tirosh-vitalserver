@@ -1,5 +1,6 @@
 import Domain
 import XCTest
+import Errors
 
 final class RuntimeAdvertisedURLPolicyTests: XCTestCase {
     func testAcceptsAbsoluteHTTPAndHTTPSAdvertisedURLs() {

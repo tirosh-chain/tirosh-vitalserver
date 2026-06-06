@@ -1,6 +1,7 @@
 import Application
 import Foundation
-import HostAdapters
+import OutboundAdapters
+import Errors
 
 public enum RuntimeCloudInitSeedComposition {
     public static func make(

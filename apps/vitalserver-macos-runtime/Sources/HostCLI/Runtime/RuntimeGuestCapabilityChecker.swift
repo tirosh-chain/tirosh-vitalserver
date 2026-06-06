@@ -1,4 +1,0 @@
-import Workflow
-
-typealias RuntimeGuestCapabilityCheckError = Workflow.RuntimeGuestCapabilityCheckError
-typealias RuntimeGuestCapabilityChecker = Workflow.RuntimeGuestCapabilityChecker

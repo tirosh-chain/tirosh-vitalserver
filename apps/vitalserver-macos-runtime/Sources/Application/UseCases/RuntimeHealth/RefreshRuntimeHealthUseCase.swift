@@ -1,15 +1,6 @@
 import Contracts
 import Domain
-
-public struct RuntimeHealthRefreshPorts {
-    public var healthSnapshot: () -> RuntimeHealthSnapshot
-
-    public init(
-        healthSnapshot: @escaping () -> RuntimeHealthSnapshot
-    ) {
-        self.healthSnapshot = healthSnapshot
-    }
-}
+import Errors
 
 public struct RuntimeHealthRefreshDecision: Equatable {
     public let snapshot: RuntimeHealthSnapshot
@@ -40,15 +31,9 @@ public struct RuntimeHealthRefreshDecision: Equatable {
 }
 
 public struct RefreshRuntimeHealthUseCase {
-    private let ports: RuntimeHealthRefreshPorts
+    public init() {}
 
-    public init(ports: RuntimeHealthRefreshPorts) {
-        self.ports = ports
-    }
-
-    public func refresh() -> RuntimeHealthRefreshDecision {
-        let snapshot = ports.healthSnapshot()
-
+    public func decision(snapshot: RuntimeHealthSnapshot) -> RuntimeHealthRefreshDecision {
         guard !RuntimeHealthSnapshotPolicy.isHealthy(snapshot) else {
             return RuntimeHealthRefreshDecision(
                 snapshot: snapshot,

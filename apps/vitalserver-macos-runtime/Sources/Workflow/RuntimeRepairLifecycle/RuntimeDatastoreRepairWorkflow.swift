@@ -1,6 +1,7 @@
 import Contracts
 import Domain
 import Foundation
+import Errors
 
 public struct RuntimeDatastoreRepairWorkflowContext {
     public let guestRunDirectory: URL

@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 
 public enum GuestBootstrapAssessment: Equatable {
     case missing

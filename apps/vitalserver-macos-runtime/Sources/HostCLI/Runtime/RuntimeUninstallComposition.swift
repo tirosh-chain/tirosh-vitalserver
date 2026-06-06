@@ -1,5 +1,0 @@
-import Bootstrap
-
-typealias RuntimeUninstallCompositionContext = Bootstrap.RuntimeUninstallCompositionContext
-typealias RuntimeUninstallCompositionOperations = Bootstrap.RuntimeUninstallCompositionOperations
-typealias RuntimeUninstallComposition = Bootstrap.RuntimeUninstallComposition

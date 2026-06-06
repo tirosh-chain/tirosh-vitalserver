@@ -1,6 +1,0 @@
-import Domain
-
-public typealias RuntimeGuestHTTPStatusInput = Domain.RuntimeGuestHTTPStatusInput
-public typealias RuntimeGuestRuntimeStateInput = Domain.RuntimeGuestRuntimeStateInput
-public typealias RuntimeHealthInput = Domain.RuntimeHealthInput
-public typealias RuntimeHealthEvaluator = Domain.RuntimeHealthEvaluator

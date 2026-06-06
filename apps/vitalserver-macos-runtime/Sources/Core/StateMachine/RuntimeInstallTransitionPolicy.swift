@@ -1,9 +1,0 @@
-import Domain
-
-public typealias RuntimeInstallTransitionContext = Domain.RuntimeInstallTransitionContext
-public typealias RuntimeInstallWorkflowState = Domain.RuntimeInstallWorkflowState
-public typealias RuntimeInstallWorkflowEvent = Domain.RuntimeInstallWorkflowEvent
-public typealias RuntimeInstallWorkflowCommand = Domain.RuntimeInstallWorkflowCommand
-public typealias RuntimeInstallTransitionDecision = Domain.RuntimeInstallTransitionDecision
-public typealias RuntimeInstallTransitionError = Domain.RuntimeInstallTransitionError
-public typealias RuntimeInstallTransitionPolicy = Domain.RuntimeInstallTransitionPolicy

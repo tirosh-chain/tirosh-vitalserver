@@ -1,17 +1,7 @@
 import Contracts
 import Domain
 import Foundation
-
-public enum RuntimeArtifactReplacementError: Error, CustomStringConvertible {
-    case bundleVerificationFailed(String)
-
-    public var description: String {
-        switch self {
-        case .bundleVerificationFailed(let message):
-            return "bundle verification failed: \(message)"
-        }
-    }
-}
+import Errors
 
 public struct RuntimeArtifactReplacementDestinations {
     public var managerApp: URL

@@ -1,8 +1,0 @@
-import Domain
-
-public typealias RuntimeUninstallWorkflowState = Domain.RuntimeUninstallWorkflowState
-public typealias RuntimeUninstallWorkflowEvent = Domain.RuntimeUninstallWorkflowEvent
-public typealias RuntimeUninstallWorkflowCommand = Domain.RuntimeUninstallWorkflowCommand
-public typealias RuntimeUninstallTransitionDecision = Domain.RuntimeUninstallTransitionDecision
-public typealias RuntimeUninstallTransitionError = Domain.RuntimeUninstallTransitionError
-public typealias RuntimeUninstallTransitionPolicy = Domain.RuntimeUninstallTransitionPolicy

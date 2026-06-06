@@ -1,6 +1,7 @@
 import Contracts
 import Domain
 import Foundation
+import Errors
 
 public struct RuntimeBundleMaterializationContext: Equatable, Sendable {
     public let tarExecutable: String

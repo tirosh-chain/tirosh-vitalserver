@@ -1,6 +1,7 @@
 import Foundation
 import Contracts
 import XCTest
+import Errors
 
 final class ContractsTests: XCTestCase {
     func testDecodesRuntimeStatusV1() throws {

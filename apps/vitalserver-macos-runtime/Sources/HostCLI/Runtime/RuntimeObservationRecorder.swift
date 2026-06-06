@@ -1,3 +1,0 @@
-import Workflow
-
-typealias RuntimeObservationRecorder = Workflow.RuntimeObservationRecorder

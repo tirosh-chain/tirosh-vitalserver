@@ -1,4 +1,0 @@
-import Application
-
-public typealias RuntimeStatusDocumentLoadResult = Application.RuntimeStatusDocumentLoadResult
-public typealias RuntimeStatusRepository = Application.RuntimeStatusRepository

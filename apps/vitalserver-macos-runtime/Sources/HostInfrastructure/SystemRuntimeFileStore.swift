@@ -1,4 +1,0 @@
-import Infrastructure
-
-public typealias SystemRuntimeFileStoreError = Infrastructure.SystemRuntimeFileStoreError
-public typealias SystemRuntimeFileStore = Infrastructure.SystemRuntimeFileStore

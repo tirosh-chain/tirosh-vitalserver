@@ -1,5 +1,6 @@
 import Contracts
 import Foundation
+import Errors
 
 public enum DatastoreRepairDecision: Equatable {
     case missing(message: String)

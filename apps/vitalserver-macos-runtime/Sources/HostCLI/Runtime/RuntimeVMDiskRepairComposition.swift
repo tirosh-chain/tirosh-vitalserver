@@ -1,5 +1,0 @@
-import Bootstrap
-
-typealias RuntimeVMDiskRepairCompositionContext = Bootstrap.RuntimeVMDiskRepairCompositionContext
-typealias RuntimeVMDiskRepairCompositionOperations = Bootstrap.RuntimeVMDiskRepairCompositionOperations
-typealias RuntimeVMDiskRepairComposition = Bootstrap.RuntimeVMDiskRepairComposition

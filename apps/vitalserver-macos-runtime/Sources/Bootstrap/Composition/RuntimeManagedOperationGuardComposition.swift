@@ -2,6 +2,7 @@ import Application
 import Contracts
 import Foundation
 import Workflow
+import Errors
 
 public enum RuntimeManagedOperationGuardComposition {
     public static func make(

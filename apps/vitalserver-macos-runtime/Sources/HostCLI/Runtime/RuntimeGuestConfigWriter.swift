@@ -1,3 +1,0 @@
-import Infrastructure
-
-typealias RuntimeGuestConfigWriter = Infrastructure.RuntimeGuestConfigWriter

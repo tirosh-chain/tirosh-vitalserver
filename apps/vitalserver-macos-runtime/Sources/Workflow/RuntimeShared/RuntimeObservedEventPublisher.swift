@@ -1,5 +1,6 @@
 import Contracts
 import Domain
+import Errors
 
 public struct RuntimeObservedEventPublisher {
     public let previousStatus: () -> RuntimeStatusLevel?

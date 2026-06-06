@@ -1,5 +1,0 @@
-import Infrastructure
-
-typealias RuntimeVersionStoreMetadata = Infrastructure.RuntimeVersionStoreMetadata
-typealias RuntimeVersionReadResult = Infrastructure.RuntimeVersionReadResult
-typealias RuntimeVersionStore = Infrastructure.RuntimeVersionStore

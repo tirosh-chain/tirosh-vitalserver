@@ -1,5 +1,6 @@
 import Contracts
 import Foundation
+import Errors
 
 public typealias RuntimeGuestDocumentLoadResult<Document> = Contracts.RuntimeGuestDocumentLoadResult<Document>
 

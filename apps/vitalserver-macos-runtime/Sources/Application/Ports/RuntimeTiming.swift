@@ -1,5 +1,6 @@
 import Contracts
 import Foundation
+import Errors
 
 public protocol RuntimeClock {
     var now: Date { get }

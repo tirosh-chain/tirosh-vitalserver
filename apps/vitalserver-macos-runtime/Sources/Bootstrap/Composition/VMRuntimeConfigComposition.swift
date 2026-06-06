@@ -1,9 +1,9 @@
 import Application
 import Contracts
 import Foundation
-import HostAdapters
-import Infrastructure
-import Interfaces
+import OutboundAdapters
+import InboundAdapters
+import Errors
 
 public enum VMRuntimeConfigComposition {
     public static func defaultConfig(paths: InstalledRuntimePaths) -> VMRuntimeConfig {

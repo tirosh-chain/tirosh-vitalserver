@@ -1,6 +1,7 @@
 import Application
 import Contracts
 import Foundation
+import Errors
 
 public struct RuntimeGuestRuntimeStateObservation {
     public let loadedState: GuestRuntimeStateDocument?

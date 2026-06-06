@@ -1,5 +1,0 @@
-import Bootstrap
-
-typealias RuntimeInstallCompositionContext = Bootstrap.RuntimeInstallCompositionContext
-typealias RuntimeInstallCompositionOperations = Bootstrap.RuntimeInstallCompositionOperations
-typealias RuntimeInstallComposition = Bootstrap.RuntimeInstallComposition

@@ -2,17 +2,7 @@ import Application
 import Contracts
 import Domain
 import Foundation
-
-public enum RuntimeHealthWaitWorkflowError: Error, Equatable, CustomStringConvertible {
-    case operationFailed(String)
-
-    public var description: String {
-        switch self {
-        case .operationFailed(let message):
-            return message
-        }
-    }
-}
+import Errors
 
 public struct RuntimeHealthWaitWorkflowConfiguration {
     public let timeoutSeconds: Double
@@ -53,17 +43,33 @@ public struct RuntimeHealthWaitWriter {
     }
 }
 
+public struct RuntimeHealthWaitReader {
+    public var serviceStates: ([RuntimeManagedService]) -> [RuntimeManagedService: RuntimeServiceState]
+    public var healthSnapshot: () -> RuntimeHealthSnapshot
+
+    public init(
+        serviceStates: @escaping ([RuntimeManagedService]) -> [RuntimeManagedService: RuntimeServiceState],
+        healthSnapshot: @escaping () -> RuntimeHealthSnapshot
+    ) {
+        self.serviceStates = serviceStates
+        self.healthSnapshot = healthSnapshot
+    }
+}
+
 public struct RuntimeHealthWaitWorkflow {
     private let useCase: WaitForRuntimeHealthUseCase
+    private let reader: RuntimeHealthWaitReader
     private let configuration: RuntimeHealthWaitWorkflowConfiguration
     private let writer: RuntimeHealthWaitWriter
 
     public init(
         useCase: WaitForRuntimeHealthUseCase,
+        reader: RuntimeHealthWaitReader,
         configuration: RuntimeHealthWaitWorkflowConfiguration,
         writer: RuntimeHealthWaitWriter
     ) {
         self.useCase = useCase
+        self.reader = reader
         self.configuration = configuration
         self.writer = writer
     }
@@ -78,7 +84,11 @@ public struct RuntimeHealthWaitWorkflow {
         let waitResult = RuntimeHealthWaiter.wait(
             configuration: configuration.waitConfiguration,
             observe: {
-                useCase.observe(policy: policy)
+                useCase.observation(
+                    policy: policy,
+                    serviceStates: reader.serviceStates(useCase.observedServices()),
+                    snapshot: reader.healthSnapshot()
+                )
             },
             onProgress: { reasons in
                 let reasonText = RuntimeFailureReasonText.describe(reasons)
@@ -94,7 +104,7 @@ public struct RuntimeHealthWaitWorkflow {
 
         switch waitResult {
         case .healthy:
-            let snapshot = useCase.currentSnapshot()
+            let snapshot = reader.healthSnapshot()
             writer.log("runtime health ok hostProxyHTTP=\(snapshot.hostProxyHTTP)")
         case .failedEarly(let reason):
             writer.log("runtime health failed early reason=\(reason.rawValue)")

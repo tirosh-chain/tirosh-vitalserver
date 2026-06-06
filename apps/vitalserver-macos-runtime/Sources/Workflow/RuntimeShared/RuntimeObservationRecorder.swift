@@ -1,6 +1,7 @@
 import Application
 import Contracts
 import Foundation
+import Errors
 
 public struct RuntimeObservationRecorder {
     public let eventRepository: any RuntimeEventRecording

@@ -1,11 +1,11 @@
 import Application
 import Foundation
-import HostAdapters
+import OutboundAdapters
 import Contracts
 import Domain
-import Infrastructure
-import Interfaces
+import InboundAdapters
 import Workflow
+import Errors
 
 private typealias InstallSettings = RuntimeInstallSettings
 
@@ -102,49 +102,21 @@ public struct RuntimeInstallComposition {
     }
 
     public func install() throws {
-        try installRuntimeUseCase().install(InstallRuntimeRequest(
+        let plan = installRuntimeUseCase().plan(for: InstallRuntimeRequest(
             mode: .full
         ))
+        try runtimeInstallComposition().run(plan)
     }
 
     public func installProvision() throws {
-        try installRuntimeUseCase().install(InstallRuntimeRequest(
+        let plan = installRuntimeUseCase().plan(for: InstallRuntimeRequest(
             mode: .provision
         ))
+        try runtimeInstallComposition().run(plan)
     }
 
     private func installRuntimeUseCase() -> InstallRuntimeUseCase {
-        InstallRuntimeUseCase(
-            ports: InstallRuntimePorts(runInstall: { request in
-                try runtimeInstallComposition().run(runtimeInstallCommand(mode: request.mode))
-            })
-        )
-    }
-
-    private func runtimeInstallCommand(mode: RuntimeInstallMode) throws -> RuntimeInstallCommand {
-        switch mode {
-        case .full:
-            return RuntimeInstallCommand(
-                mode: .full,
-                plan: RuntimeOperationPlans.install,
-                completionStatus: .healthy,
-                completionMessage: "runtime install completed"
-            )
-        case .provision:
-            return RuntimeInstallCommand(
-                mode: .provision,
-                plan: RuntimeOperationPlans.installProvision,
-                completionStatus: .degraded,
-                completionMessage: "runtime install provisioned; runtime services starting"
-            )
-        case .unknown:
-            return RuntimeInstallCommand(
-                mode: mode,
-                plan: RuntimeOperationPlans.install,
-                completionStatus: .critical,
-                completionMessage: "runtime install failed"
-            )
-        }
+        InstallRuntimeUseCase()
     }
 
     private func runtimeInstallComposition() -> RuntimeInstallWorkflow<InstallSettings> {

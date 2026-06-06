@@ -1,16 +1,13 @@
 import Application
 import Contracts
 import XCTest
+import Errors
 
 final class RefreshRuntimeHealthUseCaseTests: XCTestCase {
     func testRefreshReturnsHealthyDecisionWhenSnapshotIsHealthy() {
-        let useCase = RefreshRuntimeHealthUseCase(
-            ports: RuntimeHealthRefreshPorts(healthSnapshot: {
-                healthSnapshot(reasons: [])
-            })
-        )
+        let useCase = RefreshRuntimeHealthUseCase()
 
-        let decision = useCase.refresh()
+        let decision = useCase.decision(snapshot: healthSnapshot(reasons: []))
 
         XCTAssertTrue(decision.healthy)
         XCTAssertEqual(decision.status, .healthy)
@@ -21,13 +18,9 @@ final class RefreshRuntimeHealthUseCaseTests: XCTestCase {
     }
 
     func testRefreshReturnsUnhealthyDecisionWithVMErrorMessage() {
-        let useCase = RefreshRuntimeHealthUseCase(
-            ports: RuntimeHealthRefreshPorts(healthSnapshot: {
-                healthSnapshot(reasons: [.vmService("not-loaded")])
-            })
-        )
+        let useCase = RefreshRuntimeHealthUseCase()
 
-        let decision = useCase.refresh()
+        let decision = useCase.decision(snapshot: healthSnapshot(reasons: [.vmService("not-loaded")]))
 
         XCTAssertFalse(decision.healthy)
         XCTAssertEqual(decision.status, .degraded)
@@ -37,13 +30,9 @@ final class RefreshRuntimeHealthUseCaseTests: XCTestCase {
     }
 
     func testRefreshReturnsUnhealthyDecisionWithDomainErrorMessage() {
-        let useCase = RefreshRuntimeHealthUseCase(
-            ports: RuntimeHealthRefreshPorts(healthSnapshot: {
-                healthSnapshot(reasons: [.auditProxyHTTP("failed")])
-            })
-        )
+        let useCase = RefreshRuntimeHealthUseCase()
 
-        let decision = useCase.refresh()
+        let decision = useCase.decision(snapshot: healthSnapshot(reasons: [.auditProxyHTTP("failed")]))
 
         XCTAssertFalse(decision.healthy)
         XCTAssertEqual(decision.statusMessage, "runtime health check failed: audit-proxy-http-failed")

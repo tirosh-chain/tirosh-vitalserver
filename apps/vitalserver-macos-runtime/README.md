@@ -259,17 +259,19 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 | `apps/vitalserver-macos-runtime` | macOS runtime distribution. Helper app, runtime CLI, packaging, guest asset을 같은 release 단위로 묶음 |
 | Make | target orchestration, artifact path, developer wrapper |
 | Python `packages/vitalserver-devtools` | Ubuntu asset, golden rootfs, nginx bundle, Docker image bundle, update bundle 생성/검증 |
-| Swift `HostCLI` | VM lifecycle, runtime install/configure/health/watchdog/update/rollback |
+| Swift `CLIHost` | runtime CLI process boundary |
+| Swift `InboundAdapters/CLI` | CLI command parsing and presentation |
 | Swift `RuntimeControl` | Helper UI가 보는 runtime usecase 입출력 계약. remote-capable `RuntimeControlClient`와 전환기 local affordance용 `RuntimeHostClient`를 분리 |
 | Swift `RuntimeControlAPI` | PWA/API server/client가 공유할 HTTP route/DTO/router/local loopback server. `/runtime/*`와 `/host/*` 경계를 분리 |
 | Swift `Contracts` | PWA/API/server/host runtime이 공유할 status/progress/update/guest JSON 계약 |
-| Swift `MacHostRuntimeAdapter` | `RuntimeControl`의 macOS local file/process/CLI 구현 |
-| Swift `MacRuntimeControlApp` | Helper app UI, presentation, native shell, composition |
+| Swift `OutboundAdapters/MacRuntimeControlClient` | `RuntimeControl`의 macOS local file/process/CLI 구현 |
+| Swift `MacControlPanel` | Helper app UI/presentation inbound adapter |
+| Swift `MacControlPanelHost` | macOS app process shell, native shell, composition |
 | `vitaldb-observer` | Redis/proxy source를 읽어 VitalDB recorder/bed/proxy/anomaly snapshot을 생산하는 stateless guest sidecar |
 | Packaging shell | `postinstall`, `proxy-run`, uninstall entrypoint |
 | Guest support | cloud-init 이후 Docker Compose bootstrap, guest state 기록, diagnostics |
 
-네이밍은 platform 종속성과 재사용 가능성을 기준으로 둡니다. `MacHost*`는 macOS host adapter, `MacRuntimeControlApp`은 SwiftUI/native shell transition app, `System*`은 Foundation/FileManager/Process 기반의 일반 system adapter, `Contracts`/`RuntimeControl`/`RuntimeControlAPI`는 PWA/API/server/host runtime이 공유할 계약을 뜻합니다.
+네이밍은 role boundary와 재사용 가능성을 기준으로 둡니다. `Errors`는 실패 의미, `Contracts`는 공유 상태/이벤트/명령/문서 계약, `InboundAdapters`는 CLI/API/UI 입력 변환, `OutboundAdapters`는 filesystem/process/network/VM effect 구현, `MacControlPanel`은 Helper app UI/presentation inbound adapter, `MacControlPanelHost`는 SwiftUI app process shell과 native shell composition, `Contracts`/`RuntimeControl`/`RuntimeControlAPI`는 PWA/API/server/host runtime이 공유할 계약을 뜻합니다.
 
 ## 문서
 

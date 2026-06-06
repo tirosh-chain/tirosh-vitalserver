@@ -1,17 +1,7 @@
 import Contracts
 import Domain
 import Foundation
-
-public enum RuntimeGuestActivationWorkflowError: Error, CustomStringConvertible {
-    case operationFailed(String)
-
-    public var description: String {
-        switch self {
-        case .operationFailed(let message):
-            return message
-        }
-    }
-}
+import Errors
 
 public struct RuntimeGuestActivationRunner {
     public var requireCapability: () throws -> Void

@@ -1,4 +1,0 @@
-import Infrastructure
-
-public typealias CompositeRuntimeEventRepositoryError = Infrastructure.CompositeRuntimeEventRepositoryError
-public typealias CompositeRuntimeEventRepository = Infrastructure.CompositeRuntimeEventRepository

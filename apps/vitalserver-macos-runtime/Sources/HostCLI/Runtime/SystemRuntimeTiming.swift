@@ -1,4 +1,0 @@
-import HostAdapters
-
-typealias SystemRuntimeClock = HostAdapters.SystemRuntimeClock
-typealias ThreadRuntimeSleeper = HostAdapters.ThreadRuntimeSleeper

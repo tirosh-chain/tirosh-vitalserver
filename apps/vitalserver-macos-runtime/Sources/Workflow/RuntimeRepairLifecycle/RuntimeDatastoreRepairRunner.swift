@@ -1,5 +1,6 @@
 import Contracts
 import Domain
+import Errors
 
 public struct RuntimeDatastoreRepairRunner {
     public var requireCapability: () throws -> Void

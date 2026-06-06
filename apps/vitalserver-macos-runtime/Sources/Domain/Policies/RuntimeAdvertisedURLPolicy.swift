@@ -1,5 +1,6 @@
 import Contracts
 import Foundation
+import Errors
 
 public struct RuntimeAdvertisedEndpoint: Equatable, Sendable {
     public let publicHost: String

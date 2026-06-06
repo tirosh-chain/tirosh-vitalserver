@@ -1,6 +1,7 @@
 import RuntimeControl
 import Contracts
 import XCTest
+import Errors
 
 final class RuntimeControlContractsTests: XCTestCase {
     func testRuntimeStatePreservesUnknownValues() throws {

@@ -1,3 +1,0 @@
-import Interfaces
-
-typealias RuntimeVitalRecorderDisplayPolicy = Interfaces.RuntimeVitalRecorderDisplayPolicy

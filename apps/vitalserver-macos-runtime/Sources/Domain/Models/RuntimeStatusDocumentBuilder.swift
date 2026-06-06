@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 public struct RuntimeStatusDocumentInput: Equatable {
     public let product: String
     public let status: RuntimeStatusLevel

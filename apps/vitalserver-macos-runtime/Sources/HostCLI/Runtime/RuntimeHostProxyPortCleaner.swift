@@ -1,5 +1,0 @@
-import HostAdapters
-
-typealias RuntimeHostProxyPortCleanerError = HostAdapters.RuntimeHostProxyPortCleanerError
-typealias RuntimeProxyNginxPIDReadResult = HostAdapters.RuntimeProxyNginxPIDReadResult
-typealias RuntimeHostProxyPortCleaner = HostAdapters.RuntimeHostProxyPortCleaner

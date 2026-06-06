@@ -1,4 +1,0 @@
-import HostAdapters
-
-typealias RuntimeServiceControllerError = HostAdapters.RuntimeServiceControllerError
-typealias RuntimeServiceController = HostAdapters.RuntimeServiceController

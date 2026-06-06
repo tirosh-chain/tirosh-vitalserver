@@ -1,4 +1,0 @@
-import Infrastructure
-
-typealias RuntimeLogRotationConfiguration = Infrastructure.RuntimeLogRotationConfiguration
-typealias RuntimeLogRotator = Infrastructure.RuntimeLogRotator

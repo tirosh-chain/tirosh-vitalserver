@@ -1,4 +1,0 @@
-import Interfaces
-
-typealias RuntimeConfigFlagValues = Interfaces.RuntimeConfigFlagValues
-typealias RuntimeConfigFlagReader = Interfaces.RuntimeConfigFlagReader

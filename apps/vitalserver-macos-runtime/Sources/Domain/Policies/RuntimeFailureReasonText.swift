@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 
 public enum RuntimeFailureReasonText {
     public static func describe(_ reasons: [RuntimeFailureReason]) -> String {

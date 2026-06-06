@@ -1,10 +1,7 @@
 import Application
 import Contracts
 import Domain
-
-public enum RuntimeServiceLifecycleWorkflowError: Error, Equatable {
-    case operationFailed(String)
-}
+import Errors
 
 public enum RuntimeServiceLifecycleCommand: Equatable {
     case repairAll
@@ -40,15 +37,34 @@ public struct RuntimeServiceLifecycleWriter {
     }
 }
 
+public struct RuntimeServiceLifecycleEffects {
+    public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
+    public var stopRuntimeServices: () throws -> Void
+    public var serviceStates: ([RuntimeManagedService]) throws -> [RuntimeManagedService: RuntimeServiceState]
+
+    public init(
+        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        stopRuntimeServices: @escaping () throws -> Void,
+        serviceStates: @escaping ([RuntimeManagedService]) throws -> [RuntimeManagedService: RuntimeServiceState]
+    ) {
+        self.startRuntimeServices = startRuntimeServices
+        self.stopRuntimeServices = stopRuntimeServices
+        self.serviceStates = serviceStates
+    }
+}
+
 public struct RuntimeServiceLifecycleWorkflow {
     private let useCase: ControlRuntimeServicesUseCase
+    private let effects: RuntimeServiceLifecycleEffects
     private let writer: RuntimeServiceLifecycleWriter
 
     public init(
         useCase: ControlRuntimeServicesUseCase,
+        effects: RuntimeServiceLifecycleEffects,
         writer: RuntimeServiceLifecycleWriter
     ) {
         self.useCase = useCase
+        self.effects = effects
         self.writer = writer
     }
 
@@ -65,32 +81,24 @@ public struct RuntimeServiceLifecycleWorkflow {
 
     private func repairAll() throws {
         let plan = useCase.plan(.repairAll)
-        guard let policy = plan.startPolicy else {
-            throw RuntimeServiceLifecycleWorkflowError.operationFailed(
-                "runtime service repair plan missing start policy"
-            )
-        }
         writer.log("runtime services repair requested")
         try writer.writeStatus(.recovering, plan.operation, "runtime services repair requested")
-        let stopped = try useCase.stopRuntimeServices(observing: plan.stopServices)
-        try requireServicesStopped(plan.requiredStoppedServices, observation: stopped)
-        let started = try useCase.startRequiredServices(policy)
-        try requireServicesLoaded(plan.requiredStartedServices, observation: started)
+        try effects.stopRuntimeServices()
+        try requireServicesStopped(plan.requiredStoppedServices)
+        let policy = try useCase.requireStartPolicy(in: plan, operationName: "repair")
+        try effects.startRuntimeServices(policy)
+        try requireServicesLoaded(plan.requiredStartedServices)
         try writer.writeStatus(.recovering, plan.operation, "runtime services repair dispatched")
         writer.log("runtime services repair dispatched")
     }
 
     private func startAll() throws {
         let plan = useCase.plan(.startAll)
-        guard let policy = plan.startPolicy else {
-            throw RuntimeServiceLifecycleWorkflowError.operationFailed(
-                "runtime service start plan missing start policy"
-            )
-        }
         writer.log("runtime services start requested")
         try writer.writeStatus(.recovering, plan.operation, "runtime services start requested")
-        let observation = try useCase.startRequiredServices(policy)
-        try requireServicesLoaded(plan.requiredStartedServices, observation: observation)
+        let policy = try useCase.requireStartPolicy(in: plan, operationName: "start")
+        try effects.startRuntimeServices(policy)
+        try requireServicesLoaded(plan.requiredStartedServices)
         try writer.writeStatus(.recovering, plan.operation, "runtime services start dispatched")
         writer.log("runtime services start dispatched")
     }
@@ -98,37 +106,33 @@ public struct RuntimeServiceLifecycleWorkflow {
     private func stopAll() throws {
         let plan = useCase.plan(.stopAll)
         writer.log("runtime services stop requested")
-        let observation = try useCase.stopRuntimeServices(observing: plan.stopServices)
-        try requireServicesStopped(plan.requiredStoppedServices, observation: observation)
+        try effects.stopRuntimeServices()
+        try requireServicesStopped(plan.requiredStoppedServices)
         try writer.writeStatus(.degraded, plan.operation, "runtime services stopped")
         writer.log("runtime services stopped")
     }
 
-    private func requireServicesLoaded(
-        _ services: [RuntimeManagedService],
-        observation: RuntimeServiceLifecycleObservation
-    ) throws {
-        let blockers = RuntimeServiceLifecycleCompletionPolicy.requiredServicesLoaded(
-            services,
-            states: observation.states
-        )
-        try throwIfBlocked(blockers)
+    private func requireServicesLoaded(_ services: [RuntimeManagedService]) throws {
+        do {
+            let states = try effects.serviceStates(services)
+            try useCase.requireServicesLoaded(
+                services,
+                observation: useCase.observation(states: states)
+            )
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw RuntimeServiceLifecycleWorkflowError.operationFailed(message)
+        }
     }
 
-    private func requireServicesStopped(
-        _ services: [RuntimeManagedService],
-        observation: RuntimeServiceLifecycleObservation
-    ) throws {
-        let blockers = RuntimeServiceLifecycleCompletionPolicy.servicesStopped(
-            services,
-            states: observation.states
-        )
-        try throwIfBlocked(blockers)
-    }
-
-    private func throwIfBlocked(_ blockers: [String]) throws {
-        guard blockers.isEmpty else {
-            throw RuntimeServiceLifecycleWorkflowError.operationFailed(blockers.joined(separator: "; "))
+    private func requireServicesStopped(_ services: [RuntimeManagedService]) throws {
+        do {
+            let states = try effects.serviceStates(services)
+            try useCase.requireServicesStopped(
+                services,
+                observation: useCase.observation(states: states)
+            )
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw RuntimeServiceLifecycleWorkflowError.operationFailed(message)
         }
     }
 }

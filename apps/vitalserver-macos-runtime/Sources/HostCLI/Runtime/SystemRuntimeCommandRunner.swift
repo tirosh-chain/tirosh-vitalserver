@@ -1,3 +1,0 @@
-import HostAdapters
-
-typealias SystemRuntimeCommandRunner = HostAdapters.SystemRuntimeCommandRunner

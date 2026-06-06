@@ -1,5 +1,0 @@
-import Bootstrap
-
-typealias RuntimeDatastoreRepairCompositionContext = Bootstrap.RuntimeDatastoreRepairCompositionContext
-typealias RuntimeDatastoreRepairCompositionOperations = Bootstrap.RuntimeDatastoreRepairCompositionOperations
-typealias RuntimeDatastoreRepairComposition = Bootstrap.RuntimeDatastoreRepairComposition

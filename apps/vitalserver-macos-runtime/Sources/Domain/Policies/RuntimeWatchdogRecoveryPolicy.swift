@@ -1,5 +1,6 @@
 import Contracts
 import Foundation
+import Errors
 
 public enum RuntimeWatchdogRecoveryDecision: Equatable {
     case healthy

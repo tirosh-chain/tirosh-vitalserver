@@ -1,4 +1,0 @@
-import Domain
-
-public typealias RuntimeWatchdogRecoveryDecision = Domain.RuntimeWatchdogRecoveryDecision
-public typealias RuntimeWatchdogRecoveryPolicy = Domain.RuntimeWatchdogRecoveryPolicy

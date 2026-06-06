@@ -1,7 +1,0 @@
-import Domain
-
-public typealias DatastoreRepairDecision = Domain.DatastoreRepairDecision
-public typealias DatastoreRepairWaitResult = Domain.DatastoreRepairWaitResult
-public typealias DatastoreRepairWaitConfiguration = Domain.DatastoreRepairWaitConfiguration
-public typealias DatastoreRepairEvaluator = Domain.DatastoreRepairEvaluator
-public typealias DatastoreRepairWaiter = Domain.DatastoreRepairWaiter

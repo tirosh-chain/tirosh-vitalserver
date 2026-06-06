@@ -1,6 +1,7 @@
 import Contracts
 import Domain
 import XCTest
+import Errors
 
 final class DomainRuntimeUninstallReadinessPolicyTests: XCTestCase {
     func testBlocksRunningServiceAndRunningVMProcess() {

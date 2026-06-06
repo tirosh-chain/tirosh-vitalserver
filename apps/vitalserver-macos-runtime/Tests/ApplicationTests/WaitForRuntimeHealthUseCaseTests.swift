@@ -2,26 +2,25 @@ import Application
 import Contracts
 import Domain
 import XCTest
+import Errors
 
 final class WaitForRuntimeHealthUseCaseTests: XCTestCase {
     func testObserveBuildsExplicitWaitObservationFromServiceStatesAndSnapshot() {
-        let useCase = WaitForRuntimeHealthUseCase(
-            ports: RuntimeHealthWaitPorts(
-                serviceStates: { services in
-                    Dictionary(uniqueKeysWithValues: services.map { service in
-                        (service, service == .guestLogSync ? .notLoaded : .loaded)
-                    })
-                },
-                healthSnapshot: { healthSnapshot(reasons: []) }
-            )
-        )
+        let useCase = WaitForRuntimeHealthUseCase()
+        let states = Dictionary(uniqueKeysWithValues: useCase.observedServices().map { service in
+            (service, service == .guestLogSync ? RuntimeServiceState.notLoaded : .loaded)
+        })
 
-        let observation = useCase.observe(policy: RuntimeServiceRestartPolicy(
-            restartVM: true,
-            restartGuestLogSync: true,
-            restartProxy: true,
-            restartWatchdog: true
-        ))
+        let observation = useCase.observation(
+            policy: RuntimeServiceRestartPolicy(
+                restartVM: true,
+                restartGuestLogSync: true,
+                restartProxy: true,
+                restartWatchdog: true
+            ),
+            serviceStates: states,
+            snapshot: healthSnapshot(reasons: [])
+        )
 
         XCTAssertEqual(observation.requiredServices, [.vm, .guestLogSync, .proxy, .watchdog])
         XCTAssertEqual(observation.serviceStates[.vm], .loaded)
@@ -32,38 +31,36 @@ final class WaitForRuntimeHealthUseCaseTests: XCTestCase {
     }
 
     func testMissingServiceStateStaysMissingInObservation() {
-        let useCase = WaitForRuntimeHealthUseCase(
-            ports: RuntimeHealthWaitPorts(
-                serviceStates: { _ in [:] },
-                healthSnapshot: { healthSnapshot(reasons: []) }
-            )
-        )
+        let useCase = WaitForRuntimeHealthUseCase()
 
-        let observation = useCase.observe(policy: RuntimeServiceRestartPolicy(
-            restartVM: true,
-            restartGuestLogSync: false,
-            restartProxy: false,
-            restartWatchdog: false
-        ))
+        let observation = useCase.observation(
+            policy: RuntimeServiceRestartPolicy(
+                restartVM: true,
+                restartGuestLogSync: false,
+                restartProxy: false,
+                restartWatchdog: false
+            ),
+            serviceStates: [:],
+            snapshot: healthSnapshot(reasons: [])
+        )
 
         XCTAssertEqual(observation.requiredServices, [.vm])
         XCTAssertNil(observation.serviceStates[.vm])
     }
 
     func testServiceReadFailureStaysExplicitInObservation() {
-        let useCase = WaitForRuntimeHealthUseCase(
-            ports: RuntimeHealthWaitPorts(
-                serviceStates: { _ in [.vm: .permissionDenied("operation not permitted")] },
-                healthSnapshot: { healthSnapshot(reasons: []) }
-            )
-        )
+        let useCase = WaitForRuntimeHealthUseCase()
 
-        let observation = useCase.observe(policy: RuntimeServiceRestartPolicy(
-            restartVM: true,
-            restartGuestLogSync: false,
-            restartProxy: false,
-            restartWatchdog: false
-        ))
+        let observation = useCase.observation(
+            policy: RuntimeServiceRestartPolicy(
+                restartVM: true,
+                restartGuestLogSync: false,
+                restartProxy: false,
+                restartWatchdog: false
+            ),
+            serviceStates: [.vm: .permissionDenied("operation not permitted")],
+            snapshot: healthSnapshot(reasons: [])
+        )
 
         XCTAssertEqual(observation.serviceStates[.vm], .permissionDenied("operation not permitted"))
     }

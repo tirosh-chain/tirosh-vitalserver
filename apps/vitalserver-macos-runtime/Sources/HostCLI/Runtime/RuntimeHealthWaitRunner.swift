@@ -1,4 +1,0 @@
-import Interfaces
-
-typealias RuntimeHealthWaitRunnerError = Interfaces.RuntimeHealthWaitRunnerError
-typealias RuntimeHealthWaitRunner = Interfaces.RuntimeHealthWaitRunner

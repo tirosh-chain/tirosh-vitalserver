@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 
 public struct RuntimeWorkflowStatusReporter {
     public var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void

@@ -1,4 +1,0 @@
-import Infrastructure
-
-public typealias SQLiteRuntimeObservabilityStoreError = Infrastructure.SQLiteRuntimeObservabilityStoreError
-public typealias SQLiteRuntimeObservabilityStore = Infrastructure.SQLiteRuntimeObservabilityStore

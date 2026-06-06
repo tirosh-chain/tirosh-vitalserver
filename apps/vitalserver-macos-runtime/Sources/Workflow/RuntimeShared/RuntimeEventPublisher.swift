@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 
 public struct RuntimeEventPublisher {
     public let factory: RuntimeEventFactory

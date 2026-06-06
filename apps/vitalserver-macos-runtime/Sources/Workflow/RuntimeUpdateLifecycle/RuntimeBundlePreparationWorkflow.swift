@@ -1,5 +1,6 @@
 import Contracts
 import Foundation
+import Errors
 
 public struct RuntimeBundlePreparationVerification: Equatable, Sendable {
     public let sourceURL: URL

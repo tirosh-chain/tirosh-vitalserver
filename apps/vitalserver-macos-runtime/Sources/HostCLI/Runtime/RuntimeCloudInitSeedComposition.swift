@@ -1,3 +1,0 @@
-import Bootstrap
-
-typealias RuntimeCloudInitSeedComposition = Bootstrap.RuntimeCloudInitSeedComposition

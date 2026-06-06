@@ -1,4 +1,0 @@
-import Workflow
-
-typealias RuntimeGuestRuntimeStateObservation = Workflow.RuntimeGuestRuntimeStateObservation
-typealias RuntimeGuestRuntimeStateObservationReader = Workflow.RuntimeGuestRuntimeStateObservationReader

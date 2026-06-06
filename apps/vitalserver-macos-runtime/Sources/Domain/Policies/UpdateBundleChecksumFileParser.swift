@@ -1,4 +1,5 @@
 import Foundation
+import Errors
 
 public enum UpdateBundleChecksumFileParser {
     public static func parse(_ text: String) -> [String: String] {

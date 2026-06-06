@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 
 public struct RuntimeInstallServiceStartInput: Equatable, Sendable {
     public let startAfterInstall: Bool

@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 
 public struct RuntimeServiceRestartPolicy: Equatable, Sendable {
     public let restartVM: Bool

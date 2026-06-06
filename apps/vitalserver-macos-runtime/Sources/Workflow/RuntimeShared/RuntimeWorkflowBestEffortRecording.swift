@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 
 public func writeRuntimeStatusBestEffort(
     _ status: RuntimeStatusLevel,

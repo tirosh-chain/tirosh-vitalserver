@@ -1,3 +1,0 @@
-import Domain
-
-public typealias RuntimeManagedOperationPolicy = Domain.RuntimeManagedOperationPolicy

@@ -2,9 +2,9 @@ import Application
 import Contracts
 import Domain
 import Foundation
-import HostAdapters
-import Infrastructure
+import OutboundAdapters
 import Workflow
+import Errors
 
 public struct RuntimeFreshInstallPreflightCompositionContext {
     let installedPaths: InstalledRuntimePaths

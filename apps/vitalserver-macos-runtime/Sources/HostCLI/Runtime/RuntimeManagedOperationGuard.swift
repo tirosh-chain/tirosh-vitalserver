@@ -1,4 +1,0 @@
-import Workflow
-
-typealias RuntimeGuestBootstrapOperation = Workflow.RuntimeGuestBootstrapOperation
-typealias RuntimeManagedOperationGuard = Workflow.RuntimeManagedOperationGuard

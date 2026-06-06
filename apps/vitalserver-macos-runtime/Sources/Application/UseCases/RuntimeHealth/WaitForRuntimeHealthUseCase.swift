@@ -1,44 +1,29 @@
 import Contracts
 import Domain
-
-public struct RuntimeHealthWaitPorts {
-    public var serviceStates: ([RuntimeManagedService]) -> [RuntimeManagedService: RuntimeServiceState]
-    public var healthSnapshot: () -> RuntimeHealthSnapshot
-
-    public init(
-        serviceStates: @escaping ([RuntimeManagedService]) -> [RuntimeManagedService: RuntimeServiceState],
-        healthSnapshot: @escaping () -> RuntimeHealthSnapshot
-    ) {
-        self.serviceStates = serviceStates
-        self.healthSnapshot = healthSnapshot
-    }
-}
+import Errors
 
 public struct WaitForRuntimeHealthUseCase {
-    private let ports: RuntimeHealthWaitPorts
+    public init() {}
 
-    public init(ports: RuntimeHealthWaitPorts) {
-        self.ports = ports
+    public func observedServices() -> [RuntimeManagedService] {
+        [
+            .vm,
+            .guestLogSync,
+            .proxy,
+            .watchdog,
+        ]
     }
 
-    public func observe(policy: RuntimeServiceRestartPolicy) -> RuntimeHealthWaitObservation {
+    public func observation(
+        policy: RuntimeServiceRestartPolicy,
+        serviceStates: [RuntimeManagedService: RuntimeServiceState],
+        snapshot: RuntimeHealthSnapshot
+    ) -> RuntimeHealthWaitObservation {
         let requiredServices = RuntimeRequiredServicePolicy.requiredServices(for: policy)
-        let states = ports.serviceStates(Self.observedServices)
         return RuntimeHealthWaitObservation(
             requiredServices: requiredServices,
-            serviceStates: states,
-            snapshot: ports.healthSnapshot()
+            serviceStates: serviceStates,
+            snapshot: snapshot
         )
     }
-
-    public func currentSnapshot() -> RuntimeHealthSnapshot {
-        ports.healthSnapshot()
-    }
-
-    private static let observedServices: [RuntimeManagedService] = [
-        .vm,
-        .guestLogSync,
-        .proxy,
-        .watchdog,
-    ]
 }

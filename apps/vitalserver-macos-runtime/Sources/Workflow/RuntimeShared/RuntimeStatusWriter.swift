@@ -1,5 +1,6 @@
 import Foundation
 import Contracts
+import Errors
 
 public struct RuntimeStatusWriter {
     public let reporter: RuntimeStatusReporter

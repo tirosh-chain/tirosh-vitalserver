@@ -1,3 +1,0 @@
-import Workflow
-
-typealias RuntimeObservedStatusPublisher = Workflow.RuntimeObservedStatusPublisher

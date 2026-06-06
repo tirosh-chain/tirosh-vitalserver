@@ -1,4 +1,0 @@
-import Domain
-
-public typealias RuntimeServiceRestartPolicy = Domain.RuntimeServiceRestartPolicy
-public typealias RuntimeRequiredServicePolicy = Domain.RuntimeRequiredServicePolicy

@@ -1,5 +1,6 @@
 import Contracts
 import Foundation
+import Errors
 
 public enum RuntimeObservationHealthPolicy {
     private static let criticalContainerServices: Set<String> = [

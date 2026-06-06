@@ -1,3 +1,0 @@
-import Domain
-
-public typealias RuntimeObservedEventTypePolicy = Domain.RuntimeObservedEventTypePolicy

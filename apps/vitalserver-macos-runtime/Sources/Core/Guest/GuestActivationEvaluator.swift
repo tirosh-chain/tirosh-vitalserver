@@ -1,7 +1,0 @@
-import Domain
-
-public typealias GuestActivationDecision = Domain.GuestActivationDecision
-public typealias GuestActivationWaitResult = Domain.GuestActivationWaitResult
-public typealias GuestActivationWaitConfiguration = Domain.GuestActivationWaitConfiguration
-public typealias GuestActivationEvaluator = Domain.GuestActivationEvaluator
-public typealias GuestActivationWaiter = Domain.GuestActivationWaiter

@@ -1,3 +1,0 @@
-import Workflow
-
-typealias RuntimeVitalDBObservationProjector = Workflow.RuntimeVitalDBObservationProjector

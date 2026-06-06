@@ -1,5 +1,6 @@
 import Contracts
 import XCTest
+import Errors
 
 final class RedisBackupDocumentsTests: XCTestCase {
     func testRequestDocumentEncodesRedisBackupOperation() throws {

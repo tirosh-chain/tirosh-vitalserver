@@ -1,3 +1,0 @@
-import Interfaces
-
-typealias RuntimeVitalFilesDirectoryPolicy = Interfaces.RuntimeVitalFilesDirectoryPolicy

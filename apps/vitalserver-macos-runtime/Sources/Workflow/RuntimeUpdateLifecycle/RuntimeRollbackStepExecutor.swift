@@ -1,17 +1,7 @@
 import Contracts
 import Domain
 import Foundation
-
-public enum RuntimeRollbackWorkflowError: Error, CustomStringConvertible {
-    case operationFailed(String)
-
-    public var description: String {
-        switch self {
-        case .operationFailed(let message):
-            return message
-        }
-    }
-}
+import Errors
 
 public struct RuntimeRollbackStepExecutor {
     public var stopRuntimeServices: () throws -> Void

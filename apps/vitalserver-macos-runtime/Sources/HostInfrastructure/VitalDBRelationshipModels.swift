@@ -1,7 +1,0 @@
-import Infrastructure
-
-public typealias VitalDBRelationshipEventType = Infrastructure.VitalDBRelationshipEventType
-public typealias VitalDBRelationshipSeverity = Infrastructure.VitalDBRelationshipSeverity
-public typealias VitalDBBedAssignmentStatus = Infrastructure.VitalDBBedAssignmentStatus
-public typealias VitalDBBedAssignmentRecord = Infrastructure.VitalDBBedAssignmentRecord
-public typealias VitalDBRelationshipEventRecord = Infrastructure.VitalDBRelationshipEventRecord

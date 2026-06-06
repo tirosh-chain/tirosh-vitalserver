@@ -1,4 +1,0 @@
-import Workflow
-
-typealias RuntimeStatusReporterError = Workflow.RuntimeStatusReporterError
-typealias RuntimeStatusReporter = Workflow.RuntimeStatusReporter

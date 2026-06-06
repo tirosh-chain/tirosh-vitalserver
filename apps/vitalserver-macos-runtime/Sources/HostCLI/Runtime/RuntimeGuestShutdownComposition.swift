@@ -1,5 +1,0 @@
-import Bootstrap
-
-typealias RuntimeGuestShutdownCompositionContext = Bootstrap.RuntimeGuestShutdownCompositionContext
-typealias RuntimeGuestShutdownCompositionOperations = Bootstrap.RuntimeGuestShutdownCompositionOperations
-typealias RuntimeGuestShutdownComposition = Bootstrap.RuntimeGuestShutdownComposition

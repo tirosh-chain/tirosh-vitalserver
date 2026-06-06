@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 
 public enum RuntimeObservedEventTypePolicy {
     public static func eventType(

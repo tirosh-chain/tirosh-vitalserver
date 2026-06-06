@@ -1,4 +1,5 @@
 import Foundation
+import Errors
 
 public enum RuntimeGuardrailState: Equatable, Sendable {
     case unreported

@@ -1,6 +1,7 @@
 import Contracts
 import Foundation
 import Workflow
+import Errors
 
 public struct RuntimeStatusWriterCompositionOperations {
     let reporter: RuntimeStatusReporter

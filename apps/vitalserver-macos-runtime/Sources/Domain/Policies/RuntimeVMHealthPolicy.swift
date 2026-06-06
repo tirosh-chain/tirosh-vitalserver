@@ -1,5 +1,6 @@
 import Contracts
 import Foundation
+import Errors
 
 public struct RuntimeVMHealthAssessment: Equatable {
     public let vmState: RuntimeVMState

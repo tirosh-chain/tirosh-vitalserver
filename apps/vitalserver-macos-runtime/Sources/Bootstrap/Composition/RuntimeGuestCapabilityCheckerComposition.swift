@@ -1,5 +1,6 @@
 import Application
 import Workflow
+import Errors
 
 public enum RuntimeGuestCapabilityCheckerComposition {
     public static func make(

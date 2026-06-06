@@ -1,0 +1,182 @@
+import Foundation
+import Contracts
+import InboundAdapters
+import OutboundAdapters
+import RuntimeControl
+import Errors
+
+@MainActor
+struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
+    private let commandClient: any RuntimeControlClient
+    private let hostClient: any RuntimeHostClient
+    private let readWorker: MacHostRuntimeReadWorker
+    private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
+    private let servesTestTools: Bool
+    private let statusAnnotator: RuntimeControlStatusAnnotator
+    private let scheduleHelperRelaunch: @MainActor () -> Void
+    private let scheduleHelperTermination: @MainActor () -> Void
+
+    init(
+        commandClient: any RuntimeControlClient,
+        hostClient: any RuntimeHostClient,
+        readWorker: MacHostRuntimeReadWorker,
+        localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
+        servesTestTools: Bool,
+        runtimeControlStartedAt: Date = Date(),
+        scheduleHelperRelaunch: @escaping @MainActor () -> Void = {},
+        scheduleHelperTermination: @escaping @MainActor () -> Void = {}
+    ) {
+        self.commandClient = commandClient
+        self.hostClient = hostClient
+        self.readWorker = readWorker
+        self.localAPISettings = localAPISettings
+        self.servesTestTools = servesTestTools
+        self.statusAnnotator = RuntimeControlStatusAnnotator(runtimeControlStartedAt: runtimeControlStartedAt)
+        self.scheduleHelperRelaunch = scheduleHelperRelaunch
+        self.scheduleHelperTermination = scheduleHelperTermination
+    }
+
+    func loadCapabilities() async throws -> RuntimeControlCapabilities {
+        var capabilities = commandClient.capabilities
+        capabilities.canUseTestTools = servesTestTools
+        return capabilities
+    }
+
+    func loadStatus() async throws -> RuntimeStatus {
+        let settings = await readWorker.loadSettings()
+        let status = await readWorker.loadStatus(settings: settings)
+        return statusAnnotator.annotated(status)
+    }
+
+    func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
+        await readWorker.loadRuntimeEvents(query: query)
+    }
+
+    func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot {
+        await readWorker.loadVitalDBObservationSnapshot()
+    }
+
+    func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory {
+        await readWorker.loadVitalDBRecorders()
+    }
+
+    func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory {
+        await readWorker.loadVitalDBRelationships()
+    }
+
+    func loadHealthStatus() async throws -> RuntimeStatus {
+        let settings = await readWorker.loadSettings()
+        let status = await readWorker.loadHealthStatus(settings: settings)
+        return statusAnnotator.annotated(status)
+    }
+
+    func loadSettings() async throws -> RuntimeSettings {
+        localAPISettings.settingsWithLocalAPIPort(await readWorker.loadSettings())
+    }
+
+    func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
+        await readWorker.loadReleaseInfo()
+    }
+
+    func loadInstallInfo() async throws -> RuntimeInstallInfo {
+        await readWorker.loadInstallInfo()
+    }
+
+    func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse {
+        RuntimeLogTextResponse(
+            text: await hostClient.loadLogText(
+                sourceID: request.source,
+                helperMessage: request.helperMessage ?? "",
+                lineLimit: request.lineLimit
+            )
+        )
+    }
+
+    func loadBackups() async throws -> [RuntimeBackup] {
+        let settings = await readWorker.loadSettings()
+        let status = await readWorker.loadStatus(settings: settings)
+        return try await readWorker.loadBackups(latestBackupPath: status.latestBackup)
+    }
+
+    func loadRedisBackups() async throws -> [RuntimeBackup] {
+        try await readWorker.loadRedisBackups()
+    }
+
+    func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {
+        let response = RuntimeControlCommandResponse(result: try await commandClient.applySettings(settings))
+        localAPISettings.apply(settings: settings)
+        return response
+    }
+
+    func startRuntimeServices() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.startRuntimeServices())
+    }
+
+    func stopRuntimeServices() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.stopRuntimeServices())
+    }
+
+    func repairRuntimeServices() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.repairRuntimeServices())
+    }
+
+    func repairProxy(proxyPort: Int) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.repairProxy(proxyPort: proxyPort))
+    }
+
+    func repairDatastore() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.repairDatastore())
+    }
+
+    func repairVMDisk() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.repairVMDisk())
+    }
+
+    func createRedisBackup() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.createRedisBackup())
+    }
+
+    func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse {
+        RuntimeUpdateBundleSummaryResponse(summary: await readWorker.updateBundleSummary(url: try localFileURL(bundle)))
+    }
+
+    func verifyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await hostClient.verifyUpdateBundle(url: try localFileURL(bundle)))
+    }
+
+    func applyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        let result = try await hostClient.applyUpdateBundle(url: try localFileURL(bundle))
+        if result.exitCode == 0 {
+            scheduleHelperRelaunch()
+        }
+        return RuntimeControlCommandResponse(result: result)
+    }
+
+    func rollbackBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await hostClient.rollbackRuntime(backupURL: try localFileURL(backup)))
+    }
+
+    func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await hostClient.deleteBackup(url: try localFileURL(backup)))
+    }
+
+    func exportLogs(destination: RuntimeControlFileReference) async throws -> RuntimeLogExportResult {
+        try await hostClient.exportLogs(to: try localFileURL(destination))
+    }
+
+    func uninstallRuntime(clean: Bool) async throws -> RuntimeControlCommandResponse {
+        let response = RuntimeControlCommandResponse(result: try await commandClient.uninstallRuntime(clean: clean))
+        if response.result.exitCode == 0 {
+            scheduleHelperTermination()
+        }
+        return response
+    }
+
+    private func localFileURL(_ reference: RuntimeControlFileReference) throws -> URL {
+        guard reference.kind == .localPath else {
+            throw RuntimeControlAPIHandlerError.unsupportedFileReference(reference.kind.rawValue)
+        }
+        return URL(fileURLWithPath: reference.value)
+    }
+
+}

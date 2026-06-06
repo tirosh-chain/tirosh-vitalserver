@@ -1,7 +1,8 @@
 import Application
 import Contracts
 import Foundation
-import Infrastructure
+import OutboundAdapters
+import Errors
 
 public enum RuntimeHealthCheckerComposition {
     public static func make(

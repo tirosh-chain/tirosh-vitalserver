@@ -1,5 +1,0 @@
-import Bootstrap
-
-typealias RuntimeWatchdogRunnerCompositionContext = Bootstrap.RuntimeWatchdogRunnerCompositionContext
-typealias RuntimeWatchdogRunnerCompositionOperations = Bootstrap.RuntimeWatchdogRunnerCompositionOperations
-typealias RuntimeWatchdogRunnerComposition = Bootstrap.RuntimeWatchdogRunnerComposition

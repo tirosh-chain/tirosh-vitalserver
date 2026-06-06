@@ -1,5 +1,6 @@
 import Foundation
-import Infrastructure
+import OutboundAdapters
+import Errors
 
 public struct LauncherPaths {
     public let home: URL
@@ -36,6 +37,13 @@ public struct LauncherPaths {
             installed: installed,
             config: installed.vmConfig,
             pidFile: installed.pidFile
+        )
+    }
+
+    public static func resolve() -> LauncherPaths {
+        resolve(
+            vmHomeEnvironmentKey: Constants.Environment.vmHome,
+            defaultHomePathComponents: Constants.Paths.defaultHomePathComponents
         )
     }
 

@@ -1,5 +1,0 @@
-import Bootstrap
-
-typealias RuntimeBundleCompositionContext = Bootstrap.RuntimeBundleCompositionContext
-typealias RuntimeBundleCompositionOperations = Bootstrap.RuntimeBundleCompositionOperations
-typealias RuntimeBundleComposition = Bootstrap.RuntimeBundleComposition

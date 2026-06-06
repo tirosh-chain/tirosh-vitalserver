@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+import Errors
 
 public struct RuntimeBundleDigestVerificationInput: Equatable, Sendable {
     public let fileURL: URL

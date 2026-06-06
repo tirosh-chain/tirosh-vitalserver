@@ -1,6 +1,8 @@
+import Application
 import Contracts
 import Domain
 import Foundation
+import Errors
 
 public struct RuntimeApplyBundleRunner {
     public var prepareLogs: () throws -> Void
@@ -12,6 +14,9 @@ public struct RuntimeApplyBundleRunner {
     public var statusReporter: RuntimeWorkflowStatusReporter
     public var pruneOldRuntimeArtifacts: () throws -> Void
     public var reasonText: ([RuntimeFailureReason]) -> String
+    private var useCase: UpdateRuntimeUseCase {
+        UpdateRuntimeUseCase()
+    }
 
     public init(
         prepareLogs: @escaping () throws -> Void,
@@ -58,8 +63,9 @@ public struct RuntimeApplyBundleRunner {
         }
 
         do {
+            let plan = useCase.planApplyBundle(for: preflight)
             try RuntimeOperationPlanRunner.run(
-                plan: RuntimeOperationPlans.applyBundle(updatesRootfsBase: preflight.updatesRootfsBase),
+                plan: plan.operationPlan,
                 status: .updating,
                 execute: { step in
                     try executeStep(step, preflight)

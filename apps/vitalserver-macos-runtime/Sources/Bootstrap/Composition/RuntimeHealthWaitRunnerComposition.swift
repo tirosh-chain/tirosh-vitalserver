@@ -1,8 +1,9 @@
 import Contracts
 import Domain
 import Foundation
-import Interfaces
+import InboundAdapters
 import Workflow
+import Errors
 
 public struct RuntimeHealthWaitRunnerCompositionOperations {
     let serviceState: (RuntimeManagedService) -> RuntimeServiceState

@@ -1,3 +1,0 @@
-import Domain
-
-typealias RuntimeObservationHealthPolicy = Domain.RuntimeObservationHealthPolicy

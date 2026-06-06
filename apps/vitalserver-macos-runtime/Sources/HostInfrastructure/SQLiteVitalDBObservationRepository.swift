@@ -1,3 +1,0 @@
-import Infrastructure
-
-public typealias SQLiteVitalDBObservationRepository = Infrastructure.SQLiteVitalDBObservationRepository

@@ -1,5 +1,6 @@
 import Contracts
 import Foundation
+import Errors
 
 public enum RuntimeUninstallWorkflowState: Equatable, Sendable {
     case notStarted
@@ -60,20 +61,6 @@ public struct RuntimeUninstallTransitionDecision: Equatable, Sendable {
         self.commands = commands
         self.blockers = blockers
         self.message = message
-    }
-}
-
-public struct RuntimeUninstallTransitionError: Error, Equatable, Sendable, CustomStringConvertible {
-    public let state: RuntimeUninstallWorkflowState
-    public let event: RuntimeUninstallWorkflowEvent
-
-    public init(state: RuntimeUninstallWorkflowState, event: RuntimeUninstallWorkflowEvent) {
-        self.state = state
-        self.event = event
-    }
-
-    public var description: String {
-        "invalid uninstall transition state=\(state) event=\(event)"
     }
 }
 

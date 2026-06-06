@@ -1,6 +1,0 @@
-import Domain
-
-public typealias UpdateBundleVerificationError = Domain.UpdateBundleVerificationError
-public typealias UpdateBundleFileVerification = Domain.UpdateBundleFileVerification
-public typealias UpdateBundleVerificationPlan = Domain.UpdateBundleVerificationPlan
-public typealias UpdateBundleVerifier = Domain.UpdateBundleVerifier

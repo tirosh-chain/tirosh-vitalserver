@@ -1,3 +1,0 @@
-import Infrastructure
-
-public typealias VitalDBRelationshipProjectionPlanner = Infrastructure.VitalDBRelationshipProjectionPlanner

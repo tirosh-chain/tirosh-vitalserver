@@ -1,3 +1,0 @@
-import Workflow
-
-typealias RuntimeObservedEventPublisher = Workflow.RuntimeObservedEventPublisher

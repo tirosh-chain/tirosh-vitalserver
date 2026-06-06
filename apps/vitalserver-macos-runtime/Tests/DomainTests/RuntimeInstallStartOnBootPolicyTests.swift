@@ -1,5 +1,6 @@
 import Domain
 import XCTest
+import Errors
 
 final class RuntimeInstallStartOnBootPolicyTests: XCTestCase {
     func testEnablesSleepPreventionOnlyWhenStartOnBootAndSleepPreventionAreEnabled() {

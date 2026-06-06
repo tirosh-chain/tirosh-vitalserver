@@ -1,5 +1,6 @@
 import Contracts
 import Foundation
+import Errors
 
 public struct RuntimeBundleStagingContext: Equatable, Sendable {
     public let bundlesDirectory: URL

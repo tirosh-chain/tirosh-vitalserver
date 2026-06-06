@@ -1,6 +1,0 @@
-import Contracts
-import Interfaces
-
-typealias NetworkMode = Contracts.RuntimeNetworkMode
-typealias RuntimeConfigureCommand = Interfaces.RuntimeConfigureCommand
-typealias RuntimeConfigureChange = Interfaces.RuntimeConfigureChange

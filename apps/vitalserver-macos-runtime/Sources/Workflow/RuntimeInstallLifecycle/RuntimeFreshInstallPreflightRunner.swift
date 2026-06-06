@@ -1,5 +1,6 @@
 import Contracts
 import Domain
+import Errors
 
 public struct RuntimeFreshInstallPreflightRunner {
     public var settingsState: () -> RuntimeInstallSettingsState

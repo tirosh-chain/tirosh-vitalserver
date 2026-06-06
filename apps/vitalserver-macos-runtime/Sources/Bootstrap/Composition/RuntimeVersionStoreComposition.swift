@@ -1,6 +1,7 @@
 import Application
 import Foundation
-import Infrastructure
+import OutboundAdapters
+import Errors
 
 public struct RuntimeVersionStoreCompositionContext {
     let installedPaths: InstalledRuntimePaths

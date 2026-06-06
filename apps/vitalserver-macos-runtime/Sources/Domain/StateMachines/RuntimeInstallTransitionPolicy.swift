@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 
 public struct RuntimeInstallTransitionContext: Equatable, Sendable {
     public let mode: RuntimeInstallMode
@@ -66,26 +67,6 @@ public struct RuntimeInstallTransitionDecision: Equatable, Sendable {
         self.commands = commands
         self.blockers = blockers
         self.message = message
-    }
-}
-
-public struct RuntimeInstallTransitionError: Error, Equatable, Sendable, CustomStringConvertible {
-    public let state: RuntimeInstallWorkflowState
-    public let event: RuntimeInstallWorkflowEvent
-    public let reason: String
-
-    public init(
-        state: RuntimeInstallWorkflowState,
-        event: RuntimeInstallWorkflowEvent,
-        reason: String = "invalid install transition"
-    ) {
-        self.state = state
-        self.event = event
-        self.reason = reason
-    }
-
-    public var description: String {
-        "\(reason) state=\(state) event=\(event)"
     }
 }
 
@@ -214,8 +195,8 @@ public enum RuntimeInstallTransitionPolicy {
     private static func validate(_ context: RuntimeInstallTransitionContext) throws {
         guard context.plan.operation == .install, context.plan.invalidSteps.isEmpty else {
             throw RuntimeInstallTransitionError(
-                state: .notStarted,
-                event: .start,
+                state: RuntimeInstallWorkflowState.notStarted,
+                event: RuntimeInstallWorkflowEvent.start,
                 reason: "invalid install plan"
             )
         }
@@ -223,23 +204,23 @@ public enum RuntimeInstallTransitionPolicy {
         case .full:
             guard context.plan.steps.contains(.waitInstallRuntimeHealth) else {
                 throw RuntimeInstallTransitionError(
-                    state: .notStarted,
-                    event: .start,
+                    state: RuntimeInstallWorkflowState.notStarted,
+                    event: RuntimeInstallWorkflowEvent.start,
                     reason: "full install plan must wait for runtime health"
                 )
             }
         case .provision:
             guard !context.plan.steps.contains(.waitInstallRuntimeHealth) else {
                 throw RuntimeInstallTransitionError(
-                    state: .notStarted,
-                    event: .start,
+                    state: RuntimeInstallWorkflowState.notStarted,
+                    event: RuntimeInstallWorkflowEvent.start,
                     reason: "install provision plan must not claim runtime health"
                 )
             }
         case .unknown(let value):
             throw RuntimeInstallTransitionError(
-                state: .notStarted,
-                event: .start,
+                state: RuntimeInstallWorkflowState.notStarted,
+                event: RuntimeInstallWorkflowEvent.start,
                 reason: "install mode unknown value=\(value)"
             )
         }

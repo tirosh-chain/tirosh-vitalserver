@@ -1,5 +1,0 @@
-import Infrastructure
-
-typealias RuntimeStorageMaintenanceConfiguration = Infrastructure.RuntimeStorageMaintenanceConfiguration
-typealias RuntimeStorageMaintenanceError = Infrastructure.RuntimeStorageMaintenanceError
-typealias RuntimeStorageMaintenance = Infrastructure.RuntimeStorageMaintenance

@@ -1,7 +1,0 @@
-import Domain
-
-public typealias GuestShutdownDecision = Domain.GuestShutdownDecision
-public typealias GuestShutdownWaitResult = Domain.GuestShutdownWaitResult
-public typealias GuestShutdownWaitConfiguration = Domain.GuestShutdownWaitConfiguration
-public typealias GuestShutdownEvaluator = Domain.GuestShutdownEvaluator
-public typealias GuestShutdownWaiter = Domain.GuestShutdownWaiter

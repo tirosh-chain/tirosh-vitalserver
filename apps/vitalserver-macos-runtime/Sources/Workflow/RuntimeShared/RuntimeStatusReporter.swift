@@ -2,11 +2,7 @@ import Foundation
 import Application
 import Contracts
 import Domain
-
-public enum RuntimeStatusReporterError: Error, Equatable {
-    case missingStatusDocumentForProgress
-    case statusDocumentReadFailed(String)
-}
+import Errors
 
 public struct RuntimeStatusReporter {
     private let repository: RuntimeStatusRepository

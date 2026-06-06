@@ -1,5 +1,6 @@
 import Contracts
 import Foundation
+import Errors
 
 public protocol RuntimeTemporaryDirectoryProviding {
     var temporaryDirectory: URL { get }

@@ -1,15 +1,5 @@
 import Contracts
-public enum UpdateBundleVerificationError: Error, Equatable {
-    case unsupportedSchema(Int)
-    case unsupportedProduct(String)
-    case invalidArtifactName(String)
-    case invalidMigrationName(String)
-    case unsupportedArtifactType(String)
-    case manifestChecksumMismatch(String)
-    case checksumFileMismatch(String)
-    case sizeMismatch(String)
-}
-
+import Errors
 public struct UpdateBundleFileVerification: Equatable, Sendable {
     public let name: String
     public let checksumKey: String

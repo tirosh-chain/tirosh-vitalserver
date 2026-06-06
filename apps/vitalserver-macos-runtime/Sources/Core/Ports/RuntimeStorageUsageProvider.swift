@@ -1,4 +1,0 @@
-import Application
-
-public typealias RuntimeStorageUsageResult = Application.RuntimeStorageUsageResult
-public typealias RuntimeStorageUsageProviding = Application.RuntimeStorageUsageProviding

@@ -1,7 +1,0 @@
-import Infrastructure
-
-typealias RuntimeBackupStorePaths = Infrastructure.RuntimeBackupStorePaths
-typealias RuntimeBackupStoreMetadata = Infrastructure.RuntimeBackupStoreMetadata
-typealias RuntimeBackupStoreError = Infrastructure.RuntimeBackupStoreError
-typealias RuntimeManagedBackupArtifact = Infrastructure.RuntimeManagedBackupArtifact
-typealias RuntimeBackupStore = Infrastructure.RuntimeBackupStore

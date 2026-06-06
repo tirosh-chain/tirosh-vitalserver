@@ -1,21 +1,6 @@
 import Contracts
 import Domain
-
-public struct RuntimeServiceControlPorts {
-    public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
-    public var stopRuntimeServices: () throws -> Void
-    public var serviceStates: ([RuntimeManagedService]) throws -> [RuntimeManagedService: RuntimeServiceState]
-
-    public init(
-        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
-        stopRuntimeServices: @escaping () throws -> Void,
-        serviceStates: @escaping ([RuntimeManagedService]) throws -> [RuntimeManagedService: RuntimeServiceState]
-    ) {
-        self.startRuntimeServices = startRuntimeServices
-        self.stopRuntimeServices = stopRuntimeServices
-        self.serviceStates = serviceStates
-    }
-}
+import Errors
 
 public struct RuntimeServiceLifecycleObservation: Equatable {
     public let states: [RuntimeManagedService: RuntimeServiceState]
@@ -67,12 +52,16 @@ public struct RuntimeServiceControlPlan: Equatable {
     }
 }
 
-public struct ControlRuntimeServicesUseCase {
-    private let ports: RuntimeServiceControlPorts
+public struct RuntimeServiceControlResult: Equatable {
+    public let plan: RuntimeServiceControlPlan
 
-    public init(ports: RuntimeServiceControlPorts) {
-        self.ports = ports
+    public init(plan: RuntimeServiceControlPlan) {
+        self.plan = plan
     }
+}
+
+public struct ControlRuntimeServicesUseCase {
+    public init() {}
 
     public func plan(_ request: RuntimeServiceControlRequest) -> RuntimeServiceControlPlan {
         let allRuntimeServices = RuntimeRequiredServicePolicy.allRuntimeServices
@@ -108,23 +97,49 @@ public struct ControlRuntimeServicesUseCase {
         }
     }
 
-    public func startRequiredServices(
-        _ policy: RuntimeServiceRestartPolicy
-    ) throws -> RuntimeServiceLifecycleObservation {
-        try ports.startRuntimeServices(policy)
-        return try observeServices(RuntimeRequiredServicePolicy.requiredServices(for: policy))
+    public func requireStartPolicy(
+        in plan: RuntimeServiceControlPlan,
+        operationName: String
+    ) throws -> RuntimeServiceRestartPolicy {
+        guard let policy = plan.startPolicy else {
+            throw RuntimeServiceControlError.operationFailed(
+                "runtime service \(operationName) plan missing start policy"
+            )
+        }
+        return policy
     }
 
-    public func stopRuntimeServices(
-        observing services: [RuntimeManagedService]
-    ) throws -> RuntimeServiceLifecycleObservation {
-        try ports.stopRuntimeServices()
-        return try observeServices(services)
+    public func observation(
+        states: [RuntimeManagedService: RuntimeServiceState]
+    ) -> RuntimeServiceLifecycleObservation {
+        RuntimeServiceLifecycleObservation(states: states)
     }
 
-    public func observeServices(
-        _ services: [RuntimeManagedService]
-    ) throws -> RuntimeServiceLifecycleObservation {
-        RuntimeServiceLifecycleObservation(states: try ports.serviceStates(services))
+    public func requireServicesLoaded(
+        _ services: [RuntimeManagedService],
+        observation: RuntimeServiceLifecycleObservation
+    ) throws {
+        let blockers = RuntimeServiceLifecycleCompletionPolicy.requiredServicesLoaded(
+            services,
+            states: observation.states
+        )
+        try throwIfBlocked(blockers)
+    }
+
+    public func requireServicesStopped(
+        _ services: [RuntimeManagedService],
+        observation: RuntimeServiceLifecycleObservation
+    ) throws {
+        let blockers = RuntimeServiceLifecycleCompletionPolicy.servicesStopped(
+            services,
+            states: observation.states
+        )
+        try throwIfBlocked(blockers)
+    }
+
+    private func throwIfBlocked(_ blockers: [String]) throws {
+        guard blockers.isEmpty else {
+            throw RuntimeServiceControlError.operationFailed(blockers.joined(separator: "; "))
+        }
     }
 }

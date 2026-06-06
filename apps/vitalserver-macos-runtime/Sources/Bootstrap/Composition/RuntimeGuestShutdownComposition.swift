@@ -2,6 +2,7 @@ import Application
 import Contracts
 import Foundation
 import Workflow
+import Errors
 
 public struct RuntimeGuestShutdownCompositionContext {
     let guestRunDirectory: URL

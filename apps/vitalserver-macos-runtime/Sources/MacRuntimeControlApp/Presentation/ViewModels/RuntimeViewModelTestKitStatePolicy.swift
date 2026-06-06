@@ -1,4 +1,0 @@
-import Interfaces
-
-typealias RuntimeViewModelTestKitStartInput = Interfaces.RuntimeViewModelTestKitStartInput
-typealias RuntimeViewModelTestKitStatePolicy = Interfaces.RuntimeViewModelTestKitStatePolicy

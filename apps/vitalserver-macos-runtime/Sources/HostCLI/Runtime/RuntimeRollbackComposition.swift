@@ -1,5 +1,0 @@
-import Bootstrap
-
-typealias RuntimeRollbackCompositionContext = Bootstrap.RuntimeRollbackCompositionContext
-typealias RuntimeRollbackCompositionOperations = Bootstrap.RuntimeRollbackCompositionOperations
-typealias RuntimeRollbackComposition = Bootstrap.RuntimeRollbackComposition

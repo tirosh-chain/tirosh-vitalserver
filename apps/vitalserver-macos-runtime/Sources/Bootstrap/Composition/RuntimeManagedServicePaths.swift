@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 
 public enum RuntimeManagedServicePaths {
     public static func launchDaemonPlist(_ service: RuntimeManagedService) -> String {

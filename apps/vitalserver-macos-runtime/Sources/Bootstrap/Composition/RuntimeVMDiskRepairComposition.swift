@@ -2,8 +2,9 @@ import Application
 import Contracts
 import Domain
 import Foundation
-import Infrastructure
+import OutboundAdapters
 import Workflow
+import Errors
 
 public struct RuntimeVMDiskRepairCompositionContext {
     let installedPaths: InstalledRuntimePaths

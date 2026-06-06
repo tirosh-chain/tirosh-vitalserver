@@ -1,7 +1,8 @@
 import Contracts
 import Domain
 import Foundation
-import Interfaces
+import InboundAdapters
+import Errors
 
 public struct RuntimeServiceControlCompositionOperations {
     let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void

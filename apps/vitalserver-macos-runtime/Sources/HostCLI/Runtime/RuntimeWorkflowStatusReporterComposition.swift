@@ -1,3 +1,0 @@
-import Bootstrap
-
-typealias RuntimeWorkflowStatusReporterComposition = Bootstrap.RuntimeWorkflowStatusReporterComposition

@@ -1,7 +1,8 @@
 import Contracts
 import Foundation
-import Infrastructure
-import Interfaces
+import OutboundAdapters
+import InboundAdapters
+import Errors
 
 public struct RuntimeStatusPrinterCompositionContext {
     let productRoot: URL

@@ -3,9 +3,10 @@ import Application
 import Foundation
 import Contracts
 import Domain
-import Infrastructure
-import Interfaces
+import OutboundAdapters
+import InboundAdapters
 import Workflow
+import Errors
 
 public struct RuntimeBundleCompositionContext {
     let installedPaths: InstalledRuntimePaths

@@ -1,4 +1,0 @@
-import Domain
-
-public typealias RuntimeGuardrailState = Domain.RuntimeGuardrailState
-public typealias RuntimeHealthClassificationPolicy = Domain.RuntimeHealthClassificationPolicy

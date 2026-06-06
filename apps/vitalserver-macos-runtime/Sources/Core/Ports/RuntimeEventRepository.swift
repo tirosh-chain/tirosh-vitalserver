@@ -1,5 +1,0 @@
-import Application
-
-public typealias RuntimeEventRecording = Application.RuntimeEventRecording
-public typealias RuntimeEventHistoryReading = Application.RuntimeEventHistoryReading
-public typealias RuntimeEventRepository = Application.RuntimeEventRepository

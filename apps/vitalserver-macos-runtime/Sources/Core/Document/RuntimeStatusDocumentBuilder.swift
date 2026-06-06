@@ -1,4 +1,0 @@
-import Domain
-
-public typealias RuntimeStatusDocumentInput = Domain.RuntimeStatusDocumentInput
-public typealias RuntimeStatusDocumentBuilder = Domain.RuntimeStatusDocumentBuilder

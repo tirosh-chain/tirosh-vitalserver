@@ -1,6 +1,8 @@
+import Application
 import Contracts
 import Domain
 import Foundation
+import Errors
 
 public struct RuntimeRollbackRunner<RollbackCommand> {
     public var preparePreflight: (RollbackCommand) throws -> RollbackPreflightContext
@@ -9,6 +11,9 @@ public struct RuntimeRollbackRunner<RollbackCommand> {
     public var writeProgress: (RuntimeStepExecutionEvent) throws -> Void
     public var vmDiskPath: () -> String
     public var log: (String) -> Void
+    private var useCase: UpdateRuntimeUseCase {
+        UpdateRuntimeUseCase()
+    }
 
     public init(
         preparePreflight: @escaping (RollbackCommand) throws -> RollbackPreflightContext,
@@ -31,8 +36,9 @@ public struct RuntimeRollbackRunner<RollbackCommand> {
         log("rollback started backup=\(preflight.backup.path)")
         try writeStatus(.recovering, .rollback, "rollback started")
 
+        let plan = useCase.planRollback(for: preflight)
         try RuntimeOperationPlanRunner.run(
-            plan: RuntimeOperationPlans.rollback(restoresRootfsBase: preflight.restoresRootfsBase),
+            plan: plan.operationPlan,
             status: .recovering,
             execute: { step in
                 try executeStep(step, preflight)

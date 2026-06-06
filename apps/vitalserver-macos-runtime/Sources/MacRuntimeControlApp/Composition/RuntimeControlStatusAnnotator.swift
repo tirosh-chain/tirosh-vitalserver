@@ -1,3 +1,0 @@
-import Interfaces
-
-typealias RuntimeControlStatusAnnotator = Interfaces.RuntimeControlStatusAnnotator

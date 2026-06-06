@@ -1,16 +1,6 @@
 import Application
 import Contracts
-
-public enum RuntimeHealthRefreshWorkflowError: Error, Equatable, CustomStringConvertible {
-    case operationFailed(String)
-
-    public var description: String {
-        switch self {
-        case .operationFailed(let message):
-            return message
-        }
-    }
-}
+import Errors
 
 public struct RuntimeHealthRefreshWriter {
     public var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
@@ -38,20 +28,33 @@ public struct RuntimeHealthRefreshWriter {
     }
 }
 
+public struct RuntimeHealthRefreshReader {
+    public var healthSnapshot: () -> RuntimeHealthSnapshot
+
+    public init(
+        healthSnapshot: @escaping () -> RuntimeHealthSnapshot
+    ) {
+        self.healthSnapshot = healthSnapshot
+    }
+}
+
 public struct RuntimeHealthRefreshWorkflow {
     private let useCase: RefreshRuntimeHealthUseCase
+    private let reader: RuntimeHealthRefreshReader
     private let writer: RuntimeHealthRefreshWriter
 
     public init(
         useCase: RefreshRuntimeHealthUseCase,
+        reader: RuntimeHealthRefreshReader,
         writer: RuntimeHealthRefreshWriter
     ) {
         self.useCase = useCase
+        self.reader = reader
         self.writer = writer
     }
 
     public func refresh() throws -> RuntimeHealthRefreshDecision {
-        let decision = useCase.refresh()
+        let decision = useCase.decision(snapshot: reader.healthSnapshot())
 
         guard decision.healthy else {
             writer.writeStatusBestEffort(

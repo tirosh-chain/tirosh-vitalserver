@@ -1,6 +1,0 @@
-import Infrastructure
-
-public typealias JSONLRuntimeEventRepository = Infrastructure.JSONLRuntimeEventRepository
-public typealias JSONLRuntimeEventRepositoryError = Infrastructure.JSONLRuntimeEventRepositoryError
-public typealias JSONLRuntimeEventReadResult = Infrastructure.JSONLRuntimeEventReadResult
-public typealias JSONLRuntimeEventReadIssue = Infrastructure.JSONLRuntimeEventReadIssue

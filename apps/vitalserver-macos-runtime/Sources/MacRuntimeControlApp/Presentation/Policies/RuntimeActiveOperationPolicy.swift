@@ -1,3 +1,0 @@
-import Interfaces
-
-typealias RuntimeActiveOperationPolicy = Interfaces.RuntimeActiveOperationPolicy

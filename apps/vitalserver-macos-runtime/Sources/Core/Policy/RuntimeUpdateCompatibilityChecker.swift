@@ -1,4 +1,0 @@
-import Domain
-
-public typealias RuntimeUpdateCompatibilityError = Domain.RuntimeUpdateCompatibilityError
-public typealias RuntimeUpdateCompatibilityChecker = Domain.RuntimeUpdateCompatibilityChecker

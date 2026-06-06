@@ -1,4 +1,5 @@
 import Foundation
+import Errors
 
 public struct RuntimeInstallDirectoryPreparationContext<Settings> {
     public var fixedDirectories: [URL]

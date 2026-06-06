@@ -1,4 +1,5 @@
 import Contracts
+import Errors
 
 public protocol RuntimeEventRecording {
     func append(_ event: RuntimeEventDocument) throws
