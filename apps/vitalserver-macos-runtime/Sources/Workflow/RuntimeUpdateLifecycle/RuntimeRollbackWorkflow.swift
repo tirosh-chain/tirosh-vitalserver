@@ -33,16 +33,14 @@ public struct RuntimeRollbackWorkflowOperations {
     public let resolveBackupSelection: (RollbackRuntimeBackupSelection) throws -> URL
     public let resolveBackupDirectory: (URL) -> RollbackRuntimeBackupDirectoryDecision
     public let resolveBackupRootfs: (RollbackRuntimeBackupPlan) -> RollbackRuntimeBackupRootfsDecision
-    public let observeRequiredInput: (RollbackRuntimeStepRequiredInput) -> RollbackRuntimeStepRequiredInputObservation
     public let loadBackupManifest: (URL) throws -> BackupManifest
     public let isLaunchdLoaded: (RuntimeManagedService) -> Bool
-    public let stopRuntimeServices: () throws -> Void
-    public let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
-    public let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
-    public let replaceFile: (URL, URL) throws -> Void
-    public let writeRuntimeVersion: (String, URL) throws -> Void
-    public let restoreBackupPathIfExists: (URL, URL) throws -> Void
-    public let restoreRuntimeToolsIfExists: (URL) throws -> Void
+    public let planRollbackStepExecution: (
+        RuntimeWorkflowStep,
+        RollbackPreflightContext,
+        RuntimeRollbackStepExecutionContext
+    ) -> RollbackRuntimeStepExecutionPlan
+    public let executeRollbackStepPlan: (RollbackRuntimeStepExecutionPlan) throws -> Void
     public let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     public let writeProgress: (RuntimeStepExecutionEvent) throws -> Void
     public let log: (String) -> Void
@@ -51,16 +49,14 @@ public struct RuntimeRollbackWorkflowOperations {
         resolveBackupSelection: @escaping (RollbackRuntimeBackupSelection) throws -> URL,
         resolveBackupDirectory: @escaping (URL) -> RollbackRuntimeBackupDirectoryDecision,
         resolveBackupRootfs: @escaping (RollbackRuntimeBackupPlan) -> RollbackRuntimeBackupRootfsDecision,
-        observeRequiredInput: @escaping (RollbackRuntimeStepRequiredInput) -> RollbackRuntimeStepRequiredInputObservation,
         loadBackupManifest: @escaping (URL) throws -> BackupManifest,
         isLaunchdLoaded: @escaping (RuntimeManagedService) -> Bool,
-        stopRuntimeServices: @escaping () throws -> Void,
-        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
-        waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
-        replaceFile: @escaping (URL, URL) throws -> Void,
-        writeRuntimeVersion: @escaping (String, URL) throws -> Void,
-        restoreBackupPathIfExists: @escaping (URL, URL) throws -> Void,
-        restoreRuntimeToolsIfExists: @escaping (URL) throws -> Void,
+        planRollbackStepExecution: @escaping (
+            RuntimeWorkflowStep,
+            RollbackPreflightContext,
+            RuntimeRollbackStepExecutionContext
+        ) -> RollbackRuntimeStepExecutionPlan,
+        executeRollbackStepPlan: @escaping (RollbackRuntimeStepExecutionPlan) throws -> Void,
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
         writeProgress: @escaping (RuntimeStepExecutionEvent) throws -> Void,
         log: @escaping (String) -> Void
@@ -68,16 +64,10 @@ public struct RuntimeRollbackWorkflowOperations {
         self.resolveBackupSelection = resolveBackupSelection
         self.resolveBackupDirectory = resolveBackupDirectory
         self.resolveBackupRootfs = resolveBackupRootfs
-        self.observeRequiredInput = observeRequiredInput
         self.loadBackupManifest = loadBackupManifest
         self.isLaunchdLoaded = isLaunchdLoaded
-        self.stopRuntimeServices = stopRuntimeServices
-        self.startRuntimeServices = startRuntimeServices
-        self.waitForHealth = waitForHealth
-        self.replaceFile = replaceFile
-        self.writeRuntimeVersion = writeRuntimeVersion
-        self.restoreBackupPathIfExists = restoreBackupPathIfExists
-        self.restoreRuntimeToolsIfExists = restoreRuntimeToolsIfExists
+        self.planRollbackStepExecution = planRollbackStepExecution
+        self.executeRollbackStepPlan = executeRollbackStepPlan
         self.writeStatus = writeStatus
         self.writeProgress = writeProgress
         self.log = log
@@ -134,14 +124,8 @@ public struct RuntimeRollbackWorkflow {
         preflight: RollbackPreflightContext
     ) throws {
         let executor = RuntimeRollbackStepExecutor(
-            stopRuntimeServices: operations.stopRuntimeServices,
-            replaceFile: operations.replaceFile,
-            observeRequiredInput: operations.observeRequiredInput,
-            writeRuntimeVersion: operations.writeRuntimeVersion,
-            restoreBackupPathIfExists: operations.restoreBackupPathIfExists,
-            restoreRuntimeToolsIfExists: operations.restoreRuntimeToolsIfExists,
-            startRuntimeServices: operations.startRuntimeServices,
-            waitForHealth: operations.waitForHealth
+            planStepExecution: operations.planRollbackStepExecution,
+            executeStepPlan: operations.executeRollbackStepPlan
         )
         try executor.execute(
             step,

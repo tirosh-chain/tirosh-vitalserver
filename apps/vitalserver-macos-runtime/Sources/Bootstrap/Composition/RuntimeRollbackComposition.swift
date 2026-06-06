@@ -99,33 +99,90 @@ public enum RuntimeRollbackComposition {
                         )
                     )
                 },
-                observeRequiredInput: { requiredInput in
-                    switch requiredInput {
-                    case .none:
-                        return RollbackRuntimeStepRequiredInputObservation(
-                            requiredInput: requiredInput,
-                            backupVersionExists: false
-                        )
-                    case .backupVersionExists(let backupVersion):
-                        return RollbackRuntimeStepRequiredInputObservation(
-                            requiredInput: requiredInput,
-                            backupVersionExists: operations.fileStore.fileExists(backupVersion)
-                        )
-                    }
-                },
                 loadBackupManifest: RuntimeBackupManifestLoader(fileStore: operations.fileStore).load,
                 isLaunchdLoaded: operations.isLaunchdLoaded,
-                stopRuntimeServices: operations.stopRuntimeServices,
-                startRuntimeServices: operations.startRuntimeServices,
-                waitForHealth: operations.waitForHealth,
-                replaceFile: operations.replaceFile,
-                writeRuntimeVersion: operations.writeRuntimeVersion,
-                restoreBackupPathIfExists: operations.restoreBackupPathIfExists,
-                restoreRuntimeToolsIfExists: operations.restoreRuntimeToolsIfExists,
+                planRollbackStepExecution: { step, preflight, stepContext in
+                    let useCase = UpdateRuntimeUseCase()
+                    let requiredInput = useCase.rollbackStepRequiredInput(step: step, preflight: preflight)
+                    return useCase.rollbackStepExecutionPlan(
+                        step: step,
+                        preflight: preflight,
+                        rootfsBase: stepContext.rootfsBase,
+                        runtimeVersion: stepContext.runtimeVersion,
+                        managerAppPath: stepContext.managerAppPath,
+                        nginxDirectory: stepContext.nginxDirectory,
+                        deployDirectory: stepContext.deployDirectory,
+                        observation: rollbackStepRequiredInputObservation(
+                            requiredInput: requiredInput,
+                            fileStore: operations.fileStore
+                        )
+                    )
+                },
+                executeRollbackStepPlan: { plan in
+                    try executeRollbackStepPlan(plan, operations: operations)
+                },
                 writeStatus: operations.writeStatus,
                 writeProgress: operations.writeProgress,
                 log: operations.log
             )
         )
+    }
+
+    private static func rollbackStepRequiredInputObservation(
+        requiredInput: RollbackRuntimeStepRequiredInput,
+        fileStore: RuntimeFileStore
+    ) -> RollbackRuntimeStepRequiredInputObservation {
+        switch requiredInput {
+        case .none:
+            return RollbackRuntimeStepRequiredInputObservation(
+                requiredInput: requiredInput,
+                backupVersionExists: false
+            )
+        case .backupVersionExists(let backupVersion):
+            return RollbackRuntimeStepRequiredInputObservation(
+                requiredInput: requiredInput,
+                backupVersionExists: fileStore.fileExists(backupVersion)
+            )
+        }
+    }
+
+    private static func executeRollbackStepPlan(
+        _ plan: RollbackRuntimeStepExecutionPlan,
+        operations: RuntimeRollbackCompositionOperations
+    ) throws {
+        switch plan {
+        case .stopRuntimeServices:
+            try operations.stopRuntimeServices()
+        case .restoreRootfsBase(let source, let destination):
+            try operations.replaceFile(source, destination)
+        case .restoreRuntimeVersion(let decision):
+            try executeRollbackVersionRestoreDecision(decision, operations: operations)
+        case .restoreUpdateArtifacts(let restorePlan):
+            for artifact in restorePlan.directoryRestores {
+                try operations.restoreBackupPathIfExists(
+                    artifact.backupPath,
+                    artifact.restoreDestination
+                )
+            }
+            try operations.restoreRuntimeToolsIfExists(restorePlan.runtimeToolsBackup)
+        case .startRuntimeServices(let restartPolicy):
+            try operations.startRuntimeServices(restartPolicy)
+        case .waitRuntimeHealth(let restartPolicy):
+            try operations.waitForHealth(restartPolicy)
+        case .failed(let failureMessage), .unsupported(let failureMessage):
+            throw RuntimeRollbackWorkflowError.operationFailed(failureMessage)
+        }
+    }
+
+    private static func executeRollbackVersionRestoreDecision(
+        _ decision: RollbackRuntimeVersionRestoreDecision,
+        operations: RuntimeRollbackCompositionOperations
+    ) throws {
+        switch decision {
+        case .restoreBackupVersion(let source, let destination):
+            try operations.replaceFile(source, destination)
+        case .writeExplicitRollbackMarker(let version, let destinationDirectory):
+            try operations.writeRuntimeVersion(version, destinationDirectory)
+        }
     }
 }

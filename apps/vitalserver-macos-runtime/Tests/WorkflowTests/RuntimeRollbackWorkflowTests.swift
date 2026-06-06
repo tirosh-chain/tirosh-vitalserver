@@ -37,20 +37,6 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
                         ? .proceed(backupPlan)
                         : .failed(message: "missing file: \(backupPlan.backupRootfs?.path ?? "unknown")")
                 },
-                observeRequiredInput: { requiredInput in
-                    switch requiredInput {
-                    case .none:
-                        return RollbackRuntimeStepRequiredInputObservation(
-                            requiredInput: requiredInput,
-                            backupVersionExists: false
-                        )
-                    case .backupVersionExists(let requiredBackupVersion):
-                        return RollbackRuntimeStepRequiredInputObservation(
-                            requiredInput: requiredInput,
-                            backupVersionExists: requiredBackupVersion == backupVersion
-                        )
-                    }
-                },
                 loadBackupManifest: { url in
                     events.append("manifest:\(url.lastPathComponent)")
                     return backupManifest(rootfsBase: RuntimeFileNames.rootfsBase)
@@ -59,28 +45,20 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
                     events.append("loaded:\(serviceName(service))")
                     return service == .vm || service == .proxy
                 },
-                stopRuntimeServices: { events.append("stop") },
-                startRuntimeServices: { policy in
-                    events.append(
-                        "start:\(policy.restartVM):\(policy.restartGuestLogSync):\(policy.restartProxy):\(policy.restartWatchdog)"
+                planRollbackStepExecution: { step, preflight, stepContext in
+                    UpdateRuntimeUseCase().rollbackStepExecutionPlan(
+                        step: step,
+                        preflight: preflight,
+                        rootfsBase: stepContext.rootfsBase,
+                        runtimeVersion: stepContext.runtimeVersion,
+                        managerAppPath: stepContext.managerAppPath,
+                        nginxDirectory: stepContext.nginxDirectory,
+                        deployDirectory: stepContext.deployDirectory,
+                        backupVersionExists: preflight.backupVersion == backupVersion
                     )
                 },
-                waitForHealth: { policy in
-                    events.append(
-                        "wait:\(policy.restartVM):\(policy.restartGuestLogSync):\(policy.restartProxy):\(policy.restartWatchdog)"
-                    )
-                },
-                replaceFile: { source, destination in
-                    events.append("replace:\(source.lastPathComponent):\(destination.lastPathComponent)")
-                },
-                writeRuntimeVersion: { version, bundle in
-                    events.append("version:\(version):\(bundle.lastPathComponent)")
-                },
-                restoreBackupPathIfExists: { source, destination in
-                    events.append("restore:\(source.lastPathComponent):\(destination.lastPathComponent)")
-                },
-                restoreRuntimeToolsIfExists: { source in
-                    events.append("tools:\(source.lastPathComponent)")
+                executeRollbackStepPlan: { plan in
+                    events.append(rollbackPlanLabel(plan))
                 },
                 writeStatus: { level, operation, message in
                     statuses.append((level, operation, message))
@@ -115,12 +93,9 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
             "stop",
             "replace:rootfs-base.raw.gz:rootfs-base.raw.gz",
             "replace:runtime-version.json:runtime-version.json",
-            "restore:app-bundle:VitalServer Manager.app",
-            "restore:nginx-bundle:nginx",
-            "restore:guest-deploy:deploy",
-            "tools:runtime-tools",
-            "start:true:false:true:false",
-            "wait:true:false:true:false",
+            "restore:app-bundle:VitalServer Manager.app|restore:nginx-bundle:nginx|restore:guest-deploy:deploy|tools:runtime-tools",
+            "start:true:true:false",
+            "wait:true:true:false",
         ])
     }
 
@@ -147,26 +122,17 @@ final class RuntimeRollbackWorkflowTests: XCTestCase {
                     XCTFail("missing manifest should stop before rootfs observation")
                     return .proceed(backupPlan)
                 },
-                observeRequiredInput: { requiredInput in
-                    XCTFail("missing manifest should stop before rollback step input observation")
-                    return RollbackRuntimeStepRequiredInputObservation(
-                        requiredInput: requiredInput,
-                        backupVersionExists: false
-                    )
-                },
                 loadBackupManifest: { _ in
                     throw RuntimeBackupManifestLoaderError.missingFile(
                         path: backup.appendingPathComponent(RuntimeFileNames.backupManifest).path
                     )
                 },
                 isLaunchdLoaded: { _ in false },
-                stopRuntimeServices: { stopped = true },
-                startRuntimeServices: { _ in },
-                waitForHealth: { _ in },
-                replaceFile: { _, _ in },
-                writeRuntimeVersion: { _, _ in },
-                restoreBackupPathIfExists: { _, _ in },
-                restoreRuntimeToolsIfExists: { _ in },
+                planRollbackStepExecution: { _, _, _ in
+                    XCTFail("missing manifest should stop before rollback step planning")
+                    return .stopRuntimeServices
+                },
+                executeRollbackStepPlan: { _ in stopped = true },
                 writeStatus: { _, _, _ in },
                 writeProgress: { _ in },
                 log: { _ in }
@@ -218,6 +184,35 @@ private func backupManifest(rootfsBase: String?) -> BackupManifest {
         vmDisk: "vm-disk.img",
         vmDiskPreserved: true
     )
+}
+
+private func rollbackPlanLabel(_ plan: RollbackRuntimeStepExecutionPlan) -> String {
+    switch plan {
+    case .stopRuntimeServices:
+        return "stop"
+    case .restoreRootfsBase(let source, let destination):
+        return "replace:\(source.lastPathComponent):\(destination.lastPathComponent)"
+    case .restoreRuntimeVersion(let decision):
+        switch decision {
+        case .restoreBackupVersion(let source, let destination):
+            return "replace:\(source.lastPathComponent):\(destination.lastPathComponent)"
+        case .writeExplicitRollbackMarker(let version, let destinationDirectory):
+            return "version:\(version):\(destinationDirectory.lastPathComponent)"
+        }
+    case .restoreUpdateArtifacts(let restorePlan):
+        let directoryRestores = restorePlan.directoryRestores.map {
+            "restore:\($0.backupPath.lastPathComponent):\($0.restoreDestination.lastPathComponent)"
+        }
+        return (directoryRestores + ["tools:\(restorePlan.runtimeToolsBackup.lastPathComponent)"]).joined(separator: "|")
+    case .startRuntimeServices(let policy):
+        return "start:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)"
+    case .waitRuntimeHealth(let policy):
+        return "wait:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)"
+    case .failed(let failureMessage):
+        return "failed:\(failureMessage)"
+    case .unsupported(let failureMessage):
+        return "unsupported:\(failureMessage)"
+    }
 }
 
 private enum TestError: Error {

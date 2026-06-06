@@ -553,6 +553,20 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "fileExists",
             "case .backupVersionExists",
             "switch useCase.rollbackStepRequiredInput",
+            "rollbackStepRequiredInput",
+            "rollbackStepExecutionPlan(",
+            "RollbackRuntimeStepRequiredInputObservation",
+            "switch executionPlan",
+            "case .stopRuntimeServices",
+            "case .restoreRootfsBase",
+            "case .restoreRuntimeVersion",
+            "case .restoreUpdateArtifacts",
+            "case .startRuntimeServices",
+            "case .waitRuntimeHealth",
+            "replaceFile",
+            "restoreBackupPathIfExists",
+            "restoreRuntimeToolsIfExists",
+            "writeRuntimeVersion",
         ]
 
         for token in forbiddenTokens {

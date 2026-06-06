@@ -4,37 +4,46 @@ import Domain
 import Foundation
 import Errors
 
-public struct RuntimeRollbackStepExecutor {
-    public var stopRuntimeServices: () throws -> Void
-    public var replaceFile: (URL, URL) throws -> Void
-    public var observeRequiredInput: (RollbackRuntimeStepRequiredInput) -> RollbackRuntimeStepRequiredInputObservation
-    public var writeRuntimeVersion: (String, URL) throws -> Void
-    public var restoreBackupPathIfExists: (URL, URL) throws -> Void
-    public var restoreRuntimeToolsIfExists: (URL) throws -> Void
-    public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
-    public var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
-    private var useCase: UpdateRuntimeUseCase {
-        UpdateRuntimeUseCase()
-    }
+public struct RuntimeRollbackStepExecutionContext {
+    public let rootfsBase: URL
+    public let runtimeVersion: URL
+    public let managerAppPath: URL
+    public let nginxDirectory: URL
+    public let deployDirectory: URL
 
     public init(
-        stopRuntimeServices: @escaping () throws -> Void,
-        replaceFile: @escaping (URL, URL) throws -> Void,
-        observeRequiredInput: @escaping (RollbackRuntimeStepRequiredInput) -> RollbackRuntimeStepRequiredInputObservation,
-        writeRuntimeVersion: @escaping (String, URL) throws -> Void,
-        restoreBackupPathIfExists: @escaping (URL, URL) throws -> Void,
-        restoreRuntimeToolsIfExists: @escaping (URL) throws -> Void,
-        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
-        waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void
+        rootfsBase: URL,
+        runtimeVersion: URL,
+        managerAppPath: URL,
+        nginxDirectory: URL,
+        deployDirectory: URL
     ) {
-        self.stopRuntimeServices = stopRuntimeServices
-        self.replaceFile = replaceFile
-        self.observeRequiredInput = observeRequiredInput
-        self.writeRuntimeVersion = writeRuntimeVersion
-        self.restoreBackupPathIfExists = restoreBackupPathIfExists
-        self.restoreRuntimeToolsIfExists = restoreRuntimeToolsIfExists
-        self.startRuntimeServices = startRuntimeServices
-        self.waitForHealth = waitForHealth
+        self.rootfsBase = rootfsBase
+        self.runtimeVersion = runtimeVersion
+        self.managerAppPath = managerAppPath
+        self.nginxDirectory = nginxDirectory
+        self.deployDirectory = deployDirectory
+    }
+}
+
+public struct RuntimeRollbackStepExecutor {
+    public var planStepExecution: (
+        RuntimeWorkflowStep,
+        RollbackPreflightContext,
+        RuntimeRollbackStepExecutionContext
+    ) -> RollbackRuntimeStepExecutionPlan
+    public var executeStepPlan: (RollbackRuntimeStepExecutionPlan) throws -> Void
+
+    public init(
+        planStepExecution: @escaping (
+            RuntimeWorkflowStep,
+            RollbackPreflightContext,
+            RuntimeRollbackStepExecutionContext
+        ) -> RollbackRuntimeStepExecutionPlan,
+        executeStepPlan: @escaping (RollbackRuntimeStepExecutionPlan) throws -> Void
+    ) {
+        self.planStepExecution = planStepExecution
+        self.executeStepPlan = executeStepPlan
     }
 
     public func execute(
@@ -46,46 +55,18 @@ public struct RuntimeRollbackStepExecutor {
         nginxDirectory: URL,
         deployDirectory: URL
     ) throws {
-        let requiredInput = useCase.rollbackStepRequiredInput(step: step, preflight: preflight)
-        let executionPlan = useCase.rollbackStepExecutionPlan(
-            step: step,
-            preflight: preflight,
-            rootfsBase: rootfsBase,
-            runtimeVersion: runtimeVersion,
-            managerAppPath: managerAppPath,
-            nginxDirectory: nginxDirectory,
-            deployDirectory: deployDirectory,
-            observation: observeRequiredInput(requiredInput)
+        let executionPlan = planStepExecution(
+            step,
+            preflight,
+            RuntimeRollbackStepExecutionContext(
+                rootfsBase: rootfsBase,
+                runtimeVersion: runtimeVersion,
+                managerAppPath: managerAppPath,
+                nginxDirectory: nginxDirectory,
+                deployDirectory: deployDirectory
+            )
         )
 
-        switch executionPlan {
-        case .stopRuntimeServices:
-            try stopRuntimeServices()
-        case .restoreRootfsBase(let source, let destination):
-            try replaceFile(source, destination)
-        case .restoreRuntimeVersion(let decision):
-            switch decision {
-            case .restoreBackupVersion(let source, let destination):
-                try replaceFile(source, destination)
-            case .writeExplicitRollbackMarker(let version, let destinationDirectory):
-                try writeRuntimeVersion(version, destinationDirectory)
-            }
-        case .restoreUpdateArtifacts(let restorePlan):
-            for artifact in restorePlan.directoryRestores {
-                try restoreBackupPathIfExists(
-                    artifact.backupPath,
-                    artifact.restoreDestination
-                )
-            }
-            try restoreRuntimeToolsIfExists(
-                restorePlan.runtimeToolsBackup
-            )
-        case .startRuntimeServices(let restartPolicy):
-            try startRuntimeServices(restartPolicy)
-        case .waitRuntimeHealth(let restartPolicy):
-            try waitForHealth(restartPolicy)
-        case .failed(let failureMessage), .unsupported(let failureMessage):
-            throw RuntimeRollbackWorkflowError.operationFailed(failureMessage)
-        }
+        try executeStepPlan(executionPlan)
     }
 }
