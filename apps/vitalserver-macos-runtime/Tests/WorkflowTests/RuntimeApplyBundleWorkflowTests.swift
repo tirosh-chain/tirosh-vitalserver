@@ -118,7 +118,13 @@ private final class ApplyBundleWorkflowHarness {
                     }
                     self.createdDirectories.append((url: url, withIntermediateDirectories: withIntermediateDirectories))
                 },
-                fileSize: { _ in 1 },
+                observeRootfsReplacement: { stagedRootfs, rootfsBase in
+                    ApplyRuntimeBundleRootfsReplacementObservation(
+                        stagedRootfs: stagedRootfs,
+                        rootfsBase: rootfsBase,
+                        stagedRootfsBytes: 1
+                    )
+                },
                 directorySize: { url in
                     url == self.backup ? 5 : 42
                 },

@@ -93,6 +93,22 @@ public struct ApplyRuntimeBundleRootfsReplacementExecutionPlan: Equatable, Senda
     }
 }
 
+public struct ApplyRuntimeBundleRootfsReplacementObservation: Equatable, Sendable {
+    public let stagedRootfs: URL
+    public let rootfsBase: URL
+    public let stagedRootfsBytes: UInt64
+
+    public init(
+        stagedRootfs: URL,
+        rootfsBase: URL,
+        stagedRootfsBytes: UInt64
+    ) {
+        self.stagedRootfs = stagedRootfs
+        self.rootfsBase = rootfsBase
+        self.stagedRootfsBytes = stagedRootfsBytes
+    }
+}
+
 public enum ApplyRuntimeBundleRootfsStorageObservationPlan: Equatable, Sendable {
     case unchanged(ApplyRuntimeBundleRootfsStoragePreflightPlan)
     case replacing(stagedRootfs: URL, rootfsBase: URL)
@@ -626,6 +642,16 @@ public struct UpdateRuntimeUseCase {
         ApplyRuntimeBundleRootfsReplacementExecutionPlan(
             startedLogMessage: "replacing rootfs-base source=\(stagedRootfs.path) destination=\(rootfsBase.path) size=\(formatBytes(stagedRootfsBytes))",
             completedLogMessage: "rootfs-base replaced destination=\(rootfsBase.path)"
+        )
+    }
+
+    public func rootfsReplacementExecutionPlan(
+        observation: ApplyRuntimeBundleRootfsReplacementObservation
+    ) -> ApplyRuntimeBundleRootfsReplacementExecutionPlan {
+        rootfsReplacementExecutionPlan(
+            stagedRootfs: observation.stagedRootfs,
+            rootfsBase: observation.rootfsBase,
+            stagedRootfsBytes: observation.stagedRootfsBytes
         )
     }
 

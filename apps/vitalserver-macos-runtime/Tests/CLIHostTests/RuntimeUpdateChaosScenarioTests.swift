@@ -186,7 +186,8 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                     logs.append(message)
                 }
             ),
-            pruneOldRuntimeArtifacts: {}
+            pruneOldRuntimeArtifacts: {},
+            describeError: RuntimeErrorDescription.describe
         )
 
         XCTAssertThrowsError(try runner.run(bundleURL: URL(fileURLWithPath: "/incoming/update-bundle"))) { error in

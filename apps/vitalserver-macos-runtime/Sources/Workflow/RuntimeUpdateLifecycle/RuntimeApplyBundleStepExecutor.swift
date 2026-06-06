@@ -11,7 +11,7 @@ public struct RuntimeApplyBundleStepExecutor {
     public var prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
     public var clearGuestShutdownPreparation: () throws -> Void
     public var createDirectory: (URL, Bool) throws -> Void
-    public var fileSize: (URL) throws -> UInt64
+    public var observeRootfsReplacement: (URL, URL) throws -> ApplyRuntimeBundleRootfsReplacementObservation
     public var replaceFile: (URL, URL) throws -> Void
     public var replaceUpdateArtifacts: ([UpdateBundleArtifact], URL) throws -> Void
     public var runMigrations: ([UpdateBundleMigration], URL) throws -> Void
@@ -33,7 +33,7 @@ public struct RuntimeApplyBundleStepExecutor {
         prepareGuestShutdownForUpdate: @escaping (UpdateBundleManifest) throws -> Void,
         clearGuestShutdownPreparation: @escaping () throws -> Void,
         createDirectory: @escaping (URL, Bool) throws -> Void,
-        fileSize: @escaping (URL) throws -> UInt64,
+        observeRootfsReplacement: @escaping (URL, URL) throws -> ApplyRuntimeBundleRootfsReplacementObservation,
         replaceFile: @escaping (URL, URL) throws -> Void,
         replaceUpdateArtifacts: @escaping ([UpdateBundleArtifact], URL) throws -> Void,
         runMigrations: @escaping ([UpdateBundleMigration], URL) throws -> Void,
@@ -51,7 +51,7 @@ public struct RuntimeApplyBundleStepExecutor {
         self.prepareGuestShutdownForUpdate = prepareGuestShutdownForUpdate
         self.clearGuestShutdownPreparation = clearGuestShutdownPreparation
         self.createDirectory = createDirectory
-        self.fileSize = fileSize
+        self.observeRootfsReplacement = observeRootfsReplacement
         self.replaceFile = replaceFile
         self.replaceUpdateArtifacts = replaceUpdateArtifacts
         self.runMigrations = runMigrations
@@ -98,9 +98,7 @@ public struct RuntimeApplyBundleStepExecutor {
             case .replace(let stagedRootfs, let rootfsBase):
                 try createDirectory(rootfsBase.deletingLastPathComponent(), true)
                 let executionPlan = useCase.rootfsReplacementExecutionPlan(
-                    stagedRootfs: stagedRootfs,
-                    rootfsBase: rootfsBase,
-                    stagedRootfsBytes: try fileSize(stagedRootfs)
+                    observation: try observeRootfsReplacement(stagedRootfs, rootfsBase)
                 )
                 log(executionPlan.startedLogMessage)
                 try replaceFile(stagedRootfs, rootfsBase)

@@ -31,7 +31,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
     public var loadStagedManifest: (URL) throws -> UpdateBundleManifest
     public var observeRootfsStorage: (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation
     public var createDirectory: (URL, Bool) throws -> Void
-    public var fileSize: (URL) throws -> UInt64
+    public var observeRootfsReplacement: (URL, URL) throws -> ApplyRuntimeBundleRootfsReplacementObservation
     public var directorySize: (URL) throws -> UInt64
     public var requireFreeSpace: (URL, UInt64, RuntimeOperation) throws -> Void
     public var checkCompatibility: (UpdateBundleManifest) throws -> Void
@@ -64,7 +64,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         loadStagedManifest: @escaping (URL) throws -> UpdateBundleManifest,
         observeRootfsStorage: @escaping (URL, URL) throws -> ApplyRuntimeBundleRootfsStorageObservation,
         createDirectory: @escaping (URL, Bool) throws -> Void,
-        fileSize: @escaping (URL) throws -> UInt64,
+        observeRootfsReplacement: @escaping (URL, URL) throws -> ApplyRuntimeBundleRootfsReplacementObservation,
         directorySize: @escaping (URL) throws -> UInt64,
         requireFreeSpace: @escaping (URL, UInt64, RuntimeOperation) throws -> Void,
         checkCompatibility: @escaping (UpdateBundleManifest) throws -> Void,
@@ -96,7 +96,7 @@ public struct RuntimeApplyBundleWorkflowOperations {
         self.loadStagedManifest = loadStagedManifest
         self.observeRootfsStorage = observeRootfsStorage
         self.createDirectory = createDirectory
-        self.fileSize = fileSize
+        self.observeRootfsReplacement = observeRootfsReplacement
         self.directorySize = directorySize
         self.requireFreeSpace = requireFreeSpace
         self.checkCompatibility = checkCompatibility
@@ -152,7 +152,8 @@ public struct RuntimeApplyBundleWorkflow {
             rollback: operations.rollback,
             startRuntimeServices: operations.startRuntimeServices,
             statusReporter: operations.statusReporter,
-            pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts
+            pruneOldRuntimeArtifacts: operations.pruneOldRuntimeArtifacts,
+            describeError: operations.describeError
         )
     }
 
@@ -206,7 +207,7 @@ public struct RuntimeApplyBundleWorkflow {
             prepareGuestShutdownForUpdate: operations.prepareGuestShutdownForUpdate,
             clearGuestShutdownPreparation: operations.clearGuestShutdownPreparation,
             createDirectory: operations.createDirectory,
-            fileSize: operations.fileSize,
+            observeRootfsReplacement: operations.observeRootfsReplacement,
             replaceFile: operations.replaceFile,
             replaceUpdateArtifacts: operations.replaceUpdateArtifacts,
             runMigrations: operations.runMigrations,

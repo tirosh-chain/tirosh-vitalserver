@@ -252,7 +252,9 @@ public struct RuntimeBundleComposition {
         do {
             try operations.fileStore.removeItem(at: temporaryRoot)
         } catch {
-            operations.log("bundle temporary directory cleanup failed path=\(temporaryRoot.path) error=\(error)")
+            operations.log(
+                "bundle temporary directory cleanup failed path=\(temporaryRoot.path) error=\(RuntimeErrorDescription.describe(error))"
+            )
         }
     }
 
@@ -278,7 +280,7 @@ public struct RuntimeBundleComposition {
                 createDirectory: { url, withIntermediateDirectories in
                     try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
                 },
-                fileSize: fileSize,
+                observeRootfsReplacement: observeRootfsReplacement,
                 directorySize: directorySize,
                 requireFreeSpace: operations.requireFreeSpace,
                 checkCompatibility: { manifest in
@@ -323,7 +325,7 @@ public struct RuntimeBundleComposition {
                 writeRuntimeVersion: operations.writeRuntimeVersion,
                 activateGuestUpdateIfNeeded: operations.activateGuestUpdateIfNeeded,
                 waitForHealth: operations.waitForHealth,
-                describeError: { String(describing: $0) },
+                describeError: RuntimeErrorDescription.describe,
                 log: operations.log
             )
         )
@@ -344,6 +346,17 @@ public struct RuntimeBundleComposition {
             stagedRootfsExists: stagedRootfsExists,
             installedRootfsBytes: stagedRootfsExists ? try fileSize(rootfsBase) : nil,
             incomingRootfsBytes: stagedRootfsExists ? try fileSize(stagedRootfs) : nil
+        )
+    }
+
+    private func observeRootfsReplacement(
+        stagedRootfs: URL,
+        rootfsBase: URL
+    ) throws -> ApplyRuntimeBundleRootfsReplacementObservation {
+        ApplyRuntimeBundleRootfsReplacementObservation(
+            stagedRootfs: stagedRootfs,
+            rootfsBase: rootfsBase,
+            stagedRootfsBytes: try fileSize(stagedRootfs)
         )
     }
 

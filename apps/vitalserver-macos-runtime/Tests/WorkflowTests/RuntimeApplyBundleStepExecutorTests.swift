@@ -1,3 +1,4 @@
+import Application
 import Foundation
 import Contracts
 import Domain
@@ -42,9 +43,13 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             createDirectory: { url, withIntermediateDirectories in
                 events.append("mkdir:\(url.path):\(withIntermediateDirectories)")
             },
-            fileSize: { url in
-                events.append("size:\(url.lastPathComponent)")
-                return 1_048_576
+            observeRootfsReplacement: { stagedRootfs, rootfsBase in
+                events.append("size:\(stagedRootfs.lastPathComponent)")
+                return ApplyRuntimeBundleRootfsReplacementObservation(
+                    stagedRootfs: stagedRootfs,
+                    rootfsBase: rootfsBase,
+                    stagedRootfsBytes: 1_048_576
+                )
             },
             replaceFile: { source, destination in
                 events.append("replace:\(source.lastPathComponent):\(destination.lastPathComponent)")
@@ -165,7 +170,14 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             prepareGuestShutdownForUpdate: { _ in },
             clearGuestShutdownPreparation: {},
             createDirectory: { _, _ in XCTFail("should not create rootfs directory") },
-            fileSize: { _ in XCTFail("should not read rootfs size"); return 0 },
+            observeRootfsReplacement: { stagedRootfs, rootfsBase in
+                XCTFail("should not observe rootfs replacement")
+                return ApplyRuntimeBundleRootfsReplacementObservation(
+                    stagedRootfs: stagedRootfs,
+                    rootfsBase: rootfsBase,
+                    stagedRootfsBytes: 0
+                )
+            },
             replaceFile: { _, _ in XCTFail("should not replace rootfs") },
             replaceUpdateArtifacts: { _, _ in },
             runMigrations: { _, _ in },
@@ -250,7 +262,13 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
                 throw TestError.clearFailed
             },
             createDirectory: { _, _ in },
-            fileSize: { _ in 0 },
+            observeRootfsReplacement: { stagedRootfs, rootfsBase in
+                ApplyRuntimeBundleRootfsReplacementObservation(
+                    stagedRootfs: stagedRootfs,
+                    rootfsBase: rootfsBase,
+                    stagedRootfsBytes: 0
+                )
+            },
             replaceFile: { _, _ in },
             replaceUpdateArtifacts: { _, _ in },
             runMigrations: { _, _ in },
@@ -287,7 +305,13 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             prepareGuestShutdownForUpdate: { _ in },
             clearGuestShutdownPreparation: {},
             createDirectory: { _, _ in },
-            fileSize: { _ in 0 },
+            observeRootfsReplacement: { stagedRootfs, rootfsBase in
+                ApplyRuntimeBundleRootfsReplacementObservation(
+                    stagedRootfs: stagedRootfs,
+                    rootfsBase: rootfsBase,
+                    stagedRootfsBytes: 0
+                )
+            },
             replaceFile: { _, _ in },
             replaceUpdateArtifacts: { _, _ in },
             runMigrations: { _, _ in },
@@ -355,7 +379,14 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
         stopRuntimeServicesAfterGuestPoweroff: @escaping (pid_t) throws -> Void = { _ in },
         clearGuestShutdownPreparation: @escaping () throws -> Void = {},
         replaceFile: @escaping (URL, URL) throws -> Void = { _, _ in },
-        replaceUpdateArtifacts: @escaping ([UpdateBundleArtifact], URL) throws -> Void = { _, _ in }
+        replaceUpdateArtifacts: @escaping ([UpdateBundleArtifact], URL) throws -> Void = { _, _ in },
+        observeRootfsReplacement: @escaping (URL, URL) throws -> ApplyRuntimeBundleRootfsReplacementObservation = { stagedRootfs, rootfsBase in
+            ApplyRuntimeBundleRootfsReplacementObservation(
+                stagedRootfs: stagedRootfs,
+                rootfsBase: rootfsBase,
+                stagedRootfsBytes: 10
+            )
+        }
     ) -> RuntimeApplyBundleStepExecutor {
         RuntimeApplyBundleStepExecutor(
             stopRuntimeServices: stopRuntimeServices,
@@ -364,7 +395,7 @@ final class RuntimeApplyBundleStepExecutorTests: XCTestCase {
             prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
             clearGuestShutdownPreparation: clearGuestShutdownPreparation,
             createDirectory: { _, _ in },
-            fileSize: { _ in 10 },
+            observeRootfsReplacement: observeRootfsReplacement,
             replaceFile: replaceFile,
             replaceUpdateArtifacts: replaceUpdateArtifacts,
             runMigrations: { _, _ in },

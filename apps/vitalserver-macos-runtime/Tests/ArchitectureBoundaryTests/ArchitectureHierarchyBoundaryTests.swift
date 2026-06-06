@@ -284,10 +284,16 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         let workflowRoot = packageRoot().appendingPathComponent("Sources/Workflow")
         for file in try swiftFiles(root: workflowRoot) {
             let text = try String(contentsOf: file, encoding: .utf8)
-            XCTAssertFalse(
-                text.contains("String(describing:"),
-                "Workflow must use Errors/Application contracts instead of formatting Error directly: \(file.path)"
-            )
+            let forbiddenTokens = [
+                "String(describing:",
+                #"\(error)"#,
+            ]
+            for token in forbiddenTokens {
+                XCTAssertFalse(
+                    text.contains(token),
+                    "Workflow must use Errors/Application contracts instead of formatting Error directly with \(token): \(file.path)"
+                )
+            }
         }
     }
 
@@ -420,6 +426,25 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             XCTAssertFalse(
                 text.contains(token),
                 "RuntimeApplyBundlePreflightRunner must receive explicit rootfs storage observations from a port instead of using \(token)"
+            )
+        }
+    }
+
+    func testRuntimeApplyBundleStepExecutorDoesNotOwnRootfsReplacementFileObservation() throws {
+        let file = packageRoot().appendingPathComponent(
+            "Sources/Workflow/RuntimeUpdateLifecycle/RuntimeApplyBundleStepExecutor.swift"
+        )
+        let text = try String(contentsOf: file, encoding: .utf8)
+        let forbiddenTokens = [
+            "fileSize",
+            "stagedRootfsBytes: try",
+            "rootfsReplacementExecutionPlan(stagedRootfs:",
+        ]
+
+        for token in forbiddenTokens {
+            XCTAssertFalse(
+                text.contains(token),
+                "RuntimeApplyBundleStepExecutor must receive explicit rootfs replacement observations from a port instead of using \(token)"
             )
         }
     }

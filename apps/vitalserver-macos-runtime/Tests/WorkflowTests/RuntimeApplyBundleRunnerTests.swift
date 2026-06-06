@@ -29,6 +29,7 @@ final class RuntimeApplyBundleRunnerTests: XCTestCase {
         XCTAssertEqual(harness.statuses.last?.level, .critical)
         XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
         XCTAssertTrue(harness.statuses.last?.message.contains("bundle apply preflight failed") == true)
+        XCTAssertTrue(harness.statuses.last?.message.contains("described:preflight") == true)
     }
 
     func testRunRollsBackAndMarksDegradedWhenStepFails() throws {
@@ -42,6 +43,7 @@ final class RuntimeApplyBundleRunnerTests: XCTestCase {
         XCTAssertEqual(harness.statuses.last?.level, .degraded)
         XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
         XCTAssertTrue(harness.statuses.last?.message.contains("rollback completed") == true)
+        XCTAssertTrue(harness.statuses.last?.message.contains("described:step") == true)
     }
 
     func testRunMarksCriticalWhenRollbackAlsoFails() throws {
@@ -55,6 +57,7 @@ final class RuntimeApplyBundleRunnerTests: XCTestCase {
         XCTAssertEqual(harness.statuses.last?.level, .critical)
         XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
         XCTAssertTrue(harness.statuses.last?.message.contains("rollback failed") == true)
+        XCTAssertTrue(harness.statuses.last?.message.contains("described:rollback") == true)
     }
 
     func testRunKeepsApplySuccessfulWhenArtifactCleanupFails() throws {
@@ -68,6 +71,7 @@ final class RuntimeApplyBundleRunnerTests: XCTestCase {
         XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
         XCTAssertEqual(harness.statuses.last?.message, "bundle applied: 0.1.4")
         XCTAssertTrue(harness.logs.contains { $0.contains("runtime artifact cleanup failed after bundle apply") })
+        XCTAssertTrue(harness.logs.contains { $0.contains("described:prune") })
     }
 }
 
@@ -167,6 +171,9 @@ private final class ApplyBundleHarness {
                 if let pruneError = self.pruneError {
                     throw pruneError
                 }
+            },
+            describeError: { error in
+                "described:\(String(describing: error))"
             }
         )
     }

@@ -396,6 +396,13 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             rootfsBase: rootfsBase,
             stagedRootfsBytes: 1_048_576
         )
+        let observationPlan = useCase.rootfsReplacementExecutionPlan(
+            observation: ApplyRuntimeBundleRootfsReplacementObservation(
+                stagedRootfs: stagedRootfs,
+                rootfsBase: rootfsBase,
+                stagedRootfsBytes: 1_048_576
+            )
+        )
 
         XCTAssertEqual(
             useCase.capturedVMProcessBeforeGuestUpdateShutdownLogMessage(processID: 123),
@@ -409,6 +416,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             executionPlan.completedLogMessage,
             "rootfs-base replaced destination=/runtime/rootfs-base.raw.gz"
         )
+        XCTAssertEqual(observationPlan, executionPlan)
         XCTAssertEqual(
             useCase.unsupportedApplyBundleStepFailureMessage(step: .loadInstallSettings),
             "unsupported command: apply-bundle step load-install-settings"

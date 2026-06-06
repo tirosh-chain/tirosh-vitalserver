@@ -13,6 +13,7 @@ public struct RuntimeApplyBundleRunner {
     public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     public var statusReporter: RuntimeWorkflowStatusReporter
     public var pruneOldRuntimeArtifacts: () throws -> Void
+    public var describeError: (Error) -> String
     private var useCase: UpdateRuntimeUseCase {
         UpdateRuntimeUseCase()
     }
@@ -25,7 +26,8 @@ public struct RuntimeApplyBundleRunner {
         rollback: @escaping (URL) throws -> Void,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         statusReporter: RuntimeWorkflowStatusReporter,
-        pruneOldRuntimeArtifacts: @escaping () throws -> Void
+        pruneOldRuntimeArtifacts: @escaping () throws -> Void,
+        describeError: @escaping (Error) -> String
     ) {
         self.prepareLogs = prepareLogs
         self.initialHealthSnapshot = initialHealthSnapshot
@@ -35,6 +37,7 @@ public struct RuntimeApplyBundleRunner {
         self.startRuntimeServices = startRuntimeServices
         self.statusReporter = statusReporter
         self.pruneOldRuntimeArtifacts = pruneOldRuntimeArtifacts
+        self.describeError = describeError
     }
 
     public func run(bundleURL: URL) throws {
@@ -55,7 +58,7 @@ public struct RuntimeApplyBundleRunner {
         do {
             preflight = try preparePreflight(bundleURL)
         } catch {
-            let failedPlan = useCase.applyBundlePreflightFailedStatusPlan(reason: "\(error)")
+            let failedPlan = useCase.applyBundlePreflightFailedStatusPlan(reason: describeError(error))
             statusReporter.writeBestEffort(
                 failedPlan.status,
                 operation: failedPlan.operation,
@@ -77,7 +80,8 @@ public struct RuntimeApplyBundleRunner {
                 }
             )
         } catch {
-            let rollbackStartedPlan = useCase.applyBundleRollbackStartedPlan(reason: "\(error)")
+            let applyFailureReason = describeError(error)
+            let rollbackStartedPlan = useCase.applyBundleRollbackStartedPlan(reason: applyFailureReason)
             statusReporter.log(rollbackStartedPlan.logMessage)
             statusReporter.writeBestEffort(
                 rollbackStartedPlan.status,
@@ -87,14 +91,14 @@ public struct RuntimeApplyBundleRunner {
             do {
                 try rollback(preflight.backup)
                 try startRuntimeServices(preflight.restartPolicy)
-                let rollbackCompletedPlan = useCase.applyBundleRollbackCompletedStatusPlan(reason: "\(error)")
+                let rollbackCompletedPlan = useCase.applyBundleRollbackCompletedStatusPlan(reason: applyFailureReason)
                 statusReporter.writeBestEffort(
                     rollbackCompletedPlan.status,
                     operation: rollbackCompletedPlan.operation,
                     message: rollbackCompletedPlan.message
                 )
             } catch {
-                let rollbackFailedPlan = useCase.applyBundleRollbackFailedPlan(reason: "\(error)")
+                let rollbackFailedPlan = useCase.applyBundleRollbackFailedPlan(reason: describeError(error))
                 statusReporter.log(rollbackFailedPlan.logMessage)
                 startRuntimeServicesBestEffort(preflight.restartPolicy)
                 statusReporter.writeBestEffort(
@@ -119,7 +123,7 @@ public struct RuntimeApplyBundleRunner {
         do {
             try pruneOldRuntimeArtifacts()
         } catch {
-            statusReporter.log(useCase.applyBundleArtifactCleanupFailedLogMessage(reason: "\(error)"))
+            statusReporter.log(useCase.applyBundleArtifactCleanupFailedLogMessage(reason: describeError(error)))
         }
     }
 
@@ -127,7 +131,7 @@ public struct RuntimeApplyBundleRunner {
         do {
             try startRuntimeServices(policy)
         } catch {
-            statusReporter.log(useCase.applyBundleRollbackFailureServiceRestartFailedLogMessage(reason: "\(error)"))
+            statusReporter.log(useCase.applyBundleRollbackFailureServiceRestartFailedLogMessage(reason: describeError(error)))
         }
     }
 
