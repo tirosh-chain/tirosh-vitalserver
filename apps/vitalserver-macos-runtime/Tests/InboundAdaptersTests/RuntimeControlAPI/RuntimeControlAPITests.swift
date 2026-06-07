@@ -843,7 +843,6 @@ final class RuntimeControlAPITests: XCTestCase {
         let handler = StubRuntimeControlAPIReadHandler()
         let router = RuntimeControlAPIRouter(handler: handler)
         let settingsRequest = RuntimeApplySettingsRequest(settings: RuntimeSettings(cpuCount: 3, memoryGiB: 6))
-        let repairProxyRequest = RuntimeRepairProxyRequest(proxyPort: 8080)
 
         let applySettings = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
             method: .put,
@@ -855,8 +854,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let repairRuntime = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/repair-runtime")))
         let repairProxy = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
             method: .post,
-            path: "/runtime/services/repair-proxy",
-            body: try JSONEncoder().encode(repairProxyRequest)
+            path: "/runtime/services/repair-proxy"
         )))
         let repairDatastore = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/repair-datastore")))
         let repairVMDisk = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/repair-vm-disk")))
@@ -865,7 +863,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(start.result.stdout, "start services")
         XCTAssertEqual(stop.result.stdout, "stop services")
         XCTAssertEqual(repairRuntime.result.stdout, "repair runtime")
-        XCTAssertEqual(repairProxy.result.stdout, "repair proxy 8080")
+        XCTAssertEqual(repairProxy.result.stdout, "repair proxy")
         XCTAssertEqual(repairDatastore.result.stdout, "repair datastore")
         XCTAssertEqual(repairVMDisk.result.stdout, "repair vm disk")
     }
@@ -1055,7 +1053,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let start = try await handler.startRuntimeServices()
         let stop = try await handler.stopRuntimeServices()
         let repairRuntime = try await handler.repairRuntimeServices()
-        let repairProxy = try await handler.repairProxy(proxyPort: 8080)
+        let repairProxy = try await handler.repairProxy()
         let repairDatastore = try await handler.repairDatastore()
         let repairVMDisk = try await handler.repairVMDisk()
         let createRedisBackup = try await handler.createRedisBackup()
@@ -1065,7 +1063,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(start.result.stdout, "start services")
         XCTAssertEqual(stop.result.stdout, "stop services")
         XCTAssertEqual(repairRuntime.result.stdout, "repair runtime")
-        XCTAssertEqual(repairProxy.result.stdout, "repair proxy 8080")
+        XCTAssertEqual(repairProxy.result.stdout, "repair proxy")
         XCTAssertEqual(repairDatastore.result.stdout, "repair datastore")
         XCTAssertEqual(repairVMDisk.result.stdout, "repair vm disk")
         XCTAssertEqual(createRedisBackup.result.stdout, "redis backup created")
@@ -2395,8 +2393,8 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "repair runtime", stderr: ""))
     }
 
-    func repairProxy(proxyPort: Int) async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "repair proxy \(proxyPort)", stderr: ""))
+    func repairProxy() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "repair proxy", stderr: ""))
     }
 
     func repairDatastore() async throws -> RuntimeControlCommandResponse {
@@ -2739,8 +2737,8 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
         RuntimeCommandResult(exitCode: 0, stdout: "settings \(settings.cpuCount)", stderr: "")
     }
 
-    func repairProxy(proxyPort: Int) async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "repair proxy \(proxyPort)", stderr: "")
+    func repairProxy() async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "repair proxy", stderr: "")
     }
 
     func repairDatastore() async throws -> RuntimeCommandResult {

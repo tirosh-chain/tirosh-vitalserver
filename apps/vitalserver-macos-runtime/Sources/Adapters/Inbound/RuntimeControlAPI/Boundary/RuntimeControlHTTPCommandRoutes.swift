@@ -19,10 +19,7 @@ struct RuntimeControlHTTPCommandRoutes {
         case .repairRuntimeServices:
             return try await RuntimeControlHTTPResponseFactory.json(handler.repairRuntimeServices())
         case .repairProxy:
-            let repairRequest = try request.decodedBody(RuntimeRepairProxyRequest.self)
-            return try await RuntimeControlHTTPResponseFactory.json(
-                handler.repairProxy(proxyPort: repairRequest.proxyPort)
-            )
+            return try await RuntimeControlHTTPResponseFactory.json(handler.repairProxy())
         case .repairDatastore:
             return try await RuntimeControlHTTPResponseFactory.json(handler.repairDatastore())
         case .repairVMDisk:

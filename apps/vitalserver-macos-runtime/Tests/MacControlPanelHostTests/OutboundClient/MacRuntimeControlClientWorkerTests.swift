@@ -120,7 +120,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         _ = try await client.deleteBackup(
             url: URL(fileURLWithPath: "\(RuntimeControlClientConstants.Paths.backups)/20260522-before-0.1.3")
         )
-        _ = try await client.repairProxy(proxyPort: 18080)
+        _ = try await client.repairProxy()
         _ = try await client.repairDatastore()
         _ = try await client.repairVMDisk()
         _ = try await client.repairRuntimeServices()
@@ -235,7 +235,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let delete = try await worker.deleteBackup(
             url: URL(fileURLWithPath: "\(RuntimeControlClientConstants.Paths.backups)/20260522-before-0.1.3")
         )
-        let repair = try await worker.repairProxy(proxyPort: 18080)
+        let repair = try await worker.repairProxy()
 
         XCTAssertEqual(delete.stdout, "ran")
         XCTAssertEqual(repair.stdout, "ran")

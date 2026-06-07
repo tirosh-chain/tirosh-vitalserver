@@ -1184,11 +1184,6 @@
       return port;
     }
 
-    function requiredProxyPort() {
-      return validProxyPort(latestSettings && latestSettings.proxyPort)
-        || validProxyPort(latestStatus && latestStatus.proxyPort);
-    }
-
     function fileName(path) {
       if (!path) return "-";
       return String(path).split("/").filter(Boolean).pop() || path;
@@ -1210,12 +1205,7 @@
     $("stopServices").addEventListener("click", () => confirm("Stop runtime services?") && runRuntimeCommand("services-stopped", () => postJSON("/runtime/services/stop", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
     $("repairRuntime").addEventListener("click", () => runRuntimeCommand("runtime-repaired", () => postJSON("/runtime/services/repair-runtime", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
     $("repairProxy").addEventListener("click", () => {
-      const proxyPort = requiredProxyPort();
-      if (!proxyPort) {
-        append("statusStream", "command-error", { message: "Host proxy port is not available from settings or status." });
-        return;
-      }
-      runRuntimeCommand("proxy-repaired", () => postJSON("/runtime/services/repair-proxy", { proxyPort }))
+      runRuntimeCommand("proxy-repaired", () => postJSON("/runtime/services/repair-proxy", null))
         .catch((error) => append("statusStream", "command-error", { message: error.message }));
     });
     $("repairDatastore").addEventListener("click", () => runRuntimeCommand("datastore-repaired", () => postJSON("/runtime/services/repair-datastore", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));

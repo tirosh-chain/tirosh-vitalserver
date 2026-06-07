@@ -129,8 +129,8 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: try await commandClient.repairRuntimeServices())
     }
 
-    func repairProxy(proxyPort: Int) async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.repairProxy(proxyPort: proxyPort))
+    func repairProxy() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.repairProxy())
     }
 
     func repairDatastore() async throws -> RuntimeControlCommandResponse {

@@ -33,14 +33,6 @@ public struct RuntimeApplySettingsRequest: Codable, Equatable, Sendable {
     }
 }
 
-public struct RuntimeRepairProxyRequest: Codable, Equatable, Sendable {
-    public let proxyPort: Int
-
-    public init(proxyPort: Int) {
-        self.proxyPort = proxyPort
-    }
-}
-
 public struct RuntimeUninstallRequest: Codable, Equatable, Sendable {
     public let clean: Bool
 

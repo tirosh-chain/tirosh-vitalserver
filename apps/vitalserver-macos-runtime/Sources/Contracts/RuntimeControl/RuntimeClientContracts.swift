@@ -16,7 +16,7 @@ public protocol RuntimeControlClient {
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
     func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult
-    func repairProxy(proxyPort: Int) async throws -> RuntimeCommandResult
+    func repairProxy() async throws -> RuntimeCommandResult
     func repairDatastore() async throws -> RuntimeCommandResult
     func repairVMDisk() async throws -> RuntimeCommandResult
     func repairRuntimeServices() async throws -> RuntimeCommandResult

@@ -132,6 +132,22 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.message, AppConstants.StatusText.actionUnavailable)
     }
 
+    func testRepairProxyDoesNotRequirePresentationProxyPortFallback() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.status = RuntimeStatus(proxyPort: nil)
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: FakeRuntimeNativeShell()
+        )
+
+        await viewModel.repairProxyPort()
+
+        XCTAssertEqual(client.repairProxyCount, 1)
+        XCTAssertNotEqual(viewModel.message, RuntimeHTTPStatusText.missingProxyPort)
+    }
+
     func testRefreshSkipsReleaseMetadataWhenCapabilityIsUnavailable() async {
         var capabilities = RuntimeControlCapabilities.restricted
         capabilities.canStreamLogs = false
@@ -1361,7 +1377,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return success()
     }
 
-    func repairProxy(proxyPort: Int) async throws -> RuntimeCommandResult {
+    func repairProxy() async throws -> RuntimeCommandResult {
         repairProxyCount += 1
         return success()
     }

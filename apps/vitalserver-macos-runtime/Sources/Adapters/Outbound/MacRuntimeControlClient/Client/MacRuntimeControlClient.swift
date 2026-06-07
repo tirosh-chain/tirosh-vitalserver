@@ -150,8 +150,8 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.deleteBackup(url: url)
     }
 
-    public func repairProxy(proxyPort: Int) async throws -> RuntimeCommandResult {
-        try await commandWorker.repairProxy(proxyPort: proxyPort)
+    public func repairProxy() async throws -> RuntimeCommandResult {
+        try await commandWorker.repairProxy()
     }
 
     public func repairDatastore() async throws -> RuntimeCommandResult {

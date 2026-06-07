@@ -2344,6 +2344,29 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
+    func testRepairProxyCommandContractDoesNotAcceptUnusedProxyPortInput() throws {
+        let root = packageRoot()
+        let files = [
+            "Sources/Contracts/RuntimeControl/RuntimeClientContracts.swift",
+            "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlHTTPTypes.swift",
+            "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlAPIRequests.swift",
+            "Sources/Adapters/Outbound/MacRuntimeControlClient/Client/MacRuntimeControlClient.swift",
+            "Sources/Adapters/Outbound/MacRuntimeControlClient/Commands/MacRuntimeControlCommandWorker.swift",
+        ]
+
+        for relativePath in files {
+            let text = try String(contentsOf: root.appendingPathComponent(relativePath), encoding: .utf8)
+            XCTAssertFalse(
+                text.contains("repairProxy(proxyPort:"),
+                "Proxy repair command boundary must not accept unused proxyPort input: \(relativePath)"
+            )
+            XCTAssertFalse(
+                text.contains("RuntimeRepairProxyRequest"),
+                "Proxy repair HTTP boundary must not expose a request body for unused proxyPort input: \(relativePath)"
+            )
+        }
+    }
+
     func testRecorderActivityDisplayDoesNotHideInvalidTimestampsAsOldSamples() throws {
         let file = packageRoot()
             .appendingPathComponent("Sources/Adapters/Inbound/MacControlPanel/Presentation/Views/RuntimeRecorderActivityChartDataBuilder.swift")
@@ -2986,6 +3009,32 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             macCommandFactoryText.contains("RuntimeControlClientConstants.RuntimeCommand.repairProxy"),
             "Mac control command factory should delegate proxy repair through the launcher repair-proxy command"
         )
+    }
+
+    func testMacControlProxyRepairDoesNotRequireUnusedProxyPortInput() throws {
+        let root = packageRoot()
+        let clientContractsText = try String(
+            contentsOf: root.appendingPathComponent("Sources/Contracts/RuntimeControl/RuntimeClientContracts.swift"),
+            encoding: .utf8
+        )
+        let apiRequestsText = try String(
+            contentsOf: root.appendingPathComponent("Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlAPIRequests.swift"),
+            encoding: .utf8
+        )
+        let commandRoutesText = try String(
+            contentsOf: root.appendingPathComponent("Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlHTTPCommandRoutes.swift"),
+            encoding: .utf8
+        )
+        let viewModelText = try String(
+            contentsOf: root.appendingPathComponent("Sources/Adapters/Inbound/MacControlPanel/Presentation/ViewModels/RuntimeViewModel.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(clientContractsText.contains("func repairProxy() async throws -> RuntimeCommandResult"))
+        XCTAssertFalse(clientContractsText.contains("repairProxy(proxyPort:"))
+        XCTAssertFalse(apiRequestsText.contains("RuntimeRepairProxyRequest"))
+        XCTAssertFalse(commandRoutesText.contains("decodedBody(RuntimeRepairProxyRequest.self)"))
+        XCTAssertFalse(viewModelText.contains("controlClient.repairProxy(proxyPort:"))
     }
 
     func testRuntimeBackupStoreProcessExecutionDoesNotRemainInBootstrap() throws {

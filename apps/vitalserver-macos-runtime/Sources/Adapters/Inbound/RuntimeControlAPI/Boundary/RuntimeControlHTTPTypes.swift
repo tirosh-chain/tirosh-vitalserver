@@ -101,7 +101,7 @@ public protocol RuntimeControlAPIReadHandler {
     func startRuntimeServices() async throws -> RuntimeControlCommandResponse
     func stopRuntimeServices() async throws -> RuntimeControlCommandResponse
     func repairRuntimeServices() async throws -> RuntimeControlCommandResponse
-    func repairProxy(proxyPort: Int) async throws -> RuntimeControlCommandResponse
+    func repairProxy() async throws -> RuntimeControlCommandResponse
     func repairDatastore() async throws -> RuntimeControlCommandResponse
     func repairVMDisk() async throws -> RuntimeControlCommandResponse
     func createRedisBackup() async throws -> RuntimeControlCommandResponse

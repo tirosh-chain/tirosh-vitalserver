@@ -101,8 +101,8 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: try await client.repairRuntimeServices())
     }
 
-    public func repairProxy(proxyPort: Int) async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.repairProxy(proxyPort: proxyPort))
+    public func repairProxy() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.repairProxy())
     }
 
     public func repairDatastore() async throws -> RuntimeControlCommandResponse {

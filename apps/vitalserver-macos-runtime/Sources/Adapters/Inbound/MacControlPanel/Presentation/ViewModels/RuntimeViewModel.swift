@@ -297,16 +297,12 @@ public final class RuntimeViewModel: ObservableObject {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        guard let proxyPort = status.proxyPort else {
-            message = RuntimeHTTPStatusText.missingProxyPort
-            return
-        }
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.proxyRepairPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.proxyRepairRunning,
             successMessage: AppConstants.StatusText.proxyRepairCompleted,
-            action: { try await self.controlClient.repairProxy(proxyPort: proxyPort) }
+            action: { try await self.controlClient.repairProxy() }
         )
         await refreshHealthStatus()
     }

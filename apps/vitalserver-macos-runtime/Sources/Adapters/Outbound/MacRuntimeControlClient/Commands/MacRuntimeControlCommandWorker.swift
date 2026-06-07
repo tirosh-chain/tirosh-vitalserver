@@ -102,7 +102,7 @@ public actor MacRuntimeControlCommandWorker {
         return await runPrivileged(RuntimeCommandFactory.deleteBackupCommand(url: url))
     }
 
-    public func repairProxy(proxyPort: Int) async throws -> RuntimeCommandResult {
+    public func repairProxy() async throws -> RuntimeCommandResult {
         return await runPrivileged(RuntimeCommandFactory.proxyRepairCommand())
     }
 
