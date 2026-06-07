@@ -7,8 +7,13 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 preflight_bin="${script_dir}/vitalserver-vm-preinstall"
 
 fail_fresh_install_only() {
-  echo "Tirosh VitalServer pkg install supports fresh installs only." >&2
-  echo "Run a clean uninstall, stop the conflicting process, or choose a different Host proxy port before installing this pkg." >&2
+  echo "VitalServer Helper pkg install supports fresh installs only." >&2
+  echo "An existing VitalServer Helper install, launchd service, package receipt, or Host proxy port conflict blocks this install." >&2
+  echo "Remove the existing install first, then run the pkg again." >&2
+  echo "Recommended clean removal:" >&2
+  echo "  sudo /usr/local/bin/tirosh-vitalserver-uninstall --clean" >&2
+  echo "Development make target:" >&2
+  echo "  make dist/uninstall/dev VM_UNINSTALL_ARGS=--clean" >&2
   exit 1
 }
 
@@ -17,6 +22,9 @@ if [ ! -x "${preflight_bin}" ]; then
   fail_fresh_install_only
 fi
 
-if ! VITALSERVER_VM_HOME="${vm_home}" "${preflight_bin}" runtime preinstall-check; then
+if ! preflight_output="$(VITALSERVER_VM_HOME="${vm_home}" "${preflight_bin}" runtime preinstall-check 2>&1)"; then
+  printf "%s\n" "${preflight_output}" >&2
   fail_fresh_install_only
 fi
+
+printf "%s\n" "${preflight_output}"

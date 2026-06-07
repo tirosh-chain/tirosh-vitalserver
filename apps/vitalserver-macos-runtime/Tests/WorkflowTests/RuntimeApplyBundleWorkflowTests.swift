@@ -47,6 +47,36 @@ final class RuntimeApplyBundleWorkflowTests: XCTestCase {
         XCTAssertTrue(harness.statuses.last?.message.contains("described:step") == true)
     }
 
+    func testRunUsesGuestPoweroffStopPathWhenVMRestartIsRequired() throws {
+        let harness = ApplyBundleHarness()
+
+        try harness.run()
+
+        XCTAssertEqual(harness.capturedVMProcessIDs, [123])
+        XCTAssertEqual(harness.preparedGuestShutdownVersions, ["0.1.4"])
+        XCTAssertEqual(harness.stopAfterGuestPoweroffPIDs, [123])
+        XCTAssertEqual(harness.clearGuestShutdownPreparationCount, 1)
+        XCTAssertEqual(harness.directStopCount, 0)
+    }
+
+    func testRunClearsGuestShutdownPreparationAndRollsBackWhenGuestPoweroffStopFails() throws {
+        let harness = ApplyBundleHarness()
+        harness.stopAfterGuestPoweroffError = TestApplyBundleError.stopAfterGuestPoweroff
+
+        XCTAssertThrowsError(try harness.run())
+
+        XCTAssertEqual(harness.capturedVMProcessIDs, [123])
+        XCTAssertEqual(harness.preparedGuestShutdownVersions, ["0.1.4"])
+        XCTAssertEqual(harness.stopAfterGuestPoweroffPIDs, [123])
+        XCTAssertEqual(harness.clearGuestShutdownPreparationCount, 1)
+        XCTAssertEqual(harness.rollbackBackup, harness.preflight.backup)
+        XCTAssertEqual(harness.restartedPolicy, harness.preflight.restartPolicy)
+        XCTAssertEqual(harness.statuses.last?.level, .degraded)
+        XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
+        XCTAssertTrue(harness.statuses.last?.message.contains("rollback completed") == true)
+        XCTAssertTrue(harness.statuses.last?.message.contains("described:stopAfterGuestPoweroff") == true)
+    }
+
     func testRunMarksCriticalWhenRollbackAlsoFails() throws {
         let harness = ApplyBundleHarness()
         harness.stepError = TestApplyBundleError.step
@@ -105,12 +135,18 @@ private final class ApplyBundleHarness {
     var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
     var progressEvents: [RuntimeStepExecutionEvent] = []
     var executedSteps: [RuntimeWorkflowStep] = []
+    var capturedVMProcessIDs: [pid_t] = []
+    var preparedGuestShutdownVersions: [String] = []
+    var stopAfterGuestPoweroffPIDs: [pid_t] = []
     var logs: [String] = []
     var pruneCount = 0
+    var clearGuestShutdownPreparationCount = 0
+    var directStopCount = 0
     var rollbackBackup: URL?
     var restartedPolicy: RuntimeServiceRestartPolicy?
     var preflightError: Error?
     var stepError: Error?
+    var stopAfterGuestPoweroffError: Error?
     var rollbackError: Error?
     var pruneError: Error?
 
@@ -152,12 +188,23 @@ private final class ApplyBundleHarness {
             rootfsBase: URL(fileURLWithPath: "/tmp/rootfs-base"),
             runningVMProcessID: {
                 try self.executeApplyStep(.stopRuntimeServices)
+                self.capturedVMProcessIDs.append(123)
                 return 123
             },
-            prepareGuestShutdownForUpdate: { _ in },
-            clearGuestShutdownPreparation: {},
-            stopRuntimeServicesAfterGuestPoweroff: { _ in },
+            prepareGuestShutdownForUpdate: { manifest in
+                self.preparedGuestShutdownVersions.append(manifest.helperVersion)
+            },
+            clearGuestShutdownPreparation: {
+                self.clearGuestShutdownPreparationCount += 1
+            },
+            stopRuntimeServicesAfterGuestPoweroff: { pid in
+                self.stopAfterGuestPoweroffPIDs.append(pid)
+                if let stopAfterGuestPoweroffError = self.stopAfterGuestPoweroffError {
+                    throw stopAfterGuestPoweroffError
+                }
+            },
             stopRuntimeServices: {
+                self.directStopCount += 1
                 try self.executeApplyStep(.stopRuntimeServices)
             },
             createDirectory: { _, _ in },
@@ -230,6 +277,7 @@ private final class ApplyBundleHarness {
 private enum TestApplyBundleError: Error {
     case preflight
     case step
+    case stopAfterGuestPoweroff
     case rollback
     case prune
 }

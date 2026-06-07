@@ -64,16 +64,17 @@ public struct RuntimeServiceController {
             }
         }
 
-        try waitForVMProcessExitAfterGuestPoweroff(expectedVMProcessID)
-        if try stopIfLoaded(.guestLogSync) {
-            log("waiting for \(displayName(.guestLogSync)) service to stop label=\(RuntimeManagedService.guestLogSync.label)")
-            try waitUntilStopped(.guestLogSync)
-            log("stopped \(displayName(.guestLogSync)) service label=\(RuntimeManagedService.guestLogSync.label)")
-        }
         if try unloadIfLoaded(.vm) {
             log("waiting for \(displayName(.vm)) service to stop label=\(RuntimeManagedService.vm.label)")
             try waitUntilStopped(.vm)
             log("stopped \(displayName(.vm)) service label=\(RuntimeManagedService.vm.label)")
+        } else {
+            try waitForVMProcessExitAfterGuestPoweroff(expectedVMProcessID)
+        }
+        if try stopIfLoaded(.guestLogSync) {
+            log("waiting for \(displayName(.guestLogSync)) service to stop label=\(RuntimeManagedService.guestLogSync.label)")
+            try waitUntilStopped(.guestLogSync)
+            log("stopped \(displayName(.guestLogSync)) service label=\(RuntimeManagedService.guestLogSync.label)")
         }
         if try stopIfLoaded(.sleepPrevention) {
             log("waiting for \(displayName(.sleepPrevention)) service to stop label=\(RuntimeManagedService.sleepPrevention.label)")
@@ -180,7 +181,9 @@ public struct RuntimeServiceController {
 
     private func stopIfLoaded(_ service: RuntimeManagedService) throws -> Bool {
         if try isLoaded(service) {
-            try prepareForStop(service)
+            if service != .vm {
+                try prepareForStop(service)
+            }
             return try unloadIfLoaded(service)
         }
         return false

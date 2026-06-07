@@ -19,6 +19,9 @@ nav:
   - Home: index.md
   - Release:
       - Overview: release/index.md
+      - Usage: release/usage.md
+      - Scope: release/scope.md
+      - Runtime Status: release/runtime-status.md
   - Dev:
       - Overview: dev/index.md
       - Service Catalog: dev/service-catalog.md

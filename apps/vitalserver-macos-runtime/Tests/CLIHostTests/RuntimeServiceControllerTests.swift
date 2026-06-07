@@ -63,7 +63,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         ])
     }
 
-    func testPreparesLoadedServiceBeforeLaunchdStop() throws {
+    func testStopsVMWithoutPreparingProcessBeforeLaunchdStop() throws {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let loaded = Set([RuntimeManagedService.vm])
         var events: [String] = []
@@ -81,17 +81,40 @@ final class RuntimeServiceControllerTests: XCTestCase {
         try controller.stopRuntimeServices()
 
         XCTAssertEqual(events, [
-            "prepare:\(RuntimeManagedService.vm.label)",
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
         ])
     }
 
-    func testStopRuntimeServicesPropagatesPrepareFailureWithoutLaunchdStop() {
+    func testPreparesLoadedNonVMServiceBeforeLaunchdStop() throws {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        let loaded = Set([RuntimeManagedService.proxy])
+        var events: [String] = []
+        serviceManager.onStop = { events.append("stop:\($0.label)") }
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
+            prepareForStop: { events.append("prepare:\($0.label)") },
+            waitUntilStopped: { events.append("wait:\($0.label)") },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { _ in }
+        )
+
+        try controller.stopRuntimeServices()
+
+        XCTAssertEqual(events, [
+            "prepare:\(RuntimeManagedService.proxy.label)",
+            "stop:\(RuntimeManagedService.proxy.label)",
+            "wait:\(RuntimeManagedService.proxy.label)",
+        ])
+    }
+
+    func testStopRuntimeServicesPropagatesPrepareFailureForNonVMServiceWithoutLaunchdStop() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            serviceState: { $0 == .vm ? .loaded : .notLoaded },
+            serviceState: { $0 == .proxy ? .loaded : .notLoaded },
             prepareForStop: { _ in throw LauncherError.runtimeOperationFailed("graceful stop failed") },
             launchDaemonPlist: { $0.launchDaemonPlist },
             launchctlPath: Constants.Commands.launchctl,
@@ -325,7 +348,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertTrue(logs.contains("launchd service not loaded after restart; starting label=\(RuntimeManagedService.vm.label)"))
     }
 
-    func testRestartVMRuntimeServicesStopsVMWithPrepareAndStartsVMAndGuestLogSync() throws {
+    func testRestartVMRuntimeServicesUnloadsVMBeforeStartingVMAndGuestLogSync() throws {
         let serviceManager = ServiceControllerServiceManagerSpy()
         var loaded = Set([RuntimeManagedService.vm, .guestLogSync])
         var events: [String] = []
@@ -350,7 +373,6 @@ final class RuntimeServiceControllerTests: XCTestCase {
             "prepare:\(RuntimeManagedService.guestLogSync.label)",
             "stop:\(RuntimeManagedService.guestLogSync.label)",
             "wait:\(RuntimeManagedService.guestLogSync.label)",
-            "prepare:\(RuntimeManagedService.vm.label)",
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
         ])
@@ -366,11 +388,11 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(serviceManager.restartedLabels, [])
     }
 
-    func testRestartVMRuntimeServicesPropagatesPrepareFailureWithoutStart() {
+    func testRestartVMRuntimeServicesPropagatesNonVMPrepareFailureWithoutStart() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
-            serviceState: { $0 == .vm ? .loaded : .notLoaded },
+            serviceState: { $0 == .guestLogSync ? .loaded : .notLoaded },
             prepareForStop: { _ in throw LauncherError.runtimeOperationFailed("graceful stop failed") },
             launchDaemonPlist: { $0.launchDaemonPlist },
             launchctlPath: Constants.Commands.launchctl,
@@ -382,7 +404,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(serviceManager.restartedLabels, [])
     }
 
-    func testStopRuntimeServicesAfterGuestPoweroffWaitsForVMExitBeforeUnloadingVM() throws {
+    func testStopRuntimeServicesAfterGuestPoweroffUnloadsVMBeforeStoppingGuestLogSync() throws {
         let serviceManager = ServiceControllerServiceManagerSpy()
         var loaded = Set([
             RuntimeManagedService.watchdog,
@@ -418,12 +440,115 @@ final class RuntimeServiceControllerTests: XCTestCase {
             "prepare:\(RuntimeManagedService.proxy.label)",
             "stop:\(RuntimeManagedService.proxy.label)",
             "wait:\(RuntimeManagedService.proxy.label)",
+            "stop:\(RuntimeManagedService.vm.label)",
+            "wait:\(RuntimeManagedService.vm.label)",
+            "prepare:\(RuntimeManagedService.guestLogSync.label)",
+            "stop:\(RuntimeManagedService.guestLogSync.label)",
+            "wait:\(RuntimeManagedService.guestLogSync.label)",
+            "prepare:\(RuntimeManagedService.sleepPrevention.label)",
+            "stop:\(RuntimeManagedService.sleepPrevention.label)",
+            "wait:\(RuntimeManagedService.sleepPrevention.label)",
+        ])
+    }
+
+    func testStopRuntimeServicesAfterGuestPoweroffDoesNotWaitForCapturedPIDWhileLaunchdOwnsVM() throws {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        var loaded = Set([
+            RuntimeManagedService.vm,
+            .guestLogSync,
+        ])
+        var events: [String] = []
+        serviceManager.onStop = { service in
+            events.append("stop:\(service.label)")
+            loaded.remove(service)
+        }
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
+            prepareForStop: { events.append("prepare:\($0.label)") },
+            waitUntilStopped: { events.append("wait:\($0.label)") },
+            waitForVMProcessExitAfterGuestPoweroff: { pid in
+                XCTFail("VM pid \(pid) must not be waited while launchd VM service is still loaded")
+                throw LauncherError.runtimeOperationFailed("launchd still owns VM process")
+            },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { _ in }
+        )
+
+        try controller.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: 123)
+
+        XCTAssertEqual(events, [
+            "stop:\(RuntimeManagedService.vm.label)",
+            "wait:\(RuntimeManagedService.vm.label)",
+            "prepare:\(RuntimeManagedService.guestLogSync.label)",
+            "stop:\(RuntimeManagedService.guestLogSync.label)",
+            "wait:\(RuntimeManagedService.guestLogSync.label)",
+        ])
+    }
+
+    func testStopRuntimeServicesAfterGuestPoweroffPropagatesVMStateReadFailureWithoutPIDFallback() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { service in
+                service == .vm ? .readFailed("launchctl denied") : .notLoaded
+            },
+            waitForVMProcessExitAfterGuestPoweroff: { pid in
+                XCTFail("VM pid \(pid) must not be waited when launchd VM state read fails")
+            },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try controller.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: 123)) { error in
+            XCTAssertTrue(String(describing: error).contains(
+                "launchd service state read failed label=\(RuntimeManagedService.vm.label)"
+            ))
+        }
+        XCTAssertEqual(serviceManager.stoppedLabels, [])
+    }
+
+    func testStopRuntimeServicesAfterGuestPoweroffWaitsForCapturedVMProcessWhenVMServiceAlreadyUnloaded() throws {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        var loaded = Set([
+            RuntimeManagedService.watchdog,
+            .proxy,
+            .guestLogSync,
+            .sleepPrevention,
+        ])
+        var events: [String] = []
+        serviceManager.onStop = { service in
+            events.append("stop:\(service.label)")
+            loaded.remove(service)
+        }
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { loaded.contains($0) ? .loaded : .notLoaded },
+            prepareForStop: { events.append("prepare:\($0.label)") },
+            waitUntilStopped: { events.append("wait:\($0.label)") },
+            waitForVMProcessExitAfterGuestPoweroff: { pid in
+                events.append("wait-vm-process:\(pid)")
+            },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { _ in }
+        )
+
+        try controller.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: 123)
+
+        XCTAssertEqual(events, [
+            "prepare:\(RuntimeManagedService.watchdog.label)",
+            "stop:\(RuntimeManagedService.watchdog.label)",
+            "wait:\(RuntimeManagedService.watchdog.label)",
+            "prepare:\(RuntimeManagedService.proxy.label)",
+            "stop:\(RuntimeManagedService.proxy.label)",
+            "wait:\(RuntimeManagedService.proxy.label)",
             "wait-vm-process:123",
             "prepare:\(RuntimeManagedService.guestLogSync.label)",
             "stop:\(RuntimeManagedService.guestLogSync.label)",
             "wait:\(RuntimeManagedService.guestLogSync.label)",
-            "stop:\(RuntimeManagedService.vm.label)",
-            "wait:\(RuntimeManagedService.vm.label)",
             "prepare:\(RuntimeManagedService.sleepPrevention.label)",
             "stop:\(RuntimeManagedService.sleepPrevention.label)",
             "wait:\(RuntimeManagedService.sleepPrevention.label)",
