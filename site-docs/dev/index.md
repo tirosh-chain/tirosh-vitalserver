@@ -1,11 +1,10 @@
 # Dev Documentation
 
-이 문서군은 Vital Server Helper를 현장 appliance로 운영하기 위해 어떤 설계 선택을
-했는지 기록합니다.
+이 문서군은 Vital Server Helper repository의 구조와 설계 선택을 기록합니다.
 
 Release 문서가 도입과 운영 판단에 필요한 내용을 설명한다면, Dev 문서는 그 뒤의
 구조를 설명합니다. Host/Guest 경계, runtime contract, Health Check 상태 의미,
-update와 recovery 검증 방식처럼 운영 안정성에 직접 영향을 주는 부분을 다룹니다.
+hardware 검토 기준, update와 recovery 검증 방식을 다룹니다.
 
 ## 읽는 방법
 
@@ -14,8 +13,9 @@ update와 recovery 검증 방식처럼 운영 안정성에 직접 영향을 주�
 1. [Service Catalog](service-catalog.md)에서 repository 안의 실행 단위와 책임을 봅니다.
 2. [Architecture](architecture.md)에서 Host, Linux guest, PWA, Runtime Control API가
    어떻게 분리되는지 봅니다.
-3. [Health Check Contract](health-check-contract.md)에서 상태 의미를 확인합니다.
-4. [Testing](testing.md)에서 이 구조를 어떤 검증으로 유지하는지 봅니다.
+3. [Mac Hardware Profile](mac-hardware-profile.md)에서 1차 hardware target 검토 기준을 봅니다.
+4. [Health Check Contract](health-check-contract.md)에서 상태 의미를 확인합니다.
+5. [Testing](testing.md)에서 이 구조를 어떤 검증으로 유지하는지 봅니다.
 
 ## 설계 기준
 
@@ -41,6 +41,7 @@ GitHub Issues: <https://github.com/tirosh-chain/tirosh-vitalserver/issues>
 | [Service Catalog](service-catalog.md) | repository 안의 서비스와 package 책임 설명 |
 | [Package Map](package-map.md) | monorepo package 경계와 문서 노출 범위 설명 |
 | [Architecture](architecture.md) | Host/Guest, Linux VM, PWA, Runtime Control 구조 설명 |
+| [Mac Hardware Profile](mac-hardware-profile.md) | Mac 계열을 1차 검토 대상으로 둔 이유 |
 | [Health Check Contract](health-check-contract.md) | Health Check 상태 계약과 실패 의미 설명 |
 | [API Contracts](api-contracts.md) | Runtime Control, Observer, Audit Proxy API 문서 위치 |
 | [Build and Release](build-and-release.md) | build, package, update bundle 생성 흐름 |

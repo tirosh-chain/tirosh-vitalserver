@@ -280,6 +280,7 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         let manifest = UpdateBundleManifest(
             schemaVersion: 3,
             product: Constants.Product.identifier,
+            channel: Constants.launcherChannel,
             helperVersion: "1.2.3",
             releaseLabel: "1.2.3",
             targetPlatform: "macos-arm64",
