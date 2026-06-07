@@ -158,6 +158,7 @@ sudo /usr/local/bin/vitalserver-vm runtime repair-vm-disk
 3. Recovery planner와 watchdog policy가 booting state를 restart로 해석하지 않습니다.
    - lifecycle이 `starting` 또는 `bootstrapping`이고 deadline 안이면 `missing vmIP`와 `guest HTTP missing`은 VM restart가 아니라 recovery deferred로 처리합니다.
    - deadline이 지난 boot lifecycle은 stale로 보고 일반 recovery 판단으로 넘어갑니다.
+   - deadline이 지난 boot lifecycle에서 `missing vmIP`가 VM restart를 요구하면, host proxy readiness/liveness probe read failure는 VM recovery를 막지 않습니다. 이 failure는 성공으로 바꾸지 않고 proxy restart reason으로 보존합니다.
 4. Watchdog VM restart action을 safe workflow로 바꿨습니다.
    - watchdog은 VM restart가 필요할 때 `launchctl kickstart -k`를 직접 dispatch하지 않습니다.
    - guest-log-sync를 멈추고, VM graceful stop/wait path를 통과한 뒤 VM과 guest-log-sync를 다시 시작합니다.

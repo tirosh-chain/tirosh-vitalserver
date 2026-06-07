@@ -26,6 +26,7 @@ public struct RuntimeUninstallCompositionOperations {
     let createRedisBackup: () throws -> Void
     let disableRuntimeServicesForUninstall: () throws -> Void
     let stopRuntimeServices: () throws -> Void
+    let clearLaunchdDisabledOverridesAfterUninstall: () throws -> Void
     let cleanupHostProxyPortAfterStop: () throws -> Void
     let packageReceiptStates: () -> [RuntimePackageReceiptState]
     let openFilesInDirectory: (URL) -> RuntimeProcessResult
@@ -40,6 +41,7 @@ public struct RuntimeUninstallCompositionOperations {
         createRedisBackup: @escaping () throws -> Void,
         disableRuntimeServicesForUninstall: @escaping () throws -> Void,
         stopRuntimeServices: @escaping () throws -> Void,
+        clearLaunchdDisabledOverridesAfterUninstall: @escaping () throws -> Void,
         cleanupHostProxyPortAfterStop: @escaping () throws -> Void,
         packageReceiptStates: @escaping () -> [RuntimePackageReceiptState],
         openFilesInDirectory: @escaping (URL) -> RuntimeProcessResult,
@@ -53,6 +55,7 @@ public struct RuntimeUninstallCompositionOperations {
         self.createRedisBackup = createRedisBackup
         self.disableRuntimeServicesForUninstall = disableRuntimeServicesForUninstall
         self.stopRuntimeServices = stopRuntimeServices
+        self.clearLaunchdDisabledOverridesAfterUninstall = clearLaunchdDisabledOverridesAfterUninstall
         self.cleanupHostProxyPortAfterStop = cleanupHostProxyPortAfterStop
         self.packageReceiptStates = packageReceiptStates
         self.openFilesInDirectory = openFilesInDirectory
@@ -147,6 +150,7 @@ public enum RuntimeUninstallComposition {
                     try operations.stopRuntimeServices()
                     try operations.cleanupHostProxyPortAfterStop()
                 },
+                clearLaunchdDisabledOverrides: operations.clearLaunchdDisabledOverridesAfterUninstall,
                 describeError: RuntimeErrorDescription.describe,
                 temporaryDirectory: {
                     operations.fileStore.temporaryDirectory

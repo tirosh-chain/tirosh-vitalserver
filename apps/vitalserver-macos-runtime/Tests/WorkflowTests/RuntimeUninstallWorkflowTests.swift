@@ -39,6 +39,9 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             "log:step=forget-package-receipt status=started",
             "state:receipts-forget-started:package receipt forget started:",
             "log:package receipt already absent identifier=ai.tirosh.vitalserver.helper",
+            "log:step=clear-launchd-disabled-overrides status=started",
+            "clear-disabled-overrides",
+            "log:step=clear-launchd-disabled-overrides status=completed",
             "log:step=forget-package-receipt status=completed",
             "log:uninstall completed",
             "state:completed:uninstall completed:",
@@ -236,6 +239,17 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         })
         XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
     }
+
+    func testUninstallDoesNotCompleteWhenLaunchdDisabledOverrideCleanupFails() {
+        let harness = RuntimeUninstallWorkflowHarness()
+        harness.clearLaunchdDisabledOverridesError = RuntimeUninstallTestError.clearLaunchdDisabledOverrides
+
+        XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true)))
+
+        XCTAssertTrue(harness.events.contains("log:step=clear-launchd-disabled-overrides status=started"))
+        XCTAssertTrue(harness.events.contains("clear-disabled-overrides"))
+        XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
+    }
 }
 
 private final class RuntimeUninstallWorkflowHarness {
@@ -243,6 +257,7 @@ private final class RuntimeUninstallWorkflowHarness {
     var existing: Set<String>
     var backupError: Error?
     var stopError: Error?
+    var clearLaunchdDisabledOverridesError: Error?
     var removeErrorPath: String?
     var moveErrorDestination: String?
     var contentsOfDirectoryError: Error?
@@ -335,6 +350,12 @@ private final class RuntimeUninstallWorkflowHarness {
                     self.events.append("stop")
                     if let stopError = self.stopError {
                         throw stopError
+                    }
+                },
+                clearLaunchdDisabledOverrides: {
+                    self.events.append("clear-disabled-overrides")
+                    if let clearLaunchdDisabledOverridesError = self.clearLaunchdDisabledOverridesError {
+                        throw clearLaunchdDisabledOverridesError
                     }
                 },
                 describeError: { error in
@@ -653,6 +674,7 @@ private enum RuntimeUninstallTestError: Error, LocalizedError {
     case backup
     case remove
     case stop
+    case clearLaunchdDisabledOverrides
     case restore
     case diagnosticRead
 
@@ -664,6 +686,8 @@ private enum RuntimeUninstallTestError: Error, LocalizedError {
             return "remove failed"
         case .stop:
             return "stop failed"
+        case .clearLaunchdDisabledOverrides:
+            return "clear launchd disabled overrides failed"
         case .restore:
             return "restore failed"
         case .diagnosticRead:

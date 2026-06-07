@@ -72,7 +72,7 @@ public extension AppConstants {
         public static let operation = "Operation"
         public static let runtimeVersion = "Runtime version"
         public static let updatedAt = "Updated at"
-        public static let vmService = "VM service"
+        public static let vmService = "VM launchd service"
         public static let proxyService = "Proxy service"
         public static let guestLogSyncService = "Guest log sync service"
         public static let sleepPreventionService = "Sleep prevention service"

@@ -166,6 +166,49 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         )
     }
 
+    func testExpiredBootstrappingKernelPanicCanRecoverWithVMRestartDespiteHostProxyProbeReadFailure() {
+        let decision = RuntimeWatchdogRecoveryPolicy.decision(
+            snapshot: healthSnapshot(
+                vmLifecycle: RuntimeVMLifecycleDocument(
+                    state: .bootstrapping,
+                    startedAt: "2026-06-07T09:30:11Z",
+                    updatedAt: "2026-06-07T09:30:11Z",
+                    deadlineAt: "2000-01-01T00:00:00Z"
+                ),
+                vmIP: nil,
+                hostProxyHTTP: "failed",
+                guestHTTP: RuntimeHTTPStatusText.missingVMIP,
+                failureReasons: [
+                    .guestRuntimeStateStale,
+                    .vmLifecycleDocumentStale,
+                    .hostProxyHTTP("failed"),
+                    .unknown("audit-proxy-http-failed"),
+                ]
+            ),
+            hostProxyLivenessHTTP: "failed",
+            automaticRecoveryEnabled: true
+        )
+
+        XCTAssertEqual(
+            decision,
+            .recover(
+                reason: "guest-runtime-state-stale, vm-lifecycle-document-stale, host-proxy-http-failed, audit-proxy-http-failed",
+                plan: RuntimeRecoveryPlan(
+                    canRecover: true,
+                    restartVM: true,
+                    restartGuestLogSync: true,
+                    restartProxy: true,
+                    restartReasons: [
+                        .missingVMIP,
+                        .guestHTTPUnhealthy(RuntimeHTTPStatusText.missingVMIP),
+                        .vmRestartRequiresProxyRestart,
+                        .hostProxyLivenessUnhealthy("failed"),
+                    ]
+                )
+            )
+        )
+    }
+
     func testMissingVMLifecycleBlocksAutomaticVMRestart() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(

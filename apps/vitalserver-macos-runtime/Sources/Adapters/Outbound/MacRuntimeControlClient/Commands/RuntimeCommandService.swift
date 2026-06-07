@@ -36,8 +36,48 @@ enum RuntimeCommandFactory {
 
     static func uninstallCommand(uninstaller: String, clean: Bool) -> String {
         let command = ([uninstaller] + (clean ? ["--clean"] : [])).map(shellQuote).joined(separator: " ")
+        let logPath = RuntimeControlClientConstants.Paths.uninstallLog
+        let previousLogPath = "\(logPath).previous"
+        let viewerScriptPath = "/private/tmp/tirosh-vitalserver-uninstall-progress.command"
+        let viewerScript = """
+        #!/usr/bin/env bash
+        set -u
+        log_file=\(shellQuote(logPath))
+        printf "VitalServer uninstall progress\\n"
+        printf "Log: %s\\n\\n" "${log_file}"
+        touch "${log_file}" 2>/dev/null || true
+        tail -n 0 -F "${log_file}" &
+        tail_pid=$!
+        while true; do
+          if grep -q "uninstall completed log=" "${log_file}" 2>/dev/null; then
+            kill "${tail_pid}" 2>/dev/null || true
+            wait "${tail_pid}" 2>/dev/null || true
+            printf "\\nUninstall completed.\\n"
+            break
+          fi
+          if grep -q "uninstall failed" "${log_file}" 2>/dev/null; then
+            kill "${tail_pid}" 2>/dev/null || true
+            wait "${tail_pid}" 2>/dev/null || true
+            printf "\\nUninstall failed. Check the log above.\\n"
+            break
+          fi
+          sleep 1
+        done
+        printf "Press Return to close this window."
+        read -r _
+        """
         let startScript = """
-        \(command) < /dev/null > /dev/null 2>&1 &
+        log_file=\(shellQuote(logPath))
+        previous_log_file=\(shellQuote(previousLogPath))
+        viewer_script=\(shellQuote(viewerScriptPath))
+        if [ -s "${log_file}" ]; then
+          cp "${log_file}" "${previous_log_file}"
+        fi
+        : > "${log_file}"
+        printf %s \(shellQuote(viewerScript)) > "${viewer_script}"
+        chmod 0755 "${viewer_script}"
+        open -a Terminal "${viewer_script}" >/dev/null 2>&1 || true
+        \(command) < /dev/null >> "${log_file}" 2>&1 &
         background_pid=$!
         sleep 0.2
         if kill -0 "${background_pid}" 2>/dev/null; then

@@ -54,6 +54,13 @@ public struct RuntimeServiceController {
         }
     }
 
+    public func clearDisabledOverridesAfterUninstall() throws {
+        log("clearing launchd disabled overrides after uninstall")
+        for service in RuntimeManagedService.stopOrder {
+            try setEnabledOrThrow(service, enabled: true)
+        }
+    }
+
     public func stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: pid_t) throws {
         log("stopping runtime services after guest poweroff request")
         for service in [RuntimeManagedService.watchdog, .proxy] {

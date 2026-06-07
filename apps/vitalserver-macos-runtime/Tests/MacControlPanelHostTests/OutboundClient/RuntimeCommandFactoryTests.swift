@@ -35,7 +35,12 @@ final class RuntimeCommandFactoryTests: XCTestCase {
 
         XCTAssertTrue(command.hasPrefix("/bin/bash -lc "))
         XCTAssertFalse(command.contains("nohup"))
-        XCTAssertTrue(command.contains("'\\''/usr/local/bin/tirosh-vitalserver-uninstall'\\'' '\\''--clean'\\'' < /dev/null > /dev/null 2>&1 &"))
+        XCTAssertTrue(command.contains("previous_log_file='\\''/private/tmp/tirosh-vitalserver-uninstall.log.previous'\\''"))
+        XCTAssertTrue(command.contains(": > \"${log_file}\""))
+        XCTAssertTrue(command.contains("viewer_script='\\''/private/tmp/tirosh-vitalserver-uninstall-progress.command'\\''"))
+        XCTAssertTrue(command.contains("open -a Terminal \"${viewer_script}\""))
+        XCTAssertTrue(command.contains("tail -n 0 -F"))
+        XCTAssertTrue(command.contains("'\\''/usr/local/bin/tirosh-vitalserver-uninstall'\\'' '\\''--clean'\\'' < /dev/null >> \"${log_file}\" 2>&1 &"))
         XCTAssertTrue(command.contains("background_pid=$!"))
         XCTAssertTrue(command.contains("kill -0"))
         XCTAssertFalse(command.contains("&;"))

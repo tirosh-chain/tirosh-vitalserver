@@ -85,6 +85,33 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         ])
     }
 
+    func testExpiredBootstrappingWithMissingVMIPRestartsVMDespiteHostProxyProbeReadFailure() {
+        let plan = RuntimeRecoveryPlanner.plan(input(
+            vmLifecycle: RuntimeVMLifecycleDocument(
+                state: .bootstrapping,
+                startedAt: "2026-06-07T09:30:11Z",
+                updatedAt: "2026-06-07T09:30:11Z",
+                deadlineAt: "2026-06-07T09:40:11Z"
+            ),
+            now: ISO8601DateFormatter().date(from: "2026-06-07T09:40:44Z")!,
+            vmIP: nil,
+            guestHTTP: RuntimeHTTPStatusText.missingVMIP,
+            hostProxyReadinessHTTP: "failed",
+            hostProxyLivenessHTTP: "failed"
+        ))
+
+        XCTAssertTrue(plan.canRecover)
+        XCTAssertTrue(plan.restartVM)
+        XCTAssertTrue(plan.restartProxy)
+        XCTAssertEqual(plan.blockers, [])
+        XCTAssertEqual(plan.restartReasons, [
+            .missingVMIP,
+            .guestHTTPUnhealthy(RuntimeHTTPStatusText.missingVMIP),
+            .vmRestartRequiresProxyRestart,
+            .hostProxyLivenessUnhealthy("failed"),
+        ])
+    }
+
     func testMissingVMIPWithoutVMLifecycleBlocksRecovery() {
         let plan = RuntimeRecoveryPlanner.plan(input(vmIP: nil))
 
@@ -212,6 +239,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         vmService: RuntimeServiceState = .loaded,
         proxyService: RuntimeServiceState = .loaded,
         vmLifecycle: RuntimeVMLifecycleDocument? = nil,
+        now: Date = Date(),
         vmIP: String? = "192.168.64.2",
         guestHTTP: String = "200",
         hostProxyReadinessHTTP: String = "200",
@@ -227,6 +255,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
             vmService: vmService,
             proxyService: proxyService,
             vmLifecycle: vmLifecycle,
+            now: now,
             vmIP: vmIP,
             guestHTTP: guestHTTP,
             hostProxyReadinessHTTP: hostProxyReadinessHTTP,

@@ -199,6 +199,45 @@ final class RuntimeServiceControllerTests: XCTestCase {
         ])
     }
 
+    func testClearDisabledOverridesAfterUninstallEnablesStopOrderBeforeCompletion() throws {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { _ in .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { _ in }
+        )
+
+        try controller.clearDisabledOverridesAfterUninstall()
+
+        XCTAssertEqual(serviceManager.setEnabledLabels, RuntimeManagedService.stopOrder.map(\.label))
+        XCTAssertEqual(serviceManager.setEnabledValues, Array(repeating: true, count: RuntimeManagedService.stopOrder.count))
+    }
+
+    func testClearDisabledOverridesAfterUninstallStopsAtFirstFailure() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        serviceManager.setEnabledResults[.proxy] = RuntimeProcessResult(
+            exitCode: 1,
+            stdout: "",
+            stderr: "denied"
+        )
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { _ in .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try controller.clearDisabledOverridesAfterUninstall())
+        XCTAssertEqual(serviceManager.setEnabledLabels, [
+            RuntimeManagedService.watchdog.label,
+            RuntimeManagedService.guestLogSync.label,
+            RuntimeManagedService.proxy.label,
+        ])
+    }
+
     func testStartsOnlyServicesRequestedByRestartPolicy() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         var loaded = Set<RuntimeManagedService>()

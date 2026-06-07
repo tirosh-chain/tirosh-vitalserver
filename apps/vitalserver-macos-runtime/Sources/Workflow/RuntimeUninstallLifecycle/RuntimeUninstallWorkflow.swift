@@ -64,6 +64,7 @@ public struct RuntimeUninstallStateReaders {
 public struct RuntimeUninstallEffects {
     public var createRedisBackup: () throws -> Void
     public var stopRuntimeServices: () throws -> Void
+    public var clearLaunchdDisabledOverrides: () throws -> Void
     public var describeError: (Error) -> String
     public var temporaryDirectory: () -> URL
     public var uniqueID: () -> String
@@ -79,6 +80,7 @@ public struct RuntimeUninstallEffects {
     public init(
         createRedisBackup: @escaping () throws -> Void,
         stopRuntimeServices: @escaping () throws -> Void,
+        clearLaunchdDisabledOverrides: @escaping () throws -> Void,
         describeError: @escaping (Error) -> String,
         temporaryDirectory: @escaping () -> URL,
         uniqueID: @escaping () -> String,
@@ -93,6 +95,7 @@ public struct RuntimeUninstallEffects {
     ) {
         self.createRedisBackup = createRedisBackup
         self.stopRuntimeServices = stopRuntimeServices
+        self.clearLaunchdDisabledOverrides = clearLaunchdDisabledOverrides
         self.describeError = describeError
         self.temporaryDirectory = temporaryDirectory
         self.uniqueID = uniqueID
@@ -176,6 +179,7 @@ public struct RuntimeUninstallWorkflow {
             diagnostics: diagnostics,
             packageReceiptIdentifiers: packageReceiptIdentifiers
         )
+        try clearLaunchdDisabledOverridesBeforeCompletion(effects: effects, diagnostics: diagnostics)
         try complete(
             approvedBy: receiptDecision,
             clean: command.clean,
@@ -381,6 +385,15 @@ public struct RuntimeUninstallWorkflow {
             )
         }
         return receiptDecision
+    }
+
+    private func clearLaunchdDisabledOverridesBeforeCompletion(
+        effects: RuntimeUninstallEffects,
+        diagnostics: RuntimeUninstallDiagnostics
+    ) throws {
+        log("step=clear-launchd-disabled-overrides status=started", diagnostics: diagnostics)
+        try effects.clearLaunchdDisabledOverrides()
+        log("step=clear-launchd-disabled-overrides status=completed", diagnostics: diagnostics)
     }
 
     private func complete(

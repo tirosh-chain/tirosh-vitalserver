@@ -214,15 +214,27 @@ public enum RuntimeRecoveryPlanner {
         let guestHTTP = classifyHTTPStatus(input.guestHTTP, allowsPendingStatus: true)
         let hostProxyReadinessHTTP = classifyHTTPStatus(input.hostProxyReadinessHTTP)
         let hostProxyLivenessHTTP = classifyHTTPStatus(input.hostProxyLivenessHTTP)
+        let waitingForGuest = input.vmLifecycle?.isWaitingForGuest(at: input.now) ?? false
+        let containerFailureRequiresRestart = RuntimeObservationHealthPolicy.requiresVMRestart(
+            containerObservation: input.containerObservation
+        )
+        let canPlanVMRestart = input.vmService == .loaded
+            && input.vmLifecycle != nil
+            && !waitingForGuest
+            && (input.vmIP == nil
+                || (!guestHTTP.isReadFailure && !guestHTTP.isSuccessful)
+                || containerFailureRequiresRestart)
 
         if case .readFailed(let status) = guestHTTP {
             blockers.append("recovery-blocked-guest-http-read-failed-\(runtimeRecoveryFailureToken(status))")
         }
-        if case .readFailed(let status) = hostProxyReadinessHTTP {
-            blockers.append("recovery-blocked-host-proxy-readiness-http-read-failed-\(runtimeRecoveryFailureToken(status))")
-        }
-        if case .readFailed(let status) = hostProxyLivenessHTTP {
-            blockers.append("recovery-blocked-host-proxy-liveness-http-read-failed-\(runtimeRecoveryFailureToken(status))")
+        if !canPlanVMRestart {
+            if case .readFailed(let status) = hostProxyReadinessHTTP {
+                blockers.append("recovery-blocked-host-proxy-readiness-http-read-failed-\(runtimeRecoveryFailureToken(status))")
+            }
+            if case .readFailed(let status) = hostProxyLivenessHTTP {
+                blockers.append("recovery-blocked-host-proxy-liveness-http-read-failed-\(runtimeRecoveryFailureToken(status))")
+            }
         }
 
         let vmRestartDependsOnGuestState = input.vmService == .loaded
