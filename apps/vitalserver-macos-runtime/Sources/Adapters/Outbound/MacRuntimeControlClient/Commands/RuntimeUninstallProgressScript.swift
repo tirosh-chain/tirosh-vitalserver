@@ -4,6 +4,7 @@ enum RuntimeUninstallProgressScript {
     static let terminalTitle = "VitalServer uninstall progress"
     static let terminalCompletedMessage = "Uninstall completed."
     static let terminalFailedMessage = "Uninstall failed. Check the log above."
+    static let terminalOpenFailedMessage = "uninstall progress viewer failed to open"
 
     static func viewerScript(logPath: String, shellQuote: (String) -> String) -> String {
         """
@@ -53,7 +54,9 @@ enum RuntimeUninstallProgressScript {
         : > "${log_file}"
         printf %s \(shellQuote(viewerScript)) > "${viewer_script}"
         chmod 0755 "${viewer_script}"
-        open -a Terminal "${viewer_script}" >/dev/null 2>&1 || true
+        if ! open -a Terminal "${viewer_script}" >/dev/null 2>&1; then
+          echo "\(terminalOpenFailedMessage)" >> "${log_file}"
+        fi
         {
           \(command)
           background_status=$?

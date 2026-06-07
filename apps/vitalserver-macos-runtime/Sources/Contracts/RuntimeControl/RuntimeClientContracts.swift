@@ -12,7 +12,6 @@ public protocol RuntimeControlClient {
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot
-    func loadVitalDBObservation() -> VitalDBObservationDocument?
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
     func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult
@@ -26,12 +25,6 @@ public protocol RuntimeControlClient {
     func stopRuntimeServices() async throws -> RuntimeCommandResult
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
     func loadInstallInfo() -> RuntimeInstallInfo
-}
-
-public extension RuntimeControlClient {
-    func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        loadVitalDBObservationSnapshot().observation
-    }
 }
 
 public enum RuntimeHostTextMissingReason: Equatable, Sendable {

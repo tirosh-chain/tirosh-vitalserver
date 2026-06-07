@@ -2307,6 +2307,43 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
+    func testOutboundObservabilityReaderUsesSnapshotContractForVitalDBObservation() throws {
+        let file = packageRoot()
+            .appendingPathComponent("Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeObservabilityReader.swift")
+        let text = try String(contentsOf: file, encoding: .utf8)
+
+        XCTAssertTrue(
+            text.contains("func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot"),
+            "Outbound observability reader must expose VitalDB observation through explicit snapshot state"
+        )
+        XCTAssertFalse(
+            text.contains("func loadVitalDBObservation() -> VitalDBObservationDocument?"),
+            "Outbound observability reader must not collapse failed/unavailable/missing observation state into optional nil"
+        )
+    }
+
+    func testRuntimeControlClientContractDoesNotExposeOptionalVitalDBObservationShortcut() throws {
+        let contractFile = packageRoot()
+            .appendingPathComponent("Sources/Contracts/RuntimeControl/RuntimeClientContracts.swift")
+        let workerFile = packageRoot()
+            .appendingPathComponent("Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/MacRuntimeControlReadWorker.swift")
+        let contractText = try String(contentsOf: contractFile, encoding: .utf8)
+        let workerText = try String(contentsOf: workerFile, encoding: .utf8)
+
+        XCTAssertTrue(
+            contractText.contains("func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot"),
+            "Runtime control client contract must expose VitalDB observation through explicit snapshot state"
+        )
+        XCTAssertFalse(
+            contractText.contains("func loadVitalDBObservation() -> VitalDBObservationDocument?"),
+            "Runtime control client contract must not collapse failed/unavailable/missing observation state into optional nil"
+        )
+        XCTAssertFalse(
+            workerText.contains("func loadVitalDBObservation() -> VitalDBObservationDocument?"),
+            "Read worker must not reintroduce optional observation shortcuts"
+        )
+    }
+
     func testRecorderActivityDisplayDoesNotHideInvalidTimestampsAsOldSamples() throws {
         let file = packageRoot()
             .appendingPathComponent("Sources/Adapters/Inbound/MacControlPanel/Presentation/Views/RuntimeRecorderActivityChartDataBuilder.swift")

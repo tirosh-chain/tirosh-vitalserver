@@ -95,6 +95,10 @@ public enum RuntimeControlHTTPWireCodec {
         )
     }
 
+    public static func badRequestResponse(for error: Error) -> RuntimeControlHTTPResponse {
+        badRequestResponse(message: badRequestMessage(for: error))
+    }
+
     private static func decodeHeaders(_ lines: [String]) throws -> [String: String] {
         var headers: [String: String] = [:]
         for line in lines where !line.isEmpty {
@@ -153,6 +157,20 @@ public enum RuntimeControlHTTPWireCodec {
             return "Not Implemented"
         case .internalServerError:
             return "Internal Server Error"
+        }
+    }
+
+    private static func badRequestMessage(for error: Error) -> String {
+        guard let codecError = error as? RuntimeControlHTTPWireCodecError else {
+            return "Invalid HTTP request."
+        }
+        switch codecError {
+        case .invalidRequest:
+            return "Invalid HTTP request."
+        case .unsupportedMethod(let method):
+            return "Unsupported HTTP method: \(method)."
+        case .invalidContentLength(let value):
+            return "Invalid Content-Length header: \(value)."
         }
     }
 }

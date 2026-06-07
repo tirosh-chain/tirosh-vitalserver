@@ -11,12 +11,6 @@ protocol RuntimeObservabilityReading: Sendable {
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
 }
 
-extension RuntimeObservabilityReading {
-    func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        loadVitalDBObservationSnapshot().observation
-    }
-}
-
 struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked Sendable {
     let paths: RuntimePaths
     private let fileStore: RuntimeFileStore
@@ -64,10 +58,6 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             state: page.state,
             readError: page.readError
         )
-    }
-
-    func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        loadVitalDBObservationSnapshot().observation
     }
 
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {

@@ -39,6 +39,8 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains(": > \"${log_file}\""))
         XCTAssertTrue(command.contains("viewer_script='\\''/private/tmp/tirosh-vitalserver-uninstall-progress.command'\\''"))
         XCTAssertTrue(command.contains("open -a Terminal \"${viewer_script}\""))
+        XCTAssertTrue(command.contains("if ! open -a Terminal \"${viewer_script}\""))
+        XCTAssertTrue(command.contains("echo \"\(RuntimeUninstallProgressScript.terminalOpenFailedMessage)\" >> \"${log_file}\""))
         XCTAssertTrue(command.contains("tail -n 0 -F"))
         XCTAssertTrue(command.contains("'\\''/usr/local/bin/tirosh-vitalserver-uninstall'\\'' '\\''--clean'\\''"))
         XCTAssertTrue(command.contains("background_status=$?"))
@@ -48,6 +50,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains("background_pid=$!"))
         XCTAssertTrue(command.contains("kill -0"))
         XCTAssertFalse(command.contains("&;"))
+        XCTAssertFalse(command.contains("open -a Terminal \"${viewer_script}\" >/dev/null 2>&1 || true"))
         XCTAssertFalse(command.contains("uninstall completed log="))
         XCTAssertTrue(command.contains("Background uninstaller started."))
     }

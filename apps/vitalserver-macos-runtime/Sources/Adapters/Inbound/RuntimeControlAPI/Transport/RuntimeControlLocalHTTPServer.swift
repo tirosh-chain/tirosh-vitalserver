@@ -185,7 +185,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             respond(to: buffered, on: connection)
         } catch {
             requestBuffers.removeValue(forKey: id)
-            send(RuntimeControlHTTPWireCodec.badRequestResponse(message: "Invalid HTTP request."), on: connection)
+            send(RuntimeControlHTTPWireCodec.badRequestResponse(for: error), on: connection)
         }
     }
 
@@ -194,7 +194,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
         do {
             request = try RuntimeControlHTTPWireCodec.decodeRequest(data)
         } catch {
-            send(RuntimeControlHTTPWireCodec.badRequestResponse(message: "Invalid HTTP request."), on: connection)
+            send(RuntimeControlHTTPWireCodec.badRequestResponse(for: error), on: connection)
             return
         }
 

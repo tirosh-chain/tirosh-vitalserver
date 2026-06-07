@@ -80,10 +80,6 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         observabilityReader.loadRuntimeEvents(query: query)
     }
 
-    public func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        observabilityReader.loadVitalDBObservation()
-    }
-
     public func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
         observabilityReader.loadVitalDBObservationSnapshot()
     }

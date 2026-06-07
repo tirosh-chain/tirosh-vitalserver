@@ -31,7 +31,6 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let health = await worker.loadHealthStatus(settings: settings)
         let limitedEvents = await worker.loadRuntimeEvents(limit: 5)
         let queriedEvents = await worker.loadRuntimeEvents(query: RuntimeEventQuery(limit: 7))
-        let observation = await worker.loadVitalDBObservation()
         let snapshot = await worker.loadVitalDBObservationSnapshot()
         let recorders = await worker.loadVitalDBRecorders()
         let relationships = await worker.loadVitalDBRelationships()
@@ -47,7 +46,6 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertEqual(health.statusMessage, "health")
         XCTAssertEqual(limitedEvents.matchingCount, 5)
         XCTAssertEqual(queriedEvents.matchingCount, 7)
-        XCTAssertEqual(observation?.observedAt, "2026-05-30T00:00:00Z")
         XCTAssertEqual(snapshot.observation?.observedAt, "2026-05-30T00:00:00Z")
         XCTAssertEqual(recorders.recorders.count, 0)
         XCTAssertEqual(relationships.readError, "relationships")
@@ -93,7 +91,6 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertEqual(healthStatus.statusMessage, "health")
         XCTAssertEqual(client.loadRuntimeEvents(limit: 3).matchingCount, 3)
         XCTAssertEqual(client.loadRuntimeEvents(query: RuntimeEventQuery(limit: 4)).matchingCount, 4)
-        XCTAssertNotNil(client.loadVitalDBObservation())
         XCTAssertNotNil(client.loadVitalDBObservationSnapshot().observation)
         XCTAssertEqual(client.loadVitalDBRecorders().recorders.count, 0)
         XCTAssertEqual(client.loadVitalDBRelationships().readError, "relationships")
@@ -262,10 +259,6 @@ private final class AdapterStubObservabilityReader: RuntimeObservabilityReading 
 
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
         RuntimeEventHistory(events: [], matchingCount: query.limit)
-    }
-
-    func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        loadVitalDBObservationSnapshot().observation
     }
 
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {

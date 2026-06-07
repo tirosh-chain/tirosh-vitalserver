@@ -1620,6 +1620,25 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(error.message, "Invalid HTTP request.")
     }
 
+    func testWireCodecBadRequestResponsesPreserveDecodeFailureReason() throws {
+        let invalidContentLength = RuntimeControlHTTPWireCodec.badRequestResponse(
+            for: RuntimeControlHTTPWireCodecError.invalidContentLength("abc")
+        )
+        let unsupportedMethod = RuntimeControlHTTPWireCodec.badRequestResponse(
+            for: RuntimeControlHTTPWireCodecError.unsupportedMethod("TRACE")
+        )
+
+        let invalidLengthBody = try XCTUnwrap(invalidContentLength.body)
+        let unsupportedMethodBody = try XCTUnwrap(unsupportedMethod.body)
+        let invalidLengthError = try JSONDecoder().decode(RuntimeControlErrorResponse.self, from: invalidLengthBody)
+        let unsupportedMethodError = try JSONDecoder().decode(RuntimeControlErrorResponse.self, from: unsupportedMethodBody)
+
+        XCTAssertEqual(invalidLengthError.code, .badRequest)
+        XCTAssertEqual(invalidLengthError.message, "Invalid Content-Length header: abc.")
+        XCTAssertEqual(unsupportedMethodError.code, .badRequest)
+        XCTAssertEqual(unsupportedMethodError.message, "Unsupported HTTP method: TRACE.")
+    }
+
     func testDevConsoleDocumentServesBrowserTestPage() throws {
         let response = try XCTUnwrap(RuntimeControlDevConsoleDocument.response(for: .init(
             method: .get,
@@ -2644,16 +2663,12 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
         )
     }
 
-    func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        vitalDBObservation
-    }
-
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
         vitalDBObservationSnapshot ?? RuntimeVitalDBObservationSnapshot.fromOptional(vitalDBObservation)
     }
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
-        RuntimeVitalRecorderHistory(observations: [loadVitalDBObservation()].compactMap { $0 })
+        RuntimeVitalRecorderHistory(observations: [loadVitalDBObservationSnapshot().observation].compactMap { $0 })
     }
 
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {

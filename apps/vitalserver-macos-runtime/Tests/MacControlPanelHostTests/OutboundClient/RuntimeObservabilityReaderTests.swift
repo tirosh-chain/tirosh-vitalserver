@@ -9,16 +9,17 @@ import Errors
 @testable import InboundAdapters
 
 final class RuntimeObservabilityReaderTests: XCTestCase {
-    func testProtocolDefaultObservationProjectionUsesSnapshot() {
+    func testProtocolRequiresExplicitObservationSnapshot() {
         let reader = DefaultSnapshotObservabilityReader(snapshot: .loaded(VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:00Z",
             ready: true,
             recorderOnlineThresholdSeconds: 60
         )))
 
-        let observation = reader.loadVitalDBObservation()
+        let snapshot = reader.loadVitalDBObservationSnapshot()
 
-        XCTAssertEqual(observation?.observedAt, "2026-05-31T00:00:00Z")
+        XCTAssertEqual(snapshot.state, .loaded)
+        XCTAssertEqual(snapshot.observation?.observedAt, "2026-05-31T00:00:00Z")
     }
 
     func testLoadRuntimeEventsLimitDelegatesToQueryReader() throws {
@@ -59,7 +60,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertNotNil(history.readError)
     }
 
-    func testLoadVitalDBObservationReturnsLatestSQLiteObservation() throws {
+    func testLoadVitalDBObservationSnapshotReturnsLatestSQLiteObservation() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
         let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
@@ -75,12 +76,13 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             runtimeObservabilityDB: database.path
         ))
 
-        let observation = reader.loadVitalDBObservation()
+        let snapshot = reader.loadVitalDBObservationSnapshot()
 
-        XCTAssertEqual(observation?.observedAt, "2026-05-31T00:00:00Z")
+        XCTAssertEqual(snapshot.state, .loaded)
+        XCTAssertEqual(snapshot.observation?.observedAt, "2026-05-31T00:00:00Z")
     }
 
-    func testLoadVitalDBObservationPrefersFreshGuestRuntimeStateOverSQLiteProjection() throws {
+    func testLoadVitalDBObservationSnapshotPrefersFreshGuestRuntimeStateOverSQLiteProjection() throws {
         let directory = try temporaryDirectory()
         defer { cleanup(directory) }
         let database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)

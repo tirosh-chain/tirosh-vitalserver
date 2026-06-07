@@ -1253,7 +1253,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let status = client.loadStatus(settings: RuntimeSettings())
         let events = client.loadRuntimeEvents(query: RuntimeEventQuery(limit: 1))
-        let observation = client.loadVitalDBObservation()
+        let observation = client.loadVitalDBObservationSnapshot().observation
 
         XCTAssertEqual(status.statusMessage, "status-reader")
         XCTAssertEqual(events.matchingCount, 7)
@@ -1389,10 +1389,6 @@ private final class StubObservabilityReader: RuntimeObservabilityReading {
 
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory {
         RuntimeEventHistory(events: [], matchingCount: 7)
-    }
-
-    func loadVitalDBObservation() -> VitalDBObservationDocument? {
-        loadVitalDBObservationSnapshot().observation
     }
 
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot {
