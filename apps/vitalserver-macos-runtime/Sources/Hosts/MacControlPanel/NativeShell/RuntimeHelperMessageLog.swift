@@ -9,10 +9,14 @@ struct FileRuntimeHelperMessageLog: RuntimeHelperMessageLogging {
 
     init(
         url: URL = InstalledRuntimePaths.defaultInstalled.managerHelperMessageLog,
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        resetExistingLog: Bool = true
     ) {
         self.url = url
         self.now = now
+        if resetExistingLog {
+            reset()
+        }
     }
 
     func append(_ message: String) {
@@ -36,6 +40,17 @@ struct FileRuntimeHelperMessageLog: RuntimeHelperMessageLogging {
             }
         } catch {
             fputs("Failed to append helper message log: \(error.localizedDescription)\n", stderr)
+        }
+    }
+
+    private func reset() {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return
+        }
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch {
+            fputs("Failed to reset helper message log: \(error.localizedDescription)\n", stderr)
         }
     }
 

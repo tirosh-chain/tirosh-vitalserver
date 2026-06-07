@@ -72,7 +72,8 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             initialSettings: localAPISettings.settingsWithLocalAPIPort(RuntimeSettings()),
             localAPISettings: localAPISettings,
             healthNotifications: HealthNotificationCenter(),
-            nativeShell: SystemRuntimeNativeShell()
+            nativeShell: SystemRuntimeNativeShell(),
+            helperMessageLog: FileRuntimeHelperMessageLog()
         )
         return MacRuntimeControlEnvironment(
             viewModel: viewModel,
@@ -237,4 +238,3 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         return formatter.string(from: date)
     }
 }
-

@@ -32,6 +32,41 @@ final class RuntimeHelperMessageLogTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: logURL.path))
     }
 
+    func testFileRuntimeHelperMessageLogStartsFreshSessionByDefault() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let logURL = directory.appendingPathComponent("helper-message.log")
+        try "stale update failure\n".write(to: logURL, atomically: true, encoding: .utf8)
+
+        let logger = FileRuntimeHelperMessageLog(
+            url: logURL,
+            now: { Date(timeIntervalSince1970: 1_800_000_000) }
+        )
+        logger.append("Ready")
+
+        let text = try String(contentsOf: logURL, encoding: .utf8)
+        XCTAssertFalse(text.contains("stale update failure"))
+        XCTAssertEqual(text, "[2027-01-15T08:00:00Z] Ready\n")
+    }
+
+    func testFileRuntimeHelperMessageLogCanPreserveExistingLogWhenRequested() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let logURL = directory.appendingPathComponent("helper-message.log")
+        try "previous\n".write(to: logURL, atomically: true, encoding: .utf8)
+
+        let logger = FileRuntimeHelperMessageLog(
+            url: logURL,
+            now: { Date(timeIntervalSince1970: 1_800_000_000) },
+            resetExistingLog: false
+        )
+        logger.append("Ready")
+
+        let text = try String(contentsOf: logURL, encoding: .utf8)
+        XCTAssertTrue(text.hasPrefix("previous\n"))
+        XCTAssertTrue(text.contains("[2027-01-15T08:00:00Z] Ready"))
+    }
+
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("RuntimeHelperMessageLogTests-\(UUID().uuidString)")
