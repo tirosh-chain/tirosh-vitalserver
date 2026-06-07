@@ -11,6 +11,7 @@ public protocol RuntimeGuestGateway {
     func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws
     func loadUpdateActivationResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument>
     func removeUpdateShutdownResult() throws
+    func clearUpdateShutdownPreparation() throws
     func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws
     func loadUpdateShutdownResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>
     func removeDatastoreRepairResult() throws

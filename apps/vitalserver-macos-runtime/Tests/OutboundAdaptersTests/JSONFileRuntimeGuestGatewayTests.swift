@@ -181,6 +181,23 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         try harness.cleanup()
     }
 
+    func testClearUpdateShutdownPreparationRemovesRequestAndResult() throws {
+        let harness = try GuestGatewayHarness()
+        try harness.gateway.writeUpdateShutdownRequest(RuntimeGuestShutdownRequest(
+            id: "shutdown-1",
+            requestedAt: "2026-05-21T12:33:57Z",
+            version: "0.1.4"
+        ))
+        try harness.writeJSON("{}", to: harness.updateShutdownResultURL)
+
+        try harness.gateway.clearUpdateShutdownPreparation()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: harness.updateShutdownRequestURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: harness.updateShutdownResultURL.path))
+
+        try harness.cleanup()
+    }
+
     func testLoadResultReportsMissingAndInvalidGuestDocuments() throws {
         let harness = try GuestGatewayHarness()
 

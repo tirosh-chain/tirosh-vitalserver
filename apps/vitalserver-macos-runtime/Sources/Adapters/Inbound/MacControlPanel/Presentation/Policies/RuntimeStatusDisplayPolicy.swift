@@ -60,6 +60,9 @@ struct RuntimeStatusDisplayPolicy {
     private let overallHealthPolicy = RuntimeStatusOverallHealthPolicy(
         vocabulary: AppRuntimeStatusOverallHealthVocabulary()
     )
+    private let advancedVMHealthPolicy = RuntimeStatusAdvancedVMHealthPolicy(
+        vocabulary: AppRuntimeStatusAdvancedVMHealthVocabulary()
+    )
     private let healthDetailsPolicy = RuntimeStatusHealthDetailsPolicy(
         vocabulary: AppRuntimeStatusHealthDetailsVocabulary()
     )
@@ -92,6 +95,10 @@ struct RuntimeStatusDisplayPolicy {
 
     func healthDetails(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [HealthItem] {
         healthDetailsPolicy.healthDetails(status: status, observation: observation, now: now).map(healthItem)
+    }
+
+    func advancedVMHealth(status: RuntimeStatus) -> [HealthItem] {
+        advancedVMHealthPolicy.vmHealth(status: status).map(healthItem)
     }
 
     func advancedServiceHealth(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [ServiceHealthItem] {
@@ -308,6 +315,41 @@ private struct AppRuntimeStatusHealthDetailsVocabulary: RuntimeStatusHealthDetai
     }
 }
 
+private struct AppRuntimeStatusAdvancedVMHealthVocabulary: RuntimeStatusAdvancedVMHealthVocabulary {
+    var runtimeInstallationLabel: String { AppConstants.Labels.runtimeInstallation }
+    var vmStateLabel: String { AppConstants.Labels.vmState }
+    var vmServiceLabel: String { AppConstants.Labels.vmService }
+    var vmIPAddressLabel: String { AppConstants.Labels.vmIPAddress }
+    var vmErrorsLabel: String { AppConstants.Labels.vmErrors }
+    var waitingText: String { AppConstants.StatusText.waiting }
+    var updatingText: String { AppConstants.StatusText.updating }
+    var notReportedText: String { AppConstants.StatusText.notReported }
+    var reachableText: String { AppConstants.StatusText.reachable }
+    var unavailableText: String { AppConstants.StatusText.unavailable }
+    var unreachableText: String { AppConstants.StatusText.unreachable }
+    var failedText: String { AppConstants.StatusText.failed }
+
+    func installStateText(installed: Bool) -> String {
+        AppConstants.StatusText.installState(installed: installed)
+    }
+
+    func vmStateText(_ value: RuntimeVMState?) -> String {
+        AppConstants.StatusText.vmState(value)
+    }
+
+    func launchdStateText(_ state: RuntimeServiceState) -> String {
+        AppConstants.StatusText.launchdState(state)
+    }
+
+    func launchdLoadedText(_ loaded: Bool) -> String {
+        AppConstants.StatusText.launchdState(loaded: loaded)
+    }
+
+    func vmErrorText(_ error: RuntimeVMError) -> String {
+        AppConstants.StatusText.vmError(error)
+    }
+}
+
 private struct AppRuntimeStatusVitalServerAvailabilityVocabulary: RuntimeStatusVitalServerAvailabilityVocabulary {
     var updatingText: String { AppConstants.StatusText.updating }
     var notReportedText: String { AppConstants.StatusText.notReported }
@@ -318,8 +360,6 @@ private struct AppRuntimeStatusVitalServerAvailabilityVocabulary: RuntimeStatusV
 }
 
 private struct AppRuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusAdvancedServiceHealthVocabulary {
-    var runtimeInstallationLabel: String { AppConstants.Labels.runtimeInstallation }
-    var vmServiceLabel: String { AppConstants.Labels.vmService }
     var proxyServiceLabel: String { AppConstants.Labels.proxyService }
     var guestLogSyncServiceLabel: String { AppConstants.Labels.guestLogSyncService }
     var sleepPreventionServiceLabel: String { AppConstants.Labels.sleepPreventionService }
@@ -335,10 +375,6 @@ private struct AppRuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusAdv
     var unavailableText: String { AppConstants.StatusText.unavailable }
     var unreachableText: String { AppConstants.StatusText.unreachable }
     var failedText: String { AppConstants.StatusText.failed }
-
-    func installStateText(installed: Bool) -> String {
-        AppConstants.StatusText.installState(installed: installed)
-    }
 
     func launchdStateText(_ state: RuntimeServiceState) -> String {
         AppConstants.StatusText.launchdState(state)

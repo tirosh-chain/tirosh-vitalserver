@@ -114,9 +114,11 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             composeServices: []
         )
 
+        let vmHealth = policy.advancedVMHealth(status: status)
         let serviceHealth = policy.advancedServiceHealth(status: status, observation: observation)
 
-        XCTAssertEqual(item(AppConstants.Labels.vmService, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, AppConstants.StatusText.stopped)
+        XCTAssertNil(item(AppConstants.Labels.vmService, in: serviceHealth))
         XCTAssertEqual(item(AppConstants.Labels.proxyService, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
         XCTAssertEqual(item(AppConstants.Labels.watchdogService, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
@@ -135,9 +137,11 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             operation: .applyBundle
         )
 
+        let vmHealth = policy.advancedVMHealth(status: status)
         let serviceHealth = policy.advancedServiceHealth(status: status, observation: nil)
 
-        XCTAssertEqual(item(AppConstants.Labels.vmService, in: serviceHealth)?.value.text, "Permission denied")
+        XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, "Permission denied")
+        XCTAssertNil(item(AppConstants.Labels.vmService, in: serviceHealth))
         XCTAssertEqual(item(AppConstants.Labels.proxyService, in: serviceHealth)?.value.text, "Read failed")
         XCTAssertEqual(item(AppConstants.Labels.guestLogSyncService, in: serviceHealth)?.value.text, "Paused")
     }
@@ -427,12 +431,14 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             watchdogServiceState: .loaded
         )
 
-        let items = policy.advancedServiceHealth(status: status, observation: nil)
+        let vmItems = policy.advancedVMHealth(status: status)
+        let serviceItems = policy.advancedServiceHealth(status: status, observation: nil)
 
-        XCTAssertEqual(item(AppConstants.Labels.vmService, in: items)?.value.text, "Permission denied")
-        XCTAssertEqual(item(AppConstants.Labels.proxyService, in: items)?.value.text, AppConstants.StatusText.stopped)
-        XCTAssertEqual(item(AppConstants.Labels.guestLogSyncService, in: items)?.value.text, "Read failed")
-        XCTAssertEqual(item(AppConstants.Labels.watchdogService, in: items)?.value.text, AppConstants.StatusText.running)
+        XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmItems)?.value.text, "Permission denied")
+        XCTAssertNil(item(AppConstants.Labels.vmService, in: serviceItems))
+        XCTAssertEqual(item(AppConstants.Labels.proxyService, in: serviceItems)?.value.text, AppConstants.StatusText.stopped)
+        XCTAssertEqual(item(AppConstants.Labels.guestLogSyncService, in: serviceItems)?.value.text, "Read failed")
+        XCTAssertEqual(item(AppConstants.Labels.watchdogService, in: serviceItems)?.value.text, AppConstants.StatusText.running)
     }
 
     func testServiceAndReachabilityFallbacksUseReducedStatusVocabulary() {
@@ -447,12 +453,44 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
 
         let healthDetails = policy.healthDetails(status: status, observation: nil)
+        let vmHealth = policy.advancedVMHealth(status: status)
         let serviceHealth = policy.advancedServiceHealth(status: status, observation: nil)
 
         XCTAssertEqual(item(AppConstants.Labels.watchdog, in: healthDetails)?.value.text, AppConstants.StatusText.stopped)
-        XCTAssertEqual(item(AppConstants.Labels.vmService, in: serviceHealth)?.value.text, AppConstants.StatusText.stopped)
+        XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, AppConstants.StatusText.stopped)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.unreachable)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.notReported)
+    }
+
+    func testAdvancedVMHealthSeparatesVMIntegrityFromServiceLiveness() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            guestLogSyncServiceLoaded: true,
+            sleepPreventionServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            vmState: .failed,
+            vmErrors: [.guestFilesystemError],
+            vmIP: "192.168.64.8",
+            guestHTTP: "200",
+            hostProxyHTTP: "200",
+            redisUIHTTP: "200",
+            swaggerUIHTTP: "200"
+        )
+
+        let vmItems = policy.advancedVMHealth(status: status)
+        let serviceItems = policy.advancedServiceHealth(status: status, observation: nil)
+
+        XCTAssertEqual(item(AppConstants.Labels.vmState, in: vmItems)?.value.text, AppConstants.StatusText.failed)
+        XCTAssertEqual(item(AppConstants.Labels.vmState, in: vmItems)?.value.severity, .critical)
+        XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: vmItems)?.value.text, "Guest filesystem error")
+        XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: vmItems)?.value.severity, .critical)
+        XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmItems)?.value.text, AppConstants.StatusText.running)
+        XCTAssertNil(item(AppConstants.Labels.vmState, in: serviceItems))
+        XCTAssertNil(item(AppConstants.Labels.vmErrors, in: serviceItems))
+        XCTAssertNil(item(AppConstants.Labels.vmService, in: serviceItems))
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceItems)?.value.text, AppConstants.StatusText.reachable)
     }
 
     func testVMStateDisplayMapsRuntimeStatesToOperatorSeverity() {

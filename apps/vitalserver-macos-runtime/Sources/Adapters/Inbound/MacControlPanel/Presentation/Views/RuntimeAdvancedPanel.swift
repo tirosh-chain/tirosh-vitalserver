@@ -13,6 +13,7 @@ struct RuntimeAdvancedPanel: View {
     @Binding var showingStopServicesConfirmation: Bool
     @Binding var hoveredServiceLink: String?
     @State private var uptimeNow = Date()
+    @State private var showingVMHealth = true
     @State private var showingServiceHealth = true
     @State private var showingRecoveryOperations = false
     @State private var showingNetworkOverrides = false
@@ -30,6 +31,7 @@ struct RuntimeAdvancedPanel: View {
         showingStartServicesConfirmation: Binding<Bool>,
         showingStopServicesConfirmation: Binding<Bool>,
         hoveredServiceLink: Binding<String?>,
+        showingVMHealth: Bool = true,
         showingServiceHealth: Bool = true,
         showingRecoveryOperations: Bool = false,
         showingNetworkOverrides: Bool = false,
@@ -45,6 +47,7 @@ struct RuntimeAdvancedPanel: View {
         self._showingStartServicesConfirmation = showingStartServicesConfirmation
         self._showingStopServicesConfirmation = showingStopServicesConfirmation
         self._hoveredServiceLink = hoveredServiceLink
+        self._showingVMHealth = State(initialValue: showingVMHealth)
         self._showingServiceHealth = State(initialValue: showingServiceHealth)
         self._showingRecoveryOperations = State(initialValue: showingRecoveryOperations)
         self._showingNetworkOverrides = State(initialValue: showingNetworkOverrides)
@@ -62,6 +65,7 @@ struct RuntimeAdvancedPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 diagnosticsCard
+                vmHealthCard
                 serviceHealthCard
                 recoveryOperationsCard
                 networkOverridesCard
@@ -88,7 +92,6 @@ struct RuntimeAdvancedPanel: View {
                 statusRow(AppConstants.Labels.operation, viewModel.presentationFormatter.operationText(viewModel.status.operation))
                 statusRow(AppConstants.Labels.runtimeVersion, viewModel.status.runtimeVersion ?? AppConstants.StatusText.unknown)
                 statusRow(AppConstants.Labels.updatedAt, viewModel.presentationFormatter.systemTimeText(viewModel.status.updatedAt))
-                statusRow(AppConstants.Labels.vmIP, viewModel.status.vmIP ?? AppConstants.StatusText.waiting)
                 if !viewModel.status.failureReasons.isEmpty {
                     statusRow(AppConstants.Labels.failureReasons) {
                         Text(viewModel.presentationFormatter.failureReasonText(viewModel.status))
@@ -98,6 +101,20 @@ struct RuntimeAdvancedPanel: View {
                 }
             }
         }
+    }
+
+    private var vmHealthCard: some View {
+        advancedDisclosureCard(AppConstants.Labels.sectionVMHealth, isExpanded: $showingVMHealth) {
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+                ForEach(vmHealthItems) { item in
+                    healthRow(item)
+                }
+            }
+        }
+    }
+
+    private var vmHealthItems: [RuntimeStatusDisplayPolicy.HealthItem] {
+        displayPolicy.advancedVMHealth(status: viewModel.status)
     }
 
     private var serviceHealthCard: some View {
@@ -464,6 +481,21 @@ struct RuntimeAdvancedPanel: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }
             settingHelp(help)
+        }
+    }
+
+    private func healthRow(_ item: RuntimeStatusDisplayPolicy.HealthItem) -> some View {
+        GridRow {
+            Text(item.label)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(statusColor(item.value.severity))
+                    .frame(width: 9, height: 9)
+                Text(item.value.text)
+                    .fontWeight(.medium)
+                uptimeSuffix(item.value.uptimeText)
+            }
         }
     }
 

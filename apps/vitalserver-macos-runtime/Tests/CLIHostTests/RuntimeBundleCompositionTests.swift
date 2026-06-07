@@ -138,6 +138,62 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         XCTAssertTrue(logs.contains { $0.contains("failed to restart runtime services after rollback failure error=restartFailed") })
     }
 
+    func testApplyBundleAcquiresAndReleasesOperationLease() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let source = URL(fileURLWithPath: "/input/update-bundle")
+        try writeEmptyBundle(at: source, to: fileStore)
+        var events: [String] = []
+        let workflow = makeWorkflow(
+            fileStore: fileStore,
+            acquireOperationLease: { operation in
+                events.append("acquire:\(operation.rawValue)")
+                return RuntimeOperationLeaseDocument(
+                    operationId: "lease-1",
+                    operation: operation,
+                    ownerPID: 123,
+                    startedAt: "2026-05-22T00:00:00Z",
+                    heartbeatAt: "2026-05-22T00:00:00Z",
+                    expiresAt: nil,
+                    message: nil
+                )
+            },
+            releaseOperationLease: { lease in
+                events.append("release:\(lease.operationId)")
+            }
+        )
+
+        try workflow.applyBundle(source)
+
+        XCTAssertEqual(events, [
+            "acquire:apply-bundle",
+            "release:lease-1",
+        ])
+    }
+
+    func testApplyBundleLogsLeaseReleaseFailureWithoutHidingApplyFailure() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let source = URL(fileURLWithPath: "/input/update-bundle")
+        try writeEmptyBundle(at: source, to: fileStore)
+        var logs: [String] = []
+        let workflow = makeWorkflow(
+            fileStore: fileStore,
+            stopRuntimeServices: {
+                throw TestRuntimeBundleCompositionError.vmStopFailed
+            },
+            releaseOperationLease: { _ in
+                throw TestRuntimeBundleCompositionError.cleanupFailed
+            },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try workflow.applyBundle(source)) { error in
+            XCTAssertEqual(error as? TestRuntimeBundleCompositionError, .vmStopFailed)
+        }
+        XCTAssertTrue(logs.contains { $0.contains("runtime operation lease release failed") })
+        XCTAssertTrue(logs.contains { $0.contains("operation=apply-bundle") })
+        XCTAssertTrue(logs.contains { $0.contains("error=cleanupFailed") })
+    }
+
     private func makeWorkflow(
         fileStore: RuntimeFileStore,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void = { _ in },
@@ -149,6 +205,18 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         isLaunchdLoaded: @escaping (RuntimeManagedService) -> Bool = { _ in false },
         rollback: @escaping (URL?) throws -> Void = { _ in },
         rotateRuntimeLogs: @escaping () throws -> Void = {},
+        acquireOperationLease: @escaping (RuntimeOperation) throws -> RuntimeOperationLeaseDocument = { operation in
+            RuntimeOperationLeaseDocument(
+                operationId: UUID().uuidString,
+                operation: operation,
+                ownerPID: 123,
+                startedAt: "2026-05-22T00:00:00Z",
+                heartbeatAt: "2026-05-22T00:00:00Z",
+                expiresAt: nil,
+                message: nil
+            )
+        },
+        releaseOperationLease: @escaping (RuntimeOperationLeaseDocument) throws -> Void = { _ in },
         log: @escaping (String) -> Void = { _ in }
     ) -> RuntimeBundleComposition {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
@@ -251,6 +319,8 @@ final class RuntimeBundleCompositionTests: XCTestCase {
                 activateGuestUpdateIfNeeded: { _ in },
                 waitForHealth: { _ in },
                 requireGuestCapability: { _ in },
+                acquireOperationLease: acquireOperationLease,
+                releaseOperationLease: releaseOperationLease,
                 log: log
             )
         )

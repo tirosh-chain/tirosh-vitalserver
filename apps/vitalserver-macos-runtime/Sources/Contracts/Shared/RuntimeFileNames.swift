@@ -4,6 +4,7 @@ public enum RuntimeFileNames {
     public static let backupManifest = "backup-manifest.json"
     public static let updateBundleManifest = "manifest.json"
     public static let runtimeStatus = "runtime-status.json"
+    public static let runtimeOperationLease = "runtime-operation-lease.json"
     public static let runtimeEvents = "runtime-events.jsonl"
     public static let runtimeObservabilityDB = "runtime-observability.sqlite"
     public static let runtimeInstallState = "tirosh-vitalserver-install-state.json"

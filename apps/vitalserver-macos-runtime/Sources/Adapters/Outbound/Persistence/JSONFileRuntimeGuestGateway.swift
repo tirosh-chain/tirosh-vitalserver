@@ -64,6 +64,11 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         try removeFileIfPresent(updateShutdownResultURL)
     }
 
+    public func clearUpdateShutdownPreparation() throws {
+        try removeFileIfPresent(updateShutdownRequestURL)
+        try removeFileIfPresent(updateShutdownResultURL)
+    }
+
     public func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {
         try write(
             GuestUpdateShutdownRequestDocument(

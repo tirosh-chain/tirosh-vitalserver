@@ -120,6 +120,7 @@ Update flow는 Host와 Guest 사이의 capability/state 계약을 먼저 확인�
 - Request/result 파일은 provider contract가 확인된 뒤에만 사용합니다.
 - Absence of result는 성공, 빈 상태, 또는 fallback trigger가 아닙니다.
 - Host가 shared directory에 파일을 생성하는 방식은 event notification 계약이 아닙니다. Guest는 파일 생성 event를 기다리지 말고 명시 dispatcher로 request를 읽어야 합니다.
+- Guest shutdown preparation이 timeout, invalid result, failed result로 끝나면 Host는 `prepare-update-shutdown.request`와 `prepare-update-shutdown-result.json`을 함께 정리해야 합니다. stale request가 남으면 rollback 후 VM 재시작 시 Guest가 이전 shutdown 요청을 다시 처리할 수 있습니다.
 - UI/Helper read path는 domain state를 만들거나 변경하지 않습니다.
 - 권한 문제나 log refresh 실패는 update state와 별도 issue로 보존합니다.
 
@@ -152,3 +153,4 @@ Update flow는 Host와 Guest 사이의 capability/state 계약을 먼저 확인�
 - 2026-05-31: AGENTS.md 원칙에 따라 fallback 진행이 아니라 Guest capability 계약과 typed failure를 추가하는 방향으로 정리했습니다.
 - 2026-05-31: `GuestRuntimeCapabilities`, Host capability preflight, request writer guard, log refresh fallback 분리를 구현하고 targeted Swift tests 86개를 통과했습니다.
 - 2026-05-31: `systemd.path` watcher가 virtiofs/shared run directory의 host-written request를 깨우지 못하는 구조적 실패를 확인했습니다. Guest command dispatch를 3초 polling service로 전환하고, bootstrap/activation에서 기존 path unit을 비활성화하도록 hotfix 범위를 확장했습니다.
+- 2026-06-07: dev product update `0.1.12-dev` 적용 중 guest shutdown preparation timeout 뒤 rollback이 시작됐지만 stale `prepare-update-shutdown.request`가 남아 VM 재시작 후 Guest가 이전 shutdown 요청을 다시 처리하는 흐름을 확인했습니다. Host apply-bundle workflow는 guest shutdown preparation 자체가 실패해도 cleanup을 실행하고, installed gateway cleanup은 request/result를 함께 제거하도록 수정했습니다.

@@ -32,7 +32,7 @@ extension RuntimeLifecycle {
                 stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
                 prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
                 clearGuestShutdownPreparation: {
-                    try guestGateway.removeUpdateShutdownResult()
+                    try guestGateway.clearUpdateShutdownPreparation()
                 },
                 isLaunchdLoaded: isLaunchdLoaded,
                 createBackup: { reason in try backupStore().createBackup(reason: reason) },
@@ -66,8 +66,30 @@ extension RuntimeLifecycle {
                 activateGuestUpdateIfNeeded: activateGuestUpdateIfNeeded,
                 waitForHealth: waitForHealth,
                 requireGuestCapability: requireGuestCapability,
+                acquireOperationLease: acquireRuntimeOperationLease,
+                releaseOperationLease: releaseRuntimeOperationLease,
                 log: log
             )
         )
+    }
+
+    private func acquireRuntimeOperationLease(_ operation: RuntimeOperation) throws -> RuntimeOperationLeaseDocument {
+        let timestamp = ISO8601DateFormatter().string(from: clock.now)
+        let document = RuntimeOperationLeaseDocument(
+            operationId: UUID().uuidString,
+            operation: operation,
+            ownerPID: Int(ProcessInfo.processInfo.processIdentifier),
+            startedAt: timestamp,
+            heartbeatAt: timestamp,
+            expiresAt: nil,
+            message: nil
+        )
+        try JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease).acquire(document)
+        return document
+    }
+
+    private func releaseRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
+        try JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease)
+            .release(operationId: document.operationId)
     }
 }

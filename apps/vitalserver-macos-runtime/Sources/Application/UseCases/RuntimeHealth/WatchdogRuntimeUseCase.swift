@@ -193,6 +193,49 @@ public struct WatchdogRuntimeUseCase {
         )
     }
 
+    public func operationLeaseGuardPlan(
+        loadResult: RuntimeOperationLeaseLoadResult,
+        now: Date
+    ) -> WatchdogRuntimeManagedOperationGuardPlan {
+        switch loadResult {
+        case .missing:
+            return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: nil, logMessage: nil)
+        case .loaded(let document):
+            return operationLeaseGuardPlan(lease: document, now: now)
+        case .failed(let message):
+            return WatchdogRuntimeManagedOperationGuardPlan(
+                activeOperation: .unknown("operation-lease-read-failed"),
+                logMessage: "watchdog operation lease guard blocked on lease read failure error=\(message)"
+            )
+        }
+    }
+
+    public func operationLeaseGuardPlan(
+        lease: RuntimeOperationLeaseDocument,
+        now: Date
+    ) -> WatchdogRuntimeManagedOperationGuardPlan {
+        guard let expiresAt = lease.expiresAt else {
+            return WatchdogRuntimeManagedOperationGuardPlan(
+                activeOperation: lease.operation,
+                logMessage: "watchdog operation lease guard active without expiresAt operation=\(lease.operation.rawValue) operationId=\(lease.operationId)"
+            )
+        }
+        guard let expirationDate = ISO8601DateFormatter().date(from: expiresAt) else {
+            return WatchdogRuntimeManagedOperationGuardPlan(
+                activeOperation: lease.operation,
+                logMessage: "watchdog operation lease guard active with invalid expiresAt operation=\(lease.operation.rawValue) operationId=\(lease.operationId) expiresAt=\(expiresAt)"
+            )
+        }
+        if now > expirationDate {
+            let age = now.timeIntervalSince(expirationDate)
+            return WatchdogRuntimeManagedOperationGuardPlan(
+                activeOperation: nil,
+                logMessage: "watchdog operation lease guard expired operation=\(lease.operation.rawValue) operationId=\(lease.operationId) expiredSeconds=\(formatAgeSeconds(age))"
+            )
+        }
+        return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: lease.operation, logMessage: nil)
+    }
+
     public func statusManagedOperationGuardPlan(
         loadResult: RuntimeStatusDocumentLoadResult,
         now: Date,

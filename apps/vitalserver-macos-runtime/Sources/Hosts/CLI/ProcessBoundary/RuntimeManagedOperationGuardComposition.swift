@@ -19,6 +19,7 @@ public struct RuntimeManagedOperationGuardComposition {
 
     public static func make(
         statusReporter: RuntimeStatusReporter,
+        operationLeaseRepository: RuntimeOperationLeaseRepository,
         guestGateway: RuntimeGuestGateway,
         now: @escaping () -> Date,
         log: @escaping (String) -> Void
@@ -26,6 +27,7 @@ public struct RuntimeManagedOperationGuardComposition {
         RuntimeManagedOperationGuardComposition(
             graceSeconds: Constants.Runtime.watchdogManagedOperationGraceSeconds,
             operations: GuardManagedRuntimeOperationOperations(
+                loadOperationLease: operationLeaseRepository.loadResult,
                 loadStatus: statusReporter.loadStatusResult,
                 activeGuestBootstrap: {
                     activeGuestBootstrap(guestGateway: guestGateway, log: log)

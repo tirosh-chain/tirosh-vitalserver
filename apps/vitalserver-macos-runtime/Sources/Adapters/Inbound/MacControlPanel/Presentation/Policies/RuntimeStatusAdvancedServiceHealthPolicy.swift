@@ -12,8 +12,6 @@ public enum RuntimeStatusServiceActionID: Equatable, Sendable {
 public protocol RuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusHTTPValueVocabulary,
     RuntimeStatusServiceValueVocabulary,
     RuntimeStatusComposeServiceValueVocabulary {
-    var runtimeInstallationLabel: String { get }
-    var vmServiceLabel: String { get }
     var proxyServiceLabel: String { get }
     var guestLogSyncServiceLabel: String { get }
     var sleepPreventionServiceLabel: String { get }
@@ -23,8 +21,6 @@ public protocol RuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusHTTPV
     var vitalDBObserverLabel: String { get }
     var redisUIName: String { get }
     var swaggerUIName: String { get }
-
-    func installStateText(installed: Bool) -> String
 }
 
 public struct RuntimeStatusAdvancedServiceHealthValue: Equatable, Sendable {
@@ -90,20 +86,6 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     ) -> [RuntimeStatusAdvancedServiceHealthItem] {
         let updateInProgress = RuntimeActiveOperationPolicy.isUpdateInProgress(status)
         return [
-            serviceStateItem(
-                vocabulary.runtimeInstallationLabel,
-                value: RuntimeStatusAdvancedServiceHealthValue(
-                    text: vocabulary.installStateText(installed: status.runtimeInstalled),
-                    severity: status.runtimeInstalled ? .healthy : .warning,
-                    uptimeText: nil
-                )
-            ),
-            serviceStateItem(
-                vocabulary.vmServiceLabel,
-                state: status.vmServiceState,
-                fallbackLoaded: status.vmServiceLoaded,
-                updateInProgress: updateInProgress
-            ),
             serviceStateItem(
                 vocabulary.proxyServiceLabel,
                 state: status.proxyServiceState,

@@ -314,6 +314,10 @@ struct RuntimeLogExportSupplementalSource {
                 relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeStatus)"
             ),
             RuntimeLogExportSupplementalSource(
+                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeOperationLease),
+                relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeOperationLease)"
+            ),
+            RuntimeLogExportSupplementalSource(
                 source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeEvents),
                 relativeDestination: "diagnostics/status/\(RuntimeFileNames.runtimeEvents)"
             ),

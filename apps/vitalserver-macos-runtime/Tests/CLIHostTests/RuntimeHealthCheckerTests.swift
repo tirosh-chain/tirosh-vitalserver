@@ -1024,6 +1024,7 @@ private final class RuntimeGuestGatewaySpy: RuntimeGuestGateway {
     func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws {}
     func loadUpdateActivationResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument> { .missing }
     func removeUpdateShutdownResult() throws {}
+    func clearUpdateShutdownPreparation() throws {}
     func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {}
     func loadUpdateShutdownResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument> { .missing }
     func removeDatastoreRepairResult() throws {}

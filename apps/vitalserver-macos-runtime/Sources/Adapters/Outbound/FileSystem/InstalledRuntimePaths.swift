@@ -127,6 +127,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
     }
 
+    public var runtimeOperationLease: URL {
+        statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeOperationLease)
+    }
+
     public var runtimeEvents: URL {
         statusDirectory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
     }

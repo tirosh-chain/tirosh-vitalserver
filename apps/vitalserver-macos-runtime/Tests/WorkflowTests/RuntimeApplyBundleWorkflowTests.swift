@@ -77,6 +77,24 @@ final class RuntimeApplyBundleWorkflowTests: XCTestCase {
         XCTAssertTrue(harness.statuses.last?.message.contains("described:stopAfterGuestPoweroff") == true)
     }
 
+    func testRunClearsGuestShutdownPreparationAndRollsBackWhenGuestShutdownPreparationFails() throws {
+        let harness = ApplyBundleHarness()
+        harness.prepareGuestShutdownError = TestApplyBundleError.prepareGuestShutdown
+
+        XCTAssertThrowsError(try harness.run())
+
+        XCTAssertEqual(harness.capturedVMProcessIDs, [123])
+        XCTAssertEqual(harness.preparedGuestShutdownVersions, ["0.1.4"])
+        XCTAssertTrue(harness.stopAfterGuestPoweroffPIDs.isEmpty)
+        XCTAssertEqual(harness.clearGuestShutdownPreparationCount, 1)
+        XCTAssertEqual(harness.rollbackBackup, harness.preflight.backup)
+        XCTAssertEqual(harness.restartedPolicy, harness.preflight.restartPolicy)
+        XCTAssertEqual(harness.statuses.last?.level, .degraded)
+        XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
+        XCTAssertTrue(harness.statuses.last?.message.contains("rollback completed") == true)
+        XCTAssertTrue(harness.statuses.last?.message.contains("described:prepareGuestShutdown") == true)
+    }
+
     func testRunMarksCriticalWhenRollbackAlsoFails() throws {
         let harness = ApplyBundleHarness()
         harness.stepError = TestApplyBundleError.step
@@ -146,6 +164,7 @@ private final class ApplyBundleHarness {
     var restartedPolicy: RuntimeServiceRestartPolicy?
     var preflightError: Error?
     var stepError: Error?
+    var prepareGuestShutdownError: Error?
     var stopAfterGuestPoweroffError: Error?
     var rollbackError: Error?
     var pruneError: Error?
@@ -193,6 +212,9 @@ private final class ApplyBundleHarness {
             },
             prepareGuestShutdownForUpdate: { manifest in
                 self.preparedGuestShutdownVersions.append(manifest.helperVersion)
+                if let prepareGuestShutdownError = self.prepareGuestShutdownError {
+                    throw prepareGuestShutdownError
+                }
             },
             clearGuestShutdownPreparation: {
                 self.clearGuestShutdownPreparationCount += 1
@@ -277,6 +299,7 @@ private final class ApplyBundleHarness {
 private enum TestApplyBundleError: Error {
     case preflight
     case step
+    case prepareGuestShutdown
     case stopAfterGuestPoweroff
     case rollback
     case prune

@@ -77,13 +77,14 @@ render_config() {
 
 apply_config() {
   local upstream="$1"
+  local action="started"
 
   render_config "${upstream}"
   "${nginx_bin}" -p "${nginx_prefix}" -c "${config}" -t
 
   if nginx_is_running; then
     "${nginx_bin}" -p "${nginx_prefix}" -c "${config}" -s reload
-    log_out "reloaded proxy: http://localhost:${proxy_port} -> http://${upstream}"
+    action="reloaded"
   else
     if command -v lsof >/dev/null 2>&1; then
       listeners="$(lsof -nP -iTCP:"${proxy_port}" -sTCP:LISTEN 2>/dev/null | awk 'NR>1 {print $1 "/" $2}' | sort -u | paste -sd, - || true)"
@@ -92,8 +93,16 @@ apply_config() {
       fi
     fi
     "${nginx_bin}" -p "${nginx_prefix}" -c "${config}"
-    log_out "started proxy: http://localhost:${proxy_port} -> http://${upstream}"
   fi
+
+  if proxy_ready; then
+    log_out "${action} proxy: http://localhost:${proxy_port} -> http://${upstream}"
+    return 0
+  fi
+
+  log_err "host proxy readiness failed after nginx configuration; stopping nginx upstream=${upstream}"
+  stop_nginx
+  return 1
 }
 
 read_state_value() {
@@ -166,10 +175,14 @@ while true; do
       last_upstream=""
     elif upstream_ready "${upstream}"; then
       if [ "${upstream}" != "${last_upstream}" ] || ! nginx_is_running; then
-        apply_config "${upstream}"
-        last_upstream="${upstream}"
-      fi
-      if proxy_ready; then
+        if apply_config "${upstream}"; then
+          last_upstream="${upstream}"
+          last_wait_message=""
+        else
+          last_upstream=""
+          last_wait_message="proxy-readiness:${upstream}"
+        fi
+      elif proxy_ready; then
         last_wait_message=""
       else
         log_err "host proxy readiness failed after nginx configuration; restarting nginx upstream=${upstream}"

@@ -294,10 +294,10 @@ public struct RuntimeApplyBundleWorkflow {
             operations.log(update.capturedVMProcessBeforeGuestUpdateShutdownLogMessage(
                 processID: expectedVMProcessID
             ))
-            try operations.prepareGuestShutdownForUpdate(manifest)
             defer {
                 clearGuestShutdownPreparationAfterRuntimeStop(operations: operations, update: update)
             }
+            try operations.prepareGuestShutdownForUpdate(manifest)
             try operations.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID)
         case .stopServicesDirectly:
             try operations.stopRuntimeServices()

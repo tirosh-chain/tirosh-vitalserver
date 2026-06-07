@@ -63,6 +63,8 @@ public struct RuntimeBundleCompositionOperations {
     let activateGuestUpdateIfNeeded: (UpdateBundleManifest) throws -> Void
     let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     let requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void
+    let acquireOperationLease: (RuntimeOperation) throws -> RuntimeOperationLeaseDocument
+    let releaseOperationLease: (RuntimeOperationLeaseDocument) throws -> Void
     let log: (String) -> Void
 
     public init(
@@ -95,6 +97,8 @@ public struct RuntimeBundleCompositionOperations {
         activateGuestUpdateIfNeeded: @escaping (UpdateBundleManifest) throws -> Void,
         waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         requireGuestCapability: @escaping (RuntimeGuestCapabilityRequirement) throws -> Void,
+        acquireOperationLease: @escaping (RuntimeOperation) throws -> RuntimeOperationLeaseDocument,
+        releaseOperationLease: @escaping (RuntimeOperationLeaseDocument) throws -> Void,
         log: @escaping (String) -> Void
     ) {
         self.fileStore = fileStore
@@ -126,6 +130,8 @@ public struct RuntimeBundleCompositionOperations {
         self.activateGuestUpdateIfNeeded = activateGuestUpdateIfNeeded
         self.waitForHealth = waitForHealth
         self.requireGuestCapability = requireGuestCapability
+        self.acquireOperationLease = acquireOperationLease
+        self.releaseOperationLease = releaseOperationLease
         self.log = log
     }
 }
@@ -161,6 +167,14 @@ public struct RuntimeBundleComposition {
     }
 
     public func applyBundle(_ bundleURL: URL) throws {
+        let operationLease = try operations.acquireOperationLease(.applyBundle)
+        defer {
+            do {
+                try operations.releaseOperationLease(operationLease)
+            } catch {
+                operations.log("runtime operation lease release failed operation=\(operationLease.operation.rawValue) operationId=\(operationLease.operationId) error=\(RuntimeErrorDescription.describe(error))")
+            }
+        }
         try RuntimeApplyBundleWorkflow().run(
             input: ApplyRuntimeBundleInput(bundleURL: bundleURL),
             operations: applyRuntimeBundleOperations()

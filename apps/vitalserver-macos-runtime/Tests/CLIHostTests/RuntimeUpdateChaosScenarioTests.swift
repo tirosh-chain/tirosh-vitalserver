@@ -563,6 +563,18 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 activateGuestUpdateIfNeeded: { _ in },
                 waitForHealth: { _ in },
                 requireGuestCapability: { _ in },
+                acquireOperationLease: { operation in
+                    RuntimeOperationLeaseDocument(
+                        operationId: UUID().uuidString,
+                        operation: operation,
+                        ownerPID: 123,
+                        startedAt: "2026-05-22T00:00:00Z",
+                        heartbeatAt: "2026-05-22T00:00:00Z",
+                        expiresAt: nil,
+                        message: nil
+                    )
+                },
+                releaseOperationLease: { _ in },
                 log: log
             )
         )
@@ -687,6 +699,7 @@ private final class RuntimeUpdateChaosGuestGateway: RuntimeGuestGateway {
     func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws {}
     func loadUpdateActivationResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument> { .missing }
     func removeUpdateShutdownResult() throws {}
+    func clearUpdateShutdownPreparation() throws {}
     func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {}
     func loadUpdateShutdownResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument> { .missing }
     func removeDatastoreRepairResult() throws {}

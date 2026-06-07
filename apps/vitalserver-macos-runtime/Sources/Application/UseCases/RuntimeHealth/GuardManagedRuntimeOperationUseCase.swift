@@ -10,6 +10,16 @@ public struct GuardManagedRuntimeOperationUseCase {
     ) -> RuntimeOperation? {
         let watchdog = WatchdogRuntimeUseCase()
 
+        if let activeLeaseOperation = operation(
+            from: watchdog.operationLeaseGuardPlan(
+                loadResult: operations.loadOperationLease(),
+                now: operations.now()
+            ),
+            log: operations.log
+        ) {
+            return activeLeaseOperation
+        }
+
         if let activeStatusOperation = operation(
             from: watchdog.statusManagedOperationGuardPlan(
                 loadResult: operations.loadStatus(),
@@ -57,17 +67,20 @@ public struct RuntimeGuestBootstrapOperation {
 }
 
 public struct GuardManagedRuntimeOperationOperations {
+    public let loadOperationLease: () -> RuntimeOperationLeaseLoadResult
     public let loadStatus: () -> RuntimeStatusDocumentLoadResult
     public let activeGuestBootstrap: () -> RuntimeGuestBootstrapOperation?
     public let now: () -> Date
     public let log: (String) -> Void
 
     public init(
+        loadOperationLease: @escaping () -> RuntimeOperationLeaseLoadResult,
         loadStatus: @escaping () -> RuntimeStatusDocumentLoadResult,
         activeGuestBootstrap: @escaping () -> RuntimeGuestBootstrapOperation?,
         now: @escaping () -> Date,
         log: @escaping (String) -> Void
     ) {
+        self.loadOperationLease = loadOperationLease
         self.loadStatus = loadStatus
         self.activeGuestBootstrap = activeGuestBootstrap
         self.now = now

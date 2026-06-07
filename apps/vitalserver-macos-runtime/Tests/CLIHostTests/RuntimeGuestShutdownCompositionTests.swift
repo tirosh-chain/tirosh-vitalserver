@@ -117,6 +117,8 @@ private final class RuntimeGuestShutdownGatewaySpy: RuntimeGuestGateway {
         events.append("remove-result")
     }
 
+    func clearUpdateShutdownPreparation() throws {}
+
     func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {
         events.append("write-request:\(request.id):\(request.requestedAt):\(request.version)")
     }

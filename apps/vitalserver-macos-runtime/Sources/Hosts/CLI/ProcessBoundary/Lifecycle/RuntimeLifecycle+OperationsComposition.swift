@@ -72,6 +72,7 @@ extension RuntimeLifecycle {
     func runtimeManagedOperationGuard() -> RuntimeManagedOperationGuardComposition {
         RuntimeManagedOperationGuardComposition.make(
             statusReporter: statusReporter,
+            operationLeaseRepository: JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease),
             guestGateway: guestGateway,
             now: { clock.now },
             log: log
