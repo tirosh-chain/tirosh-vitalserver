@@ -1,6 +1,7 @@
 import Errors
+
 public extension AppConstants {
-    public enum Actions {
+    enum Actions {
         public static let healthCheck = "Health Check"
         public static let open = "Open"
         public static let openVitalFilesDirectory = "Open Vital Files Directory"

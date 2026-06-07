@@ -43,7 +43,7 @@ public struct RuntimeWorkflowStatusReporter {
     }
 
     public func publishProgress(_ event: RuntimeStepExecutionEvent) {
-        log(RuntimeWorkflowUseCase().progressLogMessage(event: event))
+        log(RuntimeOperationReportingUseCase().progressLogMessage(event: event))
         writeRuntimeProgressBestEffort(
             event,
             writeProgress: writeProgress,

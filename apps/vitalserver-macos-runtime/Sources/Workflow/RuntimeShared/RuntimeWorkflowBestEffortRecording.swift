@@ -12,7 +12,7 @@ public func writeRuntimeStatusBestEffort(
     do {
         try writeStatus(status, operation, message)
     } catch {
-        log(RuntimeWorkflowUseCase().statusWriteFailedLogMessage(
+        log(RuntimeOperationReportingUseCase().statusWriteFailedLogMessage(
             status: status,
             operation: operation,
             reason: describeError(error)
@@ -30,7 +30,7 @@ public func writeRuntimeProgressBestEffort(
     do {
         try writeProgress(event)
     } catch {
-        log(RuntimeWorkflowUseCase().progressWriteFailedLogMessage(
+        log(RuntimeOperationReportingUseCase().progressWriteFailedLogMessage(
             event: event,
             reason: describeError(error)
         )
@@ -50,7 +50,7 @@ public func recordRuntimeObservedEventBestEffort(
     do {
         try recordObservedEvent(status, operation, message, snapshot)
     } catch {
-        log(RuntimeWorkflowUseCase().observedEventRecordFailedLogMessage(
+        log(RuntimeOperationReportingUseCase().observedEventRecordFailedLogMessage(
             status: status,
             operation: operation,
             reason: describeError(error)

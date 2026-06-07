@@ -16,6 +16,106 @@
 | `docs/` | 정식 문서 |
 | `drafts/` | 정식 반영 전 문서 초안 |
 
+## Runtime Source Layout
+
+`apps/vitalserver-macos-runtime/Sources`는 layer 이름이 책임 경계를 드러내야 합니다.
+
+```text
+Sources/
+  Contracts/
+    RuntimeControl/
+    Shared/
+  Domain/
+    Models/
+    Policies/
+    StateMachines/
+  Application/
+    Ports/
+    UseCases/
+  Workflow/
+  Adapters/
+    Inbound/
+    Outbound/
+  Hosts/
+    CLI/
+    MacControlPanel/
+  Bootstrap/
+    Composition/
+    DI/
+  Errors/
+```
+
+Dev 배포판의 QA 기능은 test support가 아니라 product feature입니다. Production source에서
+`Testing` 폴더명을 쓰지 않고, 기능 이름인 `TestKit` 또는 `DevConsole`로 드러냅니다.
+
+```text
+Contracts/RuntimeControl/TestKit/
+Adapters/Inbound/RuntimeControlAPI/DevConsole/
+Adapters/Inbound/RuntimeControlAPI/TestKit/
+Adapters/Inbound/MacControlPanel/Presentation/TestKit/
+Adapters/Outbound/MacRuntimeControlClient/TestKit/
+```
+
+Runtime Control API inbound adapter는 HTTP boundary, transport, dev UI, TestKit endpoint를
+분리합니다. Dev Console HTML은 Swift responder에 inline하지 않고 target resource로 둡니다.
+TestKit API는 router, endpoint catalog, request body DTO를 분리해서 라우터가 path catalog나
+wire DTO 선언까지 소유하지 않게 합니다.
+
+```text
+Adapters/Inbound/RuntimeControlAPI/
+  Boundary/
+  Transport/
+  DevConsole/
+    RuntimeControlDevConsoleDocument.swift
+    RuntimeControlDevConsole.html
+  TestKit/
+    RuntimeTestKitAPIRouter.swift
+    RuntimeTestKitAPIEndpoint.swift
+    RuntimeTestKitAPIRequests.swift
+```
+
+Mac Control Panel inbound adapter는 UI composition이라는 포괄 폴더에 상태/문구/설정을
+섞어 두지 않습니다. UI copy와 표시 문자열은 Presentation 소유이고, generated release
+metadata와 host-aware configuration limit은 각각 별도 소유자로 드러냅니다.
+
+```text
+Adapters/Inbound/MacControlPanel/
+  Configuration/
+  Generated/
+  Presentation/
+    Copy/
+    Formatting/
+    Policies/
+    TestKit/
+    ViewModels/
+    Views/
+```
+
+Mac Runtime Control outbound client는 host filesystem/process/network 상태를 읽고 쓰는
+stateful boundary입니다. root에는 Swift 구현 파일을 직접 두지 않고 capability별 폴더만 둡니다.
+
+```text
+Adapters/Outbound/MacRuntimeControlClient/
+  Backups/
+  Client/
+  Commands/
+  Environment/
+  Logs/
+  Reads/
+  Settings/
+  TestKit/
+```
+
+Host CLI ProcessBoundary는 concrete process/filesystem effect와 workflow 실행 wiring을
+소유합니다. 단일 `RuntimeLifecycle+Support` 또는 `RuntimeLifecycle+Workflows` 파일로
+되돌리지 않고, lifecycle composition과 host support helper를 책임별 파일로 나눕니다.
+
+```text
+Hosts/CLI/ProcessBoundary/
+  Lifecycle/
+  Support/
+```
+
 ## Documentation Exposure
 
 | 항목 | 문서 노출 | 설명 |

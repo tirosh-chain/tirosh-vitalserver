@@ -42,7 +42,10 @@ let package = Package(
         .target(
             name: "InboundAdapters",
             dependencies: ["Contracts", "Errors", "Domain", "Application", "RuntimeControl"],
-            path: "Sources/Adapters/Inbound"
+            path: "Sources/Adapters/Inbound",
+            resources: [
+                .process("RuntimeControlAPI/DevConsole/RuntimeControlDevConsole.html")
+            ]
         ),
         .target(
             name: "OutboundAdapters",

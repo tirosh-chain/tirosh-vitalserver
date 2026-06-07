@@ -257,7 +257,7 @@ public struct RollbackRuntimeWorkflow {
         do {
             try operations.writeProgress(event)
         } catch {
-            operations.log(RuntimeWorkflowUseCase().progressWriteFailedLogMessage(
+            operations.log(RuntimeOperationReportingUseCase().progressWriteFailedLogMessage(
                 event: event,
                 reason: operations.describeError(error)
             ))

@@ -3,9 +3,9 @@ import Contracts
 import XCTest
 import Errors
 
-final class RuntimeWorkflowUseCaseTests: XCTestCase {
-    func testWorkflowReportingMessagesComeFromUseCase() {
-        let useCase = RuntimeWorkflowUseCase()
+final class RuntimeOperationReportingUseCaseTests: XCTestCase {
+    func testOperationReportingMessagesComeFromUseCase() {
+        let useCase = RuntimeOperationReportingUseCase()
         let event = RuntimeStepExecutionEvent(
             operation: .applyBundle,
             status: .updating,

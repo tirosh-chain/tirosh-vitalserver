@@ -36,6 +36,28 @@ Architecture boundary test는 regression guard입니다. 새 파일이나 새 ta
 해당 책임이 어느 layer에 속하는지 먼저 정하고, import direction, state ownership,
 fallback 가능 여부를 함께 테스트합니다.
 
+## Slice Completion Rules
+
+구조 변경이나 runtime behavior 변경은 최소 아래 기준을 만족해야 합니다.
+
+1. 대표 happy path를 1개 이상 검증합니다.
+2. missing state를 별도로 검증합니다.
+3. invalid input 또는 decode failure를 별도로 검증합니다.
+4. dependency/effect failure를 별도로 검증합니다.
+5. stale 또는 partial state가 의미 있는 slice라면 별도 케이스를 둡니다.
+6. fallback 금지 layer에서는 fallback success가 불가능함을 검증합니다.
+7. fallback 허용 layer에서는 결과가 explicit degraded/display-only임을 검증합니다.
+8. boundary/import/file-absence test로 책임 위치가 되돌아가지 않게 고정합니다.
+
+## Test Hierarchy
+
+테스트 파일도 source와 같은 책임 신호를 가져야 합니다. test target이 integration 편의를 위해
+여러 source module을 함께 import해야 하더라도, 관련 없는 테스트를 target root에 평평하게
+쌓지 않고 boundary별 하위 폴더로 묶습니다.
+
+`MacControlPanelHostTests/OutboundClient/`는 Mac control panel test target 안에서 실행되지만
+macOS runtime control outbound client를 검증하는 테스트를 모읍니다.
+
 ## Commands
 
 ```sh

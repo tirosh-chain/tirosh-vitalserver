@@ -2,7 +2,7 @@ import Contracts
 import Foundation
 import Errors
 
-public struct RuntimeWorkflowUseCase {
+public struct RuntimeOperationReportingUseCase {
     public init() {}
 
     public func progressLogMessage(event: RuntimeStepExecutionEvent) -> String {

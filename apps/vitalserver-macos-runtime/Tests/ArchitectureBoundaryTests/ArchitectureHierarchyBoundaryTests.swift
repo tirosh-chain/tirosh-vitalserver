@@ -27,6 +27,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Errors/Definitions",
             "Contracts/Shared",
             "Contracts/RuntimeControl",
+            "Contracts/RuntimeControl/TestKit",
             "Domain/Models",
             "Domain/Policies",
             "Domain/StateMachines",
@@ -39,14 +40,19 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Workflow/RuntimeUninstallLifecycle",
             "Workflow/RuntimeUpdateLifecycle",
             "Workflow/RuntimeWatchdog",
+            "Application/UseCases/RuntimeOperationReporting",
             "Adapters/Inbound/CLI/Commands",
             "Adapters/Inbound/CLI/Parsing",
             "Adapters/Inbound/CLI/Presentation",
             "Adapters/Inbound/RuntimeControlAPI/Boundary",
             "Adapters/Inbound/RuntimeControlAPI/Transport",
-            "Adapters/Inbound/RuntimeControlAPI/Testing",
-            "Adapters/Inbound/MacControlPanel/Composition",
+            "Adapters/Inbound/RuntimeControlAPI/DevConsole",
+            "Adapters/Inbound/RuntimeControlAPI/TestKit",
+            "Adapters/Inbound/MacControlPanel/Configuration",
+            "Adapters/Inbound/MacControlPanel/Generated",
             "Adapters/Inbound/MacControlPanel/Presentation",
+            "Adapters/Inbound/MacControlPanel/Presentation/Copy",
+            "Adapters/Inbound/MacControlPanel/Presentation/TestKit",
             "Adapters/Outbound/FileSystem",
             "Adapters/Outbound/Persistence",
             "Adapters/Outbound/ObservabilityStore",
@@ -57,10 +63,20 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Adapters/Outbound/VirtualMachine",
             "Adapters/Outbound/CloudInit",
             "Adapters/Outbound/MacRuntimeControlClient",
+            "Adapters/Outbound/MacRuntimeControlClient/Backups",
+            "Adapters/Outbound/MacRuntimeControlClient/Client",
+            "Adapters/Outbound/MacRuntimeControlClient/Commands",
+            "Adapters/Outbound/MacRuntimeControlClient/Environment",
+            "Adapters/Outbound/MacRuntimeControlClient/Logs",
+            "Adapters/Outbound/MacRuntimeControlClient/Reads",
+            "Adapters/Outbound/MacRuntimeControlClient/Settings",
+            "Adapters/Outbound/MacRuntimeControlClient/TestKit",
             "Bootstrap/DI",
             "Bootstrap/Composition",
             "Hosts/CLI/Entrypoint",
             "Hosts/CLI/ProcessBoundary",
+            "Hosts/CLI/ProcessBoundary/Lifecycle",
+            "Hosts/CLI/ProcessBoundary/Support",
             "Hosts/MacControlPanel/Entrypoint",
             "Hosts/MacControlPanel/Composition",
             "Hosts/MacControlPanel/NativeShell",
@@ -69,6 +85,80 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         for path in required {
             assertDirectoryExists(sources.appendingPathComponent(path), "\(path) must exist")
         }
+    }
+
+    func testRuntimeControlAPIDevConsoleKeepsHTMLAsResource() throws {
+        let root = packageRoot()
+        let devConsoleRoot = root.appendingPathComponent("Sources/Adapters/Inbound/RuntimeControlAPI/DevConsole")
+        let document = devConsoleRoot.appendingPathComponent("RuntimeControlDevConsoleDocument.swift")
+        let html = devConsoleRoot.appendingPathComponent("RuntimeControlDevConsole.html")
+        let documentText = try String(contentsOf: document, encoding: .utf8)
+        let manifest = try String(contentsOf: root.appendingPathComponent("Package.swift"), encoding: .utf8)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: html.path))
+        XCTAssertTrue(
+            manifest.contains(#".process("RuntimeControlAPI/DevConsole/RuntimeControlDevConsole.html")"#),
+            "DevConsole HTML resource must be included by the InboundAdapters target"
+        )
+        XCTAssertFalse(
+            documentText.contains(#"public static let html = #"""#),
+            "DevConsole document responder must not inline the large HTML asset"
+        )
+    }
+
+    func testRuntimeControlAPITestKitKeepsRouterEndpointAndRequestsSplit() throws {
+        let testKitRoot = packageRoot()
+            .appendingPathComponent("Sources/Adapters/Inbound/RuntimeControlAPI/TestKit")
+        let router = testKitRoot.appendingPathComponent("RuntimeTestKitAPIRouter.swift")
+        let endpoint = testKitRoot.appendingPathComponent("RuntimeTestKitAPIEndpoint.swift")
+        let requests = testKitRoot.appendingPathComponent("RuntimeTestKitAPIRequests.swift")
+
+        for file in [router, endpoint, requests] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), "\(file.lastPathComponent) must exist")
+        }
+
+        let routerText = try String(contentsOf: router, encoding: .utf8)
+        let endpointText = try String(contentsOf: endpoint, encoding: .utf8)
+        let requestsText = try String(contentsOf: requests, encoding: .utf8)
+
+        XCTAssertFalse(routerText.contains("public enum RuntimeTestKitAPIEndpoint"))
+        XCTAssertFalse(routerText.contains("public struct RuntimeTestKitStopRequest"))
+        XCTAssertFalse(endpointText.contains("controller."))
+        XCTAssertFalse(requestsText.contains(#""/dev/testkit/"#))
+    }
+
+    func testMacRuntimeControlClientKeepsCapabilityFolders() throws {
+        let clientRoot = packageRoot()
+            .appendingPathComponent("Sources/Adapters/Outbound/MacRuntimeControlClient")
+        let rootSwiftFiles = try FileManager.default.contentsOfDirectory(
+            at: clientRoot,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )
+        .filter { url in
+            url.pathExtension == "swift"
+                && ((try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true)
+        }
+
+        XCTAssertTrue(
+            rootSwiftFiles.isEmpty,
+            "MacRuntimeControlClient root must only group capability folders, not own source files: \(rootSwiftFiles.map(\.lastPathComponent))"
+        )
+
+        let testKitController = clientRoot.appendingPathComponent("TestKit/MacTestKitController.swift")
+        let controllerText = try String(contentsOf: testKitController, encoding: .utf8)
+        XCTAssertFalse(controllerText.contains("public enum MacTestKitAPIEndpointSource"))
+        XCTAssertFalse(controllerText.contains("struct TestKitStartSessionRequest"))
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: clientRoot.appendingPathComponent("TestKit/MacTestKitControllerConfiguration.swift").path
+            )
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: clientRoot.appendingPathComponent("TestKit/MacTestKitWireModels.swift").path
+            )
+        )
     }
 
     func testBootstrapCompositionKeepsOnlyConstantsAndPathComposition() throws {
@@ -113,6 +203,14 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Sources/Adapters/Outbound/HostAdapters",
             "Sources/Adapters/Outbound/MacHostRuntimeAdapter",
             "Sources/Hosts/MacControlPanelHost",
+            "Sources/Application/UseCases/RuntimeWorkflow",
+            "Sources/Contracts/RuntimeControl/Testing",
+            "Sources/Adapters/Inbound/RuntimeControlAPI/Testing",
+            "Sources/Adapters/Inbound/MacControlPanel/Composition",
+            "Sources/Adapters/Inbound/MacControlPanel/Presentation/Testing",
+            "Sources/Adapters/Outbound/MacRuntimeControlClient/Testing",
+            "Sources/Hosts/CLI/ProcessBoundary/RuntimeLifecycle+Support.swift",
+            "Sources/Hosts/CLI/ProcessBoundary/RuntimeLifecycle+Workflows.swift",
         ]
 
         for path in forbidden {
@@ -139,6 +237,34 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             emptyPlaceholderDirectories.isEmpty,
             "Empty source/test/support placeholder directories must not remain: \(emptyPlaceholderDirectories.map(\.path).sorted())"
         )
+    }
+
+    func testMacControlPanelHostTestsKeepOutboundClientTestsGrouped() throws {
+        let testRoot = packageRoot().appendingPathComponent("Tests/MacControlPanelHostTests")
+        let outboundClientRoot = testRoot.appendingPathComponent("OutboundClient")
+        assertDirectoryExists(outboundClientRoot, "MacControlPanelHost outbound client tests must be grouped")
+
+        for fileName in [
+            "MacRuntimeControlClientWorkerTests.swift",
+            "MacTestKitControllerTests.swift",
+            "ProcessRunnerTests.swift",
+            "RuntimeActionEnvironmentTests.swift",
+            "RuntimeCommandFactoryTests.swift",
+            "RuntimeFileReaderTests.swift",
+            "RuntimeLogCollectorTests.swift",
+            "RuntimeLogExporterTests.swift",
+            "RuntimeObservabilityReaderTests.swift",
+            "RuntimeSettingsReaderTests.swift",
+        ] {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: testRoot.appendingPathComponent(fileName).path),
+                "\(fileName) must not sit at the MacControlPanelHostTests root"
+            )
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: outboundClientRoot.appendingPathComponent(fileName).path),
+                "\(fileName) must live under MacControlPanelHostTests/OutboundClient"
+            )
+        }
     }
 
     func testSwiftPMTargetsUseIdealModuleNames() throws {
@@ -218,7 +344,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
 
     func testHostCLIRepairFactoriesLiveAtProcessBoundary() throws {
         let file = packageRoot()
-            .appendingPathComponent("Sources/Hosts/CLI/ProcessBoundary/RuntimeLifecycle+Workflows.swift")
+            .appendingPathComponent("Sources/Hosts/CLI/ProcessBoundary/Lifecycle/RuntimeLifecycle+RepairComposition.swift")
         let text = try String(contentsOf: file, encoding: .utf8)
 
         XCTAssertTrue(text.contains("container.makeRuntimeDatastoreRepairComposition"))
@@ -792,11 +918,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "BackupStore Host process-boundary composition must exist"
         )
 
-        let hostSupportText = try String(
-            contentsOf: packageRoot()
-                .appendingPathComponent("Sources/Hosts/CLI/ProcessBoundary/RuntimeLifecycle+Support.swift"),
-            encoding: .utf8
-        )
+        let hostSupportText = try processBoundarySupportText()
         for token in [
             "runRequired",
             "Constants.Commands.chmod",
@@ -823,11 +945,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Cloud-init seed Host process-boundary composition must exist"
         )
 
-        let hostSupportText = try String(
-            contentsOf: packageRoot()
-                .appendingPathComponent("Sources/Hosts/CLI/ProcessBoundary/RuntimeLifecycle+Support.swift"),
-            encoding: .utf8
-        )
+        let hostSupportText = try processBoundarySupportText()
         for token in [
             "runRequired",
             "hdiutil",
@@ -1041,11 +1159,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             )
         }
 
-        let hostSupportText = try String(
-            contentsOf: packageRoot()
-                .appendingPathComponent("Sources/Hosts/CLI/ProcessBoundary/RuntimeLifecycle+Support.swift"),
-            encoding: .utf8
-        )
+        let hostSupportText = try processBoundarySupportText()
         for token in [
             "runProcess",
             "RuntimePackageReceiptStateReader",
@@ -1491,6 +1605,15 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
 
     private func swiftFiles(root: URL) throws -> [URL] {
         try swiftPackageFiles(root: root).filter { $0.pathExtension == "swift" }
+    }
+
+    private func processBoundarySupportText() throws -> String {
+        let supportRoot = packageRoot()
+            .appendingPathComponent("Sources/Hosts/CLI/ProcessBoundary/Support")
+        return try swiftFiles(root: supportRoot)
+            .sorted { $0.path < $1.path }
+            .map { try String(contentsOf: $0, encoding: .utf8) }
+            .joined(separator: "\n")
     }
 
     private func emptyDirectories(root: URL) throws -> [URL] {
