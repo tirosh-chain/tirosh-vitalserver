@@ -49,11 +49,11 @@ public enum RollbackRuntimeBackupDirectoryDecision: Equatable, Sendable {
 
 public struct RollbackRuntimeBackupDirectoryObservation: Equatable, Sendable {
     public let backup: URL
-    public let directoryExists: Bool
+    public let backupDirectoryState: RuntimePathState
 
-    public init(backup: URL, directoryExists: Bool) {
+    public init(backup: URL, backupDirectoryState: RuntimePathState) {
         self.backup = backup
-        self.directoryExists = directoryExists
+        self.backupDirectoryState = backupDirectoryState
     }
 }
 
@@ -64,14 +64,14 @@ public enum RollbackRuntimeBackupRootfsObservationRequirement: Equatable, Sendab
 
 public struct RollbackRuntimeBackupRootfsObservation: Equatable, Sendable {
     public let backupPlan: RollbackRuntimeBackupPlan
-    public let backupRootfsExists: Bool?
+    public let backupRootfsState: RuntimePathState?
 
     public init(
         backupPlan: RollbackRuntimeBackupPlan,
-        backupRootfsExists: Bool?
+        backupRootfsState: RuntimePathState?
     ) {
         self.backupPlan = backupPlan
-        self.backupRootfsExists = backupRootfsExists
+        self.backupRootfsState = backupRootfsState
     }
 }
 
@@ -83,6 +83,7 @@ public enum RollbackRuntimeBackupRootfsDecision: Equatable, Sendable {
 public enum RollbackRuntimeVersionRestoreDecision: Equatable, Sendable {
     case restoreBackupVersion(source: URL, destination: URL)
     case writeExplicitRollbackMarker(version: String, destinationDirectory: URL)
+    case failed(message: String)
 }
 
 public struct RollbackRuntimeManagedArtifactRestore: Equatable, Sendable {
@@ -126,14 +127,14 @@ public enum RollbackRuntimeStepRequiredInput: Equatable, Sendable {
 
 public struct RollbackRuntimeStepRequiredInputObservation: Equatable, Sendable {
     public let requiredInput: RollbackRuntimeStepRequiredInput
-    public let backupVersionExists: Bool
+    public let backupVersionState: RuntimePathState?
 
     public init(
         requiredInput: RollbackRuntimeStepRequiredInput,
-        backupVersionExists: Bool
+        backupVersionState: RuntimePathState?
     ) {
         self.requiredInput = requiredInput
-        self.backupVersionExists = backupVersionExists
+        self.backupVersionState = backupVersionState
     }
 }
 
@@ -214,12 +215,18 @@ public struct RollbackRuntimeUseCase {
 
     public func rollbackBackupDirectoryDecision(
         backup: URL,
-        directoryExists: Bool
+        backupDirectoryState: RuntimePathState
     ) -> RollbackRuntimeBackupDirectoryDecision {
-        guard directoryExists else {
+        switch backupDirectoryState {
+        case .directory:
+            return .loadManifest(backup)
+        case .missing:
             return .failed(message: missingFileFailureMessage(path: backup.path))
+        case .inspectFailed(let reason):
+            return .failed(message: "backup directory path inspection failed: \(backup.path) reason=\(reason)")
+        case .file, .other, .unknown:
+            return .failed(message: "backup directory path state is unexpected: \(backup.path) state=\(backupDirectoryState.rawValue)")
         }
-        return .loadManifest(backup)
     }
 
     public func rollbackBackupDirectoryDecision(
@@ -227,7 +234,7 @@ public struct RollbackRuntimeUseCase {
     ) -> RollbackRuntimeBackupDirectoryDecision {
         rollbackBackupDirectoryDecision(
             backup: observation.backup,
-            directoryExists: observation.directoryExists
+            backupDirectoryState: observation.backupDirectoryState
         )
     }
 
@@ -242,15 +249,23 @@ public struct RollbackRuntimeUseCase {
 
     public func rollbackBackupRootfsDecision(
         backupPlan: RollbackRuntimeBackupPlan,
-        backupRootfsExists: Bool?
+        backupRootfsState: RuntimePathState?
     ) -> RollbackRuntimeBackupRootfsDecision {
         guard let backupRootfs = backupPlan.backupRootfs else {
             return .proceed(backupPlan)
         }
-        guard backupRootfsExists == true else {
+        switch backupRootfsState {
+        case .file:
+            return .proceed(backupPlan)
+        case .missing:
             return .failed(message: missingFileFailureMessage(path: backupRootfs.path))
+        case .inspectFailed(let reason):
+            return .failed(message: "backup rootfs path inspection failed: \(backupRootfs.path) reason=\(reason)")
+        case .directory, .other, .unknown:
+            return .failed(message: "backup rootfs path state is unexpected: \(backupRootfs.path) state=\(backupRootfsState?.rawValue ?? "nil")")
+        case nil:
+            return .failed(message: "backup rootfs state is missing: \(backupRootfs.path)")
         }
-        return .proceed(backupPlan)
     }
 
     public func rollbackBackupRootfsDecision(
@@ -258,7 +273,7 @@ public struct RollbackRuntimeUseCase {
     ) -> RollbackRuntimeBackupRootfsDecision {
         rollbackBackupRootfsDecision(
             backupPlan: observation.backupPlan,
-            backupRootfsExists: observation.backupRootfsExists
+            backupRootfsState: observation.backupRootfsState
         )
     }
 
@@ -274,13 +289,21 @@ public struct RollbackRuntimeUseCase {
     public func rollbackVersionRestoreDecision(
         backupVersion: URL,
         runtimeVersion: URL,
-        backupVersionExists: Bool,
+        backupVersionState: RuntimePathState?,
         backup: URL
     ) -> RollbackRuntimeVersionRestoreDecision {
-        if backupVersionExists {
+        switch backupVersionState {
+        case .file:
             return .restoreBackupVersion(source: backupVersion, destination: runtimeVersion)
+        case .missing:
+            return .writeExplicitRollbackMarker(version: "rolled-back", destinationDirectory: backup)
+        case .inspectFailed(let reason):
+            return .failed(message: "backup runtime version path inspection failed: \(backupVersion.path) reason=\(reason)")
+        case .directory, .other, .unknown:
+            return .failed(message: "backup runtime version path state is unexpected: \(backupVersion.path) state=\(backupVersionState?.rawValue ?? "nil")")
+        case nil:
+            return .failed(message: "backup runtime version state is missing: \(backupVersion.path)")
         }
-        return .writeExplicitRollbackMarker(version: "rolled-back", destinationDirectory: backup)
     }
 
     public func rollbackManagedArtifactRestorePlan(
@@ -316,7 +339,7 @@ public struct RollbackRuntimeUseCase {
         managerAppPath: URL,
         nginxDirectory: URL,
         deployDirectory: URL,
-        backupVersionExists: Bool
+        backupVersionState: RuntimePathState?
     ) -> RollbackRuntimeStepExecutionPlan {
         switch step {
         case .rollbackStopRuntimeServices:
@@ -330,7 +353,7 @@ public struct RollbackRuntimeUseCase {
             return .restoreRuntimeVersion(rollbackVersionRestoreDecision(
                 backupVersion: preflight.backupVersion,
                 runtimeVersion: runtimeVersion,
-                backupVersionExists: backupVersionExists,
+                backupVersionState: backupVersionState,
                 backup: preflight.backup
             ))
         case .rollbackRestoreUpdateArtifacts:
@@ -370,7 +393,7 @@ public struct RollbackRuntimeUseCase {
             managerAppPath: managerAppPath,
             nginxDirectory: nginxDirectory,
             deployDirectory: deployDirectory,
-            backupVersionExists: observation.backupVersionExists
+            backupVersionState: observation.backupVersionState
         )
     }
 

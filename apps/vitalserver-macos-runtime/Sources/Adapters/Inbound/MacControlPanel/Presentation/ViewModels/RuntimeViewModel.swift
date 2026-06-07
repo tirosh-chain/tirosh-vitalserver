@@ -5,7 +5,7 @@ import Errors
 
 @MainActor
 public final class RuntimeViewModel: ObservableObject {
-    @Published var status = RuntimeStatus()
+    @Published var status: RuntimeStatus
     @Published var settings = RuntimeSettings()
     @Published var selectedBundleURL: URL?
     @Published var selectedBundleSummary = ""
@@ -33,6 +33,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var isCreatingRedisBackup = false
     var isRefreshingLogs = false
     @Published var releaseInfo = RuntimeReleaseInfo.generated
+    @Published var releaseInfoErrorMessage: String?
     @Published var installationInfo = RuntimeInstallInfo()
     @Published var runtimeEvents = RuntimeEventHistory(events: [])
     @Published var runtimeEventsLast24HoursCount = 0
@@ -62,27 +63,26 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var testKitGenerateFrames = true
     @Published var isRunningTestKitAction = false
     @Published var testKitActionMessage = ""
+    @Published var testKitActionMessageTone = RuntimeTestKitActionMessageTone.neutral
 
     let controlClient: any RuntimeControlClient
     let hostClient: any RuntimeHostClient
     let testKitController: (any RuntimeTestKitControlling)?
     private let localAPISettings: (any RuntimeControlLocalAPISettingsApplying)?
-    private let snapshots: RuntimeViewModelSnapshotLoader
-    private let statusRefresher: RuntimeViewModelStatusRefresher
-    private let observabilityRefresher: RuntimeViewModelObservabilityRefresher
-    private let commandActionRunner = RuntimeViewModelCommandActionRunner()
+    private let snapshots: RuntimePresentationSnapshotLoader
+    private let statusRefresher: RuntimeStatusRefresher
+    private let observabilityRefresher: RuntimeObservabilityRefresher
+    private let commandActionRunner = RuntimeClientActionRunner()
     private let healthNotifications: any HealthNotifying
     private let healthNotificationCoordinator: RuntimeHealthNotificationCoordinator
     let nativeShell: any RuntimeNativeShell
     let backupSelectionPolicy = RuntimeBackupSelectionPolicy()
     let presentationFormatter = RuntimePresentationFormatter()
-    let updateBundleVerifier = RuntimeViewModelUpdateBundleVerifier()
-    let testKitStatePolicy = RuntimeViewModelTestKitStatePolicy()
-    let navigationCoordinator = RuntimeViewModelNavigationCoordinator()
+    let updateBundleVerifier = RuntimeUpdateBundleVerifier()
+    let testKitPresentationPolicy = RuntimeTestKitPresentationPolicy()
+    let navigationCoordinator = RuntimeNavigationCoordinator()
     private let settingsValidator = RuntimeSettingsValidator()
     private let vitalFilesDirectoryPolicy = RuntimeVitalFilesDirectoryPolicy()
-    private var lastDefaultVitalServerURL = ""
-    private var lastDefaultRemoteConsoleURL = ""
 
     public init(
         controlClient: any RuntimeControlClient,
@@ -90,6 +90,7 @@ public final class RuntimeViewModel: ObservableObject {
         testKitController: (any RuntimeTestKitControlling)? = nil,
         snapshotReader: (any RuntimeViewModelSnapshotReading)? = nil,
         initialSettings: RuntimeSettings? = nil,
+        initialStatus: RuntimeStatus? = nil,
         localAPISettings: (any RuntimeControlLocalAPISettingsApplying)? = nil,
         healthNotifications: any HealthNotifying = NoopHealthNotifier(),
         nativeShell: any RuntimeNativeShell = NoopRuntimeNativeShell(),
@@ -100,23 +101,24 @@ public final class RuntimeViewModel: ObservableObject {
         self.testKitController = testKitController
         self.localAPISettings = localAPISettings
         self.helperMessageLog = helperMessageLog
-        let snapshots = RuntimeViewModelSnapshotLoader(
+        let loadedSettings = initialSettings ?? controlClient.loadSettings()
+        let resolvedSettings = localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings
+        let resolvedStatus = initialStatus ?? controlClient.loadStatus(settings: resolvedSettings)
+        self.settings = resolvedSettings
+        self.status = resolvedStatus
+        self.containerObservation = resolvedStatus.containerObservation
+        let snapshots = RuntimePresentationSnapshotLoader(
             controlClient: controlClient,
             hostClient: hostClient,
             snapshotReader: snapshotReader,
             localAPISettings: localAPISettings
         )
         self.snapshots = snapshots
-        self.statusRefresher = RuntimeViewModelStatusRefresher(snapshots: snapshots)
-        self.observabilityRefresher = RuntimeViewModelObservabilityRefresher(snapshots: snapshots)
+        self.statusRefresher = RuntimeStatusRefresher(snapshots: snapshots)
+        self.observabilityRefresher = RuntimeObservabilityRefresher(snapshots: snapshots)
         self.healthNotifications = healthNotifications
         self.healthNotificationCoordinator = RuntimeHealthNotificationCoordinator(notifier: self.healthNotifications)
         self.nativeShell = nativeShell
-        let initialSettings = localAPISettings?.settingsWithLocalAPIPort(
-            initialSettings ?? self.controlClient.loadSettings()
-        ) ?? (initialSettings ?? self.controlClient.loadSettings())
-        self.settings = initialSettings
-        syncAdvertisedServiceURLDefaults()
         self.installationInfo = self.controlClient.loadInstallInfo()
         self.healthNotifications.configure()
         self.helperMessageLog.append(message)
@@ -172,6 +174,10 @@ public final class RuntimeViewModel: ObservableObject {
         remoteConsoleStartedAt = startedAt
     }
 
+    public func updateRemoteConsoleStatus(_ read: RuntimeControlLocalAPIStatusRead) {
+        updateRemoteConsoleStatus(http: read.http, startedAt: read.startedAt)
+    }
+
     func refreshHealthStatus() async {
         applyStatusRefreshResult(await statusRefresher.refreshHealthStatus(settings: settings, isBusy: isBusy))
         healthNotificationCoordinator.handleTransition(to: status)
@@ -214,7 +220,7 @@ public final class RuntimeViewModel: ObservableObject {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        let didUninstall = await runClientAction(
+        let uninstallResult = await runClientAction(
             preparingMessage: AppConstants.StatusText.uninstallPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.uninstallRunning,
@@ -223,7 +229,7 @@ public final class RuntimeViewModel: ObservableObject {
                 : AppConstants.StatusText.uninstallCompleted,
             action: { try await self.controlClient.uninstallRuntime(clean: clean) }
         )
-        if didUninstall {
+        if uninstallResult.isSuccess {
             await quitAfterSuccessfulUninstall()
         } else {
             await refreshHealthStatus()
@@ -245,14 +251,14 @@ public final class RuntimeViewModel: ObservableObject {
             return
         }
         let settingsToApply = settings
-        let didSave = await runClientAction(
+        let applySettingsResult = await runClientAction(
             preparingMessage: AppConstants.StatusText.settingsApplyPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.settingsApplyRunning,
             successMessage: AppConstants.StatusText.settingsApplied,
             action: { try await self.controlClient.applySettings(settingsToApply) }
         )
-        if didSave {
+        if applySettingsResult.isSuccess {
             localAPISettings?.apply(settings: settingsToApply)
             settings.adminPassword = ""
             settings.changeAdminPassword = false
@@ -283,7 +289,7 @@ public final class RuntimeViewModel: ObservableObject {
 
     func syncAdvertisedURLWithProxyIfNeeded() {
         normalizeAdvertisedURLSettings()
-        syncAdvertisedServiceURLDefaults()
+        applyAdvertisedServiceURLPresets()
     }
 
     func repairProxyPort() async {
@@ -291,7 +297,10 @@ public final class RuntimeViewModel: ObservableObject {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        let proxyPort = status.proxyPort
+        guard let proxyPort = status.proxyPort else {
+            message = RuntimeHTTPStatusText.missingProxyPort
+            return
+        }
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.proxyRepairPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
@@ -396,7 +405,6 @@ public final class RuntimeViewModel: ObservableObject {
     private func loadRuntimeSettings() async {
         let nextSettings = await snapshots.loadSettings()
         settings = nextSettings
-        syncAdvertisedServiceURLDefaults()
     }
 
     private func normalizeAdvertisedURLSettings() {
@@ -404,19 +412,13 @@ public final class RuntimeViewModel: ObservableObject {
         settings.publicPort = settings.proxyPort
     }
 
-    private func syncAdvertisedServiceURLDefaults() {
-        let nextDefaultVitalServerURL = AppConstants.Product.vitalServerURL(proxyPort: settings.proxyPort)
-        let nextDefaultRemoteConsoleURL = AppConstants.Product.remoteConsoleURL(port: settings.runtimeControlPort)
-
-        if settings.vitalServerURL.isEmpty || settings.vitalServerURL == lastDefaultVitalServerURL {
-            settings.vitalServerURL = nextDefaultVitalServerURL
+    private func applyAdvertisedServiceURLPresets() {
+        if settings.vitalServerURL.isEmpty {
+            settings.vitalServerURL = AppConstants.Product.vitalServerURL(proxyPort: settings.proxyPort)
         }
-        if settings.remoteConsoleURL.isEmpty || settings.remoteConsoleURL == lastDefaultRemoteConsoleURL {
-            settings.remoteConsoleURL = nextDefaultRemoteConsoleURL
+        if settings.remoteConsoleURL.isEmpty {
+            settings.remoteConsoleURL = AppConstants.Product.remoteConsoleURL(port: settings.runtimeControlPort)
         }
-
-        lastDefaultVitalServerURL = nextDefaultVitalServerURL
-        lastDefaultRemoteConsoleURL = nextDefaultRemoteConsoleURL
     }
 
     func refreshBackupList() async {
@@ -424,8 +426,6 @@ public final class RuntimeViewModel: ObservableObject {
             backups = try await snapshots.loadBackups(latestBackupPath: status.latestBackup)
             backupListErrorMessage = nil
         } catch {
-            backups = []
-            selectedBackupPath = nil
             backupListErrorMessage = AppConstants.StatusText.backupListLoadFailed(error.localizedDescription)
             return
         }
@@ -436,8 +436,14 @@ public final class RuntimeViewModel: ObservableObject {
     }
 
     private func refreshReleaseInfo() async {
-        if let loaded = await snapshots.loadReleaseInfoIfAvailable() {
+        switch await snapshots.loadReleaseInfoIfAvailable() {
+        case .loaded(let loaded):
             releaseInfo = loaded
+            releaseInfoErrorMessage = nil
+        case .unavailable:
+            releaseInfoErrorMessage = nil
+        case .failed(let message):
+            releaseInfoErrorMessage = AppConstants.StatusText.releaseMetadataLoadFailed(message)
         }
     }
 
@@ -455,7 +461,7 @@ public final class RuntimeViewModel: ObservableObject {
         successMessage: String,
         refreshCommandLog: Bool = true,
         action: @escaping () async throws -> RuntimeCommandResult
-    ) async -> Bool {
+    ) async -> RuntimeClientActionRunResult {
         await commandActionRunner.run(
             request: RuntimeClientActionRequest(
                 preparingMessage: preparingMessage,
@@ -500,7 +506,7 @@ public final class RuntimeViewModel: ObservableObject {
 }
 
 private extension RuntimeViewModel {
-    func applyStatusRefreshResult(_ result: RuntimeViewModelStatusRefreshResult) {
+    func applyStatusRefreshResult(_ result: RuntimeStatusRefreshResult) {
         status = result.status
         containerObservation = result.status.containerObservation
         if let selectedLogSource = result.selectedLogSource {
@@ -516,4 +522,3 @@ private extension RuntimeViewModel {
 }
 
 extension RuntimeViewModel: RuntimeClientActionPresentation {}
-

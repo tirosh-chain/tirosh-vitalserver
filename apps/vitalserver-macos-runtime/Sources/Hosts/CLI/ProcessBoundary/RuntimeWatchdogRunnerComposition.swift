@@ -22,7 +22,7 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
     let healthSnapshot: () -> RuntimeHealthSnapshot
     let httpStatusCode: (String) -> String
     let proxyLivenessURL: (Int) -> String
-    let automaticRecoveryEnabled: () -> Bool
+    let automaticRecoveryEnabled: () throws -> Bool
     let restartVMRuntime: () throws -> Void
     let restartService: (RuntimeManagedService) throws -> Void
     let createLogsDirectory: () -> RuntimeBestEffortOperationResult
@@ -55,7 +55,7 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         httpStatusCode: @escaping (String) -> String,
         proxyLivenessURL: @escaping (Int) -> String,
-        automaticRecoveryEnabled: @escaping () -> Bool,
+        automaticRecoveryEnabled: @escaping () throws -> Bool,
         restartVMRuntime: @escaping () throws -> Void,
         restartService: @escaping (RuntimeManagedService) throws -> Void,
         createLogsDirectory: @escaping () -> RuntimeBestEffortOperationResult,
@@ -125,7 +125,10 @@ public struct RuntimeWatchdogRunnerComposition {
                 activeManagedOperation: operations.activeManagedOperation,
                 healthSnapshot: operations.healthSnapshot,
                 proxyLivenessHTTP: { port in
-                    operations.httpStatusCode(operations.proxyLivenessURL(port))
+                    guard let port else {
+                        return RuntimeHTTPStatusText.missingProxyPort
+                    }
+                    return operations.httpStatusCode(operations.proxyLivenessURL(port))
                 },
                 automaticRecoveryEnabled: operations.automaticRecoveryEnabled,
                 restartVMRuntime: operations.restartVMRuntime,

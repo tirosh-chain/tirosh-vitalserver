@@ -19,6 +19,7 @@ public enum RuntimeLifecycleCommand: Equatable {
     case redisBackup
     case repairDatastore
     case repairVMDisk
+    case repairProxy
     case repairServices
     case startServices
     case stopServices
@@ -73,6 +74,8 @@ extension RuntimeLifecycleCommand {
             return .repairDatastore
         case "repair-vm-disk":
             return .repairVMDisk
+        case "repair-proxy":
+            return .repairProxy
         case "repair-services":
             return .repairServices
         case "start-services":
@@ -106,6 +109,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime redis-backup
       vitalserver-vm runtime repair-datastore
       vitalserver-vm runtime repair-vm-disk
+      vitalserver-vm runtime repair-proxy
       vitalserver-vm runtime repair-services
       vitalserver-vm runtime start-services
       vitalserver-vm runtime stop-services

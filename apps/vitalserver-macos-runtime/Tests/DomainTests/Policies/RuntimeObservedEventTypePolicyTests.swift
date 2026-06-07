@@ -46,8 +46,8 @@ final class RuntimeObservedEventTypePolicyTests: XCTestCase {
         failureReasons: [RuntimeFailureReason] = []
     ) -> RuntimeHealthSnapshot {
         RuntimeHealthSnapshot(
-            vmExecutable: true,
-            proxyExecutable: true,
+            vmExecutable: .executable,
+            proxyExecutable: .executable,
             rootfsBase: .present,
             vmDisk: .present,
             vmService: .loaded,

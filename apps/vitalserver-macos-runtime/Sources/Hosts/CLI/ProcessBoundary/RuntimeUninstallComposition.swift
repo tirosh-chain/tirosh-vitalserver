@@ -139,7 +139,8 @@ public enum RuntimeUninstallComposition {
                 },
                 cleanupArtifactStates: { clean in
                     RuntimeInstallArtifactStateReader.states(
-                        paths: cleanupArtifactPaths(clean: clean, paths: uninstallPaths).map(\.path)
+                        paths: cleanupArtifactPaths(clean: clean, paths: uninstallPaths).map(\.path),
+                        fileStore: operations.fileStore
                     )
                 }
             ),
@@ -164,11 +165,8 @@ public enum RuntimeUninstallComposition {
                         withIntermediateDirectories: withIntermediateDirectories
                     )
                 },
-                fileExists: { url in
-                    operations.fileStore.fileExists(url)
-                },
-                directoryExists: { url in
-                    operations.fileStore.directoryExists(url)
+                pathState: { url in
+                    operations.fileStore.pathState(at: url)
                 },
                 removeItem: { url in
                     try operations.fileStore.removeItem(at: url)

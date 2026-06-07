@@ -41,9 +41,21 @@ extension RuntimeLifecycle {
 
     func setSystemSleepPrevention(_ enabled: Bool) throws {
         let plist = URL(fileURLWithPath: RuntimeManagedService.sleepPrevention.launchDaemonPlist)
-        guard fileExists(plist) else {
+        let plistState = fileStore.pathState(at: plist)
+        switch plistState {
+        case .file:
+            break
+        case .missing:
             log("system sleep prevention service is not installed; setting recorded only")
             return
+        case .inspectFailed(let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "system sleep prevention service inspection failed path=\(plist.path) reason=\(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw LauncherError.runtimeOperationFailed(
+                "system sleep prevention service path state is unexpected path=\(plist.path) state=\(plistState.rawValue)"
+            )
         }
         let action = enabled ? "enable" : "disable"
         try runRequired(Constants.Commands.launchctl, arguments: [
@@ -53,13 +65,20 @@ extension RuntimeLifecycle {
         if enabled {
             try startLaunchdService(.sleepPrevention)
         } else {
-            stopLaunchdService(.sleepPrevention)
+            try stopLaunchdService(.sleepPrevention)
         }
         log("system sleep prevention \(enabled ? "enabled" : "disabled")")
     }
 
-    func preventSystemSleepEnabled() -> Bool {
-        runtimeConfigFlagReader().preventSystemSleepEnabled()
+    func preventSystemSleepEnabled() throws -> Bool {
+        switch runtimeConfigFlagReader().preventSystemSleepFlag() {
+        case .configured(_, let value), .defaulted(_, let value, _):
+            return value
+        case .failed(let name, let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "runtime config flag read failed name=\(name) reason=\(reason)"
+            )
+        }
     }
 
     func runtimeConfigFlagReader() -> RuntimeConfigFlagReader {

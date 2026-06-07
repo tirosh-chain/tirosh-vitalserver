@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import OutboundAdapters
 import SQLite3
@@ -119,7 +120,7 @@ private struct Harness {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         database = directory.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
-        repository = SQLiteVitalDBObservationRepository(url: database)
+        repository = SQLiteVitalDBObservationRepository(store: makeVitalDBProjectionStore(url: database))
     }
 
     func cleanup() {
@@ -142,4 +143,12 @@ private struct Harness {
             )
         }
     }
+}
+
+private func makeVitalDBProjectionStore(url: URL) -> SQLiteRuntimeObservabilityStore {
+    let relationshipProjection = PlanVitalDBRelationshipProjectionUseCase()
+    return SQLiteRuntimeObservabilityStore(
+        url: url,
+        relationshipProjectionPlanner: relationshipProjection.projectionPlan
+    )
 }

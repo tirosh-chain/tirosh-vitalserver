@@ -337,7 +337,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(
             useCase.rootfsStorageDecision(observation: ApplyRuntimeBundleRootfsStorageObservation(
                 stagedRootfs: stagedRootfs,
-                stagedRootfsExists: false,
+                stagedRootfsState: .missing,
                 installedRootfsBytes: nil,
                 incomingRootfsBytes: nil
             )),
@@ -346,7 +346,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(
             useCase.rootfsStorageDecision(observation: ApplyRuntimeBundleRootfsStorageObservation(
                 stagedRootfs: stagedRootfs,
-                stagedRootfsExists: true,
+                stagedRootfsState: .file,
                 installedRootfsBytes: 1_048_576,
                 incomingRootfsBytes: 3_145_728
             )),
@@ -357,6 +357,24 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 ),
                 logMessage: "bundle apply storage preflight installedRootfs=1.0 MiB incomingRootfs=3.0 MiB"
             ))
+        )
+        XCTAssertEqual(
+            useCase.rootfsStorageDecision(observation: ApplyRuntimeBundleRootfsStorageObservation(
+                stagedRootfs: stagedRootfs,
+                stagedRootfsState: .inspectFailed("permission denied"),
+                installedRootfsBytes: nil,
+                incomingRootfsBytes: nil
+            )),
+            .failed(message: "staged rootfs path inspection failed: /staged/rootfs-base.raw.gz reason=permission denied")
+        )
+        XCTAssertEqual(
+            useCase.rootfsStorageDecision(observation: ApplyRuntimeBundleRootfsStorageObservation(
+                stagedRootfs: stagedRootfs,
+                stagedRootfsState: .directory,
+                installedRootfsBytes: nil,
+                incomingRootfsBytes: nil
+            )),
+            .failed(message: "staged rootfs path state is unexpected: /staged/rootfs-base.raw.gz state=directory")
         )
     }
 
@@ -642,7 +660,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 managerAppPath: managerAppPath,
                 nginxDirectory: nginxDirectory,
                 deployDirectory: deployDirectory,
-                backupVersionExists: true
+                backupVersionState: .file
             ),
             .restoreRootfsBase(source: backupRootfs, destination: rootfsBase)
         )
@@ -669,7 +687,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 managerAppPath: managerAppPath,
                 nginxDirectory: nginxDirectory,
                 deployDirectory: deployDirectory,
-                backupVersionExists: false
+                backupVersionState: .missing
             ),
             .restoreRuntimeVersion(.writeExplicitRollbackMarker(version: "rolled-back", destinationDirectory: backup))
         )
@@ -684,7 +702,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 deployDirectory: deployDirectory,
                 observation: RollbackRuntimeStepRequiredInputObservation(
                     requiredInput: .backupVersionExists(backup.appendingPathComponent(RuntimeFileNames.runtimeVersion)),
-                    backupVersionExists: true
+                    backupVersionState: .file
                 )
             ),
             .restoreRuntimeVersion(.restoreBackupVersion(
@@ -703,7 +721,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 deployDirectory: deployDirectory,
                 observation: RollbackRuntimeStepRequiredInputObservation(
                     requiredInput: .none,
-                    backupVersionExists: true
+                    backupVersionState: .file
                 )
             ),
             .failed(failureMessage: "rollback step required input observation does not match required input")
@@ -731,7 +749,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 managerAppPath: managerAppPath,
                 nginxDirectory: nginxDirectory,
                 deployDirectory: deployDirectory,
-                backupVersionExists: true
+                backupVersionState: .file
             ),
             .failed(failureMessage: "rollback rootfs restore requested without backup rootfs")
         )
@@ -744,7 +762,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 managerAppPath: managerAppPath,
                 nginxDirectory: nginxDirectory,
                 deployDirectory: deployDirectory,
-                backupVersionExists: true
+                backupVersionState: .file
             ),
             .unsupported(failureMessage: "unsupported command: rollback step stop-runtime-services")
         )
@@ -793,25 +811,33 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            useCase.rollbackBackupDirectoryDecision(backup: backup, directoryExists: true),
+            useCase.rollbackBackupDirectoryDecision(backup: backup, backupDirectoryState: .directory),
             .loadManifest(backup)
         )
         XCTAssertEqual(
             useCase.rollbackBackupDirectoryDecision(observation: RollbackRuntimeBackupDirectoryObservation(
                 backup: backup,
-                directoryExists: true
+                backupDirectoryState: .directory
             )),
             .loadManifest(backup)
         )
         XCTAssertEqual(
-            useCase.rollbackBackupDirectoryDecision(backup: backup, directoryExists: false),
+            useCase.rollbackBackupDirectoryDecision(backup: backup, backupDirectoryState: .missing),
             .failed(message: "missing file: /runtime/backups/backup-1")
+        )
+        XCTAssertEqual(
+            useCase.rollbackBackupDirectoryDecision(backup: backup, backupDirectoryState: .inspectFailed("permission denied")),
+            .failed(message: "backup directory path inspection failed: /runtime/backups/backup-1 reason=permission denied")
+        )
+        XCTAssertEqual(
+            useCase.rollbackBackupDirectoryDecision(backup: backup, backupDirectoryState: .file),
+            .failed(message: "backup directory path state is unexpected: /runtime/backups/backup-1 state=file")
         )
         XCTAssertEqual(
             useCase.rollbackBackupDirectoryDecision(
                 observation: RollbackRuntimeBackupDirectoryObservation(
                     backup: backup,
-                    directoryExists: true
+                    backupDirectoryState: .directory
                 )
             ),
             .loadManifest(backup)
@@ -823,14 +849,14 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(
             useCase.rollbackBackupRootfsDecision(
                 backupPlan: backupPlan,
-                backupRootfsExists: false
+                backupRootfsState: .missing
             ),
             .failed(message: "missing file: /runtime/backups/backup-1/rootfs-base.raw.gz")
         )
         XCTAssertEqual(
             useCase.rollbackBackupRootfsDecision(observation: RollbackRuntimeBackupRootfsObservation(
                 backupPlan: backupPlan,
-                backupRootfsExists: false
+                backupRootfsState: .missing
             )),
             .failed(message: "missing file: /runtime/backups/backup-1/rootfs-base.raw.gz")
         )
@@ -838,10 +864,24 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             useCase.rollbackBackupRootfsDecision(
                 observation: RollbackRuntimeBackupRootfsObservation(
                     backupPlan: backupPlan,
-                    backupRootfsExists: true
+                    backupRootfsState: .file
                 )
             ),
             .proceed(backupPlan)
+        )
+        XCTAssertEqual(
+            useCase.rollbackBackupRootfsDecision(
+                backupPlan: backupPlan,
+                backupRootfsState: .inspectFailed("permission denied")
+            ),
+            .failed(message: "backup rootfs path inspection failed: /runtime/backups/backup-1/rootfs-base.raw.gz reason=permission denied")
+        )
+        XCTAssertEqual(
+            useCase.rollbackBackupRootfsDecision(
+                backupPlan: backupPlan,
+                backupRootfsState: .directory
+            ),
+            .failed(message: "backup rootfs path state is unexpected: /runtime/backups/backup-1/rootfs-base.raw.gz state=directory")
         )
         XCTAssertEqual(
             useCase.rollbackBackupRootfsObservationRequirement(backupPlan: noRootfsPlan),
@@ -850,7 +890,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(
             useCase.rollbackBackupRootfsDecision(
                 backupPlan: noRootfsPlan,
-                backupRootfsExists: nil
+                backupRootfsState: nil
             ),
             .proceed(noRootfsPlan)
         )
@@ -925,7 +965,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             useCase.rollbackVersionRestoreDecision(
                 backupVersion: backupVersion,
                 runtimeVersion: runtimeVersion,
-                backupVersionExists: true,
+                backupVersionState: .file,
                 backup: backup
             ),
             .restoreBackupVersion(source: backupVersion, destination: runtimeVersion)
@@ -934,10 +974,28 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             useCase.rollbackVersionRestoreDecision(
                 backupVersion: backupVersion,
                 runtimeVersion: runtimeVersion,
-                backupVersionExists: false,
+                backupVersionState: .missing,
                 backup: backup
             ),
             .writeExplicitRollbackMarker(version: "rolled-back", destinationDirectory: backup)
+        )
+        XCTAssertEqual(
+            useCase.rollbackVersionRestoreDecision(
+                backupVersion: backupVersion,
+                runtimeVersion: runtimeVersion,
+                backupVersionState: .inspectFailed("permission denied"),
+                backup: backup
+            ),
+            .failed(message: "backup runtime version path inspection failed: /runtime/backups/backup-1/runtime-version.json reason=permission denied")
+        )
+        XCTAssertEqual(
+            useCase.rollbackVersionRestoreDecision(
+                backupVersion: backupVersion,
+                runtimeVersion: runtimeVersion,
+                backupVersionState: .directory,
+                backup: backup
+            ),
+            .failed(message: "backup runtime version path state is unexpected: /runtime/backups/backup-1/runtime-version.json state=directory")
         )
     }
 
@@ -1365,8 +1423,8 @@ private func healthSnapshot(
     vmErrors: [RuntimeVMError] = []
 ) -> RuntimeHealthSnapshot {
     RuntimeHealthSnapshot(
-        vmExecutable: true,
-        proxyExecutable: true,
+        vmExecutable: .executable,
+        proxyExecutable: .executable,
         rootfsBase: .present,
         vmDisk: .present,
         vmService: .loaded,

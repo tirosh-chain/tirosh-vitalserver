@@ -371,7 +371,7 @@ struct RuntimeTestPanel: View {
                 Button(AppConstants.Actions.refresh) {
                     Task {
                         await viewModel.refreshTestKitStatus()
-                        viewModel.testKitActionMessage = RuntimeTestPanelText.refreshedStatus
+                        viewModel.recordTestKitActionMessage(RuntimeTestPanelText.refreshedStatus)
                     }
                 }
                 .disabled(viewModel.isRunningTestKitAction)
@@ -435,8 +435,8 @@ struct RuntimeTestPanel: View {
 
     @ViewBuilder
     private func sessionControls(_ session: RuntimeTestKitSession) -> some View {
-        switch session.state.lowercased() {
-        case "running":
+        switch viewModel.testKitSessionControlState(session) {
+        case .running:
             Button(AppConstants.Actions.pause) {
                 Task { await viewModel.pauseVirtualRecorderSession(sessionID: session.id) }
             }
@@ -445,7 +445,7 @@ struct RuntimeTestPanel: View {
                 Task { await viewModel.stopVirtualRecorderSession(sessionID: session.id) }
             }
             .disabled(viewModel.isRunningTestKitAction)
-        case "paused":
+        case .paused:
             Button(AppConstants.Actions.resume) {
                 Task { await viewModel.resumeVirtualRecorderSession(sessionID: session.id) }
             }
@@ -454,13 +454,13 @@ struct RuntimeTestPanel: View {
                 Task { await viewModel.stopVirtualRecorderSession(sessionID: session.id) }
             }
             .disabled(viewModel.isRunningTestKitAction)
-        case "stopped", "failed":
+        case .terminal:
             Button(AppConstants.Actions.restart) {
                 Task { await viewModel.restartVirtualRecorderSession(session: session) }
             }
-            .disabled(viewModel.isRunningTestKitAction || !sessionIsRestartable(session))
+            .disabled(viewModel.isRunningTestKitAction || !viewModel.testKitSessionIsRestartable(session))
             .help(restartHelpText(session))
-        default:
+        case .unavailable:
             Button(AppConstants.Actions.stop) {
                 Task { await viewModel.stopVirtualRecorderSession(sessionID: session.id) }
             }
@@ -530,14 +530,12 @@ struct RuntimeTestPanel: View {
     }
 
     private var actionMessageColor: Color {
-        let message = viewModel.testKitActionMessage.lowercased()
-        if message.contains("error")
-            || message.contains("failed")
-            || message.contains("unavailable")
-            || message.contains("not reachable") {
+        switch viewModel.testKitActionMessageTone {
+        case .failure:
             return .red
+        case .neutral:
+            return .secondary
         }
-        return .secondary
     }
 
     private func sessionTitle(_ session: RuntimeTestKitSession) -> String {
@@ -559,18 +557,8 @@ struct RuntimeTestPanel: View {
         .joined(separator: " · ")
     }
 
-    private func sessionIsStoppable(_ session: RuntimeTestKitSession) -> Bool {
-        !["stopped", "failed"].contains(session.state.lowercased())
-    }
-
-    private func sessionIsRestartable(_ session: RuntimeTestKitSession) -> Bool {
-        let requiredBeds = max(session.recordersRequested, 1)
-        return ["stopped", "failed"].contains(session.state.lowercased())
-            && viewModel.selectedTestKitBedCount >= requiredBeds
-    }
-
     private func restartHelpText(_ session: RuntimeTestKitSession) -> String {
-        let requiredBeds = max(session.recordersRequested, 1)
+        let requiredBeds = viewModel.testKitRestartRequiredBedCount(session)
         guard viewModel.selectedTestKitBedCount < requiredBeds else {
             return ""
         }

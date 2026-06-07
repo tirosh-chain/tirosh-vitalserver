@@ -20,7 +20,7 @@ public protocol RuntimeStatusHealthDetailsVocabulary: RuntimeStatusVMStateVocabu
     var watchdogLabel: String { get }
     var waitingText: String { get }
 
-    func installStateText(installed: Bool) -> String
+    func installStateText(_ state: RuntimeFileState) -> String
     func vmErrorText(_ error: RuntimeVMError) -> String
     func domainErrorText(_ reason: RuntimeFailureReason) -> String
 }
@@ -85,8 +85,8 @@ public struct RuntimeStatusHealthDetailsPolicy {
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.runtimeInstallationLabel,
                 value: value(
-                    vocabulary.installStateText(installed: status.runtimeInstalled),
-                    status.runtimeInstalled ? .healthy : .warning
+                    vocabulary.installStateText(status.effectiveRuntimeInstallationState),
+                    installStateSeverity(status.effectiveRuntimeInstallationState)
                 )
             ),
             RuntimeStatusHealthDetailItem(
@@ -126,7 +126,7 @@ public struct RuntimeStatusHealthDetailsPolicy {
                 label: vocabulary.vmIPAddressLabel,
                 value: value(
                     status.vmIP ?? vocabulary.waitingText,
-                    status.vmServiceLoaded && status.vmIP != nil ? .healthy : .warning
+                    status.vmServiceState == .loaded && status.vmIP != nil ? .healthy : .warning
                 )
             ),
             RuntimeStatusHealthDetailItem(
@@ -140,7 +140,7 @@ public struct RuntimeStatusHealthDetailsPolicy {
                 label: vocabulary.hostProxyName,
                 value: RuntimeStatusHealthDetailValue(
                     text: reachabilityLabelPolicy.serviceReachabilityLabel(status.hostProxyHTTP),
-                    severity: status.proxyServiceLoaded && reachabilityPolicy.isSuccessfulHTTPStatus(status.hostProxyHTTP)
+                    severity: status.proxyServiceState == .loaded && reachabilityPolicy.isSuccessfulHTTPStatus(status.hostProxyHTTP)
                         ? .healthy
                         : .warning,
                     uptimeText: uptimeText(for: .networkAccess, observation: observation, now: now)
@@ -157,8 +157,7 @@ public struct RuntimeStatusHealthDetailsPolicy {
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.watchdogLabel,
                 value: value(serviceValuePolicy.serviceValue(
-                    state: status.watchdogServiceState,
-                    fallbackLoaded: status.watchdogServiceLoaded
+                    state: status.watchdogServiceState
                 ))
             ),
         ])
@@ -222,5 +221,16 @@ public struct RuntimeStatusHealthDetailsPolicy {
             severity: value.severity,
             uptimeText: value.uptimeText
         )
+    }
+
+    private func installStateSeverity(_ state: RuntimeFileState) -> RuntimeStatusReachabilityPolicy.Severity {
+        switch state {
+        case .executable:
+            .healthy
+        case .missing:
+            .warning
+        case .present, .inspectFailed, .unknown:
+            .critical
+        }
     }
 }

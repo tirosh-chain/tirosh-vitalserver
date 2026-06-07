@@ -34,13 +34,24 @@ public extension RuntimeControlClient {
     }
 }
 
+public enum RuntimeHostTextMissingReason: Equatable, Sendable {
+    case noData
+    case message(String)
+}
+
+public enum RuntimeHostTextReadResult: Equatable, Sendable {
+    case loaded(String)
+    case missing(RuntimeHostTextMissingReason)
+    case failed(String)
+}
+
 @MainActor
 public protocol RuntimeHostClient {
     func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup]
     func loadRedisBackups() throws -> [RuntimeBackup]
-    func updateBundleSummary(url: URL) -> String
-    func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String
-    func loadLogText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) async -> String
+    func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult
+    func logTextResult(sourceID: RuntimeLogSource, lineLimit: Int) -> RuntimeHostTextReadResult
+    func loadLogTextResult(sourceID: RuntimeLogSource, lineLimit: Int) async -> RuntimeHostTextReadResult
     func preferredLogsPath() -> String
     func vitalFileFolders(root: String) throws -> [VitalFilesFolder]
     func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult

@@ -2,7 +2,6 @@ import Foundation
 import RuntimeControl
 import Application
 import Contracts
-import Domain
 import Errors
 
 enum RuntimeControlClientConstants {
@@ -29,7 +28,6 @@ enum RuntimeControlClientConstants {
 
     enum StatusText {
         static let failed = "failed"
-        static let noLogData = "No log data for this source yet."
         static let missingLauncher = "vitalserver-vm launcher is missing. Reinstall the app or package."
         static let missingUninstaller = "Uninstaller is missing. Reinstall the package before uninstalling."
         static let logExportFailed = "Failed to export logs."
@@ -44,6 +42,7 @@ enum RuntimeControlClientConstants {
         static let redisBackup = "redis-backup"
         static let repairDatastore = "repair-datastore"
         static let repairVMDisk = "repair-vm-disk"
+        static let repairProxy = "repair-proxy"
         static let repairServices = "repair-services"
         static let startServices = "start-services"
         static let stopServices = "stop-services"

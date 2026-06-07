@@ -1,55 +1,9 @@
 import Contracts
 import Foundation
 
-public enum RuntimeGuestHTTPStatusInput: Equatable {
-    case reportedStatus(String)
-    case missing
-    case probeFailed(String)
-
-    public var statusText: String {
-        switch self {
-        case .reportedStatus(let value):
-            return value
-        case .missing:
-            return RuntimeHTTPStatusText.missingGuestHTTP
-        case .probeFailed(let value):
-            return value
-        }
-    }
-
-    public var isSuccessful: Bool {
-        guard case .reportedStatus(let value) = self,
-              let code = Int(value) else {
-            return false
-        }
-        return code >= 200 && code < 300
-    }
-}
-
-public enum RuntimeGuestRuntimeStateInput: Equatable {
-    case fresh(vmIP: String?, guestHTTP: RuntimeGuestHTTPStatusInput)
-    case missing
-    case invalid
-    case stale
-
-    public var vmIP: String? {
-        guard case .fresh(let vmIP, _) = self else {
-            return nil
-        }
-        return vmIP
-    }
-
-    public var guestHTTPStatusText: String {
-        guard case .fresh(_, let guestHTTP) = self else {
-            return RuntimeHTTPStatusText.missingVMIP
-        }
-        return guestHTTP.statusText
-    }
-}
-
 public struct RuntimeHealthInput: Equatable {
-    public let vmExecutable: Bool
-    public let proxyExecutable: Bool
+    public let vmExecutable: RuntimeFileState
+    public let proxyExecutable: RuntimeFileState
     public let rootfsBase: RuntimeFileState
     public let vmDisk: RuntimeFileState
     public let vmService: RuntimeServiceState
@@ -57,7 +11,8 @@ public struct RuntimeHealthInput: Equatable {
     public let watchdogService: RuntimeServiceState
     public let vmLifecycle: RuntimeVMLifecycleDocument?
     public let guestRuntimeState: RuntimeGuestRuntimeStateInput
-    public let proxyPort: Int
+    public let proxyPort: Int?
+    public let proxyPortReadState: RuntimeProxyPortReadState
     public let hostProxyHTTP: String
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
@@ -69,8 +24,8 @@ public struct RuntimeHealthInput: Equatable {
     public let guestBootstrapAssessment: GuestBootstrapAssessment
 
     public init(
-        vmExecutable: Bool,
-        proxyExecutable: Bool,
+        vmExecutable: RuntimeFileState,
+        proxyExecutable: RuntimeFileState,
         rootfsBase: RuntimeFileState,
         vmDisk: RuntimeFileState,
         vmService: RuntimeServiceState,
@@ -78,7 +33,8 @@ public struct RuntimeHealthInput: Equatable {
         watchdogService: RuntimeServiceState,
         vmLifecycle: RuntimeVMLifecycleDocument? = nil,
         guestRuntimeState: RuntimeGuestRuntimeStateInput,
-        proxyPort: Int,
+        proxyPort: Int?,
+        proxyPortReadState: RuntimeProxyPortReadState? = nil,
         hostProxyHTTP: String,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
@@ -99,6 +55,7 @@ public struct RuntimeHealthInput: Equatable {
         self.vmLifecycle = vmLifecycle
         self.guestRuntimeState = guestRuntimeState
         self.proxyPort = proxyPort
+        self.proxyPortReadState = proxyPortReadState ?? .observed(proxyPort)
         self.hostProxyHTTP = hostProxyHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
@@ -117,7 +74,7 @@ public enum RuntimeHealthEvaluator {
         let vmErrors = vmHealth.vmErrors
         var failureReasons = vmErrors.map(RuntimeFailureReason.init(vmError:))
 
-        if !input.proxyExecutable {
+        if input.proxyExecutable != .executable {
             failureReasons.append(.missingProxyRunner)
         }
         if input.proxyService != .loaded {
@@ -153,6 +110,7 @@ public enum RuntimeHealthEvaluator {
             vmErrors: vmErrors,
             vmIP: input.guestRuntimeState.vmIP,
             proxyPort: input.proxyPort,
+            proxyPortReadState: input.proxyPortReadState,
             hostProxyHTTP: input.hostProxyHTTP,
             guestHTTP: input.guestRuntimeState.guestHTTPStatusText,
             redisUIHTTP: input.redisUIHTTP,

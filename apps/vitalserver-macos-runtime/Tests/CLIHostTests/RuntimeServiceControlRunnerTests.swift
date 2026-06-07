@@ -36,6 +36,20 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
         ])
     }
 
+    func testRepairProxyStartsOnlyProxyWithoutWaitingForHealth() throws {
+        let harness = ServiceControlHarness()
+
+        try harness.runner.run(.repairProxy)
+
+        XCTAssertEqual(harness.events, [
+            "log:host proxy repair requested",
+            "status:recovering:repair-proxy:host proxy repair requested",
+            "start:false:true:false",
+            "status:recovering:repair-proxy:host proxy repair dispatched",
+            "log:host proxy repair dispatched",
+        ])
+    }
+
     func testStopAllStopsServicesAndWritesDegradedStatus() throws {
         let harness = ServiceControlHarness()
 
@@ -70,6 +84,7 @@ private final class ServiceControlHarness {
 
     var runner: RuntimeServiceControlRunner {
         RuntimeServiceControlRunner(
+            useCase: ControlRuntimeServicesUseCase(),
             startRuntimeServices: { policy in
                 self.events.append("start:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")
                 if let startError = self.startError {

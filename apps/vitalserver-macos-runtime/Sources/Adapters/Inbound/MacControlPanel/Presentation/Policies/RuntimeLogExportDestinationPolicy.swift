@@ -17,19 +17,22 @@ public struct RuntimeLogExportDestinationFacts: Equatable {
     public let pathExtension: String
     public let isExistingDirectoryDestination: Bool
     public let nearestExistingDirectory: RuntimeLogExportDirectoryState?
+    public let pathInspectionFailure: String?
 
     public init(
         isFileURL: Bool,
         path: String,
         pathExtension: String,
         isExistingDirectoryDestination: Bool,
-        nearestExistingDirectory: RuntimeLogExportDirectoryState?
+        nearestExistingDirectory: RuntimeLogExportDirectoryState?,
+        pathInspectionFailure: String? = nil
     ) {
         self.isFileURL = isFileURL
         self.path = path
         self.pathExtension = pathExtension
         self.isExistingDirectoryDestination = isExistingDirectoryDestination
         self.nearestExistingDirectory = nearestExistingDirectory
+        self.pathInspectionFailure = pathInspectionFailure
     }
 }
 
@@ -39,6 +42,7 @@ public enum RuntimeLogExportDestinationValidationResult: Equatable {
     case existingDirectoryDestination
     case protectedDirectory
     case parentDirectoryNotWritable
+    case pathInspectionFailed(String)
 }
 
 public struct RuntimeLogExportDestinationRule {
@@ -47,6 +51,9 @@ public struct RuntimeLogExportDestinationRule {
     public func validationResult(for facts: RuntimeLogExportDestinationFacts) -> RuntimeLogExportDestinationValidationResult {
         guard facts.isFileURL, !facts.path.isEmpty else {
             return .invalidDestination
+        }
+        if let pathInspectionFailure = facts.pathInspectionFailure {
+            return .pathInspectionFailed(pathInspectionFailure)
         }
 
         let standardized = URL(fileURLWithPath: facts.path).standardizedFileURL

@@ -1,4 +1,5 @@
 import Contracts
+import Application
 import Domain
 import Foundation
 import OutboundAdapters
@@ -10,16 +11,16 @@ final class RuntimeBundleMaterializerTests: XCTestCase {
         let bundleURL = URL(fileURLWithPath: "/input/update-bundle")
         var events: [String] = []
         let materializer = makeMaterializer(
-            directoryExists: { url in
-                events.append("dir:\(url.path)")
-                return url == bundleURL
+            pathState: { url in
+                events.append("path:\(url.path)")
+                return url == bundleURL ? .directory : .missing
             }
         )
 
         let materialized = try materializer.materialize(bundleURL)
 
         XCTAssertEqual(materialized, RuntimeMaterializedBundle(bundleURL: bundleURL, temporaryRoot: nil))
-        XCTAssertEqual(events, ["dir:/input/update-bundle"])
+        XCTAssertEqual(events, ["path:/input/update-bundle"])
     }
 
     func testMaterializeExtractsArchiveIntoTemporaryRootAndRequiresExtractedDirectory() throws {
@@ -28,13 +29,15 @@ final class RuntimeBundleMaterializerTests: XCTestCase {
         let extractedBundle = temporaryRoot.appendingPathComponent("update-bundle", isDirectory: true)
         var events: [String] = []
         let materializer = makeMaterializer(
-            directoryExists: { url in
-                events.append("dir:\(url.path)")
-                return url == extractedBundle
-            },
-            fileExists: { url in
-                events.append("file:\(url.path)")
-                return url == archiveURL
+            pathState: { url in
+                events.append("path:\(url.path)")
+                if url == archiveURL {
+                    return .file
+                }
+                if url == extractedBundle {
+                    return .directory
+                }
+                return .missing
             },
             temporaryRoot: {
                 events.append("temporary-root")
@@ -70,14 +73,13 @@ final class RuntimeBundleMaterializerTests: XCTestCase {
 
         XCTAssertEqual(materialized, RuntimeMaterializedBundle(bundleURL: extractedBundle, temporaryRoot: temporaryRoot))
         XCTAssertEqual(events, [
-            "dir:/input/update-bundle.tar.gz",
-            "file:/input/update-bundle.tar.gz",
+            "path:/input/update-bundle.tar.gz",
             "temporary-root",
             "create:/tmp/tirosh-update-bundle-test:true",
             "process:/usr/bin/tar -tzf /input/update-bundle.tar.gz",
             "process:/usr/bin/tar -tvzf /input/update-bundle.tar.gz",
             "required:/usr/bin/tar -xzf /input/update-bundle.tar.gz -C /tmp/tirosh-update-bundle-test",
-            "dir:/tmp/tirosh-update-bundle-test/update-bundle",
+            "path:/tmp/tirosh-update-bundle-test/update-bundle",
             "log:bundle archive extracted source=/input/update-bundle.tar.gz destination=/tmp/tirosh-update-bundle-test/update-bundle",
         ])
     }
@@ -86,7 +88,7 @@ final class RuntimeBundleMaterializerTests: XCTestCase {
         let archiveURL = URL(fileURLWithPath: "/input/update-bundle.tar.gz")
         var logs: [String] = []
         let materializer = makeMaterializer(
-            fileExists: { _ in true },
+            pathState: { _ in .file },
             runProcess: { _, _ in
                 RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "not gzip")
             },
@@ -102,7 +104,7 @@ final class RuntimeBundleMaterializerTests: XCTestCase {
     func testMaterializeMapsArchiveValidationFailure() {
         let archiveURL = URL(fileURLWithPath: "/input/update-bundle.tar.gz")
         let materializer = makeMaterializer(
-            fileExists: { _ in true },
+            pathState: { _ in .file },
             runProcess: { _, arguments in
                 if arguments.first == "-tzf" {
                     return RuntimeProcessResult(exitCode: 0, stdout: "../escape\n", stderr: "")
@@ -119,9 +121,61 @@ final class RuntimeBundleMaterializerTests: XCTestCase {
         }
     }
 
+    func testMaterializeFailsWhenInputPathInspectionFails() {
+        let archiveURL = URL(fileURLWithPath: "/input/update-bundle.tar.gz")
+        let materializer = makeMaterializer(
+            pathState: { _ in .inspectFailed("permission denied") }
+        )
+
+        XCTAssertThrowsError(try materializer.materialize(archiveURL)) { error in
+            XCTAssertEqual(
+                error as? TestBundleMaterializerError,
+                .pathInspection(path: archiveURL.path, reason: "permission denied")
+            )
+        }
+    }
+
+    func testMaterializeFailsWhenExtractedBundleIsNotDirectory() {
+        let archiveURL = URL(fileURLWithPath: "/input/update-bundle.tar.gz")
+        let temporaryRoot = URL(fileURLWithPath: "/tmp/tirosh-update-bundle-test")
+        let extractedBundle = temporaryRoot.appendingPathComponent("update-bundle", isDirectory: true)
+        let materializer = makeMaterializer(
+            pathState: { url in
+                if url == archiveURL {
+                    return .file
+                }
+                if url == extractedBundle {
+                    return .file
+                }
+                return .missing
+            },
+            temporaryRoot: { temporaryRoot },
+            runProcess: { _, arguments in
+                if arguments.first == "-tzf" {
+                    return RuntimeProcessResult(
+                        exitCode: 0,
+                        stdout: "update-bundle/\nupdate-bundle/manifest.json\n",
+                        stderr: ""
+                    )
+                }
+                return RuntimeProcessResult(
+                    exitCode: 0,
+                    stdout: "drwxr-xr-x 0 root wheel 0 Jan 1 00:00 update-bundle/\n",
+                    stderr: ""
+                )
+            }
+        )
+
+        XCTAssertThrowsError(try materializer.materialize(archiveURL)) { error in
+            XCTAssertEqual(
+                error as? TestBundleMaterializerError,
+                .unexpectedPathState(path: extractedBundle.path, state: RuntimePathState.file.rawValue)
+            )
+        }
+    }
+
     private func makeMaterializer(
-        directoryExists: @escaping (URL) -> Bool = { _ in false },
-        fileExists: @escaping (URL) -> Bool = { _ in false },
+        pathState: @escaping (URL) -> RuntimePathState = { _ in .missing },
         temporaryRoot: @escaping () -> URL = { URL(fileURLWithPath: "/tmp/tirosh-update-bundle-test") },
         createDirectory: @escaping (URL, Bool) throws -> Void = { _, _ in },
         runProcess: @escaping (String, [String]) -> RuntimeProcessResult = { _, _ in
@@ -130,18 +184,26 @@ final class RuntimeBundleMaterializerTests: XCTestCase {
         runRequired: @escaping (String, [String]) throws -> Void = { _, _ in },
         log: @escaping (String) -> Void = { _ in }
     ) -> RuntimeBundleMaterializer {
-        RuntimeBundleMaterializer(
+        let archiveValidator = ValidateUpdateBundleArchiveUseCase()
+        return RuntimeBundleMaterializer(
             context: RuntimeBundleMaterializationContext(tarExecutable: "/usr/bin/tar"),
             operations: RuntimeBundleMaterializationOperations(
-                directoryExists: directoryExists,
-                fileExists: fileExists,
+                pathState: pathState,
                 temporaryRoot: temporaryRoot,
                 createDirectory: createDirectory,
                 runProcess: runProcess,
                 runRequired: runRequired,
+                rootDirectory: archiveValidator.rootDirectory,
+                validateArchiveEntryTypes: archiveValidator.rejectUnsupportedEntryTypes,
                 missingFileError: { TestBundleMaterializerError.missingFile($0.path) },
                 invalidArchiveError: { TestBundleMaterializerError.invalidArchive($0.path) },
-                archiveValidationError: { TestBundleMaterializerError.validation($0.description) },
+                pathInspectionError: { url, reason in
+                    TestBundleMaterializerError.pathInspection(path: url.path, reason: reason)
+                },
+                unexpectedPathStateError: { url, state in
+                    TestBundleMaterializerError.unexpectedPathState(path: url.path, state: state.rawValue)
+                },
+                archiveValidationError: { TestBundleMaterializerError.validation(String(describing: $0)) },
                 log: log
             )
         )
@@ -151,5 +213,7 @@ final class RuntimeBundleMaterializerTests: XCTestCase {
 private enum TestBundleMaterializerError: Error, Equatable {
     case missingFile(String)
     case invalidArchive(String)
+    case pathInspection(path: String, reason: String)
+    case unexpectedPathState(path: String, state: String)
     case validation(String)
 }

@@ -106,7 +106,7 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             apiServerError = nil
         } catch {
             apiServerError = error
-            viewModel.updateRemoteConsoleStatus(http: "failed", startedAt: nil)
+            viewModel.updateRemoteConsoleStatus(RuntimeControlLocalAPIStatusRead.failed())
             scheduleAPIServerRetry(port: port)
         }
     }
@@ -137,7 +137,7 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             apiServerError = nil
         } catch {
             apiServerError = error
-            viewModel.updateRemoteConsoleStatus(http: "failed", startedAt: nil)
+            viewModel.updateRemoteConsoleStatus(RuntimeControlLocalAPIStatusRead.failed())
         }
     }
 
@@ -189,14 +189,16 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             retryAPIServerTask = nil
             apiServerRetryAttempt = 0
             apiServerError = nil
-            viewModel.updateRemoteConsoleStatus(http: "200", startedAt: Self.timestamp(startedAt))
+            viewModel.updateRemoteConsoleStatus(
+                RuntimeControlLocalAPIStatusRead.reachable(startedAt: Self.timestamp(startedAt))
+            )
         case .failed(let reason):
             apiServer = nil
             apiServerError = RuntimeControlLocalAPIServerLifecycleError.failedToListen(
                 port: port,
                 reason: reason
             )
-            viewModel.updateRemoteConsoleStatus(http: "failed", startedAt: nil)
+            viewModel.updateRemoteConsoleStatus(RuntimeControlLocalAPIStatusRead.failed())
             scheduleAPIServerRetry(port: port)
         case .stopped:
             break

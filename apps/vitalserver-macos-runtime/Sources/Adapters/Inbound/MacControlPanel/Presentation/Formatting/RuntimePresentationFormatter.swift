@@ -14,8 +14,6 @@ public protocol RuntimePresentationVocabulary {
     var falseText: String { get }
     var preventSystemSleepLabel: String { get }
 
-    func vitalServerURL(proxyPort: Int) -> String
-    func remoteConsoleURL(port: Int) -> String
     func domainErrorText(_ reason: RuntimeFailureReason) -> String
     func runtimeLifecycleText(_ rawValue: String?) -> String
     func operationText(_ rawValue: String?) -> String
@@ -25,9 +23,9 @@ public protocol RuntimePresentationVocabulary {
 public struct RuntimePresentationFormatter {
     public struct ServiceURLPresentation: Equatable {
         public let displayURL: String
-        public let openURL: String
+        public let openURL: String?
 
-        public init(displayURL: String, openURL: String) {
+        public init(displayURL: String, openURL: String?) {
             self.displayURL = displayURL
             self.openURL = openURL
         }
@@ -42,16 +40,14 @@ public struct RuntimePresentationFormatter {
     public func vitalServerStatusURL(settings: RuntimeSettings) -> ServiceURLPresentation {
         serviceStatusURL(
             explicitURL: settings.vitalServerURL,
-            displayFallback: "http://\(vocabulary.advertisedURLSameHostLabel):\(settings.proxyPort)/",
-            openFallback: vocabulary.vitalServerURL(proxyPort: settings.proxyPort)
+            displayFallback: "http://\(vocabulary.advertisedURLSameHostLabel):\(settings.proxyPort)/"
         )
     }
 
     public func remoteConsoleStatusURL(settings: RuntimeSettings) -> ServiceURLPresentation {
         serviceStatusURL(
             explicitURL: settings.remoteConsoleURL,
-            displayFallback: "http://\(vocabulary.advertisedURLSameHostLabel):\(settings.runtimeControlPort)/",
-            openFallback: vocabulary.remoteConsoleURL(port: settings.runtimeControlPort)
+            displayFallback: "http://\(vocabulary.advertisedURLSameHostLabel):\(settings.runtimeControlPort)/"
         )
     }
 
@@ -192,12 +188,11 @@ public struct RuntimePresentationFormatter {
 
     private func serviceStatusURL(
         explicitURL: String,
-        displayFallback: String,
-        openFallback: String
+        displayFallback: String
     ) -> ServiceURLPresentation {
         let trimmed = explicitURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            return ServiceURLPresentation(displayURL: displayFallback, openURL: openFallback)
+            return ServiceURLPresentation(displayURL: displayFallback, openURL: nil)
         }
         return ServiceURLPresentation(displayURL: trimmed, openURL: trimmed)
     }
@@ -223,14 +218,6 @@ private struct AppRuntimePresentationVocabulary: RuntimePresentationVocabulary {
     var trueText: String { AppConstants.Values.boolTrue }
     var falseText: String { AppConstants.Values.boolFalse }
     var preventSystemSleepLabel: String { AppConstants.Labels.preventSystemSleep }
-
-    func vitalServerURL(proxyPort: Int) -> String {
-        AppConstants.Product.vitalServerURL(proxyPort: proxyPort)
-    }
-
-    func remoteConsoleURL(port: Int) -> String {
-        AppConstants.Product.remoteConsoleURL(port: port)
-    }
 
     func domainErrorText(_ reason: RuntimeFailureReason) -> String {
         AppConstants.StatusText.domainError(reason)

@@ -1,51 +1,40 @@
+import Application
 import Contracts
 import Foundation
-import Errors
 
 public enum RuntimeHostProxyPortStateReader {
     public static func state(
         port: Int,
         lsofPath: String,
-        runProcess: (String, [String]) -> RuntimeProcessResult
+        fileStore: RuntimeFileStore,
+        commandRunner: RuntimeCommandRunner
     ) -> RuntimeHostProxyPortState {
-        let result = runProcess(lsofPath, ["-nP", "-iTCP:\(port)", "-sTCP:LISTEN"])
-        if result.exitCode == 0 {
-            let listeners = parsedListeners(result.stdout)
-            return listeners.isEmpty
-                ? .clear(port: port)
-                : .occupied(port: port, listeners: listeners.joined(separator: ","))
-        }
-        let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-        if result.exitCode == 1, stdout.isEmpty, stderr.isEmpty {
+        let scan = RuntimeHostProxyListenerScanReader(
+            lsofPath: lsofPath,
+            fileStore: fileStore,
+            commandRunner: commandRunner
+        ).read(port: port)
+        return state(port: port, scan: scan)
+    }
+
+    static func state(
+        port: Int,
+        scan: RuntimeHostProxyListenerScanResult
+    ) -> RuntimeHostProxyPortState {
+        switch scan {
+        case .clear:
             return .clear(port: port)
+        case .loaded(let listeners):
+            return .occupied(
+                port: port,
+                listeners: listeners.map(\.slashDescription).sorted().joined(separator: ",")
+            )
+        case .unavailable:
+            return .inspectFailed(port: port, reason: "lsof unavailable")
+        case .inspectionFailed(let reason):
+            return .inspectFailed(port: port, reason: reason)
+        case .commandFailed(_, let reason), .malformedOutput(_, let reason):
+            return .inspectFailed(port: port, reason: reason)
         }
-        return .inspectFailed(port: port, reason: processFailureReason(result))
-    }
-
-    private static func parsedListeners(_ output: String) -> [String] {
-        output
-            .split(separator: "\n")
-            .dropFirst()
-            .compactMap { line -> String? in
-                let fields = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
-                guard fields.count >= 2 else {
-                    return nil
-                }
-                return "\(fields[0])/\(fields[1])"
-            }
-            .sorted()
-    }
-
-    private static func processFailureReason(_ result: RuntimeProcessResult) -> String {
-        let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-        let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !stderr.isEmpty {
-            return "exitCode=\(result.exitCode) stderr=\(stderr)"
-        }
-        if !stdout.isEmpty {
-            return "exitCode=\(result.exitCode) stdout=\(stdout)"
-        }
-        return "exitCode=\(result.exitCode)"
     }
 }

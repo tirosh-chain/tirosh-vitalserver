@@ -30,7 +30,7 @@ public struct RuntimeEventQuery: Equatable, Sendable {
     }
 }
 
-public enum RuntimeEventPageState: String, Equatable, Sendable {
+public enum RuntimeEventPageState: String, Codable, Equatable, Sendable {
     case loaded
     case partiallyLoaded
     case readFailed

@@ -56,6 +56,114 @@ final class MacTestKitControllerTests: XCTestCase {
         ])
     }
 
+    func testControllerUsesInjectedHTTPClientForHealthSessionsAndBeds() async throws {
+        let client = FakeMacTestKitHTTPClient()
+        let session = testKitSession(id: "session-1", state: "running", bedRoomNames: ["OR-1"])
+        client.register(method: "GET", path: "/health", data: Data())
+        client.register(method: "GET", path: "/sessions", data: try JSONEncoder().encode(TestKitSessionsPayload(sessions: [session])))
+        client.register(
+            method: "GET",
+            path: "/beds",
+            data: try JSONEncoder().encode(TestKitBedsPayload(beds: [
+                RuntimeTestKitBed(roomName: "OR-1", bedID: "bed-1"),
+            ]))
+        )
+        let controller = MacTestKitController(
+            configuration: MacTestKitControllerConfiguration(
+                enabled: true,
+                apiEndpoint: .explicit(baseURL: "http://testkit.local"),
+                recorderTargetURL: "http://edge/"
+            ),
+            statusProvider: { RuntimeStatus(vmIP: nil) },
+            httpClient: client,
+            apiHealthCheck: nil
+        )
+
+        let status = await controller.loadTestKitStatus()
+
+        XCTAssertEqual(status.state, .running)
+        XCTAssertEqual(status.activeSession?.id, "session-1")
+        XCTAssertEqual(client.requests.map(\.path), ["/health", "/sessions", "/beds"])
+    }
+
+    func testDefaultHealthCheckPreservesHTTPFailureReason() async throws {
+        let client = FakeMacTestKitHTTPClient()
+        client.register(method: "GET", path: "/health", statusCode: 503, data: Data("unavailable".utf8))
+        let controller = MacTestKitController(
+            configuration: MacTestKitControllerConfiguration(
+                enabled: true,
+                apiEndpoint: .explicit(baseURL: "http://testkit.local")
+            ),
+            statusProvider: {
+                RuntimeStatus(
+                    vmIP: nil,
+                    containerObservation: RuntimeContainerObservation(
+                        auditProxyHTTP: "200",
+                        auditProxyStatus: nil,
+                        containerLogsPresent: false,
+                        containerLogsBytes: nil,
+                        composeServices: [
+                            RuntimeContainerServiceObservation(
+                                service: "testkit",
+                                state: "running",
+                                health: "unhealthy"
+                            ),
+                        ]
+                    )
+                )
+            },
+            httpClient: client,
+            apiHealthCheck: nil
+        )
+
+        let status = await controller.loadTestKitStatus()
+
+        XCTAssertEqual(status.state, .starting)
+        XCTAssertTrue(status.lastError?.contains("Health check: health endpoint returned HTTP 503.") == true)
+        XCTAssertEqual(status.readIssues.map(\.source), ["testKitAPI", "testKitAPI.health"])
+        XCTAssertEqual(status.readIssues.last?.message, "health endpoint returned HTTP 503")
+    }
+
+    func testInvalidAPIEndpointIsReportedAsHealthReadIssueInsteadOfCrashing() async {
+        let controller = MacTestKitController(
+            configuration: MacTestKitControllerConfiguration(
+                enabled: true,
+                apiEndpoint: .explicit(baseURL: "http://[::1")
+            ),
+            statusProvider: {
+                RuntimeStatus(
+                    vmIP: nil,
+                    containerObservation: RuntimeContainerObservation(
+                        auditProxyHTTP: "200",
+                        auditProxyStatus: nil,
+                        containerLogsPresent: false,
+                        containerLogsBytes: nil,
+                        composeServices: [
+                            RuntimeContainerServiceObservation(
+                                service: "testkit",
+                                state: "running",
+                                health: "healthy"
+                            ),
+                        ]
+                    )
+                )
+            },
+            httpClient: FakeMacTestKitHTTPClient(),
+            apiHealthCheck: nil
+        )
+
+        let status = await controller.loadTestKitStatus()
+
+        XCTAssertEqual(status.state, .starting)
+        XCTAssertEqual(status.apiBaseURL, "http://[::1")
+        XCTAssertTrue(status.lastError?.contains("TestKit API request URL is invalid") == true)
+        XCTAssertEqual(status.readIssues.map(\.source), ["testKitAPI", "testKitAPI.health"])
+        XCTAssertEqual(
+            status.readIssues.last?.message,
+            "TestKit API request URL is invalid baseURL=http://[::1 path=/health"
+        )
+    }
+
     func testHealthyAPIEndpointLoadsSessionsAndBeds() async throws {
         TestKitURLProtocol.start()
         let session = testKitSession(id: "session-1", state: "running", bedRoomNames: ["OR-1"])
@@ -130,11 +238,11 @@ final class MacTestKitControllerTests: XCTestCase {
         let deletedBeds = try await controller.deleteTestKitBeds(RuntimeTestKitDeleteBedsRequest(roomNames: ["OR-1"]))
         let resetBeds = try await controller.resetTestKitBeds()
         let startedSession = try await controller.startVirtualRecorders(startRequest())
-        let pausedSession = try await controller.pauseVirtualRecorders(sessionID: nil)
-        let resumedSession = try await controller.resumeVirtualRecorders(sessionID: nil)
-        let stoppedSession = try await controller.stopVirtualRecorders(sessionID: nil)
+        let pausedSession = try await controller.pauseVirtualRecorders(sessionID: "session-1")
+        let resumedSession = try await controller.resumeVirtualRecorders(sessionID: "session-1")
+        let stoppedSession = try await controller.stopVirtualRecorders(sessionID: "session-1")
         let restartedSession = try await controller.restartVirtualRecorders(sessionID: "session-1", bedRoomNames: ["OR-2"])
-        let deletedSession = try await controller.deleteVirtualRecorders(sessionID: nil)
+        let deletedSession = try await controller.deleteVirtualRecorders(sessionID: "session-2")
         let recorderDeletion = try await controller.deleteVirtualRecorder(vrcode: "VR_ORPHAN")
         let resetStatus = try await controller.resetVirtualRecorders()
 
@@ -153,6 +261,30 @@ final class MacTestKitControllerTests: XCTestCase {
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "POST" && $0.path == "/sessions" })
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "DELETE" && $0.path == "/beds" })
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "POST" && $0.path == "/recorders/delete" })
+    }
+
+    func testMutationReportsInvalidAPIEndpointAsTypedError() async throws {
+        let controller = MacTestKitController(
+            configuration: MacTestKitControllerConfiguration(
+                enabled: true,
+                apiEndpoint: .explicit(baseURL: "http://[::1")
+            ),
+            statusProvider: { RuntimeStatus(vmIP: nil) },
+            httpClient: FakeMacTestKitHTTPClient(),
+            apiHealthCheck: { _ in true }
+        )
+
+        do {
+            _ = try await controller.createTestKitBeds(RuntimeTestKitCreateBedsRequest(count: 1))
+            XCTFail("createTestKitBeds must reject invalid API endpoint explicitly")
+        } catch let error as MacTestKitControllerError {
+            XCTAssertEqual(
+                error,
+                .invalidRequestURL("TestKit API request URL is invalid baseURL=http://[::1 path=/beds")
+            )
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
     }
 
     func testControllerReportsHTTPFailures() async throws {
@@ -229,6 +361,19 @@ final class MacTestKitControllerTests: XCTestCase {
         ])
     }
 
+    func testSessionMutationRequiresExplicitSessionID() async throws {
+        let controller = makeHTTPController()
+
+        do {
+            _ = try await controller.pauseVirtualRecorders(sessionID: nil)
+            XCTFail("pauseVirtualRecorders must require an explicit session ID")
+        } catch let error as MacTestKitControllerError {
+            XCTAssertEqual(error, .missingSessionID)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
     private func makeHTTPController() -> MacTestKitController {
         MacTestKitController(
             configuration: MacTestKitControllerConfiguration(
@@ -270,6 +415,48 @@ private struct TestKitRequestRecord {
 
 private struct TestKitSessionsPayload: Encodable {
     let sessions: [RuntimeTestKitSession]
+}
+
+private struct TestKitBedsPayload: Encodable {
+    let beds: [RuntimeTestKitBed]
+}
+
+private final class FakeMacTestKitHTTPClient: MacTestKitHTTPClient, @unchecked Sendable {
+    struct Response {
+        var statusCode = 200
+        var data: Data
+    }
+
+    private let lock = NSLock()
+    private var handlers: [String: Response] = [:]
+    private var protectedRequests: [TestKitRequestRecord] = []
+
+    var requests: [TestKitRequestRecord] {
+        lock.withLock { protectedRequests }
+    }
+
+    func register(method: String, path: String, statusCode: Int = 200, data: Data) {
+        lock.withLock {
+            handlers["\(method) \(path)"] = Response(statusCode: statusCode, data: data)
+        }
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        let method = request.httpMethod ?? "GET"
+        let path = request.url?.path ?? "/"
+        let key = "\(method) \(path)"
+        let response = lock.withLock { handlers[key] } ?? Response(statusCode: 404, data: Data("missing mock".utf8))
+        lock.withLock {
+            protectedRequests.append(TestKitRequestRecord(method: method, path: path, body: request.httpBody ?? Data()))
+        }
+        let httpResponse = HTTPURLResponse(
+            url: request.url!,
+            statusCode: response.statusCode,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        return (response.data, httpResponse)
+    }
 }
 
 private final class TestKitURLProtocol: URLProtocol {

@@ -25,8 +25,7 @@ final class RuntimeBundleStagerTests: XCTestCase {
                     events.append("compressed-size:\(url.path)")
                     return 512
                 },
-                fileExists: { $0 == destination },
-                directoryExists: { _ in false },
+                destinationState: { $0 == destination ? .file : .missing },
                 createDirectory: { url, withIntermediateDirectories in
                     events.append("create:\(url.path):\(withIntermediateDirectories)")
                 },
@@ -79,8 +78,7 @@ final class RuntimeBundleStagerTests: XCTestCase {
             operations: RuntimeBundleStagingOperations(
                 directorySize: { _ in 0 },
                 compressedSourceSize: { _ in 0 },
-                fileExists: { $0 == destination },
-                directoryExists: { _ in false },
+                destinationState: { $0 == destination ? .directory : .missing },
                 createDirectory: { _, _ in },
                 removeItem: { _ in throw TestBundleStagerError.removeFailed },
                 copyItem: { _, _ in copied = true },
@@ -97,6 +95,58 @@ final class RuntimeBundleStagerTests: XCTestCase {
             XCTAssertEqual(error as? TestBundleStagerError, .removeFailed)
         }
         XCTAssertFalse(copied)
+    }
+
+    func testStageFailsBeforeFreeSpaceWhenDestinationInspectionFails() {
+        let source = URL(fileURLWithPath: "/input/update-bundle")
+        let bundle = URL(fileURLWithPath: "/tmp/update-bundle")
+        let bundlesDirectory = URL(fileURLWithPath: "/product/bundles")
+        let destination = bundlesDirectory.appendingPathComponent("update-bundle-1.2.3")
+        var events: [String] = []
+        let stager = RuntimeBundleStager(
+            context: RuntimeBundleStagingContext(
+                bundlesDirectory: bundlesDirectory,
+                updateFreeSpaceMarginBytes: 0
+            ),
+            operations: RuntimeBundleStagingOperations(
+                directorySize: { _ in
+                    events.append("directory-size")
+                    return 0
+                },
+                compressedSourceSize: { _ in
+                    events.append("compressed-size")
+                    return 0
+                },
+                destinationState: { url in
+                    url == destination ? .inspectFailed("permission denied") : .missing
+                },
+                createDirectory: { _, _ in
+                    events.append("create-directory")
+                },
+                removeItem: { _ in
+                    events.append("remove")
+                },
+                copyItem: { _, _ in
+                    events.append("copy")
+                },
+                requireFreeSpace: { _, _, _ in
+                    events.append("free-space")
+                },
+                log: { _ in }
+            )
+        )
+
+        XCTAssertThrowsError(try stager.stage(input: RuntimeBundleStagingInput(
+            sourceURL: source,
+            bundleURL: bundle,
+            manifestVersion: "1.2.3"
+        ))) { error in
+            XCTAssertEqual(
+                error as? RuntimeBundleStagingError,
+                .destinationInspectionFailed(path: destination.path, reason: "permission denied")
+            )
+        }
+        XCTAssertEqual(events, ["directory-size", "create-directory"])
     }
 }
 

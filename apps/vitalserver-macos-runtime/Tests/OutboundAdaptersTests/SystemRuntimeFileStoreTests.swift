@@ -13,14 +13,33 @@ final class SystemRuntimeFileStoreTests: XCTestCase {
         let store = SystemRuntimeFileStore()
 
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
         try Data("value".utf8).write(to: file)
 
         XCTAssertTrue(store.directoryExists(directory))
         XCTAssertFalse(store.fileExists(directory))
         XCTAssertTrue(store.fileExists(file))
         XCTAssertFalse(store.directoryExists(file))
+    }
 
-        try FileManager.default.removeItem(at: directory)
+    func testPathStateDistinguishesFileDirectoryAndMissingPath() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let file = directory.appendingPathComponent("value.txt")
+        let missing = directory.appendingPathComponent("missing.txt")
+        let store = SystemRuntimeFileStore()
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try Data("value".utf8).write(to: file)
+
+        XCTAssertEqual(store.pathState(at: file), .file)
+        XCTAssertEqual(store.pathState(at: directory), .directory)
+        XCTAssertEqual(store.pathState(at: missing), .missing)
     }
 
     func testReadsDataAndText() throws {
@@ -38,6 +57,28 @@ final class SystemRuntimeFileStoreTests: XCTestCase {
         XCTAssertGreaterThan(try store.modificationDate(file).timeIntervalSince1970, 0)
 
         try FileManager.default.removeItem(at: directory)
+    }
+
+    func testPartialReadPreservesExplicitEOFAsEmptyData() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let file = directory.appendingPathComponent("value.txt")
+        let emptyFile = directory.appendingPathComponent("empty.txt")
+        let store = SystemRuntimeFileStore()
+
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try Data("hello".utf8).write(to: file)
+        try Data().write(to: emptyFile)
+
+        XCTAssertEqual(try store.readData(file, offset: nil), Data("hello".utf8))
+        XCTAssertEqual(try store.readData(file, offset: 2), Data("llo".utf8))
+        XCTAssertEqual(try store.readData(file, offset: 5), Data())
+        XCTAssertEqual(try store.readData(file, offset: 10), Data())
+        XCTAssertEqual(try store.readData(emptyFile, offset: nil), Data())
+        XCTAssertEqual(try store.readData(emptyFile, offset: 0), Data())
     }
 
     func testFileSystemAttributesRequireExplicitFreeSize() throws {
@@ -186,5 +227,107 @@ final class SystemRuntimeFileStoreTests: XCTestCase {
         case .loaded, .unavailable:
             XCTFail("Expected failed storage usage result")
         }
+    }
+
+    func testStorageUsageReportsPathInspectionFailure() {
+        let provider = SystemRuntimeStorageUsageProvider(
+            fileStore: StubStorageUsageFileStore(pathStates: ["/runtime/data": .inspectFailed("permission denied")]),
+            loadCapacityValues: { _ in
+                RuntimeStorageCapacityValues(total: 100, availableForImportantUsage: 40, available: nil)
+            }
+        )
+
+        switch provider.storageUsage(for: "/runtime/data") {
+        case .failed(let message):
+            XCTAssertTrue(message.contains("storage path inspection failed"))
+            XCTAssertTrue(message.contains("permission denied"))
+        case .loaded, .unavailable:
+            XCTFail("Expected failed storage usage result")
+        }
+    }
+
+    func testStorageUsageReportsUnknownPathState() {
+        let provider = SystemRuntimeStorageUsageProvider(
+            fileStore: StubStorageUsageFileStore(pathStates: ["/runtime/data": .unknown("socket")]),
+            loadCapacityValues: { _ in
+                RuntimeStorageCapacityValues(total: 100, availableForImportantUsage: 40, available: nil)
+            }
+        )
+
+        switch provider.storageUsage(for: "/runtime/data") {
+        case .failed(let message):
+            XCTAssertTrue(message.contains("storage path state is unknown"))
+            XCTAssertTrue(message.contains("socket"))
+        case .loaded, .unavailable:
+            XCTFail("Expected failed storage usage result")
+        }
+    }
+}
+
+private struct StubStorageUsageFileStore: RuntimeFileStore {
+    let pathStates: [String: RuntimePathState]
+
+    var temporaryDirectory: URL {
+        URL(fileURLWithPath: "/tmp")
+    }
+
+    func fileExists(_ url: URL) -> Bool {
+        pathState(at: url) == .file
+    }
+
+    func directoryExists(_ url: URL) -> Bool {
+        pathState(at: url) == .directory
+    }
+
+    func isExecutableFile(atPath path: String) -> Bool {
+        false
+    }
+
+    func pathState(at url: URL) -> RuntimePathState {
+        pathStates[url.path] ?? .missing
+    }
+
+    func readData(_ url: URL) throws -> Data {
+        Data()
+    }
+
+    func readUTF8Text(_ url: URL) throws -> String {
+        ""
+    }
+
+    func fileSize(_ url: URL) throws -> UInt64 {
+        0
+    }
+
+    func modificationDate(_ url: URL) throws -> Date {
+        Date(timeIntervalSince1970: 0)
+    }
+
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {}
+
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {}
+
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {}
+
+    func removeItem(at url: URL) throws {}
+
+    func copyItem(at source: URL, to destination: URL) throws {}
+
+    func moveItem(at source: URL, to destination: URL) throws {}
+
+    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] {
+        []
+    }
+
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] {
+        []
+    }
+
+    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 {
+        0
+    }
+
+    func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
+        RuntimeFileSystemAttributes(freeBytes: 0)
     }
 }

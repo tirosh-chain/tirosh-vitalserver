@@ -60,17 +60,75 @@ final class GuestBootstrapEvaluatorTests: XCTestCase {
         )
     }
 
+    func testCurrentBootAssessmentRejectsBootstrapResultFromDifferentBoot() {
+        let assessment: GuestBootstrapAssessment = GuestBootstrapEvaluator.assessCurrentBoot(
+            .loaded(result(status: .failed, reasonCodes: [.guestBootstrapFailed], bootID: "old-boot")),
+            guestState: GuestRuntimeStateDocument(
+                vmIP: "192.168.64.2",
+                updatedAt: "2026-05-21T12:35:00Z",
+                bootID: "current-boot",
+                guestHTTP: "200",
+                redisUIHTTP: "200",
+                swaggerUIHTTP: "200"
+            ),
+            now: date("2026-05-21T12:35:00Z"),
+            graceSeconds: 60
+        )
+
+        XCTAssertEqual(assessment, GuestBootstrapAssessment.notCurrentBoot)
+    }
+
+    func testCurrentBootAssessmentAllowsFreshBootstrapResultWhenGuestBootIDIsMissing() {
+        let assessment: GuestBootstrapAssessment = GuestBootstrapEvaluator.assessCurrentBoot(
+            .loaded(result(status: .failed, reasonCodes: [.guestBootstrapFailed], bootID: "boot-1")),
+            guestState: GuestRuntimeStateDocument(
+                vmIP: "192.168.64.2",
+                updatedAt: "2026-05-21T12:35:00Z",
+                guestHTTP: "200",
+                redisUIHTTP: "200",
+                swaggerUIHTTP: "200"
+            ),
+            now: date("2026-05-21T12:35:00Z"),
+            graceSeconds: 60
+        )
+
+        XCTAssertEqual(assessment, GuestBootstrapAssessment.failed(.guestBootstrapFailed))
+    }
+
+    func testCurrentBootAssessmentRejectsStaleBootstrapResultWhenGuestBootIDIsMissing() {
+        let assessment: GuestBootstrapAssessment = GuestBootstrapEvaluator.assessCurrentBoot(
+            .loaded(result(status: .failed, reasonCodes: [.guestBootstrapFailed], bootID: "boot-1")),
+            guestState: GuestRuntimeStateDocument(
+                vmIP: "192.168.64.2",
+                updatedAt: "2026-05-21T12:35:00Z",
+                guestHTTP: "200",
+                redisUIHTTP: "200",
+                swaggerUIHTTP: "200"
+            ),
+            now: date("2026-05-21T12:40:00Z"),
+            graceSeconds: 60
+        )
+
+        XCTAssertEqual(assessment, GuestBootstrapAssessment.notCurrentBoot)
+    }
+
     private func result(
         status: GuestBootstrapStatus,
-        reasonCodes: [RuntimeFailureReason]?
+        reasonCodes: [RuntimeFailureReason]?,
+        bootID: String? = nil
     ) -> GuestBootstrapResultDocument {
         GuestBootstrapResultDocument(
             schemaVersion: 2,
+            bootID: bootID,
             operation: .unknown("bootstrap"),
             status: status,
             message: nil,
             reasonCodes: reasonCodes,
             updatedAt: "2026-05-21T12:34:57Z"
         )
+    }
+
+    private func date(_ value: String) -> Date {
+        ISO8601DateFormatter().date(from: value)!
     }
 }

@@ -20,16 +20,24 @@ public struct SystemRuntimeCommandRunner: RuntimeCommandRunner {
             process.waitUntilExit()
             let output = stdout.fileHandleForReading.readDataToEndOfFile()
             let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
+            let decodedOutput = decodeOutput(output, stream: .stdout)
+            let decodedErrorOutput = decodeOutput(errorOutput, stream: .stderr)
             return RuntimeProcessResult(
                 exitCode: process.terminationStatus,
-                stdout: String(data: output, encoding: .utf8) ?? "",
-                stderr: String(data: errorOutput, encoding: .utf8) ?? ""
+                stdout: decodedOutput.text,
+                stderr: decodedErrorOutput.text,
+                outputIssues: [decodedOutput.issue, decodedErrorOutput.issue].compactMap { $0 }
             )
         } catch {
+            let message = error.localizedDescription
             return RuntimeProcessResult(
                 exitCode: 127,
                 stdout: "",
-                stderr: error.localizedDescription
+                stderr: message,
+                executionIssue: RuntimeProcessExecutionIssue(
+                    kind: .processLaunchFailed,
+                    message: message
+                )
             )
         }
     }
@@ -37,13 +45,28 @@ public struct SystemRuntimeCommandRunner: RuntimeCommandRunner {
     public func runWritingOutput(_ executable: String, arguments: [String], output: URL) -> RuntimeProcessResult {
         let process = Process()
         let stderr = Pipe()
+        let outputHandle: FileHandle
 
         do {
             try Data().write(to: output)
-            let outputHandle = try FileHandle(forWritingTo: output)
-            defer {
-                try? outputHandle.close()
-            }
+            outputHandle = try FileHandle(forWritingTo: output)
+        } catch {
+            let message = error.localizedDescription
+            return RuntimeProcessResult(
+                exitCode: 127,
+                stdout: "",
+                stderr: message,
+                executionIssue: RuntimeProcessExecutionIssue(
+                    kind: .outputFilePreparationFailed,
+                    message: message
+                )
+            )
+        }
+        defer {
+            try? outputHandle.close()
+        }
+
+        do {
             process.executableURL = URL(fileURLWithPath: executable)
             process.arguments = arguments
             process.standardOutput = outputHandle
@@ -52,17 +75,43 @@ public struct SystemRuntimeCommandRunner: RuntimeCommandRunner {
             process.waitUntilExit()
 
             let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
+            let decodedErrorOutput = decodeOutput(errorOutput, stream: .stderr)
             return RuntimeProcessResult(
                 exitCode: process.terminationStatus,
                 stdout: "",
-                stderr: String(data: errorOutput, encoding: .utf8) ?? ""
+                stderr: decodedErrorOutput.text,
+                outputIssues: [decodedErrorOutput.issue].compactMap { $0 }
             )
         } catch {
+            let message = error.localizedDescription
             return RuntimeProcessResult(
                 exitCode: 127,
                 stdout: "",
-                stderr: error.localizedDescription
+                stderr: message,
+                executionIssue: RuntimeProcessExecutionIssue(
+                    kind: .processLaunchFailed,
+                    message: message
+                )
             )
         }
+    }
+
+    private func decodeOutput(
+        _ data: Data,
+        stream: RuntimeCommandOutputStream
+    ) -> (text: String, issue: RuntimeCommandOutputIssue?) {
+        guard !data.isEmpty else {
+            return ("", nil)
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            return (
+                "",
+                RuntimeCommandOutputIssue(
+                    stream: stream,
+                    message: "command \(stream.rawValue) is not valid UTF-8"
+                )
+            )
+        }
+        return (text, nil)
     }
 }

@@ -94,6 +94,9 @@ final class RuntimeHealthNotificationCoordinatorTests: XCTestCase {
         status.vmServiceLoaded = true
         status.proxyServiceLoaded = true
         status.watchdogServiceLoaded = true
+        status.vmServiceState = .loaded
+        status.proxyServiceState = .loaded
+        status.watchdogServiceState = .loaded
         status.runtimeState = RuntimeState.healthy
         status.vmIP = "192.0.2.10"
         status.guestHTTP = "200"

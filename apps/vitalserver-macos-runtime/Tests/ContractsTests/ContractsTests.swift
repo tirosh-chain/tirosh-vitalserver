@@ -4,6 +4,82 @@ import XCTest
 import Errors
 
 final class ContractsTests: XCTestCase {
+    func testRuntimeFileModifiedAtReadResultPreservesExplicitReadState() {
+        XCTAssertEqual(
+            RuntimeFileModifiedAtReadResult.notRead().readState,
+            .notRead
+        )
+        XCTAssertEqual(
+            RuntimeFileModifiedAtReadResult(updatedAt: "2026-06-08T00:00:00Z", readError: nil).readState,
+            .loaded
+        )
+        XCTAssertEqual(
+            RuntimeFileModifiedAtReadResult(updatedAt: nil, readError: "mtime-read-failed").readState,
+            .readFailed
+        )
+    }
+
+    func testRuntimeContainerObservationPreservesRuntimeStateFileMetadataReadState() throws {
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            runtimeStateFileMetadataReadState: .notRead,
+            containerLogsPresent: false,
+            containerLogsBytes: nil
+        )
+
+        let data = try JSONEncoder().encode(observation)
+        let decoded = try JSONDecoder().decode(RuntimeContainerObservation.self, from: data)
+
+        XCTAssertEqual(decoded.runtimeStateFileMetadataReadState, .notRead)
+        XCTAssertNil(decoded.runtimeStateFileUpdatedAt)
+        XCTAssertNil(decoded.runtimeStateFileMetadataError)
+    }
+
+    func testAuditProxyStatusReadResultPreservesExplicitReadState() {
+        XCTAssertEqual(
+            RuntimeAuditProxyStatusReadResult(
+                httpStatus: "200",
+                document: RuntimeAuditProxyStatusDocument(activeRecorderConnections: 1),
+                readError: nil
+            ).readState,
+            .loaded
+        )
+        XCTAssertEqual(
+            RuntimeAuditProxyStatusReadResult(
+                httpStatus: RuntimeHTTPStatusText.failed,
+                document: nil,
+                readError: "command-failed-7"
+            ).readState,
+            .commandFailed
+        )
+        XCTAssertEqual(
+            RuntimeAuditProxyStatusReadResult(
+                httpStatus: RuntimeHTTPStatusText.missingProxyPort,
+                document: nil,
+                readError: RuntimeHTTPStatusText.missingProxyPort
+            ).readState,
+            .skippedMissingProxyPort
+        )
+    }
+
+    func testRuntimeContainerObservationPreservesAuditProxyStatusReadState() throws {
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: RuntimeHTTPStatusText.failed,
+            auditProxyStatus: nil,
+            auditProxyStatusReadState: .commandFailed,
+            auditProxyStatusReadError: "command-failed-7",
+            containerLogsPresent: false,
+            containerLogsBytes: nil
+        )
+
+        let data = try JSONEncoder().encode(observation)
+        let decoded = try JSONDecoder().decode(RuntimeContainerObservation.self, from: data)
+
+        XCTAssertEqual(decoded.auditProxyStatusReadState, .commandFailed)
+        XCTAssertEqual(decoded.auditProxyStatusReadError, "command-failed-7")
+    }
+
     func testDecodesRuntimeStatusV1() throws {
         let document = try decodeFixture(RuntimeStatusDocument.self, named: "runtime-status-v1-healthy")
 
@@ -37,6 +113,46 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeOperation.repairServices.rawValue, "repair-services")
         XCTAssertEqual(RuntimeOperation(rawValue: "prepare-update-shutdown"), .prepareUpdateShutdown)
         XCTAssertEqual(RuntimeOperation.prepareUpdateShutdown.rawValue, "prepare-update-shutdown")
+    }
+
+    func testManagedRuntimeBackupManifestFactoryPreservesRootfsBackupMeaning() {
+        let withRootfs = BackupManifest.managedRuntimeBackup(
+            product: "ai.tirosh.vitalserver.helper",
+            createdAt: "2026-06-08T00:00:00Z",
+            reason: "before-0.1.4",
+            rootfsBaseName: "rootfs-base.raw.gz",
+            backsUpRootfsBase: true,
+            vmDiskName: "vm-disk.img"
+        )
+        let withoutRootfs = BackupManifest.managedRuntimeBackup(
+            product: "ai.tirosh.vitalserver.helper",
+            createdAt: "2026-06-08T00:00:00Z",
+            reason: "before-0.1.4",
+            rootfsBaseName: "rootfs-base.raw.gz",
+            backsUpRootfsBase: false,
+            vmDiskName: "vm-disk.img"
+        )
+
+        XCTAssertEqual(withRootfs.rootfsBase, "rootfs-base.raw.gz")
+        XCTAssertNil(withoutRootfs.rootfsBase)
+        XCTAssertEqual(withRootfs.vmDisk, "vm-disk.img")
+        XCTAssertTrue(withRootfs.vmDiskPreserved)
+        XCTAssertTrue(withoutRootfs.vmDiskPreserved)
+    }
+
+    func testManagedBackupArtifactContractMapsUpdateArtifactTypesAndBackupDirectoryNames() {
+        XCTAssertEqual(
+            RuntimeManagedBackupArtifact.allCases.map(\.updateArtifactType),
+            [.appBundle, .nginxBundle, .guestDeploy, .runtimeTools]
+        )
+        XCTAssertEqual(
+            RuntimeManagedBackupArtifact.directoryArtifacts.map(\.updateArtifactType),
+            [.appBundle, .nginxBundle, .guestDeploy]
+        )
+        XCTAssertEqual(RuntimeManagedBackupArtifact.appBundle.backupDirectoryName, "app-bundle")
+        XCTAssertEqual(RuntimeManagedBackupArtifact.nginxBundle.backupDirectoryName, "nginx-bundle")
+        XCTAssertEqual(RuntimeManagedBackupArtifact.guestDeploy.backupDirectoryName, "guest-deploy")
+        XCTAssertEqual(RuntimeManagedBackupArtifact.runtimeTools.backupDirectoryName, "runtime-tools")
     }
 
     func testVMLifecycleDocumentDecodesExplicitStateAndTerminalReason() throws {
@@ -184,8 +300,10 @@ final class ContractsTests: XCTestCase {
         let observation = try JSONDecoder().decode(RuntimeContainerObservation.self, from: Data(json.utf8))
 
         XCTAssertEqual(observation.auditProxyStatusReadError, "decode-failed")
+        XCTAssertEqual(observation.auditProxyStatusReadState, .invalidResponse)
         XCTAssertEqual(observation.runtimeStateFileMetadataError, "mtime-read-failed")
         XCTAssertEqual(observation.containerLogsMetadataError, "size-read-failed")
+        XCTAssertEqual(observation.composeServicesReadState, .invalid)
         XCTAssertEqual(observation.composeServices, [])
         XCTAssertEqual(observation.composeServicesReadError, "guest-runtime-state-invalid")
 
@@ -194,6 +312,29 @@ final class ContractsTests: XCTestCase {
             from: JSONEncoder().encode(observation)
         )
         XCTAssertEqual(encoded, observation)
+    }
+
+    func testRuntimeContainerObservationDistinguishesLoadedEmptyComposeServicesFromMissingState() throws {
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: false,
+            containerLogsBytes: nil,
+            composeServicesReadState: .loaded,
+            composeServices: []
+        )
+
+        XCTAssertEqual(observation.composeServicesReadState, .loaded)
+        XCTAssertEqual(observation.composeServices, [])
+        XCTAssertNil(observation.composeServicesReadError)
+
+        let encoded = try JSONDecoder().decode(
+            RuntimeContainerObservation.self,
+            from: JSONEncoder().encode(observation)
+        )
+        XCTAssertEqual(encoded.composeServicesReadState, .loaded)
+        XCTAssertEqual(encoded.composeServices, [])
+        XCTAssertNil(encoded.composeServicesReadError)
     }
 
     func testDecodesActivationResultV1() throws {
@@ -421,6 +562,7 @@ final class ContractsTests: XCTestCase {
           "vitaldb-observation-read-failed-decode_failed",
           "proxy-port-80-in-use-by-nginx-1234",
           "host-proxy-listener-scan-unavailable",
+          "host-proxy-listener-scan-inspection-failed-path=/usr/sbin/lsof reason=permission denied",
           "host-proxy-listener-scan-failed-port-80-exit-1",
           "guest-bootstrap-result-missing",
           "guest-bootstrap-result-unavailable",
@@ -444,11 +586,15 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(reasons[11], .vitalDBObservationReadFailed("decode_failed"))
         XCTAssertEqual(reasons[12], .proxyPortInUse(port: 80, listeners: "nginx-1234"))
         XCTAssertEqual(reasons[13], .hostProxyListenerScanUnavailable)
-        XCTAssertEqual(reasons[14], .hostProxyListenerScanFailed(port: 80, exitCode: 1))
-        XCTAssertEqual(reasons[15], .guestBootstrapResultMissing)
-        XCTAssertEqual(reasons[16], .guestBootstrapResultUnavailable)
-        XCTAssertEqual(reasons[17], .guestBootstrapMissingRuntimePackages)
-        XCTAssertEqual(reasons[18], .unknown("future-reason"))
+        XCTAssertEqual(
+            reasons[14],
+            .hostProxyListenerScanInspectionFailed("path=/usr/sbin/lsof reason=permission denied")
+        )
+        XCTAssertEqual(reasons[15], .hostProxyListenerScanFailed(port: 80, exitCode: 1))
+        XCTAssertEqual(reasons[16], .guestBootstrapResultMissing)
+        XCTAssertEqual(reasons[17], .guestBootstrapResultUnavailable)
+        XCTAssertEqual(reasons[18], .guestBootstrapMissingRuntimePackages)
+        XCTAssertEqual(reasons[19], .unknown("future-reason"))
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
@@ -467,6 +613,7 @@ final class ContractsTests: XCTestCase {
             "vitaldb-observation-read-failed-decode_failed",
             "proxy-port-80-in-use-by-nginx-1234",
             "host-proxy-listener-scan-unavailable",
+            "host-proxy-listener-scan-inspection-failed-path=/usr/sbin/lsof reason=permission denied",
             "host-proxy-listener-scan-failed-port-80-exit-1",
             "guest-bootstrap-result-missing",
             "guest-bootstrap-result-unavailable",
@@ -520,6 +667,10 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanUnavailable.domainCategory, .hostProxy)
         XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanUnavailable.domainSeverity, .warning)
         XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanUnavailable.recoveryAction, .inspectLogs)
+
+        XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanInspectionFailed("permission denied").domainCategory, .hostProxy)
+        XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanInspectionFailed("permission denied").domainSeverity, .warning)
+        XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanInspectionFailed("permission denied").recoveryAction, .inspectLogs)
 
         XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanFailed(port: 80, exitCode: 1).domainCategory, .hostProxy)
         XCTAssertEqual(RuntimeFailureReason.hostProxyListenerScanFailed(port: 80, exitCode: 1).domainSeverity, .warning)

@@ -8,9 +8,9 @@ final class RuntimeMigrationRunnerTests: XCTestCase {
     func testRunSkipsEmptyMigrationList() throws {
         var logs: [String] = []
         let runner = RuntimeMigrationRunner(
-            isExecutableFile: { _ in
+            executableState: { _ in
                 XCTFail("should not check executable files")
-                return false
+                return .missing
             },
             runRequired: { _, _ in XCTFail("should not run migrations") },
             log: { logs.append($0) }
@@ -25,9 +25,9 @@ final class RuntimeMigrationRunnerTests: XCTestCase {
         let stagedBundle = URL(fileURLWithPath: "/bundle")
         var events: [String] = []
         let runner = RuntimeMigrationRunner(
-            isExecutableFile: { path in
+            executableState: { path in
                 events.append("executable:\(path)")
-                return true
+                return .executable
             },
             runRequired: { path, arguments in
                 events.append("run:\(path):\(arguments.joined(separator: ","))")
@@ -52,7 +52,7 @@ final class RuntimeMigrationRunnerTests: XCTestCase {
 
     func testRunFailsWhenMigrationIsNotExecutable() {
         let runner = RuntimeMigrationRunner(
-            isExecutableFile: { _ in false },
+            executableState: { _ in .present },
             runRequired: { _, _ in XCTFail("should not run invalid migration") },
             log: { _ in }
         )
@@ -60,7 +60,27 @@ final class RuntimeMigrationRunnerTests: XCTestCase {
         XCTAssertThrowsError(try runner.run([
             UpdateBundleMigration(name: "001-refresh", sha256: "abc", size: 10),
         ], stagedBundle: URL(fileURLWithPath: "/bundle"))) { error in
-            XCTAssertEqual(String(describing: error), "bundle verification failed: migration is not executable: 001-refresh")
+            XCTAssertEqual(
+                String(describing: error),
+                "migration is not executable: /bundle/migrations/001-refresh state=present"
+            )
+        }
+    }
+
+    func testRunFailsWhenMigrationInspectionFails() {
+        let runner = RuntimeMigrationRunner(
+            executableState: { _ in .inspectFailed("permission denied") },
+            runRequired: { _, _ in XCTFail("should not run invalid migration") },
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try runner.run([
+            UpdateBundleMigration(name: "001-refresh", sha256: "abc", size: 10),
+        ], stagedBundle: URL(fileURLWithPath: "/bundle"))) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "migration path inspection failed: /bundle/migrations/001-refresh reason=permission denied"
+            )
         }
     }
 }

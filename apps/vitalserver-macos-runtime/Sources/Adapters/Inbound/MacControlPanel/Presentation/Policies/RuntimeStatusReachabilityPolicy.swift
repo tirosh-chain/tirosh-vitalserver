@@ -48,37 +48,4 @@ public struct RuntimeStatusReachabilityPolicy {
         }
         return isSuccessfulHTTPStatus(value) ? .healthy : .warning
     }
-
-    public func shouldDisplayOperationStateInsteadOfServiceState(_ state: RuntimeServiceState?) -> Bool {
-        switch state {
-        case .readFailed, .permissionDenied, .unknown:
-            return false
-        default:
-            return true
-        }
-    }
-
-    public func serviceStateSeverity(_ state: RuntimeServiceState) -> Severity {
-        switch state {
-        case .loaded:
-            return .healthy
-        case .notLoaded, .readFailed, .permissionDenied:
-            return .warning
-        case .unknown:
-            return .neutral
-        }
-    }
-
-    public func vmStateSeverity(_ value: RuntimeVMState?) -> Severity {
-        switch value {
-        case .running:
-            return .healthy
-        case .starting, .stale:
-            return .warning
-        case .notInstalled, .stopped, .unreachable, .failed:
-            return .critical
-        case .unknown, nil:
-            return .neutral
-        }
-    }
 }

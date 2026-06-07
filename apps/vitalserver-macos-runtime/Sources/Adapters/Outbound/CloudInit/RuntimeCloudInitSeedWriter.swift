@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import Errors
 
 public struct RuntimeCloudInitSeedContext {
@@ -34,8 +35,7 @@ public struct RuntimeCloudInitSeedImageBuildRequest: Equatable {
 }
 
 public struct RuntimeCloudInitSeedOperations {
-    public let directoryExists: (URL) -> Bool
-    public let fileExists: (URL) -> Bool
+    public let pathState: (URL) -> RuntimePathState
     public let removeItem: (URL) throws -> Void
     public let createDirectory: (URL, Bool) throws -> Void
     public let writeData: (Data, URL, Data.WritingOptions) throws -> Void
@@ -43,16 +43,14 @@ public struct RuntimeCloudInitSeedOperations {
     public let instanceID: () -> String
 
     public init(
-        directoryExists: @escaping (URL) -> Bool,
-        fileExists: @escaping (URL) -> Bool,
+        pathState: @escaping (URL) -> RuntimePathState,
         removeItem: @escaping (URL) throws -> Void,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         writeData: @escaping (Data, URL, Data.WritingOptions) throws -> Void,
         buildSeedImage: @escaping (RuntimeCloudInitSeedImageBuildRequest) throws -> Void,
         instanceID: @escaping () -> String
     ) {
-        self.directoryExists = directoryExists
-        self.fileExists = fileExists
+        self.pathState = pathState
         self.removeItem = removeItem
         self.createDirectory = createDirectory
         self.writeData = writeData
@@ -76,9 +74,7 @@ public struct RuntimeCloudInitSeedWriter {
     public func create(hostname: String, sshAuthorizedKeys: [String] = []) throws {
         let seedDir = context.runtimeDirectory.appendingPathComponent("cloud-init-seed")
         let seedISO = context.runtimeDirectory.appendingPathComponent(context.seedImageName)
-        if operations.directoryExists(seedDir) {
-            try operations.removeItem(seedDir)
-        }
+        try removePathIfPresent(seedDir)
         try operations.createDirectory(seedDir, true)
         try operations.writeData(metaData(hostname: hostname), seedDir.appendingPathComponent("meta-data"), .atomic)
         try operations.writeData(
@@ -87,9 +83,7 @@ public struct RuntimeCloudInitSeedWriter {
             .atomic
         )
 
-        if operations.fileExists(seedISO) {
-            try operations.removeItem(seedISO)
-        }
+        try removePathIfPresent(seedISO)
         try operations.buildSeedImage(
             RuntimeCloudInitSeedImageBuildRequest(
                 sourceDirectory: seedDir,
@@ -97,6 +91,19 @@ public struct RuntimeCloudInitSeedWriter {
                 volumeName: context.seedVolumeName
             )
         )
+    }
+
+    private func removePathIfPresent(_ url: URL) throws {
+        switch operations.pathState(url) {
+        case .file, .directory, .other:
+            try operations.removeItem(url)
+        case .missing:
+            return
+        case .inspectFailed(let reason):
+            throw RuntimeCloudInitSeedWriterError.pathInspectionFailed(path: url.path, reason: reason)
+        case .unknown(let value):
+            throw RuntimeCloudInitSeedWriterError.unexpectedPathState(path: url.path, state: value)
+        }
     }
 
     private func metaData(hostname: String) -> Data {

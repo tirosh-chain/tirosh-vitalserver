@@ -14,13 +14,15 @@ extension RuntimeLifecycle {
     }
 
     func materializeRuntimeUpdateBundle(_ bundleURL: URL) throws -> RuntimeMaterializedBundle {
-        try RuntimeBundleMaterializer(
+        let archiveValidator = ValidateUpdateBundleArchiveUseCase()
+        return try RuntimeBundleMaterializer(
             context: RuntimeBundleMaterializationContext(
                 tarExecutable: Constants.Commands.tar
             ),
             operations: RuntimeBundleMaterializationOperations(
-                directoryExists: directoryExists,
-                fileExists: fileExists,
+                pathState: { url in
+                    fileStore.pathState(at: url)
+                },
                 temporaryRoot: {
                     fileStore.temporaryDirectory
                         .appendingPathComponent("tirosh-update-bundle-\(UUID().uuidString)", isDirectory: true)
@@ -30,14 +32,26 @@ extension RuntimeLifecycle {
                 },
                 runProcess: runProcess,
                 runRequired: runRequired,
+                rootDirectory: archiveValidator.rootDirectory,
+                validateArchiveEntryTypes: archiveValidator.rejectUnsupportedEntryTypes,
                 missingFileError: { url in
                     LauncherError.missingFile(url.path)
                 },
                 invalidArchiveError: { url in
                     LauncherError.bundleVerificationFailed("invalid update bundle archive: \(url.path)")
                 },
+                pathInspectionError: { url, reason in
+                    LauncherError.runtimeOperationFailed(
+                        "update bundle path inspection failed: \(url.path) reason=\(reason)"
+                    )
+                },
+                unexpectedPathStateError: { url, state in
+                    LauncherError.runtimeOperationFailed(
+                        "update bundle path state is unexpected: \(url.path) state=\(state.rawValue)"
+                    )
+                },
                 archiveValidationError: { error in
-                    LauncherError.bundleVerificationFailed(error.description)
+                    LauncherError.bundleVerificationFailed(String(describing: error))
                 },
                 log: log
             )
@@ -53,8 +67,9 @@ extension RuntimeLifecycle {
             operations: RuntimeBundleStagingOperations(
                 directorySize: directorySize,
                 compressedSourceSize: compressedBundleSize,
-                fileExists: fileExists,
-                directoryExists: directoryExists,
+                destinationState: { url in
+                    fileStore.pathState(at: url)
+                },
                 createDirectory: { url, withIntermediateDirectories in
                     try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
                 },
@@ -77,7 +92,20 @@ extension RuntimeLifecycle {
     }
 
     private func compressedBundleSize(_ url: URL) throws -> UInt64 {
-        fileExists(url) ? try fileSize(url) : 0
+        switch fileStore.pathState(at: url) {
+        case .file:
+            return try fileSize(url)
+        case .missing:
+            return 0
+        case .inspectFailed(let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "compressed update bundle path inspection failed: \(url.path) reason=\(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw LauncherError.runtimeOperationFailed(
+                "compressed update bundle path state is unexpected: \(url.path) state=\(fileStore.pathState(at: url).rawValue)"
+            )
+        }
     }
 
     private func directorySize(_ url: URL) throws -> UInt64 {
@@ -90,7 +118,7 @@ extension RuntimeLifecycle {
 
     func runRuntimeUpdateMigrations(_ migrations: [UpdateBundleMigration], stagedBundle: URL) throws {
         try RuntimeMigrationRunner(
-            isExecutableFile: { path in fileStore.isExecutableFile(atPath: path) },
+            executableState: { path in fileStore.fileState(atPath: path) },
             runRequired: runRequired,
             log: log
         ).run(migrations, stagedBundle: stagedBundle)
@@ -101,7 +129,8 @@ extension RuntimeLifecycle {
     }
 
     private func runtimeArtifactReplacer() -> RuntimeArtifactReplacer {
-        RuntimeArtifactReplacer(
+        let archiveValidator = ValidateUpdateBundleArchiveUseCase()
+        return RuntimeArtifactReplacer(
             destinations: RuntimeArtifactReplacementDestinations(
                 managerApp: URL(fileURLWithPath: Constants.Product.managerAppPath),
                 nginxBundle: installedPaths.nginxDirectory,
@@ -109,19 +138,12 @@ extension RuntimeLifecycle {
                 runtimeTools: URL(fileURLWithPath: "/usr/local/bin")
             ),
             rules: RuntimeArtifactReplacementRules(
-                tarCommand: Constants.Commands.tar,
-                appBundleRoot: Constants.Product.managerAppName,
-                nginxBundleRoot: "nginx",
-                guestDeployRoot: "deploy",
-                runtimeToolsAllowedRootEntries: [
-                    "vitalserver-vm",
-                    "vitalserver-proxy-run",
-                    URL(fileURLWithPath: Constants.InstallPaths.uninstall).lastPathComponent,
-                ]
+                tarCommand: Constants.Commands.tar
             ),
             temporaryDirectory: fileStore.temporaryDirectory,
-            fileExists: fileExists,
-            directoryExists: directoryExists,
+            pathState: { url in
+                fileStore.pathState(at: url)
+            },
             fileSize: fileSize,
             createDirectory: { url, withIntermediateDirectories in
                 try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
@@ -131,13 +153,32 @@ extension RuntimeLifecycle {
             readUTF8Text: { url in try fileStore.readUTF8Text(url) },
             runRequired: runRequired,
             runProcessToFile: runProcessToFile,
+            validateArchiveEntries: archiveValidator.validateArtifactArchiveEntries,
+            validateArchiveEntryTypes: archiveValidator.rejectUnsupportedEntryTypes,
+            archiveValidationFailureMessage: { error, source in
+                archiveValidator.artifactArchiveValidationFailureMessage(
+                    error,
+                    archiveName: source.lastPathComponent
+                )
+            },
             log: log
         )
     }
 
     func resizeVMDiskIfNeeded(diskGiB: Int) throws {
-        guard fileExists(vmDisk) else {
+        switch fileStore.pathState(at: vmDisk) {
+        case .file:
+            break
+        case .missing:
             throw LauncherError.missingFile(vmDisk.path)
+        case .inspectFailed(let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "VM disk path inspection failed: \(vmDisk.path) reason=\(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw LauncherError.runtimeOperationFailed(
+                "VM disk path state is unexpected: \(vmDisk.path) state=\(fileStore.pathState(at: vmDisk).rawValue)"
+            )
         }
         let bytesPerGiB: UInt64 = 1024 * 1024 * 1024
         let currentGiB = Int((try fileSize(vmDisk) + bytesPerGiB - 1) / bytesPerGiB)

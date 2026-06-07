@@ -2,7 +2,6 @@ import Foundation
 import RuntimeControl
 import Application
 import Contracts
-import Domain
 import Errors
 
 struct RuntimePaths {

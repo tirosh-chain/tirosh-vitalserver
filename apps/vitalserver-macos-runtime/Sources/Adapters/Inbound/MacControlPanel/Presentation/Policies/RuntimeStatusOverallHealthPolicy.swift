@@ -1,4 +1,5 @@
 import RuntimeControl
+import Contracts
 import Errors
 
 public protocol RuntimeStatusOverallHealthVocabulary {
@@ -12,6 +13,7 @@ public protocol RuntimeStatusOverallHealthVocabulary {
     var unknownText: String { get }
 
     func runtimeLifecycleText(_ value: String) -> String
+    func installStateText(_ state: RuntimeFileState) -> String
 }
 
 public enum RuntimeStatusOverallHealthSeverity: Equatable, Sendable {
@@ -51,8 +53,12 @@ public struct RuntimeStatusOverallHealthPolicy {
         if RuntimeReadinessPolicy.isReady(status) {
             return value(vocabulary.healthyText, .healthy)
         }
-        if !status.runtimeInstalled {
+        let installationState = status.effectiveRuntimeInstallationState
+        if installationState == .missing {
             return value(vocabulary.notInstalledText, .critical)
+        }
+        if !installationState.isExecutable {
+            return value(vocabulary.installStateText(installationState), .critical)
         }
         switch status.runtimeState {
         case .some(.installing):

@@ -20,9 +20,9 @@ final class RuntimeChaosScenarioTests: XCTestCase {
             logCollector: collector
         )
 
-        let logText = reader.logText(sourceID: RuntimeLogSource.command, helperMessage: "Ready", lineLimit: 2)
+        let logResult = reader.logTextResult(sourceID: RuntimeLogSource.command, lineLimit: 2)
 
-        XCTAssertEqual(logText, "second\nthird")
+        XCTAssertEqual(logResult, .loaded("second\nthird"))
         XCTAssertEqual(collector.sourceIDs, [])
         XCTAssertEqual(collector.refreshCount, 0)
     }
@@ -217,21 +217,20 @@ final class RuntimeChaosScenarioTests: XCTestCase {
     }
 
     func testSettingsPermissionChaosDoesNotSurfaceSecretRuntimeConfigAsRequiredReadModel() {
-        let secretConfig = URL(fileURLWithPath: "/product/vm/data/deploy/runtime-config.json")
         let reader = SystemRuntimeSettingsReader(
             paths: RuntimeSettingsPaths(
                 vmConfig: "/missing/vm-config.json",
                 vmDisk: "/missing/vm-disk.img",
                 guestRuntimeSettings: "/missing/runtime-settings.json",
-                guestRuntimeConfig: secretConfig.path,
                 proxyLaunchDaemon: "/missing/proxy.plist"
             ),
-            fileStore: ChaosPermissionFileStore(secretConfig: secretConfig)
+            fileStore: ChaosPermissionFileStore()
         )
 
         let settings = reader.load()
 
         XCTAssertFalse(settings.readIssues.contains { $0.source == "guestRuntimeConfig" })
+        XCTAssertTrue(settings.readIssues.contains { $0.source == "guestRuntimeSettings" })
         XCTAssertEqual(settings.publicHost, RuntimeSettings().publicHost)
         XCTAssertEqual(settings.publicPort, RuntimeSettings().publicPort)
     }
@@ -390,15 +389,15 @@ private struct ChaosActionEnvironment: RuntimeActionEnvironment {
         self.executablePaths = executablePaths
     }
 
-    func isExecutable(atPath path: String) -> Bool {
-        executablePaths.contains(path)
+    func executableState(atPath path: String) -> RuntimeFileState {
+        executablePaths.contains(path) ? .executable : .missing
     }
 
     func writeAdminPasswordFile(_ password: String) throws -> URL {
         URL(fileURLWithPath: "/tmp/admin-password")
     }
 
-    func removeItem(at url: URL) {}
+    func removeItem(at url: URL) throws {}
 
     func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")

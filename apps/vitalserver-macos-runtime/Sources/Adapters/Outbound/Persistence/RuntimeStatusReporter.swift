@@ -1,7 +1,6 @@
 import Foundation
 import Application
 import Contracts
-import Domain
 import Errors
 
 public struct RuntimeStatusReporter {
@@ -9,32 +8,27 @@ public struct RuntimeStatusReporter {
     private let productIdentifier: String
     private let productRoot: URL
     private let runtimeHome: URL
+    private let makeStatusDocument: (RuntimeStatusDocumentBuildInput) -> RuntimeStatusDocument
+    private let makeProgressDocument: (RuntimeStatusProgressUpdateInput) -> RuntimeStatusDocument
 
     public init(
         repository: RuntimeStatusRepository,
         productIdentifier: String,
         productRoot: URL,
-        runtimeHome: URL
+        runtimeHome: URL,
+        makeStatusDocument: @escaping (RuntimeStatusDocumentBuildInput) -> RuntimeStatusDocument,
+        makeProgressDocument: @escaping (RuntimeStatusProgressUpdateInput) -> RuntimeStatusDocument
     ) {
         self.repository = repository
         self.productIdentifier = productIdentifier
         self.productRoot = productRoot
         self.runtimeHome = runtimeHome
-    }
-
-    public func statusValue() -> String? {
-        loadStatus()?.status.rawValue
+        self.makeStatusDocument = makeStatusDocument
+        self.makeProgressDocument = makeProgressDocument
     }
 
     public func loadStatusResult() -> RuntimeStatusDocumentLoadResult {
         repository.loadResult()
-    }
-
-    public func loadStatus() -> RuntimeStatusDocument? {
-        guard case .loaded(let document) = repository.loadResult() else {
-            return nil
-        }
-        return document
     }
 
     public func writeStatus(
@@ -47,7 +41,7 @@ public struct RuntimeStatusReporter {
         latestBackup: URL?,
         progress: RuntimeProgressDocument? = nil
     ) throws {
-        let document = RuntimeStatusDocumentBuilder.build(RuntimeStatusDocumentInput(
+        let document = makeStatusDocument(RuntimeStatusDocumentBuildInput(
             product: productIdentifier,
             status: status,
             operation: operation,
@@ -84,45 +78,19 @@ public struct RuntimeStatusReporter {
         case .failed(let message):
             throw RuntimeStatusReporterError.statusDocumentReadFailed(message)
         }
-        let document = RuntimeStatusDocument(
-            schemaVersion: current.schemaVersion,
-            product: current.product,
+        let document = makeProgressDocument(RuntimeStatusProgressUpdateInput(
+            current: current,
             status: status,
             operation: operation,
+            step: step,
+            stepStatus: stepStatus,
+            phase: phase,
             message: message,
+            reasonCodes: reasonCodes,
             updatedAt: updatedAt,
-            productRoot: current.productRoot,
-            runtimeHome: current.runtimeHome,
             runtimeVersion: runtimeVersion,
-            vmService: current.vmService,
-            proxyService: current.proxyService,
-            watchdogService: current.watchdogService,
-            vmState: current.vmState,
-            vmErrors: current.vmErrors,
-            vmIP: current.vmIP,
-            proxyPort: current.proxyPort,
-            hostProxyHTTP: current.hostProxyHTTP,
-            guestHTTP: current.guestHTTP,
-            redisUIHTTP: current.redisUIHTTP,
-            swaggerUIHTTP: current.swaggerUIHTTP,
-            rootfsBase: current.rootfsBase,
-            vmDisk: current.vmDisk,
-            failureReasons: current.failureReasons,
-            domainErrors: current.domainErrors,
-            latestBackup: latestBackup?.path ?? current.latestBackup,
-            progress: RuntimeProgressDocument(
-                operation: operation,
-                phase: phase,
-                step: step,
-                stepStatus: stepStatus,
-                message: message,
-                reasonCodes: reasonCodes,
-                startedAt: nil,
-                updatedAt: updatedAt
-            ),
-            containerObservation: current.containerObservation,
-            vitalDBObservation: current.vitalDBObservation
-        )
+            latestBackup: latestBackup?.path
+        ))
         try repository.save(document)
     }
 }

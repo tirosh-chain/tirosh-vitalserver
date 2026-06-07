@@ -2,7 +2,6 @@ import Foundation
 import Contracts
 import RuntimeControl
 import Application
-import Domain
 import Errors
 
 @MainActor
@@ -105,19 +104,19 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try fileReader.redisBackups()
     }
 
-    public func updateBundleSummary(url: URL) -> String {
-        fileReader.updateBundleSummary(url: url)
+    public func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
+        fileReader.updateBundleSummaryResult(url: url)
     }
 
-    public func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
-        fileReader.logText(sourceID: sourceID, helperMessage: helperMessage, lineLimit: lineLimit)
+    public func logTextResult(sourceID: RuntimeLogSource, lineLimit: Int) -> RuntimeHostTextReadResult {
+        fileReader.logTextResult(sourceID: sourceID, lineLimit: lineLimit)
     }
 
-    public func loadLogText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) async -> String {
-        await Task.detached(priority: .utility) {
-            SystemRuntimeHostFileReader().logText(
+    public func loadLogTextResult(sourceID: RuntimeLogSource, lineLimit: Int) async -> RuntimeHostTextReadResult {
+        let fileReader = fileReader
+        return await Task.detached(priority: .utility) {
+            fileReader.logTextResult(
                 sourceID: sourceID,
-                helperMessage: helperMessage,
                 lineLimit: lineLimit
             )
         }.value
@@ -202,4 +201,3 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     }
 
 }
-

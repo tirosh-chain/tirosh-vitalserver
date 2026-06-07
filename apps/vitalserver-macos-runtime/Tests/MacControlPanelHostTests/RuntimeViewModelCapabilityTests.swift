@@ -11,6 +11,72 @@ import Errors
 
 @MainActor
 final class RuntimeViewModelCapabilityTests: XCTestCase {
+    func testViewModelInitializesStatusFromExplicitControlClientRead() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.status = RuntimeStatus(runtimeInstalled: true, statusMessage: "initial status")
+
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(client.loadStatusCount, 1)
+        XCTAssertEqual(viewModel.status.statusMessage, "initial status")
+        XCTAssertTrue(viewModel.status.runtimeInstalled)
+    }
+
+    func testViewModelInitialSettingsResolutionReadsControlSettingsOnceBeforeLocalPortOverride() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.settings.runtimeControlPort = 44080
+        let localAPISettings = FakeLocalAPISettings(runtimeControlPort: 55080)
+
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            localAPISettings: localAPISettings,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(client.loadSettingsCount, 1)
+        XCTAssertEqual(viewModel.settings.runtimeControlPort, 55080)
+        XCTAssertEqual(localAPISettings.settingsWithLocalAPIPortCount, 1)
+    }
+
+    func testViewModelInitialSettingsUsesExplicitInputWithoutControlSettingsRead() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var initialSettings = RuntimeSettings()
+        initialSettings.runtimeControlPort = 44080
+        let localAPISettings = FakeLocalAPISettings(runtimeControlPort: 55080)
+
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            initialSettings: initialSettings,
+            localAPISettings: localAPISettings,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(client.loadSettingsCount, 0)
+        XCTAssertEqual(viewModel.settings.runtimeControlPort, 55080)
+        XCTAssertEqual(localAPISettings.settingsWithLocalAPIPortCount, 1)
+    }
+
+    func testViewModelUsesExplicitInitialStatusWithoutPlaceholderRead() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            initialStatus: RuntimeStatus(runtimeInstalled: true, statusMessage: "provided"),
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(client.loadStatusCount, 0)
+        XCTAssertEqual(viewModel.status.statusMessage, "provided")
+        XCTAssertTrue(viewModel.status.runtimeInstalled)
+    }
+
     func testRestrictedClientPreventsLocalOnlyOperations() async {
         let client = FakeRuntimeClient(capabilities: .restricted)
         let nativeShell = FakeRuntimeNativeShell()
@@ -72,6 +138,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         let client = FakeRuntimeClient(capabilities: capabilities)
         let viewModel = RuntimeViewModel(controlClient: client, hostClient: client, healthNotifications: NoopHealthNotifications())
         viewModel.logStreaming = false
+        client.loadStatusCount = 0
 
         await viewModel.refresh()
 
@@ -79,6 +146,54 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.loadStatusCount, 1)
         XCTAssertEqual(client.loadBackupsCount, 1)
         XCTAssertEqual(viewModel.releaseInfo, .generated)
+        XCTAssertNil(viewModel.releaseInfoErrorMessage)
+    }
+
+    func testRefreshPreservesReleaseMetadataReadFailureInsteadOfSilentGeneratedFallback() async {
+        var capabilities = RuntimeControlCapabilities()
+        capabilities.canViewReleaseMetadata = true
+        let client = FakeRuntimeClient(capabilities: capabilities)
+        client.releaseInfoLoadError = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "release metadata denied"]
+        )
+        let viewModel = RuntimeViewModel(controlClient: client, hostClient: client, healthNotifications: NoopHealthNotifications())
+        viewModel.logStreaming = false
+
+        await viewModel.refresh()
+
+        XCTAssertEqual(client.loadReleaseInfoCount, 1)
+        XCTAssertEqual(viewModel.releaseInfo, .generated)
+        XCTAssertEqual(
+            viewModel.releaseInfoErrorMessage,
+            AppConstants.StatusText.releaseMetadataLoadFailed("release metadata denied")
+        )
+    }
+
+    func testBackupRefreshFailurePreservesLastKnownBackupListAndSelection() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.backupsToLoad = [RuntimeBackup(path: "/backups/20260608-before-0.1.12", sizeBytes: 1024)]
+        let viewModel = RuntimeViewModel(controlClient: client, hostClient: client, healthNotifications: NoopHealthNotifications())
+
+        await viewModel.refreshBackupList()
+        XCTAssertEqual(viewModel.backups.map(\.path), ["/backups/20260608-before-0.1.12"])
+        XCTAssertEqual(viewModel.selectedBackupPath, "/backups/20260608-before-0.1.12")
+
+        client.backupLoadError = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "backup directory denied"]
+        )
+
+        await viewModel.refreshBackupList()
+
+        XCTAssertEqual(viewModel.backups.map(\.path), ["/backups/20260608-before-0.1.12"])
+        XCTAssertEqual(viewModel.selectedBackupPath, "/backups/20260608-before-0.1.12")
+        XCTAssertEqual(
+            viewModel.backupListErrorMessage,
+            AppConstants.StatusText.backupListLoadFailed("backup directory denied")
+        )
     }
 
     func testNativeShellProvidesDirectorySelectionWithoutLeakingPanelDetailsToController() {
@@ -153,7 +268,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.settings.publicPort, 8080)
     }
 
-    func testApplySettingsRejectsClearedAdvertisedServiceURLs() {
+    func testApplySettingsRejectsMissingAdvertisedServiceURLsWithoutViewModelDefaulting() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let viewModel = RuntimeViewModel(
             controlClient: client,
@@ -161,10 +276,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             healthNotifications: NoopHealthNotifications()
         )
 
-        XCTAssertEqual(viewModel.settings.vitalServerURL, "http://127.0.0.1:80/")
-        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "http://127.0.0.1:18321/")
-
-        viewModel.settings.vitalServerURL = ""
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "")
+        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "")
 
         XCTAssertFalse(viewModel.prepareApplySettings())
         XCTAssertEqual(viewModel.message, AppConstants.StatusText.invalidAdvertisedURL)
@@ -241,12 +354,35 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             URL(fileURLWithPath: "/runtime/data/backups/redis"),
         ])
         XCTAssertEqual(nativeShell.openedWebURLs, [
-            URL(string: AppConstants.Product.vitalServerURL(proxyPort: viewModel.status.proxyPort)),
             URL(string: RuntimeControlLocalAPIConstants.pwaURL),
             URL(string: AppConstants.Product.vitalDBURL),
         ])
         XCTAssertEqual(nativeShell.chooseLogExportDestinationPrompts, [AppConstants.Actions.exportLogs])
         XCTAssertEqual(client.exportLogDestinationURLs, [exportURL])
+    }
+
+    func testExportLogsReportsCleanupIssueFromHostResult() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        let exportURL = URL(fileURLWithPath: "/tmp/vitalserver-logs.zip")
+        nativeShell.logExportDestinationURL = exportURL
+        client.exportLogsResult = RuntimeLogExportResult(
+            destination: exportURL,
+            cleanupIssue: "staging cleanup failed path=/tmp/staging reason=cleanup denied"
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        await viewModel.exportLogs()
+
+        XCTAssertEqual(client.exportLogDestinationURLs, [exportURL])
+        XCTAssertTrue(viewModel.message.contains(AppConstants.StatusText.logExportCompleted))
+        XCTAssertTrue(viewModel.message.contains(exportURL.path))
+        XCTAssertTrue(viewModel.message.contains("staging cleanup failed path=/tmp/staging"))
     }
 
     func testExportLogsRejectsProtectedDestinationBeforeCommandRuns() async {
@@ -307,6 +443,22 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertTrue(nativeShell.openedFileURLs.isEmpty)
     }
 
+    func testOpenExternalURLReportsInvalidURL() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        viewModel.openExternalURL("vitaldb.tirosh.ai")
+
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.invalidRuntimeURL)
+        XCTAssertEqual(nativeShell.openedWebURLs, [])
+    }
+
     func testViewModelCanUseSeparateControlAndHostClients() async {
         let controlClient = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let hostClient = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
@@ -318,6 +470,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             healthNotifications: NoopHealthNotifications(),
             nativeShell: nativeShell
         )
+        controlClient.loadStatusCount = 0
 
         viewModel.chooseVitalFilesDirectory()
         await viewModel.refresh()
@@ -513,6 +666,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             viewModel.testKitActionMessage,
             RuntimeTestPanelText.stopSessionsBeforeResettingBeds
         )
+        XCTAssertEqual(viewModel.testKitActionMessageTone, .failure)
     }
 
     func testTestKitDeletesSelectedInactiveBed() async {
@@ -593,6 +747,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(testKit.resetBedsCount, 1)
         XCTAssertEqual(viewModel.testKitStatus.beds.map(\.roomName), ["ICU-1", "ICU-2"])
         XCTAssertEqual(viewModel.selectedTestKitBedCount, 2)
+        XCTAssertEqual(viewModel.testKitActionMessageTone, .neutral)
     }
 
     func testTestKitActionsReportUnavailableOrInvalidInputs() async {
@@ -614,6 +769,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
         XCTAssertEqual(viewModel.testKitStatus.state, .disabled)
         XCTAssertEqual(viewModel.testKitActionMessage, RuntimeTestPanelText.testKitUnavailable)
+        XCTAssertEqual(viewModel.testKitActionMessageTone, .failure)
 
         let testKit = FakeTestKitController()
         let controlled = RuntimeViewModel(
@@ -625,6 +781,65 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await controlled.deleteOrphanVirtualRecorder()
 
         XCTAssertEqual(controlled.testKitActionMessage, RuntimeTestPanelText.missingVrcode)
+        XCTAssertEqual(controlled.testKitActionMessageTone, .failure)
+    }
+
+    func testTestKitSessionActionsRequirePresentationSelectedSession() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.pauseVirtualRecorderSession(sessionID: nil)
+        await viewModel.deleteVirtualRecorderSession(sessionID: "   ")
+
+        XCTAssertEqual(viewModel.testKitActionMessage, RuntimeTestPanelText.noActiveSession)
+        XCTAssertEqual(viewModel.testKitActionMessageTone, .failure)
+        XCTAssertTrue(testKit.pausedSessionIDs.isEmpty)
+        XCTAssertTrue(testKit.deletedSessionIDs.isEmpty)
+    }
+
+    func testTestKitActionFailurePreservesExplicitControllerStatus() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        testKit.startError = NSError(
+            domain: "RuntimeViewModelCapabilityTests",
+            code: 10,
+            userInfo: [NSLocalizedDescriptionKey: "start denied"]
+        )
+        testKit.status = RuntimeTestKitStatus(
+            enabled: true,
+            state: .failed,
+            beds: [RuntimeTestKitBed(roomName: "OR-A", bedID: "bed-a")],
+            lastError: "controller reports failed state",
+            readIssues: [
+                RuntimeTestKitReadIssue(source: "testkitAPI", message: "status read degraded"),
+            ]
+        )
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.testKitStatus = testKit.status
+        viewModel.setTestKitBedSelection("OR-A", selected: true)
+
+        await viewModel.startVirtualRecorderSession()
+
+        XCTAssertEqual(viewModel.message, "start denied")
+        XCTAssertEqual(viewModel.testKitActionMessage, "start denied")
+        XCTAssertEqual(viewModel.testKitActionMessageTone, .failure)
+        XCTAssertEqual(viewModel.testKitStatus.state, .failed)
+        XCTAssertEqual(viewModel.testKitStatus.lastError, "controller reports failed state")
+        XCTAssertEqual(viewModel.testKitStatus.readIssues, [
+            RuntimeTestKitReadIssue(source: "testkitAPI", message: "status read degraded"),
+        ])
+        XCTAssertFalse(viewModel.isRunningTestKitAction)
     }
 
     func testRuntimePanelsRenderSmokeState() {
@@ -882,6 +1097,7 @@ private final class FakeTestKitController: RuntimeTestKitControlling {
     var resetBedsCount = 0
     var resetSessionsCount = 0
     var deletedBedRequests: [RuntimeTestKitDeleteBedsRequest] = []
+    var startError: Error?
     var stoppedSessionIDs: [String?] = []
     var pausedSessionIDs: [String?] = []
     var resumedSessionIDs: [String?] = []
@@ -919,6 +1135,9 @@ private final class FakeTestKitController: RuntimeTestKitControlling {
     }
 
     func startVirtualRecorders(_ request: RuntimeTestKitVirtualRecorderStartRequest) async throws -> RuntimeTestKitSession {
+        if let startError {
+            throw startError
+        }
         startedRequests.append(request)
         let session = testKitSession(
             id: "session-\(startedRequests.count)",
@@ -1008,6 +1227,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var runtimeEventQueries: [RuntimeEventQuery] = []
     var loadVitalDBRecordersCount = 0
     var loadBackupsCount = 0
+    var loadSettingsCount = 0
     var verifyUpdateBundleCount = 0
     var applySettingsCount = 0
     var applyUpdateBundleCount = 0
@@ -1025,6 +1245,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var preferredLogsPathCount = 0
     var verifiedBundleURLs: [URL] = []
     var exportLogDestinationURLs: [URL] = []
+    var exportLogsResult: RuntimeLogExportResult?
+    var releaseInfoLoadError: Error?
+    var backupLoadError: Error?
+    var backupsToLoad: [RuntimeBackup] = []
     var settings = RuntimeSettings()
     var status = RuntimeStatus()
     var healthStatus = RuntimeStatus()
@@ -1035,7 +1259,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     func loadSettings() -> RuntimeSettings {
-        settings
+        loadSettingsCount += 1
+        return settings
     }
 
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
@@ -1079,23 +1304,26 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup] {
         loadBackupsCount += 1
-        return []
+        if let backupLoadError {
+            throw backupLoadError
+        }
+        return backupsToLoad
     }
 
     func loadRedisBackups() throws -> [RuntimeBackup] {
         []
     }
 
-    func updateBundleSummary(url: URL) -> String {
-        "bundle: \(url.path)"
+    func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
+        .loaded("bundle: \(url.path)")
     }
 
-    func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
-        helperMessage
+    func logTextResult(sourceID: RuntimeLogSource, lineLimit: Int) -> RuntimeHostTextReadResult {
+        .loaded("log:\(sourceID.rawValue):\(lineLimit)")
     }
 
-    func loadLogText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) async -> String {
-        logText(sourceID: sourceID, helperMessage: helperMessage, lineLimit: lineLimit)
+    func loadLogTextResult(sourceID: RuntimeLogSource, lineLimit: Int) async -> RuntimeHostTextReadResult {
+        logTextResult(sourceID: sourceID, lineLimit: lineLimit)
     }
 
     func preferredLogsPath() -> String {
@@ -1175,11 +1403,14 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
         exportLogsCount += 1
         exportLogDestinationURLs.append(destination)
-        return RuntimeLogExportResult(destination: destination)
+        return exportLogsResult ?? RuntimeLogExportResult(destination: destination)
     }
 
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
         loadReleaseInfoCount += 1
+        if let releaseInfoLoadError {
+            throw releaseInfoLoadError
+        }
         return RuntimeReleaseInfo(
             helperVersion: "test",
             minimumUpdaterVersion: "test",
@@ -1198,6 +1429,33 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     private func success() -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+}
+
+@MainActor
+private final class FakeLocalAPISettings: RuntimeControlLocalAPISettingsApplying {
+    let runtimeControlPort: Int
+    var settingsWithLocalAPIPortCount = 0
+    var applySettings: [RuntimeSettings] = []
+    var appliedPorts: [Int] = []
+
+    init(runtimeControlPort: Int) {
+        self.runtimeControlPort = runtimeControlPort
+    }
+
+    func settingsWithLocalAPIPort(_ settings: RuntimeSettings) -> RuntimeSettings {
+        settingsWithLocalAPIPortCount += 1
+        var next = settings
+        next.runtimeControlPort = runtimeControlPort
+        return next
+    }
+
+    func apply(settings: RuntimeSettings) {
+        applySettings.append(settings)
+    }
+
+    func apply(port: Int) {
+        appliedPorts.append(port)
     }
 }
 
@@ -1250,8 +1508,11 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
         logExportDestinationValidationMessages[url.path]
     }
 
-    func directoryExists(_ url: URL) -> Bool {
-        existingDirectories?.contains(url.path) ?? true
+    func pathState(_ url: URL) -> RuntimePathState {
+        guard let existingDirectories else {
+            return .directory
+        }
+        return existingDirectories.contains(url.path) ? .directory : .missing
     }
 
     func confirmCreateDirectory(path: String) -> Bool {

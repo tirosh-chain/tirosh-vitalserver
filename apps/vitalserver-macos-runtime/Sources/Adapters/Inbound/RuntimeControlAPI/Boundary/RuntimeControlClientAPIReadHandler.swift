@@ -59,12 +59,13 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         guard let hostClient else {
             throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
         }
+        let textResult = await hostClient.loadLogTextResult(
+            sourceID: request.source,
+            lineLimit: request.lineLimit
+        )
         return RuntimeLogTextResponse(
-            text: await hostClient.loadLogText(
-                sourceID: request.source,
-                helperMessage: request.helperMessage ?? "",
-                lineLimit: request.lineLimit
-            )
+            text: RuntimeHostTextDisplayPolicy(noDataText: AppConstants.StatusText.noLogData)
+                .displayText(textResult)
         )
     }
 
@@ -120,7 +121,11 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         guard let hostClient else {
             throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
         }
-        return RuntimeUpdateBundleSummaryResponse(summary: hostClient.updateBundleSummary(url: try localFileURL(bundle)))
+        let summary = hostClient.updateBundleSummaryResult(url: try localFileURL(bundle))
+        return RuntimeUpdateBundleSummaryResponse(
+            summary: RuntimeHostTextDisplayPolicy(noDataText: AppConstants.StatusText.notReported)
+                .displayText(summary)
+        )
     }
 
     public func verifyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {

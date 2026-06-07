@@ -43,7 +43,7 @@ public struct RuntimeLogRotator {
 
         for fileName in configuration.fileNames {
             let logFile = logsDirectory.appendingPathComponent(fileName)
-            guard fileStore.fileExists(logFile),
+            guard try expectedLogFileIsPresent(logFile),
                   try fileStore.fileSize(logFile) >= configuration.maxBytes
             else {
                 continue
@@ -52,21 +52,35 @@ public struct RuntimeLogRotator {
             for index in stride(from: configuration.keepCount - 1, through: 1, by: -1) {
                 let source = logsDirectory.appendingPathComponent("\(fileName).\(index)")
                 let destination = logsDirectory.appendingPathComponent("\(fileName).\(index + 1)")
-                if fileStore.fileExists(destination) {
+                if try expectedLogFileIsPresent(destination) {
                     try fileStore.removeItem(at: destination)
                 }
-                if fileStore.fileExists(source) {
+                if try expectedLogFileIsPresent(source) {
                     try fileStore.moveItem(at: source, to: destination)
                 }
             }
 
             let rotated = logsDirectory.appendingPathComponent("\(fileName).1")
-            if fileStore.fileExists(rotated) {
+            if try expectedLogFileIsPresent(rotated) {
                 try fileStore.removeItem(at: rotated)
             }
             try fileStore.moveItem(at: logFile, to: rotated)
             try fileStore.writeData(Data(), to: logFile, options: [])
             log("rotated log file=\(logFile.path)")
+        }
+    }
+
+    private func expectedLogFileIsPresent(_ url: URL) throws -> Bool {
+        let state = fileStore.pathState(at: url)
+        switch state {
+        case .file:
+            return true
+        case .missing:
+            return false
+        case .inspectFailed(let reason):
+            throw RuntimeLogRotatorError.pathInspectionFailed(path: url.path, reason: reason)
+        case .directory, .other, .unknown:
+            throw RuntimeLogRotatorError.unexpectedPathState(path: url.path, state: state.rawValue)
         }
     }
 }

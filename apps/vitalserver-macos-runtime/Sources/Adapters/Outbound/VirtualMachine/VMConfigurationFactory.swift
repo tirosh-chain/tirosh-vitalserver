@@ -54,6 +54,7 @@ public final class VMConfigurationFactory {
         var storageDevices: [VZVirtioBlockDeviceConfiguration] = []
 
         if let diskPath = config.diskPath, !diskPath.isEmpty {
+            try validateStoragePath(diskPath)
             let attachment = try VZDiskImageStorageDeviceAttachment(
                 url: URL(fileURLWithPath: diskPath),
                 readOnly: false
@@ -62,8 +63,8 @@ public final class VMConfigurationFactory {
         }
 
         if let cloudInitPath = config.cloudInitPath,
-           !cloudInitPath.isEmpty,
-           fileStore.fileExists(URL(fileURLWithPath: cloudInitPath)) {
+           !cloudInitPath.isEmpty {
+            try validateStoragePath(cloudInitPath)
             let attachment = try VZDiskImageStorageDeviceAttachment(
                 url: URL(fileURLWithPath: cloudInitPath),
                 readOnly: true
@@ -72,6 +73,20 @@ public final class VMConfigurationFactory {
         }
 
         return storageDevices
+    }
+
+    private func validateStoragePath(_ path: String) throws {
+        let state = fileStore.pathState(at: URL(fileURLWithPath: path))
+        switch state {
+        case .file:
+            return
+        case .missing:
+            throw VMConfigurationFactoryError.missingStorageFile(path)
+        case .inspectFailed(let reason):
+            throw VMConfigurationFactoryError.storagePathInspectionFailed(path: path, reason: reason)
+        case .directory, .other, .unknown:
+            throw VMConfigurationFactoryError.unexpectedStoragePathState(path: path, state: state.rawValue)
+        }
     }
 
     // Attach the guest console to this CLI for the PoC.

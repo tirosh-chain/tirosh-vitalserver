@@ -4,7 +4,7 @@ import Errors
 
 extension RuntimeViewModel {
     var testKitCanStart: Bool {
-        testKitStatePolicy.canStart(
+        testKitPresentationPolicy.canStart(
             controllerAvailable: testKitController != nil,
             status: testKitStatus,
             isRunningAction: isRunningTestKitAction,
@@ -14,7 +14,7 @@ extension RuntimeViewModel {
     }
 
     var testKitCanStop: Bool {
-        testKitStatePolicy.canStop(
+        testKitPresentationPolicy.canStop(
             controllerAvailable: testKitController != nil,
             status: testKitStatus,
             isRunningAction: isRunningTestKitAction,
@@ -23,18 +23,33 @@ extension RuntimeViewModel {
     }
 
     var testKitCanResetBeds: Bool {
-        testKitStatePolicy.canResetBeds(
+        testKitPresentationPolicy.canResetBeds(
             status: testKitStatus,
             isRunningAction: isRunningTestKitAction
         )
     }
 
     func testKitCanDeleteBed(_ roomName: String) -> Bool {
-        testKitStatePolicy.canDeleteBed(
+        testKitPresentationPolicy.canDeleteBed(
             roomName,
             status: testKitStatus,
             isRunningAction: isRunningTestKitAction
         )
+    }
+
+    func testKitSessionControlState(_ session: RuntimeTestKitSession) -> RuntimeTestKitSessionControlState {
+        testKitPresentationPolicy.sessionControlState(session)
+    }
+
+    func testKitSessionIsRestartable(_ session: RuntimeTestKitSession) -> Bool {
+        testKitPresentationPolicy.sessionIsRestartable(
+            session,
+            selectedBedCount: selectedTestKitBedCount
+        )
+    }
+
+    func testKitRestartRequiredBedCount(_ session: RuntimeTestKitSession) -> Int {
+        testKitPresentationPolicy.restartRequiredBedCount(session)
     }
 
     var availableTestKitBedCount: Int {
@@ -46,16 +61,24 @@ extension RuntimeViewModel {
     }
 
     var selectedTestKitSession: RuntimeTestKitSession? {
-        testKitStatePolicy.selectedSession(
+        testKitPresentationPolicy.selectedSession(
             status: testKitStatus,
             selectedSessionID: selectedTestKitSessionID
         )
     }
 
+    func recordTestKitActionMessage(
+        _ value: String,
+        tone: RuntimeTestKitActionMessageTone = .neutral
+    ) {
+        testKitActionMessage = value
+        testKitActionMessageTone = tone
+    }
+
     func refreshTestKitStatus() async {
         guard let testKitController else {
             testKitStatus = RuntimeTestKitStatus(enabled: false, state: .disabled)
-            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
             return
         }
         applyTestKitStatus(await testKitController.loadTestKitStatus())
@@ -64,13 +87,13 @@ extension RuntimeViewModel {
     func createTestKitBeds() async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
-            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
             return
         }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
-        testKitActionMessage = RuntimeTestPanelText.creatingBeds
+        recordTestKitActionMessage(RuntimeTestPanelText.creatingBeds)
         message = RuntimeTestPanelText.creatingBeds
         do {
             let existingRoomNames = Set(testKitStatus.beds.map(\.roomName))
@@ -81,33 +104,30 @@ extension RuntimeViewModel {
             applyTestKitStatus(await testKitController.loadTestKitStatus())
             selectNewlyCreatedBeds(beds, existingRoomNames: existingRoomNames)
             let createdMessage = RuntimeTestPanelText.createdBeds(beds.count)
-            testKitActionMessage = createdMessage
+            recordTestKitActionMessage(createdMessage)
             message = createdMessage
         } catch {
-            applyTestKitStatus(await testKitController.loadTestKitStatus())
-            let errorMessage = error.localizedDescription
-            testKitActionMessage = errorMessage
-            message = errorMessage
+            await applyTestKitActionFailure(error, controller: testKitController)
         }
     }
 
     func resetTestKitBeds() async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
-            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
             return
         }
         let bedCount = testKitStatus.beds.count
         guard activeTestKitBedRoomNames.isEmpty else {
             let errorMessage = RuntimeTestPanelText.stopSessionsBeforeResettingBeds
-            testKitActionMessage = errorMessage
+            recordTestKitActionMessage(errorMessage, tone: .failure)
             message = errorMessage
             return
         }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
-        testKitActionMessage = RuntimeTestPanelText.resettingBeds
+        recordTestKitActionMessage(RuntimeTestPanelText.resettingBeds)
         message = RuntimeTestPanelText.resettingBeds
         do {
             _ = try await testKitController.resetTestKitBeds()
@@ -115,32 +135,29 @@ extension RuntimeViewModel {
             await refreshVitalRecorders()
             selectedTestKitBedRoomNames.removeAll()
             let resetMessage = RuntimeTestPanelText.resetBeds(bedCount)
-            testKitActionMessage = resetMessage
+            recordTestKitActionMessage(resetMessage)
             message = resetMessage
         } catch {
-            applyTestKitStatus(await testKitController.loadTestKitStatus())
-            let errorMessage = error.localizedDescription
-            testKitActionMessage = errorMessage
-            message = errorMessage
+            await applyTestKitActionFailure(error, controller: testKitController)
         }
     }
 
     func deleteTestKitBed(_ bed: RuntimeTestKitBed) async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
-            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
             return
         }
         guard !testKitBedIsActive(bed.roomName) else {
             let errorMessage = RuntimeTestPanelText.stopSessionsBeforeDeletingBed
-            testKitActionMessage = errorMessage
+            recordTestKitActionMessage(errorMessage, tone: .failure)
             message = errorMessage
             return
         }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
-        testKitActionMessage = RuntimeTestPanelText.deletingBed(bed.roomName)
+        recordTestKitActionMessage(RuntimeTestPanelText.deletingBed(bed.roomName))
         message = RuntimeTestPanelText.deletingBed(bed.roomName)
         do {
             _ = try await testKitController.deleteTestKitBeds(RuntimeTestKitDeleteBedsRequest(
@@ -150,20 +167,17 @@ extension RuntimeViewModel {
             await refreshVitalRecorders()
             selectedTestKitBedRoomNames.remove(bed.roomName)
             let deletedMessage = RuntimeTestPanelText.deletedBed(bed.roomName)
-            testKitActionMessage = deletedMessage
+            recordTestKitActionMessage(deletedMessage)
             message = deletedMessage
         } catch {
-            applyTestKitStatus(await testKitController.loadTestKitStatus())
-            let errorMessage = error.localizedDescription
-            testKitActionMessage = errorMessage
-            message = errorMessage
+            await applyTestKitActionFailure(error, controller: testKitController)
         }
     }
 
     func startVirtualRecorderSession() async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
-            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
             return
         }
         guard selectedAvailableTestKitBedRoomNames.count >= normalizedTestKitRecorderCount else {
@@ -171,14 +185,14 @@ extension RuntimeViewModel {
                 selectedAvailableTestKitBedRoomNames.count,
                 normalizedTestKitRecorderCount
             )
-            testKitActionMessage = errorMessage
+            recordTestKitActionMessage(errorMessage, tone: .failure)
             message = errorMessage
             return
         }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
-        testKitActionMessage = RuntimeTestPanelText.startingSession
+        recordTestKitActionMessage(RuntimeTestPanelText.startingSession)
         message = RuntimeTestPanelText.startingSession
         do {
             let session = try await testKitController.startVirtualRecorders(testKitStartRequest())
@@ -186,13 +200,10 @@ extension RuntimeViewModel {
             applyTestKitStatus(await testKitController.loadTestKitStatus())
             testKitVrcode = Self.generatedTestKitVrcode()
             let startedMessage = RuntimeTestPanelText.startedSession(session.id)
-            testKitActionMessage = startedMessage
+            recordTestKitActionMessage(startedMessage)
             message = startedMessage
         } catch {
-            applyTestKitStatus(await testKitController.loadTestKitStatus())
-            let errorMessage = error.localizedDescription
-            testKitActionMessage = errorMessage
-            message = errorMessage
+            await applyTestKitActionFailure(error, controller: testKitController)
         }
     }
 
@@ -250,7 +261,7 @@ extension RuntimeViewModel {
     func restartVirtualRecorderSession(session: RuntimeTestKitSession) async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
-            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
             return
         }
         let requiredBeds = max(session.recordersRequested, 1)
@@ -260,14 +271,14 @@ extension RuntimeViewModel {
                 bedRoomNames.count,
                 requiredBeds
             )
-            testKitActionMessage = errorMessage
+            recordTestKitActionMessage(errorMessage, tone: .failure)
             message = errorMessage
             return
         }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
-        testKitActionMessage = RuntimeTestPanelText.restartingSession
+        recordTestKitActionMessage(RuntimeTestPanelText.restartingSession)
         message = RuntimeTestPanelText.restartingSession
         do {
             let restarted = try await testKitController.restartVirtualRecorders(
@@ -280,57 +291,61 @@ extension RuntimeViewModel {
             applyTestKitStatus(await testKitController.loadTestKitStatus())
             let restartedMessage = restarted.map { RuntimeTestPanelText.restartedSession($0.id) }
                 ?? RuntimeTestPanelText.noActiveSession
-            testKitActionMessage = restartedMessage
+            recordTestKitActionMessage(restartedMessage, tone: restarted == nil ? .failure : .neutral)
             message = restartedMessage
         } catch {
-            applyTestKitStatus(await testKitController.loadTestKitStatus())
-            let errorMessage = error.localizedDescription
-            testKitActionMessage = errorMessage
-            message = errorMessage
+            await applyTestKitActionFailure(error, controller: testKitController)
         }
     }
 
     private func runTestKitSessionAction(
         sessionID: String?,
         progressMessage: String,
-        action: @MainActor (any RuntimeTestKitControlling, String?) async throws -> RuntimeTestKitSession?,
+        action: @MainActor (any RuntimeTestKitControlling, String) async throws -> RuntimeTestKitSession?,
         successMessage: (String) -> String
     ) async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
-            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
+            return
+        }
+        guard let sessionID = testKitPresentationPolicy.normalizedSessionID(sessionID) else {
+            message = RuntimeTestPanelText.noActiveSession
+            recordTestKitActionMessage(RuntimeTestPanelText.noActiveSession, tone: .failure)
             return
         }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
-        testKitActionMessage = progressMessage
+        recordTestKitActionMessage(progressMessage)
         message = progressMessage
         do {
             let session = try await action(testKitController, sessionID)
             applyTestKitStatus(await testKitController.loadTestKitStatus())
             let actionMessage = session.map { successMessage($0.id) }
                 ?? RuntimeTestPanelText.noActiveSession
-            testKitActionMessage = actionMessage
+            recordTestKitActionMessage(actionMessage, tone: session == nil ? .failure : .neutral)
             message = actionMessage
         } catch {
-            applyTestKitStatus(await testKitController.loadTestKitStatus())
-            let errorMessage = error.localizedDescription
-            testKitActionMessage = errorMessage
-            message = errorMessage
+            await applyTestKitActionFailure(error, controller: testKitController)
         }
     }
 
     func deleteVirtualRecorderSession(sessionID: String?) async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
-            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
+            return
+        }
+        guard let sessionID = testKitPresentationPolicy.normalizedSessionID(sessionID) else {
+            message = RuntimeTestPanelText.noActiveSession
+            recordTestKitActionMessage(RuntimeTestPanelText.noActiveSession, tone: .failure)
             return
         }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
-        testKitActionMessage = RuntimeTestPanelText.deletingSession
+        recordTestKitActionMessage(RuntimeTestPanelText.deletingSession)
         message = RuntimeTestPanelText.deletingSession
         do {
             let session = try await testKitController.deleteVirtualRecorders(sessionID: sessionID)
@@ -338,51 +353,45 @@ extension RuntimeViewModel {
             await refreshVitalRecorders()
             let deletedMessage = session.map { RuntimeTestPanelText.deletedSession($0.id) }
                 ?? RuntimeTestPanelText.noActiveSession
-            testKitActionMessage = deletedMessage
+            recordTestKitActionMessage(deletedMessage, tone: session == nil ? .failure : .neutral)
             message = deletedMessage
         } catch {
-            applyTestKitStatus(await testKitController.loadTestKitStatus())
-            let errorMessage = error.localizedDescription
-            testKitActionMessage = errorMessage
-            message = errorMessage
+            await applyTestKitActionFailure(error, controller: testKitController)
         }
     }
 
     func resetVirtualRecorderSessions() async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
-            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
             return
         }
         let sessionCount = testKitStatus.sessions.count
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
-        testKitActionMessage = RuntimeTestPanelText.resettingSessions
+        recordTestKitActionMessage(RuntimeTestPanelText.resettingSessions)
         message = RuntimeTestPanelText.resettingSessions
         do {
             applyTestKitStatus(try await testKitController.resetVirtualRecorders())
             await refreshVitalRecorders()
             let resetMessage = RuntimeTestPanelText.resetSessions(sessionCount)
-            testKitActionMessage = resetMessage
+            recordTestKitActionMessage(resetMessage)
             message = resetMessage
         } catch {
-            applyTestKitStatus(await testKitController.loadTestKitStatus())
-            let errorMessage = error.localizedDescription
-            testKitActionMessage = errorMessage
-            message = errorMessage
+            await applyTestKitActionFailure(error, controller: testKitController)
         }
     }
 
     func deleteOrphanVirtualRecorder() async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
-            testKitActionMessage = RuntimeTestPanelText.testKitUnavailable
+            recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
             return
         }
         let vrcode = normalizedTestKitOrphanVrcode
         guard !vrcode.isEmpty else {
-            testKitActionMessage = RuntimeTestPanelText.missingVrcode
+            recordTestKitActionMessage(RuntimeTestPanelText.missingVrcode, tone: .failure)
             message = RuntimeTestPanelText.missingVrcode
             return
         }
@@ -390,7 +399,7 @@ extension RuntimeViewModel {
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
-        testKitActionMessage = RuntimeTestPanelText.deletingVRecorder(vrcode)
+        recordTestKitActionMessage(RuntimeTestPanelText.deletingVRecorder(vrcode))
         message = RuntimeTestPanelText.deletingVRecorder(vrcode)
         do {
             let deletion = try await testKitController.deleteVirtualRecorder(vrcode: vrcode)
@@ -399,21 +408,18 @@ extension RuntimeViewModel {
             let deletionMessage = deletion.deleted
                 ? RuntimeTestPanelText.deletedVRecorder(deletion.vrcode)
                 : RuntimeTestPanelText.failedVRecorderDeletion(deletion.vrcode, deletion.error)
-            testKitActionMessage = deletionMessage
+            recordTestKitActionMessage(deletionMessage, tone: deletion.deleted ? .neutral : .failure)
             message = deletionMessage
             if deletion.deleted {
                 testKitOrphanVrcode = ""
             }
         } catch {
-            applyTestKitStatus(await testKitController.loadTestKitStatus())
-            let errorMessage = error.localizedDescription
-            testKitActionMessage = errorMessage
-            message = errorMessage
+            await applyTestKitActionFailure(error, controller: testKitController)
         }
     }
 
     private func testKitStartRequest() -> RuntimeTestKitVirtualRecorderStartRequest {
-        testKitStatePolicy.startRequest(RuntimeViewModelTestKitStartInput(
+        testKitPresentationPolicy.startRequest(RuntimeTestKitStartInput(
             status: testKitStatus,
             selectedBedRoomNames: selectedTestKitBedRoomNames,
             scenario: testKitScenario,
@@ -429,34 +435,34 @@ extension RuntimeViewModel {
     }
 
     private var normalizedTestKitRecorderCount: Int {
-        testKitStatePolicy.normalizedRecorderCount(testKitRecorderCount)
+        testKitPresentationPolicy.normalizedRecorderCount(testKitRecorderCount)
     }
 
     private var normalizedTestKitBedCount: Int {
-        testKitStatePolicy.normalizedBedCount(testKitBedCount)
+        testKitPresentationPolicy.normalizedBedCount(testKitBedCount)
     }
 
     private var normalizedTestKitBedPrefix: String {
-        testKitStatePolicy.normalizedBedPrefix(testKitBedPrefix)
+        testKitPresentationPolicy.normalizedBedPrefix(testKitBedPrefix)
     }
 
     private var availableTestKitBedRoomNames: [String] {
-        testKitStatePolicy.availableBedRoomNames(in: testKitStatus)
+        testKitPresentationPolicy.availableBedRoomNames(in: testKitStatus)
     }
 
     private var selectedAvailableTestKitBedRoomNames: [String] {
-        testKitStatePolicy.selectedAvailableBedRoomNames(
+        testKitPresentationPolicy.selectedAvailableBedRoomNames(
             status: testKitStatus,
             selectedBedRoomNames: selectedTestKitBedRoomNames
         )
     }
 
     private var activeTestKitBedRoomNames: Set<String> {
-        testKitStatePolicy.activeBedRoomNames(in: testKitStatus)
+        testKitPresentationPolicy.activeBedRoomNames(in: testKitStatus)
     }
 
     private var normalizedTestKitOrphanVrcode: String {
-        testKitStatePolicy.normalizedRequiredVrcode(testKitOrphanVrcode)
+        testKitPresentationPolicy.normalizedRequiredVrcode(testKitOrphanVrcode)
     }
 
     static func generatedTestKitVrcode() -> String {
@@ -468,16 +474,24 @@ extension RuntimeViewModel {
     }
 
     private func applyTestKitStatus(_ status: RuntimeTestKitStatus) {
+        let selection = testKitPresentationPolicy.selectionState(
+            status: status,
+            selectedSessionID: selectedTestKitSessionID,
+            selectedBedRoomNames: selectedTestKitBedRoomNames
+        )
         testKitStatus = status
-        pruneSelectedTestKitBeds(status)
-        guard !status.sessions.isEmpty else {
-            selectedTestKitSessionID = ""
-            return
-        }
-        if selectedTestKitSessionID.isEmpty
-            || !status.sessions.contains(where: { $0.id == selectedTestKitSessionID }) {
-            selectedTestKitSessionID = status.activeSession?.id ?? status.sessions[0].id
-        }
+        selectedTestKitSessionID = selection.selectedSessionID
+        selectedTestKitBedRoomNames = selection.selectedBedRoomNames
+    }
+
+    private func applyTestKitActionFailure(
+        _ error: Error,
+        controller: any RuntimeTestKitControlling
+    ) async {
+        applyTestKitStatus(await controller.loadTestKitStatus())
+        let errorMessage = error.localizedDescription
+        recordTestKitActionMessage(errorMessage, tone: .failure)
+        message = errorMessage
     }
 
     private func selectNewlyCreatedBeds(_ beds: [RuntimeTestKitBed], existingRoomNames: Set<String>) {
@@ -487,9 +501,4 @@ extension RuntimeViewModel {
         }
     }
 
-    private func pruneSelectedTestKitBeds(_ status: RuntimeTestKitStatus) {
-        selectedTestKitBedRoomNames = selectedTestKitBedRoomNames.intersection(
-            Set(testKitStatePolicy.availableBedRoomNames(in: status))
-        )
-    }
 }

@@ -46,20 +46,83 @@ final class LaunchdRuntimeServiceManagerTests: XCTestCase {
         }
         XCTAssertTrue(reason.contains("Input/output error"))
     }
+
+    func testStartReturnsBootstrapResultWhenBootstrapSucceeds() {
+        let runner = LaunchdCommandRunnerSpy(results: [
+            RuntimeProcessResult(exitCode: 0, stdout: "bootstrapped", stderr: ""),
+        ])
+        let manager = LaunchdRuntimeServiceManager(commandRunner: runner)
+
+        let result = manager.start(service: .proxy, plist: "/Library/LaunchDaemons/proxy.plist")
+
+        XCTAssertEqual(result.stdout, "bootstrapped")
+        XCTAssertEqual(runner.commands, [
+            "/bin/launchctl bootstrap system /Library/LaunchDaemons/proxy.plist",
+        ])
+    }
+
+    func testStartReturnsKickstartResultWhenBootstrapFails() {
+        let runner = LaunchdCommandRunnerSpy(results: [
+            RuntimeProcessResult(exitCode: 5, stdout: "", stderr: "bootstrap failed"),
+            RuntimeProcessResult(exitCode: 7, stdout: "", stderr: "kickstart failed"),
+        ])
+        let manager = LaunchdRuntimeServiceManager(commandRunner: runner)
+
+        let result = manager.start(service: .proxy, plist: "/Library/LaunchDaemons/proxy.plist")
+
+        XCTAssertEqual(result.exitCode, 7)
+        XCTAssertEqual(result.stderr, "kickstart failed")
+        XCTAssertEqual(runner.commands, [
+            "/bin/launchctl bootstrap system /Library/LaunchDaemons/proxy.plist",
+            "/bin/launchctl kickstart -k system/\(RuntimeManagedService.proxy.label)",
+        ])
+    }
+
+    func testRestartAndStopReturnLaunchctlResults() {
+        let runner = LaunchdCommandRunnerSpy(results: [
+            RuntimeProcessResult(exitCode: 4, stdout: "", stderr: "kickstart failed"),
+            RuntimeProcessResult(exitCode: 6, stdout: "", stderr: "bootout failed"),
+        ])
+        let manager = LaunchdRuntimeServiceManager(commandRunner: runner)
+
+        let restart = manager.restart(service: .watchdog)
+        let stop = manager.stop(service: .watchdog)
+
+        XCTAssertEqual(restart.exitCode, 4)
+        XCTAssertEqual(restart.stderr, "kickstart failed")
+        XCTAssertEqual(stop.exitCode, 6)
+        XCTAssertEqual(stop.stderr, "bootout failed")
+        XCTAssertEqual(runner.commands, [
+            "/bin/launchctl kickstart -k system/\(RuntimeManagedService.watchdog.label)",
+            "/bin/launchctl bootout system/\(RuntimeManagedService.watchdog.label)",
+        ])
+    }
 }
 
 private final class LaunchdCommandRunnerSpy: RuntimeCommandRunner {
-    let result: RuntimeProcessResult
+    private var results: [RuntimeProcessResult]
+    private let fallbackResult: RuntimeProcessResult
+    var commands: [String] = []
 
     init(result: RuntimeProcessResult) {
-        self.result = result
+        self.results = [result]
+        self.fallbackResult = result
+    }
+
+    init(results: [RuntimeProcessResult]) {
+        self.results = results
+        self.fallbackResult = results.last ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
     }
 
     func run(_ executable: String, arguments: [String]) -> RuntimeProcessResult {
-        result
+        commands.append(([executable] + arguments).joined(separator: " "))
+        guard !results.isEmpty else {
+            return fallbackResult
+        }
+        return results.removeFirst()
     }
 
     func runWritingOutput(_ executable: String, arguments: [String], output: URL) -> RuntimeProcessResult {
-        result
+        run(executable, arguments: arguments)
     }
 }

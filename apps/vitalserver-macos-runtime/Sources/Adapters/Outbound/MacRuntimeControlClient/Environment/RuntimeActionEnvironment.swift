@@ -2,43 +2,53 @@ import Foundation
 import RuntimeControl
 import Application
 import Contracts
-import Domain
 import Errors
 
 protocol RuntimeActionEnvironment: Sendable {
-    func isExecutable(atPath path: String) -> Bool
+    func executableState(atPath path: String) -> RuntimeFileState
     func writeAdminPasswordFile(_ password: String) throws -> URL
-    func removeItem(at url: URL)
+    func removeItem(at url: URL) throws
     func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult
 }
 
 struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment, @unchecked Sendable {
     private let fileStore: RuntimeFileStore
+    private let temporaryDirectory: URL
+    private let adminPasswordFileID: @Sendable () -> String
 
-    init(fileStore: RuntimeFileStore = SystemRuntimeFileStore()) {
+    init(
+        fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
+        temporaryDirectory: URL = URL(fileURLWithPath: "/private/tmp", isDirectory: true),
+        adminPasswordFileID: @escaping @Sendable () -> String = { UUID().uuidString }
+    ) {
         self.fileStore = fileStore
+        self.temporaryDirectory = temporaryDirectory
+        self.adminPasswordFileID = adminPasswordFileID
     }
 
-    func isExecutable(atPath path: String) -> Bool {
-        fileStore.isExecutableFile(atPath: path)
+    func executableState(atPath path: String) -> RuntimeFileState {
+        fileStore.fileState(atPath: path)
     }
 
     func writeAdminPasswordFile(_ password: String) throws -> URL {
-        let url = URL(fileURLWithPath: "/private/tmp")
-            .appendingPathComponent("tirosh-vitalserver-admin-password-\(UUID().uuidString)")
+        let url = temporaryDirectory
+            .appendingPathComponent("tirosh-vitalserver-admin-password-\(adminPasswordFileID())")
         guard let data = password.data(using: .utf8) else {
             throw RuntimeActionEnvironmentError.invalidAdminPassword
         }
         do {
             try fileStore.writeData(data, to: url, options: [], posixPermissions: 0o600)
         } catch {
-            throw RuntimeActionEnvironmentError.adminPasswordFileCreateFailed
+            throw RuntimeActionEnvironmentError.adminPasswordFileCreateFailed(
+                path: url.path,
+                reason: error.localizedDescription
+            )
         }
         return url
     }
 
-    func removeItem(at url: URL) {
-        try? fileStore.removeItem(at: url)
+    func removeItem(at url: URL) throws {
+        try fileStore.removeItem(at: url)
     }
 
     func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult {
@@ -52,4 +62,3 @@ struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment, @unchecked Send
         )
     }
 }
-

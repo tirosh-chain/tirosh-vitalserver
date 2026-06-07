@@ -6,7 +6,7 @@ import Contracts
 
 final class RuntimeRecoveryPlannerTests: XCTestCase {
     func testMissingInstalledArtifactIsNotRecoverable() {
-        let plan = RuntimeRecoveryPlanner.plan(input(vmExecutable: false))
+        let plan = RuntimeRecoveryPlanner.plan(input(vmExecutable: .missing))
 
         XCTAssertFalse(plan.canRecover)
         XCTAssertFalse(plan.restartVM)
@@ -232,8 +232,8 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
     }
 
     private func input(
-        vmExecutable: Bool = true,
-        proxyExecutable: Bool = true,
+        vmExecutable: RuntimeFileState = .executable,
+        proxyExecutable: RuntimeFileState = .executable,
         rootfsBase: RuntimeFileState = .present,
         vmDisk: RuntimeFileState = .present,
         vmService: RuntimeServiceState = .loaded,

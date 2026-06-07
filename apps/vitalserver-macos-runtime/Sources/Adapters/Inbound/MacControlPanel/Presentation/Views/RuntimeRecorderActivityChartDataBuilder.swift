@@ -42,10 +42,22 @@ public struct RuntimeRecorderActivityChartDataBuilder {
                 totalPackets: 0
             )
         }
+        if let invalidTimestamp = firstInvalidTimestamp(in: timeline) {
+            return RuntimeRecorderActivityDisplay(
+                state: .invalidTimeline(invalidTimestamp),
+                buckets: [],
+                latestSample: nil,
+                latestBucket: nil,
+                latestBucketBytesPerSecond: nil,
+                totalPackets: nil
+            )
+        }
 
         let latestSample = timeline.max {
-            let lhs = RuntimeRecorderActivityDateParser.date(from: $0.observedAt) ?? .distantPast
-            let rhs = RuntimeRecorderActivityDateParser.date(from: $1.observedAt) ?? .distantPast
+            guard let lhs = RuntimeRecorderActivityDateParser.date(from: $0.observedAt),
+                  let rhs = RuntimeRecorderActivityDateParser.date(from: $1.observedAt) else {
+                return false
+            }
             return lhs < rhs
         }
         let buckets = displayActivityBuckets(
@@ -202,6 +214,20 @@ public struct RuntimeRecorderActivityChartDataBuilder {
         let bucketTimestamp = floor(date.timeIntervalSince1970 / Double(intervalSeconds)) * Double(intervalSeconds)
         return RuntimeRecorderActivityDateParser.string(from: Date(timeIntervalSince1970: bucketTimestamp))
     }
+
+    private func firstInvalidTimestamp(in points: [RuntimeVitalRecorderActivityPoint]) -> String? {
+        for point in points {
+            if RuntimeRecorderActivityDateParser.date(from: point.observedAt) == nil {
+                return point.observedAt
+            }
+            if let invalidBucket = point.buckets.first(where: {
+                RuntimeRecorderActivityDateParser.date(from: $0.bucketStartedAt) == nil
+            }) {
+                return invalidBucket.bucketStartedAt
+            }
+        }
+        return nil
+    }
 }
 
 public struct RuntimeRecorderActivityDisplay {
@@ -234,13 +260,14 @@ public enum RuntimeRecorderActivityDisplayState: Equatable {
     case notReported
     case emptyTimeline
     case noBucketsInPeriod
+    case invalidTimeline(String)
     case readFailed(String)
 
     public var showsControls: Bool {
         switch self {
         case .available, .emptyTimeline, .noBucketsInPeriod:
             return true
-        case .notReported, .readFailed:
+        case .notReported, .invalidTimeline, .readFailed:
             return false
         }
     }

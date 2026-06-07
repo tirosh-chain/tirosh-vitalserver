@@ -11,7 +11,8 @@ extension RuntimeViewModel {
         }
         if let url = nativeShell.chooseUpdateBundle(prompt: AppConstants.Actions.chooseBundle) {
             selectedBundleURL = url
-            selectedBundleSummary = hostClient.updateBundleSummary(url: url)
+            selectedBundleSummary = hostClient.updateBundleSummaryResult(url: url)
+                .displayTextForUpdateBundleSummary()
             selectedBundleVerified = false
             selectedBundleVerification = AppConstants.StatusText.updateBundleVerifying
             await verifySelectedBundle()
@@ -39,7 +40,7 @@ extension RuntimeViewModel {
             runningMessage: AppConstants.StatusText.updateBundleApplying,
             successMessage: AppConstants.StatusText.updateBundleApplied,
             action: { try await self.hostClient.applyUpdateBundle(url: bundleURL) }
-        )
+        ).isSuccess
         if didApply {
             message = AppConstants.StatusText.updateBundleAppliedRelaunching
             relaunchHelper()
@@ -72,5 +73,12 @@ extension RuntimeViewModel {
         selectedBundleVerified = result.isVerified
         selectedBundleVerification = result.verification
         message = result.message
+    }
+}
+
+private extension RuntimeHostTextReadResult {
+    func displayTextForUpdateBundleSummary() -> String {
+        RuntimeHostTextDisplayPolicy(noDataText: AppConstants.StatusText.notReported)
+            .displayText(self)
     }
 }

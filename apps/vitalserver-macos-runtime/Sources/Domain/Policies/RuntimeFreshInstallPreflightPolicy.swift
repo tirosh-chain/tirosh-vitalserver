@@ -50,6 +50,10 @@ public enum RuntimeFreshInstallPreflightPolicy {
 
     private static func settingsBlockers(_ state: RuntimeInstallSettingsState) -> [String] {
         switch state {
+        case .missing(let path):
+            return ["install-settings-missing:path=\(path)"]
+        case .proxyPortMissing(let path):
+            return ["install-settings-proxy-port-missing:path=\(path)"]
         case .readFailed(let path, let reason):
             return ["install-settings-read-failed:path=\(path) reason=\(reason)"]
         case .invalid(let path, let reason):

@@ -6,6 +6,7 @@ struct RuntimeDangerZonePanel: View {
     @Binding var showingDeleteBackupConfirmation: Bool
     @Binding var showingUninstallConfirmation: Bool
     @Binding var showingCleanUninstallConfirmation: Bool
+    private let actionAvailabilityPolicy = RuntimeControlActionAvailabilityPolicy()
 
     var body: some View {
         ScrollView {
@@ -98,9 +99,11 @@ struct RuntimeDangerZonePanel: View {
                 }
                 .foregroundStyle(.red)
                 .disabled(
-                    viewModel.isBusy
-                        || !viewModel.status.runtimeInstalled
-                        || !viewModel.capabilities.canUninstallRuntime
+                    !actionAvailabilityPolicy.canUninstallRuntime(
+                        status: viewModel.status,
+                        capabilities: viewModel.capabilities,
+                        isBusy: viewModel.isBusy
+                    )
                 )
                 .fixedSize()
             }

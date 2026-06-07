@@ -73,14 +73,56 @@ final class RuntimeGuestLogCollectorTests: XCTestCase {
         try Data("new\n".utf8).write(to: paths.containerLogs)
         try Data("old\nlonger\n".utf8).write(to: paths.centralContainerLogs)
 
-        try RuntimeGuestLogCollector(installedPaths: paths, fileStore: fileStore).collect()
+        try RuntimeGuestLogCollector(
+            installedPaths: paths,
+            fileStore: fileStore,
+            archiveTimestamp: { "20260608-120000" }
+        ).collect()
 
         XCTAssertEqual(try String(contentsOf: paths.centralContainerLogs, encoding: .utf8), "new\n")
         let archiveEntries = try fileStore.contentsOfDirectory(
             at: paths.logArchiveDirectory.appendingPathComponent("guest"),
             skipsHiddenFiles: true
         )
-        XCTAssertTrue(archiveEntries.contains { $0.lastPathComponent.hasPrefix("container-logs.log.") })
+        XCTAssertTrue(archiveEntries.contains { $0.lastPathComponent == "container-logs.log.20260608-120000" })
+    }
+
+    func testCollectUsesExplicitArchiveCollisionIDWhenTimestampCandidatesAreExhausted() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RuntimeGuestLogCollectorTests-\(UUID().uuidString)")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+        }
+        let paths = InstalledRuntimePaths(productRoot: root)
+        let fileStore = SystemRuntimeFileStore()
+        let archiveDirectory = paths.logArchiveDirectory.appendingPathComponent("guest")
+        let archiveBase = archiveDirectory.appendingPathComponent("container-logs.log.20260608-120000")
+        try fileStore.createDirectory(at: paths.guestRunDirectory, withIntermediateDirectories: true)
+        try fileStore.createDirectory(at: paths.centralGuestLogsDirectory, withIntermediateDirectories: true)
+        try fileStore.createDirectory(at: archiveDirectory, withIntermediateDirectories: true)
+        try Data("new\n".utf8).write(to: paths.containerLogs)
+        try Data("old\nlonger\n".utf8).write(to: paths.centralContainerLogs)
+        try Data("collision\n".utf8).write(to: archiveBase)
+        for index in 1...999 {
+            try Data("collision \(index)\n".utf8)
+                .write(to: archiveDirectory.appendingPathComponent("container-logs.log.20260608-120000.\(index)"))
+        }
+
+        try RuntimeGuestLogCollector(
+            installedPaths: paths,
+            fileStore: fileStore,
+            archiveTimestamp: { "20260608-120000" },
+            archiveCollisionID: { "collision-id" }
+        ).collect()
+
+        XCTAssertEqual(try String(contentsOf: paths.centralContainerLogs, encoding: .utf8), "new\n")
+        XCTAssertEqual(
+            try String(
+                contentsOf: archiveDirectory.appendingPathComponent("container-logs.log.20260608-120000.collision-id"),
+                encoding: .utf8
+            ),
+            "old\nlonger\n"
+        )
     }
 
     func testCollectPropagatesRotatedLogDirectoryReadFailure() {
@@ -88,6 +130,46 @@ final class RuntimeGuestLogCollectorTests: XCTestCase {
         let fileStore = FailingGuestLogDirectoryFileStore(guestRunDirectory: paths.guestRunDirectory)
 
         XCTAssertThrowsError(try RuntimeGuestLogCollector(installedPaths: paths, fileStore: fileStore).collect())
+    }
+
+    func testCollectFailsWhenGuestLogSourceInspectionFails() {
+        let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.pathStates[paths.containerLogs.path] = .inspectFailed("permission denied")
+
+        XCTAssertThrowsError(try RuntimeGuestLogCollector(installedPaths: paths, fileStore: fileStore).collect()) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestLogCollectorError,
+                .pathInspectionFailed(path: paths.containerLogs.path, reason: "permission denied")
+            )
+        }
+    }
+
+    func testCollectFailsWhenCentralLogDestinationIsDirectory() {
+        let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[paths.containerLogs] = Data("container\n".utf8)
+        fileStore.pathStates[paths.centralContainerLogs.path] = .directory
+
+        XCTAssertThrowsError(try RuntimeGuestLogCollector(installedPaths: paths, fileStore: fileStore).collect()) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestLogCollectorError,
+                .unexpectedPathState(path: paths.centralContainerLogs.path, state: "directory")
+            )
+        }
+    }
+
+    func testCollectFailsWhenGuestRunDirectoryInspectionFails() {
+        let paths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.pathStates[paths.guestRunDirectory.path] = .inspectFailed("permission denied")
+
+        XCTAssertThrowsError(try RuntimeGuestLogCollector(installedPaths: paths, fileStore: fileStore).collect()) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestLogCollectorError,
+                .pathInspectionFailed(path: paths.guestRunDirectory.path, reason: "permission denied")
+            )
+        }
     }
 }
 

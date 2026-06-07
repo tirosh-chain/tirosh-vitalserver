@@ -1,5 +1,6 @@
 import Foundation
 import RuntimeControl
+import Contracts
 import Errors
 
 /// Owns host mutations and privileged runtime commands.
@@ -33,9 +34,12 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
-        guard actionEnvironment.isExecutable(atPath: RuntimeControlClientConstants.Paths.uninstaller) else {
-            throw RuntimeClientError.missingUninstaller
-        }
+        try ensureExecutableIsAvailable(
+            path: RuntimeControlClientConstants.Paths.uninstaller,
+            missing: .missingUninstaller,
+            inspectionFailed: RuntimeClientError.uninstallerInspectionFailed,
+            notExecutable: RuntimeClientError.uninstallerNotExecutable
+        )
         return await runPrivileged(RuntimeCommandFactory.uninstallCommand(
             uninstaller: RuntimeControlClientConstants.Paths.uninstaller,
             clean: clean
@@ -48,18 +52,25 @@ public actor MacRuntimeControlCommandWorker {
         if settings.changeAdminPassword {
             adminPasswordFile = try actionEnvironment.writeAdminPasswordFile(settings.adminPassword)
         }
-        defer {
-            if let adminPasswordFile {
-                actionEnvironment.removeItem(at: adminPasswordFile)
-            }
-        }
-        return await runPrivileged(RuntimeCommandFactory.shellCommand(
+        let result = await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: RuntimeCommandFactory.configureRuntimeArguments(
                 settings: settings,
                 adminPasswordFile: adminPasswordFile?.path
             )
         ))
+        guard let adminPasswordFile else {
+            return result
+        }
+        do {
+            try actionEnvironment.removeItem(at: adminPasswordFile)
+            return result
+        } catch {
+            return result.appendingOutputIssue(RuntimeCommandOutputIssue(
+                stream: .stderr,
+                message: "admin password file cleanup failed path=\(adminPasswordFile.path) reason=\(error.localizedDescription)"
+            ))
+        }
     }
 
     public func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
@@ -87,11 +98,12 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func deleteBackup(url: URL) async throws -> RuntimeCommandResult {
-        await runPrivileged(RuntimeCommandFactory.deleteBackupCommand(url: url))
+        try ensureManagedBackupDeletionTarget(url)
+        return await runPrivileged(RuntimeCommandFactory.deleteBackupCommand(url: url))
     }
 
     public func repairProxy(proxyPort: Int) async throws -> RuntimeCommandResult {
-        await runPrivileged(RuntimeCommandFactory.proxyRepairCommand(proxyPort: proxyPort))
+        return await runPrivileged(RuntimeCommandFactory.proxyRepairCommand())
     }
 
     public func repairDatastore() async throws -> RuntimeCommandResult {
@@ -147,12 +159,57 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     private func ensureLauncherIsAvailable() throws {
-        guard actionEnvironment.isExecutable(atPath: RuntimeControlClientConstants.Paths.launcher) else {
-            throw RuntimeClientError.missingLauncher
+        try ensureExecutableIsAvailable(
+            path: RuntimeControlClientConstants.Paths.launcher,
+            missing: .missingLauncher,
+            inspectionFailed: RuntimeClientError.launcherInspectionFailed,
+            notExecutable: RuntimeClientError.launcherNotExecutable
+        )
+    }
+
+    private func ensureExecutableIsAvailable(
+        path: String,
+        missing: RuntimeClientError,
+        inspectionFailed: (String, String) -> RuntimeClientError,
+        notExecutable: (String, String) -> RuntimeClientError
+    ) throws {
+        switch actionEnvironment.executableState(atPath: path) {
+        case .executable:
+            return
+        case .missing:
+            throw missing
+        case .inspectFailed(let reason):
+            throw inspectionFailed(path, reason)
+        case .present:
+            throw notExecutable(path, "present")
+        case .unknown(let state):
+            throw notExecutable(path, state)
+        }
+    }
+
+    private func ensureManagedBackupDeletionTarget(_ url: URL) throws {
+        let backupsRoot = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.backups)
+        guard RuntimeManagedBackupPolicy.isManagedBackupURL(url, backupsRoot: backupsRoot) else {
+            throw RuntimeClientError.invalidBackupDeletionTarget(
+                path: url.path,
+                backupsRoot: backupsRoot.path
+            )
         }
     }
 
     private func runPrivileged(_ shellCommand: String) async -> RuntimeCommandResult {
         await privilegedCommandRunner.run(shellCommand: shellCommand)
+    }
+}
+
+private extension RuntimeCommandResult {
+    func appendingOutputIssue(_ issue: RuntimeCommandOutputIssue) -> RuntimeCommandResult {
+        RuntimeCommandResult(
+            exitCode: exitCode,
+            stdout: stdout,
+            stderr: stderr,
+            outputIssues: outputIssues + [issue],
+            executionIssue: executionIssue
+        )
     }
 }

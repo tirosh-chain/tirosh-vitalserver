@@ -82,6 +82,8 @@ public enum UpdateBundleArchiveVerificationError: Error, Equatable, CustomString
     case emptyArchive
     case unsafePath(String)
     case multipleRootDirectories
+    case unexpectedTopLevelEntry(String, String)
+    case unexpectedRootEntry(String, String)
     case containsLink(String)
     case containsUnsupportedEntry(String, String)
 
@@ -93,6 +95,10 @@ public enum UpdateBundleArchiveVerificationError: Error, Equatable, CustomString
             return "unsafe update bundle archive path: \(path)"
         case .multipleRootDirectories:
             return "update bundle archive must contain a single root directory"
+        case .unexpectedTopLevelEntry(let archiveName, let entry):
+            return "unexpected top-level entry in \(archiveName): \(entry)"
+        case .unexpectedRootEntry(let archiveName, let entry):
+            return "unexpected root entry in \(archiveName): \(entry)"
         case .containsLink(let archiveName):
             return "update bundle archive must not contain links: \(archiveName)"
         case .containsUnsupportedEntry(let archiveName, let entryType):

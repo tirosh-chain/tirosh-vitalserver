@@ -41,7 +41,7 @@ struct RuntimeObservabilityPanel: View {
         observationSection("Observation pipeline") {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 metricRow(AppConstants.Labels.vitalDBObserver, observerStatus)
-                metricRow(AppConstants.Labels.guestLogSyncService, viewModel.status.guestLogSyncServiceLoaded ? AppConstants.StatusText.running : AppConstants.StatusText.stopped)
+                metricRow(AppConstants.Labels.guestLogSyncService, guestLogSyncStatus)
                 metricRow(AppConstants.Labels.recorderObservation, observationTimeText(observation?.observedAt))
                 metricRow(AppConstants.Labels.knownRecorders, observationMetricText(observation?.recorders.count))
                 metricRow(AppConstants.Labels.knownBeds, observationMetricText(observation?.beds.count))
@@ -73,6 +73,17 @@ struct RuntimeObservabilityPanel: View {
         }
     }
 
+    private var guestLogSyncStatus: String {
+        switch viewModel.status.guestLogSyncServiceState {
+        case .loaded:
+            return AppConstants.StatusText.running
+        case .notLoaded:
+            return AppConstants.StatusText.stopped
+        case .readFailed, .permissionDenied, .unknown, nil:
+            return AppConstants.StatusText.unavailable
+        }
+    }
+
     private var runtimeEventsSection: some View {
         observationSection(AppConstants.Labels.runtimeEvents) {
             VStack(alignment: .leading, spacing: 10) {
@@ -83,7 +94,7 @@ struct RuntimeObservabilityPanel: View {
                         ForEach(eventItems) { item in
                             eventRow(item)
                         }
-                        if eventItems.isEmpty {
+                        if eventItems.isEmpty, viewModel.runtimeEvents.state == .loaded {
                             emptyObservation(AppConstants.StatusText.noRuntimeEvents)
                         }
                     }

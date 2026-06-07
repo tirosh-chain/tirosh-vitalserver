@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import OutboundAdapters
 @testable import CLIHost
 import XCTest
@@ -47,24 +48,23 @@ final class RuntimeVersionStoreTests: XCTestCase {
         XCTAssertTrue(document.contains(#""bundle" : "update-bundle-0.1.5""#))
     }
 
-    func testReadVersionValueReturnsStoredVersion() {
+    func testReadVersionReturnsStoredVersion() {
         let store = makeStore(
-            fileExists: { _ in true },
+            versionPathState: { _ in .file },
             readData: { _ in Data(#"{"runtimeVersion":"0.1.6"}"#.utf8) }
         )
 
         XCTAssertEqual(store.readVersion(), .loaded("0.1.6"))
-        XCTAssertEqual(store.readVersionValue(), "0.1.6")
     }
 
     func testReadVersionDistinguishesMissingAndInvalidFiles() {
-        let missing = makeStore(fileExists: { _ in false })
+        let missing = makeStore(versionPathState: { _ in .missing })
         let invalid = makeStore(
-            fileExists: { _ in true },
+            versionPathState: { _ in .file },
             readData: { _ in Data(#"{"runtimeVersion":7}"#.utf8) }
         )
         let unreadable = makeStore(
-            fileExists: { _ in true },
+            versionPathState: { _ in .file },
             readData: { _ in throw CocoaError(.fileReadNoPermission) }
         )
 
@@ -77,13 +77,32 @@ final class RuntimeVersionStoreTests: XCTestCase {
             return XCTFail("Expected unreadable runtime version document to fail")
         }
         XCTAssertFalse(unreadableMessage.isEmpty)
+    }
 
-        XCTAssertEqual(missing.readVersionValue(), RuntimeVersionStore.missingVersionValue)
-        XCTAssertEqual(invalid.readVersionValue(), RuntimeVersionStore.invalidVersionValue)
+    func testReadVersionDoesNotTreatPathInspectionFailureAsMissingVersion() {
+        let store = makeStore(
+            versionPathState: { _ in .inspectFailed("permission denied") }
+        )
+
+        XCTAssertEqual(
+            store.readVersion(),
+            .failed("runtime version path inspection failed: /product/vm/runtime/runtime-version.json reason=permission denied")
+        )
+    }
+
+    func testReadVersionDoesNotTreatDirectoryPathAsMissingVersion() {
+        let store = makeStore(
+            versionPathState: { _ in .directory }
+        )
+
+        XCTAssertEqual(
+            store.readVersion(),
+            .failed("runtime version path state is unexpected: /product/vm/runtime/runtime-version.json state=directory")
+        )
     }
 
     private func makeStore(
-        fileExists: @escaping (URL) -> Bool = { _ in false },
+        versionPathState: @escaping (URL) -> RuntimePathState = { _ in .missing },
         createDirectory: @escaping (URL, Bool) throws -> Void = { _, _ in },
         readData: @escaping (URL) throws -> Data = { _ in Data() },
         writeData: @escaping (Data, URL) throws -> Void = { _, _ in }
@@ -96,7 +115,7 @@ final class RuntimeVersionStoreTests: XCTestCase {
                 vmDisk: "vm-disk.img"
             ),
             timestamp: { "2026-05-22T01:02:03Z" },
-            fileExists: fileExists,
+            versionPathState: versionPathState,
             createDirectory: createDirectory,
             readData: readData,
             writeData: writeData

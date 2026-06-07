@@ -25,36 +25,57 @@ public struct RuntimeEventSQLiteProjectionCatchUp {
         self.log = log
     }
 
-    public func catchUpIfDue() {
+    @discardableResult
+    public func catchUpIfDue() -> RuntimeEventSQLiteProjectionCatchUpResult {
         let currentTime = now()
-        guard secondary.catchUpDue(now: currentTime, intervalSeconds: intervalSeconds) else {
-            return
+        switch secondary.catchUpDue(now: currentTime, intervalSeconds: intervalSeconds) {
+        case .due:
+            break
+        case .dueAfterReadFailure(let reason):
+            log("runtime event sqlite catch-up due read failed; attempting catch-up reason=\(reason)")
+        case .notDue:
+            return .notDue
         }
 
-        catchUp(at: currentTime)
+        return catchUp(at: currentTime)
     }
 
-    public func catchUpNow() {
+    @discardableResult
+    public func catchUpNow() -> RuntimeEventSQLiteProjectionCatchUpResult {
         catchUp(at: now())
     }
 
-    private func catchUp(at currentTime: Date) {
+    private func catchUp(at currentTime: Date) -> RuntimeEventSQLiteProjectionCatchUpResult {
         let readResult = primary.allResult()
         for issue in readResult.issues {
             log("runtime event jsonl read issue during sqlite catch-up issue=\(issue)")
+        }
+        guard readResult.issues.isEmpty else {
+            return .skippedDueToPrimaryReadIssues(readResult.issues)
         }
 
         do {
             try secondary.upsert(readResult.events)
             try secondary.markCaughtUp(at: currentTime)
+            return .caughtUp(eventCount: readResult.events.count)
         } catch {
             log("runtime event sqlite catch-up failed; rebuilding index error=\(error)")
             do {
                 try secondary.rebuild(from: readResult.events)
                 try secondary.markCaughtUp(at: currentTime)
+                return .rebuiltAfterSecondaryFailure(eventCount: readResult.events.count)
             } catch {
                 log("runtime event sqlite rebuild failed error=\(error)")
+                return .failed(String(describing: error))
             }
         }
     }
+}
+
+public enum RuntimeEventSQLiteProjectionCatchUpResult: Equatable, Sendable {
+    case notDue
+    case caughtUp(eventCount: Int)
+    case rebuiltAfterSecondaryFailure(eventCount: Int)
+    case skippedDueToPrimaryReadIssues([JSONLRuntimeEventReadIssue])
+    case failed(String)
 }

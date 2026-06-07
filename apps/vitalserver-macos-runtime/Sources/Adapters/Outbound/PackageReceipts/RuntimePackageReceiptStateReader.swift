@@ -29,14 +29,6 @@ public enum RuntimePackageReceiptStateReader {
     }
 
     public static func processFailureReason(_ result: RuntimeProcessResult) -> String {
-        let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-        let stdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !stderr.isEmpty {
-            return "exitCode=\(result.exitCode) stderr=\(stderr)"
-        }
-        if !stdout.isEmpty {
-            return "exitCode=\(result.exitCode) stdout=\(stdout)"
-        }
-        return "exitCode=\(result.exitCode)"
+        RuntimeProcessFailureMessageFormatter.message(result)
     }
 }

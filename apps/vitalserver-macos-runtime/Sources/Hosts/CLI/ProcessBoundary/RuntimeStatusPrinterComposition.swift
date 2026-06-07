@@ -25,37 +25,34 @@ public struct RuntimeStatusPrinterCompositionContext {
 }
 
 public struct RuntimeStatusPrinterCompositionOperations {
-    let latestBackupPath: () -> String?
-    let runtimeStatusValue: () -> String?
+    let latestBackupPath: () throws -> String?
+    let runtimeStatusDocument: () -> RuntimeStatusDocumentLoadResult
     let runtimeVersionValue: () -> String
-    let vmIP: () -> String
-    let installedProxyPort: () -> Int
+    let installedProxyPort: () -> Int?
     let hostProxyHTTPStatus: (String) -> String
-    let isExecutableFile: (String) -> Bool
-    let fileExists: (URL) -> Bool
+    let fileStateAtPath: (String) -> RuntimeFileState
+    let fileStateAtURL: (URL) -> RuntimeFileState
     let serviceState: (RuntimeManagedService) -> RuntimeServiceState
     let printLine: (String) -> Void
 
     public init(
-        latestBackupPath: @escaping () -> String?,
-        runtimeStatusValue: @escaping () -> String?,
+        latestBackupPath: @escaping () throws -> String?,
+        runtimeStatusDocument: @escaping () -> RuntimeStatusDocumentLoadResult,
         runtimeVersionValue: @escaping () -> String,
-        vmIP: @escaping () -> String,
-        installedProxyPort: @escaping () -> Int,
+        installedProxyPort: @escaping () -> Int?,
         hostProxyHTTPStatus: @escaping (String) -> String,
-        isExecutableFile: @escaping (String) -> Bool,
-        fileExists: @escaping (URL) -> Bool,
+        fileStateAtPath: @escaping (String) -> RuntimeFileState,
+        fileStateAtURL: @escaping (URL) -> RuntimeFileState,
         serviceState: @escaping (RuntimeManagedService) -> RuntimeServiceState,
         printLine: @escaping (String) -> Void = { print($0) }
     ) {
         self.latestBackupPath = latestBackupPath
-        self.runtimeStatusValue = runtimeStatusValue
+        self.runtimeStatusDocument = runtimeStatusDocument
         self.runtimeVersionValue = runtimeVersionValue
-        self.vmIP = vmIP
         self.installedProxyPort = installedProxyPort
         self.hostProxyHTTPStatus = hostProxyHTTPStatus
-        self.isExecutableFile = isExecutableFile
-        self.fileExists = fileExists
+        self.fileStateAtPath = fileStateAtPath
+        self.fileStateAtURL = fileStateAtURL
         self.serviceState = serviceState
         self.printLine = printLine
     }
@@ -75,15 +72,14 @@ public enum RuntimeStatusPrinterComposition {
             rootfsBase: context.rootfsBase,
             vmDisk: context.vmDisk,
             latestBackupPath: operations.latestBackupPath,
-            runtimeStatusValue: operations.runtimeStatusValue,
+            runtimeStatusDocument: operations.runtimeStatusDocument,
             runtimeVersionValue: operations.runtimeVersionValue,
-            vmIP: operations.vmIP,
             installedProxyPort: operations.installedProxyPort,
             hostProxyHTTP: { port in
                 operations.hostProxyHTTPStatus(Constants.Runtime.proxyHealthURL(port: port))
             },
-            isExecutableFile: operations.isExecutableFile,
-            fileExists: operations.fileExists,
+            fileStateAtPath: operations.fileStateAtPath,
+            fileStateAtURL: operations.fileStateAtURL,
             serviceState: operations.serviceState,
             printLine: operations.printLine
         )

@@ -124,7 +124,11 @@ public struct InstallRuntimeOperations<Settings> {
 }
 
 public struct RuntimeInstallWorkflow {
-    public init() {}
+    private let useCase: InstallRuntimeUseCase
+
+    public init(useCase: InstallRuntimeUseCase = InstallRuntimeUseCase()) {
+        self.useCase = useCase
+    }
 
     public func run<Settings>(
         _ installPlan: InstallRuntimePlan,
@@ -428,6 +432,6 @@ public struct RuntimeInstallWorkflow {
     }
 
     private func installUseCase() -> InstallRuntimeUseCase {
-        InstallRuntimeUseCase()
+        useCase
     }
 }

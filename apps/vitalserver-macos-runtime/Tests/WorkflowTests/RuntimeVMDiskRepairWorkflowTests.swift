@@ -40,6 +40,22 @@ final class RuntimeVMDiskRepairWorkflowTests: XCTestCase {
         XCTAssertTrue(harness.logs.isEmpty)
     }
 
+    func testUnexpectedRootfsPathStateStopsBeforeStatusOrEffects() {
+        let harness = VMDiskRepairWorkflowHarness()
+        harness.directories.insert(harness.rootfsBase)
+
+        XCTAssertThrowsError(try harness.run()) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "rootfs base path state is unexpected: \(harness.rootfsBase.path) state=directory"
+            )
+        }
+
+        XCTAssertTrue(harness.statuses.isEmpty)
+        XCTAssertTrue(harness.events.isEmpty)
+        XCTAssertTrue(harness.logs.isEmpty)
+    }
+
     func testRedisBackupFailureResultContinuesWithExplicitReason() throws {
         let harness = VMDiskRepairWorkflowHarness()
         harness.files[harness.rootfsBase] = 2
@@ -85,7 +101,15 @@ private final class VMDiskRepairWorkflowHarness {
                 freeSpaceMarginBytes: 10
             ),
             operations: RuntimeVMDiskRepairOperations(
-                fileExists: { [self] url in files[url] != nil || directories.contains(url) },
+                pathState: { [self] url in
+                    if files[url] != nil {
+                        return .file
+                    }
+                    if directories.contains(url) {
+                        return .directory
+                    }
+                    return .missing
+                },
                 fileSize: { [self] url in
                     guard let size = files[url] else {
                         throw VMDiskRepairWorkflowTestError.missingFileSize

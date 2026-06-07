@@ -9,6 +9,7 @@ public protocol RuntimeStatusActionNeededVocabulary {
     var openLogsAction: String { get }
     var vitalServerUnavailableTitle: String { get }
 
+    func installStateText(_ state: RuntimeFileState) -> String
     func domainRecoveryActionText(_ action: RuntimeDomainRecoveryAction) -> String
 }
 
@@ -45,10 +46,18 @@ public struct RuntimeStatusActionNeededPolicy {
         if RuntimeReadinessPolicy.isReady(status) || isManagedOperationInProgress(status.runtimeState) {
             return nil
         }
-        if !status.runtimeInstalled {
+        let installationState = status.effectiveRuntimeInstallationState
+        if installationState == .missing {
             return RuntimeStatusActionNeededDecision(
                 title: vocabulary.runtimeNotInstalledTitle,
                 recommendedAction: vocabulary.installAction,
+                severity: .critical
+            )
+        }
+        if !installationState.isExecutable {
+            return RuntimeStatusActionNeededDecision(
+                title: vocabulary.installStateText(installationState),
+                recommendedAction: vocabulary.openLogsAction,
                 severity: .critical
             )
         }

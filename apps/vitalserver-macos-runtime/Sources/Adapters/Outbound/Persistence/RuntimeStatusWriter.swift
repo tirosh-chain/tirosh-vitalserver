@@ -7,14 +7,14 @@ public struct RuntimeStatusWriter {
     public let timestamp: () -> String
     public let runtimeVersion: () -> String
     public let healthSnapshot: () -> RuntimeHealthSnapshot
-    public let latestBackup: () -> URL?
+    public let latestBackup: () throws -> URL?
 
     public init(
         reporter: RuntimeStatusReporter,
         timestamp: @escaping () -> String,
         runtimeVersion: @escaping () -> String,
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
-        latestBackup: @escaping () -> URL?
+        latestBackup: @escaping () throws -> URL?
     ) {
         self.reporter = reporter
         self.timestamp = timestamp
@@ -38,7 +38,7 @@ public struct RuntimeStatusWriter {
             updatedAt: timestamp(),
             runtimeVersion: runtimeVersion(),
             healthSnapshot: snapshot,
-            latestBackup: latestBackup(),
+            latestBackup: try latestBackup(),
             progress: progress
         )
         return snapshot
@@ -63,7 +63,7 @@ public struct RuntimeStatusWriter {
             reasonCodes: reasonCodes,
             updatedAt: timestamp(),
             runtimeVersion: runtimeVersion(),
-            latestBackup: latestBackup()
+            latestBackup: try latestBackup()
         )
     }
 }

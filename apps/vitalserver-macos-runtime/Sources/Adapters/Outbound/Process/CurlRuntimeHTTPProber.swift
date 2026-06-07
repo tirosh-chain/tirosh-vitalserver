@@ -11,11 +11,28 @@ public struct CurlRuntimeHTTPProber: RuntimeHTTPProber {
     }
 
     public func statusCode(url: String) -> String {
+        statusRead(url: url).statusText
+    }
+
+    public func statusRead(url: String) -> RuntimeHTTPProbeResult {
         let result = commandRunner.run(
             "/usr/bin/curl",
             arguments: ["-sS", "-L", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url]
         )
         let code = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return result.exitCode == 0 && !code.isEmpty ? code : "failed"
+        if result.exitCode == 0, !code.isEmpty, result.outputIssues.isEmpty {
+            return .reportedStatus(code)
+        }
+        if !result.outputIssues.isEmpty {
+            return .outputInvalid(processFailureReason(result))
+        }
+        if result.exitCode == 0, code.isEmpty {
+            return .emptyStatus
+        }
+        return .commandFailed(processFailureReason(result))
+    }
+
+    private func processFailureReason(_ result: RuntimeProcessResult) -> String {
+        RuntimeProcessFailureMessageFormatter.message(result)
     }
 }

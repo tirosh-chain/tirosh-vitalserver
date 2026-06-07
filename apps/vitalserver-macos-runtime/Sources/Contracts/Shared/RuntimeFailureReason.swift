@@ -96,6 +96,7 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case launchdServiceThrottled(service: String)
     case hostProxyListenerMismatch(port: Int, listeners: String)
     case hostProxyListenerScanUnavailable
+    case hostProxyListenerScanInspectionFailed(String)
     case hostProxyListenerScanFailed(port: Int, exitCode: Int)
     case hostProxyConfigInvalid
     case httpProbeTimedOut(target: String)
@@ -234,6 +235,10 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
                 self = parsed
             } else if let parsed = RuntimeFailureReason.parseHostProxyListenerMismatch(rawValue) {
                 self = parsed
+            } else if rawValue.hasPrefix("host-proxy-listener-scan-inspection-failed-") {
+                self = .hostProxyListenerScanInspectionFailed(
+                    String(rawValue.dropFirst("host-proxy-listener-scan-inspection-failed-".count))
+                )
             } else if let parsed = RuntimeFailureReason.parseHostProxyListenerScanFailed(rawValue) {
                 self = parsed
             } else if let parsed = RuntimeFailureReason.parseHTTPProbeTimedOut(rawValue) {
@@ -332,6 +337,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "host-proxy-listener-mismatch-port-\(port)-listeners-\(listeners)"
         case .hostProxyListenerScanUnavailable:
             return "host-proxy-listener-scan-unavailable"
+        case .hostProxyListenerScanInspectionFailed(let reason):
+            return "host-proxy-listener-scan-inspection-failed-\(reason)"
         case .hostProxyListenerScanFailed(let port, let exitCode):
             return "host-proxy-listener-scan-failed-port-\(port)-exit-\(exitCode)"
         case .hostProxyConfigInvalid:
@@ -553,7 +560,7 @@ public extension RuntimeFailureReason {
         case .vmLifecycleDocumentInvalid, .vmLifecycleDocumentStale,
              .vmPidFileStale, .vmProcessExited, .launchdServiceCrashed, .launchdServiceThrottled:
             return .vmLifecycle
-        case .hostProxyListenerMismatch, .hostProxyListenerScanUnavailable,
+        case .hostProxyListenerMismatch, .hostProxyListenerScanUnavailable, .hostProxyListenerScanInspectionFailed,
              .hostProxyListenerScanFailed, .hostProxyConfigInvalid:
             return .hostProxy
         case .httpProbeTimedOut, .httpProbeConnectionRefused:
@@ -583,6 +590,7 @@ public extension RuntimeFailureReason {
         case .redisUIHTTP, .swaggerUIHTTP, .guestLogSyncService, .watchdogService, .guestRuntimeStateStale,
              .runtimeStatusDocumentStale, .observabilityEventStoreUnavailable,
              .vmLifecycleDocumentStale, .vmPidFileStale, .hostProxyListenerScanUnavailable,
+             .hostProxyListenerScanInspectionFailed,
              .hostProxyListenerScanFailed,
              .httpProbeTimedOut, .httpProbeConnectionRefused, .guestHTTPProbeFailed,
              .containerObservationMissing, .containerObservationReadFailed,
@@ -624,7 +632,7 @@ public extension RuntimeFailureReason {
             return .inspectLogs
         case .hostProxyListenerMismatch:
             return .freeProxyPort
-        case .hostProxyListenerScanUnavailable, .hostProxyListenerScanFailed:
+        case .hostProxyListenerScanUnavailable, .hostProxyListenerScanInspectionFailed, .hostProxyListenerScanFailed:
             return .inspectLogs
         case .hostProxyConfigInvalid:
             return .repairProxyConfiguration

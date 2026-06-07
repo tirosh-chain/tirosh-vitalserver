@@ -2,7 +2,6 @@ import Foundation
 import RuntimeControl
 import Application
 import Contracts
-import Domain
 import Errors
 
 protocol RuntimeLogCollecting: Sendable {
@@ -26,8 +25,13 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
     private let rotatedCopySets: [RuntimeRotatedLogCopySet]
     private let archiveDirectory: URL
     private let maxCentralLogBytes: UInt64
-    private let calendar: Calendar
     private let now: () -> Date
+    private let archiveCollisionID: () -> String
+    private let setModificationDate: (URL, Date) throws -> Void
+    private let collectionRules: RuntimeLogCollectionDecisionRules
+    private var pathInspector: RuntimeLogCollectionPathInspector {
+        RuntimeLogCollectionPathInspector(fileStore: fileStore)
+    }
 
     init(
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
@@ -37,7 +41,9 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
         archiveDirectory: URL = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.logArchive),
         maxCentralLogBytes: UInt64 = 10 * 1024 * 1024,
         calendar: Calendar = .current,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        archiveCollisionID: @escaping () -> String = { UUID().uuidString },
+        setModificationDate: ((URL, Date) throws -> Void)? = nil
     ) {
         self.fileStore = fileStore
         self.copies = copies
@@ -45,8 +51,20 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
         self.rotatedCopySets = rotatedCopySets
         self.archiveDirectory = archiveDirectory
         self.maxCentralLogBytes = maxCentralLogBytes
-        self.calendar = calendar
         self.now = now
+        self.archiveCollisionID = archiveCollisionID
+        self.collectionRules = RuntimeLogCollectionDecisionRules(calendar: calendar)
+        if let setModificationDate {
+            self.setModificationDate = setModificationDate
+        } else if let metadataWriter = fileStore as? RuntimeFileMetadataWriting {
+            self.setModificationDate = { url, date in
+                try metadataWriter.setModificationDate(date, at: url)
+            }
+        } else {
+            self.setModificationDate = { url, _ in
+                throw RuntimeControlLogCollectorError.metadataWriteUnsupported(path: url.path)
+            }
+        }
     }
 
     func refreshLogCollection() throws {
@@ -65,7 +83,12 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
         guard sourceID != .helperMessage else {
             return
         }
-        for item in copies where shouldRefresh(item, for: sourceID) {
+        for item in copies where collectionRules.shouldRefreshTarget(
+            RuntimeLogCollectionRefreshTargetInput(
+                sourceID: sourceID,
+                destinationFileName: item.destination.lastPathComponent
+            )
+        ) {
             try copyIntoCentralLogs(item)
         }
         if sourceID == .containers {
@@ -82,21 +105,21 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
     }
 
     private func copyDirectoryIntoCentralLogs(_ item: RuntimeLogDirectoryCopy) throws {
-        guard fileStore.directoryExists(item.source) else {
+        guard try pathInspector.expectedDirectoryIsPresent(item.source) else {
             return
         }
         try fileStore.createDirectory(
             at: item.destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        if fileStore.fileExists(item.destination) || fileStore.directoryExists(item.destination) {
+        if try pathInspector.pathIsPresent(item.destination) {
             try fileStore.removeItem(at: item.destination)
         }
         try fileStore.copyItem(at: item.source, to: item.destination)
     }
 
     private func copyIntoCentralLogs(_ item: RuntimeLogCopy) throws {
-        guard fileStore.fileExists(item.source),
+        guard try pathInspector.expectedLogFileIsPresent(item.source),
               try shouldRefreshCopy(from: item.source, to: item.destination)
         else {
             return
@@ -105,13 +128,13 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
             at: item.destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        if fileStore.fileExists(item.destination), try shouldRotateCentralLog(item.destination) {
+        if try pathInspector.expectedLogFileIsPresent(item.destination), try shouldRotateCentralLog(item.destination) {
             try archiveCentralLog(item.destination, prefix: item.archivePrefix)
         } else if try canAppendCopy(from: item.source, to: item.destination) {
             try appendNewLogBytes(from: item.source, to: item.destination)
             try touch(item.destination)
             return
-        } else if fileStore.fileExists(item.destination) {
+        } else if try pathInspector.expectedLogFileIsPresent(item.destination) {
             try fileStore.removeItem(at: item.destination)
         }
         try fileStore.copyItem(at: item.source, to: item.destination)
@@ -119,7 +142,7 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
     }
 
     private func copyRotatedLogs(_ set: RuntimeRotatedLogCopySet) throws {
-        guard fileStore.directoryExists(set.sourceDirectory) else {
+        guard try pathInspector.expectedDirectoryIsPresent(set.sourceDirectory) else {
             return
         }
         let entries = try fileStore.contentsOfDirectory(
@@ -145,103 +168,121 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
     }
 
     private func shouldRefreshCopy(from source: URL, to destination: URL) throws -> Bool {
-        guard fileStore.fileExists(destination) else {
-            return true
+        let destinationPresent = try pathInspector.expectedLogFileIsPresent(destination)
+        guard destinationPresent else {
+            let nowValue = now()
+            return collectionRules.shouldRefreshCopy(
+                RuntimeLogCollectionCopyRefreshInput(
+                    destinationPresent: false,
+                    rotationRequired: false,
+                    sourceSize: 0,
+                    destinationSize: 0,
+                    sourceModificationDate: nowValue,
+                    destinationModificationDate: nowValue
+                )
+            )
         }
-        if try shouldRotateCentralLog(destination) {
-            return true
+        let rotationRequired = try shouldRotateCentralLog(destination)
+        guard !rotationRequired else {
+            let nowValue = now()
+            return collectionRules.shouldRefreshCopy(
+                RuntimeLogCollectionCopyRefreshInput(
+                    destinationPresent: true,
+                    rotationRequired: true,
+                    sourceSize: 0,
+                    destinationSize: 0,
+                    sourceModificationDate: nowValue,
+                    destinationModificationDate: nowValue
+                )
+            )
         }
         let sourceSize = try fileStore.fileSize(source)
-        let destinationSize = try fileStore.fileSize(destination)
-        if sourceSize != destinationSize {
-            return true
-        }
         let sourceDate = try fileStore.modificationDate(source)
+        let destinationSize = try fileStore.fileSize(destination)
         let destinationDate = try fileStore.modificationDate(destination)
-        return sourceDate > destinationDate
+        return collectionRules.shouldRefreshCopy(
+            RuntimeLogCollectionCopyRefreshInput(
+                destinationPresent: destinationPresent,
+                rotationRequired: rotationRequired,
+                sourceSize: sourceSize,
+                destinationSize: destinationSize,
+                sourceModificationDate: sourceDate,
+                destinationModificationDate: destinationDate
+            )
+        )
     }
 
     private func shouldRotateCentralLog(_ url: URL) throws -> Bool {
-        guard fileStore.fileExists(url) else {
-            return false
+        let destinationPresent = try pathInspector.expectedLogFileIsPresent(url)
+        let nowValue = now()
+        guard destinationPresent else {
+            return collectionRules.shouldRotateCentralLog(
+                RuntimeLogCollectionRotationInput(
+                    destinationPresent: false,
+                    fileSize: 0,
+                    modificationDate: nowValue,
+                    now: nowValue,
+                    maxCentralLogBytes: maxCentralLogBytes
+                )
+            )
         }
-        if try fileStore.fileSize(url) >= maxCentralLogBytes {
-            return true
-        }
-        let date = try fileStore.modificationDate(url)
-        return !calendar.isDateInToday(date)
+        return collectionRules.shouldRotateCentralLog(
+            RuntimeLogCollectionRotationInput(
+                destinationPresent: destinationPresent,
+                fileSize: try fileStore.fileSize(url),
+                modificationDate: try fileStore.modificationDate(url),
+                now: nowValue,
+                maxCentralLogBytes: maxCentralLogBytes
+            )
+        )
     }
 
     private func archiveCentralLog(_ url: URL, prefix: String) throws {
         let date = try fileStore.modificationDate(url)
-        let day = archiveDayFormatter.string(from: date)
-        let timestamp = archiveTimestampFormatter.string(from: date)
+        let day = RuntimeLogArchiveNameFormatter.day(date)
+        let timestamp = RuntimeLogArchiveNameFormatter.timestamp(date)
         let dayArchiveDirectory = archiveDirectory.appendingPathComponent(day, isDirectory: true)
         try fileStore.createDirectory(at: dayArchiveDirectory, withIntermediateDirectories: true)
         let archiveName = "\(prefix).\(timestamp)"
-        let destination = uniqueArchiveURL(
+        let destination = try uniqueArchiveURL(
             dayArchiveDirectory.appendingPathComponent(archiveName)
         )
         try fileStore.moveItem(at: url, to: destination)
     }
 
-    private func uniqueArchiveURL(_ url: URL) -> URL {
-        guard fileStore.fileExists(url) else {
+    private func uniqueArchiveURL(_ url: URL) throws -> URL {
+        guard try pathInspector.expectedLogFileIsPresent(url) else {
             return url
         }
         for index in 1...999 {
             let candidate = url.deletingLastPathComponent()
                 .appendingPathComponent("\(url.lastPathComponent).\(index)")
-            if !fileStore.fileExists(candidate) {
+            if try !pathInspector.expectedLogFileIsPresent(candidate) {
                 return candidate
             }
         }
         return url.deletingLastPathComponent()
-            .appendingPathComponent("\(url.lastPathComponent).\(UUID().uuidString)")
-    }
-
-    private func shouldRefresh(_ item: RuntimeLogCopy, for sourceID: RuntimeLogSource) -> Bool {
-        switch sourceID {
-        case .helperMessage:
-            return false
-        case .install:
-            return item.destination.path == RuntimeControlClientConstants.Paths.installLog
-        case .command:
-            return item.destination.path == RuntimeControlClientConstants.Paths.commandLog
-        case .launcher:
-            return item.destination.lastPathComponent == "launcher.log"
-        case .vmLaunchOutput:
-            return item.destination.lastPathComponent == "launchd.out.log"
-        case .vmLaunchError:
-            return item.destination.lastPathComponent == "launchd.err.log"
-        case .proxyOutput:
-            return item.destination.lastPathComponent == "proxy.out.log"
-        case .proxyError:
-            return item.destination.lastPathComponent == "proxy.err.log"
-        case .watchdog:
-            return item.destination.lastPathComponent == "watchdog.out.log"
-        case .updateActivation:
-            return item.destination.path == RuntimeControlClientConstants.Paths.updateActivationLog
-        case .updateShutdown:
-            return item.destination.path == RuntimeControlClientConstants.Paths.updateShutdownLog
-        case .containers:
-            return item.destination.path == RuntimeControlClientConstants.Paths.containerLogs
-        }
+            .appendingPathComponent("\(url.lastPathComponent).\(archiveCollisionID())")
     }
 
     private func canAppendCopy(from source: URL, to destination: URL) throws -> Bool {
-        guard fileStore.fileExists(destination) else {
-            return false
-        }
+        let destinationPresent = try pathInspector.expectedLogFileIsPresent(destination)
         let sourceSize = try fileStore.fileSize(source)
-        let destinationSize = try fileStore.fileSize(destination)
-        guard sourceSize > destinationSize else {
-            return false
-        }
-        return try sourceMatchesDestinationTail(
-            source: source,
-            destination: destination,
-            destinationSize: destinationSize
+        let destinationSize = destinationPresent ? try fileStore.fileSize(destination) : 0
+        let sourceMatchesDestinationTail = destinationPresent && sourceSize > destinationSize
+            ? try sourceMatchesDestinationTail(
+                source: source,
+                destination: destination,
+                destinationSize: destinationSize
+            )
+            : false
+        return collectionRules.canAppendCopy(
+            RuntimeLogCollectionAppendInput(
+                destinationPresent: destinationPresent,
+                sourceSize: sourceSize,
+                destinationSize: destinationSize,
+                sourceMatchesDestinationTail: sourceMatchesDestinationTail
+            )
         )
     }
 
@@ -261,185 +302,32 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
     }
 
     private func readData(_ url: URL, offset: UInt64, length: UInt64) throws -> Data? {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer {
-            try? handle.close()
-        }
-        try handle.seek(toOffset: offset)
-        return try handle.read(upToCount: Int(length))
+        let data = try readData(url, offset: offset)
+        return Data(data.prefix(Int(length)))
     }
 
     private func appendNewLogBytes(from source: URL, to destination: URL) throws {
         let offset = try fileStore.fileSize(destination)
-        let sourceHandle = try FileHandle(forReadingFrom: source)
-        defer {
-            try? sourceHandle.close()
-        }
-        try sourceHandle.seek(toOffset: offset)
-        guard let data = try sourceHandle.read(upToCount: Self.appendChunkByteLimit), !data.isEmpty else {
+        let chunk = Data(try readData(source, offset: offset).prefix(Self.appendChunkByteLimit))
+        guard !chunk.isEmpty else {
             return
         }
-
-        let destinationHandle = try FileHandle(forWritingTo: destination)
-        defer {
-            try? destinationHandle.close()
-        }
-        try destinationHandle.seekToEnd()
-        try destinationHandle.write(contentsOf: data)
+        try fileStore.writeData(try fileStore.readData(destination) + chunk, to: destination, options: [])
     }
 
     private func touch(_ url: URL) throws {
-        try FileManager.default.setAttributes(
-            [.modificationDate: now()],
-            ofItemAtPath: url.path
-        )
+        try setModificationDate(url, now())
     }
 
-}
-
-struct RuntimeLogCopy {
-    let source: URL
-    let destination: URL
-    let archivePrefix: String
-
-    init(source: URL, destination: URL, archivePrefix: String) {
-        self.source = source
-        self.destination = destination
-        self.archivePrefix = archivePrefix
-    }
-
-    static func defaultCopies() -> [RuntimeLogCopy] {
-        let runtimeFiles = [
-            "launcher.log",
-            "launchd.out.log",
-            "launchd.err.log",
-            "proxy.out.log",
-            "proxy.err.log",
-            "guest-log-sync.out.log",
-            "guest-log-sync.err.log",
-            "sleep-prevention.out.log",
-            "sleep-prevention.err.log",
-            "watchdog.out.log",
-            "watchdog.err.log",
-        ].map { fileName in
-            RuntimeLogCopy(
-                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeLogSources)
-                    .appendingPathComponent(fileName),
-                destination: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeLogs)
-                    .appendingPathComponent(fileName),
-                archivePrefix: "runtime-\(fileName)"
-            )
+    private func readData(_ url: URL, offset: UInt64) throws -> Data {
+        if let partialReader = fileStore as? RuntimeFilePartialReading {
+            return try partialReader.readData(url, offset: offset)
         }
-
-        let guestFiles = [
-            RuntimeLogCopy(
-                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.bootstrapLogSource),
-                destination: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.bootstrapLog),
-                archivePrefix: "guest-bootstrap.log"
-            ),
-            RuntimeLogCopy(
-                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.containerLogSource),
-                destination: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.containerLogs),
-                archivePrefix: "guest-container-logs.log"
-            ),
-            RuntimeLogCopy(
-                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.updateActivationLogSource),
-                destination: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.updateActivationLog),
-                archivePrefix: "guest-activate-update.log"
-            ),
-            RuntimeLogCopy(
-                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.updateShutdownLogSource),
-                destination: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.updateShutdownLog),
-                archivePrefix: "guest-prepare-update-shutdown.log"
-            ),
-            RuntimeLogCopy(
-                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.datastoreRepairLogSource),
-                destination: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.datastoreRepairLog),
-                archivePrefix: "guest-repair-datastore.log"
-            ),
-            RuntimeLogCopy(
-                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.redisBackupLogSource),
-                destination: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.redisBackupLog),
-                archivePrefix: "guest-redis-backup.log"
-            ),
-            RuntimeLogCopy(
-                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.commandLogFile),
-                destination: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.commandLog),
-                archivePrefix: "command.log"
-            ),
-        ]
-
-        return runtimeFiles + guestFiles
+        let data = try fileStore.readData(url)
+        guard offset < UInt64(data.count) else {
+            return Data()
+        }
+        return Data(data.dropFirst(Int(offset)))
     }
+
 }
-
-struct RuntimeLogDirectoryCopy {
-    let source: URL
-    let destination: URL
-
-    init(source: URL, destination: URL) {
-        self.source = source
-        self.destination = destination
-    }
-
-    static func defaultCopies() -> [RuntimeLogDirectoryCopy] {
-        [
-            RuntimeLogDirectoryCopy(
-                source: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestObservabilitySource),
-                destination: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestObservability)
-            ),
-        ]
-    }
-}
-
-struct RuntimeRotatedLogCopySet {
-    let sourceDirectory: URL
-    let sourceFilePrefix: String
-    let destinationDirectory: URL
-    let destinationFilePrefix: String
-    let archivePrefix: String
-
-    init(
-        sourceDirectory: URL,
-        sourceFilePrefix: String,
-        destinationDirectory: URL,
-        destinationFilePrefix: String,
-        archivePrefix: String
-    ) {
-        self.sourceDirectory = sourceDirectory
-        self.sourceFilePrefix = sourceFilePrefix
-        self.destinationDirectory = destinationDirectory
-        self.destinationFilePrefix = destinationFilePrefix
-        self.archivePrefix = archivePrefix
-    }
-
-    static func defaultSets() -> [RuntimeRotatedLogCopySet] {
-        [
-            RuntimeRotatedLogCopySet(
-                sourceDirectory: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestRunDirectory),
-                sourceFilePrefix: "container-logs.log.",
-                destinationDirectory: URL(fileURLWithPath: RuntimeControlClientConstants.Paths.guestLogs),
-                destinationFilePrefix: "container-logs.log.",
-                archivePrefix: "guest-container-logs.log."
-            ),
-        ]
-    }
-}
-
-private let archiveDayFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.calendar = Calendar(identifier: .gregorian)
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.timeZone = .current
-    formatter.dateFormat = "yyyy-MM-dd"
-    return formatter
-}()
-
-private let archiveTimestampFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.calendar = Calendar(identifier: .gregorian)
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.timeZone = .current
-    formatter.dateFormat = "yyyyMMdd-HHmmss"
-    return formatter
-}()

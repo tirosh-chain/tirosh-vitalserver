@@ -304,6 +304,11 @@ struct RuntimeRecordersPanel: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 18)
+            case .invalidTimeline(let timestamp):
+                Text("Recorder activity history has an invalid timestamp: \(timestamp)")
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 18)
             case .available:
                 RecorderActivityChart(
                     buckets: activityDisplay.buckets,
@@ -411,11 +416,11 @@ struct RuntimeRecordersPanel: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
             relationshipReadIssue
-            if assignments.isEmpty, events.isEmpty {
+            if assignments.isEmpty, events.isEmpty, viewModel.vitalRelationships.state == .loaded {
                 Text("No recorder relationship history has been observed.")
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 8)
-            } else {
+            } else if viewModel.vitalRelationships.state != .readFailed {
                 if !assignments.isEmpty {
                     relationshipSubsection("Assignments")
                     ForEach(Array(assignments)) { assignment in

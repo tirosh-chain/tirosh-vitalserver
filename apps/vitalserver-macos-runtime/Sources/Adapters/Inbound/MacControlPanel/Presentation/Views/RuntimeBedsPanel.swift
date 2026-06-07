@@ -1,3 +1,4 @@
+import Contracts
 import RuntimeControl
 import SwiftUI
 import Errors
@@ -238,11 +239,11 @@ struct RuntimeBedsPanel: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
             relationshipReadIssue
-            if assignments.isEmpty, events.isEmpty {
+            if assignments.isEmpty, events.isEmpty, viewModel.vitalRelationships.state == .loaded {
                 Text("No bed relationship history has been observed.")
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 8)
-            } else {
+            } else if viewModel.vitalRelationships.state != .readFailed {
                 if !assignments.isEmpty {
                     relationshipSubsection("Assignments")
                     ForEach(Array(assignments)) { assignment in

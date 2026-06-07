@@ -17,8 +17,8 @@ public enum RuntimeHealthSnapshotPolicy {
     }
 
     private static func hasExplicitFailureState(_ snapshot: RuntimeHealthSnapshot) -> Bool {
-        !snapshot.vmExecutable
-            || !snapshot.proxyExecutable
+        snapshot.vmExecutable != .executable
+            || snapshot.proxyExecutable != .executable
             || snapshot.rootfsBase != .present
             || snapshot.vmDisk != .present
             || snapshot.vmService != .loaded

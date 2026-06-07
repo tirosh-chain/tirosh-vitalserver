@@ -74,7 +74,7 @@ public struct RuntimeVMDiskRepairComposition {
         try RuntimeVMDiskRepairWorkflow().repair(
             context: repairContext,
             operations: RuntimeVMDiskRepairOperations(
-                fileExists: operations.fileStore.fileExists,
+                pathState: operations.fileStore.pathState,
                 fileSize: operations.fileStore.fileSize,
                 createDirectory: { url, withIntermediateDirectories in
                     try operations.fileStore.createDirectory(

@@ -12,6 +12,7 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
     public let updateShutdownResultURL: URL
     public let datastoreRepairRequestURL: URL
     public let datastoreRepairResultURL: URL
+    private let fileStore: RuntimeFileReading & RuntimeFileWriting
 
     public init(
         runtimeStateURL: URL,
@@ -21,7 +22,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         updateShutdownRequestURL: URL,
         updateShutdownResultURL: URL,
         datastoreRepairRequestURL: URL,
-        datastoreRepairResultURL: URL
+        datastoreRepairResultURL: URL,
+        fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore()
     ) {
         self.runtimeStateURL = runtimeStateURL
         self.bootstrapResultURL = bootstrapResultURL
@@ -31,6 +33,7 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         self.updateShutdownResultURL = updateShutdownResultURL
         self.datastoreRepairRequestURL = datastoreRepairRequestURL
         self.datastoreRepairResultURL = datastoreRepairResultURL
+        self.fileStore = fileStore
     }
 
     public func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument> {
@@ -103,11 +106,19 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
     }
 
     private func decode<T: Decodable>(_ type: T.Type, from url: URL) -> RuntimeGuestDocumentLoadResult<T> {
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        let state = fileStore.pathState(at: url)
+        switch state {
+        case .file:
+            break
+        case .missing:
             return .missing
+        case .inspectFailed(let reason):
+            return .failed("runtime guest document path inspection failed path=\(url.path) reason=\(reason)")
+        case .directory, .other, .unknown:
+            return .failed("runtime guest document path state is unexpected path=\(url.path) state=\(state.rawValue)")
         }
         do {
-            let data = try Data(contentsOf: url)
+            let data = try fileStore.readData(url)
             return try .loaded(JSONDecoder().decode(type, from: data))
         } catch {
             return .failed(error.localizedDescription)
@@ -118,15 +129,22 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(document)
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try data.write(to: url, options: .atomic)
+        try fileStore.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fileStore.writeData(data, to: url, options: .atomic)
     }
 
     private func removeFileIfPresent(_ url: URL) throws {
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        let state = fileStore.pathState(at: url)
+        switch state {
+        case .file:
+            try fileStore.removeItem(at: url)
+        case .missing:
             return
+        case .inspectFailed(let reason):
+            throw JSONFileRuntimeGuestGatewayError.pathInspectionFailed(path: url.path, reason: reason)
+        case .directory, .other, .unknown:
+            throw JSONFileRuntimeGuestGatewayError.unexpectedPathState(path: url.path, state: state.rawValue)
         }
-        try FileManager.default.removeItem(at: url)
     }
 }
 

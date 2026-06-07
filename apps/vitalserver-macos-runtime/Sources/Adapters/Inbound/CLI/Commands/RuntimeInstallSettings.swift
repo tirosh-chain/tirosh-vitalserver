@@ -106,8 +106,18 @@ public struct RuntimeInstallSettings: Equatable, Sendable {
             defaults: defaults
         )
         let url = URL(fileURLWithPath: path)
-        guard fileStore.fileExists(url) else {
+        switch fileStore.pathState(at: url) {
+        case .file:
+            break
+        case .missing:
             return settings
+        case .inspectFailed(let reason):
+            throw RuntimeInstallSettingsError.pathInspectionFailed(path: url.path, reason: reason)
+        case .directory, .other, .unknown:
+            throw RuntimeInstallSettingsError.unexpectedPathState(
+                path: url.path,
+                state: fileStore.pathState(at: url).rawValue
+            )
         }
         let data = try fileStore.readData(url)
         let document = try JSONDecoder().decode(RuntimeInstallSettingsDocument.self, from: data)

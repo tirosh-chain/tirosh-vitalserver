@@ -19,8 +19,16 @@ public struct RuntimeVMLifecycleStore: @unchecked Sendable {
     }
 
     public func load() -> RuntimeGuestDocumentLoadResult<RuntimeVMLifecycleDocument> {
-        guard fileStore.fileExists(url) else {
+        let state = fileStore.pathState(at: url)
+        switch state {
+        case .file:
+            break
+        case .missing:
             return .missing
+        case .inspectFailed(let reason):
+            return .failed("VM lifecycle path inspection failed path=\(url.path) reason=\(reason)")
+        case .directory, .other, .unknown:
+            return .failed("VM lifecycle path state is unexpected path=\(url.path) state=\(state.rawValue)")
         }
         do {
             return try .loaded(JSONDecoder().decode(RuntimeVMLifecycleDocument.self, from: fileStore.readData(url)))
@@ -37,7 +45,7 @@ public struct RuntimeVMLifecycleStore: @unchecked Sendable {
         bootWindowSeconds: TimeInterval? = nil
     ) throws {
         let timestamp = now()
-        let startedAt = state == .starting ? timestamp : (currentStartedAt() ?? timestamp)
+        let startedAt = try startedAtForWrite(state: state, timestamp: timestamp)
         let deadlineAt = bootWindowSeconds.map { timestamp.addingTimeInterval($0) }
         let document = RuntimeVMLifecycleDocument(
             state: state,
@@ -52,11 +60,25 @@ public struct RuntimeVMLifecycleStore: @unchecked Sendable {
         try fileStore.writeData(try runtimeVMLifecycleDocumentEncoder().encode(document), to: url, options: .atomic)
     }
 
-    private func currentStartedAt() -> Date? {
-        guard case .loaded(let document) = load() else {
-            return nil
+    private func startedAtForWrite(state: RuntimeVMLifecycleState, timestamp: Date) throws -> Date {
+        guard state != .starting else {
+            return timestamp
         }
-        return ISO8601DateFormatter().date(from: document.startedAt)
+        return try currentStartedAt(requiredFor: state)
+    }
+
+    private func currentStartedAt(requiredFor state: RuntimeVMLifecycleState) throws -> Date {
+        switch load() {
+        case .missing:
+            throw RuntimeVMLifecycleStoreError.missingDocumentForState(state)
+        case .failed(let reason):
+            throw RuntimeVMLifecycleStoreError.readFailed(reason)
+        case .loaded(let document):
+            guard let startedAt = ISO8601DateFormatter().date(from: document.startedAt) else {
+                throw RuntimeVMLifecycleStoreError.invalidStartedAt(document.startedAt)
+            }
+            return startedAt
+        }
     }
 }
 

@@ -1,5 +1,4 @@
 import Contracts
-import Domain
 import Foundation
 import OutboundAdapters
 import XCTest
@@ -15,8 +14,7 @@ final class RuntimeBundleVerificationFileReaderTests: XCTestCase {
                     return data
                 },
                 readUTF8Text: { _ in "" },
-                fileSize: { _ in 0 },
-                log: { _ in }
+                parseChecksums: { _ in [:] }
             )
         )
 
@@ -30,8 +28,7 @@ final class RuntimeBundleVerificationFileReaderTests: XCTestCase {
             operations: RuntimeBundleVerificationFileReaderOperations(
                 readData: { _ in Data("not json".utf8) },
                 readUTF8Text: { _ in "" },
-                fileSize: { _ in 0 },
-                log: { _ in }
+                parseChecksums: { _ in [:] }
             )
         )
 
@@ -45,8 +42,17 @@ final class RuntimeBundleVerificationFileReaderTests: XCTestCase {
             operations: RuntimeBundleVerificationFileReaderOperations(
                 readData: { _ in Data() },
                 readUTF8Text: { _ in "abc app.tar.gz\ndef migrations/001.sql\n" },
-                fileSize: { _ in 0 },
-                log: { _ in }
+                parseChecksums: { text in
+                    Dictionary(uniqueKeysWithValues: text
+                        .split(separator: "\n")
+                        .compactMap { line in
+                            let parts = line.split(separator: " ", maxSplits: 1)
+                            guard parts.count == 2 else {
+                                return nil
+                            }
+                            return (String(parts[1]), String(parts[0]))
+                        })
+                }
             )
         )
 
@@ -58,31 +64,18 @@ final class RuntimeBundleVerificationFileReaderTests: XCTestCase {
         ])
     }
 
-    func testVerifyDigestPreservesExplicitVerificationErrorWithoutSuccessFallback() {
+    func testSHA256ReadsExplicitFileData() throws {
         let reader = RuntimeBundleVerificationFileReader(
             operations: RuntimeBundleVerificationFileReaderOperations(
                 readData: { _ in Data("hello".utf8) },
                 readUTF8Text: { _ in "" },
-                fileSize: { _ in 5 },
-                log: { _ in }
+                parseChecksums: { _ in [:] }
             )
         )
 
-        XCTAssertThrowsError(try reader.verifyDigest(
-            url: URL(fileURLWithPath: "/bundle/app.tar.gz"),
-            fileVerification: UpdateBundleFileVerification(
-                name: "app.tar.gz",
-                checksumKey: "app.tar.gz",
-                expectedSHA256: "not-the-actual-digest",
-                expectedSize: 5
-            ),
-            checksumMap: ["app.tar.gz": "not-the-actual-digest"]
-        )) { error in
-            XCTAssertEqual(
-                error as? UpdateBundleVerificationError,
-                .manifestChecksumMismatch("app.tar.gz")
-            )
-        }
+        let digest = try reader.sha256(URL(fileURLWithPath: "/bundle/app.tar.gz"))
+
+        XCTAssertEqual(digest, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824")
     }
 
     private func makeManifest() -> UpdateBundleManifest {

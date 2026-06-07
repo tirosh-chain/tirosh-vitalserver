@@ -64,8 +64,9 @@ public enum RuntimeBackupStoreComposition {
             ),
             timestamp: operations.timestamp,
             isoTimestamp: operations.isoTimestamp,
-            fileExists: operations.fileStore.fileExists,
-            directoryExists: operations.fileStore.directoryExists,
+            pathState: { url in
+                operations.fileStore.pathState(at: url)
+            },
             createDirectory: { url, withIntermediateDirectories in
                 try operations.fileStore.createDirectory(
                     at: url,

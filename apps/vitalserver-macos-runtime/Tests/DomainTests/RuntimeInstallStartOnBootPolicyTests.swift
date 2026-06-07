@@ -1,3 +1,4 @@
+import Contracts
 import Domain
 import XCTest
 import Errors

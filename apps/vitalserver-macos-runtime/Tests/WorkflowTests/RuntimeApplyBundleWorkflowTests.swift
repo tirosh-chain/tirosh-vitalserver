@@ -181,8 +181,8 @@ private final class ApplyBundleHarness {
             prepareLogs: {},
             initialHealthSnapshot: {
                 RuntimeHealthSnapshot(
-                    vmExecutable: true,
-                    proxyExecutable: true,
+                    vmExecutable: .executable,
+                    proxyExecutable: .executable,
                     rootfsBase: .present,
                     vmDisk: .present,
                     vmService: .loaded,

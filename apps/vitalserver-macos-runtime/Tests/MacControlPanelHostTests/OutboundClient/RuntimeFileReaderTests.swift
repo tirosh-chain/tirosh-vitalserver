@@ -36,7 +36,7 @@ final class RuntimeFileReaderTests: XCTestCase {
             encoding: .utf8
         )
 
-        let summary = SystemRuntimeHostFileReader().updateBundleSummary(url: directory)
+        let summary = displayHostText(SystemRuntimeHostFileReader().updateBundleSummaryResult(url: directory))
 
         XCTAssertTrue(summary.contains("Version: 1.2.3"))
         XCTAssertTrue(summary.contains("rootfs-base: rootfs.img.gz"))
@@ -47,8 +47,31 @@ final class RuntimeFileReaderTests: XCTestCase {
         let directory = try temporaryDirectory()
 
         XCTAssertEqual(
-            SystemRuntimeHostFileReader().updateBundleSummary(url: directory),
+            SystemRuntimeHostFileReader().updateBundleSummaryResult(url: directory),
+            .missing(.message("Missing manifest.json"))
+        )
+        XCTAssertEqual(
+            displayHostText(SystemRuntimeHostFileReader().updateBundleSummaryResult(url: directory)),
             "Missing manifest.json"
+        )
+    }
+
+    func testUpdateBundleSummaryReportsManifestPathInspectionFailure() {
+        let directory = URL(fileURLWithPath: "/bundle")
+        let manifestURL = directory.appendingPathComponent("manifest.json")
+        let reader = SystemRuntimeHostFileReader(
+            fileStore: PathStateRuntimeFileStore(pathStates: [
+                manifestURL.path: .inspectFailed("permission denied"),
+            ])
+        )
+
+        XCTAssertEqual(
+            reader.updateBundleSummaryResult(url: directory),
+            .failed("Manifest path inspection failed: /bundle/manifest.json reason=permission denied")
+        )
+        XCTAssertEqual(
+            displayHostText(reader.updateBundleSummaryResult(url: directory)),
+            "Manifest path inspection failed: /bundle/manifest.json reason=permission denied"
         )
     }
 
@@ -61,7 +84,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         )
 
         XCTAssertTrue(
-            SystemRuntimeHostFileReader().updateBundleSummary(url: directory)
+            displayHostText(SystemRuntimeHostFileReader().updateBundleSummaryResult(url: directory))
                 .hasPrefix("Invalid manifest.json:")
         )
     }
@@ -70,7 +93,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         let archive = URL(fileURLWithPath: "/tmp/update-bundle-1.2.3.tar.gz")
 
         XCTAssertEqual(
-            SystemRuntimeHostFileReader().updateBundleSummary(url: archive),
+            displayHostText(SystemRuntimeHostFileReader().updateBundleSummaryResult(url: archive)),
             "Archive: update-bundle-1.2.3.tar.gz\nVerify to inspect manifest and checksums."
         )
     }
@@ -101,6 +124,24 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertThrowsError(try reader.vitalFileFolders(root: "/restricted"))
     }
 
+    func testVitalFileFoldersPropagatesEntryPathInspectionFailure() {
+        let root = URL(fileURLWithPath: "/vital-files")
+        let unreadable = root.appendingPathComponent("unreadable")
+        let reader = SystemRuntimeHostFileReader(
+            fileStore: PathStateRuntimeFileStore(
+                pathStates: [unreadable.path: .inspectFailed("permission denied")],
+                directoryContents: [root.path: [unreadable]]
+            )
+        )
+
+        XCTAssertThrowsError(try reader.vitalFileFolders(root: root.path)) { error in
+            XCTAssertEqual(
+                error as? RuntimeHostFileReaderError,
+                .pathInspectionFailed(path: unreadable.path, reason: "permission denied")
+            )
+        }
+    }
+
     func testHelperMessageLogTextReadsPersistedHelperMessageLog() {
         let reader = SystemRuntimeHostFileReader(
             fileStore: SpecificFileRuntimeFileStore(dataByPath: [
@@ -109,19 +150,41 @@ final class RuntimeFileReaderTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            reader.logText(sourceID: .helperMessage, helperMessage: "ignored", lineLimit: 2),
+            displayLogText(reader.logTextResult(sourceID: .helperMessage, lineLimit: 2)),
             "second\nthird"
         )
     }
 
-    func testHelperMessageLogTextReportsNoDataWhenPersistedLogIsMissing() {
+    func testHelperMessageLogTextReportsMissingMessageWhenPersistedLogIsMissing() {
         let reader = SystemRuntimeHostFileReader(
             fileStore: SpecificFileRuntimeFileStore(existingFiles: [])
         )
+        let result = reader.logTextResult(sourceID: .helperMessage, lineLimit: 10)
 
         XCTAssertEqual(
-            reader.logText(sourceID: .helperMessage, helperMessage: "Ready", lineLimit: 10),
-            AppConstants.StatusText.noLogData
+            result,
+            .missing(.message("Log file is missing path=\(RuntimeControlClientConstants.Paths.helperMessageLogFile)"))
+        )
+        XCTAssertEqual(displayLogText(result), "Log file is missing path=\(RuntimeControlClientConstants.Paths.helperMessageLogFile)")
+    }
+
+    func testHelperMessageLogTextReportsPathInspectionFailure() {
+        let reader = SystemRuntimeHostFileReader(
+            fileStore: PathStateRuntimeFileStore(pathStates: [
+                RuntimeControlClientConstants.Paths.helperMessageLogFile: .inspectFailed("permission denied"),
+            ])
+        )
+
+        XCTAssertEqual(
+            reader.logTextResult(sourceID: .helperMessage, lineLimit: 10),
+            .failed(
+                "Log file path inspection failed " +
+                    "\(RuntimeControlClientConstants.Paths.helperMessageLogFile): permission denied"
+            )
+        )
+        XCTAssertEqual(
+            displayLogText(reader.logTextResult(sourceID: .helperMessage, lineLimit: 10)),
+            "Log file path inspection failed \(RuntimeControlClientConstants.Paths.helperMessageLogFile): permission denied"
         )
     }
 
@@ -129,7 +192,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         let collector = FakeRuntimeLogCollector()
         let reader = SystemRuntimeHostFileReader(logCollector: collector)
 
-        _ = reader.logText(sourceID: .launcher, helperMessage: "Ready", lineLimit: 10)
+        _ = reader.logTextResult(sourceID: .launcher, lineLimit: 10)
 
         XCTAssertEqual(collector.refreshCount, 1)
     }
@@ -137,11 +200,20 @@ final class RuntimeFileReaderTests: XCTestCase {
     func testLogTextReportsLogCollectionRefreshFailure() throws {
         let collector = FakeRuntimeLogCollector(refreshError: CocoaError(.fileReadNoPermission))
         let reader = SystemRuntimeHostFileReader(logCollector: collector)
+        let displayCollector = FakeRuntimeLogCollector(refreshError: CocoaError(.fileReadNoPermission))
+        let displayReader = SystemRuntimeHostFileReader(logCollector: displayCollector)
 
-        let logText = reader.logText(sourceID: .launcher, helperMessage: "Ready", lineLimit: 10)
+        let logResult = reader.logTextResult(sourceID: .launcher, lineLimit: 10)
+        let logText = displayLogText(displayReader.logTextResult(sourceID: .launcher, lineLimit: 10))
 
+        guard case .failed(let message) = logResult else {
+            XCTFail("Expected failed log result, got \(logResult)")
+            return
+        }
+        XCTAssertTrue(message.hasPrefix("Failed to refresh log collection:"))
         XCTAssertTrue(logText.hasPrefix("Failed to refresh log collection:"))
         XCTAssertEqual(collector.refreshCount, 1)
+        XCTAssertEqual(displayCollector.refreshCount, 1)
     }
 
     func testCommandLogTextReadsSourceWithoutRefreshingLogCollection() throws {
@@ -153,7 +225,7 @@ final class RuntimeFileReaderTests: XCTestCase {
             logCollector: collector
         )
 
-        let logText = reader.logText(sourceID: .command, helperMessage: "Ready", lineLimit: 2)
+        let logText = displayLogText(reader.logTextResult(sourceID: .command, lineLimit: 2))
 
         XCTAssertEqual(logText, "second\nthird")
         XCTAssertEqual(collector.sourceIDs, [])
@@ -164,7 +236,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         let fileStore = ExistingLogRuntimeFileStore()
         let reader = SystemRuntimeHostFileReader(fileStore: fileStore)
 
-        let logText = reader.logText(sourceID: .install, helperMessage: "Ready", lineLimit: 10)
+        let logText = displayLogText(reader.logTextResult(sourceID: .install, lineLimit: 10))
 
         XCTAssertTrue(logText.hasPrefix("Failed to read log file "))
         XCTAssertTrue(logText.contains(RuntimeControlClientConstants.Paths.installLog))
@@ -178,7 +250,7 @@ final class RuntimeFileReaderTests: XCTestCase {
             logCollector: FakeRuntimeLogCollector()
         )
 
-        let logText = reader.logText(sourceID: .install, helperMessage: "Ready", lineLimit: 10)
+        let logText = displayLogText(reader.logTextResult(sourceID: .install, lineLimit: 10))
 
         XCTAssertTrue(logText.hasPrefix("Failed to read log file "))
         XCTAssertTrue(logText.contains(RuntimeControlClientConstants.Paths.installLog))
@@ -196,7 +268,7 @@ final class RuntimeFileReaderTests: XCTestCase {
             logCollector: collector
         )
 
-        let logText = reader.logText(sourceID: .command, helperMessage: "Ready", lineLimit: 2)
+        let logText = displayLogText(reader.logTextResult(sourceID: .command, lineLimit: 2))
 
         XCTAssertEqual(logText, "second\nthird")
         XCTAssertEqual(collector.sourceIDs, [])
@@ -218,11 +290,13 @@ final class RuntimeFileReaderTests: XCTestCase {
             .updateActivation,
             .updateShutdown,
         ] {
-            XCTAssertEqual(
-                reader.logText(sourceID: sourceID, helperMessage: "Ready", lineLimit: 10),
-                RuntimeControlClientConstants.StatusText.noLogData,
-                "Expected no data for \(sourceID.rawValue)"
-            )
+            let result = reader.logTextResult(sourceID: sourceID, lineLimit: 10)
+            guard case .missing(.message(let message)) = result else {
+                return XCTFail("Expected missing log file message for \(sourceID.rawValue), got \(result)")
+            }
+            XCTAssertTrue(message.contains("Log files are missing primary="), "Expected primary path in \(message)")
+            XCTAssertTrue(message.contains(" source="), "Expected source path in \(message)")
+            XCTAssertEqual(displayLogText(result), message)
         }
     }
 
@@ -234,8 +308,13 @@ final class RuntimeFileReaderTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            missingReader.logText(sourceID: .containers, helperMessage: "Ready", lineLimit: 10),
-            RuntimeControlClientConstants.StatusText.noLogData
+            missingReader.logTextResult(sourceID: .containers, lineLimit: 10),
+            .missing(
+                .message(
+                    "Log files are missing primary=\(RuntimeControlClientConstants.Paths.containerLogs) " +
+                        "source=\(RuntimeControlClientConstants.Paths.containerLogSource)"
+                )
+            )
         )
         XCTAssertEqual(missingCollector.sourceIDs, [.containers])
 
@@ -246,8 +325,8 @@ final class RuntimeFileReaderTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            existingReader.logText(sourceID: .containers, helperMessage: "Ready", lineLimit: 10),
-            RuntimeControlClientConstants.StatusText.noLogData
+            existingReader.logTextResult(sourceID: .containers, lineLimit: 10),
+            .missing(.noData)
         )
         XCTAssertEqual(existingCollector.refreshCount, 0)
     }
@@ -256,7 +335,7 @@ final class RuntimeFileReaderTests: XCTestCase {
         let collector = FakeRuntimeLogCollector()
         let reader = SystemRuntimeHostFileReader(logCollector: collector)
 
-        _ = reader.logText(sourceID: .helperMessage, helperMessage: "Ready", lineLimit: 10)
+        _ = reader.logTextResult(sourceID: .helperMessage, lineLimit: 10)
 
         XCTAssertEqual(collector.refreshCount, 0)
     }
@@ -293,6 +372,26 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertThrowsError(try RuntimeBackup.loadAll(fileStore: fileStore))
     }
 
+    func testBackupListReportsInvalidLatestBackupPathDistinctFromMissingLatestBackup() {
+        XCTAssertThrowsError(try RuntimeBackup.loadAll(
+            latestBackupPath: "/backups/latest",
+            fileStore: SpecificFileRuntimeFileStore(existingFiles: [])
+        )) { error in
+            XCTAssertEqual(error as? RuntimeBackupListError, .invalidLatestBackupPath("/backups/latest"))
+        }
+    }
+
+    func testBackupListRejectsLatestBackupOutsideManagedBackupRootBeforeSizeRead() {
+        let path = "/tmp/20260522T000000Z-before-0.1.3"
+
+        XCTAssertThrowsError(try RuntimeBackup.loadAll(
+            latestBackupPath: path,
+            fileStore: SpecificFileRuntimeFileStore(existingFiles: [])
+        )) { error in
+            XCTAssertEqual(error as? RuntimeBackupListError, .invalidLatestBackupPath(path))
+        }
+    }
+
     func testRedisBackupListPropagatesSizeReadFailure() {
         let fileStore = BackupSizeFailingRuntimeFileStore()
 
@@ -305,6 +404,16 @@ final class RuntimeFileReaderTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
+}
+
+private func displayLogText(_ result: RuntimeHostTextReadResult) -> String {
+    RuntimeHostTextDisplayPolicy(noDataText: AppConstants.StatusText.noLogData)
+        .displayText(result)
+}
+
+private func displayHostText(_ result: RuntimeHostTextReadResult) -> String {
+    RuntimeHostTextDisplayPolicy(noDataText: AppConstants.StatusText.notReported)
+        .displayText(result)
 }
 
 private final class FakeRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {
@@ -403,6 +512,59 @@ private final class FailingDirectoryRuntimeFileStore: RuntimeFileStore {
     }
     func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
         throw CocoaError(.fileReadNoPermission)
+    }
+}
+
+private final class PathStateRuntimeFileStore: RuntimeFileStore {
+    var temporaryDirectory = URL(fileURLWithPath: "/tmp")
+    private let pathStates: [String: RuntimePathState]
+    private let directoryContents: [String: [URL]]
+
+    init(
+        pathStates: [String: RuntimePathState],
+        directoryContents: [String: [URL]] = [:]
+    ) {
+        self.pathStates = pathStates
+        self.directoryContents = directoryContents
+    }
+
+    func fileExists(_ url: URL) -> Bool { pathState(at: url) == .file }
+    func directoryExists(_ url: URL) -> Bool { pathState(at: url) == .directory }
+    func isExecutableFile(atPath path: String) -> Bool { false }
+    func fileState(atPath path: String) -> RuntimeFileState { fileState(at: URL(fileURLWithPath: path)) }
+    func fileState(at url: URL) -> RuntimeFileState {
+        switch pathState(at: url) {
+        case .file, .directory, .other:
+            .present
+        case .missing:
+            .missing
+        case .inspectFailed(let reason):
+            .inspectFailed(reason)
+        case .unknown(let value):
+            .unknown(value)
+        }
+    }
+    func pathState(at url: URL) -> RuntimePathState { pathStates[url.path] ?? .missing }
+    func readData(_ url: URL) throws -> Data { throw CocoaError(.fileReadNoSuchFile) }
+    func readUTF8Text(_ url: URL) throws -> String { String(decoding: try readData(url), as: UTF8.self) }
+    func fileSize(_ url: URL) throws -> UInt64 { throw CocoaError(.fileReadNoSuchFile) }
+    func modificationDate(_ url: URL) throws -> Date { throw CocoaError(.fileReadNoSuchFile) }
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {}
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {}
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {}
+    func removeItem(at url: URL) throws {}
+    func copyItem(at source: URL, to destination: URL) throws {}
+    func moveItem(at source: URL, to destination: URL) throws {}
+    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] {
+        guard let contents = directoryContents[url.path] else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+        return contents
+    }
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] { [] }
+    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 { 0 }
+    func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
+        RuntimeFileSystemAttributes(freeBytes: 1)
     }
 }
 

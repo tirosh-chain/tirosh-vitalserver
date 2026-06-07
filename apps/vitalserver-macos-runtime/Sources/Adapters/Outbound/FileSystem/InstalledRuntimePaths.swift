@@ -216,11 +216,11 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
     }
 
     public var containerLogs: URL {
-        guestRunDirectory.appendingPathComponent("container-logs.log")
+        guestRunDirectory.appendingPathComponent(RuntimeFileNames.containerLogs)
     }
 
     public var centralContainerLogs: URL {
-        centralGuestLogsDirectory.appendingPathComponent("container-logs.log")
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.containerLogs)
     }
 
     public var pidFile: URL {

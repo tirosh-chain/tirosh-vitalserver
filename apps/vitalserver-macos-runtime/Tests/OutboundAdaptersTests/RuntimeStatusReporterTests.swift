@@ -11,9 +11,8 @@ final class RuntimeStatusReporterTests: XCTestCase {
 
     func testWritesStatusDocumentThroughRepository() throws {
         let repository = RuntimeStatusRepositorySpy()
-        let reporter = RuntimeStatusReporter(
+        let reporter = makeReporter(
             repository: repository,
-            productIdentifier: productIdentifier,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
@@ -39,6 +38,58 @@ final class RuntimeStatusReporterTests: XCTestCase {
         XCTAssertEqual(document.latestBackup, "/product/backups/latest")
     }
 
+    func testWritesInjectedStatusDocumentWithoutOwningBuildPolicy() throws {
+        let repository = RuntimeStatusRepositorySpy()
+        var receivedInput: RuntimeStatusDocumentBuildInput?
+        let injectedDocument = RuntimeStatusDocument(
+            schemaVersion: 2,
+            product: "InjectedProduct",
+            status: .degraded,
+            operation: .watchdog,
+            message: "injected",
+            updatedAt: "2026-05-22T00:00:00Z",
+            productRoot: "/injected/product",
+            runtimeHome: "/injected/runtime",
+            runtimeVersion: "9.9.9",
+            vmService: .notLoaded,
+            proxyService: .notLoaded,
+            watchdogService: .loaded,
+            vmIP: nil,
+            proxyPort: nil,
+            hostProxyHTTP: "missing-proxy-port",
+            guestHTTP: "missing",
+            redisUIHTTP: nil,
+            swaggerUIHTTP: nil,
+            rootfsBase: .missing,
+            vmDisk: .missing,
+            failureReasons: [.vmService("not-loaded")],
+            latestBackup: nil
+        )
+        let reporter = makeReporter(
+            repository: repository,
+            productRoot: URL(fileURLWithPath: "/product"),
+            runtimeHome: URL(fileURLWithPath: "/product/vm"),
+            makeStatusDocument: { input in
+                receivedInput = input
+                return injectedDocument
+            }
+        )
+
+        try reporter.writeStatus(
+            .healthy,
+            operation: .health,
+            message: "runtime health check passed",
+            updatedAt: "2026-05-22T00:00:00Z",
+            runtimeVersion: "0.1.0",
+            healthSnapshot: healthSnapshot(),
+            latestBackup: nil
+        )
+
+        XCTAssertEqual(receivedInput?.product, productIdentifier)
+        XCTAssertEqual(receivedInput?.productRoot, "/product")
+        XCTAssertEqual(repository.saved, injectedDocument)
+    }
+
     func testWritesProgressAsTypedWorkflowStep() throws {
         let repository = RuntimeStatusRepositorySpy()
         repository.loaded = RuntimeStatusDocumentBuilder.build(RuntimeStatusDocumentInput(
@@ -53,9 +104,8 @@ final class RuntimeStatusReporterTests: XCTestCase {
             healthSnapshot: healthSnapshot(),
             latestBackup: nil
         ))
-        let reporter = RuntimeStatusReporter(
+        let reporter = makeReporter(
             repository: repository,
-            productIdentifier: productIdentifier,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
@@ -80,10 +130,44 @@ final class RuntimeStatusReporterTests: XCTestCase {
         XCTAssertEqual(progress.phase, .running)
     }
 
+    func testWriteProgressDoesNotPreservePreviousLatestBackupWhenCurrentReadReportsNone() throws {
+        let repository = RuntimeStatusRepositorySpy()
+        repository.loaded = RuntimeStatusDocumentBuilder.build(RuntimeStatusDocumentInput(
+            product: "VitalServerHelper",
+            status: .healthy,
+            operation: .health,
+            message: "runtime health check passed",
+            updatedAt: "2026-05-22T00:00:00Z",
+            productRoot: "/product",
+            runtimeHome: "/product/vm",
+            runtimeVersion: "0.1.0",
+            healthSnapshot: healthSnapshot(),
+            latestBackup: "/product/backups/old"
+        ))
+        let reporter = makeReporter(
+            repository: repository,
+            productRoot: URL(fileURLWithPath: "/product"),
+            runtimeHome: URL(fileURLWithPath: "/product/vm")
+        )
+
+        try reporter.writeProgress(
+            .updating,
+            operation: .applyBundle,
+            step: .activateGuestUpdate,
+            stepStatus: .started,
+            phase: .running,
+            message: "step started",
+            updatedAt: "2026-05-22T00:00:00Z",
+            runtimeVersion: "0.1.0",
+            latestBackup: nil
+        )
+
+        XCTAssertNil(repository.saved?.latestBackup)
+    }
+
     func testWriteProgressRequiresExistingStatusDocument() {
-        let reporter = RuntimeStatusReporter(
+        let reporter = makeReporter(
             repository: RuntimeStatusRepositorySpy(),
-            productIdentifier: productIdentifier,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
@@ -106,9 +190,8 @@ final class RuntimeStatusReporterTests: XCTestCase {
     func testWriteProgressReportsStatusDocumentReadFailure() {
         let repository = RuntimeStatusRepositorySpy()
         repository.result = .failed("not-json")
-        let reporter = RuntimeStatusReporter(
+        let reporter = makeReporter(
             repository: repository,
-            productIdentifier: productIdentifier,
             productRoot: URL(fileURLWithPath: "/product"),
             runtimeHome: URL(fileURLWithPath: "/product/vm")
         )
@@ -128,57 +211,10 @@ final class RuntimeStatusReporterTests: XCTestCase {
         }
     }
 
-    func testStatusValueReadsRepositoryStatus() {
-        let repository = RuntimeStatusRepositorySpy()
-        repository.loaded = RuntimeStatusDocument(
-            product: "VitalServerHelper",
-            status: .degraded,
-            operation: .watchdog,
-            message: "watchdog recovery failed",
-            updatedAt: "2026-05-22T00:00:00Z",
-            productRoot: "/product",
-            runtimeHome: "/product/vm",
-            runtimeVersion: "0.1.0",
-            vmService: .loaded,
-            proxyService: .loaded,
-            watchdogService: .loaded,
-            vmIP: nil,
-            proxyPort: 80,
-            hostProxyHTTP: "failed",
-            guestHTTP: RuntimeHTTPStatusText.missingVMIP,
-            redisUIHTTP: nil,
-            swaggerUIHTTP: nil,
-            rootfsBase: .present,
-            vmDisk: .present,
-            failureReasons: [.hostProxyHTTP("failed")],
-            latestBackup: nil
-        )
-
-        let reporter = RuntimeStatusReporter(
-            repository: repository,
-            productIdentifier: productIdentifier,
-            productRoot: URL(fileURLWithPath: "/product"),
-            runtimeHome: URL(fileURLWithPath: "/product/vm")
-        )
-
-        XCTAssertEqual(reporter.statusValue(), "degraded")
-    }
-
-    func testStatusValueReturnsNilWhenStatusDocumentIsMissing() {
-        let reporter = RuntimeStatusReporter(
-            repository: RuntimeStatusRepositorySpy(),
-            productIdentifier: productIdentifier,
-            productRoot: URL(fileURLWithPath: "/product"),
-            runtimeHome: URL(fileURLWithPath: "/product/vm")
-        )
-
-        XCTAssertNil(reporter.statusValue())
-    }
-
     private func healthSnapshot() -> RuntimeHealthSnapshot {
         RuntimeHealthSnapshot(
-            vmExecutable: true,
-            proxyExecutable: true,
+            vmExecutable: .executable,
+            proxyExecutable: .executable,
             rootfsBase: .present,
             vmDisk: .present,
             vmService: .loaded,
@@ -193,6 +229,25 @@ final class RuntimeStatusReporterTests: XCTestCase {
             redisUIHTTP: "200",
             swaggerUIHTTP: "200",
             failureReasons: []
+        )
+    }
+
+    private func makeReporter(
+        repository: RuntimeStatusRepository,
+        productRoot: URL,
+        runtimeHome: URL,
+        makeStatusDocument: @escaping (RuntimeStatusDocumentBuildInput) -> RuntimeStatusDocument =
+            BuildRuntimeStatusDocumentUseCase().build,
+        makeProgressDocument: @escaping (RuntimeStatusProgressUpdateInput) -> RuntimeStatusDocument =
+            BuildRuntimeStatusDocumentUseCase().progressUpdate
+    ) -> RuntimeStatusReporter {
+        RuntimeStatusReporter(
+            repository: repository,
+            productIdentifier: productIdentifier,
+            productRoot: productRoot,
+            runtimeHome: runtimeHome,
+            makeStatusDocument: makeStatusDocument,
+            makeProgressDocument: makeProgressDocument
         )
     }
 }

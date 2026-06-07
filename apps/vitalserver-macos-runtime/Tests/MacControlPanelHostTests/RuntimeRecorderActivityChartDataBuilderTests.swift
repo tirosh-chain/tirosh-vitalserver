@@ -123,6 +123,25 @@ final class RuntimeRecorderActivityChartDataBuilderTests: XCTestCase {
         XCTAssertNil(display.totalPackets)
     }
 
+    func testActivityDisplayKeepsInvalidTimestampDistinctFromOldActivity() {
+        let builder = RuntimeRecorderActivityChartDataBuilder()
+        let display = builder.display(
+            from: [
+                activityPoint(observedAt: "not-a-date", messageCount: 4),
+                activityPoint(observedAt: "2026-05-30T00:05:00Z", messageCount: 9),
+            ],
+            interval: .oneMinute,
+            period: .lastHour,
+            readError: nil
+        )
+
+        XCTAssertEqual(display.state, .invalidTimeline("not-a-date"))
+        XCTAssertFalse(display.state.showsControls)
+        XCTAssertTrue(display.buckets.isEmpty)
+        XCTAssertNil(display.latestSample)
+        XCTAssertNil(display.totalPackets)
+    }
+
     private func activityPoint(
         observedAt: String,
         messageCount: Int

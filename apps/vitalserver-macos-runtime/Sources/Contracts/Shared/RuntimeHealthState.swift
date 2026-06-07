@@ -2,6 +2,7 @@ public enum RuntimeFileState: Codable, Equatable, Sendable {
     case executable
     case present
     case missing
+    case inspectFailed(String)
     case unknown(String)
 
     public init(rawValue: String) {
@@ -13,7 +14,11 @@ public enum RuntimeFileState: Codable, Equatable, Sendable {
         case "missing":
             self = .missing
         default:
-            self = .unknown(rawValue)
+            if rawValue.hasPrefix("inspect-failed: ") {
+                self = .inspectFailed(String(rawValue.dropFirst("inspect-failed: ".count)))
+            } else {
+                self = .unknown(rawValue)
+            }
         }
     }
 
@@ -25,9 +30,15 @@ public enum RuntimeFileState: Codable, Equatable, Sendable {
             "present"
         case .missing:
             "missing"
+        case .inspectFailed(let reason):
+            reason.isEmpty ? "inspect-failed" : "inspect-failed: \(reason)"
         case .unknown(let value):
             value
         }
+    }
+
+    public var isExecutable: Bool {
+        self == .executable
     }
 
     public init(from decoder: Decoder) throws {

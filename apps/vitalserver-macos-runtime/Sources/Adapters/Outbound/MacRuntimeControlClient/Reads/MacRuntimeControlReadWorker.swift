@@ -1,7 +1,6 @@
 import Foundation
 import Contracts
 import Application
-import Domain
 import RuntimeControl
 import Errors
 
@@ -84,8 +83,8 @@ public actor MacRuntimeControlReadWorker {
         try fileReader.redisBackups()
     }
 
-    public func updateBundleSummary(url: URL) -> String {
-        fileReader.updateBundleSummary(url: url)
+    public func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
+        fileReader.updateBundleSummaryResult(url: url)
     }
 
     public func vitalFileFolders(root: String) throws -> [VitalFilesFolder] {

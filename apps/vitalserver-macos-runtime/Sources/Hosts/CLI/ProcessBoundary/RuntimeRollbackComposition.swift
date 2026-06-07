@@ -95,14 +95,14 @@ public struct RuntimeRollbackComposition {
                 observeBackupDirectory: { backup in
                     RollbackRuntimeBackupDirectoryObservation(
                         backup: backup,
-                        directoryExists: operations.fileStore.directoryExists(backup)
+                        backupDirectoryState: operations.fileStore.pathState(at: backup)
                     )
                 },
                 loadBackupManifest: RuntimeBackupManifestLoader(fileStore: operations.fileStore).load,
                 observeBackupRootfs: { backupPlan in
                     RollbackRuntimeBackupRootfsObservation(
                         backupPlan: backupPlan,
-                        backupRootfsExists: backupPlan.backupRootfs.map(operations.fileStore.fileExists)
+                        backupRootfsState: backupPlan.backupRootfs.map { operations.fileStore.pathState(at: $0) }
                     )
                 },
                 serviceRestartPolicy: serviceRestartPolicy,
@@ -144,12 +144,12 @@ public struct RuntimeRollbackComposition {
         case .none:
             return RollbackRuntimeStepRequiredInputObservation(
                 requiredInput: requiredInput,
-                backupVersionExists: false
+                backupVersionState: nil
             )
         case .backupVersionExists(let backupVersion):
             return RollbackRuntimeStepRequiredInputObservation(
                 requiredInput: requiredInput,
-                backupVersionExists: fileStore.fileExists(backupVersion)
+                backupVersionState: fileStore.pathState(at: backupVersion)
             )
         }
     }

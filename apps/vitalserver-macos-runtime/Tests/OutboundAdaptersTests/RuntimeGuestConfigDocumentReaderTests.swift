@@ -18,6 +18,34 @@ final class RuntimeGuestConfigDocumentReaderTests: XCTestCase {
         }
     }
 
+    func testLoadReportsPathInspectionFailureAsTypedOutboundAdapterError() {
+        let url = URL(fileURLWithPath: "/guest/runtime-config.json")
+        let fileStore = FileReaderStub(pathStates: [
+            url.path: .inspectFailed("permission denied"),
+        ])
+
+        XCTAssertThrowsError(try RuntimeGuestConfigDocumentReader.load(from: url, fileStore: fileStore)) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestConfigDocumentReadError,
+                .pathInspectionFailed(path: url.path, reason: "permission denied")
+            )
+        }
+    }
+
+    func testLoadReportsUnexpectedPathStateAsTypedOutboundAdapterError() {
+        let url = URL(fileURLWithPath: "/guest/runtime-config.json")
+        let fileStore = FileReaderStub(pathStates: [
+            url.path: .directory,
+        ])
+
+        XCTAssertThrowsError(try RuntimeGuestConfigDocumentReader.load(from: url, fileStore: fileStore)) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestConfigDocumentReadError,
+                .unexpectedPathState(path: url.path, state: "directory")
+            )
+        }
+    }
+
     func testLoadDecodesCurrentDocument() throws {
         let url = URL(fileURLWithPath: "/guest/runtime-config.json")
         let document = makeRuntimeConfig(vitalServerURL: "https://vitaldb.tirosh.ai/")
@@ -76,9 +104,11 @@ final class RuntimeGuestConfigDocumentReaderTests: XCTestCase {
 
 private final class FileReaderStub: RuntimeFileReading {
     var files: [URL: Data]
+    var pathStates: [String: RuntimePathState]
 
-    init(files: [URL: Data] = [:]) {
+    init(files: [URL: Data] = [:], pathStates: [String: RuntimePathState] = [:]) {
         self.files = files
+        self.pathStates = pathStates
     }
 
     func fileExists(_ url: URL) -> Bool {
@@ -91,6 +121,13 @@ private final class FileReaderStub: RuntimeFileReading {
 
     func isExecutableFile(atPath path: String) -> Bool {
         false
+    }
+
+    func pathState(at url: URL) -> RuntimePathState {
+        if let state = pathStates[url.path] {
+            return state
+        }
+        return files[url] == nil ? .missing : .file
     }
 
     func readData(_ url: URL) throws -> Data {

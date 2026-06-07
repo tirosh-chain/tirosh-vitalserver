@@ -141,6 +141,16 @@ struct Launcher {
             throw LauncherError.noBridgedInterfaces
         } catch VMConfigurationFactoryError.bridgedInterfaceUnavailable(let interface) {
             throw LauncherError.bridgedInterfaceUnavailable(interface)
+        } catch VMConfigurationFactoryError.missingStorageFile(let path) {
+            throw LauncherError.missingFile(path)
+        } catch VMConfigurationFactoryError.storagePathInspectionFailed(let path, let reason) {
+            throw LauncherError.runtimeOperationFailed(
+                "VM storage path inspection failed path=\(path) reason=\(reason)"
+            )
+        } catch VMConfigurationFactoryError.unexpectedStoragePathState(let path, let state) {
+            throw LauncherError.runtimeOperationFailed(
+                "VM storage path state is unexpected path=\(path) state=\(state)"
+            )
         }
         let virtualMachine = VZVirtualMachine(configuration: vmConfiguration)
         let delegate = VirtualMachineDelegate.hostCLI(

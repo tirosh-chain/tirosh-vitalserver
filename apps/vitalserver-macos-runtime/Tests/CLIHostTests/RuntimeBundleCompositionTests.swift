@@ -287,8 +287,9 @@ final class RuntimeBundleCompositionTests: XCTestCase {
                             compressedSourceSize: { url in
                                 fileStore.fileExists(url) ? try fileStore.fileSize(url) : 0
                             },
-                            fileExists: fileStore.fileExists,
-                            directoryExists: fileStore.directoryExists,
+                            destinationState: { url in
+                                fileStore.pathState(at: url)
+                            },
                             createDirectory: { url, withIntermediateDirectories in
                                 try fileStore.createDirectory(
                                     at: url,
@@ -328,8 +329,8 @@ final class RuntimeBundleCompositionTests: XCTestCase {
 
     private static func healthSnapshot() -> RuntimeHealthSnapshot {
         RuntimeHealthSnapshot(
-            vmExecutable: true,
-            proxyExecutable: true,
+            vmExecutable: .executable,
+            proxyExecutable: .executable,
             rootfsBase: .present,
             vmDisk: .present,
             vmService: .loaded,

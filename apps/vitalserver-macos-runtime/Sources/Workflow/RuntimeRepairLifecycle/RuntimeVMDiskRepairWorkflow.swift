@@ -29,7 +29,7 @@ public struct RuntimeVMDiskRepairContext: Equatable, Sendable {
 }
 
 public struct RuntimeVMDiskRepairOperations {
-    public let fileExists: (URL) -> Bool
+    public let pathState: (URL) -> RuntimePathState
     public let fileSize: (URL) throws -> UInt64
     public let createDirectory: (URL, Bool) throws -> Void
     public let removeItem: (URL) throws -> Void
@@ -45,7 +45,7 @@ public struct RuntimeVMDiskRepairOperations {
     public let log: (String) -> Void
 
     public init(
-        fileExists: @escaping (URL) -> Bool,
+        pathState: @escaping (URL) -> RuntimePathState,
         fileSize: @escaping (URL) throws -> UInt64,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         removeItem: @escaping (URL) throws -> Void,
@@ -60,7 +60,7 @@ public struct RuntimeVMDiskRepairOperations {
         timestamp: @escaping () -> String,
         log: @escaping (String) -> Void
     ) {
-        self.fileExists = fileExists
+        self.pathState = pathState
         self.fileSize = fileSize
         self.createDirectory = createDirectory
         self.removeItem = removeItem
@@ -78,13 +78,16 @@ public struct RuntimeVMDiskRepairOperations {
 }
 
 public struct RuntimeVMDiskRepairWorkflow {
-    public init() {}
+    private let useCase: RuntimeVMDiskRepairUseCase
+
+    public init(useCase: RuntimeVMDiskRepairUseCase = RuntimeVMDiskRepairUseCase()) {
+        self.useCase = useCase
+    }
 
     public func repair(
         context: RuntimeVMDiskRepairContext,
         operations: RuntimeVMDiskRepairOperations
     ) throws {
-        let useCase = RuntimeVMDiskRepairUseCase()
         let plan = try useCase.planRepair(for: observeRepairInput(context, operations: operations))
         let executionPlan = useCase.executionPlan(
             vmDisk: context.vmDisk,
@@ -112,18 +115,14 @@ public struct RuntimeVMDiskRepairWorkflow {
         _ context: RuntimeVMDiskRepairContext,
         operations: RuntimeVMDiskRepairOperations
     ) throws -> RepairRuntimeVMDiskInput {
-        let rootfsBaseExists = operations.fileExists(context.rootfsBase)
-        let currentVMDiskSizeBytes: UInt64?
-        if operations.fileExists(context.vmDisk) {
-            currentVMDiskSizeBytes = try operations.fileSize(context.vmDisk)
-        } else {
-            currentVMDiskSizeBytes = nil
-        }
+        let rootfsBaseState = operations.pathState(context.rootfsBase)
+        let currentVMDiskState = operations.pathState(context.vmDisk)
         return RepairRuntimeVMDiskInput(
             rootfsBasePath: context.rootfsBase.path,
-            rootfsBaseExists: rootfsBaseExists,
-            rootfsBaseSizeBytes: rootfsBaseExists ? try operations.fileSize(context.rootfsBase) : 0,
-            currentVMDiskSizeBytes: currentVMDiskSizeBytes,
+            rootfsBaseState: rootfsBaseState,
+            rootfsBaseSizeBytes: rootfsBaseState == .file ? try operations.fileSize(context.rootfsBase) : nil,
+            currentVMDiskState: currentVMDiskState,
+            currentVMDiskSizeBytes: currentVMDiskState == .file ? try operations.fileSize(context.vmDisk) : nil,
             defaultDiskGiB: context.defaultDiskGiB,
             bytesPerGiB: context.bytesPerGiB,
             freeSpaceMarginBytes: context.freeSpaceMarginBytes
@@ -144,8 +143,19 @@ public struct RuntimeVMDiskRepairWorkflow {
         try createRedisBackupBestEffort(useCase: useCase, operations: operations)
         try operations.createDirectory(buildPlan.vmDiskDirectory, true)
         try operations.createDirectory(buildPlan.backupsDirectory, true)
-        if operations.fileExists(buildPlan.temporaryDisk) {
+        switch operations.pathState(buildPlan.temporaryDisk) {
+        case .file, .directory, .other:
             try operations.removeItem(buildPlan.temporaryDisk)
+        case .missing:
+            break
+        case .inspectFailed(let reason):
+            throw RepairRuntimeUseCaseError.operationFailed(
+                "temporary VM disk path inspection failed: \(buildPlan.temporaryDisk.path) reason=\(reason)"
+            )
+        case .unknown(let state):
+            throw RepairRuntimeUseCaseError.operationFailed(
+                "temporary VM disk path state is unexpected: \(buildPlan.temporaryDisk.path) state=\(state)"
+            )
         }
 
         try operations.requireFreeSpace(
@@ -193,11 +203,11 @@ public struct RuntimeVMDiskRepairWorkflow {
         operations: RuntimeVMDiskRepairOperations,
         useCase: RuntimeVMDiskRepairUseCase
     ) throws {
-        let exists = operations.fileExists(context.vmDisk)
+        let state = operations.pathState(context.vmDisk)
         try useCase.requireReplacementDisk(RepairRuntimeVMDiskReplacementObservation(
             path: context.vmDisk.path,
-            exists: exists,
-            actualBytes: exists ? try operations.fileSize(context.vmDisk) : nil,
+            state: state,
+            actualBytes: state == .file ? try operations.fileSize(context.vmDisk) : nil,
             targetDiskGiB: targetDiskGiB,
             bytesPerGiB: context.bytesPerGiB
         ))

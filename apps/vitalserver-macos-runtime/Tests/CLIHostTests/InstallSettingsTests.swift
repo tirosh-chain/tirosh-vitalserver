@@ -53,4 +53,55 @@ final class InstallSettingsTests: XCTestCase {
             XCTAssertEqual(message, "install settings sshAuthorizedKeys[0] must be an OpenSSH public key")
         }
     }
+
+    func testLoadUsesDefaultsOnlyWhenSettingsFileIsMissing() throws {
+        let fileStore = RuntimeFileStoreSpy()
+
+        let settings = try RuntimeInstallSettings.load(
+            path: "/tmp/missing-install-settings.json",
+            defaultVitalFilesDirectory: "/vital-files",
+            fileStore: fileStore
+        )
+
+        XCTAssertEqual(settings.vitalFilesDirectory, "/vital-files")
+        XCTAssertEqual(settings.proxyPort, RuntimeInstallSettings.defaultProxyPort)
+    }
+
+    func testLoadFailsWhenSettingsPathInspectionFails() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let settingsURL = URL(fileURLWithPath: "/tmp/install-settings.json")
+        fileStore.pathStates[settingsURL.path] = .inspectFailed("permission denied")
+
+        XCTAssertThrowsError(
+            try RuntimeInstallSettings.load(
+                path: settingsURL.path,
+                defaultVitalFilesDirectory: "/vital-files",
+                fileStore: fileStore
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? RuntimeInstallSettingsError,
+                .pathInspectionFailed(path: settingsURL.path, reason: "permission denied")
+            )
+        }
+    }
+
+    func testLoadFailsWhenSettingsPathIsDirectory() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let settingsURL = URL(fileURLWithPath: "/tmp/install-settings.json")
+        fileStore.directories.insert(settingsURL)
+
+        XCTAssertThrowsError(
+            try RuntimeInstallSettings.load(
+                path: settingsURL.path,
+                defaultVitalFilesDirectory: "/vital-files",
+                fileStore: fileStore
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? RuntimeInstallSettingsError,
+                .unexpectedPathState(path: settingsURL.path, state: "directory")
+            )
+        }
+    }
 }

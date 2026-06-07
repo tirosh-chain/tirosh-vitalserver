@@ -2,8 +2,8 @@ import Contracts
 import Foundation
 
 public struct RuntimeRecoveryInput: Equatable {
-    public let vmExecutable: Bool
-    public let proxyExecutable: Bool
+    public let vmExecutable: RuntimeFileState
+    public let proxyExecutable: RuntimeFileState
     public let rootfsBase: RuntimeFileState
     public let vmDisk: RuntimeFileState
     public let vmService: RuntimeServiceState
@@ -17,8 +17,8 @@ public struct RuntimeRecoveryInput: Equatable {
     public let containerObservation: RuntimeObservationInput<RuntimeContainerObservation>
 
     public init(
-        vmExecutable: Bool,
-        proxyExecutable: Bool,
+        vmExecutable: RuntimeFileState,
+        proxyExecutable: RuntimeFileState,
         rootfsBase: RuntimeFileState,
         vmDisk: RuntimeFileState,
         vmService: RuntimeServiceState,
@@ -110,8 +110,8 @@ public enum RuntimeRecoveryRestartReason: Equatable, Sendable {
 
 public enum RuntimeRecoveryPlanner {
     public static func plan(_ input: RuntimeRecoveryInput) -> RuntimeRecoveryPlan {
-        guard input.vmExecutable,
-              input.proxyExecutable,
+        guard input.vmExecutable == .executable,
+              input.proxyExecutable == .executable,
               input.rootfsBase == .present,
               input.vmDisk == .present else {
             return RuntimeRecoveryPlan(

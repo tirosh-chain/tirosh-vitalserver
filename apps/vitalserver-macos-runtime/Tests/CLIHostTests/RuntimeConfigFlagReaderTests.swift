@@ -11,8 +11,14 @@ final class RuntimeConfigFlagReaderTests: XCTestCase {
             preventSystemSleep: false
         ))
 
-        XCTAssertFalse(harness.reader.automaticRecoveryEnabled())
-        XCTAssertFalse(harness.reader.preventSystemSleepEnabled())
+        XCTAssertEqual(
+            harness.reader.automaticRecoveryFlag(),
+            .configured(name: "autoRecoveryEnabled", value: false)
+        )
+        XCTAssertEqual(
+            harness.reader.preventSystemSleepFlag(),
+            .configured(name: "preventSystemSleep", value: false)
+        )
         XCTAssertTrue(harness.logs.isEmpty)
     }
 
@@ -22,18 +28,30 @@ final class RuntimeConfigFlagReaderTests: XCTestCase {
             preventSystemSleep: nil
         ))
 
-        XCTAssertTrue(harness.reader.automaticRecoveryEnabled())
-        XCTAssertTrue(harness.reader.preventSystemSleepEnabled())
+        XCTAssertEqual(
+            harness.reader.automaticRecoveryFlag(),
+            .defaulted(name: "autoRecoveryEnabled", value: true, reason: "missing")
+        )
+        XCTAssertEqual(
+            harness.reader.preventSystemSleepFlag(),
+            .defaulted(name: "preventSystemSleep", value: true, reason: "missing")
+        )
         XCTAssertEqual(harness.logs.count, 2)
         XCTAssertTrue(harness.logs[0].contains("runtime config flag missing name=autoRecoveryEnabled"))
         XCTAssertTrue(harness.logs[1].contains("runtime config flag missing name=preventSystemSleep"))
     }
 
-    func testDefaultsAndLogsWhenConfigCannotBeRead() {
+    func testReportsFailureAndLogsWhenConfigCannotBeRead() {
         let harness = ConfigFlagHarness(loadError: ConfigFlagError.load)
 
-        XCTAssertTrue(harness.reader.automaticRecoveryEnabled())
-        XCTAssertTrue(harness.reader.preventSystemSleepEnabled())
+        XCTAssertEqual(
+            harness.reader.automaticRecoveryFlag(),
+            .failed(name: "autoRecoveryEnabled", reason: "load")
+        )
+        XCTAssertEqual(
+            harness.reader.preventSystemSleepFlag(),
+            .failed(name: "preventSystemSleep", reason: "load")
+        )
         XCTAssertEqual(harness.logs.count, 2)
         XCTAssertTrue(harness.logs[0].contains("failed to read runtime config flag name=autoRecoveryEnabled"))
         XCTAssertTrue(harness.logs[1].contains("failed to read runtime config flag name=preventSystemSleep"))

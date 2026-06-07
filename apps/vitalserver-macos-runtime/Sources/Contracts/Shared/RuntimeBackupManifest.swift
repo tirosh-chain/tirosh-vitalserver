@@ -23,4 +23,22 @@ public struct BackupManifest: Codable, Equatable {
         self.vmDisk = vmDisk
         self.vmDiskPreserved = vmDiskPreserved
     }
+
+    public static func managedRuntimeBackup(
+        product: String,
+        createdAt: String,
+        reason: String,
+        rootfsBaseName: String,
+        backsUpRootfsBase: Bool,
+        vmDiskName: String
+    ) -> BackupManifest {
+        BackupManifest(
+            product: product,
+            createdAt: createdAt,
+            reason: reason,
+            rootfsBase: backsUpRootfsBase ? rootfsBaseName : nil,
+            vmDisk: vmDiskName,
+            vmDiskPreserved: true
+        )
+    }
 }

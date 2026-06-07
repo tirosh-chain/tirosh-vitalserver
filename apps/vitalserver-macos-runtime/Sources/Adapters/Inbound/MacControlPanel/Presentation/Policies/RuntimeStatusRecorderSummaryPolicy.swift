@@ -45,12 +45,12 @@ public struct RuntimeStatusRecorderSummaryPolicy {
     }
 
     public func recorderSummary(
-        status: RuntimeStatus,
-        observation: RuntimeContainerObservation?
+        observation: RuntimeContainerObservation?,
+        vitalDBObservation: VitalDBObservationDocument?
     ) -> RuntimeStatusRecorderSummary {
         let summary = RuntimeVitalRecorderSummary(
             containerObservation: observation,
-            vitalDBObservation: status.vitalDBObservation
+            vitalDBObservation: vitalDBObservation
         )
         return RuntimeStatusRecorderSummary(
             activeConnections: summary.activeConnections.map(String.init) ?? vocabulary.notReportedText,

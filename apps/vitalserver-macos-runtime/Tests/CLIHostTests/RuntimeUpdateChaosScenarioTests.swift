@@ -262,7 +262,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         let operations = RollbackRuntimeOperations(
             resolveBackupSelection: { _ in preflight.backup },
             observeBackupDirectory: { backup in
-                RollbackRuntimeBackupDirectoryObservation(backup: backup, directoryExists: true)
+                RollbackRuntimeBackupDirectoryObservation(backup: backup, backupDirectoryState: .directory)
             },
             loadBackupManifest: { _ in
                 BackupManifest(
@@ -275,13 +275,13 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 )
             },
             observeBackupRootfs: { plan in
-                RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsExists: true)
+                RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsState: .file)
             },
             serviceRestartPolicy: { preflight.restartPolicy },
             observeStepRequiredInput: { _, _, requiredInput in
                 RollbackRuntimeStepRequiredInputObservation(
                     requiredInput: requiredInput,
-                    backupVersionExists: true
+                    backupVersionState: .file
                 )
             },
             stopRuntimeServices: {
@@ -387,7 +387,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             observeBackupDirectory: { selectedBackup in
                 RollbackRuntimeBackupDirectoryObservation(
                     backup: selectedBackup,
-                    directoryExists: selectedBackup == backup
+                    backupDirectoryState: selectedBackup == backup ? .directory : .missing
                 )
             },
             loadBackupManifest: { _ in
@@ -401,14 +401,14 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 )
             },
             observeBackupRootfs: { plan in
-                RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsExists: false)
+                RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsState: .missing)
             },
             serviceRestartPolicy: {
                 XCTFail("missing restore artifact should stop before service policy")
                 return RuntimeServiceRestartPolicy(restartVM: false, restartGuestLogSync: false, restartProxy: false, restartWatchdog: false)
             },
             observeStepRequiredInput: { _, _, requiredInput in
-                RollbackRuntimeStepRequiredInputObservation(requiredInput: requiredInput, backupVersionExists: false)
+                RollbackRuntimeStepRequiredInputObservation(requiredInput: requiredInput, backupVersionState: .missing)
             },
             stopRuntimeServices: { XCTFail("missing restore artifact should stop before step execution") },
             replaceFile: { _, _ in XCTFail("missing restore artifact should stop before step execution") },
@@ -448,8 +448,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             ),
             timestamp: { "20260531T000000Z" },
             isoTimestamp: { "2026-05-31T00:00:00Z" },
-            fileExists: { url in url == paths.rootfsBase },
-            directoryExists: { _ in false },
+            pathState: { url in url == paths.rootfsBase ? .file : .missing },
             createDirectory: { url, _ in
                 createdDirectories.append(url)
             },
@@ -531,8 +530,9 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                             compressedSourceSize: { url in
                                 fileStore.fileExists(url) ? try fileStore.fileSize(url) : 0
                             },
-                            fileExists: fileStore.fileExists,
-                            directoryExists: fileStore.directoryExists,
+                            destinationState: { url in
+                                fileStore.pathState(at: url)
+                            },
                             createDirectory: { url, withIntermediateDirectories in
                                 try fileStore.createDirectory(
                                     at: url,
@@ -582,8 +582,8 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
 
     private static func healthSnapshot() -> RuntimeHealthSnapshot {
         RuntimeHealthSnapshot(
-            vmExecutable: true,
-            proxyExecutable: true,
+            vmExecutable: .executable,
+            proxyExecutable: .executable,
             rootfsBase: .present,
             vmDisk: .present,
             vmService: .loaded,
@@ -663,8 +663,8 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
 
     private func healthySnapshot() -> RuntimeHealthSnapshot {
         RuntimeHealthSnapshot(
-            vmExecutable: true,
-            proxyExecutable: true,
+            vmExecutable: .executable,
+            proxyExecutable: .executable,
             rootfsBase: .present,
             vmDisk: .present,
             vmService: .loaded,

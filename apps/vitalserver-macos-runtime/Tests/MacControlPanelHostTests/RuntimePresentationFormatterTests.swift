@@ -49,7 +49,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertTrue(confirmation.contains("Restart services: true"))
     }
 
-    func testStatusServiceURLsDisplaySameHostDefaultsButOpenLocalReachableURLs() {
+    func testStatusServiceURLsDisplaySameHostDefaultsWithoutCreatingOpenURLs() {
         var settings = RuntimeSettings()
         settings.proxyPort = 18080
         settings.runtimeControlPort = 19090
@@ -58,14 +58,14 @@ final class RuntimePresentationFormatterTests: XCTestCase {
             formatter.vitalServerStatusURL(settings: settings),
             RuntimePresentationFormatter.ServiceURLPresentation(
                 displayURL: "http://\(AppConstants.Labels.advertisedURLSameHost):18080/",
-                openURL: "http://127.0.0.1:18080/"
+                openURL: nil
             )
         )
         XCTAssertEqual(
             formatter.remoteConsoleStatusURL(settings: settings),
             RuntimePresentationFormatter.ServiceURLPresentation(
                 displayURL: "http://\(AppConstants.Labels.advertisedURLSameHost):19090/",
-                openURL: "http://127.0.0.1:19090/"
+                openURL: nil
             )
         )
     }

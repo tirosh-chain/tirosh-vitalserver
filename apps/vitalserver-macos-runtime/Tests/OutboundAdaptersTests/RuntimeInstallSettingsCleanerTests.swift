@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import OutboundAdapters
 import XCTest
 import Errors
@@ -9,7 +10,7 @@ final class RuntimeInstallSettingsCleanerTests: XCTestCase {
         let events = EventLog()
         let cleaner = makeCleaner(
             settingsFile: settingsFile,
-            existingFiles: [settingsFile],
+            pathStates: [settingsFile: .file],
             events: events
         )
 
@@ -25,7 +26,7 @@ final class RuntimeInstallSettingsCleanerTests: XCTestCase {
         let events = EventLog()
         let cleaner = makeCleaner(
             settingsFile: settingsFile,
-            existingFiles: [],
+            pathStates: [settingsFile: .missing],
             events: events
         )
 
@@ -34,9 +35,41 @@ final class RuntimeInstallSettingsCleanerTests: XCTestCase {
         XCTAssertEqual(events.values, [])
     }
 
+    func testCleanupFailsWhenSettingsFileInspectionFails() {
+        let settingsFile = URL(fileURLWithPath: "/tmp/install-settings.json")
+        let cleaner = makeCleaner(
+            settingsFile: settingsFile,
+            pathStates: [settingsFile: .inspectFailed("permission denied")],
+            events: EventLog()
+        )
+
+        XCTAssertThrowsError(try cleaner.cleanup()) { error in
+            XCTAssertEqual(
+                error as? RuntimeInstallSettingsCleanupError,
+                .pathInspectionFailed(path: settingsFile.path, reason: "permission denied")
+            )
+        }
+    }
+
+    func testCleanupFailsWhenSettingsPathIsDirectory() {
+        let settingsFile = URL(fileURLWithPath: "/tmp/install-settings.json")
+        let cleaner = makeCleaner(
+            settingsFile: settingsFile,
+            pathStates: [settingsFile: .directory],
+            events: EventLog()
+        )
+
+        XCTAssertThrowsError(try cleaner.cleanup()) { error in
+            XCTAssertEqual(
+                error as? RuntimeInstallSettingsCleanupError,
+                .unexpectedPathState(path: settingsFile.path, state: "directory")
+            )
+        }
+    }
+
     private func makeCleaner(
         settingsFile: URL,
-        existingFiles: Set<URL>,
+        pathStates: [URL: RuntimePathState],
         events: EventLog
     ) -> RuntimeInstallSettingsCleaner {
         RuntimeInstallSettingsCleaner(
@@ -44,8 +77,8 @@ final class RuntimeInstallSettingsCleanerTests: XCTestCase {
                 settingsFile: settingsFile
             ),
             operations: RuntimeInstallSettingsCleanupOperations(
-                fileExists: { url in
-                    existingFiles.contains(url)
+                pathState: { url in
+                    pathStates[url] ?? .missing
                 },
                 removeItem: { url in
                     events.append("remove:\(url.path)")

@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Foundation
 import InboundAdapters
@@ -46,6 +47,7 @@ public enum RuntimeHealthCheckRunnerComposition {
         operations: RuntimeHealthCheckRunnerCompositionOperations
     ) -> RuntimeHealthCheckRunner {
         RuntimeHealthCheckRunner(
+            useCase: RefreshRuntimeHealthUseCase(),
             printStatus: operations.printStatus,
             healthSnapshot: operations.healthSnapshot,
             writeStatus: operations.writeStatus,

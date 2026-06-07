@@ -5,16 +5,16 @@ import Errors
 
 public struct RuntimeBackupManifestLoader {
     public let manifestFileName: String
-    public let fileExists: (URL) -> Bool
+    public let pathState: (URL) -> RuntimePathState
     public let readData: (URL) throws -> Data
 
     public init(
         manifestFileName: String = RuntimeFileNames.backupManifest,
-        fileExists: @escaping (URL) -> Bool,
+        pathState: @escaping (URL) -> RuntimePathState,
         readData: @escaping (URL) throws -> Data
     ) {
         self.manifestFileName = manifestFileName
-        self.fileExists = fileExists
+        self.pathState = pathState
         self.readData = readData
     }
 
@@ -24,15 +24,29 @@ public struct RuntimeBackupManifestLoader {
     ) {
         self.init(
             manifestFileName: manifestFileName,
-            fileExists: fileStore.fileExists,
+            pathState: fileStore.pathState(at:),
             readData: fileStore.readData
         )
     }
 
     public func load(from backup: URL) throws -> BackupManifest {
         let manifestURL = backup.appendingPathComponent(manifestFileName)
-        guard fileExists(manifestURL) else {
+        let manifestPathState = pathState(manifestURL)
+        switch manifestPathState {
+        case .file:
+            break
+        case .missing:
             throw RuntimeBackupManifestLoaderError.missingFile(path: manifestURL.path)
+        case .inspectFailed(let reason):
+            throw RuntimeBackupManifestLoaderError.pathInspectionFailed(
+                path: manifestURL.path,
+                reason: reason
+            )
+        case .directory, .other, .unknown:
+            throw RuntimeBackupManifestLoaderError.unexpectedPathState(
+                path: manifestURL.path,
+                state: manifestPathState.rawValue
+            )
         }
 
         let data: Data

@@ -92,6 +92,33 @@ public struct UpdateBundleManifest: Codable, Equatable, Sendable {
     }
 }
 
+public struct UpdateBundleFileVerification: Equatable, Sendable {
+    public let name: String
+    public let checksumKey: String
+    public let expectedSHA256: String
+    public let expectedSize: Int
+
+    public init(name: String, checksumKey: String, expectedSHA256: String, expectedSize: Int) {
+        self.name = name
+        self.checksumKey = checksumKey
+        self.expectedSHA256 = expectedSHA256
+        self.expectedSize = expectedSize
+    }
+}
+
+public struct UpdateBundleVerificationPlan: Equatable, Sendable {
+    public let artifactFiles: [UpdateBundleFileVerification]
+    public let migrationFiles: [UpdateBundleFileVerification]
+
+    public init(
+        artifactFiles: [UpdateBundleFileVerification],
+        migrationFiles: [UpdateBundleFileVerification]
+    ) {
+        self.artifactFiles = artifactFiles
+        self.migrationFiles = migrationFiles
+    }
+}
+
 public enum UpdateBundleChannel: Codable, Equatable, Sendable {
     case stable
     case dev
@@ -202,6 +229,38 @@ public struct UpdateBundleMigration: Codable, Equatable, Sendable {
         self.sha256 = sha256
         self.size = size
     }
+}
+
+public struct UpdateBundleArtifactArchiveLayout: Equatable, Sendable {
+    public let appBundleRoot: String
+    public let nginxBundleRoot: String
+    public let guestDeployRoot: String
+    public let runtimeToolsAllowedRootEntries: Set<String>
+
+    public init(
+        appBundleRoot: String,
+        nginxBundleRoot: String,
+        guestDeployRoot: String,
+        runtimeToolsAllowedRootEntries: Set<String>
+    ) {
+        self.appBundleRoot = appBundleRoot
+        self.nginxBundleRoot = nginxBundleRoot
+        self.guestDeployRoot = guestDeployRoot
+        self.runtimeToolsAllowedRootEntries = runtimeToolsAllowedRootEntries
+    }
+}
+
+public enum UpdateBundleArtifactArchiveLayouts {
+    public static let vitalServerHelper = UpdateBundleArtifactArchiveLayout(
+        appBundleRoot: "VitalServer Helper.app",
+        nginxBundleRoot: "nginx",
+        guestDeployRoot: "deploy",
+        runtimeToolsAllowedRootEntries: [
+            "vitalserver-vm",
+            "vitalserver-proxy-run",
+            "tirosh-vitalserver-uninstall",
+        ]
+    )
 }
 
 public enum UpdateBundleArtifactType: Codable, Equatable, Sendable {

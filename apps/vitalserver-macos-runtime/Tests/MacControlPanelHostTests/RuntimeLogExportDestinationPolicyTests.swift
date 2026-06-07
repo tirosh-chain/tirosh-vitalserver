@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 @testable import MacControlPanelHost
 import XCTest
 import Errors
@@ -84,6 +85,36 @@ final class RuntimeLogExportDestinationPolicyTests: XCTestCase {
             AppConstants.StatusText.logExportDestinationInvalid
         )
     }
+
+    func testReportsDestinationPathInspectionFailureSeparatelyFromInvalidDestination() {
+        let fileManager = FakePathPermissionFileManager(pathStates: [
+            "/tmp/vitalserver-logs.zip": .inspectFailed("permission denied"),
+            "/tmp": .directory,
+        ])
+        let policy = RuntimeLogExportDestinationPolicy(fileManager: fileManager)
+
+        XCTAssertEqual(
+            policy.validationMessage(for: URL(fileURLWithPath: "/tmp/vitalserver-logs.zip")),
+            AppConstants.StatusText.logExportDestinationInspectionFailed(
+                "destination path inspection failed: /tmp/vitalserver-logs.zip reason=permission denied"
+            )
+        )
+    }
+
+    func testReportsParentDirectoryInspectionFailureSeparatelyFromInvalidDestination() {
+        let fileManager = FakePathPermissionFileManager(pathStates: [
+            "/tmp/vitalserver-logs.zip": .missing,
+            "/tmp": .inspectFailed("permission denied"),
+        ])
+        let policy = RuntimeLogExportDestinationPolicy(fileManager: fileManager)
+
+        XCTAssertEqual(
+            policy.validationMessage(for: URL(fileURLWithPath: "/tmp/vitalserver-logs.zip")),
+            AppConstants.StatusText.logExportDestinationInspectionFailed(
+                "parent directory path inspection failed: /tmp reason=permission denied"
+            )
+        )
+    }
 }
 
 private final class FakePathPermissionFileManager: RuntimePathPermissionFileManaging {
@@ -101,17 +132,24 @@ private final class FakePathPermissionFileManager: RuntimePathPermissionFileMana
     }
 
     var items: [String: Item]
+    var pathStates: [String: RuntimePathState]
 
-    init(items: [String: Item] = [:]) {
+    init(
+        items: [String: Item] = [:],
+        pathStates: [String: RuntimePathState] = [:]
+    ) {
         self.items = items
+        self.pathStates = pathStates
     }
 
-    func fileExists(atPath path: String, isDirectory: UnsafeMutablePointer<ObjCBool>?) -> Bool {
-        guard let item = items[path] else {
-            return false
+    func pathState(atPath path: String) -> RuntimePathState {
+        if let pathState = pathStates[path] {
+            return pathState
         }
-        isDirectory?.pointee = ObjCBool(item.isDirectory)
-        return true
+        guard let item = items[path] else {
+            return .missing
+        }
+        return item.isDirectory ? .directory : .file
     }
 
     func isWritableFile(atPath path: String) -> Bool {

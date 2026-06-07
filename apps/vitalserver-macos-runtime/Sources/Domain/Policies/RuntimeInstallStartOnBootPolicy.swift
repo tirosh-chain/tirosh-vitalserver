@@ -1,7 +1,4 @@
-public enum RuntimeInstallSleepPreventionBootAction: Equatable, Sendable {
-    case enable
-    case disable
-}
+import Contracts
 
 public struct RuntimeInstallStartOnBootPolicy {
     public init() {}

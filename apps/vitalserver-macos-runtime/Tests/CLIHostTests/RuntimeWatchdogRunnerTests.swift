@@ -94,6 +94,23 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertTrue(harness.restartedServices.isEmpty)
     }
 
+    func testAutoRecoveryConfigReadFailureIsNotTreatedAsDisabledRecovery() {
+        let harness = WatchdogHarness(
+            automaticRecoveryReadError: WatchdogTestError.configReadFailed,
+            snapshots: [
+                healthSnapshot(guestHTTP: "503", failureReasons: [.guestHTTP("503")]),
+            ]
+        )
+
+        XCTAssertThrowsError(try harness.runner.run()) { error in
+            XCTAssertEqual(error as? WatchdogTestError, .configReadFailed)
+        }
+        XCTAssertTrue(harness.writtenStatuses.isEmpty)
+        XCTAssertTrue(harness.observedStatuses.isEmpty)
+        XCTAssertTrue(harness.restartedServices.isEmpty)
+        XCTAssertEqual(harness.vmRuntimeRestartCalls, 0)
+    }
+
     func testGuestReadinessFailureRestartsVMGuestLogSyncAndProxy() throws {
         let harness = WatchdogHarness(snapshots: [
             healthSnapshot(
@@ -123,7 +140,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
     func testMissingInstalledArtifactWritesCriticalWithoutRestart() throws {
         let harness = WatchdogHarness(snapshots: [
             healthSnapshot(
-                vmExecutable: false,
+                vmExecutable: .missing,
                 failureReasons: [.missingVMBin]
             ),
         ])
@@ -229,7 +246,7 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
 private final class WatchdogHarness {
     var prepareLogCalls = 0
     var healthCalls = 0
-    var proxyLivenessPorts: [Int] = []
+    var proxyLivenessPorts: [Int?] = []
     var vmRuntimeRestartCalls = 0
     var restartedServices: [RuntimeManagedService] = []
     var sleepCalls: [TimeInterval] = []
@@ -255,6 +272,7 @@ private final class WatchdogHarness {
 
     private let activeOperation: RuntimeOperation?
     private let automaticRecoveryEnabled: Bool
+    private let automaticRecoveryReadError: Error?
     private let lifecycleMarkError: Error?
     private let vmRestartError: Error?
     private let proxyRestartError: Error?
@@ -263,6 +281,7 @@ private final class WatchdogHarness {
     init(
         activeOperation: RuntimeOperation? = nil,
         automaticRecoveryEnabled: Bool = true,
+        automaticRecoveryReadError: Error? = nil,
         lifecycleMarkError: Error? = nil,
         vmRestartError: Error? = nil,
         proxyRestartError: Error? = nil,
@@ -270,6 +289,7 @@ private final class WatchdogHarness {
     ) {
         self.activeOperation = activeOperation
         self.automaticRecoveryEnabled = automaticRecoveryEnabled
+        self.automaticRecoveryReadError = automaticRecoveryReadError
         self.lifecycleMarkError = lifecycleMarkError
         self.vmRestartError = vmRestartError
         self.proxyRestartError = proxyRestartError
@@ -301,7 +321,10 @@ private final class WatchdogHarness {
                     return "204"
                 },
                 automaticRecoveryEnabled: {
-                    self.automaticRecoveryEnabled
+                    if let automaticRecoveryReadError = self.automaticRecoveryReadError {
+                        throw automaticRecoveryReadError
+                    }
+                    return self.automaticRecoveryEnabled
                 },
                 restartVMRuntime: {
                     self.vmRuntimeRestartCalls += 1
@@ -361,13 +384,14 @@ private struct WatchdogHarnessRunner {
 }
 
 private enum WatchdogTestError: Error {
+    case configReadFailed
     case lifecycleWriteFailed
     case vmRestartFailed
 }
 
 private func healthSnapshot(
-    vmExecutable: Bool = true,
-    proxyExecutable: Bool = true,
+    vmExecutable: RuntimeFileState = .executable,
+    proxyExecutable: RuntimeFileState = .executable,
     rootfsBase: RuntimeFileState = .present,
     vmDisk: RuntimeFileState = .present,
     vmService: RuntimeServiceState = .loaded,
@@ -377,7 +401,7 @@ private func healthSnapshot(
     vmState: RuntimeVMState = .running,
     vmErrors: [RuntimeVMError] = [],
     vmIP: String? = "192.168.64.2",
-    proxyPort: Int = 80,
+    proxyPort: Int? = 80,
     hostProxyHTTP: String = "200",
     guestHTTP: String = "200",
     redisUIHTTP: String = "200",

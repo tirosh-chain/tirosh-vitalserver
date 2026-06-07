@@ -9,6 +9,9 @@ import Workflow
 import Errors
 
 extension RuntimeLifecycle {
+    private static var missingRuntimeVersionValue: String { "missing-version" }
+    private static var invalidRuntimeVersionValue: String { "invalid-version" }
+
     func isoTimestamp() -> String {
         ISO8601DateFormatter().string(from: clock.now)
     }
@@ -31,21 +34,27 @@ extension RuntimeLifecycle {
         case .loaded(let version):
             return version
         case .missing:
-            return RuntimeVersionStore.missingVersionValue
+            return Self.missingRuntimeVersionValue
         case .failed(let reason):
             log("runtime version unavailable reason=invalid error=\(reason)")
-            return RuntimeVersionStore.invalidVersionValue
+            return Self.invalidRuntimeVersionValue
         }
     }
 
     func runtimeStatusValue() -> String? {
-        statusReporter.statusValue()
+        switch statusReporter.loadStatusResult() {
+        case .loaded(let document):
+            document.status.rawValue
+        case .missing, .failed:
+            nil
+        }
     }
 
     func runtimeObservedEventPublisher() -> RuntimeObservedEventPublisher {
-        RuntimeObservedEventPublisher(
+        let healthUseCase = RefreshRuntimeHealthUseCase()
+        return RuntimeObservedEventPublisher(
             previousStatus: {
-                statusReporter.loadStatus()?.status
+                previousRuntimeStatus()
             },
             recordEvent: { status, previousStatus, operation, message, snapshot, eventType in
                 try runtimeEventPublisher().recordObservedEvent(
@@ -66,8 +75,23 @@ extension RuntimeLifecycle {
                     healthSnapshot: snapshot,
                     eventType: eventType
                 )
+            },
+            eventTypeForSnapshot: { snapshot, defaultEventType in
+                healthUseCase.observedEventType(snapshot: snapshot, defaultEventType: defaultEventType)
             }
         )
+    }
+
+    private func previousRuntimeStatus() -> RuntimeStatusLevel? {
+        switch statusReporter.loadStatusResult() {
+        case .loaded(let document):
+            return document.status
+        case .missing:
+            return nil
+        case .failed(let reason):
+            log("previous runtime status unavailable reason=\(reason)")
+            return nil
+        }
     }
 
     func runtimeEventPublisher() -> RuntimeEventPublisher {
@@ -97,9 +121,14 @@ extension RuntimeLifecycle {
     }
 
     func vitalDBObservationProjector() -> RuntimeVitalDBObservationProjector {
-        RuntimeVitalDBObservationProjector(
+        let relationshipProjection = PlanVitalDBRelationshipProjectionUseCase()
+        let store = SQLiteRuntimeObservabilityStore(
+            url: installedPaths.runtimeObservabilityDB,
+            relationshipProjectionPlanner: relationshipProjection.projectionPlan
+        )
+        return RuntimeVitalDBObservationProjector(
             appendObservation: { observation in
-                try SQLiteVitalDBObservationRepository(url: installedPaths.runtimeObservabilityDB).append(observation)
+                try SQLiteVitalDBObservationRepository(store: store).append(observation)
             },
             log: log
         )
@@ -110,7 +139,8 @@ extension RuntimeLifecycle {
     }
 
     func runtimeHealthSnapshot() -> RuntimeHealthSnapshot {
-        healthChecker.snapshot()
+        let useCase = EvaluateRuntimeHealthUseCase()
+        return useCase.snapshot(observation: useCase.observation(from: healthChecker.observationReads()))
     }
 
     func runtimeStatusWriter() -> RuntimeStatusWriter {

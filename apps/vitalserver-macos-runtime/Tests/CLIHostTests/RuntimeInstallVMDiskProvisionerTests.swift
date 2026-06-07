@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import OutboundAdapters
 import XCTest
 import Errors
@@ -68,11 +69,90 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
         XCTAssertEqual(events.values, [])
     }
 
+    func testProvisionFailsWhenDiskStateInspectionFails() {
+        let events = EventLog()
+        let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
+        let vmDisk = URL(fileURLWithPath: "/runtime/vm.img")
+        let provisioner = makeProvisioner(
+            rootfs: rootfs,
+            vmDisk: vmDisk,
+            existingFiles: { [rootfs] },
+            events: events,
+            fileState: { url in
+                url == vmDisk ? .inspectFailed("permission denied") : .present
+            }
+        )
+
+        XCTAssertThrowsError(try provisioner.provision(diskGiB: 64)) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "file inspection failed: /runtime/vm.img reason=permission denied"
+            )
+        }
+        XCTAssertEqual(events.values, [])
+    }
+
+    func testProvisionFailsWhenRootfsStateInspectionFails() {
+        let events = EventLog()
+        let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
+        let vmDisk = URL(fileURLWithPath: "/runtime/vm.img")
+        let provisioner = makeProvisioner(
+            rootfs: rootfs,
+            vmDisk: vmDisk,
+            existingFiles: { [] },
+            events: events,
+            fileState: { url in
+                url == rootfs ? .inspectFailed("permission denied") : .missing
+            }
+        )
+
+        XCTAssertThrowsError(try provisioner.provision(diskGiB: 64)) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "file inspection failed: /runtime/rootfs.raw.gz reason=permission denied"
+            )
+        }
+        XCTAssertEqual(events.values, [])
+    }
+
+    func testProvisionFailsWhenTemporaryDiskStateInspectionFails() {
+        let events = EventLog()
+        let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
+        let vmDisk = URL(fileURLWithPath: "/runtime/vm.img")
+        let temporary = URL(fileURLWithPath: "/runtime/.vm.img.tmp")
+        let provisioner = makeProvisioner(
+            rootfs: rootfs,
+            vmDisk: vmDisk,
+            existingFiles: { [rootfs] },
+            events: events,
+            fileState: { url in
+                if url == rootfs {
+                    return .present
+                }
+                if url == temporary {
+                    return .inspectFailed("permission denied")
+                }
+                return .missing
+            }
+        )
+
+        XCTAssertThrowsError(try provisioner.provision(diskGiB: 64)) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "file inspection failed: /runtime/.vm.img.tmp reason=permission denied"
+            )
+        }
+        XCTAssertEqual(events.values, [
+            "free-space:/runtime:1568:provision-vm-disk",
+        ])
+    }
+
     private func makeProvisioner(
         rootfs: URL,
         vmDisk: URL,
         existingFiles: @escaping () -> Set<URL>,
         events: EventLog,
+        fileState: ((URL) -> RuntimeFileState)? = nil,
         moveItem: @escaping (URL, URL) throws -> Void = { _, _ in }
     ) -> RuntimeInstallVMDiskProvisioner {
         RuntimeInstallVMDiskProvisioner(
@@ -84,8 +164,8 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
                 freeSpaceMarginBytes: 128
             ),
             operations: RuntimeInstallVMDiskProvisioningOperations(
-                fileExists: { url in
-                    existingFiles().contains(url)
+                fileState: fileState ?? { url in
+                    existingFiles().contains(url) ? .present : .missing
                 },
                 fileSize: { _ in
                     240

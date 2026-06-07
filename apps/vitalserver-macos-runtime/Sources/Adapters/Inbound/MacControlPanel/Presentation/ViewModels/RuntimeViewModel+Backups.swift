@@ -44,7 +44,7 @@ extension RuntimeViewModel {
             successMessage: AppConstants.StatusText.redisBackupCompleted,
             refreshCommandLog: false,
             action: { try await self.controlClient.createRedisBackup() }
-        )
+        ).isSuccess
         if didCreateBackup {
             await refresh()
             await refreshHealthStatus()
@@ -63,8 +63,8 @@ extension RuntimeViewModel {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        let plan: RuntimeViewModelBackupActionPlan
-        switch RuntimeViewModelBackupActionPlanner().rollbackPlan(selectedBackupPath: selectedBackupPath) {
+        let plan: RuntimeBackupActionPlan
+        switch RuntimeBackupActionPlanner().rollbackPlan(selectedBackupPath: selectedBackupPath) {
         case .success(let actionPlan):
             plan = actionPlan
         case .failure(let failure):
@@ -87,8 +87,8 @@ extension RuntimeViewModel {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        let plan: RuntimeViewModelBackupActionPlan
-        switch RuntimeViewModelBackupActionPlanner().deletePlan(
+        let plan: RuntimeBackupActionPlan
+        switch RuntimeBackupActionPlanner().deletePlan(
             selectedBackupPath: selectedBackupPath,
             backupsPath: installationInfo.backupsPath
         ) {
@@ -104,7 +104,7 @@ extension RuntimeViewModel {
             runningMessage: AppConstants.StatusText.backupDeleteRunning,
             successMessage: AppConstants.StatusText.backupDeleted,
             action: { try await self.hostClient.deleteBackup(url: plan.backupURL) }
-        )
+        ).isSuccess
         if didDelete {
             self.selectedBackupPath = nil
             await refresh()

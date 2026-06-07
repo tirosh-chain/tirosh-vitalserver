@@ -53,6 +53,14 @@ public enum VMRuntimeConfigComposition {
             return try VMRuntimeConfig.readDocument(from: url, fileStore: fileStore)
         } catch VMRuntimeConfigReadError.missingConfig {
             throw LauncherError.missingConfig(url)
+        } catch VMRuntimeConfigReadError.configInspectionFailed(let path, let reason) {
+            throw LauncherError.runtimeOperationFailed(
+                "VM config path inspection failed path=\(path) reason=\(reason)"
+            )
+        } catch VMRuntimeConfigReadError.unexpectedConfigPathState(let path, let state) {
+            throw LauncherError.runtimeOperationFailed(
+                "VM config path state is unexpected path=\(path) state=\(state)"
+            )
         }
     }
 
@@ -61,6 +69,14 @@ public enum VMRuntimeConfigComposition {
             try VMRuntimeConfig.validateBootFilePaths(config, fileStore: fileStore)
         } catch VMRuntimeBootFileValidationError.missingFile(let path) {
             throw LauncherError.missingFile(path)
+        } catch VMRuntimeBootFileValidationError.pathInspectionFailed(let path, let reason) {
+            throw LauncherError.runtimeOperationFailed(
+                "VM boot file path inspection failed path=\(path) reason=\(reason)"
+            )
+        } catch VMRuntimeBootFileValidationError.unexpectedPathState(let path, let state) {
+            throw LauncherError.runtimeOperationFailed(
+                "VM boot file path state is unexpected path=\(path) state=\(state)"
+            )
         }
     }
 

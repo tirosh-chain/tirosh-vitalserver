@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import RuntimeControl
 import Errors
 
@@ -13,7 +14,7 @@ public extension RuntimeViewModel {
     }
 
     func openFolder(_ path: String) {
-        if let errorMessage = navigationCoordinator.openFolder(path, nativeShell: nativeShell) {
+        if case let .failed(errorMessage) = navigationCoordinator.openFolder(path, nativeShell: nativeShell) {
             message = errorMessage
         }
     }
@@ -25,7 +26,11 @@ public extension RuntimeViewModel {
     }
 
     func openVitalServer() {
-        openRuntimeURL(AppConstants.Product.vitalServerURL(proxyPort: status.proxyPort))
+        guard let proxyPort = status.proxyPort else {
+            message = RuntimeHTTPStatusText.missingProxyPort
+            return
+        }
+        openRuntimeURL(AppConstants.Product.vitalServerURL(proxyPort: proxyPort))
     }
 
     func openRuntimeControlPWA() {
@@ -37,11 +42,19 @@ public extension RuntimeViewModel {
     }
 
     func openRedisUI() {
-        openRuntimeURL(AppConstants.Product.redisUIURL(proxyPort: status.proxyPort))
+        guard let proxyPort = status.proxyPort else {
+            message = RuntimeHTTPStatusText.missingProxyPort
+            return
+        }
+        openRuntimeURL(AppConstants.Product.redisUIURL(proxyPort: proxyPort))
     }
 
     func openSwagger() {
-        openRuntimeURL(AppConstants.Product.swaggerURL(proxyPort: status.proxyPort))
+        guard let proxyPort = status.proxyPort else {
+            message = RuntimeHTTPStatusText.missingProxyPort
+            return
+        }
+        openRuntimeURL(AppConstants.Product.swaggerURL(proxyPort: proxyPort))
     }
 
     func openTiroshWebsite() {
@@ -57,6 +70,8 @@ public extension RuntimeViewModel {
     }
 
     private func openRuntimeURL(_ rawURL: String) {
-        navigationCoordinator.openWebURL(rawURL, nativeShell: nativeShell)
+        if case let .failed(errorMessage) = navigationCoordinator.openWebURL(rawURL, nativeShell: nativeShell) {
+            message = errorMessage
+        }
     }
 }

@@ -47,7 +47,18 @@ public enum RuntimeObservationHealthPolicy {
     private static func containerFailureReasons(
         _ observation: RuntimeContainerObservation
     ) -> [RuntimeFailureReason] {
-        observation.composeServices.compactMap { service in
+        switch observation.composeServicesReadState {
+        case .loaded:
+            break
+        case .missing:
+            return [.containerObservationMissing]
+        case .invalid, .stale, .readFailed:
+            return [.containerObservationReadFailed(
+                failureToken(observation.composeServicesReadError ?? observation.composeServicesReadState.rawValue)
+            )]
+        }
+
+        return observation.composeServices.compactMap { service in
             guard criticalContainerServices.contains(service.service),
                   let failureState = containerFailureState(service) else {
                 return nil

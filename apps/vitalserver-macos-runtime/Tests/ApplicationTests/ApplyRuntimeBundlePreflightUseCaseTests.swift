@@ -33,7 +33,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
                 XCTAssertEqual(observedRootfsBase, rootfsBase)
                 return ApplyRuntimeBundleRootfsStorageObservation(
                     stagedRootfs: stagedRootfs,
-                    stagedRootfsExists: true,
+                    stagedRootfsState: .file,
                     installedRootfsBytes: 10,
                     incomingRootfsBytes: 20
                 )
@@ -191,7 +191,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
             observeRootfsStorage: { stagedRootfs, _ in
                 ApplyRuntimeBundleRootfsStorageObservation(
                     stagedRootfs: stagedRootfs,
-                    stagedRootfsExists: false,
+                    stagedRootfsState: .missing,
                     installedRootfsBytes: nil,
                     incomingRootfsBytes: nil
                 )
@@ -430,7 +430,7 @@ private let updateFreeSpaceMarginBytes: UInt64 = 2 * 1024 * 1024 * 1024
 private func missingRootfsObservation() -> ApplyRuntimeBundleRootfsStorageObservation {
     ApplyRuntimeBundleRootfsStorageObservation(
         stagedRootfs: URL(fileURLWithPath: "/unused"),
-        stagedRootfsExists: false,
+        stagedRootfsState: .missing,
         installedRootfsBytes: nil,
         incomingRootfsBytes: nil
     )
@@ -442,8 +442,8 @@ private func stoppedPolicy() -> RuntimeServiceRestartPolicy {
 
 private func healthySnapshot(vmErrors: [RuntimeVMError] = []) -> RuntimeHealthSnapshot {
     RuntimeHealthSnapshot(
-        vmExecutable: true,
-        proxyExecutable: true,
+        vmExecutable: .executable,
+        proxyExecutable: .executable,
         rootfsBase: .present,
         vmDisk: .present,
         vmService: .loaded,

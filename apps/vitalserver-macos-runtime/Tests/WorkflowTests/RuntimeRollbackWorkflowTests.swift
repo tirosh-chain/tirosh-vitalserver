@@ -103,7 +103,7 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
                 events.append("directory:\(backup.path)")
                 return RollbackRuntimeBackupDirectoryObservation(
                     backup: backup,
-                    directoryExists: backup == requestedBackup
+                    backupDirectoryState: backup == requestedBackup ? .directory : .missing
                 )
             },
             loadBackupManifest: { backup in
@@ -114,7 +114,7 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
                 events.append("file:\(plan.backupRootfs?.path ?? "none")")
                 return RollbackRuntimeBackupRootfsObservation(
                     backupPlan: plan,
-                    backupRootfsExists: plan.backupRootfs == backupRootfs
+                    backupRootfsState: plan.backupRootfs == backupRootfs ? .file : .missing
                 )
             },
             serviceRestartPolicy: {
@@ -151,7 +151,7 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
         let operations = operationsForPreflight(
             resolveBackupSelection: { _ in requestedBackup },
             observeBackupDirectory: { backup in
-                RollbackRuntimeBackupDirectoryObservation(backup: backup, directoryExists: false)
+                RollbackRuntimeBackupDirectoryObservation(backup: backup, backupDirectoryState: .missing)
             },
             loadBackupManifest: { _ in
                 XCTFail("missing backup directory should stop before manifest load")
@@ -159,7 +159,7 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
             },
             observeBackupRootfs: { plan in
                 XCTFail("missing backup directory should stop before rootfs observation")
-                return RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsExists: nil)
+                return RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsState: nil)
             },
             serviceRestartPolicy: {
                 XCTFail("missing backup directory should stop before service policy")
@@ -182,11 +182,11 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
         let operations = operationsForPreflight(
             resolveBackupSelection: { _ in requestedBackup },
             observeBackupDirectory: { backup in
-                RollbackRuntimeBackupDirectoryObservation(backup: backup, directoryExists: true)
+                RollbackRuntimeBackupDirectoryObservation(backup: backup, backupDirectoryState: .directory)
             },
             loadBackupManifest: { _ in backupManifest(rootfsBase: RuntimeFileNames.rootfsBase) },
             observeBackupRootfs: { plan in
-                RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsExists: false)
+                RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsState: .missing)
             },
             serviceRestartPolicy: {
                 XCTFail("missing rootfs should stop before service policy")
@@ -226,7 +226,7 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
                 observedRequiredInputs.append(requiredInput)
                 return RollbackRuntimeStepRequiredInputObservation(
                     requiredInput: requiredInput,
-                    backupVersionExists: true
+                    backupVersionState: .file
                 )
             },
             replaceFile: { source, destination in
@@ -261,7 +261,7 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
             observeBackupRootfs: observeBackupRootfs,
             serviceRestartPolicy: serviceRestartPolicy,
             observeStepRequiredInput: { _, _, requiredInput in
-                RollbackRuntimeStepRequiredInputObservation(requiredInput: requiredInput, backupVersionExists: false)
+                RollbackRuntimeStepRequiredInputObservation(requiredInput: requiredInput, backupVersionState: .missing)
             },
             stopRuntimeServices: {},
             replaceFile: { _, _ in },
@@ -288,11 +288,11 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
         RollbackRuntimeOperations(
             resolveBackupSelection: { _ in URL(fileURLWithPath: "/backup") },
             observeBackupDirectory: { backup in
-                RollbackRuntimeBackupDirectoryObservation(backup: backup, directoryExists: true)
+                RollbackRuntimeBackupDirectoryObservation(backup: backup, backupDirectoryState: .directory)
             },
             loadBackupManifest: { _ in backupManifest(rootfsBase: RuntimeFileNames.rootfsBase) },
             observeBackupRootfs: { plan in
-                RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsExists: true)
+                RollbackRuntimeBackupRootfsObservation(backupPlan: plan, backupRootfsState: .file)
             },
             serviceRestartPolicy: { stoppedPolicy },
             observeStepRequiredInput: observeStepRequiredInput,
@@ -341,14 +341,14 @@ private final class RollbackHarness {
         observeBackupDirectory: { [self] backup in
             RollbackRuntimeBackupDirectoryObservation(
                 backup: backup,
-                directoryExists: backupDirectoryExists
+                backupDirectoryState: backupDirectoryExists ? .directory : .missing
             )
         },
         loadBackupManifest: { _ in backupManifest(rootfsBase: RuntimeFileNames.rootfsBase) },
         observeBackupRootfs: { [self] plan in
             RollbackRuntimeBackupRootfsObservation(
                 backupPlan: plan,
-                backupRootfsExists: backupRootfsExists
+                backupRootfsState: backupRootfsExists ? .file : .missing
             )
         },
         serviceRestartPolicy: {
@@ -357,7 +357,7 @@ private final class RollbackHarness {
         observeStepRequiredInput: { _, _, requiredInput in
             RollbackRuntimeStepRequiredInputObservation(
                 requiredInput: requiredInput,
-                backupVersionExists: true
+                backupVersionState: .file
             )
         },
         stopRuntimeServices: { [self] in

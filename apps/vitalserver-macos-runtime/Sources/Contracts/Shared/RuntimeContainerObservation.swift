@@ -137,45 +137,174 @@ public struct RuntimeContainerServiceObservation: Codable, Equatable, Sendable {
     }
 }
 
+public enum RuntimeContainerServicesReadState: String, Codable, Equatable, Sendable {
+    case loaded
+    case missing
+    case invalid
+    case stale
+    case readFailed = "read-failed"
+
+    public init(readError: String?) {
+        guard let readError, !readError.isEmpty else {
+            self = .loaded
+            return
+        }
+        if readError.contains("stale") {
+            self = .stale
+        } else if readError.contains("invalid") {
+            self = .invalid
+        } else if readError.contains("missing") {
+            self = .missing
+        } else {
+            self = .readFailed
+        }
+    }
+}
+
 public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
     public let auditProxyHTTP: String
     public let auditProxyStatus: RuntimeAuditProxyStatusDocument?
+    public let auditProxyStatusReadState: RuntimeAuditProxyStatusReadState
     public let auditProxyStatusReadError: String?
     public let runtimeStateUpdatedAt: String?
     public let runtimeStateFileUpdatedAt: String?
+    public let runtimeStateFileMetadataReadState: RuntimeFileMetadataReadState
     public let runtimeStateFileMetadataError: String?
     public let containerLogsPresent: Bool
     public let containerLogsBytes: UInt64?
     public let containerLogsUpdatedAt: String?
     public let containerLogsMetadataError: String?
+    public let composeServicesReadState: RuntimeContainerServicesReadState
     public let composeServices: [RuntimeContainerServiceObservation]
     public let composeServicesReadError: String?
 
     public init(
         auditProxyHTTP: String,
         auditProxyStatus: RuntimeAuditProxyStatusDocument?,
+        auditProxyStatusReadState: RuntimeAuditProxyStatusReadState? = nil,
         auditProxyStatusReadError: String? = nil,
         runtimeStateUpdatedAt: String? = nil,
         runtimeStateFileUpdatedAt: String? = nil,
+        runtimeStateFileMetadataReadState: RuntimeFileMetadataReadState? = nil,
         runtimeStateFileMetadataError: String? = nil,
         containerLogsPresent: Bool,
         containerLogsBytes: UInt64?,
         containerLogsUpdatedAt: String? = nil,
         containerLogsMetadataError: String? = nil,
+        composeServicesReadState: RuntimeContainerServicesReadState? = nil,
         composeServices: [RuntimeContainerServiceObservation] = [],
         composeServicesReadError: String? = nil
     ) {
         self.auditProxyHTTP = auditProxyHTTP
         self.auditProxyStatus = auditProxyStatus
+        self.auditProxyStatusReadState = auditProxyStatusReadState
+            ?? RuntimeAuditProxyStatusReadResult(
+                httpStatus: auditProxyHTTP,
+                document: auditProxyStatus,
+                readError: auditProxyStatusReadError
+            ).readState
         self.auditProxyStatusReadError = auditProxyStatusReadError
         self.runtimeStateUpdatedAt = runtimeStateUpdatedAt
         self.runtimeStateFileUpdatedAt = runtimeStateFileUpdatedAt
+        self.runtimeStateFileMetadataReadState = runtimeStateFileMetadataReadState
+            ?? RuntimeContainerObservation.metadataReadState(
+                updatedAt: runtimeStateFileUpdatedAt,
+                readError: runtimeStateFileMetadataError
+            )
         self.runtimeStateFileMetadataError = runtimeStateFileMetadataError
         self.containerLogsPresent = containerLogsPresent
         self.containerLogsBytes = containerLogsBytes
         self.containerLogsUpdatedAt = containerLogsUpdatedAt
         self.containerLogsMetadataError = containerLogsMetadataError
+        self.composeServicesReadState = composeServicesReadState ?? RuntimeContainerServicesReadState(
+            readError: composeServicesReadError
+        )
         self.composeServices = composeServices
         self.composeServicesReadError = composeServicesReadError
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case auditProxyHTTP
+        case auditProxyStatus
+        case auditProxyStatusReadState
+        case auditProxyStatusReadError
+        case runtimeStateUpdatedAt
+        case runtimeStateFileUpdatedAt
+        case runtimeStateFileMetadataReadState
+        case runtimeStateFileMetadataError
+        case containerLogsPresent
+        case containerLogsBytes
+        case containerLogsUpdatedAt
+        case containerLogsMetadataError
+        case composeServicesReadState
+        case composeServices
+        case composeServicesReadError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let composeServicesReadError = try container.decodeIfPresent(
+            String.self,
+            forKey: .composeServicesReadError
+        )
+        self.auditProxyHTTP = try container.decode(String.self, forKey: .auditProxyHTTP)
+        self.auditProxyStatus = try container.decodeIfPresent(
+            RuntimeAuditProxyStatusDocument.self,
+            forKey: .auditProxyStatus
+        )
+        self.auditProxyStatusReadError = try container.decodeIfPresent(
+            String.self,
+            forKey: .auditProxyStatusReadError
+        )
+        self.auditProxyStatusReadState = try container.decodeIfPresent(
+            RuntimeAuditProxyStatusReadState.self,
+            forKey: .auditProxyStatusReadState
+        ) ?? RuntimeAuditProxyStatusReadResult(
+            httpStatus: auditProxyHTTP,
+            document: auditProxyStatus,
+            readError: auditProxyStatusReadError
+        ).readState
+        self.runtimeStateUpdatedAt = try container.decodeIfPresent(String.self, forKey: .runtimeStateUpdatedAt)
+        self.runtimeStateFileUpdatedAt = try container.decodeIfPresent(String.self, forKey: .runtimeStateFileUpdatedAt)
+        self.runtimeStateFileMetadataError = try container.decodeIfPresent(
+            String.self,
+            forKey: .runtimeStateFileMetadataError
+        )
+        self.runtimeStateFileMetadataReadState = try container.decodeIfPresent(
+            RuntimeFileMetadataReadState.self,
+            forKey: .runtimeStateFileMetadataReadState
+        ) ?? RuntimeContainerObservation.metadataReadState(
+            updatedAt: runtimeStateFileUpdatedAt,
+            readError: runtimeStateFileMetadataError
+        )
+        self.containerLogsPresent = try container.decode(Bool.self, forKey: .containerLogsPresent)
+        self.containerLogsBytes = try container.decodeIfPresent(UInt64.self, forKey: .containerLogsBytes)
+        self.containerLogsUpdatedAt = try container.decodeIfPresent(String.self, forKey: .containerLogsUpdatedAt)
+        self.containerLogsMetadataError = try container.decodeIfPresent(
+            String.self,
+            forKey: .containerLogsMetadataError
+        )
+        self.composeServicesReadState = try container.decodeIfPresent(
+            RuntimeContainerServicesReadState.self,
+            forKey: .composeServicesReadState
+        ) ?? RuntimeContainerServicesReadState(readError: composeServicesReadError)
+        self.composeServices = try container.decodeIfPresent(
+            [RuntimeContainerServiceObservation].self,
+            forKey: .composeServices
+        ) ?? []
+        self.composeServicesReadError = composeServicesReadError
+    }
+
+    private static func metadataReadState(
+        updatedAt: String?,
+        readError: String?
+    ) -> RuntimeFileMetadataReadState {
+        if readError != nil {
+            return .readFailed
+        }
+        if updatedAt != nil {
+            return .loaded
+        }
+        return .notRead
     }
 }

@@ -160,6 +160,77 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(serviceManager.stoppedLabels, [RuntimeManagedService.vm.label])
     }
 
+    func testStopRuntimeServicesPropagatesBootoutCommandFailureBeforeWait() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        serviceManager.stopResults[.vm] = RuntimeProcessResult(
+            exitCode: 5,
+            stdout: "",
+            stderr: "bootout failed"
+        )
+        var waitedLabels: [String] = []
+        var logs: [String] = []
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { $0 == .vm ? .loaded : .notLoaded },
+            waitUntilStopped: { waitedLabels.append($0.label) },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try controller.stopRuntimeServices()) { error in
+            XCTAssertTrue(String(describing: error).contains("launchd command failed action=bootout"))
+        }
+        XCTAssertEqual(serviceManager.stoppedLabels, [RuntimeManagedService.vm.label])
+        XCTAssertEqual(waitedLabels, [])
+        XCTAssertTrue(logs.contains {
+            $0.contains("command stderr executable=\(Constants.Commands.launchctl) stderr=bootout failed")
+        })
+    }
+
+    func testStopLaunchdServicePropagatesStateReadFailure() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { $0 == .sleepPrevention ? .readFailed("launchctl denied") : .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try controller.stopLaunchdService(.sleepPrevention)) { error in
+            XCTAssertTrue(String(describing: error).contains(
+                "launchd service state read failed label=\(RuntimeManagedService.sleepPrevention.label)"
+            ))
+        }
+        XCTAssertEqual(serviceManager.stoppedLabels, [])
+    }
+
+    func testStopLaunchdServicePropagatesBootoutFailure() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        serviceManager.stopResults[.sleepPrevention] = RuntimeProcessResult(
+            exitCode: 5,
+            stdout: "",
+            stderr: "bootout denied"
+        )
+        var logs: [String] = []
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { $0 == .sleepPrevention ? .loaded : .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try controller.stopLaunchdService(.sleepPrevention)) { error in
+            XCTAssertTrue(String(describing: error).contains("launchd command failed action=bootout"))
+        }
+        XCTAssertEqual(serviceManager.stoppedLabels, [RuntimeManagedService.sleepPrevention.label])
+        XCTAssertTrue(logs.contains {
+            $0.contains("command stderr executable=\(Constants.Commands.launchctl) stderr=bootout denied")
+        })
+    }
+
     func testDisableRuntimeServicesForUninstallDisablesStopOrderBeforeCleanup() throws {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let controller = RuntimeServiceController(
@@ -333,6 +404,36 @@ final class RuntimeServiceControllerTests: XCTestCase {
         })
     }
 
+    func testStartRuntimeServicesPropagatesBootstrapCommandFailureBeforeStateFallback() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        serviceManager.startResults[.vm] = RuntimeProcessResult(
+            exitCode: 5,
+            stdout: "",
+            stderr: "bootstrap failed"
+        )
+        var logs: [String] = []
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { _ in .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try controller.startRuntimeServices(RuntimeServiceRestartPolicy(
+            restartVM: true,
+            restartGuestLogSync: false,
+            restartProxy: false,
+            restartWatchdog: false
+        ))) { error in
+            XCTAssertTrue(String(describing: error).contains("launchd command failed action=bootstrap"))
+        }
+        XCTAssertEqual(serviceManager.startedLabels, [RuntimeManagedService.vm.label])
+        XCTAssertTrue(logs.contains {
+            $0.contains("command stderr executable=\(Constants.Commands.launchctl) stderr=bootstrap failed")
+        })
+    }
+
     func testStartRuntimeServicesFailsBeforeBootstrapWhenEnableFails() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         serviceManager.setEnabledResults[.vm] = RuntimeProcessResult(
@@ -355,7 +456,12 @@ final class RuntimeServiceControllerTests: XCTestCase {
             restartProxy: false,
             restartWatchdog: false
         ))) { error in
-            XCTAssertTrue(String(describing: error).contains("launchctl enable"))
+            XCTAssertEqual(
+                error as? RuntimeServiceControllerError,
+                .runtimeOperationFailed(
+                    "launchd command failed action=enable label=\(RuntimeManagedService.vm.label) exitCode=125"
+                )
+            )
         }
         XCTAssertEqual(serviceManager.setEnabledLabels, [RuntimeManagedService.vm.label])
         XCTAssertEqual(serviceManager.setEnabledValues, [true])
@@ -385,6 +491,32 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(serviceManager.setEnabledLabels, [RuntimeManagedService.vm.label])
         XCTAssertEqual(serviceManager.setEnabledValues, [true])
         XCTAssertTrue(logs.contains("launchd service not loaded after restart; starting label=\(RuntimeManagedService.vm.label)"))
+    }
+
+    func testRestartOrStartPropagatesRestartFailureWhenServiceRemainsLoaded() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        serviceManager.restartResults[.proxy] = RuntimeProcessResult(
+            exitCode: 5,
+            stdout: "",
+            stderr: "kickstart failed"
+        )
+        var logs: [String] = []
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { $0 == .proxy ? .loaded : .notLoaded },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try controller.restartOrStartLaunchdService(.proxy)) { error in
+            XCTAssertTrue(String(describing: error).contains("launchd command failed action=kickstart"))
+        }
+        XCTAssertEqual(serviceManager.restartedLabels, [RuntimeManagedService.proxy.label])
+        XCTAssertEqual(serviceManager.startedLabels, [])
+        XCTAssertTrue(logs.contains {
+            $0.contains("command stderr executable=\(Constants.Commands.launchctl) stderr=kickstart failed")
+        })
     }
 
     func testRestartVMRuntimeServicesUnloadsVMBeforeStartingVMAndGuestLogSync() throws {
@@ -624,6 +756,9 @@ private final class ServiceControllerServiceManagerSpy: RuntimeServiceManager {
     var restartedLabels: [String] = []
     var setEnabledLabels: [String] = []
     var setEnabledValues: [Bool] = []
+    var startResults: [RuntimeManagedService: RuntimeProcessResult] = [:]
+    var restartResults: [RuntimeManagedService: RuntimeProcessResult] = [:]
+    var stopResults: [RuntimeManagedService: RuntimeProcessResult] = [:]
     var setEnabledResults: [RuntimeManagedService: RuntimeProcessResult] = [:]
     var onStart: (RuntimeManagedService) -> Void = { _ in }
     var onStop: (RuntimeManagedService) -> Void = { _ in }
@@ -632,19 +767,22 @@ private final class ServiceControllerServiceManagerSpy: RuntimeServiceManager {
         .notLoaded
     }
 
-    func start(service: RuntimeManagedService, plist: String) {
+    func start(service: RuntimeManagedService, plist: String) -> RuntimeProcessResult {
         onStart(service)
         startedLabels.append(service.label)
         startedPlists.append(plist)
+        return startResults[service] ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
     }
 
-    func restart(service: RuntimeManagedService) {
+    func restart(service: RuntimeManagedService) -> RuntimeProcessResult {
         restartedLabels.append(service.label)
+        return restartResults[service] ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
     }
 
-    func stop(service: RuntimeManagedService) {
+    func stop(service: RuntimeManagedService) -> RuntimeProcessResult {
         onStop(service)
         stoppedLabels.append(service.label)
+        return stopResults[service] ?? RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
     }
 
     func setEnabled(service: RuntimeManagedService, enabled: Bool) -> RuntimeProcessResult {

@@ -69,8 +69,7 @@ public struct RuntimeUninstallEffects {
     public var temporaryDirectory: () -> URL
     public var uniqueID: () -> String
     public var createDirectory: (URL, Bool) throws -> Void
-    public var fileExists: (URL) -> Bool
-    public var directoryExists: (URL) -> Bool
+    public var pathState: (URL) -> RuntimePathState
     public var removeItem: (URL) throws -> Void
     public var moveItem: (URL, URL) throws -> Void
     public var contentsOfDirectory: (URL, Bool) throws -> [URL]
@@ -85,8 +84,7 @@ public struct RuntimeUninstallEffects {
         temporaryDirectory: @escaping () -> URL,
         uniqueID: @escaping () -> String,
         createDirectory: @escaping (URL, Bool) throws -> Void,
-        fileExists: @escaping (URL) -> Bool,
-        directoryExists: @escaping (URL) -> Bool,
+        pathState: @escaping (URL) -> RuntimePathState,
         removeItem: @escaping (URL) throws -> Void,
         moveItem: @escaping (URL, URL) throws -> Void,
         contentsOfDirectory: @escaping (URL, Bool) throws -> [URL],
@@ -100,8 +98,7 @@ public struct RuntimeUninstallEffects {
         self.temporaryDirectory = temporaryDirectory
         self.uniqueID = uniqueID
         self.createDirectory = createDirectory
-        self.fileExists = fileExists
-        self.directoryExists = directoryExists
+        self.pathState = pathState
         self.removeItem = removeItem
         self.moveItem = moveItem
         self.contentsOfDirectory = contentsOfDirectory
@@ -530,7 +527,7 @@ public struct RuntimeUninstallWorkflow {
         effects: RuntimeUninstallEffects,
         diagnostics: RuntimeUninstallDiagnostics
     ) throws {
-        guard exists(source, effects: effects) else {
+        guard try pathIsPresent(source, effects: effects) else {
             return
         }
         let destination = preserveRoot.appendingPathComponent(token)
@@ -587,7 +584,7 @@ public struct RuntimeUninstallWorkflow {
                 uninstallUseCase().unsafeRemovalTargetFailureMessage(path: target.path)
             )
         }
-        guard exists(target, effects: effects) else {
+        guard try pathIsPresent(target, effects: effects) else {
             return
         }
         do {
@@ -596,7 +593,7 @@ public struct RuntimeUninstallWorkflow {
             logRemovalDiagnostics(target, effects: effects, diagnostics: diagnostics)
             throw error
         }
-        if exists(target, effects: effects) {
+        if try pathIsPresent(target, effects: effects) {
             logRemovalDiagnostics(target, effects: effects, diagnostics: diagnostics)
             throw UninstallRuntimeUseCaseError.operationFailed(
                 uninstallUseCase().removalIncompleteFailureMessage(path: target.path)
@@ -634,14 +631,28 @@ public struct RuntimeUninstallWorkflow {
     }
 
     private func removeIfPresent(_ url: URL, effects: RuntimeUninstallEffects) throws {
-        guard exists(url, effects: effects) else {
+        guard try pathIsPresent(url, effects: effects) else {
             return
         }
         try effects.removeItem(url)
     }
 
-    private func exists(_ url: URL, effects: RuntimeUninstallEffects) -> Bool {
-        effects.fileExists(url) || effects.directoryExists(url)
+    private func pathIsPresent(_ url: URL, effects: RuntimeUninstallEffects) throws -> Bool {
+        let state = effects.pathState(url)
+        switch state {
+        case .file, .directory, .other:
+            return true
+        case .missing:
+            return false
+        case .inspectFailed(let reason):
+            throw UninstallRuntimeUseCaseError.operationFailed(
+                uninstallUseCase().removalTargetPathInspectionFailedMessage(path: url.path, reason: reason)
+            )
+        case .unknown:
+            throw UninstallRuntimeUseCaseError.operationFailed(
+                uninstallUseCase().removalTargetPathStateUnexpectedMessage(path: url.path, state: state.rawValue)
+            )
+        }
     }
 
     private func executeReceiptForgetting(

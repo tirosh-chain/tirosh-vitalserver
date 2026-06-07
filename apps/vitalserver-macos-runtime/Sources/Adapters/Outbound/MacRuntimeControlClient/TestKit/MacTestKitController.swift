@@ -7,18 +7,20 @@ import Errors
 public final class MacTestKitController: RuntimeTestKitControlling {
     private let configuration: MacTestKitControllerConfiguration
     private let statusProvider: () async -> RuntimeStatus
-    private let apiHealthCheck: (String) async -> Bool
-    private var activeSessionID: String?
-    private var lastError: String?
-    private let requestTimeout: TimeInterval = 5
+    private let apiService: MacTestKitAPIService
 
     public init(
         configuration: MacTestKitControllerConfiguration = MacTestKitControllerConfiguration(),
-        apiHealthCheck: ((String) async -> Bool)? = nil
+        httpClient: any MacTestKitHTTPClient = URLSessionMacTestKitHTTPClient(),
+        apiHealthCheck: (@Sendable (String) async -> Bool)? = nil
     ) {
         let statusReader = SystemRuntimeStatusReader(paths: RuntimePaths())
+        let apiClient = MacTestKitAPIClient(
+            httpClient: httpClient,
+            healthRead: Self.healthRead(apiHealthCheck)
+        )
         self.configuration = configuration
-        self.apiHealthCheck = apiHealthCheck ?? Self.defaultAPIHealthCheck
+        self.apiService = MacTestKitAPIService(configuration: configuration, apiClient: apiClient)
         self.statusProvider = {
             statusReader.loadStatus(settings: RuntimeSettings())
         }
@@ -27,11 +29,28 @@ public final class MacTestKitController: RuntimeTestKitControlling {
     public init(
         configuration: MacTestKitControllerConfiguration = MacTestKitControllerConfiguration(),
         statusProvider: @escaping () async -> RuntimeStatus,
-        apiHealthCheck: ((String) async -> Bool)? = nil
+        httpClient: any MacTestKitHTTPClient = URLSessionMacTestKitHTTPClient(),
+        apiHealthCheck: (@Sendable (String) async -> Bool)? = nil
     ) {
+        let apiClient = MacTestKitAPIClient(
+            httpClient: httpClient,
+            healthRead: Self.healthRead(apiHealthCheck)
+        )
         self.configuration = configuration
         self.statusProvider = statusProvider
-        self.apiHealthCheck = apiHealthCheck ?? Self.defaultAPIHealthCheck
+        self.apiService = MacTestKitAPIService(configuration: configuration, apiClient: apiClient)
+    }
+
+    init(
+        configuration: MacTestKitControllerConfiguration = MacTestKitControllerConfiguration(),
+        statusProvider: @escaping () async -> RuntimeStatus,
+        httpClient: any MacTestKitHTTPClient = URLSessionMacTestKitHTTPClient(),
+        apiHealthRead: @escaping @Sendable (String) async -> MacTestKitAPIHealthRead
+    ) {
+        let apiClient = MacTestKitAPIClient(httpClient: httpClient, healthRead: apiHealthRead)
+        self.configuration = configuration
+        self.statusProvider = statusProvider
+        self.apiService = MacTestKitAPIService(configuration: configuration, apiClient: apiClient)
     }
 
     public func loadTestKitStatus() async -> RuntimeTestKitStatus {
@@ -54,21 +73,30 @@ public final class MacTestKitController: RuntimeTestKitControlling {
             )
         }
 
-        let healthy = await testKitAPIIsHealthy(apiBaseURL: apiBaseURL)
-        guard healthy else {
-            let service = testKitService(in: runtimeStatus)
-            let message = unavailableMessage(for: service, apiBaseURL: apiBaseURL)
-            lastError = message
+        let apiHealth = await testKitAPIHealth(apiBaseURL: apiBaseURL)
+        guard apiHealth.isHealthy else {
+            let service = RuntimeTestKitAvailabilityPolicy.service(
+                in: runtimeStatus,
+                serviceName: configuration.serviceName
+            )
+            let message = RuntimeTestKitAvailabilityPolicy.unavailableMessage(
+                for: service,
+                serviceName: configuration.serviceName,
+                apiBaseURL: apiBaseURL,
+                healthIssue: apiHealth.issue
+            )
             return RuntimeTestKitStatus(
                 enabled: true,
-                state: unavailableState(for: service),
+                state: RuntimeTestKitAvailabilityPolicy.unavailableState(for: service),
                 serviceName: configuration.serviceName,
                 apiBaseURL: apiBaseURL,
                 recorderTargetURL: configuration.recorderTargetURL,
                 lastError: message,
-                readIssues: unavailableReadIssues(
+                readIssues: RuntimeTestKitAvailabilityPolicy.unavailableReadIssues(
                     for: service,
-                    message: message
+                    serviceName: configuration.serviceName,
+                    message: message,
+                    healthIssue: apiHealth.issue
                 )
             )
         }
@@ -76,11 +104,10 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         let sessions: [RuntimeTestKitSession]
         let beds: [RuntimeTestKitBed]
         do {
-            sessions = try await loadSessions(apiBaseURL: apiBaseURL)
-            beds = try await loadBeds(apiBaseURL: apiBaseURL)
+            sessions = try await apiService.loadSessions(apiBaseURL: apiBaseURL)
+            beds = try await apiService.loadBeds(apiBaseURL: apiBaseURL)
         } catch {
             let message = "TestKit container API read failed: \(error.localizedDescription)"
-            lastError = message
             return RuntimeTestKitStatus(
                 enabled: true,
                 state: .failed,
@@ -93,8 +120,7 @@ public final class MacTestKitController: RuntimeTestKitControlling {
                 ]
             )
         }
-        lastError = nil
-        let activeSession = preferredActiveSession(from: sessions)
+        let activeSession = RuntimeTestKitSessionStatePolicy.preferredActiveSession(from: sessions)
 
         return RuntimeTestKitStatus(
             enabled: true,
@@ -104,8 +130,7 @@ public final class MacTestKitController: RuntimeTestKitControlling {
             recorderTargetURL: configuration.recorderTargetURL,
             activeSession: activeSession,
             sessions: sessions,
-            beds: beds,
-            lastError: lastError
+            beds: beds
         )
     }
 
@@ -113,74 +138,37 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         let apiBaseURL = try await requireAPIBaseURL()
         try await ensureAPIAvailable(apiBaseURL: apiBaseURL)
 
-        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/beds")
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(request)
-
-        let response = try await decode(TestKitBedsResponse.self, from: urlRequest)
-        lastError = nil
-        return response.beds
+        let beds = try await apiService.createBeds(request, apiBaseURL: apiBaseURL)
+        return beds
     }
 
     public func deleteTestKitBeds(_ request: RuntimeTestKitDeleteBedsRequest) async throws -> [RuntimeTestKitBed] {
         let apiBaseURL = try await requireAPIBaseURL()
         try await ensureAPIAvailable(apiBaseURL: apiBaseURL)
 
-        let requestBody = TestKitDeleteBedsRequest(
-            targetURL: configuration.recorderTargetURL,
-            roomNames: request.roomNames
-        )
-        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/beds/delete")
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
-
-        let response = try await decode(TestKitBedsResponse.self, from: urlRequest)
-        lastError = nil
-        return response.beds
+        let beds = try await apiService.deleteBeds(request, apiBaseURL: apiBaseURL)
+        return beds
     }
 
     public func resetTestKitBeds() async throws -> [RuntimeTestKitBed] {
         let apiBaseURL = try await requireAPIBaseURL()
         try await ensureAPIAvailable(apiBaseURL: apiBaseURL)
 
-        var urlRequest = apiRequest(
-            apiBaseURL: apiBaseURL,
-            path: "/beds",
-            queryItems: [
-                URLQueryItem(name: "targetUrl", value: configuration.recorderTargetURL)
-            ]
-        )
-        urlRequest.httpMethod = "DELETE"
-
-        let response = try await decode(TestKitBedsResponse.self, from: urlRequest)
-        lastError = nil
-        return response.beds
+        let beds = try await apiService.resetBeds(apiBaseURL: apiBaseURL)
+        return beds
     }
 
     public func startVirtualRecorders(_ request: RuntimeTestKitVirtualRecorderStartRequest) async throws -> RuntimeTestKitSession {
         let apiBaseURL = try await requireAPIBaseURL()
         try await ensureAPIAvailable(apiBaseURL: apiBaseURL)
 
-        let requestBody = TestKitStartSessionRequest(
-            runtimeRequest: request,
-            targetURL: configuration.recorderTargetURL
-        )
-        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions")
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
-
-        let session = try await decode(RuntimeTestKitSession.self, from: urlRequest)
-        activeSessionID = session.id
-        lastError = nil
+        let session = try await apiService.startSession(request, apiBaseURL: apiBaseURL)
 
         return session
     }
 
     public func stopVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
-        try await sessionAction(sessionID: sessionID, pathComponent: "stop", clearActiveSession: true)
+        try await sessionAction(sessionID: sessionID, pathComponent: "stop")
     }
 
     public func pauseVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
@@ -193,83 +181,49 @@ public final class MacTestKitController: RuntimeTestKitControlling {
 
     public func restartVirtualRecorders(sessionID: String?, bedRoomNames: [String]) async throws -> RuntimeTestKitSession? {
         let apiBaseURL = try await requireAPIBaseURL()
-        let selectedSessionID = sessionID ?? activeSessionID
-        guard let selectedSessionID else {
-            return nil
-        }
+        let selectedSessionID = try requireSessionID(sessionID)
 
-        let requestBody = TestKitRestartSessionRequest(bedRoomNames: bedRoomNames)
-        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions/\(selectedSessionID)/restart")
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
-
-        let session = try await decode(RuntimeTestKitSession.self, from: urlRequest)
-        activeSessionID = session.id
-        lastError = nil
+        let session = try await apiService.restartSession(
+            apiBaseURL: apiBaseURL,
+            sessionID: selectedSessionID,
+            bedRoomNames: bedRoomNames
+        )
 
         return session
     }
 
     public func deleteVirtualRecorders(sessionID: String?) async throws -> RuntimeTestKitSession? {
         let apiBaseURL = try await requireAPIBaseURL()
-        let selectedSessionID = sessionID ?? activeSessionID
-        guard let selectedSessionID else {
-            return nil
-        }
+        let selectedSessionID = try requireSessionID(sessionID)
 
-        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions/\(selectedSessionID)")
-        urlRequest.httpMethod = "DELETE"
-
-        let session = try await decode(RuntimeTestKitSession.self, from: urlRequest)
-        if activeSessionID == selectedSessionID {
-            activeSessionID = nil
-        }
-        lastError = nil
+        let session = try await apiService.deleteSession(apiBaseURL: apiBaseURL, sessionID: selectedSessionID)
 
         return session
     }
 
     public func deleteVirtualRecorder(vrcode: String) async throws -> RuntimeTestKitRecorderDeletion {
         let apiBaseURL = try await requireAPIBaseURL()
-        let requestBody = TestKitDeleteRecorderRequest(
-            targetURL: configuration.recorderTargetURL,
-            vrcode: vrcode
-        )
-        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/recorders/delete")
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try JSONEncoder().encode(requestBody)
-
-        let deletion = try await decode(RuntimeTestKitRecorderDeletion.self, from: urlRequest)
-        lastError = deletion.error
-        return deletion
+        return try await apiService.deleteRecorder(apiBaseURL: apiBaseURL, vrcode: vrcode)
     }
 
     public func resetVirtualRecorders() async throws -> RuntimeTestKitStatus {
         let apiBaseURL = try await requireAPIBaseURL()
 
-        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions")
-        urlRequest.httpMethod = "DELETE"
-        _ = try await decode(TestKitSessionsResponse.self, from: urlRequest)
-
-        activeSessionID = nil
-        lastError = nil
+        try await apiService.resetSessions(apiBaseURL: apiBaseURL)
 
         return await loadTestKitStatus()
     }
 
     private func ensureAPIAvailable(apiBaseURL: String) async throws {
-        guard await testKitAPIIsHealthy(apiBaseURL: apiBaseURL) else {
-            lastError = "TestKit container API is not reachable at \(apiBaseURL)."
+        let apiHealth = await testKitAPIHealth(apiBaseURL: apiBaseURL)
+        guard apiHealth.isHealthy else {
             throw MacTestKitControllerError.apiUnavailable(apiBaseURL)
         }
     }
 
     private func requireAPIBaseURL() async throws -> String {
         guard let apiBaseURL = await apiBaseURL() else {
-            lastError = configuration.apiEndpoint.unavailableDescription
-            throw MacTestKitControllerError.apiEndpointUnavailable(lastError ?? "")
+            throw MacTestKitControllerError.apiEndpointUnavailable(configuration.apiEndpoint.unavailableDescription)
         }
         return apiBaseURL
     }
@@ -283,168 +237,43 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         configuration.apiEndpoint.baseURL(from: status)
     }
 
-    private func testKitService(in status: RuntimeStatus) -> RuntimeContainerServiceObservation? {
-        status.containerObservation?.composeServices.first { $0.service == configuration.serviceName }
-    }
-
-    private func unavailableState(for service: RuntimeContainerServiceObservation?) -> RuntimeTestKitState {
-        guard let service else {
-            return .stopped
-        }
-
-        switch service.state?.lowercased() {
-        case "running", "restarting", "created":
-            return .starting
-        case "exited", "dead":
-            return .failed
-        default:
-            return .stopped
-        }
-    }
-
-    private func unavailableMessage(
-        for service: RuntimeContainerServiceObservation?,
-        apiBaseURL: String
-    ) -> String {
-        guard let service else {
-            return "TestKit container is not running. TestKit is optional and does not affect VitalServer."
-        }
-
-        let state = service.state ?? "not reported"
-        let health = service.health ?? "not reported"
-        return "TestKit container API is not reachable at \(apiBaseURL). Container state: \(state), health: \(health)."
-    }
-
-    private func unavailableReadIssues(
-        for service: RuntimeContainerServiceObservation?,
-        message: String
-    ) -> [RuntimeTestKitReadIssue] {
-        var issues = [
-            RuntimeTestKitReadIssue(source: "testKitAPI", message: message),
-        ]
-        guard let service else {
-            issues.append(RuntimeTestKitReadIssue(
-                source: "containerService",
-                message: "TestKit container service observation is missing for \(configuration.serviceName)."
-            ))
-            return issues
-        }
-        if service.state == nil {
-            issues.append(RuntimeTestKitReadIssue(
-                source: "containerService.state",
-                message: "TestKit container service state is not reported for \(configuration.serviceName)."
-            ))
-        }
-        if service.health == nil {
-            issues.append(RuntimeTestKitReadIssue(
-                source: "containerService.health",
-                message: "TestKit container service health is not reported for \(configuration.serviceName)."
-            ))
-        }
-        return issues
-    }
-
-    private func loadSessions(apiBaseURL: String) async throws -> [RuntimeTestKitSession] {
-        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions")
-        urlRequest.httpMethod = "GET"
-        let response = try await decode(TestKitSessionsResponse.self, from: urlRequest)
-        return response.sessions
-    }
-
-    private func loadBeds(apiBaseURL: String) async throws -> [RuntimeTestKitBed] {
-        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/beds")
-        urlRequest.httpMethod = "GET"
-        let response = try await decode(TestKitBedsResponse.self, from: urlRequest)
-        return response.beds
-    }
-
-    private func preferredActiveSession(from sessions: [RuntimeTestKitSession]) -> RuntimeTestKitSession? {
-        if let activeSessionID,
-           let activeSession = sessions.first(where: { $0.id == activeSessionID }) {
-            return activeSession
-        }
-        return sessions.first { ["running", "paused", "starting", "stopping"].contains($0.state) }
-    }
-
     private func sessionAction(
         sessionID: String?,
-        pathComponent: String,
-        clearActiveSession: Bool = false
+        pathComponent: String
     ) async throws -> RuntimeTestKitSession? {
         let apiBaseURL = try await requireAPIBaseURL()
-        let selectedSessionID = sessionID ?? activeSessionID
-        guard let selectedSessionID else {
-            return nil
-        }
+        let selectedSessionID = try requireSessionID(sessionID)
 
-        var urlRequest = apiRequest(apiBaseURL: apiBaseURL, path: "/sessions/\(selectedSessionID)/\(pathComponent)")
-        urlRequest.httpMethod = "POST"
-
-        let session = try await decode(RuntimeTestKitSession.self, from: urlRequest)
-        if clearActiveSession, activeSessionID == selectedSessionID {
-            activeSessionID = nil
-        } else {
-            activeSessionID = selectedSessionID
-        }
-        lastError = nil
+        let session = try await apiService.sessionAction(
+            apiBaseURL: apiBaseURL,
+            sessionID: selectedSessionID,
+            pathComponent: pathComponent
+        )
 
         return session
     }
 
-    private func testKitAPIIsHealthy(apiBaseURL: String) async -> Bool {
-        await apiHealthCheck(apiBaseURL)
+    private func requireSessionID(_ value: String?) throws -> String {
+        guard let sessionID = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !sessionID.isEmpty
+        else {
+            throw MacTestKitControllerError.missingSessionID
+        }
+        return sessionID
     }
 
-    private static func defaultAPIHealthCheck(apiBaseURL: String) async -> Bool {
-        do {
-            var request = URLRequest(
-                url: URL(string: "\(apiBaseURL)/health")!,
-                timeoutInterval: 5
-            )
-            request.httpMethod = "GET"
-            let (_, response) = try await URLSession.shared.data(for: request)
-            return (response as? HTTPURLResponse)?.statusCode == 200
-        } catch {
-            return false
-        }
+    private func testKitAPIHealth(apiBaseURL: String) async -> MacTestKitAPIHealthRead {
+        await apiService.health(apiBaseURL: apiBaseURL)
     }
 
-    private func decode<T: Decodable>(_ type: T.Type, from request: URLRequest) async throws -> T {
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw MacTestKitControllerError.invalidResponse
+    private static func healthRead(
+        _ apiHealthCheck: (@Sendable (String) async -> Bool)?
+    ) -> (@Sendable (String) async -> MacTestKitAPIHealthRead)? {
+        guard let apiHealthCheck else {
+            return nil
         }
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            guard let message = String(data: data, encoding: .utf8) else {
-                throw MacTestKitControllerError.requestFailed(
-                    "HTTP \(httpResponse.statusCode) response body is not valid UTF-8"
-                )
-            }
-            throw MacTestKitControllerError.requestFailed(message)
+        return { apiBaseURL in
+            await apiHealthCheck(apiBaseURL) ? .healthy : .unreachable(nil)
         }
-        return try JSONDecoder().decode(type, from: data)
-    }
-
-    private func apiURL(
-        apiBaseURL: String,
-        path: String,
-        queryItems: [URLQueryItem] = []
-    ) -> URL {
-        var components = URLComponents(string: "\(apiBaseURL)\(path)")!
-        if !queryItems.isEmpty {
-            components.queryItems = queryItems
-        }
-        return components.url!
-    }
-
-    private func apiRequest(
-        apiBaseURL: String,
-        path: String,
-        queryItems: [URLQueryItem] = []
-    ) -> URLRequest {
-        URLRequest(
-            url: apiURL(apiBaseURL: apiBaseURL, path: path, queryItems: queryItems),
-            timeoutInterval: requestTimeout
-        )
     }
 }

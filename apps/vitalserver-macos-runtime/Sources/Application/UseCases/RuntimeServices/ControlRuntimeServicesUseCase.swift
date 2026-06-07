@@ -12,6 +12,7 @@ public struct RuntimeServiceLifecycleObservation: Equatable {
 
 public enum RuntimeServiceControlRequest: Equatable {
     case repairAll
+    case repairProxy
     case startAll
     case stopAll
 
@@ -19,6 +20,8 @@ public enum RuntimeServiceControlRequest: Equatable {
         switch self {
         case .repairAll:
             return .repairServices
+        case .repairProxy:
+            return .repairProxy
         case .startAll:
             return .startServices
         case .stopAll:
@@ -120,6 +123,8 @@ public struct ControlRuntimeServicesUseCase {
         switch request {
         case .repairAll:
             try repairAll(operations: operations)
+        case .repairProxy:
+            try repairProxy(operations: operations)
         case .startAll:
             try startAll(operations: operations)
         case .stopAll:
@@ -151,6 +156,34 @@ public struct ControlRuntimeServicesUseCase {
                     status: .recovering,
                     operation: .repairServices,
                     statusMessage: "runtime services repair dispatched"
+                )
+            )
+        case .repairProxy:
+            let proxyOnlyPolicy = RuntimeServiceRestartPolicy(
+                restartVM: false,
+                restartGuestLogSync: false,
+                restartProxy: true,
+                restartWatchdog: false
+            )
+            return RuntimeServiceControlPlan(
+                request: request,
+                operation: .repairProxy,
+                startPolicy: proxyOnlyPolicy,
+                stopServices: [.proxy],
+                requiredStartedServices: [.proxy],
+                requiredStoppedServices: [.proxy],
+                requestedLogMessage: "host proxy repair requested",
+                requestedStatusPlan: RuntimeServiceControlStatusPlan(
+                    logMessage: "host proxy repair requested",
+                    status: .recovering,
+                    operation: .repairProxy,
+                    statusMessage: "host proxy repair requested"
+                ),
+                completedStatusPlan: RuntimeServiceControlStatusPlan(
+                    logMessage: "host proxy repair dispatched",
+                    status: .recovering,
+                    operation: .repairProxy,
+                    statusMessage: "host proxy repair dispatched"
                 )
             )
         case .startAll:
@@ -201,6 +234,15 @@ public struct ControlRuntimeServicesUseCase {
         try operations.stopRuntimeServices()
         try requireServicesStopped(controlPlan.requiredStoppedServices, operations: operations)
         let policy = try requireStartPolicy(in: controlPlan, operationName: "repair")
+        try operations.startRuntimeServices(policy)
+        try requireServicesLoaded(controlPlan.requiredStartedServices, operations: operations)
+        try reportCompleted(controlPlan.completedStatusPlan, operations: operations)
+    }
+
+    private func repairProxy(operations: RuntimeServiceControlOperations) throws {
+        let controlPlan = plan(.repairProxy)
+        try reportRequested(controlPlan, operations: operations)
+        let policy = try requireStartPolicy(in: controlPlan, operationName: "repair proxy")
         try operations.startRuntimeServices(policy)
         try requireServicesLoaded(controlPlan.requiredStartedServices, operations: operations)
         try reportCompleted(controlPlan.completedStatusPlan, operations: operations)

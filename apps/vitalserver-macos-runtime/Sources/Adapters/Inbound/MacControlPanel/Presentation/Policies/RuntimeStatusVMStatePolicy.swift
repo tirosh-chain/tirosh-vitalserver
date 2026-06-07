@@ -22,7 +22,7 @@ public struct RuntimeStatusVMStateValue: Equatable, Sendable {
 }
 
 public struct RuntimeStatusVMStatePolicy {
-    private let reachabilityPolicy = RuntimeStatusReachabilityPolicy()
+    private let vmStatePolicy = RuntimeStatusVMStatePresentationPolicy()
     private let vocabulary: any RuntimeStatusVMStateVocabulary
 
     public init(vocabulary: any RuntimeStatusVMStateVocabulary) {
@@ -32,7 +32,7 @@ public struct RuntimeStatusVMStatePolicy {
     public func vmStateValue(_ value: RuntimeVMState?) -> RuntimeStatusVMStateValue {
         RuntimeStatusVMStateValue(
             text: vocabulary.vmStateText(value),
-            severity: reachabilityPolicy.vmStateSeverity(value),
+            severity: vmStatePolicy.vmStateSeverity(value),
             uptimeText: nil
         )
     }

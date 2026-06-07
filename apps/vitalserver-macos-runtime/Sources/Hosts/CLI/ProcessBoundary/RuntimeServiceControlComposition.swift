@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Domain
 import Foundation
@@ -31,6 +32,7 @@ public enum RuntimeServiceControlComposition {
         operations: RuntimeServiceControlCompositionOperations
     ) -> RuntimeServiceControlRunner {
         RuntimeServiceControlRunner(
+            useCase: ControlRuntimeServicesUseCase(),
             startRuntimeServices: operations.startRuntimeServices,
             stopRuntimeServices: operations.stopRuntimeServices,
             serviceStates: { services in

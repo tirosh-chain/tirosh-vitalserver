@@ -84,8 +84,19 @@ public struct RuntimeRedisBackupComposition {
                     )
                 },
                 removePreviousResult: { url in
-                    if operations.fileStore.fileExists(url) {
+                    switch operations.fileStore.pathState(at: url) {
+                    case .file:
                         try operations.fileStore.removeItem(at: url)
+                    case .missing:
+                        break
+                    case .inspectFailed(let reason):
+                        throw RuntimeRedisBackupUseCaseError.operationFailed(
+                            "redis backup previous result path inspection failed: \(url.path) reason=\(reason)"
+                        )
+                    case .directory, .other, .unknown:
+                        throw RuntimeRedisBackupUseCaseError.operationFailed(
+                            "redis backup previous result path state is unexpected: \(url.path) state=\(operations.fileStore.pathState(at: url).rawValue)"
+                        )
                     }
                 },
                 writeStatus: operations.writeRuntimeStatus,

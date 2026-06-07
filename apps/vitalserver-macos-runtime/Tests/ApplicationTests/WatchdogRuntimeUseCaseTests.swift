@@ -210,8 +210,8 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
 }
 
 private func healthSnapshot(
-    vmExecutable: Bool = true,
-    proxyExecutable: Bool = true,
+    vmExecutable: RuntimeFileState = .executable,
+    proxyExecutable: RuntimeFileState = .executable,
     rootfsBase: RuntimeFileState = .present,
     vmDisk: RuntimeFileState = .present,
     vmService: RuntimeServiceState = .loaded,

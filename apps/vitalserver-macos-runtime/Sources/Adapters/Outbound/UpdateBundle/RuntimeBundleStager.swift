@@ -18,8 +18,7 @@ public struct RuntimeBundleStagingContext: Equatable, Sendable {
 public struct RuntimeBundleStagingOperations {
     public let directorySize: (URL) throws -> UInt64
     public let compressedSourceSize: (URL) throws -> UInt64
-    public let fileExists: (URL) -> Bool
-    public let directoryExists: (URL) -> Bool
+    public let destinationState: (URL) -> RuntimePathState
     public let createDirectory: (URL, Bool) throws -> Void
     public let removeItem: (URL) throws -> Void
     public let copyItem: (URL, URL) throws -> Void
@@ -29,8 +28,7 @@ public struct RuntimeBundleStagingOperations {
     public init(
         directorySize: @escaping (URL) throws -> UInt64,
         compressedSourceSize: @escaping (URL) throws -> UInt64,
-        fileExists: @escaping (URL) -> Bool,
-        directoryExists: @escaping (URL) -> Bool,
+        destinationState: @escaping (URL) -> RuntimePathState,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         removeItem: @escaping (URL) throws -> Void,
         copyItem: @escaping (URL, URL) throws -> Void,
@@ -39,8 +37,7 @@ public struct RuntimeBundleStagingOperations {
     ) {
         self.directorySize = directorySize
         self.compressedSourceSize = compressedSourceSize
-        self.fileExists = fileExists
-        self.directoryExists = directoryExists
+        self.destinationState = destinationState
         self.createDirectory = createDirectory
         self.removeItem = removeItem
         self.copyItem = copyItem
@@ -66,7 +63,7 @@ public struct RuntimeBundleStager {
         let bundleSize = try operations.directorySize(input.bundleURL)
 
         try operations.createDirectory(context.bundlesDirectory, true)
-        if operations.fileExists(destination) || operations.directoryExists(destination) {
+        if try shouldRemoveExistingDestination(destination) {
             operations.log("removing existing staged bundle path=\(destination.path)")
             try operations.removeItem(destination)
         }
@@ -86,5 +83,18 @@ public struct RuntimeBundleStager {
     private func formatBytes(_ bytes: UInt64) -> String {
         let mib = Double(bytes) / 1_048_576
         return String(format: "%.1f MiB", max(mib, 0))
+    }
+
+    private func shouldRemoveExistingDestination(_ destination: URL) throws -> Bool {
+        switch operations.destinationState(destination) {
+        case .file, .directory, .other:
+            return true
+        case .missing:
+            return false
+        case .inspectFailed(let reason):
+            throw RuntimeBundleStagingError.destinationInspectionFailed(path: destination.path, reason: reason)
+        case .unknown(let value):
+            throw RuntimeBundleStagingError.unexpectedDestinationState(path: destination.path, state: value)
+        }
     }
 }

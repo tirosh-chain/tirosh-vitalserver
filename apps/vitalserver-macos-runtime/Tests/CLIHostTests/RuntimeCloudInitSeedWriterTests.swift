@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import OutboundAdapters
 import XCTest
 import Errors
@@ -83,10 +84,68 @@ final class RuntimeCloudInitSeedWriterTests: XCTestCase {
         XCTAssertFalse(events.values.contains("remove:/runtime/seed.iso"))
     }
 
+    func testCreateFailsBeforeWritingWhenSeedDirectoryInspectionFails() {
+        let runtimeDirectory = URL(fileURLWithPath: "/runtime")
+        let seedDirectory = runtimeDirectory.appendingPathComponent("cloud-init-seed")
+        let events = EventLog()
+        let writer = makeWriter(
+            runtimeDirectory: runtimeDirectory,
+            pathStates: [seedDirectory: .inspectFailed("permission denied")],
+            events: events
+        )
+
+        XCTAssertThrowsError(try writer.create(hostname: "vitalserver")) { error in
+            XCTAssertEqual(
+                error as? RuntimeCloudInitSeedWriterError,
+                .pathInspectionFailed(path: seedDirectory.path, reason: "permission denied")
+            )
+        }
+        XCTAssertTrue(events.values.isEmpty)
+    }
+
+    func testCreateFailsBeforeBuildingISOWhenSeedImageInspectionFails() {
+        let runtimeDirectory = URL(fileURLWithPath: "/runtime")
+        let seedISO = runtimeDirectory.appendingPathComponent("seed.iso")
+        let events = EventLog()
+        let writer = makeWriter(
+            runtimeDirectory: runtimeDirectory,
+            pathStates: [seedISO: .inspectFailed("permission denied")],
+            events: events
+        )
+
+        XCTAssertThrowsError(try writer.create(hostname: "vitalserver")) { error in
+            XCTAssertEqual(
+                error as? RuntimeCloudInitSeedWriterError,
+                .pathInspectionFailed(path: seedISO.path, reason: "permission denied")
+            )
+        }
+        XCTAssertEqual(events.values, [
+            "mkdir:/runtime/cloud-init-seed:true",
+            "write:/runtime/cloud-init-seed/meta-data:true",
+            "write:/runtime/cloud-init-seed/user-data:true",
+        ])
+        XCTAssertFalse(events.values.contains { $0.hasPrefix("build-seed-image:") })
+    }
+
     private func makeWriter(
         runtimeDirectory: URL,
         existingDirectories: Set<URL>,
         existingFiles: Set<URL>,
+        events: EventLog
+    ) -> RuntimeCloudInitSeedWriter {
+        var pathStates: [URL: RuntimePathState] = [:]
+        for directory in existingDirectories {
+            pathStates[directory] = .directory
+        }
+        for file in existingFiles {
+            pathStates[file] = .file
+        }
+        return makeWriter(runtimeDirectory: runtimeDirectory, pathStates: pathStates, events: events)
+    }
+
+    private func makeWriter(
+        runtimeDirectory: URL,
+        pathStates: [URL: RuntimePathState],
         events: EventLog
     ) -> RuntimeCloudInitSeedWriter {
         RuntimeCloudInitSeedWriter(
@@ -96,11 +155,8 @@ final class RuntimeCloudInitSeedWriterTests: XCTestCase {
                 seedVolumeName: "cidata"
             ),
             operations: RuntimeCloudInitSeedOperations(
-                directoryExists: { url in
-                    existingDirectories.contains(url)
-                },
-                fileExists: { url in
-                    existingFiles.contains(url)
+                pathState: { url in
+                    pathStates[url] ?? .missing
                 },
                 removeItem: { url in
                     events.append("remove:\(url.path)")

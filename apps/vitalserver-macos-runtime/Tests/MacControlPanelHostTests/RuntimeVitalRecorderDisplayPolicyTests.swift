@@ -1,4 +1,5 @@
 @testable import MacControlPanelHost
+import Contracts
 import RuntimeControl
 import XCTest
 import Errors

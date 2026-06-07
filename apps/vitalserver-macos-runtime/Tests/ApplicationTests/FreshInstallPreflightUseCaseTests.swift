@@ -4,6 +4,73 @@ import Domain
 import XCTest
 
 final class FreshInstallPreflightUseCaseTests: XCTestCase {
+    func testRunAppliesDocumentedSettingsDefaultBeforeDomainPreflight() {
+        var probedPorts: [Int] = []
+        let operations = FreshInstallPreflightOperations(
+            settingsState: {
+                .missing(path: "/private/tmp/tirosh-vitalserver-install.json")
+            },
+            settingsDefaultProxyPort: 80,
+            artifactStates: {
+                [.absent(path: "/usr/local/bin/vitalserver-vm")]
+            },
+            serviceStates: {
+                RuntimeManagedService.stopOrder.map {
+                    RuntimeFreshInstallServiceState(label: $0.label, state: .notLoaded)
+                }
+            },
+            packageReceiptStates: {
+                [.absent(identifier: "ai.tirosh.vitalserver.helper")]
+            },
+            proxyPortState: { port in
+                probedPorts.append(port)
+                return .clear(port: port)
+            }
+        )
+
+        let document = FreshInstallPreflightUseCase().run(operations: operations)
+
+        XCTAssertTrue(document.passed)
+        XCTAssertEqual(document.proxyPort, 80)
+        XCTAssertEqual(probedPorts, [80])
+        XCTAssertEqual(
+            document.settingsState,
+            .defaulted(path: "/private/tmp/tirosh-vitalserver-install.json", proxyPort: 80)
+        )
+    }
+
+    func testRunKeepsMissingSettingsBlockingWhenNoDocumentedDefaultIsProvided() {
+        let operations = FreshInstallPreflightOperations(
+            settingsState: {
+                .proxyPortMissing(path: "/private/tmp/tirosh-vitalserver-install.json")
+            },
+            artifactStates: {
+                [.absent(path: "/usr/local/bin/vitalserver-vm")]
+            },
+            serviceStates: {
+                RuntimeManagedService.stopOrder.map {
+                    RuntimeFreshInstallServiceState(label: $0.label, state: .notLoaded)
+                }
+            },
+            packageReceiptStates: {
+                [.absent(identifier: "ai.tirosh.vitalserver.helper")]
+            },
+            proxyPortState: { _ in
+                XCTFail("proxy port must not be read when settings do not provide a port")
+                return .inspectFailed(port: 0, reason: "unexpected")
+            }
+        )
+
+        let document = FreshInstallPreflightUseCase().run(operations: operations)
+
+        XCTAssertFalse(document.passed)
+        XCTAssertNil(document.proxyPort)
+        XCTAssertNil(document.proxyPortState)
+        XCTAssertEqual(document.blockers, [
+            "install-settings-proxy-port-missing:path=/private/tmp/tirosh-vitalserver-install.json",
+        ])
+    }
+
     func testRunBuildsBlockedDocumentFromExplicitHostStates() {
         let operations = FreshInstallPreflightOperations(
             settingsState: {

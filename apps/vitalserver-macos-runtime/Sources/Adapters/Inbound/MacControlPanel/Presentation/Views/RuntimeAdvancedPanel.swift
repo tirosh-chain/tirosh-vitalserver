@@ -19,6 +19,7 @@ struct RuntimeAdvancedPanel: View {
     @State private var showingNetworkOverrides = false
     @State private var showingAdminOperations = false
     private let displayPolicy = RuntimeStatusDisplayPolicy()
+    private let actionAvailabilityPolicy = RuntimeControlActionAvailabilityPolicy()
 
     init(
         viewModel: RuntimeViewModel,
@@ -210,9 +211,11 @@ struct RuntimeAdvancedPanel: View {
                             Task { await viewModel.createRedisBackup() }
                         }
                         .disabled(
-                            viewModel.isBusy
-                                || !viewModel.status.runtimeInstalled
-                                || !viewModel.capabilities.canControlRuntimeServices
+                            !actionAvailabilityPolicy.canCreateRedisBackup(
+                                status: viewModel.status,
+                                capabilities: viewModel.capabilities,
+                                isBusy: viewModel.isBusy
+                            )
                         )
                         Button(AppConstants.Actions.restoreRedisBackup) {}
                             .disabled(true)
@@ -244,22 +247,34 @@ struct RuntimeAdvancedPanel: View {
                         Button(AppConstants.Actions.repairRuntimeServices) {
                             showingRepairRuntimeServicesConfirmation = true
                         }
-                        .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
+                        .disabled(!actionAvailabilityPolicy.canRepairRuntime(
+                            status: viewModel.status,
+                            isBusy: viewModel.isBusy
+                        ))
 
                         Button(AppConstants.Actions.repairDatastore) {
                             showingRepairDatastoreConfirmation = true
                         }
-                        .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
+                        .disabled(!actionAvailabilityPolicy.canRepairRuntime(
+                            status: viewModel.status,
+                            isBusy: viewModel.isBusy
+                        ))
 
                         Button(AppConstants.Actions.repairVMDisk) {
                             showingRepairVMDiskConfirmation = true
                         }
-                        .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
+                        .disabled(!actionAvailabilityPolicy.canRepairRuntime(
+                            status: viewModel.status,
+                            isBusy: viewModel.isBusy
+                        ))
 
                         Button(AppConstants.Actions.repairProxy) {
                             showingRepairProxyConfirmation = true
                         }
-                        .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled)
+                        .disabled(!actionAvailabilityPolicy.canRepairRuntime(
+                            status: viewModel.status,
+                            isBusy: viewModel.isBusy
+                        ))
                     }
                 }
             }
@@ -319,18 +334,22 @@ struct RuntimeAdvancedPanel: View {
                             showingStartServicesConfirmation = true
                         }
                         .disabled(
-                            viewModel.isBusy
-                                || !viewModel.status.runtimeInstalled
-                                || !viewModel.capabilities.canControlRuntimeServices
+                            !actionAvailabilityPolicy.canControlRuntimeServices(
+                                status: viewModel.status,
+                                capabilities: viewModel.capabilities,
+                                isBusy: viewModel.isBusy
+                            )
                         )
 
                         Button(AppConstants.Actions.stopRuntimeServices) {
                             showingStopServicesConfirmation = true
                         }
                         .disabled(
-                            viewModel.isBusy
-                                || !viewModel.status.runtimeInstalled
-                                || !viewModel.capabilities.canControlRuntimeServices
+                            !actionAvailabilityPolicy.canControlRuntimeServices(
+                                status: viewModel.status,
+                                capabilities: viewModel.capabilities,
+                                isBusy: viewModel.isBusy
+                            )
                         )
                     }
                 }
@@ -362,7 +381,11 @@ struct RuntimeAdvancedPanel: View {
                     showingApplySettingsConfirmation = true
                 }
             }
-            .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled || !canApplySettingsForCurrentConnection)
+            .disabled(!actionAvailabilityPolicy.canApplySettings(
+                status: viewModel.status,
+                isBusy: viewModel.isBusy,
+                canApplyForCurrentConnection: canApplySettingsForCurrentConnection
+            ))
 
             if viewModel.isBusy {
                 ProgressView()

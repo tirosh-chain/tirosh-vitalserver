@@ -25,12 +25,16 @@ extension RuntimeLifecycle {
             log("graceful runtime services stop failed before VM disk replacement; forcing VM process stop error=\(error.localizedDescription)")
         }
 
-        try ProcessState.forceKillAndWait(
-            pidFile: paths.pidFile,
-            fileStore: fileStore,
+        try StopRuntimeVMProcessUseCase().forceKillAndWait(
+            killSignal: SIGKILL,
+            noSuchProcessErrorNumber: Int32(ESRCH),
             timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
             pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
-            log: log
+            operations: ProcessState.stopOperations(
+                pidFile: paths.pidFile,
+                fileStore: fileStore,
+                log: log
+            )
         )
         serviceController.unloadRuntimeServicesAfterForcedVMStop()
         log("runtime services stopped for VM disk replacement")
@@ -50,7 +54,7 @@ extension RuntimeLifecycle {
         restartProxy: Bool,
         restartWatchdog: Bool
     ) throws {
-        if restartVM, preventSystemSleepEnabled() {
+        if restartVM, try preventSystemSleepEnabled() {
             try startLaunchdService(.sleepPrevention)
         }
         try serviceController.startRuntimeServices(
@@ -97,8 +101,8 @@ extension RuntimeLifecycle {
         try serviceController.restartVMRuntimeServices()
     }
 
-    func stopLaunchdService(_ service: RuntimeManagedService) {
-        serviceController.stopLaunchdService(service)
+    func stopLaunchdService(_ service: RuntimeManagedService) throws {
+        try serviceController.stopLaunchdService(service)
     }
 
     func launchDaemonPlist(_ service: RuntimeManagedService) -> String {
@@ -119,10 +123,10 @@ extension RuntimeLifecycle {
     }
 
     func cleanupHostProxyPortBeforeStart() throws {
-        try RuntimeHostProxyPortCleaner(
+        let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: healthChecker.installedProxyPort,
-            proxyServiceLoaded: {
-                isLaunchdLoaded(.proxy)
+            proxyServiceState: {
+                healthChecker.launchdState(.proxy)
             },
             expectedProxyNginxPID: {
                 healthChecker.readInstalledProxyNginxPID()
@@ -137,14 +141,16 @@ extension RuntimeLifecycle {
             killPath: Constants.Commands.kill,
             runProcess: runProcess,
             log: log
-        ).cleanupBeforeStartingProxy()
+        )
+        try CleanRuntimeHostProxyPortUseCase()
+            .cleanupBeforeStartingProxy(operations: cleaner.operations)
     }
 
     func cleanupHostProxyPortAfterStop() throws {
-        try RuntimeHostProxyPortCleaner(
+        let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: healthChecker.installedProxyPort,
-            proxyServiceLoaded: {
-                isLaunchdLoaded(.proxy)
+            proxyServiceState: {
+                healthChecker.launchdState(.proxy)
             },
             expectedProxyNginxPID: {
                 healthChecker.readInstalledProxyNginxPID()
@@ -159,7 +165,9 @@ extension RuntimeLifecycle {
             killPath: Constants.Commands.kill,
             runProcess: runProcess,
             log: log
-        ).cleanupOwnedListenersAfterProxyStop()
+        )
+        try CleanRuntimeHostProxyPortUseCase()
+            .cleanupOwnedListenersAfterProxyStop(operations: cleaner.operations)
     }
 
     func runtimeHealthWaitRunner() -> RuntimeHealthWaitRunner {

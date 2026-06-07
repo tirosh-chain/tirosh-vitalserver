@@ -132,6 +132,42 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         })
     }
 
+    func testUninstallDoesNotSkipRemovalWhenTargetPathInspectionFails() {
+        let harness = RuntimeUninstallWorkflowHarness()
+        harness.pathStates["/product"] = .inspectFailed("permission denied")
+
+        XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true))) { error in
+            XCTAssertTrue(error.localizedDescription.contains(
+                "removal target path inspection failed target=/product reason=permission denied"
+            ))
+        }
+
+        XCTAssertTrue(harness.events.contains {
+            $0.contains("state:files-removal-blocked")
+                && $0.contains("removal target path inspection failed target=/product reason=permission denied")
+        })
+        XCTAssertFalse(harness.events.contains("remove:/product"))
+        XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
+    }
+
+    func testUninstallDoesNotSkipRemovalWhenTargetPathStateIsUnknown() {
+        let harness = RuntimeUninstallWorkflowHarness()
+        harness.pathStates["/product"] = .unknown("socket")
+
+        XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true))) { error in
+            XCTAssertTrue(error.localizedDescription.contains(
+                "removal target path state is unexpected target=/product state=socket"
+            ))
+        }
+
+        XCTAssertTrue(harness.events.contains {
+            $0.contains("state:files-removal-blocked")
+                && $0.contains("removal target path state is unexpected target=/product state=socket")
+        })
+        XCTAssertFalse(harness.events.contains("remove:/product"))
+        XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
+    }
+
     func testUninstallWritesServiceStopBlockedFromExplicitHostStates() {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.stopError = RuntimeUninstallTestError.stop
@@ -261,6 +297,7 @@ private final class RuntimeUninstallWorkflowHarness {
     var removeErrorPath: String?
     var moveErrorDestination: String?
     var contentsOfDirectoryError: Error?
+    var pathStates: [String: RuntimePathState] = [:]
     var serviceStates: [RuntimeManagedService: RuntimeServiceState]
     var vmProcessState: RuntimeVMProcessState = .stopped
     var receiptForgetResults: [String: RuntimeProcessResult] = [:]
@@ -370,11 +407,8 @@ private final class RuntimeUninstallWorkflowHarness {
                 createDirectory: { url, _ in
                     self.createDirectory(url)
                 },
-                fileExists: { url in
-                    self.existing.contains(url.path)
-                },
-                directoryExists: { url in
-                    self.existing.contains(url.path)
+                pathState: { url in
+                    self.pathStates[url.path] ?? (self.existing.contains(url.path) ? .directory : .missing)
                 },
                 removeItem: { url in
                     try self.removeItem(url)

@@ -74,7 +74,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
     public let vmState: RuntimeVMState?
     public let vmErrors: [RuntimeVMError]?
     public let vmIP: String?
-    public let proxyPort: Int
+    public let proxyPort: Int?
+    public let proxyPortReadState: RuntimeProxyPortReadState?
     public let hostProxyHTTP: String
     public let guestHTTP: String
     public let redisUIHTTP: String?
@@ -104,7 +105,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         vmState: RuntimeVMState? = nil,
         vmErrors: [RuntimeVMError]? = nil,
         vmIP: String?,
-        proxyPort: Int,
+        proxyPort: Int?,
+        proxyPortReadState: RuntimeProxyPortReadState? = nil,
         hostProxyHTTP: String,
         guestHTTP: String,
         redisUIHTTP: String?,
@@ -134,6 +136,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         self.vmErrors = vmErrors
         self.vmIP = vmIP
         self.proxyPort = proxyPort
+        self.proxyPortReadState = proxyPortReadState
         self.hostProxyHTTP = hostProxyHTTP
         self.guestHTTP = guestHTTP
         self.redisUIHTTP = redisUIHTTP
@@ -164,7 +167,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         vmState: RuntimeVMState? = nil,
         vmErrors: [RuntimeVMError]? = nil,
         vmIP: String?,
-        proxyPort: Int,
+        proxyPort: Int?,
+        proxyPortReadState: RuntimeProxyPortReadState? = nil,
         hostProxyHTTP: String,
         guestHTTP: String,
         redisUIHTTP: String?,
@@ -194,6 +198,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
             vmErrors: vmErrors,
             vmIP: vmIP,
             proxyPort: proxyPort,
+            proxyPortReadState: proxyPortReadState,
             hostProxyHTTP: hostProxyHTTP,
             guestHTTP: guestHTTP,
             redisUIHTTP: redisUIHTTP,
@@ -225,7 +230,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         vmState: RuntimeVMState? = nil,
         vmErrors: [RuntimeVMError]? = nil,
         vmIP: String?,
-        proxyPort: Int,
+        proxyPort: Int?,
+        proxyPortReadState: RuntimeProxyPortReadState? = nil,
         hostProxyHTTP: String,
         guestHTTP: String,
         redisUIHTTP: String?,
@@ -256,6 +262,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
             vmErrors: vmErrors,
             vmIP: vmIP,
             proxyPort: proxyPort,
+            proxyPortReadState: proxyPortReadState,
             hostProxyHTTP: hostProxyHTTP,
             guestHTTP: guestHTTP,
             redisUIHTTP: redisUIHTTP,
@@ -287,7 +294,8 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         vmState: RuntimeVMState? = nil,
         vmErrors: [RuntimeVMError]? = nil,
         vmIP: String?,
-        proxyPort: Int,
+        proxyPort: Int?,
+        proxyPortReadState: RuntimeProxyPortReadState? = nil,
         hostProxyHTTP: String,
         guestHTTP: String,
         redisUIHTTP: String?,
@@ -317,6 +325,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
             vmErrors: vmErrors,
             vmIP: vmIP,
             proxyPort: proxyPort,
+            proxyPortReadState: proxyPortReadState,
             hostProxyHTTP: hostProxyHTTP,
             guestHTTP: guestHTTP,
             redisUIHTTP: redisUIHTTP,
@@ -331,4 +340,10 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
             vitalDBObservation: vitalDBObservation
         )
     }
+}
+
+public enum RuntimeStatusDocumentLoadResult: Equatable, Sendable {
+    case missing
+    case loaded(RuntimeStatusDocument)
+    case failed(String)
 }

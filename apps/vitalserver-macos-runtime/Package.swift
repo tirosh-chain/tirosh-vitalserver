@@ -41,7 +41,7 @@ let package = Package(
         ),
         .target(
             name: "InboundAdapters",
-            dependencies: ["Contracts", "Errors", "Domain", "Application", "RuntimeControl"],
+            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl"],
             path: "Sources/Adapters/Inbound",
             resources: [
                 .process("RuntimeControlAPI/DevConsole/RuntimeControlDevConsole.html")
@@ -49,7 +49,7 @@ let package = Package(
         ),
         .target(
             name: "OutboundAdapters",
-            dependencies: ["Contracts", "Errors", "Domain", "Application", "RuntimeControl"],
+            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl"],
             path: "Sources/Adapters/Outbound",
             linkerSettings: [
                 .linkedLibrary("sqlite3")

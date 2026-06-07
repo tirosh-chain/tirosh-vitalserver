@@ -43,8 +43,8 @@ extension RuntimeLifecycle {
                 createDirectory: { url, withIntermediateDirectories in
                     try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
                 },
-                fileExists: { url in
-                    fileStore.fileExists(url)
+                pathState: { url in
+                    fileStore.pathState(at: url)
                 },
                 removeItem: { url in
                     try fileStore.removeItem(at: url)
@@ -113,7 +113,9 @@ extension RuntimeLifecycle {
                 freeSpaceMarginBytes: Constants.Runtime.freeSpaceMarginBytes
             ),
             operations: RuntimeInstallVMDiskProvisioningOperations(
-                fileExists: fileExists,
+                fileState: { url in
+                    fileStore.fileState(at: url)
+                },
                 fileSize: { url in
                     try fileStore.fileSize(url)
                 },
@@ -152,7 +154,9 @@ extension RuntimeLifecycle {
                 createDirectory: { url, withIntermediateDirectories in
                     try fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
                 },
-                fileExists: fileExists,
+                configPathState: { url in
+                    fileStore.pathState(at: url)
+                },
                 loadConfig: { url in
                     try VMRuntimeConfigComposition.load(from: url, fileStore: fileStore)
                 },
@@ -231,18 +235,19 @@ extension RuntimeLifecycle {
     }
 
     func applyStartOnBootPolicy(_ settings: RuntimeInstallSettings) throws {
-        try RuntimeInstallStartOnBootPolicyApplier(
-            context: RuntimeInstallStartOnBootPolicyContext(
-                launchctlExecutable: Constants.Commands.launchctl
-            ),
-            operations: RuntimeInstallStartOnBootPolicyOperations(
-                setStartOnBoot: setStartOnBoot,
-                runRequired: runRequired
-            )
-        ).apply(input: RuntimeInstallStartOnBootPolicyInput(
+        let plan = ApplyRuntimeInstallStartOnBootPolicyUseCase().plan(input: RuntimeInstallStartOnBootPolicyInput(
             startOnBoot: settings.startOnBoot,
             preventSystemSleep: settings.preventSystemSleep
         ))
+        try RuntimeInstallStartOnBootPlanApplier(
+            context: RuntimeInstallStartOnBootPlanContext(
+                launchctlExecutable: Constants.Commands.launchctl
+            ),
+            operations: RuntimeInstallStartOnBootPlanOperations(
+                setStartOnBoot: setStartOnBoot,
+                runRequired: runRequired
+            )
+        ).apply(plan: plan)
     }
 
     func cleanupInstallSettings() throws {
@@ -251,7 +256,9 @@ extension RuntimeLifecycle {
                 settingsFile: URL(fileURLWithPath: Constants.InstallPaths.settingsPath)
             ),
             operations: RuntimeInstallSettingsCleanupOperations(
-                fileExists: fileExists,
+                pathState: { url in
+                    fileStore.pathState(at: url)
+                },
                 removeItem: { url in
                     try fileStore.removeItem(at: url)
                 }

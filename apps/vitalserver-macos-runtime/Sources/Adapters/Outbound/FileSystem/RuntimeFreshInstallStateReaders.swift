@@ -6,18 +6,25 @@ import Errors
 public enum RuntimeInstallSettingsStateReader {
     public static func state(
         path: String,
-        defaultProxyPort: Int,
         fileStore: RuntimeFileReading
     ) -> RuntimeInstallSettingsState {
         let url = URL(fileURLWithPath: path)
-        guard fileStore.fileExists(url) else {
-            return .defaulted(path: path, proxyPort: defaultProxyPort)
+        let state = fileStore.pathState(at: url)
+        switch state {
+        case .file:
+            break
+        case .missing:
+            return .missing(path: path)
+        case .inspectFailed(let reason):
+            return .readFailed(path: path, reason: "settings path inspection failed: \(reason)")
+        case .directory, .other, .unknown:
+            return .readFailed(path: path, reason: "settings path state is unexpected: \(state.rawValue)")
         }
         do {
             let data = try fileStore.readData(url)
             let document = try JSONDecoder().decode(InstallSettingsProxyPortDocument.self, from: data)
             guard let proxyPort = document.proxyPort else {
-                return .defaulted(path: path, proxyPort: defaultProxyPort)
+                return .proxyPortMissing(path: path)
             }
             guard (1...65_535).contains(proxyPort) else {
                 return .invalid(path: path, reason: "proxyPort out of range value=\(proxyPort)")
@@ -51,38 +58,27 @@ private struct InstallSettingsProxyPortDocument: Decodable {
 public enum RuntimeInstallArtifactStateReader {
     public static func states(
         paths: [String],
-        attributesOfItem: (String) throws -> [FileAttributeKey: Any] = {
-            try FileManager.default.attributesOfItem(atPath: $0)
-        }
+        fileStore: RuntimeFileReading
     ) -> [RuntimeInstallArtifactState] {
         paths.map { path in
-            state(path: path, attributesOfItem: attributesOfItem)
+            state(path: path, fileStore: fileStore)
         }
     }
 
     public static func state(
         path: String,
-        attributesOfItem: (String) throws -> [FileAttributeKey: Any] = {
-            try FileManager.default.attributesOfItem(atPath: $0)
-        }
+        fileStore: RuntimeFileReading
     ) -> RuntimeInstallArtifactState {
-        do {
-            _ = try attributesOfItem(path)
+        let state = fileStore.pathState(at: URL(fileURLWithPath: path))
+        switch state {
+        case .file, .directory, .other:
             return .present(path: path)
-        } catch {
-            if isNoSuchFile(error) {
-                return .absent(path: path)
-            }
-            return .inspectFailed(path: path, reason: error.localizedDescription)
+        case .missing:
+            return .absent(path: path)
+        case .inspectFailed(let reason):
+            return .inspectFailed(path: path, reason: reason)
+        case .unknown(let value):
+            return .inspectFailed(path: path, reason: "unexpected path state: \(value)")
         }
-    }
-
-    private static func isNoSuchFile(_ error: Error) -> Bool {
-        let nsError = error as NSError
-        if nsError.domain == NSCocoaErrorDomain,
-           nsError.code == CocoaError.Code.fileReadNoSuchFile.rawValue {
-            return true
-        }
-        return nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT)
     }
 }

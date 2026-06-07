@@ -35,18 +35,19 @@ extension RuntimeViewModel {
 
         do {
             let result = try await hostClient.exportLogs(to: destination)
-            message = "\(AppConstants.StatusText.logExportCompleted)\n\n\(result.destination.path)"
+            let cleanupIssue = result.cleanupIssue.map { "\n\n\($0)" } ?? ""
+            message = "\(AppConstants.StatusText.logExportCompleted)\n\n\(result.destination.path)\(cleanupIssue)"
         } catch {
             message = "\(AppConstants.StatusText.logExportFailed)\n\n\(error.localizedDescription)"
         }
     }
 
     func availableLogLineLimits() -> [Int] {
-        RuntimeLogOptions.lineLimits
+        RuntimeLogPresentationOptions.lineLimits
     }
 
     func availableLogSources() -> [RuntimeLogSourceOption] {
-        RuntimeLogOptions.sources
+        RuntimeLogPresentationOptions.sources
     }
 
     func refreshLogs() async {
@@ -58,12 +59,11 @@ extension RuntimeViewModel {
 
         let limit = max(logLineLimit, 1)
         let sourceID = selectedLogSource
-        let helperMessage = message
-        let nextLogText = await hostClient.loadLogText(
+        let nextLogText = await hostClient.loadLogTextResult(
             sourceID: sourceID,
-            helperMessage: helperMessage,
             lineLimit: limit
         )
+        .displayTextForRuntimeLog()
         if nextLogText != logText {
             logText = nextLogText
         }
@@ -76,21 +76,9 @@ extension RuntimeViewModel {
     }
 }
 
-private enum RuntimeLogOptions {
-    static let lineLimits = [100, 500, 1000]
-
-    static let sources: [RuntimeLogSourceOption] = [
-        RuntimeLogSourceOption(id: .helperMessage, title: "Helper message"),
-        RuntimeLogSourceOption(id: .install, title: "Install log"),
-        RuntimeLogSourceOption(id: .command, title: "Command log"),
-        RuntimeLogSourceOption(id: .launcher, title: "VM launcher"),
-        RuntimeLogSourceOption(id: .vmLaunchOutput, title: "VM launch output"),
-        RuntimeLogSourceOption(id: .vmLaunchError, title: "VM launch error"),
-        RuntimeLogSourceOption(id: .proxyOutput, title: "Host proxy output"),
-        RuntimeLogSourceOption(id: .proxyError, title: "Host proxy error"),
-        RuntimeLogSourceOption(id: .watchdog, title: "Watchdog"),
-        RuntimeLogSourceOption(id: .updateActivation, title: "Update activation"),
-        RuntimeLogSourceOption(id: .updateShutdown, title: "Update shutdown"),
-        RuntimeLogSourceOption(id: .containers, title: "Containers"),
-    ]
+private extension RuntimeHostTextReadResult {
+    func displayTextForRuntimeLog() -> String {
+        RuntimeHostTextDisplayPolicy(noDataText: AppConstants.StatusText.noLogData)
+            .displayText(self)
+    }
 }

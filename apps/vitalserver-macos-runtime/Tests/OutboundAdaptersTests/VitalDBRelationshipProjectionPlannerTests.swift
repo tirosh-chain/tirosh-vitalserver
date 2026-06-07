@@ -1,11 +1,12 @@
 import Contracts
+import Application
 import OutboundAdapters
 import XCTest
 import Errors
 
 final class VitalDBRelationshipProjectionPlannerTests: XCTestCase {
     func testPlansObservationRelationshipAnomaliesWithoutSQLiteState() {
-        let planner = VitalDBRelationshipProjectionPlanner()
+        let useCase = PlanVitalDBRelationshipProjectionUseCase()
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-30T00:00:00Z",
             ready: true,
@@ -23,7 +24,7 @@ final class VitalDBRelationshipProjectionPlannerTests: XCTestCase {
             ]
         )
 
-        let events = planner.plannedEvents(for: observation)
+        let events = useCase.plannedEvents(for: observation)
         let eventTypes = Set(events.map(\.eventType))
 
         XCTAssertTrue(eventTypes.contains(.duplicateAssignment))

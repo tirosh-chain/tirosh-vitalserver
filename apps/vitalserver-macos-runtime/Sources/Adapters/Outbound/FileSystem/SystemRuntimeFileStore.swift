@@ -3,7 +3,7 @@ import Application
 import Contracts
 import Errors
 
-public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReading {
+public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReading, RuntimeFileMetadataWriting {
     public init() {}
 
     public var temporaryDirectory: URL {
@@ -26,19 +26,63 @@ public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReadin
         FileManager.default.isExecutableFile(atPath: path)
     }
 
+    public func fileState(atPath path: String) -> RuntimeFileState {
+        let state = fileState(at: URL(fileURLWithPath: path))
+        guard state == .present else {
+            return state
+        }
+        return FileManager.default.isExecutableFile(atPath: path) ? .executable : .present
+    }
+
+    public func fileState(at url: URL) -> RuntimeFileState {
+        do {
+            _ = try FileManager.default.attributesOfItem(atPath: url.path)
+            return .present
+        } catch {
+            return isNoSuchFile(error) ? .missing : .inspectFailed(error.localizedDescription)
+        }
+    }
+
+    public func pathState(at url: URL) -> RuntimePathState {
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            guard let type = attributes[.type] as? FileAttributeType else {
+                return .other("missing-file-type")
+            }
+            switch type {
+            case .typeRegular:
+                return .file
+            case .typeDirectory:
+                return .directory
+            default:
+                return .other(type.rawValue)
+            }
+        } catch {
+            return isNoSuchFile(error) ? .missing : .inspectFailed(error.localizedDescription)
+        }
+    }
+
     public func readData(_ url: URL) throws -> Data {
         try Data(contentsOf: url)
     }
 
     public func readData(_ url: URL, offset: UInt64?) throws -> Data {
+        guard let offset else {
+            return try readData(url)
+        }
+        let size = try fileSize(url)
+        guard offset < size else {
+            return Data()
+        }
         let handle = try FileHandle(forReadingFrom: url)
         defer {
             try? handle.close()
         }
-        if let offset {
-            try handle.seek(toOffset: offset)
+        try handle.seek(toOffset: offset)
+        guard let data = try handle.readToEnd() else {
+            throw SystemRuntimeFileStoreError.partialReadReturnedNil(path: url.path, offset: offset)
         }
-        return try handle.readToEnd() ?? Data()
+        return data
     }
 
     public func readUTF8Text(_ url: URL) throws -> String {
@@ -59,6 +103,10 @@ public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReadin
             throw SystemRuntimeFileStoreError.missingModificationDate(path: url.path)
         }
         return modificationDate
+    }
+
+    public func setModificationDate(_ date: Date, at url: URL) throws {
+        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: url.path)
     }
 
     public func writeData(_ data: Data, to url: URL, options: Data.WritingOptions = []) throws {
@@ -159,5 +207,14 @@ public struct SystemRuntimeFileStore: RuntimeFileStore, RuntimeFilePartialReadin
             }
         }
         return total
+    }
+
+    private func isNoSuchFile(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain,
+           nsError.code == CocoaError.Code.fileReadNoSuchFile.rawValue {
+            return true
+        }
+        return nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT)
     }
 }

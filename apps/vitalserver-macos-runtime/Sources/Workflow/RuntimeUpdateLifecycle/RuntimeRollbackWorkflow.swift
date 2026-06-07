@@ -301,6 +301,8 @@ public struct RollbackRuntimeWorkflow {
             try operations.replaceFile(source, destination)
         case .writeExplicitRollbackMarker(let version, let destinationDirectory):
             try operations.writeRuntimeVersion(version, destinationDirectory)
+        case .failed(let message):
+            throw RollbackRuntimeUseCaseError.operationFailed(message)
         }
     }
 }

@@ -34,11 +34,14 @@ public struct RuntimeLifecycleComposition {
         let installedPaths = paths.installed
         let resolvedHTTPProber = httpProber ?? CurlRuntimeHTTPProber(commandRunner: commandRunner)
         let resolvedServiceManager = serviceManager ?? LaunchdRuntimeServiceManager(commandRunner: commandRunner)
+        let statusDocumentUseCase = BuildRuntimeStatusDocumentUseCase()
         let statusReporter = RuntimeStatusReporter(
             repository: runtimeStatusRepository ?? JSONFileRuntimeStatusRepository(url: installedPaths.runtimeStatus),
             productIdentifier: Constants.Product.identifier,
             productRoot: installedPaths.productRoot,
-            runtimeHome: installedPaths.runtimeHome
+            runtimeHome: installedPaths.runtimeHome,
+            makeStatusDocument: statusDocumentUseCase.build,
+            makeProgressDocument: statusDocumentUseCase.progressUpdate
         )
         let resolvedGuestGateway = guestGateway ?? makeGuestGateway(installedPaths: installedPaths)
         let healthChecker = RuntimeHealthChecker(
@@ -105,7 +108,6 @@ public struct RuntimeLifecycleComposition {
             lsofPath: lsofPath,
             curlPath: curlPath,
             proxyLaunchDaemonPlist: RuntimeManagedServicePaths.launchDaemonPlist(.proxy),
-            defaultProxyPort: Constants.Guest.publicPort,
             runtimeStateStaleAfterSeconds: Constants.Runtime.runtimeStateStaleAfterSeconds,
             watchdogManagedOperationGraceSeconds: Constants.Runtime.watchdogManagedOperationGraceSeconds,
             proxyHealthURL: { Constants.Runtime.proxyHealthURL(port: $0) },

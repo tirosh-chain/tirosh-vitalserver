@@ -42,14 +42,14 @@ public enum RuntimeFreshInstallPreflightComposition {
             settingsState: {
                 RuntimeInstallSettingsStateReader.state(
                     path: Constants.InstallPaths.settingsPath,
-                    defaultProxyPort: Constants.Guest.publicPort,
                     fileStore: operations.fileStore
                 )
             },
+            settingsDefaultProxyPort: Constants.Guest.publicPort,
             artifactStates: {
                 RuntimeInstallArtifactStateReader.states(paths: freshInstallArtifactPaths(
                     installedPaths: context.installedPaths
-                ).map(\.path))
+                ).map(\.path), fileStore: operations.fileStore)
             },
             serviceStates: {
                 RuntimeManagedService.stopOrder.map { service in

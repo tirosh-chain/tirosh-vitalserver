@@ -67,6 +67,24 @@ final class RuntimeFreshInstallPreflightPolicyTests: XCTestCase {
         XCTAssertEqual(document.blockers, ["host-proxy-port-state-missing:port=80"])
     }
 
+    func testBlocksMissingSettingsBeforeAnyDefaultIsApplied() {
+        let missing = RuntimeFreshInstallPreflightPolicy.document(input: input(
+            settingsState: .missing(path: "/private/tmp/tirosh-vitalserver-install.json"),
+            proxyPortState: nil
+        ))
+        let missingProxyPort = RuntimeFreshInstallPreflightPolicy.document(input: input(
+            settingsState: .proxyPortMissing(path: "/private/tmp/tirosh-vitalserver-install.json"),
+            proxyPortState: nil
+        ))
+
+        XCTAssertEqual(missing.blockers, [
+            "install-settings-missing:path=/private/tmp/tirosh-vitalserver-install.json",
+        ])
+        XCTAssertEqual(missingProxyPort.blockers, [
+            "install-settings-proxy-port-missing:path=/private/tmp/tirosh-vitalserver-install.json",
+        ])
+    }
+
     private func input(
         settingsState: RuntimeInstallSettingsState = .defaulted(path: "/private/tmp/tirosh-vitalserver-install.json", proxyPort: 80),
         artifactStates: [RuntimeInstallArtifactState] = [

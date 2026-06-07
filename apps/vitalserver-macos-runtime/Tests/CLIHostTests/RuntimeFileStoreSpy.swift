@@ -6,6 +6,8 @@ import Domain
 final class RuntimeFileStoreSpy: RuntimeFileStore {
     var temporaryDirectory = URL(fileURLWithPath: "/tmp")
     var files: [URL: Data] = [:]
+    var fileStates: [String: RuntimeFileState] = [:]
+    var pathStates: [String: RuntimePathState] = [:]
     var modificationDates: [URL: Date] = [:]
     var directories: Set<URL> = []
     var removed: [URL] = []
@@ -27,6 +29,39 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
 
     func isExecutableFile(atPath path: String) -> Bool {
         fileExists(URL(fileURLWithPath: path))
+    }
+
+    func fileState(atPath path: String) -> RuntimeFileState {
+        if let state = fileStates[path] {
+            return state
+        }
+        if isExecutableFile(atPath: path) {
+            return .executable
+        }
+        if fileExists(URL(fileURLWithPath: path)) {
+            return .present
+        }
+        return .missing
+    }
+
+    func fileState(at url: URL) -> RuntimeFileState {
+        if let state = fileStates[url.path] {
+            return state
+        }
+        return fileExists(url) ? .present : .missing
+    }
+
+    func pathState(at url: URL) -> RuntimePathState {
+        if let state = pathStates[url.path] {
+            return state
+        }
+        if fileExists(url) {
+            return .file
+        }
+        if directoryExists(url) {
+            return .directory
+        }
+        return .missing
     }
 
     func readData(_ url: URL) throws -> Data {

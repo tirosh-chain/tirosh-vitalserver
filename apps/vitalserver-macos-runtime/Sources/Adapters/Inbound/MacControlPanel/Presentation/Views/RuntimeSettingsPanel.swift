@@ -6,6 +6,7 @@ import Errors
 struct RuntimeSettingsPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @Binding var showingApplySettingsConfirmation: Bool
+    private let actionAvailabilityPolicy = RuntimeControlActionAvailabilityPolicy()
 
     var body: some View {
         ScrollView {
@@ -179,7 +180,11 @@ struct RuntimeSettingsPanel: View {
                     showingApplySettingsConfirmation = true
                 }
             }
-            .disabled(viewModel.isBusy || !viewModel.status.runtimeInstalled || !canApplySettingsForCurrentConnection)
+            .disabled(!actionAvailabilityPolicy.canApplySettings(
+                status: viewModel.status,
+                isBusy: viewModel.isBusy,
+                canApplyForCurrentConnection: canApplySettingsForCurrentConnection
+            ))
 
             if viewModel.isBusy {
                 ProgressView()

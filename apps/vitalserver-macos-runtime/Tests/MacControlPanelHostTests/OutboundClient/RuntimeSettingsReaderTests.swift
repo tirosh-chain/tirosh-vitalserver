@@ -14,7 +14,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let directory = try temporaryDirectory()
         let vmConfig = directory.appendingPathComponent("vm-config.json")
         let vmDisk = directory.appendingPathComponent("vm-disk.img")
-        let guestConfig = directory.appendingPathComponent("runtime-config.json")
+        let guestSettings = directory.appendingPathComponent("runtime-settings.json")
         let proxyLaunchDaemon = directory.appendingPathComponent("proxy.plist")
 
         try """
@@ -34,17 +34,16 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "remoteConsoleURL": "https://console.tirosh.ai/",
           "publicHost": "example.test",
           "publicPort": 8080,
-          "redisBackupRetentionCount": 31
+          "redisBackupRetentionCount": 30
         }
-        """.write(to: guestConfig, atomically: true, encoding: .utf8)
+        """.write(to: guestSettings, atomically: true, encoding: .utf8)
         try writeProxyLaunchDaemon(proxyLaunchDaemon, proxyPort: 19090)
 
         let reader = SystemRuntimeSettingsReader(
             paths: RuntimeSettingsPaths(
                 vmConfig: vmConfig.path,
                 vmDisk: vmDisk.path,
-                guestRuntimeSettings: directory.appendingPathComponent("missing-runtime-settings.json").path,
-                guestRuntimeConfig: guestConfig.path,
+                guestRuntimeSettings: guestSettings.path,
                 proxyLaunchDaemon: proxyLaunchDaemon.path
             ),
             runCommand: startOnBootCommand()
@@ -80,7 +79,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             paths: RuntimeSettingsPaths(
                 vmConfig: vmConfig.path,
                 vmDisk: directory.appendingPathComponent("missing-disk.img").path,
-                guestRuntimeConfig: directory.appendingPathComponent("missing-runtime-config.json").path,
+                guestRuntimeSettings: directory.appendingPathComponent("missing-runtime-settings.json").path,
                 proxyLaunchDaemon: proxyLaunchDaemon.path
             ),
             runCommand: startOnBootCommand()
@@ -88,28 +87,27 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let settings = reader.load()
 
-        XCTAssertEqual(settings.readIssues.map(\.source), ["vmConfig", "proxyLaunchDaemon"])
+        XCTAssertEqual(settings.readIssues.map(\.source), ["vmConfig", "guestRuntimeSettings", "proxyLaunchDaemon"])
         XCTAssertEqual(settings.cpuCount, RuntimeSettings().cpuCount)
         XCTAssertEqual(settings.proxyPort, RuntimeSettings().proxyPort)
     }
 
-    func testMigratesLegacyGuestRuntimeConfigAdvertisedURLWhenRuntimeSettingsIsMissing() throws {
+    func testMissingGuestRuntimeSettingsDoesNotReadSecretRuntimeConfig() throws {
         let directory = try temporaryDirectory()
-        let guestConfig = directory.appendingPathComponent("runtime-config.json")
+        let secretGuestConfig = directory.appendingPathComponent("runtime-config.json")
         try """
         {
           "publicHost": "legacy.example.test",
           "publicPort": 8080,
           "redisBackupRetentionCount": 12
         }
-        """.write(to: guestConfig, atomically: true, encoding: .utf8)
+        """.write(to: secretGuestConfig, atomically: true, encoding: .utf8)
 
         let reader = SystemRuntimeSettingsReader(
             paths: RuntimeSettingsPaths(
                 vmConfig: directory.appendingPathComponent("missing-vm-config.json").path,
                 vmDisk: directory.appendingPathComponent("missing-disk.img").path,
                 guestRuntimeSettings: directory.appendingPathComponent("missing-runtime-settings.json").path,
-                guestRuntimeConfig: guestConfig.path,
                 proxyLaunchDaemon: directory.appendingPathComponent("missing-proxy.plist").path
             ),
             runCommand: startOnBootCommand()
@@ -117,16 +115,23 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let settings = reader.load()
 
-        XCTAssertEqual(settings.publicHost, "legacy.example.test")
-        XCTAssertEqual(settings.publicPort, 8080)
-        XCTAssertEqual(settings.vitalServerURL, "http://legacy.example.test:8080/")
-        XCTAssertEqual(settings.remoteConsoleURL, "")
-        XCTAssertEqual(settings.redisBackupRetentionCount, 12)
+        XCTAssertEqual(settings.publicHost, RuntimeSettings().publicHost)
+        XCTAssertEqual(settings.publicPort, RuntimeSettings().publicPort)
+        XCTAssertEqual(settings.vitalServerURL, RuntimeSettings().vitalServerURL)
+        XCTAssertEqual(settings.remoteConsoleURL, RuntimeSettings().remoteConsoleURL)
+        XCTAssertEqual(settings.redisBackupRetentionCount, RuntimeSettings().redisBackupRetentionCount)
+        XCTAssertEqual(settings.readIssues, [
+            RuntimeSettingsReadIssue(
+                source: "guestRuntimeSettings",
+                message: "runtime settings document is missing"
+            ),
+        ])
     }
 
     func testReportsMissingVMConfigProviderFields() throws {
         let directory = try temporaryDirectory()
         let vmConfig = directory.appendingPathComponent("vm-config.json")
+        let guestSettings = directory.appendingPathComponent("runtime-settings.json")
         try """
         {
           "cpuCount": 4,
@@ -134,12 +139,12 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "network": { "mode": "bridged" }
         }
         """.write(to: vmConfig, atomically: true, encoding: .utf8)
+        try writeGuestRuntimeSettings(guestSettings)
         let reader = SystemRuntimeSettingsReader(
             paths: RuntimeSettingsPaths(
                 vmConfig: vmConfig.path,
                 vmDisk: directory.appendingPathComponent("missing-disk.img").path,
-                guestRuntimeSettings: directory.appendingPathComponent("missing-runtime-settings.json").path,
-                guestRuntimeConfig: directory.appendingPathComponent("missing-runtime-config.json").path,
+                guestRuntimeSettings: guestSettings.path,
                 proxyLaunchDaemon: directory.appendingPathComponent("missing-proxy.plist").path
             ),
             runCommand: startOnBootCommand()
@@ -148,7 +153,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let settings = reader.load()
 
         XCTAssertEqual(settings.networkMode, .bridged)
-        XCTAssertEqual(settings.bridgedInterface, "")
+        XCTAssertNil(settings.bridgedInterface)
         XCTAssertTrue(settings.autoRecoveryEnabled)
         XCTAssertTrue(settings.preventSystemSleep)
         XCTAssertEqual(settings.readIssues, [
@@ -170,6 +175,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
     func testReportsInvalidVMConfigNetworkMode() throws {
         let directory = try temporaryDirectory()
         let vmConfig = directory.appendingPathComponent("vm-config.json")
+        let guestSettings = directory.appendingPathComponent("runtime-settings.json")
         try """
         {
           "cpuCount": 4,
@@ -179,12 +185,12 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "preventSystemSleep": true
         }
         """.write(to: vmConfig, atomically: true, encoding: .utf8)
+        try writeGuestRuntimeSettings(guestSettings)
         let reader = SystemRuntimeSettingsReader(
             paths: RuntimeSettingsPaths(
                 vmConfig: vmConfig.path,
                 vmDisk: directory.appendingPathComponent("missing-disk.img").path,
-                guestRuntimeSettings: directory.appendingPathComponent("missing-runtime-settings.json").path,
-                guestRuntimeConfig: directory.appendingPathComponent("missing-runtime-config.json").path,
+                guestRuntimeSettings: guestSettings.path,
                 proxyLaunchDaemon: directory.appendingPathComponent("missing-proxy.plist").path
             ),
             runCommand: startOnBootCommand()
@@ -201,22 +207,22 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         ])
     }
 
-    func testDoesNotReportGuestRuntimeConfigPermissionIssueForSecretFile() throws {
-        let guestConfig = URL(fileURLWithPath: "/product/vm/data/deploy/runtime-config.json")
+    func testDoesNotReadSecretRuntimeConfigAsSettingsReadModel() throws {
+        let guestSettings = URL(fileURLWithPath: "/missing/runtime-settings.json")
         let reader = SystemRuntimeSettingsReader(
             paths: RuntimeSettingsPaths(
                 vmConfig: "/missing/vm-config.json",
                 vmDisk: "/missing/vm-disk.img",
-                guestRuntimeConfig: guestConfig.path,
+                guestRuntimeSettings: guestSettings.path,
                 proxyLaunchDaemon: "/missing/proxy.plist"
             ),
-            fileStore: GuestRuntimeConfigPermissionDeniedFileStore(guestConfig: guestConfig),
             runCommand: startOnBootCommand()
         )
 
         let settings = reader.load()
 
         XCTAssertFalse(settings.readIssues.contains { $0.source == "guestRuntimeConfig" })
+        XCTAssertTrue(settings.readIssues.contains { $0.source == "guestRuntimeSettings" })
         XCTAssertEqual(settings.publicHost, RuntimeSettings().publicHost)
         XCTAssertEqual(settings.publicPort, RuntimeSettings().publicPort)
     }
@@ -226,7 +232,6 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             vmConfig: "/missing/vm-config.json",
             vmDisk: "/runtime/vm-disk.img",
             guestRuntimeSettings: "/runtime/runtime-settings.json",
-            guestRuntimeConfig: "/runtime/runtime-config.json",
             proxyLaunchDaemon: "/runtime/proxy.plist"
         )
         let reader = SystemRuntimeSettingsReader(
@@ -234,7 +239,6 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             fileStore: SettingsReadFailureFileStore(existingPaths: [
                 paths.vmDisk,
                 paths.guestRuntimeSettings,
-                paths.guestRuntimeConfig,
                 paths.proxyLaunchDaemon,
             ]),
             runCommand: startOnBootCommand()
@@ -245,13 +249,91 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.readIssues.map(\.source), [
             "vmDisk",
             "guestRuntimeSettings",
-            "guestRuntimeConfig",
             "proxyLaunchDaemon",
         ])
         XCTAssertTrue(settings.readIssues[0].message.contains("disk size denied"))
         XCTAssertTrue(settings.readIssues[1].message.contains("runtime settings denied"))
-        XCTAssertTrue(settings.readIssues[2].message.contains("invalid legacy runtime config"))
-        XCTAssertTrue(settings.readIssues[3].message.contains("proxy plist denied"))
+        XCTAssertTrue(settings.readIssues[2].message.contains("proxy plist denied"))
+    }
+
+    func testReportsSettingsPathInspectionFailures() {
+        let paths = RuntimeSettingsPaths(
+            vmConfig: "/runtime/vm-config.json",
+            vmDisk: "/runtime/vm-disk.img",
+            guestRuntimeSettings: "/runtime/runtime-settings.json",
+            proxyLaunchDaemon: "/runtime/proxy.plist"
+        )
+        let reader = SystemRuntimeSettingsReader(
+            paths: paths,
+            fileStore: DataDirectoryPathStateFileStore(pathStates: [
+                paths.vmConfig: .inspectFailed("vm config denied"),
+                paths.vmDisk: .inspectFailed("disk denied"),
+                paths.guestRuntimeSettings: .inspectFailed("runtime settings denied"),
+                paths.proxyLaunchDaemon: .inspectFailed("proxy plist denied"),
+            ]),
+            runCommand: startOnBootCommand()
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.readIssues, [
+            RuntimeSettingsReadIssue(
+                source: "vmConfig",
+                message: "path inspection failed path=/runtime/vm-config.json reason=vm config denied"
+            ),
+            RuntimeSettingsReadIssue(
+                source: "vmDisk",
+                message: "path inspection failed path=/runtime/vm-disk.img reason=disk denied"
+            ),
+            RuntimeSettingsReadIssue(
+                source: "guestRuntimeSettings",
+                message: "path inspection failed path=/runtime/runtime-settings.json reason=runtime settings denied"
+            ),
+            RuntimeSettingsReadIssue(
+                source: "proxyLaunchDaemon",
+                message: "path inspection failed path=/runtime/proxy.plist reason=proxy plist denied"
+            ),
+        ])
+    }
+
+    func testReportsUnexpectedSettingsPathStates() {
+        let paths = RuntimeSettingsPaths(
+            vmConfig: "/runtime/vm-config.json",
+            vmDisk: "/runtime/vm-disk.img",
+            guestRuntimeSettings: "/runtime/runtime-settings.json",
+            proxyLaunchDaemon: "/runtime/proxy.plist"
+        )
+        let reader = SystemRuntimeSettingsReader(
+            paths: paths,
+            fileStore: DataDirectoryPathStateFileStore(pathStates: [
+                paths.vmConfig: .directory,
+                paths.vmDisk: .other("symbolic-link"),
+                paths.guestRuntimeSettings: .unknown("stale-provider-state"),
+                paths.proxyLaunchDaemon: .directory,
+            ]),
+            runCommand: startOnBootCommand()
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.readIssues, [
+            RuntimeSettingsReadIssue(
+                source: "vmConfig",
+                message: "path state is unexpected path=/runtime/vm-config.json state=directory"
+            ),
+            RuntimeSettingsReadIssue(
+                source: "vmDisk",
+                message: "path state is unexpected path=/runtime/vm-disk.img state=other: symbolic-link"
+            ),
+            RuntimeSettingsReadIssue(
+                source: "guestRuntimeSettings",
+                message: "path state is unexpected path=/runtime/runtime-settings.json state=stale-provider-state"
+            ),
+            RuntimeSettingsReadIssue(
+                source: "proxyLaunchDaemon",
+                message: "path state is unexpected path=/runtime/proxy.plist state=directory"
+            ),
+        ])
     }
 
     func testReportsStartOnBootLaunchctlReadFailure() {
@@ -260,7 +342,6 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 vmConfig: "/missing/vm-config.json",
                 vmDisk: "/missing/vm-disk.img",
                 guestRuntimeSettings: "/missing/runtime-settings.json",
-                guestRuntimeConfig: "/missing/runtime-config.json",
                 proxyLaunchDaemon: "/missing/proxy.plist"
             ),
             runCommand: { executable, arguments in
@@ -274,14 +355,17 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         XCTAssertFalse(settings.startOnBootConfigurable)
         XCTAssertEqual(settings.readIssues, [
+            RuntimeSettingsReadIssue(
+                source: "guestRuntimeSettings",
+                message: "runtime settings document is missing"
+            ),
             RuntimeSettingsReadIssue(source: "startOnBoot", message: "launchctl denied"),
         ])
     }
 
-    func testLoadsGuestRuntimeSettingsBeforeSecretRuntimeConfig() throws {
+    func testLoadsGuestRuntimeSettingsFromCurrentReadModel() throws {
         let directory = try temporaryDirectory()
         let guestSettings = directory.appendingPathComponent("runtime-settings.json")
-        let guestConfig = directory.appendingPathComponent("runtime-config.json")
         try """
         {
           "vitalServerURL": "https://settings.example.test/",
@@ -291,20 +375,12 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "redisBackupRetentionCount": 12
         }
         """.write(to: guestSettings, atomically: true, encoding: .utf8)
-        try """
-        {
-          "publicHost": "secret.example.test",
-          "publicPort": 8080,
-          "redisBackupRetentionCount": 20
-        }
-        """.write(to: guestConfig, atomically: true, encoding: .utf8)
 
         let reader = SystemRuntimeSettingsReader(
             paths: RuntimeSettingsPaths(
                 vmConfig: directory.appendingPathComponent("missing-vm-config.json").path,
                 vmDisk: directory.appendingPathComponent("missing-disk.img").path,
                 guestRuntimeSettings: guestSettings.path,
-                guestRuntimeConfig: guestConfig.path,
                 proxyLaunchDaemon: directory.appendingPathComponent("missing-proxy.plist").path
             ),
             runCommand: startOnBootCommand()
@@ -317,6 +393,30 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.vitalServerURL, "https://settings.example.test/")
         XCTAssertEqual(settings.remoteConsoleURL, "https://console.settings.example.test/")
         XCTAssertEqual(settings.redisBackupRetentionCount, 12)
+    }
+
+    func testReportsOutOfRangeGuestRuntimeBackupRetention() throws {
+        let directory = try temporaryDirectory()
+        let guestSettings = directory.appendingPathComponent("runtime-settings.json")
+        try writeGuestRuntimeSettings(guestSettings, redisBackupRetentionCount: 31)
+
+        let reader = SystemRuntimeSettingsReader(
+            paths: RuntimeSettingsPaths(
+                vmConfig: directory.appendingPathComponent("missing-vm-config.json").path,
+                vmDisk: directory.appendingPathComponent("missing-disk.img").path,
+                guestRuntimeSettings: guestSettings.path,
+                proxyLaunchDaemon: directory.appendingPathComponent("missing-proxy.plist").path
+            ),
+            runCommand: startOnBootCommand()
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.redisBackupRetentionCount, 30)
+        XCTAssertTrue(settings.readIssues.contains(RuntimeSettingsReadIssue(
+            source: "guestRuntimeSettings.redisBackupRetentionCount",
+            message: "redisBackupRetentionCount is out of range: 31"
+        )))
     }
 
     func testConfigureArgumentsReflectSettings() {
@@ -397,6 +497,104 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertNotNil(status.dataDirectoryStatsError)
     }
 
+    func testStatusReaderReportsMissingDataDirectoryRoot() throws {
+        let directory = try temporaryDirectory()
+        let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            fileStore: DataDirectoryPathStateFileStore(pathStates: [dataDirectory.path: .missing])
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
+
+        XCTAssertNil(status.dataDirectoryStats)
+        XCTAssertEqual(status.dataDirectoryStatsError, "data directory missing path=\(dataDirectory.path)")
+    }
+
+    func testStatusReaderReportsDataDirectoryRootInspectionFailure() throws {
+        let directory = try temporaryDirectory()
+        let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            fileStore: DataDirectoryPathStateFileStore(
+                pathStates: [dataDirectory.path: .inspectFailed("permission denied")]
+            )
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
+
+        XCTAssertNil(status.dataDirectoryStats)
+        XCTAssertEqual(
+            status.dataDirectoryStatsError,
+            "data directory path inspection failed path=\(dataDirectory.path) reason=permission denied"
+        )
+    }
+
+    func testStatusReaderReportsUnexpectedDataDirectoryRootState() throws {
+        let directory = try temporaryDirectory()
+        let dataDirectory = directory.appendingPathComponent("vital-files")
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            fileStore: DataDirectoryPathStateFileStore(
+                pathStates: [dataDirectory.path: .file]
+            )
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
+
+        XCTAssertNil(status.dataDirectoryStats)
+        XCTAssertEqual(
+            status.dataDirectoryStatsError,
+            "data directory path state is unexpected path=\(dataDirectory.path) state=file"
+        )
+    }
+
+    func testStatusReaderReportsListedDataDirectoryEntryMissingDuringTraversal() throws {
+        let directory = try temporaryDirectory()
+        let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
+        let staleEntry = dataDirectory.appendingPathComponent("stale.vital")
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            fileStore: DataDirectoryPathStateFileStore(
+                pathStates: [
+                    dataDirectory.path: .directory,
+                    staleEntry.path: .missing,
+                ],
+                directoryContents: [
+                    dataDirectory.path: [staleEntry],
+                ]
+            )
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings(vitalFilesDirectory: dataDirectory.path))
+
+        XCTAssertNil(status.dataDirectoryStats)
+        XCTAssertEqual(
+            status.dataDirectoryStatsError,
+            "data directory listed path is missing during traversal path=\(staleEntry.path)"
+        )
+    }
+
     func testStatusReaderReportsDataStorageUsageReadFailure() throws {
         let directory = try temporaryDirectory()
         let reader = SystemRuntimeStatusReader(
@@ -437,7 +635,152 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertNil(status.dataStorageError)
     }
 
-    func testStatusReaderUsesConfiguredProxyPortWhenStatusDocumentDoesNotReportIt() throws {
+    func testStatusReaderReportsMissingRuntimeDocumentsAsReadIssues() throws {
+        let directory = try temporaryDirectory()
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            )
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.readIssues.map(\.source), ["runtimeStatus", "guestRuntimeState"])
+        XCTAssertNil(status.statusDocumentError)
+        XCTAssertNil(status.guestRuntimeStateError)
+    }
+
+    func testStatusReaderPreservesGuestRuntimeStateInspectionFailure() throws {
+        let directory = try temporaryDirectory()
+        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: runtimeState.path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            fileStore: DataDirectoryPathStateFileStore(pathStates: [
+                runtimeState.path: .inspectFailed("permission denied"),
+            ])
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(
+            status.guestRuntimeStateError,
+            "guest runtime state path inspection failed path=\(runtimeState.path) reason=permission denied"
+        )
+        XCTAssertTrue(status.readIssues.contains {
+            $0.source == "guestRuntimeState"
+                && $0.message == status.guestRuntimeStateError
+        })
+    }
+
+    func testStatusReaderPreservesRuntimeStatusInspectionFailure() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: runtimeStatus.path
+            ),
+            fileStore: DataDirectoryPathStateFileStore(pathStates: [
+                runtimeStatus.path: .inspectFailed("permission denied"),
+            ])
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(
+            status.statusDocumentError,
+            "runtime status document path inspection failed path=\(runtimeStatus.path) reason=permission denied"
+        )
+        XCTAssertTrue(status.readIssues.contains {
+            $0.source == "runtimeStatus"
+                && $0.message == status.statusDocumentError
+        })
+    }
+
+    func testStatusReaderPreservesUnexpectedGuestRuntimeStatePathState() throws {
+        let directory = try temporaryDirectory()
+        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: runtimeState.path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            fileStore: DataDirectoryPathStateFileStore(pathStates: [
+                runtimeState.path: .directory,
+            ])
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(
+            status.guestRuntimeStateError,
+            "guest runtime state path state is unexpected path=\(runtimeState.path) state=directory"
+        )
+        XCTAssertTrue(status.readIssues.contains {
+            $0.source == "guestRuntimeState"
+                && $0.message == status.guestRuntimeStateError
+        })
+    }
+
+    func testStatusReaderPreservesRuntimeLauncherInspectionFailure() throws {
+        let directory = try temporaryDirectory()
+        let launcher = directory.appendingPathComponent("launcher")
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: launcher.path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            runtimeExecutableState: { _ in .inspectFailed("permission denied") }
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertFalse(status.runtimeInstalled)
+        XCTAssertEqual(status.runtimeInstallationState, .inspectFailed("permission denied"))
+        XCTAssertTrue(status.readIssues.contains {
+            $0.source == "runtimeInstallation"
+                && $0.message == "runtime launcher inspection failed path=\(launcher.path) reason=permission denied"
+        })
+    }
+
+    func testStatusReaderPreservesPresentButNonExecutableRuntimeLauncher() throws {
+        let directory = try temporaryDirectory()
+        let launcher = directory.appendingPathComponent("launcher")
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: launcher.path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            runtimeExecutableState: { _ in .present }
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertFalse(status.runtimeInstalled)
+        XCTAssertEqual(status.runtimeInstallationState, .present)
+        XCTAssertTrue(status.readIssues.contains {
+            $0.source == "runtimeInstallation"
+                && $0.message == "runtime launcher is present but not executable path=\(launcher.path)"
+        })
+    }
+
+    func testStatusReaderPreservesMissingProxyPortWithoutSettingsFallback() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
         try """
@@ -454,6 +797,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "vmService": "loaded",
           "proxyService": "loaded",
           "watchdogService": "loaded",
+          "hostProxyHTTP": "200",
+          "guestHTTP": "200",
           "rootfsBase": "present",
           "vmDisk": "present",
           "failureReasons": []
@@ -472,7 +817,12 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let status = reader.loadStatus(settings: settings)
 
-        XCTAssertEqual(status.proxyPort, 19090)
+        XCTAssertNil(status.proxyPort)
+        XCTAssertNil(status.statusDocumentError)
+        XCTAssertTrue(status.readIssues.contains {
+            $0.source == "proxyPort"
+                && $0.message == "proxy port is missing from runtime status document"
+        })
     }
 
     func testStatusReaderReportsStatusDocumentReadFailure() throws {
@@ -493,6 +843,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         XCTAssertNil(status.runtimeState)
         XCTAssertNotNil(status.statusDocumentError)
+        XCTAssertTrue(status.readIssues.contains { $0.source == "runtimeStatus" })
     }
 
     func testStatusReaderReportsGuestRuntimeStateReadFailure() throws {
@@ -514,6 +865,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertNil(status.memory)
         XCTAssertNil(status.systemDisk)
         XCTAssertNotNil(status.guestRuntimeStateError)
+        XCTAssertTrue(status.readIssues.contains { $0.source == "guestRuntimeState" })
     }
 
     func testStatusReaderDoesNotInferVMStateOrErrorsWhenStatusDocumentDoesNotProvideThem() throws {
@@ -587,12 +939,40 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(status.vmServiceState, .loaded)
         XCTAssertEqual(status.proxyServiceState, .loaded)
         XCTAssertEqual(status.watchdogServiceState, .loaded)
+        XCTAssertEqual(status.vmServiceStateSource, .statusDocument)
+        XCTAssertEqual(status.proxyServiceStateSource, .statusDocument)
+        XCTAssertEqual(status.watchdogServiceStateSource, .statusDocument)
         XCTAssertEqual(status.guestLogSyncServiceState, .permissionDenied("exitCode=1 stderr=Operation not permitted"))
+        XCTAssertEqual(status.guestLogSyncServiceStateSource, .liveLaunchd)
+        XCTAssertEqual(status.sleepPreventionServiceStateSource, .liveLaunchd)
         XCTAssertFalse(status.guestLogSyncServiceLoaded)
         XCTAssertTrue(status.readIssues.contains {
             $0.source == "guestLogSyncService"
                 && $0.message == "exitCode=1 stderr=Operation not permitted"
         })
+    }
+
+    func testStatusReaderMarksServiceStatesAsLiveLaunchdWhenStatusDocumentIsMissing() throws {
+        let directory = try temporaryDirectory()
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            runSyncCommand: { _, _ in
+                RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Could not find service")
+            }
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.vmServiceStateSource, .liveLaunchd)
+        XCTAssertEqual(status.proxyServiceStateSource, .liveLaunchd)
+        XCTAssertEqual(status.guestLogSyncServiceStateSource, .liveLaunchd)
+        XCTAssertEqual(status.sleepPreventionServiceStateSource, .liveLaunchd)
+        XCTAssertEqual(status.watchdogServiceStateSource, .liveLaunchd)
     }
 
     func testHealthStatusPreservesHTTPProbeReadFailureAsStatusReadIssue() async throws {
@@ -810,6 +1190,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let history = reader.loadVitalDBRelationships()
 
+        XCTAssertEqual(history.state, .readFailed)
         XCTAssertEqual(history.assignments, [])
         XCTAssertEqual(history.events, [])
         XCTAssertNotNil(history.readError)
@@ -834,6 +1215,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let history = reader.loadRuntimeEvents(query: RuntimeEventQuery(limit: 10))
 
+        XCTAssertEqual(history.state, .partiallyLoaded)
         XCTAssertEqual(history.events.map(\.id), ["jsonl-event"])
         XCTAssertEqual(history.matchingCount, 1)
         XCTAssertNotNil(history.readError)
@@ -856,6 +1238,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let history = reader.loadRuntimeEvents(query: RuntimeEventQuery(limit: 10))
 
+        XCTAssertEqual(history.state, .partiallyLoaded)
         XCTAssertEqual(history.events.map(\.id), ["jsonl-event"])
         XCTAssertEqual(history.matchingCount, 1)
         XCTAssertNotNil(history.readError)
@@ -962,6 +1345,25 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         try data.write(to: url)
     }
 
+    private func writeGuestRuntimeSettings(
+        _ url: URL,
+        vitalServerURL: String = "https://vitaldb.tirosh.ai/",
+        remoteConsoleURL: String = "https://console.tirosh.ai/",
+        publicHost: String = "vitaldb.tirosh.ai",
+        publicPort: Int = 443,
+        redisBackupRetentionCount: Int = 20
+    ) throws {
+        try """
+        {
+          "vitalServerURL": "\(vitalServerURL)",
+          "remoteConsoleURL": "\(remoteConsoleURL)",
+          "publicHost": "\(publicHost)",
+          "publicPort": \(publicPort),
+          "redisBackupRetentionCount": \(redisBackupRetentionCount)
+        }
+        """.write(to: url, atomically: true, encoding: .utf8)
+    }
+
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("RuntimeSettingsReaderTests-\(UUID().uuidString)")
@@ -1053,20 +1455,63 @@ private final class DataDirectoryReadFailureFileStore: RuntimeFileStore {
     }
 }
 
-private final class GuestRuntimeConfigPermissionDeniedFileStore: RuntimeFileStore {
+private final class DataDirectoryPathStateFileStore: RuntimeFileStore {
     var temporaryDirectory = URL(fileURLWithPath: "/tmp")
-    private let guestConfig: URL
+    private let pathStates: [String: RuntimePathState]
+    private let directoryContents: [String: [URL]]
+    private let fileSizes: [String: UInt64]
 
-    init(guestConfig: URL) {
-        self.guestConfig = guestConfig
+    init(
+        pathStates: [String: RuntimePathState],
+        directoryContents: [String: [URL]] = [:],
+        fileSizes: [String: UInt64] = [:]
+    ) {
+        self.pathStates = pathStates
+        self.directoryContents = directoryContents
+        self.fileSizes = fileSizes
     }
 
-    func fileExists(_ url: URL) -> Bool { url == guestConfig }
-    func directoryExists(_ url: URL) -> Bool { false }
+    func fileExists(_ url: URL) -> Bool {
+        pathStates[url.path] == .file
+    }
+
+    func directoryExists(_ url: URL) -> Bool {
+        pathStates[url.path] == .directory
+    }
+
     func isExecutableFile(atPath path: String) -> Bool { false }
-    func readData(_ url: URL) throws -> Data { throw CocoaError(.fileReadNoPermission) }
-    func readUTF8Text(_ url: URL) throws -> String { throw CocoaError(.fileReadNoPermission) }
-    func fileSize(_ url: URL) throws -> UInt64 { throw CocoaError(.fileReadNoSuchFile) }
+
+    func fileState(atPath path: String) -> RuntimeFileState {
+        fileState(at: URL(fileURLWithPath: path))
+    }
+
+    func fileState(at url: URL) -> RuntimeFileState {
+        switch pathState(at: url) {
+        case .file, .directory, .other:
+            .present
+        case .missing:
+            .missing
+        case .inspectFailed(let reason):
+            .inspectFailed(reason)
+        case .unknown(let value):
+            .unknown(value)
+        }
+    }
+
+    func pathState(at url: URL) -> RuntimePathState {
+        pathStates[url.path] ?? .missing
+    }
+
+    func readData(_ url: URL) throws -> Data { throw CocoaError(.fileReadNoSuchFile) }
+    func readUTF8Text(_ url: URL) throws -> String { throw CocoaError(.fileReadNoSuchFile) }
+
+    func fileSize(_ url: URL) throws -> UInt64 {
+        guard let size = fileSizes[url.path] else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+        return size
+    }
+
     func modificationDate(_ url: URL) throws -> Date { throw CocoaError(.fileReadNoSuchFile) }
     func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {}
     func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {}
@@ -1074,11 +1519,24 @@ private final class GuestRuntimeConfigPermissionDeniedFileStore: RuntimeFileStor
     func removeItem(at url: URL) throws {}
     func copyItem(at source: URL, to destination: URL) throws {}
     func moveItem(at source: URL, to destination: URL) throws {}
-    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] { [] }
-    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] { [] }
-    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 { 0 }
+
+    func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] {
+        guard let contents = directoryContents[url.path] else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+        return contents
+    }
+
+    func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] {
+        []
+    }
+
+    func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 {
+        throw CocoaError(.fileReadNoSuchFile)
+    }
+
     func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
-        RuntimeFileSystemAttributes(freeBytes: 1)
+        throw CocoaError(.fileReadNoSuchFile)
     }
 }
 
@@ -1098,10 +1556,6 @@ private final class SettingsReadFailureFileStore: RuntimeFileStore {
         case "/runtime/runtime-settings.json":
             throw NSError(domain: "RuntimeSettingsReaderTests", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "runtime settings denied",
-            ])
-        case "/runtime/runtime-config.json":
-            throw NSError(domain: "RuntimeSettingsReaderTests", code: 2, userInfo: [
-                NSLocalizedDescriptionKey: "invalid legacy runtime config",
             ])
         case "/runtime/proxy.plist":
             throw NSError(domain: "RuntimeSettingsReaderTests", code: 3, userInfo: [

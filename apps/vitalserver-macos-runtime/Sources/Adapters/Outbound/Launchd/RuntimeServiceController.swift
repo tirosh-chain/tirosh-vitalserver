@@ -1,6 +1,5 @@
 import Application
 import Contracts
-import Domain
 import Foundation
 import Errors
 
@@ -13,6 +12,16 @@ public struct RuntimeServiceController {
     private let launchDaemonPlist: (RuntimeManagedService) -> String
     private let launchctlPath: String
     private let log: (String) -> Void
+    private var serviceOperator: RuntimeLaunchdServiceOperator {
+        RuntimeLaunchdServiceOperator(
+            serviceManager: serviceManager,
+            serviceState: serviceState,
+            prepareForStop: prepareForStop,
+            launchDaemonPlist: launchDaemonPlist,
+            launchctlPath: launchctlPath,
+            log: log
+        )
+    }
 
     public init(
         serviceManager: RuntimeServiceManager,
@@ -39,55 +48,36 @@ public struct RuntimeServiceController {
     public func stopRuntimeServices() throws {
         log("stopping runtime services")
         for service in RuntimeManagedService.stopOrder {
-            if try stopIfLoaded(service) {
-                log("waiting for \(displayName(service)) service to stop label=\(service.label)")
-                try waitUntilStopped(service)
-                log("stopped \(displayName(service)) service label=\(service.label)")
-            }
+            try stopAndWaitIfLoaded(service)
         }
     }
 
     public func disableRuntimeServicesForUninstall() throws {
         log("disabling runtime services before uninstall")
         for service in RuntimeManagedService.stopOrder {
-            try setEnabledOrThrow(service, enabled: false)
+            try serviceOperator.setEnabledOrThrow(service, enabled: false)
         }
     }
 
     public func clearDisabledOverridesAfterUninstall() throws {
         log("clearing launchd disabled overrides after uninstall")
         for service in RuntimeManagedService.stopOrder {
-            try setEnabledOrThrow(service, enabled: true)
+            try serviceOperator.setEnabledOrThrow(service, enabled: true)
         }
     }
 
     public func stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: pid_t) throws {
         log("stopping runtime services after guest poweroff request")
         for service in [RuntimeManagedService.watchdog, .proxy] {
-            if try stopIfLoaded(service) {
-                log("waiting for \(displayName(service)) service to stop label=\(service.label)")
-                try waitUntilStopped(service)
-                log("stopped \(displayName(service)) service label=\(service.label)")
-            }
+            try stopAndWaitIfLoaded(service)
         }
 
-        if try unloadIfLoaded(.vm) {
-            log("waiting for \(displayName(.vm)) service to stop label=\(RuntimeManagedService.vm.label)")
-            try waitUntilStopped(.vm)
-            log("stopped \(displayName(.vm)) service label=\(RuntimeManagedService.vm.label)")
+        if try unloadAndWaitIfLoaded(.vm) {
         } else {
             try waitForVMProcessExitAfterGuestPoweroff(expectedVMProcessID)
         }
-        if try stopIfLoaded(.guestLogSync) {
-            log("waiting for \(displayName(.guestLogSync)) service to stop label=\(RuntimeManagedService.guestLogSync.label)")
-            try waitUntilStopped(.guestLogSync)
-            log("stopped \(displayName(.guestLogSync)) service label=\(RuntimeManagedService.guestLogSync.label)")
-        }
-        if try stopIfLoaded(.sleepPrevention) {
-            log("waiting for \(displayName(.sleepPrevention)) service to stop label=\(RuntimeManagedService.sleepPrevention.label)")
-            try waitUntilStopped(.sleepPrevention)
-            log("stopped \(displayName(.sleepPrevention)) service label=\(RuntimeManagedService.sleepPrevention.label)")
-        }
+        try stopAndWaitIfLoaded(.guestLogSync)
+        try stopAndWaitIfLoaded(.sleepPrevention)
     }
 
     public func startRuntimeServices(_ policy: RuntimeServiceRestartPolicy) throws {
@@ -120,147 +110,66 @@ public struct RuntimeServiceController {
     }
 
     public func startLaunchdService(_ service: RuntimeManagedService) throws {
-        let plist = launchDaemonPlist(service)
-        log("starting \(displayName(service)) service label=\(service.label)")
-        try setLaunchdServiceEnabled(service, enabled: true)
-        log("launchd bootstrap label=\(service.label) plist=\(plist)")
-        serviceManager.start(service: service, plist: plist)
-        guard try isLoaded(service) else {
-            let message = "launchd service failed to load label=\(service.label) plist=\(plist)"
-            log(message)
-            throw RuntimeServiceControllerError.runtimeOperationFailed(message)
-        }
-        log("launchd service loaded label=\(service.label)")
+        try serviceOperator.startLaunchdService(service)
     }
 
     public func restartOrStartLaunchdService(_ service: RuntimeManagedService) throws {
-        log("launchd restart label=\(service.label)")
-        serviceManager.restart(service: service)
-        if try !isLoaded(service) {
-            log("launchd service not loaded after restart; starting label=\(service.label)")
-            try startLaunchdService(service)
-        }
+        try serviceOperator.restartOrStartLaunchdService(service)
     }
 
     public func restartVMRuntimeServices() throws {
         log("safely restarting VM runtime services")
-        if try stopIfLoaded(.guestLogSync) {
-            log("waiting for \(displayName(.guestLogSync)) service to stop label=\(RuntimeManagedService.guestLogSync.label)")
-            try waitUntilStopped(.guestLogSync)
-            log("stopped \(displayName(.guestLogSync)) service label=\(RuntimeManagedService.guestLogSync.label)")
-        }
-        if try stopIfLoaded(.vm) {
-            log("waiting for \(displayName(.vm)) service to stop label=\(RuntimeManagedService.vm.label)")
-            try waitUntilStopped(.vm)
-            log("stopped \(displayName(.vm)) service label=\(RuntimeManagedService.vm.label)")
-        }
+        try stopAndWaitIfLoaded(.guestLogSync)
+        try stopAndWaitIfLoaded(.vm)
         try startLaunchdService(.vm)
         try startLaunchdService(.guestLogSync)
     }
 
-    public func stopLaunchdService(_ service: RuntimeManagedService) {
-        do {
-            _ = try stopIfLoaded(service)
-        } catch {
-            log("failed to stop \(displayName(service)) service label=\(service.label) error=\(error)")
-        }
+    public func stopLaunchdService(_ service: RuntimeManagedService) throws {
+        _ = try serviceOperator.stopIfLoaded(service)
     }
 
     public func unloadRuntimeServicesAfterForcedVMStop() {
         for service in RuntimeManagedService.stopOrder {
             do {
-                if try unloadIfLoaded(service) {
-                    log("waiting for \(displayName(service)) service to unload after forced VM stop label=\(service.label)")
-                    try waitUntilStopped(service)
-                    log("unloaded \(displayName(service)) service after forced VM stop label=\(service.label)")
-                }
+                try unloadAfterForcedVMStopIfLoaded(service)
             } catch {
-                log("failed to unload \(displayName(service)) service after forced VM stop label=\(service.label) error=\(error)")
+                log("failed to unload \(service.runtimeServiceDisplayName) service after forced VM stop label=\(service.label) error=\(error)")
             }
         }
     }
 
     public func setStartOnBoot(_ enabled: Bool) throws {
         for service in RuntimeManagedService.startOrder {
-            try setEnabledOrThrow(service, enabled: enabled)
+            try serviceOperator.setEnabledOrThrow(service, enabled: enabled)
         }
     }
 
-    private func stopIfLoaded(_ service: RuntimeManagedService) throws -> Bool {
-        if try isLoaded(service) {
-            if service != .vm {
-                try prepareForStop(service)
-            }
-            return try unloadIfLoaded(service)
-        }
-        return false
-    }
-
-    private func unloadIfLoaded(_ service: RuntimeManagedService) throws -> Bool {
-        if try isLoaded(service) {
-            serviceManager.stop(service: service)
-            return true
-        }
-        return false
-    }
-
-    private func setLaunchdServiceEnabled(_ service: RuntimeManagedService, enabled: Bool) throws {
-        try setEnabledOrThrow(service, enabled: enabled)
-    }
-
-    private func setEnabledOrThrow(_ service: RuntimeManagedService, enabled: Bool) throws {
-        let result = serviceManager.setEnabled(service: service, enabled: enabled)
-        guard result.exitCode == 0 else {
-            let action = enabled ? "enable" : "disable"
-            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !stderr.isEmpty {
-                log("command stderr executable=\(launchctlPath) stderr=\(stderr)")
-            }
-            log("command failed executable=\(launchctlPath) exitCode=\(result.exitCode)")
-            throw RuntimeServiceControllerError.missingArgument(
-                "command failed: \(launchctlPath) \(action) system/\(service.label)"
-            )
+    private func stopAndWaitIfLoaded(_ service: RuntimeManagedService) throws {
+        if try serviceOperator.stopIfLoaded(service) {
+            try waitForStoppedService(service)
         }
     }
 
-    private func isLoaded(_ service: RuntimeManagedService) throws -> Bool {
-        let state = serviceState(service)
-        switch state {
-        case .loaded:
-            return true
-        case .notLoaded:
+    private func unloadAndWaitIfLoaded(_ service: RuntimeManagedService) throws -> Bool {
+        guard try serviceOperator.unloadIfLoaded(service) else {
             return false
-        case .readFailed(let reason):
-            throw serviceStateFailure(service, kind: "read failed", reason: reason)
-        case .permissionDenied(let reason):
-            throw serviceStateFailure(service, kind: "permission denied", reason: reason)
-        case .unknown(let value):
-            throw serviceStateFailure(service, kind: "unknown", reason: value)
+        }
+        try waitForStoppedService(service)
+        return true
+    }
+
+    private func unloadAfterForcedVMStopIfLoaded(_ service: RuntimeManagedService) throws {
+        if try serviceOperator.unloadIfLoaded(service) {
+            log("waiting for \(service.runtimeServiceDisplayName) service to unload after forced VM stop label=\(service.label)")
+            try waitUntilStopped(service)
+            log("unloaded \(service.runtimeServiceDisplayName) service after forced VM stop label=\(service.label)")
         }
     }
 
-    private func serviceStateFailure(
-        _ service: RuntimeManagedService,
-        kind: String,
-        reason: String
-    ) -> RuntimeServiceControllerError {
-        let message = "launchd service state \(kind) label=\(service.label) reason=\(reason)"
-        log(message)
-        return RuntimeServiceControllerError.runtimeOperationFailed(message)
-    }
-
-    private func displayName(_ service: RuntimeManagedService) -> String {
-        switch service {
-        case .vm:
-            "VM"
-        case .proxy:
-            "proxy"
-        case .guestLogSync:
-            "guest log sync"
-        case .sleepPrevention:
-            "sleep prevention"
-        case .watchdog:
-            "watchdog"
-        }
+    private func waitForStoppedService(_ service: RuntimeManagedService) throws {
+        log("waiting for \(service.runtimeServiceDisplayName) service to stop label=\(service.label)")
+        try waitUntilStopped(service)
+        log("stopped \(service.runtimeServiceDisplayName) service label=\(service.label)")
     }
 }

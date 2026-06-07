@@ -38,7 +38,10 @@ public struct RuntimeStatusComposeServiceValuePolicy {
         observation: RuntimeContainerObservation?,
         now: Date
     ) -> RuntimeStatusComposeServiceValue {
-        serviceValue(
+        if let unavailable = composeServicesUnavailableValue(observation) {
+            return unavailable
+        }
+        return serviceValue(
             serviceObservation: serviceObservation(service: service, observation: observation),
             observedAt: observation?.runtimeStateUpdatedAt ?? observation?.runtimeStateFileUpdatedAt,
             now: now
@@ -91,6 +94,19 @@ public struct RuntimeStatusComposeServiceValuePolicy {
             return vocabulary.containerStateText(state)
         }
         return vocabulary.notReportedText
+    }
+
+    private func composeServicesUnavailableValue(
+        _ observation: RuntimeContainerObservation?
+    ) -> RuntimeStatusComposeServiceValue? {
+        guard let observation, observation.composeServicesReadState != .loaded else {
+            return nil
+        }
+        return RuntimeStatusComposeServiceValue(
+            text: observation.composeServicesReadError ?? observation.composeServicesReadState.rawValue,
+            severity: .warning,
+            uptimeText: nil
+        )
     }
 
     private func severity(_ observation: RuntimeContainerServiceObservation?) -> RuntimeStatusReachabilityPolicy.Severity {

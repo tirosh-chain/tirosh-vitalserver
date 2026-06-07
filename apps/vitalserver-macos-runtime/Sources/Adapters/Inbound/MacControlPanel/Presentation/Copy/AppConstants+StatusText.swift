@@ -72,6 +72,9 @@ public extension AppConstants {
         public static let logExportDestinationDirectory = "Choose a zip file destination, not a folder."
         public static let logExportDestinationNotWritable = "The selected folder is not writable. Choose another local folder for log export."
         public static let logExportDestinationProtected = "Choose a local folder that the Helper can write to. iCloud Drive, Desktop, Documents, system, and app-managed folders are not supported for log export."
+        public static func logExportDestinationInspectionFailed(_ message: String) -> String {
+            "Could not inspect log export destination: \(message)"
+        }
         public static let runtimeServicesStartPreparing = "Preparing runtime service start..."
         public static let runtimeServicesStartRunning = "Starting runtime services..."
         public static let runtimeServicesStarted = "Runtime services started."
@@ -107,6 +110,7 @@ public extension AppConstants {
         public static func folderCreateFailed(_ message: String) -> String {
             "Could not create folder: \(message)"
         }
+        public static let invalidRuntimeURL = "Could not open URL because it is invalid."
         public static func folderReadFailed(_ message: String) -> String {
             "Could not read folders: \(message)"
         }
@@ -116,6 +120,9 @@ public extension AppConstants {
         public static let missingBackup = "Choose a backup first."
         public static func backupListLoadFailed(_ message: String) -> String {
             "Failed to load backups: \(message)"
+        }
+        public static func releaseMetadataLoadFailed(_ message: String) -> String {
+            "Failed to load release metadata: \(message)"
         }
         public static let invalidBackup = "Selected backup is outside the managed backup directory."
         public static let missingLauncher = "Missing runtime launcher"
@@ -146,6 +153,23 @@ public extension AppConstants {
 
         public static func installState(installed isInstalled: Bool) -> String {
             isInstalled ? installed : notInstalled
+        }
+
+        public static func installState(_ state: RuntimeFileState) -> String {
+            switch state {
+            case .executable:
+                installed
+            case .missing:
+                notInstalled
+            case .present:
+                "Present but not executable"
+            case .inspectFailed(let reason):
+                reason.isEmpty
+                    ? "Installation inspection failed"
+                    : "Installation inspection failed: \(reason)"
+            case .unknown(let value):
+                "Installation state unknown: \(value)"
+            }
         }
 
         public static func launchdState(loaded: Bool) -> String {
@@ -325,6 +349,8 @@ public extension AppConstants {
                 return "Host proxy port \(port) listener mismatch: \(listeners)"
             case .hostProxyListenerScanUnavailable:
                 return "Host proxy listener scan unavailable"
+            case .hostProxyListenerScanInspectionFailed(let reason):
+                return "Host proxy listener scan inspection failed: \(reason)"
             case .hostProxyListenerScanFailed(let port, let exitCode):
                 return "Host proxy port \(port) listener scan failed with exit \(exitCode)"
             case .hostProxyConfigInvalid:

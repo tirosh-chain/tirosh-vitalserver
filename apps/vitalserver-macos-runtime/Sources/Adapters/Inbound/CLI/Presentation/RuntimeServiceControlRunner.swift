@@ -1,6 +1,5 @@
 import Application
 import Contracts
-import Domain
 import Errors
 
 public struct RuntimeServiceControlRunner {
@@ -8,13 +7,14 @@ public struct RuntimeServiceControlRunner {
     private let operations: RuntimeServiceControlOperations
 
     public init(
+        useCase: ControlRuntimeServicesUseCase,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         stopRuntimeServices: @escaping () throws -> Void,
         serviceStates: @escaping ([RuntimeManagedService]) throws -> [RuntimeManagedService: RuntimeServiceState],
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
         log: @escaping (String) -> Void
     ) {
-        self.useCase = ControlRuntimeServicesUseCase()
+        self.useCase = useCase
         self.operations = RuntimeServiceControlOperations(
             startRuntimeServices: startRuntimeServices,
             stopRuntimeServices: stopRuntimeServices,
@@ -34,6 +34,8 @@ private extension RuntimeServiceControlCommand {
         switch self {
         case .repairAll:
             return .repairAll
+        case .repairProxy:
+            return .repairProxy
         case .startAll:
             return .startAll
         case .stopAll:

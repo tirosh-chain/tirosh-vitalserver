@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import UniformTypeIdentifiers
+import Contracts
 import InboundAdapters
 import Errors
 
@@ -57,10 +58,23 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         RuntimeLogExportDestinationPolicy().validationMessage(for: url)
     }
 
-    func directoryExists(_ url: URL) -> Bool {
-        var isDirectory: ObjCBool = false
-        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-            && isDirectory.boolValue
+    func pathState(_ url: URL) -> RuntimePathState {
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            guard let type = attributes[.type] as? FileAttributeType else {
+                return .other("missing-file-type")
+            }
+            switch type {
+            case .typeRegular:
+                return .file
+            case .typeDirectory:
+                return .directory
+            default:
+                return .other(type.rawValue)
+            }
+        } catch {
+            return isNoSuchFile(error) ? .missing : .inspectFailed(error.localizedDescription)
+        }
     }
 
     func confirmCreateDirectory(path: String) -> Bool {
@@ -122,6 +136,15 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
     private func appleScriptString(_ value: String) -> String {
         "\"\(value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
     }
+
+    private func isNoSuchFile(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain,
+           nsError.code == CocoaError.Code.fileReadNoSuchFile.rawValue {
+            return true
+        }
+        return nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT)
+    }
 }
 
 private final class VitalFilesDirectoryOpenPanelDelegate: NSObject, NSOpenSavePanelDelegate {
@@ -146,12 +169,14 @@ private final class LogExportSavePanelDelegate: NSObject, NSOpenSavePanelDelegat
     private let policy = RuntimeLogExportDestinationPolicy()
 
     func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
-        var isDirectory = ObjCBool(false)
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
-              isDirectory.boolValue else {
+        switch FileManager.default.pathState(atPath: url.path) {
+        case .directory:
+            return policy.canNavigateDirectory(url)
+        case .inspectFailed:
+            return false
+        case .file, .missing, .other, .unknown:
             return true
         }
-        return policy.canNavigateDirectory(url)
     }
 
     func panel(_ sender: Any, validate url: URL) throws {

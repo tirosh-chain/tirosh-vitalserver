@@ -89,25 +89,21 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             serviceStateItem(
                 vocabulary.proxyServiceLabel,
                 state: status.proxyServiceState,
-                fallbackLoaded: status.proxyServiceLoaded,
                 updateInProgress: updateInProgress
             ),
             serviceStateItem(
                 vocabulary.guestLogSyncServiceLabel,
                 state: status.guestLogSyncServiceState,
-                fallbackLoaded: status.guestLogSyncServiceLoaded,
                 updateInProgress: updateInProgress
             ),
             serviceStateItem(
                 vocabulary.sleepPreventionServiceLabel,
                 state: status.sleepPreventionServiceState,
-                fallbackLoaded: status.sleepPreventionServiceLoaded,
                 updateInProgress: updateInProgress
             ),
             serviceStateItem(
                 vocabulary.watchdogServiceLabel,
                 state: status.watchdogServiceState,
-                fallbackLoaded: status.watchdogServiceLoaded,
                 updateInProgress: updateInProgress
             ),
             httpServiceItem(
@@ -163,14 +159,12 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     private func serviceStateItem(
         _ label: String,
         state: RuntimeServiceState?,
-        fallbackLoaded: Bool?,
         updateInProgress: Bool
     ) -> RuntimeStatusAdvancedServiceHealthItem {
         RuntimeStatusAdvancedServiceHealthItem(
             label: label,
             value: value(serviceValuePolicy.serviceValue(
                 state: state,
-                fallbackLoaded: fallbackLoaded,
                 updateInProgress: updateInProgress
             )),
             httpStatus: nil,

@@ -28,12 +28,23 @@ struct RuntimeInfoPanel: View {
 
     private var productInfoCard: some View {
         infoCard(AppConstants.Labels.sectionProductInfo) {
+            releaseInfoReadIssue
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.helperVersion, helperAppVersion)
                 statusRow(AppConstants.Labels.vitalServerVersion, viewModel.releaseInfo.vitalServerVersion)
                 statusRow(AppConstants.Labels.installedRuntimeVersion, viewModel.status.runtimeVersion ?? AppConstants.StatusText.unknown)
                 statusRow(AppConstants.Labels.packageIdentifier, viewModel.installationInfo.packageIdentifier)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var releaseInfoReadIssue: some View {
+        if let readError = viewModel.releaseInfoErrorMessage {
+            Text(readError)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
         }
     }
 

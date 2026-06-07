@@ -12,6 +12,12 @@ public struct RuntimeConfigFlagValues: Equatable, Sendable {
     }
 }
 
+public enum RuntimeConfigFlagReadResult: Equatable, Sendable {
+    case configured(name: String, value: Bool)
+    case defaulted(name: String, value: Bool, reason: String)
+    case failed(name: String, reason: String)
+}
+
 public struct RuntimeConfigFlagReader {
     public var loadFlags: () throws -> RuntimeConfigFlagValues
     public var log: (String) -> Void
@@ -24,7 +30,7 @@ public struct RuntimeConfigFlagReader {
         self.log = log
     }
 
-    public func automaticRecoveryEnabled() -> Bool {
+    public func automaticRecoveryFlag() -> RuntimeConfigFlagReadResult {
         readBoolFlag(
             name: "autoRecoveryEnabled",
             defaultValue: true,
@@ -32,7 +38,7 @@ public struct RuntimeConfigFlagReader {
         )
     }
 
-    public func preventSystemSleepEnabled() -> Bool {
+    public func preventSystemSleepFlag() -> RuntimeConfigFlagReadResult {
         readBoolFlag(
             name: "preventSystemSleep",
             defaultValue: true,
@@ -44,17 +50,18 @@ public struct RuntimeConfigFlagReader {
         name: String,
         defaultValue: Bool,
         value: (RuntimeConfigFlagValues) -> Bool?
-    ) -> Bool {
+    ) -> RuntimeConfigFlagReadResult {
         do {
             let flags = try loadFlags()
             guard let configuredValue = value(flags) else {
                 log("runtime config flag missing name=\(name) default=\(defaultValue)")
-                return defaultValue
+                return .defaulted(name: name, value: defaultValue, reason: "missing")
             }
-            return configuredValue
+            return .configured(name: name, value: configuredValue)
         } catch {
-            log("failed to read runtime config flag name=\(name) default=\(defaultValue) error=\(error)")
-            return defaultValue
+            let reason = String(describing: error)
+            log("failed to read runtime config flag name=\(name) error=\(reason)")
+            return .failed(name: name, reason: reason)
         }
     }
 }

@@ -43,7 +43,11 @@ public struct SystemRuntimeStorageUsageProvider: RuntimeStorageUsageProviding {
     }
 
     public func storageUsage(for path: String) -> RuntimeStorageUsageResult {
-        guard let volumeURL = existingStorageURL(for: path) else {
+        let volumeURLRead = existingStorageURL(for: path)
+        guard let volumeURL = volumeURLRead.url else {
+            if let failure = volumeURLRead.failure {
+                return .failed(failure)
+            }
             return .unavailable
         }
         do {
@@ -71,19 +75,42 @@ public struct SystemRuntimeStorageUsageProvider: RuntimeStorageUsageProviding {
         }
     }
 
-    private func existingStorageURL(for path: String) -> URL? {
+    private func existingStorageURL(for path: String) -> RuntimeStorageVolumeURLRead {
         var url = URL(fileURLWithPath: path)
-        while !pathExists(url) {
+        while true {
+            let state = fileStore.pathState(at: url)
+            switch state {
+            case .file, .directory, .other:
+                return .loaded(url)
+            case .missing:
+                break
+            case .inspectFailed(let reason):
+                return .failed("storage path inspection failed path=\(url.path) reason=\(reason)")
+            case .unknown(let rawValue):
+                return .failed("storage path state is unknown path=\(url.path) state=\(rawValue)")
+            }
             let parent = url.deletingLastPathComponent()
             guard parent.path != url.path else {
-                return nil
+                return .unavailable
             }
             url = parent
         }
-        return url
+    }
+}
+
+private struct RuntimeStorageVolumeURLRead {
+    let url: URL?
+    let failure: String?
+
+    static func loaded(_ url: URL) -> RuntimeStorageVolumeURLRead {
+        RuntimeStorageVolumeURLRead(url: url, failure: nil)
     }
 
-    private func pathExists(_ url: URL) -> Bool {
-        fileStore.fileExists(url) || fileStore.directoryExists(url)
+    static var unavailable: RuntimeStorageVolumeURLRead {
+        RuntimeStorageVolumeURLRead(url: nil, failure: nil)
+    }
+
+    static func failed(_ message: String) -> RuntimeStorageVolumeURLRead {
+        RuntimeStorageVolumeURLRead(url: nil, failure: message)
     }
 }

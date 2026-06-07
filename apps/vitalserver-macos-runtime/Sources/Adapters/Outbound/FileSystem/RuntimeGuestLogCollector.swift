@@ -1,19 +1,39 @@
 import Application
+import Contracts
 import Foundation
 import Errors
+import RuntimeControl
 
 public struct RuntimeGuestLogCollector {
     private static let appendValidationByteLimit: UInt64 = 64 * 1024
 
     private let installedPaths: InstalledRuntimePaths
     private let fileStore: RuntimeFileStore
+    private let archiveTimestamp: @Sendable () -> String
+    private let archiveCollisionID: @Sendable () -> String
 
     public init(
         installedPaths: InstalledRuntimePaths,
         fileStore: RuntimeFileStore
     ) {
+        self.init(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            archiveTimestamp: { formatArchiveTimestamp(Date()) },
+            archiveCollisionID: { UUID().uuidString }
+        )
+    }
+
+    public init(
+        installedPaths: InstalledRuntimePaths,
+        fileStore: RuntimeFileStore,
+        archiveTimestamp: @escaping @Sendable () -> String,
+        archiveCollisionID: @escaping @Sendable () -> String = { UUID().uuidString }
+    ) {
         self.installedPaths = installedPaths
         self.fileStore = fileStore
+        self.archiveTimestamp = archiveTimestamp
+        self.archiveCollisionID = archiveCollisionID
     }
 
     public func collect() throws {
@@ -28,23 +48,44 @@ public struct RuntimeGuestLogCollector {
     }
 
     private func syncRotatedContainerLogs() throws {
-        guard fileStore.directoryExists(installedPaths.guestRunDirectory) else {
+        let state = fileStore.pathState(at: installedPaths.guestRunDirectory)
+        switch state {
+        case .directory:
+            break
+        case .missing:
             return
+        case .inspectFailed(let reason):
+            throw RuntimeGuestLogCollectorError.pathInspectionFailed(
+                path: installedPaths.guestRunDirectory.path,
+                reason: reason
+            )
+        case .file, .other, .unknown:
+            throw RuntimeGuestLogCollectorError.unexpectedPathState(
+                path: installedPaths.guestRunDirectory.path,
+                state: state.rawValue
+            )
         }
         let entries = try fileStore.contentsOfDirectory(at: installedPaths.guestRunDirectory, skipsHiddenFiles: true)
-        for source in entries where source.lastPathComponent.hasPrefix("container-logs.log.") {
+        for source in entries where source.lastPathComponent.hasPrefix(Self.rotatedContainerLogPrefix) {
             let destination = installedPaths.centralGuestLogsDirectory.appendingPathComponent(source.lastPathComponent)
             try sync(source: source, destination: destination)
         }
     }
 
+    private static var rotatedContainerLogPrefix: String {
+        guard let contract = RuntimeLogCollectionSourceContract.rotatedCopies().first(where: { $0.sourceID == .containerLogs }) else {
+            preconditionFailure("missing rotated container log collection contract")
+        }
+        return contract.sourceFilePrefix
+    }
+
     private func sync(source: URL, destination: URL) throws {
-        guard fileStore.fileExists(source) else {
+        guard try expectedLogFileIsPresent(source) else {
             return
         }
         try fileStore.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
 
-        guard fileStore.fileExists(destination) else {
+        guard try expectedLogFileIsPresent(destination) else {
             try fileStore.copyItem(at: source, to: destination)
             return
         }
@@ -69,7 +110,7 @@ public struct RuntimeGuestLogCollector {
     }
 
     private func replaceDestination(source: URL, destination: URL) throws {
-        if fileStore.fileExists(destination) {
+        if try expectedLogFileIsPresent(destination) {
             try archive(destination)
         }
         try fileStore.copyItem(at: source, to: destination)
@@ -98,29 +139,29 @@ public struct RuntimeGuestLogCollector {
     }
 
     private func archive(_ url: URL) throws {
-        let timestamp = archiveTimestampFormatter.string(from: Date())
+        let timestamp = archiveTimestamp()
         let archiveDirectory = installedPaths.logArchiveDirectory
             .appendingPathComponent("guest", isDirectory: true)
         try fileStore.createDirectory(at: archiveDirectory, withIntermediateDirectories: true)
-        let destination = uniqueArchiveURL(
+        let destination = try uniqueArchiveURL(
             archiveDirectory.appendingPathComponent("\(url.lastPathComponent).\(timestamp)")
         )
         try fileStore.moveItem(at: url, to: destination)
     }
 
-    private func uniqueArchiveURL(_ url: URL) -> URL {
-        guard fileStore.fileExists(url) else {
+    private func uniqueArchiveURL(_ url: URL) throws -> URL {
+        guard try expectedLogFileIsPresent(url) else {
             return url
         }
         for index in 1...999 {
             let candidate = url.deletingLastPathComponent()
                 .appendingPathComponent("\(url.lastPathComponent).\(index)")
-            if !fileStore.fileExists(candidate) {
+            if try !expectedLogFileIsPresent(candidate) {
                 return candidate
             }
         }
         return url.deletingLastPathComponent()
-            .appendingPathComponent("\(url.lastPathComponent).\(UUID().uuidString)")
+            .appendingPathComponent("\(url.lastPathComponent).\(archiveCollisionID())")
     }
 
     private func appendNewBytes(from source: URL, to destination: URL, offset: UInt64) throws {
@@ -138,13 +179,27 @@ public struct RuntimeGuestLogCollector {
             try destinationHandle.write(contentsOf: data)
         }
     }
+
+    private func expectedLogFileIsPresent(_ url: URL) throws -> Bool {
+        let state = fileStore.pathState(at: url)
+        switch state {
+        case .file:
+            return true
+        case .missing:
+            return false
+        case .inspectFailed(let reason):
+            throw RuntimeGuestLogCollectorError.pathInspectionFailed(path: url.path, reason: reason)
+        case .directory, .other, .unknown:
+            throw RuntimeGuestLogCollectorError.unexpectedPathState(path: url.path, state: state.rawValue)
+        }
+    }
 }
 
-private let archiveTimestampFormatter: DateFormatter = {
+private func formatArchiveTimestamp(_ date: Date) -> String {
     let formatter = DateFormatter()
     formatter.calendar = Calendar(identifier: .gregorian)
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.timeZone = .current
     formatter.dateFormat = "yyyyMMdd-HHmmss"
-    return formatter
-}()
+    return formatter.string(from: date)
+}

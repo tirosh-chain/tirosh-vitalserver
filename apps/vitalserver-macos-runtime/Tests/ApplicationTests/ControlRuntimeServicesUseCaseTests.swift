@@ -9,6 +9,7 @@ final class ControlRuntimeServicesUseCaseTests: XCTestCase {
         let useCase = ControlRuntimeServicesUseCase()
 
         let repair = useCase.plan(.repairAll)
+        let repairProxy = useCase.plan(.repairProxy)
         let start = useCase.plan(.startAll)
         let stop = useCase.plan(.stopAll)
 
@@ -34,6 +35,39 @@ final class ControlRuntimeServicesUseCaseTests: XCTestCase {
                 status: .recovering,
                 operation: .repairServices,
                 statusMessage: "runtime services repair dispatched"
+            )
+        )
+
+        XCTAssertEqual(repairProxy.operation, .repairProxy)
+        XCTAssertEqual(
+            repairProxy.startPolicy,
+            RuntimeServiceRestartPolicy(
+                restartVM: false,
+                restartGuestLogSync: false,
+                restartProxy: true,
+                restartWatchdog: false
+            )
+        )
+        XCTAssertEqual(repairProxy.stopServices, [.proxy])
+        XCTAssertEqual(repairProxy.requiredStartedServices, [.proxy])
+        XCTAssertEqual(repairProxy.requiredStoppedServices, [.proxy])
+        XCTAssertEqual(repairProxy.requestedLogMessage, "host proxy repair requested")
+        XCTAssertEqual(
+            repairProxy.requestedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "host proxy repair requested",
+                status: .recovering,
+                operation: .repairProxy,
+                statusMessage: "host proxy repair requested"
+            )
+        )
+        XCTAssertEqual(
+            repairProxy.completedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "host proxy repair dispatched",
+                status: .recovering,
+                operation: .repairProxy,
+                statusMessage: "host proxy repair dispatched"
             )
         )
 

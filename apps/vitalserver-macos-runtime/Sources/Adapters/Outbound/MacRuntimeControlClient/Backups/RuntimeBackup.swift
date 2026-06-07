@@ -2,7 +2,6 @@ import Foundation
 import RuntimeControl
 import Application
 import Contracts
-import Domain
 import Errors
 
 extension RuntimeBackup {
@@ -13,12 +12,17 @@ extension RuntimeBackup {
         let directory = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.backups)
         let discovered = try fileStore.childDirectories(
             at: directory,
-            nameContains: "-before-",
+            nameContains: RuntimeManagedBackupPolicy.nameFragment,
             skipsHiddenFiles: true
         )
         .map { RuntimeBackup(path: $0.path, sizeBytes: try directorySize($0, fileStore: fileStore)) }
 
-        let latest = try latestBackup(latestBackupPath, excluding: discovered, fileStore: fileStore)
+        let latest = try latestBackup(
+            latestBackupPath,
+            backupsRoot: directory,
+            excluding: discovered,
+            fileStore: fileStore
+        )
         let merged = discovered + latest
         return merged.sorted { $0.name > $1.name }
     }
@@ -33,6 +37,7 @@ extension RuntimeBackup {
 
     private static func latestBackup(
         _ path: String?,
+        backupsRoot: URL,
         excluding backups: [RuntimeBackup],
         fileStore: RuntimeFileStore
     ) throws -> [RuntimeBackup] {
@@ -43,8 +48,8 @@ extension RuntimeBackup {
         guard !backups.contains(where: { $0.path == path }) else {
             return []
         }
-        guard url.lastPathComponent.contains("-before-") else {
-            return []
+        guard RuntimeManagedBackupPolicy.isManagedBackupURL(url, backupsRoot: backupsRoot) else {
+            throw RuntimeBackupListError.invalidLatestBackupPath(path)
         }
         return [RuntimeBackup(path: path, sizeBytes: try directorySize(url, fileStore: fileStore))]
     }

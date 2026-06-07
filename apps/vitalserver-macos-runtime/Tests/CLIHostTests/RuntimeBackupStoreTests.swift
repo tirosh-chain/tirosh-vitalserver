@@ -46,24 +46,29 @@ final class RuntimeBackupStoreTests: XCTestCase {
         var writtenFiles: [String: String] = [:]
         var logs: [String] = []
         let paths = makePaths()
+        let filePaths = Set([
+            paths.rootfsBase.path,
+            paths.runtimeVersion.path,
+            Constants.InstallPaths.vmBin,
+            Constants.InstallPaths.proxyRun,
+            Constants.InstallPaths.uninstall,
+        ])
+        let directoryPaths = Set([
+            paths.managerApp.path,
+            paths.nginxBundle.path,
+            paths.guestDeploy.path,
+        ])
 
         let store = makeStore(
             paths: paths,
-            fileExists: { url in
-                [
-                    paths.rootfsBase.path,
-                    paths.runtimeVersion.path,
-                    Constants.InstallPaths.vmBin,
-                    Constants.InstallPaths.proxyRun,
-                    Constants.InstallPaths.uninstall,
-                ].contains(url.path)
-            },
-            directoryExists: { url in
-                [
-                    paths.managerApp.path,
-                    paths.nginxBundle.path,
-                    paths.guestDeploy.path,
-                ].contains(url.path)
+            pathState: { url in
+                if filePaths.contains(url.path) {
+                    return .file
+                }
+                if directoryPaths.contains(url.path) {
+                    return .directory
+                }
+                return .missing
             },
             createDirectory: { url, withIntermediateDirectories in
                 createdDirectories.append("\(url.path):\(withIntermediateDirectories)")
@@ -107,7 +112,7 @@ final class RuntimeBackupStoreTests: XCTestCase {
         let paths = makePaths()
         let store = makeStore(
             paths: paths,
-            fileExists: { url in url == paths.runtimeVersion },
+            pathState: { url in url == paths.runtimeVersion ? .file : .missing },
             writeData: { data, url in
                 writtenFiles[url.path] = String(data: data, encoding: .utf8)
             }
@@ -120,13 +125,47 @@ final class RuntimeBackupStoreTests: XCTestCase {
         XCTAssertFalse(manifest.contains(#""rootfsBase""#))
     }
 
+    func testCreateBackupFailsWhenRootfsSourceInspectionFails() {
+        var copiedItems: [String] = []
+        var writtenFiles: [String: String] = [:]
+        let paths = makePaths()
+        let store = makeStore(
+            paths: paths,
+            pathState: { url in
+                url == paths.rootfsBase ? .inspectFailed("permission denied") : .missing
+            },
+            copyItem: { source, destination in
+                copiedItems.append("\(source.path)->\(destination.path)")
+            },
+            writeData: { data, url in
+                writtenFiles[url.path] = String(data: data, encoding: .utf8)
+            }
+        )
+
+        XCTAssertThrowsError(try store.createBackup(reason: "before-0.1.4")) { error in
+            XCTAssertEqual(
+                error as? RuntimeBackupStoreError,
+                .pathInspectionFailed(path: paths.rootfsBase.path, reason: "permission denied")
+            )
+        }
+        XCTAssertTrue(copiedItems.isEmpty)
+        XCTAssertTrue(writtenFiles.isEmpty)
+    }
+
     func testRestoreBackupPathReplacesExistingDestination() throws {
         var events: [String] = []
         let source = URL(fileURLWithPath: "/backup/app-bundle")
         let destination = URL(fileURLWithPath: "/Applications/VitalServer Helper.app")
         let store = makeStore(
-            fileExists: { url in url == source },
-            directoryExists: { url in url == destination },
+            pathState: { url in
+                if url == source {
+                    return .file
+                }
+                if url == destination {
+                    return .directory
+                }
+                return .missing
+            },
             copyItem: { source, destination in
                 events.append("copy:\(source.path)->\(destination.path)")
             },
@@ -156,12 +195,44 @@ final class RuntimeBackupStoreTests: XCTestCase {
         XCTAssertTrue(events.isEmpty)
     }
 
+    func testRestoreBackupPathFailsWhenSourceInspectionFails() {
+        var events: [String] = []
+        let source = URL(fileURLWithPath: "/backup/app-bundle")
+        let store = makeStore(
+            pathState: { url in url == source ? .inspectFailed("permission denied") : .missing },
+            copyItem: { _, _ in events.append("copy") },
+            removeItem: { _ in events.append("remove") }
+        )
+
+        XCTAssertThrowsError(try store.restoreBackupPathIfExists(
+            source,
+            to: URL(fileURLWithPath: "/Applications/VitalServer Helper.app")
+        )) { error in
+            XCTAssertEqual(
+                error as? RuntimeBackupStoreError,
+                .pathInspectionFailed(path: source.path, reason: "permission denied")
+            )
+        }
+        XCTAssertTrue(events.isEmpty)
+    }
+
     func testRestoreRuntimeToolsCopiesAndChmodsTools() throws {
         let source = URL(fileURLWithPath: "/backup/runtime-tools")
         var events: [String] = []
+        let backupTool = source.appendingPathComponent("vitalserver-vm")
+        let backupProxy = source.appendingPathComponent("vitalserver-proxy-run")
+        let existingDestination = URL(fileURLWithPath: "/usr/local/bin/vitalserver-vm")
         let store = makeStore(
-            fileExists: { url in url.path == "/usr/local/bin/vitalserver-vm" },
-            directoryExists: { url in url == source },
+            pathState: { url in
+                switch url {
+                case source:
+                    return .directory
+                case backupTool, backupProxy, existingDestination:
+                    return .file
+                default:
+                    return .missing
+                }
+            },
             copyItem: { source, destination in
                 events.append("copy:\(source.path)->\(destination.path)")
             },
@@ -169,8 +240,8 @@ final class RuntimeBackupStoreTests: XCTestCase {
             contentsOfDirectory: { url in
                 XCTAssertEqual(url, source)
                 return [
-                    source.appendingPathComponent("vitalserver-vm"),
-                    source.appendingPathComponent("vitalserver-proxy-run"),
+                    backupTool,
+                    backupProxy,
                 ]
             },
             chmodExecutable: { url in events.append("chmod:\(url.path)") }
@@ -187,11 +258,25 @@ final class RuntimeBackupStoreTests: XCTestCase {
         ])
     }
 
+    func testRestoreRuntimeToolsFailsWhenListedToolDisappears() {
+        let source = URL(fileURLWithPath: "/backup/runtime-tools")
+        let missingTool = source.appendingPathComponent("vitalserver-vm")
+        let store = makeStore(
+            pathState: { url in url == source ? .directory : .missing },
+            contentsOfDirectory: { _ in [missingTool] }
+        )
+
+        XCTAssertThrowsError(try store.restoreRuntimeToolsIfExists(source)) { error in
+            XCTAssertEqual(
+                error as? RuntimeBackupStoreError,
+                .unexpectedPathState(path: missingTool.path, state: RuntimePathState.missing.rawValue)
+            )
+        }
+    }
+
     func testLatestBackupSelectsNewestManagedBeforeBackup() throws {
         let store = makeStore(
-            directoryExists: { url in
-                url.path == "/product/backups"
-            },
+            pathState: { url in url.path == "/product/backups" ? .directory : .missing },
             childDirectories: { url, nameContains in
                 XCTAssertEqual(url.path, "/product/backups")
                 XCTAssertEqual(nameContains, "-before-")
@@ -207,7 +292,6 @@ final class RuntimeBackupStoreTests: XCTestCase {
 
     func testLatestBackupTreatsMissingBackupDirectoryAsNoBackupWithoutReadFailure() throws {
         let store = makeStore(
-            directoryExists: { _ in false },
             childDirectories: { _, _ in
                 XCTFail("missing backup directory must not be read")
                 return []
@@ -219,15 +303,32 @@ final class RuntimeBackupStoreTests: XCTestCase {
 
     func testLatestBackupPropagatesReadFailure() {
         let store = makeStore(
-            directoryExists: { url in
-                url.path == "/product/backups"
-            },
+            pathState: { url in url.path == "/product/backups" ? .directory : .missing },
             childDirectories: { _, _ in
                 throw NSError(domain: "backup-read", code: 1)
             }
         )
 
         XCTAssertThrowsError(try store.latestBackup())
+    }
+
+    func testLatestBackupFailsWhenBackupDirectoryInspectionFails() {
+        let store = makeStore(
+            pathState: { url in
+                url.path == "/product/backups" ? .inspectFailed("permission denied") : .missing
+            },
+            childDirectories: { _, _ in
+                XCTFail("failed backup directory inspection must not list children")
+                return []
+            }
+        )
+
+        XCTAssertThrowsError(try store.latestBackup()) { error in
+            XCTAssertEqual(
+                error as? RuntimeBackupStoreError,
+                .pathInspectionFailed(path: "/product/backups", reason: "permission denied")
+            )
+        }
     }
 
     func testRequireLatestBackupFailsWhenNoneExists() {
@@ -252,8 +353,7 @@ final class RuntimeBackupStoreTests: XCTestCase {
 
     private func makeStore(
         paths: RuntimeBackupStorePaths? = nil,
-        fileExists: @escaping (URL) -> Bool = { _ in false },
-        directoryExists: @escaping (URL) -> Bool = { _ in false },
+        pathState: @escaping (URL) -> RuntimePathState = { _ in .missing },
         createDirectory: @escaping (URL, Bool) throws -> Void = { _, _ in },
         copyItem: @escaping (URL, URL) throws -> Void = { _, _ in },
         removeItem: @escaping (URL) throws -> Void = { _ in },
@@ -279,8 +379,7 @@ final class RuntimeBackupStoreTests: XCTestCase {
             ),
             timestamp: { "20260522T010203Z" },
             isoTimestamp: { "2026-05-22T01:02:03Z" },
-            fileExists: fileExists,
-            directoryExists: directoryExists,
+            pathState: pathState,
             createDirectory: createDirectory,
             copyItem: copyItem,
             removeItem: removeItem,

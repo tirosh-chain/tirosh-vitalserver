@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import RuntimeControl
 import Errors
 
@@ -34,7 +35,16 @@ enum ProcessRunner {
                 outputIssues: captured.outputIssues
             )
         } catch {
-            return RuntimeCommandResult(exitCode: 1, stdout: "", stderr: error.localizedDescription)
+            let message = error.localizedDescription
+            return RuntimeCommandResult(
+                exitCode: 1,
+                stdout: "",
+                stderr: message,
+                executionIssue: RuntimeProcessExecutionIssue(
+                    kind: .processLaunchFailed,
+                    message: message
+                )
+            )
         }
     }
 }

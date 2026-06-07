@@ -34,7 +34,7 @@ public struct RuntimeStatusRemoteConsoleAvailabilityPolicy {
 
     public func availability(
         status: RuntimeStatus,
-        now: Date = Date()
+        now: Date
     ) -> RuntimeStatusRemoteConsoleAvailabilityValue {
         availability(
             http: status.runtimeControlHTTP,
@@ -46,7 +46,7 @@ public struct RuntimeStatusRemoteConsoleAvailabilityPolicy {
     public func availability(
         http: String?,
         startedAt: String?,
-        now: Date = Date()
+        now: Date
     ) -> RuntimeStatusRemoteConsoleAvailabilityValue {
         let reachable = reachabilityPolicy.isSuccessfulHTTPStatus(http)
         return RuntimeStatusRemoteConsoleAvailabilityValue(

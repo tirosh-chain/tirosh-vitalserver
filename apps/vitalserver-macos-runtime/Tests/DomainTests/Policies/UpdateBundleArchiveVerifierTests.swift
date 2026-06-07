@@ -63,6 +63,48 @@ final class UpdateBundleArchiveVerifierTests: XCTestCase {
         )
     }
 
+    func testArtifactArchiveEntriesPreserveRequiredTopLevelAndAllowedRootRules() throws {
+        try UpdateBundleArchiveVerifier.validateArtifactArchiveEntries(
+            listOutput: """
+            VitalServer Helper.app/
+            VitalServer Helper.app/Contents/Info.plist
+            """,
+            archiveName: "app-bundle.tar.gz",
+            requiredTopLevel: "VitalServer Helper.app",
+            allowedRootEntries: nil
+        )
+        try UpdateBundleArchiveVerifier.validateArtifactArchiveEntries(
+            listOutput: """
+            vitalserver-vm
+            tirosh-vitalserver-uninstall
+            """,
+            archiveName: "runtime-tools.tar.gz",
+            requiredTopLevel: nil,
+            allowedRootEntries: ["vitalserver-vm", "tirosh-vitalserver-uninstall"]
+        )
+    }
+
+    func testArtifactArchiveEntriesRejectUnsafeAndUnexpectedRoots() {
+        assertArtifactEntryError(
+            "VitalServer Helper.app/../escape\n",
+            requiredTopLevel: "VitalServer Helper.app",
+            allowedRootEntries: nil,
+            .unsafePath("VitalServer Helper.app/../escape")
+        )
+        assertArtifactEntryError(
+            "Other.app/Contents/Info.plist\n",
+            requiredTopLevel: "VitalServer Helper.app",
+            allowedRootEntries: nil,
+            .unexpectedTopLevelEntry("artifact.tar.gz", "Other.app")
+        )
+        assertArtifactEntryError(
+            "unexpected-tool\n",
+            requiredTopLevel: nil,
+            allowedRootEntries: ["vitalserver-vm"],
+            .unexpectedRootEntry("artifact.tar.gz", "unexpected-tool")
+        )
+    }
+
     private func assertRootDirectoryError(
         _ output: String,
         _ expected: UpdateBundleArchiveVerificationError,
@@ -88,6 +130,28 @@ final class UpdateBundleArchiveVerifierTests: XCTestCase {
             try UpdateBundleArchiveVerifier.rejectUnsupportedEntryTypes(
                 verboseListOutput: output,
                 archiveName: "update-bundle.tar.gz"
+            ),
+            file: file,
+            line: line
+        ) { error in
+            XCTAssertEqual(error as? UpdateBundleArchiveVerificationError, expected, file: file, line: line)
+        }
+    }
+
+    private func assertArtifactEntryError(
+        _ output: String,
+        requiredTopLevel: String?,
+        allowedRootEntries: Set<String>?,
+        _ expected: UpdateBundleArchiveVerificationError,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertThrowsError(
+            try UpdateBundleArchiveVerifier.validateArtifactArchiveEntries(
+                listOutput: output,
+                archiveName: "artifact.tar.gz",
+                requiredTopLevel: requiredTopLevel,
+                allowedRootEntries: allowedRootEntries
             ),
             file: file,
             line: line

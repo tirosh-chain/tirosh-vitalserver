@@ -193,7 +193,9 @@ public struct RuntimeBundleComposition {
     }
 
     private func verifyBundleDirectory(_ bundleURL: URL, sourceURL: URL) throws -> UpdateBundleManifest {
-        try RuntimeBundleDirectoryVerifier(
+        let verificationFileReader = bundleVerificationFileReader()
+        let digestUseCase = VerifyRuntimeBundleDigestUseCase()
+        return try RuntimeBundleDirectoryVerifier(
             context: RuntimeBundleDirectoryVerificationContext(
                 manifestFileName: Constants.Bundle.manifest,
                 checksumsFileName: Constants.Bundle.checksums,
@@ -201,24 +203,59 @@ public struct RuntimeBundleComposition {
             ),
             operations: RuntimeBundleDirectoryVerificationOperations(
                 requireDirectory: { url in
-                    guard directoryExists(url) else {
+                    switch operations.fileStore.pathState(at: url) {
+                    case .directory:
+                        break
+                    case .missing:
                         throw LauncherError.missingFile(url.path)
+                    case .inspectFailed(let reason):
+                        throw LauncherError.runtimeOperationFailed(
+                            "bundle directory path inspection failed: \(url.path) reason=\(reason)"
+                        )
+                    case .file, .other, .unknown:
+                        throw LauncherError.runtimeOperationFailed(
+                            "bundle directory path state is unexpected: \(url.path) state=\(operations.fileStore.pathState(at: url).rawValue)"
+                        )
                     }
                 },
                 requireFile: { url in
-                    guard fileExists(url) else {
+                    switch operations.fileStore.pathState(at: url) {
+                    case .file:
+                        break
+                    case .missing:
                         throw LauncherError.missingFile(url.path)
+                    case .inspectFailed(let reason):
+                        throw LauncherError.runtimeOperationFailed(
+                            "bundle file path inspection failed: \(url.path) reason=\(reason)"
+                        )
+                    case .directory, .other, .unknown:
+                        throw LauncherError.runtimeOperationFailed(
+                            "bundle file path state is unexpected: \(url.path) state=\(operations.fileStore.pathState(at: url).rawValue)"
+                        )
                     }
                 },
-                loadManifest: bundleVerificationFileReader().loadManifest,
+                loadManifest: verificationFileReader.loadManifest,
                 makeVerificationPlan: { manifest in
-                    try bundleVerificationFileReader().makeVerificationPlan(
+                    try MakeUpdateBundleVerificationPlanUseCase().makePlan(
                         manifest: manifest,
                         expectedProduct: Constants.Product.identifier
                     )
                 },
-                loadChecksums: bundleVerificationFileReader().loadChecksums,
-                verifyDigest: bundleVerificationFileReader().verifyDigest,
+                loadChecksums: verificationFileReader.loadChecksums,
+                verifyDigest: { url, fileVerification, checksumMap in
+                    try digestUseCase.verify(
+                        input: RuntimeBundleDigestVerificationInput(
+                            fileURL: url,
+                            fileVerification: fileVerification,
+                            checksumMap: checksumMap
+                        ),
+                        operations: RuntimeBundleDigestVerificationOperations(
+                            sha256: verificationFileReader.sha256,
+                            fileSize: fileSize,
+                            log: operations.log
+                        )
+                    )
+                },
                 validateArtifactPayload: operations.validateUpdateArtifactPayload,
                 log: operations.log
             )
@@ -335,12 +372,12 @@ public struct RuntimeBundleComposition {
         stagedRootfs: URL,
         rootfsBase: URL
     ) throws -> ApplyRuntimeBundleRootfsStorageObservation {
-        let stagedRootfsExists = fileExists(stagedRootfs)
+        let stagedRootfsState = operations.fileStore.pathState(at: stagedRootfs)
         return ApplyRuntimeBundleRootfsStorageObservation(
             stagedRootfs: stagedRootfs,
-            stagedRootfsExists: stagedRootfsExists,
-            installedRootfsBytes: stagedRootfsExists ? try fileSize(rootfsBase) : nil,
-            incomingRootfsBytes: stagedRootfsExists ? try fileSize(stagedRootfs) : nil
+            stagedRootfsState: stagedRootfsState,
+            installedRootfsBytes: stagedRootfsState == .file ? try fileSize(rootfsBase) : nil,
+            incomingRootfsBytes: stagedRootfsState == .file ? try fileSize(stagedRootfs) : nil
         )
     }
 
@@ -349,18 +386,9 @@ public struct RuntimeBundleComposition {
             operations: RuntimeBundleVerificationFileReaderOperations(
                 readData: operations.fileStore.readData,
                 readUTF8Text: operations.fileStore.readUTF8Text,
-                fileSize: fileSize,
-                log: operations.log
+                parseChecksums: ParseUpdateBundleChecksumFileUseCase().parse
             )
         )
-    }
-
-    private func fileExists(_ url: URL) -> Bool {
-        operations.fileStore.fileExists(url)
-    }
-
-    private func directoryExists(_ url: URL) -> Bool {
-        operations.fileStore.directoryExists(url)
     }
 
     private func fileSize(_ url: URL) throws -> UInt64 {

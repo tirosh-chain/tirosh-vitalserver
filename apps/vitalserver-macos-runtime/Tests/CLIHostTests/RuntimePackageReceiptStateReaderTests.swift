@@ -42,4 +42,53 @@ final class RuntimePackageReceiptStateReaderTests: XCTestCase {
             .readFailed(identifier: "ai.tirosh.vitalserver.helper", reason: "exitCode=2 stderr=database locked")
         )
     }
+
+    func testPkgInfoOutputIssueReportsReadFailure() {
+        let state = RuntimePackageReceiptStateReader.state(
+            identifier: "ai.tirosh.vitalserver.helper",
+            runProcess: { _, _ in
+                RuntimeProcessResult(
+                    exitCode: 1,
+                    stdout: "",
+                    stderr: "",
+                    outputIssues: [
+                        RuntimeCommandOutputIssue(stream: .stderr, message: "pkgutil stderr is not valid UTF-8"),
+                    ]
+                )
+            }
+        )
+
+        XCTAssertEqual(
+            state,
+            .readFailed(
+                identifier: "ai.tirosh.vitalserver.helper",
+                reason: "exitCode=1 outputIssues=stderr:pkgutil stderr is not valid UTF-8"
+            )
+        )
+    }
+
+    func testPkgInfoExecutionIssueReportsReadFailure() {
+        let state = RuntimePackageReceiptStateReader.state(
+            identifier: "ai.tirosh.vitalserver.helper",
+            runProcess: { _, _ in
+                RuntimeProcessResult(
+                    exitCode: 127,
+                    stdout: "",
+                    stderr: "",
+                    executionIssue: RuntimeProcessExecutionIssue(
+                        kind: .processLaunchFailed,
+                        message: "pkgutil denied"
+                    )
+                )
+            }
+        )
+
+        XCTAssertEqual(
+            state,
+            .readFailed(
+                identifier: "ai.tirosh.vitalserver.helper",
+                reason: "exitCode=127 executionIssue=processLaunchFailed: pkgutil denied"
+            )
+        )
+    }
 }

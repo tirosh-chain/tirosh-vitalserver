@@ -40,10 +40,15 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains("viewer_script='\\''/private/tmp/tirosh-vitalserver-uninstall-progress.command'\\''"))
         XCTAssertTrue(command.contains("open -a Terminal \"${viewer_script}\""))
         XCTAssertTrue(command.contains("tail -n 0 -F"))
-        XCTAssertTrue(command.contains("'\\''/usr/local/bin/tirosh-vitalserver-uninstall'\\'' '\\''--clean'\\'' < /dev/null >> \"${log_file}\" 2>&1 &"))
+        XCTAssertTrue(command.contains("'\\''/usr/local/bin/tirosh-vitalserver-uninstall'\\'' '\\''--clean'\\''"))
+        XCTAssertTrue(command.contains("background_status=$?"))
+        XCTAssertTrue(command.contains("echo \"\(RuntimeUninstallProgressScript.completedMarker)\""))
+        XCTAssertTrue(command.contains("echo \"\(RuntimeUninstallProgressScript.failedMarkerPrefix)${background_status}\""))
+        XCTAssertTrue(command.contains("} < /dev/null >> \"${log_file}\" 2>&1 &"))
         XCTAssertTrue(command.contains("background_pid=$!"))
         XCTAssertTrue(command.contains("kill -0"))
         XCTAssertFalse(command.contains("&;"))
+        XCTAssertFalse(command.contains("uninstall completed log="))
         XCTAssertTrue(command.contains("Background uninstaller started."))
     }
 
@@ -58,12 +63,14 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains("exit $status"))
     }
 
-    func testProxyRepairCommandIncludesPortAndLaunchctlRestart() {
-        let command = RuntimeCommandFactory.proxyRepairCommand(proxyPort: 18080)
+    func testProxyRepairCommandDelegatesToLauncherRepairProxySubcommand() {
+        let command = RuntimeCommandFactory.proxyRepairCommand()
 
-        XCTAssertTrue(command.hasPrefix("/bin/bash -lc "))
-        XCTAssertTrue(command.contains("port=18080"))
-        XCTAssertTrue(command.contains("kickstart -k system/ai.tirosh.vitalserver.helper.proxy"))
+        XCTAssertTrue(command.hasPrefix("'/usr/bin/env' VITALSERVER_VM_HOME="))
+        XCTAssertTrue(command.contains("'/usr/local/bin/vitalserver-vm'"))
+        XCTAssertTrue(command.contains("'runtime' 'repair-proxy'"))
+        XCTAssertFalse(command.contains("lsof"))
+        XCTAssertFalse(command.contains("kill -TERM"))
     }
 
     func testRuntimeServicesCommandsUseLauncherRuntimeSubcommands() {

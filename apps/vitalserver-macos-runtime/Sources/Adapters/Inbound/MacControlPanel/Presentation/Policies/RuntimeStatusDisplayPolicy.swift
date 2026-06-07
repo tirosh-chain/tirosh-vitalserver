@@ -105,8 +105,14 @@ struct RuntimeStatusDisplayPolicy {
         advancedServiceHealthPolicy.serviceHealth(status: status, observation: observation, now: now).map(serviceHealthItem)
     }
 
-    func recorderSummary(status: RuntimeStatus, observation: RuntimeContainerObservation?) -> RecorderSummary {
-        recorderSummaryPolicy.recorderSummary(status: status, observation: observation)
+    func recorderSummary(
+        observation: RuntimeContainerObservation?,
+        vitalDBObservation: VitalDBObservationDocument?
+    ) -> RecorderSummary {
+        recorderSummaryPolicy.recorderSummary(
+            observation: observation,
+            vitalDBObservation: vitalDBObservation
+        )
     }
 
     func vmStateValue(_ value: RuntimeVMState?) -> StatusValue {
@@ -260,6 +266,10 @@ private struct AppRuntimeStatusOverallHealthVocabulary: RuntimeStatusOverallHeal
     func runtimeLifecycleText(_ value: String) -> String {
         AppConstants.StatusText.runtimeLifecycle(value)
     }
+
+    func installStateText(_ state: RuntimeFileState) -> String {
+        AppConstants.StatusText.installState(state)
+    }
 }
 
 private struct AppRuntimeStatusHealthDetailsVocabulary: RuntimeStatusHealthDetailsVocabulary {
@@ -282,8 +292,8 @@ private struct AppRuntimeStatusHealthDetailsVocabulary: RuntimeStatusHealthDetai
     var unreachableText: String { AppConstants.StatusText.unreachable }
     var failedText: String { AppConstants.StatusText.failed }
 
-    func installStateText(installed: Bool) -> String {
-        AppConstants.StatusText.installState(installed: installed)
+    func installStateText(_ state: RuntimeFileState) -> String {
+        AppConstants.StatusText.installState(state)
     }
 
     func vmStateText(_ value: RuntimeVMState?) -> String {
@@ -292,10 +302,6 @@ private struct AppRuntimeStatusHealthDetailsVocabulary: RuntimeStatusHealthDetai
 
     func launchdStateText(_ state: RuntimeServiceState) -> String {
         AppConstants.StatusText.launchdState(state)
-    }
-
-    func launchdLoadedText(_ loaded: Bool) -> String {
-        AppConstants.StatusText.launchdState(loaded: loaded)
     }
 
     func containerHealthText(_ health: String) -> String {
@@ -329,8 +335,8 @@ private struct AppRuntimeStatusAdvancedVMHealthVocabulary: RuntimeStatusAdvanced
     var unreachableText: String { AppConstants.StatusText.unreachable }
     var failedText: String { AppConstants.StatusText.failed }
 
-    func installStateText(installed: Bool) -> String {
-        AppConstants.StatusText.installState(installed: installed)
+    func installStateText(_ state: RuntimeFileState) -> String {
+        AppConstants.StatusText.installState(state)
     }
 
     func vmStateText(_ value: RuntimeVMState?) -> String {
@@ -339,10 +345,6 @@ private struct AppRuntimeStatusAdvancedVMHealthVocabulary: RuntimeStatusAdvanced
 
     func launchdStateText(_ state: RuntimeServiceState) -> String {
         AppConstants.StatusText.launchdState(state)
-    }
-
-    func launchdLoadedText(_ loaded: Bool) -> String {
-        AppConstants.StatusText.launchdState(loaded: loaded)
     }
 
     func vmErrorText(_ error: RuntimeVMError) -> String {
@@ -380,10 +382,6 @@ private struct AppRuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusAdv
         AppConstants.StatusText.launchdState(state)
     }
 
-    func launchdLoadedText(_ loaded: Bool) -> String {
-        AppConstants.StatusText.launchdState(loaded: loaded)
-    }
-
     func containerHealthText(_ health: String) -> String {
         AppConstants.StatusText.containerHealth(health)
     }
@@ -399,6 +397,10 @@ private struct AppRuntimeStatusActionNeededVocabulary: RuntimeStatusActionNeeded
     var vitalServerNeedsAttentionTitle: String { AppConstants.StatusText.vitalServerNeedsAttention }
     var openLogsAction: String { AppConstants.Actions.openLogs }
     var vitalServerUnavailableTitle: String { AppConstants.StatusText.vitalServerUnavailable }
+
+    func installStateText(_ state: RuntimeFileState) -> String {
+        AppConstants.StatusText.installState(state)
+    }
 
     func domainRecoveryActionText(_ action: RuntimeDomainRecoveryAction) -> String {
         AppConstants.StatusText.domainRecoveryAction(action)

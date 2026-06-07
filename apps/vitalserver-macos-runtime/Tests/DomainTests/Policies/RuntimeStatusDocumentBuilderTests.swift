@@ -43,6 +43,7 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
         XCTAssertEqual(document.vmErrors ?? [], [.guestHTTP("failed")])
         XCTAssertEqual(document.vmIP, "192.168.64.2")
         XCTAssertEqual(document.proxyPort, 80)
+        XCTAssertEqual(document.proxyPortReadState, .loaded(80))
         XCTAssertEqual(document.hostProxyHTTP, "200")
         XCTAssertEqual(document.guestHTTP, "failed")
         XCTAssertEqual(document.failureReasons, [.guestHTTP("failed")])
@@ -77,8 +78,8 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
 
     private func snapshot(failureReasons: [RuntimeFailureReason]) -> RuntimeHealthSnapshot {
         RuntimeHealthSnapshot(
-            vmExecutable: true,
-            proxyExecutable: true,
+            vmExecutable: .executable,
+            proxyExecutable: .executable,
             rootfsBase: .present,
             vmDisk: .present,
             vmService: .loaded,
@@ -88,6 +89,7 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
             vmErrors: failureReasons.isEmpty ? [] : [.guestHTTP("failed")],
             vmIP: "192.168.64.2",
             proxyPort: 80,
+            proxyPortReadState: .loaded(80),
             hostProxyHTTP: "200",
             guestHTTP: failureReasons.isEmpty ? "200" : "failed",
             redisUIHTTP: "200",

@@ -37,7 +37,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let relationships = await worker.loadVitalDBRelationships()
         let backups = try await worker.loadBackups(latestBackupPath: "/backup/latest")
         let redisBackups = try await worker.loadRedisBackups()
-        let summary = await worker.updateBundleSummary(url: URL(fileURLWithPath: "/bundle"))
+        let summary = await worker.updateBundleSummaryResult(url: URL(fileURLWithPath: "/bundle"))
         let folders = try await worker.vitalFileFolders(root: "/vital")
         let releaseInfo = await worker.loadReleaseInfo()
         let installInfo = await worker.loadInstallInfo()
@@ -53,7 +53,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertEqual(relationships.readError, "relationships")
         XCTAssertEqual(backups.map(\.path), ["/backup/latest"])
         XCTAssertEqual(redisBackups.map(\.path), ["/redis/latest"])
-        XCTAssertEqual(summary, "summary:/bundle")
+        XCTAssertEqual(summary, .loaded("summary:/bundle"))
         XCTAssertEqual(folders.map(\.path), ["/vital"])
         XCTAssertEqual(releaseInfo.helperVersion, "helper")
         XCTAssertFalse(installInfo.runtimeHomePath?.isEmpty ?? true)
@@ -100,10 +100,12 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let backups = try client.loadBackups(latestBackupPath: "/backup/latest")
         let redisBackups = try client.loadRedisBackups()
         let folders = try client.vitalFileFolders(root: "/vital")
+        let asyncLogText = await client.loadLogTextResult(sourceID: RuntimeLogSource.command, lineLimit: 11)
         XCTAssertEqual(backups.map { $0.path }, ["/backup/latest"])
         XCTAssertEqual(redisBackups.map { $0.path }, ["/redis/latest"])
-        XCTAssertEqual(client.updateBundleSummary(url: URL(fileURLWithPath: "/bundle")), "summary:/bundle")
-        XCTAssertEqual(client.logText(sourceID: RuntimeLogSource.command, helperMessage: "", lineLimit: 10), "log:command:10")
+        XCTAssertEqual(client.updateBundleSummaryResult(url: URL(fileURLWithPath: "/bundle")), .loaded("summary:/bundle"))
+        XCTAssertEqual(client.logTextResult(sourceID: RuntimeLogSource.command, lineLimit: 10), .loaded("log:command:10"))
+        XCTAssertEqual(asyncLogText, .loaded("log:command:11"))
         XCTAssertEqual(client.preferredLogsPath(), "/logs")
         XCTAssertEqual(folders.map { $0.name }, ["vital"])
         XCTAssertEqual(verification.stdout, "verified:/bundle")
@@ -118,7 +120,9 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         _ = try await client.applySettings(settings)
         _ = try await client.applyUpdateBundle(url: URL(fileURLWithPath: "/bundle"))
         _ = try await client.rollbackRuntime(backupURL: URL(fileURLWithPath: "/backup"))
-        _ = try await client.deleteBackup(url: URL(fileURLWithPath: "/backup/delete"))
+        _ = try await client.deleteBackup(
+            url: URL(fileURLWithPath: "\(RuntimeControlClientConstants.Paths.backups)/20260522-before-0.1.3")
+        )
         _ = try await client.repairProxy(proxyPort: 18080)
         _ = try await client.repairDatastore()
         _ = try await client.repairVMDisk()
@@ -133,10 +137,35 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--admin-password-file") })
     }
 
+    func testApplySettingsReportsAdminPasswordCleanupFailureAsOutputIssue() async throws {
+        let environment = AdapterFakeActionEnvironment()
+        environment.removeError = CocoaError(.fileWriteNoPermission)
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
+            actionEnvironment: environment,
+            logExporter: AdapterFakeLogExporter()
+        )
+        var settings = RuntimeSettings()
+        settings.changeAdminPassword = true
+        settings.adminPassword = "secret"
+
+        let result = try await worker.applySettings(settings)
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(environment.removedPasswordFiles.map(\.path), ["/tmp/admin-password"])
+        XCTAssertEqual(result.outputIssues.count, 1)
+        XCTAssertEqual(result.outputIssues.first?.stream, .stderr)
+        XCTAssertTrue(result.outputIssues.first?.message.contains("admin password file cleanup failed") == true)
+        XCTAssertTrue(result.outputIssues.first?.message.contains("/tmp/admin-password") == true)
+    }
+
     func testCommandWorkerReportsMissingExecutableBoundaries() async {
         let worker = MacRuntimeControlCommandWorker(
             privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
-            actionEnvironment: AdapterFakeActionEnvironment(executablePaths: []),
+            actionEnvironment: AdapterFakeActionEnvironment(executableStates: [
+                RuntimeControlClientConstants.Paths.launcher: .missing,
+                RuntimeControlClientConstants.Paths.uninstaller: .missing,
+            ]),
             logExporter: AdapterFakeLogExporter()
         )
 
@@ -152,6 +181,67 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         } catch {
             XCTAssertEqual((error as? RuntimeClientError)?.errorDescription, RuntimeControlClientConstants.StatusText.missingUninstaller)
         }
+    }
+
+    func testCommandWorkerReportsExecutableInspectionFailureSeparatelyFromMissing() async {
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
+            actionEnvironment: AdapterFakeActionEnvironment(executableStates: [
+                RuntimeControlClientConstants.Paths.launcher: .inspectFailed("permission denied"),
+                RuntimeControlClientConstants.Paths.uninstaller: .present,
+            ]),
+            logExporter: AdapterFakeLogExporter()
+        )
+
+        do {
+            _ = try await worker.verifyUpdateBundle(url: URL(fileURLWithPath: "/bundle"))
+            XCTFail("Expected launcher inspection failure")
+        } catch {
+            XCTAssertTrue((error as? RuntimeClientError)?.errorDescription?.contains("launcher inspection failed") == true)
+            XCTAssertTrue((error as? RuntimeClientError)?.errorDescription?.contains("permission denied") == true)
+        }
+        do {
+            _ = try await worker.uninstallRuntime(clean: false)
+            XCTFail("Expected uninstaller not executable")
+        } catch {
+            XCTAssertTrue((error as? RuntimeClientError)?.errorDescription?.contains("not executable") == true)
+            XCTAssertTrue((error as? RuntimeClientError)?.errorDescription?.contains("state=present") == true)
+        }
+    }
+
+    func testDeleteBackupRejectsTargetsOutsideManagedBackupRootBeforePrivilegedCommand() async {
+        let runner = AdapterFakePrivilegedCommandRunner()
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: runner,
+            actionEnvironment: AdapterFakeActionEnvironment(),
+            logExporter: AdapterFakeLogExporter()
+        )
+
+        do {
+            _ = try await worker.deleteBackup(url: URL(fileURLWithPath: "/tmp/20260522-before-0.1.3"))
+            XCTFail("Expected invalid backup deletion target")
+        } catch {
+            XCTAssertTrue(
+                (error as? RuntimeClientError)?.errorDescription?.contains("outside the managed backup directory") == true
+            )
+        }
+        XCTAssertEqual(runner.shellCommands, [])
+    }
+
+    func testCommandWorkerReturnsPrivilegedCommandResultsForBackupDeleteAndProxyRepair() async throws {
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
+            actionEnvironment: AdapterFakeActionEnvironment(),
+            logExporter: AdapterFakeLogExporter()
+        )
+
+        let delete = try await worker.deleteBackup(
+            url: URL(fileURLWithPath: "\(RuntimeControlClientConstants.Paths.backups)/20260522-before-0.1.3")
+        )
+        let repair = try await worker.repairProxy(proxyPort: 18080)
+
+        XCTAssertEqual(delete.stdout, "ran")
+        XCTAssertEqual(repair.stdout, "ran")
     }
 }
 
@@ -196,8 +286,8 @@ private final class AdapterStubObservabilityReader: RuntimeObservabilityReading 
 }
 
 private final class AdapterStubFileReader: RuntimeHostFileReading {
-    func updateBundleSummary(url: URL) -> String {
-        "summary:\(url.path)"
+    func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
+        .loaded("summary:\(url.path)")
     }
 
     func backups(latestBackupPath: String?) throws -> [RuntimeBackup] {
@@ -208,8 +298,8 @@ private final class AdapterStubFileReader: RuntimeHostFileReading {
         [RuntimeBackup(path: "/redis/latest", sizeBytes: 2)]
     }
 
-    func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
-        "log:\(sourceID.rawValue):\(lineLimit)"
+    func logTextResult(sourceID: RuntimeLogSource, lineLimit: Int) -> RuntimeHostTextReadResult {
+        .loaded("log:\(sourceID.rawValue):\(lineLimit)")
     }
 
     func preferredLogsPath() -> String {
@@ -246,32 +336,36 @@ private final class AdapterFakePrivilegedCommandRunner: PrivilegedCommandRunning
 }
 
 private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unchecked Sendable {
-    let executablePaths: Set<String>
+    let executableStates: [String: RuntimeFileState]
+    var removeError: Error?
     private let lock = NSLock()
     private var protectedRemovedPasswordFiles: [URL] = []
 
-    init(executablePaths: Set<String> = [
-        RuntimeControlClientConstants.Paths.launcher,
-        RuntimeControlClientConstants.Paths.uninstaller,
+    init(executableStates: [String: RuntimeFileState] = [
+        RuntimeControlClientConstants.Paths.launcher: .executable,
+        RuntimeControlClientConstants.Paths.uninstaller: .executable,
     ]) {
-        self.executablePaths = executablePaths
+        self.executableStates = executableStates
     }
 
     var removedPasswordFiles: [URL] {
         lock.withLock { protectedRemovedPasswordFiles }
     }
 
-    func isExecutable(atPath path: String) -> Bool {
-        executablePaths.contains(path)
+    func executableState(atPath path: String) -> RuntimeFileState {
+        executableStates[path] ?? .missing
     }
 
     func writeAdminPasswordFile(_ password: String) throws -> URL {
         URL(fileURLWithPath: "/tmp/admin-password")
     }
 
-    func removeItem(at url: URL) {
+    func removeItem(at url: URL) throws {
         lock.withLock {
             protectedRemovedPasswordFiles.append(url)
+        }
+        if let removeError {
+            throw removeError
         }
     }
 

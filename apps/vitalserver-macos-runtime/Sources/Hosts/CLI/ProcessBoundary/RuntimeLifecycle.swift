@@ -59,11 +59,15 @@ struct RuntimeLifecycle {
                 )
             },
             waitForVMProcessStoppedAfterServiceUnload: {
-                try ProcessState.waitUntilStoppedAfterServiceUnload(
-                    pidFile: paths.pidFile,
-                    fileStore: fileStore,
+                try StopRuntimeVMProcessUseCase().waitUntilStopped(
                     timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
-                    pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds
+                    pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
+                    allowMissingPidFile: true,
+                    operations: ProcessState.stopOperations(
+                        pidFile: paths.pidFile,
+                        fileStore: fileStore,
+                        log: lifecycleLog
+                    )
                 )
             },
             waitForVMProcessExitAfterGuestPoweroff: { expectedVMProcessID in
@@ -158,6 +162,8 @@ struct RuntimeLifecycle {
             try repairDatastore()
         case .repairVMDisk:
             try repairVMDisk()
+        case .repairProxy:
+            try repairProxy()
         case .repairServices:
             try repairServices()
         case .startServices:
@@ -281,6 +287,10 @@ struct RuntimeLifecycle {
         try runtimeServiceControlRunner().run(.repairAll)
     }
 
+    func repairProxy() throws {
+        try runtimeServiceControlRunner().run(.repairProxy)
+    }
+
     func stopServices() throws {
         try runtimeServiceControlRunner().run(.stopAll)
     }
@@ -323,19 +333,23 @@ private extension RuntimeLifecycle {
         _ service: RuntimeManagedService,
         paths: LauncherPaths,
         fileStore: RuntimeFileStore,
-        log: (String) -> Void
+        log: @escaping (String) -> Void
     ) throws {
         guard service == .vm else {
             return
         }
 
         log("requesting graceful VM process stop before launchd unload")
-        try ProcessState.requestStopAndWait(
-            pidFile: paths.pidFile,
-            fileStore: fileStore,
+        try StopRuntimeVMProcessUseCase().requestStopAndWait(
+            terminateSignal: SIGTERM,
+            noSuchProcessErrorNumber: Int32(ESRCH),
             timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
             pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
-            log: log
+            operations: ProcessState.stopOperations(
+                pidFile: paths.pidFile,
+                fileStore: fileStore,
+                log: log
+            )
         )
         log("VM process stopped before launchd unload")
         do {
@@ -352,16 +366,18 @@ private extension RuntimeLifecycle {
         expectedVMProcessID: pid_t,
         paths: LauncherPaths,
         fileStore: RuntimeFileStore,
-        log: (String) -> Void
+        log: @escaping (String) -> Void
     ) throws {
         log("waiting for VM process to exit after guest poweroff request pid=\(expectedVMProcessID)")
-        try ProcessState.waitUntilObservedProcessStopped(
-            pid: expectedVMProcessID,
-            pidFile: paths.pidFile,
-            fileStore: fileStore,
+        try StopRuntimeVMProcessUseCase().waitUntilObservedProcessStopped(
+            pid: Int32(expectedVMProcessID),
             timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
             pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
-            log: log
+            operations: ProcessState.stopOperations(
+                pidFile: paths.pidFile,
+                fileStore: fileStore,
+                log: log
+            )
         )
         log("VM process exited after guest poweroff request pid=\(expectedVMProcessID)")
     }

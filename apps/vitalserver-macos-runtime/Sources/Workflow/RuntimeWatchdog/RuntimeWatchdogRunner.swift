@@ -4,19 +4,21 @@ import Domain
 import Foundation
 
 public struct RuntimeWatchdogRunner {
-    public init() {}
+    private let useCase: WatchdogRuntimeUseCase
+
+    public init(useCase: WatchdogRuntimeUseCase = WatchdogRuntimeUseCase()) {
+        self.useCase = useCase
+    }
 
     public func run(
         operations: RuntimeWatchdogActions,
         log: (String) -> Void,
         printLine: (String) -> Void
     ) throws {
-        let watchdog = WatchdogRuntimeUseCase()
-
         prepareLogs(operations: operations, log: log)
 
         if let activeOperation = operations.activeManagedOperation() {
-            let plan = watchdog.activeOperationSkipPlan(activeOperation)
+            let plan = useCase.activeOperationSkipPlan(activeOperation)
             log(plan.logMessage)
             operations.recordLifecycleEvent(.watchdog, plan.lifecycleMessage, plan.eventType)
             printLine(plan.printMessage)
@@ -25,7 +27,7 @@ public struct RuntimeWatchdogRunner {
 
         let initial = operations.healthSnapshot()
         let initialSnapshotResult = try executeInitialSnapshotDecision(
-            watchdog.initialSnapshotDecision(initial),
+            useCase.initialSnapshotDecision(initial),
             snapshot: initial,
             operations: operations,
             log: log,
@@ -36,10 +38,10 @@ public struct RuntimeWatchdogRunner {
         }
 
         let proxyLivenessHTTP = operations.proxyLivenessHTTP(initial.proxyPort)
-        try executeRecoveryDecision(watchdog.recoveryDecision(
+        try executeRecoveryDecision(useCase.recoveryDecision(
             snapshot: initial,
             hostProxyLivenessHTTP: proxyLivenessHTTP,
-            automaticRecoveryEnabled: operations.automaticRecoveryEnabled()
+            automaticRecoveryEnabled: try operations.automaticRecoveryEnabled()
         ), snapshot: initial, operations: operations, log: log, printLine: printLine)
     }
 
@@ -121,7 +123,6 @@ public struct RuntimeWatchdogRunner {
         operations: RuntimeWatchdogActions,
         log: (String) -> Void
     ) -> RuntimeHealthSnapshot {
-        let useCase = WatchdogRuntimeUseCase()
         let plan = useCase.lifecycleMarkPlan(snapshot)
         guard let lifecycle = plan.lifecycle else {
             return snapshot
@@ -184,7 +185,6 @@ public struct RuntimeWatchdogRunner {
         log: (String) -> Void,
         printLine: (String) -> Void
     ) throws {
-        let useCase = WatchdogRuntimeUseCase()
         log(plan.detectedLogMessage)
         try operations.writeRuntimeStatus(.recovering, .watchdog, plan.startedStatusMessage)
         operations.recordObservedStatus(.recovering, .watchdog, plan.startedStatusMessage, initial)
@@ -264,8 +264,8 @@ public struct RuntimeWatchdogActions {
     public let collectGuestLogs: () -> RuntimeBestEffortOperationResult
     public let activeManagedOperation: () -> RuntimeOperation?
     public let healthSnapshot: () -> RuntimeHealthSnapshot
-    public let proxyLivenessHTTP: (Int) -> String
-    public let automaticRecoveryEnabled: () -> Bool
+    public let proxyLivenessHTTP: (Int?) -> String
+    public let automaticRecoveryEnabled: () throws -> Bool
     public let restartVMRuntime: () throws -> Void
     public let restartService: (RuntimeManagedService) throws -> Void
     public let writeRuntimeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
@@ -288,8 +288,8 @@ public struct RuntimeWatchdogActions {
         collectGuestLogs: @escaping () -> RuntimeBestEffortOperationResult,
         activeManagedOperation: @escaping () -> RuntimeOperation?,
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
-        proxyLivenessHTTP: @escaping (Int) -> String,
-        automaticRecoveryEnabled: @escaping () -> Bool,
+        proxyLivenessHTTP: @escaping (Int?) -> String,
+        automaticRecoveryEnabled: @escaping () throws -> Bool,
         restartVMRuntime: @escaping () throws -> Void,
         restartService: @escaping (RuntimeManagedService) throws -> Void,
         writeRuntimeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,

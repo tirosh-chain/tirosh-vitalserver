@@ -26,6 +26,7 @@ public enum RuntimeFileNames {
     public static let updateShutdownRequest = "prepare-update-shutdown.request"
     public static let updateShutdownResult = "prepare-update-shutdown-result.json"
     public static let updateShutdownLog = "prepare-update-shutdown.log"
+    public static let containerLogs = "container-logs.log"
     public static let managerCommandLog = "tirosh-vitalserver-manager-command.log"
     public static let managerHelperMessageLog = "tirosh-vitalserver-helper-message.log"
 }

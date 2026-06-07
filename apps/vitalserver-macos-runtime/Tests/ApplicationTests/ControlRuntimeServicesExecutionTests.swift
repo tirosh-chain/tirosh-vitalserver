@@ -49,6 +49,34 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
         XCTAssertTrue(harness.events.contains("status:recovering:repair-services:runtime services repair dispatched"))
     }
 
+    func testRepairProxyStartsOnlyProxyAndObservesProxyLoaded() throws {
+        let harness = RuntimeServiceLifecycleHarness()
+
+        try harness.run(.repairProxy)
+
+        XCTAssertEqual(harness.events, [
+            "log:host proxy repair requested",
+            "status:recovering:repair-proxy:host proxy repair requested",
+            "start:ai.tirosh.vitalserver.helper.proxy",
+            "observe:ai.tirosh.vitalserver.helper.proxy",
+            "status:recovering:repair-proxy:host proxy repair dispatched",
+            "log:host proxy repair dispatched",
+        ])
+    }
+
+    func testRepairProxyDoesNotCompleteWhenProxyIsNotObservedLoaded() {
+        let harness = RuntimeServiceLifecycleHarness()
+        harness.startLeavesServiceNotLoaded = .proxy
+
+        XCTAssertThrowsError(try harness.run(.repairProxy)) { error in
+            XCTAssertTrue(String(describing: error).contains("launchd-service-not-loaded"))
+            XCTAssertTrue(String(describing: error).contains(RuntimeManagedService.proxy.label))
+        }
+
+        XCTAssertFalse(harness.events.contains("status:recovering:repair-proxy:host proxy repair dispatched"))
+        XCTAssertFalse(harness.events.contains("log:host proxy repair dispatched"))
+    }
+
     func testStopAllCompletesOnlyAfterRuntimeServicesAreObservedStopped() throws {
         let harness = RuntimeServiceLifecycleHarness()
         harness.states = Dictionary(uniqueKeysWithValues: RuntimeManagedService.stopOrder.map { ($0, .loaded) })

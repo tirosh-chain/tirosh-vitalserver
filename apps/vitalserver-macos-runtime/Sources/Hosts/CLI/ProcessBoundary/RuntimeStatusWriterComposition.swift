@@ -8,14 +8,14 @@ public struct RuntimeStatusWriterCompositionOperations {
     let timestamp: () -> String
     let runtimeVersion: () -> String
     let healthSnapshot: () -> RuntimeHealthSnapshot
-    let latestBackup: () -> URL?
+    let latestBackup: () throws -> URL?
 
     public init(
         reporter: RuntimeStatusReporter,
         timestamp: @escaping () -> String,
         runtimeVersion: @escaping () -> String,
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
-        latestBackup: @escaping () -> URL?
+        latestBackup: @escaping () throws -> URL?
     ) {
         self.reporter = reporter
         self.timestamp = timestamp

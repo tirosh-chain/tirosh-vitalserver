@@ -16,8 +16,8 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
 
     func testMissingArtifactsAndServicesProduceTypedReasons() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            vmExecutable: false,
-            proxyExecutable: false,
+            vmExecutable: .missing,
+            proxyExecutable: .missing,
             rootfsBase: .missing,
             vmDisk: .missing,
             vmService: .notLoaded,
@@ -143,6 +143,38 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         XCTAssertEqual(snapshot.failureReasons, [
             .containerService(service: "app", state: "unhealthy"),
         ])
+    }
+
+    func testMissingComposeServicesProducesContainerObservationMissingReason() {
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: true,
+            containerLogsBytes: 2048,
+            composeServicesReadState: .missing,
+            composeServices: [],
+            composeServicesReadError: "container-services-missing"
+        )
+
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(containerObservation: observation))
+
+        XCTAssertEqual(snapshot.failureReasons, [.containerObservationMissing])
+    }
+
+    func testInvalidComposeServicesProducesContainerObservationReadFailedReason() {
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: true,
+            containerLogsBytes: 2048,
+            composeServicesReadState: .invalid,
+            composeServices: [],
+            composeServicesReadError: "guest-runtime-state-invalid"
+        )
+
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(containerObservation: observation))
+
+        XCTAssertEqual(snapshot.failureReasons, [.containerObservationReadFailed("guest-runtime-state-invalid")])
     }
 
     func testCriticalContainerServiceStartingHealthIsNotARecoveryReason() {
@@ -366,14 +398,14 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
     func testVMHealthPolicyDefinesHostAndGuestFailureModes() {
         XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(vmIP: nil)).vmState, .starting)
         XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(guestHTTP: RuntimeHTTPStatusText.bootstrapPending)).vmState, .starting)
-        XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(vmExecutable: false)).vmState, .notInstalled)
+        XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(vmExecutable: .missing)).vmState, .notInstalled)
         XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(vmDisk: .missing)).vmState, .failed)
         XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(vmService: .notLoaded)).vmState, .stopped)
         XCTAssertEqual(RuntimeVMHealthPolicy.evaluate(healthyInput(guestHTTP: "failed")).vmState, .unreachable)
     }
 
     func testRuntimeHealthEvaluatorUsesExplicitVMHealthPolicy() {
-        XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(vmExecutable: false)).vmState, .notInstalled)
+        XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(vmExecutable: .missing)).vmState, .notInstalled)
         XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(vmDisk: .missing)).vmState, .failed)
         XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(vmService: .notLoaded)).vmState, .stopped)
         XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(vmIP: nil)).vmState, .starting)
@@ -417,8 +449,8 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
     }
 
     private func healthyInput(
-        vmExecutable: Bool = true,
-        proxyExecutable: Bool = true,
+        vmExecutable: RuntimeFileState = .executable,
+        proxyExecutable: RuntimeFileState = .executable,
         rootfsBase: RuntimeFileState = .present,
         vmDisk: RuntimeFileState = .present,
         vmService: RuntimeServiceState = .loaded,

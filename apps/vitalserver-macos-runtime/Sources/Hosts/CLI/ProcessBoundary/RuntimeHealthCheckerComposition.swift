@@ -18,7 +18,7 @@ public enum RuntimeHealthCheckerComposition {
         curlPath: String,
         now: @escaping @Sendable () -> Date = Date.init
     ) -> RuntimeHealthChecker {
-        RuntimeHealthChecker(
+        return RuntimeHealthChecker(
             context: context(
                 installedPaths: installedPaths,
                 plistBuddyPath: plistBuddyPath,
@@ -50,7 +50,6 @@ public enum RuntimeHealthCheckerComposition {
             lsofPath: lsofPath,
             curlPath: curlPath,
             proxyLaunchDaemonPlist: RuntimeManagedServicePaths.launchDaemonPlist(.proxy),
-            defaultProxyPort: Constants.Guest.publicPort,
             runtimeStateStaleAfterSeconds: Constants.Runtime.runtimeStateStaleAfterSeconds,
             watchdogManagedOperationGraceSeconds: Constants.Runtime.watchdogManagedOperationGraceSeconds,
             proxyHealthURL: { Constants.Runtime.proxyHealthURL(port: $0) },

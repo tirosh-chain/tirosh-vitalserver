@@ -30,7 +30,8 @@ extension RuntimeLifecycle {
                 installProvisionPayload: {
                     RuntimeInstallProvisionPayloadPolicy.document(
                         artifactStates: RuntimeInstallArtifactStateReader.states(
-                            paths: installProvisionPayloadPaths().map(\.path)
+                            paths: installProvisionPayloadPaths().map(\.path),
+                            fileStore: fileStore
                         )
                     )
                 },

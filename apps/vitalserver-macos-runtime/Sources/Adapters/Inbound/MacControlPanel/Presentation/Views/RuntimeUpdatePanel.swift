@@ -4,6 +4,7 @@ import Errors
 struct RuntimeUpdatePanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @Binding var showingUpdateConfirmation: Bool
+    private let actionAvailabilityPolicy = RuntimeControlActionAvailabilityPolicy()
 
     var body: some View {
         ScrollView {
@@ -111,11 +112,13 @@ struct RuntimeUpdatePanel: View {
                 showingUpdateConfirmation = true
             }
             .disabled(
-                viewModel.shouldShowUpdateProgress
-                    || !viewModel.hasSelectedBundle
-                    || !viewModel.selectedBundleVerified
-                    || !viewModel.status.runtimeInstalled
-                    || !viewModel.capabilities.canApplyBundle
+                !actionAvailabilityPolicy.canApplyUpdate(
+                    status: viewModel.status,
+                    capabilities: viewModel.capabilities,
+                    updateInProgress: viewModel.shouldShowUpdateProgress,
+                    hasSelectedBundle: viewModel.hasSelectedBundle,
+                    selectedBundleVerified: viewModel.selectedBundleVerified
+                )
             )
 
             if viewModel.shouldShowUpdateProgress {

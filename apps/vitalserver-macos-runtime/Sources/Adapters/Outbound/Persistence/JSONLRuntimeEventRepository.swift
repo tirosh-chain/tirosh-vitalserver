@@ -10,33 +10,31 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
     public let url: URL
     private let rotationMaxBytes: UInt64
     private let rotationKeepCount: Int
+    private let fileStore: RuntimeFileStore
 
     public init(
         url: URL,
         rotationMaxBytes: UInt64 = Self.defaultRotationMaxBytes,
-        rotationKeepCount: Int = Self.defaultRotationKeepCount
+        rotationKeepCount: Int = Self.defaultRotationKeepCount,
+        fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     ) {
         self.url = url
         self.rotationMaxBytes = rotationMaxBytes
         self.rotationKeepCount = rotationKeepCount
+        self.fileStore = fileStore
     }
 
     public func append(_ event: RuntimeEventDocument) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(event) + Data("\n".utf8)
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fileStore.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try rotateIfNeeded(incomingBytes: UInt64(data.count))
 
-        if FileManager.default.fileExists(atPath: url.path) {
-            let handle = try FileHandle(forWritingTo: url)
-            defer {
-                try? handle.close()
-            }
-            try handle.seekToEnd()
-            handle.write(data)
+        if try eventLogFileIsPresent(url) {
+            try fileStore.writeData(try fileStore.readData(url) + data, to: url, options: .atomic)
         } else {
-            try data.write(to: url, options: .atomic)
+            try fileStore.writeData(data, to: url, options: .atomic)
         }
     }
 
@@ -77,12 +75,22 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
         let decoder = JSONDecoder()
         var events: [RuntimeEventDocument] = []
         var issues: [JSONLRuntimeEventReadIssue] = []
-        for url in eventLogURLs() {
-            guard FileManager.default.fileExists(atPath: url.path) else {
+        for url in eventLogCandidates() {
+            let state = pathState(at: url)
+            switch state {
+            case .file:
+                break
+            case .missing:
+                continue
+            case .inspectFailed(let reason):
+                issues.append(.pathInspectionFailed(path: url.path, message: reason))
+                continue
+            case .directory, .other, .unknown:
+                issues.append(.unexpectedPathState(path: url.path, state: state.rawValue))
                 continue
             }
             do {
-                let data = try Data(contentsOf: url)
+                let data = try fileStore.readData(url)
                 guard let text = String(data: data, encoding: .utf8) else {
                     issues.append(.invalidEncoding(path: url.path))
                     continue
@@ -108,7 +116,7 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
 
     private func rotateIfNeeded(incomingBytes: UInt64) throws {
         guard rotationKeepCount > 0,
-              FileManager.default.fileExists(atPath: url.path),
+              try eventLogFileIsPresent(url),
               try fileSize(url) + incomingBytes >= rotationMaxBytes else {
             return
         }
@@ -116,29 +124,26 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
         for index in stride(from: rotationKeepCount - 1, through: 1, by: -1) {
             let source = rotatedURL(index)
             let destination = rotatedURL(index + 1)
-            if FileManager.default.fileExists(atPath: destination.path) {
-                try FileManager.default.removeItem(at: destination)
+            if try eventLogFileIsPresent(destination) {
+                try fileStore.removeItem(at: destination)
             }
-            if FileManager.default.fileExists(atPath: source.path) {
-                try FileManager.default.moveItem(at: source, to: destination)
+            if try eventLogFileIsPresent(source) {
+                try fileStore.moveItem(at: source, to: destination)
             }
         }
 
         let firstRotated = rotatedURL(1)
-        if FileManager.default.fileExists(atPath: firstRotated.path) {
-            try FileManager.default.removeItem(at: firstRotated)
+        if try eventLogFileIsPresent(firstRotated) {
+            try fileStore.removeItem(at: firstRotated)
         }
-        try FileManager.default.moveItem(at: url, to: firstRotated)
+        try fileStore.moveItem(at: url, to: firstRotated)
     }
 
-    private func eventLogURLs() -> [URL] {
+    private func eventLogCandidates() -> [URL] {
         var urls: [URL] = []
         if rotationKeepCount > 0 {
             for index in stride(from: rotationKeepCount, through: 1, by: -1) {
-                let rotated = rotatedURL(index)
-                if FileManager.default.fileExists(atPath: rotated.path) {
-                    urls.append(rotated)
-                }
+                urls.append(rotatedURL(index))
             }
         }
         urls.append(url)
@@ -150,11 +155,25 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
     }
 
     private func fileSize(_ url: URL) throws -> UInt64 {
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        guard let size = attributes[.size] as? NSNumber else {
-            throw JSONLRuntimeEventRepositoryError.missingFileSize(path: url.path)
+        try fileStore.fileSize(url)
+    }
+
+    private func eventLogFileIsPresent(_ url: URL) throws -> Bool {
+        let state = pathState(at: url)
+        switch state {
+        case .file:
+            return true
+        case .missing:
+            return false
+        case .inspectFailed(let reason):
+            throw JSONLRuntimeEventRepositoryError.pathInspectionFailed(path: url.path, reason: reason)
+        case .directory, .other, .unknown:
+            throw JSONLRuntimeEventRepositoryError.unexpectedPathState(path: url.path, state: state.rawValue)
         }
-        return size.uint64Value
+    }
+
+    private func pathState(at url: URL) -> RuntimePathState {
+        fileStore.pathState(at: url)
     }
 
     private func nextCursor(for events: [RuntimeEventDocument], hasMore: Bool) -> RuntimeEventCursor? {
@@ -176,6 +195,8 @@ public struct JSONLRuntimeEventReadResult: Equatable, Sendable {
 }
 
 public enum JSONLRuntimeEventReadIssue: Equatable, Sendable {
+    case pathInspectionFailed(path: String, message: String)
+    case unexpectedPathState(path: String, state: String)
     case readFailed(path: String, message: String)
     case invalidEncoding(path: String)
     case invalidLine(path: String, line: Int, message: String)

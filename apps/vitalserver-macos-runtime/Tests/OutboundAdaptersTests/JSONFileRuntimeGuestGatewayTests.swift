@@ -213,6 +213,182 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
 
         try harness.cleanup()
     }
+
+    func testLoadResultReportsDirectoryAtGuestDocumentPath() throws {
+        let harness = try GuestGatewayHarness()
+        try FileManager.default.createDirectory(
+            at: harness.updateActivationResultURL,
+            withIntermediateDirectories: true
+        )
+        defer {
+            try? harness.cleanup()
+        }
+
+        guard case .failed(let message) = harness.gateway.loadUpdateActivationResultDocument() else {
+            return XCTFail("Expected failed update activation result load")
+        }
+        XCTAssertTrue(message.contains("path state is unexpected"))
+        XCTAssertTrue(message.contains("state=directory"))
+    }
+
+    func testRemoveResultFailsWhenGuestDocumentPathIsDirectory() throws {
+        let harness = try GuestGatewayHarness()
+        try FileManager.default.createDirectory(
+            at: harness.updateActivationResultURL,
+            withIntermediateDirectories: true
+        )
+        defer {
+            try? harness.cleanup()
+        }
+
+        XCTAssertThrowsError(try harness.gateway.removeUpdateActivationResult()) { error in
+            XCTAssertEqual(
+                error as? JSONFileRuntimeGuestGatewayError,
+                .unexpectedPathState(path: harness.updateActivationResultURL.path, state: "directory")
+            )
+        }
+    }
+
+    func testLoadResultReportsInjectedPathInspectionFailure() {
+        let urls = GuestGatewayURLs(root: URL(fileURLWithPath: "/guest"))
+        let fileStore = GuestGatewayFileStore()
+        fileStore.pathStates[urls.updateActivationResult.path] = .inspectFailed("permission denied")
+        let gateway = urls.gateway(fileStore: fileStore)
+
+        guard case .failed(let message) = gateway.loadUpdateActivationResultDocument() else {
+            return XCTFail("Expected failed update activation result load")
+        }
+        XCTAssertEqual(
+            message,
+            "runtime guest document path inspection failed path=\(urls.updateActivationResult.path) reason=permission denied"
+        )
+    }
+
+    func testWritesAndRemovesGuestDocumentsThroughInjectedFileStore() throws {
+        let urls = GuestGatewayURLs(root: URL(fileURLWithPath: "/guest"))
+        let fileStore = GuestGatewayFileStore()
+        let gateway = urls.gateway(fileStore: fileStore)
+
+        try gateway.writeUpdateActivationRequest(RuntimeGuestActivationRequest(
+            id: "request-1",
+            requestedAt: "2026-05-21T12:33:57Z",
+            version: "0.1.4"
+        ))
+
+        XCTAssertEqual(fileStore.createdDirectories.map(\.path), [urls.root.path])
+        XCTAssertNotNil(fileStore.files[urls.updateActivationRequest])
+
+        fileStore.files[urls.updateActivationResult] = Data("{}".utf8)
+        fileStore.pathStates[urls.updateActivationResult.path] = .file
+
+        try gateway.removeUpdateActivationResult()
+
+        XCTAssertEqual(fileStore.removed, [urls.updateActivationResult])
+        XCTAssertNil(fileStore.files[urls.updateActivationResult])
+    }
+}
+
+private struct GuestGatewayURLs {
+    let root: URL
+
+    var runtimeState: URL { root.appendingPathComponent(RuntimeFileNames.runtimeState) }
+    var bootstrapResult: URL { root.appendingPathComponent(RuntimeFileNames.bootstrapResult) }
+    var updateActivationRequest: URL { root.appendingPathComponent(RuntimeFileNames.updateActivationRequest) }
+    var updateActivationResult: URL { root.appendingPathComponent(RuntimeFileNames.updateActivationResult) }
+    var updateShutdownRequest: URL { root.appendingPathComponent(RuntimeFileNames.updateShutdownRequest) }
+    var updateShutdownResult: URL { root.appendingPathComponent(RuntimeFileNames.updateShutdownResult) }
+    var datastoreRepairRequest: URL { root.appendingPathComponent(RuntimeFileNames.datastoreRepairRequest) }
+    var datastoreRepairResult: URL { root.appendingPathComponent(RuntimeFileNames.datastoreRepairResult) }
+
+    func gateway(fileStore: RuntimeFileReading & RuntimeFileWriting) -> JSONFileRuntimeGuestGateway {
+        JSONFileRuntimeGuestGateway(
+            runtimeStateURL: runtimeState,
+            bootstrapResultURL: bootstrapResult,
+            updateActivationRequestURL: updateActivationRequest,
+            updateActivationResultURL: updateActivationResult,
+            updateShutdownRequestURL: updateShutdownRequest,
+            updateShutdownResultURL: updateShutdownResult,
+            datastoreRepairRequestURL: datastoreRepairRequest,
+            datastoreRepairResultURL: datastoreRepairResult,
+            fileStore: fileStore
+        )
+    }
+}
+
+private final class GuestGatewayFileStore: RuntimeFileReading, RuntimeFileWriting {
+    var files: [URL: Data] = [:]
+    var pathStates: [String: RuntimePathState] = [:]
+    var createdDirectories: [URL] = []
+    var removed: [URL] = []
+
+    func fileExists(_ url: URL) -> Bool {
+        files[url] != nil
+    }
+
+    func directoryExists(_ url: URL) -> Bool {
+        createdDirectories.contains(url)
+    }
+
+    func isExecutableFile(atPath path: String) -> Bool {
+        false
+    }
+
+    func pathState(at url: URL) -> RuntimePathState {
+        if let state = pathStates[url.path] {
+            return state
+        }
+        if files[url] != nil {
+            return .file
+        }
+        return .missing
+    }
+
+    func readData(_ url: URL) throws -> Data {
+        guard let data = files[url] else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+        return data
+    }
+
+    func readUTF8Text(_ url: URL) throws -> String {
+        String(decoding: try readData(url), as: UTF8.self)
+    }
+
+    func fileSize(_ url: URL) throws -> UInt64 {
+        UInt64(try readData(url).count)
+    }
+
+    func modificationDate(_ url: URL) throws -> Date {
+        Date(timeIntervalSince1970: 0)
+    }
+
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions) throws {
+        files[url] = data
+        pathStates[url.path] = .file
+    }
+
+    func writeData(_ data: Data, to url: URL, options: Data.WritingOptions, posixPermissions: Int) throws {
+        try writeData(data, to: url, options: options)
+    }
+
+    func createDirectory(at url: URL, withIntermediateDirectories: Bool) throws {
+        createdDirectories.append(url)
+    }
+
+    func removeItem(at url: URL) throws {
+        files.removeValue(forKey: url)
+        pathStates[url.path] = .missing
+        removed.append(url)
+    }
+
+    func copyItem(at source: URL, to destination: URL) throws {
+        files[destination] = try readData(source)
+    }
+
+    func moveItem(at source: URL, to destination: URL) throws {
+        files[destination] = try readData(source)
+        files.removeValue(forKey: source)
+    }
 }
 
 private struct GuestGatewayHarness {

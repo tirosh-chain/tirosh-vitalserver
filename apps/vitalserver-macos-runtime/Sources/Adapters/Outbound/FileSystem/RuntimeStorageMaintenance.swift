@@ -1,4 +1,5 @@
 import Application
+import Contracts
 import Foundation
 import Errors
 
@@ -34,7 +35,7 @@ public struct RuntimeStorageMaintenance {
         try pruneOldDirectories(
             in: backupsDirectory,
             keep: configuration.backupKeepCount,
-            requiredNameFragment: "-before-"
+            requiredNameFragment: RuntimeManagedBackupPolicy.nameFragment
         )
         try pruneOldDirectories(
             in: bundlesDirectory,
@@ -65,11 +66,11 @@ public struct RuntimeStorageMaintenance {
         log(
             "file replacement started source=\(source.path) destination=\(destination.path) temporary=\(temporary.path) size=\(formatBytes(try fileStore.fileSize(source)))"
         )
-        if fileStore.fileExists(temporary) {
+        if try expectedFilePathIsPresent(temporary) {
             try fileStore.removeItem(at: temporary)
         }
         try fileStore.copyItem(at: source, to: temporary)
-        if fileStore.fileExists(destination) {
+        if try expectedFilePathIsPresent(destination) {
             try fileStore.removeItem(at: destination)
         }
         try fileStore.moveItem(at: temporary, to: destination)
@@ -77,6 +78,19 @@ public struct RuntimeStorageMaintenance {
     }
 
     private func pruneOldDirectories(in directory: URL, keep: Int, requiredNameFragment: String) throws {
+        let directoryState = fileStore.pathState(at: directory)
+        switch directoryState {
+        case .directory:
+            break
+        case .missing:
+            log("runtime artifact prune skipped directory missing path=\(directory.path) requiredNameFragment=\(requiredNameFragment)")
+            return
+        case .inspectFailed(let reason):
+            throw RuntimeStorageMaintenanceError.pathInspectionFailed(path: directory.path, reason: reason)
+        case .file, .other, .unknown:
+            throw RuntimeStorageMaintenanceError.unexpectedPathState(path: directory.path, state: directoryState.rawValue)
+        }
+
         let matchingDirectories: [URL]
         do {
             matchingDirectories = try fileStore.childDirectories(
@@ -85,10 +99,10 @@ public struct RuntimeStorageMaintenance {
                 skipsHiddenFiles: true
             )
         } catch {
-            log(
-                "runtime artifact prune skipped directory=\(directory.path) requiredNameFragment=\(requiredNameFragment) error=\(error)"
+            throw RuntimeStorageMaintenanceError.directoryListingFailed(
+                path: directory.path,
+                reason: String(describing: error)
             )
-            return
         }
         let directories = matchingDirectories.sorted { $0.lastPathComponent < $1.lastPathComponent }
 
@@ -104,6 +118,20 @@ public struct RuntimeStorageMaintenance {
             throw RuntimeStorageMaintenanceError.freeSpaceUnavailable(path: url.path)
         }
         return attributes.freeBytes
+    }
+
+    private func expectedFilePathIsPresent(_ url: URL) throws -> Bool {
+        let state = fileStore.pathState(at: url)
+        switch state {
+        case .file:
+            return true
+        case .missing:
+            return false
+        case .inspectFailed(let reason):
+            throw RuntimeStorageMaintenanceError.pathInspectionFailed(path: url.path, reason: reason)
+        case .directory, .other, .unknown:
+            throw RuntimeStorageMaintenanceError.unexpectedPathState(path: url.path, state: state.rawValue)
+        }
     }
 
     private func formatBytes(_ bytes: UInt64) -> String {

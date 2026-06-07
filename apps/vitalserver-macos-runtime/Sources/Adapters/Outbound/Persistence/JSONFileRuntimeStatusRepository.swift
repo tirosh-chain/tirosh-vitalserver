@@ -5,17 +5,30 @@ import Errors
 
 public struct JSONFileRuntimeStatusRepository: RuntimeStatusRepository {
     public let url: URL
+    private let fileStore: RuntimeFileReading & RuntimeFileWriting
 
-    public init(url: URL) {
+    public init(
+        url: URL,
+        fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore()
+    ) {
         self.url = url
+        self.fileStore = fileStore
     }
 
     public func loadResult() -> RuntimeStatusDocumentLoadResult {
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        let state = fileStore.pathState(at: url)
+        switch state {
+        case .file:
+            break
+        case .missing:
             return .missing
+        case .inspectFailed(let reason):
+            return .failed("runtime status document path inspection failed path=\(url.path) reason=\(reason)")
+        case .directory, .other, .unknown:
+            return .failed("runtime status document path state is unexpected path=\(url.path) state=\(state.rawValue)")
         }
         do {
-            let data = try Data(contentsOf: url)
+            let data = try fileStore.readData(url)
             return try .loaded(JSONDecoder().decode(RuntimeStatusDocument.self, from: data))
         } catch {
             return .failed(error.localizedDescription)
@@ -26,7 +39,7 @@ public struct JSONFileRuntimeStatusRepository: RuntimeStatusRepository {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(document)
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try data.write(to: url, options: .atomic)
+        try fileStore.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fileStore.writeData(data, to: url, options: .atomic)
     }
 }

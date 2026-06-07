@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import Errors
 
 public struct RuntimeInstallVMDiskProvisioningContext {
@@ -24,7 +25,7 @@ public struct RuntimeInstallVMDiskProvisioningContext {
 }
 
 public struct RuntimeInstallVMDiskProvisioningOperations {
-    public let fileExists: (URL) -> Bool
+    public let fileState: (URL) -> RuntimeFileState
     public let fileSize: (URL) throws -> UInt64
     public let requireFreeSpace: (URL, UInt64, String) throws -> Void
     public let removeItem: (URL) throws -> Void
@@ -34,7 +35,7 @@ public struct RuntimeInstallVMDiskProvisioningOperations {
     public let log: (String) -> Void
 
     public init(
-        fileExists: @escaping (URL) -> Bool,
+        fileState: @escaping (URL) -> RuntimeFileState,
         fileSize: @escaping (URL) throws -> UInt64,
         requireFreeSpace: @escaping (URL, UInt64, String) throws -> Void,
         removeItem: @escaping (URL) throws -> Void,
@@ -43,7 +44,7 @@ public struct RuntimeInstallVMDiskProvisioningOperations {
         runRequired: @escaping (String, [String]) throws -> Void,
         log: @escaping (String) -> Void
     ) {
-        self.fileExists = fileExists
+        self.fileState = fileState
         self.fileSize = fileSize
         self.requireFreeSpace = requireFreeSpace
         self.removeItem = removeItem
@@ -67,12 +68,12 @@ public struct RuntimeInstallVMDiskProvisioner {
     }
 
     public func provision(diskGiB: Int) throws {
-        if !operations.fileExists(context.vmDisk), operations.fileExists(context.rootfsBase) {
+        let vmDiskState = try stateForExistingOrMissingFile(context.vmDisk)
+        if vmDiskState == .missing {
+            try requireExistingFile(context.rootfsBase)
             try createDiskFromRootfs()
         }
-        guard operations.fileExists(context.vmDisk) else {
-            throw RuntimeInstallVMDiskProvisioningError.missingFile(context.rootfsBase.path)
-        }
+        try requireExistingFile(context.vmDisk)
         try operations.runRequired(context.truncateExecutable, ["-s", "\(diskGiB)G", context.vmDisk.path])
     }
 
@@ -85,7 +86,8 @@ public struct RuntimeInstallVMDiskProvisioner {
         let temporary = context.vmDisk
             .deletingLastPathComponent()
             .appendingPathComponent(".\(context.vmDisk.lastPathComponent).tmp")
-        if operations.fileExists(temporary) {
+        let temporaryState = try stateForExistingOrMissingFile(temporary)
+        if temporaryState == .present || temporaryState == .executable {
             try operations.removeItem(temporary)
         }
         try operations.runProcessToFile(
@@ -95,5 +97,25 @@ public struct RuntimeInstallVMDiskProvisioner {
         )
         try operations.moveItem(temporary, context.vmDisk)
         operations.log("created vm disk path=\(context.vmDisk.path) source=\(context.rootfsBase.lastPathComponent)")
+    }
+
+    private func requireExistingFile(_ url: URL) throws {
+        let state = try stateForExistingOrMissingFile(url)
+        if state == .present || state == .executable {
+            return
+        }
+        throw RuntimeInstallVMDiskProvisioningError.missingFile(url.path)
+    }
+
+    private func stateForExistingOrMissingFile(_ url: URL) throws -> RuntimeFileState {
+        let state = operations.fileState(url)
+        switch state {
+        case .present, .executable, .missing:
+            return state
+        case .inspectFailed(let reason):
+            throw RuntimeInstallVMDiskProvisioningError.fileInspectionFailed(path: url.path, reason: reason)
+        case .unknown(let value):
+            throw RuntimeInstallVMDiskProvisioningError.unexpectedFileState(path: url.path, state: value)
+        }
     }
 }

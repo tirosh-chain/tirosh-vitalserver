@@ -9,6 +9,7 @@ public struct RuntimeHealthCheckRunner {
     public var printLine: (String) -> Void
 
     public init(
+        useCase: RefreshRuntimeHealthUseCase,
         printStatus: @escaping () throws -> Void,
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
@@ -21,7 +22,7 @@ public struct RuntimeHealthCheckRunner {
         ) -> Void,
         printLine: @escaping (String) -> Void
     ) {
-        self.useCase = RefreshRuntimeHealthUseCase()
+        self.useCase = useCase
         self.operations = RefreshRuntimeHealthOperations(
             healthSnapshot: healthSnapshot,
             writeStatus: writeStatus,

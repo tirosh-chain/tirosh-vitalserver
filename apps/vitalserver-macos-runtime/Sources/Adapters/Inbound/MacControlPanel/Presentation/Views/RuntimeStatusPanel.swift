@@ -139,7 +139,10 @@ struct RuntimeStatusPanel: View {
     }
 
     private var recorderSummary: RuntimeStatusDisplayPolicy.RecorderSummary {
-        displayPolicy.recorderSummary(status: viewModel.status, observation: viewModel.containerObservation)
+        displayPolicy.recorderSummary(
+            observation: viewModel.containerObservation,
+            vitalDBObservation: viewModel.vitalDBObservationSnapshot.observation
+        )
     }
 
     private var vitalServerAvailability: RuntimeStatusDisplayPolicy.StatusValue {
@@ -174,20 +177,16 @@ struct RuntimeStatusPanel: View {
 
     private func serviceStatusAndURL(
         displayURL: String,
-        openURL: String,
+        openURL: String?,
         status: RuntimeStatusDisplayPolicy.StatusValue
     ) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
-                linkButton(displayURL) {
-                    viewModel.openExternalURL(openURL)
-                }
+                serviceURLValue(displayURL: displayURL, openURL: openURL)
                 statusValue(status)
             }
             VStack(alignment: .leading, spacing: 4) {
-                linkButton(displayURL) {
-                    viewModel.openExternalURL(openURL)
-                }
+                serviceURLValue(displayURL: displayURL, openURL: openURL)
                 statusValue(status)
             }
         }
@@ -286,6 +285,21 @@ struct RuntimeStatusPanel: View {
             } else {
                 NSCursor.arrow.set()
             }
+        }
+    }
+
+    @ViewBuilder
+    private func serviceURLValue(displayURL: String, openURL: String?) -> some View {
+        if let openURL {
+            linkButton(displayURL) {
+                viewModel.openExternalURL(openURL)
+            }
+        } else {
+            Text(displayURL)
+                .fontWeight(.medium)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
         }
     }
 

@@ -28,7 +28,7 @@ public protocol RuntimeNativeShell {
     func chooseUpdateBundle(prompt: String) -> URL?
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL?
     func logExportDestinationValidationMessage(for url: URL) -> String?
-    func directoryExists(_ url: URL) -> Bool
+    func pathState(_ url: URL) -> RuntimePathState
     func confirmCreateDirectory(path: String) -> Bool
     func createDirectory(_ url: URL) throws
     func openFileURL(_ url: URL)
@@ -44,7 +44,7 @@ public struct NoopRuntimeNativeShell: RuntimeNativeShell {
     public func chooseUpdateBundle(prompt: String) -> URL? { nil }
     public func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? { nil }
     public func logExportDestinationValidationMessage(for url: URL) -> String? { nil }
-    public func directoryExists(_ url: URL) -> Bool { false }
+    public func pathState(_ url: URL) -> RuntimePathState { .inspectFailed("native shell is not configured") }
     public func confirmCreateDirectory(path: String) -> Bool { false }
     public func createDirectory(_ url: URL) throws {}
     public func openFileURL(_ url: URL) {}

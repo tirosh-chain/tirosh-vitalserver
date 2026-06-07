@@ -3,14 +3,16 @@ import Errors
 
 public enum RuntimeControlHTTPWireCodec {
     public static func requestIsComplete(_ data: Data) throws -> Bool {
-        guard let raw = String(data: data, encoding: .utf8) else {
-            throw RuntimeControlHTTPWireCodecError.invalidRequest
-        }
-        guard let headerRange = raw.range(of: "\r\n\r\n") else {
+        guard let headerRange = headerSeparatorRange(in: data) else {
+            guard String(data: data, encoding: .utf8) != nil else {
+                throw RuntimeControlHTTPWireCodecError.invalidRequest
+            }
             return false
         }
 
-        let headerText = String(raw[..<headerRange.lowerBound])
+        guard let headerText = String(data: data[..<headerRange.lowerBound], encoding: .utf8) else {
+            throw RuntimeControlHTTPWireCodecError.invalidRequest
+        }
         let lines = headerText.components(separatedBy: "\r\n")
         let headers = try decodeHeaders(Array(lines.dropFirst()))
         guard let contentLengthValue = headerValue("Content-Length", in: headers) else {
@@ -20,20 +22,18 @@ public enum RuntimeControlHTTPWireCodec {
             throw RuntimeControlHTTPWireCodecError.invalidContentLength(contentLengthValue)
         }
 
-        let bodyText = String(raw[headerRange.upperBound...])
-        return Data(bodyText.utf8).count >= contentLength
+        let bodyByteCount = data[headerRange.upperBound...].count
+        return bodyByteCount >= contentLength
     }
 
     public static func decodeRequest(_ data: Data) throws -> RuntimeControlHTTPRequest {
-        guard let raw = String(data: data, encoding: .utf8) else {
-            throw RuntimeControlHTTPWireCodecError.invalidRequest
-        }
-        guard let headerRange = raw.range(of: "\r\n\r\n") else {
+        guard let headerRange = headerSeparatorRange(in: data) else {
             throw RuntimeControlHTTPWireCodecError.invalidRequest
         }
 
-        let headerText = String(raw[..<headerRange.lowerBound])
-        let bodyStart = headerRange.upperBound
+        guard let headerText = String(data: data[..<headerRange.lowerBound], encoding: .utf8) else {
+            throw RuntimeControlHTTPWireCodecError.invalidRequest
+        }
         let lines = headerText.components(separatedBy: "\r\n")
         guard let requestLine = lines.first else {
             throw RuntimeControlHTTPWireCodecError.invalidRequest
@@ -48,7 +48,7 @@ public enum RuntimeControlHTTPWireCodec {
         }
 
         let headers = try decodeHeaders(Array(lines.dropFirst()))
-        let body = try decodeBody(raw: raw, bodyStart: bodyStart, headers: headers)
+        let body = try decodeBody(Data(data[headerRange.upperBound...]), headers: headers)
         return RuntimeControlHTTPRequest(method: method, path: requestParts[1], headers: headers, body: body)
     }
 
@@ -107,21 +107,26 @@ public enum RuntimeControlHTTPWireCodec {
         return headers
     }
 
-    private static func decodeBody(raw: String, bodyStart: String.Index, headers: [String: String]) throws -> Data? {
-        let bodyText = String(raw[bodyStart...])
-        guard !bodyText.isEmpty else {
+    private static func decodeBody(_ bodyData: Data, headers: [String: String]) throws -> Data? {
+        guard !bodyData.isEmpty else {
             return nil
         }
 
         guard let contentLengthValue = headerValue("Content-Length", in: headers) else {
-            return Data(bodyText.utf8)
+            return bodyData
         }
         guard let contentLength = Int(contentLengthValue), contentLength >= 0 else {
             throw RuntimeControlHTTPWireCodecError.invalidContentLength(contentLengthValue)
         }
+        guard bodyData.count >= contentLength else {
+            throw RuntimeControlHTTPWireCodecError.invalidRequest
+        }
 
-        let bodyData = Data(bodyText.utf8)
-        return bodyData.prefix(contentLength)
+        return Data(bodyData.prefix(contentLength))
+    }
+
+    private static func headerSeparatorRange(in data: Data) -> Range<Data.Index>? {
+        data.range(of: Data("\r\n\r\n".utf8))
     }
 
     private static func headerValue(_ name: String, in headers: [String: String]) -> String? {

@@ -200,6 +200,14 @@ public struct UninstallRuntimeUseCase {
         "removal incomplete target=\(path)"
     }
 
+    public func removalTargetPathInspectionFailedMessage(path: String, reason: String) -> String {
+        "removal target path inspection failed target=\(path) reason=\(reason)"
+    }
+
+    public func removalTargetPathStateUnexpectedMessage(path: String, state: String) -> String {
+        "removal target path state is unexpected target=\(path) state=\(state)"
+    }
+
     public func removalDiagnosticTargetLogMessage(path: String) -> String {
         "removal diagnostic target=\(path)"
     }

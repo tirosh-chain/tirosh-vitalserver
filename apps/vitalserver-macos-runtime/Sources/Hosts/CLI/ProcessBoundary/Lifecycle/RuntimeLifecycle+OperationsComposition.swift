@@ -18,18 +18,19 @@ extension RuntimeLifecycle {
                 vmDisk: vmDisk
             ),
             operations: RuntimeStatusPrinterCompositionOperations(
-                latestBackupPath: { latestBackup()?.path },
-                runtimeStatusValue: runtimeStatusValue,
+                latestBackupPath: { try latestBackup()?.path },
+                runtimeStatusDocument: statusReporter.loadStatusResult,
                 runtimeVersionValue: runtimeVersionValue,
-                vmIP: { statusReporter.loadStatus()?.vmIP ?? "not reported" },
                 installedProxyPort: healthChecker.installedProxyPort,
                 hostProxyHTTPStatus: { url in
                     httpProber.statusCode(url: url)
                 },
-                isExecutableFile: { path in
-                    fileStore.isExecutableFile(atPath: path)
+                fileStateAtPath: { path in
+                    fileStore.fileState(atPath: path)
                 },
-                fileExists: fileExists,
+                fileStateAtURL: { url in
+                    fileStore.fileState(at: url)
+                },
                 serviceState: { label in
                     healthChecker.launchdState(label)
                 }
@@ -65,8 +66,15 @@ extension RuntimeLifecycle {
         )
     }
 
-    func automaticRecoveryEnabled() -> Bool {
-        runtimeConfigFlagReader().automaticRecoveryEnabled()
+    func automaticRecoveryEnabled() throws -> Bool {
+        switch runtimeConfigFlagReader().automaticRecoveryFlag() {
+        case .configured(_, let value), .defaulted(_, let value, _):
+            return value
+        case .failed(let name, let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "runtime config flag read failed name=\(name) reason=\(reason)"
+            )
+        }
     }
 
     func runtimeManagedOperationGuard() -> RuntimeManagedOperationGuardComposition {
@@ -100,7 +108,7 @@ extension RuntimeLifecycle {
                     Constants.Runtime.proxyLivenessURL(port: port)
                 },
                 automaticRecoveryEnabled: {
-                    automaticRecoveryEnabled()
+                    try automaticRecoveryEnabled()
                 },
                 restartVMRuntime: {
                     try restartVMRuntimeServices()

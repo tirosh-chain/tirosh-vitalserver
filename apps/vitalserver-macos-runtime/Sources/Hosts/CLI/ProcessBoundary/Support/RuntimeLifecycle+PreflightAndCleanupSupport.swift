@@ -58,9 +58,8 @@ extension RuntimeLifecycle {
                     RuntimeHostProxyPortStateReader.state(
                         port: port,
                         lsofPath: Constants.Commands.lsof,
-                        runProcess: { executable, arguments in
-                            runProcess(executable, arguments: arguments)
-                        }
+                        fileStore: fileStore,
+                        commandRunner: SystemRuntimeCommandRunner()
                     )
                 }
             )

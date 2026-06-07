@@ -1,5 +1,4 @@
 import Contracts
-import Domain
 import Foundation
 import Errors
 
@@ -12,37 +11,46 @@ public struct RuntimeBundleMaterializationContext: Equatable, Sendable {
 }
 
 public struct RuntimeBundleMaterializationOperations {
-    public let directoryExists: (URL) -> Bool
-    public let fileExists: (URL) -> Bool
+    public let pathState: (URL) -> RuntimePathState
     public let temporaryRoot: () -> URL
     public let createDirectory: (URL, Bool) throws -> Void
     public let runProcess: (String, [String]) -> RuntimeProcessResult
     public let runRequired: (String, [String]) throws -> Void
+    public let rootDirectory: (String) throws -> String
+    public let validateArchiveEntryTypes: (String, String) throws -> Void
     public let missingFileError: (URL) -> Error
     public let invalidArchiveError: (URL) -> Error
-    public let archiveValidationError: (UpdateBundleArchiveVerificationError) -> Error
+    public let pathInspectionError: (URL, String) -> Error
+    public let unexpectedPathStateError: (URL, RuntimePathState) -> Error
+    public let archiveValidationError: (Error) -> Error
     public let log: (String) -> Void
 
     public init(
-        directoryExists: @escaping (URL) -> Bool,
-        fileExists: @escaping (URL) -> Bool,
+        pathState: @escaping (URL) -> RuntimePathState,
         temporaryRoot: @escaping () -> URL,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         runProcess: @escaping (String, [String]) -> RuntimeProcessResult,
         runRequired: @escaping (String, [String]) throws -> Void,
+        rootDirectory: @escaping (String) throws -> String,
+        validateArchiveEntryTypes: @escaping (String, String) throws -> Void,
         missingFileError: @escaping (URL) -> Error,
         invalidArchiveError: @escaping (URL) -> Error,
-        archiveValidationError: @escaping (UpdateBundleArchiveVerificationError) -> Error,
+        pathInspectionError: @escaping (URL, String) -> Error,
+        unexpectedPathStateError: @escaping (URL, RuntimePathState) -> Error,
+        archiveValidationError: @escaping (Error) -> Error,
         log: @escaping (String) -> Void
     ) {
-        self.directoryExists = directoryExists
-        self.fileExists = fileExists
+        self.pathState = pathState
         self.temporaryRoot = temporaryRoot
         self.createDirectory = createDirectory
         self.runProcess = runProcess
         self.runRequired = runRequired
+        self.rootDirectory = rootDirectory
+        self.validateArchiveEntryTypes = validateArchiveEntryTypes
         self.missingFileError = missingFileError
         self.invalidArchiveError = invalidArchiveError
+        self.pathInspectionError = pathInspectionError
+        self.unexpectedPathStateError = unexpectedPathStateError
         self.archiveValidationError = archiveValidationError
         self.log = log
     }
@@ -61,11 +69,22 @@ public struct RuntimeBundleMaterializer {
     }
 
     public func materialize(_ bundleURL: URL) throws -> RuntimeMaterializedBundle {
-        if operations.directoryExists(bundleURL) {
+        let inputState = operations.pathState(bundleURL)
+        switch inputState {
+        case .directory:
             return RuntimeMaterializedBundle(bundleURL: bundleURL, temporaryRoot: nil)
-        }
-        guard operations.fileExists(bundleURL), isUpdateBundleArchive(bundleURL) else {
+        case .file:
+            guard isUpdateBundleArchive(bundleURL) else {
+                throw operations.invalidArchiveError(bundleURL)
+            }
+        case .missing:
             throw operations.missingFileError(bundleURL)
+        case .other:
+            throw operations.unexpectedPathStateError(bundleURL, inputState)
+        case .inspectFailed(let reason):
+            throw operations.pathInspectionError(bundleURL, reason)
+        case .unknown:
+            throw operations.unexpectedPathStateError(bundleURL, inputState)
         }
 
         let temporaryRoot = operations.temporaryRoot()
@@ -88,8 +107,16 @@ public struct RuntimeBundleMaterializer {
         try validateBundleArchiveEntryTypes(archiveURL)
         try operations.runRequired(context.tarExecutable, ["-xzf", archiveURL.path, "-C", temporaryRoot.path])
         let extractedBundle = temporaryRoot.appendingPathComponent(rootName, isDirectory: true)
-        guard operations.directoryExists(extractedBundle) else {
+        let extractedState = operations.pathState(extractedBundle)
+        switch extractedState {
+        case .directory:
+            break
+        case .missing:
             throw operations.missingFileError(extractedBundle)
+        case .file, .other, .unknown:
+            throw operations.unexpectedPathStateError(extractedBundle, extractedState)
+        case .inspectFailed(let reason):
+            throw operations.pathInspectionError(extractedBundle, reason)
         }
         operations.log("bundle archive extracted source=\(archiveURL.path) destination=\(extractedBundle.path)")
         return extractedBundle
@@ -97,8 +124,8 @@ public struct RuntimeBundleMaterializer {
 
     private func archiveRootDirectory(_ output: String) throws -> String {
         do {
-            return try UpdateBundleArchiveVerifier.rootDirectory(listOutput: output)
-        } catch let error as UpdateBundleArchiveVerificationError {
+            return try operations.rootDirectory(output)
+        } catch {
             throw operations.archiveValidationError(error)
         }
     }
@@ -109,11 +136,8 @@ public struct RuntimeBundleMaterializer {
             throw operations.invalidArchiveError(archiveURL)
         }
         do {
-            try UpdateBundleArchiveVerifier.rejectUnsupportedEntryTypes(
-                verboseListOutput: result.stdout,
-                archiveName: archiveURL.lastPathComponent
-            )
-        } catch let error as UpdateBundleArchiveVerificationError {
+            try operations.validateArchiveEntryTypes(result.stdout, archiveURL.lastPathComponent)
+        } catch {
             throw operations.archiveValidationError(error)
         }
     }

@@ -49,8 +49,16 @@ public struct VMRuntimeConfig: Codable {
     }
 
     public static func readDocument(from url: URL, fileStore: RuntimeFileReading) throws -> VMRuntimeConfig {
-        guard fileStore.fileExists(url) else {
+        let state = fileStore.pathState(at: url)
+        switch state {
+        case .file:
+            break
+        case .missing:
             throw VMRuntimeConfigReadError.missingConfig(url.path)
+        case .inspectFailed(let reason):
+            throw VMRuntimeConfigReadError.configInspectionFailed(path: url.path, reason: reason)
+        case .directory, .other, .unknown:
+            throw VMRuntimeConfigReadError.unexpectedConfigPathState(path: url.path, state: state.rawValue)
         }
         let data = try fileStore.readData(url)
         return try JSONDecoder().decode(VMRuntimeConfig.self, from: data)
@@ -58,8 +66,17 @@ public struct VMRuntimeConfig: Codable {
 
     public static func validateBootFilePaths(_ config: VMRuntimeConfig, fileStore: RuntimeFileReading) throws {
         for path in [config.kernelPath, config.initialRamdiskPath, config.diskPath].compactMap({ $0 }) {
-            guard fileStore.fileExists(URL(fileURLWithPath: path)) else {
+            let url = URL(fileURLWithPath: path)
+            let state = fileStore.pathState(at: url)
+            switch state {
+            case .file:
+                continue
+            case .missing:
                 throw VMRuntimeBootFileValidationError.missingFile(path)
+            case .inspectFailed(let reason):
+                throw VMRuntimeBootFileValidationError.pathInspectionFailed(path: path, reason: reason)
+            case .directory, .other, .unknown:
+                throw VMRuntimeBootFileValidationError.unexpectedPathState(path: path, state: state.rawValue)
             }
         }
     }

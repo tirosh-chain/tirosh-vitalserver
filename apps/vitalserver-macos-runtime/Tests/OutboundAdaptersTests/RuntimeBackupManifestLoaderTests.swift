@@ -9,9 +9,9 @@ final class RuntimeBackupManifestLoaderTests: XCTestCase {
         let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
         var events: [String] = []
         let loader = RuntimeBackupManifestLoader(
-            fileExists: { url in
-                events.append("exists:\(url.path)")
-                return true
+            pathState: { url in
+                events.append("state:\(url.path)")
+                return .file
             },
             readData: { url in
                 events.append("read:\(url.path)")
@@ -23,7 +23,7 @@ final class RuntimeBackupManifestLoaderTests: XCTestCase {
 
         XCTAssertEqual(manifest.rootfsBase, RuntimeFileNames.rootfsBase)
         XCTAssertEqual(events, [
-            "exists:/runtime/backups/backup-1/backup-manifest.json",
+            "state:/runtime/backups/backup-1/backup-manifest.json",
             "read:/runtime/backups/backup-1/backup-manifest.json",
         ])
     }
@@ -33,7 +33,7 @@ final class RuntimeBackupManifestLoaderTests: XCTestCase {
         let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
 
         XCTAssertThrowsError(try RuntimeBackupManifestLoader(
-            fileExists: { _ in false },
+            pathState: { _ in .missing },
             readData: { _ in Data() }
         ).load(from: backup)) { error in
             XCTAssertEqual(
@@ -43,7 +43,7 @@ final class RuntimeBackupManifestLoaderTests: XCTestCase {
         }
 
         XCTAssertThrowsError(try RuntimeBackupManifestLoader(
-            fileExists: { _ in true },
+            pathState: { _ in .file },
             readData: { _ in throw TestError.permissionDenied }
         ).load(from: backup)) { error in
             XCTAssertEqual(
@@ -53,7 +53,7 @@ final class RuntimeBackupManifestLoaderTests: XCTestCase {
         }
 
         XCTAssertThrowsError(try RuntimeBackupManifestLoader(
-            fileExists: { _ in true },
+            pathState: { _ in .file },
             readData: { _ in Data(#"{"rootfsBase":7}"#.utf8) }
         ).load(from: backup)) { error in
             guard case .decodeFailed(let path, let reason) = error as? RuntimeBackupManifestLoaderError else {
@@ -61,6 +61,31 @@ final class RuntimeBackupManifestLoaderTests: XCTestCase {
             }
             XCTAssertEqual(path, manifestURL.path)
             XCTAssertFalse(reason.isEmpty)
+        }
+    }
+
+    func testLoadReportsManifestPathInspectionFailures() {
+        let backup = URL(fileURLWithPath: "/runtime/backups/backup-1")
+        let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
+
+        XCTAssertThrowsError(try RuntimeBackupManifestLoader(
+            pathState: { _ in .inspectFailed("permission denied") },
+            readData: { _ in Data() }
+        ).load(from: backup)) { error in
+            XCTAssertEqual(
+                error as? RuntimeBackupManifestLoaderError,
+                .pathInspectionFailed(path: manifestURL.path, reason: "permission denied")
+            )
+        }
+
+        XCTAssertThrowsError(try RuntimeBackupManifestLoader(
+            pathState: { _ in .directory },
+            readData: { _ in Data() }
+        ).load(from: backup)) { error in
+            XCTAssertEqual(
+                error as? RuntimeBackupManifestLoaderError,
+                .unexpectedPathState(path: manifestURL.path, state: "directory")
+            )
         }
     }
 }

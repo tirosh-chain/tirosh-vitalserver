@@ -130,18 +130,18 @@ public enum ApplyRuntimeBundleRootfsStorageObservationPlan: Equatable, Sendable 
 
 public struct ApplyRuntimeBundleRootfsStorageObservation: Equatable, Sendable {
     public let stagedRootfs: URL
-    public let stagedRootfsExists: Bool
+    public let stagedRootfsState: RuntimePathState
     public let installedRootfsBytes: UInt64?
     public let incomingRootfsBytes: UInt64?
 
     public init(
         stagedRootfs: URL,
-        stagedRootfsExists: Bool,
+        stagedRootfsState: RuntimePathState,
         installedRootfsBytes: UInt64?,
         incomingRootfsBytes: UInt64?
     ) {
         self.stagedRootfs = stagedRootfs
-        self.stagedRootfsExists = stagedRootfsExists
+        self.stagedRootfsState = stagedRootfsState
         self.installedRootfsBytes = installedRootfsBytes
         self.incomingRootfsBytes = incomingRootfsBytes
     }
@@ -305,8 +305,15 @@ public struct ApplyRuntimeBundlePreflightUseCase {
     public func rootfsStorageDecision(
         observation: ApplyRuntimeBundleRootfsStorageObservation
     ) -> ApplyRuntimeBundleRootfsStorageDecision {
-        guard observation.stagedRootfsExists else {
+        switch observation.stagedRootfsState {
+        case .file:
+            break
+        case .missing:
             return .failed(message: missingFileFailureMessage(path: observation.stagedRootfs.path))
+        case .inspectFailed(let reason):
+            return .failed(message: "staged rootfs path inspection failed: \(observation.stagedRootfs.path) reason=\(reason)")
+        case .directory, .other, .unknown:
+            return .failed(message: "staged rootfs path state is unexpected: \(observation.stagedRootfs.path) state=\(observation.stagedRootfsState.rawValue)")
         }
         guard let installedRootfsBytes = observation.installedRootfsBytes,
               let incomingRootfsBytes = observation.incomingRootfsBytes

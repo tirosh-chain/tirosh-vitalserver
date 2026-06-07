@@ -18,6 +18,7 @@ final class RuntimeControlContractsTests: XCTestCase {
     func testRuntimeStatusUsesTypedOperationAndRoundTripsThroughJSON() throws {
         let status = RuntimeStatus(
             runtimeInstalled: true,
+            runtimeInstallationState: .executable,
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
             watchdogServiceLoaded: true,
@@ -45,10 +46,443 @@ final class RuntimeControlContractsTests: XCTestCase {
         ])
         XCTAssertEqual(decoded.vmState, .running)
         XCTAssertEqual(decoded.vmErrors ?? [], [])
+        XCTAssertEqual(decoded.runtimeInstallationState, .executable)
+        XCTAssertEqual(decoded.effectiveRuntimeInstallationState, .executable)
         XCTAssertEqual(decoded.vmServiceState, .loaded)
         XCTAssertEqual(decoded.proxyServiceState, .loaded)
         XCTAssertEqual(decoded.watchdogServiceState, .loaded)
         XCTAssertTrue(RuntimeReadinessPolicy.isReady(decoded))
+    }
+
+    func testRuntimeStatusDecodesLegacyRuntimeInstallationStateFromInstalledBool() throws {
+        let legacyInstalled = try JSONDecoder().decode(RuntimeStatus.self, from: Data("""
+        {
+          "runtimeInstalled": true,
+          "vmServiceLoaded": false,
+          "proxyServiceLoaded": false,
+          "guestLogSyncServiceLoaded": false,
+          "watchdogServiceLoaded": false,
+          "readIssues": [],
+          "failureReasons": []
+        }
+        """.utf8))
+        let legacyMissing = RuntimeStatus(runtimeInstalled: false)
+
+        XCTAssertNil(legacyInstalled.runtimeInstallationState)
+        XCTAssertEqual(legacyInstalled.effectiveRuntimeInstallationState, .executable)
+        XCTAssertEqual(legacyMissing.effectiveRuntimeInstallationState, .missing)
+    }
+
+    func testRuntimeSettingsReadPolicyAppliesVMConfigWithoutReadingHostState() {
+        let settings = RuntimeSettingsReadPolicy.applyVMConfig(
+            RuntimeVMConfigSettingsReadInput(
+                cpuCount: 4,
+                memoryMiB: 512,
+                networkMode: "bridged",
+                bridgedInterface: nil,
+                vitalFilesDirectoryHostPath: "/Volumes/Vital Files",
+                autoRecoveryEnabled: nil,
+                preventSystemSleep: false
+            ),
+            to: RuntimeSettings()
+        )
+
+        XCTAssertEqual(settings.cpuCount, 4)
+        XCTAssertEqual(settings.memoryGiB, 1)
+        XCTAssertEqual(settings.networkMode, .bridged)
+        XCTAssertNil(settings.bridgedInterface)
+        XCTAssertEqual(settings.vitalFilesDirectory, "/Volumes/Vital Files")
+        XCTAssertTrue(settings.autoRecoveryEnabled)
+        XCTAssertFalse(settings.preventSystemSleep)
+        XCTAssertEqual(settings.readIssues, [
+            RuntimeSettingsReadIssue(
+                source: "vmConfig.network.bridgedInterface",
+                message: "bridgedInterface is missing for bridged network mode"
+            ),
+            RuntimeSettingsReadIssue(
+                source: "vmConfig.autoRecoveryEnabled",
+                message: "autoRecoveryEnabled is missing"
+            ),
+        ])
+    }
+
+    func testRuntimeSettingsReadPolicyClampsGuestRetentionAsExplicitReadIssue() {
+        let settings = RuntimeSettingsReadPolicy.applyGuestRuntimeSettings(
+            RuntimeGuestRuntimeSettingsReadInput(
+                vitalServerURL: "https://settings.example.test/",
+                remoteConsoleURL: "https://console.settings.example.test/",
+                publicHost: "settings.example.test",
+                publicPort: 8443,
+                redisBackupRetentionCount: 31
+            ),
+            to: RuntimeSettings()
+        )
+
+        XCTAssertEqual(settings.vitalServerURL, "https://settings.example.test/")
+        XCTAssertEqual(settings.remoteConsoleURL, "https://console.settings.example.test/")
+        XCTAssertEqual(settings.publicHost, "settings.example.test")
+        XCTAssertEqual(settings.publicPort, 8443)
+        XCTAssertEqual(settings.redisBackupRetentionCount, 30)
+        XCTAssertEqual(settings.readIssues, [
+            RuntimeSettingsReadIssue(
+                source: "guestRuntimeSettings.redisBackupRetentionCount",
+                message: "redisBackupRetentionCount is out of range: 31"
+            ),
+        ])
+    }
+
+    func testRuntimeSettingsReadPolicyAssemblesSettingsFromExplicitSnapshot() {
+        let settings = RuntimeSettingsReadPolicy.settings(from: RuntimeSettingsReadSnapshot(
+            vmConfig: .loaded(RuntimeVMConfigSettingsReadInput(
+                cpuCount: 4,
+                memoryMiB: 4096,
+                networkMode: "shared",
+                bridgedInterface: "en0",
+                vitalFilesDirectoryHostPath: "/Volumes/Vital Files",
+                autoRecoveryEnabled: false,
+                preventSystemSleep: false
+            )),
+            diskGiB: .loaded(32),
+            guestRuntimeSettings: .loaded(RuntimeGuestRuntimeSettingsReadInput(
+                vitalServerURL: "https://vitaldb.example.test/",
+                remoteConsoleURL: "https://console.example.test/",
+                publicHost: "example.test",
+                publicPort: 8443,
+                redisBackupRetentionCount: 12
+            )),
+            proxyPort: .loaded(19090),
+            startOnBoot: .loaded(false)
+        ))
+
+        XCTAssertEqual(settings.readIssues, [])
+        XCTAssertEqual(settings.cpuCount, 4)
+        XCTAssertEqual(settings.memoryGiB, 4)
+        XCTAssertEqual(settings.diskGiB, 32)
+        XCTAssertEqual(settings.minimumDiskGiB, 32)
+        XCTAssertEqual(settings.vitalFilesDirectory, "/Volumes/Vital Files")
+        XCTAssertEqual(settings.vitalServerURL, "https://vitaldb.example.test/")
+        XCTAssertEqual(settings.remoteConsoleURL, "https://console.example.test/")
+        XCTAssertEqual(settings.publicHost, "example.test")
+        XCTAssertEqual(settings.publicPort, 8443)
+        XCTAssertEqual(settings.redisBackupRetentionCount, 12)
+        XCTAssertEqual(settings.proxyPort, 19090)
+        XCTAssertFalse(settings.startOnBoot)
+        XCTAssertTrue(settings.startOnBootConfigurable)
+        XCTAssertFalse(settings.autoRecoveryEnabled)
+        XCTAssertFalse(settings.preventSystemSleep)
+    }
+
+    func testRuntimeSettingsReadPolicyPreservesMissingAndFailedSnapshotMeanings() {
+        let settings = RuntimeSettingsReadPolicy.settings(from: RuntimeSettingsReadSnapshot(
+            vmConfig: .missing,
+            diskGiB: .failed("disk size denied"),
+            guestRuntimeSettings: .missing,
+            proxyPort: .failed("proxy plist denied"),
+            startOnBoot: .failed("launchctl denied")
+        ))
+
+        XCTAssertEqual(settings.diskGiB, RuntimeSettings().diskGiB)
+        XCTAssertEqual(settings.proxyPort, RuntimeSettings().proxyPort)
+        XCTAssertFalse(settings.startOnBootConfigurable)
+        XCTAssertEqual(settings.readIssues, [
+            RuntimeSettingsReadIssue(source: "vmDisk", message: "disk size denied"),
+            RuntimeSettingsReadIssue(source: "guestRuntimeSettings", message: "runtime settings document is missing"),
+            RuntimeSettingsReadIssue(source: "proxyLaunchDaemon", message: "proxy plist denied"),
+            RuntimeSettingsReadIssue(source: "startOnBoot", message: "launchctl denied"),
+        ])
+    }
+
+    func testRuntimeLogExportManifestStatusValuesPreserveMissingFailedAndIncludedMeanings() throws {
+        XCTAssertEqual(
+            RuntimeLogExportManifest.SupplementalItem.statusValue(
+                sourcePresent: false,
+                included: false,
+                error: nil
+            ),
+            "missing"
+        )
+        XCTAssertEqual(
+            RuntimeLogExportManifest.SupplementalItem.statusValue(
+                sourcePresent: true,
+                included: false,
+                error: nil
+            ),
+            "not-included"
+        )
+        XCTAssertEqual(
+            RuntimeLogExportManifest.SupplementalItem.statusValue(
+                sourcePresent: true,
+                included: false,
+                error: "permission denied"
+            ),
+            "failed"
+        )
+        XCTAssertEqual(
+            RuntimeLogExportManifest.SupplementalItem.statusValue(
+                sourcePresent: true,
+                included: true,
+                error: "late cleanup issue"
+            ),
+            "included"
+        )
+
+        XCTAssertEqual(
+            RuntimeLogExportManifest.RotatedSupplementalSet.statusValue(
+                sourcePresent: false,
+                copiedCount: 0,
+                error: nil
+            ),
+            "missing"
+        )
+        XCTAssertEqual(
+            RuntimeLogExportManifest.RotatedSupplementalSet.statusValue(
+                sourcePresent: true,
+                copiedCount: 0,
+                error: nil
+            ),
+            "no-matching-files"
+        )
+        XCTAssertEqual(
+            RuntimeLogExportManifest.RotatedSupplementalSet.statusValue(
+                sourcePresent: true,
+                copiedCount: 0,
+                error: "list failed"
+            ),
+            "failed"
+        )
+        XCTAssertEqual(
+            RuntimeLogExportManifest.RotatedSupplementalSet.statusValue(
+                sourcePresent: true,
+                copiedCount: 2,
+                error: nil
+            ),
+            "included"
+        )
+    }
+
+    func testRuntimeLogExportSourceContractOwnsBundleRelativeDestinations() {
+        let destinations = Set(RuntimeLogExportSourceContract.supplementalDestinations().map(\.relativeDestination))
+        let rotated = RuntimeLogExportSourceContract.rotatedSupplementalDestinations()
+
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeStatus)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeOperationLease)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeEvents)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-wal"))
+        XCTAssertTrue(destinations.contains("diagnostics/status/\(RuntimeFileNames.runtimeObservabilityDB)-shm"))
+        XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeFileNames.runtimeState)"))
+        XCTAssertTrue(destinations.contains("diagnostics/runtime/\(RuntimeFileNames.vmLifecycle)"))
+        XCTAssertTrue(destinations.contains("diagnostics/guest/\(RuntimeFileNames.vmIP)"))
+        XCTAssertTrue(destinations.contains("diagnostics/runtime/vm-config.json"))
+        XCTAssertTrue(destinations.contains("diagnostics/runtime/runtime-version.json"))
+        XCTAssertTrue(destinations.contains("diagnostics/guest/runtime-config.json"))
+        XCTAssertTrue(destinations.contains("diagnostics/host/ai.tirosh.vitalserver.helper.proxy.plist"))
+        XCTAssertTrue(destinations.contains("diagnostics/host/vitalserver-nginx.conf"))
+        XCTAssertTrue(destinations.contains("guest/guest-observability"))
+        XCTAssertTrue(destinations.contains("helper-message.log"))
+
+        let runtimeEventSet = rotated.first { $0.sourceID == .runtimeEvents }
+        XCTAssertEqual(runtimeEventSet?.sourceFilePrefix, "\(RuntimeFileNames.runtimeEvents).")
+        XCTAssertEqual(runtimeEventSet?.relativeDestinationDirectory, "diagnostics/status")
+        XCTAssertEqual(runtimeEventSet?.destinationFilePrefix, "\(RuntimeFileNames.runtimeEvents).")
+    }
+
+    func testRuntimeLogCollectionSourceContractOwnsProductLogNamesAndArchivePrefixes() {
+        let files = RuntimeLogCollectionSourceContract.fileCopies()
+        let runtimeLauncher = files.first { $0.sourceID == .launcherLog }
+        let bootstrap = files.first { $0.sourceID == .bootstrapLog }
+        let command = files.first { $0.sourceID == .commandLog }
+        let directories = RuntimeLogCollectionSourceContract.directoryCopies()
+        let rotated = RuntimeLogCollectionSourceContract.rotatedCopies()
+
+        XCTAssertEqual(runtimeLauncher?.sourceFileName, "launcher.log")
+        XCTAssertEqual(runtimeLauncher?.destinationScope, .runtimeLogs)
+        XCTAssertEqual(runtimeLauncher?.destinationFileName, "launcher.log")
+        XCTAssertEqual(runtimeLauncher?.archivePrefix, "runtime-launcher.log")
+
+        XCTAssertEqual(bootstrap?.sourceFileName, RuntimeFileNames.bootstrapLog)
+        XCTAssertEqual(bootstrap?.destinationScope, .guestLogs)
+        XCTAssertEqual(bootstrap?.destinationFileName, RuntimeFileNames.bootstrapLog)
+        XCTAssertEqual(bootstrap?.archivePrefix, "guest-bootstrap.log")
+
+        XCTAssertEqual(command?.sourceFileName, RuntimeFileNames.managerCommandLog)
+        XCTAssertEqual(command?.destinationScope, .productLogs)
+        XCTAssertEqual(command?.destinationFileName, "command.log")
+        XCTAssertEqual(command?.archivePrefix, "command.log")
+
+        XCTAssertEqual(directories.first?.sourceID, .guestObservability)
+        XCTAssertEqual(directories.first?.destinationScope, .guestLogs)
+        XCTAssertEqual(directories.first?.destinationDirectoryName, "guest-observability")
+
+        XCTAssertEqual(rotated.first?.sourceID, .containerLogs)
+        XCTAssertEqual(rotated.first?.sourceFilePrefix, "container-logs.log.")
+        XCTAssertEqual(rotated.first?.destinationScope, .guestLogs)
+        XCTAssertEqual(rotated.first?.destinationFilePrefix, "container-logs.log.")
+        XCTAssertEqual(rotated.first?.archivePrefix, "guest-container-logs.log.")
+    }
+
+    func testRuntimeLogCollectionSourceContractMapsReadableLogSources() {
+        XCTAssertEqual(
+            RuntimeLogCollectionSourceContract.fileCopy(for: .launcher)?.sourceID,
+            .launcherLog
+        )
+        XCTAssertEqual(
+            RuntimeLogCollectionSourceContract.fileCopy(for: .vmLaunchOutput)?.sourceID,
+            .launchdOutputLog
+        )
+        XCTAssertEqual(
+            RuntimeLogCollectionSourceContract.fileCopy(for: .vmLaunchError)?.sourceID,
+            .launchdErrorLog
+        )
+        XCTAssertEqual(
+            RuntimeLogCollectionSourceContract.fileCopy(for: .proxyError)?.sourceID,
+            .proxyErrorLog
+        )
+        XCTAssertEqual(
+            RuntimeLogCollectionSourceContract.fileCopy(for: .watchdog)?.sourceID,
+            .watchdogOutputLog
+        )
+        XCTAssertEqual(
+            RuntimeLogCollectionSourceContract.fileCopy(for: .containers)?.sourceID,
+            .containerLog
+        )
+        XCTAssertNil(RuntimeLogCollectionSourceContract.fileCopy(for: .helperMessage))
+        XCTAssertNil(RuntimeLogCollectionSourceContract.fileCopy(for: .install))
+    }
+
+    func testRuntimeLogCollectionDecisionRulesUseExplicitInputsWithoutHostState() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let rules = RuntimeLogCollectionDecisionRules(calendar: calendar)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        XCTAssertTrue(rules.shouldRefreshTarget(RuntimeLogCollectionRefreshTargetInput(
+            sourceID: .launcher,
+            destinationFileName: "launcher.log"
+        )))
+        XCTAssertFalse(rules.shouldRefreshTarget(RuntimeLogCollectionRefreshTargetInput(
+            sourceID: .launcher,
+            destinationFileName: "proxy.err.log"
+        )))
+        XCTAssertFalse(rules.shouldRefreshTarget(RuntimeLogCollectionRefreshTargetInput(
+            sourceID: .install,
+            destinationFileName: "install.log"
+        )))
+        XCTAssertTrue(rules.shouldRefreshCopy(RuntimeLogCollectionCopyRefreshInput(
+            destinationPresent: false,
+            rotationRequired: false,
+            sourceSize: 0,
+            destinationSize: 0,
+            sourceModificationDate: now,
+            destinationModificationDate: now
+        )))
+        XCTAssertFalse(rules.shouldRefreshCopy(RuntimeLogCollectionCopyRefreshInput(
+            destinationPresent: true,
+            rotationRequired: false,
+            sourceSize: 10,
+            destinationSize: 10,
+            sourceModificationDate: now,
+            destinationModificationDate: now
+        )))
+        XCTAssertTrue(rules.shouldRotateCentralLog(RuntimeLogCollectionRotationInput(
+            destinationPresent: true,
+            fileSize: 10,
+            modificationDate: now.addingTimeInterval(-86_400),
+            now: now,
+            maxCentralLogBytes: 100
+        )))
+        XCTAssertTrue(rules.canAppendCopy(RuntimeLogCollectionAppendInput(
+            destinationPresent: true,
+            sourceSize: 12,
+            destinationSize: 6,
+            sourceMatchesDestinationTail: true
+        )))
+    }
+
+    func testRuntimeTestKitSessionStatePolicyPreservesActiveAndTerminalMeanings() {
+        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive(" running "))
+        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("PAUSED"))
+        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("starting"))
+        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("stopping"))
+        XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isActive("stopped"))
+        XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isActive("failed"))
+
+        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isTerminal(" stopped "))
+        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isTerminal("FAILED"))
+        XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isTerminal("running"))
+
+        let sessions = [
+            runtimeTestKitSession(id: "done", state: "stopped"),
+            runtimeTestKitSession(id: "active", state: "paused"),
+            runtimeTestKitSession(id: "later", state: "running"),
+        ]
+
+        XCTAssertEqual(RuntimeTestKitSessionStatePolicy.preferredActiveSession(from: sessions)?.id, "active")
+    }
+
+    func testReadinessDoesNotInferServiceStateFromLegacyLoadedBools() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .healthy,
+            vmIP: "192.168.64.2",
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+
+        XCTAssertFalse(RuntimeReadinessPolicy.isReady(status))
+    }
+
+    func testActiveOperationPolicyTreatsNonTerminalUpdateProgressAsInProgress() {
+        let status = RuntimeStatus(
+            runtimeState: .healthy,
+            operation: .health,
+            progress: RuntimeProgressDocument(
+                operation: .applyBundle,
+                phase: .running,
+                step: nil,
+                stepStatus: nil,
+                message: "applying",
+                reasonCodes: [],
+                startedAt: nil,
+                updatedAt: "2026-06-08T00:00:00Z"
+            )
+        )
+
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isUpdateInProgress(status))
+    }
+
+    func testActiveOperationPolicyDoesNotTreatTerminalProgressAsInProgress() {
+        let status = RuntimeStatus(
+            runtimeState: .healthy,
+            operation: .applyBundle,
+            progress: RuntimeProgressDocument(
+                operation: .applyBundle,
+                phase: .completed,
+                step: nil,
+                stepStatus: nil,
+                message: "completed",
+                reasonCodes: [],
+                startedAt: nil,
+                updatedAt: "2026-06-08T00:00:00Z"
+            )
+        )
+
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(status))
+    }
+
+    func testActiveOperationPolicyFallsBackToRuntimeStateForLegacyStatusWithoutProgress() {
+        let updating = RuntimeStatus(runtimeState: .updating, operation: .applyBundle)
+        let recovered = RuntimeStatus(runtimeState: .recovering, operation: .activateGuestUpdate)
+        let healthy = RuntimeStatus(runtimeState: .healthy, operation: .applyBundle)
+        let nonUpdate = RuntimeStatus(runtimeState: .updating, operation: .repairVMDisk)
+
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isUpdateInProgress(updating))
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isUpdateInProgress(recovered))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(healthy))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(nonUpdate))
     }
 
     func testRuntimeStatusIncludesDataDirectoryStats() throws {
@@ -87,10 +521,22 @@ final class RuntimeControlContractsTests: XCTestCase {
 
         let encoded = try JSONEncoder().encode(history)
         let decoded = try JSONDecoder().decode(RuntimeEventHistory.self, from: encoded)
+        let legacy = try JSONDecoder().decode(RuntimeEventHistory.self, from: Data("""
+        {
+          "events": [],
+          "nextCursor": "legacy-cursor",
+          "matchingCount": 0,
+          "readError": "legacy read failed"
+        }
+        """.utf8))
 
+        XCTAssertEqual(decoded.state, .readFailed)
         XCTAssertEqual(decoded.nextCursor, "opaque-cursor")
         XCTAssertEqual(decoded.matchingCount, 3)
         XCTAssertEqual(decoded.readError, "sqlite=read failed")
+        XCTAssertEqual(legacy.state, .readFailed)
+        XCTAssertEqual(legacy.nextCursor, "legacy-cursor")
+        XCTAssertEqual(legacy.readError, "legacy read failed")
     }
 
     func testRuntimeCommandResultPreservesOutputIssuesAndDecodesLegacyPayload() throws {
@@ -105,9 +551,22 @@ final class RuntimeControlContractsTests: XCTestCase {
                 ),
             ]
         )
+        let launchFailure = RuntimeCommandResult(
+            exitCode: 1,
+            stdout: "",
+            stderr: "launch denied",
+            executionIssue: RuntimeProcessExecutionIssue(
+                kind: .processLaunchFailed,
+                message: "launch denied"
+            )
+        )
 
         let encoded = try JSONEncoder().encode(result)
         let decoded = try JSONDecoder().decode(RuntimeCommandResult.self, from: encoded)
+        let decodedLaunchFailure = try JSONDecoder().decode(
+            RuntimeCommandResult.self,
+            from: JSONEncoder().encode(launchFailure)
+        )
         let legacy = try JSONDecoder().decode(RuntimeCommandResult.self, from: Data("""
         {
           "exitCode": 0,
@@ -117,7 +576,10 @@ final class RuntimeControlContractsTests: XCTestCase {
         """.utf8))
 
         XCTAssertEqual(decoded.outputIssues, result.outputIssues)
+        XCTAssertEqual(decoded.executionIssue, nil)
+        XCTAssertEqual(decodedLaunchFailure.executionIssue, launchFailure.executionIssue)
         XCTAssertEqual(legacy.outputIssues, [])
+        XCTAssertEqual(legacy.executionIssue, nil)
     }
 
     func testRuntimeTestKitStatusPreservesReadIssuesAndDecodesLegacyPayload() throws {
@@ -143,6 +605,79 @@ final class RuntimeControlContractsTests: XCTestCase {
 
         XCTAssertEqual(decoded.readIssues, status.readIssues)
         XCTAssertEqual(legacy.readIssues, [])
+    }
+
+    func testRuntimeTestKitAvailabilityPolicyPreservesMissingServiceObservationAsReadIssues() {
+        let message = RuntimeTestKitAvailabilityPolicy.unavailableMessage(
+            for: nil,
+            serviceName: "testkit",
+            apiBaseURL: "http://127.0.0.1:18322",
+            healthIssue: "connection refused"
+        )
+        let issues = RuntimeTestKitAvailabilityPolicy.unavailableReadIssues(
+            for: nil,
+            serviceName: "testkit",
+            message: message,
+            healthIssue: "connection refused"
+        )
+
+        XCTAssertEqual(RuntimeTestKitAvailabilityPolicy.unavailableState(for: nil), .stopped)
+        XCTAssertEqual(
+            message,
+            "TestKit container is not running. TestKit is optional and does not affect VitalServer. Health check: connection refused."
+        )
+        XCTAssertEqual(issues, [
+            RuntimeTestKitReadIssue(source: "testKitAPI", message: message),
+            RuntimeTestKitReadIssue(source: "testKitAPI.health", message: "connection refused"),
+            RuntimeTestKitReadIssue(
+                source: "containerService",
+                message: "TestKit container service observation is missing for testkit."
+            ),
+        ])
+    }
+
+    func testRuntimeTestKitAvailabilityPolicyMapsExplicitContainerStateWithoutIO() {
+        let service = RuntimeContainerServiceObservation(
+            service: "testkit",
+            state: "running",
+            health: nil
+        )
+        let status = RuntimeStatus(
+            containerObservation: RuntimeContainerObservation(
+                auditProxyHTTP: "200",
+                auditProxyStatus: nil,
+                containerLogsPresent: true,
+                containerLogsBytes: 128,
+                composeServices: [service]
+            )
+        )
+        let selected = RuntimeTestKitAvailabilityPolicy.service(in: status, serviceName: "testkit")
+        let message = RuntimeTestKitAvailabilityPolicy.unavailableMessage(
+            for: selected,
+            serviceName: "testkit",
+            apiBaseURL: "http://127.0.0.1:18322",
+            healthIssue: nil
+        )
+        let issues = RuntimeTestKitAvailabilityPolicy.unavailableReadIssues(
+            for: selected,
+            serviceName: "testkit",
+            message: message,
+            healthIssue: nil
+        )
+
+        XCTAssertEqual(selected, service)
+        XCTAssertEqual(RuntimeTestKitAvailabilityPolicy.unavailableState(for: selected), .starting)
+        XCTAssertEqual(
+            message,
+            "TestKit container API is not reachable at http://127.0.0.1:18322. Container state: running, health: not reported."
+        )
+        XCTAssertEqual(issues, [
+            RuntimeTestKitReadIssue(source: "testKitAPI", message: message),
+            RuntimeTestKitReadIssue(
+                source: "containerService.health",
+                message: "TestKit container service health is not reported for testkit."
+            ),
+        ])
     }
 
     func testVitalDBObservationSnapshotPreservesUnavailableState() throws {
@@ -179,9 +714,84 @@ final class RuntimeControlContractsTests: XCTestCase {
         let encoded = try JSONEncoder().encode(history)
         let decoded = try JSONDecoder().decode(RuntimeVitalRelationshipHistory.self, from: encoded)
 
+        XCTAssertEqual(decoded.state, .readFailed)
         XCTAssertEqual(decoded.assignments, [])
         XCTAssertEqual(decoded.events, [])
         XCTAssertEqual(decoded.readError, "assignments=read failed")
+    }
+
+    func testVitalRelationshipHistoryPreservesExplicitPartialStateAndDecodesLegacyPayload() throws {
+        let history = RuntimeVitalRelationshipHistory(
+            assignments: [
+                RuntimeVitalBedAssignmentRecord(
+                    assignmentID: "assignment-1",
+                    bedID: "bed-a",
+                    bedName: "A",
+                    vrcode: "VR_A",
+                    startedAt: "2026-05-31T00:00:00Z",
+                    endedAt: nil,
+                    lastSeenAt: "2026-05-31T00:00:10Z",
+                    lastObservedAt: "2026-05-31T00:00:10Z",
+                    status: .online,
+                    patientConnected: true,
+                    observationCount: 2
+                ),
+            ],
+            state: .partiallyLoaded,
+            readError: "events=read failed"
+        )
+
+        let encoded = try JSONEncoder().encode(history)
+        let decoded = try JSONDecoder().decode(RuntimeVitalRelationshipHistory.self, from: encoded)
+        let legacy = try JSONDecoder().decode(RuntimeVitalRelationshipHistory.self, from: Data("""
+        {
+          "assignments": [],
+          "events": [],
+          "readError": "legacy read failed"
+        }
+        """.utf8))
+
+        XCTAssertEqual(decoded.state, .partiallyLoaded)
+        XCTAssertEqual(decoded.assignments.map(\.assignmentID), ["assignment-1"])
+        XCTAssertEqual(decoded.readError, "events=read failed")
+        XCTAssertEqual(legacy.state, .readFailed)
+        XCTAssertEqual(legacy.readError, "legacy read failed")
+    }
+
+    func testVitalRecorderHistoryPreservesReadStateAndDecodesLegacyPayload() throws {
+        let partial = RuntimeVitalRecorderHistory(
+            observations: [
+                VitalDBObservationDocument(
+                    observedAt: "2026-05-26T00:00:00Z",
+                    ready: true,
+                    recorderOnlineThresholdSeconds: 60,
+                    recorders: [
+                        VitalDBRecorderObservation(vrcode: "VR_A", online: true),
+                    ]
+                ),
+            ],
+            activityBuckets: [],
+            readError: "currentObservation=runtimeState=missing"
+        )
+        let failed = RuntimeVitalRecorderHistory(readError: "observations=read failed")
+
+        let encoded = try JSONEncoder().encode(partial)
+        let decoded = try JSONDecoder().decode(RuntimeVitalRecorderHistory.self, from: encoded)
+        let legacy = try JSONDecoder().decode(RuntimeVitalRecorderHistory.self, from: Data("""
+        {
+          "recorders": [],
+          "beds": [],
+          "readError": "legacy recorder read failed"
+        }
+        """.utf8))
+
+        XCTAssertEqual(partial.state, .partiallyLoaded)
+        XCTAssertEqual(decoded.state, .partiallyLoaded)
+        XCTAssertEqual(decoded.recorders.map(\.vrcode), ["VR_A"])
+        XCTAssertEqual(decoded.readError, "currentObservation=runtimeState=missing")
+        XCTAssertEqual(failed.state, .readFailed)
+        XCTAssertEqual(legacy.state, .readFailed)
+        XCTAssertEqual(legacy.readError, "legacy recorder read failed")
     }
 
     func testVitalRecorderHistoryAggregatesByVrcode() {
@@ -460,7 +1070,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         )
 
         let history = RuntimeVitalRecorderHistory(observations: [observation])
-        let summary = RuntimeVitalRecorderSummary(status: RuntimeStatus(vitalDBObservation: observation))
+        let summary = RuntimeVitalRecorderSummary(status: RuntimeStatus(), vitalDBObservation: observation)
 
         XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_UTC", "VR_OFFSET"])
         XCTAssertEqual(summary.latestRecorder?.vrcode, "VR_UTC")
@@ -606,13 +1216,66 @@ final class RuntimeControlContractsTests: XCTestCase {
             ]
         )
 
-        let summary = RuntimeVitalRecorderSummary(status: RuntimeStatus(vitalDBObservation: observation))
+        let summary = RuntimeVitalRecorderSummary(status: RuntimeStatus(), vitalDBObservation: observation)
 
         XCTAssertEqual(summary.knownRecorders, 2)
         XCTAssertEqual(summary.onlineRecorders, 1)
         XCTAssertEqual(summary.staleRecorders, 1)
         XCTAssertEqual(summary.latestRecorder?.vrcode, "VR_A")
         XCTAssertEqual(summary.latestRecorder?.ip, "192.168.64.10")
+    }
+
+    func testRuntimeControlOverviewDoesNotFallbackToStatusVitalDBObservation() {
+        let staleObservation = VitalDBObservationDocument(
+            observedAt: "2026-05-24T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                VitalDBRecorderObservation(vrcode: "STALE", ip: "192.168.64.10", online: true),
+            ]
+        )
+        let freshObservation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                VitalDBRecorderObservation(vrcode: "FRESH", ip: "192.168.64.11", online: true),
+            ]
+        )
+        var status = RuntimeStatus(vitalDBObservation: staleObservation)
+        status.containerObservation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: RuntimeAuditProxyStatusDocument(activeRecorderConnections: 1),
+            containerLogsPresent: false,
+            containerLogsBytes: nil
+        )
+
+        let unavailableOverview = RuntimeControlOverview(
+            status: status,
+            settings: RuntimeSettings(),
+            release: RuntimeReleaseInfo(helperVersion: "0.1.0", minimumUpdaterVersion: "0.1.0", vitalServerVersion: "0.0.0", services: []),
+            install: RuntimeInstallInfo(),
+            vitalDBObservation: nil,
+            vitalDBObservationSnapshot: .unavailable(readError: "sqlite=read failed")
+        )
+        let loadedOverview = RuntimeControlOverview(
+            status: status,
+            settings: RuntimeSettings(),
+            release: RuntimeReleaseInfo(helperVersion: "0.1.0", minimumUpdaterVersion: "0.1.0", vitalServerVersion: "0.0.0", services: []),
+            install: RuntimeInstallInfo(),
+            vitalDBObservation: freshObservation,
+            vitalDBObservationSnapshot: .loaded(freshObservation)
+        )
+
+        XCTAssertNil(unavailableOverview.vitalDBObservation)
+        XCTAssertNil(unavailableOverview.status.vitalDBObservation)
+        XCTAssertEqual(unavailableOverview.vitalDBObservationSnapshot.state, .unavailable)
+        XCTAssertEqual(unavailableOverview.vitalRecorder.source, .unavailable)
+        XCTAssertNil(unavailableOverview.vitalRecorder.knownRecorders)
+        XCTAssertEqual(unavailableOverview.vitalRecorder.activeConnections, 1)
+        XCTAssertNil(loadedOverview.status.vitalDBObservation)
+        XCTAssertEqual(loadedOverview.vitalDBObservation?.recorders.map(\.vrcode), ["FRESH"])
+        XCTAssertEqual(loadedOverview.vitalRecorder.latestRecorder?.vrcode, "FRESH")
     }
 
     func testVitalRecorderSummaryDoesNotInferRecorderStateFromAuditProxyConnections() {
@@ -679,4 +1342,30 @@ private func activityPointPayload(missing field: String) -> String {
         .map { "\"\($0.0)\": \($0.1)" }
         .joined(separator: ",")
     return "{\(body)}"
+}
+
+private func runtimeTestKitSession(id: String, state: String) -> RuntimeTestKitSession {
+    RuntimeTestKitSession(
+        id: id,
+        state: state,
+        targetURL: "http://testkit.example.test",
+        recordersRequested: 1,
+        bedsRequested: 1,
+        bedRoomNames: ["OR-1"],
+        vrcode: nil,
+        version: "testkit",
+        intervalSeconds: 1,
+        durationSeconds: nil,
+        maxMessages: nil,
+        shiftTime: true,
+        generateFrames: true,
+        defaultScenario: "normal",
+        createdAt: nil,
+        startedAt: nil,
+        stoppedAt: nil,
+        messagesSent: 0,
+        bytesSent: 0,
+        lastError: nil,
+        recorders: []
+    )
 }

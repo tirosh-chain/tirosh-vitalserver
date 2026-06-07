@@ -26,7 +26,10 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     func testPlansDefaultSizeWhenCurrentVMDiskIsMissing() throws {
         let useCase = RuntimeVMDiskRepairUseCase()
 
-        let plan = try useCase.planRepair(for: input(currentVMDiskSizeBytes: nil))
+        let plan = try useCase.planRepair(for: input(
+            currentVMDiskState: .missing,
+            currentVMDiskSizeBytes: nil
+        ))
 
         XCTAssertEqual(plan.targetDiskGiB, 32)
         XCTAssertFalse(plan.shouldArchiveCurrentDisk)
@@ -35,10 +38,38 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
     func testRejectsMissingRootfsBaseWithoutCreatingFallbackState() {
         let useCase = RuntimeVMDiskRepairUseCase()
 
-        XCTAssertThrowsError(try useCase.planRepair(for: input(rootfsBaseExists: false))) { error in
+        XCTAssertThrowsError(try useCase.planRepair(for: input(rootfsBaseState: .missing))) { error in
             XCTAssertEqual(
                 error as? RepairRuntimeUseCaseError,
                 .operationFailed("missing file: /runtime/rootfs-base.raw.gz")
+            )
+        }
+    }
+
+    func testRejectsRootfsBaseInspectionFailureWithoutCreatingFallbackState() {
+        let useCase = RuntimeVMDiskRepairUseCase()
+
+        XCTAssertThrowsError(try useCase.planRepair(for: input(
+            rootfsBaseState: .inspectFailed("permission denied"),
+            rootfsBaseSizeBytes: nil
+        ))) { error in
+            XCTAssertEqual(
+                error as? RepairRuntimeUseCaseError,
+                .operationFailed("rootfs base path inspection failed: /runtime/rootfs-base.raw.gz reason=permission denied")
+            )
+        }
+    }
+
+    func testRejectsUnexpectedRootfsBasePathState() {
+        let useCase = RuntimeVMDiskRepairUseCase()
+
+        XCTAssertThrowsError(try useCase.planRepair(for: input(
+            rootfsBaseState: .directory,
+            rootfsBaseSizeBytes: nil
+        ))) { error in
+            XCTAssertEqual(
+                error as? RepairRuntimeUseCaseError,
+                .operationFailed("rootfs base path state is unexpected: /runtime/rootfs-base.raw.gz state=directory")
             )
         }
     }
@@ -135,7 +166,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
 
         XCTAssertThrowsError(try useCase.requireReplacementDisk(RepairRuntimeVMDiskReplacementObservation(
             path: "/runtime/vm/vm-disk.img",
-            exists: false,
+            state: .missing,
             actualBytes: nil,
             targetDiskGiB: 32,
             bytesPerGiB: 1024
@@ -147,7 +178,7 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
         }
         XCTAssertThrowsError(try useCase.requireReplacementDisk(RepairRuntimeVMDiskReplacementObservation(
             path: "/runtime/vm/vm-disk.img",
-            exists: true,
+            state: .file,
             actualBytes: 1024,
             targetDiskGiB: 2,
             bytesPerGiB: 1024
@@ -383,17 +414,20 @@ final class RepairRuntimeUseCaseTests: XCTestCase {
 
     private func input(
         rootfsBasePath: String = "/runtime/rootfs-base.raw.gz",
-        rootfsBaseExists: Bool = true,
-        rootfsBaseSizeBytes: UInt64 = 2,
+        rootfsBaseState: RuntimePathState = .file,
+        rootfsBaseSizeBytes: UInt64? = 2,
+        currentVMDiskState: RuntimePathState? = nil,
         currentVMDiskSizeBytes: UInt64? = 4 * 1024,
         defaultDiskGiB: Int = 32,
         bytesPerGiB: UInt64 = 1024,
         freeSpaceMarginBytes: UInt64 = 1024
     ) -> RepairRuntimeVMDiskInput {
-        RepairRuntimeVMDiskInput(
+        let resolvedCurrentVMDiskState = currentVMDiskState ?? (currentVMDiskSizeBytes == nil ? .missing : .file)
+        return RepairRuntimeVMDiskInput(
             rootfsBasePath: rootfsBasePath,
-            rootfsBaseExists: rootfsBaseExists,
+            rootfsBaseState: rootfsBaseState,
             rootfsBaseSizeBytes: rootfsBaseSizeBytes,
+            currentVMDiskState: resolvedCurrentVMDiskState,
             currentVMDiskSizeBytes: currentVMDiskSizeBytes,
             defaultDiskGiB: defaultDiskGiB,
             bytesPerGiB: bytesPerGiB,

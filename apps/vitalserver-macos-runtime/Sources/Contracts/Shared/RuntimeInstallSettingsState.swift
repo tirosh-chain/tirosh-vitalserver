@@ -1,6 +1,8 @@
 import Foundation
 
 public enum RuntimeInstallSettingsState: Codable, Equatable, Sendable {
+    case missing(path: String)
+    case proxyPortMissing(path: String)
     case defaulted(path: String, proxyPort: Int)
     case loaded(path: String, proxyPort: Int)
     case readFailed(path: String, reason: String)
@@ -8,7 +10,15 @@ public enum RuntimeInstallSettingsState: Codable, Equatable, Sendable {
     case unknown(String)
 
     public init(rawValue: String) {
-        if rawValue.hasPrefix("defaulted: path=") {
+        if rawValue.hasPrefix("missing: path=") {
+            self = Self.parseStateWithPath(rawValue, prefix: "missing: path=")
+                .map { .missing(path: $0) }
+                ?? .unknown(rawValue)
+        } else if rawValue.hasPrefix("proxy-port-missing: path=") {
+            self = Self.parseStateWithPath(rawValue, prefix: "proxy-port-missing: path=")
+                .map { .proxyPortMissing(path: $0) }
+                ?? .unknown(rawValue)
+        } else if rawValue.hasPrefix("defaulted: path=") {
             self = Self.parseStateWithProxyPort(rawValue, prefix: "defaulted: path=")
                 .map { .defaulted(path: $0.path, proxyPort: $0.proxyPort) }
                 ?? .unknown(rawValue)
@@ -31,6 +41,10 @@ public enum RuntimeInstallSettingsState: Codable, Equatable, Sendable {
 
     public var rawValue: String {
         switch self {
+        case .missing(let path):
+            return "missing: path=\(path)"
+        case .proxyPortMissing(let path):
+            return "proxy-port-missing: path=\(path)"
         case .defaulted(let path, let proxyPort):
             return "defaulted: path=\(path) proxy-port=\(proxyPort)"
         case .loaded(let path, let proxyPort):
@@ -48,14 +62,14 @@ public enum RuntimeInstallSettingsState: Codable, Equatable, Sendable {
         switch self {
         case .defaulted(_, let proxyPort), .loaded(_, let proxyPort):
             return proxyPort
-        case .readFailed, .invalid, .unknown:
+        case .missing, .proxyPortMissing, .readFailed, .invalid, .unknown:
             return nil
         }
     }
 
     public var blocksFreshInstall: Bool {
         switch self {
-        case .readFailed, .invalid, .unknown:
+        case .missing, .proxyPortMissing, .readFailed, .invalid, .unknown:
             return true
         case .defaulted, .loaded:
             return false
@@ -86,6 +100,17 @@ public enum RuntimeInstallSettingsState: Codable, Equatable, Sendable {
             return nil
         }
         return (path, proxyPort)
+    }
+
+    private static func parseStateWithPath(
+        _ rawValue: String,
+        prefix: String
+    ) -> String? {
+        let path = String(rawValue.dropFirst(prefix.count))
+        guard !path.isEmpty else {
+            return nil
+        }
+        return path
     }
 
     private static func parseStateWithReason(

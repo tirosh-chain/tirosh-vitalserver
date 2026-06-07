@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import OutboundAdapters
 import XCTest
 import Errors
@@ -16,13 +17,13 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
         let updateShutdownResult = URL(fileURLWithPath: "/product/run/guest/update-shutdown-result.json")
         let datastoreRepairResult = URL(fileURLWithPath: "/product/run/guest/datastore-repair-result.json")
         var createdDirectories: [URL] = []
-        var existingFiles: Set<URL> = [
-            vmIPFile,
-            runtimeState,
-            bootstrapResult,
-            updateActivationResult,
-            updateShutdownResult,
-            datastoreRepairResult,
+        var pathStates: [URL: RuntimePathState] = [
+            vmIPFile: .file,
+            runtimeState: .file,
+            bootstrapResult: .file,
+            updateActivationResult: .file,
+            updateShutdownResult: .file,
+            datastoreRepairResult: .file,
         ]
         var removed: [URL] = []
         let preparer = RuntimeInstallDirectoryPreparer<TestInstallDirectorySettings>(
@@ -49,12 +50,12 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
                 createDirectory: { url, _ in
                     createdDirectories.append(url)
                 },
-                fileExists: { url in
-                    existingFiles.contains(url)
+                pathState: { url in
+                    pathStates[url] ?? .missing
                 },
                 removeItem: { url in
                     removed.append(url)
-                    existingFiles.remove(url)
+                    pathStates[url] = .missing
                 }
             )
         )
@@ -76,6 +77,56 @@ final class RuntimeInstallDirectoryPreparerTests: XCTestCase {
             updateShutdownResult,
             datastoreRepairResult,
         ])
+    }
+
+    func testPrepareFailsWhenStaleGuestDocumentInspectionFails() {
+        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-state.json")
+        let preparer = RuntimeInstallDirectoryPreparer<TestInstallDirectorySettings>(
+            context: RuntimeInstallDirectoryPreparationContext(
+                fixedDirectories: [],
+                staleGuestRunDocuments: [runtimeState],
+                vitalFilesDirectory: { settings in
+                    URL(fileURLWithPath: settings.vitalFilesDirectory)
+                }
+            ),
+            operations: RuntimeInstallDirectoryPreparationOperations(
+                createDirectory: { _, _ in },
+                pathState: { _ in .inspectFailed("permission denied") },
+                removeItem: { _ in }
+            )
+        )
+
+        XCTAssertThrowsError(try preparer.prepare(settings: TestInstallDirectorySettings(vitalFilesDirectory: "/custom"))) { error in
+            XCTAssertEqual(
+                error as? RuntimeInstallDirectoryPreparationError,
+                .pathInspectionFailed(path: runtimeState.path, reason: "permission denied")
+            )
+        }
+    }
+
+    func testPrepareFailsWhenStaleGuestDocumentPathIsDirectory() {
+        let runtimeState = URL(fileURLWithPath: "/product/run/guest/runtime-state.json")
+        let preparer = RuntimeInstallDirectoryPreparer<TestInstallDirectorySettings>(
+            context: RuntimeInstallDirectoryPreparationContext(
+                fixedDirectories: [],
+                staleGuestRunDocuments: [runtimeState],
+                vitalFilesDirectory: { settings in
+                    URL(fileURLWithPath: settings.vitalFilesDirectory)
+                }
+            ),
+            operations: RuntimeInstallDirectoryPreparationOperations(
+                createDirectory: { _, _ in },
+                pathState: { _ in .directory },
+                removeItem: { _ in }
+            )
+        )
+
+        XCTAssertThrowsError(try preparer.prepare(settings: TestInstallDirectorySettings(vitalFilesDirectory: "/custom"))) { error in
+            XCTAssertEqual(
+                error as? RuntimeInstallDirectoryPreparationError,
+                .unexpectedPathState(path: runtimeState.path, state: "directory")
+            )
+        }
     }
 }
 

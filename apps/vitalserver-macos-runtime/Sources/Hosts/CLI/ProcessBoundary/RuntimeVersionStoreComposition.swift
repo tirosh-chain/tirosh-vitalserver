@@ -39,7 +39,9 @@ public enum RuntimeVersionStoreComposition {
                 vmDisk: Constants.BootAssets.disk
             ),
             timestamp: operations.timestamp,
-            fileExists: operations.fileStore.fileExists,
+            versionPathState: { url in
+                operations.fileStore.pathState(at: url)
+            },
             createDirectory: { url, withIntermediateDirectories in
                 try operations.fileStore.createDirectory(
                     at: url,

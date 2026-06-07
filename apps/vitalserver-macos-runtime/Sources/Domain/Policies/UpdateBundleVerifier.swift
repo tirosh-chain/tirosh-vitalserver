@@ -1,31 +1,4 @@
 import Contracts
-public struct UpdateBundleFileVerification: Equatable, Sendable {
-    public let name: String
-    public let checksumKey: String
-    public let expectedSHA256: String
-    public let expectedSize: Int
-
-    public init(name: String, checksumKey: String, expectedSHA256: String, expectedSize: Int) {
-        self.name = name
-        self.checksumKey = checksumKey
-        self.expectedSHA256 = expectedSHA256
-        self.expectedSize = expectedSize
-    }
-}
-
-public struct UpdateBundleVerificationPlan: Equatable, Sendable {
-    public let artifactFiles: [UpdateBundleFileVerification]
-    public let migrationFiles: [UpdateBundleFileVerification]
-
-    public init(
-        artifactFiles: [UpdateBundleFileVerification],
-        migrationFiles: [UpdateBundleFileVerification]
-    ) {
-        self.artifactFiles = artifactFiles
-        self.migrationFiles = migrationFiles
-    }
-}
-
 public enum UpdateBundleVerifier {
     public static func makePlan(
         manifest: UpdateBundleManifest,

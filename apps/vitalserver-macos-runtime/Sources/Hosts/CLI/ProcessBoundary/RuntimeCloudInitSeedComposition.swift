@@ -34,11 +34,8 @@ public enum RuntimeCloudInitSeedComposition {
         instanceID: @escaping () -> String = defaultInstanceID
     ) -> RuntimeCloudInitSeedOperations {
         RuntimeCloudInitSeedOperations(
-            directoryExists: { url in
-                fileStore.directoryExists(url)
-            },
-            fileExists: { url in
-                fileStore.fileExists(url)
+            pathState: { url in
+                fileStore.pathState(at: url)
             },
             removeItem: { url in
                 try fileStore.removeItem(at: url)

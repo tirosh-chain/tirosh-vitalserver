@@ -67,6 +67,24 @@ final class RuntimeHelperMessageLogTests: XCTestCase {
         XCTAssertTrue(text.contains("[2027-01-15T08:00:00Z] Ready"))
     }
 
+    func testFileRuntimeHelperMessageLogDoesNotDeleteDirectoryAtLogPath() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let logURL = directory.appendingPathComponent("helper-message.log")
+        try FileManager.default.createDirectory(at: logURL, withIntermediateDirectories: true)
+
+        let logger = FileRuntimeHelperMessageLog(
+            url: logURL,
+            now: { Date(timeIntervalSince1970: 1_800_000_000) }
+        )
+        logger.append("Ready")
+
+        var isDirectory = ObjCBool(false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: logURL.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: logURL.path), [])
+    }
+
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("RuntimeHelperMessageLogTests-\(UUID().uuidString)")

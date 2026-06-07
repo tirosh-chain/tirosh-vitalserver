@@ -1,8 +1,8 @@
 import Foundation
 
 public struct RuntimeHealthSnapshot: Equatable {
-    public let vmExecutable: Bool
-    public let proxyExecutable: Bool
+    public let vmExecutable: RuntimeFileState
+    public let proxyExecutable: RuntimeFileState
     public let rootfsBase: RuntimeFileState
     public let vmDisk: RuntimeFileState
     public let vmService: RuntimeServiceState
@@ -12,7 +12,8 @@ public struct RuntimeHealthSnapshot: Equatable {
     public let vmState: RuntimeVMState
     public let vmErrors: [RuntimeVMError]
     public let vmIP: String?
-    public let proxyPort: Int
+    public let proxyPort: Int?
+    public let proxyPortReadState: RuntimeProxyPortReadState
     public let hostProxyHTTP: String
     public let guestHTTP: String
     public let redisUIHTTP: String
@@ -22,8 +23,8 @@ public struct RuntimeHealthSnapshot: Equatable {
     public let failureReasons: [RuntimeFailureReason]
 
     public init(
-        vmExecutable: Bool,
-        proxyExecutable: Bool,
+        vmExecutable: RuntimeFileState,
+        proxyExecutable: RuntimeFileState,
         rootfsBase: RuntimeFileState,
         vmDisk: RuntimeFileState,
         vmService: RuntimeServiceState,
@@ -33,7 +34,8 @@ public struct RuntimeHealthSnapshot: Equatable {
         vmState: RuntimeVMState,
         vmErrors: [RuntimeVMError] = [],
         vmIP: String?,
-        proxyPort: Int,
+        proxyPort: Int?,
+        proxyPortReadState: RuntimeProxyPortReadState? = nil,
         hostProxyHTTP: String,
         guestHTTP: String,
         redisUIHTTP: String,
@@ -54,6 +56,7 @@ public struct RuntimeHealthSnapshot: Equatable {
         self.vmErrors = vmErrors
         self.vmIP = vmIP
         self.proxyPort = proxyPort
+        self.proxyPortReadState = proxyPortReadState ?? .observed(proxyPort)
         self.hostProxyHTTP = hostProxyHTTP
         self.guestHTTP = guestHTTP
         self.redisUIHTTP = redisUIHTTP

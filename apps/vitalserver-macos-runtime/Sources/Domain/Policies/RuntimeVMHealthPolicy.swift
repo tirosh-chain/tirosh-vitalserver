@@ -29,7 +29,7 @@ public enum RuntimeVMHealthPolicy {
 
     private static func evaluateVMErrors(_ input: RuntimeHealthInput) -> [RuntimeVMError] {
         var errors: [RuntimeVMError] = []
-        if !input.vmExecutable {
+        if input.vmExecutable != .executable {
             errors.append(.missingExecutable)
         }
         if input.rootfsBase != .present {

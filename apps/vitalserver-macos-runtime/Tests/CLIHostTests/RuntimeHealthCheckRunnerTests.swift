@@ -73,6 +73,7 @@ private final class HealthCheckHarness {
 
     var runner: RuntimeHealthCheckRunner {
         RuntimeHealthCheckRunner(
+            useCase: RefreshRuntimeHealthUseCase(),
             printStatus: {
                 self.events.append("print-status")
             },
@@ -104,8 +105,8 @@ private enum HealthCheckError: Error, Equatable {
 
 private func healthSnapshot(reasons: [RuntimeFailureReason]) -> RuntimeHealthSnapshot {
     RuntimeHealthSnapshot(
-        vmExecutable: true,
-        proxyExecutable: true,
+        vmExecutable: .executable,
+        proxyExecutable: .executable,
         rootfsBase: .present,
         vmDisk: .present,
         vmService: .loaded,

@@ -30,11 +30,17 @@ public struct SQLiteRuntimeEventRepository: RuntimeEventRepository {
         try store.rebuild(from: events)
     }
 
-    public func catchUpDue(now: Date, intervalSeconds: TimeInterval) -> Bool {
+    public func catchUpDue(now: Date, intervalSeconds: TimeInterval) -> RuntimeEventIndexCatchUpDueRead {
         store.runtimeEventIndexCatchUpDue(now: now, intervalSeconds: intervalSeconds)
     }
 
     public func markCaughtUp(at date: Date) throws {
         try store.markRuntimeEventIndexCaughtUp(at: date)
     }
+}
+
+public enum RuntimeEventIndexCatchUpDueRead: Equatable, Sendable {
+    case due
+    case notDue
+    case dueAfterReadFailure(String)
 }

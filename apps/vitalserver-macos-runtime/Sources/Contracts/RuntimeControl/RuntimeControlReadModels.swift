@@ -51,37 +51,25 @@ public struct VitalFilesFolder: Codable, Identifiable, Sendable {
     }
 }
 
-public enum RuntimeCommandOutputStream: String, Codable, Equatable, Sendable {
-    case stdout
-    case stderr
-}
-
-public struct RuntimeCommandOutputIssue: Codable, Equatable, Sendable {
-    public let stream: RuntimeCommandOutputStream
-    public let message: String
-
-    public init(stream: RuntimeCommandOutputStream, message: String) {
-        self.stream = stream
-        self.message = message
-    }
-}
-
 public struct RuntimeCommandResult: Codable, Equatable, Sendable {
     public let exitCode: Int32
     public let stdout: String
     public let stderr: String
     public let outputIssues: [RuntimeCommandOutputIssue]
+    public let executionIssue: RuntimeProcessExecutionIssue?
 
     public init(
         exitCode: Int32,
         stdout: String,
         stderr: String,
-        outputIssues: [RuntimeCommandOutputIssue] = []
+        outputIssues: [RuntimeCommandOutputIssue] = [],
+        executionIssue: RuntimeProcessExecutionIssue? = nil
     ) {
         self.exitCode = exitCode
         self.stdout = stdout
         self.stderr = stderr
         self.outputIssues = outputIssues
+        self.executionIssue = executionIssue
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -89,6 +77,7 @@ public struct RuntimeCommandResult: Codable, Equatable, Sendable {
         case stdout
         case stderr
         case outputIssues
+        case executionIssue
     }
 
     public init(from decoder: Decoder) throws {
@@ -97,14 +86,17 @@ public struct RuntimeCommandResult: Codable, Equatable, Sendable {
         stdout = try container.decode(String.self, forKey: .stdout)
         stderr = try container.decode(String.self, forKey: .stderr)
         outputIssues = try container.decodeIfPresent([RuntimeCommandOutputIssue].self, forKey: .outputIssues) ?? []
+        executionIssue = try container.decodeIfPresent(RuntimeProcessExecutionIssue.self, forKey: .executionIssue)
     }
 }
 
 public struct RuntimeLogExportResult: Codable, Equatable, Sendable {
     public let destination: URL
+    public let cleanupIssue: String?
 
-    public init(destination: URL) {
+    public init(destination: URL, cleanupIssue: String? = nil) {
         self.destination = destination
+        self.cleanupIssue = cleanupIssue
     }
 }
 
@@ -163,6 +155,7 @@ public struct RuntimeInstallInfo: Codable, Equatable, Sendable {
 }
 
 public struct RuntimeEventHistory: Codable, Equatable, Sendable {
+    public let state: RuntimeEventPageState
     public let events: [RuntimeEventDocument]
     public let nextCursor: String?
     public let matchingCount: Int?
@@ -172,12 +165,55 @@ public struct RuntimeEventHistory: Codable, Equatable, Sendable {
         events: [RuntimeEventDocument],
         nextCursor: String? = nil,
         matchingCount: Int? = nil,
+        state: RuntimeEventPageState? = nil,
         readError: String? = nil
     ) {
+        self.state = state ?? Self.defaultState(events: events, readError: readError)
         self.events = events
         self.nextCursor = nextCursor
         self.matchingCount = matchingCount
         self.readError = readError
+    }
+
+    public static func failed(readError: String) -> RuntimeEventHistory {
+        RuntimeEventHistory(events: [], state: .readFailed, readError: readError)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case events
+        case nextCursor
+        case matchingCount
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        events = try container.decodeIfPresent([RuntimeEventDocument].self, forKey: .events) ?? []
+        nextCursor = try container.decodeIfPresent(String.self, forKey: .nextCursor)
+        matchingCount = try container.decodeIfPresent(Int.self, forKey: .matchingCount)
+        readError = try container.decodeIfPresent(String.self, forKey: .readError)
+        state = try container.decodeIfPresent(RuntimeEventPageState.self, forKey: .state)
+            ?? Self.defaultState(events: events, readError: readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        try container.encode(events, forKey: .events)
+        try container.encodeIfPresent(nextCursor, forKey: .nextCursor)
+        try container.encodeIfPresent(matchingCount, forKey: .matchingCount)
+        try container.encodeIfPresent(readError, forKey: .readError)
+    }
+
+    private static func defaultState(
+        events: [RuntimeEventDocument],
+        readError: String?
+    ) -> RuntimeEventPageState {
+        guard readError != nil else {
+            return .loaded
+        }
+        return events.isEmpty ? .readFailed : .partiallyLoaded
     }
 }
 
@@ -206,14 +242,6 @@ public struct RuntimeVitalRecorderReference: Codable, Equatable, Sendable {
 }
 
 public enum RuntimeVitalRecorderStatus: String, Codable, Equatable, Sendable {
-    case online
-    case stale
-    case offline
-    case notObserved
-    case unknown
-}
-
-public enum RuntimeVitalBedStatus: String, Codable, Equatable, Sendable {
     case online
     case stale
     case offline
@@ -405,7 +433,14 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
     }
 }
 
+public enum RuntimeVitalRecorderHistoryState: String, Codable, Equatable, Sendable {
+    case loaded
+    case partiallyLoaded
+    case readFailed
+}
+
 public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
+    public let state: RuntimeVitalRecorderHistoryState
     public let updatedAt: String?
     public let recorders: [RuntimeVitalRecorderRecord]
     public let beds: [RuntimeVitalBedRecord]
@@ -414,6 +449,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
     public let readError: String?
 
     public init(
+        state: RuntimeVitalRecorderHistoryState? = nil,
         updatedAt: String? = nil,
         recorders: [RuntimeVitalRecorderRecord] = [],
         beds: [RuntimeVitalBedRecord] = [],
@@ -421,6 +457,11 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         activityHistory: RuntimeVitalRecorderActivityHistory = .notProvided(),
         readError: String? = nil
     ) {
+        self.state = state ?? Self.defaultState(
+            recorders: recorders,
+            beds: beds,
+            readError: readError
+        )
         self.updatedAt = updatedAt
         self.recorders = recorders
         self.beds = beds
@@ -430,6 +471,58 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         )
         self.activityHistory = activityHistory
         self.readError = readError
+    }
+
+    public static func failed(readError: String) -> RuntimeVitalRecorderHistory {
+        RuntimeVitalRecorderHistory(state: .readFailed, readError: readError)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case updatedAt
+        case recorders
+        case beds
+        case summary
+        case activityHistory
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+        recorders = try container.decodeIfPresent([RuntimeVitalRecorderRecord].self, forKey: .recorders) ?? []
+        beds = try container.decodeIfPresent([RuntimeVitalBedRecord].self, forKey: .beds) ?? []
+        summary = try container.decodeIfPresent(RuntimeVitalRecorderHistorySummary.self, forKey: .summary)
+            ?? RuntimeVitalRecorderHistorySummary(recorders: recorders, beds: beds)
+        activityHistory = try container.decodeIfPresent(
+            RuntimeVitalRecorderActivityHistory.self,
+            forKey: .activityHistory
+        ) ?? .notProvided()
+        readError = try container.decodeIfPresent(String.self, forKey: .readError)
+        state = try container.decodeIfPresent(RuntimeVitalRecorderHistoryState.self, forKey: .state)
+            ?? Self.defaultState(recorders: recorders, beds: beds, readError: readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        try container.encodeIfPresent(updatedAt, forKey: .updatedAt)
+        try container.encode(recorders, forKey: .recorders)
+        try container.encode(beds, forKey: .beds)
+        try container.encode(summary, forKey: .summary)
+        try container.encode(activityHistory, forKey: .activityHistory)
+        try container.encodeIfPresent(readError, forKey: .readError)
+    }
+
+    private static func defaultState(
+        recorders: [RuntimeVitalRecorderRecord],
+        beds: [RuntimeVitalBedRecord],
+        readError: String?
+    ) -> RuntimeVitalRecorderHistoryState {
+        guard readError != nil else {
+            return .loaded
+        }
+        return recorders.isEmpty && beds.isEmpty ? .readFailed : .partiallyLoaded
     }
 
     public init(observations: [VitalDBObservationDocument]) {
@@ -684,115 +777,6 @@ public enum RuntimeVitalRecorderActivityHistorySource: String, Codable, Equatabl
     case notProvided
 }
 
-public enum RuntimeVitalRelationshipEventType: String, Codable, Equatable, Sendable {
-    case handoff
-    case duplicateAssignment
-    case unlinkedBed
-    case unlinkedRecorder
-    case staleLink
-}
-
-public enum RuntimeVitalRelationshipSeverity: String, Codable, Equatable, Sendable {
-    case info
-    case warning
-    case critical
-}
-
-public struct RuntimeVitalBedAssignmentRecord: Codable, Equatable, Identifiable, Sendable {
-    public var id: String { assignmentID }
-    public let assignmentID: String
-    public let bedID: String
-    public let bedName: String?
-    public let vrcode: String
-    public let startedAt: String
-    public let endedAt: String?
-    public let lastSeenAt: String?
-    public let lastObservedAt: String
-    public let status: RuntimeVitalBedStatus
-    public let patientConnected: Bool?
-    public let observationCount: Int
-
-    public init(
-        assignmentID: String,
-        bedID: String,
-        bedName: String?,
-        vrcode: String,
-        startedAt: String,
-        endedAt: String?,
-        lastSeenAt: String?,
-        lastObservedAt: String,
-        status: RuntimeVitalBedStatus,
-        patientConnected: Bool?,
-        observationCount: Int
-    ) {
-        self.assignmentID = assignmentID
-        self.bedID = bedID
-        self.bedName = bedName
-        self.vrcode = vrcode
-        self.startedAt = startedAt
-        self.endedAt = endedAt
-        self.lastSeenAt = lastSeenAt
-        self.lastObservedAt = lastObservedAt
-        self.status = status
-        self.patientConnected = patientConnected
-        self.observationCount = observationCount
-    }
-}
-
-public struct RuntimeVitalRelationshipEventRecord: Codable, Equatable, Identifiable, Sendable {
-    public var id: String { eventID }
-    public let eventID: String
-    public let observedAt: String
-    public let eventType: RuntimeVitalRelationshipEventType
-    public let severity: RuntimeVitalRelationshipSeverity
-    public let bedID: String?
-    public let bedName: String?
-    public let vrcode: String?
-    public let previousVrcode: String?
-    public let previousBedID: String?
-    public let message: String
-
-    public init(
-        eventID: String,
-        observedAt: String,
-        eventType: RuntimeVitalRelationshipEventType,
-        severity: RuntimeVitalRelationshipSeverity,
-        bedID: String?,
-        bedName: String?,
-        vrcode: String?,
-        previousVrcode: String?,
-        previousBedID: String?,
-        message: String
-    ) {
-        self.eventID = eventID
-        self.observedAt = observedAt
-        self.eventType = eventType
-        self.severity = severity
-        self.bedID = bedID
-        self.bedName = bedName
-        self.vrcode = vrcode
-        self.previousVrcode = previousVrcode
-        self.previousBedID = previousBedID
-        self.message = message
-    }
-}
-
-public struct RuntimeVitalRelationshipHistory: Codable, Equatable, Sendable {
-    public let assignments: [RuntimeVitalBedAssignmentRecord]
-    public let events: [RuntimeVitalRelationshipEventRecord]
-    public let readError: String?
-
-    public init(
-        assignments: [RuntimeVitalBedAssignmentRecord] = [],
-        events: [RuntimeVitalRelationshipEventRecord] = [],
-        readError: String? = nil
-    ) {
-        self.assignments = assignments
-        self.events = events
-        self.readError = readError
-    }
-}
-
 public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
     public let source: RuntimeVitalRecorderSummarySource
     public let activeConnections: Int?
@@ -829,7 +813,7 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
     public init(status: RuntimeStatus, vitalDBObservation: VitalDBObservationDocument? = nil) {
         self.init(
             containerObservation: status.containerObservation,
-            vitalDBObservation: vitalDBObservation ?? status.vitalDBObservation
+            vitalDBObservation: vitalDBObservation
         )
     }
 
@@ -1218,13 +1202,17 @@ public struct RuntimeControlOverview: Codable, Equatable, Sendable {
         vitalDBObservation: VitalDBObservationDocument? = nil,
         vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot? = nil
     ) {
-        let observation = vitalDBObservation ?? status.vitalDBObservation
-        self.status = status
+        var statusWithoutLegacyVitalDBObservation = status
+        statusWithoutLegacyVitalDBObservation.vitalDBObservation = nil
+        self.status = statusWithoutLegacyVitalDBObservation
         self.settings = settings
         self.release = release
         self.install = install
-        self.vitalDBObservation = observation
+        self.vitalDBObservation = vitalDBObservation
         self.vitalDBObservationSnapshot = vitalDBObservationSnapshot ?? .fromOptional(vitalDBObservation)
-        self.vitalRecorder = RuntimeVitalRecorderSummary(status: status, vitalDBObservation: observation)
+        self.vitalRecorder = RuntimeVitalRecorderSummary(
+            containerObservation: status.containerObservation,
+            vitalDBObservation: vitalDBObservation
+        )
     }
 }

@@ -54,6 +54,38 @@ final class VMRuntimeConfigTests: XCTestCase {
         XCTAssertNil(loaded.sshAuthorizedKeys)
     }
 
+    func testLoadPreservesConfigPathInspectionFailure() {
+        let fileStore = RuntimeFileStoreSpy()
+        let configURL = URL(fileURLWithPath: "/runtime/vm-config.json")
+        fileStore.pathStates[configURL.path] = .inspectFailed("permission denied")
+
+        XCTAssertThrowsError(try VMRuntimeConfig.load(from: configURL, fileStore: fileStore)) { error in
+            guard case LauncherError.runtimeOperationFailed(let message) = error else {
+                return XCTFail("expected runtimeOperationFailed, got \(error)")
+            }
+            XCTAssertEqual(
+                message,
+                "VM config path inspection failed path=/runtime/vm-config.json reason=permission denied"
+            )
+        }
+    }
+
+    func testLoadPreservesUnexpectedConfigPathState() {
+        let fileStore = RuntimeFileStoreSpy()
+        let configURL = URL(fileURLWithPath: "/runtime/vm-config.json")
+        fileStore.pathStates[configURL.path] = .directory
+
+        XCTAssertThrowsError(try VMRuntimeConfig.load(from: configURL, fileStore: fileStore)) { error in
+            guard case LauncherError.runtimeOperationFailed(let message) = error else {
+                return XCTFail("expected runtimeOperationFailed, got \(error)")
+            }
+            XCTAssertEqual(
+                message,
+                "VM config path state is unexpected path=/runtime/vm-config.json state=directory"
+            )
+        }
+    }
+
     func testEnsureRuntimeDefaultsWritesExplicitEmptySSHAuthorizedKeysWhenMissing() {
         let paths = InstalledRuntimePaths(runtimeHome: URL(fileURLWithPath: "/runtime-root"))
         var config = VMRuntimeConfig.default(paths: paths)
@@ -105,5 +137,127 @@ final class VMRuntimeConfigTests: XCTestCase {
                 return XCTFail("expected missingFile, got \(error)")
             }
         }
+    }
+
+    func testValidateBootFilesPreservesPathInspectionFailure() {
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.pathStates["/runtime/kernel"] = .inspectFailed("permission denied")
+        let config = VMRuntimeConfig(
+            cpuCount: 4,
+            memoryMiB: 4096,
+            kernelPath: "/runtime/kernel",
+            initialRamdiskPath: nil,
+            diskPath: nil,
+            cloudInitPath: nil,
+            kernelCommandLine: "console=hvc0",
+            network: NetworkConfig(mode: .shared, bridgedInterface: nil, macAddress: nil),
+            sharedDirectory: nil,
+            vitalFilesDirectory: nil
+        )
+
+        XCTAssertThrowsError(try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)) { error in
+            guard case LauncherError.runtimeOperationFailed(let message) = error else {
+                return XCTFail("expected runtimeOperationFailed, got \(error)")
+            }
+            XCTAssertEqual(
+                message,
+                "VM boot file path inspection failed path=/runtime/kernel reason=permission denied"
+            )
+        }
+    }
+
+    func testValidateBootFilesPreservesUnexpectedPathState() {
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.pathStates["/runtime/kernel"] = .directory
+        let config = VMRuntimeConfig(
+            cpuCount: 4,
+            memoryMiB: 4096,
+            kernelPath: "/runtime/kernel",
+            initialRamdiskPath: nil,
+            diskPath: nil,
+            cloudInitPath: nil,
+            kernelCommandLine: "console=hvc0",
+            network: NetworkConfig(mode: .shared, bridgedInterface: nil, macAddress: nil),
+            sharedDirectory: nil,
+            vitalFilesDirectory: nil
+        )
+
+        XCTAssertThrowsError(try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)) { error in
+            guard case LauncherError.runtimeOperationFailed(let message) = error else {
+                return XCTFail("expected runtimeOperationFailed, got \(error)")
+            }
+            XCTAssertEqual(
+                message,
+                "VM boot file path state is unexpected path=/runtime/kernel state=directory"
+            )
+        }
+    }
+
+    func testConfigurationFactoryRejectsMissingExplicitCloudInitStoragePath() {
+        let fileStore = RuntimeFileStoreSpy()
+        let factory = VMConfigurationFactory(
+            fileStore: fileStore,
+            detached: true,
+            serialInput: FileHandle.standardInput,
+            serialOutput: FileHandle.standardOutput
+        )
+        let config = factoryConfig(cloudInitPath: "/runtime/cloud-init.iso")
+
+        XCTAssertThrowsError(try factory.build(from: config)) { error in
+            XCTAssertEqual(error as? VMConfigurationFactoryError, .missingStorageFile("/runtime/cloud-init.iso"))
+        }
+    }
+
+    func testConfigurationFactoryRejectsCloudInitStoragePathInspectionFailure() {
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.pathStates["/runtime/cloud-init.iso"] = .inspectFailed("permission denied")
+        let factory = VMConfigurationFactory(
+            fileStore: fileStore,
+            detached: true,
+            serialInput: FileHandle.standardInput,
+            serialOutput: FileHandle.standardOutput
+        )
+        let config = factoryConfig(cloudInitPath: "/runtime/cloud-init.iso")
+
+        XCTAssertThrowsError(try factory.build(from: config)) { error in
+            XCTAssertEqual(
+                error as? VMConfigurationFactoryError,
+                .storagePathInspectionFailed(path: "/runtime/cloud-init.iso", reason: "permission denied")
+            )
+        }
+    }
+
+    func testConfigurationFactoryRejectsUnexpectedCloudInitStoragePathState() {
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.pathStates["/runtime/cloud-init.iso"] = .directory
+        let factory = VMConfigurationFactory(
+            fileStore: fileStore,
+            detached: true,
+            serialInput: FileHandle.standardInput,
+            serialOutput: FileHandle.standardOutput
+        )
+        let config = factoryConfig(cloudInitPath: "/runtime/cloud-init.iso")
+
+        XCTAssertThrowsError(try factory.build(from: config)) { error in
+            XCTAssertEqual(
+                error as? VMConfigurationFactoryError,
+                .unexpectedStoragePathState(path: "/runtime/cloud-init.iso", state: "directory")
+            )
+        }
+    }
+
+    private func factoryConfig(cloudInitPath: String?) -> VMRuntimeConfig {
+        VMRuntimeConfig(
+            cpuCount: 4,
+            memoryMiB: 4096,
+            kernelPath: "/runtime/kernel",
+            initialRamdiskPath: nil,
+            diskPath: nil,
+            cloudInitPath: cloudInitPath,
+            kernelCommandLine: "console=hvc0",
+            network: NetworkConfig(mode: .shared, bridgedInterface: nil, macAddress: nil),
+            sharedDirectory: nil,
+            vitalFilesDirectory: nil
+        )
     }
 }

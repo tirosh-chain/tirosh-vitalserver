@@ -21,7 +21,7 @@ public struct RuntimeTestKitAPIRouter {
         }
 
         if let authorization, !authorization.allows(request: request) {
-            return .response(errorResponse(
+            return .response(RuntimeControlHTTPResponseFactory.error(
                 status: .unauthorized,
                 code: .unauthorized,
                 message: "Runtime Control token is missing or invalid."
@@ -82,18 +82,8 @@ public struct RuntimeTestKitAPIRouter {
             case .resetVirtualRecorders:
                 return try await jsonResponse(controller.resetVirtualRecorders())
             }
-        } catch let queryError as RuntimeControlHTTPQueryError {
-            return errorResponse(
-                status: .badRequest,
-                code: .badRequest,
-                message: queryError.localizedDescription
-            )
         } catch {
-            return errorResponse(
-                status: .internalServerError,
-                code: .handlerFailed,
-                message: error.localizedDescription
-            )
+            return RuntimeControlHTTPErrorResponseMapper.response(for: error)
         }
     }
 
@@ -113,15 +103,4 @@ public struct RuntimeTestKitAPIRouter {
         )
     }
 
-    private func errorResponse(
-        status: RuntimeControlHTTPStatus,
-        code: RuntimeControlAPIErrorCode,
-        message: String
-    ) -> RuntimeControlHTTPResponse {
-        return RuntimeControlHTTPResponse(
-            status: status,
-            headers: ["Content-Type": "application/json"],
-            body: RuntimeControlErrorResponseEncoder.encode(code: code, message: message)
-        )
-    }
 }

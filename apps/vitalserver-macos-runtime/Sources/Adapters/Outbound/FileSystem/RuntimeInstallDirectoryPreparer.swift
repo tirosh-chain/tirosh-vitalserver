@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import Errors
 
 public struct RuntimeInstallDirectoryPreparationContext<Settings> {
@@ -19,16 +20,16 @@ public struct RuntimeInstallDirectoryPreparationContext<Settings> {
 
 public struct RuntimeInstallDirectoryPreparationOperations {
     public var createDirectory: (URL, Bool) throws -> Void
-    public var fileExists: (URL) -> Bool
+    public var pathState: (URL) -> RuntimePathState
     public var removeItem: (URL) throws -> Void
 
     public init(
         createDirectory: @escaping (URL, Bool) throws -> Void,
-        fileExists: @escaping (URL) -> Bool,
+        pathState: @escaping (URL) -> RuntimePathState,
         removeItem: @escaping (URL) throws -> Void
     ) {
         self.createDirectory = createDirectory
-        self.fileExists = fileExists
+        self.pathState = pathState
         self.removeItem = removeItem
     }
 }
@@ -54,8 +55,24 @@ public struct RuntimeInstallDirectoryPreparer<Settings> {
     }
 
     private func removeStaleGuestRunDocuments() throws {
-        for document in context.staleGuestRunDocuments where operations.fileExists(document) {
-            try operations.removeItem(document)
+        for document in context.staleGuestRunDocuments {
+            let state = operations.pathState(document)
+            switch state {
+            case .file:
+                try operations.removeItem(document)
+            case .missing:
+                continue
+            case .inspectFailed(let reason):
+                throw RuntimeInstallDirectoryPreparationError.pathInspectionFailed(
+                    path: document.path,
+                    reason: reason
+                )
+            case .directory, .other, .unknown:
+                throw RuntimeInstallDirectoryPreparationError.unexpectedPathState(
+                    path: document.path,
+                    state: state.rawValue
+                )
+            }
         }
     }
 }

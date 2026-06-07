@@ -58,6 +58,7 @@ public enum RuntimeStatusDocumentBuilder {
             vmErrors: input.healthSnapshot.vmErrors,
             vmIP: input.healthSnapshot.vmIP,
             proxyPort: input.healthSnapshot.proxyPort,
+            proxyPortReadState: input.healthSnapshot.proxyPortReadState,
             hostProxyHTTP: input.healthSnapshot.hostProxyHTTP,
             guestHTTP: input.healthSnapshot.guestHTTP,
             redisUIHTTP: input.healthSnapshot.redisUIHTTP,

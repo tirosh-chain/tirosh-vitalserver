@@ -31,6 +31,10 @@ from tirosh_vitalserver.devtools.core.host_proxy import (
 )
 
 
+class PortListenerScanError(RuntimeError):
+    pass
+
+
 def render_proxy_config(input: HostProxyInput) -> int:
     print(render_proxy_config_text(input.port, input.upstream), end="")
     return 0
@@ -126,6 +130,7 @@ def clean_proxy_runtime(input: HostProxyInput) -> int:
 
 
 def inspect_proxy_status(input: HostProxyInput) -> int:
+    status = 0
     pid = read_pid(input)
     if pid and process_is_running(pid):
         print(f"nginx proxy is running: pid {pid}")
@@ -133,11 +138,15 @@ def inspect_proxy_status(input: HostProxyInput) -> int:
         print(f"nginx proxy pid file exists, but process is not running: {pid}")
     else:
         print(f"nginx proxy is not running: missing {input.runtime_dir}/logs/nginx.pid")
-    listeners = port_listeners(input.port)
-    if listeners:
-        print(f"proxy port {input.port} listeners: {','.join(listeners)}")
-    else:
-        print(f"proxy port {input.port} has no listener")
+    try:
+        listeners = port_listeners(input.port)
+        if listeners:
+            print(f"proxy port {input.port} listeners: {','.join(listeners)}")
+        else:
+            print(f"proxy port {input.port} has no listener")
+    except PortListenerScanError as error:
+        print(f"error: {error}")
+        status = 1
     backend_url = f"http://{input.bind_host}:{input.http_port}/check"
     if http_ok(backend_url):
         print(f"backend is reachable: {backend_url}")
@@ -147,7 +156,7 @@ def inspect_proxy_status(input: HostProxyInput) -> int:
             "hint: run 'docker compose ps' and check that app publishes "
             f"{input.bind_host}:{input.http_port}"
         )
-    return 0
+    return status
 
 
 def render_proxy_launchd_plist(input: HostProxyInput) -> int:
@@ -229,7 +238,11 @@ def requires_sudo(port: str) -> bool:
 
 def check_port_available(input: HostProxyInput) -> int:
     pid = read_pid(input)
-    listeners = port_listeners(input.port)
+    try:
+        listeners = port_listeners(input.port)
+    except PortListenerScanError as error:
+        print(f"error: {error}", flush=True)
+        return 1
     listeners = listeners_excluding_proxy_pid(
         listeners,
         pid=pid,
@@ -262,41 +275,58 @@ def process_is_running(pid: str) -> bool:
 
 
 def port_listeners(port: str) -> list[str]:
-    if not shutil.which("lsof"):
-        return []
-    result = subprocess.run(
-        ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    return sorted({f"{command}/{pid}" for command, pid in lsof_listener_rows(port)})
+
+
+def lsof_listener_rows(port: str) -> list[tuple[str, str]]:
+    lsof_path = shutil.which("lsof")
+    if not lsof_path:
+        raise PortListenerScanError("lsof is required to inspect proxy port listeners")
+    try:
+        result = subprocess.run(
+            [lsof_path, "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except (OSError, UnicodeDecodeError) as error:
+        raise PortListenerScanError(
+            f"failed to inspect proxy port {port} listeners: {error}"
+        ) from error
+    if result.returncode != 0:
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
+        if result.returncode == 1 and not stdout and not stderr:
+            return []
+        detail = stderr or stdout or f"exitCode={result.returncode}"
+        raise PortListenerScanError(
+            f"failed to inspect proxy port {port} listeners: {detail}"
+        )
     listeners = []
     for line in result.stdout.splitlines()[1:]:
         fields = line.split()
-        if len(fields) >= 2:
-            listeners.append(f"{fields[0]}/{fields[1]}")
-    return sorted(set(listeners))
+        if len(fields) < 2:
+            raise PortListenerScanError(
+                f"failed to inspect proxy port {port} listeners: malformed lsof output"
+            )
+        listeners.append((fields[0], fields[1]))
+    return listeners
 
 
 def nginx_listener_pids(port: str) -> list[str]:
-    if not shutil.which("lsof"):
-        raise SystemExit("error: lsof is required to find orphan proxy listeners")
-    result = subprocess.run(
-        ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    pids = []
-    for line in result.stdout.splitlines()[1:]:
-        fields = line.split()
-        if len(fields) >= 2 and fields[0] == "nginx":
-            pids.append(fields[1])
-    return sorted(set(pids))
+    try:
+        rows = lsof_listener_rows(port)
+    except PortListenerScanError as error:
+        raise SystemExit(f"error: {error}") from error
+    return sorted({pid for command, pid in rows if command == "nginx"})
 
 
 def warn_remaining_listeners(port: str) -> None:
-    listeners = port_listeners(port)
+    try:
+        listeners = port_listeners(port)
+    except PortListenerScanError as error:
+        print(f"warning: could not inspect remaining listeners on port {port}: {error}")
+        return
     if listeners:
         print(f"warning: listeners remain on port {port}: {','.join(listeners)}")
         print(f"Run: make proxy-stop-orphans VITALSERVER_PROXY_PORT={port}")

@@ -26,6 +26,18 @@ func execute(
     }
 }
 
+func rollbackTransactionAfterFailure(_ db: OpaquePointer, originalError: Error) throws -> Never {
+    do {
+        try execute(db, sql: "ROLLBACK")
+    } catch {
+        throw SQLiteRuntimeObservabilityStoreError.transactionRollbackFailed(
+            original: String(describing: originalError),
+            rollback: String(describing: error)
+        )
+    }
+    throw originalError
+}
+
 func countRows(
     _ db: OpaquePointer,
     sql: String,
@@ -114,6 +126,36 @@ func columnOptionalBool(_ statement: OpaquePointer?, _ index: Int32) -> Bool? {
 
 func sqliteErrorMessage(_ db: OpaquePointer) -> String {
     sqlite3_errmsg(db).map { String(cString: $0) } ?? "unknown sqlite error"
+}
+
+func requiredText(
+    _ statement: OpaquePointer?,
+    _ index: Int32,
+    table: String,
+    column: String
+) throws -> String {
+    guard let value = columnText(statement, index) else {
+        throw SQLiteRuntimeObservabilityStoreError.missingColumn(table: table, column: column)
+    }
+    return value
+}
+
+func requiredEnum<T: RawRepresentable>(
+    _ type: T.Type,
+    _ statement: OpaquePointer?,
+    _ index: Int32,
+    table: String,
+    column: String
+) throws -> T where T.RawValue == String {
+    let value = try requiredText(statement, index, table: table, column: column)
+    guard let decoded = type.init(rawValue: value) else {
+        throw SQLiteRuntimeObservabilityStoreError.invalidColumnValue(
+            table: table,
+            column: column,
+            value: value
+        )
+    }
+    return decoded
 }
 
 private func withStatement<T>(

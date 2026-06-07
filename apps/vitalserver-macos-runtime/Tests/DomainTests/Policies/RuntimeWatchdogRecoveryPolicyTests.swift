@@ -128,7 +128,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
 
     func testReportsUnrecoverableWhenInstalledArtifactsAreMissing() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
-            snapshot: healthSnapshot(vmExecutable: false, failureReasons: [.missingVMBin]),
+            snapshot: healthSnapshot(vmExecutable: .missing, failureReasons: [.missingVMBin]),
             hostProxyLivenessHTTP: "failed",
             automaticRecoveryEnabled: true
         )
@@ -291,8 +291,8 @@ private func runningLifecycle() -> RuntimeVMLifecycleDocument {
 }
 
 private func healthSnapshot(
-    vmExecutable: Bool = true,
-    proxyExecutable: Bool = true,
+    vmExecutable: RuntimeFileState = .executable,
+    proxyExecutable: RuntimeFileState = .executable,
     rootfsBase: RuntimeFileState = .present,
     vmDisk: RuntimeFileState = .present,
     vmService: RuntimeServiceState = .loaded,

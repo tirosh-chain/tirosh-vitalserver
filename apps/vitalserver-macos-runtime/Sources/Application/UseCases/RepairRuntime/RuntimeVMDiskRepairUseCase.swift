@@ -5,8 +5,9 @@ import Errors
 
 public struct RepairRuntimeVMDiskInput: Equatable, Sendable {
     public let rootfsBasePath: String
-    public let rootfsBaseExists: Bool
-    public let rootfsBaseSizeBytes: UInt64
+    public let rootfsBaseState: RuntimePathState
+    public let rootfsBaseSizeBytes: UInt64?
+    public let currentVMDiskState: RuntimePathState
     public let currentVMDiskSizeBytes: UInt64?
     public let defaultDiskGiB: Int
     public let bytesPerGiB: UInt64
@@ -14,16 +15,18 @@ public struct RepairRuntimeVMDiskInput: Equatable, Sendable {
 
     public init(
         rootfsBasePath: String,
-        rootfsBaseExists: Bool,
-        rootfsBaseSizeBytes: UInt64,
+        rootfsBaseState: RuntimePathState,
+        rootfsBaseSizeBytes: UInt64?,
+        currentVMDiskState: RuntimePathState,
         currentVMDiskSizeBytes: UInt64?,
         defaultDiskGiB: Int,
         bytesPerGiB: UInt64,
         freeSpaceMarginBytes: UInt64
     ) {
         self.rootfsBasePath = rootfsBasePath
-        self.rootfsBaseExists = rootfsBaseExists
+        self.rootfsBaseState = rootfsBaseState
         self.rootfsBaseSizeBytes = rootfsBaseSizeBytes
+        self.currentVMDiskState = currentVMDiskState
         self.currentVMDiskSizeBytes = currentVMDiskSizeBytes
         self.defaultDiskGiB = defaultDiskGiB
         self.bytesPerGiB = bytesPerGiB
@@ -102,20 +105,20 @@ public struct RepairRuntimeVMDiskReplacementBuildPlan: Equatable, Sendable {
 
 public struct RepairRuntimeVMDiskReplacementObservation: Equatable, Sendable {
     public let path: String
-    public let exists: Bool
+    public let state: RuntimePathState
     public let actualBytes: UInt64?
     public let targetDiskGiB: Int
     public let bytesPerGiB: UInt64
 
     public init(
         path: String,
-        exists: Bool,
+        state: RuntimePathState,
         actualBytes: UInt64?,
         targetDiskGiB: Int,
         bytesPerGiB: UInt64
     ) {
         self.path = path
-        self.exists = exists
+        self.state = state
         self.actualBytes = actualBytes
         self.targetDiskGiB = targetDiskGiB
         self.bytesPerGiB = bytesPerGiB
@@ -136,10 +139,9 @@ public struct RuntimeVMDiskRepairUseCase {
     public init() {}
 
     public func planRepair(for input: RepairRuntimeVMDiskInput) throws -> RepairRuntimeVMDiskPlan {
-        guard input.rootfsBaseExists else {
-            throw RepairRuntimeUseCaseError.operationFailed("missing file: \(input.rootfsBasePath)")
-        }
-        guard input.rootfsBaseSizeBytes > 0 else {
+        let rootfsBaseSizeBytes = try requiredRootfsBaseSize(input)
+        let currentVMDiskSizeBytes = try currentVMDiskSize(input)
+        guard rootfsBaseSizeBytes > 0 else {
             throw RepairRuntimeUseCaseError.operationFailed("rootfs base is empty path=\(input.rootfsBasePath)")
         }
         guard input.defaultDiskGiB > 0 else {
@@ -150,18 +152,18 @@ public struct RuntimeVMDiskRepairUseCase {
         }
 
         let requiredFreeSpaceBytes = try requiredFreeSpaceBytes(
-            rootfsBaseSizeBytes: input.rootfsBaseSizeBytes,
+            rootfsBaseSizeBytes: rootfsBaseSizeBytes,
             freeSpaceMarginBytes: input.freeSpaceMarginBytes
         )
         return RepairRuntimeVMDiskPlan(
             operation: .repairVMDisk,
             targetDiskGiB: targetDiskGiB(
-                currentVMDiskSizeBytes: input.currentVMDiskSizeBytes,
+                currentVMDiskSizeBytes: currentVMDiskSizeBytes,
                 defaultDiskGiB: input.defaultDiskGiB,
                 bytesPerGiB: input.bytesPerGiB
             ),
             requiredFreeSpaceBytes: requiredFreeSpaceBytes,
-            shouldArchiveCurrentDisk: input.currentVMDiskSizeBytes != nil,
+            shouldArchiveCurrentDisk: currentVMDiskSizeBytes != nil,
             restartPolicy: RuntimeServiceRestartPolicy(
                 restartVM: true,
                 restartGuestLogSync: true,
@@ -169,6 +171,48 @@ public struct RuntimeVMDiskRepairUseCase {
                 restartWatchdog: true
             )
         )
+    }
+
+    private func requiredRootfsBaseSize(_ input: RepairRuntimeVMDiskInput) throws -> UInt64 {
+        switch input.rootfsBaseState {
+        case .file:
+            guard let rootfsBaseSizeBytes = input.rootfsBaseSizeBytes else {
+                throw RepairRuntimeUseCaseError.operationFailed(
+                    "rootfs base size is missing path=\(input.rootfsBasePath)"
+                )
+            }
+            return rootfsBaseSizeBytes
+        case .missing:
+            throw RepairRuntimeUseCaseError.operationFailed("missing file: \(input.rootfsBasePath)")
+        case .inspectFailed(let reason):
+            throw RepairRuntimeUseCaseError.operationFailed(
+                "rootfs base path inspection failed: \(input.rootfsBasePath) reason=\(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw RepairRuntimeUseCaseError.operationFailed(
+                "rootfs base path state is unexpected: \(input.rootfsBasePath) state=\(input.rootfsBaseState.rawValue)"
+            )
+        }
+    }
+
+    private func currentVMDiskSize(_ input: RepairRuntimeVMDiskInput) throws -> UInt64? {
+        switch input.currentVMDiskState {
+        case .file:
+            guard let currentVMDiskSizeBytes = input.currentVMDiskSizeBytes else {
+                throw RepairRuntimeUseCaseError.operationFailed("current VM disk size is missing")
+            }
+            return currentVMDiskSizeBytes
+        case .missing:
+            return nil
+        case .inspectFailed(let reason):
+            throw RepairRuntimeUseCaseError.operationFailed(
+                "current VM disk path inspection failed: \(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw RepairRuntimeUseCaseError.operationFailed(
+                "current VM disk path state is unexpected: \(input.currentVMDiskState.rawValue)"
+            )
+        }
     }
 
     public func executionPlan(
@@ -205,8 +249,19 @@ public struct RuntimeVMDiskRepairUseCase {
     }
 
     public func requireReplacementDisk(_ observation: RepairRuntimeVMDiskReplacementObservation) throws {
-        guard observation.exists else {
+        switch observation.state {
+        case .file:
+            break
+        case .missing:
             throw RepairRuntimeUseCaseError.operationFailed("vm disk repair replacement missing path=\(observation.path)")
+        case .inspectFailed(let reason):
+            throw RepairRuntimeUseCaseError.operationFailed(
+                "vm disk repair replacement path inspection failed: \(observation.path) reason=\(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw RepairRuntimeUseCaseError.operationFailed(
+                "vm disk repair replacement path state is unexpected: \(observation.path) state=\(observation.state.rawValue)"
+            )
         }
         guard let actualBytes = observation.actualBytes else {
             throw RepairRuntimeUseCaseError.operationFailed("vm disk repair replacement size missing path=\(observation.path)")

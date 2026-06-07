@@ -37,4 +37,27 @@ final class RedisBackupResultReaderTests: XCTestCase {
         }
         XCTAssertFalse(message.isEmpty)
     }
+
+    func testPreservesResultPathInspectionFailures() {
+        let fileStore = RuntimeFileStoreSpy()
+        let resultURL = URL(fileURLWithPath: "/tmp/redis-backup-result.json")
+
+        fileStore.pathStates[resultURL.path] = .inspectFailed("permission denied")
+        guard case .failed(let inspectionMessage) = RedisBackupResultReader.load(from: resultURL, fileStore: fileStore) else {
+            return XCTFail("Expected failed result when path inspection fails")
+        }
+        XCTAssertEqual(
+            inspectionMessage,
+            "redis backup result path inspection failed path=/tmp/redis-backup-result.json reason=permission denied"
+        )
+
+        fileStore.pathStates[resultURL.path] = .directory
+        guard case .failed(let unexpectedStateMessage) = RedisBackupResultReader.load(from: resultURL, fileStore: fileStore) else {
+            return XCTFail("Expected failed result when path state is unexpected")
+        }
+        XCTAssertEqual(
+            unexpectedStateMessage,
+            "redis backup result path state is unexpected path=/tmp/redis-backup-result.json state=directory"
+        )
+    }
 }

@@ -118,7 +118,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var diskGiB: Int
     public var minimumDiskGiB: Int
     public var networkMode: RuntimeNetworkMode
-    public var bridgedInterface: String
+    public var bridgedInterface: String?
     public var proxyPort: Int
     public var runtimeControlPort: Int
     public var vitalFilesDirectory: String
@@ -142,7 +142,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         diskGiB: Int = 32,
         minimumDiskGiB: Int = 4,
         networkMode: RuntimeNetworkMode = .shared,
-        bridgedInterface: String = "",
+        bridgedInterface: String? = nil,
         proxyPort: Int = 80,
         runtimeControlPort: Int = 18_321,
         vitalFilesDirectory: String = "/Users/Shared/VitalServerHelper/vital-files",
@@ -214,8 +214,14 @@ public struct RuntimeStatusReadIssue: Codable, Equatable, Sendable {
     }
 }
 
+public enum RuntimeServiceStateSource: String, Codable, Equatable, Sendable {
+    case statusDocument = "status-document"
+    case liveLaunchd = "live-launchd"
+}
+
 public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var runtimeInstalled: Bool
+    public var runtimeInstallationState: RuntimeFileState?
     public var vmServiceLoaded: Bool
     public var proxyServiceLoaded: Bool
     public var guestLogSyncServiceLoaded: Bool
@@ -226,6 +232,11 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var guestLogSyncServiceState: RuntimeServiceState?
     public var sleepPreventionServiceState: RuntimeServiceState?
     public var watchdogServiceState: RuntimeServiceState?
+    public var vmServiceStateSource: RuntimeServiceStateSource?
+    public var proxyServiceStateSource: RuntimeServiceStateSource?
+    public var guestLogSyncServiceStateSource: RuntimeServiceStateSource?
+    public var sleepPreventionServiceStateSource: RuntimeServiceStateSource?
+    public var watchdogServiceStateSource: RuntimeServiceStateSource?
     public var runtimeState: RuntimeState?
     public var operation: RuntimeOperation?
     public var statusMessage: String?
@@ -252,7 +263,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var guestRuntimeStateError: String?
     public var dataDirectoryStats: RuntimeDataDirectoryStats?
     public var dataDirectoryStatsError: String?
-    public var proxyPort: Int
+    public var proxyPort: Int?
+    public var proxyPortReadState: RuntimeProxyPortReadState?
     public var failureReasons: [RuntimeFailureReason]
     public var progress: RuntimeProgressDocument?
     public var containerObservation: RuntimeContainerObservation?
@@ -260,6 +272,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
 
     public init(
         runtimeInstalled: Bool = false,
+        runtimeInstallationState: RuntimeFileState? = nil,
         vmServiceLoaded: Bool = false,
         proxyServiceLoaded: Bool = false,
         guestLogSyncServiceLoaded: Bool = false,
@@ -270,6 +283,11 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         guestLogSyncServiceState: RuntimeServiceState? = nil,
         sleepPreventionServiceState: RuntimeServiceState? = nil,
         watchdogServiceState: RuntimeServiceState? = nil,
+        vmServiceStateSource: RuntimeServiceStateSource? = nil,
+        proxyServiceStateSource: RuntimeServiceStateSource? = nil,
+        guestLogSyncServiceStateSource: RuntimeServiceStateSource? = nil,
+        sleepPreventionServiceStateSource: RuntimeServiceStateSource? = nil,
+        watchdogServiceStateSource: RuntimeServiceStateSource? = nil,
         runtimeState: RuntimeState? = nil,
         operation: RuntimeOperation? = nil,
         statusMessage: String? = nil,
@@ -296,13 +314,15 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         guestRuntimeStateError: String? = nil,
         dataDirectoryStats: RuntimeDataDirectoryStats? = nil,
         dataDirectoryStatsError: String? = nil,
-        proxyPort: Int = 80,
+        proxyPort: Int? = nil,
+        proxyPortReadState: RuntimeProxyPortReadState? = nil,
         failureReasons: [RuntimeFailureReason] = [],
         progress: RuntimeProgressDocument? = nil,
         containerObservation: RuntimeContainerObservation? = nil,
         vitalDBObservation: VitalDBObservationDocument? = nil
     ) {
         self.runtimeInstalled = runtimeInstalled
+        self.runtimeInstallationState = runtimeInstallationState
         self.vmServiceLoaded = vmServiceLoaded
         self.proxyServiceLoaded = proxyServiceLoaded
         self.guestLogSyncServiceLoaded = guestLogSyncServiceLoaded
@@ -313,6 +333,11 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.guestLogSyncServiceState = guestLogSyncServiceState
         self.sleepPreventionServiceState = sleepPreventionServiceState
         self.watchdogServiceState = watchdogServiceState
+        self.vmServiceStateSource = vmServiceStateSource
+        self.proxyServiceStateSource = proxyServiceStateSource
+        self.guestLogSyncServiceStateSource = guestLogSyncServiceStateSource
+        self.sleepPreventionServiceStateSource = sleepPreventionServiceStateSource
+        self.watchdogServiceStateSource = watchdogServiceStateSource
         self.runtimeState = runtimeState
         self.operation = operation
         self.statusMessage = statusMessage
@@ -340,10 +365,15 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.dataDirectoryStats = dataDirectoryStats
         self.dataDirectoryStatsError = dataDirectoryStatsError
         self.proxyPort = proxyPort
+        self.proxyPortReadState = proxyPortReadState
         self.failureReasons = failureReasons
         self.progress = progress
         self.containerObservation = containerObservation
         self.vitalDBObservation = vitalDBObservation
+    }
+
+    public var effectiveRuntimeInstallationState: RuntimeFileState {
+        runtimeInstallationState ?? (runtimeInstalled ? .executable : .missing)
     }
 
 }

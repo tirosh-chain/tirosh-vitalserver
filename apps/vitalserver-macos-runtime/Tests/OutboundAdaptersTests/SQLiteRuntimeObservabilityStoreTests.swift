@@ -2,12 +2,65 @@ import Contracts
 import Application
 import Domain
 import Foundation
-import OutboundAdapters
+@testable import OutboundAdapters
 import SQLite3
 import XCTest
 import Errors
 
 final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
+    func testInitializeUsesInjectedMigrationTimestamp() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let store = SQLiteRuntimeObservabilityStore(
+            url: directory.appendingPathComponent("runtime-observability.sqlite"),
+            migrationAppliedAt: { "2026-06-08T00:00:00Z" }
+        )
+
+        try store.initialize()
+
+        XCTAssertEqual(
+            try querySQLiteText(
+                url: store.url,
+                sql: "SELECT applied_at FROM schema_migrations WHERE version = 4"
+            ),
+            "2026-06-08T00:00:00Z"
+        )
+    }
+
+    func testRollbackFailurePreservesOriginalTransactionError() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let databaseURL = directory.appendingPathComponent("runtime-observability.sqlite")
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(databaseURL.path, &db), SQLITE_OK)
+        let database = try XCTUnwrap(db)
+        defer {
+            sqlite3_close(database)
+        }
+        let original = SQLiteRuntimeObservabilityStoreError.stepFailed("insert denied")
+
+        do {
+            try rollbackTransactionAfterFailure(database, originalError: original)
+        } catch let error as SQLiteRuntimeObservabilityStoreError {
+            guard case .transactionRollbackFailed(let originalMessage, let rollbackMessage) = error else {
+                XCTFail("Unexpected rollback error: \(error)")
+                return
+            }
+            XCTAssertTrue(originalMessage.contains("insert denied"))
+            XCTAssertTrue(rollbackMessage.contains("stepFailed"))
+        } catch {
+            XCTFail("Unexpected rollback error: \(error)")
+        }
+    }
+
     func testAppendsAndReadsRuntimeEventsByRecency() throws {
         let harness = try SQLiteStoreHarness()
         defer {
@@ -118,6 +171,26 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertEqual(page.state, .readFailed)
         XCTAssertEqual(page.events, [])
         XCTAssertTrue(page.readError?.contains("decodeFailed") == true)
+        XCTAssertTrue(page.readError?.contains("payload: \"{broken json}\"") == true)
+        XCTAssertTrue(page.readError?.contains("reason:") == true)
+    }
+
+    func testRebuildFailsWhenDatabasePathIsDirectory() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+        try FileManager.default.createDirectory(at: harness.store.url, withIntermediateDirectories: true)
+
+        XCTAssertThrowsError(try harness.store.rebuild(from: [])) { error in
+            XCTAssertEqual(
+                error as? SQLiteRuntimeObservabilityStoreError,
+                .unexpectedPathState(path: harness.store.url.path, state: "directory")
+            )
+        }
+        var isDirectory = ObjCBool(false)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: harness.store.url.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
     }
 
     func testVitalDBReadsDoNotCreateSQLiteReadModel() throws {
@@ -133,6 +206,27 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertThrowsError(try store.loadVitalDBRelationshipEvents())
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: database.path))
+    }
+
+    func testVitalDBAppendRequiresExplicitRelationshipProjectionProvider() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let store = SQLiteRuntimeObservabilityStore(url: directory.appendingPathComponent("observability.sqlite"))
+
+        XCTAssertThrowsError(try store.append(VitalDBObservationDocument(
+            observedAt: "2026-05-25T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120
+        ))) { error in
+            XCTAssertEqual(
+                error as? SQLiteRuntimeObservabilityStoreError,
+                .relationshipProjectionProviderMissing
+            )
+        }
     }
 
     func testProjectionCatchUpPopulatesSQLiteFromJSONLWhenSQLiteIsEmpty() throws {
@@ -152,8 +246,9 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
 
         try jsonl.append(event(id: "jsonl-event", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
 
-        catchUp.catchUpIfDue()
+        let result = catchUp.catchUpIfDue()
 
+        XCTAssertEqual(result, .caughtUp(eventCount: 1))
         XCTAssertEqual(repository.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["jsonl-event"])
         XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["jsonl-event"])
     }
@@ -249,7 +344,8 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
             intervalSeconds: 30,
             now: { baseDate.addingTimeInterval(10) }
         )
-        notDueCatchUp.catchUpIfDue()
+        let notDueResult = notDueCatchUp.catchUpIfDue()
+        XCTAssertEqual(notDueResult, .notDue)
         XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1"])
 
         let dueCatchUp = RuntimeEventSQLiteProjectionCatchUp(
@@ -258,7 +354,8 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
             intervalSeconds: 30,
             now: { baseDate.addingTimeInterval(31) }
         )
-        dueCatchUp.catchUpIfDue()
+        let dueResult = dueCatchUp.catchUpIfDue()
+        XCTAssertEqual(dueResult, .caughtUp(eventCount: 2))
         XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1", "event-2"])
     }
 
@@ -283,13 +380,15 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         try jsonl.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
         try Data("not a sqlite database".utf8).write(to: sqliteURL)
 
-        catchUp.catchUpIfDue()
+        let result = catchUp.catchUpIfDue()
 
+        XCTAssertEqual(result, .rebuiltAfterSecondaryFailure(eventCount: 1))
         XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1"])
+        XCTAssertTrue(logs.contains { $0.contains("runtime event sqlite catch-up due read failed") })
         XCTAssertTrue(logs.contains { $0.contains("runtime event sqlite catch-up failed; rebuilding index") })
     }
 
-    func testProjectionCatchUpSkipsBrokenJSONLLines() throws {
+    func testProjectionCatchUpDoesNotMarkCaughtUpWhenJSONLReadHasIssues() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer {
@@ -316,9 +415,21 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         handle.write(Data("{broken json}\n".utf8))
         try jsonl.append(event(id: "event-2", timestamp: "2026-05-24T00:01:00Z", type: .containerObserved))
 
-        catchUp.catchUpIfDue()
+        let result = catchUp.catchUpIfDue()
 
-        XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1", "event-2"])
+        guard case .skippedDueToPrimaryReadIssues(let issues) = result else {
+            XCTFail("Unexpected catch-up result: \(result)")
+            return
+        }
+        XCTAssertEqual(issues.count, 1)
+        guard case .invalidLine(let path, let line, _) = issues[0] else {
+            XCTFail("Unexpected read issue: \(issues[0])")
+            return
+        }
+        XCTAssertEqual(path, jsonlURL.path)
+        XCTAssertEqual(line, 2)
+        XCTAssertEqual(sqlite.query(RuntimeEventQuery(limit: 10)).events, [])
+        XCTAssertEqual(sqlite.catchUpDue(now: Date(), intervalSeconds: 0), .due)
         XCTAssertTrue(logs.contains { $0.contains("runtime event jsonl read issue during sqlite catch-up") })
     }
 
@@ -400,7 +511,11 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         )
 
         XCTAssertThrowsError(try harness.store.loadLatestVitalDBObservation()) { error in
-            XCTAssertTrue(String(describing: error).contains("decodeFailed"))
+            guard case .decodeFailed(payload: let payload, reason: let reason) = error as? SQLiteRuntimeObservabilityStoreError else {
+                return XCTFail("expected decodeFailed, got \(error)")
+            }
+            XCTAssertEqual(payload, "{broken json}")
+            XCTAssertFalse(reason.isEmpty)
         }
     }
 
@@ -779,6 +894,34 @@ private func executeSQLite(url: URL, sql: String) throws {
     }
 }
 
+private func querySQLiteText(url: URL, sql: String) throws -> String {
+    var database: OpaquePointer?
+    guard sqlite3_open_v2(url.path, &database, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
+          let openedDatabase = database else {
+        let message = database.flatMap(sqlite3_errmsg).map { String(cString: $0) } ?? "unknown sqlite open error"
+        sqlite3_close(database)
+        throw SQLiteRuntimeObservabilityStoreError.openFailed(message)
+    }
+    defer {
+        sqlite3_close(openedDatabase)
+    }
+    var statement: OpaquePointer?
+    guard sqlite3_prepare_v2(openedDatabase, sql, -1, &statement, nil) == SQLITE_OK,
+          let preparedStatement = statement else {
+        let message = sqlite3_errmsg(openedDatabase).map { String(cString: $0) } ?? "unknown sqlite prepare error"
+        sqlite3_finalize(statement)
+        throw SQLiteRuntimeObservabilityStoreError.prepareFailed(message)
+    }
+    defer {
+        sqlite3_finalize(preparedStatement)
+    }
+    guard sqlite3_step(preparedStatement) == SQLITE_ROW,
+          let rawValue = sqlite3_column_text(preparedStatement, 0) else {
+        throw SQLiteRuntimeObservabilityStoreError.stepFailed("expected one text row")
+    }
+    return String(cString: rawValue)
+}
+
 private struct SQLiteStoreHarness {
     let directory: URL
     let store: SQLiteRuntimeObservabilityStore
@@ -787,12 +930,22 @@ private struct SQLiteStoreHarness {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        store = SQLiteRuntimeObservabilityStore(url: directory.appendingPathComponent("runtime-observability.sqlite"))
+        store = makeVitalDBProjectionStore(
+            url: directory.appendingPathComponent("runtime-observability.sqlite")
+        )
     }
 
     func cleanup() {
         try? FileManager.default.removeItem(at: directory)
     }
+}
+
+private func makeVitalDBProjectionStore(url: URL) -> SQLiteRuntimeObservabilityStore {
+    let relationshipProjection = PlanVitalDBRelationshipProjectionUseCase()
+    return SQLiteRuntimeObservabilityStore(
+        url: url,
+        relationshipProjectionPlanner: relationshipProjection.projectionPlan
+    )
 }
 
 private func recorderActivityObservation(

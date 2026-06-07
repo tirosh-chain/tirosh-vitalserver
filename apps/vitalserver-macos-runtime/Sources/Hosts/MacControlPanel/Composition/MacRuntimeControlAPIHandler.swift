@@ -12,7 +12,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     private let readWorker: MacRuntimeControlReadWorker
     private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
     private let servesTestTools: Bool
-    private let statusAnnotator: RuntimeControlStatusAnnotator
+    private let localAPIStatus: RuntimeControlLocalAPIStatusRead
     private let scheduleHelperRelaunch: @MainActor () -> Void
     private let scheduleHelperTermination: @MainActor () -> Void
 
@@ -31,7 +31,9 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         self.readWorker = readWorker
         self.localAPISettings = localAPISettings
         self.servesTestTools = servesTestTools
-        self.statusAnnotator = RuntimeControlStatusAnnotator(runtimeControlStartedAt: runtimeControlStartedAt)
+        self.localAPIStatus = RuntimeControlLocalAPIStatusRead.reachable(
+            startedAt: Self.timestamp(runtimeControlStartedAt)
+        )
         self.scheduleHelperRelaunch = scheduleHelperRelaunch
         self.scheduleHelperTermination = scheduleHelperTermination
     }
@@ -45,7 +47,10 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     func loadStatus() async throws -> RuntimeStatus {
         let settings = await readWorker.loadSettings()
         let status = await readWorker.loadStatus(settings: settings)
-        return statusAnnotator.annotated(status)
+        return RuntimeControlLocalAPIStatusAssembler.applyingLocalAPIStatus(
+            to: status,
+            read: localAPIStatus
+        )
     }
 
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
@@ -67,7 +72,10 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     func loadHealthStatus() async throws -> RuntimeStatus {
         let settings = await readWorker.loadSettings()
         let status = await readWorker.loadHealthStatus(settings: settings)
-        return statusAnnotator.annotated(status)
+        return RuntimeControlLocalAPIStatusAssembler.applyingLocalAPIStatus(
+            to: status,
+            read: localAPIStatus
+        )
     }
 
     func loadSettings() async throws -> RuntimeSettings {
@@ -83,12 +91,13 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse {
-        RuntimeLogTextResponse(
-            text: await hostClient.loadLogText(
-                sourceID: request.source,
-                helperMessage: request.helperMessage ?? "",
-                lineLimit: request.lineLimit
-            )
+        let textResult = await hostClient.loadLogTextResult(
+            sourceID: request.source,
+            lineLimit: request.lineLimit
+        )
+        return RuntimeLogTextResponse(
+            text: RuntimeHostTextDisplayPolicy(noDataText: AppConstants.StatusText.noLogData)
+                .displayText(textResult)
         )
     }
 
@@ -137,7 +146,11 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse {
-        RuntimeUpdateBundleSummaryResponse(summary: await readWorker.updateBundleSummary(url: try localFileURL(bundle)))
+        let summary = await readWorker.updateBundleSummaryResult(url: try localFileURL(bundle))
+        return RuntimeUpdateBundleSummaryResponse(
+            summary: RuntimeHostTextDisplayPolicy(noDataText: AppConstants.StatusText.notReported)
+                .displayText(summary)
+        )
     }
 
     func verifyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
@@ -174,9 +187,15 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
 
     private func localFileURL(_ reference: RuntimeControlFileReference) throws -> URL {
         guard reference.kind == .localPath else {
-            throw RuntimeControlAPIHandlerError.unsupportedFileReference(reference.kind.rawValue)
+            throw RuntimeControlAPIReadHandlerError.unsupportedFileReference(reference.kind.rawValue)
         }
         return URL(fileURLWithPath: reference.value)
+    }
+
+    private static func timestamp(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: date)
     }
 
 }

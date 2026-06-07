@@ -46,22 +46,30 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
         let text: String
         if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
             text = vocabulary.updatingText
-        } else if !status.runtimeInstalled {
+        } else if !status.effectiveRuntimeInstallationState.isExecutable {
             text = vocabulary.unavailableText
         } else {
             text = labelPolicy.serviceReachabilityLabel(status.hostProxyHTTP)
         }
         return RuntimeStatusVitalServerAvailabilityValue(
             text: text,
-            severity: RuntimeActiveOperationPolicy.isUpdateInProgress(status)
-                ? .warning
-                : reachabilityPolicy.httpSeverity(status.hostProxyHTTP),
+            severity: availabilitySeverity(status),
             uptimeText: composeServiceValuePolicy.uptimeText(
                 service: appComposeService,
                 observation: observation,
                 now: now
             )
         )
+    }
+
+    private func availabilitySeverity(_ status: RuntimeStatus) -> RuntimeStatusReachabilityPolicy.Severity {
+        if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
+            return .warning
+        }
+        if !status.effectiveRuntimeInstallationState.isExecutable {
+            return .critical
+        }
+        return reachabilityPolicy.httpSeverity(status.hostProxyHTTP)
     }
 }
 

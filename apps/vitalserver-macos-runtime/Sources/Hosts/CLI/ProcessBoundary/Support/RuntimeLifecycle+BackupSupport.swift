@@ -9,13 +9,8 @@ import Workflow
 import Errors
 
 extension RuntimeLifecycle {
-    func latestBackup() -> URL? {
-        do {
-            return try backupStore().latestBackup()
-        } catch {
-            log("failed to read latest backup error=\(error.localizedDescription)")
-            return nil
-        }
+    func latestBackup() throws -> URL? {
+        try backupStore().latestBackup()
     }
 
     func backupStore() -> RuntimeBackupStore {

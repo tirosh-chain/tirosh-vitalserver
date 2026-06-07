@@ -2,23 +2,22 @@ import Foundation
 import RuntimeControl
 import Application
 import Contracts
-import Domain
 import Errors
 
 protocol RuntimeHostFileReading: Sendable {
-    func updateBundleSummary(url: URL) -> String
+    func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult
     func backups(latestBackupPath: String?) throws -> [RuntimeBackup]
     func redisBackups() throws -> [RuntimeBackup]
-    func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String
+    func logTextResult(sourceID: RuntimeLogSource, lineLimit: Int) -> RuntimeHostTextReadResult
     func preferredLogsPath() -> String
     func vitalFileFolders(root: String) throws -> [VitalFilesFolder]
 }
 
 struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable {
-    private static let logTailReadByteLimit: UInt64 = 128 * 1024
-
     private let fileStore: RuntimeFileStore
     private let logCollector: RuntimeLogCollecting
+    private let logTextReader: RuntimeLogFileTextReader
+    private let logSourceReadStrategyCatalog = RuntimeLogSourceReadStrategyCatalog()
 
     init(
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
@@ -26,27 +25,36 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
     ) {
         self.fileStore = fileStore
         self.logCollector = logCollector
+        self.logTextReader = RuntimeLogFileTextReader(fileStore: fileStore)
     }
 
-    func updateBundleSummary(url: URL) -> String {
+    func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
         if url.lastPathComponent.hasSuffix(".tar.gz") || url.lastPathComponent.hasSuffix(".tgz") {
-            return "Archive: \(url.lastPathComponent)\nVerify to inspect manifest and checksums."
+            return .loaded("Archive: \(url.lastPathComponent)\nVerify to inspect manifest and checksums.")
         }
         let manifestURL = url.appendingPathComponent("manifest.json")
-        guard fileStore.fileExists(manifestURL) else {
-            return "Missing manifest.json"
+        let manifestState = fileStore.pathState(at: manifestURL)
+        switch manifestState {
+        case .file:
+            break
+        case .missing:
+            return .missing(.message("Missing manifest.json"))
+        case .inspectFailed(let reason):
+            return .failed("Manifest path inspection failed: \(manifestURL.path) reason=\(reason)")
+        case .directory, .other, .unknown:
+            return .failed("Manifest path state is unexpected: \(manifestURL.path) state=\(manifestState.rawValue)")
         }
         let manifest: UpdateBundleManifest
         do {
             let data = try fileStore.readData(manifestURL)
             manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: data)
         } catch {
-            return "Invalid manifest.json: \(error.localizedDescription)"
+            return .failed("Invalid manifest.json: \(error.localizedDescription)")
         }
         let artifacts = manifest.artifacts
             .map { artifact in "\(artifact.type.rawValue): \(artifact.name)" }
             .joined(separator: "\n")
-        return "Version: \(manifest.version)\nArtifacts:\n\(artifacts)"
+        return .loaded("Version: \(manifest.version)\nArtifacts:\n\(artifacts)")
     }
 
     func backups(latestBackupPath: String?) throws -> [RuntimeBackup] {
@@ -57,107 +65,37 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
         try RuntimeBackup.loadRedisBackups(fileStore: fileStore)
     }
 
-    func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
-        switch sourceID {
-        case .helperMessage:
-            return logFile(path: RuntimeControlClientConstants.Paths.helperMessageLogFile, lineLimit: lineLimit)
-        case .command:
-            return logFile(path: RuntimeControlClientConstants.Paths.commandLogFile, lineLimit: lineLimit)
-        case .containers:
-            if !fileStore.fileExists(URL(fileURLWithPath: RuntimeControlClientConstants.Paths.containerLogs)) {
+    func logTextResult(sourceID: RuntimeLogSource, lineLimit: Int) -> RuntimeHostTextReadResult {
+        let strategy = logSourceReadStrategyCatalog.strategy(for: sourceID)
+        switch strategy {
+        case .direct(let source):
+            return logTextReader.read(source, lineLimit: lineLimit)
+        case .refreshThenRead(let source):
+            let refreshFailure = refreshLogCollectionFailure(sourceID)
+            let text = logTextReader.read(source, lineLimit: lineLimit)
+            if case .missing = text, let refreshFailure {
+                return refreshFailure
+            }
+            return text
+        case .refreshWhenPrimaryMissing(let source):
+            if logTextReader.primaryFileIsMissing(source) {
                 let refreshFailure = refreshLogCollectionFailure(sourceID)
-                let text = logFile(sourceID: sourceID, lineLimit: lineLimit)
-                if text == RuntimeControlClientConstants.StatusText.noLogData, let refreshFailure {
+                let text = logTextReader.read(source, lineLimit: lineLimit)
+                if case .missing = text, let refreshFailure {
                     return refreshFailure
                 }
                 return text
             }
-            return logFile(sourceID: sourceID, lineLimit: lineLimit)
-        default:
-            let refreshFailure = refreshLogCollectionFailure(sourceID)
-            let text = logFile(sourceID: sourceID, lineLimit: lineLimit)
-            if text == RuntimeControlClientConstants.StatusText.noLogData, let refreshFailure {
-                return refreshFailure
-            }
-            return text
+            return logTextReader.read(source, lineLimit: lineLimit)
         }
     }
 
-    private func refreshLogCollectionFailure(_ sourceID: RuntimeLogSource) -> String? {
+    private func refreshLogCollectionFailure(_ sourceID: RuntimeLogSource) -> RuntimeHostTextReadResult? {
         do {
             try logCollector.refreshLogCollection(sourceID: sourceID)
             return nil
         } catch {
-            return "Failed to refresh log collection: \(error.localizedDescription)"
-        }
-    }
-
-    private func logFile(sourceID: RuntimeLogSource, lineLimit: Int) -> String {
-        switch sourceID {
-        case .helperMessage:
-            return RuntimeControlClientConstants.StatusText.noLogData
-        case .install:
-            return logFile(path: RuntimeControlClientConstants.Paths.installLog, lineLimit: lineLimit)
-        case .command:
-            return logFile(
-                path: RuntimeControlClientConstants.Paths.commandLog,
-                lineLimit: lineLimit,
-                sourcePath: RuntimeControlClientConstants.Paths.commandLogFile
-            )
-        case .launcher:
-            return logFile(
-                path: (RuntimeControlClientConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launcher.log"),
-                lineLimit: lineLimit,
-                sourcePath: (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launcher.log")
-            )
-        case .vmLaunchOutput:
-            return logFile(
-                path: (RuntimeControlClientConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.out.log"),
-                lineLimit: lineLimit,
-                sourcePath: (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.out.log")
-            )
-        case .vmLaunchError:
-            return logFile(
-                path: (RuntimeControlClientConstants.Paths.runtimeLogs as NSString).appendingPathComponent("launchd.err.log"),
-                lineLimit: lineLimit,
-                sourcePath: (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("launchd.err.log")
-            )
-        case .proxyOutput:
-            return logFile(
-                path: (RuntimeControlClientConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.out.log"),
-                lineLimit: lineLimit,
-                sourcePath: (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.out.log")
-            )
-        case .proxyError:
-            return logFile(
-                path: (RuntimeControlClientConstants.Paths.runtimeLogs as NSString).appendingPathComponent("proxy.err.log"),
-                lineLimit: lineLimit,
-                sourcePath: (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("proxy.err.log")
-            )
-        case .watchdog:
-            return logFile(
-                path: (RuntimeControlClientConstants.Paths.runtimeLogs as NSString).appendingPathComponent("watchdog.out.log"),
-                lineLimit: lineLimit,
-                sourcePath: (RuntimeControlClientConstants.Paths.runtimeLogSources as NSString).appendingPathComponent("watchdog.out.log")
-            )
-        case .updateActivation:
-            return logFile(
-                path: RuntimeControlClientConstants.Paths.updateActivationLog,
-                lineLimit: lineLimit,
-                sourcePath: RuntimeControlClientConstants.Paths.updateActivationLogSource
-            )
-        case .updateShutdown:
-            return logFile(
-                path: RuntimeControlClientConstants.Paths.updateShutdownLog,
-                lineLimit: lineLimit,
-                sourcePath: RuntimeControlClientConstants.Paths.updateShutdownLogSource
-            )
-        case .containers:
-            return logFile(
-                path: RuntimeControlClientConstants.Paths.containerLogs,
-                lineLimit: lineLimit,
-                sourcePath: RuntimeControlClientConstants.Paths.containerLogSource
-            )
+            return .failed("Failed to refresh log collection: \(error.localizedDescription)")
         }
     }
 
@@ -168,69 +106,25 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
     func vitalFileFolders(root: String) throws -> [VitalFilesFolder] {
         let rootURL = URL(fileURLWithPath: root)
         let entries = try fileStore.contentsOfDirectory(at: rootURL, skipsHiddenFiles: false)
-        return entries
-            .filter { fileStore.directoryExists($0) }
+        var directories: [URL] = []
+        for entry in entries {
+            let state = fileStore.pathState(at: entry)
+            switch state {
+            case .directory:
+                directories.append(entry)
+            case .file, .missing:
+                continue
+            case .inspectFailed(let reason):
+                throw RuntimeHostFileReaderError.pathInspectionFailed(path: entry.path, reason: reason)
+            case .other, .unknown:
+                throw RuntimeHostFileReaderError.unexpectedPathState(path: entry.path, state: state.rawValue)
+            }
+        }
+        return directories
             .sorted { lhs, rhs in
                 lhs.lastPathComponent.localizedStandardCompare(rhs.lastPathComponent) == .orderedAscending
             }
-            .map { item in
-                VitalFilesFolder(name: item.lastPathComponent, path: item.path)
-            }
+            .map { item in VitalFilesFolder(name: item.lastPathComponent, path: item.path) }
     }
 
-    private func logFile(path: String, lineLimit: Int, sourcePath: String? = nil) -> String {
-        let url = URL(fileURLWithPath: path)
-        let readableURL: URL
-        if fileStore.fileExists(url) {
-            readableURL = url
-        } else if let sourcePath {
-            let sourceURL = URL(fileURLWithPath: sourcePath)
-            if fileStore.fileExists(sourceURL) {
-                readableURL = sourceURL
-            } else {
-                return RuntimeControlClientConstants.StatusText.noLogData
-            }
-        } else {
-            return RuntimeControlClientConstants.StatusText.noLogData
-        }
-        let content: String?
-        do {
-            content = try readTailText(readableURL)
-        } catch {
-            return "Failed to read log file \(readableURL.path): \(error.localizedDescription)"
-        }
-        guard let content else {
-            return RuntimeControlClientConstants.StatusText.noLogData
-        }
-        let body = tail(content, lineLimit: lineLimit)
-        return body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? RuntimeControlClientConstants.StatusText.noLogData
-            : body
-    }
-
-    private func tail(_ content: String, lineLimit: Int) -> String {
-        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
-        return lines.suffix(lineLimit).joined(separator: "\n")
-    }
-
-    private func readTailText(_ url: URL) throws -> String? {
-        let fileSize = try fileStore.fileSize(url)
-        let offset = fileSize > Self.logTailReadByteLimit
-            ? fileSize - Self.logTailReadByteLimit
-            : nil
-        let data: Data
-        if let partialReader = fileStore as? RuntimeFilePartialReading {
-            data = try partialReader.readData(url, offset: offset)
-        } else {
-            data = try fileStore.readData(url)
-        }
-        guard !data.isEmpty else {
-            return nil
-        }
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw RuntimeHostFileReaderError.invalidUTF8(path: url.path)
-        }
-        return text
-    }
 }
-

@@ -79,8 +79,8 @@ private func healthSnapshot(
     reasons: [RuntimeFailureReason]
 ) -> RuntimeHealthSnapshot {
     RuntimeHealthSnapshot(
-        vmExecutable: true,
-        proxyExecutable: true,
+        vmExecutable: .executable,
+        proxyExecutable: .executable,
         rootfsBase: .present,
         vmDisk: .present,
         vmService: .loaded,

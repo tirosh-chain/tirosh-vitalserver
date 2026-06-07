@@ -492,10 +492,10 @@
       renderInstall(install);
       renderSettings(settings);
       renderRelease(release);
-      renderVitalDBObservation(vitalDBObservation || status.vitalDBObservation);
+      renderVitalDBObservation(vitalDBObservation);
       renderVitalRecorders(vitalRecorders, vitalRelationships);
       renderVitalBeds(vitalBeds);
-      renderObservability(latestStatus, vitalDBObservation || status.vitalDBObservation);
+      renderObservability(latestStatus, vitalDBObservation);
       renderRuntimeEvents();
       renderBackups(backups, redisBackups);
       renderTestKit(testKitStatus);
@@ -549,9 +549,10 @@
     }
 
     function renderAdvancedStatus(status) {
-      const vitalServerURL = `http://127.0.0.1:${status.proxyPort || 80}/`;
-      const redisUIURL = `http://127.0.0.1:${status.proxyPort || 80}/redis-ui/`;
-      const swaggerURL = `http://127.0.0.1:${status.proxyPort || 80}/swagger/`;
+      const proxyPort = validProxyPort(status.proxyPort);
+      const vitalServerURL = proxyPort ? `http://127.0.0.1:${proxyPort}/` : null;
+      const redisUIURL = proxyPort ? `http://127.0.0.1:${proxyPort}/redis-ui/` : null;
+      const swaggerURL = proxyPort ? `http://127.0.0.1:${proxyPort}/swagger/` : null;
       const values = [
         ["runtime state", status.runtimeState],
         ["operation", status.operation],
@@ -569,11 +570,11 @@
         ["VitalServer URL", vitalServerURL],
         ["Redis UI URL", redisUIURL],
         ["Swagger URL", swaggerURL],
-        ["VM service", serviceState(status.vmServiceState, status.vmServiceLoaded)],
-        ["host proxy service", serviceState(status.proxyServiceState, status.proxyServiceLoaded)],
-        ["guest log sync service", serviceState(status.guestLogSyncServiceState, status.guestLogSyncServiceLoaded)],
-        ["watchdog service", serviceState(status.watchdogServiceState, status.watchdogServiceLoaded)],
-        ["sleep prevention service", serviceState(status.sleepPreventionServiceState, status.sleepPreventionServiceLoaded)],
+        ["VM service", serviceState(status.vmServiceState)],
+        ["host proxy service", serviceState(status.proxyServiceState)],
+        ["guest log sync service", serviceState(status.guestLogSyncServiceState)],
+        ["watchdog service", serviceState(status.watchdogServiceState)],
+        ["sleep prevention service", serviceState(status.sleepPreventionServiceState)],
         ["updated", formatDate(status.updatedAt)]
       ];
       $("advancedStatusMetrics").innerHTML = metricsHTML(values);
@@ -708,7 +709,7 @@
     function renderObservability(status, observation) {
       const values = [
         ["VitalDB observer", observation ? observation.ready ? "ready" : "unhealthy" : "unavailable"],
-        ["guest log sync", status.guestLogSyncServiceLoaded ? "running" : "stopped"],
+        ["guest log sync", serviceState(status.guestLogSyncServiceState)],
         ["recorder observation", observation && formatDate(observation.observedAt)],
         ["known recorders", observation && (observation.recorders || []).length],
         ["known beds", observation && (observation.beds || []).length],
@@ -1009,8 +1010,8 @@
           renderOverview(overview);
           renderStatus(latestStatus, latestSettings);
           renderAdvancedStatus(latestStatus);
-          renderVitalDBObservation(overview.vitalDBObservation || (overview.status && overview.status.vitalDBObservation));
-          renderObservability(latestStatus, overview.vitalDBObservation || (overview.status && overview.status.vitalDBObservation));
+          renderVitalDBObservation(overview.vitalDBObservation);
+          renderObservability(latestStatus, overview.vitalDBObservation);
         } catch (_) {}
       }
       if (outputId === "eventStream" && data && typeof data === "object") {
@@ -1059,7 +1060,7 @@
       return "Waiting";
     }
 
-    function serviceState(state, fallbackLoaded) {
+    function serviceState(state) {
       if (state === "loaded") {
         return "running";
       }
@@ -1068,12 +1069,6 @@
       }
       if (typeof state === "string" && state.length > 0) {
         return state;
-      }
-      if (fallbackLoaded === true) {
-        return "running";
-      }
-      if (fallbackLoaded === false) {
-        return "stopped";
       }
       return "unavailable";
     }
@@ -1181,6 +1176,19 @@
       return `${size >= 10 || unit === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unit]}`;
     }
 
+    function validProxyPort(value) {
+      const port = Number(value);
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        return null;
+      }
+      return port;
+    }
+
+    function requiredProxyPort() {
+      return validProxyPort(latestSettings && latestSettings.proxyPort)
+        || validProxyPort(latestStatus && latestStatus.proxyPort);
+    }
+
     function fileName(path) {
       if (!path) return "-";
       return String(path).split("/").filter(Boolean).pop() || path;
@@ -1201,7 +1209,15 @@
     $("startServices").addEventListener("click", () => runRuntimeCommand("services-started", () => postJSON("/runtime/services/start", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
     $("stopServices").addEventListener("click", () => confirm("Stop runtime services?") && runRuntimeCommand("services-stopped", () => postJSON("/runtime/services/stop", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
     $("repairRuntime").addEventListener("click", () => runRuntimeCommand("runtime-repaired", () => postJSON("/runtime/services/repair-runtime", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
-    $("repairProxy").addEventListener("click", () => runRuntimeCommand("proxy-repaired", () => postJSON("/runtime/services/repair-proxy", { proxyPort: Number((latestSettings && latestSettings.proxyPort) || (latestStatus && latestStatus.proxyPort) || 80) })).catch((error) => append("statusStream", "command-error", { message: error.message })));
+    $("repairProxy").addEventListener("click", () => {
+      const proxyPort = requiredProxyPort();
+      if (!proxyPort) {
+        append("statusStream", "command-error", { message: "Host proxy port is not available from settings or status." });
+        return;
+      }
+      runRuntimeCommand("proxy-repaired", () => postJSON("/runtime/services/repair-proxy", { proxyPort }))
+        .catch((error) => append("statusStream", "command-error", { message: error.message }));
+    });
     $("repairDatastore").addEventListener("click", () => runRuntimeCommand("datastore-repaired", () => postJSON("/runtime/services/repair-datastore", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
     $("createRedisBackup").addEventListener("click", () => runRuntimeCommand("redis-backup-created", () => postJSON("/runtime/redis/backups", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
     $("applySettings").addEventListener("click", () => confirm("Apply runtime settings?") && applyRuntimeSettings().catch((error) => append("statusStream", "command-error", { message: error.message })));

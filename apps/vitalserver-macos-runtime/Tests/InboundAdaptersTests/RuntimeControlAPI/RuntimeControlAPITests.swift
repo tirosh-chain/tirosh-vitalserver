@@ -104,6 +104,119 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertTrue(body.contains("Runtime Control"))
     }
 
+    func testStaticFileResponderReportsExistingFileReadFailureSeparatelyFromNotFound() throws {
+        let root = try makeTemporaryPWA()
+        let index = root.appendingPathComponent("index.html")
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: index.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: index.path)
+        }
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root)
+
+        let response = try XCTUnwrap(responder.response(for: .init(method: .get, path: "/")))
+
+        XCTAssertEqual(response.status, .internalServerError)
+        XCTAssertTrue(try XCTUnwrap(response.body).text().contains("Static file read failed"))
+    }
+
+    func testStaticFileResponderReportsPathInspectionFailureSeparatelyFromNotFound() throws {
+        let root = URL(fileURLWithPath: "/runtime-control-pwa", isDirectory: true)
+        let reader = FakeStaticFileReader(pathStates: [
+            root.appendingPathComponent("index.html").path: .inspectFailed("permission denied"),
+        ])
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root, fileReader: reader)
+
+        let response = try XCTUnwrap(responder.response(for: .init(method: .get, path: "/")))
+
+        XCTAssertEqual(response.status, .internalServerError)
+        XCTAssertEqual(
+            try XCTUnwrap(response.body).text(),
+            "Static file read failed: static file path inspection failed: /runtime-control-pwa/index.html reason=permission denied"
+        )
+        XCTAssertEqual(reader.readURLs, [])
+    }
+
+    func testStaticFileResponderDoesNotReadUnexpectedDirectoryAsStaticFile() throws {
+        let root = URL(fileURLWithPath: "/runtime-control-pwa", isDirectory: true)
+        let reader = FakeStaticFileReader(pathStates: [
+            root.appendingPathComponent("assets/app.js").path: .directory,
+        ])
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root, fileReader: reader)
+
+        let response = try XCTUnwrap(responder.response(for: .init(method: .get, path: "/assets/app.js")))
+
+        XCTAssertEqual(response.status, .notFound)
+        XCTAssertEqual(reader.readURLs, [])
+    }
+
+    func testStaticFileResponderReportsUnknownPathStateSeparatelyFromNotFound() throws {
+        let root = URL(fileURLWithPath: "/runtime-control-pwa", isDirectory: true)
+        let reader = FakeStaticFileReader(pathStates: [
+            root.appendingPathComponent("assets/app.js").path: .unknown("stale"),
+        ])
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root, fileReader: reader)
+
+        let response = try XCTUnwrap(responder.response(for: .init(method: .get, path: "/assets/app.js")))
+
+        XCTAssertEqual(response.status, .internalServerError)
+        XCTAssertEqual(
+            try XCTUnwrap(response.body).text(),
+            "Static file read failed: static file path state is unexpected: /runtime-control-pwa/assets/app.js state=stale"
+        )
+        XCTAssertEqual(reader.readURLs, [])
+    }
+
+    func testStaticFileResponderRejectsParentDirectoryTraversalInsteadOfFallingBackToIndex() throws {
+        let root = URL(fileURLWithPath: "/runtime-control-pwa", isDirectory: true)
+        let reader = FakeStaticFileReader(pathStates: [
+            root.appendingPathComponent("index.html").path: .file,
+        ])
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root, fileReader: reader)
+
+        let response = try XCTUnwrap(responder.response(for: .init(method: .get, path: "/../secret.css")))
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(
+            try XCTUnwrap(response.body).text(),
+            "Static file request rejected: static file path contains parent directory segment"
+        )
+        XCTAssertEqual(reader.readURLs, [])
+    }
+
+    func testStaticFileResponderRejectsPercentEncodedParentDirectoryTraversal() throws {
+        let root = URL(fileURLWithPath: "/runtime-control-pwa", isDirectory: true)
+        let reader = FakeStaticFileReader(pathStates: [
+            root.appendingPathComponent("index.html").path: .file,
+        ])
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root, fileReader: reader)
+
+        let response = try XCTUnwrap(responder.response(for: .init(method: .get, path: "/%2e%2e/secret.css")))
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(
+            try XCTUnwrap(response.body).text(),
+            "Static file request rejected: static file path contains parent directory segment"
+        )
+        XCTAssertEqual(reader.readURLs, [])
+    }
+
+    func testStaticFileResponderRejectsInvalidPercentEncodingWithoutIndexFallback() throws {
+        let root = URL(fileURLWithPath: "/runtime-control-pwa", isDirectory: true)
+        let reader = FakeStaticFileReader(pathStates: [
+            root.appendingPathComponent("index.html").path: .file,
+        ])
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root, fileReader: reader)
+
+        let response = try XCTUnwrap(responder.response(for: .init(method: .get, path: "/%E0%A4%A")))
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(
+            try XCTUnwrap(response.body).text(),
+            "Static file request rejected: static file path percent-decoding failed"
+        )
+        XCTAssertEqual(reader.readURLs, [])
+    }
+
     func testStaticFileResponderDoesNotInterceptRuntimeAPI() throws {
         let root = try makeTemporaryPWA()
         let responder = RuntimeControlStaticFileResponder(rootDirectory: root)
@@ -111,6 +224,13 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertNil(responder.response(for: .init(method: .get, path: "/runtime/status")))
         XCTAssertNil(responder.response(for: .init(method: .get, path: "/vitaldb/recorders")))
         XCTAssertNil(responder.response(for: .init(method: .get, path: "/host/logs/stream")))
+    }
+
+    func testStaticFileResponderDoesNotInterceptRuntimeAPIWithQueryString() throws {
+        let root = try makeTemporaryPWA()
+        let responder = RuntimeControlStaticFileResponder(rootDirectory: root)
+
+        XCTAssertNil(responder.response(for: .init(method: .get, path: "/runtime/status?refresh=true")))
     }
 
     func testStaticFileResponderFallsBackToIndexForSPARoutes() throws {
@@ -351,6 +471,51 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
+    func testRuntimeEventStreamPreservesReadIssueBeforeEventFrames() async throws {
+        let handler = StubRuntimeControlAPIReadHandler(eventHistory: RuntimeEventHistory(
+            events: [
+                RuntimeEventDocument(
+                    id: "event-1",
+                    eventType: .statusChanged,
+                    timestamp: "2026-05-24T00:00:00Z",
+                    product: "VitalServerHelper",
+                    status: .healthy,
+                    previousStatus: nil,
+                    operation: .health,
+                    message: "ready",
+                    runtimeVersion: "1.2.3",
+                    failureReasons: [],
+                    containerObservation: nil,
+                    progress: nil
+                ),
+            ],
+            readError: "jsonl=invalid line"
+        ))
+        let router = RuntimeControlAPIRouter(handler: handler)
+
+        let stream = try await streamResponse(from: router.routeResult(.init(method: .get, path: "/runtime/events/stream")))
+        let event = try await firstStreamEvent(stream)
+        let history = try JSONDecoder().decode(RuntimeEventHistory.self, from: try XCTUnwrap(event.data))
+
+        XCTAssertEqual(event.id, "runtime-events-read-issue")
+        XCTAssertEqual(event.event, "runtime-events-read-issue")
+        XCTAssertEqual(history.state, .partiallyLoaded)
+        XCTAssertEqual(history.readError, "jsonl=invalid line")
+        XCTAssertEqual(history.events.map(\.id), ["event-1"])
+    }
+
+    func testRuntimeEventStreamCodecEncodesReadIssueForFailedHistory() throws {
+        let history = RuntimeEventHistory.failed(readError: "jsonl=read failed")
+
+        let text = try XCTUnwrap(String(data: try RuntimeControlServerSentEventCodec.encode(history), encoding: .utf8))
+
+        XCTAssertTrue(text.contains("id: runtime-events-read-issue"))
+        XCTAssertTrue(text.contains("event: runtime-events-read-issue"))
+        XCTAssertTrue(text.contains("\"state\":\"readFailed\""))
+        XCTAssertTrue(text.contains("\"readError\":\"jsonl=read failed\""))
+    }
+
+    @MainActor
     func testRuntimeEventStreamWithStaleLastEventIDStillDeliversCurrentEvents() async throws {
         let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
 
@@ -377,6 +542,43 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertTrue(text.contains("id: runtime-status"))
         XCTAssertTrue(text.contains("event: runtime-status"))
         XCTAssertTrue(text.contains("\"runtimeVersion\":\"1.2.3\""))
+    }
+
+    @MainActor
+    func testRuntimeStatusStreamHeartbeatUsesInjectedClock() async throws {
+        let clock = RuntimeControlStreamTestClock([
+            Date(timeIntervalSince1970: 0),
+            Date(timeIntervalSince1970: 0),
+            Date(timeIntervalSince1970: 2),
+        ])
+        let router = RuntimeControlAPIRouter(
+            handler: StubRuntimeControlAPIReadHandler(status: RuntimeStatus(
+                runtimeInstalled: true,
+                vmServiceLoaded: true,
+                proxyServiceLoaded: true,
+                guestLogSyncServiceLoaded: true,
+                watchdogServiceLoaded: true,
+                runtimeState: .healthy,
+                statusMessage: "ready",
+                updatedAt: "2026-06-08T00:00:00Z",
+                runtimeVersion: "1.2.3"
+            )),
+            streamConfiguration: RuntimeControlAPIStreamConfiguration(
+                pollIntervalNanoseconds: 1_000_000,
+                heartbeatIntervalNanoseconds: 1_000_000_000
+            ),
+            now: clock.now
+        )
+
+        let stream = try await streamResponse(from: router.routeResult(.init(method: .get, path: "/runtime/status/stream")))
+        var iterator = stream.events.makeAsyncIterator()
+        let firstEvent = try await iterator.next()
+        let secondEvent = try await iterator.next()
+        let first = try XCTUnwrap(firstEvent)
+        let second = try XCTUnwrap(secondEvent)
+
+        XCTAssertEqual(first.id, "runtime-status")
+        XCTAssertEqual(second, .heartbeat)
     }
 
     @MainActor
@@ -511,7 +713,7 @@ final class RuntimeControlAPITests: XCTestCase {
             from: router.route(.init(method: .get, path: "/vitaldb/recorders"))
         )
         let vitalRecorder = try await decode(
-            RuntimeVitalRecorderRecord?.self,
+            RuntimeVitalRecorderRecord.self,
             from: router.route(.init(method: .get, path: "/vitaldb/recorders/VR_A"))
         )
         let vitalBeds = try await decode(
@@ -519,7 +721,7 @@ final class RuntimeControlAPITests: XCTestCase {
             from: router.route(.init(method: .get, path: "/vitaldb/beds"))
         )
         let vitalBed = try await decode(
-            RuntimeVitalBedRecord?.self,
+            RuntimeVitalBedRecord.self,
             from: router.route(.init(method: .get, path: "/vitaldb/beds/bed-a"))
         )
         let vitalRelationships = try await decode(
@@ -542,13 +744,58 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(vitalDBObservation?.recorders.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(vitalRecorders.recorders.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(vitalRecorders.recorders.first?.activityTimeline?.first?.messageCount, 3)
-        XCTAssertEqual(vitalRecorder?.vrcode, "VR_A")
-        XCTAssertEqual(vitalRecorder?.activityTimeline?.first?.byteCount, 2048)
-        XCTAssertEqual(vitalRecorder?.activityTimeline?.first?.buckets.first?.bucketSeconds, 60)
+        XCTAssertEqual(vitalRecorder.vrcode, "VR_A")
+        XCTAssertEqual(vitalRecorder.activityTimeline?.first?.byteCount, 2048)
+        XCTAssertEqual(vitalRecorder.activityTimeline?.first?.buckets.first?.bucketSeconds, 60)
         XCTAssertEqual(vitalBeds.map(\.bedID), ["bed-a"])
-        XCTAssertEqual(vitalBed?.vrcode, "VR_A")
+        XCTAssertEqual(vitalBed.vrcode, "VR_A")
         XCTAssertEqual(vitalRelationships.assignments.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(vitalRelationships.events.first?.eventType, .handoff)
+    }
+
+    @MainActor
+    func testVitalDBSingleResourceRoutesReturnTypedNotFoundInsteadOfJSONNull() async throws {
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
+
+        let missingRecorder = await router.route(.init(method: .get, path: "/vitaldb/recorders/VR_MISSING"))
+        let missingBed = await router.route(.init(method: .get, path: "/vitaldb/beds/bed-missing"))
+        let recorderError = try decodeError(from: missingRecorder)
+        let bedError = try decodeError(from: missingBed)
+
+        XCTAssertEqual(missingRecorder.status, .notFound)
+        XCTAssertEqual(recorderError.code, .resourceNotFound)
+        XCTAssertEqual(recorderError.message, "VitalDB recorder not found: VR_MISSING")
+        XCTAssertEqual(missingBed.status, .notFound)
+        XCTAssertEqual(bedError.code, .resourceNotFound)
+        XCTAssertEqual(bedError.message, "VitalDB bed not found: bed-missing")
+    }
+
+    @MainActor
+    func testOverviewDoesNotFallbackToStaleStatusVitalDBObservationWhenFreshReadIsUnavailable() async throws {
+        var status = RuntimeStatus(runtimeState: .healthy, statusMessage: "ready")
+        status.vitalDBObservation = VitalDBObservationDocument(
+            observedAt: "2026-05-24T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(vrcode: "STALE", ip: "10.0.0.1", online: true),
+            ]
+        )
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler(
+            status: status,
+            vitalDBObservationSnapshot: .unavailable(readError: "sqlite=read failed")
+        ))
+
+        let overview = try await decode(
+            RuntimeControlOverview.self,
+            from: router.route(.init(method: .get, path: "/runtime/overview"))
+        )
+
+        XCTAssertNil(overview.status.vitalDBObservation)
+        XCTAssertNil(overview.vitalDBObservation)
+        XCTAssertEqual(overview.vitalDBObservationSnapshot.state, .unavailable)
+        XCTAssertEqual(overview.vitalDBObservationSnapshot.readError, "sqlite=read failed")
+        XCTAssertNil(overview.vitalRecorder.knownRecorders)
     }
 
     @MainActor
@@ -835,7 +1082,6 @@ final class RuntimeControlAPITests: XCTestCase {
 
         let logText = try await handler.loadLogText(request: RuntimeLogTextRequest(
             source: .helperMessage,
-            helperMessage: "helper unavailable",
             lineLimit: 25
         ))
         let backups = try await handler.loadBackups()
@@ -847,7 +1093,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let delete = try await handler.deleteBackup(backup)
         let export = try await handler.exportLogs(destination: destination)
 
-        XCTAssertEqual(logText.text, "helper unavailable")
+        XCTAssertEqual(logText.text, "log:helperMessage:25")
         XCTAssertEqual(backups.map(\.path), ["/backups/rollback"])
         XCTAssertEqual(redisBackups.map(\.path), ["/runtime/data/backups/redis/redis-1.tar.gz"])
         XCTAssertEqual(summary.summary, "summary /bundles/update.tar.gz")
@@ -871,7 +1117,6 @@ final class RuntimeControlAPITests: XCTestCase {
             ("loadLogText", {
                 _ = try await handler.loadLogText(request: RuntimeLogTextRequest(
                     source: .helperMessage,
-                    helperMessage: "helper unavailable",
                     lineLimit: 25
                 ))
             }),
@@ -1013,7 +1258,19 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(error.message, "Invalid runtime event type: unknown")
     }
 
-    func testRuntimeLogQueryPreservesMissingHelperMessage() throws {
+    @MainActor
+    func testRuntimeEventsEndpointRejectsMalformedQueryEncoding() async throws {
+        let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
+
+        let response = await router.route(.init(method: .get, path: "/runtime/events?limit=%ZZ"))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(error.code, .badRequest)
+        XCTAssertEqual(error.message, "Invalid query string: limit=%ZZ")
+    }
+
+    func testRuntimeLogQueryIgnoresObsoleteHelperMessageParameter() throws {
         let missing = try RuntimeControlHTTPRequest(
             method: .get,
             path: "/host/logs/stream?source=command&lineLimit=5"
@@ -1023,8 +1280,17 @@ final class RuntimeControlAPITests: XCTestCase {
             path: "/host/logs/stream?source=command&lineLimit=5&helperMessage="
         ).runtimeLogTextRequest()
 
-        XCTAssertNil(missing.helperMessage)
-        XCTAssertEqual(explicitEmpty.helperMessage, "")
+        XCTAssertEqual(missing, RuntimeLogTextRequest(source: .command, lineLimit: 5))
+        XCTAssertEqual(explicitEmpty, missing)
+    }
+
+    func testRuntimeLogQueryRejectsMalformedPercentEncoding() {
+        XCTAssertThrowsError(try RuntimeControlHTTPRequest(
+            method: .get,
+            path: "/host/logs/stream?source=%ZZ"
+        ).runtimeLogTextRequest()) { error in
+            XCTAssertEqual(error as? RuntimeControlHTTPQueryError, .invalidQueryString("source=%ZZ"))
+        }
     }
 
     @MainActor
@@ -1042,6 +1308,45 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(error.code, .badRequest)
         XCTAssertTrue(error.message.contains("RuntimeApplySettingsRequest"))
         XCTAssertTrue(error.message.contains("Decode failed"))
+    }
+
+    @MainActor
+    func testRouterMapsHostAffordanceUnavailableToTypedHTTPError() async throws {
+        let router = RuntimeControlAPIRouter(
+            handler: RuntimeControlClientAPIReadHandler(client: FakeRuntimeControlClient())
+        )
+        let response = await router.route(.init(
+            method: .post,
+            path: "/host/logs/read",
+            body: try JSONEncoder().encode(RuntimeLogTextRequest(source: .command, lineLimit: 10))
+        ))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .notImplemented)
+        XCTAssertEqual(error.code, .hostAffordanceUnavailable)
+        XCTAssertEqual(error.message, RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable.localizedDescription)
+    }
+
+    @MainActor
+    func testRouterMapsUnsupportedFileReferenceToBadRequest() async throws {
+        let client = FakeRuntimeControlClient()
+        let router = RuntimeControlAPIRouter(
+            handler: RuntimeControlClientAPIReadHandler(client: client, hostClient: client)
+        )
+        let remote = RuntimeControlFileReference(kind: .remoteURL, value: "https://example.invalid/update.tar.gz")
+        let response = await router.route(.init(
+            method: .post,
+            path: "/host/update-bundles/summary",
+            body: try JSONEncoder().encode(RuntimeUpdateBundleRequest(bundle: remote))
+        ))
+        let error = try decodeError(from: response)
+
+        XCTAssertEqual(response.status, .badRequest)
+        XCTAssertEqual(error.code, .badRequest)
+        XCTAssertEqual(
+            error.message,
+            RuntimeControlAPIReadHandlerError.unsupportedFileReference(remote.kind.rawValue).localizedDescription
+        )
     }
 
     @MainActor
@@ -1126,6 +1431,25 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(request.body, Data("{\"a\":1}".utf8))
     }
 
+    func testWireCodecDecodesRequestBodyByContentLengthBytes() throws {
+        let body = Data("{\"message\":\"준비\"}".utf8)
+        var rawRequest = Data([
+            "POST /runtime/events HTTP/1.1",
+            "Content-Type: application/json",
+            "Content-Length: \(body.count)",
+            "",
+            "",
+        ].joined(separator: "\r\n").utf8)
+        rawRequest.append(body)
+        rawRequest.append(Data("ignored".utf8))
+
+        let request = try RuntimeControlHTTPWireCodec.decodeRequest(rawRequest)
+
+        XCTAssertEqual(request.method, .post)
+        XCTAssertEqual(request.path, "/runtime/events")
+        XCTAssertEqual(request.body, body)
+    }
+
     func testWireCodecDecodesRequestBodyWithoutContentLength() throws {
         let rawRequest = [
             "POST /runtime/events HTTP/1.1",
@@ -1160,6 +1484,24 @@ final class RuntimeControlAPITests: XCTestCase {
             "{\"a\":1}",
         ].joined(separator: "\r\n")
         XCTAssertTrue(try RuntimeControlHTTPWireCodec.requestIsComplete(Data(completeBody.utf8)))
+    }
+
+    func testWireCodecWaitsForPartialMultibyteBodyInsteadOfRejectingRequest() throws {
+        let body = Data("{\"message\":\"준비\"}".utf8)
+        let header = Data([
+            "POST /runtime/events HTTP/1.1",
+            "Content-Type: application/json",
+            "Content-Length: \(body.count)",
+            "",
+            "",
+        ].joined(separator: "\r\n").utf8)
+        var partialRequest = header
+        partialRequest.append(body.prefix(body.count - 1))
+        var completeRequest = header
+        completeRequest.append(body)
+
+        XCTAssertFalse(try RuntimeControlHTTPWireCodec.requestIsComplete(partialRequest))
+        XCTAssertTrue(try RuntimeControlHTTPWireCodec.requestIsComplete(completeRequest))
     }
 
     func testWireCodecRejectsMalformedCompletionInputs() {
@@ -1295,6 +1637,8 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertTrue(html.contains("/vitaldb/recorders"))
         XCTAssertTrue(html.contains("/host/logs/stream"))
         XCTAssertTrue(html.contains(#"<option value="containers" selected>containers</option>"#))
+        XCTAssertFalse(html.contains("vitalDBObservation || status.vitalDBObservation"))
+        XCTAssertFalse(html.contains("overview.vitalDBObservation || (overview.status && overview.status.vitalDBObservation)"))
     }
 
     @MainActor
@@ -1776,6 +2120,32 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 }
 
+private final class FakeStaticFileReader: RuntimeControlStaticFileReading, @unchecked Sendable {
+    let pathStates: [String: RuntimePathState]
+    let dataByPath: [String: Data]
+    private(set) var readURLs: [URL] = []
+
+    init(
+        pathStates: [String: RuntimePathState] = [:],
+        dataByPath: [String: Data] = [:]
+    ) {
+        self.pathStates = pathStates
+        self.dataByPath = dataByPath
+    }
+
+    func pathState(at url: URL) -> RuntimePathState {
+        pathStates[url.path] ?? .missing
+    }
+
+    func readData(at url: URL) throws -> Data {
+        readURLs.append(url)
+        guard let data = dataByPath[url.path] else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+        return data
+    }
+}
+
 private extension Data {
     func text() throws -> String {
         try XCTUnwrap(String(data: self, encoding: .utf8))
@@ -1787,13 +2157,41 @@ private enum RuntimeControlAPIEndpointTestError: Error {
     case expectedResponse
 }
 
+private final class RuntimeControlStreamTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var dates: [Date]
+    private var index = 0
+
+    init(_ dates: [Date]) {
+        self.dates = dates
+    }
+
+    func now() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !dates.isEmpty else {
+            return Date(timeIntervalSince1970: 0)
+        }
+        let date = dates[min(index, dates.count - 1)]
+        index += 1
+        return date
+    }
+}
+
 private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
+    var status: RuntimeStatus?
+    var eventHistory: RuntimeEventHistory?
+    var vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot?
+
     func loadCapabilities() async throws -> RuntimeControlCapabilities {
         RuntimeControlCapabilities()
     }
 
     func loadStatus() async throws -> RuntimeStatus {
-        RuntimeStatus(
+        if let status {
+            return status
+        }
+        return RuntimeStatus(
             runtimeInstalled: true,
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
@@ -1806,7 +2204,10 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
-        RuntimeEventHistory(events: [
+        if let eventHistory {
+            return eventHistory
+        }
+        return RuntimeEventHistory(events: [
             RuntimeEventDocument(
                 id: "event-1",
                 eventType: .statusChanged,
@@ -1825,7 +2226,10 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot {
-        .loaded(VitalDBObservationDocument(
+        if let vitalDBObservationSnapshot {
+            return vitalDBObservationSnapshot
+        }
+        return .loaded(VitalDBObservationDocument(
             observedAt: "2026-05-25T00:00:00Z",
             ready: true,
             recorderOnlineThresholdSeconds: 120,
@@ -2286,16 +2690,16 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
         return [RuntimeBackup(path: "/runtime/data/backups/redis/redis-1.tar.gz", sizeBytes: 512)]
     }
 
-    func updateBundleSummary(url: URL) -> String {
-        "summary \(url.path)"
+    func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
+        .loaded("summary \(url.path)")
     }
 
-    func logText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) -> String {
-        helperMessage
+    func logTextResult(sourceID: RuntimeLogSource, lineLimit: Int) -> RuntimeHostTextReadResult {
+        .loaded("log:\(sourceID.rawValue):\(lineLimit)")
     }
 
-    func loadLogText(sourceID: RuntimeLogSource, helperMessage: String, lineLimit: Int) async -> String {
-        helperMessage
+    func loadLogTextResult(sourceID: RuntimeLogSource, lineLimit: Int) async -> RuntimeHostTextReadResult {
+        logTextResult(sourceID: sourceID, lineLimit: lineLimit)
     }
 
     func preferredLogsPath() -> String {

@@ -10,14 +10,44 @@ public protocol RuntimeFileReading {
     func fileExists(_ url: URL) -> Bool
     func directoryExists(_ url: URL) -> Bool
     func isExecutableFile(atPath path: String) -> Bool
+    func fileState(atPath path: String) -> RuntimeFileState
+    func fileState(at url: URL) -> RuntimeFileState
+    func pathState(at url: URL) -> RuntimePathState
     func readData(_ url: URL) throws -> Data
     func readUTF8Text(_ url: URL) throws -> String
     func fileSize(_ url: URL) throws -> UInt64
     func modificationDate(_ url: URL) throws -> Date
 }
 
+public extension RuntimeFileReading {
+    func fileState(atPath path: String) -> RuntimeFileState {
+        if isExecutableFile(atPath: path) {
+            return .executable
+        }
+        return fileState(at: URL(fileURLWithPath: path))
+    }
+
+    func fileState(at url: URL) -> RuntimeFileState {
+        fileExists(url) ? .present : .missing
+    }
+
+    func pathState(at url: URL) -> RuntimePathState {
+        if fileExists(url) {
+            return .file
+        }
+        if directoryExists(url) {
+            return .directory
+        }
+        return .missing
+    }
+}
+
 public protocol RuntimeFilePartialReading {
     func readData(_ url: URL, offset: UInt64?) throws -> Data
+}
+
+public protocol RuntimeFileMetadataWriting {
+    func setModificationDate(_ date: Date, at url: URL) throws
 }
 
 public protocol RuntimeFileWriting {

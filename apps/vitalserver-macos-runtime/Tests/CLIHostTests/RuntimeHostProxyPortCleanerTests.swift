@@ -15,7 +15,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         var sleeps: [TimeInterval] = []
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
-            proxyServiceLoaded: { false },
+            proxyServiceState: { .notLoaded },
             expectedProxyNginxPID: { .loaded("123") },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             lsofPath: Constants.Commands.lsof,
@@ -35,7 +35,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             log: { _ in }
         )
 
-        try cleaner.cleanupBeforeStartingProxy()
+        try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)
 
         XCTAssertTrue(commands.contains { $0.0 == Constants.Commands.kill && $0.1 == ["-TERM", "123"] })
         XCTAssertEqual(sleeps, [1])
@@ -46,7 +46,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         var killed: [[String]] = []
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
-            proxyServiceLoaded: { false },
+            proxyServiceState: { .notLoaded },
             expectedProxyNginxPID: { .missing },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             lsofPath: Constants.Commands.lsof,
@@ -76,7 +76,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             log: { _ in }
         )
 
-        try cleaner.cleanupBeforeStartingProxy()
+        try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)
 
         XCTAssertEqual(killed, [["-TERM", "456"]])
     }
@@ -84,7 +84,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
     func testLeavesExternalListenerAndThrowsClearError() {
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
-            proxyServiceLoaded: { false },
+            proxyServiceState: { .notLoaded },
             expectedProxyNginxPID: { .missing },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             lsofPath: Constants.Commands.lsof,
@@ -100,7 +100,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             log: { _ in }
         )
 
-        XCTAssertThrowsError(try cleaner.cleanupBeforeStartingProxy()) { error in
+        XCTAssertThrowsError(try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)) { error in
             XCTAssertTrue(String(describing: error).contains("external listener(s): httpd-789"))
         }
     }
@@ -111,7 +111,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         var logs: [String] = []
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
-            proxyServiceLoaded: { false },
+            proxyServiceState: { .notLoaded },
             expectedProxyNginxPID: { .missing },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             lsofPath: Constants.Commands.lsof,
@@ -156,7 +156,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             log: { logs.append($0) }
         )
 
-        try cleaner.cleanupOwnedListenersAfterProxyStop()
+        try CleanRuntimeHostProxyPortUseCase().cleanupOwnedListenersAfterProxyStop(operations: cleaner.operations)
 
         XCTAssertEqual(killed, [["-TERM", "456"]])
         XCTAssertTrue(logs.contains { $0.contains("leaving external listeners port=80 listeners=httpd-789") })
@@ -167,7 +167,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         var logs: [String] = []
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
-            proxyServiceLoaded: { false },
+            proxyServiceState: { .notLoaded },
             expectedProxyNginxPID: { .missing },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             lsofPath: Constants.Commands.lsof,
@@ -183,7 +183,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             log: { logs.append($0) }
         )
 
-        XCTAssertThrowsError(try cleaner.cleanupBeforeStartingProxy()) { error in
+        XCTAssertThrowsError(try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)) { error in
             XCTAssertTrue(String(describing: error).contains("failed to inspect proxy port 80 listeners"))
         }
         XCTAssertTrue(logs.contains { $0.contains("proxy port listener scan failed") })
@@ -193,7 +193,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         var logs: [String] = []
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
-            proxyServiceLoaded: { false },
+            proxyServiceState: { .notLoaded },
             expectedProxyNginxPID: { .missing },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             lsofPath: Constants.Commands.lsof,
@@ -209,16 +209,181 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             log: { logs.append($0) }
         )
 
-        try cleaner.cleanupBeforeStartingProxy()
+        try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)
 
         XCTAssertTrue(logs.contains { $0.contains("proxy port cleanup skipped; no listeners") })
+    }
+
+    func testOutputIssueLsofFailureBlocksCleanup() {
+        var logs: [String] = []
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { 80 },
+            proxyServiceState: { .notLoaded },
+            expectedProxyNginxPID: { .missing },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
+            runProcess: { executable, _ in
+                if executable == Constants.Commands.lsof {
+                    return RuntimeProcessResult(
+                        exitCode: 1,
+                        stdout: "",
+                        stderr: "",
+                        outputIssues: [
+                            RuntimeCommandOutputIssue(stream: .stdout, message: "lsof stdout is not valid UTF-8"),
+                        ]
+                    )
+                }
+                return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+            },
+            sleep: { _ in XCTFail("listener scan with output issue should not terminate anything") },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)) { error in
+            XCTAssertTrue(String(describing: error).contains("failed to inspect proxy port 80 listeners"))
+        }
+        XCTAssertTrue(logs.contains { $0.contains("outputIssues=stdout:lsof stdout is not valid UTF-8") })
+    }
+
+    func testEmptyUnexpectedLsofFailureBlocksCleanup() {
+        var logs: [String] = []
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { 80 },
+            proxyServiceState: { .notLoaded },
+            expectedProxyNginxPID: { .missing },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
+            runProcess: { executable, _ in
+                if executable == Constants.Commands.lsof {
+                    return RuntimeProcessResult(exitCode: 2, stdout: "", stderr: "")
+                }
+                return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+            },
+            sleep: { _ in XCTFail("unexpected listener scan failure should not terminate anything") },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)) { error in
+            XCTAssertTrue(String(describing: error).contains("failed to inspect proxy port 80 listeners"))
+        }
+        XCTAssertTrue(logs.contains { $0.contains("proxy port listener scan failed port=80 exitCode=2") })
+    }
+
+    func testMalformedLsofSuccessBlocksCleanup() {
+        var logs: [String] = []
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { 80 },
+            proxyServiceState: { .notLoaded },
+            expectedProxyNginxPID: { .missing },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
+            runProcess: { executable, _ in
+                if executable == Constants.Commands.lsof {
+                    return RuntimeProcessResult(
+                        exitCode: 0,
+                        stdout: """
+                        COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+                        malformed
+                        """,
+                        stderr: ""
+                    )
+                }
+                return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+            },
+            sleep: { _ in XCTFail("malformed listener scan should not terminate anything") },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)) { error in
+            XCTAssertTrue(String(describing: error).contains("malformed lsof output"))
+        }
+        XCTAssertTrue(logs.contains { $0.contains("proxy port listener scan output malformed") })
+        XCTAssertTrue(logs.contains { $0.contains("malformed lsof listener line=malformed") })
+    }
+
+    func testCommandLineInspectionFailureBlocksNginxClassification() {
+        var killed: [[String]] = []
+        var logs: [String] = []
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { 80 },
+            proxyServiceState: { .notLoaded },
+            expectedProxyNginxPID: { .missing },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
+            runProcess: { executable, arguments in
+                switch executable {
+                case Constants.Commands.lsof:
+                    return RuntimeProcessResult(exitCode: 0, stdout: Self.lsof(["nginx", "456"]), stderr: "")
+                case Constants.Commands.ps:
+                    XCTAssertEqual(arguments, ["-p", "456", "-o", "command="])
+                    return RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "permission denied")
+                case Constants.Commands.kill:
+                    killed.append(arguments)
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                default:
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                }
+            },
+            sleep: { _ in XCTFail("command line inspection failure should not terminate anything") },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)) { error in
+            XCTAssertTrue(String(describing: error).contains("failed to inspect Host proxy nginx command line"))
+        }
+        XCTAssertTrue(killed.isEmpty)
+        XCTAssertTrue(logs.contains { $0.contains("failed to inspect nginx command line pid=456") })
+    }
+
+    func testNginxListenerWithUnownedCommandLineIsExternalAndNotTerminated() {
+        var killed: [[String]] = []
+        var logs: [String] = []
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { 80 },
+            proxyServiceState: { .notLoaded },
+            expectedProxyNginxPID: { .missing },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
+            runProcess: { executable, arguments in
+                switch executable {
+                case Constants.Commands.lsof:
+                    return RuntimeProcessResult(exitCode: 0, stdout: Self.lsof(["nginx", "456"]), stderr: "")
+                case Constants.Commands.ps:
+                    XCTAssertEqual(arguments, ["-p", "456", "-o", "command="])
+                    return RuntimeProcessResult(exitCode: 0, stdout: "/opt/homebrew/opt/nginx/bin/nginx -g daemon off;\n", stderr: "")
+                case Constants.Commands.kill:
+                    killed.append(arguments)
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                default:
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                }
+            },
+            sleep: { _ in XCTFail("external nginx should not be terminated") },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)) { error in
+            XCTAssertTrue(String(describing: error).contains("external listener(s): nginx-456"))
+        }
+        XCTAssertTrue(killed.isEmpty)
+        XCTAssertTrue(logs.contains { $0.contains("blocked by external listeners port=80 listeners=nginx-456") })
     }
 
     func testDoesNotStopConfiguredProxyWhenServiceIsLoaded() throws {
         var killed: [[String]] = []
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
-            proxyServiceLoaded: { true },
+            proxyServiceState: { .loaded },
             expectedProxyNginxPID: { .loaded("123") },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             lsofPath: Constants.Commands.lsof,
@@ -239,9 +404,42 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             log: { _ in }
         )
 
-        try cleaner.cleanupBeforeStartingProxy()
+        try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)
 
         XCTAssertTrue(killed.isEmpty)
+    }
+
+    func testProxyServiceStateReadFailureBlocksCleanupBeforeKillingListeners() {
+        var killed: [[String]] = []
+        var logs: [String] = []
+        let cleaner = RuntimeHostProxyPortCleaner(
+            proxyPort: { 80 },
+            proxyServiceState: { .readFailed("launchctl failed") },
+            expectedProxyNginxPID: { .loaded("123") },
+            ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
+            lsofPath: Constants.Commands.lsof,
+            psPath: Constants.Commands.ps,
+            killPath: Constants.Commands.kill,
+            runProcess: { executable, arguments in
+                switch executable {
+                case Constants.Commands.lsof:
+                    return RuntimeProcessResult(exitCode: 0, stdout: Self.lsof(["nginx", "123"]), stderr: "")
+                case Constants.Commands.kill:
+                    killed.append(arguments)
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                default:
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                }
+            },
+            sleep: { _ in XCTFail("service state read failure should not terminate anything") },
+            log: { logs.append($0) }
+        )
+
+        XCTAssertThrowsError(try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)) { error in
+            XCTAssertTrue(String(describing: error).contains("failed to read Host proxy launchd service state"))
+        }
+        XCTAssertTrue(killed.isEmpty)
+        XCTAssertTrue(logs.contains { $0.contains("failed to read proxy service state") })
     }
 
     func testExpectedProxyPIDReadFailureBlocksCleanupBeforeKillingListeners() {
@@ -249,7 +447,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
         var logs: [String] = []
         let cleaner = RuntimeHostProxyPortCleaner(
             proxyPort: { 80 },
-            proxyServiceLoaded: { false },
+            proxyServiceState: { .notLoaded },
             expectedProxyNginxPID: { .readFailed("permission denied") },
             ownedNginxPathFragments: ["/Library/Application Support/VitalServerHelper/nginx"],
             lsofPath: Constants.Commands.lsof,
@@ -270,7 +468,7 @@ final class RuntimeHostProxyPortCleanerTests: XCTestCase {
             log: { logs.append($0) }
         )
 
-        XCTAssertThrowsError(try cleaner.cleanupBeforeStartingProxy()) { error in
+        XCTAssertThrowsError(try CleanRuntimeHostProxyPortUseCase().cleanupBeforeStartingProxy(operations: cleaner.operations)) { error in
             XCTAssertTrue(String(describing: error).contains("failed to read expected Host proxy nginx PID"))
         }
         XCTAssertTrue(killed.isEmpty)

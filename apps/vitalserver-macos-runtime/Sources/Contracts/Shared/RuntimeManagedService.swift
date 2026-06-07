@@ -22,4 +22,19 @@ public enum RuntimeManagedService: CaseIterable, Equatable, Sendable {
             "ai.tirosh.vitalserver.helper.watchdog"
         }
     }
+
+    public var runtimeServiceDisplayName: String {
+        switch self {
+        case .vm:
+            "VM"
+        case .proxy:
+            "proxy"
+        case .guestLogSync:
+            "guest log sync"
+        case .sleepPrevention:
+            "sleep prevention"
+        case .watchdog:
+            "watchdog"
+        }
+    }
 }

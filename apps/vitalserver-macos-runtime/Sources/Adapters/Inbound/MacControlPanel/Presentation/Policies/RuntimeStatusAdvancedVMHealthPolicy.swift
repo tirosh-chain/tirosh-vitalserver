@@ -12,7 +12,7 @@ public protocol RuntimeStatusAdvancedVMHealthVocabulary: RuntimeStatusVMStateVoc
     var vmErrorsLabel: String { get }
     var waitingText: String { get }
 
-    func installStateText(installed: Bool) -> String
+    func installStateText(_ state: RuntimeFileState) -> String
     func vmErrorText(_ error: RuntimeVMError) -> String
 }
 
@@ -32,8 +32,8 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.runtimeInstallationLabel,
                 value: value(
-                    vocabulary.installStateText(installed: status.runtimeInstalled),
-                    status.runtimeInstalled ? .healthy : .warning
+                    vocabulary.installStateText(status.effectiveRuntimeInstallationState),
+                    installStateSeverity(status.effectiveRuntimeInstallationState)
                 )
             ),
             RuntimeStatusHealthDetailItem(
@@ -43,15 +43,14 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.vmServiceLabel,
                 value: value(serviceValuePolicy.serviceValue(
-                    state: status.vmServiceState,
-                    fallbackLoaded: status.vmServiceLoaded
+                    state: status.vmServiceState
                 ))
             ),
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.vmIPAddressLabel,
                 value: value(
                     status.vmIP ?? vocabulary.waitingText,
-                    status.vmServiceLoaded && status.vmIP != nil ? .healthy : .warning
+                    status.vmServiceState == .loaded && status.vmIP != nil ? .healthy : .warning
                 )
             ),
         ]
@@ -88,5 +87,16 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
             severity: value.severity,
             uptimeText: value.uptimeText
         )
+    }
+
+    private func installStateSeverity(_ state: RuntimeFileState) -> RuntimeStatusReachabilityPolicy.Severity {
+        switch state {
+        case .executable:
+            .healthy
+        case .missing:
+            .warning
+        case .present, .inspectFailed, .unknown:
+            .critical
+        }
     }
 }

@@ -10,11 +10,14 @@ final class RuntimeStatusWriterTests: XCTestCase {
         let repository = RuntimeStatusWriterRepositorySpy()
         let observation = vitalDBObservation()
         let snapshot = healthSnapshot(vitalDBObservation: observation)
+        let statusDocumentUseCase = BuildRuntimeStatusDocumentUseCase()
         let reporter = RuntimeStatusReporter(
             repository: repository,
             productIdentifier: "VitalServerHelper",
             productRoot: URL(fileURLWithPath: "/product"),
-            runtimeHome: URL(fileURLWithPath: "/product/vm")
+            runtimeHome: URL(fileURLWithPath: "/product/vm"),
+            makeStatusDocument: statusDocumentUseCase.build,
+            makeProgressDocument: statusDocumentUseCase.progressUpdate
         )
         let writer = RuntimeStatusWriter(
             reporter: reporter,
@@ -34,6 +37,37 @@ final class RuntimeStatusWriterTests: XCTestCase {
         XCTAssertEqual(repository.saved?.status, .healthy)
         XCTAssertEqual(repository.saved?.vitalDBObservation, observation)
     }
+
+    func testWriteStatusPropagatesLatestBackupReadFailure() {
+        let statusDocumentUseCase = BuildRuntimeStatusDocumentUseCase()
+        let reporter = RuntimeStatusReporter(
+            repository: RuntimeStatusWriterRepositorySpy(),
+            productIdentifier: "VitalServerHelper",
+            productRoot: URL(fileURLWithPath: "/product"),
+            runtimeHome: URL(fileURLWithPath: "/product/vm"),
+            makeStatusDocument: statusDocumentUseCase.build,
+            makeProgressDocument: statusDocumentUseCase.progressUpdate
+        )
+        let writer = RuntimeStatusWriter(
+            reporter: reporter,
+            timestamp: { "2026-05-30T00:00:00Z" },
+            runtimeVersion: { "0.1.0" },
+            healthSnapshot: { healthSnapshot(vitalDBObservation: nil) },
+            latestBackup: { throw RuntimeStatusWriterTestError.latestBackupReadFailed }
+        )
+
+        XCTAssertThrowsError(try writer.writeStatus(
+            .healthy,
+            operation: .health,
+            message: "runtime health check passed"
+        )) { error in
+            XCTAssertEqual(error as? RuntimeStatusWriterTestError, .latestBackupReadFailed)
+        }
+    }
+}
+
+private enum RuntimeStatusWriterTestError: Error, Equatable {
+    case latestBackupReadFailed
 }
 
 private final class RuntimeStatusWriterRepositorySpy: RuntimeStatusRepository {
@@ -51,8 +85,8 @@ private final class RuntimeStatusWriterRepositorySpy: RuntimeStatusRepository {
 
 private func healthSnapshot(vitalDBObservation: VitalDBObservationDocument?) -> RuntimeHealthSnapshot {
     RuntimeHealthSnapshot(
-        vmExecutable: true,
-        proxyExecutable: true,
+        vmExecutable: .executable,
+        proxyExecutable: .executable,
         rootfsBase: .present,
         vmDisk: .present,
         vmService: .loaded,
