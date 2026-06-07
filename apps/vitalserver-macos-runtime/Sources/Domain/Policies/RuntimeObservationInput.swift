@@ -1,4 +1,3 @@
-import Errors
 public enum RuntimeObservationInput<Observation: Equatable & Sendable>: Equatable, Sendable {
     case notReported
     case missing

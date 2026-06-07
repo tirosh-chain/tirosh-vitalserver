@@ -1,5 +1,4 @@
 import Contracts
-import Errors
 
 public enum GuestShutdownDecision: Equatable {
     case missing(message: String)

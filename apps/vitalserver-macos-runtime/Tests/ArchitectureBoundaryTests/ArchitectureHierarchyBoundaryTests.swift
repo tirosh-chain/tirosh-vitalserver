@@ -21,10 +21,6 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
     func testRoleFoldersExistAtTheirOwnedLayer() throws {
         let sources = packageRoot().appendingPathComponent("Sources")
         let required = [
-            "Errors/Failure",
-            "Errors/Boundary",
-            "Errors/Context",
-            "Errors/Definitions",
             "Contracts/Shared",
             "Contracts/RuntimeControl",
             "Contracts/RuntimeControl/TestKit",
@@ -85,6 +81,68 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         for path in required {
             assertDirectoryExists(sources.appendingPathComponent(path), "\(path) must exist")
         }
+
+        let requiredFiles = [
+            "Errors/Errors.swift",
+            "Domain/Errors.swift",
+            "Application/Errors.swift",
+            "Workflow/Errors.swift",
+            "Adapters/Inbound/Errors.swift",
+            "Adapters/Outbound/Errors.swift",
+            "Hosts/CLI/Errors.swift",
+            "Hosts/MacControlPanel/Errors.swift",
+        ]
+
+        for path in requiredFiles {
+            assertFileExists(sources.appendingPathComponent(path), "\(path) must exist")
+        }
+    }
+
+    func testLayerErrorsUseSingleSwiftFileInsteadOfPackageLikeFolders() throws {
+        let sources = packageRoot().appendingPathComponent("Sources")
+        let forbidden = [
+            "Errors/Boundary",
+            "Errors/Context",
+            "Errors/Failure",
+            "Domain/Errors",
+            "Application/Errors",
+            "Workflow/Errors",
+            "Adapters/Inbound/CLI/Errors",
+            "Adapters/Inbound/RuntimeControlAPI/Errors",
+            "Adapters/Inbound/MacControlPanel/Errors",
+            "Adapters/Inbound/Errors",
+            "Adapters/Outbound/FileSystem/Errors",
+            "Adapters/Outbound/Persistence/Errors",
+            "Adapters/Outbound/ObservabilityStore/Errors",
+            "Adapters/Outbound/PackageReceipts/Errors",
+            "Adapters/Outbound/Health/Errors",
+            "Adapters/Outbound/Launchd/Errors",
+            "Adapters/Outbound/Process/Errors",
+            "Adapters/Outbound/VirtualMachine/Errors",
+            "Adapters/Outbound/CloudInit/Errors",
+            "Adapters/Outbound/MacRuntimeControlClient/Errors",
+            "Adapters/Outbound/UpdateBundle/Errors",
+            "Adapters/Outbound/Errors",
+            "Hosts/CLI/Errors",
+            "Hosts/MacControlPanel/Errors",
+        ]
+
+        for path in forbidden {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: sources.appendingPathComponent(path).path),
+                "\(path) must not exist; layer errors should be collected in the owning layer's Errors.swift file"
+            )
+        }
+    }
+
+    func testGlobalErrorsDoesNotKeepLayerSpecificDefinitionsBucket() throws {
+        let definitions = packageRoot()
+            .appendingPathComponent("Sources/Errors/Definitions")
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: definitions.path),
+            "Layer-specific error definitions must live under their owning layer, not Sources/Errors/Definitions"
+        )
     }
 
     func testRuntimeControlAPIDevConsoleKeepsHTMLAsResource() throws {
@@ -1566,6 +1624,12 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         var isDirectory = ObjCBool(false)
         let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
         XCTAssertTrue(exists && isDirectory.boolValue, message, file: file, line: line)
+    }
+
+    private func assertFileExists(_ url: URL, _ message: String, file: StaticString = #filePath, line: UInt = #line) {
+        var isDirectory = ObjCBool(false)
+        let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+        XCTAssertTrue(exists && !isDirectory.boolValue, message, file: file, line: line)
     }
 
     private func swiftPackageFiles(root: URL) throws -> [URL] {

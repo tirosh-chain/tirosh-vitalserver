@@ -1,4 +1,3 @@
-import Errors
 public enum RuntimeInstallSleepPreventionBootAction: Equatable, Sendable {
     case enable
     case disable

@@ -1,6 +1,5 @@
 import Contracts
 import Foundation
-import Errors
 
 public struct RuntimeRecoveryInput: Equatable {
     public let vmExecutable: Bool

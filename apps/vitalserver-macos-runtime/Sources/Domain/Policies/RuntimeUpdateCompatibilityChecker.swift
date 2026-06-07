@@ -1,6 +1,5 @@
 import Contracts
 import Foundation
-import Errors
 
 public enum RuntimeUpdateCompatibilityChecker {
     public static func check(

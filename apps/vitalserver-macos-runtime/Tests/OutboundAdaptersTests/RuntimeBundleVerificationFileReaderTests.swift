@@ -3,7 +3,6 @@ import Domain
 import Foundation
 import OutboundAdapters
 import XCTest
-import Errors
 
 final class RuntimeBundleVerificationFileReaderTests: XCTestCase {
     func testLoadManifestDecodesManifestFromExplicitFileData() throws {
@@ -59,7 +58,7 @@ final class RuntimeBundleVerificationFileReaderTests: XCTestCase {
         ])
     }
 
-    func testVerifyDigestMapsMismatchToLauncherErrorWithoutSuccessFallback() {
+    func testVerifyDigestPreservesExplicitVerificationErrorWithoutSuccessFallback() {
         let reader = RuntimeBundleVerificationFileReader(
             operations: RuntimeBundleVerificationFileReaderOperations(
                 readData: { _ in Data("hello".utf8) },
@@ -80,8 +79,8 @@ final class RuntimeBundleVerificationFileReaderTests: XCTestCase {
             checksumMap: ["app.tar.gz": "not-the-actual-digest"]
         )) { error in
             XCTAssertEqual(
-                (error as? LauncherError)?.description,
-                "bundle verification failed: manifest checksum mismatch for app.tar.gz"
+                error as? UpdateBundleVerificationError,
+                .manifestChecksumMismatch("app.tar.gz")
             )
         }
     }

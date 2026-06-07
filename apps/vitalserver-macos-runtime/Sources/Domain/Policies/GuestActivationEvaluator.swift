@@ -1,6 +1,5 @@
 import Contracts
 import Foundation
-import Errors
 
 public enum GuestActivationDecision: Equatable {
     case missing(message: String)

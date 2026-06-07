@@ -29,7 +29,7 @@ let package = Package(
         ),
         .target(
             name: "Domain",
-            dependencies: ["Contracts", "Errors"]
+            dependencies: ["Contracts"]
         ),
         .target(
             name: "Application",

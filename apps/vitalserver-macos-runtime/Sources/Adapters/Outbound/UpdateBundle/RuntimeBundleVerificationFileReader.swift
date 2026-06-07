@@ -44,14 +44,10 @@ public struct RuntimeBundleVerificationFileReader {
         manifest: UpdateBundleManifest,
         expectedProduct: String
     ) throws -> UpdateBundleVerificationPlan {
-        do {
-            return try UpdateBundleVerifier.makePlan(
-                manifest: manifest,
-                expectedProduct: expectedProduct
-            )
-        } catch let error as UpdateBundleVerificationError {
-            throw launcherError(error)
-        }
+        try UpdateBundleVerifier.makePlan(
+            manifest: manifest,
+            expectedProduct: expectedProduct
+        )
     }
 
     public func verifyDigest(
@@ -59,21 +55,17 @@ public struct RuntimeBundleVerificationFileReader {
         fileVerification: UpdateBundleFileVerification,
         checksumMap: [String: String]
     ) throws {
-        do {
-            try RuntimeBundleDigestVerifier(
-                operations: RuntimeBundleDigestVerificationOperations(
-                    sha256: sha256,
-                    fileSize: operations.fileSize,
-                    log: operations.log
-                )
-            ).verify(input: RuntimeBundleDigestVerificationInput(
-                fileURL: url,
-                fileVerification: fileVerification,
-                checksumMap: checksumMap
-            ))
-        } catch let error as UpdateBundleVerificationError {
-            throw launcherError(error)
-        }
+        try RuntimeBundleDigestVerifier(
+            operations: RuntimeBundleDigestVerificationOperations(
+                sha256: sha256,
+                fileSize: operations.fileSize,
+                log: operations.log
+            )
+        ).verify(input: RuntimeBundleDigestVerificationInput(
+            fileURL: url,
+            fileVerification: fileVerification,
+            checksumMap: checksumMap
+        ))
     }
 
     private func sha256(_ url: URL) throws -> String {
@@ -82,24 +74,4 @@ public struct RuntimeBundleVerificationFileReader {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    private func launcherError(_ error: UpdateBundleVerificationError) -> LauncherError {
-        switch error {
-        case .unsupportedSchema(let schemaVersion):
-            return .missingArgument("unsupported bundle schema: \(schemaVersion)")
-        case .unsupportedProduct(let product):
-            return .missingArgument("unsupported bundle product: \(product)")
-        case .invalidArtifactName(let name):
-            return .missingArgument("invalid artifact name: \(name)")
-        case .invalidMigrationName(let name):
-            return .missingArgument("invalid migration name: \(name)")
-        case .unsupportedArtifactType(let type):
-            return .bundleVerificationFailed("unsupported artifact type: \(type)")
-        case .manifestChecksumMismatch(let checksumKey):
-            return .bundleVerificationFailed("manifest checksum mismatch for \(checksumKey)")
-        case .checksumFileMismatch(let checksumKey):
-            return .bundleVerificationFailed("checksums.txt mismatch for \(checksumKey)")
-        case .sizeMismatch(let checksumKey):
-            return .bundleVerificationFailed("size mismatch for \(checksumKey)")
-        }
-    }
 }

@@ -6,6 +6,7 @@ import Domain
 import OutboundAdapters
 import InboundAdapters
 import Errors
+import Workflow
 
 struct RuntimeLifecycle {
     let container: RuntimeApplicationContainer

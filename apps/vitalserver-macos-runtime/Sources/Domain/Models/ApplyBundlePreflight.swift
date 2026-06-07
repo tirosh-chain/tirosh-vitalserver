@@ -1,6 +1,5 @@
 import Contracts
 import Foundation
-import Errors
 
 public struct ApplyBundlePreflightContext: Equatable, Sendable {
     public let stagedBundle: URL

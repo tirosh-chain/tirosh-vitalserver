@@ -1,5 +1,6 @@
 import Foundation
 
+
 public enum LauncherError: Error, CustomStringConvertible {
     case missingArgument(String)
     case unsupportedCommand(String)
@@ -47,5 +48,11 @@ public enum LauncherError: Error, CustomStringConvertible {
         }
         let mib = Double(bytes) / 1_048_576
         return String(format: "%.1f MiB", max(mib, 0))
+    }
+}
+
+public enum RuntimeErrorDescription {
+    public static func describe(_ error: Error) -> String {
+        String(describing: error)
     }
 }

@@ -31,7 +31,6 @@ extension RuntimeLifecycle {
         case .loaded(let version):
             return version
         case .missing:
-            log("runtime version unavailable reason=missing")
             return RuntimeVersionStore.missingVersionValue
         case .failed(let reason):
             log("runtime version unavailable reason=invalid error=\(reason)")

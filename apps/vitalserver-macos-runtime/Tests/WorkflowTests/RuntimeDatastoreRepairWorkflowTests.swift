@@ -237,7 +237,7 @@ private final class DatastoreRepairHarness {
                 }
                 self.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
             },
-            describeError: RuntimeErrorDescription.describe,
+            describeError: { String(describing: $0) },
             requestID: {
                 "request-1"
             },

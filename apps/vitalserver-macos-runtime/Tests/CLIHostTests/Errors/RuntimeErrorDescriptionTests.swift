@@ -1,5 +1,5 @@
 import XCTest
-import Errors
+@testable import CLIHost
 
 final class RuntimeErrorDescriptionTests: XCTestCase {
     func testDescribeUsesExplicitErrorDescriptionBoundary() {

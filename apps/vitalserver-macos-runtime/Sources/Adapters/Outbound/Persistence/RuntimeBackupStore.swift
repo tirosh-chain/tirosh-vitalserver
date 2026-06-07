@@ -224,6 +224,9 @@ public struct RuntimeBackupStore {
     }
 
     public func latestBackup() throws -> URL? {
+        guard directoryExists(paths.backupsDirectory) else {
+            return nil
+        }
         let directories = try childDirectories(paths.backupsDirectory, "-before-")
         return directories
             .sorted { $0.lastPathComponent < $1.lastPathComponent }

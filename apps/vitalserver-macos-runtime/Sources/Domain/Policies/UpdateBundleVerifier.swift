@@ -1,5 +1,4 @@
 import Contracts
-import Errors
 public struct UpdateBundleFileVerification: Equatable, Sendable {
     public let name: String
     public let checksumKey: String

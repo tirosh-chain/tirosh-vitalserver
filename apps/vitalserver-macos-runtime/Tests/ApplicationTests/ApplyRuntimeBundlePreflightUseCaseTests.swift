@@ -227,7 +227,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
             ),
             observeRootfsStorage: { _, observedRootfsBase in
                 XCTAssertEqual(observedRootfsBase, rootfsBase)
-                throw LauncherError.runtimeOperationFailed("missing file: \(rootfsBase.path)")
+                throw TestError.operationFailed("missing file: \(rootfsBase.path)")
             },
             createDirectory: { _, _ in XCTFail("should not create backup directory") },
             requireFreeSpace: { _, _, _ in XCTFail("should not check free space") }
@@ -264,7 +264,7 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
             requireGuestCapability: { capability in
                 events.append("capability:\(capability.rawValue)")
                 if capability == .activateUpdate {
-                    throw LauncherError.runtimeOperationFailed("guest capability missing: \(capability.rawValue)")
+                    throw TestError.operationFailed("guest capability missing: \(capability.rawValue)")
                 }
             },
             createBackup: { _ in
@@ -411,6 +411,17 @@ final class ApplyRuntimeBundlePreflightUseCaseTests: XCTestCase {
             artifacts: artifacts,
             migrations: []
         )
+    }
+}
+
+private enum TestError: Error, CustomStringConvertible {
+    case operationFailed(String)
+
+    var description: String {
+        switch self {
+        case .operationFailed(let message):
+            message
+        }
     }
 }
 

@@ -1,5 +1,4 @@
 import Contracts
-import Errors
 
 public struct RuntimeHealthWaitConfiguration: Equatable {
     public let maxAttempts: Int

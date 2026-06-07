@@ -1,6 +1,5 @@
 import Contracts
 import Foundation
-import Errors
 
 public struct RollbackPreflightContext: Equatable, Sendable {
     public let backup: URL

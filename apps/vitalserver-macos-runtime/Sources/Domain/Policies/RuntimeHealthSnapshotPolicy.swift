@@ -1,5 +1,4 @@
 import Contracts
-import Errors
 
 public enum RuntimeHealthSnapshotPolicy {
     public static let missingFailureReasons = "runtime-health-snapshot-missing-failure-reasons"

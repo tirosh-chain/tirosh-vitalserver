@@ -1,4 +1,3 @@
-import Errors
 public enum UpdateBundleArchiveVerifier {
     public static func rootDirectory(listOutput: String) throws -> String {
         let entries = listOutput.split(whereSeparator: \.isNewline).map(String.init)
