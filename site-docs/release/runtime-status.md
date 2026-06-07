@@ -1,9 +1,12 @@
-# Runtime Status
+# Status Reference
 
-이 문서는 운영자가 관측하는 runtime 상태와 이벤트의 의미를 정리합니다. 내부 state
-machine, guard, workflow sequencing은 dev 문서의 영역입니다.
+이 문서는 운영자가 보는 runtime 상태와 이벤트의 의미를 정리합니다. Runtime status는
+장애 원인을 확정하는 판정서가 아니라, 먼저 확인해야 할 상태를 보여주는 점검 정보입니다.
+상태가 `degraded` 또는 `critical`이면 event history와 logs를 함께 확인해야 합니다.
 
-## Status Sources
+내부 state machine, guard, workflow sequencing은 dev 문서의 영역입니다.
+
+## Where Status Comes From
 
 | Source | 위치 또는 인터페이스 | 의미 |
 |---|---|---|
@@ -27,7 +30,7 @@ machine, guard, workflow sequencing은 dev 문서의 영역입니다.
 `missing`, `invalid`, `failed`, `stale`, `empty`는 같은 의미가 아닙니다. release
 표시에서도 이 값들을 성공이나 기본값으로 합치지 않아야 합니다.
 
-## Operations
+## Current Operation
 
 `runtime-status.json`의 `operation`은 현재 상태가 어떤 작업 흐름에서 기록되었는지
 나타냅니다.
@@ -43,7 +46,7 @@ machine, guard, workflow sequencing은 dev 문서의 영역입니다.
 | `repair-datastore`, `repair-vm-disk`, `repair-proxy`, `repair-services` | 명시적 repair 흐름 |
 | `start-services`, `stop-services`, `uninstall` | service lifecycle 또는 제거 작업 |
 
-## Progress Events
+## Progress
 
 진행 중 작업은 `progress`로 현재 step과 phase를 남깁니다.
 
@@ -55,7 +58,7 @@ machine, guard, workflow sequencing은 dev 문서의 영역입니다.
 | `message` | 사람이 읽는 진행 메시지 |
 | `reasonCodes` | 자동 처리나 troubleshooting에 사용할 수 있는 이유 코드 |
 
-## Runtime Events
+## Event History
 
 event history는 상태 snapshot을 대체하지 않습니다. 최신 판단은 status source를 보고,
 events는 왜 그렇게 되었는지 추적할 때 사용합니다.
@@ -71,7 +74,7 @@ events는 왜 그렇게 되었는지 추적할 때 사용합니다.
 | `domain-error-observed`, `vm-error-observed` | domain 또는 VM 오류가 관측됨 |
 | `container-observed`, `vitaldb-observed`, `vitaldb-anomaly-detected` | container/VitalDB 계층 관측 이벤트 |
 
-## Interpretation Rules
+## How To Read Status
 
 - `runtime-status.json`은 최신 상태 snapshot입니다.
 - event history는 원인 추적과 timeline 확인을 위한 이력입니다.

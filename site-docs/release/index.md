@@ -12,10 +12,10 @@ download path, checksum, 지원 OS matrix, 병원별 설치 절차는 아직 확
 | 문서 | 내용 |
 |---|---|
 | [Usage](usage.md) | preview package build entrypoint, 설치 후 CLI, 주요 설치 경로 |
-| [Scope](scope.md) | 현재 제공 범위, VitalDB와의 관계, 미지원 항목, roadmap |
-| [Runtime Status](runtime-status.md) | 운영자가 관측하는 runtime 상태와 이벤트 의미 |
+| [Capabilities](scope.md) | 현재 확인할 수 있는 항목, VitalDB와의 관계, 미지원 항목, roadmap |
+| [Status Reference](runtime-status.md) | 운영자가 보는 runtime 상태와 이벤트 의미 |
 
-## Platform Scope
+## Supported Platform
 
 현재 release preview는 macOS host에 설치되는 Helper package만 다룹니다. Windows 또는
 Linux host용 설치물은 현재 release 범위가 아닙니다.
@@ -27,14 +27,14 @@ Linux host용 설치물은 현재 release 범위가 아닙니다.
 | 포함 실행물 | Helper app, `vitalserver-vm` runtime CLI |
 | runtime 실행 위치 | macOS host 위의 local VM/runtime |
 
-| 범위 아님 | 상태 |
+| 현재 범위 아님 | 상태 |
 |---|---|
 | Windows host installer | 제공하지 않음 |
 | Linux host installer | 제공하지 않음 |
 | 공개 안정 installer URL | 아직 확정하지 않음 |
 | checksum/지원 OS matrix | 아직 확정하지 않음 |
 
-## Boundaries
+## Limitations
 
 - 의료 행위나 임상 판단을 자동화하지 않습니다.
 - VitalDB/Vital Server 원 프로젝트와 공식 배포물을 대체하지 않습니다.

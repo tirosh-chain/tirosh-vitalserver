@@ -1,10 +1,17 @@
 # Testing
 
-이 문서는 Vital Server Helper의 검증 범위를 정리합니다. 검증의 목적은 단순히 test
-수를 늘리는 것이 아니라, 상태 의미와 layer 경계가 변경 중에도 유지되는지 확인하는
-것입니다.
+이 문서는 Vital Server Helper의 검증 범위를 정리합니다. 검증의 목적은 test 수를
+늘리는 것이 아니라, preview package가 같은 방식으로 실행되고 같은 의미의 상태를
+보고하는지 확인하는 것입니다.
 
-## Verification Scope
+Testkit은 실제 Recorder 장비를 항상 연결할 수 없는 상황에서 수집 경로를 반복 확인하기
+위한 도구입니다. 여러 Recorder가 동시에 데이터를 보내는 상황, 일정 시간 동안 계속
+데이터가 들어오는 상황, release 전 기본 smoke test를 재현하는 데 사용합니다.
+
+`.vital` file validation scenario는 계획 중이며, 현재 preview 검증 범위에는 포함하지
+않습니다.
+
+## Validation Scenarios
 
 | 범위 | 목적 |
 |---|---|
@@ -13,9 +20,9 @@
 | testkit smoke | simulated recorder와 Vital Server 연결 확인 |
 | testkit load | 반복 `send_data` 처리와 저장 흐름 확인 |
 | runtime chaos | permission, update, observability failure injection |
-| Health Check scenario | VR observed/missing/stale, `.vital` file failure 상태 확인 |
+| Health Check scenario | VR observed/missing/stale 상태 확인 |
 
-## Layer Test Rules
+## Test Rules
 
 테스트의 우선순위는 happy path보다 state meaning과 failure boundary 보존입니다. 새 동작을
 추가하거나 책임을 이동할 때는 정상 흐름 1개보다 missing, invalid, permission failure,
@@ -36,7 +43,7 @@ Architecture boundary test는 regression guard입니다. 새 파일이나 새 ta
 해당 책임이 어느 layer에 속하는지 먼저 정하고, import direction, state ownership,
 fallback 가능 여부를 함께 테스트합니다.
 
-## Slice Completion Rules
+## Change Completion Rules
 
 구조 변경이나 runtime behavior 변경은 최소 아래 기준을 만족해야 합니다.
 
@@ -49,7 +56,7 @@ fallback 가능 여부를 함께 테스트합니다.
 7. fallback 허용 layer에서는 결과가 explicit degraded/display-only임을 검증합니다.
 8. boundary/import/file-absence test로 책임 위치가 되돌아가지 않게 고정합니다.
 
-## Test Hierarchy
+## Test Organization
 
 테스트 파일도 source와 같은 책임 신호를 가져야 합니다. test target이 integration 편의를 위해
 여러 source module을 함께 import해야 하더라도, 관련 없는 테스트를 target root에 평평하게

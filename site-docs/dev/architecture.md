@@ -2,12 +2,26 @@
 
 Vital Server Helper는 host platform과 service appliance를 분리합니다.
 
+이 구조는 병원 내부망 가까이에 놓인 작은 운영 장비를 전제로 합니다. 이 장비는
+사용자가 매일 직접 관리하지 않아도 장기간 켜져 있어야 하고, 문제가 생겼을 때
+상태와 로그를 확인할 수 있어야 합니다.
+
 Mac hardware appliance는 공개 release의 1차 현장 배포 target입니다. Linux VM은
 macOS/Linux/Windows host 어디서든 동일한 Vital Server Helper service appliance를
 실행하기 위한 architecture direction입니다. PWA는 host별 native UI 중복을 피하고
 같은 Runtime Control UI를 제공하기 위한 운영 UI입니다.
 
-## 핵심 구조
+## Operating Assumptions
+
+| 운영 조건 | 구조적 대응 |
+|---|---|
+| 병원 내부망 가까이에서 동작해야 함 | local host runtime과 guest service stack을 기본 경로로 둠 |
+| Recorder 접속 상태를 운영자가 확인해야 함 | observer와 audit proxy가 Recorder activity를 관측 |
+| 장애 조사 자료를 모을 수 있어야 함 | status, event history, logs, read model을 분리 |
+| update가 네트워크 접근에만 의존하면 안 됨 | offline update bundle과 verify/apply 흐름을 둠 |
+| host OS별 UI 중복을 줄여야 함 | PWA와 Runtime Control API를 분리 |
+
+## System Overview
 
 ```text
 Browser / PWA / Native shell

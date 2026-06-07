@@ -1,8 +1,7 @@
-# Health Check Contract
+# Runtime Model
 
-Health Check contract는 Vital Server Helper가 확인한 상태의 의미를 고정합니다. UI와
-runtime은 이 contract를 통해 missing, invalid, failed, stale, empty를 같은 의미로
-해석합니다.
+Runtime model은 Vital Server Helper가 확인한 상태의 의미를 고정합니다. UI와 runtime은
+이 model을 통해 missing, invalid, failed, stale, empty를 같은 의미로 해석합니다.
 
 상태는 추측하지 않습니다. 상태 소유자가 제공한 명시적인 state, event, document,
 command result만 사용합니다.
@@ -33,7 +32,11 @@ command result만 사용합니다.
 Host는 Guest 내부 상태를 추측하지 않습니다. Guest 또는 runtime read model이 제공한
 관측 결과만 표시합니다.
 
-## `.vital` File State
+## Planned `.vital` File State
+
+`.vital` file sanity check는 지원 예정 기능입니다. 아래 상태 이름은 향후 file check를
+추가할 때 현재 runtime model과 같은 실패 의미를 유지하기 위한 기준이며, 현재 preview
+release에서 제공하는 기능을 의미하지 않습니다.
 
 | 상태 | 의미 |
 |---|---|
@@ -53,7 +56,7 @@ invalid filename과 다릅니다.
 | 영역 | Owner |
 |---|---|
 | VRecorder observed state | VitalDB Observer / runtime read model |
-| `.vital` discovery | explicit file reader / testkit policy |
+| `.vital` discovery | planned explicit file reader / testkit policy |
 | runtime service health | Host runtime / watchdog |
 | guest service state | guest tools |
 | UI display | PWA / Helper presentation |

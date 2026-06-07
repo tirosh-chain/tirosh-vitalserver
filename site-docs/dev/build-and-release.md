@@ -3,6 +3,10 @@
 이 문서는 Vital Server Helper artifact를 만들고 검증할 때 사용하는 command와 release
 원칙을 정리합니다.
 
+Release artifact는 설치 파일 하나로 끝나지 않습니다. Helper package, guest service
+assets, Docker image bundle, update bundle은 네트워크 접근이 제한된 환경에서도 같은
+검증 절차를 통과할 수 있어야 합니다.
+
 ## Commands
 
 | 목적 | command |
@@ -15,7 +19,7 @@
 | installed runtime health 확인 | `make dist/installed/health` |
 | testkit release wheel 설치 | `make testkit/install-release TESTKIT_VERSION=<version>` |
 
-## Artifacts
+## Release Artifacts
 
 | Artifact | 용도 |
 |---|---|
@@ -26,7 +30,7 @@
 | Docker image bundle | air-gapped guest service stack 실행 |
 | guest deploy bundle | guest 내부 service activation 입력 |
 
-## Release Rules
+## Release Checks
 
 - Product Update와 VM Image Update를 구분합니다.
 - rootfs 교체는 일반 Product Update에 넣지 않습니다.

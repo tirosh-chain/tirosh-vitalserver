@@ -1,4 +1,4 @@
-# API Contracts
+# API Reference
 
 이 문서는 Vital Server Helper 관련 API surface와 계약 위치를 정리합니다. UI와 runtime
 사이에서 상태 의미가 바뀌지 않도록 request, response, failure state를 분리합니다.

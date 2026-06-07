@@ -67,4 +67,4 @@ development package 설치 후 주요 경로는 아래와 같습니다.
 | 문서 보기 | `uv run --group docs mkdocs serve --dev-addr 127.0.0.1:8000` |
 | runtime package 구조 확인 | `site-docs/dev/package-map.md` |
 | Runtime Control API 확인 | `site-docs/dev/api-contracts.md` |
-| Health Check 상태 의미 확인 | `site-docs/dev/health-check-contract.md` |
+| runtime 상태 의미 확인 | `site-docs/dev/health-check-contract.md` |
