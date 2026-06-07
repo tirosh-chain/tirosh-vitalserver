@@ -8,10 +8,12 @@ enum RuntimeUninstallCommandFactory {
         let previousLogPath = "\(logPath).previous"
         let viewerScriptPath = "/private/tmp/tirosh-vitalserver-uninstall-progress.command"
         let startScript = RuntimeUninstallProgressScript.startScript(
-            command: command,
-            logPath: logPath,
-            previousLogPath: previousLogPath,
-            viewerScriptPath: viewerScriptPath,
+            plan: RuntimeUninstallProgressScriptPlan(
+                command: command,
+                logPath: logPath,
+                previousLogPath: previousLogPath,
+                viewerScriptPath: viewerScriptPath
+            ),
             shellQuote: shellQuote
         )
         let script = [

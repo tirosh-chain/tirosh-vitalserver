@@ -55,6 +55,27 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains("Background uninstaller started."))
     }
 
+    func testUninstallProgressScriptPlanPreservesQuotedPathsAndViewerFailure() {
+        let script = RuntimeUninstallProgressScript.startScript(
+            plan: RuntimeUninstallProgressScriptPlan(
+                command: "'/bin/uninstall tool' '--clean'",
+                logPath: "/tmp/uninstall log's/current.log",
+                previousLogPath: "/tmp/uninstall log's/current.log.previous",
+                viewerScriptPath: "/tmp/viewer script's.command"
+            ),
+            shellQuote: RuntimeShellCommandFactory.shellQuote
+        )
+
+        XCTAssertTrue(script.contains("log_file='/tmp/uninstall log'\\''s/current.log'"))
+        XCTAssertTrue(script.contains("previous_log_file='/tmp/uninstall log'\\''s/current.log.previous'"))
+        XCTAssertTrue(script.contains("viewer_script='/tmp/viewer script'\\''s.command'"))
+        XCTAssertTrue(script.contains("if ! open -a Terminal \"${viewer_script}\""))
+        XCTAssertTrue(script.contains("echo \"\(RuntimeUninstallProgressScript.terminalOpenFailedMessage)\" >> \"${log_file}\""))
+        XCTAssertTrue(script.contains("'/bin/uninstall tool' '--clean'"))
+        XCTAssertTrue(script.contains("} < /dev/null >> \"${log_file}\" 2>&1 &"))
+        XCTAssertFalse(script.contains("&;"))
+    }
+
     func testCommandWithLogCapturesExitStatus() {
         let command = RuntimeCommandFactory.commandWithLog("echo hello")
 

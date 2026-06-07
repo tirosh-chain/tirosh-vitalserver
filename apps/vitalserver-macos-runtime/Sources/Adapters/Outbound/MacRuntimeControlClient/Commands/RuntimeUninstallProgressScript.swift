@@ -1,3 +1,10 @@
+struct RuntimeUninstallProgressScriptPlan {
+    let command: String
+    let logPath: String
+    let previousLogPath: String
+    let viewerScriptPath: String
+}
+
 enum RuntimeUninstallProgressScript {
     static let completedMarker = "uninstall process completed exitCode=0"
     static let failedMarkerPrefix = "uninstall process failed exitCode="
@@ -43,11 +50,26 @@ enum RuntimeUninstallProgressScript {
         viewerScriptPath: String,
         shellQuote: (String) -> String
     ) -> String {
-        let viewerScript = viewerScript(logPath: logPath, shellQuote: shellQuote)
+        startScript(
+            plan: RuntimeUninstallProgressScriptPlan(
+                command: command,
+                logPath: logPath,
+                previousLogPath: previousLogPath,
+                viewerScriptPath: viewerScriptPath
+            ),
+            shellQuote: shellQuote
+        )
+    }
+
+    static func startScript(
+        plan: RuntimeUninstallProgressScriptPlan,
+        shellQuote: (String) -> String
+    ) -> String {
+        let viewerScript = viewerScript(logPath: plan.logPath, shellQuote: shellQuote)
         return """
-        log_file=\(shellQuote(logPath))
-        previous_log_file=\(shellQuote(previousLogPath))
-        viewer_script=\(shellQuote(viewerScriptPath))
+        log_file=\(shellQuote(plan.logPath))
+        previous_log_file=\(shellQuote(plan.previousLogPath))
+        viewer_script=\(shellQuote(plan.viewerScriptPath))
         if [ -s "${log_file}" ]; then
           cp "${log_file}" "${previous_log_file}"
         fi
@@ -58,7 +80,7 @@ enum RuntimeUninstallProgressScript {
           echo "\(terminalOpenFailedMessage)" >> "${log_file}"
         fi
         {
-          \(command)
+          \(plan.command)
           background_status=$?
           if [ "${background_status}" -eq 0 ]; then
             echo "\(completedMarker)"
