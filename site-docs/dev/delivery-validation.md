@@ -1,13 +1,57 @@
 # Delivery & Validation
 
-이 문서는 Vital Server Helper artifact를 만들고 검증할 때 사용하는 command, release
-원칙, test 기준을 함께 정리합니다.
+이 문서는 Vital Server Helper를 만들고, 검증하고, release 전에 확인하는 기준을 정리합니다.
 
-Release artifact는 설치 파일 하나로 끝나지 않습니다. Helper package, guest service
-assets, Docker image bundle, update bundle은 네트워크 접근이 제한된 환경에서도 같은
-검증 절차를 통과할 수 있어야 합니다.
+목표는 단순히 build가 성공했는지 보는 것이 아닙니다. 설치 파일, update bundle, guest service,
+testkit이 같은 기준으로 검증되고, 실패했을 때 원인을 다시 찾을 수 있어야 합니다.
 
-## 1. Release Commands
+## 1. 무엇을 확인하나
+
+Delivery는 사용자가 받는 결과물을 준비하는 일입니다. Validation은 그 결과물이 실제로 동작하는지
+확인하는 일입니다.
+
+Vital Server Helper는 Mac app 하나만 배포하지 않습니다. macOS Helper package, Linux guest service,
+Docker image bundle, update bundle, Clean Uninstaller까지 함께 다룹니다. 병원이나 연구실처럼
+네트워크 접근이 제한될 수 있는 환경에서도 같은 절차로 확인할 수 있어야 합니다.
+
+### 1-1. 기본 원칙
+
+| 원칙 | 뜻 |
+|---|---|
+| 같은 결과물은 같은 절차로 검증 | release machine이 달라도 검증 기준은 같아야 함 |
+| 실패는 남긴다 | build 실패, health 실패, rollback 실패는 기록으로 남김 |
+| 상태를 섞지 않는다 | missing, invalid, failed, stale, empty를 서로 바꾸지 않음 |
+| 문서와 구현을 같이 본다 | 운영 절차가 바뀌면 release/dev 문서도 함께 바뀜 |
+
+### 1-2. 결과물이 하나가 아닌 이유
+
+Helper는 Host와 Guest를 함께 다룹니다. Host는 Mac에서 app, proxy, process, file을 관리하고,
+Guest는 Vital Server service stack을 실행합니다.
+
+그래서 release 결과물도 여러 개입니다. 일반 app update와 VM image update도 구분해야 합니다.
+일반 update에 rootfs 교체를 섞으면 rollback과 장애 원인 추적이 어려워집니다.
+
+## 2. 무엇을 만들까
+
+Release 전에 만드는 결과물은 목적이 다릅니다. 먼저 “어떤 상황에서 쓰는 파일인가”를 구분합니다.
+
+### 2-1. Release 결과물
+
+| 결과물 | 쓰는 상황 |
+|---|---|
+| DMG | 신규 Mac에 Helper를 설치할 때 |
+| PKG | macOS installer가 실제로 설치하는 payload |
+| Clean Uninstaller PKG | 재설치가 막힌 Mac에서 관련 데이터와 기능을 강제로 정리할 때 |
+| Product Update bundle | Helper UI, runtime tools, proxy, service stack을 update할 때 |
+| VM Image update bundle | guest rootfs/base image class를 바꿀 때 |
+| Docker image bundle | 네트워크가 제한된 guest에서 service stack을 실행할 때 |
+| guest deploy bundle | guest 내부 service activation에 필요한 입력 |
+
+### 2-2. 릴리스 작업용 명령어
+
+아래 명령어는 릴리스 담당자가 build machine에서 결과물을 만들고 검증할 때 사용합니다.
+현장 Mac에서는 이 `make` 명령어를 실행하지 않습니다. 현장에는 생성된 DMG, PKG, update bundle,
+Clean Uninstaller PKG를 전달하고, installer 또는 Helper app UI에서 적용합니다.
 
 | 목적 | command |
 |---|---|
@@ -17,103 +61,133 @@ assets, Docker image bundle, update bundle은 네트워크 접근이 제한된 �
 | release Product Update bundle 검증 | `make dist/update/verify/release` |
 | VM Image update bundle 생성 | `make dist/image-update/release` |
 | VM Image update bundle 검증 | `make dist/image-update/verify/release` |
-| installed runtime health 확인 | `make dist/installed/health` |
+
+### 2-3. 검증 환경용 명령어
+
+아래 명령어는 개발자 또는 QA 검증 환경에서 사용합니다. 현장 운영자가 일반 절차로 실행하는
+명령어는 아닙니다.
+
+| 목적 | command |
+|---|---|
+| 설치된 runtime health 확인 | `make dist/installed/health` |
 | testkit release wheel 설치 | `make testkit/install-release TESTKIT_VERSION=<version>` |
 
-## 2. Release Artifacts
-
-| Artifact | 용도 |
-|---|---|
-| DMG | 신규 현장 설치 매체 |
-| PKG | macOS installer payload |
-| Clean Uninstaller PKG | fresh install이 막힌 Mac에서 Clean Uninstall만 수행하는 복구 package |
-| Product Update bundle | Helper UI, runtime tools, proxy, service stack update |
-| VM Image update bundle | rootfs/base image class update |
-| Docker image bundle | air-gapped guest service stack 실행 |
-| guest deploy bundle | guest 내부 service activation 입력 |
-
-## 3. Release Checks
-
-- Product Update와 VM Image Update를 구분합니다.
-- rootfs 교체는 일반 Product Update에 넣지 않습니다.
-- update 적용 전후 health check 결과를 확인합니다.
-- rollback 실패와 health check 실패는 명시적으로 기록합니다.
-- release note는 package별 변경 범위를 설명합니다.
-
 build 세부 구현은 `packages/vitalserver-devtools`와
-`docs/runtime/macos/packaging.md`를 기준으로 확정합니다.
+`docs/runtime/macos/packaging.md`를 기준으로 봅니다.
 
-## 4. Validation Scenarios
+## 3. 무엇을 검증할까
 
-Testkit은 실제 Recorder 장비를 항상 연결할 수 없는 상황에서 수집 경로를 반복 확인하기
-위한 도구입니다. 여러 Recorder가 동시에 데이터를 보내는 상황, 일정 시간 동안 계속
-데이터가 들어오는 상황, release 전 기본 smoke test를 재현하는 데 사용합니다.
+검증은 “켜진다”에서 끝나지 않습니다. 설치, update, rollback, health check, recorder 관측,
+log 수집까지 이어지는 경로를 확인해야 합니다.
 
-`.vital` file validation scenario는 계획 중이며, 현재 preview 검증 범위에는 포함하지
-않습니다.
+### 3-1. Release 확인 항목
 
-| 범위 | 목적 |
+| 확인할 것 | 이유 |
 |---|---|
-| unit test | domain policy, contract, parser, formatter 검증 |
-| integration test | observer, testkit, API client, package plan 검증 |
-| testkit smoke | simulated recorder와 Vital Server 연결 확인 |
-| testkit load | 반복 `send_data` 처리와 저장 흐름 확인 |
+| Product Update와 VM Image Update 구분 | update 범위와 rollback 범위를 분리하기 위해 |
+| update 적용 전후 health check | update가 상태를 악화시키지 않았는지 확인하기 위해 |
+| rollback 실패 기록 | 복구 실패는 다음 release에서 반드시 다뤄야 하기 때문에 |
+| package별 변경 범위 | 운영자가 어떤 부분이 바뀌었는지 알아야 하기 때문에 |
+| release note | 설치/운영 판단에 필요한 변경점을 남기기 위해 |
+
+### 3-2. 검증 시나리오
+
+Testkit은 실제 Recorder 장비를 항상 연결할 수 없는 상황에서 수집 경로를 반복 확인하기 위한
+도구입니다. 여러 Recorder가 동시에 데이터를 보내는 상황, 일정 시간 동안 계속 데이터가 들어오는
+상황, release 전 기본 smoke test를 재현하는 데 사용합니다.
+
+`.vital` file validation scenario는 계획 중이며, 현재 preview 검증 범위에는 포함하지 않습니다.
+
+| 범위 | 확인하는 것 |
+|---|---|
+| unit test | 상태 판단 규칙, contract, parser, formatter |
+| integration test | observer, testkit, API client, package plan |
+| testkit smoke | simulated recorder와 Vital Server 연결 |
+| testkit load | 반복 `send_data` 처리와 저장 흐름 |
 | runtime chaos | permission, update, observability failure injection |
-| Health Check scenario | VR observed/missing/stale 상태 확인 |
+| Health Check scenario | VR observed, missing, stale 상태 |
 
-## 5. Test Rules
+## 4. 테스트 기준
 
-테스트의 우선순위는 happy path보다 state meaning과 failure boundary 보존입니다. 새 동작을
-추가하거나 책임을 이동할 때는 정상 흐름 1개보다 missing, invalid, permission failure,
-decode failure, dependency failure, stale, zero, empty를 분리해서 검증하는 테스트가 더
-중요합니다.
+테스트는 “기능이 한 번 성공한다”를 확인하는 데서 끝나지 않습니다. Helper에서 더 중요한 것은
+상태 의미가 깨지지 않는지 확인하는 것입니다.
 
-| Layer | 반드시 검증할 것 | 실패/chaos 기준 |
+예를 들어 recorder 목록을 읽지 못한 상황을 빈 목록으로 표시하면, 운영자는 “recorder가 없다”고
+이해할 수 있습니다. 하지만 실제 원인은 권한 문제나 service 오류일 수 있습니다. 이런 경우는
+기능 실패보다 더 위험합니다. 장애가 정상처럼 보이기 때문입니다.
+
+그래서 새 동작을 추가하거나 책임 위치를 옮길 때는 정상 흐름 하나만 확인하지 않습니다.
+`missing`, `invalid`, `failed`, `stale`, `zero`, `empty`가 서로 바뀌지 않는지 확인합니다.
+
+### 4-1. 영역별로 봐야 하는 것
+
+| 영역 | 확인할 것 | 깨지면 생기는 문제 |
 |---|---|---|
-| `Contracts` | 문서 decode/encode, enum case, explicit result shape | missing/invalid/failed/stale/zero/empty가 서로 바뀌지 않아야 함 |
-| `Domain` | transition, guard, invariant | 불완전 입력은 전이 금지 또는 명시 failure decision으로 유지 |
-| `Application/UseCases` | stateless decision, command/effect/event 계산 | dependency 실패를 empty/default success로 바꾸지 않아야 함 |
-| `Workflow` | 진행 순서, progress, wait/retry loop, status persistence | failed/best-effort/degraded 결과가 status/event에 명시적으로 남아야 함 |
-| `Adapters/Outbound` | filesystem/process/network/repository read-write | permission/decode/dependency failure를 typed result로 보고해야 함 |
-| `Bootstrap` | dependency graph와 allowed composition만 존재 | process/filesystem/network/JSON 실행 책임이 들어오면 architecture test가 실패해야 함 |
-| `Hosts` | process boundary와 host-owned effect closure | host state read/write 실패를 inward layer에 숨기지 않아야 함 |
+| 계약 | API response, 상태 문서, enum case | UI와 Helper가 같은 상태를 다르게 해석함 |
+| 상태 판단 | 정상, missing, failed, stale 전환 | 불완전한 입력인데도 정상 상태로 넘어감 |
+| 실행 결정 | start, stop, update, repair에서 내려야 할 명령 | 실패했는데 다음 단계가 실행됨 |
+| 긴 작업 흐름 | install, update, repair, uninstall 순서와 진행 상태 | 중간 실패나 rollback 실패가 사라짐 |
+| 외부 연결 코드 | 파일, process, network, repository read/write | 권한 실패나 decode 실패가 빈 결과처럼 보임 |
+| 앱 시작 연결 | 설정, 경로, 구현 연결 | 앱 시작 단계에 실제 실행 책임이 섞임 |
+| Host 경계 | launchd, signal, filesystem, VM process | Host 상태 read/write 실패가 내부에서 숨겨짐 |
 
-Architecture boundary test는 regression guard입니다. 새 파일이나 새 target을 추가할 때는
-해당 책임이 어느 layer에 속하는지 먼저 정하고, import direction, state ownership,
-fallback 가능 여부를 함께 테스트합니다.
+### 4-2. 변경 유형별 테스트
 
-## 6. Change Completion Rules
+변경한 위치에 따라 먼저 볼 테스트가 달라집니다. 모든 변경에 같은 테스트를 억지로 붙이는 것이
+목표는 아닙니다. 변경이 깨뜨릴 수 있는 의미를 먼저 고릅니다.
 
-구조 변경이나 runtime behavior 변경은 최소 아래 기준을 만족해야 합니다.
+| 변경 | 먼저 확인할 것 |
+|---|---|
+| 화면 표시 변경 | 같은 상태가 PWA와 Helper app에서 같은 의미로 보이는가 |
+| Runtime Control API 변경 | OpenAPI, Swift client, PWA contract가 함께 맞는가 |
+| recorder/bed 관측 변경 | observed, missing, stale, read-failed가 분리되는가 |
+| file/log/settings read 변경 | 파일 없음, 권한 실패, decode 실패, empty가 분리되는가 |
+| update/repair 변경 | 진행 상태, 실패 event, rollback 결과가 남는가 |
+| packaging 변경 | build 결과물과 현장 적용 경로가 문서와 맞는가 |
 
-1. 대표 happy path를 1개 이상 검증합니다.
-2. missing state를 별도로 검증합니다.
-3. invalid input 또는 decode failure를 별도로 검증합니다.
-4. dependency/effect failure를 별도로 검증합니다.
-5. stale 또는 partial state가 의미 있는 slice라면 별도 케이스를 둡니다.
-6. fallback 금지 layer에서는 fallback success가 불가능함을 검증합니다.
-7. fallback 허용 layer에서는 결과가 explicit degraded/display-only임을 검증합니다.
-8. boundary/import/file-absence test로 책임 위치가 되돌아가지 않게 고정합니다.
+### 4-3. 구조 경계 테스트
 
-## 7. Test Organization
+구조 경계 테스트는 코드가 다시 섞이지 않게 막는 회귀 방지 장치입니다.
 
-테스트 파일도 source와 같은 책임 신호를 가져야 합니다. test target이 integration 편의를 위해
-여러 source module을 함께 import해야 하더라도, 관련 없는 테스트를 target root에 평평하게
-쌓지 않고 boundary별 하위 폴더로 묶습니다.
+새 파일이나 새 target을 추가할 때는 먼저 책임을 정합니다. 이 코드는 상태를 말하는가, 상태를
+판단하는가, 실제 실행을 하는가, 화면에 표시하는가를 구분합니다. 그다음 의존 방향, 상태 소유자,
+실패를 성공으로 바꾸지 않는 규칙을 테스트로 고정합니다.
 
-`MacControlPanelHostTests/OutboundClient/`는 Mac control panel test target 안에서 실행되지만
-macOS runtime control outbound client를 검증하는 테스트를 모읍니다.
+## 5. 어떻게 실행하나
 
-## 8. Test Commands
+검증 명령은 상황에 따라 다르게 고릅니다. 문구만 바꿨다면 전체 runtime 검증을 매번 돌릴 필요는
+없습니다. 반대로 update, recovery, contract, packaging을 바꿨다면 단순 unit test만으로는
+부족합니다.
+
+### 5-1. 먼저 실행할 기본 검증
+
+일반적인 개발 변경은 먼저 아래 명령으로 확인합니다.
 
 ```sh
 make dev/check
+```
+
+이 명령은 빠르게 깨진 부분을 찾기 위한 기본 관문입니다. 다만 실제 설치, update bundle,
+runtime chaos까지 모두 대신하지는 않습니다.
+
+### 5-2. Runtime과 recorder 경로
+
+recorder activity, Health Check, runtime 상태 표시를 바꿨다면 testkit을 함께 봅니다.
+
+```sh
 make testkit/smoke
 make testkit/load
+```
+
+권한, update, observability 실패를 다루는 변경이라면 chaos 검증을 따로 실행합니다.
+
+```sh
 make runtime/chaos
 ```
 
-필요 시 package별 test를 직접 실행합니다.
+### 5-3. Package별 test
+
+변경 범위가 특정 package에 닫혀 있으면 package별 test를 직접 실행합니다.
 
 ```sh
 uv run pytest packages/vitalserver-testkit/tests
@@ -122,7 +196,9 @@ uv run pytest packages/vitalserver-guest-tools/tests
 uv run pytest apps/vitaldb-observer/tests
 ```
 
-PWA와 audit proxy는 각각 Node 기반 검증을 실행합니다.
+### 5-4. PWA와 Audit Proxy
+
+PWA와 audit proxy는 Node 기반 검증을 실행합니다.
 
 ```sh
 npm --prefix apps/vitalserver-runtime-pwa run check
@@ -131,12 +207,70 @@ npm --prefix apps/vitalserver-audit-proxy run check
 npm --prefix apps/vitalserver-audit-proxy test
 ```
 
-## 9. Repository Workflow
+### 5-5. Release 결과물 검증
 
-GitHub issue와 pull request는 재현 가능한 상태, contract, test 기준으로 다룹니다.
+release 결과물을 바꿨다면 build machine에서 결과물 검증까지 봅니다. 현장 Mac에서 실행하는
+명령이 아니라, 전달 전에 release 담당자가 확인하는 명령입니다.
+
+| 변경 | 확인 명령 |
+|---|---|
+| Product Update bundle | `make dist/update/release`와 `make dist/update/verify/release` |
+| VM Image update bundle | `make dist/image-update/release`와 `make dist/image-update/verify/release` |
+| 신규 설치 DMG | `make dist/dmg/release` |
+| Clean Uninstaller PKG | `make dist/clean-uninstaller/release` |
+
+## 6. 변경 완료 기준
+
+변경 완료는 “테스트를 돌렸다”가 아니라 “이 변경이 깨뜨릴 수 있는 의미를 확인했다”에 가깝습니다.
+
+작은 문구 수정과 runtime update 변경의 완료 기준은 같을 수 없습니다. 아래 기준으로 변경의
+무게를 나눠 봅니다.
+
+### 6-1. 공통 완료 기준
+
+모든 변경은 최소 아래를 확인합니다.
+
+| 기준 | 확인할 것 |
+|---|---|
+| 목적 | 이 변경이 해결하려는 문제가 문서나 commit message에서 읽히는가 |
+| 범위 | 관련 없는 package나 문서를 같이 바꾸지 않았는가 |
+| 상태 의미 | missing, failed, stale, empty 같은 단어를 섞지 않았는가 |
+| 검증 | 변경 범위에 맞는 command나 test를 실행했는가 |
+| 문서 | 운영 절차나 contract 의미가 바뀌면 문서도 함께 바뀌었는가 |
+
+### 6-2. Runtime 변경 완료 기준
+
+runtime behavior, API contract, status/read, update, repair, recovery를 바꿨다면 아래를 추가로
+확인합니다.
+
+1. 대표 정상 흐름을 1개 이상 확인합니다.
+2. missing state를 별도 case로 확인합니다.
+3. invalid input 또는 decode failure를 별도 case로 확인합니다.
+4. dependency/effect failure를 별도 case로 확인합니다.
+5. stale 또는 partial state가 의미 있는 경우 별도 case로 확인합니다.
+6. 실패를 성공으로 바꾸면 안 되는 영역에서는 대체 성공이 불가능함을 확인합니다.
+7. 제한적으로 허용된 대체 동작은 degraded 또는 display-only 결과로 드러나는지 확인합니다.
+8. 경계, import, file-absence test로 책임 위치가 되돌아가지 않게 고정합니다.
+
+### 6-3. Test file 위치
+
+테스트 파일도 source와 같은 책임 신호를 가져야 합니다. 편의를 위해 여러 source module을 함께
+import하더라도, 관련 없는 테스트를 target root에 평평하게 쌓지 않습니다.
+
+예를 들어 `MacControlPanelHostTests/OutboundClient/`는 Mac control panel test target 안에서
+실행되지만, 실제로는 macOS runtime control outbound client를 검증하는 테스트를 모읍니다.
+
+## 7. GitHub에서 어떻게 다루나
+
+GitHub issue와 pull request는 재현 가능한 상태, contract, test 기준으로 다룹니다. “문제가
+있다”만으로는 다음 사람이 같은 상황을 다시 확인하기 어렵습니다. 어떤 환경에서, 어떤 상태를
+기대했고, 실제로 어떤 상태가 나왔는지를 남겨야 합니다.
+
 병원별 설치, 보안, 개인정보 협의는 공개 GitHub issue로 다루지 않습니다.
 
 GitHub Issues: <https://github.com/tirosh-chain/tirosh-vitalserver/issues>
+
+### 7-1. Issue 기준
 
 | 유형 | 기준 |
 |---|---|
@@ -146,11 +280,14 @@ GitHub Issues: <https://github.com/tirosh-chain/tirosh-vitalserver/issues>
 | Testkit issue | simulated recorder, `.vital` upload, smoke/load scenario 재현 가능 |
 | Contribution proposal | 변경 목적, 영향 범위, 관련 test 계획이 있음 |
 
-Public issue에는 환자 정보, 병원 내부 IP, 인증 정보, 비밀번호, token, 개인식별정보를
-남기지 않습니다. 병원별 보안 정책 협의, 현장 설치 일정, 장비 반입, 네트워크 변경 승인,
-의료 행위 또는 임상 판단도 공개 issue로 다루지 않습니다.
+Public issue에는 환자 정보, 병원 내부 IP, 인증 정보, 비밀번호, token, 개인식별정보를 남기지
+않습니다. 병원별 보안 정책 협의, 현장 설치 일정, 장비 반입, 네트워크 변경 승인, 의료 행위 또는
+임상 판단도 공개 issue로 다루지 않습니다.
 
-### 9-1. Issue Shape
+### 7-2. Issue 작성 형식
+
+Issue는 아래 형식을 기본으로 씁니다. 모든 항목을 길게 채울 필요는 없지만, `Expected`,
+`Actual`, `Explicit state`는 가능하면 분리합니다.
 
 ```text
 Summary:
@@ -165,24 +302,34 @@ Related logs or documents:
 `missing`, `invalid`, `failed`, `stale`, `empty`는 서로 다른 의미입니다. read failure를
 empty success로 쓰거나, stale state를 healthy state로 추정하지 않습니다.
 
-### 9-2. Pull Request Shape
+### 7-3. Pull Request 기준
+
+Pull request는 변경 목적과 검증 근거가 함께 보여야 합니다. 코드만 바뀌고 상태 의미나 운영
+절차가 문서에 남지 않으면, 다음 release에서 같은 문제를 다시 판단해야 합니다.
 
 - 한 가지 목적에 집중합니다.
 - package 경계를 지킵니다.
-- domain/core code는 외부 상태를 직접 읽지 않습니다.
+- 상태 판단 code는 외부 상태를 직접 읽지 않습니다.
 - contract 변경은 관련 문서와 test를 함께 갱신합니다.
 - recovery, update, parsing, settings, Health Check 변경은 실패 case test를 포함합니다.
 - release 문서의 운영 주장과 dev 문서의 구현 근거가 어긋나지 않게 합니다.
 
-## 10. Before Release
+## 8. Release 전에 확인할 것
 
-release 전에는 최소 아래를 확인합니다.
+release 전에는 “결과물을 만들었다”와 “현장에 전달해도 되는 상태다”를 분리해서 봅니다.
+아래 항목은 최소 확인 기준입니다.
 
-1. package build 성공
-2. update bundle verify 성공
-3. installed health 성공
-4. testkit smoke 성공
-5. 주요 failure pattern regression 없음
+| 확인 항목 | 의미 |
+|---|---|
+| package build 성공 | 전달할 DMG, PKG, bundle을 만들 수 있음 |
+| update bundle verify 성공 | update manifest, checksum, bundle 구성이 맞음 |
+| installed health 성공 | 설치된 runtime이 host proxy, VM, guest HTTP를 확인할 수 있음 |
+| testkit smoke 성공 | simulated recorder가 기본 수집 경로를 통과함 |
+| 주요 실패 패턴 재발 없음 | 이전에 기록한 update, 권한, contract, observability 문제가 다시 나타나지 않음 |
 
-GitHub issue나 pull request에서 검증 실패를 보고할 때는 command, 환경, 실패 로그,
-기대 결과를 함께 적습니다.
+### 8-1. 실패를 보고할 때
+
+검증 실패를 보고할 때는 “실패했다”가 아니라 다시 실행할 수 있는 자료를 남깁니다.
+
+GitHub issue나 pull request에서 검증 실패를 보고할 때는 command, 환경, 실패 로그, 기대 결과를
+함께 적습니다.

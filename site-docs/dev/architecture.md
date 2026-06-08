@@ -47,6 +47,10 @@ Vital Server Helper는 역할을 크게 네 부분으로 나눕니다.
 파일, 권한, proxy 같은 host 일을 처리합니다. VM 안의 service는 VitalServer 주변에서 실제
 관측과 저장을 담당합니다.
 
+현장에서 문제가 생기면 “화면이 잘못 보이는지”, “Host가 VM을 다루지 못하는지”, “VM 안 service가
+상태를 만들지 못하는지”를 빠르게 나눠 봐야 합니다. 역할을 나누면 장애 위치를 더 빨리 좁힐 수
+있고, update나 repair도 필요한 범위만 조심스럽게 다룰 수 있습니다.
+
 ### 2-1. 용어
 
 | 용어 | 이 문서에서의 뜻 |
@@ -127,6 +131,11 @@ recorder/bed activity
 | 상태 생산과 표시 | UI가 상태를 임의로 만들지 않음 |
 | 판단과 실행 | update, recovery, repair를 테스트 가능한 판단과 실제 실행으로 나눌 수 있음 |
 
+예를 들어 화면에서 recorder가 stale로 보일 때 UI가 직접 ping을 날려 상태를 바꾸면 원인을
+추적하기 어려워집니다. 대신 observer가 관측한 activity와 runtime 상태 자료를 API가 전달하고,
+화면은 그 결과를 그대로 보여줍니다. 이렇게 하면 “관측이 없어서 stale인지”, “관측 자료를 읽지
+못해서 failed인지”를 분리해서 볼 수 있습니다.
+
 ## 3. Guest
 
 Guest는 VM 안에서 실행되는 Linux 환경입니다. Linux VM은 host OS를 Linux로 한정하기 위한 선택이
@@ -141,6 +150,11 @@ Guest는 VM 안에서 실행되는 Linux 환경입니다. Linux VM은 host OS를
 | headless 운영 | systemd, journald, permission, network 설정이 service 운영에 익숙함 |
 | update 재현성 | rootfs, cloud-init, Docker image bundle, offline update bundle과 잘 맞음 |
 | 입력 명시화 | storage path, Redis host, CPU count, credential 같은 값을 명시적으로 넘김 |
+
+VM을 쓰면 구조가 조금 무거워지지만, 현장마다 다른 host OS 차이를 줄일 수 있습니다. VitalServer
+주변 service를 같은 Linux 환경에서 실행하면 Redis, proxy, observer, log 수집 방식을 더 일정하게
+가져갈 수 있습니다. host가 macOS인지 Windows인지는 VM을 실행하고 연결하는 쪽의 문제로 남기고,
+guest 안의 service 묶음은 최대한 같은 방식으로 유지합니다.
 
 ### 3-2. VitalServer 연결 입력
 
@@ -188,6 +202,11 @@ Host는 Helper가 설치된 Mac/PC입니다. Host는 VM 실행, 설치, 권한, 
 | 작은 장비 | 별도 rack 없이 배치 가능한 소형 장비 |
 | host 기능 통합 | Helper app, local proxy, packaging, permission, VM 시작/중지/복구를 같은 host 기준으로 다룸 |
 
+Mac을 먼저 본다는 것은 최종 platform을 Mac으로만 제한한다는 뜻이 아닙니다. 초기에는 장비 종류와
+OS 조합을 줄여 설치, update, sleep prevention, 권한, VM 실행 문제를 반복해서 검증하는 것이 더
+중요합니다. 이 범위가 안정되면 같은 구조를 Linux나 Windows host로 옮길 때 어느 부분이 host별
+차이인지 더 명확히 볼 수 있습니다.
+
 ### 4-3. Host 선택의 경계
 
 중앙 인프라, 대규모 HA, redundant PSU, ECC memory, hot-swap storage, IPMI/iDRAC class 원격
@@ -210,6 +229,11 @@ host OS마다 같은 화면을 제공하려고 합니다.
 | local/remote 확장 | local runtime control과 remote console을 같은 API 뒤에 둘 수 있음 |
 | 현장 접근성 | Mac 앞이 아니라 병원 내부 PC, tablet, phone browser에서도 상태 확인 가능 |
 | native app 책임 축소 | Helper app은 설치, 권한, file picker, recovery 같은 host 기능에 집중 |
+
+PWA를 선택하면 화면과 host 기능을 분리할 수 있습니다. 화면은 Runtime Control API를 통해 상태와
+명령을 다루고, Helper app은 Mac에서만 필요한 설치, 권한, 파일 선택, 복구 기능에 집중합니다.
+이렇게 해야 나중에 remote console이나 다른 host UI가 필요해져도 같은 API 뒤에서 확장할 수
+있습니다.
 
 ### 5-2. Runtime Control API 역할
 
