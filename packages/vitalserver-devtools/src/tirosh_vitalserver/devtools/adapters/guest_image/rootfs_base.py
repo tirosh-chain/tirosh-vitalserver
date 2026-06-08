@@ -6,6 +6,7 @@ from pathlib import Path
 from tirosh_vitalserver.devtools.adapters.toolchain.gzip_compression import (
     compression_threads,
     gzip_file,
+    validate_gzip_file,
 )
 from tirosh_vitalserver.devtools.application.inputs import RootfsBaseInput
 
@@ -30,6 +31,7 @@ def run_rootfs_base(input: RootfsBaseInput) -> int:
     threads = compression_threads(input.compression_threads)
     print(f"compressing {source} -> {output}")
     gzip_file(source, output, threads=threads)
+    validate_gzip_file(output, expected_uncompressed_size=source.stat().st_size)
     print(f"rootfs base is ready: {output}")
     return 0
 
@@ -54,4 +56,10 @@ def require_stopped_lifecycle(source: Path) -> None:
         raise SystemExit(
             "error: rootfs source VM lifecycle is not stopped; refusing to "
             f"compress a VM disk with unproven shutdown state: state={state}"
+        )
+    terminal_reason = document.get("terminalReason")
+    if terminal_reason is not None:
+        raise SystemExit(
+            "error: rootfs source VM lifecycle has terminal failure reason; "
+            f"refusing to compress failed VM disk: terminalReason={terminal_reason}"
         )

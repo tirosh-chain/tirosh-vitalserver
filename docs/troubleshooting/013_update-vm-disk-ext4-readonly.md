@@ -88,6 +88,10 @@ Repair flow는 일반 update stop과 다릅니다. 손상된 VM은 graceful stop
 
 Packaging에서는 `rootfs-base.raw.gz`를 만들기 전에 golden VM lifecycle state가 `stopped`인지 확인해야 합니다. lifecycle document가 없거나 `stopping`, `running`, `failed`이면 base artifact 생성을 중단합니다. Host에 `e2fsck`가 없는 macOS build host에서는 ext4 fsck를 직접 수행하기 어렵기 때문에, 최소한 VM lifecycle stopped proof 없이 rootfs를 압축하지 않는 것이 필수 예방선입니다.
 
+`stopped` lifecycle이라도 `terminalReason`이 남아 있으면 clean shutdown proof로 보지 않습니다. `guest-kernel-panic`, `guest-filesystem-read-only`, `disk-attachment-invalid` 같은 terminal failure가 기록된 VM disk는 base artifact source가 아니며, packaging 단계에서 거부해야 합니다. `rootfs-base.raw.gz` 생성 직후에는 gzip stream을 끝까지 읽어 CRC/EOF와 uncompressed size를 검증합니다. 이 검증은 ext4 논리 오류를 대체하지 않지만, partial/corrupt gzip이 installer package에 들어가는 경로를 막는 최소 산출물 검증입니다.
+
+VM disk repair가 `Archiving current VM disk`에 머문 것처럼 보이면 실제로는 archive 이전 stop 단계에서 VM service 또는 VM process stop이 실패했을 수 있습니다. repair workflow는 service stop 실패를 `critical` runtime status로 기록한 뒤 중단해야 하며, 이 상태에서 현재 disk를 이동하거나 replacement disk를 start하지 않습니다.
+
 운영 판단:
 
 - `activate-update.log`에 `guest update activation completed`가 있어도 이후 health check가 실패할 수 있습니다. 이 경우 update payload가 아니라 VM disk 상태를 먼저 봅니다.
@@ -101,4 +105,5 @@ Packaging에서는 `rootfs-base.raw.gz`를 만들기 전에 golden VM lifecycle 
 - 2026-05-29: 다른 현장 로그에서 `004-refresh-vm-shutdown-timeouts` migration 자체가 update의 첫 `stop-runtime-services` 이후 실행되므로, 이미 loaded 상태인 VM job의 예전 60초 timeout이 첫 stop에 적용될 수 있음을 확인했습니다. Host CLI가 VM launchd `bootout` 전에 VM process에 직접 graceful stop을 요청하고 process 종료를 기다리도록 수정했습니다.
 - 2026-06-01: guest shutdown이 `systemd-resolved`/initrd finalization에서 330초보다 오래 걸리는 케이스를 확인했습니다. Host CLI와 VM launchd timeout을 900초로 늘렸고, disk-safe marker 기반 force stop fallback은 사용하지 않는 원칙을 문서화했습니다.
 - 2026-06-04: golden VM lifecycle이 `stopping`인데 `rootfs-base.raw.gz`가 생성된 build workflow 문제를 확인했습니다. `rootfs-base` 생성은 golden VM lifecycle `stopped` proof를 요구하도록 변경하고, fresh guest runtime state의 `diskHealth` contract로 update preflight가 VM disk repair 대상 오류를 차단하도록 했습니다.
+- 2026-06-08: fresh install에서 `EXT4-fs error`, cloud-init `Input/output error`, guest kernel panic이 함께 나타나는 로그를 확인했습니다. packaging은 stopped lifecycle에 terminal failure reason이 없는지 확인하고, rootfs gzip 산출물을 생성 직후 검증합니다. VM disk repair는 runtime service stop 실패를 critical status로 남겨 `Archiving current VM disk`가 마지막 상태처럼 남지 않게 합니다.
 - 이미 `EXT4-fs error`, `Aborting journal`, `Remounting filesystem read-only`가 발생한 VM disk는 이 수정만으로 복구되지 않습니다. Redis backup을 먼저 확인하고 VM disk repair/recreate 또는 재설치를 진행합니다.

@@ -73,6 +73,27 @@ final class RuntimeVMDiskRepairWorkflowTests: XCTestCase {
                 && $0.message == "Redis backup before VM disk repair failed; current VM disk will be archived before replacement"
         })
     }
+
+    func testStopFailureWritesCriticalStatusBeforeRethrow() {
+        let harness = VMDiskRepairWorkflowHarness()
+        harness.files[harness.rootfsBase] = 2
+        harness.files[harness.vmDisk] = harness.bytesPerGiB * 32
+        harness.stopError = VMDiskRepairWorkflowTestError.serviceStopFailed
+
+        XCTAssertThrowsError(try harness.run()) { error in
+            XCTAssertEqual(error as? VMDiskRepairWorkflowTestError, .serviceStopFailed)
+        }
+
+        XCTAssertEqual(harness.statuses.last?.level, .critical)
+        XCTAssertEqual(harness.statuses.last?.operation, .repairVMDisk)
+        XCTAssertEqual(
+            harness.statuses.last?.message,
+            "VM disk repair failed before archive; runtime services did not stop. reason=serviceStopFailed"
+        )
+        XCTAssertTrue(harness.events.contains("stop-for-disk-replacement"))
+        XCTAssertFalse(harness.events.contains { $0.hasPrefix("move:vm-disk.img:") })
+        XCTAssertFalse(harness.events.contains { $0.hasPrefix("start:") })
+    }
 }
 
 private final class VMDiskRepairWorkflowHarness {
@@ -88,6 +109,7 @@ private final class VMDiskRepairWorkflowHarness {
     var logs: [String] = []
     var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
     var waitError: Error?
+    var stopError: Error?
     var redisBackupFailureReason: String?
 
     func run() throws {
@@ -144,7 +166,12 @@ private final class VMDiskRepairWorkflowHarness {
                     }
                     return .completed
                 },
-                stopRuntimeServicesForVMDiskReplacement: { [self] in events.append("stop-for-disk-replacement") },
+                stopRuntimeServicesForVMDiskReplacement: { [self] in
+                    events.append("stop-for-disk-replacement")
+                    if let stopError {
+                        throw stopError
+                    }
+                },
                 startRuntimeServices: { [self] policy in
                     events.append("start:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")
                 },
@@ -166,5 +193,6 @@ private final class VMDiskRepairWorkflowHarness {
 
 private enum VMDiskRepairWorkflowTestError: Error {
     case healthWaitFailed
+    case serviceStopFailed
     case missingFileSize
 }

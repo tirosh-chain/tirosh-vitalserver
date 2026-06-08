@@ -167,7 +167,15 @@ public struct RuntimeVMDiskRepairWorkflow {
         try operations.createReplacementVMDisk(buildPlan)
 
         try writeStatus(useCase.archiveStatusPlan(), operations: operations)
-        try operations.stopRuntimeServicesForVMDiskReplacement()
+        do {
+            try operations.stopRuntimeServicesForVMDiskReplacement()
+        } catch {
+            try writeStatus(
+                useCase.stopServicesFailedStatusPlan(reason: String(describing: error)),
+                operations: operations
+            )
+            throw error
+        }
         try operations.createDirectory(executionPlan.archiveDirectory, true)
         if plan.shouldArchiveCurrentDisk {
             try operations.moveItem(context.vmDisk, executionPlan.archivedDisk)

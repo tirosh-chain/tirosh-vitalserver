@@ -299,6 +299,14 @@ public struct RuntimeVMDiskRepairUseCase {
         )
     }
 
+    public func stopServicesFailedStatusPlan(reason: String) -> RepairRuntimeStatusPlan {
+        RepairRuntimeStatusPlan(
+            status: .critical,
+            operation: .repairVMDisk,
+            message: "VM disk repair failed before archive; runtime services did not stop. reason=\(reason)"
+        )
+    }
+
     public func archivedLogMessage(archivedDiskPath: String) -> String {
         "archived vm disk path=\(archivedDiskPath)"
     }
