@@ -1184,6 +1184,25 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeHealthInputsRequireExplicitProxyPortReadState() throws {
+        let root = packageRoot()
+        for relativePath in [
+            "Sources/Application/UseCases/RuntimeHealth/EvaluateRuntimeHealthUseCase.swift",
+            "Sources/Domain/Policies/RuntimeHealthEvaluator.swift",
+        ] {
+            let text = try String(contentsOf: root.appendingPathComponent(relativePath), encoding: .utf8)
+
+            XCTAssertFalse(
+                text.contains("proxyPortReadState: RuntimeProxyPortReadState?"),
+                "Runtime health inputs must require explicit proxy port read state: \(relativePath)"
+            )
+            XCTAssertFalse(
+                text.contains("proxyPortReadState ?? .observed(proxyPort)"),
+                "Runtime health inputs must not create observed proxy port state from missing read state: \(relativePath)"
+            )
+        }
+    }
+
     func testRuntimeHealthReadContractsDoNotLiveInsideUseCaseImplementation() throws {
         let root = packageRoot()
         let contractsFile = root
@@ -2422,6 +2441,33 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
                 "Command worker must not own executable state mapping policy: \(token)"
             )
         }
+    }
+
+    func testHostTextReadResultPreservesDegradedLoadedState() throws {
+        let root = packageRoot()
+        let contractText = try String(
+            contentsOf: root.appendingPathComponent("Sources/Contracts/RuntimeControl/RuntimeClientContracts.swift"),
+            encoding: .utf8
+        )
+        let fileReaderText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeFileReaders.swift"
+            ),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            contractText.contains("case loadedWithIssue(text: String, issue: String)"),
+            "Host text reads must preserve degraded loaded state instead of hiding dependency failures"
+        )
+        XCTAssertTrue(
+            fileReaderText.contains("preservingRefreshIssue"),
+            "Runtime file reader should combine refresh failures with loaded/read-failed log text explicitly"
+        )
+        XCTAssertFalse(
+            fileReaderText.contains("if case .missing = text"),
+            "Refresh failures must not be reported only when log text is missing"
+        )
     }
 
     func testRecorderActivityDisplayDoesNotHideInvalidTimestampsAsOldSamples() throws {

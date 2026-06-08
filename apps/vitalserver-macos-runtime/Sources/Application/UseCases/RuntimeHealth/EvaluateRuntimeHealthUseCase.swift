@@ -39,7 +39,7 @@ public struct RuntimeHealthObservation {
         guestRuntimeState: RuntimeGuestRuntimeStateInput,
         loadedGuestRuntimeState: GuestRuntimeStateDocument?,
         proxyPort: Int?,
-        proxyPortReadState: RuntimeProxyPortReadState? = nil,
+        proxyPortReadState: RuntimeProxyPortReadState,
         hostProxyHTTP: String,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
@@ -63,7 +63,7 @@ public struct RuntimeHealthObservation {
         self.guestRuntimeState = guestRuntimeState
         self.loadedGuestRuntimeState = loadedGuestRuntimeState
         self.proxyPort = proxyPort
-        self.proxyPortReadState = proxyPortReadState ?? .observed(proxyPort)
+        self.proxyPortReadState = proxyPortReadState
         self.hostProxyHTTP = hostProxyHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP

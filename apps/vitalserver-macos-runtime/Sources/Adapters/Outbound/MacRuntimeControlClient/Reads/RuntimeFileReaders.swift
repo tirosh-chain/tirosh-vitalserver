@@ -71,31 +71,25 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
         case .direct(let source):
             return logTextReader.read(source, lineLimit: lineLimit)
         case .refreshThenRead(let source):
-            let refreshFailure = refreshLogCollectionFailure(sourceID)
+            let refreshIssue = refreshLogCollectionIssue(sourceID)
             let text = logTextReader.read(source, lineLimit: lineLimit)
-            if case .missing = text, let refreshFailure {
-                return refreshFailure
-            }
-            return text
+            return text.preservingRefreshIssue(refreshIssue)
         case .refreshWhenPrimaryMissing(let source):
             if logTextReader.primaryFileIsMissing(source) {
-                let refreshFailure = refreshLogCollectionFailure(sourceID)
+                let refreshIssue = refreshLogCollectionIssue(sourceID)
                 let text = logTextReader.read(source, lineLimit: lineLimit)
-                if case .missing = text, let refreshFailure {
-                    return refreshFailure
-                }
-                return text
+                return text.preservingRefreshIssue(refreshIssue)
             }
             return logTextReader.read(source, lineLimit: lineLimit)
         }
     }
 
-    private func refreshLogCollectionFailure(_ sourceID: RuntimeLogSource) -> RuntimeHostTextReadResult? {
+    private func refreshLogCollectionIssue(_ sourceID: RuntimeLogSource) -> String? {
         do {
             try logCollector.refreshLogCollection(sourceID: sourceID)
             return nil
         } catch {
-            return .failed("Failed to refresh log collection: \(error.localizedDescription)")
+            return "Failed to refresh log collection: \(error.localizedDescription)"
         }
     }
 
@@ -127,4 +121,22 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
             .map { item in VitalFilesFolder(name: item.lastPathComponent, path: item.path) }
     }
 
+}
+
+private extension RuntimeHostTextReadResult {
+    func preservingRefreshIssue(_ issue: String?) -> RuntimeHostTextReadResult {
+        guard let issue else {
+            return self
+        }
+        switch self {
+        case .loaded(let text):
+            return .loadedWithIssue(text: text, issue: issue)
+        case .loadedWithIssue(let text, let existingIssue):
+            return .loadedWithIssue(text: text, issue: "\(issue)\n\(existingIssue)")
+        case .missing:
+            return .failed(issue)
+        case .failed(let message):
+            return .failed("\(issue)\n\(message)")
+        }
+    }
 }

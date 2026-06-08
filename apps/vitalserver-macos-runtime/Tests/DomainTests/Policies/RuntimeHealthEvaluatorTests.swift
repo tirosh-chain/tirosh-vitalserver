@@ -486,6 +486,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
                 guestHTTP: guestHTTPInput(guestHTTP)
             ),
             proxyPort: proxyPort,
+            proxyPortReadState: .loaded(proxyPort),
             hostProxyHTTP: hostProxyHTTP,
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,

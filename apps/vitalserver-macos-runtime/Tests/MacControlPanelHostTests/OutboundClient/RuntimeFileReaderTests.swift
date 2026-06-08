@@ -216,6 +216,53 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertEqual(displayCollector.refreshCount, 1)
     }
 
+    func testLogTextPreservesRefreshFailureWhenExistingCollectedLogCanBeRead() throws {
+        let source = RuntimeLogSourceReadStrategyCatalog().strategy(for: .launcher).fileSource
+        let collector = FakeRuntimeLogCollector(refreshError: CocoaError(.fileReadNoPermission))
+        let reader = SystemRuntimeHostFileReader(
+            fileStore: SpecificFileRuntimeFileStore(dataByPath: [
+                source.path: Data("first\nsecond\nthird".utf8),
+            ]),
+            logCollector: collector
+        )
+
+        let result = reader.logTextResult(sourceID: .launcher, lineLimit: 2)
+
+        guard case .loadedWithIssue(let text, let issue) = result else {
+            XCTFail("Expected loaded log text with refresh issue, got \(result)")
+            return
+        }
+        XCTAssertEqual(text, "second\nthird")
+        XCTAssertTrue(issue.hasPrefix("Failed to refresh log collection:"))
+        XCTAssertTrue(displayLogText(result).contains(issue))
+        XCTAssertTrue(displayLogText(result).contains(text))
+        XCTAssertEqual(collector.sourceIDs, [.launcher])
+        XCTAssertEqual(collector.refreshCount, 1)
+    }
+
+    func testLogTextPreservesRefreshFailureWhenLogReadAlsoFails() throws {
+        let source = RuntimeLogSourceReadStrategyCatalog().strategy(for: .launcher).fileSource
+        let collector = FakeRuntimeLogCollector(refreshError: CocoaError(.fileReadNoPermission))
+        let reader = SystemRuntimeHostFileReader(
+            fileStore: PathStateRuntimeFileStore(pathStates: [
+                source.path: .inspectFailed("acl denied"),
+            ]),
+            logCollector: collector
+        )
+
+        let result = reader.logTextResult(sourceID: .launcher, lineLimit: 2)
+
+        guard case .failed(let message) = result else {
+            XCTFail("Expected failed log text with refresh and read issues, got \(result)")
+            return
+        }
+        XCTAssertTrue(message.contains("Failed to refresh log collection:"))
+        XCTAssertTrue(message.contains("Log file path inspection failed"))
+        XCTAssertTrue(message.contains("acl denied"))
+        XCTAssertEqual(collector.sourceIDs, [.launcher])
+        XCTAssertEqual(collector.refreshCount, 1)
+    }
+
     func testCommandLogTextReadsSourceWithoutRefreshingLogCollection() throws {
         let collector = FakeRuntimeLogCollector(refreshError: CocoaError(.fileReadNoPermission))
         let reader = SystemRuntimeHostFileReader(
@@ -414,6 +461,15 @@ private func displayLogText(_ result: RuntimeHostTextReadResult) -> String {
 private func displayHostText(_ result: RuntimeHostTextReadResult) -> String {
     RuntimeHostTextDisplayPolicy(noDataText: AppConstants.StatusText.notReported)
         .displayText(result)
+}
+
+private extension RuntimeLogSourceReadStrategy {
+    var fileSource: RuntimeLogFileSource {
+        switch self {
+        case .direct(let source), .refreshThenRead(let source), .refreshWhenPrimaryMissing(let source):
+            return source
+        }
+    }
 }
 
 private final class FakeRuntimeLogCollector: RuntimeLogCollecting, @unchecked Sendable {

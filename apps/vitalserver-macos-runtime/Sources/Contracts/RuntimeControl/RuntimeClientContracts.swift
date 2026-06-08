@@ -34,6 +34,7 @@ public enum RuntimeHostTextMissingReason: Equatable, Sendable {
 
 public enum RuntimeHostTextReadResult: Equatable, Sendable {
     case loaded(String)
+    case loadedWithIssue(text: String, issue: String)
     case missing(RuntimeHostTextMissingReason)
     case failed(String)
 }

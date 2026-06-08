@@ -217,6 +217,7 @@ private func observation(
         ),
         loadedGuestRuntimeState: loadedGuestRuntimeState,
         proxyPort: 80,
+        proxyPortReadState: .loaded(80),
         hostProxyHTTP: "200",
         redisUIHTTP: "200",
         swaggerUIHTTP: "200",

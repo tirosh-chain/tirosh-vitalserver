@@ -34,7 +34,7 @@ public struct RuntimeHealthInput: Equatable {
         vmLifecycle: RuntimeVMLifecycleDocument? = nil,
         guestRuntimeState: RuntimeGuestRuntimeStateInput,
         proxyPort: Int?,
-        proxyPortReadState: RuntimeProxyPortReadState? = nil,
+        proxyPortReadState: RuntimeProxyPortReadState,
         hostProxyHTTP: String,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
@@ -55,7 +55,7 @@ public struct RuntimeHealthInput: Equatable {
         self.vmLifecycle = vmLifecycle
         self.guestRuntimeState = guestRuntimeState
         self.proxyPort = proxyPort
-        self.proxyPortReadState = proxyPortReadState ?? .observed(proxyPort)
+        self.proxyPortReadState = proxyPortReadState
         self.hostProxyHTTP = hostProxyHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
