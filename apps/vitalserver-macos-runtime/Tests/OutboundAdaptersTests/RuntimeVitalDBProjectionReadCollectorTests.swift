@@ -121,6 +121,18 @@ private struct ProjectionRepositoryStub: RuntimeVitalDBObservationProjectionRead
         return activityBuckets
     }
 
+    func loadRecorderActivityBucketBounds(vrcode: String) throws -> VitalDBRecorderActivityBucketBounds? {
+        guard let first = activityBuckets.map(\.bucketStartedAt).min(),
+              let latest = activityBuckets.map(\.bucketStartedAt).max() else {
+            return nil
+        }
+        return VitalDBRecorderActivityBucketBounds(
+            vrcode: vrcode,
+            firstBucketStartedAt: first,
+            latestBucketStartedAt: latest
+        )
+    }
+
     func loadBedAssignments(limit: Int) throws -> [VitalDBBedAssignmentRecord] {
         if let assignmentsError {
             throw assignmentsError

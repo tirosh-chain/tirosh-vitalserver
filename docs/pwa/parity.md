@@ -44,7 +44,7 @@
 | Logs read/stream | `Implemented` | `/host/logs/read`, `/host/logs/stream` | host log path는 직접 열지 않음 |
 | Logs export | `Host affordance` | host log export endpoint | browser download endpoint가 없으면 native와 동일 UX 불가 |
 | VRecorder history | `Implemented` | `/vitaldb/recorders` | identity는 `vrcode` |
-| VRecorder activity chart | `Implemented` | recorder `activityTimeline` | packet/message 중심 chart |
+| VRecorder activity chart | `Needs migration` | `/vitaldb/recorders/{vrcode}/activity` | lazy 12-hour window query로 이동 필요 |
 | Bed history | `Implemented` | `/vitaldb/beds` | bed identity는 `bedID` |
 | Relationship history | `Implemented` | `/vitaldb/relationships` | recorder/bed detail에 연결 가능 |
 | TestKit virtual recorder | `Capability gated` | `/dev/testkit/*` | test-enabled build only |

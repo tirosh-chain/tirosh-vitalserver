@@ -240,13 +240,9 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func recorderActivity(_ recorder: RuntimeVitalRecorderRecord) -> some View {
-        let activityDisplay = activityChartDataBuilder.display(
-            from: recorder.activityTimeline,
-            interval: activityBucketInterval,
-            period: activityPeriod,
-            allSamplesPageIndex: activityAllSamplesPageIndex,
-            readError: viewModel.vitalRecorders.activityHistory.readError ?? viewModel.vitalRecorders.readError
-        )
+        let activityQuery = recorderActivityWindowQuery(for: recorder)
+        let activityWindow = viewModel.recorderActivityWindow(query: activityQuery)
+        let activityDisplay = activityChartDataBuilder.display(from: activityWindow)
         return VStack(alignment: .leading, spacing: 10) {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
@@ -254,7 +250,7 @@ struct RuntimeRecordersPanel: View {
                         .font(.subheadline)
                         .fontWeight(.semibold)
                     Spacer()
-                    if activityDisplay.state.showsControls {
+                    if activityDisplay.state.showsControls || activityWindow == nil {
                         activityControls
                     }
                     if let latestSample = activityDisplay.latestSample {
@@ -270,7 +266,7 @@ struct RuntimeRecordersPanel: View {
                         .font(.subheadline)
                         .fontWeight(.semibold)
                     HStack(spacing: 12) {
-                        if activityDisplay.state.showsControls {
+                        if activityDisplay.state.showsControls || activityWindow == nil {
                             activityControls
                         }
                         if let latestSample = activityDisplay.latestSample {
@@ -285,7 +281,13 @@ struct RuntimeRecordersPanel: View {
                 }
             }
 
-            switch activityDisplay.state {
+            if activityWindow == nil {
+                Text("Loading recorder activity window...")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 18)
+            } else {
+                switch activityDisplay.state {
             case .readFailed(let readError):
                 Text("Recorder activity history read issue: \(readError)")
                     .foregroundStyle(.red)
@@ -334,12 +336,38 @@ struct RuntimeRecordersPanel: View {
                         activityMetric("Room entries", activityDisplay.latestBucket.map { "\($0.roomCount)" } ?? "-")
                     }
                 }
+                }
             }
+        }
+        .task(id: recorderActivityWindowTaskID(activityQuery)) {
+            await viewModel.refreshVitalRecorderActivityWindow(query: activityQuery)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func recorderActivityWindowQuery(
+        for recorder: RuntimeVitalRecorderRecord
+    ) -> RuntimeVitalRecorderActivityWindowQuery {
+        RuntimeVitalRecorderActivityWindowQuery(
+            vrcode: recorder.vrcode,
+            bucketSeconds: activityBucketInterval.seconds,
+            period: activityPeriod.windowPeriod,
+            pageIndex: activityPeriod == .all ? activityAllSamplesPageIndex : nil
+        )
+    }
+
+    private func recorderActivityWindowTaskID(
+        _ query: RuntimeVitalRecorderActivityWindowQuery
+    ) -> String {
+        [
+            query.vrcode,
+            "\(query.bucketSeconds)",
+            query.period.rawValue,
+            query.pageIndex.map(String.init) ?? "latest",
+        ].joined(separator: "|")
     }
 
     private var activityControls: some View {

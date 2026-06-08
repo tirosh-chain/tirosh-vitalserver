@@ -8,7 +8,26 @@ protocol RuntimeObservabilityReading: Sendable {
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory
+    func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory
+    func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
+}
+
+extension RuntimeObservabilityReading {
+    func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
+        loadVitalDBRecorders()
+    }
+
+    func loadVitalDBRecorderActivityWindow(
+        query: RuntimeVitalRecorderActivityWindowQuery
+    ) -> RuntimeVitalRecorderActivityWindow {
+        RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+            query: query,
+            bounds: nil,
+            records: [],
+            readError: "recorder activity window reader is unavailable"
+        )
+    }
 }
 
 struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked Sendable {
@@ -72,6 +91,58 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         return RuntimeVitalDBRecorderHistoryAssembler.makeHistory(
             reads: vitalDBProjectionReadCollector().recorderProjectionReads()
         )
+    }
+
+    func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
+        return RuntimeVitalDBRecorderHistoryAssembler.makeHistory(
+            reads: vitalDBProjectionReadCollector().recorderProjectionReads(includeActivityBuckets: false)
+        )
+    }
+
+    func loadVitalDBRecorderActivityWindow(
+        query: RuntimeVitalRecorderActivityWindowQuery
+    ) -> RuntimeVitalRecorderActivityWindow {
+        if let validationError = query.validationError {
+            return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+                query: query,
+                bounds: nil,
+                records: [],
+                readError: validationError
+            )
+        }
+        let repository = makeVitalDBProjectionRepository(URL(fileURLWithPath: paths.runtimeObservabilityDB))
+        do {
+            guard let bounds = try repository.loadRecorderActivityBucketBounds(vrcode: query.vrcode) else {
+                return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+                    query: query,
+                    bounds: nil,
+                    records: []
+                )
+            }
+            guard let recordQuery = RuntimeVitalRecorderActivityWindowAssembler.windowReadQuery(
+                query: query,
+                bounds: bounds
+            ) else {
+                return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+                    query: query,
+                    bounds: bounds,
+                    records: [],
+                    readError: "activity window query could not be built"
+                )
+            }
+            return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+                query: query,
+                bounds: bounds,
+                records: try repository.loadRecorderActivityBuckets(query: recordQuery)
+            )
+        } catch {
+            return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+                query: query,
+                bounds: nil,
+                records: [],
+                readError: String(describing: error)
+            )
+        }
     }
 
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {

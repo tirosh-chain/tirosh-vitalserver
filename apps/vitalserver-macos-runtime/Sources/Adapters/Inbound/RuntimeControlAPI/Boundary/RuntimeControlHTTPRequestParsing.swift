@@ -117,6 +117,46 @@ public extension RuntimeControlHTTPRequest {
         )
     }
 
+    func vitalDBRecorderActivityWindowQuery() throws -> RuntimeVitalRecorderActivityWindowQuery {
+        let vrcode = try vitalDBRecorderActivityCode()
+        let bucketSeconds: Int
+        if let rawBucketSeconds = try queryValue(named: "bucketSeconds") {
+            guard let parsedBucketSeconds = Int(rawBucketSeconds) else {
+                throw RuntimeControlHTTPQueryError.invalidQueryParameter("bucketSeconds", rawBucketSeconds)
+            }
+            bucketSeconds = parsedBucketSeconds
+        } else {
+            bucketSeconds = RuntimeVitalRecorderActivityWindowQuery.oneMinuteBucketSeconds
+        }
+
+        let period: RuntimeVitalRecorderActivityWindowPeriod
+        if let rawPeriod = try queryValue(named: "period") {
+            guard let parsedPeriod = RuntimeVitalRecorderActivityWindowPeriod(rawValue: rawPeriod) else {
+                throw RuntimeControlHTTPQueryError.invalidQueryParameter("period", rawPeriod)
+            }
+            period = parsedPeriod
+        } else {
+            period = .lastHour
+        }
+
+        let pageIndex: Int?
+        if let rawPageIndex = try queryValue(named: "pageIndex") {
+            guard let parsedPageIndex = Int(rawPageIndex) else {
+                throw RuntimeControlHTTPQueryError.invalidQueryParameter("pageIndex", rawPageIndex)
+            }
+            pageIndex = parsedPageIndex
+        } else {
+            pageIndex = nil
+        }
+
+        return RuntimeVitalRecorderActivityWindowQuery(
+            vrcode: vrcode,
+            bucketSeconds: bucketSeconds,
+            period: period,
+            pageIndex: pageIndex
+        )
+    }
+
     func decodedBody<T: Decodable>(_ type: T.Type) throws -> T {
         guard let body else {
             throw RuntimeControlHTTPQueryError.missingBody
@@ -139,6 +179,22 @@ public extension RuntimeControlHTTPRequest {
               components[1] == "recorders",
               let decoded = String(components[2]).removingPercentEncoding,
               !decoded.isEmpty
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
+        }
+        return decoded
+    }
+
+    private func vitalDBRecorderActivityCode() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 4,
+              components[0] == "vitaldb",
+              components[1] == "recorders",
+              let decoded = String(components[2]).removingPercentEncoding,
+              !decoded.isEmpty,
+              components[3] == "activity"
         else {
             throw RuntimeControlHTTPQueryError.invalidPathParameter("vrcode")
         }

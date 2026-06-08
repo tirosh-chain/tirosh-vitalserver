@@ -15,11 +15,11 @@ struct RuntimeVitalDBProjectionReadCollector {
         )
     }
 
-    func recorderProjectionReads() -> RuntimeVitalDBRecorderProjectionReads {
+    func recorderProjectionReads(includeActivityBuckets: Bool = true) -> RuntimeVitalDBRecorderProjectionReads {
         RuntimeVitalDBRecorderProjectionReads(
             observations: observationListRead(),
             currentObservation: currentObservationProvider.load(),
-            activityBuckets: recorderActivityBucketListRead()
+            activityBuckets: includeActivityBuckets ? recorderActivityBucketListRead() : .notLoaded
         )
     }
 

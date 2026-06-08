@@ -31,6 +31,12 @@ public struct SQLiteVitalDBObservationRepository {
         try store.loadVitalDBRecorderActivityBuckets(query: query)
     }
 
+    public func loadRecorderActivityBucketBounds(
+        vrcode: String
+    ) throws -> VitalDBRecorderActivityBucketBounds? {
+        try store.loadVitalDBRecorderActivityBucketBounds(vrcode: vrcode)
+    }
+
     public func loadBedAssignments(limit: Int = 1000) throws -> [VitalDBBedAssignmentRecord] {
         try store.loadVitalDBBedAssignments(limit: limit)
     }

@@ -89,6 +89,7 @@ public protocol RuntimeControlAPIReadHandler {
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory
+    func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) async throws -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory
     func loadHealthStatus() async throws -> RuntimeStatus
     func loadSettings() async throws -> RuntimeSettings
@@ -112,4 +113,17 @@ public protocol RuntimeControlAPIReadHandler {
     func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func exportLogs(destination: RuntimeControlFileReference) async throws -> RuntimeLogExportResult
     func uninstallRuntime(clean: Bool) async throws -> RuntimeControlCommandResponse
+}
+
+public extension RuntimeControlAPIReadHandler {
+    func loadVitalDBRecorderActivityWindow(
+        query: RuntimeVitalRecorderActivityWindowQuery
+    ) async throws -> RuntimeVitalRecorderActivityWindow {
+        RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+            query: query,
+            bounds: nil,
+            records: [],
+            readError: "recorder activity window reader is unavailable"
+        )
+    }
 }

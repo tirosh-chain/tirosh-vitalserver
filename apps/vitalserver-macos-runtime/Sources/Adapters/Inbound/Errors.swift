@@ -21,6 +21,7 @@ public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {
     case invalidCursor(String)
     case invalidEventType(String)
     case invalidLogSource(String)
+    case invalidQueryParameter(String, String)
     case invalidQueryString(String)
     case duplicateQueryParameter(String)
     case missingQueryParameterValue(String)
@@ -38,6 +39,8 @@ public enum RuntimeControlHTTPQueryError: LocalizedError, Equatable {
             return "Invalid runtime event type: \(value)"
         case .invalidLogSource(let value):
             return "Invalid runtime log source: \(value)"
+        case .invalidQueryParameter(let name, let value):
+            return "Invalid query parameter \(name): \(value)"
         case .invalidQueryString(let value):
             return "Invalid query string: \(value)"
         case .duplicateQueryParameter(let name):

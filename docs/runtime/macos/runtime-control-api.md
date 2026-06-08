@@ -57,6 +57,7 @@ PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/
 | `GET` | `/vitaldb/observations/stream` |
 | `GET` | `/vitaldb/recorders` |
 | `GET` | `/vitaldb/recorders/{vrcode}` |
+| `GET` | `/vitaldb/recorders/{vrcode}/activity` |
 | `GET` | `/vitaldb/beds` |
 | `GET` | `/vitaldb/beds/{bedID}` |
 | `GET` | `/vitaldb/relationships` |
@@ -190,6 +191,20 @@ version, bed, first/last seen, latest status, current anomaly count, `activityTi
 `GET /vitaldb/recorders/{vrcode}`는 같은 history read model에서 특정 `vrcode`의 recorder record 하나를
 반환합니다. 관측 이력이 없으면 `null`을 반환합니다.
 
+`GET /vitaldb/recorders/{vrcode}/activity`는 recorder activity chart용 lazy window read model입니다.
+Query는 `bucketSeconds=60|300`, `period=last15Minutes|lastHour|last6Hours|last12Hours|all`,
+`pageIndex=<non-negative integer>`를 지원합니다. `period=all`일 때 page 하나는 12시간이며,
+`pageIndex`가 없으면 최신 page를 반환합니다. 서버는 SQLite에서 해당 `vrcode`의 first/latest bucket
+boundary를 먼저 읽고, 선택된 window의 `since/until` 범위만 조회합니다. UI는 응답의 `page.count`,
+`page.index`, `page.windowStartedAt`, `page.windowEndedAt`, `buckets`만 표시하고 전체 history gap을
+브라우저나 SwiftUI 메모리에서 materialize하면 안 됩니다.
+
+`RuntimeVitalRecorderActivityWindow.state`는 `loaded`, `empty`, `invalidRequest`, `readFailed` 중
+하나입니다. `empty`는 read가 성공했지만 해당 recorder/window에 activity bucket이 없다는 뜻이며,
+`readFailed`와 구분해야 합니다. `invalidRequest`는 query contract 위반입니다. Missing bucket은 선택된
+window 안에서만 zero-count display bucket으로 채울 수 있고, window 밖의 missing history를 activity state로
+추정하지 않습니다.
+
 `GET /vitaldb/beds`는 runtime observability SQLite에 저장된 VitalDB observation snapshot들을 `bedID`
 기준으로 집계한 `RuntimeVitalBedRecord` 배열을 반환합니다. Bed 탭/PWA는 recorder history payload에
 포함된 `beds` 필드에 의존하지 않고 이 route를 우선 사용합니다. `GET /vitaldb/beds/{bedID}`는 특정
@@ -228,6 +243,7 @@ Stable build는 local API server는 유지하되 이 dev console route는 제공
 | `GET` | `/vitaldb/observations/stream` | SSE VitalDB observation snapshot subscription |
 | `GET` | `/vitaldb/recorders` | VRecorder history aggregated by vrcode |
 | `GET` | `/vitaldb/recorders/{vrcode}` | one VRecorder history record by vrcode |
+| `GET` | `/vitaldb/recorders/{vrcode}/activity` | lazy VRecorder activity chart window |
 | `GET` | `/vitaldb/beds` | bed history aggregated by bedID |
 | `GET` | `/vitaldb/beds/{bedID}` | one bed history record by bedID |
 | `GET` | `/vitaldb/relationships` | VRecorder-bed assignment and relationship event history |

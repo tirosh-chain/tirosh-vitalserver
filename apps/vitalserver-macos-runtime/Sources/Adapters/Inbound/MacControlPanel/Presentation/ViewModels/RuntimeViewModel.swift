@@ -42,6 +42,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var runtimeEventFilter = ""
     @Published var vitalDBObservationSnapshot = RuntimeVitalDBObservationSnapshot.unavailable()
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
+    @Published var recorderActivityWindows: [String: RuntimeVitalRecorderActivityWindow] = [:]
     @Published var vitalRelationships = RuntimeVitalRelationshipHistory()
     @Published var containerObservation: RuntimeContainerObservation?
     @Published var remoteConsoleHTTP: String?
@@ -213,6 +214,28 @@ public final class RuntimeViewModel: ObservableObject {
         vitalDBObservationSnapshot = refreshed.observationSnapshot
         vitalRecorders = refreshed.recorders
         vitalRelationships = refreshed.relationships
+    }
+
+    func refreshVitalRecorderActivityWindow(
+        query: RuntimeVitalRecorderActivityWindowQuery
+    ) async {
+        let window = await snapshots.loadVitalRecorderActivityWindow(query: query)
+        recorderActivityWindows[recorderActivityWindowKey(query)] = window
+    }
+
+    func recorderActivityWindow(
+        query: RuntimeVitalRecorderActivityWindowQuery
+    ) -> RuntimeVitalRecorderActivityWindow? {
+        recorderActivityWindows[recorderActivityWindowKey(query)]
+    }
+
+    private func recorderActivityWindowKey(_ query: RuntimeVitalRecorderActivityWindowQuery) -> String {
+        [
+            query.vrcode,
+            "\(query.bucketSeconds)",
+            query.period.rawValue,
+            query.pageIndex.map(String.init) ?? "latest",
+        ].joined(separator: "|")
     }
 
     func uninstallRuntime(clean: Bool = false) async {

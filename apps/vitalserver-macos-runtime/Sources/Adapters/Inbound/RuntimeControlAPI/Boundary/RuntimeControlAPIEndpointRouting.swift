@@ -23,6 +23,8 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .get, path: "/vitaldb/recorders", scope: .runtimeControl)
         case .vitalDBRecorder:
             return .init(method: .get, path: "/vitaldb/recorders/{vrcode}", scope: .runtimeControl)
+        case .vitalDBRecorderActivity:
+            return .init(method: .get, path: "/vitaldb/recorders/{vrcode}/activity", scope: .runtimeControl)
         case .vitalDBBeds:
             return .init(method: .get, path: "/vitaldb/beds", scope: .runtimeControl)
         case .vitalDBBed:
@@ -98,6 +100,13 @@ public extension RuntimeControlAPIEndpoint {
 
     private func matches(path: String) -> Bool {
         switch self {
+        case .vitalDBRecorderActivity:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 4
+                && components[0] == "vitaldb"
+                && components[1] == "recorders"
+                && !components[2].isEmpty
+                && components[3] == "activity"
         case .vitalDBRecorder:
             let components = path.split(separator: "/", omittingEmptySubsequences: true)
             return components.count == 3

@@ -1,4 +1,5 @@
 import Contracts
+import Foundation
 
 public enum RuntimeVitalDBCurrentObservationSource: String, Equatable, Sendable {
     case guestRuntimeState
@@ -57,6 +58,7 @@ public enum RuntimeVitalDBObservationListRead: Equatable, Sendable {
 
 public enum RuntimeVitalDBRecorderActivityBucketListRead: Equatable, Sendable {
     case loaded([VitalDBRecorderActivityBucketRecord])
+    case notLoaded
     case failed(String)
 }
 
@@ -170,6 +172,11 @@ public enum RuntimeVitalDBRecorderHistoryAssembler {
                 loadedActivityBuckets,
                 readError: RuntimeObservabilityReadError.joined(readErrors)
             )
+        case .notLoaded:
+            activityBuckets = []
+            activityHistory = RuntimeVitalRecorderActivityHistory.notProvided(
+                readError: RuntimeObservabilityReadError.joined(readErrors)
+            )
         case .failed(let message):
             activityBuckets = []
             readErrors.append("activityBuckets=\(message)")
@@ -231,6 +238,242 @@ public enum RuntimeVitalDBRelationshipHistoryAssembler {
             events: events,
             state: state,
             readError: RuntimeObservabilityReadError.joined(readErrors)
+        )
+    }
+}
+
+public enum RuntimeVitalRecorderActivityWindowAssembler {
+    public static func makeWindow(
+        query: RuntimeVitalRecorderActivityWindowQuery,
+        bounds: VitalDBRecorderActivityBucketBounds?,
+        records: [VitalDBRecorderActivityBucketRecord],
+        readError: String? = nil
+    ) -> RuntimeVitalRecorderActivityWindow {
+        if let validationError = query.validationError {
+            return RuntimeVitalRecorderActivityWindow(
+                state: .invalidRequest,
+                query: query,
+                page: emptyPage(query: query),
+                buckets: [],
+                latestSampleAt: nil,
+                readError: validationError
+            )
+        }
+        if let readError {
+            return RuntimeVitalRecorderActivityWindow(
+                state: .readFailed,
+                query: query,
+                page: emptyPage(query: query),
+                buckets: [],
+                latestSampleAt: nil,
+                readError: readError
+            )
+        }
+        guard let bounds else {
+            return RuntimeVitalRecorderActivityWindow(
+                state: .empty,
+                query: query,
+                page: emptyPage(query: query),
+                buckets: [],
+                latestSampleAt: nil
+            )
+        }
+        guard let firstDate = activityDate(from: bounds.firstBucketStartedAt),
+              let latestDate = activityDate(from: bounds.latestBucketStartedAt) else {
+            return RuntimeVitalRecorderActivityWindow(
+                state: .readFailed,
+                query: query,
+                page: emptyPage(query: query),
+                buckets: [],
+                latestSampleAt: nil,
+                readError: "activity bucket bounds contain invalid timestamps"
+            )
+        }
+
+        let firstTimestamp = normalizedTimestamp(firstDate, bucketSeconds: query.bucketSeconds)
+        let latestTimestamp = normalizedTimestamp(latestDate, bucketSeconds: query.bucketSeconds)
+        let page = pageMetadata(query: query, firstTimestamp: firstTimestamp, latestTimestamp: latestTimestamp)
+        let buckets = filledWindowBuckets(
+            records: records,
+            start: page.windowStartedAt,
+            end: page.windowEndedAt,
+            bucketSeconds: query.bucketSeconds
+        )
+        return RuntimeVitalRecorderActivityWindow(
+            state: buckets.contains(where: { $0.messageCount > 0 }) ? .loaded : .empty,
+            query: query,
+            page: page,
+            buckets: buckets,
+            latestSampleAt: records.map(\.lastObservedAt).max() ?? bounds.latestBucketStartedAt
+        )
+    }
+
+    public static func windowReadQuery(
+        query: RuntimeVitalRecorderActivityWindowQuery,
+        bounds: VitalDBRecorderActivityBucketBounds
+    ) -> VitalDBRecorderActivityBucketQuery? {
+        guard query.validationError == nil,
+              let firstDate = activityDate(from: bounds.firstBucketStartedAt),
+              let latestDate = activityDate(from: bounds.latestBucketStartedAt) else {
+            return nil
+        }
+        let firstTimestamp = normalizedTimestamp(firstDate, bucketSeconds: query.bucketSeconds)
+        let latestTimestamp = normalizedTimestamp(latestDate, bucketSeconds: query.bucketSeconds)
+        let page = pageMetadata(query: query, firstTimestamp: firstTimestamp, latestTimestamp: latestTimestamp)
+        return VitalDBRecorderActivityBucketQuery(
+            vrcode: query.vrcode,
+            since: page.windowStartedAt,
+            until: page.windowEndedAt,
+            limit: 2_000
+        )
+    }
+
+    private static func emptyPage(
+        query: RuntimeVitalRecorderActivityWindowQuery
+    ) -> RuntimeVitalRecorderActivityWindowPage {
+        RuntimeVitalRecorderActivityWindowPage(
+            index: 0,
+            count: 1,
+            windowSeconds: query.period.intervalSeconds ?? RuntimeVitalRecorderActivityWindowQuery.allWindowSeconds,
+            windowStartedAt: nil,
+            windowEndedAt: nil,
+            firstBucketStartedAt: nil,
+            latestBucketStartedAt: nil
+        )
+    }
+
+    private static func pageMetadata(
+        query: RuntimeVitalRecorderActivityWindowQuery,
+        firstTimestamp: TimeInterval,
+        latestTimestamp: TimeInterval
+    ) -> RuntimeVitalRecorderActivityWindowPage {
+        let windowSeconds = query.period.intervalSeconds ?? RuntimeVitalRecorderActivityWindowQuery.allWindowSeconds
+        let bucketsPerWindow = max(windowSeconds / query.bucketSeconds, 1)
+        let bucketCount = Int(max(0, (latestTimestamp - firstTimestamp) / Double(query.bucketSeconds))) + 1
+        let pageCount: Int
+        let pageIndex: Int
+        let startTimestamp: TimeInterval
+        let endTimestamp: TimeInterval
+
+        if query.period == .all {
+            pageCount = max(Int(ceil(Double(bucketCount) / Double(bucketsPerWindow))), 1)
+            let latestPageIndex = pageCount - 1
+            pageIndex = min(max(query.pageIndex ?? latestPageIndex, 0), latestPageIndex)
+            startTimestamp = firstTimestamp + Double(pageIndex * bucketsPerWindow * query.bucketSeconds)
+            endTimestamp = min(
+                startTimestamp + Double((bucketsPerWindow - 1) * query.bucketSeconds),
+                latestTimestamp
+            )
+        } else {
+            pageCount = 1
+            pageIndex = 0
+            endTimestamp = latestTimestamp
+            startTimestamp = max(
+                firstTimestamp,
+                latestTimestamp - Double((bucketsPerWindow - 1) * query.bucketSeconds)
+            )
+        }
+
+        return RuntimeVitalRecorderActivityWindowPage(
+            index: pageIndex,
+            count: pageCount,
+            windowSeconds: windowSeconds,
+            windowStartedAt: activityString(from: Date(timeIntervalSince1970: startTimestamp)),
+            windowEndedAt: activityString(
+                from: Date(timeIntervalSince1970: endTimestamp + Double(query.bucketSeconds))
+            ),
+            firstBucketStartedAt: activityString(from: Date(timeIntervalSince1970: firstTimestamp)),
+            latestBucketStartedAt: activityString(from: Date(timeIntervalSince1970: latestTimestamp))
+        )
+    }
+
+    private static func filledWindowBuckets(
+        records: [VitalDBRecorderActivityBucketRecord],
+        start: String?,
+        end: String?,
+        bucketSeconds: Int
+    ) -> [VitalDBRecorderActivityBucket] {
+        guard let start,
+              let end,
+              let startDate = activityDate(from: start),
+              let endDate = activityDate(from: end) else {
+            return []
+        }
+        let bucketInterval = Double(bucketSeconds)
+        let startTimestamp = normalizedTimestamp(startDate, bucketSeconds: bucketSeconds)
+        let endTimestamp = normalizedTimestamp(endDate, bucketSeconds: bucketSeconds)
+        var existing: [String: VitalDBRecorderActivityBucketAccumulator] = [:]
+        for record in records {
+            guard let date = activityDate(from: record.bucketStartedAt) else {
+                continue
+            }
+            let key = activityString(
+                from: Date(timeIntervalSince1970: normalizedTimestamp(date, bucketSeconds: bucketSeconds))
+            )
+            var accumulator = existing[key] ?? VitalDBRecorderActivityBucketAccumulator(
+                bucketStartedAt: key,
+                bucketSeconds: bucketSeconds
+            )
+            accumulator.add(record)
+            existing[key] = accumulator
+        }
+
+        var result: [VitalDBRecorderActivityBucket] = []
+        var cursor = startTimestamp
+        while cursor < endTimestamp {
+            let key = activityString(from: Date(timeIntervalSince1970: cursor))
+            result.append(existing[key]?.bucket ?? VitalDBRecorderActivityBucket(
+                bucketStartedAt: key,
+                bucketSeconds: bucketSeconds,
+                messageCount: 0,
+                byteCount: 0,
+                roomCount: 0
+            ))
+            cursor += bucketInterval
+        }
+        return result
+    }
+
+    private static func normalizedTimestamp(_ date: Date, bucketSeconds: Int) -> TimeInterval {
+        let interval = Double(bucketSeconds)
+        return floor(date.timeIntervalSince1970 / interval) * interval
+    }
+
+    private static func activityDate(from value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: value) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value)
+    }
+
+    private static func activityString(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        return formatter.string(from: date)
+    }
+}
+
+private struct VitalDBRecorderActivityBucketAccumulator {
+    let bucketStartedAt: String
+    let bucketSeconds: Int
+    var messageCount = 0
+    var byteCount = 0
+    var roomCount = 0
+
+    mutating func add(_ record: VitalDBRecorderActivityBucketRecord) {
+        messageCount += record.messageCount
+        byteCount += record.byteCount
+        roomCount += record.roomCount
+    }
+
+    var bucket: VitalDBRecorderActivityBucket {
+        VitalDBRecorderActivityBucket(
+            bucketStartedAt: bucketStartedAt,
+            bucketSeconds: bucketSeconds,
+            messageCount: messageCount,
+            byteCount: byteCount,
+            roomCount: roomCount
         )
     }
 }

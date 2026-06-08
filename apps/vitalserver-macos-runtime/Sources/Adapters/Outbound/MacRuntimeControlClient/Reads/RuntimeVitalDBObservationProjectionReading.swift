@@ -4,6 +4,7 @@ protocol RuntimeVitalDBObservationProjectionReading {
     func loadLatestObservation() throws -> VitalDBObservationDocument?
     func loadObservations(limit: Int) throws -> [VitalDBObservationDocument]
     func loadRecorderActivityBuckets(query: VitalDBRecorderActivityBucketQuery) throws -> [VitalDBRecorderActivityBucketRecord]
+    func loadRecorderActivityBucketBounds(vrcode: String) throws -> VitalDBRecorderActivityBucketBounds?
     func loadBedAssignments(limit: Int) throws -> [VitalDBBedAssignmentRecord]
     func loadRelationshipEvents(limit: Int) throws -> [VitalDBRelationshipEventRecord]
 }
@@ -15,6 +16,10 @@ extension RuntimeVitalDBObservationProjectionReading {
 
     func loadRecorderActivityBuckets() throws -> [VitalDBRecorderActivityBucketRecord] {
         try loadRecorderActivityBuckets(query: VitalDBRecorderActivityBucketQuery())
+    }
+
+    func loadRecorderActivityBucketBounds(vrcode _: String) throws -> VitalDBRecorderActivityBucketBounds? {
+        nil
     }
 
     func loadBedAssignments() throws -> [VitalDBBedAssignmentRecord] {

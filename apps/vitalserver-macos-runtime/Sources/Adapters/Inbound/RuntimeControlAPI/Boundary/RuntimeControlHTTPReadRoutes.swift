@@ -51,6 +51,11 @@ struct RuntimeControlHTTPReadRoutes {
                 return RuntimeControlHTTPResponseFactory.resourceNotFound("VitalDB recorder not found: \(vrcode)")
             }
             return try RuntimeControlHTTPResponseFactory.json(recorder)
+        case .vitalDBRecorderActivity:
+            let query = try request.vitalDBRecorderActivityWindowQuery()
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.loadVitalDBRecorderActivityWindow(query: query)
+            )
         case .vitalDBBeds:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadVitalDBRecorders().beds)
         case .vitalDBBed:

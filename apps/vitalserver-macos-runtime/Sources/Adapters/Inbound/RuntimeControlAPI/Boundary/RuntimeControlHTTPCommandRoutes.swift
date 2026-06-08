@@ -68,6 +68,7 @@ struct RuntimeControlHTTPCommandRoutes {
              .vitalDBObservationStream,
              .vitalDBRecorders,
              .vitalDBRecorder,
+             .vitalDBRecorderActivity,
              .vitalDBBeds,
              .vitalDBBed,
              .vitalDBRelationships,

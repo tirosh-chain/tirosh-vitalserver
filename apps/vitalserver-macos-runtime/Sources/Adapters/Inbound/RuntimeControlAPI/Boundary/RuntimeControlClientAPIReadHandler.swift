@@ -34,6 +34,12 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         client.loadVitalDBRecorders()
     }
 
+    public func loadVitalDBRecorderActivityWindow(
+        query: RuntimeVitalRecorderActivityWindowQuery
+    ) async throws -> RuntimeVitalRecorderActivityWindow {
+        client.loadVitalDBRecorderActivityWindow(query: query)
+    }
+
     public func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory {
         client.loadVitalDBRelationships()
     }

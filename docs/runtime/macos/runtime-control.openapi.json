@@ -1021,6 +1021,71 @@
         }
       }
     },
+    "/vitaldb/recorders/{vrcode}/activity": {
+      "get": {
+        "operationId": "getVitalDBRecorderActivity",
+        "summary": "Read one Vital Recorder activity chart window",
+        "description": "Lazy chart window for one VRecorder. The server reads only the selected activity window from the runtime observability SQLite projection.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {
+            "name": "vrcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucketSeconds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                60,
+                300
+              ],
+              "default": 60
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/RuntimeVitalRecorderActivityWindowPeriod"
+            }
+          },
+          {
+            "name": "pageIndex",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vital Recorder activity window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVitalRecorderActivityWindow"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/vitaldb/beds": {
       "get": {
         "operationId": "getVitalDBBeds",
@@ -1941,6 +2006,143 @@
           "unavailable",
           "notProvided"
         ]
+      },
+      "RuntimeVitalRecorderActivityWindowState": {
+        "type": "string",
+        "enum": [
+          "loaded",
+          "empty",
+          "invalidRequest",
+          "readFailed"
+        ]
+      },
+      "RuntimeVitalRecorderActivityWindowPeriod": {
+        "type": "string",
+        "enum": [
+          "last15Minutes",
+          "lastHour",
+          "last6Hours",
+          "last12Hours",
+          "all"
+        ],
+        "default": "lastHour"
+      },
+      "RuntimeVitalRecorderActivityWindowQuery": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "bucketSeconds",
+          "period"
+        ],
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          },
+          "bucketSeconds": {
+            "type": "integer",
+            "enum": [
+              60,
+              300
+            ]
+          },
+          "period": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityWindowPeriod"
+          },
+          "pageIndex": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        }
+      },
+      "RuntimeVitalRecorderActivityWindowPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "index",
+          "count",
+          "windowSeconds"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "windowSeconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "windowStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "windowEndedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "firstBucketStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBucketStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeVitalRecorderActivityWindow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "query",
+          "page",
+          "buckets"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityWindowState"
+          },
+          "query": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityWindowQuery"
+          },
+          "page": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityWindowPage"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalRecorderActivityBucket"
+            }
+          },
+          "latestSampleAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "RuntimeVitalRecorderRecord": {
         "type": "object",

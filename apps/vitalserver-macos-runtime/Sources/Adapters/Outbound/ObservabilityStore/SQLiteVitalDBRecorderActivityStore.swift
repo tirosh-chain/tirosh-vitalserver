@@ -1,4 +1,5 @@
 import Contracts
+import Foundation
 import SQLite3
 
 extension SQLiteRuntimeObservabilityStore {
@@ -39,6 +40,51 @@ extension SQLiteRuntimeObservabilityStore {
                 bindings: bindings
             )
             return Array(records.reversed())
+        }
+    }
+
+    public func loadVitalDBRecorderActivityBucketBounds(
+        vrcode: String
+    ) throws -> VitalDBRecorderActivityBucketBounds? {
+        guard !vrcode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return try database.withReadOnlyDatabase { db in
+            try queryRows(
+                db,
+                sql: """
+                SELECT vrcode, min(bucket_started_at), max(bucket_started_at)
+                FROM vitaldb_recorder_activity_buckets
+                WHERE vrcode = ?
+                GROUP BY vrcode
+                LIMIT 1
+                """,
+                bindings: [.text(vrcode)]
+            ) { statement in
+                let vrcode = try requiredText(
+                    statement,
+                    0,
+                    table: "vitaldb_recorder_activity_buckets",
+                    column: "vrcode"
+                )
+                let firstBucketStartedAt = try requiredText(
+                    statement,
+                    1,
+                    table: "vitaldb_recorder_activity_buckets",
+                    column: "min(bucket_started_at)"
+                )
+                let latestBucketStartedAt = try requiredText(
+                    statement,
+                    2,
+                    table: "vitaldb_recorder_activity_buckets",
+                    column: "max(bucket_started_at)"
+                )
+                return VitalDBRecorderActivityBucketBounds(
+                    vrcode: vrcode,
+                    firstBucketStartedAt: firstBucketStartedAt,
+                    latestBucketStartedAt: latestBucketStartedAt
+                )
+            }.first
         }
     }
 

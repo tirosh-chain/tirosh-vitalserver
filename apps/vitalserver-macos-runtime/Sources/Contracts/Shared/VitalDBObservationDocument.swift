@@ -235,6 +235,22 @@ public struct VitalDBRecorderActivityBucketQuery: Codable, Equatable, Sendable {
     }
 }
 
+public struct VitalDBRecorderActivityBucketBounds: Codable, Equatable, Sendable {
+    public let vrcode: String
+    public let firstBucketStartedAt: String
+    public let latestBucketStartedAt: String
+
+    public init(
+        vrcode: String,
+        firstBucketStartedAt: String,
+        latestBucketStartedAt: String
+    ) {
+        self.vrcode = vrcode
+        self.firstBucketStartedAt = firstBucketStartedAt
+        self.latestBucketStartedAt = latestBucketStartedAt
+    }
+}
+
 public struct VitalDBRecorderActivityObservation: Codable, Equatable, Sendable {
     public let windowSeconds: Int
     public let messageCount: Int

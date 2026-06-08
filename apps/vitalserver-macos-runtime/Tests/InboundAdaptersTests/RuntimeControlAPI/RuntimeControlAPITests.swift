@@ -716,6 +716,13 @@ final class RuntimeControlAPITests: XCTestCase {
             RuntimeVitalRecorderRecord.self,
             from: router.route(.init(method: .get, path: "/vitaldb/recorders/VR_A"))
         )
+        let vitalRecorderActivity = try await decode(
+            RuntimeVitalRecorderActivityWindow.self,
+            from: router.route(.init(
+                method: .get,
+                path: "/vitaldb/recorders/VR_A/activity?bucketSeconds=60&period=all&pageIndex=0"
+            ))
+        )
         let vitalBeds = try await decode(
             [RuntimeVitalBedRecord].self,
             from: router.route(.init(method: .get, path: "/vitaldb/beds"))
@@ -747,6 +754,10 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(vitalRecorder.vrcode, "VR_A")
         XCTAssertEqual(vitalRecorder.activityTimeline?.first?.byteCount, 2048)
         XCTAssertEqual(vitalRecorder.activityTimeline?.first?.buckets.first?.bucketSeconds, 60)
+        XCTAssertEqual(vitalRecorderActivity.query.vrcode, "VR_A")
+        XCTAssertEqual(vitalRecorderActivity.query.period, .all)
+        XCTAssertEqual(vitalRecorderActivity.query.pageIndex, 0)
+        XCTAssertEqual(vitalRecorderActivity.buckets.first?.messageCount, 3)
         XCTAssertEqual(vitalBeds.map(\.bedID), ["bed-a"])
         XCTAssertEqual(vitalBed.vrcode, "VR_A")
         XCTAssertEqual(vitalRelationships.assignments.map(\.vrcode), ["VR_A"])
@@ -2303,6 +2314,34 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
                     lastObservedAt: "2026-05-25T00:00:00Z"
                 ),
             ]
+        )
+    }
+
+    func loadVitalDBRecorderActivityWindow(
+        query: RuntimeVitalRecorderActivityWindowQuery
+    ) async throws -> RuntimeVitalRecorderActivityWindow {
+        RuntimeVitalRecorderActivityWindow(
+            state: .loaded,
+            query: query,
+            page: RuntimeVitalRecorderActivityWindowPage(
+                index: query.pageIndex ?? 0,
+                count: 1,
+                windowSeconds: query.period.intervalSeconds ?? RuntimeVitalRecorderActivityWindowQuery.allWindowSeconds,
+                windowStartedAt: "2026-05-25T00:00:00Z",
+                windowEndedAt: "2026-05-25T00:01:00Z",
+                firstBucketStartedAt: "2026-05-25T00:00:00Z",
+                latestBucketStartedAt: "2026-05-25T00:00:00Z"
+            ),
+            buckets: [
+                VitalDBRecorderActivityBucket(
+                    bucketStartedAt: "2026-05-25T00:00:00Z",
+                    bucketSeconds: query.bucketSeconds,
+                    messageCount: 3,
+                    byteCount: 2048,
+                    roomCount: 1
+                ),
+            ],
+            latestSampleAt: "2026-05-25T00:00:00Z"
         )
     }
 

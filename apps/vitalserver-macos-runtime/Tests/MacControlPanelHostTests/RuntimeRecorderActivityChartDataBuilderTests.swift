@@ -196,6 +196,87 @@ final class RuntimeRecorderActivityChartDataBuilderTests: XCTestCase {
         XCTAssertEqual(fiveMinuteWindow.windowEndedAt, "2026-05-30T13:00:00Z")
     }
 
+    func testAllSamplesFillsOnlySelectedPageForSparseLongHistory() throws {
+        let builder = RuntimeRecorderActivityChartDataBuilder()
+        let points = [
+            activityPoint(
+                observedAt: "2026-02-01T00:00:00Z",
+                windowSeconds: 60,
+                buckets: [
+                    VitalDBRecorderActivityBucket(
+                        bucketStartedAt: "2026-01-01T00:00:00Z",
+                        bucketSeconds: 60,
+                        messageCount: 1,
+                        byteCount: 10,
+                        roomCount: 1
+                    ),
+                    VitalDBRecorderActivityBucket(
+                        bucketStartedAt: "2026-02-01T00:00:00Z",
+                        bucketSeconds: 60,
+                        messageCount: 2,
+                        byteCount: 20,
+                        roomCount: 1
+                    ),
+                ]
+            )
+        ]
+
+        let display = builder.display(
+            from: points,
+            interval: .oneMinute,
+            period: .all,
+            allSamplesPageIndex: 61,
+            readError: nil
+        )
+
+        let window = try XCTUnwrap(display.allSamplesWindow)
+        XCTAssertEqual(window.pageCount, 63)
+        XCTAssertEqual(window.pageIndex, 61)
+        XCTAssertEqual(window.buckets.count, 720)
+        XCTAssertEqual(window.windowStartedAt, "2026-01-31T12:00:00Z")
+        XCTAssertEqual(window.windowEndedAt, "2026-02-01T00:00:00Z")
+        XCTAssertEqual(window.buckets.first?.messageCount, 0)
+        XCTAssertEqual(window.buckets.last?.messageCount, 0)
+    }
+
+    func testAllSamplesWindowWithZeroCountsStillDisplaysPageControls() {
+        let builder = RuntimeRecorderActivityChartDataBuilder()
+        let window = RuntimeVitalRecorderActivityWindow(
+            state: .empty,
+            query: RuntimeVitalRecorderActivityWindowQuery(
+                vrcode: "VR_A",
+                bucketSeconds: 60,
+                period: .all,
+                pageIndex: 0
+            ),
+            page: RuntimeVitalRecorderActivityWindowPage(
+                index: 0,
+                count: 2,
+                windowSeconds: RuntimeVitalRecorderActivityWindowQuery.allWindowSeconds,
+                windowStartedAt: "2026-01-01T00:00:00Z",
+                windowEndedAt: "2026-01-01T00:01:00Z",
+                firstBucketStartedAt: "2026-01-01T00:00:00Z",
+                latestBucketStartedAt: "2026-01-01T00:01:00Z"
+            ),
+            buckets: [
+                VitalDBRecorderActivityBucket(
+                    bucketStartedAt: "2026-01-01T00:00:00Z",
+                    bucketSeconds: 60,
+                    messageCount: 0,
+                    byteCount: 0,
+                    roomCount: 0
+                ),
+            ],
+            latestSampleAt: "2026-01-01T00:00:00Z"
+        )
+
+        let display = builder.display(from: window)
+
+        XCTAssertEqual(display.state, .available)
+        XCTAssertEqual(display.buckets.count, 1)
+        XCTAssertEqual(display.allSamplesWindow?.pageCount, 2)
+    }
+
     private func activityPoint(
         observedAt: String,
         messageCount: Int

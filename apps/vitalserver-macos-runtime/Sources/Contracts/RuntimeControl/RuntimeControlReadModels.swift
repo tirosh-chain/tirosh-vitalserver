@@ -777,6 +777,125 @@ public enum RuntimeVitalRecorderActivityHistorySource: String, Codable, Equatabl
     case notProvided
 }
 
+public enum RuntimeVitalRecorderActivityWindowState: String, Codable, Equatable, Sendable {
+    case loaded
+    case empty
+    case invalidRequest
+    case readFailed
+}
+
+public enum RuntimeVitalRecorderActivityWindowPeriod: String, Codable, CaseIterable, Equatable, Sendable {
+    case last15Minutes
+    case lastHour
+    case last6Hours
+    case last12Hours
+    case all
+
+    public var intervalSeconds: Int? {
+        switch self {
+        case .last15Minutes:
+            return 15 * 60
+        case .lastHour:
+            return 60 * 60
+        case .last6Hours:
+            return 6 * 60 * 60
+        case .last12Hours:
+            return 12 * 60 * 60
+        case .all:
+            return nil
+        }
+    }
+}
+
+public struct RuntimeVitalRecorderActivityWindowQuery: Codable, Equatable, Sendable {
+    public static let oneMinuteBucketSeconds = 60
+    public static let fiveMinuteBucketSeconds = 300
+    public static let allWindowSeconds = 12 * 60 * 60
+
+    public let vrcode: String
+    public let bucketSeconds: Int
+    public let period: RuntimeVitalRecorderActivityWindowPeriod
+    public let pageIndex: Int?
+
+    public init(
+        vrcode: String,
+        bucketSeconds: Int = oneMinuteBucketSeconds,
+        period: RuntimeVitalRecorderActivityWindowPeriod = .lastHour,
+        pageIndex: Int? = nil
+    ) {
+        self.vrcode = vrcode
+        self.bucketSeconds = bucketSeconds
+        self.period = period
+        self.pageIndex = pageIndex
+    }
+
+    public var validationError: String? {
+        if vrcode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "vrcode is required"
+        }
+        if bucketSeconds != Self.oneMinuteBucketSeconds && bucketSeconds != Self.fiveMinuteBucketSeconds {
+            return "bucketSeconds must be 60 or 300"
+        }
+        if let pageIndex, pageIndex < 0 {
+            return "pageIndex must be non-negative"
+        }
+        return nil
+    }
+}
+
+public struct RuntimeVitalRecorderActivityWindowPage: Codable, Equatable, Sendable {
+    public let index: Int
+    public let count: Int
+    public let windowSeconds: Int
+    public let windowStartedAt: String?
+    public let windowEndedAt: String?
+    public let firstBucketStartedAt: String?
+    public let latestBucketStartedAt: String?
+
+    public init(
+        index: Int,
+        count: Int,
+        windowSeconds: Int,
+        windowStartedAt: String?,
+        windowEndedAt: String?,
+        firstBucketStartedAt: String?,
+        latestBucketStartedAt: String?
+    ) {
+        self.index = index
+        self.count = count
+        self.windowSeconds = windowSeconds
+        self.windowStartedAt = windowStartedAt
+        self.windowEndedAt = windowEndedAt
+        self.firstBucketStartedAt = firstBucketStartedAt
+        self.latestBucketStartedAt = latestBucketStartedAt
+    }
+}
+
+public struct RuntimeVitalRecorderActivityWindow: Codable, Equatable, Sendable {
+    public let state: RuntimeVitalRecorderActivityWindowState
+    public let query: RuntimeVitalRecorderActivityWindowQuery
+    public let page: RuntimeVitalRecorderActivityWindowPage
+    public let buckets: [VitalDBRecorderActivityBucket]
+    public let latestSampleAt: String?
+    public let readError: String?
+
+    public init(
+        state: RuntimeVitalRecorderActivityWindowState,
+        query: RuntimeVitalRecorderActivityWindowQuery,
+        page: RuntimeVitalRecorderActivityWindowPage,
+        buckets: [VitalDBRecorderActivityBucket],
+        latestSampleAt: String?,
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.query = query
+        self.page = page
+        self.buckets = buckets
+        self.latestSampleAt = latestSampleAt
+        self.readError = readError
+    }
+}
+
 public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
     public let source: RuntimeVitalRecorderSummarySource
     public let activeConnections: Int?
