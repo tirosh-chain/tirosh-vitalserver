@@ -169,7 +169,15 @@ public enum RuntimeUninstallComposition {
                     operations.fileStore.pathState(at: url)
                 },
                 removeItem: { url in
-                    try operations.fileStore.removeItem(at: url)
+                    do {
+                        try operations.fileStore.removeItem(at: url)
+                        return .removed(path: url.path)
+                    } catch {
+                        if isNoSuchFileError(error) {
+                            return .alreadyAbsent(path: url.path)
+                        }
+                        throw error
+                    }
                 },
                 moveItem: { source, destination in
                     try operations.fileStore.moveItem(at: source, to: destination)
@@ -217,5 +225,13 @@ public enum RuntimeUninstallComposition {
             }
         }
         return artifactPaths
+    }
+
+    private static func isNoSuchFileError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain && nsError.code == NSFileNoSuchFileError {
+            return true
+        }
+        return nsError.domain == NSPOSIXErrorDomain && nsError.code == Int(ENOENT)
     }
 }

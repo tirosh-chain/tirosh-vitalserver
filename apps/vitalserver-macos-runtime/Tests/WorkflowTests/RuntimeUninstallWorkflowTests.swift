@@ -185,6 +185,32 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         XCTAssertFalse(harness.events.contains("log:uninstall completed"))
     }
 
+    func testUninstallWritesServiceStopBlockedWhenVMStopTimesOut() {
+        let harness = RuntimeUninstallWorkflowHarness()
+        harness.stopError = RuntimeUninstallTestError.stop
+        harness.vmProcessState = .stopTimedOut(pid: 84589, timeoutSeconds: 900)
+
+        XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true)))
+
+        XCTAssertTrue(harness.events.contains {
+            $0.contains("state:service-stop-blocked")
+                && $0.contains("vm-process-stop-timed-out:pid=84589 timeout-seconds=900")
+        })
+        XCTAssertFalse(harness.events.contains("log:uninstall completed"))
+    }
+
+    func testCleanUninstallAllowsRuntimeToolAlreadyAbsentDuringRemoval() throws {
+        let harness = RuntimeUninstallWorkflowHarness()
+        harness.removeAlreadyAbsentPaths = ["/usr/local/bin/vitalserver-proxy-run"]
+
+        try harness.run(RuntimeUninstallCommand(clean: true))
+
+        XCTAssertTrue(harness.events.contains(
+            "log:removal target already absent path=/usr/local/bin/vitalserver-proxy-run"
+        ))
+        XCTAssertTrue(harness.events.contains("state:completed:uninstall completed:"))
+    }
+
     func testForceCleanUninstallBypassesServiceStopBlockingAndCompletes() throws {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.stopError = RuntimeUninstallTestError.stop
@@ -353,6 +379,7 @@ private final class RuntimeUninstallWorkflowHarness {
     var stopError: Error?
     var clearLaunchdDisabledOverridesError: Error?
     var removeErrorPath: String?
+    var removeAlreadyAbsentPaths: Set<String> = []
     var moveErrorDestination: String?
     var contentsOfDirectoryError: Error?
     var pathStates: [String: RuntimePathState] = [:]
@@ -628,7 +655,7 @@ private final class RuntimeUninstallWorkflowHarness {
             return
         }
         do {
-            try removeItem(target)
+            _ = try removeItem(target)
         } catch {
             logRemovalDiagnostics(target, useCase: useCase)
             throw error
@@ -656,7 +683,7 @@ private final class RuntimeUninstallWorkflowHarness {
         guard existing.contains(url.path) else {
             return
         }
-        try removeItem(url)
+        _ = try removeItem(url)
     }
 
     private func createDirectory(_ url: URL) {
@@ -664,12 +691,17 @@ private final class RuntimeUninstallWorkflowHarness {
         existing.insert(url.path)
     }
 
-    private func removeItem(_ url: URL) throws {
+    private func removeItem(_ url: URL) throws -> RuntimeUninstallRemoveItemResult {
         events.append("remove:\(url.path)")
         if removeErrorPath == url.path {
             throw RuntimeUninstallTestError.remove
         }
+        if removeAlreadyAbsentPaths.contains(url.path) {
+            existing.remove(url.path)
+            return .alreadyAbsent(path: url.path)
+        }
         existing.remove(url.path)
+        return .removed(path: url.path)
     }
 
     private func moveItem(from source: URL, to destination: URL) throws {

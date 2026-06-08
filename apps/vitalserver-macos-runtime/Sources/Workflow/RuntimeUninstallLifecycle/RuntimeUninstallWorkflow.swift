@@ -61,6 +61,11 @@ public struct RuntimeUninstallStateReaders {
     }
 }
 
+public enum RuntimeUninstallRemoveItemResult: Equatable, Sendable {
+    case removed(path: String)
+    case alreadyAbsent(path: String)
+}
+
 public struct RuntimeUninstallEffects {
     public var createRedisBackup: () throws -> Void
     public var stopRuntimeServices: (Bool) throws -> Void
@@ -70,7 +75,7 @@ public struct RuntimeUninstallEffects {
     public var uniqueID: () -> String
     public var createDirectory: (URL, Bool) throws -> Void
     public var pathState: (URL) -> RuntimePathState
-    public var removeItem: (URL) throws -> Void
+    public var removeItem: (URL) throws -> RuntimeUninstallRemoveItemResult
     public var moveItem: (URL, URL) throws -> Void
     public var contentsOfDirectory: (URL, Bool) throws -> [URL]
     public var openFilesInDirectory: (URL) -> RuntimeProcessResult
@@ -85,7 +90,7 @@ public struct RuntimeUninstallEffects {
         uniqueID: @escaping () -> String,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         pathState: @escaping (URL) -> RuntimePathState,
-        removeItem: @escaping (URL) throws -> Void,
+        removeItem: @escaping (URL) throws -> RuntimeUninstallRemoveItemResult,
         moveItem: @escaping (URL, URL) throws -> Void,
         contentsOfDirectory: @escaping (URL, Bool) throws -> [URL],
         openFilesInDirectory: @escaping (URL) -> RuntimeProcessResult,
@@ -503,7 +508,7 @@ public struct RuntimeUninstallWorkflow {
     ) throws {
         log(stepLogMessage(step: .removePlists, status: .started), diagnostics: diagnostics)
         for plist in paths.launchDaemonPlists {
-            try removeIfPresent(plist, effects: effects)
+            try removeIfPresent(plist, effects: effects, diagnostics: diagnostics)
         }
         log(stepLogMessage(step: .removePlists, status: .completed), diagnostics: diagnostics)
 
@@ -528,7 +533,7 @@ public struct RuntimeUninstallWorkflow {
 
         log(stepLogMessage(step: .removeRuntimeTools, status: .started), diagnostics: diagnostics)
         for tool in paths.runtimeTools {
-            try removeIfPresent(tool, effects: effects)
+            try removeIfPresent(tool, effects: effects, diagnostics: diagnostics)
         }
         log(stepLogMessage(step: .removeRuntimeTools, status: .completed), diagnostics: diagnostics)
 
@@ -591,7 +596,7 @@ public struct RuntimeUninstallWorkflow {
             return
         }
         let destination = preserveRoot.appendingPathComponent(token)
-        try removeIfPresent(destination, effects: effects)
+        try removeIfPresent(destination, effects: effects, diagnostics: diagnostics)
         try effects.moveItem(source, destination)
         items.append(RuntimeUninstallPreservedPath(source: source, destination: destination))
         log(uninstallUseCase().preservedSourceLogMessage(path: source.path), diagnostics: diagnostics)
@@ -627,11 +632,11 @@ public struct RuntimeUninstallWorkflow {
     ) throws {
         for item in preserved.items {
             try effects.createDirectory(item.source.deletingLastPathComponent(), true)
-            try removeIfPresent(item.source, effects: effects)
+            try removeIfPresent(item.source, effects: effects, diagnostics: diagnostics)
             try effects.moveItem(item.destination, item.source)
             log(uninstallUseCase().restoredPreservedLogMessage(path: item.source.path), diagnostics: diagnostics)
         }
-        try removeIfPresent(preserved.root, effects: effects)
+        try removeIfPresent(preserved.root, effects: effects, diagnostics: diagnostics)
     }
 
     private func safeRemove(
@@ -648,7 +653,8 @@ public struct RuntimeUninstallWorkflow {
             return
         }
         do {
-            try effects.removeItem(target)
+            let result = try effects.removeItem(target)
+            logRemovalResultIfNeeded(result, diagnostics: diagnostics)
         } catch {
             logRemovalDiagnostics(target, effects: effects, diagnostics: diagnostics)
             throw error
@@ -690,11 +696,28 @@ public struct RuntimeUninstallWorkflow {
         }
     }
 
-    private func removeIfPresent(_ url: URL, effects: RuntimeUninstallEffects) throws {
+    private func removeIfPresent(
+        _ url: URL,
+        effects: RuntimeUninstallEffects,
+        diagnostics: RuntimeUninstallDiagnostics
+    ) throws {
         guard try pathIsPresent(url, effects: effects) else {
             return
         }
-        try effects.removeItem(url)
+        let result = try effects.removeItem(url)
+        logRemovalResultIfNeeded(result, diagnostics: diagnostics)
+    }
+
+    private func logRemovalResultIfNeeded(
+        _ result: RuntimeUninstallRemoveItemResult,
+        diagnostics: RuntimeUninstallDiagnostics
+    ) {
+        switch result {
+        case .removed:
+            return
+        case .alreadyAbsent(let path):
+            log(uninstallUseCase().removalTargetAlreadyAbsentLogMessage(path: path), diagnostics: diagnostics)
+        }
     }
 
     private func pathIsPresent(_ url: URL, effects: RuntimeUninstallEffects) throws -> Bool {
