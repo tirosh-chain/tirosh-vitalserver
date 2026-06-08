@@ -3,9 +3,10 @@
 이 문서는 fresh install이 기존 설치 흔적 때문에 막힌 Mac에서 Vital Server Helper를 완전히
 제거한 뒤 다시 설치하기 위한 지원 절차입니다.
 
-Clean Uninstall은 일반 제거보다 강한 작업입니다. VM disk, runtime 설정, logs, backups,
-Redis backups, 설정된 Vital files directory까지 제거할 수 있습니다. 필요한 `.vital` 파일이나
-운영 로그가 있으면 먼저 병원/운영 절차에 따라 별도로 보존합니다.
+Clean Uninstall은 보존용 제거가 아니라 Vital Server Helper가 소유한 데이터와 기능을 모두
+삭제하는 복구 작업입니다. VM disk, runtime 설정, logs, backups, Redis backups, 설정된 Vital
+files directory까지 제거합니다. 필요한 `.vital` 파일이나 운영 로그가 있으면 먼저 병원/운영
+절차에 따라 별도로 보존합니다.
 
 ## When To Use
 
@@ -84,6 +85,7 @@ Clean Uninstall recovery는 Vital Server Helper가 소유한 host/runtime 상태
 | Runtime tools | `/usr/local/bin/vitalserver-vm`, `/usr/local/bin/vitalserver-proxy-run` |
 | Uninstaller | `/usr/local/bin/tirosh-vitalserver-uninstall` |
 | Runtime home | `/Library/Application Support/VitalServerHelper/` |
+| Configured Vital files directory | Vital Server Helper 설정에 저장된 외부 vital-files 경로 |
 | LaunchDaemons | `/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.*.plist` |
 | Package receipt | `ai.tirosh.vitalserver.helper` |
 | Runtime logs and backups | `/Library/Application Support/VitalServerHelper/logs`, backup areas |

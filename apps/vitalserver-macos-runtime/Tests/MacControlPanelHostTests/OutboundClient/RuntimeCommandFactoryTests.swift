@@ -100,8 +100,10 @@ final class RuntimeCommandFactoryTests: XCTestCase {
     func testRuntimeServicesCommandsUseLauncherRuntimeSubcommands() {
         let startCommand = RuntimeCommandFactory.runtimeServicesCommand(action: .start)
         let stopCommand = RuntimeCommandFactory.runtimeServicesCommand(action: .stop)
+        let repairCommand = RuntimeCommandFactory.runtimeServicesCommand(action: .repair)
 
         XCTAssertTrue(startCommand.contains("'runtime' 'start-services'"))
         XCTAssertTrue(stopCommand.contains("'runtime' 'stop-services'"))
+        XCTAssertTrue(repairCommand.contains("'runtime' 'repair-services'"))
     }
 }

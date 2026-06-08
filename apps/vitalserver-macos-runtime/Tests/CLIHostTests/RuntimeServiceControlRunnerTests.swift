@@ -7,7 +7,7 @@ import XCTest
 import Errors
 
 final class RuntimeServiceControlRunnerTests: XCTestCase {
-    func testStartAllStartsServicesWithoutWaitingForHealth() throws {
+    func testStartAllStartsServicesAndWaitsForHealth() throws {
         let harness = ServiceControlHarness()
 
         try harness.runner.run(.startAll)
@@ -16,12 +16,13 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
             "log:runtime services start requested",
             "status:recovering:start-services:runtime services start requested",
             "start:true:true:true",
-            "status:recovering:start-services:runtime services start dispatched",
-            "log:runtime services start dispatched",
+            "wait:true:true:true",
+            "status:healthy:start-services:runtime services started",
+            "log:runtime services started",
         ])
     }
 
-    func testRepairAllRestartsServicesWithoutWaitingForHealth() throws {
+    func testRepairAllRestartsServicesAndWaitsForHealth() throws {
         let harness = ServiceControlHarness()
 
         try harness.runner.run(.repairAll)
@@ -31,12 +32,13 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
             "status:recovering:repair-services:runtime services repair requested",
             "stop",
             "start:true:true:true",
-            "status:recovering:repair-services:runtime services repair dispatched",
-            "log:runtime services repair dispatched",
+            "wait:true:true:true",
+            "status:healthy:repair-services:runtime services repaired",
+            "log:runtime services repaired",
         ])
     }
 
-    func testRepairProxyStartsOnlyProxyWithoutWaitingForHealth() throws {
+    func testRepairProxyStartsOnlyProxyAndWaitsForHealth() throws {
         let harness = ServiceControlHarness()
 
         try harness.runner.run(.repairProxy)
@@ -45,8 +47,9 @@ final class RuntimeServiceControlRunnerTests: XCTestCase {
             "log:host proxy repair requested",
             "status:recovering:repair-proxy:host proxy repair requested",
             "start:false:true:false",
-            "status:recovering:repair-proxy:host proxy repair dispatched",
-            "log:host proxy repair dispatched",
+            "wait:false:true:false",
+            "status:healthy:repair-proxy:host proxy repaired",
+            "log:host proxy repaired",
         ])
     }
 
@@ -104,6 +107,9 @@ private final class ServiceControlHarness {
                 Dictionary(uniqueKeysWithValues: services.map { service in
                     (service, self.serviceStates[service] ?? .notLoaded)
                 })
+            },
+            waitForHealth: { policy in
+                self.events.append("wait:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")
             },
             writeStatus: { status, operation, message in
                 self.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")

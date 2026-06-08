@@ -25,6 +25,7 @@ extension RuntimeLifecycle {
                 launchdState: { service in
                     healthChecker.launchdState(service)
                 },
+                waitForHealth: waitForHealth,
                 writeStatus: runtimeStatusWriterAction(),
                 log: log
             )

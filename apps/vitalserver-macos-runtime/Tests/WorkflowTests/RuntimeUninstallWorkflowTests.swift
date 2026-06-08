@@ -17,6 +17,7 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             "log:step=stop-launchd-services status=started",
             "state:stop-services-requested:service stop requested:",
             "stop",
+            "stop:clean=true",
             "log:step=stop-launchd-services status=completed",
             "state:files-removal-started:file removal started:",
             "log:step=remove-plists status=started",
@@ -182,6 +183,16 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
                 && $0.contains("vm-process-running:pid=123")
         })
         XCTAssertFalse(harness.events.contains("log:uninstall completed"))
+    }
+
+    func testCleanFlagIsPassedToRuntimeServiceStopEffect() throws {
+        let cleanHarness = RuntimeUninstallWorkflowHarness()
+        try cleanHarness.run(RuntimeUninstallCommand(clean: true))
+        XCTAssertTrue(cleanHarness.events.contains("stop:clean=true"))
+
+        let standardHarness = RuntimeUninstallWorkflowHarness()
+        try standardHarness.run(RuntimeUninstallCommand(clean: false))
+        XCTAssertTrue(standardHarness.events.contains("stop:clean=false"))
     }
 
     func testUninstallDoesNotRemoveFilesWhenStoppedStateIsNotProven() {
@@ -383,8 +394,9 @@ private final class RuntimeUninstallWorkflowHarness {
                         throw backupError
                     }
                 },
-                stopRuntimeServices: {
+                stopRuntimeServices: { clean in
                     self.events.append("stop")
+                    self.events.append("stop:clean=\(clean)")
                     if let stopError = self.stopError {
                         throw stopError
                     }

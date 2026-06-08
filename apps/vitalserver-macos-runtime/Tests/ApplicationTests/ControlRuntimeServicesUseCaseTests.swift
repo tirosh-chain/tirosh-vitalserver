@@ -31,10 +31,10 @@ final class ControlRuntimeServicesUseCaseTests: XCTestCase {
         XCTAssertEqual(
             repair.completedStatusPlan,
             RuntimeServiceControlStatusPlan(
-                logMessage: "runtime services repair dispatched",
-                status: .recovering,
+                logMessage: "runtime services repaired",
+                status: .healthy,
                 operation: .repairServices,
-                statusMessage: "runtime services repair dispatched"
+                statusMessage: "runtime services repaired"
             )
         )
 
@@ -64,10 +64,10 @@ final class ControlRuntimeServicesUseCaseTests: XCTestCase {
         XCTAssertEqual(
             repairProxy.completedStatusPlan,
             RuntimeServiceControlStatusPlan(
-                logMessage: "host proxy repair dispatched",
-                status: .recovering,
+                logMessage: "host proxy repaired",
+                status: .healthy,
                 operation: .repairProxy,
-                statusMessage: "host proxy repair dispatched"
+                statusMessage: "host proxy repaired"
             )
         )
 
@@ -89,10 +89,10 @@ final class ControlRuntimeServicesUseCaseTests: XCTestCase {
         XCTAssertEqual(
             start.completedStatusPlan,
             RuntimeServiceControlStatusPlan(
-                logMessage: "runtime services start dispatched",
-                status: .recovering,
+                logMessage: "runtime services started",
+                status: .healthy,
                 operation: .startServices,
-                statusMessage: "runtime services start dispatched"
+                statusMessage: "runtime services started"
             )
         )
 

@@ -63,7 +63,7 @@ public struct RuntimeUninstallStateReaders {
 
 public struct RuntimeUninstallEffects {
     public var createRedisBackup: () throws -> Void
-    public var stopRuntimeServices: () throws -> Void
+    public var stopRuntimeServices: (Bool) throws -> Void
     public var clearLaunchdDisabledOverrides: () throws -> Void
     public var describeError: (Error) -> String
     public var temporaryDirectory: () -> URL
@@ -78,7 +78,7 @@ public struct RuntimeUninstallEffects {
 
     public init(
         createRedisBackup: @escaping () throws -> Void,
-        stopRuntimeServices: @escaping () throws -> Void,
+        stopRuntimeServices: @escaping (Bool) throws -> Void,
         clearLaunchdDisabledOverrides: @escaping () throws -> Void,
         describeError: @escaping (Error) -> String,
         temporaryDirectory: @escaping () -> URL,
@@ -271,7 +271,7 @@ public struct RuntimeUninstallWorkflow {
             writer: writer
         )
         do {
-            try effects.stopRuntimeServices()
+            try effects.stopRuntimeServices(clean)
         } catch {
             _ = try transitionAndPersist(
                 from: stopRequestDecision.state,

@@ -29,7 +29,7 @@ extension RuntimeLifecycle {
                 clearLaunchdDisabledOverridesAfterUninstall: {
                     try serviceController.clearDisabledOverridesAfterUninstall()
                 },
-                cleanupHostProxyPortAfterStop: cleanupHostProxyPortAfterStop,
+                cleanupHostProxyPortAfterStop: cleanupHostProxyPortAfterStopForUninstall,
                 packageReceiptStates: runtimePackageReceiptStates,
                 openFilesInDirectory: openFilesInDirectory,
                 forgetPackageReceipt: forgetPackageReceipt,

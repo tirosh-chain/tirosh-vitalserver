@@ -11,6 +11,7 @@ public struct RuntimeServiceControlRunner {
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         stopRuntimeServices: @escaping () throws -> Void,
         serviceStates: @escaping ([RuntimeManagedService]) throws -> [RuntimeManagedService: RuntimeServiceState],
+        waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
         log: @escaping (String) -> Void
     ) {
@@ -19,6 +20,7 @@ public struct RuntimeServiceControlRunner {
             startRuntimeServices: startRuntimeServices,
             stopRuntimeServices: stopRuntimeServices,
             serviceStates: serviceStates,
+            waitForHealth: waitForHealth,
             writeStatus: writeStatus,
             log: log
         )

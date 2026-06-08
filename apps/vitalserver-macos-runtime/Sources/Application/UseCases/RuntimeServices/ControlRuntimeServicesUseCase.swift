@@ -95,6 +95,7 @@ public struct RuntimeServiceControlOperations {
     public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     public var stopRuntimeServices: () throws -> Void
     public var serviceStates: ([RuntimeManagedService]) throws -> [RuntimeManagedService: RuntimeServiceState]
+    public var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     public var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     public var log: (String) -> Void
 
@@ -102,12 +103,14 @@ public struct RuntimeServiceControlOperations {
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         stopRuntimeServices: @escaping () throws -> Void,
         serviceStates: @escaping ([RuntimeManagedService]) throws -> [RuntimeManagedService: RuntimeServiceState],
+        waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
         log: @escaping (String) -> Void
     ) {
         self.startRuntimeServices = startRuntimeServices
         self.stopRuntimeServices = stopRuntimeServices
         self.serviceStates = serviceStates
+        self.waitForHealth = waitForHealth
         self.writeStatus = writeStatus
         self.log = log
     }
@@ -152,10 +155,10 @@ public struct ControlRuntimeServicesUseCase {
                     statusMessage: "runtime services repair requested"
                 ),
                 completedStatusPlan: RuntimeServiceControlStatusPlan(
-                    logMessage: "runtime services repair dispatched",
-                    status: .recovering,
+                    logMessage: "runtime services repaired",
+                    status: .healthy,
                     operation: .repairServices,
-                    statusMessage: "runtime services repair dispatched"
+                    statusMessage: "runtime services repaired"
                 )
             )
         case .repairProxy:
@@ -180,10 +183,10 @@ public struct ControlRuntimeServicesUseCase {
                     statusMessage: "host proxy repair requested"
                 ),
                 completedStatusPlan: RuntimeServiceControlStatusPlan(
-                    logMessage: "host proxy repair dispatched",
-                    status: .recovering,
+                    logMessage: "host proxy repaired",
+                    status: .healthy,
                     operation: .repairProxy,
-                    statusMessage: "host proxy repair dispatched"
+                    statusMessage: "host proxy repaired"
                 )
             )
         case .startAll:
@@ -202,10 +205,10 @@ public struct ControlRuntimeServicesUseCase {
                     statusMessage: "runtime services start requested"
                 ),
                 completedStatusPlan: RuntimeServiceControlStatusPlan(
-                    logMessage: "runtime services start dispatched",
-                    status: .recovering,
+                    logMessage: "runtime services started",
+                    status: .healthy,
                     operation: .startServices,
-                    statusMessage: "runtime services start dispatched"
+                    statusMessage: "runtime services started"
                 )
             )
         case .stopAll:
@@ -236,6 +239,7 @@ public struct ControlRuntimeServicesUseCase {
         let policy = try requireStartPolicy(in: controlPlan, operationName: "repair")
         try operations.startRuntimeServices(policy)
         try requireServicesLoaded(controlPlan.requiredStartedServices, operations: operations)
+        try operations.waitForHealth(policy)
         try reportCompleted(controlPlan.completedStatusPlan, operations: operations)
     }
 
@@ -245,6 +249,7 @@ public struct ControlRuntimeServicesUseCase {
         let policy = try requireStartPolicy(in: controlPlan, operationName: "repair proxy")
         try operations.startRuntimeServices(policy)
         try requireServicesLoaded(controlPlan.requiredStartedServices, operations: operations)
+        try operations.waitForHealth(policy)
         try reportCompleted(controlPlan.completedStatusPlan, operations: operations)
     }
 
@@ -254,6 +259,7 @@ public struct ControlRuntimeServicesUseCase {
         let policy = try requireStartPolicy(in: controlPlan, operationName: "start")
         try operations.startRuntimeServices(policy)
         try requireServicesLoaded(controlPlan.requiredStartedServices, operations: operations)
+        try operations.waitForHealth(policy)
         try reportCompleted(controlPlan.completedStatusPlan, operations: operations)
     }
 

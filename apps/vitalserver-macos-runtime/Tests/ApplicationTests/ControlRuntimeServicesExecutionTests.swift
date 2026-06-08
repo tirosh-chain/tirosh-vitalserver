@@ -15,8 +15,9 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
             "status:recovering:start-services:runtime services start requested",
             "start:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
             "observe:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
-            "status:recovering:start-services:runtime services start dispatched",
-            "log:runtime services start dispatched",
+            "wait-health:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
+            "status:healthy:start-services:runtime services started",
+            "log:runtime services started",
         ])
     }
 
@@ -29,8 +30,8 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
             XCTAssertTrue(String(describing: error).contains(RuntimeManagedService.guestLogSync.label))
         }
 
-        XCTAssertFalse(harness.events.contains("status:recovering:start-services:runtime services start dispatched"))
-        XCTAssertFalse(harness.events.contains("log:runtime services start dispatched"))
+        XCTAssertFalse(harness.events.contains("status:healthy:start-services:runtime services started"))
+        XCTAssertFalse(harness.events.contains("log:runtime services started"))
     }
 
     func testRepairAllObservesStoppedStateBeforeStartingRequiredServices() throws {
@@ -39,14 +40,16 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
 
         try harness.run(.repairAll)
 
-        XCTAssertEqual(Array(harness.events.prefix(5)), [
+        XCTAssertEqual(Array(harness.events.prefix(7)), [
             "log:runtime services repair requested",
             "status:recovering:repair-services:runtime services repair requested",
             "stop",
             "observe:ai.tirosh.vitalserver.helper.watchdog,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.sleep-prevention",
             "start:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
+            "observe:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
+            "wait-health:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
         ])
-        XCTAssertTrue(harness.events.contains("status:recovering:repair-services:runtime services repair dispatched"))
+        XCTAssertTrue(harness.events.contains("status:healthy:repair-services:runtime services repaired"))
     }
 
     func testRepairProxyStartsOnlyProxyAndObservesProxyLoaded() throws {
@@ -59,8 +62,9 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
             "status:recovering:repair-proxy:host proxy repair requested",
             "start:ai.tirosh.vitalserver.helper.proxy",
             "observe:ai.tirosh.vitalserver.helper.proxy",
-            "status:recovering:repair-proxy:host proxy repair dispatched",
-            "log:host proxy repair dispatched",
+            "wait-health:ai.tirosh.vitalserver.helper.proxy",
+            "status:healthy:repair-proxy:host proxy repaired",
+            "log:host proxy repaired",
         ])
     }
 
@@ -73,8 +77,21 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
             XCTAssertTrue(String(describing: error).contains(RuntimeManagedService.proxy.label))
         }
 
-        XCTAssertFalse(harness.events.contains("status:recovering:repair-proxy:host proxy repair dispatched"))
-        XCTAssertFalse(harness.events.contains("log:host proxy repair dispatched"))
+        XCTAssertFalse(harness.events.contains("status:healthy:repair-proxy:host proxy repaired"))
+        XCTAssertFalse(harness.events.contains("log:host proxy repaired"))
+    }
+
+    func testRepairAllDoesNotCompleteWhenHealthWaitFails() {
+        let harness = RuntimeServiceLifecycleHarness()
+        harness.healthWaitError = TestRuntimeServiceLifecycleError.health
+
+        XCTAssertThrowsError(try harness.run(.repairAll)) { error in
+            XCTAssertEqual(error as? TestRuntimeServiceLifecycleError, .health)
+        }
+
+        XCTAssertTrue(harness.events.contains("wait-health:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog"))
+        XCTAssertFalse(harness.events.contains("status:healthy:repair-services:runtime services repaired"))
+        XCTAssertFalse(harness.events.contains("log:runtime services repaired"))
     }
 
     func testStopAllCompletesOnlyAfterRuntimeServicesAreObservedStopped() throws {
@@ -106,11 +123,16 @@ final class ControlRuntimeServicesExecutionTests: XCTestCase {
     }
 }
 
+private enum TestRuntimeServiceLifecycleError: Error {
+    case health
+}
+
 private final class RuntimeServiceLifecycleHarness {
     var events: [String] = []
     var states: [RuntimeManagedService: RuntimeServiceState] = [:]
     var startLeavesServiceNotLoaded: RuntimeManagedService?
     var stopLeavesServiceLoaded: RuntimeManagedService?
+    var healthWaitError: Error?
 
     func run(_ request: RuntimeServiceControlRequest) throws {
         try ControlRuntimeServicesUseCase().run(request, operations: operations)
@@ -136,6 +158,13 @@ private final class RuntimeServiceLifecycleHarness {
                 return Dictionary(uniqueKeysWithValues: services.map { service in
                     (service, self.states[service] ?? .notLoaded)
                 })
+            },
+            waitForHealth: { policy in
+                let services = RuntimeRequiredServicePolicy.requiredServices(for: policy)
+                self.events.append("wait-health:\(services.map(\.label).joined(separator: ","))")
+                if let healthWaitError = self.healthWaitError {
+                    throw healthWaitError
+                }
             },
             writeStatus: { level, operation, message in
                 self.events.append("status:\(level.rawValue):\(operation.rawValue):\(message)")

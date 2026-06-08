@@ -27,7 +27,7 @@ public struct RuntimeUninstallCompositionOperations {
     let disableRuntimeServicesForUninstall: () throws -> Void
     let stopRuntimeServices: () throws -> Void
     let clearLaunchdDisabledOverridesAfterUninstall: () throws -> Void
-    let cleanupHostProxyPortAfterStop: () throws -> Void
+    let cleanupHostProxyPortAfterStop: (Bool) throws -> Void
     let packageReceiptStates: () -> [RuntimePackageReceiptState]
     let openFilesInDirectory: (URL) -> RuntimeProcessResult
     let forgetPackageReceipt: (String) -> RuntimeProcessResult
@@ -42,7 +42,7 @@ public struct RuntimeUninstallCompositionOperations {
         disableRuntimeServicesForUninstall: @escaping () throws -> Void,
         stopRuntimeServices: @escaping () throws -> Void,
         clearLaunchdDisabledOverridesAfterUninstall: @escaping () throws -> Void,
-        cleanupHostProxyPortAfterStop: @escaping () throws -> Void,
+        cleanupHostProxyPortAfterStop: @escaping (Bool) throws -> Void,
         packageReceiptStates: @escaping () -> [RuntimePackageReceiptState],
         openFilesInDirectory: @escaping (URL) -> RuntimeProcessResult,
         forgetPackageReceipt: @escaping (String) -> RuntimeProcessResult,
@@ -146,10 +146,10 @@ public enum RuntimeUninstallComposition {
             ),
             effects: RuntimeUninstallEffects(
                 createRedisBackup: operations.createRedisBackup,
-                stopRuntimeServices: {
+                stopRuntimeServices: { clean in
                     try operations.disableRuntimeServicesForUninstall()
                     try operations.stopRuntimeServices()
-                    try operations.cleanupHostProxyPortAfterStop()
+                    try operations.cleanupHostProxyPortAfterStop(clean)
                 },
                 clearLaunchdDisabledOverrides: operations.clearLaunchdDisabledOverridesAfterUninstall,
                 describeError: RuntimeErrorDescription.describe,

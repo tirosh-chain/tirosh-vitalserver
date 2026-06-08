@@ -170,6 +170,32 @@ extension RuntimeLifecycle {
             .cleanupOwnedListenersAfterProxyStop(operations: cleaner.operations)
     }
 
+    func cleanupHostProxyPortAfterStopForUninstall(clean: Bool) throws {
+        if clean,
+           healthChecker.installedProxyPort() == nil,
+           cleanUninstallCanSkipMissingProxyPortCleanup()
+        {
+            log(
+                "proxy port cleanup after stop skipped during clean uninstall recovery; "
+                    + "proxy configuration and runtime artifacts are already absent"
+            )
+            return
+        }
+
+        try cleanupHostProxyPortAfterStop()
+    }
+
+    private func cleanUninstallCanSkipMissingProxyPortCleanup() -> Bool {
+        let requiredMissingArtifacts = [
+            installedPaths.proxyLaunchDaemon,
+            installedPaths.vmConfig,
+            installedPaths.nginxDirectory,
+            URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
+            installedPaths.launcher,
+        ]
+        return requiredMissingArtifacts.allSatisfy { fileStore.pathState(at: $0) == .missing }
+    }
+
     func runtimeHealthWaitRunner() -> RuntimeHealthWaitRunner {
         RuntimeHealthWaitRunnerComposition.make(
             operations: RuntimeHealthWaitRunnerCompositionOperations(
