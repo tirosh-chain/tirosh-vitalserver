@@ -2,6 +2,15 @@ import Contracts
 import Errors
 
 public enum RuntimeActiveOperationPolicy {
+    public static func isInstallOperation(_ operation: RuntimeOperation?) -> Bool {
+        switch operation {
+        case .install:
+            return true
+        default:
+            return false
+        }
+    }
+
     public static func isUpdateOperation(_ operation: RuntimeOperation?) -> Bool {
         switch operation {
         case .applyBundle, .prepareUpdateShutdown, .activateGuestUpdate:
@@ -13,14 +22,24 @@ public enum RuntimeActiveOperationPolicy {
 
     public static func isUpdateInProgress(_ status: RuntimeStatus) -> Bool {
         if let progress = status.progress,
-           isUpdateOperation(progress.operation),
-           !isTerminal(progress.phase) {
-            return true
+           isUpdateOperation(progress.operation) {
+            return !isTerminal(progress.phase)
         }
         guard isUpdateOperation(status.operation) else {
             return false
         }
         return status.runtimeState == .updating || status.runtimeState == .recovering
+    }
+
+    public static func isInstallInProgress(_ status: RuntimeStatus) -> Bool {
+        if let progress = status.progress,
+           isInstallOperation(progress.operation) {
+            return !isTerminal(progress.phase)
+        }
+        guard isInstallOperation(status.operation) else {
+            return status.runtimeState == .installing
+        }
+        return status.runtimeState == .installing || status.runtimeState == .degraded
     }
 
     public static func isTerminal(_ phase: RuntimeProgressPhase) -> Bool {

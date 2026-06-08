@@ -19,6 +19,7 @@ public protocol RuntimeStatusHealthDetailsVocabulary: RuntimeStatusVMStateVocabu
     var vitalDBObserverLabel: String { get }
     var watchdogLabel: String { get }
     var waitingText: String { get }
+    var guestStateStaleText: String { get }
 
     func installStateText(_ state: RuntimeFileState) -> String
     func vmErrorText(_ error: RuntimeVMError) -> String
@@ -65,6 +66,7 @@ public struct RuntimeStatusHealthDetailsPolicy {
     private let serviceValuePolicy: RuntimeStatusServiceValuePolicy
     private let httpValuePolicy: RuntimeStatusHTTPValuePolicy
     private let composeServiceValuePolicy: RuntimeStatusComposeServiceValuePolicy
+    private let guestReadinessPolicy = RuntimeStatusGuestReadinessPresentationPolicy()
     private let vocabulary: any RuntimeStatusHealthDetailsVocabulary
 
     public init(vocabulary: any RuntimeStatusHealthDetailsVocabulary) {
@@ -99,7 +101,7 @@ public struct RuntimeStatusHealthDetailsPolicy {
                 label: vocabulary.vmErrorsLabel,
                 value: value(
                     vmErrors.map(vocabulary.vmErrorText).joined(separator: ", "),
-                    .critical
+                    guestReadinessPolicy.vmErrorSeverity(status: status, vmErrors: vmErrors)
                 )
             ))
         }
@@ -125,15 +127,24 @@ public struct RuntimeStatusHealthDetailsPolicy {
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.vmIPAddressLabel,
                 value: value(
-                    status.vmIP ?? vocabulary.waitingText,
+                    status.vmIP ?? guestReadinessPolicy.pendingGuestStateText(
+                        status: status,
+                        waitingText: vocabulary.waitingText,
+                        staleText: vocabulary.guestStateStaleText
+                    ),
                     status.vmServiceState == .loaded && status.vmIP != nil ? .healthy : .warning
                 )
             ),
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.vitalServerName,
-                value: value(httpValuePolicy.httpValue(
-                    status.guestHTTP,
-                    uptimeText: uptimeText(for: .vitalServer, observation: observation, now: now)
+                value: value(guestReadinessPolicy.guestHTTPValue(
+                    status: status,
+                    computedValue: httpValuePolicy.httpValue(
+                        status.guestHTTP,
+                        uptimeText: uptimeText(for: .vitalServer, observation: observation, now: now)
+                    ),
+                    waitingText: vocabulary.waitingText,
+                    staleText: vocabulary.guestStateStaleText
                 ))
             ),
             RuntimeStatusHealthDetailItem(

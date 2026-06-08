@@ -111,6 +111,14 @@ public struct RuntimePresentationFormatter {
         vocabulary.operationText(operation?.rawValue)
     }
 
+    public func activeOperationText(_ status: RuntimeStatus) -> String {
+        if let progress = status.progress,
+           !RuntimeActiveOperationPolicy.isTerminal(progress.phase) {
+            return operationText(progress.operation)
+        }
+        return operationText(status.operation)
+    }
+
     public func progressDisplayMessage(_ status: RuntimeStatus) -> String? {
         guard let progress = status.progress else {
             return nil

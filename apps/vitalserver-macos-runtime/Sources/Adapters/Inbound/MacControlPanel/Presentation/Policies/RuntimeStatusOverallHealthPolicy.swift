@@ -47,6 +47,9 @@ public struct RuntimeStatusOverallHealthPolicy {
     }
 
     public func overallHealth(status: RuntimeStatus) -> RuntimeStatusOverallHealthValue {
+        if RuntimeActiveOperationPolicy.isInstallInProgress(status) {
+            return value(vocabulary.installingText, .warning)
+        }
         if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
             return value(vocabulary.updatingText, .warning)
         }

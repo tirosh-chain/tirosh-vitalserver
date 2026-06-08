@@ -285,6 +285,8 @@ private struct AppRuntimeStatusHealthDetailsVocabulary: RuntimeStatusHealthDetai
     var vitalDBObserverLabel: String { AppConstants.Labels.vitalDBObserver }
     var watchdogLabel: String { AppConstants.Labels.watchdog }
     var waitingText: String { AppConstants.StatusText.waiting }
+    var guestStateStaleText: String { AppConstants.StatusText.guestStateStale }
+    var installingText: String { AppConstants.StatusText.installing }
     var updatingText: String { AppConstants.StatusText.updating }
     var notReportedText: String { AppConstants.StatusText.notReported }
     var reachableText: String { AppConstants.StatusText.reachable }
@@ -328,6 +330,8 @@ private struct AppRuntimeStatusAdvancedVMHealthVocabulary: RuntimeStatusAdvanced
     var vmIPAddressLabel: String { AppConstants.Labels.vmIPAddress }
     var vmErrorsLabel: String { AppConstants.Labels.vmErrors }
     var waitingText: String { AppConstants.StatusText.waiting }
+    var guestStateStaleText: String { AppConstants.StatusText.guestStateStale }
+    var installingText: String { AppConstants.StatusText.installing }
     var updatingText: String { AppConstants.StatusText.updating }
     var notReportedText: String { AppConstants.StatusText.notReported }
     var reachableText: String { AppConstants.StatusText.reachable }
@@ -353,6 +357,7 @@ private struct AppRuntimeStatusAdvancedVMHealthVocabulary: RuntimeStatusAdvanced
 }
 
 private struct AppRuntimeStatusVitalServerAvailabilityVocabulary: RuntimeStatusVitalServerAvailabilityVocabulary {
+    var installingText: String { AppConstants.StatusText.installing }
     var updatingText: String { AppConstants.StatusText.updating }
     var notReportedText: String { AppConstants.StatusText.notReported }
     var reachableText: String { AppConstants.StatusText.reachable }
@@ -371,6 +376,9 @@ private struct AppRuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusAdv
     var vitalDBObserverLabel: String { AppConstants.Labels.vitalDBObserver }
     var redisUIName: String { GeneratedRelease.redisUIName }
     var swaggerUIName: String { GeneratedRelease.swaggerUIName }
+    var waitingText: String { AppConstants.StatusText.waiting }
+    var guestStateStaleText: String { AppConstants.StatusText.guestStateStale }
+    var installingText: String { AppConstants.StatusText.installing }
     var updatingText: String { AppConstants.StatusText.updating }
     var notReportedText: String { AppConstants.StatusText.notReported }
     var reachableText: String { AppConstants.StatusText.reachable }

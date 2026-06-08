@@ -454,6 +454,25 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertTrue(RuntimeActiveOperationPolicy.isUpdateInProgress(status))
     }
 
+    func testActiveOperationPolicyTreatsNonTerminalInstallProgressAsInProgress() {
+        let status = RuntimeStatus(
+            runtimeState: .degraded,
+            operation: .status,
+            progress: RuntimeProgressDocument(
+                operation: .install,
+                phase: .running,
+                step: nil,
+                stepStatus: nil,
+                message: "installing",
+                reasonCodes: [],
+                startedAt: nil,
+                updatedAt: "2026-06-08T00:00:00Z"
+            )
+        )
+
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+    }
+
     func testActiveOperationPolicyDoesNotTreatTerminalProgressAsInProgress() {
         let status = RuntimeStatus(
             runtimeState: .healthy,
@@ -473,6 +492,25 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(status))
     }
 
+    func testActiveOperationPolicyDoesNotTreatTerminalInstallProgressAsInProgress() {
+        let status = RuntimeStatus(
+            runtimeState: .degraded,
+            operation: .install,
+            progress: RuntimeProgressDocument(
+                operation: .install,
+                phase: .completed,
+                step: nil,
+                stepStatus: nil,
+                message: "completed",
+                reasonCodes: [],
+                startedAt: nil,
+                updatedAt: "2026-06-08T00:00:00Z"
+            )
+        )
+
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+    }
+
     func testActiveOperationPolicyFallsBackToRuntimeStateForLegacyStatusWithoutProgress() {
         let updating = RuntimeStatus(runtimeState: .updating, operation: .applyBundle)
         let recovered = RuntimeStatus(runtimeState: .recovering, operation: .activateGuestUpdate)
@@ -483,6 +521,14 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertTrue(RuntimeActiveOperationPolicy.isUpdateInProgress(recovered))
         XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(healthy))
         XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(nonUpdate))
+    }
+
+    func testActiveOperationPolicyUsesExplicitInstallOperationForLegacyDegradedInstall() {
+        let installing = RuntimeStatus(runtimeState: .degraded, operation: .install)
+        let degradedWithoutInstallOperation = RuntimeStatus(runtimeState: .degraded, operation: .health)
+
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isInstallInProgress(installing))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(degradedWithoutInstallOperation))
     }
 
     func testRuntimeStatusIncludesDataDirectoryStats() throws {

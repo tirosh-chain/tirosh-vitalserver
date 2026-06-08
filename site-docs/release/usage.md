@@ -1,51 +1,201 @@
-# Release Usage
+# Usage
 
-현재 사용법은 안정 installer 기준이 아니라 사전 검증용 배포본 기준입니다. 공개 안정
-release가 확정되면 installer 다운로드, checksum, 지원 OS, 설치 절차를 별도로 고정해야
-합니다.
+이 문서는 Vital Server Helper를 설치한 뒤 운영자가 어떤 순서로 확인하면 되는지 설명합니다.
+build machine에서 결과물을 만드는 절차는 사용자 흐름이 아니므로 Dev 문서에서 다룹니다.
 
-## 1. 사전 검증용 배포본 생성
+## 1. 설치 흐름
 
-소스 저장소에서 사전 검증용 배포본을 직접 만들 때는 아래 명령을 사용합니다.
+Helper package는 fresh install을 기준으로 합니다. 기존 설치물, launchd service, package receipt,
+또는 Host proxy port 충돌이 있으면 설치 전 검사가 설치를 막습니다.
 
-```sh
-make dist/pkg/dev
+### 1-1. 새 설치
+
+Mac 사용자에게는 서명 및 공증된 Helper installer를 전달합니다.
+
+```text
+Install VitalServer Helper.pkg
 ```
 
-생성된 패키지는 `dist/` 아래에 놓입니다. Swift build, DMG 생성, update bundle 생성,
-runtime PoC, low-level staging target은 release 사용자 문서로 다루지 않고 dev
-문서에서 다룹니다.
+설치 후 Helper app을 열고 Status 화면에서 runtime 상태를 확인합니다.
 
-## 2. Fresh Install Requirement
+처음 설치한 직후에는 VM과 runtime service가 순서대로 준비되기 때문에 완료까지 보통 4~5분 정도
+걸릴 수 있습니다. 이 동안 Status나 Advanced 화면에 `Installing`이 보이면 정상적인 설치 진행
+상태로 보고 기다립니다.
 
-현재 사전 검증용 패키지는 기존 VitalServer Helper 설치 위에 덮어쓰는 upgrade package가
-아닙니다. 기존 설치물, launchd service, package receipt, 또는 Host proxy port 충돌이
-있으면 설치 전 검사가 실패해야 합니다.
+`Installing`이 오래 유지되거나 `Critical`로 바뀌면 installer 화면 메시지, Status의 failure
+reason, Logs 화면을 함께 확인합니다.
 
-기존 사전 검증용 설치가 남아 있으면 Force Clean Uninstaller로 제거한 뒤 다시 설치합니다.
-일반 Uninstall은 재설치 가능한 상태를 보장하지 않아 현재 사용자 절차로 제공하지 않습니다.
+### 1-2. 설치가 막히는 경우
 
-Mac 사용자에게 전달할 때는 [Force Clean Uninstaller](clean-uninstall.md) 절차를 사용합니다.
-지원 artifact는 `VitalServerHelperCleanUninstaller-<version>.pkg`처럼 강제 정리만 수행하는
-별도 패키지로 제공합니다.
+아래와 같은 메시지가 보이면 기존 host 상태가 남아 있어 fresh install이 차단된 것입니다.
 
-```sh
-make dist/clean-uninstaller/dev
+```text
+VitalServer Helper pkg install supports fresh installs only.
+An existing VitalServer Helper install, launchd service, package receipt,
+or Host proxy port conflict blocks this install.
 ```
 
-## 3. Installed Runtime CLI
+이 경우 installer를 반복 실행하지 않습니다. [Force Clean Uninstaller](clean-uninstall.md)로
+정리한 뒤 다시 설치합니다.
 
-설치된 환경에서 update bundle을 직접 다룰 때 사용하는 CLI는 아래 형태입니다. update
-bundle을 만드는 방법은 release 사용자 인터페이스가 아니라 배포 준비 절차로 둡니다.
+일반 Uninstall은 현재 사용자 절차로 제공하지 않습니다. 재설치 가능한 상태를 보장하지 않기
+때문입니다.
+
+## 2. Helper app에서 확인할 것
+
+설치 후에는 Helper app을 열고 Status 화면부터 확인합니다. Status는 전체 요약이고, 세부 원인은
+다른 화면에서 나눠 봅니다.
+
+### 2-1. 화면별 확인 포인트
+
+처음에는 Status 화면에서 전체 상태를 보고, 문제가 보이는 영역에 따라 Recorders, Beds,
+Advanced, Observability, Logs 화면으로 이동합니다.
+
+| 화면 | 언제 보는가 | 확인할 것 |
+|---|---|---|
+| Status | 설치 직후, 평소 상태 확인, 장애 첫 확인 | overall health, VitalServer 연결, PWA 연결, data directory, recorder summary |
+| Recorders | recorder가 보이지 않거나 stale/offline일 때 | VRecorder status, IP, 연결 bed, last seen, anomaly count |
+| Beds | bed와 recorder 연결 상태를 볼 때 | bed status, 연결 VRecorder, patient 연결 여부, observation count |
+| Advanced | runtime service나 VM 상태를 볼 때 | VM/service 상태, active operation, runtime version, failure reasons |
+| Observability | 상태 변화의 시간 순서를 볼 때 | event timeline, recorder anomaly, relationship history |
+| Logs | 지원 자료를 모으거나 상세 로그를 볼 때 | command, update activation, VM, container, watchdog logs |
+
+설치 직후 Advanced에서 일부 service나 HTTP endpoint가 아직 준비되지 않아도, active operation이
+`Installing`이면 설치 진행 중으로 봅니다. 설치가 끝난 뒤에도 `Stopped`, `Unavailable`,
+`Read failed`가 남아 있을 때 세부 점검을 시작합니다.
+
+### 2-2. 상태를 읽을 때 주의할 점
+
+상태는 임의로 판단하지 않습니다. 예를 들어 recorder가 화면에 없다고 해서 항상 “장비가 없다”는
+뜻은 아닙니다. 관측 자료를 읽지 못했거나, 관측 자료가 오래되었거나, 실제로 최신 관측에 없는
+상황이 서로 다를 수 있습니다.
+
+| 보이는 상태 | 먼저 확인할 곳 |
+|---|---|
+| `Critical` | Status의 failure reason, Advanced, Logs |
+| `Needs attention` | Status 요약 이후 Recorders/Beds 또는 Advanced |
+| recorder `Stale` | Recorders의 last seen, Observability anomaly |
+| bed `Offline` | Beds의 연결 VRecorder, relationship history |
+| read issue | Logs와 Observability store failure 여부 |
+
+자세한 상태값 의미는 [Runtime Status](runtime-status.md)를 봅니다.
+
+## 3. Update 적용
+
+Product Update는 Helper app의 Update 탭에서 적용합니다. 현장 Mac에서 update bundle을 만드는
+것이 아니라, release 담당자가 만든 `update-bundle-...tar.gz` 파일을 전달받아 적용하는 흐름입니다.
+
+### 3-1. Update 탭에서 진행
+
+| 단계 | 화면에서 할 일 |
+|---|---|
+| Update source | `Choose Bundle`로 전달받은 offline update bundle을 선택 |
+| Bundle verification | `Verify Bundle`로 checksum과 bundle 구성을 먼저 확인 |
+| Apply update | 검증이 성공한 뒤 `Apply Bundle`로 update 적용 |
+| Update progress | 진행 메시지와 command log를 보며 완료 또는 실패 여부 확인 |
+
+현재 build에서는 online update가 아니라 offline bundle 적용을 기준으로 합니다. Update 탭에
+`Online update is planned for connected sites` 안내가 보이면, 전달받은 offline bundle을 사용합니다.
+
+### 3-2. 적용 전 확인
+
+- update bundle 파일명이 전달받은 release 안내와 맞는지 확인합니다.
+- `Verify Bundle`이 실패하면 `Apply Bundle`을 진행하지 않습니다.
+- update 중에는 VitalServer service가 재시작될 수 있습니다.
+- 실패하면 같은 bundle을 반복 적용하기보다 Update progress, Logs, Observability event를 먼저 확인합니다.
+
+### 3-3. 지원 담당자 CLI
+
+지원 담당자가 직접 update bundle을 검증하거나 적용해야 할 때만 runtime CLI를 사용합니다.
 
 ```sh
 /usr/local/bin/vitalserver-vm runtime verify-bundle /path/to/update-bundle.tar.gz
 sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle.tar.gz
 ```
 
-## 4. Installed Paths
+CLI와 Helper app의 Update 탭은 같은 update backend를 사용합니다. 일반 사용자 절차는 Update 탭을
+기준으로 합니다.
 
-development package 설치 후 주요 경로는 아래와 같습니다.
+## 4. 로그와 지원 자료
+
+문제가 생기면 화면에 보이는 상태만 전달하지 않습니다. 같은 `Critical`이라도 설치 실패,
+update 실패, recorder 관측 실패, service 실행 실패는 확인해야 하는 자료가 다릅니다.
+
+지원 담당자가 같은 상황을 다시 따라갈 수 있도록, 상태 화면, logs, event 기간을 함께 모읍니다.
+
+### 4-1. 먼저 기록할 것
+
+지원 요청을 만들기 전에 아래 정보를 먼저 적어 둡니다.
+
+| 항목 | 예시 |
+|---|---|
+| 발생 시각 | `2026-06-08 14:30 KST` |
+| 사용한 화면 | Status, Update, Recorders, Beds, Observability, Logs |
+| 보이는 상태 | Healthy, Needs attention, Critical, Updating, Recovering 등 |
+| 직전에 한 작업 | install, update 적용, Force Clean Uninstaller 실행, runtime start/stop |
+| 선택한 파일 | update bundle, Clean Uninstaller package, installer package |
+
+가능하면 화면 screenshot도 함께 보관합니다. 다만 환자 정보, 병원 내부 IP, 인증 정보, token이
+보이면 공개 issue에 올리지 않습니다.
+
+### 4-2. Helper app에서 모을 자료
+
+Helper app이 열리는 상태라면 아래 순서로 확인합니다.
+
+1. Status 화면에서 overall health와 failure reason을 확인합니다.
+2. 문제가 recorder 또는 bed와 관련되어 있으면 Recorders/Beds 화면의 status와 last seen을 확인합니다.
+3. Update 중 실패했다면 Update 탭의 Update progress 메시지를 확인합니다.
+4. Observability 화면에서 문제가 발생한 시간대와 event filter를 확인합니다.
+5. Logs 화면에서 `Export Logs`를 실행해 log zip을 만듭니다.
+
+`Open Logs`는 Mac 안의 로그 폴더를 여는 기능이고, `Export Logs`는 지원 담당자에게 전달할 수
+있는 zip 파일을 만드는 기능입니다.
+
+### 4-3. 상황별로 필요한 자료
+
+| 상황 | 함께 전달할 자료 |
+|---|---|
+| 설치 실패 | Installer 화면 메시지, `/var/log/install.log`, 사용한 installer package 이름 |
+| Update 실패 | Update progress, 선택한 update bundle 이름, Logs 화면의 export zip, Observability event 시간대 |
+| runtime이 Critical | Status/Advanced 상태, failure reasons, Logs 화면의 export zip |
+| recorder/bed가 stale 또는 offline | Recorders/Beds 화면 상태, last seen, Observability anomaly, event 시간대 |
+| Force Clean Uninstaller 실패 | `/private/tmp/tirosh-vitalserver-uninstall.log`, `/var/log/install.log` |
+| 상태 화면을 읽지 못함 | read issue 메시지, Logs 화면의 export zip, Observability store failure 여부 |
+
+### 4-4. 직접 확인할 수 있는 로그
+
+Helper app에서 export가 되지 않거나 설치/정리 단계에서 app을 열 수 없다면 아래 로그를 확인합니다.
+
+```sh
+tail -n 300 /var/log/install.log
+tail -n 300 /private/tmp/tirosh-vitalserver-uninstall.log
+```
+
+runtime이 설치된 뒤의 상세 로그는 기본적으로 아래 위치에 있습니다.
+
+```text
+/Library/Application Support/VitalServerHelper/logs/
+```
+
+### 4-5. 공개 issue에 올리지 않을 것
+
+공개 GitHub issue에는 아래 정보를 올리지 않습니다.
+
+- 환자 정보
+- 병원 내부 IP 또는 네트워크 구성
+- 인증 정보, 비밀번호, token
+- 원본 로그 전체
+- 병원 내부 승인이나 의료 판단이 필요한 내용
+
+공개 issue에는 재현 절차, 기대 결과, 실제 결과, 상태 이름, 필요한 경우 마스킹한 로그 일부만
+작성합니다.
+
+## 5. 설치 경로
+
+아래 경로는 지원 담당자가 설치 상태를 확인하거나 로그를 모을 때 자주 봅니다. 일반 운영자는
+대부분 Helper app 화면과 `Export Logs`만 사용하면 됩니다.
+
+### 5-1. 주요 경로
 
 | 항목 | 위치 |
 |---|---|
@@ -58,11 +208,38 @@ development package 설치 후 주요 경로는 아래와 같습니다.
 | logs | `/Library/Application Support/VitalServerHelper/logs/` |
 | LaunchDaemons | `/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.*.plist` |
 
-## 5. Dev References
+### 5-2. 언제 확인하나
 
-| 목적 | 참고 |
+| 경로 | 언제 보는가 |
 |---|---|
-| 문서 보기 | `make docs/serve` |
-| runtime package 구조 확인 | `site-docs/dev/repository-map.md` |
-| Runtime Control API 확인 | `site-docs/dev/runtime-contracts.md` |
-| runtime 상태 의미 확인 | `site-docs/dev/runtime-contracts.md` |
+| Helper app | 설치 후 앱을 열거나 app bundle 존재 여부를 확인할 때 |
+| runtime CLI | 지원 담당자가 health, update, service command를 직접 실행할 때 |
+| runtime home | VM/runtime 상태, logs, backups, status 문서 위치를 확인할 때 |
+| status file | Helper app이 읽는 runtime 상태 문서를 확인할 때 |
+| logs | `Export Logs`가 어렵거나 특정 log source를 직접 확인할 때 |
+| LaunchDaemons | service가 load되어 있는지, disabled override가 남았는지 확인할 때 |
+
+### 5-3. 직접 수정하지 않을 것
+
+아래 파일과 directory는 Helper가 소유합니다. 지원 담당자의 안내 없이 직접 삭제하거나 수정하지
+않습니다.
+
+- `/Library/Application Support/VitalServerHelper/`
+- `/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.*.plist`
+- `/usr/local/bin/vitalserver-vm`
+- `/usr/local/bin/vitalserver-proxy-run`
+- `/usr/local/bin/tirosh-vitalserver-uninstall`
+
+재설치가 막혀 정리가 필요하면 파일을 수동으로 지우기보다
+[Force Clean Uninstaller](clean-uninstall.md)를 사용합니다.
+
+## 6. 지원 담당자 참고
+
+사전 검증용 package를 repository에서 직접 만들 때는 Dev 문서의
+[Delivery & Validation](../dev/delivery-validation.md)을 기준으로 합니다.
+
+문서 site는 아래 명령으로 확인할 수 있습니다.
+
+```sh
+make docs/serve
+```

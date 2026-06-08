@@ -31,6 +31,7 @@ public extension AppConstants {
         public static let installed = "Installed"
         public static let notInstalled = "Not Installed"
         public static let waiting = "Waiting"
+        public static let guestStateStale = "Guest state stale"
         public static let notChecked = "Not checked"
         public static let planned = "Planned"
         public static let notAvailable = "Not Available"

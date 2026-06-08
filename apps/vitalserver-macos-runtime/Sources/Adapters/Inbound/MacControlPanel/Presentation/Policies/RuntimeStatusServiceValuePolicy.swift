@@ -2,6 +2,7 @@ import Contracts
 import Errors
 
 public protocol RuntimeStatusServiceValueVocabulary {
+    var installingText: String { get }
     var updatingText: String { get }
     var unavailableText: String { get }
 
@@ -34,8 +35,12 @@ public struct RuntimeStatusServiceValuePolicy {
 
     public func serviceValue(
         state: RuntimeServiceState?,
+        installInProgress: Bool = false,
         updateInProgress: Bool = false
     ) -> RuntimeStatusServiceValue {
+        if installInProgress, serviceStatePolicy.shouldDisplayOperationStateInsteadOfServiceState(state) {
+            return value(vocabulary.installingText, .warning)
+        }
         if updateInProgress, serviceStatePolicy.shouldDisplayOperationStateInsteadOfServiceState(state) {
             return value(vocabulary.updatingText, .warning)
         }

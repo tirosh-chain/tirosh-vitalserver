@@ -4,6 +4,7 @@ import RuntimeControl
 import Errors
 
 public protocol RuntimeStatusVitalServerAvailabilityVocabulary: RuntimeStatusReachabilityLabelVocabulary {
+    var installingText: String { get }
     var updatingText: String { get }
 }
 
@@ -44,7 +45,9 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
         now: Date
     ) -> RuntimeStatusVitalServerAvailabilityValue {
         let text: String
-        if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
+        if RuntimeActiveOperationPolicy.isInstallInProgress(status) {
+            text = vocabulary.installingText
+        } else if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
             text = vocabulary.updatingText
         } else if !status.effectiveRuntimeInstallationState.isExecutable {
             text = vocabulary.unavailableText
@@ -63,7 +66,8 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
     }
 
     private func availabilitySeverity(_ status: RuntimeStatus) -> RuntimeStatusReachabilityPolicy.Severity {
-        if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
+        if RuntimeActiveOperationPolicy.isInstallInProgress(status) ||
+            RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
             return .warning
         }
         if !status.effectiveRuntimeInstallationState.isExecutable {

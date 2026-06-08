@@ -180,6 +180,44 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertNil(formatter.updateOperationDisplayMessage(status))
     }
 
+    func testActiveOperationTextUsesNonTerminalProgressOperation() {
+        let progress = RuntimeProgressDocument(
+            operation: .install,
+            phase: .running,
+            step: nil,
+            stepStatus: nil,
+            message: "installing",
+            reasonCodes: [],
+            startedAt: nil,
+            updatedAt: "2026-06-08T00:00:00Z"
+        )
+        let status = RuntimeStatus(
+            operation: .status,
+            progress: progress
+        )
+
+        XCTAssertEqual(formatter.activeOperationText(status), "Install")
+    }
+
+    func testActiveOperationTextIgnoresTerminalProgressOperation() {
+        let progress = RuntimeProgressDocument(
+            operation: .install,
+            phase: .completed,
+            step: nil,
+            stepStatus: nil,
+            message: "completed",
+            reasonCodes: [],
+            startedAt: nil,
+            updatedAt: "2026-06-08T00:00:00Z"
+        )
+        let status = RuntimeStatus(
+            operation: .status,
+            progress: progress
+        )
+
+        XCTAssertEqual(formatter.activeOperationText(status), "Status")
+    }
+
     func testRuntimeStateAndOperationTextUseStandardDisplayVocabulary() {
         XCTAssertEqual(formatter.runtimeStateText(.healthy), AppConstants.StatusText.healthy)
         XCTAssertEqual(formatter.runtimeStateText(.degraded), AppConstants.StatusText.degraded)

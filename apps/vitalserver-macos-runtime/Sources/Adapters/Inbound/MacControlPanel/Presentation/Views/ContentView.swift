@@ -24,6 +24,7 @@ public struct ContentView: View {
     @State private var selectedSection = RuntimeSection.status
     @State private var hoveredServiceLink: String?
     @State private var isHoveringVitalDBIcon = false
+    private let statusPollingIntervalPolicy = RuntimeStatusPollingIntervalPolicy()
 
     public init() {}
 
@@ -359,7 +360,9 @@ public struct ContentView: View {
     private func pollStatus() async {
         while !Task.isCancelled {
             await viewModel.refreshHealthStatus()
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            try? await Task.sleep(nanoseconds: statusPollingIntervalPolicy.statusPollingIntervalNanoseconds(
+                status: viewModel.status
+            ))
         }
     }
 

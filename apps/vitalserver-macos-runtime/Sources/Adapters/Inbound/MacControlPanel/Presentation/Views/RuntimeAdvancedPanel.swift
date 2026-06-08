@@ -90,7 +90,7 @@ struct RuntimeAdvancedPanel: View {
         advancedCard(AppConstants.Labels.sectionDiagnostics) {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.runtimeState) { statusBadge }
-                statusRow(AppConstants.Labels.operation, viewModel.presentationFormatter.operationText(viewModel.status.operation))
+                statusRow(AppConstants.Labels.operation, viewModel.presentationFormatter.activeOperationText(viewModel.status))
                 statusRow(AppConstants.Labels.runtimeVersion, viewModel.status.runtimeVersion ?? AppConstants.StatusText.unknown)
                 statusRow(AppConstants.Labels.updatedAt, viewModel.presentationFormatter.systemTimeText(viewModel.status.updatedAt))
                 if !viewModel.status.failureReasons.isEmpty {

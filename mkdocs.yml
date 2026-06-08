@@ -22,8 +22,8 @@ nav:
       - Overview: release/index.md
       - Usage: release/usage.md
       - Force Clean Uninstaller: release/clean-uninstall.md
-      - Capabilities: release/scope.md
-      - Status Reference: release/runtime-status.md
+      - Support Scope: release/scope.md
+      - Runtime Status: release/runtime-status.md
       - Observability Events: release/observability-events.md
   - Dev:
       - Overview: dev/index.md

@@ -11,6 +11,7 @@ public protocol RuntimeStatusAdvancedVMHealthVocabulary: RuntimeStatusVMStateVoc
     var vmIPAddressLabel: String { get }
     var vmErrorsLabel: String { get }
     var waitingText: String { get }
+    var guestStateStaleText: String { get }
 
     func installStateText(_ state: RuntimeFileState) -> String
     func vmErrorText(_ error: RuntimeVMError) -> String
@@ -19,6 +20,7 @@ public protocol RuntimeStatusAdvancedVMHealthVocabulary: RuntimeStatusVMStateVoc
 public struct RuntimeStatusAdvancedVMHealthPolicy {
     private let vmStatePolicy: RuntimeStatusVMStatePolicy
     private let serviceValuePolicy: RuntimeStatusServiceValuePolicy
+    private let guestReadinessPolicy = RuntimeStatusGuestReadinessPresentationPolicy()
     private let vocabulary: any RuntimeStatusAdvancedVMHealthVocabulary
 
     public init(vocabulary: any RuntimeStatusAdvancedVMHealthVocabulary) {
@@ -28,6 +30,7 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
     }
 
     public func vmHealth(status: RuntimeStatus) -> [RuntimeStatusHealthDetailItem] {
+        let installInProgress = RuntimeActiveOperationPolicy.isInstallInProgress(status)
         var items = [
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.runtimeInstallationLabel,
@@ -43,13 +46,18 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.vmServiceLabel,
                 value: value(serviceValuePolicy.serviceValue(
-                    state: status.vmServiceState
+                    state: status.vmServiceState,
+                    installInProgress: installInProgress
                 ))
             ),
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.vmIPAddressLabel,
                 value: value(
-                    status.vmIP ?? vocabulary.waitingText,
+                    status.vmIP ?? guestReadinessPolicy.pendingGuestStateText(
+                        status: status,
+                        waitingText: vocabulary.waitingText,
+                        staleText: vocabulary.guestStateStaleText
+                    ),
                     status.vmServiceState == .loaded && status.vmIP != nil ? .healthy : .warning
                 )
             ),
@@ -59,7 +67,7 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
                 label: vocabulary.vmErrorsLabel,
                 value: value(
                     vmErrors.map(vocabulary.vmErrorText).joined(separator: ", "),
-                    .critical
+                    guestReadinessPolicy.vmErrorSeverity(status: status, vmErrors: vmErrors)
                 )
             ))
         }
