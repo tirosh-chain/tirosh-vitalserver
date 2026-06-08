@@ -1,66 +1,17 @@
 import type { components, paths } from "./generated/runtime-control";
+import {
+  runtimeEventHistorySchema,
+  runtimeOverviewSchema,
+  runtimeStatusSchema
+} from "./schemas/runtimeControlSchemas";
+import type { z } from "zod";
 
-type CompatValue<T extends string | null> = T | (string & {});
-
-type RuntimeStateWithUnknown =
-  CompatValue<components["schemas"]["RuntimeState"]>;
-
-type RuntimeVMStateWithUnknown =
-  CompatValue<components["schemas"]["RuntimeVMState"]>;
-
-type RuntimeEventTypeWithUnknown =
-  CompatValue<components["schemas"]["RuntimeEventType"]>;
-
-type RuntimeStatusResponse =
-  paths["/runtime/status"]["get"]["responses"]["200"]["content"]["application/json"];
-
-type RuntimeOverviewResponse =
-  paths["/runtime/overview"]["get"]["responses"]["200"]["content"]["application/json"];
-
-type RuntimeEventHistoryResponse =
-  paths["/runtime/events"]["get"]["responses"]["200"]["content"]["application/json"];
-
-type RuntimeEventDocumentResponse = components["schemas"]["RuntimeEventDocument"];
-
-type RuntimeStatusWithCompat = Omit<
-  RuntimeStatusResponse,
-  "runtimeState" | "vmState"
-> & {
-  runtimeState?: RuntimeStateWithUnknown;
-  vmState?: RuntimeVMStateWithUnknown;
-};
-
-type RuntimeEventDocumentWithCompat = Omit<
-  RuntimeEventDocumentResponse,
-  "eventType" | "status" | "vmState"
-> & {
-  eventType: RuntimeEventTypeWithUnknown;
-  status?: RuntimeStateWithUnknown;
-  vmState?: RuntimeVMStateWithUnknown;
-};
-
-type RuntimeEventHistoryWithCompat = Omit<
-  RuntimeEventHistoryResponse,
-  "events"
-> & {
-  events: RuntimeEventDocumentWithCompat[];
-};
-
-type RuntimeOverviewWithCompat = Omit<
-  RuntimeOverviewResponse,
-  "status"
-> & {
-  status: RuntimeStatusWithCompat;
-};
-
-export type RuntimeControlOverview =
-  RuntimeOverviewWithCompat;
+export type RuntimeControlOverview = z.infer<typeof runtimeOverviewSchema>;
 
 export type RuntimeControlCapabilities =
   paths["/runtime/capabilities"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type RuntimeStatus =
-  RuntimeStatusWithCompat;
+export type RuntimeStatus = z.infer<typeof runtimeStatusSchema>;
 
 export type RuntimeSettings =
   paths["/runtime/settings"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -86,8 +37,7 @@ export type RuntimeBackup =
 export type RuntimeBackupRequest =
   paths["/host/backups/rollback"]["post"]["requestBody"]["content"]["application/json"];
 
-export type RuntimeEventHistory =
-  RuntimeEventHistoryWithCompat;
+export type RuntimeEventHistory = z.infer<typeof runtimeEventHistorySchema>;
 
 export type RuntimeEventDocument = NonNullable<
   RuntimeEventHistory["events"]

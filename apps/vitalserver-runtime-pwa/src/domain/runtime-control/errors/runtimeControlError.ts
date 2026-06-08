@@ -78,6 +78,11 @@ type ErrorLike = {
   path?: string;
   url?: string;
   cause?: unknown;
+  issues?: ReadonlyArray<{
+    path: string;
+    code: string;
+    message: string;
+  }>;
 };
 
 export function summarizeRuntimeControlError(
