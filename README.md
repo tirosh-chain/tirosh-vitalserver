@@ -11,12 +11,19 @@ invalid, stale, empty state는 서로 다른 의미로 보존합니다.
 
 ## 빠른 실행
 
+빠른 실행은 upstream VitalServer와 sidecar를 Compose sandbox로 띄워 local 개발과 검증을
+시작하는 경로입니다.
+
 ```sh
 git clone --recurse-submodules https://github.com/tirosh-chain/tirosh-vitalserver.git
 cd tirosh-vitalserver
 make dev/doctor
 make compose/up
 ```
+
+> 빠른 실행은 Compose sandbox 전용입니다. macOS Helper, Runtime Control API, Remote Console
+> PWA는 package 설치 후 Helper app에서 확인하거나 개발 중 `make runtime/*`, `make pwa/*`로
+> 따로 실행합니다.
 
 기본 endpoint:
 

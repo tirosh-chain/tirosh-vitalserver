@@ -105,7 +105,7 @@ VM runtime 문서는 [VitalServer macOS Runtime](runtime/macos/index.md)를 진�
 Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니다.
 
 ```sh
-make swagger
+make swagger/up
 ```
 
 이후 `http://localhost:8082`에서 Swagger UI를 열면 VitalServer, Runtime Control API, Audit Proxy API
