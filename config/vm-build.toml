@@ -70,7 +70,7 @@ initrd_suffix = "initrd-generic"
 
 [guest.runtime]
 disk_image_name = "vm-disk.img"
-rootfs_size = "4G"
+rootfs_size = "8G"
 runtime_dir = "~/.tirosh/vitalserver-vm/runtime"
 
 [guest.cloud_init]

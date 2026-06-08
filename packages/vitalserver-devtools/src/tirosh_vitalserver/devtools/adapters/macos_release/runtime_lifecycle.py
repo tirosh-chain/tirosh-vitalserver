@@ -107,6 +107,17 @@ def start_runtime_detached(input: RuntimeVmHomeInput) -> int:
     logs_dir.mkdir(parents=True, exist_ok=True)
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    running_processes = running_vm_processes_for_home(vm_home)
+    if len(running_processes) > 1:
+        raise SystemExit(
+            "error: multiple VM launcher processes already use this VM_HOME; "
+            f"refusing to start another VM for {vm_home}: "
+            f"pids={','.join(str(pid) for pid in running_processes)}"
+        )
+    if len(running_processes) == 1:
+        print(f"VM is already running for {vm_home}: pid {running_processes[0]}")
+        return 0
+
     if process_is_running(legacy_pid):
         print(f"VM is already running: pid {legacy_pid.read_text().strip()}")
         return 0
@@ -284,6 +295,36 @@ def process_is_running(pid_file: Path) -> bool:
     except (OSError, ValueError):
         return False
     return True
+
+
+def running_vm_processes_for_home(vm_home: Path) -> list[int]:
+    result = subprocess.run(
+        ["ps", "eww", "-axo", "pid=,command="],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise SystemExit(
+            "error: failed to inspect running VM processes before start: "
+            f"{result.stderr.strip() or result.returncode}"
+        )
+
+    vm_home_token = f"VITALSERVER_VM_HOME={vm_home}"
+    pids: list[int] = []
+    for line in result.stdout.splitlines():
+        text = line.strip()
+        if "vitalserver-vm start" not in text or vm_home_token not in text:
+            continue
+        pid_text = text.split(maxsplit=1)[0]
+        try:
+            pids.append(int(pid_text))
+        except ValueError:
+            raise SystemExit(
+                "error: failed to parse VM process pid before start: "
+                f"line={line}"
+            ) from None
+    return pids
 
 
 def launcher_log(vm_home: str | Path) -> Path:

@@ -1,7 +1,7 @@
 .PHONY: internal/vm/up internal/vm/up-bridged internal/vm/down internal/vm/prepare internal/vm/start internal/vm/start/detached internal/vm/start/bridged internal/vm/stop internal/vm/status internal/vm/clean internal/vm/ip internal/vm/wait/ip internal/vm/wait/http internal/vm/wait/rootfs-ready internal/vm/wait/stopped internal/vm/proxy/start internal/vm/health internal/vm/e2e/smoke internal/vm/coverage
 .PHONY: internal/vm/version-source internal/vm/build internal/vm/sign internal/vm/sign/bridged internal/vm/bridged/preflight internal/vm/init internal/vm/download internal/vm/cloud-init internal/vm/stage internal/vm/interfaces internal/vm/network/shared internal/vm/network/bridged
 
-VM_ROOTFS_SIZE ?= 4G
+VM_ROOTFS_SIZE ?= 8G
 VM_RECREATE_ROOTFS ?= false
 VM_WAIT_TIMEOUT ?= 300
 VM_HTTP_WAIT_TIMEOUT ?= 600

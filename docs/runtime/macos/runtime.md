@@ -103,7 +103,7 @@ config/vm-build.toml
 | architecture | macOS host architecture 기준 자동 선택 |
 | 다운로드 경로 | `~/.tirosh/vitalserver-vm/runtime/downloads/` |
 | 실행 경로 | `~/.tirosh/vitalserver-vm/runtime/` |
-| root disk target size | `4G` (4 GiB) |
+| root disk target size | `8G` (8 GiB) |
 
 root disk 크기를 바꾸려면:
 
@@ -113,7 +113,7 @@ VM_ROOTFS_SIZE=32G make runtime/download
 
 `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. 예를 들어 `32G`는 32 GiB root disk target size입니다.
 
-`4G`는 packaging 효율을 위한 golden rootfs base 크기입니다. 설치 wizard에서 사용자가 고르는 runtime disk 크기와 다릅니다. 설치 시에는 `rootfs-base.raw.gz`를 `vm-disk.img`로 풀고, 기본 32 GiB 또는 사용자가 고른 크기로 sparse disk를 확장합니다. 설치 후 disk 크기는 증가만 허용합니다.
+`8G`는 packaging 효율과 air-gapped runtime package 설치 여유를 함께 고려한 golden rootfs base 크기입니다. 설치 wizard에서 사용자가 고르는 runtime disk 크기와 다릅니다. 설치 시에는 `rootfs-base.raw.gz`를 `vm-disk.img`로 풀고, 기본 32 GiB 또는 사용자가 고른 크기로 sparse disk를 확장합니다. 설치 후 disk 크기는 증가만 허용합니다.
 
 ## Cloud-Init
 

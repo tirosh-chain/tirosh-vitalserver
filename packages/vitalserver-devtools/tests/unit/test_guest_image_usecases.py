@@ -2,13 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from pytest import MonkeyPatch
 
 from tirosh_vitalserver.devtools.application.inputs import UbuntuBootAssetsInput
 from tirosh_vitalserver.devtools.application.usecases import (
     guest_image as guest_image_usecases,
 )
-from tirosh_vitalserver.devtools.core.guest_image import UbuntuBootAssetPlan
+from tirosh_vitalserver.devtools.core.errors import DomainError
+from tirosh_vitalserver.devtools.core.guest_image import (
+    UbuntuBootAssetPlan,
+    ubuntu_boot_asset_plan,
+)
 
 
 def test_prepare_ubuntu_boot_assets_builds_plan_from_config(
@@ -65,3 +70,20 @@ def test_prepare_ubuntu_boot_assets_builds_plan_from_config(
     assert plan.runtime_dir == Path("runtime")
     assert plan.rootfs_size == "8G"
     assert plan.disk_image_name == "disk.img"
+
+
+def test_ubuntu_boot_asset_plan_rejects_rootfs_smaller_than_airgap_minimum() -> None:
+    with pytest.raises(DomainError, match="rootfs_size is too small"):
+        ubuntu_boot_asset_plan(
+            config_path=Path("config/vm-build.toml"),
+            runtime_dir=Path("runtime"),
+            rootfs_size="4G",
+            recreate_rootfs=True,
+            disk_image_name="vm-disk.img",
+            ubuntu_version="24.04",
+            base_url="https://example.invalid/noble",
+            requested_arch="arm64",
+            host_machine="arm64",
+            kernel_suffix="vmlinuz-generic",
+            initrd_suffix="initrd-generic",
+        )

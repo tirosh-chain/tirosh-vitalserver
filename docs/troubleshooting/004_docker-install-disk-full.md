@@ -17,7 +17,7 @@ Ubuntu cloud image의 기본 root disk는 Docker, Compose, nginx, guest systemd 
 
 조치:
 
-`make vm-download`는 VM disk를 기본 `4G`(4 GiB)로 확장합니다. 더 크게 만들려면:
+`make vm-download`는 VM disk를 기본 `8G`(8 GiB)로 확장합니다. 더 크게 만들려면:
 
 ```sh
 VM_ROOTFS_SIZE=32G make vm-download

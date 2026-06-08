@@ -96,7 +96,7 @@ Install VitalServer Helper.pkg
 
 이 package는 Helper app, Swift runtime CLI, host proxy, Linux VM runtime asset, golden rootfs, Docker image bundle, LaunchDaemon을 설치합니다. target Mac은 설치 시점에 인터넷이 없어도 됩니다.
 
-package에 들어가는 golden rootfs base는 설치 파일 효율을 위해 기본 4 GiB로 만듭니다. 실제 설치된 VM disk는 wizard 기본값 32 GiB로 확장되며, 설치 후에는 증가만 허용합니다.
+package에 들어가는 golden rootfs base는 설치 파일 효율과 air-gapped package 준비 여유를 함께 고려해 기본 8 GiB로 만듭니다. 실제 설치된 VM disk는 wizard 기본값 32 GiB로 확장되며, 설치 후에는 증가만 허용합니다.
 
 반복 개발 중에는 cache를 재사용합니다. release 검증처럼 clean golden rootfs부터 다시 만들려면:
 

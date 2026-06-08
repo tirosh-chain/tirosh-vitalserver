@@ -90,6 +90,25 @@ Packaging에서는 `rootfs-base.raw.gz`를 만들기 전에 golden VM lifecycle 
 
 `stopped` lifecycle이라도 `terminalReason`이 남아 있으면 clean shutdown proof로 보지 않습니다. `guest-kernel-panic`, `guest-filesystem-read-only`, `disk-attachment-invalid` 같은 terminal failure가 기록된 VM disk는 base artifact source가 아니며, packaging 단계에서 거부해야 합니다. `rootfs-base.raw.gz` 생성 직후에는 gzip stream을 끝까지 읽어 CRC/EOF와 uncompressed size를 검증합니다. 이 검증은 ext4 논리 오류를 대체하지 않지만, partial/corrupt gzip이 installer package에 들어가는 경로를 막는 최소 산출물 검증입니다.
 
+같은 `VM_HOME`을 사용하는 VM process가 2개 이상 떠 있으면 같은 `vm-disk.img`에 동시 접근할 수 있고, golden rootfs도 운영 VM disk처럼 ext4 journal 손상으로 이어질 수 있습니다. local packaging의 detached VM start는 pid file 하나만 신뢰하지 않고 process table에서 같은 `VITALSERVER_VM_HOME`을 가진 `vitalserver-vm start` process를 확인해야 합니다. 중복 process가 있으면 새 VM을 시작하지 않고 build를 실패시켜야 합니다.
+
+2026-06-08 local packaging 재현에서는 `.tmp/vitalserver-vm-golden/logs/launcher.log`에 아래 계열의 로그가 남았습니다.
+
+```text
+EXT4-fs error (device vda1): htree_dirblock_to_tree: bad entry in directory
+Aborting journal on device vda1-8.
+EXT4-fs (vda1): Remounting filesystem read-only
+Input/output error
+cloud-init.target: Failed with result 'dependency'
+cloud-final.service: Failed with result 'exit-code'
+```
+
+이 로그는 cloud-init 자체 문제로 보지 않습니다. 같은 build host에서 process table을 확인했을 때 같은 `.tmp/vitalserver-vm-golden` `VITALSERVER_VM_HOME`을 가진 `vitalserver-vm start` process가 2개 떠 있었고, 둘 다 같은 `vm-disk.img`에 접근할 수 있는 상태였습니다. 이 경우 guest filesystem은 정상적인 single-writer disk contract를 잃고, golden rootfs 준비 중이어도 운영 VM disk와 같은 방식으로 journal abort/read-only remount가 발생할 수 있습니다.
+
+pid file은 이 상황의 충분한 lock이 아닙니다. 첫 VM process가 pid file을 쓰기 전 두 번째 start가 들어오거나, 두 번째 process가 pid file을 덮어쓰면 pid file만 보는 preflight는 중복 process를 놓칠 수 있습니다. detached VM start는 host process table에서 같은 `VITALSERVER_VM_HOME`을 명시적으로 확인해야 하며, process table을 읽지 못하는 경우도 안전한 empty state로 취급하지 않고 실패해야 합니다.
+
+이 재현에서는 golden cache를 삭제한 뒤 rootfs를 다시 만들었습니다. clean rebuild 이후 `launcher.log`에는 정상 mount/shutdown 로그만 남았고, `EXT4-fs error`, `Input/output error`, read-only remount 패턴은 재발하지 않았습니다. package용 rootfs는 Docker image load와 guest provisioning 여유를 위해 기본 크기를 `8G`로 올렸고, `4G` 요청은 build planning 단계에서 거부합니다.
+
 VM disk repair가 `Archiving current VM disk`에 머문 것처럼 보이면 실제로는 archive 이전 stop 단계에서 VM service 또는 VM process stop이 실패했을 수 있습니다. repair workflow는 service stop 실패를 `critical` runtime status로 기록한 뒤 중단해야 하며, 이 상태에서 현재 disk를 이동하거나 replacement disk를 start하지 않습니다.
 
 운영 판단:
@@ -106,4 +125,5 @@ VM disk repair가 `Archiving current VM disk`에 머문 것처럼 보이면 실�
 - 2026-06-01: guest shutdown이 `systemd-resolved`/initrd finalization에서 330초보다 오래 걸리는 케이스를 확인했습니다. Host CLI와 VM launchd timeout을 900초로 늘렸고, disk-safe marker 기반 force stop fallback은 사용하지 않는 원칙을 문서화했습니다.
 - 2026-06-04: golden VM lifecycle이 `stopping`인데 `rootfs-base.raw.gz`가 생성된 build workflow 문제를 확인했습니다. `rootfs-base` 생성은 golden VM lifecycle `stopped` proof를 요구하도록 변경하고, fresh guest runtime state의 `diskHealth` contract로 update preflight가 VM disk repair 대상 오류를 차단하도록 했습니다.
 - 2026-06-08: fresh install에서 `EXT4-fs error`, cloud-init `Input/output error`, guest kernel panic이 함께 나타나는 로그를 확인했습니다. packaging은 stopped lifecycle에 terminal failure reason이 없는지 확인하고, rootfs gzip 산출물을 생성 직후 검증합니다. VM disk repair는 runtime service stop 실패를 critical status로 남겨 `Archiving current VM disk`가 마지막 상태처럼 남지 않게 합니다.
+- 2026-06-08: local `vm-golden/logs/launcher.log`에서 golden rootfs 준비 중 `EXT4-fs error`, `Aborting journal`, read-only remount가 발생했고, 동시에 같은 `.tmp/vitalserver-vm-golden` `VITALSERVER_VM_HOME`을 쓰는 VM process가 2개 떠 있음을 확인했습니다. detached VM start는 same VM_HOME process scan으로 중복 start를 거부하고, package용 rootfs 기본 크기는 `8G`로 올립니다.
 - 이미 `EXT4-fs error`, `Aborting journal`, `Remounting filesystem read-only`가 발생한 VM disk는 이 수정만으로 복구되지 않습니다. Redis backup을 먼저 확인하고 VM disk repair/recreate 또는 재설치를 진행합니다.
