@@ -109,6 +109,8 @@ pid file은 이 상황의 충분한 lock이 아닙니다. 첫 VM process가 pid 
 
 이 재현에서는 golden cache를 삭제한 뒤 rootfs를 다시 만들었습니다. clean rebuild 이후 `launcher.log`에는 정상 mount/shutdown 로그만 남았고, `EXT4-fs error`, `Input/output error`, read-only remount 패턴은 재발하지 않았습니다. package용 rootfs는 Docker image load와 guest provisioning 여유를 위해 기본 크기를 `8G`로 올렸고, `4G` 요청은 build planning 단계에서 거부합니다.
 
+`internal/vm/wait/rootfs-ready`가 위와 같은 terminal guest failure를 보지 못하면 `rootfs-ready` marker가 절대 생성되지 않는 상태에서도 timeout까지 대기합니다. wait 단계는 marker만 기다리지 않고 VM lifecycle `failed` state와 launcher log의 ext4/kernel panic/soft lockup 패턴을 확인해 즉시 실패해야 합니다. 또한 detached VM start는 `launcher.log`를 append하지 않고 run마다 새로 시작해야 합니다. 과거 failure log가 다음 build의 판단 근거가 되면 stale observability가 현재 상태처럼 보이기 때문입니다.
+
 VM disk repair가 `Archiving current VM disk`에 머문 것처럼 보이면 실제로는 archive 이전 stop 단계에서 VM service 또는 VM process stop이 실패했을 수 있습니다. repair workflow는 service stop 실패를 `critical` runtime status로 기록한 뒤 중단해야 하며, 이 상태에서 현재 disk를 이동하거나 replacement disk를 start하지 않습니다.
 
 운영 판단:
@@ -126,4 +128,5 @@ VM disk repair가 `Archiving current VM disk`에 머문 것처럼 보이면 실�
 - 2026-06-04: golden VM lifecycle이 `stopping`인데 `rootfs-base.raw.gz`가 생성된 build workflow 문제를 확인했습니다. `rootfs-base` 생성은 golden VM lifecycle `stopped` proof를 요구하도록 변경하고, fresh guest runtime state의 `diskHealth` contract로 update preflight가 VM disk repair 대상 오류를 차단하도록 했습니다.
 - 2026-06-08: fresh install에서 `EXT4-fs error`, cloud-init `Input/output error`, guest kernel panic이 함께 나타나는 로그를 확인했습니다. packaging은 stopped lifecycle에 terminal failure reason이 없는지 확인하고, rootfs gzip 산출물을 생성 직후 검증합니다. VM disk repair는 runtime service stop 실패를 critical status로 남겨 `Archiving current VM disk`가 마지막 상태처럼 남지 않게 합니다.
 - 2026-06-08: local `vm-golden/logs/launcher.log`에서 golden rootfs 준비 중 `EXT4-fs error`, `Aborting journal`, read-only remount가 발생했고, 동시에 같은 `.tmp/vitalserver-vm-golden` `VITALSERVER_VM_HOME`을 쓰는 VM process가 2개 떠 있음을 확인했습니다. detached VM start는 same VM_HOME process scan으로 중복 start를 거부하고, package용 rootfs 기본 크기는 `8G`로 올립니다.
+- 2026-06-09: `wait/rootfs-ready`가 guest kernel panic/soft lockup 이후에도 marker만 기다리며 timeout까지 멈춘 사례를 확인했습니다. wait 단계는 VM lifecycle failure와 launcher log terminal pattern을 즉시 실패로 처리하고, detached start는 launcher log를 append하지 않고 새 run log로 시작합니다.
 - 이미 `EXT4-fs error`, `Aborting journal`, `Remounting filesystem read-only`가 발생한 VM disk는 이 수정만으로 복구되지 않습니다. Redis backup을 먼저 확인하고 VM disk repair/recreate 또는 재설치를 진행합니다.

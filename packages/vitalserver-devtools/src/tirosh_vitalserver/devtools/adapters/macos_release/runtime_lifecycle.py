@@ -38,6 +38,16 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
 )
 from tirosh_vitalserver.devtools.config.paths import resolve_path
 
+ROOTFS_TERMINAL_LOG_PATTERNS = (
+    "EXT4-fs error",
+    "Aborting journal",
+    "Remounting filesystem read-only",
+    "Unable to handle kernel NULL pointer dereference",
+    "Internal error: Oops:",
+    "watchdog: BUG: soft lockup",
+    "rcu: INFO: rcu_preempt detected stalls",
+)
+
 
 def build_runtime(input: RuntimeBuildInput) -> int:
     root = repo_root()
@@ -125,7 +135,7 @@ def start_runtime_detached(input: RuntimeVmHomeInput) -> int:
     env = os.environ.copy()
     env["VITALSERVER_VM_HOME"] = str(vm_home)
     env["VITALSERVER_VM_DETACHED"] = "1"
-    with log_file.open("ab") as log:
+    with log_file.open("wb") as log:
         subprocess.Popen(
             [str(settings.runtime_cli), "start"],
             env=env,
@@ -196,6 +206,8 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
             for line in marker.read_text().splitlines():
                 print(f"  {line}")
             return 0
+        fail_if_runtime_lifecycle_failed(input.vm_home)
+        fail_if_rootfs_launcher_log_has_terminal_failure(input.vm_home)
         time.sleep(3)
     raise SystemExit(
         f"error: timed out waiting for {marker}\n"
@@ -325,6 +337,52 @@ def running_vm_processes_for_home(vm_home: Path) -> list[int]:
                 f"line={line}"
             ) from None
     return pids
+
+
+def fail_if_runtime_lifecycle_failed(vm_home: str | Path) -> None:
+    lifecycle = vm_home_path(vm_home) / "run/vm-lifecycle.json"
+    if not lifecycle.exists():
+        return
+    try:
+        document = json.loads(lifecycle.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(
+            f"error: failed to read VM lifecycle while waiting for rootfs: "
+            f"{lifecycle}: {error}"
+        ) from error
+
+    state = document.get("state")
+    if state != "failed":
+        return
+    terminal_reason = document.get("terminalReason", "unknown")
+    message = document.get("message", "")
+    raise SystemExit(
+        "error: VM lifecycle failed while waiting for rootfs marker: "
+        f"terminalReason={terminal_reason} message={message}\n"
+        f"Check VM launcher log: {launcher_log(vm_home)}"
+    )
+
+
+def fail_if_rootfs_launcher_log_has_terminal_failure(vm_home: str | Path) -> None:
+    log_file = launcher_log(vm_home)
+    if not log_file.exists():
+        return
+    try:
+        log_text = log_file.read_text(encoding="utf-8", errors="replace")
+    except OSError as error:
+        raise SystemExit(
+            "error: failed to read VM launcher log while waiting for rootfs: "
+            f"{log_file}: {error}"
+        ) from error
+
+    for pattern in ROOTFS_TERMINAL_LOG_PATTERNS:
+        if pattern not in log_text:
+            continue
+        raise SystemExit(
+            "error: VM launcher log shows terminal guest failure while waiting "
+            f"for rootfs marker: pattern={pattern!r}\n"
+            f"Check VM launcher log: {log_file}"
+        )
 
 
 def launcher_log(vm_home: str | Path) -> Path:

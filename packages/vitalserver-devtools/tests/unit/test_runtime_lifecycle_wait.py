@@ -6,6 +6,7 @@ import pytest
 
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
     running_vm_processes_for_home,
+    wait_for_rootfs_ready,
     wait_for_runtime_stopped,
 )
 from tirosh_vitalserver.devtools.application.inputs import RuntimeWaitInput
@@ -34,6 +35,54 @@ def test_wait_for_runtime_stopped_rejects_stopping_lifecycle(tmp_path):
                 config=tmp_path / "config.toml",
                 vm_home=tmp_path,
                 timeout=0,
+            )
+        )
+
+
+def test_wait_for_rootfs_ready_rejects_failed_lifecycle(tmp_path):
+    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
+    lifecycle.parent.mkdir(parents=True)
+    lifecycle.write_text(
+        json.dumps(
+            {
+                "state": "failed",
+                "terminalReason": "guest-kernel-panic",
+                "message": "guest kernel panic detected",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match="VM lifecycle failed while waiting for rootfs marker",
+    ):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+            )
+        )
+
+
+def test_wait_for_rootfs_ready_rejects_terminal_launcher_log(tmp_path):
+    log_file = tmp_path / "logs" / "launcher.log"
+    log_file.parent.mkdir(parents=True)
+    log_file.write_text(
+        "Unable to handle kernel NULL pointer dereference at virtual address 10\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match="VM launcher log shows terminal guest failure",
+    ):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
             )
         )
 
