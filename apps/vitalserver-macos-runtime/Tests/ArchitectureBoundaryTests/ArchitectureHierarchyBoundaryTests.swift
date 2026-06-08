@@ -2470,6 +2470,39 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
+    func testTestKitEndpointResolutionDoesNotCollapseFailureReasonToNil() throws {
+        let root = packageRoot()
+        let configurationText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Adapters/Outbound/MacRuntimeControlClient/TestKit/MacTestKitControllerConfiguration.swift"
+            ),
+            encoding: .utf8
+        )
+        let controllerText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Adapters/Outbound/MacRuntimeControlClient/TestKit/MacTestKitController.swift"
+            ),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            configurationText.contains("enum MacTestKitAPIEndpointResolution"),
+            "TestKit endpoint resolution must carry explicit availability and failure reason"
+        )
+        XCTAssertTrue(
+            configurationText.contains("case unavailable(String)"),
+            "TestKit endpoint resolution must not collapse missing endpoint state into nil"
+        )
+        XCTAssertFalse(
+            configurationText.contains("func baseURL(from status: RuntimeStatus) -> String?"),
+            "TestKit endpoint source should return a typed resolution, not optional URL text"
+        )
+        XCTAssertFalse(
+            controllerText.contains("unavailableDescription"),
+            "Controller should consume endpoint resolution reason instead of reconstructing it separately"
+        )
+    }
+
     func testRecorderActivityDisplayDoesNotHideInvalidTimestampsAsOldSamples() throws {
         let file = packageRoot()
             .appendingPathComponent("Sources/Adapters/Inbound/MacControlPanel/Presentation/Views/RuntimeRecorderActivityChartDataBuilder.swift")

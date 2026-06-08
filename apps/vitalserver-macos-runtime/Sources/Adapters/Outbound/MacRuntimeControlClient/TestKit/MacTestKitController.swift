@@ -59,8 +59,10 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         }
 
         let runtimeStatus = await statusProvider()
-        guard let apiBaseURL = apiBaseURL(from: runtimeStatus) else {
-            let message = configuration.apiEndpoint.unavailableDescription
+        switch apiEndpointResolution(from: runtimeStatus) {
+        case .available(let apiBaseURL):
+            return await loadAvailableTestKitStatus(runtimeStatus: runtimeStatus, apiBaseURL: apiBaseURL)
+        case .unavailable(let message):
             return RuntimeTestKitStatus(
                 enabled: true,
                 state: .failed,
@@ -72,7 +74,9 @@ public final class MacTestKitController: RuntimeTestKitControlling {
                 ]
             )
         }
+    }
 
+    private func loadAvailableTestKitStatus(runtimeStatus: RuntimeStatus, apiBaseURL: String) async -> RuntimeTestKitStatus {
         let apiHealth = await testKitAPIHealth(apiBaseURL: apiBaseURL)
         guard apiHealth.isHealthy else {
             let service = RuntimeTestKitAvailabilityPolicy.service(
@@ -222,19 +226,21 @@ public final class MacTestKitController: RuntimeTestKitControlling {
     }
 
     private func requireAPIBaseURL() async throws -> String {
-        guard let apiBaseURL = await apiBaseURL() else {
-            throw MacTestKitControllerError.apiEndpointUnavailable(configuration.apiEndpoint.unavailableDescription)
+        switch await apiEndpointResolution() {
+        case .available(let apiBaseURL):
+            return apiBaseURL
+        case .unavailable(let message):
+            throw MacTestKitControllerError.apiEndpointUnavailable(message)
         }
-        return apiBaseURL
     }
 
-    private func apiBaseURL() async -> String? {
+    private func apiEndpointResolution() async -> MacTestKitAPIEndpointResolution {
         let status = await statusProvider()
-        return apiBaseURL(from: status)
+        return apiEndpointResolution(from: status)
     }
 
-    private func apiBaseURL(from status: RuntimeStatus) -> String? {
-        configuration.apiEndpoint.baseURL(from: status)
+    private func apiEndpointResolution(from status: RuntimeStatus) -> MacTestKitAPIEndpointResolution {
+        configuration.apiEndpoint.resolve(from: status)
     }
 
     private func sessionAction(

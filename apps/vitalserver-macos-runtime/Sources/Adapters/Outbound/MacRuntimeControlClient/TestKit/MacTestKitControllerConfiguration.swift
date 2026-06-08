@@ -7,27 +7,25 @@ public enum MacTestKitAPIEndpointSource: Equatable, Sendable {
     case explicit(baseURL: String)
     case runtimeStatusVMIP(port: Int)
 
-    func baseURL(from status: RuntimeStatus) -> String? {
+    func resolve(from status: RuntimeStatus) -> MacTestKitAPIEndpointResolution {
         switch self {
         case .explicit(let baseURL):
             let normalized = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            return normalized.isEmpty ? nil : normalized
+            return normalized.isEmpty
+                ? .unavailable("TestKit container API endpoint is not configured.")
+                : .available(normalized)
         case .runtimeStatusVMIP(let port):
             guard let vmIP = status.vmIP, !vmIP.isEmpty else {
-                return nil
+                return .unavailable("TestKit container API is unavailable because the VM IP is not known yet.")
             }
-            return "http://\(vmIP):\(port)"
+            return .available("http://\(vmIP):\(port)")
         }
     }
+}
 
-    var unavailableDescription: String {
-        switch self {
-        case .explicit:
-            return "TestKit container API endpoint is not configured."
-        case .runtimeStatusVMIP:
-            return "TestKit container API is unavailable because the VM IP is not known yet."
-        }
-    }
+public enum MacTestKitAPIEndpointResolution: Equatable, Sendable {
+    case available(String)
+    case unavailable(String)
 }
 
 public struct MacTestKitControllerConfiguration: Equatable, Sendable {

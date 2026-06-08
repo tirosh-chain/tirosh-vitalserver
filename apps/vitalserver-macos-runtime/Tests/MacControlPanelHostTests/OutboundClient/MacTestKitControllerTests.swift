@@ -56,6 +56,52 @@ final class MacTestKitControllerTests: XCTestCase {
         ])
     }
 
+    func testExplicitEmptyAPIEndpointReportsConfiguredEndpointUnavailable() async {
+        let controller = MacTestKitController(
+            configuration: MacTestKitControllerConfiguration(
+                enabled: true,
+                apiEndpoint: .explicit(baseURL: "///")
+            ),
+            statusProvider: { RuntimeStatus(vmIP: "192.168.64.8") },
+            apiHealthCheck: { _ in true }
+        )
+
+        let status = await controller.loadTestKitStatus()
+
+        XCTAssertNil(status.apiBaseURL)
+        XCTAssertEqual(status.state, .failed)
+        XCTAssertEqual(status.lastError, "TestKit container API endpoint is not configured.")
+        XCTAssertEqual(status.readIssues, [
+            RuntimeTestKitReadIssue(
+                source: "apiEndpoint",
+                message: "TestKit container API endpoint is not configured."
+            ),
+        ])
+    }
+
+    func testMutationUsesEndpointResolutionFailureReason() async {
+        let controller = MacTestKitController(
+            configuration: MacTestKitControllerConfiguration(
+                enabled: true,
+                apiEndpoint: .runtimeStatusVMIP(port: 18322)
+            ),
+            statusProvider: { RuntimeStatus(vmIP: nil) },
+            apiHealthCheck: { _ in true }
+        )
+
+        do {
+            _ = try await controller.createTestKitBeds(RuntimeTestKitCreateBedsRequest(count: 1))
+            XCTFail("Expected missing VM IP endpoint failure")
+        } catch let error as MacTestKitControllerError {
+            XCTAssertEqual(
+                error,
+                .apiEndpointUnavailable("TestKit container API is unavailable because the VM IP is not known yet.")
+            )
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
     func testControllerUsesInjectedHTTPClientForHealthSessionsAndBeds() async throws {
         let client = FakeMacTestKitHTTPClient()
         let session = testKitSession(id: "session-1", state: "running", bedRoomNames: ["OR-1"])
