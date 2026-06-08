@@ -137,6 +137,33 @@ describe("runtime console pages", () => {
     expect(screen.getByText(/2.0 KiB \/ 4.0 KiB/)).toBeInTheDocument();
   });
 
+  it("renders same-host service URLs as browser-reachable links", () => {
+    const baseOverview = overview();
+    hooks.useRuntimeOverview.mockReturnValue(
+      query({
+        ...baseOverview,
+        settings: {
+          ...baseOverview.settings,
+          vitalServerURL: "",
+          remoteConsoleURL: "",
+          publicHost: "",
+          publicPort: 18080,
+          runtimeControlPort: 18321
+        }
+      })
+    );
+
+    renderPage(<StatusPage />);
+
+    const hostname = globalThis.location.hostname;
+    expect(
+      screen.getByRole("link", { name: `http://${hostname}:18080/` })
+    ).toHaveAttribute("href", `http://${hostname}:18080/`);
+    expect(
+      screen.getByRole("link", { name: `http://${hostname}:18321/` })
+    ).toHaveAttribute("href", `http://${hostname}:18321/`);
+  });
+
   it("does not infer missing status endpoint or resource fields", () => {
     const baseOverview = overview();
     hooks.useRuntimeOverview.mockReturnValue(
@@ -147,6 +174,7 @@ describe("runtime console pages", () => {
           vitalServerURL: "",
           remoteConsoleURL: "",
           publicHost: "",
+          publicPort: undefined,
           runtimeControlPort: undefined
         },
         status: {
@@ -231,8 +259,9 @@ describe("runtime console pages", () => {
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("Custom advertised URL"));
+    const hostname = globalThis.location.hostname;
     expect(
-      screen.getByText("Default advertised URL: http://(same host):18080/")
+      screen.getByText(`Default advertised URL: http://${hostname}:18080/`)
     ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("VitalServer listen port"), {

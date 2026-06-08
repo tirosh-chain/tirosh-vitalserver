@@ -104,7 +104,7 @@ public final class RuntimeViewModel: ObservableObject {
         let loadedSettings = initialSettings ?? controlClient.loadSettings()
         let resolvedSettings = localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings
         let resolvedStatus = initialStatus ?? controlClient.loadStatus(settings: resolvedSettings)
-        self.settings = resolvedSettings
+        self.settings = Self.settingsWithAdvertisedServiceURLPresets(resolvedSettings)
         self.status = resolvedStatus
         self.containerObservation = resolvedStatus.containerObservation
         let snapshots = RuntimePresentationSnapshotLoader(
@@ -400,7 +400,7 @@ public final class RuntimeViewModel: ObservableObject {
 
     private func loadRuntimeSettings() async {
         let nextSettings = await snapshots.loadSettings()
-        settings = nextSettings
+        settings = Self.settingsWithAdvertisedServiceURLPresets(nextSettings)
     }
 
     private func normalizeAdvertisedURLSettings() {
@@ -409,12 +409,18 @@ public final class RuntimeViewModel: ObservableObject {
     }
 
     private func applyAdvertisedServiceURLPresets() {
-        if settings.vitalServerURL.isEmpty {
+        settings = Self.settingsWithAdvertisedServiceURLPresets(settings)
+    }
+
+    private static func settingsWithAdvertisedServiceURLPresets(_ input: RuntimeSettings) -> RuntimeSettings {
+        var settings = input
+        if settings.vitalServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             settings.vitalServerURL = AppConstants.Product.vitalServerURL(proxyPort: settings.proxyPort)
         }
-        if settings.remoteConsoleURL.isEmpty {
+        if settings.remoteConsoleURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             settings.remoteConsoleURL = AppConstants.Product.remoteConsoleURL(port: settings.runtimeControlPort)
         }
+        return settings
     }
 
     func refreshBackupList() async {

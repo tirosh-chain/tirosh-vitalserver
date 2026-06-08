@@ -3,7 +3,8 @@ import type { RuntimeControlOverview } from "@/domain/runtime-control/contracts/
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
 import {
   formatHTTPStatus,
-  runtimeURL
+  runtimeURL,
+  sameHostRuntimeURL
 } from "@/domain/runtime-control/formatting/http";
 import {
   formatRuntimeState,
@@ -46,8 +47,9 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
   const state = status?.runtimeState;
   const stats = status?.dataDirectoryStats;
   const vitalRecorder = overview.vitalRecorder;
-  const vitalServerURL = advertisedVitalServerURL(overview);
-  const remoteConsoleURL = advertisedRemoteConsoleURL(overview);
+  const browserHostname = currentBrowserHostname();
+  const vitalServerURL = advertisedVitalServerURL(overview, browserHostname);
+  const remoteConsoleURL = advertisedRemoteConsoleURL(overview, browserHostname);
 
   return (
     <div className="page-stack">
@@ -201,7 +203,8 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
 }
 
 function advertisedVitalServerURL(
-  overview: RuntimeControlOverview
+  overview: RuntimeControlOverview,
+  browserHostname: string | undefined
 ): string | null {
   const advertised = overview.settings?.vitalServerURL?.trim();
   if (advertised) {
@@ -210,6 +213,12 @@ function advertisedVitalServerURL(
   if (!overview.settings) {
     return null;
   }
+  if (!overview.settings.publicHost.trim()) {
+    return sameHostRuntimeURL({
+      hostname: browserHostname,
+      port: overview.settings.publicPort
+    });
+  }
   return runtimeURL({
     host: overview.settings.publicHost,
     port: overview.settings.publicPort
@@ -217,7 +226,8 @@ function advertisedVitalServerURL(
 }
 
 function advertisedRemoteConsoleURL(
-  overview: RuntimeControlOverview
+  overview: RuntimeControlOverview,
+  browserHostname: string | undefined
 ): string | null {
   const advertised = overview.settings?.remoteConsoleURL?.trim();
   if (advertised) {
@@ -226,7 +236,14 @@ function advertisedRemoteConsoleURL(
   if (typeof overview.settings?.runtimeControlPort !== "number") {
     return null;
   }
-  return `http://127.0.0.1:${overview.settings.runtimeControlPort}/`;
+  return sameHostRuntimeURL({
+    hostname: browserHostname,
+    port: overview.settings.runtimeControlPort
+  });
+}
+
+function currentBrowserHostname(): string | undefined {
+  return globalThis.location?.hostname;
 }
 
 function serviceStatusDetail(

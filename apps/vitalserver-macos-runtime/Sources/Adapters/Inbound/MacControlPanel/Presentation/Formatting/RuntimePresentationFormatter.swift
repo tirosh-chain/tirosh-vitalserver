@@ -4,7 +4,6 @@ import RuntimeControl
 import Errors
 
 public protocol RuntimePresentationVocabulary {
-    var advertisedURLSameHostLabel: String { get }
     var unknownText: String { get }
     var updateBundleConfirmationText: String { get }
     var applySettingsConfirmationText: String { get }
@@ -40,14 +39,14 @@ public struct RuntimePresentationFormatter {
     public func vitalServerStatusURL(settings: RuntimeSettings) -> ServiceURLPresentation {
         serviceStatusURL(
             explicitURL: settings.vitalServerURL,
-            displayFallback: "http://\(vocabulary.advertisedURLSameHostLabel):\(settings.proxyPort)/"
+            defaultURL: AppConstants.Product.vitalServerURL(proxyPort: settings.proxyPort)
         )
     }
 
     public func remoteConsoleStatusURL(settings: RuntimeSettings) -> ServiceURLPresentation {
         serviceStatusURL(
             explicitURL: settings.remoteConsoleURL,
-            displayFallback: "http://\(vocabulary.advertisedURLSameHostLabel):\(settings.runtimeControlPort)/"
+            defaultURL: AppConstants.Product.remoteConsoleURL(port: settings.runtimeControlPort)
         )
     }
 
@@ -188,11 +187,11 @@ public struct RuntimePresentationFormatter {
 
     private func serviceStatusURL(
         explicitURL: String,
-        displayFallback: String
+        defaultURL: String
     ) -> ServiceURLPresentation {
         let trimmed = explicitURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            return ServiceURLPresentation(displayURL: displayFallback, openURL: nil)
+            return ServiceURLPresentation(displayURL: defaultURL, openURL: defaultURL)
         }
         return ServiceURLPresentation(displayURL: trimmed, openURL: trimmed)
     }
@@ -209,7 +208,6 @@ public struct RuntimePresentationFormatter {
 }
 
 private struct AppRuntimePresentationVocabulary: RuntimePresentationVocabulary {
-    var advertisedURLSameHostLabel: String { AppConstants.Labels.advertisedURLSameHost }
     var unknownText: String { AppConstants.StatusText.unknown }
     var updateBundleConfirmationText: String { AppConstants.StatusText.updateBundleConfirmation }
     var applySettingsConfirmationText: String { AppConstants.StatusText.applySettingsConfirmation }

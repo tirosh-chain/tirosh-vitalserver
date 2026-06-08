@@ -18,6 +18,7 @@ import {
   validateRuntimeSettings,
   type RuntimeCapabilityReadState
 } from "@/domain/runtime-control/settings/runtimeSettingsPolicy";
+import { sameHostRuntimeURL } from "@/domain/runtime-control/formatting/http";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ErrorState } from "@/components/ErrorState";
 import { Panel } from "@/components/Panel";
@@ -138,14 +139,23 @@ export function SettingsPage() {
 
   const proxyPort = parseOptionalNumber(draft.proxyPort);
   const runtimeControlPort = parseOptionalNumber(draft.runtimeControlPort);
+  const browserHostname = currentBrowserHostname();
+  const sameHostVitalServerURL = sameHostRuntimeURL({
+    hostname: browserHostname,
+    port: proxyPort
+  });
+  const sameHostRemoteConsoleURL = sameHostRuntimeURL({
+    hostname: browserHostname,
+    port: runtimeControlPort
+  });
   const runtimeControlURLPreview =
     runtimeControlPort === undefined
       ? "Remote Console port is not available."
-      : `Port ${runtimeControlPort}`;
+      : sameHostRemoteConsoleURL ?? "Browser host is not available.";
   const defaultAdvertisedURLPreview =
     proxyPort === undefined
       ? "Proxy port is not available."
-      : `http://(same host):${proxyPort}/`;
+      : sameHostVitalServerURL ?? "Browser host is not available.";
   const advertisedPort = parseOptionalNumber(draft.publicPort);
   const customAdvertisedURLPreview =
     draft.publicHost.trim() && advertisedPort !== undefined
@@ -416,6 +426,10 @@ export function SettingsPage() {
       </Panel>
     </div>
   );
+}
+
+function currentBrowserHostname(): string | undefined {
+  return globalThis.location?.hostname;
 }
 
 function changedRuntimeControlPortValue(
