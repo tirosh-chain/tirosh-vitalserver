@@ -25,7 +25,7 @@ final class RuntimeRollbackCompositionTests: XCTestCase {
                     XCTFail("specific rollback should not ask for latest backup")
                     return backup
                 },
-                isLaunchdLoaded: { service in service == .vm || service == .proxy },
+                isLaunchdLoaded: { _ in false },
                 stopRuntimeServices: { events.append("stop") },
                 startRuntimeServices: { policy in
                     events.append("start:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")
@@ -61,8 +61,8 @@ final class RuntimeRollbackCompositionTests: XCTestCase {
             "restore:nginx-bundle:nginx",
             "restore:guest-deploy:deploy",
             "tools:runtime-tools",
-            "start:true:true:false",
-            "wait:true:true:false",
+            "start:true:true:true",
+            "wait:true:true:true",
         ])
     }
 }

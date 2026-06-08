@@ -128,11 +128,12 @@ public struct RuntimeRollbackComposition {
     }
 
     private func serviceRestartPolicy() -> RuntimeServiceRestartPolicy {
+        // Rollback restores the installed runtime surface, not the transient launchd state left by a failed apply.
         RuntimeServiceRestartPolicy(
-            restartVM: operations.isLaunchdLoaded(.vm),
-            restartGuestLogSync: operations.isLaunchdLoaded(.guestLogSync),
-            restartProxy: operations.isLaunchdLoaded(.proxy),
-            restartWatchdog: operations.isLaunchdLoaded(.watchdog)
+            restartVM: true,
+            restartGuestLogSync: true,
+            restartProxy: true,
+            restartWatchdog: true
         )
     }
 

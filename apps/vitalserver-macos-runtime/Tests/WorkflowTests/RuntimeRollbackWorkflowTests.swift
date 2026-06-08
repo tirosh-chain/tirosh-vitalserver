@@ -83,6 +83,42 @@ final class RollbackRuntimeWorkflowTests: XCTestCase {
         XCTAssertEqual(harness.statuses.last?.level, .recovering)
     }
 
+    func testRunReportsHealthWaitFailureAfterRestartingRollbackServices() {
+        let harness = RollbackHarness()
+        harness.stepErrorAt = .rollbackWaitRuntimeHealth
+
+        XCTAssertThrowsError(try harness.useCase.run(
+            .specificBackup(harness.requestedBackup),
+            context: harness.executionContext,
+            operations: harness.operations
+        )) { error in
+            guard case TestRollbackUseCaseError.step = error else {
+                XCTFail("expected rollback health wait failure, got \(error)")
+                return
+            }
+        }
+
+        XCTAssertEqual(harness.effects, [
+            "stop",
+            "replace:rootfs-base.raw.gz:rootfs-base.raw.gz",
+            "replace:runtime-version.json:runtime-version.json",
+            "restore:app-bundle:VitalServer Manager.app",
+            "restore:nginx-bundle:nginx",
+            "restore:guest-deploy:deploy",
+            "tools:runtime-tools",
+            "start:true:false:true",
+            "wait:true:false:true",
+        ])
+        XCTAssertEqual(
+            harness.progressEvents.filter { $0.stepStatus == .completed }.map(\.step),
+            Array(RuntimeOperationPlans.rollback.steps.dropLast())
+        )
+        XCTAssertEqual(harness.progressEvents.last?.step, .rollbackWaitRuntimeHealth)
+        XCTAssertEqual(harness.progressEvents.last?.stepStatus, .failed)
+        XCTAssertEqual(harness.statuses.map(\.level), [.recovering])
+        XCTAssertFalse(harness.statuses.contains { $0.level == .healthy })
+    }
+
     func testPrepareUsesRequestedBackupAndBuildsContextFromExplicitObservations() throws {
         let requestedBackup = URL(fileURLWithPath: "/product/backups/backup-1")
         let backupRootfs = requestedBackup.appendingPathComponent(RuntimeFileNames.rootfsBase)
