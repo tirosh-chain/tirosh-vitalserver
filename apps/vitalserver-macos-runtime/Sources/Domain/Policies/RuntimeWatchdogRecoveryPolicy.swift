@@ -57,9 +57,25 @@ public enum RuntimeWatchdogRecoveryPolicy {
         ))
 
         guard plan.canRecover else {
+            if isOnlyServiceStateReadFailure(blockers: plan.blockers) {
+                return .recoveryDeferred(reason: plan.blockers.isEmpty ? reasons : reasonText(plan.blockers))
+            }
             return .unrecoverable(reason: plan.blockers.isEmpty ? reasons : reasonText(plan.blockers))
         }
         return .recover(reason: reasons, plan: plan)
+    }
+
+    private static func isOnlyServiceStateReadFailure(blockers: [String]) -> Bool {
+        let vmServicePrefix = "recovery-blocked-vm-service-state-"
+        let proxyServicePrefix = "recovery-blocked-proxy-service-state-"
+
+        guard !blockers.isEmpty else {
+            return false
+        }
+
+        return blockers.allSatisfy { blocker in
+            blocker.hasPrefix(vmServicePrefix) || blocker.hasPrefix(proxyServicePrefix)
+        }
     }
 
     public static func automaticRecoverySuppressionReason(_ snapshot: RuntimeHealthSnapshot) -> String? {

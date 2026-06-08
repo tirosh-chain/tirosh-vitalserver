@@ -225,7 +225,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         )
     }
 
-    func testServiceStateReadFailureBlocksAutomaticRecovery() {
+    func testServiceStateReadFailureDefersAutomaticRecovery() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(
                 vmService: .readFailed("launchctl denied"),
@@ -241,7 +241,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             decision,
-            .unrecoverable(
+            .recoveryDeferred(
                 reason: "recovery-blocked-vm-service-state-read_failed__launchctl_denied, recovery-blocked-proxy-service-state-permission_denied__launchctl_denied"
             )
         )

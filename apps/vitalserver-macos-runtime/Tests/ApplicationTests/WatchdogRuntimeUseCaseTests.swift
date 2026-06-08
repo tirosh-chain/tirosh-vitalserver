@@ -90,6 +90,33 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         )
     }
 
+    func testRecoveryDecisionDefersWhenServiceStatesAreReadFailures() {
+        let useCase = WatchdogRuntimeUseCase()
+
+        let decision = useCase.recoveryDecision(
+            snapshot: healthSnapshot(
+                vmService: .readFailed("launchctl denied"),
+                proxyService: .permissionDenied("launchctl denied"),
+                failureReasons: [
+                    .vmService("read failed: launchctl denied"),
+                    .proxyService("permission denied: launchctl denied"),
+                ]
+            ),
+            hostProxyLivenessHTTP: "204",
+            automaticRecoveryEnabled: true
+        )
+
+        guard case .recoveryDeferred(let plan) = decision else {
+            return XCTFail("expected recovery deferred decision")
+        }
+        XCTAssertEqual(plan.status, .degraded)
+        XCTAssertEqual(
+            plan.message,
+            "watchdog recovery deferred: recovery-blocked-vm-service-state-read_failed__launchctl_denied, recovery-blocked-proxy-service-state-permission_denied__launchctl_denied"
+        )
+        XCTAssertEqual(plan.printMessage, "watchdog: deferred")
+    }
+
     func testLifecycleMarkPlanOnlyMarksStartingOrBootstrappingLifecycle() {
         let useCase = WatchdogRuntimeUseCase()
         let bootstrapping = RuntimeVMLifecycleDocument(
