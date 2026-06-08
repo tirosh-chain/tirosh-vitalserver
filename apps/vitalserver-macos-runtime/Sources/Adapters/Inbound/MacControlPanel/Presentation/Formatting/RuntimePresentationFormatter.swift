@@ -199,7 +199,8 @@ public struct RuntimePresentationFormatter {
     ) -> ServiceURLPresentation {
         let trimmed = explicitURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            return ServiceURLPresentation(displayURL: defaultURL, openURL: defaultURL)
+            let displayFallback = defaultURL
+            return ServiceURLPresentation(displayURL: displayFallback, openURL: nil)
         }
         return ServiceURLPresentation(displayURL: trimmed, openURL: trimmed)
     }
