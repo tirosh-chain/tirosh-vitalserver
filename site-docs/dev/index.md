@@ -31,19 +31,19 @@ release는 Helper-managed runtime을 중심으로 다룹니다. 이미 운영 �
 - Vital Server integration은 Helper runtime contract 뒤에서 명시적으로 연결합니다.
 - release 문서의 운영 주장과 dev 문서의 구현 근거가 서로 어긋나지 않아야 합니다.
 
-## 3. 기술 역량 신호
+## 3. 구현 관점
 
-이 문서군은 기술 용어 자체보다 현장 제품을 만들 때 필요한 판단과 경계를 보여주는 데
-목적이 있습니다.
+이 문서군은 기술 용어를 앞세우기보다, Vital Server Helper를 현장 제품으로 만들기 위해
+어떤 문제를 어떻게 다루는지 설명합니다.
 
-| 역량 | 이 프로젝트에서 드러나는 방식 |
+| 관점 | 이 프로젝트에서 다루는 내용 |
 |---|---|
-| 현장 운영 제품화 | macOS host, Linux guest, proxy, update, recovery, sleep prevention을 하나의 운영 표면으로 묶음 |
-| 기존 VitalServer 지원 예정 | 기존 운영 환경에 연결하는 External mode를 별도 소유권과 상태 contract로 설계 |
-| 상태 해석 안정성 | missing, invalid, failed, stale, empty를 합치지 않고 UI/API까지 같은 의미로 전달 |
-| Clean Architecture 적용 | 핵심 판단과 외부 작업을 분리해 변경 영향을 제한하고, VM/Redis/nginx 없이도 상태 판단과 실패 케이스를 테스트 |
-| DDD 기반 언어 정리 | recorder, bed, runtime, observer, support bundle 같은 운영 개념을 코드와 문서에서 같은 뜻으로 사용 |
-| 반복 검증 체계 | testkit, contract test, runtime chaos, release check로 실제 장비가 없어도 주요 흐름을 재현 |
+| 현장 운영 구조 | macOS host, Linux guest, proxy, update, recovery, sleep prevention을 하나의 운영 표면으로 묶음 |
+| 기존 VitalServer 지원 방향 | 기존 운영 환경에 연결하는 External mode를 별도 소유권과 상태 contract로 설계 |
+| 상태 해석 기준 | missing, invalid, failed, stale, empty를 합치지 않고 UI/API까지 같은 의미로 전달 |
+| 코드 책임 분리 | 핵심 판단과 외부 작업을 분리해 변경 영향을 제한하고, VM/Redis/nginx 없이도 상태 판단과 실패 케이스를 테스트 |
+| 운영 용어 정리 | recorder, bed, runtime, observer, support bundle 같은 운영 개념을 코드와 문서에서 같은 뜻으로 사용 |
+| 반복 검증 | testkit, contract test, runtime chaos, release check로 실제 장비가 없어도 주요 흐름을 재현 |
 
 Clean Architecture와 DDD는 이름 자체보다 효과가 중요합니다. 이 repository에서는 상태 소유자,
 핵심 판단, 외부 작업, 표시 책임을 나눠서 External VitalServer mode, managed runtime,
