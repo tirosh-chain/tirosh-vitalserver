@@ -31,6 +31,7 @@ public enum RuntimeUninstallWorkflowEvent: Equatable, Sendable {
     case receiptsForgetStarted
     case receiptForgetFailed(identifier: String, reason: String)
     case packageReceiptsObserved([RuntimePackageReceiptState])
+    case forceCleanupContinue
 }
 
 public enum RuntimeUninstallWorkflowCommand: Equatable, Sendable {
@@ -132,6 +133,13 @@ public enum RuntimeUninstallTransitionPolicy {
                 message: "runtime stop state blocked"
             )
 
+        case (.serviceStopBlocked, .forceCleanupContinue):
+            return RuntimeUninstallTransitionDecision(
+                state: .filesRemovalStarted,
+                persistedState: .filesRemovalStarted,
+                message: "force cleanup continuing after stop blockers"
+            )
+
         case (.stoppedVerified, .filesRemovalStarted):
             return RuntimeUninstallTransitionDecision(
                 state: .filesRemovalStarted,
@@ -152,6 +160,13 @@ public enum RuntimeUninstallTransitionPolicy {
                 persistedState: .filesRemovalBlocked,
                 blockers: blockers,
                 message: "file removal blocked"
+            )
+
+        case (.filesRemovalBlocked, .forceCleanupContinue):
+            return RuntimeUninstallTransitionDecision(
+                state: .receiptsForgetStarted,
+                persistedState: .receiptsForgetStarted,
+                message: "force cleanup continuing after cleanup artifacts blockers"
             )
 
         case (.cleanupVerified, .receiptsForgetStarted):
@@ -187,6 +202,14 @@ public enum RuntimeUninstallTransitionPolicy {
                 persistedState: .receiptsForgetBlocked,
                 blockers: blockers,
                 message: "package receipt forget blocked"
+            )
+
+        case (.receiptsForgetBlocked, .forceCleanupContinue):
+            return RuntimeUninstallTransitionDecision(
+                state: .completed,
+                persistedState: .completed,
+                commands: [.complete],
+                message: "uninstall completed"
             )
 
         default:

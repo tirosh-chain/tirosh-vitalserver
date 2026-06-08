@@ -113,7 +113,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime repair-services
       vitalserver-vm runtime start-services
       vitalserver-vm runtime stop-services
-      vitalserver-vm runtime uninstall [--clean]
+      vitalserver-vm runtime uninstall [--clean|--force-clean|--force-clean-uninstaller]
     """
 
     private static func requiredBundleURL(in arguments: [String], usage: String) throws -> URL {
@@ -132,17 +132,24 @@ extension RuntimeLifecycleCommand {
 
     private static func parseUninstallCommand(_ arguments: [String]) throws -> RuntimeUninstallCommand {
         var clean = false
+        var forceClean = false
         for argument in arguments {
             switch argument {
             case "--clean":
                 clean = true
+            case "--force-clean":
+                forceClean = true
+                clean = true
+            case "--force-clean-uninstaller":
+                forceClean = true
+                clean = true
             default:
                 throw RuntimeLifecycleCommandParseError.missingArgument(
-                    "usage: vitalserver-vm runtime uninstall [--clean]"
+                    "usage: vitalserver-vm runtime uninstall [--clean|--force-clean|--force-clean-uninstaller]"
                 )
             }
         }
-        return RuntimeUninstallCommand(clean: clean)
+        return RuntimeUninstallCommand(clean: clean, forceClean: forceClean)
     }
 
     private static func parseConfigureCommand(_ arguments: [String]) throws -> RuntimeConfigureCommand {

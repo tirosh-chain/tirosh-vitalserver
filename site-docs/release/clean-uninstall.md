@@ -1,7 +1,8 @@
-# Clean Uninstall Recovery
+# Force Clean Uninstaller (Clean Uninstall Recovery)
 
 이 문서는 fresh install이 기존 설치 흔적 때문에 막힌 Mac에서 Vital Server Helper를 완전히
-제거한 뒤 다시 설치하기 위한 지원 절차입니다.
+제거한 뒤 다시 설치하기 위한 지원 절차입니다. 실무에서는 **Force Clean Uninstaller**로
+부르며 `runtime uninstall --force-clean-uninstaller`를 사용합니다.
 
 Clean Uninstall은 보존용 제거가 아니라 Vital Server Helper가 소유한 데이터와 기능을 모두
 삭제하는 복구 작업입니다. VM disk, runtime 설정, logs, backups, Redis backups, 설정된 Vital
@@ -55,7 +56,7 @@ Install VitalServer Helper.pkg
 있습니다.
 
 ```sh
-sudo /usr/local/bin/tirosh-vitalserver-uninstall --clean
+sudo /usr/local/bin/tirosh-vitalserver-uninstall --force-clean-uninstaller
 ```
 
 완료 여부는 아래 로그로 확인합니다.
@@ -69,7 +70,7 @@ tail -n 200 /private/tmp/tirosh-vitalserver-uninstall.log
 
 ## Support Checklist
 
-1. Helper app이 열려 있으면 종료합니다.
+1. Helper app이 실행 중이면 clean uninstaller가 대기 후 필요 시 강제 종료합니다.
 2. `VitalServerHelperCleanUninstaller-<version>.pkg`를 실행합니다.
 3. `/private/tmp/tirosh-vitalserver-uninstall.log`에서 완료를 확인합니다.
 4. Mac을 재시동합니다.

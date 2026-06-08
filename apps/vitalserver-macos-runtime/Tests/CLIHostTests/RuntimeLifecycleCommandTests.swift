@@ -33,6 +33,20 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         )
     }
 
+    func testParsesForceCleanUninstallCommand() throws {
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["uninstall", "--force-clean"]),
+            .uninstall(RuntimeUninstallCommand(clean: true, forceClean: true))
+        )
+    }
+
+    func testParsesForceCleanUninstallerUninstallCommand() throws {
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parse(["uninstall", "--force-clean-uninstaller"]),
+            .uninstall(RuntimeUninstallCommand(clean: true, forceClean: true))
+        )
+    }
+
     func testParsesConfigureArgumentsIntoTypedCommand() throws {
         let command = try RuntimeLifecycleCommand.parse([
             "configure",
@@ -129,7 +143,11 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime repair-proxy"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime repair-services"))
         XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime stop-services"))
-        XCTAssertTrue(RuntimeLifecycleCommand.usage.contains("vitalserver-vm runtime uninstall [--clean]"))
+        XCTAssertTrue(
+            RuntimeLifecycleCommand.usage.contains(
+                "vitalserver-vm runtime uninstall [--clean|--force-clean|--force-clean-uninstaller]"
+            )
+        )
     }
 
     private func assertMissingArgument(

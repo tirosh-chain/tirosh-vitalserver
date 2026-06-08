@@ -27,26 +27,54 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+find_helper_pids() {
+  /usr/bin/pgrep -f -- "${manager_app}/Contents/MacOS/VitalServer Helper" || \
+    /usr/bin/pgrep -f -- "VitalServer Helper" || true
+}
+
 wait_for_helper_app_exit() {
-  local helper_executable="${manager_app}/Contents/MacOS/VitalServer Helper"
   local attempts=80
   local index
-
-  if [ ! -x "${helper_executable}" ]; then
-    return 0
-  fi
+  local pids
 
   for ((index = 0; index < attempts; index++)); do
-    if ! /usr/bin/pgrep -f -- "${helper_executable}" >/dev/null 2>&1; then
+    pids="$(find_helper_pids)"
+    if [ -z "${pids}" ]; then
       return 0
     fi
+
     if [ "${index}" -eq 0 ]; then
       log "waiting for Helper app to exit before clean uninstall recovery"
     fi
     sleep 0.25
   done
 
-  log "Helper app is still running; aborting clean uninstall recovery before file removal"
+  pids="$(find_helper_pids)"
+  if [ -z "${pids}" ]; then
+    return 0
+  fi
+
+  log "Helper app is still running; terminating process(es): ${pids}"
+  /usr/bin/pkill -f -- "VitalServer Helper" || true
+  sleep 1
+
+  pids="$(find_helper_pids)"
+  if [ -z "${pids}" ]; then
+    log "Helper app terminated after graceful stop"
+    return 0
+  fi
+
+  log "Helper app is still running; force killing process(es): ${pids}"
+  /usr/bin/pkill -9 -f -- "VitalServer Helper" || true
+  sleep 1
+
+  pids="$(find_helper_pids)"
+  if [ -z "${pids}" ]; then
+    log "Helper app force-killed before clean uninstall recovery"
+    return 0
+  fi
+
+  log "Helper app could not be terminated; aborting clean uninstall recovery before file removal"
   exit 3
 }
 
@@ -58,5 +86,5 @@ fi
 wait_for_helper_app_exit
 
 log "clean uninstall recovery started"
-VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime uninstall --clean
+VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime uninstall --force-clean-uninstaller
 log "clean uninstall recovery completed log=${uninstall_log}"

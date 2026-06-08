@@ -43,6 +43,10 @@ final class RuntimeLifecycleCommandInterfaceTests: XCTestCase {
     func testUsageTextListsRuntimeCommandsAtInterfaceBoundary() {
         XCTAssertTrue(RuntimeLifecycleCommand.usageText.contains("vitalserver-vm runtime install"))
         XCTAssertTrue(RuntimeLifecycleCommand.usageText.contains("vitalserver-vm runtime configure"))
-        XCTAssertTrue(RuntimeLifecycleCommand.usageText.contains("vitalserver-vm runtime uninstall [--clean]"))
+        XCTAssertTrue(
+            RuntimeLifecycleCommand.usageText.contains(
+                "vitalserver-vm runtime uninstall [--clean|--force-clean|--force-clean-uninstaller]"
+            )
+        )
     }
 }

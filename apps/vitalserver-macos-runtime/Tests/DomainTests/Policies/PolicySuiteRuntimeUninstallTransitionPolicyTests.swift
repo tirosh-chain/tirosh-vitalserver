@@ -287,6 +287,39 @@ final class RuntimeUninstallTransitionPolicyTests: XCTestCase {
         }
     }
 
+    func testForceCleanupContinueCanBypassStopBlocking() throws {
+        let decision = try RuntimeUninstallTransitionPolicy.transition(
+            from: .serviceStopBlocked,
+            event: .forceCleanupContinue
+        )
+
+        XCTAssertEqual(decision.state, .filesRemovalStarted)
+        XCTAssertEqual(decision.persistedState, .filesRemovalStarted)
+        XCTAssertEqual(decision.commands, [])
+    }
+
+    func testForceCleanupContinueCanBypassArtifactBlocking() throws {
+        let decision = try RuntimeUninstallTransitionPolicy.transition(
+            from: .filesRemovalBlocked,
+            event: .forceCleanupContinue
+        )
+
+        XCTAssertEqual(decision.state, .receiptsForgetStarted)
+        XCTAssertEqual(decision.persistedState, .receiptsForgetStarted)
+        XCTAssertEqual(decision.commands, [])
+    }
+
+    func testForceCleanupContinueCanBypassReceiptBlocking() throws {
+        let decision = try RuntimeUninstallTransitionPolicy.transition(
+            from: .receiptsForgetBlocked,
+            event: .forceCleanupContinue
+        )
+
+        XCTAssertEqual(decision.state, .completed)
+        XCTAssertEqual(decision.persistedState, .completed)
+        XCTAssertEqual(decision.commands, [.complete])
+    }
+
     func testStartEventsPersistWithoutReemittingAlreadyApprovedCommands() throws {
         let fileRemovalStarted = try RuntimeUninstallTransitionPolicy.transition(
             from: .stoppedVerified,
