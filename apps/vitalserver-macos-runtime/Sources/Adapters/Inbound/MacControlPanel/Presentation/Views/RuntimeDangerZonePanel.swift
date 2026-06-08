@@ -93,6 +93,7 @@ struct RuntimeDangerZonePanel: View {
                     Button(AppConstants.Actions.standardUninstall, role: .destructive) {
                         showingUninstallConfirmation = true
                     }
+                    .disabled(true)
                     Button(AppConstants.Actions.cleanUninstall, role: .destructive) {
                         showingCleanUninstallConfirmation = true
                     }
@@ -106,6 +107,10 @@ struct RuntimeDangerZonePanel: View {
                     )
                 )
                 .fixedSize()
+                Text(AppConstants.Labels.standardUninstallTemporarilyUnavailable)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

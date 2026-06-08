@@ -521,6 +521,18 @@
     @apply min-w-[120px];
   }
 
+  .activity-window-control {
+    @apply flex flex-wrap items-center gap-3.5;
+  }
+
+  .activity-window-control label {
+    @apply inline-flex min-w-[260px] flex-1 items-center gap-3 font-bold text-app-muted;
+  }
+
+  .activity-window-control input[type="range"] {
+    @apply min-w-[180px] flex-1 accent-app-accent;
+  }
+
   .chart-meta {
     @apply ml-auto font-bold text-app-muted;
   }

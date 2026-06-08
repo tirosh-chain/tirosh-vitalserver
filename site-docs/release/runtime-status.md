@@ -1,84 +1,107 @@
 # Status Reference
 
-이 문서는 운영자가 보는 runtime 상태와 이벤트의 의미를 정리합니다. Runtime status는
-장애 원인을 확정하는 판정서가 아니라, 먼저 확인해야 할 상태를 보여주는 점검 정보입니다.
-상태가 `degraded` 또는 `critical`이면 event history와 logs를 함께 확인해야 합니다.
+이 문서는 macOS Helper app에서 운영자가 직접 보는 상태값의 의미를 정리합니다. 상태는
+장애 원인을 확정하는 판정서가 아니라, 어느 화면을 먼저 확인해야 하는지 알려주는 점검
+정보입니다.
 
-내부 state machine, guard, workflow sequencing은 dev 문서의 영역입니다.
+Runtime event history, observation pipeline, recorder anomaly timeline은
+[Observability Events](observability-events.md)에서 따로 다룹니다.
 
-## Where Status Comes From
+## 1. Helper App Status Surfaces
 
-| Source | 위치 또는 인터페이스 | 의미 |
+| 화면 | 표시하는 상태 |
+|---|---|
+| Status | overall health, VitalServer reachability, Runtime Control PWA reachability, data directory, recorder summary |
+| Recorders | VRecorder별 online/stale/offline 상태, IP, 연결 bed, 마지막 관측 시각, anomaly count |
+| Beds | bed별 online/stale/offline 상태, 연결 VRecorder, patient 연결 여부, observation count |
+| Advanced | VM/service 상태, operation, runtime version, failure reasons, service control |
+
+Status 화면은 요약 화면입니다. 세부 원인은 Recorders, Beds, Advanced, Observability, logs를
+함께 봅니다.
+
+## 2. Overall Health
+
+| 표시 | 의미 | 다음 확인 |
 |---|---|---|
-| status file | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` | 최신 runtime 상태 snapshot |
-| Helper UI/API | Runtime Control 화면과 API | status file과 관측 read model을 사람이 읽기 쉽게 표시 |
-| event history | runtime event read model | 상태 변경, 진행률, health, recovery, command 결과 이력 |
-| logs | `/Library/Application Support/VitalServerHelper/logs/` | 원인 추적용 실행 로그 |
+| Healthy | runtime 실행 파일, VM, guest HTTP, host proxy가 현재 기준에서 사용 가능 | Recorders/Beds에서 실제 관측 상태 확인 |
+| Needs attention | 실행은 가능하지만 일부 의존성, 관측, 또는 상태 문서가 주의 상태 | Advanced와 Observability 확인 |
+| Critical | runtime 실행 또는 사용에 직접 장애가 있음 | Advanced의 failure reasons와 logs 확인 |
+| Installing | 설치 또는 초기 runtime 구성이 진행 중 | 완료 대기, 실패 시 install log 확인 |
+| Updating | update bundle apply, guest activation, rollback 등 변경 작업 진행 중 | 진행 메시지와 logs 확인 |
+| Recovering | watchdog 또는 repair 흐름이 복구 중 | Advanced와 Observability 확인 |
+| Not installed | Helper runtime이 설치/실행 가능한 상태가 아님 | 설치 또는 Force Clean Uninstaller 절차 확인 |
+| Unknown | 상태 소스를 읽었지만 표시 가능한 판단으로 확정하지 못함 | status document/read error 확인 |
 
-## Status Levels
+`missing`, `invalid`, `failed`, `stale`, `empty`는 같은 의미가 아닙니다. UI는 이 값들을
+성공이나 기본값으로 합치지 않습니다.
 
-| 상태 | 운영 의미 |
+## 3. Runtime Services
+
+Advanced 화면의 service health는 macOS launchd와 runtime read model에서 온 상태를 표시합니다.
+
+| 서비스 | 의미 |
 |---|---|
-| `installing` | 설치 또는 초기 runtime 구성이 진행 중 |
-| `updating` | update bundle apply, guest activation, rollback 관련 작업이 진행 중 |
-| `recovering` | watchdog 또는 repair 흐름이 복구를 수행 중 |
-| `healthy` | 현재 관측 기준에서 runtime이 정상 |
-| `degraded` | 일부 기능이나 의존성이 실패했지만 전체 runtime 판단은 critical이 아님 |
-| `critical` | runtime 사용에 직접적인 장애가 있거나 복구/조치가 필요 |
-| `unknown` | 알 수 없는 상태 값이 들어왔으며 최신 계약과 맞지 않을 수 있음 |
+| VM service | local VM runtime lifecycle |
+| Host proxy service | macOS nginx host proxy |
+| Guest log sync service | guest/runtime log 동기화 |
+| Sleep prevention service | runtime 운용 중 macOS sleep 방지 |
+| Watchdog service | runtime 상태 관측과 복구 판단 |
 
-`missing`, `invalid`, `failed`, `stale`, `empty`는 같은 의미가 아닙니다. release
-표시에서도 이 값들을 성공이나 기본값으로 합치지 않아야 합니다.
-
-## Current Operation
-
-`runtime-status.json`의 `operation`은 현재 상태가 어떤 작업 흐름에서 기록되었는지
-나타냅니다.
-
-| operation 예 | 의미 |
+| 표시 | 의미 |
 |---|---|
-| `install` | 설치 흐름 |
-| `health` 또는 `status` | 상태 확인 또는 health check |
-| `watchdog` | watchdog 관측 또는 복구 판단 |
-| `apply-bundle` | product update bundle 적용 |
-| `activate-guest-update` | guest update activation |
-| `rollback` | rollback |
-| `repair-datastore`, `repair-vm-disk`, `repair-proxy`, `repair-services` | 명시적 repair 흐름 |
-| `start-services`, `stop-services`, `uninstall` | service lifecycle 또는 제거 작업 |
+| Running | launchd가 service를 loaded 상태로 보고함 |
+| Stopped | launchd가 service를 loaded 상태로 보고하지 않음 |
+| Read failed | service 상태 읽기에 실패함 |
+| Permission denied | 권한 문제로 service 상태를 읽지 못함 |
+| Unknown | 계약에 없는 service 상태가 들어옴 |
+| Updating | update 중이라 service 상태 대신 operation 상태를 우선 표시 |
+| Unavailable | 해당 service 상태를 표시할 명시 값이 없음 |
 
-## Progress
+service 상태가 `Stopped`라도 항상 장애를 뜻하지는 않습니다. 현재 operation, overall health,
+HTTP reachability를 같이 봅니다.
 
-진행 중 작업은 `progress`로 현재 step과 phase를 남깁니다.
+## 4. VRecorder Status
 
-| 필드 | 의미 |
+Recorders 화면은 recorder observer와 audit proxy에서 만든 관측 read model을 표시합니다.
+
+| 표시 | 의미 |
 |---|---|
-| `phase` | `preparing`, `running`, `waiting`, `recovering`, `completed`, `failed` 등 진행 구간 |
-| `step` | 현재 workflow step |
-| `stepStatus` | `pending`, `started`, `completed`, `failed`, `skipped` |
-| `message` | 사람이 읽는 진행 메시지 |
-| `reasonCodes` | 자동 처리나 troubleshooting에 사용할 수 있는 이유 코드 |
+| Online | 최신 관측 window에서 VRecorder activity가 확인됨 |
+| Stale | VRecorder가 알려져 있지만 최근 activity가 오래됨 |
+| Offline | VRecorder가 알려져 있으나 현재 online으로 보이지 않음 |
+| Not observed | 기대 또는 과거 기록은 있으나 현재 관측 문서에 없음 |
+| Unknown | 계약에 없는 recorder 상태가 들어옴 |
 
-## Event History
+Recorders 화면의 주요 열은 `VRecorder`, `Status`, `IP`, `Bed`, `Last seen`, `Anomaly`입니다.
+`History` 토글을 켜면 최신 관측에 없는 과거 recorder도 볼 수 있습니다.
 
-event history는 상태 snapshot을 대체하지 않습니다. 최신 판단은 status source를 보고,
-events는 왜 그렇게 되었는지 추적할 때 사용합니다.
+## 5. Bed Status
 
-| event type 예 | 의미 |
+Beds 화면은 bed와 VRecorder의 최신 관계를 표시합니다.
+
+| 표시 | 의미 |
 |---|---|
-| `status-changed` | runtime status가 변경됨 |
-| `progress-updated` | 진행률 또는 workflow step이 갱신됨 |
-| `health-observed` | health snapshot이 관측됨 |
-| `runtime-command-started`, `runtime-command-completed`, `runtime-command-failed` | CLI/API command 실행 결과 |
-| `recovery-planned`, `recovery-triggered`, `recovery-completed` | watchdog 또는 repair 복구 흐름 |
-| `recovery-suppressed`, `recovery-deferred`, `watchdog-skipped` | 복구가 조건 때문에 실행되지 않음 |
-| `domain-error-observed`, `vm-error-observed` | domain 또는 VM 오류가 관측됨 |
-| `container-observed`, `vitaldb-observed`, `vitaldb-anomaly-detected` | container/VitalDB 계층 관측 이벤트 |
+| Online | 최신 관측 window에서 bed activity가 확인됨 |
+| Stale | bed가 알려져 있지만 최근 activity가 오래됨 |
+| Offline | bed가 알려져 있으나 현재 online으로 보이지 않음 |
+| Not observed | 기대 또는 과거 기록은 있으나 현재 관측 문서에 없음 |
+| Unknown | 계약에 없는 bed 상태가 들어옴 |
 
-## How To Read Status
+Beds 화면의 주요 열은 `Bed ID`, `Name`, `VRecorder`, `Status`, `Last seen`, `Anomaly`입니다.
+상세 영역은 patient 연결 여부, first seen, observation count, duplicate observation count를
+표시합니다.
 
-- `runtime-status.json`은 최신 상태 snapshot입니다.
-- event history는 원인 추적과 timeline 확인을 위한 이력입니다.
-- stale status를 healthy로 대체하지 않습니다.
-- missing file, decode failure, permission failure는 서로 다른 실패입니다.
-- UI/API는 상태를 표시할 수 있지만 domain 상태를 새로 만들거나 추론하지 않습니다.
-- 내부 전이 규칙과 chaos test matrix는 dev 문서에서 관리합니다.
+## 6. Read Failures
+
+상태는 임의로 판단하지 않습니다. 상태 소스를 읽지 못하면 별도 오류로 표시합니다.
+
+| 표시 위치 | 의미 |
+|---|---|
+| Status document read error | `runtime-status.json`을 읽거나 해석하지 못함 |
+| Guest runtime state read error | guest runtime state 계약을 읽거나 해석하지 못함 |
+| Data directory stats failed | 설정된 Vital files directory 통계를 읽지 못함 |
+| Recorder observation read issue | recorder/bed 관측 snapshot을 읽지 못함 |
+| Runtime event read issue | runtime event history를 읽지 못함 |
+
+read failure는 empty success가 아닙니다. 실패 상태가 보이면 로그 export와 함께 지원 담당자에게
+전달합니다.

@@ -10,6 +10,7 @@ public struct RuntimeRecorderActivityChartDataBuilder {
         from timeline: [RuntimeVitalRecorderActivityPoint]?,
         interval: RecorderActivityBucketInterval,
         period: RecorderActivityPeriod,
+        allSamplesPageIndex: Int? = nil,
         readError: String?
     ) -> RuntimeRecorderActivityDisplay {
         if let readError {
@@ -60,8 +61,15 @@ public struct RuntimeRecorderActivityChartDataBuilder {
             }
             return lhs < rhs
         }
-        let buckets = displayActivityBuckets(
-            activityBuckets(from: timeline, interval: interval),
+        let allBuckets = activityBuckets(from: timeline, interval: interval)
+        let allSamplesWindow = allSamplesWindow(
+            from: allBuckets,
+            interval: interval,
+            period: period,
+            requestedPageIndex: allSamplesPageIndex
+        )
+        let buckets = allSamplesWindow?.buckets ?? displayActivityBuckets(
+            allBuckets,
             interval: interval,
             period: period
         )
@@ -85,7 +93,8 @@ public struct RuntimeRecorderActivityChartDataBuilder {
             latestBucketBytesPerSecond: latestBucket.map {
                 Double($0.byteCount) / Double(max($0.bucketSeconds, 1))
             },
-            totalPackets: buckets.reduce(0) { $0 + $1.messageCount }
+            totalPackets: buckets.reduce(0) { $0 + $1.messageCount },
+            allSamplesWindow: allSamplesWindow
         )
     }
 
@@ -228,6 +237,59 @@ public struct RuntimeRecorderActivityChartDataBuilder {
         }
         return nil
     }
+
+    private func allSamplesWindow(
+        from buckets: [RecorderActivityChartBucket],
+        interval: RecorderActivityBucketInterval,
+        period: RecorderActivityPeriod,
+        requestedPageIndex: Int?
+    ) -> RecorderActivityAllSamplesWindow? {
+        guard period == .all else {
+            return nil
+        }
+        let filledBuckets = filledAllSamplesBuckets(buckets, interval: interval)
+        guard !filledBuckets.isEmpty else {
+            return RecorderActivityAllSamplesWindow(
+                buckets: [],
+                pageIndex: 0,
+                pageCount: 1,
+                windowStartedAt: nil,
+                windowEndedAt: nil
+            )
+        }
+
+        let bucketsPerWindow = RecorderActivityAllSamplesWindow.bucketsPerWindow(interval: interval)
+        let pageCount = max(Int(ceil(Double(filledBuckets.count) / Double(bucketsPerWindow))), 1)
+        let latestPageIndex = pageCount - 1
+        let pageIndex = min(max(requestedPageIndex ?? latestPageIndex, 0), latestPageIndex)
+        let startIndex = pageIndex * bucketsPerWindow
+        let pageBuckets = Array(filledBuckets[startIndex..<min(startIndex + bucketsPerWindow, filledBuckets.count)])
+        return RecorderActivityAllSamplesWindow(
+            buckets: pageBuckets,
+            pageIndex: pageIndex,
+            pageCount: pageCount,
+            windowStartedAt: pageBuckets.first?.bucketStartedAt,
+            windowEndedAt: pageBuckets.last.map { bucket in
+                guard let date = RuntimeRecorderActivityDateParser.date(from: bucket.bucketStartedAt) else {
+                    return bucket.bucketStartedAt
+                }
+                return RuntimeRecorderActivityDateParser.string(
+                    from: date.addingTimeInterval(Double(bucket.bucketSeconds))
+                )
+            }
+        )
+    }
+
+    private func filledAllSamplesBuckets(
+        _ buckets: [RecorderActivityChartBucket],
+        interval: RecorderActivityBucketInterval
+    ) -> [RecorderActivityChartBucket] {
+        guard let first = buckets.compactMap({ RuntimeRecorderActivityDateParser.date(from: $0.bucketStartedAt) }).min(),
+              let latest = buckets.compactMap({ RuntimeRecorderActivityDateParser.date(from: $0.bucketStartedAt) }).max() else {
+            return buckets
+        }
+        return filledActivityBuckets(buckets, start: first, end: latest, interval: interval)
+    }
 }
 
 public struct RuntimeRecorderActivityDisplay {
@@ -237,6 +299,7 @@ public struct RuntimeRecorderActivityDisplay {
     public let latestBucket: RecorderActivityChartBucket?
     public let latestBucketBytesPerSecond: Double?
     public let totalPackets: Int?
+    public let allSamplesWindow: RecorderActivityAllSamplesWindow?
 
     public init(
         state: RuntimeRecorderActivityDisplayState,
@@ -244,7 +307,8 @@ public struct RuntimeRecorderActivityDisplay {
         latestSample: RuntimeVitalRecorderActivityPoint?,
         latestBucket: RecorderActivityChartBucket?,
         latestBucketBytesPerSecond: Double?,
-        totalPackets: Int?
+        totalPackets: Int?,
+        allSamplesWindow: RecorderActivityAllSamplesWindow? = nil
     ) {
         self.state = state
         self.buckets = buckets
@@ -252,7 +316,22 @@ public struct RuntimeRecorderActivityDisplay {
         self.latestBucket = latestBucket
         self.latestBucketBytesPerSecond = latestBucketBytesPerSecond
         self.totalPackets = totalPackets
+        self.allSamplesWindow = allSamplesWindow
     }
+}
+
+public struct RecorderActivityAllSamplesWindow: Equatable {
+    public static let windowSeconds = 12 * 60 * 60
+
+    public static func bucketsPerWindow(interval: RecorderActivityBucketInterval) -> Int {
+        max(windowSeconds / interval.seconds, 1)
+    }
+
+    public let buckets: [RecorderActivityChartBucket]
+    public let pageIndex: Int
+    public let pageCount: Int
+    public let windowStartedAt: String?
+    public let windowEndedAt: String?
 }
 
 public enum RuntimeRecorderActivityDisplayState: Equatable {
@@ -285,7 +364,7 @@ public enum RecorderActivityPeriod: String, CaseIterable, Identifiable {
     case last15Minutes = "last-15-minutes"
     case lastHour = "last-hour"
     case last6Hours = "last-6-hours"
-    case last24Hours = "last-24-hours"
+    case last12Hours = "last-12-hours"
     case all
 
     public var id: String { rawValue }
@@ -298,8 +377,8 @@ public enum RecorderActivityPeriod: String, CaseIterable, Identifiable {
             return 60 * 60
         case .last6Hours:
             return 6 * 60 * 60
-        case .last24Hours:
-            return 24 * 60 * 60
+        case .last12Hours:
+            return 12 * 60 * 60
         case .all:
             return nil
         }
@@ -359,6 +438,8 @@ public struct RecorderActivityChartBucket: Identifiable {
     }
 }
 
+extension RecorderActivityChartBucket: Equatable {}
+
 public struct RecorderActivityChartBucketBuilder {
     public let bucketStartedAt: String
     public let bucketSeconds: Int
@@ -412,6 +493,10 @@ extension RecorderActivityBucketInterval {
 }
 
 extension RecorderActivityPeriod {
+    func isEnabled(for _: RecorderActivityBucketInterval) -> Bool {
+        true
+    }
+
     var title: String {
         switch self {
         case .last15Minutes:
@@ -420,8 +505,8 @@ extension RecorderActivityPeriod {
             return "Last hour"
         case .last6Hours:
             return "Last 6 hours"
-        case .last24Hours:
-            return "Last 24 hours"
+        case .last12Hours:
+            return "Last 12 hours"
         case .all:
             return "All"
         }

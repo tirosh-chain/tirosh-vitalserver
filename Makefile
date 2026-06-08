@@ -4,6 +4,9 @@ DOCKER_COMPOSE ?= docker compose
 UV ?= uv
 PYTHON ?= python3
 DEVTOOLS_RUNNER ?= $(if $(wildcard .venv/bin/vitalserver-devtools),.venv/bin/vitalserver-devtools,$(UV) run --project packages/vitalserver-devtools vitalserver-devtools)
+DOCS_HOST ?= 127.0.0.1
+DOCS_PORT ?= 8000
+DOCS_PORT_MAX ?= 8100
 
 COMPOSE_ENV_FILE ?=
 TESTKIT_CONFIG ?= config/testkit.toml
@@ -50,6 +53,7 @@ include make/vm.mk
 	runtime/prepare runtime/ip runtime/proxy/start runtime/clean \
 	runtime/interfaces runtime/network/shared runtime/network/bridged runtime/e2e/smoke \
 	runtime/permission/audit runtime/chaos runtime/chaos/loop runtime/coverage e2e/smoke e2e/local e2e/local/loop \
+	docs/build docs/serve \
 	devtools/version-source devtools/build devtools/app devtools/nginx/artifact devtools/nginx/bundle \
 	devtools/docker/images devtools/sign devtools/sign/bridged devtools/bridged/preflight \
 	devtools/init devtools/download devtools/cloud-init devtools/stage \
@@ -107,6 +111,14 @@ runtime/coverage: internal/vm/coverage
 e2e/smoke: internal/vm/e2e/smoke
 e2e/local: e2e/smoke pwa/check pwa/test pwa/build
 
+docs/build:
+	$(UV) run --group docs mkdocs build
+
+docs/serve:
+	@port="$$($(PYTHON) scripts/find_free_port.py "$(DOCS_HOST)" "$(DOCS_PORT)" "$(DOCS_PORT_MAX)")" || exit $$?; \
+	printf "Serving docs at http://$(DOCS_HOST):%s\n" "$$port"; \
+	$(UV) run --group docs mkdocs serve --dev-addr "$(DOCS_HOST):$$port"
+
 e2e/local/loop:
 	@iteration=1; \
 	while :; do \
@@ -140,20 +152,21 @@ devtools/wait/ip: internal/vm/wait/ip
 devtools/wait/http: internal/vm/wait/http
 devtools/package/clean: internal/vm/pkg/clean
 
-.PHONY: help help/compose help/dist help/runtime help/devtools help/proxy help/dev help/pwa help/all
+.PHONY: help help/compose help/dist help/runtime help/devtools help/proxy help/dev help/pwa help/docs help/all
 help:
 	@printf "NAME\n"
 	@printf "  tirosh-vitalserver - repository, compose sandbox, runtime, and distribution targets\n"
 	@printf "\n"
 	@printf "SYNOPSIS\n"
 	@printf "  make [TARGET] [VAR=value]...\n"
-	@printf "  make help/{compose|runtime|dist|pwa|dev|devtools|proxy|all}\n"
+	@printf "  make help/{compose|runtime|dist|pwa|docs|dev|devtools|proxy|all}\n"
 	@printf "\n"
 	@printf "COMMON TARGETS\n"
 	@printf "  dev/doctor      Check local developer tools and repository setup\n"
 	@printf "  dev/bootstrap   Prepare .env, submodules, proxy config, and optional Python env\n"
 	@printf "  compose/up      Start the Compose productization sandbox through host proxy\n"
 	@printf "  runtime/up      Start local macOS VM runtime and host proxy\n"
+	@printf "  docs/serve      Serve MkDocs site with automatic port fallback\n"
 	@printf "  dist/pkg/dev    Build development pkg\n"
 	@printf "\n"
 	@printf "HELP TOPICS\n"
@@ -161,6 +174,7 @@ help:
 	@printf "  help/runtime    Direct local runtime lifecycle\n"
 	@printf "  help/dist       Distribution package, install, update commands\n"
 	@printf "  help/pwa        Runtime Control PWA commands\n"
+	@printf "  help/docs       Documentation site commands\n"
 	@printf "  help/dev        Repository and Python development commands\n"
 	@printf "  help/devtools   Low-level build and staging steps\n"
 	@printf "  help/proxy      macOS host nginx proxy\n"
@@ -390,6 +404,22 @@ help/pwa:
 	@printf "VARIABLES\n"
 	@printf "  PWA_DIR=%s\n" "$(PWA_DIR)"
 
+help/docs:
+	@printf "NAME\n"
+	@printf "  tirosh-vitalserver-docs - documentation site targets\n"
+	@printf "\n"
+	@printf "SYNOPSIS\n"
+	@printf "  make docs/{serve|build} [DOCS_PORT=8000] [DOCS_PORT_MAX=8100]\n"
+	@printf "\n"
+	@printf "DOCS TARGETS\n"
+	@printf "  docs/serve                    Serve MkDocs site, choosing the first free port\n"
+	@printf "  docs/build                    Build MkDocs site into site/\n"
+	@printf "\n"
+	@printf "VARIABLES\n"
+	@printf "  DOCS_HOST=%s\n" "$(DOCS_HOST)"
+	@printf "  DOCS_PORT=%s\n" "$(DOCS_PORT)"
+	@printf "  DOCS_PORT_MAX=%s\n" "$(DOCS_PORT_MAX)"
+
 help/all:
 	@$(MAKE) --no-print-directory help/compose
 	@printf "\n"
@@ -398,6 +428,8 @@ help/all:
 	@$(MAKE) --no-print-directory help/dist
 	@printf "\n"
 	@$(MAKE) --no-print-directory help/pwa
+	@printf "\n"
+	@$(MAKE) --no-print-directory help/docs
 	@printf "\n"
 	@$(MAKE) --no-print-directory help/dev
 	@printf "\n"

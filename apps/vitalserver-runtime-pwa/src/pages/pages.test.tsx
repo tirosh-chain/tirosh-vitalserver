@@ -336,6 +336,31 @@ describe("runtime console pages", () => {
     expect(screen.getByText("No VRecorders have been observed.")).toBeInTheDocument();
   });
 
+  it("browses all recorder activity in twelve hour windows with one minute buckets", () => {
+    hooks.useVitalDBRecorders.mockReturnValue(query(recordersWithLongActivity()));
+
+    renderPage(<RecordersPage />);
+
+    expect(screen.queryByLabelText("Window")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Bucket")).toHaveValue("60");
+    expect(
+      within(screen.getByLabelText("Period")).getByRole("option", {
+        name: "Last 12 hours"
+      })
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Period"), {
+      target: { value: "all" }
+    });
+
+    const windowSlider = screen.getByLabelText("Window") as HTMLInputElement;
+    expect(windowSlider.max).toBe("1");
+    expect(windowSlider.value).toBe("1");
+
+    fireEvent.change(windowSlider, { target: { value: "0" } });
+    expect(windowSlider.value).toBe("0");
+  });
+
   it("shows missing recorder activity history as not reported", () => {
     hooks.useVitalDBRecorders.mockReturnValue(
       query({
@@ -1073,6 +1098,45 @@ function recorders() {
       bucketCount: 0,
       earliestBucketStartedAt: null,
       latestBucketStartedAt: null,
+      readError: null
+    }
+  };
+}
+
+function recordersWithLongActivity() {
+  const base = recorders();
+  return {
+    ...base,
+    recorders: [
+      {
+        ...base.recorders[0],
+        activityTimeline: [
+          {
+            observedAt: "2026-05-31T13:00:00Z",
+            windowSeconds: 300,
+            messageCount: 1,
+            byteCount: 100,
+            roomCount: 1,
+            messagesPerSecond: 1 / 300,
+            bytesPerSecond: 100 / 300,
+            buckets: Array.from({ length: 156 }, (_, index) => ({
+              bucketStartedAt: new Date(
+                Date.UTC(2026, 4, 31, 0, 0, 0) + index * 5 * 60 * 1000
+              ).toISOString(),
+              bucketSeconds: 300,
+              messageCount: index + 1,
+              byteCount: (index + 1) * 100,
+              roomCount: 1
+            }))
+          }
+        ]
+      }
+    ],
+    activityHistory: {
+      source: "sqliteProjection",
+      bucketCount: 156,
+      earliestBucketStartedAt: "2026-05-31T00:00:00.000Z",
+      latestBucketStartedAt: "2026-05-31T12:55:00.000Z",
       readError: null
     }
   };

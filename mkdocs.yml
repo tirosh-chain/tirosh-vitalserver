@@ -6,7 +6,8 @@ docs_dir: site-docs
 site_dir: site
 
 theme:
-  name: mkdocs
+  name: readthedocs
+  navigation_depth: 3
 
 markdown_extensions:
   - admonition
@@ -20,18 +21,13 @@ nav:
   - Release:
       - Overview: release/index.md
       - Usage: release/usage.md
-      - Clean Uninstall Recovery: release/clean-uninstall.md
+      - Force Clean Uninstaller: release/clean-uninstall.md
       - Capabilities: release/scope.md
       - Status Reference: release/runtime-status.md
+      - Observability Events: release/observability-events.md
   - Dev:
       - Overview: dev/index.md
       - Architecture: dev/architecture.md
-      - Runtime Model: dev/health-check-contract.md
-      - Service Catalog: dev/service-catalog.md
-      - Package Map: dev/package-map.md
-      - Mac Hardware Profile: dev/mac-hardware-profile.md
-      - API Reference: dev/api-contracts.md
-      - Build and Release: dev/build-and-release.md
-      - Testing: dev/testing.md
-      - Troubleshooting: dev/troubleshooting.md
-      - Repository Workflow: dev/github-issues.md
+      - Runtime Contracts: dev/runtime-contracts.md
+      - Repository Map: dev/repository-map.md
+      - Delivery & Validation: dev/delivery-validation.md

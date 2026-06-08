@@ -1,9 +1,23 @@
-# Package Map
+# Repository Map
 
 이 repository는 monorepo입니다. 각 package와 app은 역할 경계를 유지해야 합니다.
-이 문서는 코드 탐색을 시작할 때 사용할 지도입니다.
+이 문서는 실행 단위, source layout, dependency direction을 함께 보는 지도입니다.
 
-## Top-Level Layout
+## 1. Runtime Units
+
+| 서비스/패키지 | 공개 문서 노출 | 책임 |
+|---|---|---|
+| `apps/vitalserver` | Vital Server service | Vital Server integration wrapper와 runtime shim |
+| `apps/vitalserver-macos-runtime` | Vital Server Helper | macOS Helper app, host runtime, VM orchestration, packaging |
+| `apps/vitalserver-runtime-pwa` | Runtime Control UI | browser/PWA 기반 runtime control surface |
+| `apps/vitaldb-observer` | Health Check 내부 collector | Redis/proxy 기반 recorder observation snapshot 생성 |
+| `apps/vitalserver-audit-proxy` | command audit 기능 | VRecorder command/audit event sidecar |
+| `packages/vitalserver-testkit` | 검증 도구 | simulated recorder, `.vital` upload, smoke/load validation |
+| `packages/vitalserver-devtools` | dev 문서 중심 | build machine packaging, VM/update bundle tooling |
+| `packages/vitalserver-guest-tools` | dev 문서 중심 | Linux guest-side runtime state, update, logs, repair commands |
+| `infra/macos-nginx` | release installation에서 간접 설명 | Mac host proxy config and launchd template |
+
+## 2. Top-Level Layout
 
 | 경로 | 역할 |
 |---|---|
@@ -16,7 +30,7 @@
 | `docs/` | 정식 문서 |
 | `drafts/` | 정식 반영 전 문서 초안 |
 
-## Runtime Source Layout
+## 3. Runtime Source Layout
 
 `apps/vitalserver-macos-runtime/Sources`는 layer 이름이 책임 경계를 드러내야 합니다.
 
@@ -116,7 +130,7 @@ Hosts/CLI/ProcessBoundary/
   Support/
 ```
 
-## Documentation Exposure
+## 4. Documentation Exposure
 
 | 항목 | 문서 노출 | 설명 |
 |---|---|---|
@@ -127,7 +141,7 @@ Hosts/CLI/ProcessBoundary/
 | wrapper/preload | dev 중심 | Vital Server integration layer |
 | devtools | dev 중심 | packaging/build machine tooling |
 
-## Dependency Direction
+## 5. Dependency Direction
 
 Domain/Core는 Host, Guest, filesystem, network, logs, command output을 직접 읽지 않습니다.
 
@@ -150,7 +164,7 @@ Bootstrap은 concrete dependency graph를 조립합니다. Bootstrap은 workflow
 상수와 path composition만 둘 수 있고, concrete runner/effect composition은 Host process
 boundary나 adapter에 둡니다.
 
-## Layer Responsibility Map
+## 6. Layer Responsibility Map
 
 | Layer | Purity | State owner | Allowed fallback | 책임 |
 |---|---|---|---|---|

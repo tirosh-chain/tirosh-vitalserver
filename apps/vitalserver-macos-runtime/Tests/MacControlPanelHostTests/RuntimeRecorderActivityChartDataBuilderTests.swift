@@ -142,6 +142,60 @@ final class RuntimeRecorderActivityChartDataBuilderTests: XCTestCase {
         XCTAssertNil(display.totalPackets)
     }
 
+    func testAllSamplesUsesTwelveHourWindowsForOneAndFiveMinuteBuckets() throws {
+        let builder = RuntimeRecorderActivityChartDataBuilder()
+        let points = [
+            activityPoint(
+                observedAt: "2026-05-30T13:00:00Z",
+                windowSeconds: 60,
+                buckets: activityBuckets(
+                    startedAt: "2026-05-30T00:00:00Z",
+                    count: 13 * 60,
+                    intervalSeconds: 60
+                )
+            )
+        ]
+
+        let oneMinuteDisplay = builder.display(
+            from: points,
+            interval: .oneMinute,
+            period: .all,
+            readError: nil
+        )
+
+        let oneMinuteWindow = try XCTUnwrap(oneMinuteDisplay.allSamplesWindow)
+        XCTAssertEqual(oneMinuteWindow.pageCount, 2)
+        XCTAssertEqual(oneMinuteWindow.pageIndex, 1)
+        XCTAssertEqual(oneMinuteWindow.buckets.count, 60)
+        XCTAssertEqual(oneMinuteWindow.windowStartedAt, "2026-05-30T12:00:00Z")
+        XCTAssertEqual(oneMinuteWindow.windowEndedAt, "2026-05-30T13:00:00Z")
+
+        let firstOneMinutePage = builder.display(
+            from: points,
+            interval: .oneMinute,
+            period: .all,
+            allSamplesPageIndex: 0,
+            readError: nil
+        )
+        XCTAssertEqual(firstOneMinutePage.allSamplesWindow?.buckets.count, 12 * 60)
+        XCTAssertEqual(firstOneMinutePage.allSamplesWindow?.windowStartedAt, "2026-05-30T00:00:00Z")
+        XCTAssertEqual(firstOneMinutePage.allSamplesWindow?.windowEndedAt, "2026-05-30T12:00:00Z")
+
+        let fiveMinuteDisplay = builder.display(
+            from: points,
+            interval: .fiveMinutes,
+            period: .all,
+            readError: nil
+        )
+
+        let fiveMinuteWindow = try XCTUnwrap(fiveMinuteDisplay.allSamplesWindow)
+        XCTAssertEqual(fiveMinuteWindow.pageCount, 2)
+        XCTAssertEqual(fiveMinuteWindow.pageIndex, 1)
+        XCTAssertEqual(fiveMinuteWindow.buckets.count, 12)
+        XCTAssertEqual(fiveMinuteWindow.windowStartedAt, "2026-05-30T12:00:00Z")
+        XCTAssertEqual(fiveMinuteWindow.windowEndedAt, "2026-05-30T13:00:00Z")
+    }
+
     private func activityPoint(
         observedAt: String,
         messageCount: Int
@@ -164,5 +218,41 @@ final class RuntimeRecorderActivityChartDataBuilderTests: XCTestCase {
                 )
             ]
         )
+    }
+
+    private func activityPoint(
+        observedAt: String,
+        windowSeconds: Int,
+        buckets: [VitalDBRecorderActivityBucket]
+    ) -> RuntimeVitalRecorderActivityPoint {
+        RuntimeVitalRecorderActivityPoint(
+            observedAt: observedAt,
+            windowSeconds: windowSeconds,
+            messageCount: buckets.reduce(0) { $0 + $1.messageCount },
+            byteCount: buckets.reduce(0) { $0 + $1.byteCount },
+            roomCount: buckets.map(\.roomCount).max() ?? 0,
+            messagesPerSecond: 0,
+            bytesPerSecond: 0,
+            buckets: buckets
+        )
+    }
+
+    private func activityBuckets(
+        startedAt: String,
+        count: Int,
+        intervalSeconds: Int
+    ) -> [VitalDBRecorderActivityBucket] {
+        let startDate = RuntimeRecorderActivityDateParser.date(from: startedAt)!
+        return (0..<count).map { index in
+            VitalDBRecorderActivityBucket(
+                bucketStartedAt: RuntimeRecorderActivityDateParser.string(
+                    from: startDate.addingTimeInterval(Double(index * intervalSeconds))
+                ),
+                bucketSeconds: intervalSeconds,
+                messageCount: index + 1,
+                byteCount: (index + 1) * 10,
+                roomCount: 1
+            )
+        }
     }
 }

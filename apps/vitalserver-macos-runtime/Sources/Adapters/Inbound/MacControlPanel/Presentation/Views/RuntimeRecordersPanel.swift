@@ -11,6 +11,7 @@ struct RuntimeRecordersPanel: View {
     @State private var showingRecorderHistory = false
     @State private var activityBucketInterval = RecorderActivityBucketInterval.oneMinute
     @State private var activityPeriod = RecorderActivityPeriod.lastHour
+    @State private var activityAllSamplesPageIndex: Int?
     private let activityChartDataBuilder = RuntimeRecorderActivityChartDataBuilder()
     private let displayPolicy = RuntimeVitalRecorderDisplayPolicy()
 
@@ -243,6 +244,7 @@ struct RuntimeRecordersPanel: View {
             from: recorder.activityTimeline,
             interval: activityBucketInterval,
             period: activityPeriod,
+            allSamplesPageIndex: activityAllSamplesPageIndex,
             readError: viewModel.vitalRecorders.activityHistory.readError ?? viewModel.vitalRecorders.readError
         )
         return VStack(alignment: .leading, spacing: 10) {
@@ -315,6 +317,9 @@ struct RuntimeRecordersPanel: View {
                     intervalTitle: activityBucketInterval.title
                 )
                     .frame(height: 190)
+                if let allSamplesWindow = activityDisplay.allSamplesWindow {
+                    activityAllSamplesWindowControl(allSamplesWindow)
+                }
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 18) {
                         activityMetric("Packets", activityDisplay.latestBucket.map { "\($0.messageCount)" } ?? "-")
@@ -355,9 +360,11 @@ struct RuntimeRecordersPanel: View {
             Text("Window")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Picker("", selection: $activityPeriod) {
+            Picker("", selection: activityPeriodSelection) {
                 ForEach(RecorderActivityPeriod.allCases) { period in
-                    Text(period.title).tag(period)
+                    Text(period.title)
+                        .tag(period)
+                        .disabled(!period.isEnabled(for: activityBucketInterval))
                 }
             }
             .pickerStyle(.menu)
@@ -372,7 +379,7 @@ struct RuntimeRecordersPanel: View {
             Text("Bucket")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Picker("", selection: $activityBucketInterval) {
+            Picker("", selection: activityBucketSelection) {
                 ForEach(RecorderActivityBucketInterval.allCases) { interval in
                     Text(interval.title).tag(interval)
                 }
@@ -382,6 +389,72 @@ struct RuntimeRecordersPanel: View {
             .frame(width: 132)
             .help("Group packet activity by this interval.")
         }
+    }
+
+    private var activityPeriodSelection: Binding<RecorderActivityPeriod> {
+        Binding(
+            get: { activityPeriod },
+            set: { period in
+                guard period.isEnabled(for: activityBucketInterval) else {
+                    return
+                }
+                activityPeriod = period
+                activityAllSamplesPageIndex = nil
+            }
+        )
+    }
+
+    private var activityBucketSelection: Binding<RecorderActivityBucketInterval> {
+        Binding(
+            get: { activityBucketInterval },
+            set: { interval in
+                activityBucketInterval = interval
+                activityAllSamplesPageIndex = nil
+                if !activityPeriod.isEnabled(for: interval) {
+                    activityPeriod = .last6Hours
+                }
+            }
+        )
+    }
+
+    private func activityAllSamplesWindowControl(_ window: RecorderActivityAllSamplesWindow) -> some View {
+        let maxPageIndex = max(window.pageCount - 1, 0)
+        let pageBinding = Binding<Double>(
+            get: {
+                Double(activityAllSamplesPageIndex ?? window.pageIndex)
+            },
+            set: { value in
+                activityAllSamplesPageIndex = min(max(Int(value.rounded()), 0), maxPageIndex)
+            }
+        )
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(activityAllSamplesWindowText(window))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                Text("\(window.pageIndex + 1) / \(window.pageCount)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Slider(
+                value: pageBinding,
+                in: 0...Double(maxPageIndex),
+                step: 1
+            )
+            .disabled(window.pageCount <= 1)
+        }
+    }
+
+    private func activityAllSamplesWindowText(_ window: RecorderActivityAllSamplesWindow) -> String {
+        guard let startedAt = window.windowStartedAt,
+              let endedAt = window.windowEndedAt else {
+            return "No activity window"
+        }
+        return "\(viewModel.presentationFormatter.systemTimeText(startedAt)) - \(viewModel.presentationFormatter.systemTimeText(endedAt))"
     }
 
     private func recorderMetadata(_ recorder: RuntimeVitalRecorderRecord) -> some View {
