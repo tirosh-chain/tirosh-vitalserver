@@ -176,6 +176,21 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.repairVMDisk()).resolves.toEqual(commandResponse());
   });
 
+  it("accepts explicit null bridged interface in runtime overview settings", async () => {
+    const { client } = clientWithResponses({
+      "/runtime/overview": {
+        ...fullRuntimeOverview(),
+        settings: fullSettings({ bridgedInterface: null })
+      }
+    });
+
+    await expect(client.getOverview()).resolves.toMatchObject({
+      settings: {
+        bridgedInterface: null
+      }
+    });
+  });
+
   it("throws API, contract, and network errors", async () => {
     const api = clientWithResponses({ "/runtime/status": { message: "nope" } }, 500);
     await expect(api.client.getStatus()).rejects.toBeInstanceOf(RuntimeControlAPIError);
@@ -307,7 +322,7 @@ function fullSettingsShape() {
     diskGiB: 32,
     minimumDiskGiB: 4,
     networkMode: "shared" as const,
-    bridgedInterface: "",
+    bridgedInterface: "" as string | null,
     proxyPort: 80,
     runtimeControlPort: 18321,
     vitalFilesDirectory: "/Users/shared/vital",

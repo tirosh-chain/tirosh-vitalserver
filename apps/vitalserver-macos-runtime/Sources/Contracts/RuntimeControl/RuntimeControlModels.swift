@@ -112,6 +112,31 @@ public enum RuntimeState: Codable, Equatable, Sendable {
 }
 
 public struct RuntimeSettings: Codable, Equatable, Sendable {
+    private enum CodingKeys: String, CodingKey {
+        case readIssues
+        case cpuCount
+        case memoryGiB
+        case diskGiB
+        case minimumDiskGiB
+        case networkMode
+        case bridgedInterface
+        case proxyPort
+        case runtimeControlPort
+        case vitalFilesDirectory
+        case vitalServerURL
+        case remoteConsoleURL
+        case publicHost
+        case publicPort
+        case adminPassword
+        case changeAdminPassword
+        case startOnBoot
+        case startOnBootConfigurable
+        case autoRecoveryEnabled
+        case preventSystemSleep
+        case redisBackupRetentionCount
+        case restartAfterSave
+    }
+
     public var readIssues: [RuntimeSettingsReadIssue]
     public var cpuCount: Int
     public var memoryGiB: Int
@@ -181,6 +206,80 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.preventSystemSleep = preventSystemSleep
         self.redisBackupRetentionCount = redisBackupRetentionCount
         self.restartAfterSave = restartAfterSave
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard container.contains(.bridgedInterface) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.bridgedInterface,
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "RuntimeSettings.bridgedInterface is required and may be null only when no bridged interface is configured"
+                )
+            )
+        }
+        let bridgedInterface: String?
+        if try container.decodeNil(forKey: .bridgedInterface) {
+            bridgedInterface = nil
+        } else {
+            bridgedInterface = try container.decode(String.self, forKey: .bridgedInterface)
+        }
+
+        self.init(
+            readIssues: try container.decode([RuntimeSettingsReadIssue].self, forKey: .readIssues),
+            cpuCount: try container.decode(Int.self, forKey: .cpuCount),
+            memoryGiB: try container.decode(Int.self, forKey: .memoryGiB),
+            diskGiB: try container.decode(Int.self, forKey: .diskGiB),
+            minimumDiskGiB: try container.decode(Int.self, forKey: .minimumDiskGiB),
+            networkMode: try container.decode(RuntimeNetworkMode.self, forKey: .networkMode),
+            bridgedInterface: bridgedInterface,
+            proxyPort: try container.decode(Int.self, forKey: .proxyPort),
+            runtimeControlPort: try container.decode(Int.self, forKey: .runtimeControlPort),
+            vitalFilesDirectory: try container.decode(String.self, forKey: .vitalFilesDirectory),
+            vitalServerURL: try container.decode(String.self, forKey: .vitalServerURL),
+            remoteConsoleURL: try container.decode(String.self, forKey: .remoteConsoleURL),
+            publicHost: try container.decode(String.self, forKey: .publicHost),
+            publicPort: try container.decode(Int.self, forKey: .publicPort),
+            adminPassword: try container.decode(String.self, forKey: .adminPassword),
+            changeAdminPassword: try container.decode(Bool.self, forKey: .changeAdminPassword),
+            startOnBoot: try container.decode(Bool.self, forKey: .startOnBoot),
+            startOnBootConfigurable: try container.decode(Bool.self, forKey: .startOnBootConfigurable),
+            autoRecoveryEnabled: try container.decode(Bool.self, forKey: .autoRecoveryEnabled),
+            preventSystemSleep: try container.decode(Bool.self, forKey: .preventSystemSleep),
+            redisBackupRetentionCount: try container.decode(Int.self, forKey: .redisBackupRetentionCount),
+            restartAfterSave: try container.decode(Bool.self, forKey: .restartAfterSave)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(readIssues, forKey: .readIssues)
+        try container.encode(cpuCount, forKey: .cpuCount)
+        try container.encode(memoryGiB, forKey: .memoryGiB)
+        try container.encode(diskGiB, forKey: .diskGiB)
+        try container.encode(minimumDiskGiB, forKey: .minimumDiskGiB)
+        try container.encode(networkMode, forKey: .networkMode)
+        if let bridgedInterface {
+            try container.encode(bridgedInterface, forKey: .bridgedInterface)
+        } else {
+            try container.encodeNil(forKey: .bridgedInterface)
+        }
+        try container.encode(proxyPort, forKey: .proxyPort)
+        try container.encode(runtimeControlPort, forKey: .runtimeControlPort)
+        try container.encode(vitalFilesDirectory, forKey: .vitalFilesDirectory)
+        try container.encode(vitalServerURL, forKey: .vitalServerURL)
+        try container.encode(remoteConsoleURL, forKey: .remoteConsoleURL)
+        try container.encode(publicHost, forKey: .publicHost)
+        try container.encode(publicPort, forKey: .publicPort)
+        try container.encode(adminPassword, forKey: .adminPassword)
+        try container.encode(changeAdminPassword, forKey: .changeAdminPassword)
+        try container.encode(startOnBoot, forKey: .startOnBoot)
+        try container.encode(startOnBootConfigurable, forKey: .startOnBootConfigurable)
+        try container.encode(autoRecoveryEnabled, forKey: .autoRecoveryEnabled)
+        try container.encode(preventSystemSleep, forKey: .preventSystemSleep)
+        try container.encode(redisBackupRetentionCount, forKey: .redisBackupRetentionCount)
+        try container.encode(restartAfterSave, forKey: .restartAfterSave)
     }
 }
 

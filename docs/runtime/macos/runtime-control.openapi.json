@@ -3383,7 +3383,10 @@
             ]
           },
           "bridgedInterface": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "proxyPort": {
             "type": "integer"

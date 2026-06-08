@@ -116,7 +116,7 @@ export const runtimeSettingsSchema = z
     diskGiB: z.number(),
     minimumDiskGiB: z.number(),
     networkMode: networkModeSchema,
-    bridgedInterface: z.string(),
+    bridgedInterface: z.string().nullable(),
     proxyPort: z.number(),
     runtimeControlPort: z.number(),
     vitalFilesDirectory: z.string(),

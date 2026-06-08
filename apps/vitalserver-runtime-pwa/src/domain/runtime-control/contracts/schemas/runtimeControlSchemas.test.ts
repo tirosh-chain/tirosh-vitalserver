@@ -719,15 +719,30 @@ describe("runtime control contract schemas", () => {
   });
 
   it("requires the complete runtime settings contract", () => {
+    const missingBridgedInterface: Record<string, unknown> = { ...fullSettings() };
+    delete missingBridgedInterface.bridgedInterface;
+
     expect(() =>
       runtimeSettingsSchema.parse({
         proxyPort: 80
       })
     ).toThrow();
+    expect(() =>
+      runtimeSettingsSchema.parse(missingBridgedInterface)
+    ).toThrow();
 
     expect(
       runtimeSettingsSchema.parse(fullSettings())
     ).toEqual(fullSettings());
+    expect(
+      runtimeSettingsSchema.parse({
+        ...fullSettings(),
+        bridgedInterface: null
+      })
+    ).toEqual({
+      ...fullSettings(),
+      bridgedInterface: null
+    });
   });
 });
 

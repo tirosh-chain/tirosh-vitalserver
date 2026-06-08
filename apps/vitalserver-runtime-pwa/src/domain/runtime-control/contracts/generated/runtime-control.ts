@@ -597,6 +597,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vitaldb/recorders/{vrcode}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one Vital Recorder activity chart window
+         * @description Lazy chart window for one VRecorder. The server reads only the selected activity window from the runtime observability SQLite projection.
+         */
+        get: operations["getVitalDBRecorderActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/vitaldb/beds": {
         parameters: {
             query?: never;
@@ -948,6 +968,37 @@ export interface components {
         };
         /** @enum {string} */
         RuntimeVitalRecorderActivityHistorySource: "sqliteProjection" | "unavailable" | "notProvided";
+        /** @enum {string} */
+        RuntimeVitalRecorderActivityWindowState: "loaded" | "empty" | "invalidRequest" | "readFailed";
+        /**
+         * @default lastHour
+         * @enum {string}
+         */
+        RuntimeVitalRecorderActivityWindowPeriod: "last15Minutes" | "lastHour" | "last6Hours" | "last12Hours" | "all";
+        RuntimeVitalRecorderActivityWindowQuery: {
+            vrcode: string;
+            /** @enum {integer} */
+            bucketSeconds: 60 | 300;
+            period: components["schemas"]["RuntimeVitalRecorderActivityWindowPeriod"];
+            pageIndex?: number | null;
+        };
+        RuntimeVitalRecorderActivityWindowPage: {
+            index: number;
+            count: number;
+            windowSeconds: number;
+            windowStartedAt?: string | null;
+            windowEndedAt?: string | null;
+            firstBucketStartedAt?: string | null;
+            latestBucketStartedAt?: string | null;
+        };
+        RuntimeVitalRecorderActivityWindow: {
+            state: components["schemas"]["RuntimeVitalRecorderActivityWindowState"];
+            query: components["schemas"]["RuntimeVitalRecorderActivityWindowQuery"];
+            page: components["schemas"]["RuntimeVitalRecorderActivityWindowPage"];
+            buckets: components["schemas"]["RuntimeVitalRecorderActivityBucket"][];
+            latestSampleAt?: string | null;
+            readError?: string | null;
+        };
         RuntimeVitalRecorderRecord: {
             vrcode: string;
             status: components["schemas"]["RuntimeVitalRecorderStatus"];
@@ -1214,7 +1265,7 @@ export interface components {
             minimumDiskGiB: number;
             /** @enum {string} */
             networkMode: "shared" | "bridged";
-            bridgedInterface: string;
+            bridgedInterface: string | null;
             proxyPort: number;
             runtimeControlPort: number;
             vitalFilesDirectory: string;
@@ -2220,6 +2271,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuntimeVitalRecorderRecord"] | null;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getVitalDBRecorderActivity: {
+        parameters: {
+            query?: {
+                bucketSeconds?: 60 | 300;
+                period?: components["schemas"]["RuntimeVitalRecorderActivityWindowPeriod"];
+                pageIndex?: number;
+            };
+            header?: never;
+            path: {
+                vrcode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Vital Recorder activity window */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeVitalRecorderActivityWindow"];
                 };
             };
             401: components["responses"]["Unauthorized"];

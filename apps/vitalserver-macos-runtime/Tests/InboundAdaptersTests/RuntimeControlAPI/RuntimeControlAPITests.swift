@@ -1,3 +1,4 @@
+import Foundation
 import Contracts
 import RuntimeControl
 import InboundAdapters
@@ -41,6 +42,21 @@ final class RuntimeControlAPITests: XCTestCase {
 
         XCTAssertEqual(decoded.settings.cpuCount, 4)
         XCTAssertEqual(decoded.settings.memoryGiB, 6)
+    }
+
+    func testRuntimeSettingsJSONContractRequiresExplicitBridgedInterfaceNull() throws {
+        let settingsData = try JSONEncoder().encode(RuntimeSettings(cpuCount: 4, memoryGiB: 6))
+        let settingsText = try XCTUnwrap(String(data: settingsData, encoding: .utf8))
+
+        XCTAssertTrue(settingsText.contains(#""bridgedInterface":null"#))
+
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: settingsData) as? [String: Any])
+        object.removeValue(forKey: "bridgedInterface")
+        let missingBridgedInterfaceData = try JSONSerialization.data(withJSONObject: object)
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(RuntimeSettings.self, from: missingBridgedInterfaceData)
+        )
     }
 
     func testFileReferenceCanRepresentLocalAndPWAUploadInputs() throws {
@@ -452,6 +468,13 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(status.runtimeInstalled, true)
         XCTAssertEqual(status.runtimeState, .healthy)
         XCTAssertEqual(status.runtimeVersion, "1.2.3")
+
+        let overviewResponse = await router.route(.init(method: .get, path: "/runtime/overview"))
+        let overviewBody = try XCTUnwrap(overviewResponse.body)
+        let overviewText = try XCTUnwrap(String(data: overviewBody, encoding: .utf8))
+
+        XCTAssertEqual(overviewResponse.status, .ok)
+        XCTAssertTrue(overviewText.contains(#""bridgedInterface":null"#))
     }
 
     @MainActor
