@@ -555,6 +555,17 @@ def main() -> int:
         ),
     )
 
+    release_clean_uninstaller_pkg = subparsers.add_parser(
+        "release-clean-uninstaller-pkg",
+        help="build a macOS Clean Uninstaller pkg from release.json",
+    )
+    add_release_clean_uninstaller_package_arguments(release_clean_uninstaller_pkg)
+    release_clean_uninstaller_pkg.set_defaults(
+        handler=lambda args: macos_package_usecases.build_clean_uninstaller_pkg(
+            release_clean_uninstaller_package_input(args)
+        )
+    )
+
     macos_package_clean = subparsers.add_parser(
         "macos-package-clean",
         help="remove generated macOS package artifacts",
@@ -888,6 +899,19 @@ def release_package_input(
     )
 
 
+def release_clean_uninstaller_package_input(
+    args: argparse.Namespace,
+) -> usecase_inputs.ReleaseCleanUninstallerPackageInput:
+    return usecase_inputs.ReleaseCleanUninstallerPackageInput(
+        config=args.config,
+        release_file=args.release_file,
+        output=args.output,
+        sdkroot=args.sdkroot,
+        clang_module_cache=args.clang_module_cache,
+        codesign_identity=args.codesign_identity,
+    )
+
+
 def add_release_package_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--release-file", type=Path, required=True)
     parser.add_argument("--output", type=Path)
@@ -902,6 +926,16 @@ def add_release_package_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--nginx-binary")
     parser.add_argument("--nginx-expected-version")
     parser.add_argument("--docker-platform")
+
+
+def add_release_clean_uninstaller_package_arguments(
+    parser: argparse.ArgumentParser,
+) -> None:
+    parser.add_argument("--release-file", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--sdkroot")
+    parser.add_argument("--clang-module-cache")
+    parser.add_argument("--codesign-identity", default="-")
 
 
 def add_rootfs_base_arguments(parser: argparse.ArgumentParser) -> None:

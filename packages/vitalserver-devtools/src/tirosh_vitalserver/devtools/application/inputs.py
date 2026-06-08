@@ -250,6 +250,16 @@ class ReleasePackageInput:
 
 
 @dataclass(frozen=True)
+class ReleaseCleanUninstallerPackageInput:
+    config: Path
+    release_file: Path
+    output: Path | None
+    sdkroot: str | None
+    clang_module_cache: str | None
+    codesign_identity: str
+
+
+@dataclass(frozen=True)
 class MacOSPackageCleanInput:
     config: Path
     release_file: Path
@@ -284,6 +294,7 @@ __all__ = [
     "NginxBundleInput",
     "OpenProductUrlInput",
     "PythonWorkspaceToolInput",
+    "ReleaseCleanUninstallerPackageInput",
     "ReleasePackageInput",
     "ReleaseUpdateBundleInput",
     "RenderTemplateInput",

@@ -44,6 +44,7 @@ include make/vm.mk
 	dist/image-update/verify/release dist/dmg/dev dist/pkg/dev \
 	dist/update/dev dist/update/verify/dev \
 	dist/image-update/dev dist/image-update/verify/dev \
+	dist/clean-uninstaller/dev dist/clean-uninstaller/release \
 	dist/install/dev dist/installed/health dist/uninstall/dev \
 	runtime/up runtime/up-bridged runtime/down runtime/status runtime/health \
 	runtime/prepare runtime/ip runtime/proxy/start runtime/clean \
@@ -67,6 +68,8 @@ dist/update/dev: internal/vm/update/dev
 dist/update/verify/dev: internal/vm/update/verify/dev
 dist/image-update/dev: internal/vm/image-update/dev
 dist/image-update/verify/dev: internal/vm/image-update/verify/dev
+dist/clean-uninstaller/dev: internal/vm/clean-uninstaller/dev
+dist/clean-uninstaller/release: internal/vm/clean-uninstaller/release
 dist/install/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 dist/install/dev: internal/vm/pkg/install
 dist/installed/health: internal/vm/installed/health
@@ -137,30 +140,30 @@ devtools/wait/ip: internal/vm/wait/ip
 devtools/wait/http: internal/vm/wait/http
 devtools/package/clean: internal/vm/pkg/clean
 
-.PHONY: help help/run help/dist help/runtime help/devtools help/proxy help/dev help/pwa help/all
+.PHONY: help help/compose help/dist help/runtime help/devtools help/proxy help/dev help/pwa help/all
 help:
 	@printf "NAME\n"
-	@printf "  tirosh-vitalserver - local development, runtime, and distribution targets\n"
+	@printf "  tirosh-vitalserver - repository, compose sandbox, runtime, and distribution targets\n"
 	@printf "\n"
 	@printf "SYNOPSIS\n"
 	@printf "  make [TARGET] [VAR=value]...\n"
-	@printf "  make help/{run|dist|runtime|devtools|proxy|dev|pwa|all}\n"
+	@printf "  make help/{compose|runtime|dist|pwa|dev|devtools|proxy|all}\n"
 	@printf "\n"
 	@printf "COMMON TARGETS\n"
-	@printf "  doctor          Check local tools and repository setup\n"
-	@printf "  bootstrap       Prepare .env, submodules, proxy config, and optional Python env\n"
-	@printf "  app/up          Start VitalServer stack through macOS host proxy\n"
+	@printf "  dev/doctor      Check local developer tools and repository setup\n"
+	@printf "  dev/bootstrap   Prepare .env, submodules, proxy config, and optional Python env\n"
+	@printf "  compose/up      Start the Compose productization sandbox through host proxy\n"
 	@printf "  runtime/up      Start local macOS VM runtime and host proxy\n"
 	@printf "  dist/pkg/dev    Build development pkg\n"
 	@printf "\n"
 	@printf "HELP TOPICS\n"
-	@printf "  help/run        App, Compose, Swagger, cleanup\n"
-	@printf "  help/dist       Distribution package, install, update commands\n"
+	@printf "  help/compose    Compose sandbox, Swagger, testkit, cleanup\n"
 	@printf "  help/runtime    Direct local runtime lifecycle\n"
+	@printf "  help/dist       Distribution package, install, update commands\n"
+	@printf "  help/pwa        Runtime Control PWA commands\n"
+	@printf "  help/dev        Repository and Python development commands\n"
 	@printf "  help/devtools   Low-level build and staging steps\n"
 	@printf "  help/proxy      macOS host nginx proxy\n"
-	@printf "  help/dev        Python/testkit development commands\n"
-	@printf "  help/pwa        Runtime Control PWA commands\n"
 	@printf "  help/all        Full command list\n"
 	@printf "\n"
 	@printf "FILES\n"
@@ -169,31 +172,28 @@ help:
 	@printf "VARIABLES\n"
 	@printf "  COMPOSE_ENV_FILE=.env.local\n"
 
-help/run:
+help/compose:
 	@printf "NAME\n"
-	@printf "  tirosh-vitalserver-run - app, Compose, Swagger, and testkit targets\n"
+	@printf "  tirosh-vitalserver-compose - Compose productization sandbox, Swagger, and testkit targets\n"
 	@printf "\n"
 	@printf "SYNOPSIS\n"
-	@printf "  make {doctor|bootstrap}\n"
-	@printf "  make app/{up|logs|ps|shell|restart|down|rebuild|build|config|clean|clean/volumes}\n"
+	@printf "  make compose/{up|logs|ps|shell|restart|down|rebuild|build|config|clean|clean/volumes|open}\n"
 	@printf "  make swagger/{up|down}\n"
 	@printf "  make testkit/{smoke|verify|load|stream|health}\n"
-	@printf "  make e2e/{smoke|local|local/loop}\n"
-	@printf "  make open\n"
 	@printf "\n"
-	@printf "SETUP TARGETS\n"
-	@printf "  doctor                 Check local tools and repository setup\n"
-	@printf "  bootstrap              Prepare .env, submodules, proxy config, and optional Python env\n"
-	@printf "\n"
-	@printf "APP TARGETS\n"
-	@printf "  app/up                 Start VitalServer stack through macOS host proxy\n"
-	@printf "  open                   Open VitalServer in browser\n"
-	@printf "  app/logs               Follow logs\n"
-	@printf "  app/ps                 Show container status\n"
-	@printf "  app/shell              Open a shell in the app container\n"
-	@printf "  app/restart            Restart proxy and stack\n"
-	@printf "  app/down               Stop proxy and Compose stack, keep volumes\n"
-	@printf "  app/rebuild            Rebuild and recreate the app container only\n"
+	@printf "COMPOSE TARGETS\n"
+	@printf "  compose/up             Start Compose sandbox through macOS host proxy\n"
+	@printf "  compose/open           Open VitalServer in browser\n"
+	@printf "  compose/logs           Follow logs\n"
+	@printf "  compose/ps             Show container status\n"
+	@printf "  compose/shell          Open a shell in the app container\n"
+	@printf "  compose/restart        Restart proxy and stack\n"
+	@printf "  compose/down           Stop proxy and Compose stack, keep volumes\n"
+	@printf "  compose/rebuild        Rebuild and recreate the app container only\n"
+	@printf "  compose/build          Build Compose images\n"
+	@printf "  compose/config         Print resolved Docker Compose config\n"
+	@printf "  compose/clean/volumes  Stop proxy and Compose stack, remove volumes\n"
+	@printf "  compose/clean          Remove proxy runtime, containers, volumes, orphans, and local images\n"
 	@printf "\n"
 	@printf "VERIFY TARGETS\n"
 	@printf "  testkit/smoke          Run bounded productization smoke scenario\n"
@@ -201,24 +201,17 @@ help/run:
 	@printf "  testkit/load           Run finite load scenario\n"
 	@printf "  testkit/stream         Stream sample data until interrupted\n"
 	@printf "  testkit/health         Check VitalServer health with testkit\n"
-	@printf "  e2e/smoke              Run local Runtime Control HTTP smoke test\n"
-	@printf "  e2e/local              Run local HTTP smoke and PWA checks\n"
-	@printf "  e2e/local/loop         Repeat local HTTP smoke and PWA checks\n"
 	@printf "\n"
 	@printf "TOOL TARGETS\n"
 	@printf "  swagger/up             Start Swagger UI only\n"
 	@printf "  swagger/down           Stop Swagger UI only, keep base stack\n"
-	@printf "  app/build              Build Compose images\n"
-	@printf "  app/config             Print resolved Docker Compose config\n"
-	@printf "  app/clean/volumes      Stop proxy and Compose stack, remove volumes\n"
-	@printf "  app/clean              Remove proxy runtime, containers, volumes, orphans, and local images\n"
-
 help/dist:
 	@printf "NAME\n"
 	@printf "  tirosh-vitalserver-dist - distribution package, install, and update targets\n"
 	@printf "\n"
 	@printf "SYNOPSIS\n"
 	@printf "  make dist/{pkg|dmg|update|image-update}/{dev|release} [VM_RELEASE_BRANCH=main]\n"
+	@printf "  make dist/clean-uninstaller/{dev|release}\n"
 	@printf "  make dist/{update|image-update}/verify/{dev|release}\n"
 	@printf "  make dist/{install|uninstall}/dev [VM_UNINSTALL_ARGS=--clean]\n"
 	@printf "  make dist/installed/health\n"
@@ -232,6 +225,9 @@ help/dist:
 	@printf "  dist/update/release           Build release product update bundle\n"
 	@printf "  dist/image-update/dev         Build development VM image/rootfs update bundle\n"
 	@printf "  dist/image-update/release     Build release VM image/rootfs update bundle\n"
+	@printf "  dist/clean-uninstaller/dev    Build development Clean Uninstaller pkg\n"
+	@printf "  dist/clean-uninstaller/release\n"
+	@printf "                                Build release Clean Uninstaller pkg\n"
 	@printf "\n"
 	@printf "VERIFY TARGETS\n"
 	@printf "  dist/update/verify/dev        Verify development product update bundle\n"
@@ -347,14 +343,16 @@ help/proxy:
 
 help/dev:
 	@printf "NAME\n"
-	@printf "  tirosh-vitalserver-dev - Python, testkit, and repository development targets\n"
+	@printf "  tirosh-vitalserver-dev - repository setup, Python, and developer checks\n"
 	@printf "\n"
 	@printf "SYNOPSIS\n"
-	@printf "  make dev/{lint|format|typecheck|test|build-testkit|check}\n"
+	@printf "  make dev/{doctor|bootstrap|lint|format|typecheck|test|build-testkit|check}\n"
 	@printf "  make repo/{init|update-submodule}\n"
-	@printf "  make {testkit/install-release|app/build}\n"
+	@printf "  make {testkit/install-release|compose/build}\n"
 	@printf "\n"
 	@printf "DEVELOPMENT TARGETS\n"
+	@printf "  dev/doctor                    Check local developer tools and repository setup\n"
+	@printf "  dev/bootstrap                 Prepare .env, submodules, proxy config, and optional Python env\n"
 	@printf "  dev/lint                      Run Ruff checks\n"
 	@printf "  dev/format                    Format Python code\n"
 	@printf "  dev/typecheck                 Run mypy\n"
@@ -366,7 +364,7 @@ help/dev:
 	@printf "REPOSITORY TARGETS\n"
 	@printf "  repo/init                     Initialize git submodules\n"
 	@printf "  repo/update-submodule         Update vendor/vitalserver submodule\n"
-	@printf "  app/build                     Build all Compose images\n"
+	@printf "  compose/build                 Build all Compose images\n"
 	@printf "\n"
 	@printf "VARIABLES\n"
 	@printf "  TESTKIT_CONFIG=%s\n" "$(TESTKIT_CONFIG)"
@@ -393,16 +391,16 @@ help/pwa:
 	@printf "  PWA_DIR=%s\n" "$(PWA_DIR)"
 
 help/all:
-	@$(MAKE) --no-print-directory help/run
+	@$(MAKE) --no-print-directory help/compose
+	@printf "\n"
+	@$(MAKE) --no-print-directory help/runtime
 	@printf "\n"
 	@$(MAKE) --no-print-directory help/dist
 	@printf "\n"
-	@$(MAKE) --no-print-directory help/runtime
+	@$(MAKE) --no-print-directory help/pwa
+	@printf "\n"
+	@$(MAKE) --no-print-directory help/dev
 	@printf "\n"
 	@$(MAKE) --no-print-directory help/devtools
 	@printf "\n"
 	@$(MAKE) --no-print-directory help/proxy
-	@printf "\n"
-	@$(MAKE) --no-print-directory help/dev
-	@printf "\n"
-	@$(MAKE) --no-print-directory help/pwa

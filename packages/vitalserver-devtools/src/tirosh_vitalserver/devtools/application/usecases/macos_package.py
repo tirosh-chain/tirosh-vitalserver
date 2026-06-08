@@ -11,6 +11,9 @@ from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
     remove_path,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
+    build_clean_uninstaller_pkg as run_build_clean_uninstaller_pkg,
+)
+from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
     build_dmg as run_build_dmg,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
@@ -31,6 +34,7 @@ from tirosh_vitalserver.devtools.application.inputs import (
     MacOSPackageCleanInput,
     MacOSPackageInstallInput,
     NginxBundleInput,
+    ReleaseCleanUninstallerPackageInput,
     ReleasePackageInput,
 )
 from tirosh_vitalserver.devtools.application.usecases.host_proxy import (
@@ -48,6 +52,7 @@ from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
 )
 from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
 from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
+    default_clean_uninstaller_pkg_output,
     default_pkg_output,
     host_proxy_expected_version,
     package_clean_plan,
@@ -67,6 +72,43 @@ def build_dmg(input: ReleasePackageInput) -> int:
     run_build_pkg(context)
     run_build_dmg(context)
     print(f"release dmg is ready: {context.dmg_output}")
+    return 0
+
+
+def build_clean_uninstaller_pkg(input: ReleaseCleanUninstallerPackageInput) -> int:
+    root = repo_root()
+    settings = load_macos_release_settings(input.config, root)
+    runtime_dir = settings.runtime_dir
+    release_file = resolve_path(root, input.release_file)
+    release = load_release_manifest(release_file)
+    pkg_output = (
+        resolve_path(root, input.output)
+        if input.output
+        else default_clean_uninstaller_pkg_output(settings, release)
+    )
+
+    sync_release(root, runtime_dir, release_file)
+    clang_module_cache = input.clang_module_cache or str(settings.clang_module_cache)
+    build_swift(
+        runtime_dir,
+        input.sdkroot,
+        clang_module_cache,
+        settings.helper_product_name,
+    )
+    sign_runtime_cli(
+        settings.runtime_cli,
+        runtime_dir,
+        input.codesign_identity,
+    )
+    run_build_clean_uninstaller_pkg(
+        settings=settings,
+        release=release,
+        runtime_dir=runtime_dir,
+        runtime_cli=settings.runtime_cli,
+        scripts_dir=settings.pkg_root.parent / "clean-uninstaller-scripts",
+        pkg_output=pkg_output,
+    )
+    print(f"clean uninstaller pkg is ready: {pkg_output}")
     return 0
 
 

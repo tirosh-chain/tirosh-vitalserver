@@ -36,6 +36,7 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     postinstall = tmp_path / "postinstall"
     proxy_run = tmp_path / "vitalserver-proxy-run"
     uninstall = tmp_path / "tirosh-vitalserver-uninstall"
+    clean_uninstall_postinstall = tmp_path / "clean-uninstall-postinstall"
     components = tmp_path / "components.plist"
 
     render_packaging_executable(
@@ -53,6 +54,11 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         packaging / "uninstall.template",
         uninstall,
     )
+    render_packaging_executable(
+        settings,
+        packaging / "clean-uninstall-postinstall.template",
+        clean_uninstall_postinstall,
+    )
     render_packaging_template(
         settings,
         packaging / "components.plist.template",
@@ -66,10 +72,19 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
 
     rendered = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in [postinstall, proxy_run, uninstall, components]
+        for path in [
+            postinstall,
+            proxy_run,
+            uninstall,
+            clean_uninstall_postinstall,
+            components,
+        ]
     )
     preinstall_text = (packaging / "preinstall").read_text(encoding="utf-8")
     uninstall_text = uninstall.read_text(encoding="utf-8")
+    clean_uninstall_postinstall_text = clean_uninstall_postinstall.read_text(
+        encoding="utf-8"
+    )
     postinstall_text = postinstall.read_text(encoding="utf-8")
     proxy_run_text = proxy_run.read_text(encoding="utf-8")
     assert "${PRODUCT_ROOT}" not in rendered
@@ -129,14 +144,31 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert 'manager_app="/Applications/VitalServer Helper.app"' in uninstall_text
     assert "wait_for_helper_app_exit" in uninstall_text
     assert "/usr/bin/pgrep -f --" in uninstall_text
-    assert "Helper app is still running; aborting uninstall before file removal" in uninstall_text
+    assert (
+        "Helper app is still running; aborting uninstall before file removal"
+        in uninstall_text
+    )
     assert 'VITALSERVER_VM_HOME="${vm_home}" "${command[@]}"' in uninstall_text
+    assert "vitalserver-vm-clean-uninstaller" in clean_uninstall_postinstall_text
+    assert 'runtime uninstall --clean' in clean_uninstall_postinstall_text
+    assert "/usr/local/bin/tirosh-vitalserver-uninstall" not in (
+        clean_uninstall_postinstall_text
+    )
+    assert (
+        'vm_home="/Library/Application Support/VitalServerHelper/vm"'
+        in clean_uninstall_postinstall_text
+    )
+    assert (
+        'manager_app="/Applications/VitalServer Helper.app"'
+        in clean_uninstall_postinstall_text
+    )
     assert "Applications/VitalServer Helper.app" in components.read_text(
         encoding="utf-8"
     )
     assert os.access(postinstall, os.X_OK)
     assert os.access(proxy_run, os.X_OK)
     assert os.access(uninstall, os.X_OK)
+    assert os.access(clean_uninstall_postinstall, os.X_OK)
 
 
 def test_proxy_run_does_not_report_started_when_proxy_readiness_fails(

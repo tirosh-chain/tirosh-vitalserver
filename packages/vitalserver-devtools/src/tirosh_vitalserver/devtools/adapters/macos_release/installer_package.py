@@ -30,8 +30,14 @@ from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
     package_path,
 )
 from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
+from tirosh_vitalserver.devtools.core.macos_release.settings import (
+    MacOSReleaseSettings,
+)
+from tirosh_vitalserver.devtools.core.release_manifest import ReleaseManifest
 
 ROOTFS_BASE_NAME = "rootfs-base.raw.gz"
+CLEAN_UNINSTALLER_IDENTIFIER_SUFFIX = ".clean-uninstaller"
+CLEAN_UNINSTALLER_CLI_NAME = "vitalserver-vm-clean-uninstaller"
 
 
 def build_pkg(context: PackageContext) -> None:
@@ -91,6 +97,55 @@ def build_dmg(context: PackageContext) -> None:
             "UDZO",
             str(context.dmg_output),
         ]
+    )
+
+
+def build_clean_uninstaller_pkg(
+    *,
+    settings: MacOSReleaseSettings,
+    release: ReleaseManifest,
+    runtime_dir: Path,
+    runtime_cli: Path,
+    scripts_dir: Path,
+    pkg_output: Path,
+) -> None:
+    if scripts_dir.exists():
+        shutil.rmtree(scripts_dir)
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    pkg_output.parent.mkdir(parents=True, exist_ok=True)
+    if pkg_output.exists():
+        pkg_output.unlink()
+
+    packaging_dir = runtime_dir / "Support/Packaging"
+    copy_executable(runtime_cli, scripts_dir / CLEAN_UNINSTALLER_CLI_NAME)
+    render_packaging_executable(
+        settings,
+        packaging_dir / "clean-uninstall-postinstall.template",
+        scripts_dir / "postinstall",
+    )
+    remove_apple_double_files(scripts_dir)
+    subprocess.run(["xattr", "-c", "-r", str(scripts_dir)], check=False)
+    run(
+        [
+            "pkgbuild",
+            "--nopayload",
+            "--scripts",
+            str(scripts_dir),
+            "--filter",
+            r"\.DS_Store$",
+            "--filter",
+            r".*\._.*",
+            "--identifier",
+            f"{settings.package_identifier}{CLEAN_UNINSTALLER_IDENTIFIER_SUFFIX}",
+            "--version",
+            release.helper_version,
+            str(pkg_output),
+        ],
+        env={
+            **os.environ,
+            "COPYFILE_DISABLE": "1",
+            "COPY_EXTENDED_ATTRIBUTES_DISABLE": "1",
+        },
     )
 
 

@@ -12,6 +12,7 @@ download path, checksum, 지원 OS matrix, 병원별 설치 절차는 아직 확
 | 문서 | 내용 |
 |---|---|
 | [Usage](usage.md) | preview package build entrypoint, 설치 후 CLI, 주요 설치 경로 |
+| [Clean Uninstall Recovery](clean-uninstall.md) | fresh install이 막힌 Mac에 전달할 Clean Uninstall 복구 절차 |
 | [Capabilities](scope.md) | 현재 확인할 수 있는 항목, VitalDB와의 관계, 미지원 항목, roadmap |
 | [Status Reference](runtime-status.md) | 운영자가 보는 runtime 상태와 이벤트 의미 |
 

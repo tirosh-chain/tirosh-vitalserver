@@ -20,6 +20,7 @@ nav:
   - Release:
       - Overview: release/index.md
       - Usage: release/usage.md
+      - Clean Uninstall Recovery: release/clean-uninstall.md
       - Capabilities: release/scope.md
       - Status Reference: release/runtime-status.md
   - Dev:

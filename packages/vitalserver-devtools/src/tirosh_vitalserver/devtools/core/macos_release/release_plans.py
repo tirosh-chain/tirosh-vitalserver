@@ -103,6 +103,14 @@ def default_dmg_output(
     )
 
 
+def default_clean_uninstaller_pkg_output(
+    settings: MacOSReleaseSettings,
+    release: ReleaseManifest,
+) -> Path:
+    filename = f"VitalServerHelperCleanUninstaller-{release.release_label}.pkg"
+    return settings.dist_dir / filename
+
+
 def package_outputs(
     *,
     settings: MacOSReleaseSettings,

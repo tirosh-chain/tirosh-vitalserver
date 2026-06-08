@@ -25,6 +25,10 @@ runtime PoC, low-level staging target은 release 사용자 인터페이스로 �
 
 기존 preview 설치를 제거한 뒤 다시 설치합니다.
 
+Mac 사용자에게 전달할 때는 [Clean Uninstall Recovery](clean-uninstall.md) 절차를 우선 사용합니다.
+지원 artifact는 `VitalServerHelperCleanUninstaller-<version>.pkg`처럼 Clean Uninstall만 수행하는
+별도 package로 제공합니다.
+
 ```sh
 sudo /usr/local/bin/tirosh-vitalserver-uninstall --clean
 ```

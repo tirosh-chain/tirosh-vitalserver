@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+uninstall_log="${UNINSTALL_LOG}"
+vm_home="${VM_HOME}"
+manager_app="${MANAGER_APP}"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+vm_bin="${script_dir}/vitalserver-vm-clean-uninstaller"
+
+mkdir -p "$(dirname "${uninstall_log}")"
+exec > >(tee -a "${uninstall_log}") 2>&1
+
+log() {
+  printf "[%s] %s\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*"
+}
+
+on_error() {
+  local status="$?"
+  log "clean uninstall recovery failed status=${status} command=${BASH_COMMAND}"
+  exit "${status}"
+}
+
+trap on_error ERR
+
+if [ "$(id -u)" -ne 0 ]; then
+  log "Clean Uninstall recovery package must run as root."
+  exit 1
+fi
+
+wait_for_helper_app_exit() {
+  local helper_executable="${manager_app}/Contents/MacOS/VitalServer Helper"
+  local attempts=80
+  local index
+
+  if [ ! -x "${helper_executable}" ]; then
+    return 0
+  fi
+
+  for ((index = 0; index < attempts; index++)); do
+    if ! /usr/bin/pgrep -f -- "${helper_executable}" >/dev/null 2>&1; then
+      return 0
+    fi
+    if [ "${index}" -eq 0 ]; then
+      log "waiting for Helper app to exit before clean uninstall recovery"
+    fi
+    sleep 0.25
+  done
+
+  log "Helper app is still running; aborting clean uninstall recovery before file removal"
+  exit 3
+}
+
+if [ ! -x "${vm_bin}" ]; then
+  log "bundled clean uninstaller runtime CLI is missing or not executable: ${vm_bin}"
+  exit 4
+fi
+
+wait_for_helper_app_exit
+
+log "clean uninstall recovery started"
+VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime uninstall --clean
+log "clean uninstall recovery completed log=${uninstall_log}"

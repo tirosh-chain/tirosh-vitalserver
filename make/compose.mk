@@ -1,5 +1,4 @@
-.PHONY: app/build app/rebuild app/up app/down app/restart app/logs app/ps app/shell app/config app/clean app/clean/volumes
-.PHONY: open
+.PHONY: compose/build compose/rebuild compose/up compose/down compose/restart compose/logs compose/ps compose/shell compose/config compose/clean compose/clean/volumes compose/open
 .PHONY: swagger/up swagger/down
 
 COMPOSE_ARGS = \
@@ -10,44 +9,44 @@ COMPOSE_ARGS = \
 	--redis-port "$(VITALSERVER_REDIS_PORT)" \
 	--trust-proxy "$(VITALSERVER_TRUST_PROXY)"
 
-app/build: repo/init
+compose/build: repo/init
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- build
 
-app/rebuild: repo/init
+compose/rebuild: repo/init
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- build app
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- up -d --no-deps --force-recreate app
 
-app/up: repo/init proxy/test
+compose/up: repo/init proxy/test
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- up -d
 	$(MAKE) proxy/run
 
-app/down:
+compose/down:
 	$(MAKE) proxy/stop
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- down
 
-app/restart: app/down
-	$(MAKE) app/up
+compose/restart: compose/down
+	$(MAKE) compose/up
 
-app/logs:
+compose/logs:
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- logs -f
 
-app/ps:
+compose/ps:
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- ps
 
-open:
+compose/open:
 	$(DEVTOOLS_RUNNER) open --port "$(VITALSERVER_PROXY_PORT)"
 
-app/shell:
+compose/shell:
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- exec app sh
 
-app/config:
+compose/config:
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- config
 
-app/clean/volumes:
+compose/clean/volumes:
 	$(MAKE) proxy/stop
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- down --volumes
 
-app/clean:
+compose/clean:
 	$(MAKE) proxy/clean
 	$(DEVTOOLS_RUNNER) compose $(COMPOSE_ARGS) -- down --volumes --remove-orphans --rmi local
 

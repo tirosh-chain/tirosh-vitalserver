@@ -12,6 +12,7 @@ assets, Docker image bundle, update bundle은 네트워크 접근이 제한된 �
 | 목적 | command |
 |---|---|
 | release DMG 생성 | `make dist/dmg/release` |
+| release Clean Uninstaller 생성 | `make dist/clean-uninstaller/release` |
 | release Product Update bundle 생성 | `make dist/update/release` |
 | release Product Update bundle 검증 | `make dist/update/verify/release` |
 | VM Image update bundle 생성 | `make dist/image-update/release` |
@@ -25,6 +26,7 @@ assets, Docker image bundle, update bundle은 네트워크 접근이 제한된 �
 |---|---|
 | DMG | 신규 현장 설치 매체 |
 | PKG | macOS installer payload |
+| Clean Uninstaller PKG | fresh install이 막힌 Mac에서 Clean Uninstall만 수행하는 복구 package |
 | Product Update bundle | Helper UI, runtime tools, proxy, service stack update |
 | VM Image update bundle | rootfs/base image class update |
 | Docker image bundle | air-gapped guest service stack 실행 |

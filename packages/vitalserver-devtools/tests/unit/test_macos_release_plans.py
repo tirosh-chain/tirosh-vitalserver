@@ -10,6 +10,7 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
 )
 from tirosh_vitalserver.devtools.core.errors import DomainError
 from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
+    default_clean_uninstaller_pkg_output,
     default_update_migrations,
     package_clean_plan,
 )
@@ -50,6 +51,25 @@ def test_package_clean_plan_rejects_workspace_root() -> None:
 
     with pytest.raises(DomainError, match="unsafe path"):
         package_clean_plan(root=root, settings=settings, release=release)
+
+
+def test_default_clean_uninstaller_pkg_output_uses_release_label() -> None:
+    root = repo_root()
+    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
+    release = ReleaseManifest(
+        channel="dev",
+        helper_version="1.2.3",
+        release_label="1.2.3-dev",
+        minimum_updater_version="1.0.0",
+        vitalserver_version="2.3.4",
+        target_platform="macos-arm64",
+    )
+
+    output = default_clean_uninstaller_pkg_output(settings, release)
+
+    assert output == (
+        settings.dist_dir / "VitalServerHelperCleanUninstaller-1.2.3-dev.pkg"
+    )
 
 
 def test_default_update_migrations_include_guest_runtime_settings_read_model() -> None:

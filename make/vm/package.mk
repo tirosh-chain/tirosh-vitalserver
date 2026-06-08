@@ -1,6 +1,7 @@
 .PHONY: internal/vm/nginx/artifact internal/vm/nginx/bundle internal/vm/docker/images
 .PHONY: internal/vm/require-release-branch
 .PHONY: internal/vm/pkg internal/vm/pkg/dev internal/vm/pkg/release
+.PHONY: internal/vm/clean-uninstaller internal/vm/clean-uninstaller/dev internal/vm/clean-uninstaller/release
 .PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/dev internal/vm/dmg/release
 .PHONY: internal/vm/pkg/clean internal/vm/pkg/install internal/vm/pkg/uninstall/dev
 .PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release
@@ -162,6 +163,22 @@ internal/vm/dmg/release: VM_RECREATE_GOLDEN_ROOTFS := true
 internal/vm/dmg/release:
 	$(MAKE) internal/vm/require-release-branch
 	$(MAKE) internal/vm/dmg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_GOLDEN_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)"
+
+internal/vm/clean-uninstaller:
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-clean-uninstaller-pkg \
+		--release-file "$(VM_RELEASE_FILE)" \
+		--clang-module-cache "$(VM_CLANG_MODULE_CACHE)" \
+		--codesign-identity "$(VM_CODESIGN_IDENTITY)" \
+		--sdkroot "$(VM_SDKROOT)"
+
+internal/vm/clean-uninstaller/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+internal/vm/clean-uninstaller/dev:
+	$(MAKE) internal/vm/clean-uninstaller VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+
+internal/vm/clean-uninstaller/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
+internal/vm/clean-uninstaller/release:
+	$(MAKE) internal/vm/require-release-branch
+	$(MAKE) internal/vm/clean-uninstaller VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
 internal/vm/update: pwa/build
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle \
