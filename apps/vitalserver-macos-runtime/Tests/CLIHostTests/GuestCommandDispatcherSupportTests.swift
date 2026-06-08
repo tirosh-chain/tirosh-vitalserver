@@ -68,6 +68,16 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(syncRelease.contains("tirosh_guest_tools/redis/repair.py"))
     }
 
+    func testVMShutdownTimeoutMigrationReloadsLoadedLaunchdJob() throws {
+        let migration = try readRuntimeSupportFile("Build/migrations/004-refresh-vm-shutdown-timeouts")
+
+        XCTAssertTrue(migration.contains("<key>ExitTimeOut</key>"))
+        XCTAssertTrue(migration.contains("<integer>900</integer>"))
+        XCTAssertTrue(migration.contains("launchctl print \"system/${vm_label}\""))
+        XCTAssertTrue(migration.contains("launchctl bootout \"system/${vm_label}\""))
+        XCTAssertTrue(migration.contains("VM launchd service unloaded so updated ExitTimeOut is used on next start"))
+    }
+
     func testPostinstallDelegatesInstallProvisionWithoutStatusFallback() throws {
         let postinstall = try readRuntimeSupportFile("Packaging/postinstall.template")
 

@@ -63,7 +63,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         ])
     }
 
-    func testStopsVMWithoutPreparingProcessBeforeLaunchdStop() throws {
+    func testPreparesVMProcessBeforeLaunchdStop() throws {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let loaded = Set([RuntimeManagedService.vm])
         var events: [String] = []
@@ -81,6 +81,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         try controller.stopRuntimeServices()
 
         XCTAssertEqual(events, [
+            "prepare:\(RuntimeManagedService.vm.label)",
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
         ])
@@ -116,6 +117,21 @@ final class RuntimeServiceControllerTests: XCTestCase {
             serviceManager: serviceManager,
             serviceState: { $0 == .proxy ? .loaded : .notLoaded },
             prepareForStop: { _ in throw LauncherError.runtimeOperationFailed("graceful stop failed") },
+            launchDaemonPlist: { $0.launchDaemonPlist },
+            launchctlPath: Constants.Commands.launchctl,
+            log: { _ in }
+        )
+
+        XCTAssertThrowsError(try controller.stopRuntimeServices())
+        XCTAssertEqual(serviceManager.stoppedLabels, [])
+    }
+
+    func testStopRuntimeServicesPropagatesVMPrepareFailureWithoutLaunchdStop() {
+        let serviceManager = ServiceControllerServiceManagerSpy()
+        let controller = RuntimeServiceController(
+            serviceManager: serviceManager,
+            serviceState: { $0 == .vm ? .loaded : .notLoaded },
+            prepareForStop: { _ in throw LauncherError.runtimeOperationFailed("VM graceful stop failed") },
             launchDaemonPlist: { $0.launchDaemonPlist },
             launchctlPath: Constants.Commands.launchctl,
             log: { _ in }
@@ -544,6 +560,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
             "prepare:\(RuntimeManagedService.guestLogSync.label)",
             "stop:\(RuntimeManagedService.guestLogSync.label)",
             "wait:\(RuntimeManagedService.guestLogSync.label)",
+            "prepare:\(RuntimeManagedService.vm.label)",
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
         ])
@@ -611,6 +628,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
             "prepare:\(RuntimeManagedService.proxy.label)",
             "stop:\(RuntimeManagedService.proxy.label)",
             "wait:\(RuntimeManagedService.proxy.label)",
+            "prepare:\(RuntimeManagedService.vm.label)",
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
             "prepare:\(RuntimeManagedService.guestLogSync.label)",
@@ -650,6 +668,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         try controller.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: 123)
 
         XCTAssertEqual(events, [
+            "prepare:\(RuntimeManagedService.vm.label)",
             "stop:\(RuntimeManagedService.vm.label)",
             "wait:\(RuntimeManagedService.vm.label)",
             "prepare:\(RuntimeManagedService.guestLogSync.label)",

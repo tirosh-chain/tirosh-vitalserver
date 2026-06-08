@@ -31,9 +31,7 @@ struct RuntimeLaunchdServiceOperator {
 
     func stopIfLoaded(_ service: RuntimeManagedService) throws -> Bool {
         if try isLoaded(service) {
-            if service != .vm {
-                try prepareForStop(service)
-            }
+            try prepareForStop(service)
             return try unloadIfLoaded(service)
         }
         return false
