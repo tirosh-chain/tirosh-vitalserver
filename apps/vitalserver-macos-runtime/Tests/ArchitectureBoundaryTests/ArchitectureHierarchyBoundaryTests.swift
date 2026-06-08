@@ -2367,6 +2367,38 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testCommandWorkerDelegatesExecutablePreflightPolicy() throws {
+        let root = packageRoot()
+        let workerPath = root.appendingPathComponent(
+            "Sources/Adapters/Outbound/MacRuntimeControlClient/Commands/MacRuntimeControlCommandWorker.swift"
+        )
+        let preflightPath = root.appendingPathComponent(
+            "Sources/Adapters/Outbound/MacRuntimeControlClient/Commands/RuntimeExecutableCommandPreflight.swift"
+        )
+        let workerText = try String(contentsOf: workerPath, encoding: .utf8)
+        let preflightText = try String(contentsOf: preflightPath, encoding: .utf8)
+
+        XCTAssertTrue(
+            preflightText.contains("enum RuntimeExecutableCommandPreflight"),
+            "Executable state error mapping should be an adapter-local stateless preflight policy"
+        )
+        XCTAssertTrue(
+            workerText.contains("RuntimeExecutableCommandPreflight.requireExecutable"),
+            "Command worker should orchestrate state read and command execution, not own executable state policy"
+        )
+        for token in [
+            "case .missing:",
+            "case .inspectFailed",
+            "case .present:",
+            "case .unknown",
+        ] {
+            XCTAssertFalse(
+                workerText.contains(token),
+                "Command worker must not own executable state mapping policy: \(token)"
+            )
+        }
+    }
+
     func testRecorderActivityDisplayDoesNotHideInvalidTimestampsAsOldSamples() throws {
         let file = packageRoot()
             .appendingPathComponent("Sources/Adapters/Inbound/MacControlPanel/Presentation/Views/RuntimeRecorderActivityChartDataBuilder.swift")

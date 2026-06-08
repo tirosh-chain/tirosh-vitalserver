@@ -242,6 +242,77 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
     }
 }
 
+final class RuntimeExecutableCommandPreflightTests: XCTestCase {
+    func testExecutableStatePassesWithoutError() throws {
+        XCTAssertNoThrow(try RuntimeExecutableCommandPreflight.requireExecutable(
+            state: .executable,
+            requirement: .launcher
+        ))
+    }
+
+    func testMissingLauncherStaysMissingLauncherError() {
+        assertPreflightError(
+            state: .missing,
+            requirement: .launcher,
+            contains: RuntimeControlClientConstants.StatusText.missingLauncher
+        )
+    }
+
+    func testInspectionFailureStaysDistinctFromMissing() {
+        assertPreflightError(
+            state: .inspectFailed("permission denied"),
+            requirement: .launcher,
+            contains: "launcher inspection failed"
+        )
+        assertPreflightError(
+            state: .inspectFailed("permission denied"),
+            requirement: .launcher,
+            contains: "permission denied"
+        )
+    }
+
+    func testPresentButNotExecutableStaysDistinctFromMissing() {
+        assertPreflightError(
+            state: .present,
+            requirement: .uninstaller,
+            contains: "Uninstaller is not executable"
+        )
+        assertPreflightError(
+            state: .present,
+            requirement: .uninstaller,
+            contains: "state=present"
+        )
+    }
+
+    func testUnknownExecutableStateIsReportedAsNotExecutableState() {
+        assertPreflightError(
+            state: .unknown("acl-denied"),
+            requirement: .uninstaller,
+            contains: "state=acl-denied"
+        )
+    }
+
+    private func assertPreflightError(
+        state: RuntimeFileState,
+        requirement: RuntimeExecutableRequirement,
+        contains expected: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        do {
+            try RuntimeExecutableCommandPreflight.requireExecutable(state: state, requirement: requirement)
+            XCTFail("Expected executable preflight failure", file: file, line: line)
+        } catch {
+            XCTAssertTrue(
+                (error as? RuntimeClientError)?.errorDescription?.contains(expected) == true,
+                "Expected error to contain \(expected), got \(String(describing: error))",
+                file: file,
+                line: line
+            )
+        }
+    }
+}
+
 private final class AdapterStubStatusReader: RuntimeStatusReading {
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
         RuntimeStatus(statusMessage: "status")

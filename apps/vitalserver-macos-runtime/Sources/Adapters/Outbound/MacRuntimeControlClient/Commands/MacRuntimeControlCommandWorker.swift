@@ -29,17 +29,12 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
-        try ensureLauncherIsAvailable()
+        try ensureExecutable(.launcher)
         return await actionEnvironment.verifyBundle(launcher: RuntimeControlClientConstants.Paths.launcher, bundleURL: url)
     }
 
     public func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
-        try ensureExecutableIsAvailable(
-            path: RuntimeControlClientConstants.Paths.uninstaller,
-            missing: .missingUninstaller,
-            inspectionFailed: RuntimeClientError.uninstallerInspectionFailed,
-            notExecutable: RuntimeClientError.uninstallerNotExecutable
-        )
+        try ensureExecutable(.uninstaller)
         return await runPrivileged(RuntimeCommandFactory.uninstallCommand(
             uninstaller: RuntimeControlClientConstants.Paths.uninstaller,
             clean: clean
@@ -47,7 +42,7 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult {
-        try ensureLauncherIsAvailable()
+        try ensureExecutable(.launcher)
         var adminPasswordFile: URL?
         if settings.changeAdminPassword {
             adminPasswordFile = try actionEnvironment.writeAdminPasswordFile(settings.adminPassword)
@@ -74,7 +69,7 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult {
-        try ensureLauncherIsAvailable()
+        try ensureExecutable(.launcher)
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
@@ -86,7 +81,7 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult {
-        try ensureLauncherIsAvailable()
+        try ensureExecutable(.launcher)
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
@@ -107,7 +102,7 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func repairDatastore() async throws -> RuntimeCommandResult {
-        try ensureLauncherIsAvailable()
+        try ensureExecutable(.launcher)
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
@@ -118,7 +113,7 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func repairVMDisk() async throws -> RuntimeCommandResult {
-        try ensureLauncherIsAvailable()
+        try ensureExecutable(.launcher)
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
@@ -129,12 +124,12 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func repairRuntimeServices() async throws -> RuntimeCommandResult {
-        try ensureLauncherIsAvailable()
+        try ensureExecutable(.launcher)
         return await runPrivileged(RuntimeCommandFactory.runtimeServicesCommand(action: .repair))
     }
 
     public func createRedisBackup() async throws -> RuntimeCommandResult {
-        try ensureLauncherIsAvailable()
+        try ensureExecutable(.launcher)
         return await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: [
@@ -145,12 +140,12 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func startRuntimeServices() async throws -> RuntimeCommandResult {
-        try ensureLauncherIsAvailable()
+        try ensureExecutable(.launcher)
         return await runPrivileged(RuntimeCommandFactory.runtimeServicesCommand(action: .start))
     }
 
     public func stopRuntimeServices() async throws -> RuntimeCommandResult {
-        try ensureLauncherIsAvailable()
+        try ensureExecutable(.launcher)
         return await runPrivileged(RuntimeCommandFactory.runtimeServicesCommand(action: .stop))
     }
 
@@ -158,33 +153,11 @@ public actor MacRuntimeControlCommandWorker {
         try await logExporter.exportLogs(to: destination)
     }
 
-    private func ensureLauncherIsAvailable() throws {
-        try ensureExecutableIsAvailable(
-            path: RuntimeControlClientConstants.Paths.launcher,
-            missing: .missingLauncher,
-            inspectionFailed: RuntimeClientError.launcherInspectionFailed,
-            notExecutable: RuntimeClientError.launcherNotExecutable
+    private func ensureExecutable(_ requirement: RuntimeExecutableRequirement) throws {
+        try RuntimeExecutableCommandPreflight.requireExecutable(
+            state: actionEnvironment.executableState(atPath: requirement.path),
+            requirement: requirement
         )
-    }
-
-    private func ensureExecutableIsAvailable(
-        path: String,
-        missing: RuntimeClientError,
-        inspectionFailed: (String, String) -> RuntimeClientError,
-        notExecutable: (String, String) -> RuntimeClientError
-    ) throws {
-        switch actionEnvironment.executableState(atPath: path) {
-        case .executable:
-            return
-        case .missing:
-            throw missing
-        case .inspectFailed(let reason):
-            throw inspectionFailed(path, reason)
-        case .present:
-            throw notExecutable(path, "present")
-        case .unknown(let state):
-            throw notExecutable(path, state)
-        }
     }
 
     private func ensureManagedBackupDeletionTarget(_ url: URL) throws {
