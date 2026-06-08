@@ -53,12 +53,19 @@ export class RuntimeControlContractError extends Error {
   readonly kind = "contract" as const;
   readonly path: string;
   readonly cause: unknown;
+  readonly issues: ReadonlyArray<{
+    path: string;
+    code: string;
+    message: string;
+  }> = [];
 
   constructor(path: string, cause: unknown) {
-    super(`Runtime Control API contract validation failed: ${path}`);
+    const issues = extractContractIssues(cause);
+    super(buildContractMessage(path, issues));
     this.name = "RuntimeControlContractError";
     this.path = path;
     this.cause = cause;
+    this.issues = issues;
   }
 }
 
@@ -83,10 +90,15 @@ export function summarizeRuntimeControlError(
   }
 
   if (errorLike.kind === "contract") {
+    const issues = errorLike.issues ?? [];
     return {
       kind: "contract",
       title: "Runtime Control API contract mismatch",
-      detail: `The response for ${errorLike.path ?? "the requested route"} did not match the PWA contract.`,
+      detail: issues.length > 0
+        ? `The response for ${
+            errorLike.path ?? "the requested route"
+          } did not match the PWA contract. First mismatch: ${issues[0]?.path} (${issues[0]?.code}) ${issues[0]?.message}`
+        : `The response for ${errorLike.path ?? "the requested route"} did not match the PWA contract.`,
       recovery:
         "Refresh after updating the Helper. If this persists, export logs and compare the RuntimeContractAPI version."
     };
@@ -152,6 +164,73 @@ function summarizeAPIError(error: ErrorLike): RuntimeControlErrorSummary {
     detail: [code, message].filter(Boolean).join(": "),
     recovery: recoveryForStatus(status, code)
   };
+}
+
+function buildContractMessage(
+  path: string,
+  issues: ReadonlyArray<{ path: string; code: string; message: string }>
+): string {
+  if (issues.length === 0) {
+    return `Runtime Control API contract validation failed: ${path}`;
+  }
+
+  const first = issues[0];
+  const suffix =
+    issues.length > 1 ? ` (+${issues.length - 1} more issues)` : "";
+  return `Runtime Control API contract validation failed: ${path}. ` +
+    `First issue at ${first.path}: ${first.message} [${first.code}]${suffix}`;
+}
+
+function extractContractIssues(
+  cause: unknown
+): ReadonlyArray<{ path: string; code: string; message: string }> {
+  if (!cause || typeof cause !== "object" || !("issues" in cause)) {
+    return [];
+  }
+
+  const candidate = cause as { issues?: unknown };
+  if (!Array.isArray(candidate.issues)) {
+    return [];
+  }
+
+  return candidate.issues.flatMap((rawIssue: unknown) => {
+    if (!rawIssue || typeof rawIssue !== "object") {
+      return [];
+    }
+
+    const issue = rawIssue as {
+      path?: unknown;
+      message?: unknown;
+      code?: unknown;
+    };
+
+    const rawPath = Array.isArray(issue.path)
+      ? issue.path
+      : [];
+    const path = pathPartsToString(rawPath);
+    const message =
+      typeof issue.message === "string" ? issue.message : "invalid value";
+    const code =
+      typeof issue.code === "string" ? issue.code : "unknown";
+
+    return [{ path, code, message }];
+  });
+}
+
+function pathPartsToString(pathParts: unknown[]): string {
+  const chunks = pathParts.map((part, index) => {
+    if (typeof part === "number") {
+      return `[${part}]`;
+    }
+
+    const text = typeof part === "string" ? part : String(part);
+    if (index > 0) {
+      return `.${text}`;
+    }
+    return text;
+  });
+
+  return chunks.join("");
 }
 
 function parseAPIErrorBody(

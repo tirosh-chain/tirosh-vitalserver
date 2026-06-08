@@ -7,7 +7,7 @@ const nullableNumber = z.number().nullable().optional();
 const nullableBoolean = z.boolean().nullable().optional();
 const unknownRecord = z.record(z.string(), z.unknown());
 const resourceUsageSchema = unknownRecord.nullable();
-const runtimeStateSchema = z.enum([
+const knownRuntimeStateSchema = z.enum([
   "installing",
   "updating",
   "recovering",
@@ -15,8 +15,7 @@ const runtimeStateSchema = z.enum([
   "degraded",
   "critical"
 ]);
-const vmStateSchema = z
-  .enum([
+const knownVMStateSchema = z.enum([
     "not-installed",
     "stopped",
     "starting",
@@ -24,9 +23,10 @@ const vmStateSchema = z
     "stale",
     "unreachable",
     "failed"
-  ])
-  .nullable();
-const runtimeEventTypeSchema = z.enum(runtimeEventTypeValues);
+  ]);
+const runtimeStateSchema = z.union([knownRuntimeStateSchema, z.string()]);
+const vmStateSchema = z.union([knownVMStateSchema, z.string()]).nullable();
+const runtimeEventTypeSchema = z.union([z.enum(runtimeEventTypeValues), z.string()]);
 const recorderStatusSchema = z.enum([
   "online",
   "stale",

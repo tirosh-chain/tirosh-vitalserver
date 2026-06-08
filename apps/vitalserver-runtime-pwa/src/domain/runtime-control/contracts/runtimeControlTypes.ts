@@ -1,13 +1,66 @@
 import type { components, paths } from "./generated/runtime-control";
 
-export type RuntimeControlOverview =
+type CompatValue<T extends string | null> = T | (string & {});
+
+type RuntimeStateWithUnknown =
+  CompatValue<components["schemas"]["RuntimeState"]>;
+
+type RuntimeVMStateWithUnknown =
+  CompatValue<components["schemas"]["RuntimeVMState"]>;
+
+type RuntimeEventTypeWithUnknown =
+  CompatValue<components["schemas"]["RuntimeEventType"]>;
+
+type RuntimeStatusResponse =
+  paths["/runtime/status"]["get"]["responses"]["200"]["content"]["application/json"];
+
+type RuntimeOverviewResponse =
   paths["/runtime/overview"]["get"]["responses"]["200"]["content"]["application/json"];
+
+type RuntimeEventHistoryResponse =
+  paths["/runtime/events"]["get"]["responses"]["200"]["content"]["application/json"];
+
+type RuntimeEventDocumentResponse = components["schemas"]["RuntimeEventDocument"];
+
+type RuntimeStatusWithCompat = Omit<
+  RuntimeStatusResponse,
+  "runtimeState" | "vmState"
+> & {
+  runtimeState?: RuntimeStateWithUnknown;
+  vmState?: RuntimeVMStateWithUnknown;
+};
+
+type RuntimeEventDocumentWithCompat = Omit<
+  RuntimeEventDocumentResponse,
+  "eventType" | "status" | "vmState"
+> & {
+  eventType: RuntimeEventTypeWithUnknown;
+  status?: RuntimeStateWithUnknown;
+  vmState?: RuntimeVMStateWithUnknown;
+};
+
+type RuntimeEventHistoryWithCompat = Omit<
+  RuntimeEventHistoryResponse,
+  "events"
+> & {
+  events: RuntimeEventDocumentWithCompat[];
+};
+
+type RuntimeOverviewWithCompat = Omit<
+  RuntimeOverviewResponse,
+  "status"
+> & {
+  status: RuntimeStatusWithCompat;
+};
+
+export type RuntimeControlOverview =
+  RuntimeOverviewWithCompat;
 
 export type RuntimeControlCapabilities =
   paths["/runtime/capabilities"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type RuntimeStatus =
-  paths["/runtime/status"]["get"]["responses"]["200"]["content"]["application/json"];
+  RuntimeStatusWithCompat;
 
 export type RuntimeSettings =
   paths["/runtime/settings"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -34,7 +87,7 @@ export type RuntimeBackupRequest =
   paths["/host/backups/rollback"]["post"]["requestBody"]["content"]["application/json"];
 
 export type RuntimeEventHistory =
-  paths["/runtime/events"]["get"]["responses"]["200"]["content"]["application/json"];
+  RuntimeEventHistoryWithCompat;
 
 export type RuntimeEventDocument = NonNullable<
   RuntimeEventHistory["events"]

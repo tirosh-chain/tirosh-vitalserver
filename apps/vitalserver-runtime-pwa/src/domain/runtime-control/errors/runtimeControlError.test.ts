@@ -35,9 +35,31 @@ describe("runtime control error summaries", () => {
           "/runtime/overview",
           new Error("bad schema")
         )
+    )
+    ).toMatchObject({
+      kind: "contract",
+      title: "Runtime Control API contract mismatch"
+    });
+  });
+
+  it("includes contract issue details in contract summaries", () => {
+    const zodLikeError = {
+      issues: [
+        {
+          path: ["status", "runtimeState"],
+          message: "Invalid enum value. Expected 'installing' | 'updating' | ...",
+          code: "invalid_enum_value"
+        }
+      ]
+    };
+
+    expect(
+      summarizeRuntimeControlError(
+        new RuntimeControlContractError("/runtime/overview", zodLikeError)
       )
     ).toMatchObject({
       kind: "contract",
+      detail: expect.stringContaining("status.runtimeState"),
       title: "Runtime Control API contract mismatch"
     });
   });

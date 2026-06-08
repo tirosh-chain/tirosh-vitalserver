@@ -32,16 +32,16 @@ describe("runtime control contract schemas", () => {
     });
   });
 
-  it("rejects invalid runtime state values in overview responses", () => {
-    expect(() =>
+  it("accepts unknown runtime state values in overview responses", () => {
+    expect(
       runtimeOverviewSchema.parse(
         fullRuntimeOverview({
           status: {
-            runtimeState: "surprising"
+            runtimeState: "surprising-from-helper"
           }
         })
-      )
-    ).toThrow();
+      ).status.runtimeState
+    ).toBe("surprising-from-helper");
   });
 
   it("accepts Remote Console status fields in overview responses", () => {
@@ -81,6 +81,18 @@ describe("runtime control contract schemas", () => {
       containerLogsPresent: true,
       containerLogsMetadataError: "size-read-failed,mtime-read-failed"
     });
+  });
+
+  it("accepts unknown VM states in overview responses", () => {
+    expect(
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          status: {
+            vmState: "hibernating"
+          }
+        })
+      ).status.vmState
+    ).toBe("hibernating");
   });
 
   it("preserves VitalDB observation snapshot read-state semantics", () => {
@@ -424,6 +436,23 @@ describe("runtime control contract schemas", () => {
         matchingCount: 1
       }).events?.[0]?.eventType
     ).toBe("recovery-deferred");
+  });
+
+  it("accepts unknown runtime event types from the Helper", () => {
+    expect(
+      runtimeEventHistorySchema.parse({
+        events: [
+          fullRuntimeEvent({
+            eventType: "runtime-checkpoint-progressed",
+            timestamp: "2026-06-01T01:43:20Z",
+            status: "critical",
+            message: "future event introduced"
+          })
+        ],
+        nextCursor: null,
+        matchingCount: 1
+      }).events?.[0]?.eventType
+    ).toBe("runtime-checkpoint-progressed");
   });
 
   it("requires runtime event identity and diagnostic owner fields", () => {
