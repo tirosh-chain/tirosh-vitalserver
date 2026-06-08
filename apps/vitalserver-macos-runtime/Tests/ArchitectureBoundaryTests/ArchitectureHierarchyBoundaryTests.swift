@@ -1281,6 +1281,31 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
+    func testContainerServicesReadStateDoesNotInferFromReadErrorText() throws {
+        let containerObservationText = try String(
+            contentsOf: packageRoot().appendingPathComponent(
+                "Sources/Contracts/Shared/RuntimeContainerObservation.swift"
+            ),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            containerObservationText.contains("composeServicesReadState"),
+            "Runtime container observation must carry compose services read state explicitly"
+        )
+        for token in [
+            #"readError.contains("stale")"#,
+            #"readError.contains("invalid")"#,
+            #"readError.contains("missing")"#,
+            "RuntimeContainerServicesReadState(readError:",
+        ] {
+            XCTAssertFalse(
+                containerObservationText.contains(token),
+                "Compose services read state must not be inferred from read error text: \(token)"
+            )
+        }
+    }
+
     func testRuntimeHealthCheckerDoesNotCreateMissingProxyPortHTTPStatus() throws {
         let file = packageRoot()
             .appendingPathComponent("Sources/Adapters/Outbound/Health/RuntimeHealthChecker.swift")

@@ -143,22 +143,6 @@ public enum RuntimeContainerServicesReadState: String, Codable, Equatable, Senda
     case invalid
     case stale
     case readFailed = "read-failed"
-
-    public init(readError: String?) {
-        guard let readError, !readError.isEmpty else {
-            self = .loaded
-            return
-        }
-        if readError.contains("stale") {
-            self = .stale
-        } else if readError.contains("invalid") {
-            self = .invalid
-        } else if readError.contains("missing") {
-            self = .missing
-        } else {
-            self = .readFailed
-        }
-    }
 }
 
 public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
@@ -216,7 +200,8 @@ public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
         self.containerLogsBytes = containerLogsBytes
         self.containerLogsUpdatedAt = containerLogsUpdatedAt
         self.containerLogsMetadataError = containerLogsMetadataError
-        self.composeServicesReadState = composeServicesReadState ?? RuntimeContainerServicesReadState(
+        self.composeServicesReadState = RuntimeContainerObservation.composeServicesReadState(
+            explicitState: composeServicesReadState,
             readError: composeServicesReadError
         )
         self.composeServices = composeServices
@@ -246,6 +231,10 @@ public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
         let composeServicesReadError = try container.decodeIfPresent(
             String.self,
             forKey: .composeServicesReadError
+        )
+        let composeServices = try container.decodeIfPresent(
+            [RuntimeContainerServiceObservation].self,
+            forKey: .composeServices
         )
         self.auditProxyHTTP = try container.decode(String.self, forKey: .auditProxyHTTP)
         self.auditProxyStatus = try container.decodeIfPresent(
@@ -284,15 +273,33 @@ public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
             String.self,
             forKey: .containerLogsMetadataError
         )
-        self.composeServicesReadState = try container.decodeIfPresent(
-            RuntimeContainerServicesReadState.self,
-            forKey: .composeServicesReadState
-        ) ?? RuntimeContainerServicesReadState(readError: composeServicesReadError)
-        self.composeServices = try container.decodeIfPresent(
-            [RuntimeContainerServiceObservation].self,
-            forKey: .composeServices
-        ) ?? []
+        self.composeServicesReadState = RuntimeContainerObservation.composeServicesReadState(
+            explicitState: try container.decodeIfPresent(
+                RuntimeContainerServicesReadState.self,
+                forKey: .composeServicesReadState
+            ),
+            readError: composeServicesReadError,
+            servicesKeyPresent: container.contains(.composeServices)
+        )
+        self.composeServices = composeServices ?? []
         self.composeServicesReadError = composeServicesReadError
+    }
+
+    private static func composeServicesReadState(
+        explicitState: RuntimeContainerServicesReadState?,
+        readError: String?,
+        servicesKeyPresent: Bool = true
+    ) -> RuntimeContainerServicesReadState {
+        if let explicitState {
+            return explicitState
+        }
+        if let readError, !readError.isEmpty {
+            return .readFailed
+        }
+        if servicesKeyPresent {
+            return .loaded
+        }
+        return .missing
     }
 
     private static func metadataReadState(

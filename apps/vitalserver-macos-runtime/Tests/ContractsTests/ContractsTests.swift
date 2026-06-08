@@ -292,6 +292,7 @@ final class ContractsTests: XCTestCase {
           "containerLogsPresent": true,
           "containerLogsBytes": null,
           "containerLogsMetadataError": "size-read-failed",
+          "composeServicesReadState": "invalid",
           "composeServices": [],
           "composeServicesReadError": "guest-runtime-state-invalid"
         }
@@ -312,6 +313,51 @@ final class ContractsTests: XCTestCase {
             from: JSONEncoder().encode(observation)
         )
         XCTAssertEqual(encoded, observation)
+    }
+
+    func testRuntimeContainerObservationDoesNotInferComposeReadStateFromReadErrorText() throws {
+        for readError in [
+            "guest-runtime-state-invalid",
+            "guest-runtime-state-stale",
+            "guest-runtime-state-missing",
+        ] {
+            let json = """
+            {
+              "auditProxyHTTP": "200",
+              "auditProxyStatus": null,
+              "containerLogsPresent": true,
+              "containerLogsBytes": null,
+              "composeServices": [],
+              "composeServicesReadError": "\(readError)"
+            }
+            """
+
+            let observation = try JSONDecoder().decode(RuntimeContainerObservation.self, from: Data(json.utf8))
+
+            XCTAssertEqual(
+                observation.composeServicesReadState,
+                .readFailed,
+                "Compose services state must come from composeServicesReadState, not readError text: \(readError)"
+            )
+            XCTAssertEqual(observation.composeServicesReadError, readError)
+        }
+    }
+
+    func testRuntimeContainerObservationDecodesMissingComposeServicesAsMissingWhenStateAbsent() throws {
+        let json = """
+        {
+          "auditProxyHTTP": "200",
+          "auditProxyStatus": null,
+          "containerLogsPresent": true,
+          "containerLogsBytes": null
+        }
+        """
+
+        let observation = try JSONDecoder().decode(RuntimeContainerObservation.self, from: Data(json.utf8))
+
+        XCTAssertEqual(observation.composeServicesReadState, .missing)
+        XCTAssertEqual(observation.composeServices, [])
+        XCTAssertNil(observation.composeServicesReadError)
     }
 
     func testRuntimeContainerObservationDistinguishesLoadedEmptyComposeServicesFromMissingState() throws {
