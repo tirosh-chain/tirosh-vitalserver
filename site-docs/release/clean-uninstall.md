@@ -39,12 +39,12 @@ installer를 반복 실행하지 않습니다. 기존 host 상태가 남아 있�
 Mac 사용자에게는 아래 package를 전달합니다.
 
 ```text
-VitalServerHelperCleanUninstaller-<version>.pkg
+Clean Uninstall VitalServer Helper.pkg
 ```
 
 실행 순서는 간단합니다.
 
-1. `VitalServerHelperCleanUninstaller-<version>.pkg`를 더블클릭합니다.
+1. DMG 안의 `Clean Uninstall VitalServer Helper.pkg`를 더블클릭합니다.
 2. macOS Installer 안내에 따라 관리자 승인을 진행합니다.
 3. 완료 후 Mac을 재시동합니다.
 4. `Install VitalServer Helper.pkg`를 다시 실행합니다.

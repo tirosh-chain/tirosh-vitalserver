@@ -13,8 +13,11 @@ Helper package는 fresh install을 기준으로 합니다. 기존 설치물, lau
 Mac 사용자에게는 서명 및 공증된 Helper installer를 전달합니다.
 
 ```text
-Install VitalServer Helper.pkg
+VitalServerHelper-<version>.dmg
 ```
+
+DMG 안에는 `Install VitalServer Helper.pkg`와 `Clean Uninstall VitalServer Helper.pkg`가 함께
+들어 있습니다. 새 설치는 `Install VitalServer Helper.pkg`를 실행합니다.
 
 설치 후 Helper app을 열고 Status 화면에서 runtime 상태를 확인합니다.
 

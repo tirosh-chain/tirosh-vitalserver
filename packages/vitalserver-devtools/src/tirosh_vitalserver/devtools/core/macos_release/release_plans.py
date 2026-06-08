@@ -23,6 +23,7 @@ DEFAULT_UPDATE_MIGRATIONS = (
 @dataclass(frozen=True)
 class PackageOutputs:
     pkg_output: Path
+    clean_uninstaller_pkg_output: Path
     dmg_output: Path
 
 
@@ -130,7 +131,14 @@ def package_outputs(
         pkg_output = default_pkg_output(settings, release)
     else:
         dmg_output = default_dmg_output(settings, release)
-    return PackageOutputs(pkg_output=pkg_output, dmg_output=dmg_output)
+    return PackageOutputs(
+        pkg_output=pkg_output,
+        clean_uninstaller_pkg_output=default_clean_uninstaller_pkg_output(
+            settings,
+            release,
+        ),
+        dmg_output=dmg_output,
+    )
 
 
 def package_clean_plan(
@@ -142,6 +150,7 @@ def package_clean_plan(
     paths = [
         settings.pkg_root.parent,
         default_pkg_output(settings, release),
+        default_clean_uninstaller_pkg_output(settings, release),
         settings.app_bundle,
         default_dmg_output(settings, release),
     ]

@@ -77,9 +77,21 @@ def build_dmg(context: PackageContext) -> None:
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
+    build_clean_uninstaller_pkg(
+        settings=context.settings,
+        release=context.release,
+        runtime_dir=context.runtime_dir,
+        runtime_cli=context.runtime_cli,
+        scripts_dir=context.pkg_root.parent / "clean-uninstaller-scripts",
+        pkg_output=context.clean_uninstaller_pkg_output,
+    )
     install_file(
         context.pkg_output,
         staging / package_output_value(context, "dmg_installer_pkg_name"),
+    )
+    install_file(
+        context.clean_uninstaller_pkg_output,
+        staging / package_output_value(context, "dmg_clean_uninstaller_pkg_name"),
     )
     context.dmg_output.parent.mkdir(parents=True, exist_ok=True)
     if context.dmg_output.exists():

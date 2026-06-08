@@ -219,6 +219,7 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
         pkg_root=settings.pkg_root,
         pkg_scripts=settings.pkg_scripts,
         pkg_output=outputs.pkg_output,
+        clean_uninstaller_pkg_output=outputs.clean_uninstaller_pkg_output,
         dmg_output=outputs.dmg_output,
         app_bundle=settings.app_bundle,
         runtime_cli=settings.runtime_cli,
