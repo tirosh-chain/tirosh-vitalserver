@@ -134,6 +134,21 @@ Reset Installer는 Vital Server Helper가 소유한 항목을 제거합니다.
 | Package receipt | `ai.tirosh.vitalserver.helper` |
 | Logs and backups | runtime logs, rollback backups, Redis backups |
 
+`Runtime home` 안에 있는 Host-owned runtime state도 함께 제거됩니다.
+
+| 내부 상태 | 의미 |
+|---|---|
+| VM pid/run state | VM pid file, runtime run marker, pid 기반 stop 관측 상태 |
+| Status documents | `runtime-status.json`, uninstall/install state, operation lease |
+| Runtime data | VM disk, cloud-init seed, deploy inputs, generated runtime config |
+| Runtime logs | launcher, VM, proxy, guest log sync, watchdog, uninstall 관련 log |
+| Backup data | rollback backups, Redis backups, clean reset 대상 backup directory |
+
+Reset Installer는 먼저 runtime service와 VM process를 멈춘 뒤 이 파일들을 제거합니다. VM pid
+file이 이미 없으면 그 자체를 성공으로 추정하지 않고, 남아 있는 launchd service 상태를 읽어
+unload합니다. 제거 후에도 launchd service, runtime artifact, package receipt 중 fresh install을
+막는 상태가 남으면 완료로 표시하지 않습니다.
+
 Helper가 소유하지 않은 일반 nginx, Docker, Homebrew, 사용자 문서, 병원 외부 데이터는 제거하지
 않아야 합니다.
 

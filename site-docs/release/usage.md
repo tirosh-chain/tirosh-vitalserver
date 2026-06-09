@@ -39,7 +39,7 @@ or Host proxy port conflict blocks this install.
 ```
 
 이 경우 installer를 반복 실행하지 않습니다.
-[Reset Installer](clean-uninstall.md)로 정리한 뒤 다시 설치합니다.
+[Reset Installer](reset-installer.md)로 정리한 뒤 다시 설치합니다.
 
 일반 Uninstall은 현재 사용자 절차로 제공하지 않습니다. 재설치 가능한 상태를 보장하지 않기
 때문입니다.
@@ -234,7 +234,7 @@ runtime이 설치된 뒤의 상세 로그는 기본적으로 아래 위치에 �
 - `/usr/local/bin/tirosh-vitalserver-uninstall`
 
 재설치가 막혀 정리가 필요하면 파일을 수동으로 지우기보다
-[Reset Installer](clean-uninstall.md)를 사용합니다.
+[Reset Installer](reset-installer.md)를 사용합니다.
 
 ## 6. 지원 담당자 참고
 

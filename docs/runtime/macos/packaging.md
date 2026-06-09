@@ -381,6 +381,11 @@ Control API, 기존 설치된 uninstaller가 반드시 살아 있다고 가정�
   mode를 숨겨 두지 않습니다.
 - 제거 대상은 Vital Server Helper가 소유한 explicit path, LaunchDaemon label, package receipt,
   runtime process, host proxy listener로 제한합니다.
+- clean reset 대상에는 `productRoot` 전체가 포함됩니다. 따라서 product root 아래의 VM pid file,
+  run marker, status documents, runtime state, VM disk, cloud-init seed, logs, rollback backups,
+  Redis backups도 함께 제거됩니다.
+- VM pid file이 missing이면 cleanup success로 추정하지 않습니다. force clean recovery는 explicit
+  launchd state를 읽고 VM/sleep-prevention service unload를 계속 시도해야 합니다.
 - 외부 nginx, Homebrew, Docker, 사용자 문서, 병원 데이터 경로는 product-owned state로 명시되지
   않은 한 제거하지 않습니다.
 - 기존 `/usr/local/bin/tirosh-vitalserver-uninstall`이 있으면 같은 uninstall 계약을 사용할 수
