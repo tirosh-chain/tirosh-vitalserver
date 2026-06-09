@@ -37,7 +37,8 @@ public actor MacRuntimeControlCommandWorker {
         try ensureExecutable(.uninstaller)
         return await runPrivileged(RuntimeCommandFactory.uninstallCommand(
             uninstaller: RuntimeControlClientConstants.Paths.uninstaller,
-            clean: clean
+            clean: clean,
+            forceClean: clean
         ))
     }
 

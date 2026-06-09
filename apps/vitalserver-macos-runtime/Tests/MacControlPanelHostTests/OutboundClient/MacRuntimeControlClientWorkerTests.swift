@@ -130,7 +130,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
 
         XCTAssertEqual(environment.removedPasswordFiles.map(\.path), ["/tmp/admin-password"])
         XCTAssertEqual(runner.shellCommands.count, 12)
-        XCTAssertTrue(runner.shellCommands.contains { $0.contains("--clean") })
+        XCTAssertTrue(runner.shellCommands.contains { $0.contains("--force-clean-uninstaller") })
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--admin-password-file") })
     }
 

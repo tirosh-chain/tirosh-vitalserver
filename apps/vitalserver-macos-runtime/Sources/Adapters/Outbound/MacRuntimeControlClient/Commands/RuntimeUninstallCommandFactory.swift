@@ -1,9 +1,17 @@
 import Foundation
 
 enum RuntimeUninstallCommandFactory {
-    static func uninstallCommand(uninstaller: String, clean: Bool) -> String {
+    static func uninstallCommand(uninstaller: String, clean: Bool, forceClean: Bool = false) -> String {
         let shellQuote = RuntimeShellCommandFactory.shellQuote
-        let command = ([uninstaller] + (clean ? ["--clean"] : [])).map(shellQuote).joined(separator: " ")
+        let uninstallArguments: [String]
+        if forceClean {
+            uninstallArguments = ["--force-clean-uninstaller"]
+        } else if clean {
+            uninstallArguments = ["--clean"]
+        } else {
+            uninstallArguments = []
+        }
+        let command = ([uninstaller] + uninstallArguments).map(shellQuote).joined(separator: " ")
         let logPath = RuntimeControlClientConstants.Paths.uninstallLog
         let previousLogPath = "\(logPath).previous"
         let viewerScriptPath = "/private/tmp/tirosh-vitalserver-uninstall-progress.command"

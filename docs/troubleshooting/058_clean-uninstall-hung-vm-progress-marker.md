@@ -24,6 +24,20 @@ fresh install preflight blocked blockers=launchd-service-loaded:label=ai.tirosh.
 
 The install preflight can report runtime files, plists, tools, and package receipt as absent while `launchctl print system/ai.tirosh.vitalserver.helper.vm` and `launchctl print system/ai.tirosh.vitalserver.helper.sleep-prevention` still show loaded or running jobs.
 
+A related Helper UI form can appear after applying settings. The Helper message log shows settings restart sending `SIGTERM` to the VM process and later timing out:
+
+```text
+requesting graceful VM process stop before launchd unload
+sent SIGTERM to VM process pid=...
+VM process did not stop within 900s
+```
+
+The following clean uninstall progress window can then show only:
+
+```text
+uninstall process failed exitCode=missing-marker runID=...
+```
+
 ## Cause
 
 There are two separate states that older builds could collapse into one confusing message:
@@ -31,6 +45,8 @@ There are two separate states that older builds could collapse into one confusin
 - The progress viewer wrote `missing-marker` when its background worker PID disappeared before a completed/failed marker was observed.
 - The real cleanup could still be blocked by a VM process that received `SIGTERM` but did not exit. A guest kernel Oops or stale guest runtime state can leave the host VM process alive while runtime health is critical.
 - Force clean recovery could observe `pidFileMissing` from Host-owned VM process state and stop before unloading launchd services. That left explicit launchd state behind even though files and package receipts were removed.
+- Helper UI clean uninstall used the standard clean uninstall path, so it did not necessarily use the force-clean recovery contract that reset-package recovery uses for a VM already stuck in graceful stop.
+- Worker launch failures before the worker wrote its started marker were reported as `missing-marker`, which hid the actual worker exit status.
 
 The progress viewer and older reset package shared `/private/tmp/tirosh-vitalserver-uninstall.log`, so a stale progress marker could appear next to later package recovery logs and look like the root cause.
 
@@ -45,6 +61,8 @@ Clean uninstall recovery must not wait on the standard 900s graceful VM stop pat
 - if the VM pid file is missing, unload launchd services from explicit launchd state instead of treating missing pid state as cleanup success,
 - preserve service stop blocked state if the VM process is still observable,
 - refuse to mark the cleanup completed while launchd services, runtime artifacts, or package receipts still block a fresh install.
+- Helper UI clean uninstall now starts the uninstaller with the explicit force-clean contract. Default uninstall remains the backup-preserving path.
+- Progress handoff now writes the worker exit status when the worker exits before any terminal marker and routes worker launch stderr into the uninstall log.
 
 The progress viewer now tags terminal markers with a run id and only treats markers for its own run as terminal. Shared or stale log lines no longer masquerade as the current worker result.
 

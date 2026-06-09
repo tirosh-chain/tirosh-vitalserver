@@ -27,8 +27,12 @@ enum RuntimeCommandFactory {
         RuntimeShellCommandFactory.shellCommand(executable: executable, arguments: arguments)
     }
 
-    static func uninstallCommand(uninstaller: String, clean: Bool) -> String {
-        RuntimeUninstallCommandFactory.uninstallCommand(uninstaller: uninstaller, clean: clean)
+    static func uninstallCommand(uninstaller: String, clean: Bool, forceClean: Bool = false) -> String {
+        RuntimeUninstallCommandFactory.uninstallCommand(
+            uninstaller: uninstaller,
+            clean: clean,
+            forceClean: forceClean
+        )
     }
 
     static func deleteBackupCommand(url: URL) -> String {

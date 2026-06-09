@@ -121,6 +121,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
         XCTAssertTrue(uninstall.contains("command=(\"${vm_bin}\" \"runtime\" \"uninstall\")"))
         XCTAssertTrue(uninstall.contains("command+=(\"--clean\")"))
+        XCTAssertTrue(uninstall.contains("command+=(\"--force-clean-uninstaller\")"))
         XCTAssertTrue(uninstall.contains("vm_home=\"${VM_HOME}\""))
         XCTAssertTrue(uninstall.contains("VITALSERVER_VM_HOME=\"${vm_home}\" \"${command[@]}\""))
         XCTAssertTrue(uninstall.contains("step=remove-uninstaller status=started"))

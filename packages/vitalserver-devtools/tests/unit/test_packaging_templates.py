@@ -137,6 +137,7 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "proxy_temp_path temp/proxy;" in proxy_config_text
     assert '"${vm_bin}" "runtime" "uninstall"' in uninstall_text
     assert 'command+=("--clean")' in uninstall_text
+    assert 'command+=("--force-clean-uninstaller")' in uninstall_text
     assert (
         'vm_home="/Library/Application Support/VitalServerHelper/vm"'
         in uninstall_text

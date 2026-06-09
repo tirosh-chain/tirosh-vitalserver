@@ -31,11 +31,12 @@ final class RuntimeCommandFactoryTests: XCTestCase {
     func testUninstallCommandStartsBackgroundUninstaller() {
         let command = RuntimeCommandFactory.uninstallCommand(
             uninstaller: "/usr/local/bin/tirosh-vitalserver-uninstall",
-            clean: true
+            clean: true,
+            forceClean: true
         )
 
         XCTAssertTrue(command.hasPrefix("/bin/bash -lc "))
-        XCTAssertTrue(command.contains("nohup /bin/bash \"${worker_script}\" >/dev/null 2>&1 &"))
+        XCTAssertTrue(command.contains("nohup /bin/bash \"${worker_script}\" >> \"${log_file}\" 2>&1 &"))
         XCTAssertTrue(command.contains("previous_log_file='\\''/private/tmp/tirosh-vitalserver-uninstall.log.previous'\\''"))
         XCTAssertTrue(command.contains(": > \"${log_file}\""))
         XCTAssertTrue(command.contains("viewer_script='\\''/private/tmp/tirosh-vitalserver-uninstall-progress.command'\\''"))
@@ -47,7 +48,8 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains("tail -n 0 -F"))
         XCTAssertTrue(command.contains("worker_pid_file="))
         XCTAssertTrue(command.contains("/usr/local/bin/tirosh-vitalserver-uninstall"))
-        XCTAssertTrue(command.contains("--clean"))
+        XCTAssertTrue(command.contains("--force-clean-uninstaller"))
+        XCTAssertFalse(command.contains("'--clean'"))
         XCTAssertTrue(command.contains("background_status=$?"))
         XCTAssertTrue(command.contains("marker_run_id="))
         XCTAssertTrue(command.contains("\(RuntimeUninstallProgressScript.startedMarker)"))
@@ -90,7 +92,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(script.contains("echo \"\(RuntimeUninstallProgressScript.terminalOpenFailedMessage)\" >> \"${log_file}\""))
         XCTAssertTrue(script.contains("/bin/uninstall tool"))
         XCTAssertTrue(script.contains("--clean"))
-        XCTAssertTrue(script.contains("nohup /bin/bash \"${worker_script}\" >/dev/null 2>&1 &"))
+        XCTAssertTrue(script.contains("nohup /bin/bash \"${worker_script}\" >> \"${log_file}\" 2>&1 &"))
         XCTAssertTrue(script.contains("echo \"${background_pid}\" > \"${worker_pid_file}\""))
         XCTAssertFalse(script.contains("&;"))
         XCTAssertFalse(script.contains("} < /dev/null >> \"${log_file}\" 2>&1 &"))
