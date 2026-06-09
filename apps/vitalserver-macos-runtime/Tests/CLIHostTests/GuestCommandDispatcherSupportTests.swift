@@ -153,8 +153,17 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(shutdownUseCase.contains("ObservationPhase.SHUTDOWN_FAILURE"))
         let wrapper = try readGuestSupportFile("bin/tirosh-vitalserver-compose")
         let service = try readGuestSupportFile("systemd/tirosh-vitalserver-compose.service")
+        let activationService = try readGuestSupportFile("systemd/tirosh-vitalserver-activate-update.service")
+        let testkitService = try readGuestSupportFile("systemd/tirosh-vitalserver-testkit.service")
         XCTAssertTrue(wrapper.contains("exec /opt/tirosh/guest-tools/venv/bin/"))
         XCTAssertTrue(service.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-compose up"))
+        XCTAssertTrue(
+            activationService.contains(
+                "Conflicts=tirosh-vitalserver-compose.service tirosh-vitalserver-testkit.service"
+            )
+        )
+        XCTAssertTrue(testkitService.contains("After=docker.service network-online.target tirosh-vitalserver-compose.service"))
+        XCTAssertFalse(testkitService.contains("Wants=network-online.target tirosh-vitalserver-compose.service"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: guestSupport.appendingPathComponent("guest-tools.toml").path))
         XCTAssertTrue(
             FileManager.default.fileExists(

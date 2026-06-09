@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import subprocess
+import time
 from pathlib import Path
 
 from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
@@ -38,6 +40,8 @@ from tirosh_guest_tools.infrastructure.system_install import install_guest_tools
 REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_REQUEST.value
 RESULT_FILE = RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_RESULT.value
 LOG_FILE = RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_LOG.value
+COMPOSE_QUIESCE_TIMEOUT_SECONDS = 120.0
+COMPOSE_QUIESCE_POLL_SECONDS = 0.5
 logger = logging.getLogger(__name__)
 
 
@@ -113,6 +117,7 @@ def write_result(request_id: str, status: OperationStatus, message: str) -> None
 def activate_runtime() -> None:
     install_guest_tools_runtime()
     collect_guest_observability(ObservationPhase.ACTIVATION_PRE)
+    quiesce_compose_units()
     load_bundled_docker_images()
     run(compose_command(["down", "--remove-orphans"]))
     run_compose_action(ComposeAction.UP)
@@ -121,6 +126,88 @@ def activate_runtime() -> None:
     write_current_state()
     run(["sync"], check=False)
     start_optional_testkit()
+
+
+def quiesce_compose_units() -> None:
+    logger.info(
+        "guest activation compose quiesce started",
+        extra={"fields": {"step": "guest-compose-quiesce"}},
+    )
+    stop_compose_unit(RuntimeService.TESTKIT)
+    stop_compose_unit(RuntimeService.COMPOSE)
+    reset_compose_unit(RuntimeService.TESTKIT)
+    reset_compose_unit(RuntimeService.COMPOSE)
+    logger.info(
+        "guest activation compose quiesce completed",
+        extra={"fields": {"step": "guest-compose-quiesce"}},
+    )
+
+
+def stop_compose_unit(service: RuntimeService) -> None:
+    result = systemctl("stop", service.value, check=False)
+    if result.returncode != 0:
+        raise GuestDependencyError(
+            f"failed to stop guest compose service: {service.value}",
+            code="guest-compose-service-stop-failed",
+        )
+    wait_for_unit_inactive(service, timeout_seconds=COMPOSE_QUIESCE_TIMEOUT_SECONDS)
+
+
+def reset_compose_unit(service: RuntimeService) -> None:
+    result = systemctl("reset-failed", service.value, check=False)
+    if result.returncode != 0:
+        raise GuestDependencyError(
+            f"failed to reset guest compose service failure state: {service.value}",
+            code="guest-compose-service-reset-failed",
+        )
+
+
+def wait_for_unit_inactive(
+    service: RuntimeService,
+    *,
+    timeout_seconds: float,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        active_state = read_service_active_state(service)
+        if active_state in {"inactive", "failed"}:
+            return
+        if time.monotonic() >= deadline:
+            raise GuestDependencyError(
+                "guest systemd unit did not become inactive: "
+                f"{service.value} activeState={active_state}",
+                code="guest-compose-service-stop-timeout",
+            )
+        time.sleep(COMPOSE_QUIESCE_POLL_SECONDS)
+
+
+def read_service_active_state(service: RuntimeService) -> str:
+    result = subprocess.run(
+        [
+            "systemctl",
+            "show",
+            "--property=ActiveState",
+            "--value",
+            service.value,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        raise GuestDependencyError(
+            "failed to read guest systemd unit state: "
+            f"{service.value} error={stderr or result.returncode}",
+            code="guest-compose-service-state-read-failed",
+        )
+    active_state = (result.stdout or "").strip()
+    if not active_state:
+        raise GuestDependencyError(
+            f"guest systemd unit active state is empty: {service.value}",
+            code="guest-compose-service-state-empty",
+        )
+    return active_state
 
 
 def load_bundled_docker_images() -> None:

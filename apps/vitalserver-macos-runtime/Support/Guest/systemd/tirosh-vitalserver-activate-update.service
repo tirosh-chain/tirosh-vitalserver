@@ -2,6 +2,7 @@
 Description=Activate Tirosh VitalServer guest update
 After=docker.service tirosh-runtime-state.service
 Requires=docker.service
+Conflicts=tirosh-vitalserver-compose.service tirosh-vitalserver-testkit.service
 
 [Service]
 Type=oneshot
