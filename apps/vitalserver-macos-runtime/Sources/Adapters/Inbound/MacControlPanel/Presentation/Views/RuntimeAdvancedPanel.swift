@@ -396,6 +396,13 @@ struct RuntimeAdvancedPanel: View {
                     .truncationMode(.tail)
             }
 
+            if let validationMessage = viewModel.settingsValidationMessage {
+                Text(validationMessage)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Spacer()
         }
     }

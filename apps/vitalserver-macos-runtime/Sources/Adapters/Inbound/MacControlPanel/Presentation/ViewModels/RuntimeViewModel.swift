@@ -23,6 +23,7 @@ public final class RuntimeViewModel: ObservableObject {
             helperMessageLog.append(message)
         }
     }
+    @Published var settingsValidationMessage: String?
     @Published var operationDetail = ""
     @Published var logText = AppConstants.StatusText.ready
     @Published var logLineLimit = 500
@@ -105,7 +106,10 @@ public final class RuntimeViewModel: ObservableObject {
         let loadedSettings = initialSettings ?? controlClient.loadSettings()
         let resolvedSettings = localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings
         let resolvedStatus = initialStatus ?? controlClient.loadStatus(settings: resolvedSettings)
-        self.settings = initialSettings == nil ? resolvedSettings : Self.settingsWithAdvertisedServiceURLPresets(resolvedSettings)
+        self.settings = Self.settingsWithAdvertisedServiceURLPresets(
+            resolvedSettings,
+            fillMissing: initialSettings == nil
+        )
         self.status = resolvedStatus
         self.containerObservation = resolvedStatus.containerObservation
         let snapshots = RuntimePresentationSnapshotLoader(
@@ -417,6 +421,9 @@ public final class RuntimeViewModel: ObservableObject {
         let result = settingsValidator.validate(settings, installedSettings: controlClient.loadSettings())
         if case .invalid(let validationMessage) = result {
             message = validationMessage
+            settingsValidationMessage = validationMessage
+        } else {
+            settingsValidationMessage = nil
         }
         return result.isValid
     }
@@ -435,12 +442,15 @@ public final class RuntimeViewModel: ObservableObject {
         settings = Self.settingsWithAdvertisedServiceURLPresets(settings)
     }
 
-    private static func settingsWithAdvertisedServiceURLPresets(_ input: RuntimeSettings) -> RuntimeSettings {
+    private static func settingsWithAdvertisedServiceURLPresets(
+        _ input: RuntimeSettings,
+        fillMissing: Bool = false
+    ) -> RuntimeSettings {
         var settings = input
-        if shouldUpdateInitialVitalServerURL(settings.vitalServerURL) {
+        if shouldUpdateInitialVitalServerURL(settings.vitalServerURL, fillMissing: fillMissing) {
             settings.vitalServerURL = RuntimeSettingsInitialValues.vitalServerURL(proxyPort: settings.proxyPort)
         }
-        if shouldUpdateInitialRemoteConsoleURL(settings.remoteConsoleURL) {
+        if shouldUpdateInitialRemoteConsoleURL(settings.remoteConsoleURL, fillMissing: fillMissing) {
             settings.remoteConsoleURL = RuntimeSettingsInitialValues.remoteConsoleURL(
                 runtimeControlPort: settings.runtimeControlPort
             )
@@ -448,12 +458,18 @@ public final class RuntimeViewModel: ObservableObject {
         return settings
     }
 
-    private static func shouldUpdateInitialVitalServerURL(_ value: String) -> Bool {
-        RuntimeSettingsInitialValues.isInitialVitalServerURL(value)
+    private static func shouldUpdateInitialVitalServerURL(_ value: String, fillMissing: Bool) -> Bool {
+        if fillMissing && value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        return RuntimeSettingsInitialValues.isInitialVitalServerURL(value)
     }
 
-    private static func shouldUpdateInitialRemoteConsoleURL(_ value: String) -> Bool {
-        RuntimeSettingsInitialValues.isInitialRemoteConsoleURL(value)
+    private static func shouldUpdateInitialRemoteConsoleURL(_ value: String, fillMissing: Bool) -> Bool {
+        if fillMissing && value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        return RuntimeSettingsInitialValues.isInitialRemoteConsoleURL(value)
     }
 
     func refreshBackupList() async {

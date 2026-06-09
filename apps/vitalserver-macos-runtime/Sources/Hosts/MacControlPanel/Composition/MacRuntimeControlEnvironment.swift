@@ -69,7 +69,6 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             hostClient: client,
             testKitController: testKitController,
             snapshotReader: readWorker,
-            initialSettings: localAPISettings.settingsWithLocalAPIPort(RuntimeSettings()),
             localAPISettings: localAPISettings,
             healthNotifications: HealthNotificationCenter(),
             nativeShell: SystemRuntimeNativeShell(),
