@@ -119,7 +119,40 @@ Testkit은 실제 Recorder 장비를 항상 연결할 수 없는 상황에서 �
 그래서 새 동작을 추가하거나 책임 위치를 옮길 때는 정상 흐름 하나만 확인하지 않습니다.
 `missing`, `invalid`, `failed`, `stale`, `zero`, `empty`가 서로 바뀌지 않는지 확인합니다.
 
-### 4-1. 영역별로 봐야 하는 것
+### 4-1. VM 상태 제어 변경 기준
+
+VM start, stop, restart, poweroff는 여러 workflow에서 필요하지만, 상태 제어 책임은 흩어지면
+안 됩니다. Settings apply, update, rollback, repair, watchdog, uninstall이 각자 VM을 직접
+멈추거나 다시 시작하면 Guest shutdown, Host process, launchd state, progress state가 서로 다른
+순서로 움직이면서 같은 장애를 다시 만들 수 있습니다.
+
+VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 확인합니다.
+
+| 기준 | 확인할 것 |
+|---|---|
+| 단일 owner | VM start/stop/restart/poweroff는 `RuntimeVMStateControlUseCase` 또는 그 owner wrapper를 통해 실행되는가 |
+| Guest shutdown 계약 | Guest shutdown이 필요한 경로는 explicit shutdown preparation과 poweroff 관측을 기다리는가 |
+| Host 상태 소유 | Host는 pid file, launchd, process, filesystem 상태를 명시적으로 읽고 실패를 숨기지 않는가 |
+| workflow 역할 | update/repair/uninstall workflow는 VM 상태를 추측하지 않고 owner가 제공한 결과만 소비하는가 |
+| recovery 구분 | clean uninstall recovery처럼 망가진 상태 정리는 일반 graceful stop이 아니라 명시적 force-clean contract를 쓰는가 |
+| progress 분리 | progress viewer marker, UI 메시지, shared log line을 runtime cleanup 성공/실패의 source of truth로 쓰지 않는가 |
+
+특히 아래 변경은 직접 VM 제어 호출을 추가하지 말고 owner entrypoint를 먼저 찾아야 합니다.
+
+| 변경 위치 | 사용해야 하는 방향 |
+|---|---|
+| Settings apply 후 restart | Guest shutdown 준비 후 poweroff 관측을 거쳐 restart |
+| Product update stop plan | update shutdown-stop port를 통해 VM owner가 stop 순서를 실행 |
+| rollback/service-control | service start/stop wrapper가 VM owner를 통과 |
+| watchdog recovery | watchdog 전용 restart intent로 VM owner를 통과 |
+| repair/VM disk replacement | repair intent 또는 best-effort result를 통해 실패 의미를 보존 |
+| Helper UI clean uninstall | `--force-clean-uninstaller`로 force-clean recovery contract 사용 |
+
+검증할 때는 성공 case만 보지 않습니다. `guest-runtime-state-stale`, VM stop timeout, pid file
+missing, launchd loaded/running mismatch, progress `missing-marker`처럼 서로 다른 상태가 서로
+섞이지 않는지 확인합니다.
+
+### 4-2. 영역별로 봐야 하는 것
 
 | 영역 | 확인할 것 | 깨지면 생기는 문제 |
 |---|---|---|
@@ -131,7 +164,7 @@ Testkit은 실제 Recorder 장비를 항상 연결할 수 없는 상황에서 �
 | 앱 시작 연결 | 설정, 경로, 구현 연결 | 앱 시작 단계에 실제 실행 책임이 섞임 |
 | Host 경계 | launchd, signal, filesystem, VM process | Host 상태 read/write 실패가 내부에서 숨겨짐 |
 
-### 4-2. 변경 유형별 테스트
+### 4-3. 변경 유형별 테스트
 
 변경한 위치에 따라 먼저 볼 테스트가 달라집니다. 모든 변경에 같은 테스트를 억지로 붙이는 것이
 목표는 아닙니다. 변경이 깨뜨릴 수 있는 의미를 먼저 고릅니다.
@@ -145,7 +178,7 @@ Testkit은 실제 Recorder 장비를 항상 연결할 수 없는 상황에서 �
 | update/repair 변경 | 진행 상태, 실패 event, rollback 결과가 남는가 |
 | packaging 변경 | build 결과물과 현장 적용 경로가 문서와 맞는가 |
 
-### 4-3. 구조 경계 테스트
+### 4-4. 구조 경계 테스트
 
 구조 경계 테스트는 코드가 다시 섞이지 않게 막는 회귀 방지 장치입니다.
 
