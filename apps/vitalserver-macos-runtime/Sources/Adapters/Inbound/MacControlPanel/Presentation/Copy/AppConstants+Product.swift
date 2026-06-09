@@ -1,5 +1,6 @@
 import Foundation
 import Contracts
+import RuntimeControl
 import Errors
 
 public extension AppConstants {
@@ -14,10 +15,10 @@ public extension AppConstants {
         public static let vitalServerVersion = GeneratedRelease.vitalServerVersion
         public static let defaultProxyPort = 80
         public static func vitalServerURL(proxyPort: Int) -> String {
-            "http://127.0.0.1:\(proxyPort)/"
+            RuntimeSettingsInitialValues.vitalServerURL(proxyPort: proxyPort)
         }
         public static func remoteConsoleURL(port: Int) -> String {
-            "http://127.0.0.1:\(port)/"
+            RuntimeSettingsInitialValues.remoteConsoleURL(runtimeControlPort: port)
         }
         public static func runtimeControlDevConsoleURL(port: Int) -> String {
             "http://127.0.0.1:\(port)/dev/runtime-control"

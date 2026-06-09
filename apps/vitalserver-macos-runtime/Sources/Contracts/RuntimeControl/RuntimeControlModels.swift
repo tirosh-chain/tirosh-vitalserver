@@ -162,26 +162,26 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
 
     public init(
         readIssues: [RuntimeSettingsReadIssue] = [],
-        cpuCount: Int = 8,
-        memoryGiB: Int = 8,
-        diskGiB: Int = 32,
-        minimumDiskGiB: Int = 4,
+        cpuCount: Int = RuntimeSettingsInitialValues.cpuCount,
+        memoryGiB: Int = RuntimeSettingsInitialValues.memoryGiB,
+        diskGiB: Int = RuntimeSettingsInitialValues.diskGiB,
+        minimumDiskGiB: Int = RuntimeSettingsInitialValues.minimumDiskGiB,
         networkMode: RuntimeNetworkMode = .shared,
         bridgedInterface: String? = nil,
-        proxyPort: Int = 80,
-        runtimeControlPort: Int = 18_321,
-        vitalFilesDirectory: String = "/Users/Shared/VitalServerHelper/vital-files",
-        vitalServerURL: String = "",
-        remoteConsoleURL: String = "",
+        proxyPort: Int = RuntimeSettingsInitialValues.proxyPort,
+        runtimeControlPort: Int = RuntimeSettingsInitialValues.runtimeControlPort,
+        vitalFilesDirectory: String = RuntimeSettingsInitialValues.vitalFilesDirectory,
+        vitalServerURL: String = RuntimeSettingsInitialValues.vitalServerURL(),
+        remoteConsoleURL: String = RuntimeSettingsInitialValues.remoteConsoleURL(),
         publicHost: String = "",
-        publicPort: Int = 80,
+        publicPort: Int = RuntimeSettingsInitialValues.proxyPort,
         adminPassword: String = "",
         changeAdminPassword: Bool = false,
         startOnBoot: Bool = true,
         startOnBootConfigurable: Bool = true,
         autoRecoveryEnabled: Bool = true,
         preventSystemSleep: Bool = true,
-        redisBackupRetentionCount: Int = 30,
+        redisBackupRetentionCount: Int = RuntimeSettingsInitialValues.redisBackupRetentionCount,
         restartAfterSave: Bool = true
     ) {
         self.readIssues = readIssues
@@ -280,6 +280,47 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         try container.encode(preventSystemSleep, forKey: .preventSystemSleep)
         try container.encode(redisBackupRetentionCount, forKey: .redisBackupRetentionCount)
         try container.encode(restartAfterSave, forKey: .restartAfterSave)
+    }
+}
+
+public enum RuntimeSettingsInitialValues {
+    public static let localhost = "127.0.0.1"
+    public static let cpuCount = 8
+    public static let memoryGiB = 8
+    public static let diskGiB = 32
+    public static let minimumDiskGiB = 4
+    public static let proxyPort = 80
+    public static let runtimeControlPort = 18_321
+    public static let vitalFilesDirectory = "/Users/Shared/VitalServerHelper/vital-files"
+    public static let redisBackupRetentionCount = 30
+
+    public static func vitalServerURL(proxyPort: Int = proxyPort) -> String {
+        "http://\(localhost):\(proxyPort)/"
+    }
+
+    public static func remoteConsoleURL(runtimeControlPort: Int = runtimeControlPort) -> String {
+        "http://\(localhost):\(runtimeControlPort)/"
+    }
+
+    public static func isInitialVitalServerURL(_ value: String) -> Bool {
+        isInitialLocalhostURL(value)
+    }
+
+    public static func isInitialRemoteConsoleURL(_ value: String) -> Bool {
+        isInitialLocalhostURL(value)
+    }
+
+    private static func isInitialLocalhostURL(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed),
+              url.scheme == "http",
+              url.host == localhost,
+              url.path == "/" || url.path.isEmpty,
+              url.query == nil,
+              url.fragment == nil else {
+            return false
+        }
+        return url.port != nil
     }
 }
 

@@ -437,13 +437,23 @@ public final class RuntimeViewModel: ObservableObject {
 
     private static func settingsWithAdvertisedServiceURLPresets(_ input: RuntimeSettings) -> RuntimeSettings {
         var settings = input
-        if settings.vitalServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            settings.vitalServerURL = AppConstants.Product.vitalServerURL(proxyPort: settings.proxyPort)
+        if shouldUpdateInitialVitalServerURL(settings.vitalServerURL) {
+            settings.vitalServerURL = RuntimeSettingsInitialValues.vitalServerURL(proxyPort: settings.proxyPort)
         }
-        if settings.remoteConsoleURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            settings.remoteConsoleURL = AppConstants.Product.remoteConsoleURL(port: settings.runtimeControlPort)
+        if shouldUpdateInitialRemoteConsoleURL(settings.remoteConsoleURL) {
+            settings.remoteConsoleURL = RuntimeSettingsInitialValues.remoteConsoleURL(
+                runtimeControlPort: settings.runtimeControlPort
+            )
         }
         return settings
+    }
+
+    private static func shouldUpdateInitialVitalServerURL(_ value: String) -> Bool {
+        RuntimeSettingsInitialValues.isInitialVitalServerURL(value)
+    }
+
+    private static func shouldUpdateInitialRemoteConsoleURL(_ value: String) -> Bool {
+        RuntimeSettingsInitialValues.isInitialRemoteConsoleURL(value)
     }
 
     func refreshBackupList() async {

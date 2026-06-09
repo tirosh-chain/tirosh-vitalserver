@@ -36,7 +36,10 @@ public struct RuntimeLifecycleComposition {
         let resolvedServiceManager = serviceManager ?? LaunchdRuntimeServiceManager(commandRunner: commandRunner)
         let statusDocumentUseCase = BuildRuntimeStatusDocumentUseCase()
         let statusReporter = RuntimeStatusReporter(
-            repository: runtimeStatusRepository ?? JSONFileRuntimeStatusRepository(url: installedPaths.runtimeStatus),
+            repository: runtimeStatusRepository ?? JSONFileRuntimeStatusRepository(
+                url: installedPaths.runtimeStatus,
+                requiredExistingRoot: installedPaths.productRoot
+            ),
             productIdentifier: Constants.Product.identifier,
             productRoot: installedPaths.productRoot,
             runtimeHome: installedPaths.runtimeHome,

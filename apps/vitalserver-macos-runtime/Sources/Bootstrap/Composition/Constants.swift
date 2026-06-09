@@ -149,6 +149,7 @@ public enum Constants {
         public static let runtimeStateStaleAfterSeconds = 30.0
         public static let watchdogRecoveryWaitSeconds = 20.0
         public static let watchdogManagedOperationGraceSeconds = 1_800.0
+        public static let runtimeOperationLeaseDurationSeconds = 3_600.0
         public static let guestLogSyncIntervalSeconds = 1.0
         public static let freeSpaceMarginBytes: UInt64 = 4 * 1024 * 1024 * 1024
         public static let updateFreeSpaceMarginBytes: UInt64 = 2 * 1024 * 1024 * 1024

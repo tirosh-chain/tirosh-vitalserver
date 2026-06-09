@@ -60,6 +60,49 @@ final class JSONFileRuntimeOperationLeaseRepositoryTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    func testHeartbeatUpdatesLeaseHeartbeatAndExpiration() throws {
+        let directory = temporaryDirectory()
+        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeOperationLease)
+        let repository = JSONFileRuntimeOperationLeaseRepository(url: url)
+        try repository.acquire(operationLease(operationId: "lease-1", operation: .applyBundle))
+
+        try repository.heartbeat(
+            operationId: "lease-1",
+            heartbeatAt: "2026-05-22T00:10:00Z",
+            expiresAt: "2026-05-22T01:10:00Z"
+        )
+
+        guard case .loaded(let loaded) = repository.loadResult() else {
+            return XCTFail("Expected heartbeat to preserve loaded operation lease")
+        }
+        XCTAssertEqual(loaded.operationId, "lease-1")
+        XCTAssertEqual(loaded.startedAt, "2026-05-22T00:00:00Z")
+        XCTAssertEqual(loaded.heartbeatAt, "2026-05-22T00:10:00Z")
+        XCTAssertEqual(loaded.expiresAt, "2026-05-22T01:10:00Z")
+
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    func testHeartbeatFailsWhenOperationIdDoesNotMatch() throws {
+        let directory = temporaryDirectory()
+        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeOperationLease)
+        let repository = JSONFileRuntimeOperationLeaseRepository(url: url)
+        try repository.acquire(operationLease(operationId: "lease-1", operation: .applyBundle))
+
+        XCTAssertThrowsError(try repository.heartbeat(
+            operationId: "lease-2",
+            heartbeatAt: "2026-05-22T00:10:00Z",
+            expiresAt: "2026-05-22T01:10:00Z"
+        )) { error in
+            XCTAssertEqual(
+                error as? RuntimeOperationLeaseRepositoryError,
+                .operationIdMismatch(expected: "lease-2", actual: "lease-1")
+            )
+        }
+
+        try? FileManager.default.removeItem(at: directory)
+    }
+
     func testLoadResultReportsInvalidOperationLeaseDocument() throws {
         let directory = temporaryDirectory()
         let url = directory.appendingPathComponent(RuntimeFileNames.runtimeOperationLease)

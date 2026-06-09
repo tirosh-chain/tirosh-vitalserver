@@ -567,6 +567,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                         message: nil
                     )
                 },
+                heartbeatOperationLease: { _ in },
                 releaseOperationLease: { _ in },
                 log: log
             )

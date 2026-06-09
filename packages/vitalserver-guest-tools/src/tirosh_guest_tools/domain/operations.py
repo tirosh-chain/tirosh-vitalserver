@@ -59,6 +59,8 @@ class ShutdownPhase(StrEnum):
 
 class ReasonCode(StrEnum):
     GUEST_UPDATE_SHUTDOWN_FAILED = "guest-update-shutdown-failed"
+    GUEST_COMMAND_DISPATCH_FAILED = "guest-command-dispatch-failed"
+    GUEST_COMMAND_UNIT_FAILED = "guest-command-unit-failed"
 
 
 @dataclass(frozen=True)

@@ -10,5 +10,6 @@ public enum RuntimeOperationLeaseLoadResult: Equatable, Sendable {
 public protocol RuntimeOperationLeaseRepository {
     func loadResult() -> RuntimeOperationLeaseLoadResult
     func acquire(_ document: RuntimeOperationLeaseDocument) throws
+    func heartbeat(operationId: String, heartbeatAt: String, expiresAt: String?) throws
     func release(operationId: String) throws
 }

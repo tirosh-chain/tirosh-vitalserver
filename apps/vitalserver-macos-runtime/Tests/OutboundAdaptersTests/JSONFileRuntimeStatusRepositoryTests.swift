@@ -83,6 +83,40 @@ final class JSONFileRuntimeStatusRepositoryTests: XCTestCase {
         XCTAssertEqual(loaded.message, "runtime health check passed")
     }
 
+    func testSaveAllowsStatusDirectoryCreationWhenRequiredRootExists() throws {
+        let root = URL(fileURLWithPath: "/runtime")
+        let url = root.appendingPathComponent("status").appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let fileStore = StatusRepositoryFileStore()
+        fileStore.pathStates[root.path] = .directory
+        let repository = JSONFileRuntimeStatusRepository(
+            url: url,
+            requiredExistingRoot: root,
+            fileStore: fileStore
+        )
+
+        try repository.save(document(message: "runtime health check passed"))
+
+        XCTAssertEqual(fileStore.createdDirectories, [url.deletingLastPathComponent()])
+        XCTAssertEqual(fileStore.pathState(at: url), .file)
+    }
+
+    func testSaveDoesNotCreateRuntimeStatusWhenRequiredRootIsMissing() {
+        let root = URL(fileURLWithPath: "/runtime")
+        let url = root.appendingPathComponent("status").appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let fileStore = StatusRepositoryFileStore()
+        let repository = JSONFileRuntimeStatusRepository(
+            url: url,
+            requiredExistingRoot: root,
+            fileStore: fileStore
+        )
+
+        XCTAssertThrowsError(try repository.save(document(message: "runtime health check passed"))) { error in
+            XCTAssertEqual(error as? RuntimeStatusRepositoryError, .missingRequiredRoot(path: root.path))
+        }
+        XCTAssertEqual(fileStore.createdDirectories, [])
+        XCTAssertEqual(fileStore.pathState(at: url), .missing)
+    }
+
     func testLoadResultReportsInjectedPathInspectionFailure() {
         let url = URL(fileURLWithPath: "/runtime/status.json")
         let fileStore = StatusRepositoryFileStore()

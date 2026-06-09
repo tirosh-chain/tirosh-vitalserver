@@ -49,22 +49,24 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertTrue(confirmation.contains("Restart services: true"))
     }
 
-    func testStatusServiceURLsUseLocalDefaultsOnlyForDisplayWhenAdvertisedURLsAreEmpty() {
+    func testStatusServiceURLsPreserveMissingAdvertisedURLsAsUnknownAndClosed() {
         var settings = RuntimeSettings()
         settings.proxyPort = 18080
         settings.runtimeControlPort = 19090
+        settings.vitalServerURL = ""
+        settings.remoteConsoleURL = ""
 
         XCTAssertEqual(
             formatter.vitalServerStatusURL(settings: settings),
             RuntimePresentationFormatter.ServiceURLPresentation(
-                displayURL: "http://127.0.0.1:18080/",
+                displayURL: AppConstants.StatusText.unknown,
                 openURL: nil
             )
         )
         XCTAssertEqual(
             formatter.remoteConsoleStatusURL(settings: settings),
             RuntimePresentationFormatter.ServiceURLPresentation(
-                displayURL: "http://127.0.0.1:19090/",
+                displayURL: AppConstants.StatusText.unknown,
                 openURL: nil
             )
         )

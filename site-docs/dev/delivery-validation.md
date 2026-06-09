@@ -135,6 +135,7 @@ VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 �
 | Host 상태 소유 | Host는 pid file, launchd, process, filesystem 상태를 명시적으로 읽고 실패를 숨기지 않는가 |
 | workflow 역할 | update/repair/uninstall workflow는 VM 상태를 추측하지 않고 owner가 제공한 결과만 소비하는가 |
 | operation state 보존 | install/uninstall state document는 runtime status message에 덮어 쓰지 않고 별도 read model로 보존되는가 |
+| status 기록 범위 | runtime status writer가 clean uninstall로 제거된 product root를 다시 만들지 않는가 |
 | recovery 구분 | clean uninstall recovery처럼 망가진 상태 정리는 일반 graceful stop이 아니라 명시적 force-clean contract를 쓰는가 |
 | progress 분리 | progress viewer marker, UI 메시지, shared log line을 runtime cleanup 성공/실패의 source of truth로 쓰지 않는가 |
 
@@ -152,6 +153,12 @@ VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 �
 검증할 때는 성공 case만 보지 않습니다. `guest-runtime-state-stale`, VM stop timeout, pid file
 missing, launchd loaded/running mismatch, progress `missing-marker`처럼 서로 다른 상태가 서로
 섞이지 않는지 확인합니다.
+
+Product update shutdown에서 `prepare-update-shutdown.request`가 남아 있고
+`prepare-update-shutdown-result.json`이 없는 상태는 정상 pending으로 보지 않습니다. Guest command
+poller가 unit `failed` 또는 dispatch failure를 명시 result로 기록해야 하며, Host는 이 typed
+failure를 받아 update를 실패로 전환해야 합니다. VM kernel panic이 뒤따라 보이더라도 먼저
+guest shutdown service가 explicit result를 남겼는지 확인합니다.
 
 ### 4-2. 영역별로 봐야 하는 것
 
@@ -346,8 +353,9 @@ Pull request는 변경 목적과 검증 근거가 함께 보여야 합니다. �
 - 상태 판단 code는 외부 상태를 직접 읽지 않습니다.
 - contract 변경은 관련 문서와 test를 함께 갱신합니다.
 - recovery, update, parsing, settings, Health Check 변경은 실패 case test를 포함합니다.
-- Settings UI는 Host/Control settings contract에서 비어 있거나 누락된 advertised service URL을 저장용 default로
-  만들지 않습니다. 표시용 local URL fallback은 presentation formatter에만 머물러야 합니다.
+- Settings UI는 새 설정의 advertised service URL 초기값을 명시적으로 제공하되, 사용자가 비우거나
+  provider가 invalid 값을 준 상태를 apply 시 fallback으로 복구하지 않습니다. 빈 값과 invalid 값은
+  validation error 또는 read issue로 남겨야 합니다.
 - VM stop/restart/poweroff 변경은 단일 VM state control 경로를 통하게 합니다. Settings, update,
   repair, watchdog이 guest shutdown 준비 contract를 우회해 개별적으로 VM service를 멈추지 않습니다.
   Settings restart, update shutdown-stop, rollback/update service start-stop, watchdog VM recovery,

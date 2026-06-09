@@ -2304,8 +2304,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Presentation URL open target must be optional so display presets do not become actionable state"
         )
         XCTAssertTrue(
-            formatterText.contains("ServiceURLPresentation(displayURL: displayFallback, openURL: nil)"),
-            "Missing advertised URL may have display text, but must not create an open URL fallback"
+            formatterText.contains("ServiceURLPresentation(displayURL: vocabulary.unknownText, openURL: nil)"),
+            "Missing advertised URL must stay visibly unknown and must not create an open URL fallback"
         )
         XCTAssertFalse(
             formatterText.contains("openFallback"),

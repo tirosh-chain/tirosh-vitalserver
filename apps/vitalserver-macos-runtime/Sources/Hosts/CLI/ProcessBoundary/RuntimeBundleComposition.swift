@@ -61,6 +61,7 @@ public struct RuntimeBundleCompositionOperations {
     let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     let requireGuestCapability: (RuntimeGuestCapabilityRequirement) throws -> Void
     let acquireOperationLease: (RuntimeOperation) throws -> RuntimeOperationLeaseDocument
+    let heartbeatOperationLease: (RuntimeOperationLeaseDocument) throws -> Void
     let releaseOperationLease: (RuntimeOperationLeaseDocument) throws -> Void
     let log: (String) -> Void
 
@@ -92,6 +93,7 @@ public struct RuntimeBundleCompositionOperations {
         waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         requireGuestCapability: @escaping (RuntimeGuestCapabilityRequirement) throws -> Void,
         acquireOperationLease: @escaping (RuntimeOperation) throws -> RuntimeOperationLeaseDocument,
+        heartbeatOperationLease: @escaping (RuntimeOperationLeaseDocument) throws -> Void,
         releaseOperationLease: @escaping (RuntimeOperationLeaseDocument) throws -> Void,
         log: @escaping (String) -> Void
     ) {
@@ -122,6 +124,7 @@ public struct RuntimeBundleCompositionOperations {
         self.waitForHealth = waitForHealth
         self.requireGuestCapability = requireGuestCapability
         self.acquireOperationLease = acquireOperationLease
+        self.heartbeatOperationLease = heartbeatOperationLease
         self.releaseOperationLease = releaseOperationLease
         self.log = log
     }
@@ -168,7 +171,7 @@ public struct RuntimeBundleComposition {
         }
         try RuntimeApplyBundleWorkflow().run(
             input: ApplyRuntimeBundleInput(bundleURL: bundleURL),
-            operations: applyRuntimeBundleOperations()
+            operations: applyRuntimeBundleOperations(operationLease: operationLease)
         )
         operations.log(ApplyRuntimeBundleUseCase().mutableVMDiskPreservedLogMessage(path: context.vmDisk.path))
     }
@@ -257,14 +260,18 @@ public struct RuntimeBundleComposition {
         operations.removeMaterializedBundleTemporaryRoot(temporaryRoot)
     }
 
-    private func applyRuntimeBundleOperations() -> ApplyRuntimeBundleOperations {
+    private func applyRuntimeBundleOperations(
+        operationLease: RuntimeOperationLeaseDocument
+    ) -> ApplyRuntimeBundleOperations {
         ApplyRuntimeBundleOperations(
             prepareLogs: {
+                try operations.heartbeatOperationLease(operationLease)
                 prepareApplyBundleLogs(context.logsDirectory)
             },
             initialHealthSnapshot: operations.runtimeHealthSnapshot,
             preparePreflight: { bundleURL in
-                try executeApplyBundlePreflight(ApplyRuntimeBundlePreflightInput(
+                try operations.heartbeatOperationLease(operationLease)
+                return try executeApplyBundlePreflight(ApplyRuntimeBundlePreflightInput(
                     bundleURL: bundleURL,
                     backupsDirectory: context.backupsDirectory,
                     rootfsBase: context.rootfsBase,
@@ -275,20 +282,47 @@ public struct RuntimeBundleComposition {
                 ))
             },
             rootfsBase: context.rootfsBase,
-            prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: operations.prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff,
-            stopRuntimeServices: operations.stopRuntimeServices,
+            prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: { manifest in
+                try operations.heartbeatOperationLease(operationLease)
+                try operations.prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff(manifest)
+            },
+            stopRuntimeServices: {
+                try operations.heartbeatOperationLease(operationLease)
+                try operations.stopRuntimeServices()
+            },
             createDirectory: { url, withIntermediateDirectories in
                 try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)
             },
             fileSize: fileSize,
             replaceFile: operations.replaceFile,
-            replaceUpdateArtifacts: operations.replaceUpdateArtifacts,
-            runMigrations: operations.runMigrations,
-            refreshCloudInitSeedIfNeeded: operations.refreshCloudInitSeedIfNeeded,
-            writeRuntimeVersion: operations.writeRuntimeVersion,
-            startRuntimeServices: operations.startRuntimeServices,
-            activateGuestUpdateIfNeeded: operations.activateGuestUpdateIfNeeded,
-            waitForHealth: operations.waitForHealth,
+            replaceUpdateArtifacts: { artifacts, bundle in
+                try operations.heartbeatOperationLease(operationLease)
+                try operations.replaceUpdateArtifacts(artifacts, bundle)
+            },
+            runMigrations: { migrations, bundle in
+                try operations.heartbeatOperationLease(operationLease)
+                try operations.runMigrations(migrations, bundle)
+            },
+            refreshCloudInitSeedIfNeeded: { manifest in
+                try operations.heartbeatOperationLease(operationLease)
+                try operations.refreshCloudInitSeedIfNeeded(manifest)
+            },
+            writeRuntimeVersion: { version, bundle in
+                try operations.heartbeatOperationLease(operationLease)
+                try operations.writeRuntimeVersion(version, bundle)
+            },
+            startRuntimeServices: { policy in
+                try operations.heartbeatOperationLease(operationLease)
+                try operations.startRuntimeServices(policy)
+            },
+            activateGuestUpdateIfNeeded: { manifest in
+                try operations.heartbeatOperationLease(operationLease)
+                try operations.activateGuestUpdateIfNeeded(manifest)
+            },
+            waitForHealth: { policy in
+                try operations.heartbeatOperationLease(operationLease)
+                try operations.waitForHealth(policy)
+            },
             rollback: operations.rollback,
             writeStatus: { status, operation, message in
                 try operations.statusReporter.write(status, operation: operation, message: message)

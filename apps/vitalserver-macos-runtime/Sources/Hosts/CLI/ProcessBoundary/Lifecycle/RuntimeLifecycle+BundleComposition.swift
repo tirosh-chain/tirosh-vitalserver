@@ -62,6 +62,7 @@ extension RuntimeLifecycle {
                 waitForHealth: waitForHealth,
                 requireGuestCapability: requireGuestCapability,
                 acquireOperationLease: acquireRuntimeOperationLease,
+                heartbeatOperationLease: heartbeatRuntimeOperationLease,
                 releaseOperationLease: releaseRuntimeOperationLease,
                 log: log
             )
@@ -69,18 +70,47 @@ extension RuntimeLifecycle {
     }
 
     private func acquireRuntimeOperationLease(_ operation: RuntimeOperation) throws -> RuntimeOperationLeaseDocument {
-        let timestamp = ISO8601DateFormatter().string(from: clock.now)
-        let document = RuntimeOperationLeaseDocument(
+        let document = makeRuntimeOperationLeaseDocument(operation)
+        try JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease).acquire(document)
+        return document
+    }
+
+    func makeRuntimeOperationLeaseDocument(_ operation: RuntimeOperation) -> RuntimeOperationLeaseDocument {
+        makeRuntimeOperationLeaseDocument(operation, now: clock.now)
+    }
+
+    func makeRuntimeOperationLeaseDocument(
+        _ operation: RuntimeOperation,
+        now: Date
+    ) -> RuntimeOperationLeaseDocument {
+        let timestamps = runtimeOperationLeaseTimestamps(now: now)
+        return RuntimeOperationLeaseDocument(
             operationId: UUID().uuidString,
             operation: operation,
             ownerPID: Int(ProcessInfo.processInfo.processIdentifier),
-            startedAt: timestamp,
-            heartbeatAt: timestamp,
-            expiresAt: nil,
+            startedAt: timestamps.now,
+            heartbeatAt: timestamps.now,
+            expiresAt: timestamps.expiresAt,
             message: nil
         )
-        try JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease).acquire(document)
-        return document
+    }
+
+    private func heartbeatRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {
+        let timestamps = runtimeOperationLeaseTimestamps(now: clock.now)
+        try JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease)
+            .heartbeat(
+                operationId: document.operationId,
+                heartbeatAt: timestamps.now,
+                expiresAt: timestamps.expiresAt
+            )
+    }
+
+    private func runtimeOperationLeaseTimestamps(now: Date) -> (now: String, expiresAt: String) {
+        let expiresAt = now.addingTimeInterval(Constants.Runtime.runtimeOperationLeaseDurationSeconds)
+        return (
+            now: ISO8601DateFormatter().string(from: now),
+            expiresAt: ISO8601DateFormatter().string(from: expiresAt)
+        )
     }
 
     private func releaseRuntimeOperationLease(_ document: RuntimeOperationLeaseDocument) throws {

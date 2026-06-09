@@ -10,6 +10,27 @@ import XCTest
 import Errors
 
 final class RuntimeBundleCompositionTests: XCTestCase {
+    func testRuntimeOperationLeaseDocumentHasBoundedExpiration() throws {
+        let fixedDate = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-05-22T00:00:00Z"))
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: URL(fileURLWithPath: "/product"),
+                installed: InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product")),
+                config: URL(fileURLWithPath: "/product/vm/config.json"),
+                pidFile: URL(fileURLWithPath: "/product/vm/run/vitalserver-vm.pid")
+            ),
+            clock: FixedRuntimeClock(now: fixedDate),
+            fileStore: RuntimeFileStoreSpy()
+        )
+
+        let document = lifecycle.makeRuntimeOperationLeaseDocument(.applyBundle)
+
+        XCTAssertEqual(document.operation, .applyBundle)
+        XCTAssertEqual(document.startedAt, "2026-05-22T00:00:00Z")
+        XCTAssertEqual(document.heartbeatAt, "2026-05-22T00:00:00Z")
+        XCTAssertEqual(document.expiresAt, "2026-05-22T01:00:00Z")
+    }
+
     func testRemoveMaterializedBundleTemporaryRootRecordsCleanupFailure() {
         let fileStore = RuntimeFileStoreSpy()
         fileStore.removeItemError = CocoaError(.fileWriteNoPermission)
@@ -143,6 +164,9 @@ final class RuntimeBundleCompositionTests: XCTestCase {
                     message: nil
                 )
             },
+            heartbeatOperationLease: { lease in
+                events.append("heartbeat:\(lease.operationId)")
+            },
             releaseOperationLease: { lease in
                 events.append("release:\(lease.operationId)")
             }
@@ -150,10 +174,9 @@ final class RuntimeBundleCompositionTests: XCTestCase {
 
         try workflow.applyBundle(source)
 
-        XCTAssertEqual(events, [
-            "acquire:apply-bundle",
-            "release:lease-1",
-        ])
+        XCTAssertEqual(events.first, "acquire:apply-bundle")
+        XCTAssertEqual(events.last, "release:lease-1")
+        XCTAssertGreaterThan(events.filter { $0 == "heartbeat:lease-1" }.count, 0)
     }
 
     func testApplyBundleLogsLeaseReleaseFailureWithoutHidingApplyFailure() throws {
@@ -199,6 +222,7 @@ final class RuntimeBundleCompositionTests: XCTestCase {
                 message: nil
             )
         },
+        heartbeatOperationLease: @escaping (RuntimeOperationLeaseDocument) throws -> Void = { _ in },
         releaseOperationLease: @escaping (RuntimeOperationLeaseDocument) throws -> Void = { _ in },
         log: @escaping (String) -> Void = { _ in }
     ) -> RuntimeBundleComposition {
@@ -301,6 +325,7 @@ final class RuntimeBundleCompositionTests: XCTestCase {
                 waitForHealth: { _ in },
                 requireGuestCapability: { _ in },
                 acquireOperationLease: acquireOperationLease,
+                heartbeatOperationLease: heartbeatOperationLease,
                 releaseOperationLease: releaseOperationLease,
                 log: log
             )
@@ -355,6 +380,10 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         XCTAssertEqual(nsError.domain, NSCocoaErrorDomain, file: file, line: line)
         XCTAssertEqual(nsError.code, CocoaError.Code.fileWriteNoPermission.rawValue, file: file, line: line)
     }
+}
+
+private struct FixedRuntimeClock: RuntimeClock {
+    let now: Date
 }
 
 private enum TestRuntimeBundleCompositionError: Error, Equatable {

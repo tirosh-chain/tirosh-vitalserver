@@ -56,6 +56,14 @@ extension RuntimeLifecycle {
     }
 
     func forceStopRuntimeServicesAfterGracefulStopFailureForVMDiskReplacement() throws {
+        try forceStopVMProcessAndUnloadRuntimeServices()
+    }
+
+    func forceStopRuntimeServicesAfterGuestShutdownFailureForUpdate() throws {
+        try forceStopVMProcessAndUnloadRuntimeServices()
+    }
+
+    private func forceStopVMProcessAndUnloadRuntimeServices() throws {
         try StopRuntimeVMProcessUseCase().forceKillAndWait(
             killSignal: SIGKILL,
             noSuchProcessErrorNumber: Int32(ESRCH),
@@ -137,6 +145,8 @@ extension RuntimeLifecycle {
                     try guestGateway.clearUpdateShutdownPreparation()
                 },
                 stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
+                forceStopRuntimeServicesAfterGuestShutdownFailure: forceStopRuntimeServicesAfterGuestShutdownFailureForUpdate,
+                describeError: RuntimeErrorDescription.describe,
                 log: log
             )
         )

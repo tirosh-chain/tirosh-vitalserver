@@ -62,7 +62,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(localAPISettings.settingsWithLocalAPIPortCount, 1)
     }
 
-    func testViewModelInitialSettingsPopulateAdvertisedServiceURLPresets() {
+    func testViewModelInitialSettingsPreserveExplicitEmptyAdvertisedServiceURLs() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         var initialSettings = RuntimeSettings()
         initialSettings.proxyPort = 18080
@@ -77,8 +77,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             healthNotifications: NoopHealthNotifications()
         )
 
-        XCTAssertEqual(viewModel.settings.vitalServerURL, "http://127.0.0.1:18080/")
-        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "http://127.0.0.1:18322/")
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "")
+        XCTAssertEqual(viewModel.settings.remoteConsoleURL, " ")
     }
 
     func testViewModelUsesExplicitInitialStatusWithoutPlaceholderRead() {
@@ -269,12 +269,12 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.message, AppConstants.StatusText.vitalFilesDirectoryProtected)
     }
 
-    func testAdvertisedURLDefaultsFollowHostProxyPortWithoutClearingExplicitServiceURLs() {
+    func testAdvertisedURLInitialValuesFollowHostProxyPortWithoutClearingExplicitServiceURLs() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         var initialSettings = RuntimeSettings()
         initialSettings.proxyPort = 8080
-        initialSettings.vitalServerURL = ""
-        initialSettings.remoteConsoleURL = ""
+        initialSettings.vitalServerURL = RuntimeSettingsInitialValues.vitalServerURL(proxyPort: 8080)
+        initialSettings.remoteConsoleURL = RuntimeSettingsInitialValues.remoteConsoleURL()
         initialSettings.publicHost = ""
         initialSettings.publicPort = 8080
         client.settings = initialSettings
@@ -303,7 +303,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.settings.publicPort, 8080)
     }
 
-    func testApplySettingsRejectsMissingAdvertisedServiceURLsWithoutViewModelDefaulting() {
+    func testApplySettingsUsesAdvertisedServiceURLInitialValues() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let viewModel = RuntimeViewModel(
             controlClient: client,
@@ -311,8 +311,23 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             healthNotifications: NoopHealthNotifications()
         )
 
-        XCTAssertEqual(viewModel.settings.vitalServerURL, "")
-        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "")
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "http://127.0.0.1:80/")
+        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "http://127.0.0.1:18321/")
+
+        XCTAssertTrue(viewModel.prepareApplySettings())
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.ready)
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "http://127.0.0.1:80/")
+    }
+
+    func testApplySettingsRejectsExplicitEmptyAdvertisedServiceURLs() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.settings.vitalServerURL = ""
+        viewModel.settings.remoteConsoleURL = ""
 
         XCTAssertFalse(viewModel.prepareApplySettings())
         XCTAssertEqual(viewModel.message, AppConstants.StatusText.invalidAdvertisedURL)

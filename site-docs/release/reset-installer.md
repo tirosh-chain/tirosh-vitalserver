@@ -111,6 +111,19 @@ uninstall process failed exitCode=missing-marker runID=...
 launchd/package 상태로 구분합니다. 새 progress viewer는 run id가 붙은 marker만 자기 작업의
 terminal marker로 인정합니다.
 
+Reset Installer가 성공한 뒤 일반 installer가 아래처럼 막히면, clean uninstall 후 status 관측
+경로가 `Runtime home`을 다시 만들었는지 확인합니다.
+
+```text
+fresh install preflight blocked blockers=install-artifact-present:path=/Library/Application Support/VitalServerHelper
+```
+
+실제 장애에서는 clean uninstall completion 이후 `status/runtime-status.json`만 다시 생겨 fresh
+install preflight가 product root 잔여물로 차단했습니다. Runtime status는 설치된 product root가
+존재할 때만 기록해야 하며, status 기록이 clean uninstall로 제거된 root를 생성하면 안 됩니다.
+uninstall/install state는 `/private/tmp`의 전용 state document로 유지하고 runtime status로 복원
+또는 추정하지 않습니다.
+
 동시에 여러 cleanup 시도가 겹치면 remove 직전에는 존재하던 파일이 실제 remove 시점에는 이미
 없을 수 있습니다. 최신 Reset Installer는 이 경우를 성공으로 숨기지 않고 아래처럼 명시적으로
 기록한 뒤 cleanup 검증 단계에서 artifact absence를 다시 확인합니다.

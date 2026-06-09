@@ -69,6 +69,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-058 | Reset Installer 이후 VM launchd state가 남아 설치를 막음 | Uninstall / VM lifecycle | resolved | [Reset Installer Leaves VM Launchd State Behind](058_clean-uninstall-hung-vm-progress-marker.md) |
 | TS-059 | Helper app에서 Recorder activity `All` 선택 시 Slider 생성 중 앱이 종료됨 | macOS Helper / Observability | active | [Recorder Activity All Single-Page Slider Crash](059_recorder-activity-all-single-page-slider-crash.md) |
 | TS-060 | Helper update activation이 compose/testkit systemd 경합으로 실패 | Update | active | [Update Activation Compose/Systemd Race](060_update-activation-compose-systemd-race.md) |
+| TS-061 | Update shutdown service failed without result | Update | resolved | [Update Shutdown Service Failed Without Result](061_update-shutdown-service-failed-without-result.md) |
 
 ## Follow-up 규칙
 

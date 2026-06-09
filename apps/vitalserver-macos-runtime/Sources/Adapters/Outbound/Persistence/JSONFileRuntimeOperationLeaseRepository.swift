@@ -55,6 +55,41 @@ public struct JSONFileRuntimeOperationLeaseRepository: RuntimeOperationLeaseRepo
         try fileStore.writeData(data, to: url, options: .atomic)
     }
 
+    public func heartbeat(operationId: String, heartbeatAt: String, expiresAt: String?) throws {
+        let existing: RuntimeOperationLeaseDocument
+        switch loadResult() {
+        case .missing:
+            throw RuntimeOperationLeaseRepositoryError.readFailed(
+                "runtime operation lease is missing during heartbeat"
+            )
+        case .loaded(let document):
+            existing = document
+        case .failed(let reason):
+            throw RuntimeOperationLeaseRepositoryError.readFailed(reason)
+        }
+
+        guard existing.operationId == operationId else {
+            throw RuntimeOperationLeaseRepositoryError.operationIdMismatch(
+                expected: operationId,
+                actual: existing.operationId
+            )
+        }
+
+        let updated = RuntimeOperationLeaseDocument(
+            schemaVersion: existing.schemaVersion,
+            operationId: existing.operationId,
+            operation: existing.operation,
+            ownerPID: existing.ownerPID,
+            startedAt: existing.startedAt,
+            heartbeatAt: heartbeatAt,
+            expiresAt: expiresAt,
+            message: existing.message
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try fileStore.writeData(try encoder.encode(updated), to: url, options: .atomic)
+    }
+
     public func release(operationId: String) throws {
         switch loadResult() {
         case .missing:

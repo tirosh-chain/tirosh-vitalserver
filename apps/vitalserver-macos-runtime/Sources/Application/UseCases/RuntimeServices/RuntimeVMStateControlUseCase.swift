@@ -128,6 +128,8 @@ public struct RuntimeVMUpdateShutdownOperations {
     public var prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
     public var clearGuestShutdownPreparation: () throws -> Void
     public var stopRuntimeServicesAfterGuestPoweroff: (pid_t) throws -> Void
+    public var forceStopRuntimeServicesAfterGuestShutdownFailure: () throws -> Void
+    public var describeError: (Error) -> String
     public var log: (String) -> Void
 
     public init(
@@ -135,12 +137,16 @@ public struct RuntimeVMUpdateShutdownOperations {
         prepareGuestShutdownForUpdate: @escaping (UpdateBundleManifest) throws -> Void,
         clearGuestShutdownPreparation: @escaping () throws -> Void,
         stopRuntimeServicesAfterGuestPoweroff: @escaping (pid_t) throws -> Void,
+        forceStopRuntimeServicesAfterGuestShutdownFailure: @escaping () throws -> Void,
+        describeError: @escaping (Error) -> String,
         log: @escaping (String) -> Void
     ) {
         self.runningVMProcessID = runningVMProcessID
         self.prepareGuestShutdownForUpdate = prepareGuestShutdownForUpdate
         self.clearGuestShutdownPreparation = clearGuestShutdownPreparation
         self.stopRuntimeServicesAfterGuestPoweroff = stopRuntimeServicesAfterGuestPoweroff
+        self.forceStopRuntimeServicesAfterGuestShutdownFailure = forceStopRuntimeServicesAfterGuestShutdownFailure
+        self.describeError = describeError
         self.log = log
     }
 }
@@ -336,8 +342,17 @@ public struct RuntimeVMStateControlUseCase {
                 operations.log("guest shutdown preparation cleanup failed error=\(error)")
             }
         }
-        try operations.prepareGuestShutdownForUpdate(manifest)
-        try operations.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID)
+        do {
+            try operations.prepareGuestShutdownForUpdate(manifest)
+            try operations.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID)
+        } catch {
+            guard shouldForceStopAfterUpdateShutdownFailure(error) else {
+                throw error
+            }
+            operations.log("guest update shutdown failed; forcing VM runtime services stop error=\(operations.describeError(error))")
+            try operations.forceStopRuntimeServicesAfterGuestShutdownFailure()
+            throw error
+        }
     }
 
     public func stopRuntimeServicesForVMDiskReplacement(
@@ -352,5 +367,12 @@ public struct RuntimeVMStateControlUseCase {
 
         try operations.forceStopRuntimeServicesAfterGracefulStopFailure()
         operations.log("runtime services stopped for VM disk replacement")
+    }
+
+    private func shouldForceStopAfterUpdateShutdownFailure(_ error: Error) -> Bool {
+        if error is RuntimeGuestUpdateUseCaseError {
+            return true
+        }
+        return false
     }
 }

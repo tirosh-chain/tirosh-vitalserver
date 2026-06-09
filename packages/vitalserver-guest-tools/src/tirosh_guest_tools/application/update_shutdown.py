@@ -72,6 +72,25 @@ def run_prepare_update_shutdown() -> None:
         raise
 
 
+def write_dispatch_failure_result(
+    *,
+    message: str,
+    reason_code: ReasonCode,
+) -> None:
+    request_id = request_id_from(REQUEST_FILE)
+    context = PrepareUpdateShutdownContext(
+        request_id=request_id,
+        version=request_version_from(REQUEST_FILE),
+    )
+    write_result(
+        context,
+        OperationStatus.FAILED,
+        message,
+        step="dispatch",
+        reason_codes=(reason_code.value,),
+    )
+
+
 def prepare_context() -> PrepareUpdateShutdownContext | None:
     logger.info("guest update shutdown preparation started")
     if not REQUEST_FILE.is_file():

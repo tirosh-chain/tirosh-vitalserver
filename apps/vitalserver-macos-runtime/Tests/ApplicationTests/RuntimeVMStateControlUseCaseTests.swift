@@ -121,6 +121,49 @@ final class RuntimeVMStateControlUseCaseTests: XCTestCase {
         ])
     }
 
+    func testUpdateShutdownStopForcesVMStopWhenGuestShutdownWaitFails() {
+        let harness = RuntimeVMStateControlHarness()
+        harness.prepareError = RuntimeGuestUpdateUseCaseError.operationFailed("guest update shutdown timed out")
+
+        XCTAssertThrowsError(try harness.prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff()) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestUpdateUseCaseError,
+                .operationFailed("guest update shutdown timed out")
+            )
+        }
+
+        XCTAssertEqual(harness.events, [
+            "pid",
+            "log:captured VM process before guest update shutdown pid=4242",
+            "prepare-update-shutdown:0.1.13",
+            "log:guest update shutdown failed; forcing VM runtime services stop error=described:guest update shutdown timed out",
+            "force-stop-runtime-services",
+            "clear",
+        ])
+    }
+
+    func testUpdateShutdownStopForcesVMStopWhenPoweroffStopFails() {
+        let harness = RuntimeVMStateControlHarness()
+        harness.stopAfterPoweroffError = RuntimeGuestUpdateUseCaseError.operationFailed("vm did not power off")
+
+        XCTAssertThrowsError(try harness.prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff()) { error in
+            XCTAssertEqual(
+                error as? RuntimeGuestUpdateUseCaseError,
+                .operationFailed("vm did not power off")
+            )
+        }
+
+        XCTAssertEqual(harness.events, [
+            "pid",
+            "log:captured VM process before guest update shutdown pid=4242",
+            "prepare-update-shutdown:0.1.13",
+            "stop-after-poweroff:4242",
+            "log:guest update shutdown failed; forcing VM runtime services stop error=described:vm did not power off",
+            "force-stop-runtime-services",
+            "clear",
+        ])
+    }
+
     func testVMDiskReplacementStopUsesGracefulStopWhenItSucceeds() throws {
         let harness = RuntimeVMStateControlHarness()
 
@@ -155,6 +198,7 @@ private final class RuntimeVMStateControlHarness {
     var events: [String] = []
     var prepareError: Error?
     var stopRuntimeServicesError: Error?
+    var stopAfterPoweroffError: Error?
 
     func restartAfterSettingsApply() throws {
         try RuntimeVMStateControlUseCase().restart(
@@ -292,6 +336,15 @@ private final class RuntimeVMStateControlHarness {
                 },
                 stopRuntimeServicesAfterGuestPoweroff: { pid in
                     self.events.append("stop-after-poweroff:\(pid)")
+                    if let stopAfterPoweroffError = self.stopAfterPoweroffError {
+                        throw stopAfterPoweroffError
+                    }
+                },
+                forceStopRuntimeServicesAfterGuestShutdownFailure: {
+                    self.events.append("force-stop-runtime-services")
+                },
+                describeError: { error in
+                    "described:\(error)"
                 },
                 log: { message in
                     self.events.append("log:\(message)")

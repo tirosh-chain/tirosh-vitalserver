@@ -417,6 +417,23 @@ public enum RuntimeStatusReporterError: Error, Equatable {
     case statusDocumentReadFailed(String)
 }
 
+public enum RuntimeStatusRepositoryError: Error, Equatable, CustomStringConvertible {
+    case missingRequiredRoot(path: String)
+    case requiredRootInspectionFailed(path: String, reason: String)
+    case unexpectedRequiredRootState(path: String, state: String)
+
+    public var description: String {
+        switch self {
+        case .missingRequiredRoot(let path):
+            return "runtime status required root is missing path=\(path)"
+        case .requiredRootInspectionFailed(let path, let reason):
+            return "runtime status required root inspection failed path=\(path) reason=\(reason)"
+        case .unexpectedRequiredRootState(let path, let state):
+            return "runtime status required root state is unexpected path=\(path) state=\(state)"
+        }
+    }
+}
+
 
 public enum RuntimeStorageMaintenanceError: Error, CustomStringConvertible, Equatable {
     case freeSpaceUnavailable(path: String)

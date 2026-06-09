@@ -38,15 +38,13 @@ public struct RuntimePresentationFormatter {
 
     public func vitalServerStatusURL(settings: RuntimeSettings) -> ServiceURLPresentation {
         serviceStatusURL(
-            explicitURL: settings.vitalServerURL,
-            defaultURL: AppConstants.Product.vitalServerURL(proxyPort: settings.proxyPort)
+            explicitURL: settings.vitalServerURL
         )
     }
 
     public func remoteConsoleStatusURL(settings: RuntimeSettings) -> ServiceURLPresentation {
         serviceStatusURL(
-            explicitURL: settings.remoteConsoleURL,
-            defaultURL: AppConstants.Product.remoteConsoleURL(port: settings.runtimeControlPort)
+            explicitURL: settings.remoteConsoleURL
         )
     }
 
@@ -193,14 +191,10 @@ public struct RuntimePresentationFormatter {
         return formatter.string(from: date)
     }
 
-    private func serviceStatusURL(
-        explicitURL: String,
-        defaultURL: String
-    ) -> ServiceURLPresentation {
+    private func serviceStatusURL(explicitURL: String) -> ServiceURLPresentation {
         let trimmed = explicitURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            let displayFallback = defaultURL
-            return ServiceURLPresentation(displayURL: displayFallback, openURL: nil)
+            return ServiceURLPresentation(displayURL: vocabulary.unknownText, openURL: nil)
         }
         return ServiceURLPresentation(displayURL: trimmed, openURL: trimmed)
     }
