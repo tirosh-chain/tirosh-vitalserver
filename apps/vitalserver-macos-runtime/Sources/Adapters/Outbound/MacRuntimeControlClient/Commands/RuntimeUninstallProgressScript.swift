@@ -29,6 +29,7 @@ struct RuntimeUninstallProgressScriptPlan {
 }
 
 enum RuntimeUninstallProgressScript {
+    static let startedMarker = "uninstall process started"
     static let completedMarker = "uninstall process completed exitCode=0"
     static let failedMarkerPrefix = "uninstall process failed exitCode="
     static let missingMarkerStatus = "missing-marker"
@@ -98,6 +99,7 @@ enum RuntimeUninstallProgressScript {
         log_file=\(shellQuote(plan.logPath))
         worker_pid_file=\(shellQuote(plan.workerPIDPath))
         marker_run_id=\(shellQuote("runID=\(plan.runID)"))
+        started_marker=\(shellQuote("\(startedMarker) runID=\(plan.runID)"))
         completed_marker=\(shellQuote("\(completedMarker) runID=\(plan.runID)"))
         failed_marker_prefix=\(shellQuote(failedMarkerPrefix))
 
@@ -124,6 +126,7 @@ enum RuntimeUninstallProgressScript {
         trap 'cleanup_pid_file' EXIT
 
         {
+          echo "${started_marker}"
           \(plan.command)
           background_status=$?
           if [ "${background_status}" -eq 0 ]; then
@@ -173,6 +176,9 @@ enum RuntimeUninstallProgressScript {
         worker_script=\(shellQuote(plan.workerScriptPath))
         worker_pid_file=\(shellQuote(plan.workerPIDPath))
         marker_run_id=\(shellQuote("runID=\(plan.runID)"))
+        started_marker=\(shellQuote("\(startedMarker) runID=\(plan.runID)"))
+        completed_marker=\(shellQuote("\(completedMarker) runID=\(plan.runID)"))
+        failed_marker_prefix=\(shellQuote(failedMarkerPrefix))
         if [ -s "${log_file}" ]; then
           cp "${log_file}" "${previous_log_file}"
         fi
@@ -188,18 +194,26 @@ enum RuntimeUninstallProgressScript {
         nohup /bin/bash "${worker_script}" >/dev/null 2>&1 &
         background_pid=$!
         echo "${background_pid}" > "${worker_pid_file}"
-        sleep 0.2
-        if kill -0 "${background_pid}" 2>/dev/null; then
-          echo "Background uninstaller started."
-        else
-          wait "${background_pid}"
-          background_status=$?
-          if ! grep -q "\(completedMarker) runID=\(plan.runID)" "${log_file}" 2>/dev/null \
-            && ! grep -q "\(failedMarkerPrefix).*${marker_run_id}" "${log_file}" 2>/dev/null; then
-            echo "\(failedMarkerPrefix)\(missingMarkerStatus) ${marker_run_id}" >> "${log_file}"
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+          if grep -q "${started_marker}" "${log_file}" 2>/dev/null \
+            || grep -q "${completed_marker}" "${log_file}" 2>/dev/null \
+            || grep -q "${failed_marker_prefix}.*${marker_run_id}" "${log_file}" 2>/dev/null; then
+            echo "Background uninstaller started."
+            exit 0
           fi
-          exit "${background_status}"
-        fi
+          if ! kill -0 "${background_pid}" 2>/dev/null; then
+            wait "${background_pid}"
+            background_status=$?
+            if ! grep -q "${completed_marker}" "${log_file}" 2>/dev/null \
+              && ! grep -q "${failed_marker_prefix}.*${marker_run_id}" "${log_file}" 2>/dev/null; then
+              echo "\(failedMarkerPrefix)\(missingMarkerStatus) ${marker_run_id}" >> "${log_file}"
+            fi
+            exit "${background_status}"
+          fi
+          sleep 0.5
+        done
+        echo "\(failedMarkerPrefix)\(missingMarkerStatus) ${marker_run_id}" >> "${log_file}"
+        exit 1
         """
     }
 }
