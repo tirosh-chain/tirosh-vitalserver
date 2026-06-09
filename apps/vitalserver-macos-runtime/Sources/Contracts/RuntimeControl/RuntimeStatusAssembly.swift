@@ -32,6 +32,22 @@ public struct GuestRuntimeStateRead {
     }
 }
 
+public struct RuntimeInstallStateRead {
+    public let document: RuntimeInstallStateDocument?
+    public let error: String?
+    public let issue: RuntimeStatusReadIssue?
+
+    public init(
+        document: RuntimeInstallStateDocument?,
+        error: String?,
+        issue: RuntimeStatusReadIssue?
+    ) {
+        self.document = document
+        self.error = error
+        self.issue = issue
+    }
+}
+
 public struct RuntimeHTTPStatusRead: Equatable, Sendable {
     public let status: String?
     public let issue: RuntimeStatusReadIssue?
@@ -376,6 +392,7 @@ public enum RuntimeControlStatusAssembler {
     public static func makeStatus(
         statusRead: RuntimeStatusDocumentRead,
         guestStateRead: GuestRuntimeStateRead,
+        installStateRead: RuntimeInstallStateRead = RuntimeInstallStateRead(document: nil, error: nil, issue: nil),
         liveDiagnostics: RuntimeLiveDiagnostics
     ) -> RuntimeStatus {
         let document = statusRead.document
@@ -392,7 +409,7 @@ public enum RuntimeControlStatusAssembler {
         }
         let readIssues = liveDiagnostics.readIssues
             + [liveDiagnostics.runtimeInstallationIssue].compactMap { $0 }
-            + [statusRead.issue, guestStateRead.issue].compactMap { $0 }
+            + [statusRead.issue, guestStateRead.issue, installStateRead.issue].compactMap { $0 }
             + [proxyPortIssue].compactMap { $0 }
         let vmService = liveDiagnostics.vmService
         let proxyService = liveDiagnostics.proxyService
@@ -422,6 +439,8 @@ public enum RuntimeControlStatusAssembler {
             operation: document?.operation,
             statusMessage: document?.message,
             statusDocumentError: statusRead.error,
+            installStateDocument: installStateRead.document,
+            installStateDocumentError: installStateRead.error,
             readIssues: readIssues,
             updatedAt: document?.updatedAt,
             startedAt: startedAt,

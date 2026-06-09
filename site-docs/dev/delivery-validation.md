@@ -134,6 +134,7 @@ VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 �
 | Guest shutdown 계약 | Guest shutdown이 필요한 경로는 explicit shutdown preparation과 poweroff 관측을 기다리는가 |
 | Host 상태 소유 | Host는 pid file, launchd, process, filesystem 상태를 명시적으로 읽고 실패를 숨기지 않는가 |
 | workflow 역할 | update/repair/uninstall workflow는 VM 상태를 추측하지 않고 owner가 제공한 결과만 소비하는가 |
+| operation state 보존 | install/uninstall state document는 runtime status message에 덮어 쓰지 않고 별도 read model로 보존되는가 |
 | recovery 구분 | clean uninstall recovery처럼 망가진 상태 정리는 일반 graceful stop이 아니라 명시적 force-clean contract를 쓰는가 |
 | progress 분리 | progress viewer marker, UI 메시지, shared log line을 runtime cleanup 성공/실패의 source of truth로 쓰지 않는가 |
 

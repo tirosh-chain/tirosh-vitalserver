@@ -340,6 +340,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var operation: RuntimeOperation?
     public var statusMessage: String?
     public var statusDocumentError: String?
+    public var installStateDocument: RuntimeInstallStateDocument?
+    public var installStateDocumentError: String?
     public var readIssues: [RuntimeStatusReadIssue]
     public var updatedAt: String?
     public var startedAt: String?
@@ -391,6 +393,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         operation: RuntimeOperation? = nil,
         statusMessage: String? = nil,
         statusDocumentError: String? = nil,
+        installStateDocument: RuntimeInstallStateDocument? = nil,
+        installStateDocumentError: String? = nil,
         readIssues: [RuntimeStatusReadIssue] = [],
         updatedAt: String? = nil,
         startedAt: String? = nil,
@@ -441,6 +445,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.operation = operation
         self.statusMessage = statusMessage
         self.statusDocumentError = statusDocumentError
+        self.installStateDocument = installStateDocument
+        self.installStateDocumentError = installStateDocumentError
         self.readIssues = readIssues
         self.updatedAt = updatedAt
         self.startedAt = startedAt

@@ -104,6 +104,10 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             path: paths.runtimeState,
             fileStore: fileStore
         ).load()
+        let installStateRead = RuntimeInstallStateDocumentReader(
+            path: paths.runtimeInstallState,
+            fileStore: fileStore
+        ).load()
         let liveDiagnostics = RuntimeLiveDiagnosticsReader(
             paths: paths,
             runtimeExecutableState: runtimeExecutableState,
@@ -113,6 +117,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         return RuntimeControlStatusAssembler.makeStatus(
             statusRead: statusRead,
             guestStateRead: guestStateRead,
+            installStateRead: installStateRead,
             liveDiagnostics: liveDiagnostics
         )
     }

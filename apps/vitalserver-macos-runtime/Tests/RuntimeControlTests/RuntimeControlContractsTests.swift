@@ -531,6 +531,61 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(degradedWithoutInstallOperation))
     }
 
+    func testActiveOperationPolicyUsesInstallStateDocumentWhenRuntimeStatusWasOverwritten() {
+        let status = RuntimeStatus(
+            runtimeState: .degraded,
+            operation: .watchdog,
+            installStateDocument: RuntimeInstallStateDocument(
+                state: .provisioned,
+                mode: .provision,
+                updatedAt: "2026-06-09T14:06:25Z",
+                message: "runtime install provisioned"
+            )
+        )
+
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+    }
+
+    func testActiveOperationPolicyStopsUsingProvisionedInstallStateAfterRuntimeIsReady() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            vmServiceState: .loaded,
+            proxyServiceState: .loaded,
+            watchdogServiceState: .loaded,
+            runtimeState: .healthy,
+            operation: .health,
+            installStateDocument: RuntimeInstallStateDocument(
+                state: .provisioned,
+                mode: .provision,
+                updatedAt: "2026-06-09T14:06:25Z",
+                message: "runtime install provisioned"
+            ),
+            vmIP: "192.168.64.2",
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+    }
+
+    func testActiveOperationPolicyTreatsCompletedInstallStateDocumentAsTerminal() {
+        let status = RuntimeStatus(
+            runtimeState: .degraded,
+            operation: .watchdog,
+            installStateDocument: RuntimeInstallStateDocument(
+                state: .completed,
+                mode: .full,
+                updatedAt: "2026-06-09T14:06:25Z",
+                message: "runtime install completed"
+            )
+        )
+
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+    }
+
     func testRuntimeStatusIncludesDataDirectoryStats() throws {
         let status = RuntimeStatus(
             dataStorageError: "volume read failed",

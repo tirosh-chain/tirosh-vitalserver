@@ -36,6 +36,9 @@ public enum RuntimeActiveOperationPolicy {
            isInstallOperation(progress.operation) {
             return !isTerminal(progress.phase)
         }
+        if let installState = status.installStateDocument?.state {
+            return isInstallStateInProgress(installState, status: status)
+        }
         guard isInstallOperation(status.operation) else {
             return status.runtimeState == .installing
         }
@@ -48,6 +51,23 @@ public enum RuntimeActiveOperationPolicy {
             return true
         default:
             return false
+        }
+    }
+
+    private static func isInstallStateInProgress(_ state: RuntimeInstallState, status: RuntimeStatus) -> Bool {
+        switch state {
+        case .preflightBlocked, .provisionPayloadBlocked, .completed, .failed:
+            return false
+        case .started,
+             .settingsLoaded,
+             .preflightVerified,
+             .provisionPayloadVerified,
+             .stepStarted,
+             .stepCompleted,
+             .unknown:
+            return true
+        case .provisioned:
+            return !RuntimeReadinessPolicy.isReady(status)
         }
     }
 }

@@ -846,6 +846,80 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertTrue(status.readIssues.contains { $0.source == "runtimeStatus" })
     }
 
+    func testStatusReaderLoadsRuntimeInstallStateDocumentSeparatelyFromRuntimeStatus() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        let runtimeInstallState = directory.appendingPathComponent(RuntimeFileNames.runtimeInstallState)
+        try """
+        {
+          "schemaVersion": 2,
+          "product": "VitalServerHelper",
+          "status": "degraded",
+          "operation": "watchdog",
+          "message": "watchdog recovery deferred",
+          "updatedAt": "2026-06-09T14:09:32Z",
+          "productRoot": "/tmp/product",
+          "runtimeHome": "/tmp/vm",
+          "runtimeVersion": "1.0.0",
+          "vmService": "loaded",
+          "proxyService": "loaded",
+          "watchdogService": "loaded",
+          "rootfsBase": "present",
+          "vmDisk": "present",
+          "failureReasons": []
+        }
+        """.write(to: runtimeStatus, atomically: true, encoding: .utf8)
+        try """
+        {
+          "schemaVersion": 1,
+          "state": "provisioned",
+          "mode": "provision",
+          "updatedAt": "2026-06-09T14:06:25Z",
+          "message": "runtime install provisioned",
+          "blockers": []
+        }
+        """.write(to: runtimeInstallState, atomically: true, encoding: .utf8)
+
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: runtimeStatus.path,
+                runtimeInstallState: runtimeInstallState.path
+            )
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.installStateDocument?.state, .provisioned)
+        XCTAssertEqual(status.installStateDocument?.mode, .provision)
+        XCTAssertNil(status.installStateDocumentError)
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+    }
+
+    func testStatusReaderReportsRuntimeInstallStateReadFailure() throws {
+        let directory = try temporaryDirectory()
+        let runtimeInstallState = directory.appendingPathComponent(RuntimeFileNames.runtimeInstallState)
+        try Data("not-json".utf8).write(to: runtimeInstallState)
+
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path,
+                runtimeInstallState: runtimeInstallState.path
+            )
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertNil(status.installStateDocument)
+        XCTAssertNotNil(status.installStateDocumentError)
+        XCTAssertTrue(status.readIssues.contains { $0.source == "runtimeInstallState" })
+    }
+
     func testStatusReaderReportsGuestRuntimeStateReadFailure() throws {
         let directory = try temporaryDirectory()
         let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
