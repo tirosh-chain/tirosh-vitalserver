@@ -149,8 +149,11 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         in uninstall_text
     )
     assert 'VITALSERVER_VM_HOME="${vm_home}" "${command[@]}"' in uninstall_text
-    assert "vitalserver-vm-clean-uninstaller" in clean_uninstall_postinstall_text
-    assert 'runtime uninstall --force-clean-uninstaller' in clean_uninstall_postinstall_text
+    assert "vitalserver-vm-reset-installer" in clean_uninstall_postinstall_text
+    assert (
+        "runtime uninstall --force-clean-uninstaller"
+        in clean_uninstall_postinstall_text
+    )
     assert "/usr/local/bin/tirosh-vitalserver-uninstall" not in (
         clean_uninstall_postinstall_text
     )
@@ -162,7 +165,10 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         'manager_app="/Applications/VitalServer Helper.app"'
         in clean_uninstall_postinstall_text
     )
-    assert "/usr/bin/pgrep -f -- \"VitalServer Helper\"" in clean_uninstall_postinstall_text
+    assert (
+        '/usr/bin/pgrep -f -- "VitalServer Helper"'
+        in clean_uninstall_postinstall_text
+    )
     assert (
         'log "Helper app is still running; terminating process(es): ${pids}"'
         in clean_uninstall_postinstall_text
@@ -172,7 +178,8 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         in clean_uninstall_postinstall_text
     )
     assert (
-        'log "Helper app could not be terminated; aborting clean uninstall recovery before file removal"'
+        'log "Helper app could not be terminated; aborting clean uninstall recovery '
+        'before file removal"'
         in clean_uninstall_postinstall_text
     )
     assert "Applications/VitalServer Helper.app" in components.read_text(

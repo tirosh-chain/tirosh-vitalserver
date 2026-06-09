@@ -108,7 +108,7 @@ def default_clean_uninstaller_pkg_output(
     settings: MacOSReleaseSettings,
     release: ReleaseManifest,
 ) -> Path:
-    filename = f"VitalServerHelperCleanUninstaller-{release.release_label}.pkg"
+    filename = f"VitalServerHelperResetForReinstall-{release.release_label}.pkg"
     return settings.dist_dir / filename
 
 

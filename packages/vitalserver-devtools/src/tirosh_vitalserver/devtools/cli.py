@@ -555,14 +555,14 @@ def main() -> int:
         ),
     )
 
-    release_clean_uninstaller_pkg = subparsers.add_parser(
-        "release-clean-uninstaller-pkg",
-        help="build a macOS Clean Uninstaller pkg from release.json",
+    release_reset_installer_pkg = subparsers.add_parser(
+        "release-reset-installer-pkg",
+        help="build a macOS Reset for Reinstall pkg from release.json",
     )
-    add_release_clean_uninstaller_package_arguments(release_clean_uninstaller_pkg)
-    release_clean_uninstaller_pkg.set_defaults(
-        handler=lambda args: macos_package_usecases.build_clean_uninstaller_pkg(
-            release_clean_uninstaller_package_input(args)
+    add_release_reset_installer_package_arguments(release_reset_installer_pkg)
+    release_reset_installer_pkg.set_defaults(
+        handler=lambda args: macos_package_usecases.build_reset_installer_pkg(
+            release_reset_installer_package_input(args)
         )
     )
 
@@ -899,10 +899,10 @@ def release_package_input(
     )
 
 
-def release_clean_uninstaller_package_input(
+def release_reset_installer_package_input(
     args: argparse.Namespace,
-) -> usecase_inputs.ReleaseCleanUninstallerPackageInput:
-    return usecase_inputs.ReleaseCleanUninstallerPackageInput(
+) -> usecase_inputs.ReleaseResetInstallerPackageInput:
+    return usecase_inputs.ReleaseResetInstallerPackageInput(
         config=args.config,
         release_file=args.release_file,
         output=args.output,
@@ -928,7 +928,7 @@ def add_release_package_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--docker-platform")
 
 
-def add_release_clean_uninstaller_package_arguments(
+def add_release_reset_installer_package_arguments(
     parser: argparse.ArgumentParser,
 ) -> None:
     parser.add_argument("--release-file", type=Path, required=True)

@@ -68,7 +68,7 @@ public enum RuntimeUninstallRemoveItemResult: Equatable, Sendable {
 
 public struct RuntimeUninstallEffects {
     public var createRedisBackup: () throws -> Void
-    public var stopRuntimeServices: (Bool) throws -> Void
+    public var stopRuntimeServices: (Bool, Bool) throws -> Void
     public var clearLaunchdDisabledOverrides: () throws -> Void
     public var describeError: (Error) -> String
     public var temporaryDirectory: () -> URL
@@ -83,7 +83,7 @@ public struct RuntimeUninstallEffects {
 
     public init(
         createRedisBackup: @escaping () throws -> Void,
-        stopRuntimeServices: @escaping (Bool) throws -> Void,
+        stopRuntimeServices: @escaping (Bool, Bool) throws -> Void,
         clearLaunchdDisabledOverrides: @escaping () throws -> Void,
         describeError: @escaping (Error) -> String,
         temporaryDirectory: @escaping () -> URL,
@@ -169,7 +169,6 @@ public struct RuntimeUninstallWorkflow {
             command: command,
             paths: paths,
             readers: readers,
-            forceClean: command.forceClean,
             writer: writer,
             effects: effects,
             diagnostics: diagnostics
@@ -177,7 +176,6 @@ public struct RuntimeUninstallWorkflow {
         let receiptDecision = try forgetReceiptsAndVerifyAbsence(
             approvedBy: cleanupDecision,
             clean: command.clean,
-            forceClean: command.forceClean,
             readers: readers,
             writer: writer,
             effects: effects,
@@ -280,7 +278,7 @@ public struct RuntimeUninstallWorkflow {
             writer: writer
         )
         do {
-            try effects.stopRuntimeServices(clean)
+            try effects.stopRuntimeServices(clean, forceClean)
         } catch {
             let blockedDecision = try transitionAndPersist(
                 from: stopRequestDecision.state,
@@ -292,20 +290,14 @@ public struct RuntimeUninstallWorkflow {
                 expectedCommands: [],
                 writer: writer
             )
-            if forceClean {
-                return try continueFromBlockedStopDecision(
-                    blockedDecision,
-                    clean: clean,
-                    writer: writer
-                )
-            }
-            throw error
+            throw UninstallRuntimeUseCaseError.operationFailed(
+                uninstallUseCase().runtimeStopBlockedFailureMessage(blockers: blockedDecision.blockers)
+            )
         }
         log(stepLogMessage(step: .stopLaunchdServices, status: .completed), diagnostics: diagnostics)
         return try verifyRuntimeStopped(
             from: stopRequestDecision.state,
             clean: clean,
-            forceClean: forceClean,
             readers: readers,
             writer: writer
         )
@@ -316,7 +308,6 @@ public struct RuntimeUninstallWorkflow {
         command: RuntimeUninstallCommand,
         paths: RuntimeUninstallPaths,
         readers: RuntimeUninstallStateReaders,
-        forceClean: Bool,
         writer: RuntimeUninstallStateWriter,
         effects: RuntimeUninstallEffects,
         diagnostics: RuntimeUninstallDiagnostics
@@ -329,12 +320,6 @@ public struct RuntimeUninstallWorkflow {
                 event: .filesRemovalStarted,
                 clean: command.clean,
                 expectedCommands: [],
-                writer: writer
-            )
-        } else if stoppedDecision.state == .serviceStopBlocked {
-            fileRemovalDecision = try continueFromBlockedStopDecision(
-                stoppedDecision,
-                clean: command.clean,
                 writer: writer
             )
         } else if stoppedDecision.state == .filesRemovalStarted {
@@ -352,7 +337,6 @@ public struct RuntimeUninstallWorkflow {
             return try verifyCleanupArtifacts(
                 from: fileRemovalDecision.state,
                 clean: command.clean,
-                forceClean: forceClean,
                 readers: readers,
                 writer: writer
             )
@@ -370,7 +354,6 @@ public struct RuntimeUninstallWorkflow {
     private func forgetReceiptsAndVerifyAbsence(
         approvedBy cleanupDecision: RuntimeUninstallTransitionDecision,
         clean: Bool,
-        forceClean: Bool,
         readers: RuntimeUninstallStateReaders,
         writer: RuntimeUninstallStateWriter,
         effects: RuntimeUninstallEffects,
@@ -388,12 +371,6 @@ public struct RuntimeUninstallWorkflow {
                 expectedCommands: [],
                 writer: writer
             )
-        } else if cleanupDecision.state == .filesRemovalBlocked {
-            return try continueFromBlockedReceiptStepDecision(
-                cleanupDecision,
-                clean: clean,
-                writer: writer
-            )
         } else if cleanupDecision.state == .receiptsForgetStarted {
             receiptsStartDecision = cleanupDecision
         } else {
@@ -409,20 +386,13 @@ public struct RuntimeUninstallWorkflow {
                 diagnostics: diagnostics
             )
         } catch let error as RuntimeUninstallReceiptForgetExecutionError {
-            let decision = try transitionAndPersist(
+            _ = try transitionAndPersist(
                 from: receiptsStartDecision.state,
                 event: .receiptForgetFailed(identifier: error.identifier, reason: error.reason),
                 clean: clean,
                 expectedCommands: [],
                 writer: writer
             )
-            if forceClean {
-                return try continueFromBlockedReceiptStepDecision(
-                    decision,
-                    clean: clean,
-                    writer: writer
-                )
-            }
             throw UninstallRuntimeUseCaseError.operationFailed(
                 uninstallUseCase().packageReceiptForgetFailureMessage(identifier: error.identifier, reason: error.reason)
             )
@@ -433,13 +403,6 @@ public struct RuntimeUninstallWorkflow {
             expectedCommandsWhenAllowed: [.complete]
         )
         guard receiptDecision.blockers.isEmpty else {
-            if forceClean {
-                return try continueFromBlockedReceiptStepDecision(
-                    receiptDecision,
-                    clean: clean,
-                    writer: writer
-                )
-            }
             try requireCommands([], in: receiptDecision)
             try writePersistedState(receiptDecision, clean: clean, writer: writer)
             throw UninstallRuntimeUseCaseError.operationFailed(
@@ -775,7 +738,6 @@ public struct RuntimeUninstallWorkflow {
     private func verifyRuntimeStopped(
         from state: RuntimeUninstallWorkflowState,
         clean: Bool,
-        forceClean: Bool,
         readers: RuntimeUninstallStateReaders,
         writer: RuntimeUninstallStateWriter
     ) throws -> RuntimeUninstallTransitionDecision {
@@ -785,15 +747,6 @@ public struct RuntimeUninstallWorkflow {
             expectedCommandsWhenAllowed: [.removeFiles]
         )
         guard decision.blockers.isEmpty else {
-            if forceClean {
-                return try transitionAndPersist(
-                    from: .serviceStopBlocked,
-                    event: .forceCleanupContinue,
-                    clean: clean,
-                    expectedCommands: [],
-                    writer: writer
-                )
-            }
             try writePersistedState(decision, clean: clean, writer: writer)
             throw UninstallRuntimeUseCaseError.operationFailed(
                 uninstallUseCase().runtimeStopBlockedFailureMessage(blockers: decision.blockers)
@@ -805,7 +758,6 @@ public struct RuntimeUninstallWorkflow {
     private func verifyCleanupArtifacts(
         from state: RuntimeUninstallWorkflowState,
         clean: Bool,
-        forceClean: Bool,
         readers: RuntimeUninstallStateReaders,
         writer: RuntimeUninstallStateWriter
     ) throws -> RuntimeUninstallTransitionDecision {
@@ -815,65 +767,12 @@ public struct RuntimeUninstallWorkflow {
             expectedCommandsWhenAllowed: [.forgetPackageReceipts]
         )
         guard decision.blockers.isEmpty else {
-            if forceClean {
-                try writePersistedState(decision, clean: clean, writer: writer)
-                return try continueFromBlockedReceiptStepDecision(
-                    decision,
-                    clean: clean,
-                    writer: writer
-                )
-            }
             try writePersistedState(decision, clean: clean, writer: writer)
             throw UninstallRuntimeUseCaseError.operationFailed(
                 uninstallUseCase().cleanupArtifactsRemainFailureMessage(blockers: decision.blockers)
             )
         }
         return decision
-    }
-
-    private func continueFromBlockedStopDecision(
-        _ decision: RuntimeUninstallTransitionDecision,
-        clean: Bool,
-        writer: RuntimeUninstallStateWriter
-    ) throws -> RuntimeUninstallTransitionDecision {
-        try writePersistedState(decision, clean: clean, writer: writer)
-        return try transitionAndPersist(
-            from: .serviceStopBlocked,
-            event: .forceCleanupContinue,
-            clean: clean,
-            expectedCommands: [],
-            writer: writer
-        )
-    }
-
-    private func continueFromBlockedReceiptStepDecision(
-        _ decision: RuntimeUninstallTransitionDecision,
-        clean: Bool,
-        writer: RuntimeUninstallStateWriter
-    ) throws -> RuntimeUninstallTransitionDecision {
-        try writePersistedState(decision, clean: clean, writer: writer)
-        switch decision.state {
-        case .filesRemovalBlocked:
-            return try transitionAndPersist(
-                from: .filesRemovalBlocked,
-                event: .forceCleanupContinue,
-                clean: clean,
-                expectedCommands: [],
-                writer: writer
-            )
-        case .receiptsForgetBlocked:
-            return try transitionAndPersist(
-                from: .receiptsForgetBlocked,
-                event: .forceCleanupContinue,
-                clean: clean,
-                expectedCommands: [.complete],
-                writer: writer
-            )
-        default:
-            throw UninstallRuntimeUseCaseError.operationFailed(
-                "force cleanup cannot continue from unexpected state \(decision.state)"
-            )
-        }
     }
 
     private func transitionAndPersist(

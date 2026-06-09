@@ -277,6 +277,44 @@ final class RuntimeRecorderActivityChartDataBuilderTests: XCTestCase {
         XCTAssertEqual(display.allSamplesWindow?.pageCount, 2)
     }
 
+    func testAllSamplesWindowRejectsInvalidPageMetadata() {
+        let builder = RuntimeRecorderActivityChartDataBuilder()
+        let window = RuntimeVitalRecorderActivityWindow(
+            state: .loaded,
+            query: RuntimeVitalRecorderActivityWindowQuery(
+                vrcode: "VR_A",
+                bucketSeconds: 60,
+                period: .all,
+                pageIndex: nil
+            ),
+            page: RuntimeVitalRecorderActivityWindowPage(
+                index: 0,
+                count: 0,
+                windowSeconds: RuntimeVitalRecorderActivityWindowQuery.allWindowSeconds,
+                windowStartedAt: "2026-01-01T00:00:00Z",
+                windowEndedAt: "2026-01-01T00:01:00Z",
+                firstBucketStartedAt: "2026-01-01T00:00:00Z",
+                latestBucketStartedAt: "2026-01-01T00:01:00Z"
+            ),
+            buckets: [
+                VitalDBRecorderActivityBucket(
+                    bucketStartedAt: "2026-01-01T00:00:00Z",
+                    bucketSeconds: 60,
+                    messageCount: 1,
+                    byteCount: 100,
+                    roomCount: 1
+                ),
+            ],
+            latestSampleAt: "2026-01-01T00:00:00Z"
+        )
+
+        let display = builder.display(from: window)
+
+        XCTAssertEqual(display.state, .invalidTimeline("invalid activity window page count: 0"))
+        XCTAssertTrue(display.buckets.isEmpty)
+        XCTAssertNil(display.allSamplesWindow)
+    }
+
     private func activityPoint(
         observedAt: String,
         messageCount: Int

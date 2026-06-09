@@ -36,8 +36,8 @@ from tirosh_vitalserver.devtools.core.macos_release.settings import (
 from tirosh_vitalserver.devtools.core.release_manifest import ReleaseManifest
 
 ROOTFS_BASE_NAME = "rootfs-base.raw.gz"
-CLEAN_UNINSTALLER_IDENTIFIER_SUFFIX = ".clean-uninstaller"
-CLEAN_UNINSTALLER_CLI_NAME = "vitalserver-vm-clean-uninstaller"
+RESET_INSTALLER_IDENTIFIER_SUFFIX = ".reset-installer"
+RESET_INSTALLER_CLI_NAME = "vitalserver-vm-reset-installer"
 
 
 def build_pkg(context: PackageContext) -> None:
@@ -77,12 +77,12 @@ def build_dmg(context: PackageContext) -> None:
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
-    build_clean_uninstaller_pkg(
+    build_reset_installer_pkg(
         settings=context.settings,
         release=context.release,
         runtime_dir=context.runtime_dir,
         runtime_cli=context.runtime_cli,
-        scripts_dir=context.pkg_root.parent / "clean-uninstaller-scripts",
+        scripts_dir=context.pkg_root.parent / "reset-installer-scripts",
         pkg_output=context.clean_uninstaller_pkg_output,
     )
     install_file(
@@ -112,7 +112,7 @@ def build_dmg(context: PackageContext) -> None:
     )
 
 
-def build_clean_uninstaller_pkg(
+def build_reset_installer_pkg(
     *,
     settings: MacOSReleaseSettings,
     release: ReleaseManifest,
@@ -129,7 +129,7 @@ def build_clean_uninstaller_pkg(
         pkg_output.unlink()
 
     packaging_dir = runtime_dir / "Support/Packaging"
-    copy_executable(runtime_cli, scripts_dir / CLEAN_UNINSTALLER_CLI_NAME)
+    copy_executable(runtime_cli, scripts_dir / RESET_INSTALLER_CLI_NAME)
     render_packaging_executable(
         settings,
         packaging_dir / "clean-uninstall-postinstall.template",
@@ -148,7 +148,7 @@ def build_clean_uninstaller_pkg(
             "--filter",
             r".*\._.*",
             "--identifier",
-            f"{settings.package_identifier}{CLEAN_UNINSTALLER_IDENTIFIER_SUFFIX}",
+            f"{settings.package_identifier}{RESET_INSTALLER_IDENTIFIER_SUFFIX}",
             "--version",
             release.helper_version,
             str(pkg_output),

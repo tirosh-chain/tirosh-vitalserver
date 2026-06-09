@@ -26,6 +26,7 @@ public struct RuntimeUninstallCompositionOperations {
     let createRedisBackup: () throws -> Void
     let disableRuntimeServicesForUninstall: () throws -> Void
     let stopRuntimeServices: () throws -> Void
+    let forceStopRuntimeServicesForUninstall: () throws -> Void
     let clearLaunchdDisabledOverridesAfterUninstall: () throws -> Void
     let cleanupHostProxyPortAfterStop: (Bool) throws -> Void
     let packageReceiptStates: () -> [RuntimePackageReceiptState]
@@ -41,6 +42,7 @@ public struct RuntimeUninstallCompositionOperations {
         createRedisBackup: @escaping () throws -> Void,
         disableRuntimeServicesForUninstall: @escaping () throws -> Void,
         stopRuntimeServices: @escaping () throws -> Void,
+        forceStopRuntimeServicesForUninstall: @escaping () throws -> Void,
         clearLaunchdDisabledOverridesAfterUninstall: @escaping () throws -> Void,
         cleanupHostProxyPortAfterStop: @escaping (Bool) throws -> Void,
         packageReceiptStates: @escaping () -> [RuntimePackageReceiptState],
@@ -55,6 +57,7 @@ public struct RuntimeUninstallCompositionOperations {
         self.createRedisBackup = createRedisBackup
         self.disableRuntimeServicesForUninstall = disableRuntimeServicesForUninstall
         self.stopRuntimeServices = stopRuntimeServices
+        self.forceStopRuntimeServicesForUninstall = forceStopRuntimeServicesForUninstall
         self.clearLaunchdDisabledOverridesAfterUninstall = clearLaunchdDisabledOverridesAfterUninstall
         self.cleanupHostProxyPortAfterStop = cleanupHostProxyPortAfterStop
         self.packageReceiptStates = packageReceiptStates
@@ -146,9 +149,13 @@ public enum RuntimeUninstallComposition {
             ),
             effects: RuntimeUninstallEffects(
                 createRedisBackup: operations.createRedisBackup,
-                stopRuntimeServices: { clean in
+                stopRuntimeServices: { clean, forceClean in
                     try operations.disableRuntimeServicesForUninstall()
-                    try operations.stopRuntimeServices()
+                    if forceClean {
+                        try operations.forceStopRuntimeServicesForUninstall()
+                    } else {
+                        try operations.stopRuntimeServices()
+                    }
                     try operations.cleanupHostProxyPortAfterStop(clean)
                 },
                 clearLaunchdDisabledOverrides: operations.clearLaunchdDisabledOverridesAfterUninstall,

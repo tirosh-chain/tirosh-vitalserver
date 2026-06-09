@@ -128,7 +128,7 @@ make runtime/chaos      # deterministic runtime chaos scenario
 
 make dist/pkg/dev       # development pkg build
 make dist/dmg/dev       # development installer dmg build
-make dist/clean-uninstaller/dev  # Clean Uninstaller pkg build
+make dist/reset-installer/dev  # Reset Installer pkg build
 make dist/update/dev    # development product update bundle build
 make dist/installed/health
 ```

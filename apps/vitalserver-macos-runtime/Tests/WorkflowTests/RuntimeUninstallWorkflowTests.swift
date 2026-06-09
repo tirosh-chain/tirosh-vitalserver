@@ -18,6 +18,7 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
             "state:stop-services-requested:service stop requested:",
             "stop",
             "stop:clean=true",
+            "stop:forceClean=false",
             "log:step=stop-launchd-services status=completed",
             "state:files-removal-started:file removal started:",
             "log:step=remove-plists status=started",
@@ -211,29 +212,40 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         XCTAssertTrue(harness.events.contains("state:completed:uninstall completed:"))
     }
 
-    func testForceCleanUninstallBypassesServiceStopBlockingAndCompletes() throws {
+    func testForceCleanUninstallDoesNotCompleteWhenServiceStopIsStillBlocked() {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.stopError = RuntimeUninstallTestError.stop
         harness.vmProcessState = .running(pid: 123)
 
-        try harness.run(RuntimeUninstallCommand(clean: true, forceClean: true))
+        XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true, forceClean: true)))
 
         XCTAssertTrue(harness.events.contains {
             $0.contains("state:service-stop-blocked")
                 && $0.contains("vm-process-running:pid=123")
         })
-        XCTAssertTrue(harness.events.contains("log:step=remove-installed-files status=started"))
-        XCTAssertTrue(harness.events.contains("state:completed:uninstall completed:"))
+        XCTAssertFalse(harness.events.contains("log:step=remove-installed-files status=started"))
+        XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
     }
 
     func testCleanFlagIsPassedToRuntimeServiceStopEffect() throws {
         let cleanHarness = RuntimeUninstallWorkflowHarness()
         try cleanHarness.run(RuntimeUninstallCommand(clean: true))
         XCTAssertTrue(cleanHarness.events.contains("stop:clean=true"))
+        XCTAssertTrue(cleanHarness.events.contains("stop:forceClean=false"))
 
         let standardHarness = RuntimeUninstallWorkflowHarness()
         try standardHarness.run(RuntimeUninstallCommand(clean: false))
         XCTAssertTrue(standardHarness.events.contains("stop:clean=false"))
+        XCTAssertTrue(standardHarness.events.contains("stop:forceClean=false"))
+    }
+
+    func testForceCleanFlagIsPassedToRuntimeServiceStopEffect() throws {
+        let harness = RuntimeUninstallWorkflowHarness()
+
+        try harness.run(RuntimeUninstallCommand(clean: true, forceClean: true))
+
+        XCTAssertTrue(harness.events.contains("stop:clean=true"))
+        XCTAssertTrue(harness.events.contains("stop:forceClean=true"))
     }
 
     func testUninstallDoesNotRemoveFilesWhenStoppedStateIsNotProven() {
@@ -278,20 +290,20 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
     }
 
-    func testForceCleanUninstallSkipsCleanupArtifactBlockerAndCompletes() throws {
+    func testForceCleanUninstallDoesNotCompleteWhenCleanupArtifactRemains() {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.cleanupArtifactStates = [
             .present(path: "/usr/local/bin/vitalserver-vm"),
         ]
 
-        try harness.run(RuntimeUninstallCommand(clean: true, forceClean: true))
+        XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true, forceClean: true)))
 
         XCTAssertTrue(harness.events.contains {
             $0.contains("state:files-removal-blocked")
                 && $0.contains("runtime-artifact-present:path=/usr/local/bin/vitalserver-vm")
         })
         XCTAssertTrue(harness.events.contains("log:step=remove-installed-files status=started"))
-        XCTAssertTrue(harness.events.contains("state:completed:uninstall completed:"))
+        XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
     }
 
     func testReceiptForgetFailureWritesBlockedState() {
@@ -344,20 +356,20 @@ final class RuntimeUninstallWorkflowTests: XCTestCase {
         XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
     }
 
-    func testForceCleanUninstallBypassesReceiptBlockingAndCompletes() throws {
+    func testForceCleanUninstallDoesNotCompleteWhenReceiptRemains() {
         let harness = RuntimeUninstallWorkflowHarness()
         harness.updateReceiptsOnForget = false
         harness.receiptStates = [
             .present(identifier: "ai.tirosh.vitalserver.helper"),
         ]
 
-        try harness.run(RuntimeUninstallCommand(clean: true, forceClean: true))
+        XCTAssertThrowsError(try harness.run(RuntimeUninstallCommand(clean: true, forceClean: true)))
 
         XCTAssertTrue(harness.events.contains {
             $0.contains("state:receipts-forget-blocked")
                 && $0.contains("package-receipt-present:identifier=ai.tirosh.vitalserver.helper")
         })
-        XCTAssertTrue(harness.events.contains("state:completed:uninstall completed:"))
+        XCTAssertFalse(harness.events.contains("state:completed:uninstall completed:"))
     }
 
     func testUninstallDoesNotCompleteWhenLaunchdDisabledOverrideCleanupFails() {
@@ -468,9 +480,10 @@ private final class RuntimeUninstallWorkflowHarness {
                         throw backupError
                     }
                 },
-                stopRuntimeServices: { clean in
+                stopRuntimeServices: { clean, forceClean in
                     self.events.append("stop")
                     self.events.append("stop:clean=\(clean)")
+                    self.events.append("stop:forceClean=\(forceClean)")
                     if let stopError = self.stopError {
                         throw stopError
                     }

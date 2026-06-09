@@ -1,3 +1,5 @@
+import Foundation
+
 struct RuntimeUninstallProgressScriptPlan {
     let command: String
     let logPath: String
@@ -5,6 +7,7 @@ struct RuntimeUninstallProgressScriptPlan {
     let viewerScriptPath: String
     let workerScriptPath: String
     let workerPIDPath: String
+    let runID: String
 
     init(
         command: String,
@@ -12,7 +15,8 @@ struct RuntimeUninstallProgressScriptPlan {
         previousLogPath: String,
         viewerScriptPath: String,
         workerScriptPath: String? = nil,
-        workerPIDPath: String? = nil
+        workerPIDPath: String? = nil,
+        runID: String = UUID().uuidString
     ) {
         self.command = command
         self.logPath = logPath
@@ -20,6 +24,7 @@ struct RuntimeUninstallProgressScriptPlan {
         self.viewerScriptPath = viewerScriptPath
         self.workerScriptPath = workerScriptPath ?? "\(viewerScriptPath).worker"
         self.workerPIDPath = workerPIDPath ?? "\(viewerScriptPath).pid"
+        self.runID = runID
     }
 }
 
@@ -35,6 +40,7 @@ enum RuntimeUninstallProgressScript {
     static func viewerScript(
         logPath: String,
         workerPIDPath: String,
+        runID: String = UUID().uuidString,
         shellQuote: (String) -> String
     ) -> String {
         """
@@ -42,6 +48,9 @@ enum RuntimeUninstallProgressScript {
         set -u
         log_file=\(shellQuote(logPath))
         worker_pid_file=\(shellQuote(workerPIDPath))
+        marker_run_id=\(shellQuote("runID=\(runID)"))
+        completed_marker=\(shellQuote("\(completedMarker) runID=\(runID)"))
+        failed_marker_prefix=\(shellQuote(failedMarkerPrefix))
         printf "\(terminalTitle)\\n"
         printf "Log: %s\\n\\n" "${log_file}"
         touch "${log_file}" 2>/dev/null || true
@@ -52,12 +61,12 @@ enum RuntimeUninstallProgressScript {
           wait "${tail_pid}" 2>/dev/null || true
         }
         while true; do
-          if grep -q "\(completedMarker)" "${log_file}" 2>/dev/null; then
+          if grep -q "${completed_marker}" "${log_file}" 2>/dev/null; then
             finish_tail
             printf "\\n\(terminalCompletedMessage)\\n"
             break
           fi
-          if grep -q "\(failedMarkerPrefix)" "${log_file}" 2>/dev/null; then
+          if grep -q "${failed_marker_prefix}.*${marker_run_id}" "${log_file}" 2>/dev/null; then
             finish_tail
             printf "\\n\(terminalFailedMessage)\\n"
             break
@@ -65,7 +74,7 @@ enum RuntimeUninstallProgressScript {
           if [ -s "${worker_pid_file}" ]; then
             worker_pid="$(cat "${worker_pid_file}" 2>/dev/null || true)"
             if [ -n "${worker_pid}" ] && ! kill -0 "${worker_pid}" 2>/dev/null; then
-              echo "\(failedMarkerPrefix)\(missingMarkerStatus)" >> "${log_file}"
+              echo "${failed_marker_prefix}\(missingMarkerStatus) ${marker_run_id}" >> "${log_file}"
               rm -f "${worker_pid_file}" 2>/dev/null || true
               finish_tail
               printf "\\n\(terminalFailedMessage)\\n"
@@ -88,12 +97,13 @@ enum RuntimeUninstallProgressScript {
         set +e
         log_file=\(shellQuote(plan.logPath))
         worker_pid_file=\(shellQuote(plan.workerPIDPath))
-        completed_marker=\(shellQuote(completedMarker))
+        marker_run_id=\(shellQuote("runID=\(plan.runID)"))
+        completed_marker=\(shellQuote("\(completedMarker) runID=\(plan.runID)"))
         failed_marker_prefix=\(shellQuote(failedMarkerPrefix))
 
         has_terminal_marker() {
           grep -q "${completed_marker}" "${log_file}" 2>/dev/null \
-            || grep -q "${failed_marker_prefix}" "${log_file}" 2>/dev/null
+            || grep -q "${failed_marker_prefix}.*${marker_run_id}" "${log_file}" 2>/dev/null
         }
 
         cleanup_pid_file() {
@@ -103,7 +113,7 @@ enum RuntimeUninstallProgressScript {
         mark_signal_failure() {
           signal_name="$1"
           if ! has_terminal_marker; then
-            echo "${failed_marker_prefix}signal-${signal_name}" >> "${log_file}"
+            echo "${failed_marker_prefix}signal-${signal_name} ${marker_run_id}" >> "${log_file}"
           fi
           cleanup_pid_file
           exit 129
@@ -119,7 +129,7 @@ enum RuntimeUninstallProgressScript {
           if [ "${background_status}" -eq 0 ]; then
             echo "${completed_marker}"
           else
-            echo "${failed_marker_prefix}${background_status}"
+            echo "${failed_marker_prefix}${background_status} ${marker_run_id}"
           fi
           cleanup_pid_file
           exit "${background_status}"
@@ -152,6 +162,7 @@ enum RuntimeUninstallProgressScript {
         let viewerScript = viewerScript(
             logPath: plan.logPath,
             workerPIDPath: plan.workerPIDPath,
+            runID: plan.runID,
             shellQuote: shellQuote
         )
         let workerScript = workerScript(plan: plan, shellQuote: shellQuote)
@@ -161,6 +172,7 @@ enum RuntimeUninstallProgressScript {
         viewer_script=\(shellQuote(plan.viewerScriptPath))
         worker_script=\(shellQuote(plan.workerScriptPath))
         worker_pid_file=\(shellQuote(plan.workerPIDPath))
+        marker_run_id=\(shellQuote("runID=\(plan.runID)"))
         if [ -s "${log_file}" ]; then
           cp "${log_file}" "${previous_log_file}"
         fi
@@ -182,9 +194,9 @@ enum RuntimeUninstallProgressScript {
         else
           wait "${background_pid}"
           background_status=$?
-          if ! grep -q "\(completedMarker)" "${log_file}" 2>/dev/null \
-            && ! grep -q "\(failedMarkerPrefix)" "${log_file}" 2>/dev/null; then
-            echo "\(failedMarkerPrefix)\(missingMarkerStatus)" >> "${log_file}"
+          if ! grep -q "\(completedMarker) runID=\(plan.runID)" "${log_file}" 2>/dev/null \
+            && ! grep -q "\(failedMarkerPrefix).*${marker_run_id}" "${log_file}" 2>/dev/null; then
+            echo "\(failedMarkerPrefix)\(missingMarkerStatus) ${marker_run_id}" >> "${log_file}"
           fi
           exit "${background_status}"
         fi

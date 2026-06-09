@@ -139,6 +139,7 @@ public enum Constants {
         public static let waitTimeoutSeconds = 600.0
         public static let serviceStopWaitTimeoutSeconds = 30.0
         public static let vmStopWaitTimeoutSeconds = 900.0
+        public static let vmForceStopWaitTimeoutSeconds = 30.0
         public static let serviceStopPollIntervalSeconds = 0.5
         public static let datastoreRepairWaitTimeoutSeconds = 300.0
         public static let redisBackupWaitTimeoutSeconds = 300.0

@@ -150,6 +150,16 @@ public struct RuntimeRecorderActivityChartDataBuilder {
                 totalPackets: nil
             )
         }
+        if let pageMetadataIssue = allSamplesPageMetadataIssue(window) {
+            return RuntimeRecorderActivityDisplay(
+                state: .invalidTimeline(pageMetadataIssue),
+                buckets: [],
+                latestSample: nil,
+                latestBucket: nil,
+                latestBucketBytesPerSecond: nil,
+                totalPackets: nil
+            )
+        }
         let buckets = window.buckets.map(RecorderActivityChartBucket.init)
         let latestBucket = buckets.last(where: { $0.messageCount > 0 }) ?? buckets.last
         let latestSample = window.latestSampleAt.map {
@@ -319,6 +329,19 @@ public struct RuntimeRecorderActivityChartDataBuilder {
             }) {
                 return invalidBucket.bucketStartedAt
             }
+        }
+        return nil
+    }
+
+    private func allSamplesPageMetadataIssue(_ window: RuntimeVitalRecorderActivityWindow) -> String? {
+        guard window.query.period == .all else {
+            return nil
+        }
+        if window.page.count < 1 {
+            return "invalid activity window page count: \(window.page.count)"
+        }
+        if window.page.index < 0 || window.page.index >= window.page.count {
+            return "invalid activity window page index: \(window.page.index)"
         }
         return nil
     }
@@ -626,6 +649,21 @@ extension RecorderActivityPeriod {
             return "Last 12 hours"
         case .all:
             return "All"
+        }
+    }
+}
+
+extension RuntimeVitalRecorderDisplayPolicy.RecorderSortOption {
+    var title: String {
+        switch self {
+        case .vrcode:
+            return "VRecorder"
+        case .lastSeen:
+            return "Last seen"
+        case .status:
+            return "Status"
+        case .bed:
+            return "Bed"
         }
     }
 }

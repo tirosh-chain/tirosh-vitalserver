@@ -250,7 +250,7 @@ class ReleasePackageInput:
 
 
 @dataclass(frozen=True)
-class ReleaseCleanUninstallerPackageInput:
+class ReleaseResetInstallerPackageInput:
     config: Path
     release_file: Path
     output: Path | None
@@ -294,8 +294,8 @@ __all__ = [
     "NginxBundleInput",
     "OpenProductUrlInput",
     "PythonWorkspaceToolInput",
-    "ReleaseCleanUninstallerPackageInput",
     "ReleasePackageInput",
+    "ReleaseResetInstallerPackageInput",
     "ReleaseUpdateBundleInput",
     "RenderTemplateInput",
     "RequireBridgedIdentityInput",

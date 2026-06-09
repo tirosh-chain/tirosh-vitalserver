@@ -5,7 +5,7 @@ uninstall_log="${UNINSTALL_LOG}"
 vm_home="${VM_HOME}"
 manager_app="${MANAGER_APP}"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-vm_bin="${script_dir}/vitalserver-vm-clean-uninstaller"
+vm_bin="${script_dir}/vitalserver-vm-reset-installer"
 
 mkdir -p "$(dirname "${uninstall_log}")"
 exec > >(tee -a "${uninstall_log}") 2>&1
@@ -23,7 +23,7 @@ on_error() {
 trap on_error ERR
 
 if [ "$(id -u)" -ne 0 ]; then
-  log "Clean Uninstall recovery package must run as root."
+  log "Reset for Reinstall package must run as root."
   exit 1
 fi
 

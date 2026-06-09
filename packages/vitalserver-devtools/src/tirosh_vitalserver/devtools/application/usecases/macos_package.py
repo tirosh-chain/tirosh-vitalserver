@@ -11,13 +11,13 @@ from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
     remove_path,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
-    build_clean_uninstaller_pkg as run_build_clean_uninstaller_pkg,
-)
-from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
     build_dmg as run_build_dmg,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
     build_pkg as run_build_pkg,
+)
+from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
+    build_reset_installer_pkg as run_build_reset_installer_pkg,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_app import (
     build_app_bundle,
@@ -34,8 +34,8 @@ from tirosh_vitalserver.devtools.application.inputs import (
     MacOSPackageCleanInput,
     MacOSPackageInstallInput,
     NginxBundleInput,
-    ReleaseCleanUninstallerPackageInput,
     ReleasePackageInput,
+    ReleaseResetInstallerPackageInput,
 )
 from tirosh_vitalserver.devtools.application.usecases.host_proxy import (
     build_nginx as build_nginx_bundle,
@@ -75,7 +75,7 @@ def build_dmg(input: ReleasePackageInput) -> int:
     return 0
 
 
-def build_clean_uninstaller_pkg(input: ReleaseCleanUninstallerPackageInput) -> int:
+def build_reset_installer_pkg(input: ReleaseResetInstallerPackageInput) -> int:
     root = repo_root()
     settings = load_macos_release_settings(input.config, root)
     runtime_dir = settings.runtime_dir
@@ -100,15 +100,15 @@ def build_clean_uninstaller_pkg(input: ReleaseCleanUninstallerPackageInput) -> i
         runtime_dir,
         input.codesign_identity,
     )
-    run_build_clean_uninstaller_pkg(
+    run_build_reset_installer_pkg(
         settings=settings,
         release=release,
         runtime_dir=runtime_dir,
         runtime_cli=settings.runtime_cli,
-        scripts_dir=settings.pkg_root.parent / "clean-uninstaller-scripts",
+        scripts_dir=settings.pkg_root.parent / "reset-installer-scripts",
         pkg_output=pkg_output,
     )
-    print(f"clean uninstaller pkg is ready: {pkg_output}")
+    print(f"reset-for-reinstall pkg is ready: {pkg_output}")
     return 0
 
 

@@ -9,6 +9,7 @@ struct RuntimeRecordersPanel: View {
     @State private var searchText = ""
     @State private var selectedVrcode: String?
     @State private var showingRecorderHistory = false
+    @State private var recorderSort = RuntimeVitalRecorderDisplayPolicy.RecorderSortOption.vrcode
     @State private var activityBucketInterval = RecorderActivityBucketInterval.oneMinute
     @State private var activityPeriod = RecorderActivityPeriod.lastHour
     @State private var activityAllSamplesPageIndex: Int?
@@ -30,6 +31,7 @@ struct RuntimeRecordersPanel: View {
                     .font(.headline)
                 Spacer()
                 recorderSearchField
+                recorderSortPicker
                 Toggle("History", isOn: $showingRecorderHistory)
                     .toggleStyle(.switch)
                 refreshButton
@@ -39,6 +41,7 @@ struct RuntimeRecordersPanel: View {
                     .font(.headline)
                 HStack {
                     recorderSearchField
+                    recorderSortPicker
                     Toggle("History", isOn: $showingRecorderHistory)
                         .toggleStyle(.switch)
                     refreshButton
@@ -102,6 +105,23 @@ struct RuntimeRecordersPanel: View {
             .frame(width: 220)
     }
 
+    private var recorderSortPicker: some View {
+        HStack(spacing: 6) {
+            Text("Sort")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker("", selection: $recorderSort) {
+                ForEach(RuntimeVitalRecorderDisplayPolicy.RecorderSortOption.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .frame(width: 112)
+            .help("Select the VRecorder list order.")
+        }
+    }
+
     private var refreshButton: some View {
         Button(AppConstants.Actions.refresh) {
             Task {
@@ -158,7 +178,8 @@ struct RuntimeRecordersPanel: View {
     }
 
     private var visibleRecorders: [RuntimeVitalRecorderRecord] {
-        showingRecorderHistory ? viewModel.vitalRecorders.recorders : currentRecorders
+        let recorders = showingRecorderHistory ? viewModel.vitalRecorders.recorders : currentRecorders
+        return displayPolicy.sortedRecorders(recorders, by: recorderSort)
     }
 
     private var selectedRecorder: RuntimeVitalRecorderRecord? {
@@ -446,10 +467,12 @@ struct RuntimeRecordersPanel: View {
     }
 
     private func activityAllSamplesWindowControl(_ window: RecorderActivityAllSamplesWindow) -> some View {
-        let maxPageIndex = max(window.pageCount - 1, 0)
+        let pageCount = max(window.pageCount, 1)
+        let pageIndex = min(max(window.pageIndex, 0), pageCount - 1)
+        let maxPageIndex = pageCount - 1
         let pageBinding = Binding<Double>(
             get: {
-                Double(activityAllSamplesPageIndex ?? window.pageIndex)
+                Double(min(max(activityAllSamplesPageIndex ?? pageIndex, 0), maxPageIndex))
             },
             set: { value in
                 activityAllSamplesPageIndex = min(max(Int(value.rounded()), 0), maxPageIndex)
@@ -463,17 +486,18 @@ struct RuntimeRecordersPanel: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
-                Text("\(window.pageIndex + 1) / \(window.pageCount)")
+                Text("\(pageIndex + 1) / \(pageCount)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
-            Slider(
-                value: pageBinding,
-                in: 0...Double(maxPageIndex),
-                step: 1
-            )
-            .disabled(window.pageCount <= 1)
+            if pageCount > 1 {
+                Slider(
+                    value: pageBinding,
+                    in: 0...Double(maxPageIndex),
+                    step: 1
+                )
+            }
         }
     }
 

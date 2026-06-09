@@ -74,7 +74,7 @@ def test_default_clean_uninstaller_pkg_output_uses_release_label() -> None:
     output = default_clean_uninstaller_pkg_output(settings, release)
 
     assert output == (
-        settings.dist_dir / "VitalServerHelperCleanUninstaller-1.2.3-dev.pkg"
+        settings.dist_dir / "VitalServerHelperResetForReinstall-1.2.3-dev.pkg"
     )
 
 
@@ -99,7 +99,7 @@ def test_package_outputs_include_clean_uninstaller_pkg() -> None:
 
     assert outputs.pkg_output == settings.dist_dir / "VitalServerHelper-1.2.3-dev.pkg"
     assert outputs.clean_uninstaller_pkg_output == (
-        settings.dist_dir / "VitalServerHelperCleanUninstaller-1.2.3-dev.pkg"
+        settings.dist_dir / "VitalServerHelperResetForReinstall-1.2.3-dev.pkg"
     )
     assert outputs.dmg_output == settings.dist_dir / "VitalServerHelper-1.2.3-dev.dmg"
 
@@ -119,7 +119,10 @@ def test_build_dmg_stages_installer_and_clean_uninstaller_pkg(
             settings.outputs,
             dmg_staging_dir=staging,
             dmg_installer_pkg_name="Install VitalServer Helper.pkg",
-            dmg_clean_uninstaller_pkg_name="Clean Uninstall VitalServer Helper.pkg",
+            dmg_clean_uninstaller_pkg_name=(
+                "Troubleshooting Tools/"
+                "Reset VitalServer Helper for Reinstall.pkg"
+            ),
         ),
     )
     release = ReleaseManifest(
@@ -131,25 +134,25 @@ def test_build_dmg_stages_installer_and_clean_uninstaller_pkg(
         target_platform="macos-arm64",
     )
     pkg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.pkg"
-    clean_uninstaller_pkg_output = (
-        tmp_path / "dist/VitalServerHelperCleanUninstaller-1.2.3-dev.pkg"
+    reset_installer_pkg_output = (
+        tmp_path / "dist/VitalServerHelperResetForReinstall-1.2.3-dev.pkg"
     )
     dmg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.dmg"
     pkg_output.parent.mkdir()
     pkg_output.write_text("installer", encoding="utf-8")
     commands: list[list[str]] = []
 
-    def fake_build_clean_uninstaller_pkg(**kwargs: object) -> None:
-        assert kwargs["pkg_output"] == clean_uninstaller_pkg_output
-        clean_uninstaller_pkg_output.write_text("clean-uninstaller", encoding="utf-8")
+    def fake_build_reset_installer_pkg(**kwargs: object) -> None:
+        assert kwargs["pkg_output"] == reset_installer_pkg_output
+        reset_installer_pkg_output.write_text("reset-installer", encoding="utf-8")
 
     def fake_run(command: list[str], **_: object) -> None:
         commands.append(command)
 
     monkeypatch.setattr(
         installer_package,
-        "build_clean_uninstaller_pkg",
-        fake_build_clean_uninstaller_pkg,
+        "build_reset_installer_pkg",
+        fake_build_reset_installer_pkg,
     )
     monkeypatch.setattr(installer_package, "run", fake_run)
 
@@ -160,7 +163,7 @@ def test_build_dmg_stages_installer_and_clean_uninstaller_pkg(
         pkg_root=settings.pkg_root,
         pkg_scripts=tmp_path / "build/scripts",
         pkg_output=pkg_output,
-        clean_uninstaller_pkg_output=clean_uninstaller_pkg_output,
+        clean_uninstaller_pkg_output=reset_installer_pkg_output,
         dmg_output=dmg_output,
         app_bundle=tmp_path / "app/VitalServer Helper.app",
         runtime_cli=tmp_path / "bin/vitalserver-vm",
@@ -188,9 +191,10 @@ def test_build_dmg_stages_installer_and_clean_uninstaller_pkg(
     assert (staging / "Install VitalServer Helper.pkg").read_text(
         encoding="utf-8"
     ) == "installer"
-    assert (staging / "Clean Uninstall VitalServer Helper.pkg").read_text(
-        encoding="utf-8"
-    ) == "clean-uninstaller"
+    assert (
+        staging
+        / "Troubleshooting Tools/Reset VitalServer Helper for Reinstall.pkg"
+    ).read_text(encoding="utf-8") == "reset-installer"
     assert commands[-1][:2] == ["hdiutil", "create"]
     assert str(staging) in commands[-1]
     assert str(dmg_output) in commands[-1]

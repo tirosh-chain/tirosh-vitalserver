@@ -49,8 +49,9 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains("/usr/local/bin/tirosh-vitalserver-uninstall"))
         XCTAssertTrue(command.contains("--clean"))
         XCTAssertTrue(command.contains("background_status=$?"))
+        XCTAssertTrue(command.contains("marker_run_id="))
         XCTAssertTrue(command.contains("echo \"${completed_marker}\""))
-        XCTAssertTrue(command.contains("echo \"${failed_marker_prefix}${background_status}\""))
+        XCTAssertTrue(command.contains("echo \"${failed_marker_prefix}${background_status} ${marker_run_id}\""))
         XCTAssertTrue(command.contains("echo \"${background_pid}\" > \"${worker_pid_file}\""))
         XCTAssertTrue(command.contains("background_pid=$!"))
         XCTAssertTrue(command.contains("kill -0"))
@@ -68,7 +69,8 @@ final class RuntimeCommandFactoryTests: XCTestCase {
                 command: "'/bin/uninstall tool' '--clean'",
                 logPath: "/tmp/uninstall log's/current.log",
                 previousLogPath: "/tmp/uninstall log's/current.log.previous",
-                viewerScriptPath: "/tmp/viewer script's.command"
+                viewerScriptPath: "/tmp/viewer script's.command",
+                runID: "test-run"
             ),
             shellQuote: RuntimeShellCommandFactory.shellQuote
         )
@@ -78,6 +80,8 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(script.contains("viewer_script='/tmp/viewer script'\\''s.command'"))
         XCTAssertTrue(script.contains("worker_script='/tmp/viewer script'\\''s.command.worker'"))
         XCTAssertTrue(script.contains("worker_pid_file='/tmp/viewer script'\\''s.command.pid'"))
+        XCTAssertTrue(script.contains("marker_run_id='runID=test-run'"))
+        XCTAssertTrue(script.contains("\(RuntimeUninstallProgressScript.completedMarker) runID=test-run"))
         XCTAssertTrue(script.contains("if ! open -a Terminal \"${viewer_script}\""))
         XCTAssertTrue(script.contains("echo \"\(RuntimeUninstallProgressScript.terminalOpenFailedMessage)\" >> \"${log_file}\""))
         XCTAssertTrue(script.contains("/bin/uninstall tool"))
@@ -102,6 +106,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         try RuntimeUninstallProgressScript.viewerScript(
             logPath: logURL.path,
             workerPIDPath: pidURL.path,
+            runID: "viewer-test",
             shellQuote: RuntimeShellCommandFactory.shellQuote
         ).write(to: viewerURL, atomically: true, encoding: .utf8)
 
@@ -133,6 +138,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(log.contains(
             "\(RuntimeUninstallProgressScript.failedMarkerPrefix)\(RuntimeUninstallProgressScript.missingMarkerStatus)"
         ))
+        XCTAssertTrue(log.contains("runID=viewer-test"))
     }
 
     func testCommandWithLogCapturesExitStatus() {
