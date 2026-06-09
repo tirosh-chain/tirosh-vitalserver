@@ -66,6 +66,8 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-055 | Helper app에서 Recorder activity `All` 선택 시 앱이 종료됨 | macOS Helper / Observability | resolved | [Recorder Activity All Window Materializes Full History](055_recorder-activity-all-window-materialization.md) |
 | TS-056 | PWA Status가 `settings.bridgedinterface` contract mismatch를 표시 | Runtime Control PWA / Network | resolved | [PWA Runtime Overview Bridged Interface Contract Mismatch](056_pwa-runtime-overview-bridged-interface-contract.md) |
 | TS-057 | watchdog이 stale guest runtime-state를 missing artifacts로 보고 복구하지 않음 | Runtime health / Watchdog recovery | resolved | [Watchdog Treats Stale Guest Runtime State As Unrecoverable](057_watchdog_stale_guest_runtime_state_unrecoverable.md) |
+| TS-058 | Reset Installer 이후 VM launchd state가 남아 설치를 막음 | Uninstall / VM lifecycle | resolved | [Reset Installer Leaves VM Launchd State Behind](058_clean-uninstall-hung-vm-progress-marker.md) |
+| TS-059 | Helper app에서 Recorder activity `All` 선택 시 Slider 생성 중 앱이 종료됨 | macOS Helper / Observability | active | [Recorder Activity All Single-Page Slider Crash](059_recorder-activity-all-single-page-slider-crash.md) |
 
 ## Follow-up 규칙
 
