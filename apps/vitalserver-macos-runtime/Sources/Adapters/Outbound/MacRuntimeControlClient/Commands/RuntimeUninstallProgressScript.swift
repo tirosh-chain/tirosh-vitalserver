@@ -191,7 +191,7 @@ enum RuntimeUninstallProgressScript {
         if ! open -a Terminal "${viewer_script}" >/dev/null 2>&1; then
           echo "\(terminalOpenFailedMessage)" >> "${log_file}"
         fi
-        nohup /bin/bash "${worker_script}" >> "${log_file}" 2>&1 &
+        /bin/bash "${worker_script}" </dev/null >> "${log_file}" 2>&1 &
         background_pid=$!
         echo "${background_pid}" > "${worker_pid_file}"
         for _ in 1 2 3 4 5 6 7 8 9 10; do

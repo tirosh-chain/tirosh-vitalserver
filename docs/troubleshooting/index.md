@@ -70,6 +70,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-059 | Helper app에서 Recorder activity `All` 선택 시 Slider 생성 중 앱이 종료됨 | macOS Helper / Observability | active | [Recorder Activity All Single-Page Slider Crash](059_recorder-activity-all-single-page-slider-crash.md) |
 | TS-060 | Helper update activation이 compose/testkit systemd 경합으로 실패 | Update | active | [Update Activation Compose/Systemd Race](060_update-activation-compose-systemd-race.md) |
 | TS-061 | Update shutdown service failed without result | Update | resolved | [Update Shutdown Service Failed Without Result](061_update-shutdown-service-failed-without-result.md) |
+| TS-062 | Helper clean uninstall이 `nohup` detach 실패로 시작되지 않음 | Uninstall | resolved | [Helper Clean Uninstall Nohup Detach Failure](062_helper-clean-uninstall-nohup-detach-failure.md) |
 
 ## Follow-up 규칙
 
