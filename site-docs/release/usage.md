@@ -16,7 +16,7 @@ Mac 사용자에게는 서명 및 공증된 Helper installer를 전달합니다.
 VitalServerHelper-<version>.dmg
 ```
 
-DMG 안에는 `Install VitalServer Helper.pkg`와 `Clean Uninstall VitalServer Helper.pkg`가 함께
+DMG 안에는 `Install VitalServer Helper.pkg`와 문제 해결용 `Troubleshooting Tools` 폴더가 함께
 들어 있습니다. 새 설치는 `Install VitalServer Helper.pkg`를 실행합니다.
 
 설치 후 Helper app을 열고 Status 화면에서 runtime 상태를 확인합니다.
@@ -38,8 +38,8 @@ An existing VitalServer Helper install, launchd service, package receipt,
 or Host proxy port conflict blocks this install.
 ```
 
-이 경우 installer를 반복 실행하지 않습니다. [Force Clean Uninstaller](clean-uninstall.md)로
-정리한 뒤 다시 설치합니다.
+이 경우 installer를 반복 실행하지 않습니다.
+[Reset Installer](clean-uninstall.md)로 정리한 뒤 다시 설치합니다.
 
 일반 Uninstall은 현재 사용자 절차로 제공하지 않습니다. 재설치 가능한 상태를 보장하지 않기
 때문입니다.
@@ -135,8 +135,8 @@ update 실패, recorder 관측 실패, service 실행 실패는 확인해야 하
 | 발생 시각 | `2026-06-08 14:30 KST` |
 | 사용한 화면 | Status, Update, Recorders, Beds, Observability, Logs |
 | 보이는 상태 | Healthy, Needs attention, Critical, Updating, Recovering 등 |
-| 직전에 한 작업 | install, update 적용, Force Clean Uninstaller 실행, runtime start/stop |
-| 선택한 파일 | update bundle, Clean Uninstaller package, installer package |
+| 직전에 한 작업 | install, update 적용, Reset Installer 실행, runtime start/stop |
+| 선택한 파일 | update bundle, Reset Installer package, installer package |
 
 가능하면 화면 screenshot도 함께 보관합니다. 다만 환자 정보, 병원 내부 IP, 인증 정보, token이
 보이면 공개 issue에 올리지 않습니다.
@@ -162,7 +162,7 @@ Helper app이 열리는 상태라면 아래 순서로 확인합니다.
 | Update 실패 | Update progress, 선택한 update bundle 이름, Logs 화면의 export zip, Observability event 시간대 |
 | runtime이 Critical | Status/Advanced 상태, failure reasons, Logs 화면의 export zip |
 | recorder/bed가 stale 또는 offline | Recorders/Beds 화면 상태, last seen, Observability anomaly, event 시간대 |
-| Force Clean Uninstaller 실패 | `/private/tmp/tirosh-vitalserver-uninstall.log`, `/var/log/install.log` |
+| Reset Installer 실패 | `/private/tmp/tirosh-vitalserver-uninstall.log`, `/var/log/install.log` |
 | 상태 화면을 읽지 못함 | read issue 메시지, Logs 화면의 export zip, Observability store failure 여부 |
 
 ### 4-4. 직접 확인할 수 있는 로그
@@ -234,7 +234,7 @@ runtime이 설치된 뒤의 상세 로그는 기본적으로 아래 위치에 �
 - `/usr/local/bin/tirosh-vitalserver-uninstall`
 
 재설치가 막혀 정리가 필요하면 파일을 수동으로 지우기보다
-[Force Clean Uninstaller](clean-uninstall.md)를 사용합니다.
+[Reset Installer](clean-uninstall.md)를 사용합니다.
 
 ## 6. 지원 담당자 참고
 

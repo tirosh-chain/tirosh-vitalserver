@@ -29,7 +29,7 @@ VitalServer, Vital Recorder, VRecorder 관련 이름과 권리는 각 원 소유
 | bed 관계를 볼 수 있는가? | Beds 화면과 relationship history |
 | 장애 조사 자료를 모을 수 있는가? | status, event, logs, support 자료 |
 | update 입력을 검증할 수 있는가? | Product Update bundle verify/apply 흐름 |
-| 재설치가 막힌 Mac을 정리할 수 있는가? | Force Clean Uninstaller |
+| 재설치가 막힌 Mac을 정리할 수 있는가? | Reset Installer |
 
 ## 3. 포함 구성 요소
 

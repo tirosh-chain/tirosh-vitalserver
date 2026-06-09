@@ -48,7 +48,7 @@ Overall health는 Helper runtime을 현재 사용할 수 있는지 요약합니�
 | Installing | 설치 또는 초기 runtime 구성이 진행 중 | 4~5분 정도 완료 대기, 오래 지속되면 install log 확인 |
 | Updating | update bundle 적용, guest activation, rollback 진행 중 | Update progress, Logs 확인 |
 | Recovering | watchdog 또는 repair 흐름이 복구 중 | Advanced, Observability 확인 |
-| Not installed | Helper runtime이 설치 또는 실행 가능한 상태가 아님 | 설치 또는 Force Clean Uninstaller 확인 |
+| Not installed | Helper runtime이 설치 또는 실행 가능한 상태가 아님 | 설치 또는 Reset Installer 확인 |
 | Unknown | 상태를 읽었지만 표시 가능한 판단으로 확정하지 못함 | status document/read issue 확인 |
 
 `Healthy`라도 recorder나 bed가 모두 정상이라는 뜻은 아닙니다. runtime이 사용 가능하다는 요약이고,

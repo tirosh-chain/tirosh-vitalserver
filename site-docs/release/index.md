@@ -17,7 +17,7 @@ Vital Server Helper는 VitalServer 자체를 대체하지 않습니다. VitalSer
 | recorder/bed activity가 보이는가 | Recorders/Beds 화면과 observability event |
 | 문제가 생겼을 때 자료를 모을 수 있는가 | logs, runtime event, support bundle |
 | update를 적용할 수 있는가 | Product Update bundle 검증과 적용 흐름 |
-| 재설치가 막힌 Mac을 정리할 수 있는가 | Force Clean Uninstaller |
+| 재설치가 막힌 Mac을 정리할 수 있는가 | Reset Installer |
 
 ### 1-1. 현재 문서의 범위
 
@@ -35,7 +35,7 @@ VitalServer에 연결하는 `External VitalServer mode`는 지원 예정 범위�
 2. [Support Scope](scope.md)에서 현재 제공하는 범위와 지원 예정 범위를 확인합니다.
 3. [Runtime Status](runtime-status.md)에서 Helper app 상태값의 의미를 봅니다.
 4. [Observability Events](observability-events.md)에서 event와 anomaly를 해석합니다.
-5. [Force Clean Uninstaller](clean-uninstall.md)는 재설치가 막혔을 때만 봅니다.
+5. [Reset Installer](clean-uninstall.md)는 재설치가 막혔을 때만 봅니다.
 
 ## 2. 현재 설치 대상
 

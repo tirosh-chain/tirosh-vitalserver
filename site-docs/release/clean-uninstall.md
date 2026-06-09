@@ -1,7 +1,8 @@
-# Force Clean Uninstaller
+# Reset Installer
 
-Force Clean Uninstaller는 Vital Server Helper를 새로 설치할 수 없을 때 사용하는 강제 정리
-도구입니다.
+Reset Installer는 Vital Server Helper를 새로 설치할 수 없을 때 사용하는 강제 정리
+패키지입니다. DMG 안에서는 `Reset VitalServer Helper for Reinstall.pkg`라는 이름으로
+제공합니다.
 
 일반 uninstall이 아닙니다. Helper app, runtime service, VM 데이터, 로그, 백업, 설정된 Vital
 files directory까지 정리해서 Mac을 다시 설치 가능한 상태로 되돌립니다.
@@ -31,7 +32,7 @@ installer를 반복 실행하지 않습니다. 기존 host 상태가 남아 있�
 | 보존해야 하는 `.vital` 파일이 있는가 | 설정된 Vital files directory가 삭제될 수 있음 |
 | 필요한 로그나 병원 내부 기록을 보관했는가 | 정리 후 logs와 backups가 삭제될 수 있음 |
 
-단순 app 재시작 문제라면 Force Clean Uninstaller를 먼저 쓰지 않습니다. Status, Logs, repair
+단순 app 재시작 문제라면 Reset Installer를 먼저 쓰지 않습니다. Status, Logs, repair
 흐름으로 해결 가능한지 먼저 확인합니다.
 
 ## 3. 실행 방법
@@ -39,15 +40,16 @@ installer를 반복 실행하지 않습니다. 기존 host 상태가 남아 있�
 Mac 사용자에게는 아래 package를 전달합니다.
 
 ```text
-Clean Uninstall VitalServer Helper.pkg
+Troubleshooting Tools/Reset VitalServer Helper for Reinstall.pkg
 ```
 
 실행 순서는 간단합니다.
 
-1. DMG 안의 `Clean Uninstall VitalServer Helper.pkg`를 더블클릭합니다.
-2. macOS Installer 안내에 따라 관리자 승인을 진행합니다.
-3. 완료 후 Mac을 재시동합니다.
-4. `Install VitalServer Helper.pkg`를 다시 실행합니다.
+1. DMG 안의 `Troubleshooting Tools` 폴더를 엽니다.
+2. `Reset VitalServer Helper for Reinstall.pkg`를 더블클릭합니다.
+3. macOS Installer 안내에 따라 관리자 승인을 진행합니다.
+4. 완료 후 Mac을 재시동합니다.
+5. `Install VitalServer Helper.pkg`를 다시 실행합니다.
 
 Helper app이 실행 중이면 uninstaller가 종료를 시도합니다. 그래도 남아 있으면 강제로 종료하고
 정리를 계속합니다.
@@ -68,8 +70,8 @@ uninstall completed
 
 실패 메시지가 있으면 새 설치를 진행하지 않고 log를 지원 담당자에게 전달합니다.
 
-VM stop 단계에서 아래 메시지가 보이면 VM process에 `SIGTERM`은 전달됐지만 900초 안에 종료가
-관찰되지 않은 상태입니다.
+일반 uninstall 또는 이전 reset package에서 VM stop 단계에 아래 메시지가 보이면 VM
+process에 `SIGTERM`은 전달됐지만 900초 안에 종료가 관찰되지 않은 상태입니다.
 
 ```text
 VM process did not stop within 900s
@@ -79,19 +81,38 @@ vm-process-stop-timed-out
 이 상태는 proxy나 guest log sync stop 실패가 아니라 Host가 소유한 VM process stop 실패입니다.
 새 설치를 진행하지 말고 log와 VM pid/launchd 상태를 함께 확인합니다.
 
+최신 Reset Installer는 이 recovery 경로에서 VM graceful stop을 900초 기다리지
+않습니다. `--force-clean-uninstaller`는 VM process에 `SIGKILL`을 보내고 짧은 force-stop 확인
+후에도 남아 있으면 service stop blocked state를 기록하고 성공으로 표시하지 않습니다.
+
+이전 reset package가 성공한 직후 installer가 아래 blocker로 실패하면 launchd service state가
+남아 있는 것입니다.
+
+```text
+fresh install preflight blocked blockers=launchd-service-loaded:label=ai.tirosh.vitalserver.helper.vm,launchd-service-loaded:label=ai.tirosh.vitalserver.helper.sleep-prevention
+```
+
+이 경우 runtime 파일, plist, package receipt가 absent여도 `launchctl`이 아직 VM 또는
+sleep-prevention job을 loaded/running으로 보고 있을 수 있습니다. 최신 Reset Installer는 VM pid
+file이 missing이어도 이를 cleanup success로 숨기지 않고, explicit launchd state를 읽어 남은
+service를 unload합니다. launchd service, runtime artifact, package receipt 중 하나라도 다음
+fresh install을 막으면 cleanup은 completed가 아니라 blocked/failed로 남습니다.
+
 진행 창이 열려 있지만 log가 더 이상 늘어나지 않으면 cleanup worker가 완료 또는 실패 marker를
 남기지 못하고 종료된 상태일 수 있습니다. 이 경우 최신 package에서는 아래 marker를 log에
 남기고 실패로 종료합니다.
 
 ```text
-uninstall process failed exitCode=missing-marker
+uninstall process failed exitCode=missing-marker runID=...
 ```
 
-이 marker가 보이면 새 설치를 진행하지 말고 `/private/tmp/tirosh-vitalserver-uninstall.log`와
-남아 있는 launchd/package 상태를 함께 전달합니다.
+이 marker는 progress viewer가 자기 background worker의 terminal marker를 보지 못했다는
+뜻입니다. 실제 cleanup 원인은 같은 log의 앞뒤 줄, `/var/log/install.log`, 남아 있는
+launchd/package 상태로 구분합니다. 새 progress viewer는 run id가 붙은 marker만 자기 작업의
+terminal marker로 인정합니다.
 
 동시에 여러 cleanup 시도가 겹치면 remove 직전에는 존재하던 파일이 실제 remove 시점에는 이미
-없을 수 있습니다. 최신 uninstaller는 이 경우를 성공으로 숨기지 않고 아래처럼 명시적으로
+없을 수 있습니다. 최신 Reset Installer는 이 경우를 성공으로 숨기지 않고 아래처럼 명시적으로
 기록한 뒤 cleanup 검증 단계에서 artifact absence를 다시 확인합니다.
 
 ```text
@@ -100,7 +121,7 @@ removal target already absent path=/usr/local/bin/vitalserver-proxy-run
 
 ## 5. 삭제 범위
 
-Force Clean Uninstaller는 Vital Server Helper가 소유한 항목을 제거합니다.
+Reset Installer는 Vital Server Helper가 소유한 항목을 제거합니다.
 
 | 항목 | 예시 |
 |---|---|
@@ -130,6 +151,8 @@ tail -n 300 /var/log/install.log
 
 ```sh
 sudo launchctl print-disabled system | grep -i vitalserver
+sudo launchctl print system/ai.tirosh.vitalserver.helper.vm
+sudo launchctl print system/ai.tirosh.vitalserver.helper.sleep-prevention
 pkgutil --pkgs | grep -i vitalserver
 ```
 
@@ -137,9 +160,11 @@ pkgutil --pkgs | grep -i vitalserver
 
 ## 7. 지원 담당자 참고
 
-Clean Uninstaller package는 현장 Mac이 아니라 build machine에서 만듭니다.
+Reset Installer 패키지는 현장 Mac이 아니라 build machine에서 만듭니다.
 
 ```sh
-make dist/clean-uninstaller/dev
-make dist/clean-uninstaller/release
+make dist/reset-installer/dev
+make dist/reset-installer/release
 ```
+
+빌드 target 이름도 사용자가 받는 package와 같은 의미가 되도록 `reset-installer`로 둡니다.
