@@ -165,10 +165,10 @@ tail -n 300 /var/log/install.log
 필요하면 아래 상태도 함께 확인합니다.
 
 ```sh
-sudo launchctl print-disabled system | grep -i vitalserver
+sudo launchctl print-disabled system | rg '\"ai\.tirosh\.vitalserver\.helper\.'
 sudo launchctl print system/ai.tirosh.vitalserver.helper.vm
 sudo launchctl print system/ai.tirosh.vitalserver.helper.sleep-prevention
-pkgutil --pkgs | grep -i vitalserver
+pkgutil --pkgs | rg -i 'ai\.tirosh\.vitalserver\.helper'
 ```
 
 공개 issue에는 환자 정보, 병원 내부 IP, 인증 정보, token, 원본 로그 전체를 올리지 않습니다.

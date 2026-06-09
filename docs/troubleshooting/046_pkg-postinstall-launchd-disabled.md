@@ -32,8 +32,8 @@ This is Host-owned launchd state. It must be handled as explicit launchd state, 
 ```sh
 tail -n 300 /var/log/install.log | rg -i 'VitalServer|postinstall|sleep-prevention|failed|error'
 log show --predicate 'process == "launchd" OR eventMessage CONTAINS[c] "sleep-prevention"' --last 30m --style compact
-launchctl print-disabled system | rg -i 'vitalserver|tirosh'
-pkgutil --pkgs | rg -i 'vitalserver|tirosh'
+launchctl print-disabled system | rg '\"ai\.tirosh\.vitalserver\.helper\.'
+pkgutil --pkgs | rg -i 'ai\.tirosh\.vitalserver\.helper'
 find /Library/LaunchDaemons -maxdepth 1 -iname '*vitalserver*' -o -iname '*tirosh*'
 ```
 
