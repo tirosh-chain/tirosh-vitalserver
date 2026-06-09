@@ -26,14 +26,9 @@ extension RuntimeLifecycle {
                 rollback: { backup in
                     try rollback(backup.map(RuntimeRollbackCommand.specificBackup) ?? .latestBackup)
                 },
-                startRuntimeServices: startRuntimeServices,
-                stopRuntimeServices: stopRuntimeServices,
-                runningVMProcessID: runningVMProcessID,
-                stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
-                prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
-                clearGuestShutdownPreparation: {
-                    try guestGateway.clearUpdateShutdownPreparation()
-                },
+                startRuntimeServices: startRuntimeServicesThroughStateControl,
+                stopRuntimeServices: stopRuntimeServicesThroughStateControl,
+                prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: prepareGuestShutdownAndStopRuntimeServicesAfterPoweroffForUpdate,
                 isLaunchdLoaded: isLaunchdLoaded,
                 createBackup: { reason in try backupStore().createBackup(reason: reason) },
                 statusReporter: runtimeWorkflowStatusReporter(),

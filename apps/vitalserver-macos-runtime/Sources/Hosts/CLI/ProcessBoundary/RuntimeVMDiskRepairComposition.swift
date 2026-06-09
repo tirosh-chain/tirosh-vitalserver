@@ -19,7 +19,7 @@ public struct RuntimeVMDiskRepairCompositionOperations {
     let requireFreeSpace: (URL, UInt64, String) throws -> Void
     let createReplacementVMDisk: (RepairRuntimeVMDiskReplacementBuildPlan) throws -> Void
     let createRedisBackup: () -> RuntimeBestEffortOperationResult
-    let stopRuntimeServicesForVMDiskReplacement: () throws -> Void
+    let stopRuntimeServicesForVMDiskReplacement: () -> RuntimeBestEffortOperationResult
     let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
@@ -31,7 +31,7 @@ public struct RuntimeVMDiskRepairCompositionOperations {
         requireFreeSpace: @escaping (URL, UInt64, String) throws -> Void,
         createReplacementVMDisk: @escaping (RepairRuntimeVMDiskReplacementBuildPlan) throws -> Void,
         createRedisBackup: @escaping () -> RuntimeBestEffortOperationResult,
-        stopRuntimeServicesForVMDiskReplacement: @escaping () throws -> Void,
+        stopRuntimeServicesForVMDiskReplacement: @escaping () -> RuntimeBestEffortOperationResult,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,

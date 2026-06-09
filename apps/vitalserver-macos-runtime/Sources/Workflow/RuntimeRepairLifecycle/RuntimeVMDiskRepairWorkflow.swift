@@ -37,7 +37,7 @@ public struct RuntimeVMDiskRepairOperations {
     public let requireFreeSpace: (URL, UInt64, String) throws -> Void
     public let createReplacementVMDisk: (RepairRuntimeVMDiskReplacementBuildPlan) throws -> Void
     public let createRedisBackup: () -> RuntimeBestEffortOperationResult
-    public let stopRuntimeServicesForVMDiskReplacement: () throws -> Void
+    public let stopRuntimeServicesForVMDiskReplacement: () -> RuntimeBestEffortOperationResult
     public let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     public let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     public let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
@@ -53,7 +53,7 @@ public struct RuntimeVMDiskRepairOperations {
         requireFreeSpace: @escaping (URL, UInt64, String) throws -> Void,
         createReplacementVMDisk: @escaping (RepairRuntimeVMDiskReplacementBuildPlan) throws -> Void,
         createRedisBackup: @escaping () -> RuntimeBestEffortOperationResult,
-        stopRuntimeServicesForVMDiskReplacement: @escaping () throws -> Void,
+        stopRuntimeServicesForVMDiskReplacement: @escaping () -> RuntimeBestEffortOperationResult,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
@@ -167,14 +167,16 @@ public struct RuntimeVMDiskRepairWorkflow {
         try operations.createReplacementVMDisk(buildPlan)
 
         try writeStatus(useCase.archiveStatusPlan(), operations: operations)
-        do {
-            try operations.stopRuntimeServicesForVMDiskReplacement()
-        } catch {
+        switch operations.stopRuntimeServicesForVMDiskReplacement() {
+        case .completed:
+            break
+        case .failed(let reason):
+            let statusPlan = useCase.stopServicesFailedStatusPlan(reason: reason)
             try writeStatus(
-                useCase.stopServicesFailedStatusPlan(reason: String(describing: error)),
+                statusPlan,
                 operations: operations
             )
-            throw error
+            throw RepairRuntimeUseCaseError.operationFailed(statusPlan.message)
         }
         try operations.createDirectory(executionPlan.archiveDirectory, true)
         if plan.shouldArchiveCurrentDisk {

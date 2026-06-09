@@ -56,8 +56,12 @@ extension RuntimeLifecycle {
                     return .failed(reason: RuntimeErrorDescription.describe(error))
                 }
             },
-            stopRuntimeServicesForVMDiskReplacement: stopRuntimeServicesForVMDiskReplacement,
-            startRuntimeServices: startRuntimeServices,
+            stopRuntimeServicesForVMDiskReplacement: {
+                runtimeBestEffortResult {
+                    try stopRuntimeServicesForVMDiskReplacement()
+                }
+            },
+            startRuntimeServices: startRuntimeServicesForServiceControl,
             log: log
         )
     }
@@ -103,13 +107,13 @@ extension RuntimeLifecycle {
 
     func startVMServiceAction() -> () throws -> Void {
         {
-            try startLaunchdService(.vm)
+            try startVMServiceForGuestOperation()
         }
     }
 
     func restartVMServiceAction() -> () throws -> Void {
         {
-            try restartVMRuntimeServices()
+            try restartVMRuntimeForRepairOperation()
         }
     }
 

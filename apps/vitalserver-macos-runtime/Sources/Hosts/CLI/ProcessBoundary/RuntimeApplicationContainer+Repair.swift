@@ -20,7 +20,7 @@ public struct RuntimeRepairCompositionActions {
     public let requireFreeSpace: (URL, UInt64, String) throws -> Void
     public let createReplacementVMDisk: (RepairRuntimeVMDiskReplacementBuildPlan) throws -> Void
     public let createRedisBackup: () -> RuntimeBestEffortOperationResult
-    public let stopRuntimeServicesForVMDiskReplacement: () throws -> Void
+    public let stopRuntimeServicesForVMDiskReplacement: () -> RuntimeBestEffortOperationResult
     public let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     public let log: (String) -> Void
 
@@ -40,7 +40,7 @@ public struct RuntimeRepairCompositionActions {
         requireFreeSpace: @escaping (URL, UInt64, String) throws -> Void,
         createReplacementVMDisk: @escaping (RepairRuntimeVMDiskReplacementBuildPlan) throws -> Void,
         createRedisBackup: @escaping () -> RuntimeBestEffortOperationResult,
-        stopRuntimeServicesForVMDiskReplacement: @escaping () throws -> Void,
+        stopRuntimeServicesForVMDiskReplacement: @escaping () -> RuntimeBestEffortOperationResult,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         log: @escaping (String) -> Void
     ) {

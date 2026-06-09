@@ -312,6 +312,14 @@ Pull request는 변경 목적과 검증 근거가 함께 보여야 합니다. �
 - 상태 판단 code는 외부 상태를 직접 읽지 않습니다.
 - contract 변경은 관련 문서와 test를 함께 갱신합니다.
 - recovery, update, parsing, settings, Health Check 변경은 실패 case test를 포함합니다.
+- Settings UI는 Host/Control settings contract에서 비어 있거나 누락된 advertised service URL을 저장용 default로
+  만들지 않습니다. 표시용 local URL fallback은 presentation formatter에만 머물러야 합니다.
+- VM stop/restart/poweroff 변경은 단일 VM state control 경로를 통하게 합니다. Settings, update,
+  repair, watchdog이 guest shutdown 준비 contract를 우회해 개별적으로 VM service를 멈추지 않습니다.
+  Settings restart, update shutdown-stop, rollback/update service start-stop, watchdog VM recovery,
+  service-control, repair/guest-operation VM start/restart는 VM state control owner entrypoint를 통해
+  Host side effect를 실행합니다. Update/rollback workflow는 operation plan 의미를 보존하되, Host service
+  start/stop sequencing을 직접 소유하지 않습니다.
 - release 문서의 운영 주장과 dev 문서의 구현 근거가 어긋나지 않게 합니다.
 
 ## 8. Release 전에 확인할 것

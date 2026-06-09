@@ -111,7 +111,7 @@ extension RuntimeLifecycle {
                     try automaticRecoveryEnabled()
                 },
                 restartVMRuntime: {
-                    try restartVMRuntimeServices()
+                    try restartVMRuntimeForWatchdogRecovery()
                 },
                 restartService: { service in
                     try restartOrStartLaunchdService(service)
@@ -198,9 +198,7 @@ extension RuntimeLifecycle {
                     try setSystemSleepPrevention(enabled)
                 },
                 restartRuntimeServices: {
-                    try restartVMRuntimeServices()
-                    try restartOrStartLaunchdService(.proxy)
-                    try restartOrStartLaunchdService(.watchdog)
+                    try restartRuntimeAfterSettingsApply()
                 },
                 log: log
             )

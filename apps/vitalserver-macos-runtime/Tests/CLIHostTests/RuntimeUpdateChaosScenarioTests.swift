@@ -166,13 +166,9 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
             initialHealthSnapshot: { Self.healthSnapshot() },
             preparePreflight: { _ in preflight },
             rootfsBase: URL(fileURLWithPath: "/runtime/rootfs-base"),
-            runningVMProcessID: {
+            prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: { _ in
                 executedSteps.append(.stopRuntimeServices)
-                return 123
             },
-            prepareGuestShutdownForUpdate: { _ in },
-            clearGuestShutdownPreparation: {},
-            stopRuntimeServicesAfterGuestPoweroff: { _ in },
             stopRuntimeServices: {
                 executedSteps.append(.stopRuntimeServices)
             },
@@ -496,10 +492,7 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
                 rollback: { _ in },
                 startRuntimeServices: { _ in },
                 stopRuntimeServices: {},
-                runningVMProcessID: { 123 },
-                stopRuntimeServicesAfterGuestPoweroff: { _ in },
-                prepareGuestShutdownForUpdate: { _ in },
-                clearGuestShutdownPreparation: {},
+                prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: { _ in },
                 isLaunchdLoaded: { _ in false },
                 createBackup: { _ in URL(fileURLWithPath: "/product/backups/backup") },
                 statusReporter: RuntimeWorkflowStatusReporter(

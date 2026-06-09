@@ -45,13 +45,17 @@ extension RuntimeLifecycle {
     }
 
     func stopRuntimeServicesForVMDiskReplacement() throws {
-        do {
-            try stopRuntimeServices()
-            return
-        } catch {
-            log("graceful runtime services stop failed before VM disk replacement; forcing VM process stop error=\(error.localizedDescription)")
-        }
+        try RuntimeVMStateControlUseCase().stopRuntimeServicesForVMDiskReplacement(
+            operations: RuntimeVMDiskReplacementStopOperations(
+                stopRuntimeServices: stopRuntimeServices,
+                forceStopRuntimeServicesAfterGracefulStopFailure: forceStopRuntimeServicesAfterGracefulStopFailureForVMDiskReplacement,
+                describeError: RuntimeErrorDescription.describe,
+                log: log
+            )
+        )
+    }
 
+    func forceStopRuntimeServicesAfterGracefulStopFailureForVMDiskReplacement() throws {
         try StopRuntimeVMProcessUseCase().forceKillAndWait(
             killSignal: SIGKILL,
             noSuchProcessErrorNumber: Int32(ESRCH),
@@ -64,7 +68,6 @@ extension RuntimeLifecycle {
             )
         )
         serviceController.unloadRuntimeServicesAfterForcedVMStop()
-        log("runtime services stopped for VM disk replacement")
     }
 
     func runningVMProcessID() throws -> pid_t {
@@ -73,6 +76,70 @@ extension RuntimeLifecycle {
 
     func stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: pid_t) throws {
         try serviceController.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID: expectedVMProcessID)
+    }
+
+    func restartRuntimeAfterSettingsApply() throws {
+        try RuntimeVMStateControlUseCase().restart(
+            intent: .restartAfterSettingsApply,
+            operations: RuntimeVMStateControlOperations(
+                runtimeVersion: runtimeVersionValue,
+                runningVMProcessID: runningVMProcessID,
+                prepareGuestShutdown: { version in
+                    try RuntimeGuestShutdownComposition(
+                        context: RuntimeGuestShutdownCompositionContext(
+                            guestRunDirectory: guestRunDirectory
+                        ),
+                        operations: RuntimeGuestShutdownCompositionOperations(
+                            fileStore: fileStore,
+                            guestGateway: guestGateway,
+                            requireCapability: {
+                                try requireGuestCapability(.prepareUpdateShutdown)
+                            },
+                            writeStatus: runtimeStatusWriterAction(),
+                            requestID: requestIDAction(),
+                            timestamp: isoTimestamp,
+                            sleep: workflowPollingSleepAction(),
+                            log: log
+                        )
+                    ).prepare(version: version)
+                },
+                clearGuestShutdownPreparation: {
+                    try guestGateway.clearUpdateShutdownPreparation()
+                },
+                stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
+                startRuntimeServices: startRuntimeServices,
+                waitForHealth: waitForHealth,
+                writeStatus: runtimeStatusWriterAction(),
+                log: log
+            )
+        )
+    }
+
+    func restartVMRuntimeForWatchdogRecovery() throws {
+        try RuntimeVMStateControlUseCase().restartVMRuntime(
+            intent: .restartForWatchdogRecovery,
+            operations: RuntimeVMRuntimeRestartOperations(
+                restartVMRuntimeServices: {
+                    try serviceController.restartVMRuntimeServices()
+                },
+                log: log
+            )
+        )
+    }
+
+    func prepareGuestShutdownAndStopRuntimeServicesAfterPoweroffForUpdate(_ manifest: UpdateBundleManifest) throws {
+        try RuntimeVMStateControlUseCase().prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff(
+            manifest: manifest,
+            operations: RuntimeVMUpdateShutdownOperations(
+                runningVMProcessID: runningVMProcessID,
+                prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
+                clearGuestShutdownPreparation: {
+                    try guestGateway.clearUpdateShutdownPreparation()
+                },
+                stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
+                log: log
+            )
+        )
     }
 
     func startRuntimeServices(
@@ -116,16 +183,67 @@ extension RuntimeLifecycle {
         )
     }
 
+    func startRuntimeServicesForServiceControl(_ policy: RuntimeServiceRestartPolicy) throws {
+        try startRuntimeServicesThroughStateControl(policy)
+    }
+
+    func stopRuntimeServicesForServiceControl() throws {
+        try stopRuntimeServicesThroughStateControl()
+    }
+
+    func startRuntimeServicesThroughStateControl(_ policy: RuntimeServiceRestartPolicy) throws {
+        try RuntimeVMStateControlUseCase().startRuntimeServices(
+            policy,
+            operations: RuntimeVMServiceControlOperations(
+                startRuntimeServices: startRuntimeServices,
+                stopRuntimeServices: stopRuntimeServices
+            )
+        )
+    }
+
+    func stopRuntimeServicesThroughStateControl() throws {
+        try RuntimeVMStateControlUseCase().stopRuntimeServices(
+            operations: RuntimeVMServiceControlOperations(
+                startRuntimeServices: startRuntimeServices,
+                stopRuntimeServices: stopRuntimeServices
+            )
+        )
+    }
+
     func startLaunchdService(_ service: RuntimeManagedService) throws {
         try serviceController.startLaunchdService(service)
     }
 
-    func restartOrStartLaunchdService(_ service: RuntimeManagedService) throws {
-        try serviceController.restartOrStartLaunchdService(service)
+    func startVMServiceForGuestOperation() throws {
+        try RuntimeVMStateControlUseCase().startVMService(
+            intent: .startForGuestOperation,
+            operations: RuntimeVMSingleServiceOperations(
+                startVMService: {
+                    try serviceController.startLaunchdService(.vm)
+                },
+                restartVMRuntimeServices: {
+                    try serviceController.restartVMRuntimeServices()
+                }
+            )
+        )
     }
 
-    func restartVMRuntimeServices() throws {
-        try serviceController.restartVMRuntimeServices()
+    func restartVMRuntimeForRepairOperation() throws {
+        try RuntimeVMStateControlUseCase().restartVMRuntimeForRepair(
+            intent: .restartForRepairOperation,
+            operations: RuntimeVMSingleServiceOperations(
+                startVMService: {
+                    try serviceController.startLaunchdService(.vm)
+                },
+                restartVMRuntimeServices: {
+                    try serviceController.restartVMRuntimeServices()
+                }
+            )
+        )
+    }
+
+    func restartOrStartLaunchdService(_ service: RuntimeManagedService) throws {
+        try serviceController.restartOrStartLaunchdService(service)
     }
 
     func stopLaunchdService(_ service: RuntimeManagedService) throws {

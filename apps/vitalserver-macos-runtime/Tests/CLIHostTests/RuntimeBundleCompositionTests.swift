@@ -63,31 +63,21 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         XCTAssertTrue(logs.contains { $0.contains("copying bundle to managed storage") })
     }
 
-    func testApplyBundleGuestShutdownCleanupFailureIsLoggedWithoutHidingStopFailure() throws {
+    func testApplyBundleGuestShutdownStopFailureIsPropagatedAndLeaseIsReleased() throws {
         let fileStore = RuntimeFileStoreSpy()
         let source = URL(fileURLWithPath: "/input/update-bundle")
         try writeEmptyBundle(at: source, to: fileStore)
         var events: [String] = []
-        var logs: [String] = []
         let workflow = makeWorkflow(
             fileStore: fileStore,
             startRuntimeServices: { _ in events.append("start") },
-            runningVMProcessID: {
-                events.append("pid")
-                return 123
-            },
-            stopRuntimeServicesAfterGuestPoweroff: { pid in
-                events.append("stop-after-poweroff:\(pid)")
+            prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: { _ in
+                events.append("shutdown-stop")
                 throw TestRuntimeBundleCompositionError.vmStopFailed
-            },
-            prepareGuestShutdownForUpdate: { _ in events.append("shutdown") },
-            clearGuestShutdownPreparation: {
-                events.append("clear-shutdown")
-                throw TestRuntimeBundleCompositionError.cleanupFailed
             },
             isLaunchdLoaded: { service in service == .vm },
             rollback: { _ in events.append("rollback") },
-            log: { logs.append($0) }
+            releaseOperationLease: { _ in events.append("release-lease") }
         )
 
         XCTAssertThrowsError(try workflow.applyBundle(source)) { error in
@@ -95,15 +85,11 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         }
 
         XCTAssertEqual(events, [
-            "pid",
-            "shutdown",
-            "stop-after-poweroff:123",
-            "clear-shutdown",
+            "shutdown-stop",
             "rollback",
             "start",
+            "release-lease",
         ])
-        XCTAssertTrue(logs.contains { $0.contains("guest shutdown preparation cleanup failed") })
-        XCTAssertTrue(logs.contains { $0.contains("cleanupFailed") })
     }
 
     func testApplyBundleRecoveryLogsRollbackAndRestartFailuresWithoutHidingApplyFailure() throws {
@@ -198,10 +184,7 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         fileStore: RuntimeFileStore,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void = { _ in },
         stopRuntimeServices: @escaping () throws -> Void = {},
-        runningVMProcessID: @escaping () throws -> pid_t = { 123 },
-        stopRuntimeServicesAfterGuestPoweroff: @escaping (pid_t) throws -> Void = { _ in },
-        prepareGuestShutdownForUpdate: @escaping (UpdateBundleManifest) throws -> Void = { _ in },
-        clearGuestShutdownPreparation: @escaping () throws -> Void = {},
+        prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: @escaping (UpdateBundleManifest) throws -> Void = { _ in },
         isLaunchdLoaded: @escaping (RuntimeManagedService) -> Bool = { _ in false },
         rollback: @escaping (URL?) throws -> Void = { _ in },
         rotateRuntimeLogs: @escaping () throws -> Void = {},
@@ -236,10 +219,7 @@ final class RuntimeBundleCompositionTests: XCTestCase {
                 rollback: rollback,
                 startRuntimeServices: startRuntimeServices,
                 stopRuntimeServices: stopRuntimeServices,
-                runningVMProcessID: runningVMProcessID,
-                stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
-                prepareGuestShutdownForUpdate: prepareGuestShutdownForUpdate,
-                clearGuestShutdownPreparation: clearGuestShutdownPreparation,
+                prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff,
                 isLaunchdLoaded: isLaunchdLoaded,
                 createBackup: { _ in URL(fileURLWithPath: "/product/backups/backup") },
                 statusReporter: RuntimeWorkflowStatusReporter(

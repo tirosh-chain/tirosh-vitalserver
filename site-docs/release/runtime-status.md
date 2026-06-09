@@ -142,3 +142,23 @@ read failure는 empty success가 아닙니다. 상태 소스를 읽지 못하면
 
 읽기 실패가 보이면 Logs 화면에서 export zip을 만들고, 필요한 경우 Observability event 기간과 함께
 지원 담당자에게 전달합니다.
+
+## 6. Settings 적용 뒤 Critical
+
+Settings 화면에서 설정을 적용한 직후 `Critical` 또는 `Recovering`이 되면, 설정값 validation 실패와
+VM restart 실패를 구분합니다.
+
+| 확인 항목 | 의미 |
+|---|---|
+| `runtime-events.jsonl`의 `configure` 직후 event | 설정 apply가 실제로 runtime restart를 요청했는지 확인 |
+| `vm-lifecycle.json` | VM이 `stopping`, `stopped`, `failed` 중 어디에 머물렀는지 확인 |
+| `launchd.out.log`의 guest shutdown 로그 | Docker/containerd stop, filesystem remount, poweroff 실패 여부 확인 |
+| failure reasons | `host-proxy-http-*`, `audit-proxy-http-failed`, `guest-runtime-state-stale`이 연쇄인지 확인 |
+
+증상이 `configure` 직후 VM stop 요청, guest runtime state stale, host proxy HTTP 실패 순서로 이어지면
+Host proxy만 복구할 문제가 아닐 수 있습니다. VM shutdown 과정에서 guest service 또는 filesystem
+I/O가 아직 남아 있으면 디스크 오류가 드러나거나 악화될 수 있습니다.
+
+예방 원칙은 Settings restart, Update, Stop/Repair service가 같은 VM shutdown contract를 사용하게
+하는 것입니다. Host는 VM 내부 상태를 추측하지 않고, guest가 명시적으로 shutdown 준비와 poweroff
+요청 상태를 보고한 뒤 Host service stop/restart를 진행해야 합니다.

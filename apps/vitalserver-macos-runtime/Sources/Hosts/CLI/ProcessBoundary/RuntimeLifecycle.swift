@@ -233,9 +233,9 @@ struct RuntimeLifecycle {
 
     func configure(_ command: RuntimeConfigureCommand) throws {
         let result = try runtimeConfigureRunner().configure(command)
-        try writeRuntimeStatus(.degraded, operation: .configure, message: "runtime configuration updated")
 
         guard result.restart else {
+            try writeRuntimeStatus(.degraded, operation: .configure, message: "runtime configuration updated")
             print("runtime configuration updated; restart required for VM/guest changes")
             return
         }

@@ -81,7 +81,10 @@ final class RuntimeVMDiskRepairWorkflowTests: XCTestCase {
         harness.stopError = VMDiskRepairWorkflowTestError.serviceStopFailed
 
         XCTAssertThrowsError(try harness.run()) { error in
-            XCTAssertEqual(error as? VMDiskRepairWorkflowTestError, .serviceStopFailed)
+            XCTAssertEqual(
+                String(describing: error),
+                "VM disk repair failed before archive; runtime services did not stop. reason=serviceStopFailed"
+            )
         }
 
         XCTAssertEqual(harness.statuses.last?.level, .critical)
@@ -169,8 +172,9 @@ private final class VMDiskRepairWorkflowHarness {
                 stopRuntimeServicesForVMDiskReplacement: { [self] in
                     events.append("stop-for-disk-replacement")
                     if let stopError {
-                        throw stopError
+                        return .failed(reason: String(describing: stopError))
                     }
+                    return .completed
                 },
                 startRuntimeServices: { [self] policy in
                     events.append("start:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")

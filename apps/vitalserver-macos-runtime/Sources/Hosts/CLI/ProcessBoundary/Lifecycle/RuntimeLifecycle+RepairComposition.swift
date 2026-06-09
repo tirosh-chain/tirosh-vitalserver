@@ -20,8 +20,8 @@ extension RuntimeLifecycle {
     func runtimeServiceControlRunner() -> RuntimeServiceControlRunner {
         RuntimeServiceControlComposition.make(
             operations: RuntimeServiceControlCompositionOperations(
-                startRuntimeServices: startRuntimeServices,
-                stopRuntimeServices: stopRuntimeServices,
+                startRuntimeServices: startRuntimeServicesForServiceControl,
+                stopRuntimeServices: stopRuntimeServicesForServiceControl,
                 launchdState: { service in
                     healthChecker.launchdState(service)
                 },
@@ -54,7 +54,7 @@ extension RuntimeLifecycle {
                     isLaunchdLoaded(.vm)
                 },
                 startVMService: {
-                    try startLaunchdService(.vm)
+                    try startVMServiceForGuestOperation()
                 },
                 sleep: { seconds in
                     sleeper.sleep(forTimeInterval: seconds)
@@ -73,8 +73,8 @@ extension RuntimeLifecycle {
                 fileStore: fileStore,
                 requireLatestBackup: { try backupStore().requireLatestBackup() },
                 isLaunchdLoaded: isLaunchdLoaded,
-                stopRuntimeServices: stopRuntimeServices,
-                startRuntimeServices: startRuntimeServices,
+                stopRuntimeServices: stopRuntimeServicesThroughStateControl,
+                startRuntimeServices: startRuntimeServicesThroughStateControl,
                 waitForHealth: waitForHealth,
                 replaceFile: { source, destination in try storageMaintenance().replaceFile(from: source, to: destination) },
                 writeRuntimeVersion: { version, bundle in try writeRuntimeVersion(version: version, bundle: bundle) },

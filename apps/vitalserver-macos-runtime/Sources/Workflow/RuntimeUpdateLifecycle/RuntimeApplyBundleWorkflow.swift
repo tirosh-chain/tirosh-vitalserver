@@ -17,10 +17,7 @@ public struct ApplyRuntimeBundleOperations {
     public var initialHealthSnapshot: () -> RuntimeHealthSnapshot
     public var preparePreflight: (URL) throws -> ApplyBundlePreflightContext
     public var rootfsBase: URL
-    public var runningVMProcessID: () throws -> pid_t
-    public var prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
-    public var clearGuestShutdownPreparation: () throws -> Void
-    public var stopRuntimeServicesAfterGuestPoweroff: (pid_t) throws -> Void
+    public var prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: (UpdateBundleManifest) throws -> Void
     public var stopRuntimeServices: () throws -> Void
     public var createDirectory: (URL, Bool) throws -> Void
     public var fileSize: (URL) throws -> UInt64
@@ -45,10 +42,7 @@ public struct ApplyRuntimeBundleOperations {
         initialHealthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         preparePreflight: @escaping (URL) throws -> ApplyBundlePreflightContext,
         rootfsBase: URL,
-        runningVMProcessID: @escaping () throws -> pid_t,
-        prepareGuestShutdownForUpdate: @escaping (UpdateBundleManifest) throws -> Void,
-        clearGuestShutdownPreparation: @escaping () throws -> Void,
-        stopRuntimeServicesAfterGuestPoweroff: @escaping (pid_t) throws -> Void,
+        prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: @escaping (UpdateBundleManifest) throws -> Void,
         stopRuntimeServices: @escaping () throws -> Void,
         createDirectory: @escaping (URL, Bool) throws -> Void,
         fileSize: @escaping (URL) throws -> UInt64,
@@ -72,10 +66,7 @@ public struct ApplyRuntimeBundleOperations {
         self.initialHealthSnapshot = initialHealthSnapshot
         self.preparePreflight = preparePreflight
         self.rootfsBase = rootfsBase
-        self.runningVMProcessID = runningVMProcessID
-        self.prepareGuestShutdownForUpdate = prepareGuestShutdownForUpdate
-        self.clearGuestShutdownPreparation = clearGuestShutdownPreparation
-        self.stopRuntimeServicesAfterGuestPoweroff = stopRuntimeServicesAfterGuestPoweroff
+        self.prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff = prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff
         self.stopRuntimeServices = stopRuntimeServices
         self.createDirectory = createDirectory
         self.fileSize = fileSize
@@ -290,15 +281,7 @@ public struct RuntimeApplyBundleWorkflow {
     ) throws {
         switch stopPlan {
         case .prepareGuestShutdownAndStopServicesAfterPoweroff(let manifest):
-            let expectedVMProcessID = try operations.runningVMProcessID()
-            operations.log(update.capturedVMProcessBeforeGuestUpdateShutdownLogMessage(
-                processID: expectedVMProcessID
-            ))
-            defer {
-                clearGuestShutdownPreparationAfterRuntimeStop(operations: operations, update: update)
-            }
-            try operations.prepareGuestShutdownForUpdate(manifest)
-            try operations.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID)
+            try operations.prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff(manifest)
         case .stopServicesDirectly:
             try operations.stopRuntimeServices()
         }
@@ -326,16 +309,4 @@ public struct RuntimeApplyBundleWorkflow {
         }
     }
 
-    private func clearGuestShutdownPreparationAfterRuntimeStop(
-        operations: ApplyRuntimeBundleOperations,
-        update: ApplyRuntimeBundleUseCase
-    ) {
-        do {
-            try operations.clearGuestShutdownPreparation()
-        } catch {
-            operations.log(update.guestShutdownPreparationCleanupFailedLogMessage(
-                reason: operations.describeError(error)
-            ))
-        }
-    }
 }

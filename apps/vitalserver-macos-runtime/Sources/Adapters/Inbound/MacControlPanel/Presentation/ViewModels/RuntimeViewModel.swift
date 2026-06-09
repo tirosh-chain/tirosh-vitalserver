@@ -105,7 +105,7 @@ public final class RuntimeViewModel: ObservableObject {
         let loadedSettings = initialSettings ?? controlClient.loadSettings()
         let resolvedSettings = localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings
         let resolvedStatus = initialStatus ?? controlClient.loadStatus(settings: resolvedSettings)
-        self.settings = Self.settingsWithAdvertisedServiceURLPresets(resolvedSettings)
+        self.settings = initialSettings == nil ? resolvedSettings : Self.settingsWithAdvertisedServiceURLPresets(resolvedSettings)
         self.status = resolvedStatus
         self.containerObservation = resolvedStatus.containerObservation
         let snapshots = RuntimePresentationSnapshotLoader(
@@ -423,7 +423,7 @@ public final class RuntimeViewModel: ObservableObject {
 
     private func loadRuntimeSettings() async {
         let nextSettings = await snapshots.loadSettings()
-        settings = Self.settingsWithAdvertisedServiceURLPresets(nextSettings)
+        settings = nextSettings
     }
 
     private func normalizeAdvertisedURLSettings() {

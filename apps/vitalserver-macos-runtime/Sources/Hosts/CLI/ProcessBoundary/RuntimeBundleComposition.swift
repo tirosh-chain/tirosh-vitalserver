@@ -40,10 +40,7 @@ public struct RuntimeBundleCompositionOperations {
     let rollback: (URL?) throws -> Void
     let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     let stopRuntimeServices: () throws -> Void
-    let runningVMProcessID: () throws -> pid_t
-    let stopRuntimeServicesAfterGuestPoweroff: (pid_t) throws -> Void
-    let prepareGuestShutdownForUpdate: (UpdateBundleManifest) throws -> Void
-    let clearGuestShutdownPreparation: () throws -> Void
+    let prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: (UpdateBundleManifest) throws -> Void
     let isLaunchdLoaded: (RuntimeManagedService) -> Bool
     let createBackup: (String) throws -> URL
     let statusReporter: RuntimeWorkflowStatusReporter
@@ -74,10 +71,7 @@ public struct RuntimeBundleCompositionOperations {
         rollback: @escaping (URL?) throws -> Void,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         stopRuntimeServices: @escaping () throws -> Void,
-        runningVMProcessID: @escaping () throws -> pid_t,
-        stopRuntimeServicesAfterGuestPoweroff: @escaping (pid_t) throws -> Void,
-        prepareGuestShutdownForUpdate: @escaping (UpdateBundleManifest) throws -> Void,
-        clearGuestShutdownPreparation: @escaping () throws -> Void,
+        prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: @escaping (UpdateBundleManifest) throws -> Void,
         isLaunchdLoaded: @escaping (RuntimeManagedService) -> Bool,
         createBackup: @escaping (String) throws -> URL,
         statusReporter: RuntimeWorkflowStatusReporter,
@@ -107,10 +101,7 @@ public struct RuntimeBundleCompositionOperations {
         self.rollback = rollback
         self.startRuntimeServices = startRuntimeServices
         self.stopRuntimeServices = stopRuntimeServices
-        self.runningVMProcessID = runningVMProcessID
-        self.stopRuntimeServicesAfterGuestPoweroff = stopRuntimeServicesAfterGuestPoweroff
-        self.prepareGuestShutdownForUpdate = prepareGuestShutdownForUpdate
-        self.clearGuestShutdownPreparation = clearGuestShutdownPreparation
+        self.prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff = prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff
         self.isLaunchdLoaded = isLaunchdLoaded
         self.createBackup = createBackup
         self.statusReporter = statusReporter
@@ -284,10 +275,7 @@ public struct RuntimeBundleComposition {
                 ))
             },
             rootfsBase: context.rootfsBase,
-            runningVMProcessID: operations.runningVMProcessID,
-            prepareGuestShutdownForUpdate: operations.prepareGuestShutdownForUpdate,
-            clearGuestShutdownPreparation: operations.clearGuestShutdownPreparation,
-            stopRuntimeServicesAfterGuestPoweroff: operations.stopRuntimeServicesAfterGuestPoweroff,
+            prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: operations.prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff,
             stopRuntimeServices: operations.stopRuntimeServices,
             createDirectory: { url, withIntermediateDirectories in
                 try operations.fileStore.createDirectory(at: url, withIntermediateDirectories: withIntermediateDirectories)

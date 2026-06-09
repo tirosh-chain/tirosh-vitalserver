@@ -57,8 +57,12 @@ public struct RuntimeGuestShutdownComposition {
     }
 
     public func prepareForUpdate(manifest: UpdateBundleManifest) throws {
+        try prepare(version: manifest.version)
+    }
+
+    public func prepare(version: String) throws {
         try RuntimeGuestShutdownWorkflow().prepareForUpdate(
-            manifest: manifest,
+            version: version,
             context: RuntimeGuestShutdownWorkflowContext(
                 guestRunDirectory: context.guestRunDirectory,
                 waitTimeoutSeconds: Constants.Runtime.updateShutdownWaitTimeoutSeconds

@@ -143,6 +143,7 @@ private final class VMDiskRepairHarness {
                 },
                 stopRuntimeServicesForVMDiskReplacement: { [self] in
                     events.append("stop-for-disk-replacement")
+                    return .completed
                 },
                 startRuntimeServices: { [self] policy in
                     events.append("start:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")

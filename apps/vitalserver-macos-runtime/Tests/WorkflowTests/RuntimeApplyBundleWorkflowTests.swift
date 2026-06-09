@@ -52,10 +52,7 @@ final class RuntimeApplyBundleWorkflowTests: XCTestCase {
 
         try harness.run()
 
-        XCTAssertEqual(harness.capturedVMProcessIDs, [123])
-        XCTAssertEqual(harness.preparedGuestShutdownVersions, ["0.1.4"])
-        XCTAssertEqual(harness.stopAfterGuestPoweroffPIDs, [123])
-        XCTAssertEqual(harness.clearGuestShutdownPreparationCount, 1)
+        XCTAssertEqual(harness.guestPoweroffStopVersions, ["0.1.4"])
         XCTAssertEqual(harness.directStopCount, 0)
     }
 
@@ -65,10 +62,7 @@ final class RuntimeApplyBundleWorkflowTests: XCTestCase {
 
         XCTAssertThrowsError(try harness.run())
 
-        XCTAssertEqual(harness.capturedVMProcessIDs, [123])
-        XCTAssertEqual(harness.preparedGuestShutdownVersions, ["0.1.4"])
-        XCTAssertEqual(harness.stopAfterGuestPoweroffPIDs, [123])
-        XCTAssertEqual(harness.clearGuestShutdownPreparationCount, 1)
+        XCTAssertEqual(harness.guestPoweroffStopVersions, ["0.1.4"])
         XCTAssertEqual(harness.rollbackBackup, harness.preflight.backup)
         XCTAssertEqual(harness.restartedPolicy, harness.preflight.restartPolicy)
         XCTAssertEqual(harness.statuses.last?.level, .degraded)
@@ -83,10 +77,7 @@ final class RuntimeApplyBundleWorkflowTests: XCTestCase {
 
         XCTAssertThrowsError(try harness.run())
 
-        XCTAssertEqual(harness.capturedVMProcessIDs, [123])
-        XCTAssertEqual(harness.preparedGuestShutdownVersions, ["0.1.4"])
-        XCTAssertTrue(harness.stopAfterGuestPoweroffPIDs.isEmpty)
-        XCTAssertEqual(harness.clearGuestShutdownPreparationCount, 1)
+        XCTAssertEqual(harness.guestPoweroffStopVersions, ["0.1.4"])
         XCTAssertEqual(harness.rollbackBackup, harness.preflight.backup)
         XCTAssertEqual(harness.restartedPolicy, harness.preflight.restartPolicy)
         XCTAssertEqual(harness.statuses.last?.level, .degraded)
@@ -153,12 +144,9 @@ private final class ApplyBundleHarness {
     var statuses: [(level: RuntimeStatusLevel, operation: RuntimeOperation, message: String)] = []
     var progressEvents: [RuntimeStepExecutionEvent] = []
     var executedSteps: [RuntimeWorkflowStep] = []
-    var capturedVMProcessIDs: [pid_t] = []
-    var preparedGuestShutdownVersions: [String] = []
-    var stopAfterGuestPoweroffPIDs: [pid_t] = []
+    var guestPoweroffStopVersions: [String] = []
     var logs: [String] = []
     var pruneCount = 0
-    var clearGuestShutdownPreparationCount = 0
     var directStopCount = 0
     var rollbackBackup: URL?
     var restartedPolicy: RuntimeServiceRestartPolicy?
@@ -205,22 +193,12 @@ private final class ApplyBundleHarness {
                 return self.preflight
             },
             rootfsBase: URL(fileURLWithPath: "/tmp/rootfs-base"),
-            runningVMProcessID: {
+            prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff: { manifest in
                 try self.executeApplyStep(.stopRuntimeServices)
-                self.capturedVMProcessIDs.append(123)
-                return 123
-            },
-            prepareGuestShutdownForUpdate: { manifest in
-                self.preparedGuestShutdownVersions.append(manifest.helperVersion)
+                self.guestPoweroffStopVersions.append(manifest.helperVersion)
                 if let prepareGuestShutdownError = self.prepareGuestShutdownError {
                     throw prepareGuestShutdownError
                 }
-            },
-            clearGuestShutdownPreparation: {
-                self.clearGuestShutdownPreparationCount += 1
-            },
-            stopRuntimeServicesAfterGuestPoweroff: { pid in
-                self.stopAfterGuestPoweroffPIDs.append(pid)
                 if let stopAfterGuestPoweroffError = self.stopAfterGuestPoweroffError {
                     throw stopAfterGuestPoweroffError
                 }
