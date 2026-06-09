@@ -65,6 +65,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-054 | Fresh install 후 Helper message에 과거 update/uninstall 이력이 보임 | Runtime Control PWA / Packaging | active | [Helper message log shows stale session history after fresh install](054_helper-message-log-stale-session-history.md) |
 | TS-055 | Helper app에서 Recorder activity `All` 선택 시 앱이 종료됨 | macOS Helper / Observability | resolved | [Recorder Activity All Window Materializes Full History](055_recorder-activity-all-window-materialization.md) |
 | TS-056 | PWA Status가 `settings.bridgedinterface` contract mismatch를 표시 | Runtime Control PWA / Network | resolved | [PWA Runtime Overview Bridged Interface Contract Mismatch](056_pwa-runtime-overview-bridged-interface-contract.md) |
+| TS-057 | watchdog이 stale guest runtime-state를 missing artifacts로 보고 복구하지 않음 | Runtime health / Watchdog recovery | resolved | [Watchdog Treats Stale Guest Runtime State As Unrecoverable](057_watchdog_stale_guest_runtime_state_unrecoverable.md) |
 
 ## Follow-up 규칙
 

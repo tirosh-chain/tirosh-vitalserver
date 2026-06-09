@@ -209,6 +209,54 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         )
     }
 
+    func testStaleGuestRuntimeStateContainerObservationCanRecoverWithVMAndProxyRestart() {
+        let decision = RuntimeWatchdogRecoveryPolicy.decision(
+            snapshot: healthSnapshot(
+                vmLifecycle: runningLifecycle(),
+                vmIP: nil,
+                hostProxyHTTP: "http-probe-command-failed exitCode=7",
+                guestHTTP: RuntimeHTTPStatusText.missingVMIP,
+                containerObservation: RuntimeContainerObservation(
+                    auditProxyHTTP: "failed",
+                    auditProxyStatus: nil,
+                    auditProxyStatusReadError: "failed",
+                    containerLogsPresent: true,
+                    containerLogsBytes: 128,
+                    composeServicesReadState: .stale,
+                    composeServicesReadError: "guest-runtime-state-stale"
+                ),
+                failureReasons: [
+                    .guestRuntimeStateStale,
+                    .hostProxyHTTP("http-probe-command-failed exitCode=7"),
+                    .auditProxyHTTP("failed"),
+                    .containerObservationReadFailed("guest-runtime-state-stale"),
+                ]
+            ),
+            hostProxyLivenessHTTP: "failed",
+            automaticRecoveryEnabled: true
+        )
+
+        XCTAssertEqual(
+            decision,
+            .recover(
+                reason: "guest-runtime-state-stale, host-proxy-http-http-probe-command-failed exitCode=7, audit-proxy-http-failed, container-observation-read-failed-guest-runtime-state-stale",
+                plan: RuntimeRecoveryPlan(
+                    canRecover: true,
+                    restartVM: true,
+                    restartGuestLogSync: true,
+                    restartProxy: true,
+                    restartReasons: [
+                        .missingVMIP,
+                        .guestHTTPUnhealthy(RuntimeHTTPStatusText.missingVMIP),
+                        .containerFailureRequiresVMRestart,
+                        .vmRestartRequiresProxyRestart,
+                        .hostProxyLivenessUnhealthy("failed"),
+                    ]
+                )
+            )
+        )
+    }
+
     func testMissingVMLifecycleBlocksAutomaticVMRestart() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(
@@ -307,6 +355,7 @@ private func healthSnapshot(
     guestHTTP: String = "200",
     redisUIHTTP: String = "200",
     swaggerUIHTTP: String = "200",
+    containerObservation: RuntimeContainerObservation? = nil,
     failureReasons: [RuntimeFailureReason] = []
 ) -> RuntimeHealthSnapshot {
     RuntimeHealthSnapshot(
@@ -326,6 +375,7 @@ private func healthSnapshot(
         guestHTTP: guestHTTP,
         redisUIHTTP: redisUIHTTP,
         swaggerUIHTTP: swaggerUIHTTP,
+        containerObservation: containerObservation,
         failureReasons: failureReasons
     )
 }
