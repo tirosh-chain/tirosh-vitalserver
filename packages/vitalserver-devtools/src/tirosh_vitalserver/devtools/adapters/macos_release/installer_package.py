@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import plistlib
 import shutil
 import subprocess
 from pathlib import Path
@@ -94,6 +95,7 @@ def build_dmg(context: PackageContext) -> None:
         staging / package_output_value(context, "dmg_clean_uninstaller_pkg_name"),
     )
     context.dmg_output.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dmg_output_is_not_attached(context.dmg_output)
     if context.dmg_output.exists():
         context.dmg_output.unlink()
     run(
@@ -110,6 +112,56 @@ def build_dmg(context: PackageContext) -> None:
             str(context.dmg_output),
         ]
     )
+
+
+def ensure_dmg_output_is_not_attached(dmg_output: Path) -> None:
+    attached = attached_disk_images()
+    expected_path = str(dmg_output.resolve(strict=False))
+    for image in attached:
+        image_path = image.get("image-path")
+        if not isinstance(image_path, str):
+            continue
+        if str(Path(image_path).resolve(strict=False)) != expected_path:
+            continue
+        mount_points = attached_image_mount_points(image)
+        mount_description = ", ".join(mount_points) if mount_points else "not mounted"
+        raise RuntimeError(
+            "DMG output is currently attached; detach it before rebuilding: "
+            f"{expected_path} ({mount_description})"
+        )
+
+
+def attached_disk_images() -> list[dict[str, object]]:
+    result = subprocess.run(
+        ["hdiutil", "info", "-plist"],
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace").strip()
+        raise RuntimeError(
+            "failed to read attached disk images: "
+            f"{stderr or result.returncode}"
+        )
+    document = plistlib.loads(result.stdout)
+    images = document.get("images") if isinstance(document, dict) else None
+    if not isinstance(images, list):
+        raise RuntimeError("hdiutil info did not return an images array")
+    return [image for image in images if isinstance(image, dict)]
+
+
+def attached_image_mount_points(image: dict[str, object]) -> list[str]:
+    entities = image.get("system-entities")
+    if not isinstance(entities, list):
+        return []
+    mount_points: list[str] = []
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+        mount_point = entity.get("mount-point")
+        if isinstance(mount_point, str) and mount_point:
+            mount_points.append(mount_point)
+    return mount_points
 
 
 def build_reset_installer_pkg(

@@ -154,6 +154,7 @@ def test_build_dmg_stages_installer_and_clean_uninstaller_pkg(
         "build_reset_installer_pkg",
         fake_build_reset_installer_pkg,
     )
+    monkeypatch.setattr(installer_package, "attached_disk_images", lambda: [])
     monkeypatch.setattr(installer_package, "run", fake_run)
 
     context = PackageContext(
@@ -198,6 +199,29 @@ def test_build_dmg_stages_installer_and_clean_uninstaller_pkg(
     assert commands[-1][:2] == ["hdiutil", "create"]
     assert str(staging) in commands[-1]
     assert str(dmg_output) in commands[-1]
+
+
+def test_build_dmg_fails_when_output_dmg_is_attached(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dmg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.dmg"
+    monkeypatch.setattr(
+        installer_package,
+        "attached_disk_images",
+        lambda: [
+            {
+                "image-path": str(dmg_output),
+                "system-entities": [
+                    {"dev-entry": "/dev/disk5"},
+                    {"mount-point": "/Volumes/VitalServer Helper"},
+                ],
+            }
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="DMG output is currently attached"):
+        installer_package.ensure_dmg_output_is_not_attached(dmg_output)
 
 
 def test_default_update_migrations_include_guest_runtime_settings_read_model() -> None:
