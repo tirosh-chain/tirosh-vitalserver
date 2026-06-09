@@ -19,10 +19,13 @@ const rangeOptions = [
   { label: "Last 1 hour", seconds: 60 * 60 },
   { label: "Last 6 hours", seconds: 6 * 60 * 60 },
   { label: "Last 12 hours", seconds: 12 * 60 * 60 },
-  { label: "All samples", seconds: null }
+  { label: "All (12h windows)", seconds: null }
 ];
 
 const allSamplesWindowSeconds = 12 * 60 * 60;
+const defaultAllSamplesPageStepHours = 3;
+const allSamplesMinPageStepHours = 1;
+const allSamplesMaxPageStepHours = 12;
 
 const chart = {
   width: 900,
@@ -41,8 +44,12 @@ export function RecorderActivityChart({
   const [bucketSeconds, setBucketSeconds] = useState(60);
   const [rangeSeconds, setRangeSeconds] = useState<number | null>(60 * 60);
   const [allSamplesPageIndex, setAllSamplesPageIndex] = useState<number | null>(null);
+  const [allSamplesPageStepHours, setAllSamplesPageStepHours] = useState(
+    defaultAllSamplesPageStepHours
+  );
   const activityTimeline = recorder.activityTimeline;
   const allSamplesMode = rangeSeconds === null;
+  const allSamplesPageStepSeconds = allSamplesPageStepHours * 60 * 60;
 
   const activityRead = useMemo(
     () =>
@@ -54,9 +61,20 @@ export function RecorderActivityChart({
   );
   const pagedActivity = useMemo(
     () => allSamplesMode
-      ? pagedAllSamples(activityRead.buckets, bucketSeconds, allSamplesPageIndex)
+      ? pagedAllSamples(
+          activityRead.buckets,
+          bucketSeconds,
+          allSamplesPageStepSeconds,
+          allSamplesPageIndex
+        )
       : null,
-    [activityRead.buckets, allSamplesMode, bucketSeconds, allSamplesPageIndex]
+    [
+      activityRead.buckets,
+      allSamplesMode,
+      bucketSeconds,
+      allSamplesPageStepSeconds,
+      allSamplesPageIndex
+    ]
   );
   const buckets = pagedActivity?.buckets ?? activityRead.buckets;
   const latestActivity = latestRecorderActivityPoint(activityTimeline);
@@ -122,6 +140,29 @@ export function RecorderActivityChart({
               ))}
             </select>
           </label>
+          {allSamplesMode ? (
+            <label>
+              Window slide
+              <input
+                type="range"
+                aria-label="Window slide"
+                min={allSamplesMinPageStepHours}
+                max={allSamplesMaxPageStepHours}
+                value={allSamplesPageStepHours}
+                onChange={(event) => {
+                  const nextStepHours = Number(event.target.value);
+                  setAllSamplesPageStepHours(nextStepHours);
+                  setAllSamplesPageIndex(null);
+                }}
+                title={`Window slides by ${formatDurationHours(
+                  allSamplesPageStepHours
+                )} each move`}
+              />
+              <span className="chart-meta">
+                {formatDurationHours(allSamplesPageStepHours)}
+              </span>
+            </label>
+          ) : null}
           {latestActivity ? (
             <span className="chart-meta">
               Last sample {formatTime(latestActivity.observedAt)}
@@ -143,8 +184,18 @@ export function RecorderActivityChart({
               disabled={pagedActivity.pageCount <= 1}
             />
           </label>
-          <span className="chart-meta">
-            {formatWindow(pagedActivity.windowStartMs, pagedActivity.windowEndMs)}
+          <span
+            className="chart-meta"
+            title={`Window slides by ${formatDurationSeconds(
+              allSamplesPageStepSeconds
+            )} each move`}
+          >
+            {formatWindow(
+              pagedActivity.windowStartMs,
+              pagedActivity.windowEndMs,
+              allSamplesPageStepSeconds,
+              allSamplesMode
+            )}
           </span>
         </div>
       ) : null}
@@ -192,21 +243,34 @@ export function RecorderActivityChart({
 function pagedAllSamples(
   buckets: ReturnType<typeof readRecorderActivityBuckets>["buckets"],
   bucketSeconds: number,
+  pageStepSeconds: number,
   requestedPageIndex: number | null
 ) {
   const bucketCountPerWindow = Math.max(
     1,
     Math.floor(allSamplesWindowSeconds / bucketSeconds)
   );
-  const pageCount = Math.max(1, Math.ceil(buckets.length / bucketCountPerWindow));
+  const bucketStepPerWindow = Math.max(
+    1,
+    Math.floor(pageStepSeconds / bucketSeconds)
+  );
+  const startIndexMax = Math.max(0, buckets.length - bucketCountPerWindow);
+  const steppedPageCount = Math.max(
+    1,
+    Math.floor(startIndexMax / bucketStepPerWindow) + 1
+  );
+  const pageCount = steppedPageCount;
   const latestPageIndex = pageCount - 1;
   const pageIndex = clamp(
     requestedPageIndex ?? latestPageIndex,
     0,
     latestPageIndex
   );
-  const start = pageIndex * bucketCountPerWindow;
-  const pageBuckets = buckets.slice(start, start + bucketCountPerWindow);
+  const start = Math.min(pageIndex * bucketStepPerWindow, startIndexMax);
+  const pageBuckets = buckets.slice(
+    start,
+    Math.min(start + bucketCountPerWindow, buckets.length)
+  );
   const firstBucket = pageBuckets.at(0);
   const lastBucket = pageBuckets.at(-1);
 
@@ -371,9 +435,35 @@ function formatTime(value: string | number | null | undefined): string {
   }).format(date);
 }
 
-function formatWindow(startMs: number | null, endMs: number | null) {
+function formatWindow(
+  startMs: number | null,
+  endMs: number | null,
+  pageStepSeconds: number,
+  allSamplesMode: boolean
+) {
   if (startMs === null || endMs === null) {
     return "No activity window";
   }
-  return `${formatTime(startMs)} - ${formatTime(endMs)}`;
+
+  const stepText = allSamplesMode
+    ? ` • slide ${formatDurationSeconds(pageStepSeconds)}`
+    : "";
+
+  return `${formatTime(startMs)} - ${formatTime(endMs)}${stepText}`;
+}
+
+function formatDurationHours(hours: number) {
+  return `${hours}h`;
+}
+
+function formatDurationSeconds(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
+  const remainingSeconds = seconds % 3600;
+  const minutes = Math.floor(remainingSeconds / 60);
+
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h ${minutes}m`;
 }

@@ -354,11 +354,21 @@ describe("runtime console pages", () => {
     });
 
     const windowSlider = screen.getByLabelText("Window") as HTMLInputElement;
-    expect(windowSlider.max).toBe("1");
-    expect(windowSlider.value).toBe("1");
+    const slideSlider = screen.getByLabelText("Window slide") as HTMLInputElement;
+    expect(windowSlider.max).toBe("0");
+    expect(windowSlider.value).toBe("0");
+    expect(slideSlider).toBeInTheDocument();
+    expect(slideSlider.value).toBe("3");
+    expect(slideSlider.max).toBe("12");
+    expect(slideSlider).toHaveAttribute("title", "Window slides by 3h each move");
+    expect(screen.getByText(/slide 3h/)).toBeInTheDocument();
 
     fireEvent.change(windowSlider, { target: { value: "0" } });
     expect(windowSlider.value).toBe("0");
+
+    fireEvent.change(slideSlider, { target: { value: "1" } });
+    expect(slideSlider.value).toBe("1");
+    expect(screen.getByText(/slide 1h/)).toBeInTheDocument();
   });
 
   it("shows missing recorder activity history as not reported", () => {

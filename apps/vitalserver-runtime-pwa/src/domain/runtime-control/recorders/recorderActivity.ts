@@ -84,6 +84,8 @@ export function readRecorderActivityBuckets(
     };
   }
 
+  const earliestMs = parsed[0]?.observedMs ?? null;
+
   const rangeStartMs = options.rangeSeconds
     ? latestMs - options.rangeSeconds * 1_000
     : null;
@@ -113,7 +115,12 @@ export function readRecorderActivityBuckets(
     }
 
     return {
-      buckets: filledBuckets(buckets, bucketMs, options.rangeSeconds),
+      buckets: filledBuckets(
+        buckets,
+        bucketMs,
+        earliestMs,
+        options.rangeSeconds
+      ),
       issues
     };
   }
@@ -143,7 +150,7 @@ export function readRecorderActivityBuckets(
   }
 
   return {
-    buckets: filledBuckets(buckets, bucketMs, options.rangeSeconds),
+    buckets: filledBuckets(buckets, bucketMs, earliestMs, options.rangeSeconds),
     issues
   };
 }
@@ -166,7 +173,7 @@ function activityBuckets(
 function stableActivityBuckets(
   points: RecorderActivityPoint[]
 ): RecorderActivityRead {
-  const buckets = new Map<string, RecorderActivityBucket>();
+  const buckets = new Map<number, RecorderActivityBucket>();
   const issues: string[] = [];
 
   for (const [pointIndex, point] of points.entries()) {
@@ -195,7 +202,7 @@ function stableActivityBuckets(
       const startMs = Math.floor(rawStartMs / rawBucketMs) * rawBucketMs;
       mergeBucketByStart(
         buckets,
-        `${startMs}:${rawBucketMs}`,
+        startMs,
         startMs,
         rawBucketMs,
         {
@@ -286,6 +293,7 @@ function mergeBucketByStart<Key>(
 function filledBuckets(
   buckets: Map<number, RecorderActivityBucket>,
   bucketMs: number,
+  earliestMs: number | null,
   rangeSeconds?: number | null
 ) {
   const bucketStarts = [...buckets.keys()].sort((left, right) => left - right);
@@ -298,7 +306,9 @@ function filledBuckets(
     ? latestBucketStart - rangeSeconds * 1_000
     : null;
   const firstBucketStart = rangeStartMs
-    ? Math.floor(rangeStartMs / bucketMs) * bucketMs
+    ? earliestMs !== null && earliestMs < rangeStartMs
+      ? Math.floor(rangeStartMs / bucketMs) * bucketMs
+      : bucketStarts[0]
     : bucketStarts[0];
   const lastBucketStart = Math.floor(latestBucketStart / bucketMs) * bucketMs;
 

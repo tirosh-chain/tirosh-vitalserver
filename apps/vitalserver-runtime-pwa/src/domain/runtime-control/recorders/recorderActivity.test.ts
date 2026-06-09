@@ -70,6 +70,31 @@ describe("recorder activity", () => {
     expect(buckets.map((bucket) => bucket.synthetic)).toEqual([true, false]);
   });
 
+  it("starts from earliest sample when requested range is larger than available data", () => {
+    const buckets = buildRecorderActivityBuckets(
+      [
+        activityPoint({
+          observedAt: "2026-05-28T00:10:00Z",
+          messageCount: 1,
+          byteCount: 100,
+          roomCount: 1
+        })
+      ],
+      { bucketSeconds: 60, rangeSeconds: 60 * 60 }
+    );
+
+    expect(buckets).toEqual([
+      {
+        messageCount: 1,
+        byteCount: 100,
+        roomCount: 1,
+        synthetic: false,
+        startMs: Date.parse("2026-05-28T00:10:00Z"),
+        endMs: Date.parse("2026-05-28T00:11:00Z")
+      }
+    ]);
+  });
+
   it("uses embedded recorder activity buckets from the latest sample", () => {
     const buckets = buildRecorderActivityBuckets(
       [
@@ -195,6 +220,37 @@ describe("recorder activity", () => {
 
     expect(buckets.map((bucket) => bucket.messageCount)).toEqual([7]);
     expect(buckets.map((bucket) => bucket.byteCount)).toEqual([700]);
+  });
+
+  it("deduplicates overlapping embedded buckets from different source intervals", () => {
+    const buckets = buildRecorderActivityBuckets(
+      [
+        activityPointWithBuckets({
+          observedAt: "2026-05-28T00:10:10Z",
+          buckets: [
+            {
+              bucketStartedAt: "2026-05-28T00:10:00Z",
+              bucketSeconds: 60,
+              messageCount: 4,
+              byteCount: 400,
+              roomCount: 1
+            },
+            {
+              bucketStartedAt: "2026-05-28T00:10:00Z",
+              bucketSeconds: 300,
+              messageCount: 8,
+              byteCount: 800,
+              roomCount: 2
+            }
+          ]
+        })
+      ],
+      { bucketSeconds: 60 }
+    );
+
+    expect(buckets.map((bucket) => bucket.messageCount)).toEqual([8]);
+    expect(buckets.map((bucket) => bucket.byteCount)).toEqual([800]);
+    expect(buckets.map((bucket) => bucket.roomCount)).toEqual([2]);
   });
 
   it("aggregates embedded recorder activity buckets into the selected interval", () => {
