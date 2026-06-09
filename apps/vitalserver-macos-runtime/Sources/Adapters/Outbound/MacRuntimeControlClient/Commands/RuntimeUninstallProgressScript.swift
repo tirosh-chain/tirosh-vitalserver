@@ -75,7 +75,6 @@ enum RuntimeUninstallProgressScript {
           if [ -s "${worker_pid_file}" ]; then
             worker_pid="$(cat "${worker_pid_file}" 2>/dev/null || true)"
             if [ -n "${worker_pid}" ] && ! kill -0 "${worker_pid}" 2>/dev/null; then
-              echo "${failed_marker_prefix}\(missingMarkerStatus) ${marker_run_id}" >> "${log_file}"
               rm -f "${worker_pid_file}" 2>/dev/null || true
               finish_tail
               printf "\\n\(terminalFailedMessage)\\n"
@@ -183,6 +182,7 @@ enum RuntimeUninstallProgressScript {
           cp "${log_file}" "${previous_log_file}"
         fi
         : > "${log_file}"
+        chmod 0644 "${log_file}" 2>/dev/null || true
         rm -f "${worker_pid_file}"
         printf %s \(shellQuote(viewerScript)) > "${viewer_script}"
         printf %s \(shellQuote(workerScript)) > "${worker_script}"
@@ -194,6 +194,7 @@ enum RuntimeUninstallProgressScript {
         /bin/bash "${worker_script}" </dev/null >> "${log_file}" 2>&1 &
         background_pid=$!
         echo "${background_pid}" > "${worker_pid_file}"
+        chmod 0644 "${worker_pid_file}" 2>/dev/null || true
         for _ in 1 2 3 4 5 6 7 8 9 10; do
           if grep -q "${started_marker}" "${log_file}" 2>/dev/null \
             || grep -q "${completed_marker}" "${log_file}" 2>/dev/null \

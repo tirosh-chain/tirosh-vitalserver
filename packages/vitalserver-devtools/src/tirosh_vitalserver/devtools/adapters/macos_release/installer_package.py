@@ -95,7 +95,7 @@ def build_dmg(context: PackageContext) -> None:
         staging / package_output_value(context, "dmg_clean_uninstaller_pkg_name"),
     )
     context.dmg_output.parent.mkdir(parents=True, exist_ok=True)
-    ensure_dmg_output_is_not_attached(context.dmg_output)
+    detach_unmounted_dmg_output_attachments(context.dmg_output)
     if context.dmg_output.exists():
         context.dmg_output.unlink()
     run(
@@ -114,7 +114,7 @@ def build_dmg(context: PackageContext) -> None:
     )
 
 
-def ensure_dmg_output_is_not_attached(dmg_output: Path) -> None:
+def detach_unmounted_dmg_output_attachments(dmg_output: Path) -> None:
     attached = attached_disk_images()
     expected_path = str(dmg_output.resolve(strict=False))
     for image in attached:
@@ -124,11 +124,35 @@ def ensure_dmg_output_is_not_attached(dmg_output: Path) -> None:
         if str(Path(image_path).resolve(strict=False)) != expected_path:
             continue
         mount_points = attached_image_mount_points(image)
-        mount_description = ", ".join(mount_points) if mount_points else "not mounted"
+        if not mount_points:
+            detach_attached_image_without_mount(
+                image=image,
+                expected_path=expected_path,
+            )
+            continue
+        mount_description = ", ".join(mount_points)
         raise RuntimeError(
             "DMG output is currently attached; detach it before rebuilding: "
             f"{expected_path} ({mount_description})"
         )
+
+
+def detach_attached_image_without_mount(
+    *,
+    image: dict[str, object],
+    expected_path: str,
+) -> None:
+    device_entry = attached_image_device_entry(image)
+    if device_entry is None:
+        raise RuntimeError(
+            "DMG output is attached without a mount point, but hdiutil did not "
+            f"report a device entry to detach: {expected_path}"
+        )
+    run(["hdiutil", "detach", device_entry])
+
+
+def ensure_dmg_output_is_not_attached(dmg_output: Path) -> None:
+    detach_unmounted_dmg_output_attachments(dmg_output)
 
 
 def attached_disk_images() -> list[dict[str, object]]:
@@ -162,6 +186,19 @@ def attached_image_mount_points(image: dict[str, object]) -> list[str]:
         if isinstance(mount_point, str) and mount_point:
             mount_points.append(mount_point)
     return mount_points
+
+
+def attached_image_device_entry(image: dict[str, object]) -> str | None:
+    entities = image.get("system-entities")
+    if not isinstance(entities, list):
+        return None
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+        dev_entry = entity.get("dev-entry")
+        if isinstance(dev_entry, str) and dev_entry:
+            return dev_entry
+    return None
 
 
 def build_reset_installer_pkg(

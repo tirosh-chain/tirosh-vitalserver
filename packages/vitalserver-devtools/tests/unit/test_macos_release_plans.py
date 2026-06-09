@@ -221,7 +221,37 @@ def test_build_dmg_fails_when_output_dmg_is_attached(
     )
 
     with pytest.raises(RuntimeError, match="DMG output is currently attached"):
-        installer_package.ensure_dmg_output_is_not_attached(dmg_output)
+        installer_package.detach_unmounted_dmg_output_attachments(dmg_output)
+
+
+def test_build_dmg_detaches_output_dmg_when_attached_without_mount(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dmg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.dmg"
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        installer_package,
+        "attached_disk_images",
+        lambda: [
+            {
+                "image-path": str(dmg_output),
+                "system-entities": [
+                    {"dev-entry": "/dev/disk5"},
+                    {"dev-entry": "/dev/disk5s1"},
+                ],
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        installer_package,
+        "run",
+        lambda command: commands.append(command),
+    )
+
+    installer_package.detach_unmounted_dmg_output_attachments(dmg_output)
+
+    assert commands == [["hdiutil", "detach", "/dev/disk5"]]
 
 
 def test_default_update_migrations_include_guest_runtime_settings_read_model() -> None:

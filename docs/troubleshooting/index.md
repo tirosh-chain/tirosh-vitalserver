@@ -71,6 +71,8 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-060 | Helper update activation이 compose/testkit systemd 경합으로 실패 | Update | active | [Update Activation Compose/Systemd Race](060_update-activation-compose-systemd-race.md) |
 | TS-061 | Update shutdown service failed without result | Update | resolved | [Update Shutdown Service Failed Without Result](061_update-shutdown-service-failed-without-result.md) |
 | TS-062 | Helper clean uninstall이 `nohup` detach 실패로 시작되지 않음 | Uninstall | resolved | [Helper Clean Uninstall Nohup Detach Failure](062_helper-clean-uninstall-nohup-detach-failure.md) |
+| TS-063 | Helper clean uninstall progress log permission denied | Uninstall | resolved | [Helper Clean Uninstall Progress Log Permission Failure](063_helper-clean-uninstall-progress-log-permission.md) |
+| TS-064 | dev DMG rebuild가 unmounted stale attachment 때문에 실패함 | Packaging / Local development | resolved | [Dev DMG Rebuild Stale Unmounted Attachment](064_dev-dmg-rebuild-stale-unmounted-attachment.md) |
 
 ## Follow-up 규칙
 
