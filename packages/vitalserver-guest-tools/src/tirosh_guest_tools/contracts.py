@@ -6,8 +6,10 @@ from enum import StrEnum
 class RuntimeService(StrEnum):
     CONTAINER_LOGS = "tirosh-vitalserver-container-logs.service"
     RUNTIME_STATE = "tirosh-runtime-state.service"
+    COMMAND_POLLER = "tirosh-vitalserver-command-poller.service"
     COMPOSE = "tirosh-vitalserver-compose.service"
     REDIS_BACKUP = "tirosh-vitalserver-redis-backup.service"
+    REDIS_BACKUP_TIMER = "tirosh-vitalserver-redis-backup.timer"
     REPAIR_DATASTORE = "tirosh-vitalserver-repair-datastore.service"
     ACTIVATE_UPDATE = "tirosh-vitalserver-activate-update.service"
     PREPARE_UPDATE_SHUTDOWN = "tirosh-vitalserver-prepare-update-shutdown.service"

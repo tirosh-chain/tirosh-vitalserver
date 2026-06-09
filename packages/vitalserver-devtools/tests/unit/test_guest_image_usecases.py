@@ -9,6 +9,8 @@ from tirosh_vitalserver.devtools.application.inputs import UbuntuBootAssetsInput
 from tirosh_vitalserver.devtools.application.usecases import (
     guest_image as guest_image_usecases,
 )
+from tirosh_vitalserver.devtools.config.build_toml import load_build_toml
+from tirosh_vitalserver.devtools.config.guest_image import load_ubuntu_image_config
 from tirosh_vitalserver.devtools.core.errors import DomainError
 from tirosh_vitalserver.devtools.core.guest_image import (
     UbuntuBootAssetPlan,
@@ -70,6 +72,19 @@ def test_prepare_ubuntu_boot_assets_builds_plan_from_config(
     assert plan.runtime_dir == Path("runtime")
     assert plan.rootfs_size == "8G"
     assert plan.disk_image_name == "disk.img"
+
+
+def test_default_ubuntu_image_config_uses_pinned_noble_release_source() -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    ubuntu_config = load_ubuntu_image_config(
+        load_build_toml(repo_root / "config/vm-build.toml")
+    )
+
+    assert ubuntu_config.version == "24.04"
+    assert ubuntu_config.base_url == (
+        "https://cloud-images.ubuntu.com/releases/noble/release-20260518"
+    )
+    assert not ubuntu_config.base_url.endswith("/release")
 
 
 def test_ubuntu_boot_asset_plan_rejects_rootfs_smaller_than_airgap_minimum() -> None:
