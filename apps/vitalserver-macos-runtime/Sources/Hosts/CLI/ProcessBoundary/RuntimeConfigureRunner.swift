@@ -36,9 +36,14 @@ public struct RuntimeConfigureActions {
 
 public struct RuntimeConfigureResult: Equatable {
     public let restart: Bool
+    public let restartRequirement: ConfigureRuntimeRestartRequirement
 
-    public init(restart: Bool) {
+    public init(
+        restart: Bool,
+        restartRequirement: ConfigureRuntimeRestartRequirement = .none
+    ) {
         self.restart = restart
+        self.restartRequirement = restartRequirement
     }
 }
 
@@ -154,7 +159,10 @@ public struct RuntimeConfigureRunner {
                 context: configureRuntimeContext(),
                 operations: configureRuntimeOperations()
             )
-            return RuntimeConfigureResult(restart: result.restart)
+            return RuntimeConfigureResult(
+                restart: result.restart,
+                restartRequirement: result.restartRequirement
+            )
         } catch ConfigureRuntimeError.invalidArgument(let message) {
             throw LauncherError.missingArgument(message)
         }
@@ -168,6 +176,9 @@ public struct RuntimeConfigureRunner {
                 },
                 loadGuestRuntimeConfig: { url in
                     try loadGuestRuntimeConfig(from: url)
+                },
+                loadVMDiskSizeGiB: {
+                    try loadVMDiskSizeGiB()
                 }
             ),
             writer: ConfigureRuntimeDocumentWriter(
@@ -236,6 +247,26 @@ public struct RuntimeConfigureRunner {
                 try actions.restartRuntimeServices()
             }
         }
+    }
+
+    private func loadVMDiskSizeGiB() throws -> Int {
+        let url = installedPaths.vmDisk
+        switch fileStore.pathState(at: url) {
+        case .file:
+            break
+        case .missing:
+            throw LauncherError.missingFile(url.path)
+        case .inspectFailed(let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "VM disk path inspection failed: \(url.path) reason=\(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw LauncherError.runtimeOperationFailed(
+                "VM disk path state is unexpected: \(url.path) state=\(fileStore.pathState(at: url).rawValue)"
+            )
+        }
+        let bytesPerGiB: UInt64 = 1024 * 1024 * 1024
+        return max(Int((try fileStore.fileSize(url) + bytesPerGiB - 1) / bytesPerGiB), 1)
     }
 
     private func configureRuntimeContext() -> ConfigureRuntimeContext<RuntimeNetworkMode> {

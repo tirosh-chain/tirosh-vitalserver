@@ -86,7 +86,7 @@ public extension AppConstants {
         public static let settingsApplyPreparing = "Preparing runtime settings..."
         public static let settingsApplyRunning = "Applying runtime settings..."
         public static let settingsApplied = "Runtime settings applied."
-        public static let applySettingsConfirmation = "Apply these settings to the installed runtime?\n\nThis may update launchd services, rewrite runtime configuration, and restart the VM/proxy services when restart is enabled."
+        public static let applySettingsConfirmation = "Apply these settings to the installed runtime?\n\nThis may update launchd services, rewrite runtime configuration, and restart the VM runtime only when a changed setting requires it and restart is enabled."
         public static let updateBundleApplied = "Update bundle applied."
         public static let updateBundleAppliedRelaunching = "Update bundle applied. Relaunching VitalServer Helper..."
         public static let updateBundlePreparing = "Preparing update bundle..."

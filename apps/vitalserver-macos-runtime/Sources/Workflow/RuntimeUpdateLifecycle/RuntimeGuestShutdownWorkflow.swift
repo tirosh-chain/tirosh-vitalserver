@@ -7,10 +7,19 @@ import Errors
 public struct RuntimeGuestShutdownWorkflowContext: Equatable, Sendable {
     public let guestRunDirectory: URL
     public let waitTimeoutSeconds: Double
+    public let progressStatus: RuntimeStatusLevel
+    public let progressOperation: RuntimeOperation
 
-    public init(guestRunDirectory: URL, waitTimeoutSeconds: Double) {
+    public init(
+        guestRunDirectory: URL,
+        waitTimeoutSeconds: Double,
+        progressStatus: RuntimeStatusLevel = .updating,
+        progressOperation: RuntimeOperation = .applyBundle
+    ) {
         self.guestRunDirectory = guestRunDirectory
         self.waitTimeoutSeconds = waitTimeoutSeconds
+        self.progressStatus = progressStatus
+        self.progressOperation = progressOperation
     }
 }
 
@@ -122,7 +131,7 @@ public struct RuntimeGuestShutdownWorkflow {
             case .waiting(let message, let shouldPublishProgress):
                 if shouldPublishProgress {
                     actions.log(message)
-                    actions.writeProgressStatus(.updating, .applyBundle, message)
+                    actions.writeProgressStatus(context.progressStatus, context.progressOperation, message)
                 }
                 if attempt < configuration.maxAttempts - 1 {
                     actions.sleep()

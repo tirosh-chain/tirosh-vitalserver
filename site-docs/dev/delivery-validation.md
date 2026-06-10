@@ -143,7 +143,7 @@ VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 �
 
 | 변경 위치 | 사용해야 하는 방향 |
 |---|---|
-| Settings apply 후 restart | Guest shutdown 준비 후 poweroff 관측을 거쳐 restart |
+| Settings apply 후 restart | Configure restart policy가 VM runtime restart requirement를 판단한 뒤, 필요할 때만 Guest shutdown 준비 후 poweroff 관측을 거쳐 restart |
 | Product update stop plan | update shutdown-stop port를 통해 VM owner가 stop 순서를 실행 |
 | rollback/service-control | service start/stop wrapper가 VM owner를 통과 |
 | watchdog recovery | watchdog 전용 restart intent로 VM owner를 통과 |
@@ -159,6 +159,12 @@ Product update shutdown에서 `prepare-update-shutdown.request`가 남아 있고
 poller가 unit `failed` 또는 dispatch failure를 명시 result로 기록해야 하며, Host는 이 typed
 failure를 받아 update를 실패로 전환해야 합니다. VM kernel panic이 뒤따라 보이더라도 먼저
 guest shutdown service가 explicit result를 남겼는지 확인합니다.
+
+Settings apply는 update가 아닙니다. CPU, memory, disk increase, network mode, bridged interface,
+Vital files directory처럼 VM runtime 구성 자체가 바뀐 경우만 VM runtime restart requirement를 만듭니다.
+URL, admin password, start on boot, auto recovery, sleep prevention, Redis backup retention 변경은
+restart requirement를 만들면 안 됩니다. Settings UI가 모든 configure field를 보내더라도 policy는
+제출된 field 이름이 아니라 Host가 제공한 명시적 현재 상태와 planned state의 차이를 비교해야 합니다.
 
 ### 4-2. 영역별로 봐야 하는 것
 
@@ -356,6 +362,9 @@ Pull request는 변경 목적과 검증 근거가 함께 보여야 합니다. �
 - Settings UI는 새 설정의 advertised service URL 초기값을 명시적으로 제공하되, 사용자가 비우거나
   provider가 invalid 값을 준 상태를 apply 시 fallback으로 복구하지 않습니다. 빈 값과 invalid 값은
   validation error 또는 read issue로 남겨야 합니다.
+- Settings apply의 `restartAfterSave`는 저장 후 항상 restart가 아니라, Configure policy가 VM runtime
+  restart requirement를 반환했을 때 즉시 restart할지에 대한 intent입니다. policy 없이 UI나 CLI가
+  restart 여부를 추정하면 안 됩니다.
 - VM stop/restart/poweroff 변경은 단일 VM state control 경로를 통하게 합니다. Settings, update,
   repair, watchdog이 guest shutdown 준비 contract를 우회해 개별적으로 VM service를 멈추지 않습니다.
   Settings restart, update shutdown-stop, rollback/update service start-stop, watchdog VM recovery,

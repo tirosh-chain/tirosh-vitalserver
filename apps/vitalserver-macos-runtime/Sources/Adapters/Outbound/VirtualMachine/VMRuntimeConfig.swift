@@ -207,6 +207,10 @@ extension VMRuntimeConfig: ConfigureRuntimeMutableVMRuntimeConfiguration {
         set { preventSystemSleep = newValue }
     }
 
+    public var configureVitalFilesDirectoryHostPath: String? {
+        vitalFilesDirectory?.hostPath
+    }
+
     public mutating func setConfigureVitalFilesDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {
         vitalFilesDirectory = SharedDirectoryConfig(
             hostPath: directory.hostPath,

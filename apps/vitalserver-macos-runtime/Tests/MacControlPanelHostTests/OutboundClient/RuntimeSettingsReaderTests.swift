@@ -454,6 +454,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionPreventSystemSleep, in: arguments), "false")
     }
 
+    func testConfigureArgumentsDoNotRestartByDefault() {
+        let arguments = RuntimeCommandFactory.configureRuntimeArguments(
+            settings: RuntimeSettings()
+        )
+
+        XCTAssertFalse(arguments.contains(RuntimeControlClientConstants.RuntimeCommand.optionRestart))
+    }
+
     func testStatusReaderReportsDataDirectoryStats() throws {
         let directory = try temporaryDirectory()
         let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)

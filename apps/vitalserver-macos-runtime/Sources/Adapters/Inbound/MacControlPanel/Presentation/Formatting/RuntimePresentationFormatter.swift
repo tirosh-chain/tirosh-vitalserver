@@ -82,7 +82,7 @@ public struct RuntimePresentationFormatter {
             "Redis backup retention: \(settings.redisBackupRetentionCount) archives",
             "Automatic recovery: \(boolText(settings.autoRecoveryEnabled))",
             "\(vocabulary.preventSystemSleepLabel): \(boolText(settings.preventSystemSleep))",
-            "Restart services: \(boolText(settings.restartAfterSave))",
+            "Restart VM runtime when required: \(boolText(settings.restartAfterSave))",
         ].joined(separator: "\n")
     }
 

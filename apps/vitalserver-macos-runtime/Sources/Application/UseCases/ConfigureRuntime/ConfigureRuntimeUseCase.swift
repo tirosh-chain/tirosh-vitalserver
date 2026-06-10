@@ -12,6 +12,7 @@ public protocol ConfigureRuntimeMutableVMRuntimeConfiguration {
     var configureBridgedInterface: String? { get set }
     var configureAutoRecoveryEnabled: Bool? { get set }
     var configurePreventSystemSleep: Bool? { get set }
+    var configureVitalFilesDirectoryHostPath: String? { get }
 
     mutating func setConfigureVitalFilesDirectory(_ directory: RuntimeSharedDirectoryConfiguration)
 }
@@ -119,9 +120,23 @@ public struct ConfigureRuntimeSecretFileInput: Equatable, Sendable {
 
 public struct ConfigureRuntimeResult: Equatable, Sendable {
     public let restart: Bool
+    public let restartRequirement: ConfigureRuntimeRestartRequirement
 
-    public init(restart: Bool) {
+    public init(
+        restart: Bool,
+        restartRequirement: ConfigureRuntimeRestartRequirement = .none
+    ) {
         self.restart = restart
+        self.restartRequirement = restartRequirement
+    }
+}
+
+public enum ConfigureRuntimeRestartRequirement: String, Equatable, Sendable {
+    case none
+    case vmRuntime
+
+    public var requiresRestart: Bool {
+        self != .none
     }
 }
 
@@ -154,6 +169,7 @@ public struct ConfigureRuntimePlan<VMConfig: ConfigureRuntimeMutableVMRuntimeCon
     public let guestRuntimeSettings: GuestRuntimeSettingsDocument
     public let effects: [ConfigureRuntimeEffect]
     public let restart: Bool
+    public let restartRequirement: ConfigureRuntimeRestartRequirement
     public let logMessage: String
 
     public init(
@@ -162,6 +178,7 @@ public struct ConfigureRuntimePlan<VMConfig: ConfigureRuntimeMutableVMRuntimeCon
         guestRuntimeSettings: GuestRuntimeSettingsDocument,
         effects: [ConfigureRuntimeEffect],
         restart: Bool,
+        restartRequirement: ConfigureRuntimeRestartRequirement,
         logMessage: String
     ) {
         self.vmConfig = vmConfig
@@ -169,6 +186,7 @@ public struct ConfigureRuntimePlan<VMConfig: ConfigureRuntimeMutableVMRuntimeCon
         self.guestRuntimeSettings = guestRuntimeSettings
         self.effects = effects
         self.restart = restart
+        self.restartRequirement = restartRequirement
         self.logMessage = logMessage
     }
 }
@@ -222,7 +240,8 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         _ request: ConfigureRuntimeRequest<VMConfig.ConfigureNetworkMode>,
         context: ConfigureRuntimeContext<VMConfig.ConfigureNetworkMode>,
         currentVMConfig: VMConfig,
-        currentGuestRuntimeConfig: GuestRuntimeConfigDocument
+        currentGuestRuntimeConfig: GuestRuntimeConfigDocument,
+        currentVMDiskSizeGiB: Int
     ) throws -> ConfigureRuntimePlan<VMConfig> {
         var vmConfig = currentVMConfig
         var guestConfig = currentGuestRuntimeConfig
@@ -239,8 +258,19 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         }
 
         try validate(vmConfig, context: context)
+        let requestedDiskGiB = requestedDiskGiB(in: request)
+        if let requestedDiskGiB, requestedDiskGiB < currentVMDiskSizeGiB {
+            throw invalid("--disk-gib can only increase the VM disk; current disk is \(currentVMDiskSizeGiB) GiB")
+        }
         effects.append(.restrictSecretFile(context.guestRuntimeConfigURL))
-        if request.restart {
+        let restartRequirement = restartRequirement(
+            current: currentVMConfig,
+            planned: vmConfig,
+            currentVMDiskSizeGiB: currentVMDiskSizeGiB,
+            requestedDiskGiB: requestedDiskGiB
+        )
+        let restart = request.restart && restartRequirement.requiresRestart
+        if restart {
             effects.append(.restartRuntimeServices)
         }
 
@@ -249,9 +279,50 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
             guestRuntimeConfig: guestConfig,
             guestRuntimeSettings: GuestRuntimeSettingsDocument(runtimeConfig: guestConfig),
             effects: effects,
-            restart: request.restart,
-            logMessage: "runtime configuration updated restart=\(request.restart)"
+            restart: restart,
+            restartRequirement: restartRequirement,
+            logMessage: "runtime configuration updated restart=\(restart) restartRequirement=\(restartRequirement.rawValue)"
         )
+    }
+
+    public func restartRequirement(
+        current: VMConfig,
+        planned: VMConfig,
+        currentVMDiskSizeGiB: Int,
+        requestedDiskGiB: Int?
+    ) -> ConfigureRuntimeRestartRequirement {
+        if let requestedDiskGiB, requestedDiskGiB > currentVMDiskSizeGiB {
+            return .vmRuntime
+        }
+        if current.configureCPUCount != planned.configureCPUCount {
+            return .vmRuntime
+        }
+        if current.configureMemoryMiB != planned.configureMemoryMiB {
+            return .vmRuntime
+        }
+        if current.configureNetworkMode != planned.configureNetworkMode {
+            return .vmRuntime
+        }
+        if current.configureBridgedInterface != planned.configureBridgedInterface {
+            return .vmRuntime
+        }
+        if current.configureVitalFilesDirectoryHostPath != planned.configureVitalFilesDirectoryHostPath {
+            return .vmRuntime
+        }
+        return .none
+    }
+
+    private func requestedDiskGiB(
+        in request: ConfigureRuntimeRequest<VMConfig.ConfigureNetworkMode>
+    ) -> Int? {
+        request.changes.reduce(nil) { requestedDiskGiB, change in
+            switch change {
+            case .diskGiB(let diskGiB):
+                return diskGiB
+            default:
+                return requestedDiskGiB
+            }
+        }
     }
 
     private func apply(

@@ -14,11 +14,13 @@ public struct RunConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRunt
         let resolvedRequest = try operations.effects.resolveSecretFileChanges(request)
         let currentVMConfig = try operations.readers.loadVMConfig(context.vmConfigURL)
         let currentGuestRuntimeConfig = try operations.readers.loadGuestRuntimeConfig(context.guestRuntimeConfigURL)
+        let currentVMDiskSizeGiB = try operations.readers.loadVMDiskSizeGiB()
         let plan = try useCase.plan(
             resolvedRequest,
             context: context,
             currentVMConfig: currentVMConfig,
-            currentGuestRuntimeConfig: currentGuestRuntimeConfig
+            currentGuestRuntimeConfig: currentGuestRuntimeConfig,
+            currentVMDiskSizeGiB: currentVMDiskSizeGiB
         )
         let effectPlan = useCase.effectExecutionPlan(plan.effects)
 
@@ -40,20 +42,26 @@ public struct RunConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRunt
         operations.effects.log(plan.logMessage)
 
         try operations.effects.executeEffects(effectPlan.postWriteEffects)
-        return ConfigureRuntimeResult(restart: plan.restart)
+        return ConfigureRuntimeResult(
+            restart: plan.restart,
+            restartRequirement: plan.restartRequirement
+        )
     }
 }
 
 public struct ConfigureRuntimeStateReaders<VMConfig: ConfigureRuntimeMutableVMRuntimeConfiguration> {
     public var loadVMConfig: (URL) throws -> VMConfig
     public var loadGuestRuntimeConfig: (URL) throws -> GuestRuntimeConfigDocument
+    public var loadVMDiskSizeGiB: () throws -> Int
 
     public init(
         loadVMConfig: @escaping (URL) throws -> VMConfig,
-        loadGuestRuntimeConfig: @escaping (URL) throws -> GuestRuntimeConfigDocument
+        loadGuestRuntimeConfig: @escaping (URL) throws -> GuestRuntimeConfigDocument,
+        loadVMDiskSizeGiB: @escaping () throws -> Int
     ) {
         self.loadVMConfig = loadVMConfig
         self.loadGuestRuntimeConfig = loadGuestRuntimeConfig
+        self.loadVMDiskSizeGiB = loadVMDiskSizeGiB
     }
 }
 

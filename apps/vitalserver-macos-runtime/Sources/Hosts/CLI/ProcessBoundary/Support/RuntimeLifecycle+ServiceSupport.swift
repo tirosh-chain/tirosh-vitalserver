@@ -109,7 +109,11 @@ extension RuntimeLifecycle {
                             sleep: workflowPollingSleepAction(),
                             log: log
                         )
-                    ).prepare(version: version)
+                    ).prepare(
+                        version: version,
+                        progressStatus: .recovering,
+                        progressOperation: .configure
+                    )
                 },
                 clearGuestShutdownPreparation: {
                     try guestGateway.clearUpdateShutdownPreparation()

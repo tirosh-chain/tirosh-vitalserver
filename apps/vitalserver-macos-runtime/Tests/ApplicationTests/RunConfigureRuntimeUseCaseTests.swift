@@ -24,6 +24,7 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
         )
 
         XCTAssertTrue(result.restart)
+        XCTAssertEqual(result.restartRequirement, .vmRuntime)
         XCTAssertEqual(harness.readSecretFiles, [URL(fileURLWithPath: "/tmp/admin-password")])
         XCTAssertEqual(harness.preWriteEffects, [
             "resize:64",
@@ -36,7 +37,7 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
             "restrict:/runtime/runtime-config.json",
             "restart",
         ])
-        XCTAssertEqual(harness.logs, ["runtime configuration updated restart=true"])
+        XCTAssertEqual(harness.logs, ["runtime configuration updated restart=true restartRequirement=vmRuntime"])
         XCTAssertEqual(harness.writes.map(\.url), [
             harness.vmConfigURL,
             harness.guestConfigURL,
@@ -98,6 +99,7 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
         var postWriteEffects: [String] = []
         var logs: [String] = []
         var writes: [(data: Data, url: URL)] = []
+        var currentDiskGiB = 32
 
         lazy var context: ConfigureRuntimeContext<ConfigureWorkflowTestNetworkMode> = ConfigureRuntimeContext(
             vmConfigURL: vmConfigURL,
@@ -133,7 +135,8 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
         lazy var operations = ConfigureRuntimeOperations(
             readers: ConfigureRuntimeStateReaders(
                 loadVMConfig: { _ in self.vmConfig },
-                loadGuestRuntimeConfig: { _ in self.guestConfig }
+                loadGuestRuntimeConfig: { _ in self.guestConfig },
+                loadVMDiskSizeGiB: { self.currentDiskGiB }
             ),
             writer: ConfigureRuntimeDocumentWriter(
                 encodeVMConfig: { try JSONEncoder().encode($0) },
@@ -252,6 +255,10 @@ struct ConfigureWorkflowTestVMConfig: Codable, Equatable, ConfigureRuntimeMutabl
     var configureAutoRecoveryEnabled: Bool?
     var configurePreventSystemSleep: Bool?
     var vitalFilesDirectory: ConfigureWorkflowTestSharedDirectory?
+
+    var configureVitalFilesDirectoryHostPath: String? {
+        vitalFilesDirectory?.hostPath
+    }
 
     mutating func setConfigureVitalFilesDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {
         vitalFilesDirectory = ConfigureWorkflowTestSharedDirectory(

@@ -180,6 +180,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 vitalFilesDirectory: nil
             )
             fileStore.files[vmConfigURL] = try JSONEncoder().encode(vmConfig)
+            fileStore.files[paths.vmDisk] = Data([0])
             fileStore.files[paths.guestRuntimeConfig] = try JSONEncoder().encode(Self.defaultGuestRuntimeConfig())
             fileStore.files[URL(fileURLWithPath: "/tmp/admin-password")] = Data("secret".utf8)
 

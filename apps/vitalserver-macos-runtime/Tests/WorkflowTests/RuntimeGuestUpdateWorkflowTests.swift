@@ -109,6 +109,37 @@ final class RuntimeGuestUpdateWorkflowTests: XCTestCase {
         ])
     }
 
+    func testShutdownProgressUsesContextStatusAndOperation() throws {
+        let harness = ShutdownHarness(results: [
+            .missing,
+            .loaded(shutdownResult(
+                status: .ready,
+                phase: .poweroffRequested,
+                requestId: "request-1",
+                message: "ready"
+            )),
+        ])
+        let context = RuntimeGuestShutdownWorkflowContext(
+            guestRunDirectory: URL(fileURLWithPath: "/guest/run"),
+            waitTimeoutSeconds: 6,
+            progressStatus: .recovering,
+            progressOperation: .configure
+        )
+
+        try harness.workflow.prepareForUpdate(
+            version: "1.2.3",
+            context: context,
+            actions: harness.operations
+        )
+
+        XCTAssertTrue(harness.events.contains(
+            "status:recovering:configure:waiting for guest update shutdown worker"
+        ))
+        XCTAssertFalse(harness.events.contains {
+            $0 == "status:updating:apply-bundle:waiting for guest update shutdown worker"
+        })
+    }
+
     func testShutdownPreservesGuestFailureReadFailureAndTimeoutMeanings() {
         let guestFailure = ShutdownHarness(results: [
             .loaded(shutdownResult(status: .failed, phase: nil, requestId: "request-1", message: "guest failed")),

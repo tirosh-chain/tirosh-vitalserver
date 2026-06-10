@@ -187,7 +187,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         autoRecoveryEnabled: Bool = true,
         preventSystemSleep: Bool = true,
         redisBackupRetentionCount: Int = RuntimeSettingsInitialValues.redisBackupRetentionCount,
-        restartAfterSave: Bool = true
+        restartAfterSave: Bool = false
     ) {
         self.readIssues = readIssues
         self.cpuCount = cpuCount

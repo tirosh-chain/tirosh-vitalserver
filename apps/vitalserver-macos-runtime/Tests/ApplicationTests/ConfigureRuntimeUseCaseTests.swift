@@ -31,11 +31,13 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             ),
             context: harness.context,
             currentVMConfig: harness.vmConfig,
-            currentGuestRuntimeConfig: harness.guestConfig
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
         )
 
         XCTAssertTrue(plan.restart)
-        XCTAssertEqual(plan.logMessage, "runtime configuration updated restart=true")
+        XCTAssertEqual(plan.restartRequirement, .vmRuntime)
+        XCTAssertEqual(plan.logMessage, "runtime configuration updated restart=true restartRequirement=vmRuntime")
         let expectedEffects: [ConfigureRuntimeEffect] = [
             .resizeVMDiskIfNeeded(64),
             .setInstalledProxyPort(18080),
@@ -68,6 +70,143 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.guestRuntimeSettings.publicHost, "vitaldb.tirosh.ai")
         XCTAssertEqual(plan.guestRuntimeSettings.publicPort, 443)
         XCTAssertEqual(plan.guestRuntimeSettings.redisBackupRetentionCount, 20)
+    }
+
+    func testRestartPolicyDoesNotRestartForNonVMRuntimeChanges() throws {
+        let harness = Harness()
+
+        let plan = try harness.useCase.plan(
+            ConfigureRuntimeRequest(
+                changes: [
+                    .proxyPort(18080),
+                    .vitalServerURL("https://vitaldb.tirosh.ai/"),
+                    .remoteConsoleURL("https://console.tirosh.ai/"),
+                    .adminPassword("secret"),
+                    .startOnBoot(false),
+                    .autoRecovery(false),
+                    .preventSystemSleep(false),
+                    .redisBackupRetention(20),
+                ],
+                restart: true
+            ),
+            context: harness.context,
+            currentVMConfig: harness.vmConfig,
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
+        )
+
+        XCTAssertFalse(plan.restart)
+        XCTAssertEqual(plan.restartRequirement, .none)
+        XCTAssertFalse(plan.effects.contains(.restartRuntimeServices))
+        XCTAssertEqual(plan.logMessage, "runtime configuration updated restart=false restartRequirement=none")
+    }
+
+    func testRestartPolicyRequiresVMRuntimeRestartForVitalFilesDirectoryChange() throws {
+        let harness = Harness()
+
+        let plan = try harness.useCase.plan(
+            ConfigureRuntimeRequest(
+                changes: [
+                    .vitalFilesDirectory(URL(fileURLWithPath: "/data/vital-files")),
+                ],
+                restart: false
+            ),
+            context: harness.context,
+            currentVMConfig: harness.vmConfig,
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
+        )
+
+        XCTAssertFalse(plan.restart)
+        XCTAssertEqual(plan.restartRequirement, .vmRuntime)
+        XCTAssertFalse(plan.effects.contains(.restartRuntimeServices))
+    }
+
+    func testRestartPolicyUsesActualConfigDiffInsteadOfSubmittedFields() throws {
+        let harness = Harness()
+
+        let plan = try harness.useCase.plan(
+            ConfigureRuntimeRequest(
+                changes: [
+                    .cpu(harness.vmConfig.configureCPUCount),
+                    .memoryGiB(harness.vmConfig.configureMemoryMiB / 1024),
+                    .network(harness.vmConfig.configureNetworkMode),
+                    .bridgedInterface(harness.vmConfig.configureBridgedInterface ?? "en0"),
+                    .vitalFilesDirectory(URL(fileURLWithPath: "/old-vital")),
+                ],
+                restart: true
+            ),
+            context: harness.context,
+            currentVMConfig: harness.vmConfig,
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
+        )
+
+        XCTAssertFalse(plan.restart)
+        XCTAssertEqual(plan.restartRequirement, .none)
+    }
+
+    func testRestartPolicyRequiresVMRuntimeRestartForDiskIncrease() throws {
+        let harness = Harness()
+
+        let plan = try harness.useCase.plan(
+            ConfigureRuntimeRequest(
+                changes: [
+                    .diskGiB(harness.currentDiskGiB + harness.context.diskStepGiB),
+                ],
+                restart: false
+            ),
+            context: harness.context,
+            currentVMConfig: harness.vmConfig,
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
+        )
+
+        XCTAssertFalse(plan.restart)
+        XCTAssertEqual(plan.restartRequirement, .vmRuntime)
+        XCTAssertFalse(plan.effects.contains(.restartRuntimeServices))
+    }
+
+    func testRestartPolicyDoesNotRequireRestartForSubmittedCurrentDiskSize() throws {
+        let harness = Harness()
+
+        let plan = try harness.useCase.plan(
+            ConfigureRuntimeRequest(
+                changes: [
+                    .diskGiB(harness.currentDiskGiB),
+                ],
+                restart: true
+            ),
+            context: harness.context,
+            currentVMConfig: harness.vmConfig,
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
+        )
+
+        XCTAssertFalse(plan.restart)
+        XCTAssertEqual(plan.restartRequirement, .none)
+        XCTAssertFalse(plan.effects.contains(.restartRuntimeServices))
+    }
+
+    func testRejectsDiskShrinkAgainstExplicitCurrentDiskSize() {
+        let harness = Harness()
+
+        XCTAssertThrowsError(try harness.useCase.plan(
+            ConfigureRuntimeRequest(
+                changes: [
+                    .diskGiB(harness.currentDiskGiB - harness.context.diskStepGiB),
+                ]
+            ),
+            context: harness.context,
+            currentVMConfig: harness.vmConfig,
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
+        )) { error in
+            XCTAssertEqual(
+                error as? ConfigureRuntimeError,
+                .invalidArgument("--disk-gib can only increase the VM disk; current disk is 32 GiB")
+            )
+        }
     }
 
     func testEffectExecutionPlanKeepsPreAndPostWriteOrderingOutOfWorkflow() {
@@ -104,7 +243,8 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             ConfigureRuntimeRequest(changes: [.adminPasswordFile(URL(fileURLWithPath: "/tmp/admin-password"))]),
             context: harness.context,
             currentVMConfig: harness.vmConfig,
-            currentGuestRuntimeConfig: harness.guestConfig
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
         )) { error in
             XCTAssertEqual(
                 error as? ConfigureRuntimeError,
@@ -149,7 +289,8 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             ConfigureRuntimeRequest(changes: [.vitalServerURL("vitaldb.tirosh.ai")]),
             context: harness.context,
             currentVMConfig: harness.vmConfig,
-            currentGuestRuntimeConfig: harness.guestConfig
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
         )) { error in
             XCTAssertEqual(
                 error as? ConfigureRuntimeError,
@@ -165,7 +306,8 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             ConfigureRuntimeRequest(changes: [.remoteConsoleURL("")]),
             context: harness.context,
             currentVMConfig: harness.vmConfig,
-            currentGuestRuntimeConfig: harness.guestConfig
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
         )) { error in
             XCTAssertEqual(
                 error as? ConfigureRuntimeError,
@@ -184,7 +326,8 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             ]),
             context: harness.context,
             currentVMConfig: harness.vmConfig,
-            currentGuestRuntimeConfig: harness.guestConfig
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
         )
 
         XCTAssertEqual(plan.guestRuntimeConfig.vitalServerURL, "http://vitaldb.tirosh.ai/")
@@ -201,7 +344,8 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             ConfigureRuntimeRequest(changes: [.network(.bridged)]),
             context: harness.context,
             currentVMConfig: vmConfig,
-            currentGuestRuntimeConfig: harness.guestConfig
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
         )) { error in
             XCTAssertEqual(
                 error as? ConfigureRuntimeError,
@@ -215,6 +359,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
         let guestConfigURL = URL(fileURLWithPath: "/runtime/runtime-config.json")
         let guestSettingsURL = URL(fileURLWithPath: "/runtime/runtime-settings.json")
         let useCase = ConfigureRuntimeUseCase<ConfigureTestVMConfig>()
+        let currentDiskGiB = 32
 
         lazy var context: ConfigureRuntimeContext<ConfigureTestNetworkMode> = ConfigureRuntimeContext(
             vmConfigURL: vmConfigURL,
@@ -242,7 +387,13 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             configureNetworkMode: .bridged,
             configureBridgedInterface: "en0",
             configureAutoRecoveryEnabled: true,
-            configurePreventSystemSleep: true
+            configurePreventSystemSleep: true,
+            vitalFilesDirectory: ConfigureTestSharedDirectory(
+                hostPath: "/old-vital",
+                tag: "vital-files",
+                guestMountPath: "/mnt/vital-files",
+                readOnly: false
+            )
         )
         var guestConfig = GuestRuntimeConfigDocument(
             vitalserverHttpPort: 18080,
@@ -283,6 +434,10 @@ struct ConfigureTestVMConfig: Codable, Equatable, ConfigureRuntimeMutableVMRunti
     var configureAutoRecoveryEnabled: Bool?
     var configurePreventSystemSleep: Bool?
     var vitalFilesDirectory: ConfigureTestSharedDirectory?
+
+    var configureVitalFilesDirectoryHostPath: String? {
+        vitalFilesDirectory?.hostPath
+    }
 
     mutating func setConfigureVitalFilesDirectory(_ directory: RuntimeSharedDirectoryConfiguration) {
         vitalFilesDirectory = ConfigureTestSharedDirectory(

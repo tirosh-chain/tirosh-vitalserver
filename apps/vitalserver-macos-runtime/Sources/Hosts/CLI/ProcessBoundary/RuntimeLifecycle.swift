@@ -241,8 +241,17 @@ struct RuntimeLifecycle {
         let result = try runtimeConfigureRunner().configure(command)
 
         guard result.restart else {
-            try writeRuntimeStatus(.degraded, operation: .configure, message: "runtime configuration updated")
-            print("runtime configuration updated; restart required for VM/guest changes")
+            if result.restartRequirement.requiresRestart {
+                try writeRuntimeStatus(
+                    .degraded,
+                    operation: .configure,
+                    message: "runtime configuration updated; VM runtime restart required"
+                )
+                print("runtime configuration updated; VM runtime restart required")
+                return
+            }
+            try writeRuntimeStatus(.healthy, operation: .configure, message: "runtime configuration updated")
+            print("runtime configuration updated")
             return
         }
         print("runtime configuration updated and services restarted")

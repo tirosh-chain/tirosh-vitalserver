@@ -60,12 +60,18 @@ public struct RuntimeGuestShutdownComposition {
         try prepare(version: manifest.version)
     }
 
-    public func prepare(version: String) throws {
+    public func prepare(
+        version: String,
+        progressStatus: RuntimeStatusLevel = .updating,
+        progressOperation: RuntimeOperation = .applyBundle
+    ) throws {
         try RuntimeGuestShutdownWorkflow().prepareForUpdate(
             version: version,
             context: RuntimeGuestShutdownWorkflowContext(
                 guestRunDirectory: context.guestRunDirectory,
-                waitTimeoutSeconds: Constants.Runtime.updateShutdownWaitTimeoutSeconds
+                waitTimeoutSeconds: Constants.Runtime.updateShutdownWaitTimeoutSeconds,
+                progressStatus: progressStatus,
+                progressOperation: progressOperation
             ),
             actions: RuntimeGuestShutdownWorkflowActions(
                 requireCapability: operations.requireCapability,

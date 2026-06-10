@@ -156,6 +156,15 @@ read failure는 empty success가 아닙니다. 상태 소스를 읽지 못하면
 Settings 화면에서 설정을 적용한 직후 `Critical` 또는 `Recovering`이 되면, 설정값 validation 실패와
 VM restart 실패를 구분합니다.
 
+Settings apply는 변경된 설정에 따라 VM runtime restart requirement를 먼저 판단합니다. CPU,
+memory, disk 증가, network mode, bridged interface, Vital files directory 변경은 VM runtime restart가
+필요합니다. URL, admin password, start on boot, auto recovery, sleep prevention, Redis backup
+retention 변경은 VM runtime restart requirement를 만들지 않습니다.
+
+`Restart VM runtime when required`가 꺼져 있고 VM runtime restart가 필요한 설정을 저장하면 상태는
+`configure` operation의 degraded message로 "VM runtime restart required"를 표시할 수 있습니다.
+이 경우 설정 저장 실패가 아니라, 현재 실행 중인 VM에는 아직 반영되지 않았다는 뜻입니다.
+
 | 확인 항목 | 의미 |
 |---|---|
 | `runtime-events.jsonl`의 `configure` 직후 event | 설정 apply가 실제로 runtime restart를 요청했는지 확인 |
@@ -170,3 +179,7 @@ I/O가 아직 남아 있으면 디스크 오류가 드러나거나 악화될 수
 예방 원칙은 Settings restart, Update, Stop/Repair service가 같은 VM shutdown contract를 사용하게
 하는 것입니다. Host는 VM 내부 상태를 추측하지 않고, guest가 명시적으로 shutdown 준비와 poweroff
 요청 상태를 보고한 뒤 Host service stop/restart를 진행해야 합니다.
+
+Settings apply가 guest shutdown worker를 공유하더라도 update bundle 적용으로 보지 않습니다. Settings
+restart progress는 `configure` operation으로 해석하고, update bundle 적용은 `apply-bundle` operation과
+Update 탭의 progress로 따로 확인합니다.

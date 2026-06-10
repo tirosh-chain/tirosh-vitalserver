@@ -46,7 +46,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertTrue(confirmation.contains("Redis backup retention: 20 archives"))
         XCTAssertTrue(confirmation.contains("Automatic recovery: false"))
         XCTAssertTrue(confirmation.contains("\(AppConstants.Labels.preventSystemSleep): false"))
-        XCTAssertTrue(confirmation.contains("Restart services: true"))
+        XCTAssertTrue(confirmation.contains("Restart VM runtime when required: true"))
     }
 
     func testStatusServiceURLsPreserveMissingAdvertisedURLsAsUnknownAndClosed() {

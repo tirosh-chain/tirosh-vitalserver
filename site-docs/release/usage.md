@@ -85,12 +85,37 @@ Advanced, Observability, Logs 화면으로 이동합니다.
 
 자세한 상태값 의미는 [Runtime Status](runtime-status.md)를 봅니다.
 
-## 3. Update 적용
+## 3. Settings 적용
+
+Settings 화면의 `Restart VM runtime when required`는 저장 후 항상 runtime service를 재시작한다는
+뜻이 아닙니다. 변경된 설정이 VM runtime restart를 요구할 때, 그 restart를 즉시 수행할지 선택하는
+옵션입니다.
+
+VM runtime restart가 필요한 설정은 VM 실행 조건을 바꾸는 값입니다.
+
+| 설정 | 적용 방식 |
+|---|---|
+| CPU, memory | VM runtime restart 필요 |
+| disk 증가 | VM disk resize 후 VM runtime restart 필요 |
+| network mode, bridged interface | VM network device 재구성이 필요하므로 VM runtime restart 필요 |
+| Vital files directory | VM shared directory mount 재구성이 필요하므로 VM runtime restart 필요 |
+| VitalServer URL, Remote Console URL, public host/port | runtime config 문서 갱신, VM runtime restart requirement 없음 |
+| admin password, Redis backup retention | guest runtime settings 갱신, VM runtime restart requirement 없음 |
+| start on boot, auto recovery, sleep prevention | Host launchd/config 정책 갱신, VM runtime restart requirement 없음 |
+
+따라서 URL이나 Redis backup retention 같은 설정만 바꿨는데 `Restart VM runtime when required`가
+켜져 있어도 VM을 내리지 않습니다. 반대로 CPU, memory, disk 증가, network, Vital files directory를
+바꾸고 이 옵션을 끄면 설정은 저장되지만 현재 실행 중인 VM에는 다음 VM runtime restart 때 반영됩니다.
+
+Settings apply는 update bundle 적용이 아닙니다. 진행 상태가 보이면 operation은 `configure`로
+해석하고, update bundle 검증/적용 상태와 섞어 판단하지 않습니다.
+
+## 4. Update 적용
 
 Product Update는 Helper app의 Update 탭에서 적용합니다. 현장 Mac에서 update bundle을 만드는
 것이 아니라, release 담당자가 만든 `update-bundle-...tar.gz` 파일을 전달받아 적용하는 흐름입니다.
 
-### 3-1. Update 탭에서 진행
+### 4-1. Update 탭에서 진행
 
 | 단계 | 화면에서 할 일 |
 |---|---|
@@ -102,14 +127,14 @@ Product Update는 Helper app의 Update 탭에서 적용합니다. 현장 Mac에�
 현재 build에서는 online update가 아니라 offline bundle 적용을 기준으로 합니다. Update 탭에
 `Online update is planned for connected sites` 안내가 보이면, 전달받은 offline bundle을 사용합니다.
 
-### 3-2. 적용 전 확인
+### 4-2. 적용 전 확인
 
 - update bundle 파일명이 전달받은 release 안내와 맞는지 확인합니다.
 - `Verify Bundle`이 실패하면 `Apply Bundle`을 진행하지 않습니다.
 - update 중에는 VitalServer service가 재시작될 수 있습니다.
 - 실패하면 같은 bundle을 반복 적용하기보다 Update progress, Logs, Observability event를 먼저 확인합니다.
 
-### 3-3. 지원 담당자 CLI
+### 4-3. 지원 담당자 CLI
 
 지원 담당자가 직접 update bundle을 검증하거나 적용해야 할 때만 runtime CLI를 사용합니다.
 
@@ -121,14 +146,14 @@ sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle.t
 CLI와 Helper app의 Update 탭은 같은 update backend를 사용합니다. 일반 사용자 절차는 Update 탭을
 기준으로 합니다.
 
-## 4. 로그와 지원 자료
+## 5. 로그와 지원 자료
 
 문제가 생기면 화면에 보이는 상태만 전달하지 않습니다. 같은 `Critical`이라도 설치 실패,
 update 실패, recorder 관측 실패, service 실행 실패는 확인해야 하는 자료가 다릅니다.
 
 지원 담당자가 같은 상황을 다시 따라갈 수 있도록, 상태 화면, logs, event 기간을 함께 모읍니다.
 
-### 4-1. 먼저 기록할 것
+### 5-1. 먼저 기록할 것
 
 지원 요청을 만들기 전에 아래 정보를 먼저 적어 둡니다.
 
@@ -143,7 +168,7 @@ update 실패, recorder 관측 실패, service 실행 실패는 확인해야 하
 가능하면 화면 screenshot도 함께 보관합니다. 다만 환자 정보, 병원 내부 IP, 인증 정보, token이
 보이면 공개 issue에 올리지 않습니다.
 
-### 4-2. Helper app에서 모을 자료
+### 5-2. Helper app에서 모을 자료
 
 Helper app이 열리는 상태라면 아래 순서로 확인합니다.
 
@@ -156,7 +181,7 @@ Helper app이 열리는 상태라면 아래 순서로 확인합니다.
 `Open Logs`는 Mac 안의 로그 폴더를 여는 기능이고, `Export Logs`는 지원 담당자에게 전달할 수
 있는 zip 파일을 만드는 기능입니다.
 
-### 4-3. 상황별로 필요한 자료
+### 5-3. 상황별로 필요한 자료
 
 | 상황 | 함께 전달할 자료 |
 |---|---|
@@ -167,7 +192,7 @@ Helper app이 열리는 상태라면 아래 순서로 확인합니다.
 | Reset Installer 실패 | `/private/tmp/tirosh-vitalserver-uninstall.log`, `/var/log/install.log` |
 | 상태 화면을 읽지 못함 | read issue 메시지, Logs 화면의 export zip, Observability store failure 여부 |
 
-### 4-4. 직접 확인할 수 있는 로그
+### 5-4. 직접 확인할 수 있는 로그
 
 Helper app에서 export가 되지 않거나 설치/정리 단계에서 app을 열 수 없다면 아래 로그를 확인합니다.
 
@@ -182,7 +207,7 @@ runtime이 설치된 뒤의 상세 로그는 기본적으로 아래 위치에 �
 /Library/Application Support/VitalServerHelper/logs/
 ```
 
-### 4-5. 공개 issue에 올리지 않을 것
+### 5-5. 공개 issue에 올리지 않을 것
 
 공개 GitHub issue에는 아래 정보를 올리지 않습니다.
 
@@ -195,12 +220,12 @@ runtime이 설치된 뒤의 상세 로그는 기본적으로 아래 위치에 �
 공개 issue에는 재현 절차, 기대 결과, 실제 결과, 상태 이름, 필요한 경우 마스킹한 로그 일부만
 작성합니다.
 
-## 5. 설치 경로
+## 6. 설치 경로
 
 아래 경로는 지원 담당자가 설치 상태를 확인하거나 로그를 모을 때 자주 봅니다. 일반 운영자는
 대부분 Helper app 화면과 `Export Logs`만 사용하면 됩니다.
 
-### 5-1. 주요 경로
+### 6-1. 주요 경로
 
 | 항목 | 위치 |
 |---|---|
@@ -213,7 +238,7 @@ runtime이 설치된 뒤의 상세 로그는 기본적으로 아래 위치에 �
 | logs | `/Library/Application Support/VitalServerHelper/logs/` |
 | LaunchDaemons | `/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.*.plist` |
 
-### 5-2. 언제 확인하나
+### 6-2. 언제 확인하나
 
 | 경로 | 언제 보는가 |
 |---|---|
@@ -224,7 +249,7 @@ runtime이 설치된 뒤의 상세 로그는 기본적으로 아래 위치에 �
 | logs | `Export Logs`가 어렵거나 특정 log source를 직접 확인할 때 |
 | LaunchDaemons | service가 load되어 있는지, disabled override가 남았는지 확인할 때 |
 
-### 5-3. 직접 수정하지 않을 것
+### 6-3. 직접 수정하지 않을 것
 
 아래 파일과 directory는 Helper가 소유합니다. 지원 담당자의 안내 없이 직접 삭제하거나 수정하지
 않습니다.
@@ -238,7 +263,7 @@ runtime이 설치된 뒤의 상세 로그는 기본적으로 아래 위치에 �
 재설치가 막혀 정리가 필요하면 파일을 수동으로 지우기보다
 [Reset Installer](reset-installer.md)를 사용합니다.
 
-## 6. 지원 담당자 참고
+## 7. 지원 담당자 참고
 
 사전 검증용 package를 repository에서 직접 만들 때는 Dev 문서의
 [Delivery & Validation](../dev/delivery-validation.md)을 기준으로 합니다.
