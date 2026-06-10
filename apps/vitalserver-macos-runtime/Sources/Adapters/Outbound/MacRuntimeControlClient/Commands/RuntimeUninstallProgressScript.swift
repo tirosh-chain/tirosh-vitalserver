@@ -63,6 +63,19 @@ enum RuntimeUninstallProgressScript {
           kill "${tail_pid}" 2>/dev/null || true
           wait "${tail_pid}" 2>/dev/null || true
         }
+        has_terminal_marker() {
+          grep -q "${completed_marker}" "${log_file}" 2>/dev/null \
+            || grep -q "${failed_marker_prefix}.*${marker_run_id}" "${log_file}" 2>/dev/null
+        }
+        wait_for_terminal_marker() {
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if has_terminal_marker; then
+              return 0
+            fi
+            sleep 0.2
+          done
+          return 1
+        }
         while true; do
           if grep -q "${completed_marker}" "${log_file}" 2>/dev/null; then
             finish_tail
@@ -80,6 +93,9 @@ enum RuntimeUninstallProgressScript {
           if [ -s "${worker_pid_file}" ]; then
             worker_pid="$(cat "${worker_pid_file}" 2>/dev/null || true)"
             if [ "${observed_worker_start}" = true ] && [ -n "${worker_pid}" ] && ! kill -0 "${worker_pid}" 2>/dev/null; then
+              if wait_for_terminal_marker; then
+                continue
+              fi
               rm -f "${worker_pid_file}" 2>/dev/null || true
               finish_tail
               printf "\\n\(terminalFailedMessage)\\n"

@@ -19,7 +19,9 @@ uninstall process completed exitCode=0 runID=<run-id>
 
 ## Cause
 
-Progress viewer는 worker PID 파일과 run-specific terminal marker를 함께 봅니다. 이전 viewer window가 같은 log/PID 파일을 계속 보고 있거나, viewer가 자기 run의 `started` marker를 아직 확인하지 않은 상태에서 worker PID 종료를 먼저 보면, 실제 uninstall worker가 정상 완료했는데도 viewer가 이를 실패로 표시할 수 있습니다.
+Progress viewer는 worker PID 파일과 run-specific terminal marker를 함께 봅니다. 이전 viewer window가 같은 log/PID 파일을 계속 보고 있거나, viewer가 자기 run의 terminal marker를 보기 전에 worker PID 종료를 먼저 보면, 실제 uninstall worker가 정상 완료했는데도 viewer가 이를 실패로 표시할 수 있습니다.
+
+특히 worker가 정상 종료하면서 `completed` marker를 쓰는 순간과 viewer가 dead PID를 관찰하는 순간이 엇갈리면, log의 최종 marker는 성공인데 Terminal window만 실패를 표시할 수 있습니다.
 
 Root uninstaller의 source of truth는 `/private/tmp/tirosh-vitalserver-uninstall.log`의 run marker입니다. Terminal viewer는 사람이 보는 보조 표시이며, 다른 run의 worker PID 종료를 자기 run 실패로 추정하면 안 됩니다.
 
@@ -43,7 +45,7 @@ uninstall process failed exitCode=<status> runID=<run-id>
 
 ## Fix Direction
 
-Progress viewer는 자기 run의 `started` marker를 본 뒤에만 worker PID 종료를 실패로 해석해야 합니다. `completed` 또는 explicit `failed` marker가 있으면 그 marker가 최종 판단입니다.
+Progress viewer는 자기 run의 `started` marker를 본 뒤에만 worker PID 종료를 실패로 해석해야 합니다. worker PID가 먼저 사라져도 짧게 자기 run의 terminal marker를 다시 확인해야 하며, `completed` 또는 explicit `failed` marker가 있으면 그 marker가 최종 판단입니다.
 
 ## Prevention
 
@@ -54,3 +56,4 @@ Progress viewer는 자기 run의 `started` marker를 본 뒤에만 worker PID �
 ## Follow-up
 
 - 2026-06-10: 현장 로그에서 Terminal은 실패를 표시했지만 uninstall log가 `exitCode=0`으로 끝난 케이스를 확인했습니다. Viewer가 자기 run의 `started` marker를 확인한 뒤에만 worker PID 종료를 실패로 처리하도록 수정했습니다.
+- 2026-06-10: 같은 증상이 반복되어 viewer가 owned worker PID 종료를 본 뒤에도 짧게 terminal marker를 재확인하도록 보강했습니다. Backend uninstall success marker가 있으면 Terminal viewer는 완료로 표시해야 합니다.
