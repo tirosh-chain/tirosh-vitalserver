@@ -9,7 +9,7 @@ public enum RuntimeDataBackupPolicy {
     public static func validateCompletedBackup(
         _ manifest: RuntimeDataBackupManifest,
         expectedProduct: String? = nil,
-        requiredArtifacts: [RuntimeDataBackupArtifactID] = RuntimeDataBackupArtifactID.requiredForUIContinuity
+        requiredArtifacts: [RuntimeDataBackupArtifactID] = RuntimeDataBackupArtifactID.requiredForRecovery
     ) -> RuntimeDataBackupManifestValidation {
         var errors: [String] = []
 

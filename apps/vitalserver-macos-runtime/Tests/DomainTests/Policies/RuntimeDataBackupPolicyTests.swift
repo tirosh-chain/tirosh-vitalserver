@@ -17,14 +17,26 @@ final class RuntimeDataBackupPolicyTests: XCTestCase {
 
     func testMissingRequiredArtifactInvalidatesManifest() {
         let manifest = completeManifest(
-            artifacts: completeArtifacts().filter { $0.id != .runtimeObservabilityDatabase }
+            artifacts: completeArtifacts(for: RuntimeDataBackupArtifactID.requiredForRecovery)
+                .filter { $0.id != .runtimeVMConfig }
         )
 
         XCTAssertEqual(
             RuntimeDataBackupPolicy.validateCompletedBackup(manifest),
             .invalid([
-                "required runtime data backup artifact is missing: runtime-observability-database",
+                "required runtime data backup artifact is missing: runtime-vm-config",
             ])
+        )
+    }
+
+    func testOptionalArtifactsCanBeMissing() {
+        let manifest = completeManifest(
+            artifacts: completeArtifacts(for: RuntimeDataBackupArtifactID.requiredForRecovery)
+        )
+
+        XCTAssertEqual(
+            RuntimeDataBackupPolicy.validateCompletedBackup(manifest),
+            .valid
         )
     }
 
@@ -81,9 +93,17 @@ final class RuntimeDataBackupPolicyTests: XCTestCase {
     }
 
     private func completeArtifacts() -> [RuntimeDataBackupArtifact] {
-        RuntimeDataBackupArtifactID.requiredForUIContinuity.map { id in
-            RuntimeDataBackupArtifact(
+        completeArtifacts(for: RuntimeDataBackupArtifactID.requiredForUIContinuity)
+    }
+
+    private func completeArtifacts(for ids: [RuntimeDataBackupArtifactID]) -> [RuntimeDataBackupArtifact] {
+        ids.map { id in
+            let role = RuntimeDataBackupArtifactID.optionalForUIContinuity.contains(id)
+                ? RuntimeDataBackupArtifactRole.optional
+                : .required
+            return RuntimeDataBackupArtifact(
                 id: id,
+                role: role,
                 owner: id == .redisData ? .guest : .host,
                 sourceKind: id == .redisData ? .dockerVolumeArchive : .file,
                 sourcePath: "/source/\(id.rawValue)",

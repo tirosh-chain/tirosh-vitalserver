@@ -27,6 +27,21 @@ public enum RuntimeDataBackupArtifactID: String, Codable, CaseIterable, Equatabl
         .runtimeObservabilityDatabase,
     ]
 
+    public static let requiredForRecovery: [RuntimeDataBackupArtifactID] = [
+        .redisData,
+        .runtimeVMConfig,
+        .guestRuntimeConfig,
+        .guestRuntimeSettings,
+        .proxyLaunchDaemonSettings,
+        .startOnBootState,
+    ]
+
+    public static let optionalForUIContinuity: [RuntimeDataBackupArtifactID] = [
+        .runtimeStatusDocument,
+        .runtimeEventsDocument,
+        .runtimeObservabilityDatabase,
+    ]
+
     public var defaultBackupName: String {
         switch self {
         case .redisData:
@@ -53,6 +68,7 @@ public enum RuntimeDataBackupArtifactID: String, Codable, CaseIterable, Equatabl
 
 public enum RuntimeDataBackupArtifactRole: String, Codable, Equatable, Sendable {
     case required
+    case optional
 }
 
 public enum RuntimeDataBackupArtifactOwner: String, Codable, Equatable, Sendable {

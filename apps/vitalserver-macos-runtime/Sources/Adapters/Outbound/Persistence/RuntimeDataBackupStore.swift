@@ -153,21 +153,21 @@ public struct RuntimeDataBackupStore {
                 data: startOnBootState,
                 destination: artifactsDirectory.appendingPathComponent(RuntimeDataBackupArtifactID.startOnBootState.defaultBackupName)
             ))
-            artifacts.append(try archiveRequiredFile(
+            artifacts.append(try archiveOptionalFile(
                 id: .runtimeStatusDocument,
                 owner: .host,
                 sourceKind: .file,
                 source: paths.runtimeStatus,
                 destination: artifactsDirectory.appendingPathComponent(RuntimeDataBackupArtifactID.runtimeStatusDocument.defaultBackupName)
             ))
-            artifacts.append(try archiveRequiredFile(
+            artifacts.append(try archiveOptionalFile(
                 id: .runtimeEventsDocument,
                 owner: .host,
                 sourceKind: .file,
                 source: paths.runtimeEvents,
                 destination: artifactsDirectory.appendingPathComponent(RuntimeDataBackupArtifactID.runtimeEventsDocument.defaultBackupName)
             ))
-            artifacts.append(try archiveSQLiteSnapshot(
+            artifacts.append(try archiveOptionalSQLiteSnapshot(
                 source: paths.runtimeObservabilityDatabase,
                 destination: artifactsDirectory.appendingPathComponent(RuntimeDataBackupArtifactID.runtimeObservabilityDatabase.defaultBackupName)
             ))
@@ -210,9 +210,9 @@ public struct RuntimeDataBackupStore {
             backup: backup,
             destination: paths.proxyLaunchDaemon
         )
-        try restoreRequiredFile(.runtimeStatusDocument, artifacts: artifacts, backup: backup, destination: paths.runtimeStatus)
-        try restoreRequiredFile(.runtimeEventsDocument, artifacts: artifacts, backup: backup, destination: paths.runtimeEvents)
-        try restoreRequiredSQLiteSnapshot(artifacts: artifacts, backup: backup, destination: paths.runtimeObservabilityDatabase)
+        try restoreOptionalFile(.runtimeStatusDocument, artifacts: artifacts, backup: backup, destination: paths.runtimeStatus)
+        try restoreOptionalFile(.runtimeEventsDocument, artifacts: artifacts, backup: backup, destination: paths.runtimeEvents)
+        try restoreOptionalSQLiteSnapshot(artifacts: artifacts, backup: backup, destination: paths.runtimeObservabilityDatabase)
 
         let startOnBootState = try JSONDecoder().decode(
             RuntimeDataBackupStartOnBootStateDocument.self,
@@ -230,7 +230,8 @@ public struct RuntimeDataBackupStore {
         sourceKind: RuntimeDataBackupSourceKind,
         source: URL,
         sourceVolumeName: String? = nil,
-        destination: URL
+        destination: URL,
+        role: RuntimeDataBackupArtifactRole = .required
     ) throws -> RuntimeDataBackupArtifact {
         try requireRequiredFile(id: id, source: source)
         try fileStore.copyItem(at: source, to: destination)
@@ -240,7 +241,8 @@ public struct RuntimeDataBackupStore {
             sourceKind: sourceKind,
             sourcePath: source.path,
             volumeName: sourceVolumeName,
-            destination: destination
+            destination: destination,
+            role: role
         )
     }
 
@@ -256,13 +258,159 @@ public struct RuntimeDataBackupStore {
             sourceKind: .generatedState,
             sourcePath: nil,
             volumeName: nil,
-            destination: destination
+            destination: destination,
+            role: .required
+        )
+    }
+
+    private func archiveOptionalFile(
+        id: RuntimeDataBackupArtifactID,
+        owner: RuntimeDataBackupArtifactOwner,
+        sourceKind: RuntimeDataBackupSourceKind,
+        source: URL,
+        sourceVolumeName: String? = nil,
+        destination: URL
+    ) throws -> RuntimeDataBackupArtifact {
+        do {
+            return try archiveRequiredFile(
+                id: id,
+                owner: owner,
+                sourceKind: sourceKind,
+                source: source,
+                sourceVolumeName: sourceVolumeName,
+                destination: destination,
+                role: .optional
+            )
+        } catch let error as RuntimeDataBackupStoreError {
+            switch error {
+            case .requiredArtifactMissing(let id, let path):
+                return optionalArtifact(
+                    id: id,
+                    owner: owner,
+                    sourceKind: sourceKind,
+                    sourcePath: path,
+                    volumeName: sourceVolumeName,
+                    state: .missing,
+                    error: nil
+                )
+            case .requiredArtifactInspectionFailed(let id, let path, let reason):
+                return optionalArtifact(
+                    id: id,
+                    owner: owner,
+                    sourceKind: sourceKind,
+                    sourcePath: path,
+                    volumeName: sourceVolumeName,
+                    state: .readFailed,
+                    error: reason
+                )
+            case .requiredArtifactUnexpectedState(let id, let path, let state):
+                return optionalArtifact(
+                    id: id,
+                    owner: owner,
+                    sourceKind: sourceKind,
+                    sourcePath: path,
+                    volumeName: sourceVolumeName,
+                    state: .readFailed,
+                    error: state
+                )
+            default:
+                throw error
+            }
+        } catch {
+            return optionalArtifact(
+                id: id,
+                owner: owner,
+                sourceKind: sourceKind,
+                sourcePath: source.path,
+                volumeName: sourceVolumeName,
+                state: .readFailed,
+                error: error.localizedDescription
+            )
+        }
+    }
+
+    private func archiveOptionalSQLiteSnapshot(
+        source: URL,
+        destination: URL
+    ) throws -> RuntimeDataBackupArtifact {
+        do {
+            return try archiveSQLiteSnapshot(source: source, destination: destination, role: .optional)
+        } catch let error as RuntimeDataBackupStoreError {
+            switch error {
+            case .requiredArtifactMissing:
+                return optionalArtifact(
+                    id: .runtimeObservabilityDatabase,
+                    owner: .host,
+                    sourceKind: .sqliteSnapshot,
+                    sourcePath: source.path,
+                    volumeName: nil,
+                    state: .missing,
+                    error: nil
+                )
+            case .requiredArtifactInspectionFailed(_, let path, let reason):
+                return optionalArtifact(
+                    id: .runtimeObservabilityDatabase,
+                    owner: .host,
+                    sourceKind: .sqliteSnapshot,
+                    sourcePath: path,
+                    volumeName: nil,
+                    state: .readFailed,
+                    error: reason
+                )
+            case .requiredArtifactUnexpectedState(_, let path, let state):
+                return optionalArtifact(
+                    id: .runtimeObservabilityDatabase,
+                    owner: .host,
+                    sourceKind: .sqliteSnapshot,
+                    sourcePath: path,
+                    volumeName: nil,
+                    state: .readFailed,
+                    error: state
+                )
+            default:
+                throw error
+            }
+        } catch {
+            return optionalArtifact(
+                id: .runtimeObservabilityDatabase,
+                owner: .host,
+                sourceKind: .sqliteSnapshot,
+                sourcePath: source.path,
+                volumeName: nil,
+                state: .readFailed,
+                error: error.localizedDescription
+            )
+        }
+    }
+
+    private func optionalArtifact(
+        id: RuntimeDataBackupArtifactID,
+        owner: RuntimeDataBackupArtifactOwner,
+        sourceKind: RuntimeDataBackupSourceKind,
+        sourcePath: String,
+        volumeName: String? = nil,
+        state: RuntimeDataBackupArtifactState,
+        error: String?
+    ) -> RuntimeDataBackupArtifact {
+        RuntimeDataBackupArtifact(
+            id: id,
+            role: .optional,
+            owner: owner,
+            sourceKind: sourceKind,
+            sourcePath: sourcePath,
+            volumeName: volumeName,
+            backupPath: nil,
+            state: state,
+            sizeBytes: nil,
+            sha256: nil,
+            error: error
         )
     }
 
     private func archiveSQLiteSnapshot(
         source: URL,
-        destination: URL
+        destination: URL,
+        role: RuntimeDataBackupArtifactRole = .required
     ) throws -> RuntimeDataBackupArtifact {
         try requireRequiredFile(id: .runtimeObservabilityDatabase, source: source)
         try snapshotSQLiteDatabase(source, destination)
@@ -272,7 +420,8 @@ public struct RuntimeDataBackupStore {
             sourceKind: .sqliteSnapshot,
             sourcePath: source.path,
             volumeName: nil,
-            destination: destination
+            destination: destination,
+            role: role
         )
     }
 
@@ -303,11 +452,13 @@ public struct RuntimeDataBackupStore {
         sourceKind: RuntimeDataBackupSourceKind,
         sourcePath: String?,
         volumeName: String?,
-        destination: URL
+        destination: URL,
+        role: RuntimeDataBackupArtifactRole
     ) throws -> RuntimeDataBackupArtifact {
         let data = try fileStore.readData(destination)
         return RuntimeDataBackupArtifact(
             id: id,
+            role: role,
             owner: owner,
             sourceKind: sourceKind,
             sourcePath: sourcePath,
@@ -361,7 +512,7 @@ public struct RuntimeDataBackupStore {
             errors.append("product mismatch expected=\(metadata.productIdentifier) actual=\(manifest.product)")
         }
         let artifactsByID = Dictionary(grouping: manifest.artifacts, by: \.id)
-        for id in RuntimeDataBackupArtifactID.requiredForUIContinuity {
+        for id in RuntimeDataBackupArtifactID.requiredForRecovery {
             guard let artifacts = artifactsByID[id], artifacts.count == 1, let artifact = artifacts.first else {
                 errors.append("missing required artifact id=\(id.rawValue)")
                 continue
@@ -407,11 +558,47 @@ public struct RuntimeDataBackupStore {
         }
     }
 
-    private func restoreRequiredSQLiteSnapshot(
+    private func restoreOptionalFile(
+        _ id: RuntimeDataBackupArtifactID,
         artifacts: [RuntimeDataBackupArtifactID: RuntimeDataBackupArtifact],
         backup: URL,
         destination: URL
     ) throws {
+        guard let source = optionalVerifiedArtifact(id, artifacts: artifacts, backup: backup) else {
+            return
+        }
+
+        do {
+            try fileStore.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try removeDestinationFileIfNeeded(id: id, destination: destination)
+            try fileStore.copyItem(at: source, to: destination)
+        } catch let error as RuntimeDataBackupStoreError {
+            throw error
+        } catch {
+            throw RuntimeDataBackupStoreError.restoreWriteFailed(
+                id: id,
+                path: destination.path,
+                reason: error.localizedDescription
+            )
+        }
+    }
+
+    private func restoreOptionalSQLiteSnapshot(
+        artifacts: [RuntimeDataBackupArtifactID: RuntimeDataBackupArtifact],
+        backup: URL,
+        destination: URL
+    ) throws {
+        guard optionalVerifiedArtifact(
+            .runtimeObservabilityDatabase,
+            artifacts: artifacts,
+            backup: backup
+        ) != nil else {
+            return
+        }
+
         try removeSQLiteSidecar(URL(fileURLWithPath: destination.path + "-wal"))
         try removeSQLiteSidecar(URL(fileURLWithPath: destination.path + "-shm"))
         try restoreRequiredFile(
@@ -439,6 +626,36 @@ public struct RuntimeDataBackupStore {
         if artifact.sha256 != sha256(data) {
             throw RuntimeDataBackupStoreError.artifactChecksumMismatch(id: id, path: source.path)
         }
+        return source
+    }
+
+    private func optionalVerifiedArtifact(
+        _ id: RuntimeDataBackupArtifactID,
+        artifacts: [RuntimeDataBackupArtifactID: RuntimeDataBackupArtifact],
+        backup: URL
+    ) -> URL? {
+        guard let artifact = artifacts[id],
+              (artifact.role == .optional || RuntimeDataBackupArtifactID.optionalForUIContinuity.contains(id)),
+              artifact.state == .archived,
+              let backupPath = artifact.backupPath else {
+            return nil
+        }
+
+        guard let source = try? artifactURL(id: id, backupPath: backupPath, backup: backup),
+              case .file = fileStore.pathState(at: source) else {
+            return nil
+        }
+
+        guard let data = try? fileStore.readData(source) else {
+            return nil
+        }
+        if artifact.sizeBytes != UInt64(data.count) {
+            return nil
+        }
+        if artifact.sha256 != sha256(data) {
+            return nil
+        }
+
         return source
     }
 

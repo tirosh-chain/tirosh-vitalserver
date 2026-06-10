@@ -14,9 +14,11 @@ Required artifacts:
 | `guest-runtime-settings` | Host | runtime settings document |
 | `proxy-launch-daemon-settings` | Host | proxy LaunchDaemon plist |
 | `start-on-boot-state` | Host | launchctl enabled/disabled state for managed services |
-| `runtime-status-document` | Host | Host runtime status document |
-| `runtime-events-document` | Host | Host runtime event document |
-| `runtime-observability-database` | Host | `runtime-observability.sqlite` snapshot |
+| `runtime-status-document` | Host | Host runtime status document *(optional: skipped when missing)* |
+| `runtime-events-document` | Host | Host runtime event document *(optional: skipped when missing)* |
+| `runtime-observability-database` | Host | `runtime-observability.sqlite` snapshot *(optional: skipped when missing)* |
+
+The restore process treats `runtime-status-document`, `runtime-events-document`, and `runtime-observability-database` as best-effort artifacts. If missing, restore will continue using existing host-side files and still restore required artifacts.
 
 Backup creation writes a manifest last. Restore must reject missing, duplicated, non-archived, unchecked, size-mismatched, checksum-mismatched, or path-escaping artifacts. Missing backup directories, decode failures, permission failures, guest capability failures, and guest result read failures are operation failures; they are not empty backup lists or successful restores.
 
