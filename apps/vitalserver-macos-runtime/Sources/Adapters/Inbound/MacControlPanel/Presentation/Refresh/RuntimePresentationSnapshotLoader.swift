@@ -83,6 +83,13 @@ struct RuntimePresentationSnapshotLoader {
         return try hostClient.loadBackups(latestBackupPath: latestBackupPath)
     }
 
+    func loadRuntimeDataBackups() async throws -> [RuntimeBackup] {
+        if let snapshotReader {
+            return try await snapshotReader.loadRuntimeDataBackups()
+        }
+        return try hostClient.loadRuntimeDataBackups()
+    }
+
     func loadReleaseInfoIfAvailable() async -> RuntimeReleaseInfoLoadResult {
         guard controlClient.capabilities.canViewReleaseMetadata else {
             return .unavailable

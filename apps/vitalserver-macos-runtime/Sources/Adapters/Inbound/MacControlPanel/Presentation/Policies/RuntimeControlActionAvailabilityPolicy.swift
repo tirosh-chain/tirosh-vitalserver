@@ -42,6 +42,16 @@ public struct RuntimeControlActionAvailabilityPolicy {
             && isRuntimeExecutable(status)
     }
 
+    public func canManageRuntimeDataBackup(
+        status: RuntimeStatus,
+        capabilities: RuntimeControlCapabilities,
+        isBusy: Bool
+    ) -> Bool {
+        !isBusy
+            && capabilities.canControlRuntimeServices
+            && isRuntimeExecutable(status)
+    }
+
     public func canRepairRuntime(status: RuntimeStatus, isBusy: Bool) -> Bool {
         !isBusy && isRuntimeExecutable(status)
     }

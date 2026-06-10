@@ -58,6 +58,59 @@ extension RuntimeViewModel {
         return backups.first { $0.path == selectedBackupPath }
     }
 
+    var selectedRuntimeDataBackup: RuntimeBackup? {
+        guard let selectedRuntimeDataBackupPath else {
+            return nil
+        }
+        return runtimeDataBackups.first { $0.path == selectedRuntimeDataBackupPath }
+    }
+
+    func createRuntimeDataBackup() async {
+        guard controlClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        isCreatingRuntimeDataBackup = true
+        defer {
+            isCreatingRuntimeDataBackup = false
+        }
+        let didCreateBackup = await runClientAction(
+            preparingMessage: AppConstants.StatusText.runtimeDataBackupPreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.runtimeDataBackupRunning,
+            successMessage: AppConstants.StatusText.runtimeDataBackupCompleted,
+            action: { try await self.controlClient.createRuntimeDataBackup() }
+        ).isSuccess
+        if didCreateBackup {
+            await refresh()
+            await refreshHealthStatus()
+        }
+    }
+
+    func restoreRuntimeDataBackup() async {
+        guard controlClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        let plan: RuntimeBackupActionPlan
+        switch RuntimeBackupActionPlanner().rollbackPlan(selectedBackupPath: selectedRuntimeDataBackupPath) {
+        case .success(let actionPlan):
+            plan = actionPlan
+        case .failure(let failure):
+            message = failure.message
+            return
+        }
+        _ = await runClientAction(
+            preparingMessage: AppConstants.StatusText.runtimeDataRestorePreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.runtimeDataRestoreRunning,
+            successMessage: AppConstants.StatusText.runtimeDataRestoreCompleted,
+            action: { try await self.hostClient.restoreRuntimeDataBackup(backupURL: plan.backupURL) }
+        )
+        await refresh()
+        await refreshHealthStatus()
+    }
+
     func rollbackRuntime() async {
         guard controlClient.capabilities.canRollback else {
             message = AppConstants.StatusText.actionUnavailable

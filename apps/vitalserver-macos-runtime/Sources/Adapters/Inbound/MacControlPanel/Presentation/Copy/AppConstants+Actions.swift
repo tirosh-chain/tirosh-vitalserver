@@ -21,6 +21,8 @@ public extension AppConstants {
         public static let verifyBundle = "Verify"
         public static let applyBundle = "Apply Bundle"
         public static let rollback = "Rollback"
+        public static let createBackup = "Create Backup"
+        public static let restoreBackup = "Restore Backup"
         public static let createRedisBackup = "Create Redis Backup"
         public static let restoreRedisBackup = "Restore Redis Backup"
         public static let deleteBackup = "Delete Backup"

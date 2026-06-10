@@ -14,6 +14,7 @@ public protocol RuntimeViewModelSnapshotReading: Sendable {
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) async -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRelationships() async -> RuntimeVitalRelationshipHistory
     func loadBackups(latestBackupPath: String?) async throws -> [RuntimeBackup]
+    func loadRuntimeDataBackups() async throws -> [RuntimeBackup]
 }
 
 public extension RuntimeViewModelSnapshotReading {

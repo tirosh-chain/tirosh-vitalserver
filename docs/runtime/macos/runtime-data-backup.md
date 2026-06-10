@@ -2,6 +2,8 @@
 
 Runtime data backup is the recovery contract for UI continuity data, excluding logs.
 
+The macOS Helper exposes this contract in Advanced -> Recovery operations -> Runtime data backup with Create Backup and Restore Backup actions. Restore requires an explicitly selected runtime data backup from the Host-provided backup list.
+
 Required artifacts:
 
 | Artifact | Owner | Restore target |

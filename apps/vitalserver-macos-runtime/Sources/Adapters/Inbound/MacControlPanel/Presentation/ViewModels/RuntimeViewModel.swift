@@ -14,6 +14,9 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var backups: [RuntimeBackup] = []
     @Published var selectedBackupPath: String?
     @Published var backupListErrorMessage: String?
+    @Published var runtimeDataBackups: [RuntimeBackup] = []
+    @Published var selectedRuntimeDataBackupPath: String?
+    @Published var runtimeDataBackupListErrorMessage: String?
     private let helperMessageLog: any RuntimeHelperMessageLogging
     @Published var message = AppConstants.StatusText.ready {
         didSet {
@@ -32,6 +35,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var isBusy = false
     @Published var isApplyingUpdateBundle = false
     @Published var isCreatingRedisBackup = false
+    @Published var isCreatingRuntimeDataBackup = false
     var isRefreshingLogs = false
     @Published var releaseInfo = RuntimeReleaseInfo.generated
     @Published var releaseInfoErrorMessage: String?
@@ -147,6 +151,10 @@ public final class RuntimeViewModel: ObservableObject {
 
     var hasSelectedBackup: Bool {
         selectedBackupPath != nil
+    }
+
+    var hasSelectedRuntimeDataBackup: Bool {
+        selectedRuntimeDataBackupPath != nil
     }
 
     var applySettingsConfirmation: String {
@@ -478,11 +486,20 @@ public final class RuntimeViewModel: ObservableObject {
             backupListErrorMessage = nil
         } catch {
             backupListErrorMessage = AppConstants.StatusText.backupListLoadFailed(error.localizedDescription)
-            return
+        }
+        do {
+            runtimeDataBackups = try await snapshots.loadRuntimeDataBackups()
+            runtimeDataBackupListErrorMessage = nil
+        } catch {
+            runtimeDataBackupListErrorMessage = AppConstants.StatusText.backupListLoadFailed(error.localizedDescription)
         }
         selectedBackupPath = backupSelectionPolicy.selectedBackupPath(
             from: backups,
             currentSelection: selectedBackupPath
+        )
+        selectedRuntimeDataBackupPath = backupSelectionPolicy.selectedBackupPath(
+            from: runtimeDataBackups,
+            currentSelection: selectedRuntimeDataBackupPath
         )
     }
 

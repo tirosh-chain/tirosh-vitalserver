@@ -9,6 +9,7 @@ public struct ContentView: View {
     @EnvironmentObject private var viewModel: RuntimeViewModel
     @State private var showingUpdateConfirmation = false
     @State private var showingRollbackConfirmation = false
+    @State private var showingRestoreRuntimeDataBackupConfirmation = false
     @State private var showingDeleteBackupConfirmation = false
     @State private var showingRepairProxyConfirmation = false
     @State private var showingRepairDatastoreConfirmation = false
@@ -60,6 +61,17 @@ public struct ContentView: View {
             }
         } message: {
             Text(viewModel.selectedBackupPath ?? AppConstants.StatusText.latestBackupFallback)
+        }
+        .alert(AppConstants.Actions.restoreBackup, isPresented: $showingRestoreRuntimeDataBackupConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.restoreBackup, role: .destructive) {
+                Task { await viewModel.restoreRuntimeDataBackup() }
+            }
+        } message: {
+            Text([
+                AppConstants.StatusText.restoreRuntimeDataBackupConfirmation,
+                viewModel.selectedRuntimeDataBackupPath,
+            ].compactMap { $0 }.joined(separator: "\n\n"))
         }
         .alert(AppConstants.Actions.deleteBackup, isPresented: $showingDeleteBackupConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -285,6 +297,7 @@ public struct ContentView: View {
                 viewModel: viewModel,
                 showingApplySettingsConfirmation: $showingApplySettingsConfirmation,
                 showingRollbackConfirmation: $showingRollbackConfirmation,
+                showingRestoreRuntimeDataBackupConfirmation: $showingRestoreRuntimeDataBackupConfirmation,
                 showingRepairProxyConfirmation: $showingRepairProxyConfirmation,
                 showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
                 showingRepairVMDiskConfirmation: $showingRepairVMDiskConfirmation,

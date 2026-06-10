@@ -5,6 +5,7 @@ struct RuntimeAdvancedPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @Binding var showingApplySettingsConfirmation: Bool
     @Binding var showingRollbackConfirmation: Bool
+    @Binding var showingRestoreRuntimeDataBackupConfirmation: Bool
     @Binding var showingRepairProxyConfirmation: Bool
     @Binding var showingRepairDatastoreConfirmation: Bool
     @Binding var showingRepairVMDiskConfirmation: Bool
@@ -25,6 +26,7 @@ struct RuntimeAdvancedPanel: View {
         viewModel: RuntimeViewModel,
         showingApplySettingsConfirmation: Binding<Bool>,
         showingRollbackConfirmation: Binding<Bool>,
+        showingRestoreRuntimeDataBackupConfirmation: Binding<Bool>,
         showingRepairProxyConfirmation: Binding<Bool>,
         showingRepairDatastoreConfirmation: Binding<Bool>,
         showingRepairVMDiskConfirmation: Binding<Bool>,
@@ -41,6 +43,7 @@ struct RuntimeAdvancedPanel: View {
         self.viewModel = viewModel
         self._showingApplySettingsConfirmation = showingApplySettingsConfirmation
         self._showingRollbackConfirmation = showingRollbackConfirmation
+        self._showingRestoreRuntimeDataBackupConfirmation = showingRestoreRuntimeDataBackupConfirmation
         self._showingRepairProxyConfirmation = showingRepairProxyConfirmation
         self._showingRepairDatastoreConfirmation = showingRepairDatastoreConfirmation
         self._showingRepairVMDiskConfirmation = showingRepairVMDiskConfirmation
@@ -196,6 +199,86 @@ struct RuntimeAdvancedPanel: View {
                             viewModel.openBackups()
                         }
                         .disabled(!viewModel.capabilities.canOpenLocalFiles)
+                    }
+                }
+
+                Divider()
+
+                recoverySubsection(AppConstants.Labels.sectionRuntimeDataRecovery) {
+                    Text(AppConstants.Labels.runtimeDataRecoveryHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let backupListErrorMessage = viewModel.runtimeDataBackupListErrorMessage {
+                        Text(backupListErrorMessage)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else if !viewModel.runtimeDataBackups.isEmpty {
+                        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
+                            settingRow(AppConstants.Labels.runtimeDataBackup) {
+                                Picker("", selection: $viewModel.selectedRuntimeDataBackupPath) {
+                                    ForEach(viewModel.runtimeDataBackups) { backup in
+                                        Text("\(backup.name) (\(viewModel.presentationFormatter.backupSizeText(backup)))")
+                                            .tag(Optional(backup.path))
+                                    }
+                                }
+                                .labelsHidden()
+                                .frame(maxWidth: 520)
+                            }
+                            if let selectedBackup = viewModel.selectedRuntimeDataBackup {
+                                statusRow(AppConstants.Labels.selectedBackup) {
+                                    Text(selectedBackup.path)
+                                        .font(.system(.body, design: .monospaced))
+                                        .lineLimit(2)
+                                        .truncationMode(.middle)
+                                        .textSelection(.enabled)
+                                }
+                                statusRow(
+                                    AppConstants.Labels.backupSize,
+                                    viewModel.presentationFormatter.backupSizeText(selectedBackup)
+                                )
+                            }
+                        }
+                    }
+                    HStack(spacing: 10) {
+                        Button(AppConstants.Actions.createBackup) {
+                            Task { await viewModel.createRuntimeDataBackup() }
+                        }
+                        .disabled(
+                            !actionAvailabilityPolicy.canManageRuntimeDataBackup(
+                                status: viewModel.status,
+                                capabilities: viewModel.capabilities,
+                                isBusy: viewModel.isBusy
+                            )
+                        )
+
+                        Button(AppConstants.Actions.restoreBackup) {
+                            showingRestoreRuntimeDataBackupConfirmation = true
+                        }
+                        .disabled(
+                            !actionAvailabilityPolicy.canManageRuntimeDataBackup(
+                                status: viewModel.status,
+                                capabilities: viewModel.capabilities,
+                                isBusy: viewModel.isBusy
+                            )
+                                || !viewModel.hasSelectedRuntimeDataBackup
+                        )
+
+                        Button(AppConstants.Actions.openBackups) {
+                            viewModel.openBackups()
+                        }
+                        .disabled(!viewModel.capabilities.canOpenLocalFiles)
+                    }
+                    if viewModel.isCreatingRuntimeDataBackup {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text(viewModel.operationDetail.isEmpty ? viewModel.message : viewModel.operationDetail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
                     }
                 }
 

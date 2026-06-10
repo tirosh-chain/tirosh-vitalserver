@@ -108,6 +108,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.selectedBundleURL = URL(fileURLWithPath: "/bundle")
         viewModel.selectedBundleVerified = true
         viewModel.selectedBackupPath = "/backup"
+        viewModel.selectedRuntimeDataBackupPath = "/runtime-data-backup"
 
         viewModel.chooseVitalFilesDirectory()
         await viewModel.chooseUpdateBundle()
@@ -121,6 +122,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.repairVMDisk()
         await viewModel.repairRuntimeServices()
         await viewModel.createRedisBackup()
+        await viewModel.createRuntimeDataBackup()
+        await viewModel.restoreRuntimeDataBackup()
         await viewModel.startRuntimeServices()
         await viewModel.stopRuntimeServices()
         await viewModel.exportLogs()
@@ -139,6 +142,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.repairVMDiskCount, 0)
         XCTAssertEqual(client.repairRuntimeServicesCount, 0)
         XCTAssertEqual(client.createRedisBackupCount, 0)
+        XCTAssertEqual(client.createRuntimeDataBackupCount, 0)
+        XCTAssertEqual(client.restoreRuntimeDataBackupCount, 0)
         XCTAssertEqual(client.startRuntimeServicesCount, 0)
         XCTAssertEqual(client.stopRuntimeServicesCount, 0)
         XCTAssertEqual(client.exportLogsCount, 0)
@@ -229,6 +234,35 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             viewModel.backupListErrorMessage,
             AppConstants.StatusText.backupListLoadFailed("backup directory denied")
         )
+    }
+
+    func testRuntimeDataBackupRefreshSelectsExplicitRuntimeDataBackup() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.runtimeDataBackupsToLoad = [
+            RuntimeBackup(path: "/backups/runtime-data/20260610T010101Z-manual", sizeBytes: 2048),
+        ]
+        let viewModel = RuntimeViewModel(controlClient: client, hostClient: client, healthNotifications: NoopHealthNotifications())
+
+        await viewModel.refreshBackupList()
+
+        XCTAssertEqual(viewModel.runtimeDataBackups.map(\.path), ["/backups/runtime-data/20260610T010101Z-manual"])
+        XCTAssertEqual(viewModel.selectedRuntimeDataBackupPath, "/backups/runtime-data/20260610T010101Z-manual")
+        XCTAssertEqual(viewModel.selectedRuntimeDataBackup?.sizeBytes, 2048)
+    }
+
+    func testRuntimeDataBackupActionsCallExplicitPorts() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.runtimeDataBackupsToLoad = [RuntimeBackup(path: "/backups/runtime-data/selected", sizeBytes: nil)]
+        let viewModel = RuntimeViewModel(controlClient: client, hostClient: client, healthNotifications: NoopHealthNotifications())
+        viewModel.runtimeDataBackups = [RuntimeBackup(path: "/backups/runtime-data/selected", sizeBytes: nil)]
+        viewModel.selectedRuntimeDataBackupPath = "/backups/runtime-data/selected"
+
+        await viewModel.createRuntimeDataBackup()
+        await viewModel.restoreRuntimeDataBackup()
+
+        XCTAssertEqual(client.createRuntimeDataBackupCount, 1)
+        XCTAssertEqual(client.restoreRuntimeDataBackupCount, 1)
+        XCTAssertEqual(client.restoredRuntimeDataBackupURLs, [URL(fileURLWithPath: "/backups/runtime-data/selected")])
     }
 
     func testNativeShellProvidesDirectorySelectionWithoutLeakingPanelDetailsToController() {
@@ -966,6 +1000,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             viewModel: viewModel,
             showingApplySettingsConfirmation: .constant(false),
             showingRollbackConfirmation: .constant(false),
+            showingRestoreRuntimeDataBackupConfirmation: .constant(false),
             showingRepairProxyConfirmation: .constant(false),
             showingRepairDatastoreConfirmation: .constant(false),
             showingRepairVMDiskConfirmation: .constant(false),
@@ -1089,6 +1124,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.runtimeEventsLast24HoursCount = 1
         viewModel.backups = [RuntimeBackup(path: "/backups/backup-001.tar.gz", sizeBytes: 1024)]
         viewModel.selectedBackupPath = "/backups/backup-001.tar.gz"
+        viewModel.runtimeDataBackups = [RuntimeBackup(path: "/backups/runtime-data/backup-001", sizeBytes: 2048)]
+        viewModel.selectedRuntimeDataBackupPath = "/backups/runtime-data/backup-001"
         viewModel.settings.vitalServerURL = "https://vitaldb.tirosh.ai/"
         viewModel.settings.remoteConsoleURL = "https://console.tirosh.ai/"
         viewModel.settings.changeAdminPassword = true
@@ -1340,6 +1377,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var loadReleaseInfoCount = 0
     var preferredLogsPathCount = 0
     var verifiedBundleURLs: [URL] = []
+    var restoredRuntimeDataBackupURLs: [URL] = []
     var exportLogDestinationURLs: [URL] = []
     var exportLogsResult: RuntimeLogExportResult?
     var releaseInfoLoadError: Error?
@@ -1464,6 +1502,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func restoreRuntimeDataBackup(backupURL: URL) async throws -> RuntimeCommandResult {
         restoreRuntimeDataBackupCount += 1
+        restoredRuntimeDataBackupURLs.append(backupURL)
         return success()
     }
 
