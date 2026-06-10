@@ -199,6 +199,8 @@ Guest는 이 값을 추론하거나 보정하지 않습니다.
 `vitalServerURL`과 `remoteConsoleURL`은 운영자가 등록한 외부 접속 URL을 그대로
 표시하기 위한 Host-owned advertised URL입니다. `publicHost/publicPort`는 guest
 호환을 위해 유지하며, `vitalServerURL`이 있으면 Host가 host/port를 파생합니다.
+초기 install settings에 advertised URL이 없으면 Host는 문서화된 localhost 기본값
+`http://127.0.0.1:<proxyPort>/`와 `http://127.0.0.1:18321/`을 명시 runtime config로 씁니다.
 초기 install settings가 별도 admin password를 제공하지 않으면 Host install
 settings의 문서화된 기본값인 `admin`을 명시 runtime config로 씁니다.
 

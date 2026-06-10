@@ -50,6 +50,7 @@ extension RuntimeInstallSettingsDefaults {
             adminPassword: Constants.Guest.defaultAdminPassword,
             vmHostname: Constants.Guest.hostname,
             publicPort: Constants.Guest.publicPort,
+            remoteConsolePort: 18_321,
             minimumCPUCount: Constants.Defaults.minimumCPUCount,
             maximumAllowedCPUCount: Constants.Defaults.maximumAllowedCPUCount(systemCPUCount: processorCount),
             minimumMemoryGiB: Constants.Defaults.minimumMemoryGiB,

@@ -12,6 +12,7 @@ public struct RuntimeInstallSettingsDefaults: Equatable, Sendable {
     public let adminPassword: String
     public let vmHostname: String
     public let publicPort: Int
+    public let remoteConsolePort: Int
     public let minimumCPUCount: Int
     public let maximumAllowedCPUCount: Int
     public let minimumMemoryGiB: Int
@@ -30,6 +31,7 @@ public struct RuntimeInstallSettingsDefaults: Equatable, Sendable {
         adminPassword: String,
         vmHostname: String,
         publicPort: Int,
+        remoteConsolePort: Int,
         minimumCPUCount: Int,
         maximumAllowedCPUCount: Int,
         minimumMemoryGiB: Int,
@@ -47,6 +49,7 @@ public struct RuntimeInstallSettingsDefaults: Equatable, Sendable {
         self.adminPassword = adminPassword
         self.vmHostname = vmHostname
         self.publicPort = publicPort
+        self.remoteConsolePort = remoteConsolePort
         self.minimumCPUCount = minimumCPUCount
         self.maximumAllowedCPUCount = maximumAllowedCPUCount
         self.minimumMemoryGiB = minimumMemoryGiB
@@ -86,8 +89,8 @@ public struct RuntimeInstallSettings: Equatable, Sendable {
         self.adminPassword = defaults.adminPassword
         self.vmHostname = defaults.vmHostname
         self.sshAuthorizedKeys = []
-        self.vitalServerURL = ""
-        self.remoteConsoleURL = ""
+        self.vitalServerURL = Self.defaultVitalServerURL(proxyPort: defaults.proxyPort)
+        self.remoteConsoleURL = Self.defaultRemoteConsoleURL(port: defaults.remoteConsolePort)
         self.publicHost = ""
         self.publicPort = defaults.publicPort
         self.startAfterInstall = true
@@ -206,6 +209,14 @@ public struct RuntimeInstallSettings: Equatable, Sendable {
 
     private func isLineSafe(_ value: String) -> Bool {
         !value.contains("\n") && !value.contains("\r")
+    }
+
+    private static func defaultVitalServerURL(proxyPort: Int) -> String {
+        "http://127.0.0.1:\(proxyPort)/"
+    }
+
+    private static func defaultRemoteConsoleURL(port: Int) -> String {
+        "http://127.0.0.1:\(port)/"
     }
 
     private func isValidHostname(_ value: String) -> Bool {

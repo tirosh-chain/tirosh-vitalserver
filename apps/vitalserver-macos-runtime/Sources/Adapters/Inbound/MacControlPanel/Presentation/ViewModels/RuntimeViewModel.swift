@@ -430,7 +430,7 @@ public final class RuntimeViewModel: ObservableObject {
 
     private func loadRuntimeSettings() async {
         let nextSettings = await snapshots.loadSettings()
-        settings = nextSettings
+        settings = Self.settingsWithAdvertisedServiceURLPresets(nextSettings, fillMissing: true)
     }
 
     private func normalizeAdvertisedURLSettings() {

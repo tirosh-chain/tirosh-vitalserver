@@ -339,6 +339,28 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.settings.remoteConsoleURL, "http://127.0.0.1:18322/")
     }
 
+    func testRefreshKeepsAdvertisedServiceURLInitialValuesFromEmptyInstalledSettings() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var installedSettings = RuntimeSettings()
+        installedSettings.proxyPort = 18080
+        installedSettings.runtimeControlPort = 18322
+        installedSettings.vitalServerURL = ""
+        installedSettings.remoteConsoleURL = ""
+        client.settings = installedSettings
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.settings.vitalServerURL = "stale-draft"
+        viewModel.settings.remoteConsoleURL = "stale-draft"
+
+        await viewModel.refresh()
+
+        XCTAssertEqual(viewModel.settings.vitalServerURL, "http://127.0.0.1:18080/")
+        XCTAssertEqual(viewModel.settings.remoteConsoleURL, "http://127.0.0.1:18322/")
+    }
+
     func testApplySettingsRejectsExplicitEmptyAdvertisedServiceURLs() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let viewModel = RuntimeViewModel(

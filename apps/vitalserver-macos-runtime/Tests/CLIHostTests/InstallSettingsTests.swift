@@ -65,6 +65,8 @@ final class InstallSettingsTests: XCTestCase {
 
         XCTAssertEqual(settings.vitalFilesDirectory, "/vital-files")
         XCTAssertEqual(settings.proxyPort, RuntimeInstallSettings.defaultProxyPort)
+        XCTAssertEqual(settings.vitalServerURL, "http://127.0.0.1:80/")
+        XCTAssertEqual(settings.remoteConsoleURL, "http://127.0.0.1:18321/")
     }
 
     func testLoadFailsWhenSettingsPathInspectionFails() throws {
