@@ -164,6 +164,32 @@ final class RuntimeVMStateControlUseCaseTests: XCTestCase {
         ])
     }
 
+    func testUpdateShutdownStopForcesVMStopWhenStopTimeoutOccurs() {
+        let harness = RuntimeVMStateControlHarness()
+        harness.stopAfterPoweroffError = StopRuntimeVMProcessUseCaseError.runtimeOperationFailed(
+            "VM process did not stop within 900s pid=4242 pidFile state=stop-timed-out: pid=4242 timeout-seconds=900"
+        )
+
+        XCTAssertThrowsError(try harness.prepareGuestShutdownAndStopRuntimeServicesAfterPoweroff()) { error in
+            XCTAssertEqual(
+                error as? StopRuntimeVMProcessUseCaseError,
+                .runtimeOperationFailed(
+                    "VM process did not stop within 900s pid=4242 pidFile state=stop-timed-out: pid=4242 timeout-seconds=900"
+                )
+            )
+        }
+
+        XCTAssertEqual(harness.events, [
+            "pid",
+            "log:captured VM process before guest update shutdown pid=4242",
+            "prepare-update-shutdown:0.1.13",
+            "stop-after-poweroff:4242",
+            "log:guest update shutdown failed; forcing VM runtime services stop error=described:VM process did not stop within 900s pid=4242 pidFile state=stop-timed-out: pid=4242 timeout-seconds=900",
+            "force-stop-runtime-services",
+            "clear",
+        ])
+    }
+
     func testVMDiskReplacementStopUsesGracefulStopWhenItSucceeds() throws {
         let harness = RuntimeVMStateControlHarness()
 

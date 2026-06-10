@@ -373,6 +373,9 @@ public struct RuntimeVMStateControlUseCase {
         if error is RuntimeGuestUpdateUseCaseError {
             return true
         }
+        if error is StopRuntimeVMProcessUseCaseError {
+            return true
+        }
         return false
     }
 }
