@@ -89,6 +89,10 @@ public actor MacRuntimeControlReadWorker {
         try fileReader.redisBackups()
     }
 
+    public func loadRuntimeDataBackups() throws -> [RuntimeBackup] {
+        try fileReader.runtimeDataBackups()
+    }
+
     public func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
         fileReader.updateBundleSummaryResult(url: url)
     }

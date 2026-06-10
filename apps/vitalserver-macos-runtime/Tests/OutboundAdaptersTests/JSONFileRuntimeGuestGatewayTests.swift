@@ -299,6 +299,8 @@ private struct GuestGatewayURLs {
     var updateShutdownResult: URL { root.appendingPathComponent(RuntimeFileNames.updateShutdownResult) }
     var datastoreRepairRequest: URL { root.appendingPathComponent(RuntimeFileNames.datastoreRepairRequest) }
     var datastoreRepairResult: URL { root.appendingPathComponent(RuntimeFileNames.datastoreRepairResult) }
+    var redisRestoreRequest: URL { root.appendingPathComponent(RuntimeFileNames.redisRestoreRequest) }
+    var redisRestoreResult: URL { root.appendingPathComponent(RuntimeFileNames.redisRestoreResult) }
 
     func gateway(fileStore: RuntimeFileReading & RuntimeFileWriting) -> JSONFileRuntimeGuestGateway {
         JSONFileRuntimeGuestGateway(
@@ -310,6 +312,8 @@ private struct GuestGatewayURLs {
             updateShutdownResultURL: updateShutdownResult,
             datastoreRepairRequestURL: datastoreRepairRequest,
             datastoreRepairResultURL: datastoreRepairResult,
+            redisRestoreRequestURL: redisRestoreRequest,
+            redisRestoreResultURL: redisRestoreResult,
             fileStore: fileStore
         )
     }
@@ -422,7 +426,9 @@ private struct GuestGatewayHarness {
             updateShutdownRequestURL: updateShutdownRequestURL,
             updateShutdownResultURL: updateShutdownResultURL,
             datastoreRepairRequestURL: datastoreRepairRequestURL,
-            datastoreRepairResultURL: datastoreRepairResultURL
+            datastoreRepairResultURL: datastoreRepairResultURL,
+            redisRestoreRequestURL: directory.appendingPathComponent(RuntimeFileNames.redisRestoreRequest),
+            redisRestoreResultURL: directory.appendingPathComponent(RuntimeFileNames.redisRestoreResult)
         )
     }
 

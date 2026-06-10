@@ -66,8 +66,11 @@ PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/
 | `GET` | `/runtime/release` |
 | `GET` | `/runtime/install` |
 | `POST` | `/runtime/redis/backups` |
+| `POST` | `/runtime/data/backups` |
 | `GET` | `/host/backups` |
 | `GET` | `/host/backups/redis` |
+| `GET` | `/host/backups/runtime-data` |
+| `POST` | `/host/backups/runtime-data/restore` |
 | `POST` | `/host/logs/read` |
 | `GET` | `/host/logs/stream` |
 
@@ -266,6 +269,7 @@ Stable build는 local API server는 유지하되 이 dev console route는 제공
 | `POST` | `/runtime/services/repair-datastore` | repair datastore |
 | `POST` | `/runtime/services/repair-vm-disk` | archive and recreate the mutable VM disk from the installed base image |
 | `POST` | `/runtime/redis/backups` | create recoverable Redis backup |
+| `POST` | `/runtime/data/backups` | create recoverable runtime data backup for UI continuity |
 | `POST` | `/runtime/uninstall` | uninstall runtime |
 
 ## Host Affordance Routes
@@ -274,7 +278,9 @@ Stable build는 local API server는 유지하되 이 dev console route는 제공
 |---|---|---|
 | `GET` | `/host/backups` | list local backups |
 | `GET` | `/host/backups/redis` | list local Redis backups |
-| `POST` | `/host/backups/redis/restore` | restore selected Redis backup, planned |
+| `POST` | `/host/backups/redis/restore` | restore selected Redis backup |
+| `GET` | `/host/backups/runtime-data` | list local runtime data backups |
+| `POST` | `/host/backups/runtime-data/restore` | restore selected runtime data backup |
 | `POST` | `/host/logs/read` | read selected log text |
 | `GET` | `/host/logs/stream` | SSE host log text snapshot subscription |
 | `POST` | `/host/logs/export` | export local logs |

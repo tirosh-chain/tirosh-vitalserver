@@ -117,6 +117,10 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         try await readWorker.loadRedisBackups()
     }
 
+    func loadRuntimeDataBackups() async throws -> [RuntimeBackup] {
+        try await readWorker.loadRuntimeDataBackups()
+    }
+
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {
         let response = RuntimeControlCommandResponse(result: try await commandClient.applySettings(settings))
         localAPISettings.apply(settings: settings)
@@ -151,6 +155,10 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: try await commandClient.createRedisBackup())
     }
 
+    func createRuntimeDataBackup() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.createRuntimeDataBackup())
+    }
+
     func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse {
         let summary = await readWorker.updateBundleSummaryResult(url: try localFileURL(bundle))
         return RuntimeUpdateBundleSummaryResponse(
@@ -173,6 +181,14 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
 
     func rollbackBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: try await hostClient.rollbackRuntime(backupURL: try localFileURL(backup)))
+    }
+
+    func restoreRedisBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await hostClient.restoreRedisBackup(backupURL: try localFileURL(backup)))
+    }
+
+    func restoreRuntimeDataBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await hostClient.restoreRuntimeDataBackup(backupURL: try localFileURL(backup)))
     }
 
     func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {

@@ -17,6 +17,9 @@ public enum RuntimeLifecycleCommand: Equatable {
     case applyBundle(URL)
     case rollback(RuntimeRollbackCommand)
     case redisBackup
+    case redisRestore(URL)
+    case runtimeDataBackup
+    case runtimeDataRestore(URL)
     case repairDatastore
     case repairVMDisk
     case repairProxy
@@ -70,6 +73,18 @@ extension RuntimeLifecycleCommand {
             return .rollback(parseRollbackCommand(remaining))
         case "redis-backup":
             return .redisBackup
+        case "redis-restore":
+            return .redisRestore(try requiredBundleURL(
+                in: remaining,
+                usage: "usage: vitalserver-vm runtime redis-restore <archive.tar.gz>"
+            ))
+        case "runtime-data-backup":
+            return .runtimeDataBackup
+        case "runtime-data-restore":
+            return .runtimeDataRestore(try requiredBundleURL(
+                in: remaining,
+                usage: "usage: vitalserver-vm runtime runtime-data-restore <backup-dir>"
+            ))
         case "repair-datastore":
             return .repairDatastore
         case "repair-vm-disk":
@@ -107,6 +122,9 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime apply-bundle <bundle.tar.gz>
       vitalserver-vm runtime rollback [backup-dir]
       vitalserver-vm runtime redis-backup
+      vitalserver-vm runtime redis-restore <archive.tar.gz>
+      vitalserver-vm runtime runtime-data-backup
+      vitalserver-vm runtime runtime-data-restore <backup-dir>
       vitalserver-vm runtime repair-datastore
       vitalserver-vm runtime repair-vm-disk
       vitalserver-vm runtime repair-proxy

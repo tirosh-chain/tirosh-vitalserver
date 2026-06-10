@@ -40,9 +40,26 @@ final class RuntimeLifecycleCommandInterfaceTests: XCTestCase {
         }
     }
 
+    func testParsesRuntimeDataBackupCommand() throws {
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parseArguments(["runtime-data-backup"]),
+            .runtimeDataBackup
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parseArguments(["runtime-data-restore", "/backups/runtime-data/manual"]),
+            .runtimeDataRestore(URL(fileURLWithPath: "/backups/runtime-data/manual"))
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parseArguments(["redis-restore", "/backups/redis/redis.tar.gz"]),
+            .redisRestore(URL(fileURLWithPath: "/backups/redis/redis.tar.gz"))
+        )
+    }
+
     func testUsageTextListsRuntimeCommandsAtInterfaceBoundary() {
         XCTAssertTrue(RuntimeLifecycleCommand.usageText.contains("vitalserver-vm runtime install"))
         XCTAssertTrue(RuntimeLifecycleCommand.usageText.contains("vitalserver-vm runtime configure"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usageText.contains("vitalserver-vm runtime runtime-data-backup"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usageText.contains("vitalserver-vm runtime runtime-data-restore"))
         XCTAssertTrue(
             RuntimeLifecycleCommand.usageText.contains(
                 "vitalserver-vm runtime uninstall [--clean|--force-clean|--force-clean-uninstaller]"

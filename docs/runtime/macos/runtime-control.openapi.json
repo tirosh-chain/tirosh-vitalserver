@@ -525,6 +525,24 @@
         }
       }
     },
+    "/runtime/data/backups": {
+      "post": {
+        "operationId": "createRuntimeDataBackup",
+        "summary": "Create runtime data backup",
+        "description": "Creates a recoverable runtime data backup for UI continuity, including Redis data, runtime settings, Host runtime state documents, and runtime observability SQLite.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/uninstall": {
       "post": {
         "operationId": "uninstallRuntime",
@@ -636,7 +654,62 @@
         "operationId": "restoreRedisBackup",
         "summary": "Restore selected Redis backup",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeBackupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/backups/runtime-data": {
+      "get": {
+        "operationId": "listRuntimeDataBackups",
+        "summary": "List local runtime data backups",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Local runtime data backup list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeBackup"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/host/backups/runtime-data/restore": {
+      "post": {
+        "operationId": "restoreRuntimeDataBackup",
+        "summary": "Restore selected runtime data backup",
+        "description": "Restores Redis data, runtime settings, Host runtime state documents, start-on-boot state, and runtime observability SQLite from a verified runtime data backup.",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,

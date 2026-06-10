@@ -332,6 +332,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/data/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create runtime data backup
+         * @description Creates a recoverable runtime data backup for UI continuity, including Redis data, runtime settings, Host runtime state documents, and runtime observability SQLite.
+         */
+        post: operations["createRuntimeDataBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/uninstall": {
         parameters: {
             query?: never;
@@ -395,6 +415,43 @@ export interface paths {
         put?: never;
         /** Restore selected Redis backup */
         post: operations["restoreRedisBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/host/backups/runtime-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List local runtime data backups */
+        get: operations["listRuntimeDataBackups"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/host/backups/runtime-data/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore selected runtime data backup
+         * @description Restores Redis data, runtime settings, Host runtime state documents, start-on-boot state, and runtime observability SQLite from a verified runtime data backup.
+         */
+        post: operations["restoreRuntimeDataBackup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1971,6 +2028,19 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    createRuntimeDataBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CommandResult"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     uninstallRuntime: {
         parameters: {
             query?: never;
@@ -2048,6 +2118,44 @@ export interface operations {
         };
     };
     restoreRedisBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeBackupRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["CommandResult"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    listRuntimeDataBackups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Local runtime data backup list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeBackup"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    restoreRuntimeDataBackup: {
         parameters: {
             query?: never;
             header?: never;

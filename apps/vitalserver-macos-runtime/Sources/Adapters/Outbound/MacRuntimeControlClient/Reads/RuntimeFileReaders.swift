@@ -8,6 +8,7 @@ protocol RuntimeHostFileReading: Sendable {
     func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult
     func backups(latestBackupPath: String?) throws -> [RuntimeBackup]
     func redisBackups() throws -> [RuntimeBackup]
+    func runtimeDataBackups() throws -> [RuntimeBackup]
     func logTextResult(sourceID: RuntimeLogSource, lineLimit: Int) -> RuntimeHostTextReadResult
     func preferredLogsPath() -> String
     func vitalFileFolders(root: String) throws -> [VitalFilesFolder]
@@ -63,6 +64,10 @@ struct SystemRuntimeHostFileReader: RuntimeHostFileReading, @unchecked Sendable 
 
     func redisBackups() throws -> [RuntimeBackup] {
         try RuntimeBackup.loadRedisBackups(fileStore: fileStore)
+    }
+
+    func runtimeDataBackups() throws -> [RuntimeBackup] {
+        try RuntimeBackup.loadRuntimeDataBackups(fileStore: fileStore)
     }
 
     func logTextResult(sourceID: RuntimeLogSource, lineLimit: Int) -> RuntimeHostTextReadResult {

@@ -130,6 +130,8 @@ public enum Constants {
         public static let datastoreRepairLogFile = RuntimeFileNames.datastoreRepairLog
         public static let redisBackupRequestFile = RuntimeFileNames.redisBackupRequest
         public static let redisBackupResultFile = RuntimeFileNames.redisBackupResult
+        public static let redisRestoreRequestFile = RuntimeFileNames.redisRestoreRequest
+        public static let redisRestoreResultFile = RuntimeFileNames.redisRestoreResult
         public static let updateActivationRequestFile = RuntimeFileNames.updateActivationRequest
         public static let updateActivationResultFile = RuntimeFileNames.updateActivationResult
         public static let updateActivationLogFile = RuntimeFileNames.updateActivationLog

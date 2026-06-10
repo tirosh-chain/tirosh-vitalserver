@@ -89,10 +89,15 @@ export type RuntimeControlGateway = {
   ): Promise<RuntimeCommandResponse>;
   listHostBackups(): Promise<RuntimeBackup[]>;
   listRedisBackups(): Promise<RuntimeBackup[]>;
+  listRuntimeDataBackups(): Promise<RuntimeBackup[]>;
   rollbackBackup(request: RuntimeBackupRequest): Promise<RuntimeCommandResponse>;
   deleteHostBackup(request: RuntimeBackupRequest): Promise<RuntimeCommandResponse>;
   restoreRedisBackup(request: RuntimeBackupRequest): Promise<RuntimeCommandResponse>;
+  restoreRuntimeDataBackup(
+    request: RuntimeBackupRequest
+  ): Promise<RuntimeCommandResponse>;
   createRedisBackup(): Promise<RuntimeCommandResponse>;
+  createRuntimeDataBackup(): Promise<RuntimeCommandResponse>;
   repairRuntime(): Promise<RuntimeCommandResponse>;
   repairProxy(proxyPort: number): Promise<RuntimeCommandResponse>;
   repairDatastore(): Promise<RuntimeCommandResponse>;

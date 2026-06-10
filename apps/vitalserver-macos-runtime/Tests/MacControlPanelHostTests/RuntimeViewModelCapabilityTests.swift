@@ -1303,12 +1303,15 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var applySettingsCount = 0
     var applyUpdateBundleCount = 0
     var rollbackRuntimeCount = 0
+    var restoreRedisBackupCount = 0
+    var restoreRuntimeDataBackupCount = 0
     var deleteBackupCount = 0
     var repairProxyCount = 0
     var repairDatastoreCount = 0
     var repairVMDiskCount = 0
     var repairRuntimeServicesCount = 0
     var createRedisBackupCount = 0
+    var createRuntimeDataBackupCount = 0
     var startRuntimeServicesCount = 0
     var stopRuntimeServicesCount = 0
     var exportLogsCount = 0
@@ -1320,6 +1323,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var releaseInfoLoadError: Error?
     var backupLoadError: Error?
     var backupsToLoad: [RuntimeBackup] = []
+    var runtimeDataBackupsToLoad: [RuntimeBackup] = []
     var settings = RuntimeSettings()
     var status = RuntimeStatus()
     var healthStatus = RuntimeStatus()
@@ -1381,6 +1385,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         []
     }
 
+    func loadRuntimeDataBackups() throws -> [RuntimeBackup] {
+        runtimeDataBackupsToLoad
+    }
+
     func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
         .loaded("bundle: \(url.path)")
     }
@@ -1427,6 +1435,16 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return success()
     }
 
+    func restoreRedisBackup(backupURL: URL) async throws -> RuntimeCommandResult {
+        restoreRedisBackupCount += 1
+        return success()
+    }
+
+    func restoreRuntimeDataBackup(backupURL: URL) async throws -> RuntimeCommandResult {
+        restoreRuntimeDataBackupCount += 1
+        return success()
+    }
+
     func deleteBackup(url: URL) async throws -> RuntimeCommandResult {
         deleteBackupCount += 1
         return success()
@@ -1454,6 +1472,11 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func createRedisBackup() async throws -> RuntimeCommandResult {
         createRedisBackupCount += 1
+        return success()
+    }
+
+    func createRuntimeDataBackup() async throws -> RuntimeCommandResult {
+        createRuntimeDataBackupCount += 1
         return success()
     }
 

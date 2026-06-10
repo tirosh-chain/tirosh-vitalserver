@@ -131,9 +131,12 @@ describe("RuntimeControlApiClient", () => {
       "/host/update-bundles/apply": commandResponse(),
       "/host/backups": [{ path: "/tmp/backup", sizeBytes: 1 }],
       "/host/backups/redis": [{ path: "/tmp/redis", sizeBytes: null }],
+      "/host/backups/runtime-data": [{ path: "/tmp/runtime-data", sizeBytes: 10 }],
       "/host/backups/rollback": commandResponse(),
       "/host/backups/redis/restore": commandResponse(),
+      "/host/backups/runtime-data/restore": commandResponse(),
       "/runtime/redis/backups": commandResponse(),
+      "/runtime/data/backups": commandResponse(),
       "/runtime/services/start": commandResponse(),
       "/runtime/services/stop": commandResponse(),
       "/runtime/services/repair-runtime": commandResponse(),
@@ -166,9 +169,12 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.applyUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual(commandResponse());
     await expect(client.listHostBackups()).resolves.toHaveLength(1);
     await expect(client.listRedisBackups()).resolves.toHaveLength(1);
+    await expect(client.listRuntimeDataBackups()).resolves.toHaveLength(1);
     await expect(client.rollbackBackup({ backup: { kind: "localPath", value: "/tmp/backup" } })).resolves.toEqual(commandResponse());
     await expect(client.restoreRedisBackup({ backup: { kind: "localPath", value: "/tmp/redis" } })).resolves.toEqual(commandResponse());
+    await expect(client.restoreRuntimeDataBackup({ backup: { kind: "localPath", value: "/tmp/runtime-data" } })).resolves.toEqual(commandResponse());
     await expect(client.createRedisBackup()).resolves.toEqual(commandResponse());
+    await expect(client.createRuntimeDataBackup()).resolves.toEqual(commandResponse());
     await expect(client.startRuntimeServices()).resolves.toEqual(commandResponse());
     await expect(client.stopRuntimeServices()).resolves.toEqual(commandResponse());
     await expect(client.repairRuntime()).resolves.toEqual(commandResponse());

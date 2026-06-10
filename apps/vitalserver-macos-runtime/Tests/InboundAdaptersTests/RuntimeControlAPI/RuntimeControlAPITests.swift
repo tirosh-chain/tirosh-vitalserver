@@ -855,21 +855,29 @@ final class RuntimeControlAPITests: XCTestCase {
     }
 
     @MainActor
-    func testRouterReturnsTypedNotImplementedErrorForUnsupportedRestoreEndpoint() async throws {
+    func testRouterExecutesRestoreBackupEndpointsThroughHandler() async throws {
         let router = RuntimeControlAPIRouter(handler: StubRuntimeControlAPIReadHandler())
 
-        let request = RuntimeBackupRequest(
+        let redisRequest = RuntimeBackupRequest(
             backup: RuntimeControlFileReference(kind: .localPath, value: "/redis-backups/redis.tar.gz")
         )
-        let response = await router.route(.init(
+        let runtimeDataRequest = RuntimeBackupRequest(
+            backup: RuntimeControlFileReference(kind: .localPath, value: "/backups/runtime-data/manual")
+        )
+
+        let redis = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
             method: .post,
             path: "/host/backups/redis/restore",
-            body: try JSONEncoder().encode(request)
-        ))
-        let error = try decodeError(from: response)
+            body: try JSONEncoder().encode(redisRequest)
+        )))
+        let runtimeData = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
+            method: .post,
+            path: "/host/backups/runtime-data/restore",
+            body: try JSONEncoder().encode(runtimeDataRequest)
+        )))
 
-        XCTAssertEqual(response.status, .notImplemented)
-        XCTAssertEqual(error.code, .endpointNotImplemented)
+        XCTAssertEqual(redis.result.stdout, "restore redis /redis-backups/redis.tar.gz")
+        XCTAssertEqual(runtimeData.result.stdout, "restore runtime data /backups/runtime-data/manual")
     }
 
     @MainActor
@@ -2439,6 +2447,10 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         [RuntimeBackup(path: "/runtime/data/backups/redis/redis-1.tar.gz", sizeBytes: 512)]
     }
 
+    func loadRuntimeDataBackups() async throws -> [RuntimeBackup] {
+        [RuntimeBackup(path: "/backups/runtime-data/20260610T000000Z-manual", sizeBytes: 2048)]
+    }
+
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "settings \(settings.cpuCount)", stderr: ""))
     }
@@ -2471,6 +2483,10 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "redis backup created", stderr: ""))
     }
 
+    func createRuntimeDataBackup() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "runtime data backup created", stderr: ""))
+    }
+
     func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse {
         RuntimeUpdateBundleSummaryResponse(summary: "summary \(bundle.value)")
     }
@@ -2485,6 +2501,14 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
 
     func rollbackBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "rollback \(backup.value)", stderr: ""))
+    }
+
+    func restoreRedisBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "restore redis \(backup.value)", stderr: ""))
+    }
+
+    func restoreRuntimeDataBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "restore runtime data \(backup.value)", stderr: ""))
     }
 
     func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
@@ -2628,7 +2652,11 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     var capabilities = RuntimeControlCapabilities(canOpenLocalFiles: false)
     var loadSettingsCount = 0
     var createRedisBackupCount = 0
+    var createRuntimeDataBackupCount = 0
+    var restoreRedisBackupCount = 0
+    var restoreRuntimeDataBackupCount = 0
     var loadRedisBackupsCount = 0
+    var loadRuntimeDataBackupsCount = 0
     var statusSettings: [RuntimeSettings] = []
     var healthSettings: [RuntimeSettings] = []
     var eventQueries: [RuntimeEventQuery] = []
@@ -2765,6 +2793,11 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
         return [RuntimeBackup(path: "/runtime/data/backups/redis/redis-1.tar.gz", sizeBytes: 512)]
     }
 
+    func loadRuntimeDataBackups() throws -> [RuntimeBackup] {
+        loadRuntimeDataBackupsCount += 1
+        return [RuntimeBackup(path: "/backups/runtime-data/20260610T000000Z-manual", sizeBytes: 2048)]
+    }
+
     func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
         .loaded("summary \(url.path)")
     }
@@ -2820,6 +2853,11 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
         return RuntimeCommandResult(exitCode: 0, stdout: "redis backup created", stderr: "")
     }
 
+    func createRuntimeDataBackup() async throws -> RuntimeCommandResult {
+        createRuntimeDataBackupCount += 1
+        return RuntimeCommandResult(exitCode: 0, stdout: "runtime data backup created", stderr: "")
+    }
+
     func startRuntimeServices() async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "start services", stderr: "")
     }
@@ -2853,6 +2891,16 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
 
     func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "rollback \(backupURL.path)", stderr: "")
+    }
+
+    func restoreRedisBackup(backupURL: URL) async throws -> RuntimeCommandResult {
+        restoreRedisBackupCount += 1
+        return RuntimeCommandResult(exitCode: 0, stdout: "restore redis \(backupURL.path)", stderr: "")
+    }
+
+    func restoreRuntimeDataBackup(backupURL: URL) async throws -> RuntimeCommandResult {
+        restoreRuntimeDataBackupCount += 1
+        return RuntimeCommandResult(exitCode: 0, stdout: "restore runtime data \(backupURL.path)", stderr: "")
     }
 
     func deleteBackup(url: URL) async throws -> RuntimeCommandResult {

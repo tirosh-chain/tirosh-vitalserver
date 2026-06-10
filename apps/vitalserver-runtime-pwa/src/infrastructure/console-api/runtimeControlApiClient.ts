@@ -304,6 +304,10 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.get("/host/backups/redis", runtimeBackupSchema.array());
   }
 
+  listRuntimeDataBackups(): Promise<RuntimeBackup[]> {
+    return this.get("/host/backups/runtime-data", runtimeBackupSchema.array());
+  }
+
   rollbackBackup(request: RuntimeBackupRequest): Promise<RuntimeCommandResponse> {
     return this.post(
       "/host/backups/rollback",
@@ -328,9 +332,27 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     );
   }
 
+  restoreRuntimeDataBackup(
+    request: RuntimeBackupRequest
+  ): Promise<RuntimeCommandResponse> {
+    return this.post(
+      "/host/backups/runtime-data/restore",
+      request,
+      runtimeCommandResponseSchema
+    );
+  }
+
   createRedisBackup(): Promise<RuntimeCommandResponse> {
     return this.post(
       "/runtime/redis/backups",
+      undefined,
+      runtimeCommandResponseSchema
+    );
+  }
+
+  createRuntimeDataBackup(): Promise<RuntimeCommandResponse> {
+    return this.post(
+      "/runtime/data/backups",
       undefined,
       runtimeCommandResponseSchema
     );

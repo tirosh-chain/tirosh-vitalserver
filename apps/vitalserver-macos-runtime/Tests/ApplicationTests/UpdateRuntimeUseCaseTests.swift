@@ -1282,6 +1282,7 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 prepareUpdateShutdown: true,
                 activateUpdate: false,
                 redisBackup: false,
+                redisRestore: false,
                 repairDatastore: false
             ),
             vmIP: "192.168.64.2",

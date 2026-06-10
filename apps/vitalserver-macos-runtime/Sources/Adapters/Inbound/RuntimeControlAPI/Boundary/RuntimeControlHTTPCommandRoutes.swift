@@ -26,6 +26,8 @@ struct RuntimeControlHTTPCommandRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(handler.repairVMDisk())
         case .createRedisBackup:
             return try await RuntimeControlHTTPResponseFactory.json(handler.createRedisBackup())
+        case .createRuntimeDataBackup:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.createRuntimeDataBackup())
         case .updateBundleSummary:
             let bundleRequest = try request.decodedBody(RuntimeUpdateBundleRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(
@@ -44,6 +46,12 @@ struct RuntimeControlHTTPCommandRoutes {
         case .rollbackBackup:
             let backupRequest = try request.decodedBody(RuntimeBackupRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.rollbackBackup(backupRequest.backup))
+        case .restoreRedisBackup:
+            let backupRequest = try request.decodedBody(RuntimeBackupRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.restoreRedisBackup(backupRequest.backup))
+        case .restoreRuntimeDataBackup:
+            let backupRequest = try request.decodedBody(RuntimeBackupRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.restoreRuntimeDataBackup(backupRequest.backup))
         case .deleteBackup:
             let backupRequest = try request.decodedBody(RuntimeBackupRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.deleteBackup(backupRequest.backup))
@@ -80,7 +88,7 @@ struct RuntimeControlHTTPCommandRoutes {
              .logStream,
              .backups,
              .redisBackups,
-             .restoreRedisBackup:
+             .runtimeDataBackups:
             return nil
         }
     }

@@ -12,6 +12,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
     public let updateShutdownResultURL: URL
     public let datastoreRepairRequestURL: URL
     public let datastoreRepairResultURL: URL
+    public let redisRestoreRequestURL: URL
+    public let redisRestoreResultURL: URL
     private let fileStore: RuntimeFileReading & RuntimeFileWriting
 
     public init(
@@ -23,6 +25,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         updateShutdownResultURL: URL,
         datastoreRepairRequestURL: URL,
         datastoreRepairResultURL: URL,
+        redisRestoreRequestURL: URL,
+        redisRestoreResultURL: URL,
         fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore()
     ) {
         self.runtimeStateURL = runtimeStateURL
@@ -33,6 +37,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         self.updateShutdownResultURL = updateShutdownResultURL
         self.datastoreRepairRequestURL = datastoreRepairRequestURL
         self.datastoreRepairResultURL = datastoreRepairResultURL
+        self.redisRestoreRequestURL = redisRestoreRequestURL
+        self.redisRestoreResultURL = redisRestoreResultURL
         self.fileStore = fileStore
     }
 
@@ -103,6 +109,18 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
 
     public func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> {
         decode(DatastoreRepairResultDocument.self, from: datastoreRepairResultURL)
+    }
+
+    public func removeRedisRestoreResult() throws {
+        try removeFileIfPresent(redisRestoreResultURL)
+    }
+
+    public func writeRedisRestoreRequest(_ request: RedisRestoreRequestDocument) throws {
+        try write(request, to: redisRestoreRequestURL)
+    }
+
+    public func loadRedisRestoreResultDocument() -> RuntimeGuestDocumentLoadResult<RedisRestoreResultDocument> {
+        decode(RedisRestoreResultDocument.self, from: redisRestoreResultURL)
     }
 
     private func decode<T: Decodable>(_ type: T.Type, from url: URL) -> RuntimeGuestDocumentLoadResult<T> {

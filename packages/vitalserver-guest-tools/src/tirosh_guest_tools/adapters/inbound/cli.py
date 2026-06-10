@@ -30,6 +30,12 @@ from tirosh_guest_tools.application.redis_backup import (
 from tirosh_guest_tools.application.redis_backup import (
     run_redis_backup,
 )
+from tirosh_guest_tools.application.redis_restore import (
+    LOG_FILE as REDIS_RESTORE_LOG_FILE,
+)
+from tirosh_guest_tools.application.redis_restore import (
+    run_redis_restore,
+)
 from tirosh_guest_tools.application.redis_repair import (
     LOG_FILE as REDIS_REPAIR_LOG_FILE,
 )
@@ -188,6 +194,14 @@ def vitalserver_redis_backup() -> int:
     parser.parse_args()
     configure_logging(SETTINGS.logging, log_file=REDIS_BACKUP_LOG_FILE)
     run_redis_backup()
+    return 0
+
+
+def vitalserver_redis_restore() -> int:
+    parser = argparse.ArgumentParser(description="Restore the Redis Docker volume.")
+    parser.parse_args()
+    configure_logging(SETTINGS.logging, log_file=REDIS_RESTORE_LOG_FILE)
+    run_redis_restore()
     return 0
 
 

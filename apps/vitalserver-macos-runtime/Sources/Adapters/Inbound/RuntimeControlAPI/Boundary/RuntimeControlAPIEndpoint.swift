@@ -28,10 +28,13 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case repairDatastore
     case repairVMDisk
     case createRedisBackup
+    case createRuntimeDataBackup
     case uninstall
     case backups
     case redisBackups
+    case runtimeDataBackups
     case restoreRedisBackup
+    case restoreRuntimeDataBackup
     case logText
     case logStream
     case updateBundleSummary

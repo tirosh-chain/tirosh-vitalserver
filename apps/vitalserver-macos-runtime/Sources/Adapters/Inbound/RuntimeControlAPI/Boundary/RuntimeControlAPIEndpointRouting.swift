@@ -55,14 +55,20 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .post, path: "/runtime/services/repair-vm-disk", scope: .runtimeControl)
         case .createRedisBackup:
             return .init(method: .post, path: "/runtime/redis/backups", scope: .runtimeControl)
+        case .createRuntimeDataBackup:
+            return .init(method: .post, path: "/runtime/data/backups", scope: .runtimeControl)
         case .uninstall:
             return .init(method: .post, path: "/runtime/uninstall", scope: .runtimeControl)
         case .backups:
             return .init(method: .get, path: "/host/backups", scope: .hostAffordance)
         case .redisBackups:
             return .init(method: .get, path: "/host/backups/redis", scope: .hostAffordance)
+        case .runtimeDataBackups:
+            return .init(method: .get, path: "/host/backups/runtime-data", scope: .hostAffordance)
         case .restoreRedisBackup:
             return .init(method: .post, path: "/host/backups/redis/restore", scope: .hostAffordance)
+        case .restoreRuntimeDataBackup:
+            return .init(method: .post, path: "/host/backups/runtime-data/restore", scope: .hostAffordance)
         case .logText:
             return .init(method: .post, path: "/host/logs/read", scope: .hostAffordance)
         case .logStream:

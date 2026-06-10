@@ -169,6 +169,15 @@ export function useRedisBackups() {
   });
 }
 
+export function useRuntimeDataBackups() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.runtimeDataBackups,
+    queryFn: () => runtimeControlGateway.listRuntimeDataBackups(),
+    refetchInterval: 10_000
+  });
+}
+
 export function useRollbackBackup() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useBackupMutation("host", (path) =>
@@ -188,10 +197,24 @@ export function useCreateRedisBackup() {
   return useBackupMutation("redis", () => runtimeControlGateway.createRedisBackup());
 }
 
+export function useCreateRuntimeDataBackup() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useBackupMutation("runtime-data", () =>
+    runtimeControlGateway.createRuntimeDataBackup()
+  );
+}
+
 export function useRestoreRedisBackup() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useBackupMutation("redis", (path) =>
     runtimeControlGateway.restoreRedisBackup(backupRequest(path))
+  );
+}
+
+export function useRestoreRuntimeDataBackup() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useBackupMutation("runtime-data", (path) =>
+    runtimeControlGateway.restoreRuntimeDataBackup(backupRequest(path))
   );
 }
 
@@ -338,7 +361,7 @@ export function useDeleteTestKitOrphanVRecorder() {
 }
 
 function useBackupMutation(
-  scope: "host" | "redis",
+  scope: "host" | "redis" | "runtime-data",
   mutationFn: (path: string) => Promise<RuntimeCommandResponse>
 ) {
   const queryClient = useQueryClient();
@@ -353,6 +376,11 @@ function useBackupMutation(
       queryClient.invalidateQueries({
         queryKey: consoleQueryKeys.redisBackups
       });
+      if (scope === "runtime-data") {
+        queryClient.invalidateQueries({
+          queryKey: consoleQueryKeys.runtimeDataBackups
+        });
+      }
     }
   });
 }

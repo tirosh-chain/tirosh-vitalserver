@@ -158,6 +158,12 @@ struct RuntimeLifecycle {
             try rollback(command)
         case .redisBackup:
             try createRedisBackup()
+        case .redisRestore(let archive):
+            try restoreRedisBackup(archive)
+        case .runtimeDataBackup:
+            try createRuntimeDataBackup()
+        case .runtimeDataRestore(let backup):
+            try restoreRuntimeDataBackup(backup)
         case .repairDatastore:
             try repairDatastore()
         case .repairVMDisk:
@@ -272,6 +278,42 @@ struct RuntimeLifecycle {
             }
         } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
             throw LauncherError.runtimeOperationFailed(message)
+        }
+    }
+
+    func createRuntimeDataBackup() throws {
+        do {
+            let backup = try runtimeDataBackupComposition().createBackup()
+            print("runtime data backup completed")
+            print("backup: \(backup.path)")
+        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeDataBackupStoreError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func restoreRedisBackup(_ archive: URL) throws {
+        do {
+            try runtimeDataBackupComposition().restoreRedisBackup(archive)
+            print("redis restore completed")
+            print("archive: \(archive.path)")
+        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeDataBackupStoreError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func restoreRuntimeDataBackup(_ backup: URL) throws {
+        do {
+            try runtimeDataBackupComposition().restoreBackup(backup)
+            print("runtime data restore completed")
+            print("backup: \(backup.path)")
+        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeDataBackupStoreError {
+            throw LauncherError.runtimeOperationFailed(error.description)
         }
     }
 

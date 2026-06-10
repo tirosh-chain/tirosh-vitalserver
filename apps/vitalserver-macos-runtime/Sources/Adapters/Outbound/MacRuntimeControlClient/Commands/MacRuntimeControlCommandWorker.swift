@@ -93,6 +93,30 @@ public actor MacRuntimeControlCommandWorker {
         ))
     }
 
+    public func restoreRedisBackup(backupURL: URL) async throws -> RuntimeCommandResult {
+        try ensureExecutable(.launcher)
+        return await runPrivileged(RuntimeCommandFactory.shellCommand(
+            executable: RuntimeControlClientConstants.Paths.launcher,
+            arguments: [
+                RuntimeControlClientConstants.RuntimeCommand.runtime,
+                RuntimeControlClientConstants.RuntimeCommand.redisRestore,
+                backupURL.path,
+            ]
+        ))
+    }
+
+    public func restoreRuntimeDataBackup(backupURL: URL) async throws -> RuntimeCommandResult {
+        try ensureExecutable(.launcher)
+        return await runPrivileged(RuntimeCommandFactory.shellCommand(
+            executable: RuntimeControlClientConstants.Paths.launcher,
+            arguments: [
+                RuntimeControlClientConstants.RuntimeCommand.runtime,
+                RuntimeControlClientConstants.RuntimeCommand.runtimeDataRestore,
+                backupURL.path,
+            ]
+        ))
+    }
+
     public func deleteBackup(url: URL) async throws -> RuntimeCommandResult {
         try ensureManagedBackupDeletionTarget(url)
         return await runPrivileged(RuntimeCommandFactory.deleteBackupCommand(url: url))
@@ -136,6 +160,17 @@ public actor MacRuntimeControlCommandWorker {
             arguments: [
                 RuntimeControlClientConstants.RuntimeCommand.runtime,
                 RuntimeControlClientConstants.RuntimeCommand.redisBackup,
+            ]
+        ))
+    }
+
+    public func createRuntimeDataBackup() async throws -> RuntimeCommandResult {
+        try ensureExecutable(.launcher)
+        return await runPrivileged(RuntimeCommandFactory.shellCommand(
+            executable: RuntimeControlClientConstants.Paths.launcher,
+            arguments: [
+                RuntimeControlClientConstants.RuntimeCommand.runtime,
+                RuntimeControlClientConstants.RuntimeCommand.runtimeDataBackup,
             ]
         ))
     }

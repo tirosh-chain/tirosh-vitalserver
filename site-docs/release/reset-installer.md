@@ -7,6 +7,10 @@ Reset Installer는 Vital Server Helper를 새로 설치할 수 없을 때 사용
 일반 uninstall이 아닙니다. Helper app, runtime service, VM 데이터, 로그, 백업, 설정된 Vital
 files directory까지 정리해서 Mac을 다시 설치 가능한 상태로 되돌립니다.
 
+내부 clean uninstall과의 차이는 [Clean Uninstall and Reset Installer](clean-uninstall.md)를
+봅니다. Reset Installer는 정상 제거 UX가 아니라 fresh install blocker를 없애는 recovery
+package입니다.
+
 ## 1. 언제 사용하나
 
 새 설치가 아래 메시지와 함께 막힐 때 사용합니다.

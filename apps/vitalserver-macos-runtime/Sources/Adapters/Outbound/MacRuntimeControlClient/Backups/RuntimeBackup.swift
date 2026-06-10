@@ -35,6 +35,14 @@ extension RuntimeBackup {
         return discovered.sorted { $0.name > $1.name }
     }
 
+    static func loadRuntimeDataBackups(fileStore: RuntimeFileStore = SystemRuntimeFileStore()) throws -> [RuntimeBackup] {
+        let directory = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeDataBackups)
+        let discovered = try fileStore.contentsOfDirectory(at: directory, skipsHiddenFiles: true)
+            .filter { fileStore.pathState(at: $0) == .directory }
+            .map { RuntimeBackup(path: $0.path, sizeBytes: try directorySize($0, fileStore: fileStore)) }
+        return discovered.sorted { $0.name > $1.name }
+    }
+
     private static func latestBackup(
         _ path: String?,
         backupsRoot: URL,

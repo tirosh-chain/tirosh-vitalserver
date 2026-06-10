@@ -40,6 +40,9 @@ enum RuntimeControlClientConstants {
         static let verifyBundle = "verify-bundle"
         static let rollback = "rollback"
         static let redisBackup = "redis-backup"
+        static let redisRestore = "redis-restore"
+        static let runtimeDataBackup = "runtime-data-backup"
+        static let runtimeDataRestore = "runtime-data-restore"
         static let repairDatastore = "repair-datastore"
         static let repairVMDisk = "repair-vm-disk"
         static let repairProxy = "repair-proxy"
@@ -112,6 +115,7 @@ enum RuntimeControlClientConstants {
         static let vitalFiles = installed.vitalFilesDirectory.path
         static let backups = installed.backupsDirectory.path
         static let redisBackups = installed.redisBackupsDirectory.path
+        static let runtimeDataBackups = installed.backupsDirectory.appendingPathComponent("runtime-data").path
         static let vmConfig = installed.vmConfig.path
         static let vmDisk = installed.vmDisk.path
         static let guestRuntimeConfig = installed.guestRuntimeConfig.path

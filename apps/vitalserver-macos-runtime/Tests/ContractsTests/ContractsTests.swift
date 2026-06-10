@@ -113,6 +113,8 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeOperation.repairServices.rawValue, "repair-services")
         XCTAssertEqual(RuntimeOperation(rawValue: "prepare-update-shutdown"), .prepareUpdateShutdown)
         XCTAssertEqual(RuntimeOperation.prepareUpdateShutdown.rawValue, "prepare-update-shutdown")
+        XCTAssertEqual(RuntimeOperation(rawValue: "runtime-data-backup"), .runtimeDataBackup)
+        XCTAssertEqual(RuntimeOperation.runtimeDataBackup.rawValue, "runtime-data-backup")
     }
 
     func testManagedRuntimeBackupManifestFactoryPreservesRootfsBackupMeaning() {
@@ -190,6 +192,7 @@ final class ContractsTests: XCTestCase {
                 prepareUpdateShutdown: true,
                 activateUpdate: true,
                 redisBackup: true,
+                redisRestore: true,
                 repairDatastore: true
             )
         )

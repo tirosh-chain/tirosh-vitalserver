@@ -211,8 +211,24 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.redisBackupLog)
     }
 
+    public var redisRestoreResult: URL {
+        guestRunDirectory.appendingPathComponent(RuntimeFileNames.redisRestoreResult)
+    }
+
+    public var redisRestoreRequest: URL {
+        guestRunDirectory.appendingPathComponent(RuntimeFileNames.redisRestoreRequest)
+    }
+
+    public var redisRestoreLog: URL {
+        guestRunDirectory.appendingPathComponent(RuntimeFileNames.redisRestoreLog)
+    }
+
     public var centralRedisBackupLog: URL {
         centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.redisBackupLog)
+    }
+
+    public var centralRedisRestoreLog: URL {
+        centralGuestLogsDirectory.appendingPathComponent(RuntimeFileNames.redisRestoreLog)
     }
 
     public var containerLogs: URL {

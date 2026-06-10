@@ -91,6 +91,13 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         return try hostClient.loadRedisBackups()
     }
 
+    public func loadRuntimeDataBackups() async throws -> [RuntimeBackup] {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return try hostClient.loadRuntimeDataBackups()
+    }
+
     public func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: try await client.applySettings(settings))
     }
@@ -123,6 +130,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: try await client.createRedisBackup())
     }
 
+    public func createRuntimeDataBackup() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.createRuntimeDataBackup())
+    }
+
     public func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse {
         guard let hostClient else {
             throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
@@ -153,6 +164,20 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
             throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
         }
         return RuntimeControlCommandResponse(result: try await hostClient.rollbackRuntime(backupURL: try localFileURL(backup)))
+    }
+
+    public func restoreRedisBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeControlCommandResponse(result: try await hostClient.restoreRedisBackup(backupURL: try localFileURL(backup)))
+    }
+
+    public func restoreRuntimeDataBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeControlCommandResponse(result: try await hostClient.restoreRuntimeDataBackup(backupURL: try localFileURL(backup)))
     }
 
     public func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse {

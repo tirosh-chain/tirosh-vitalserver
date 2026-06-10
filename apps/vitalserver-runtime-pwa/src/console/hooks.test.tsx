@@ -9,6 +9,7 @@ import {
   useApplyRuntimeSettings,
   useApplyUpdateBundle,
   useCreateRedisBackup,
+  useCreateRuntimeDataBackup,
   useCreateTestKitBeds,
   useDeleteHostBackup,
   useDeleteTestKitBeds,
@@ -25,7 +26,9 @@ import {
   useResetTestKitVirtualRecorders,
   useRestartTestKitVirtualRecorders,
   useRollbackBackup,
+  useRestoreRuntimeDataBackup,
   useRuntimeCapabilities,
+  useRuntimeDataBackups,
   useRuntimeEvents,
   useRuntimeOverview,
   useRuntimeSettings,
@@ -58,6 +61,7 @@ describe("console hooks", () => {
     await expectQuery(useTestKitStatus, wrapper, gateway.getTestKitStatus);
     await expectQuery(useHostBackups, wrapper, gateway.listHostBackups);
     await expectQuery(useRedisBackups, wrapper, gateway.listRedisBackups);
+    await expectQuery(useRuntimeDataBackups, wrapper, gateway.listRuntimeDataBackups);
 
     const events = renderHook(
       () => useRuntimeEvents({ limit: 5, type: "update", since: "2026-05-31T00:00:00Z" }),
@@ -116,6 +120,8 @@ describe("console hooks", () => {
     await mutateHook(() => useRollbackBackup(), "/tmp/backup", wrapper);
     await mutateHook(() => useDeleteHostBackup(), "/tmp/backup", wrapper);
     await mutateHook(() => useCreateRedisBackup(), "", wrapper);
+    await mutateHook(() => useCreateRuntimeDataBackup(), "", wrapper);
+    await mutateHook(() => useRestoreRuntimeDataBackup(), "/tmp/runtime-data", wrapper);
     expect(gateway.rollbackBackup).toHaveBeenCalledWith({
       backup: { kind: "localPath", value: "/tmp/backup" }
     });
@@ -123,6 +129,10 @@ describe("console hooks", () => {
       backup: { kind: "localPath", value: "/tmp/backup" }
     });
     expect(gateway.createRedisBackup).toHaveBeenCalled();
+    expect(gateway.createRuntimeDataBackup).toHaveBeenCalled();
+    expect(gateway.restoreRuntimeDataBackup).toHaveBeenCalledWith({
+      backup: { kind: "localPath", value: "/tmp/runtime-data" }
+    });
 
     await mutateHook(() => useRepairRuntime(), undefined, wrapper);
     await mutateHook(() => useRepairProxy(), 18444, wrapper);
@@ -238,6 +248,7 @@ function createGateway(): GatewayMock {
     applySettings: vi.fn().mockResolvedValue(commandResult),
     applyUpdateBundle: vi.fn().mockResolvedValue(commandResult),
     createRedisBackup: vi.fn().mockResolvedValue(commandResult),
+    createRuntimeDataBackup: vi.fn().mockResolvedValue(commandResult),
     createTestKitBeds: vi.fn().mockResolvedValue([]),
     deleteHostBackup: vi.fn().mockResolvedValue(commandResult),
     deleteTestKitBeds: vi.fn().mockResolvedValue([]),
@@ -254,6 +265,7 @@ function createGateway(): GatewayMock {
     getTestKitStatus: vi.fn().mockResolvedValue({ enabled: true, sessions: [], beds: [] }),
     listHostBackups: vi.fn().mockResolvedValue([]),
     listRedisBackups: vi.fn().mockResolvedValue([]),
+    listRuntimeDataBackups: vi.fn().mockResolvedValue([]),
     pauseTestKitVirtualRecorders: vi.fn().mockResolvedValue(testKitSession()),
     readLogs: vi.fn().mockResolvedValue({ text: "logs" }),
     repairDatastore: command,
@@ -264,6 +276,7 @@ function createGateway(): GatewayMock {
     resetTestKitVirtualRecorders: vi.fn().mockResolvedValue({ enabled: true }),
     restartTestKitVirtualRecorders: vi.fn().mockResolvedValue(testKitSession()),
     restoreRedisBackup: vi.fn().mockResolvedValue(commandResult),
+    restoreRuntimeDataBackup: vi.fn().mockResolvedValue(commandResult),
     rollbackBackup: vi.fn().mockResolvedValue(commandResult),
     resumeTestKitVirtualRecorders: vi.fn().mockResolvedValue(testKitSession()),
     startRuntimeServices: command,

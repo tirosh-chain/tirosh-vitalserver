@@ -17,4 +17,21 @@ public protocol RuntimeGuestGateway {
     func removeDatastoreRepairResult() throws
     func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws
     func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>
+    func removeRedisRestoreResult() throws
+    func writeRedisRestoreRequest(_ request: RedisRestoreRequestDocument) throws
+    func loadRedisRestoreResultDocument() -> RuntimeGuestDocumentLoadResult<RedisRestoreResultDocument>
+}
+
+public extension RuntimeGuestGateway {
+    func removeRedisRestoreResult() throws {
+        throw RuntimeGuestCapabilityCheckError.missingCapability("redis-restore")
+    }
+
+    func writeRedisRestoreRequest(_ request: RedisRestoreRequestDocument) throws {
+        throw RuntimeGuestCapabilityCheckError.missingCapability("redis-restore")
+    }
+
+    func loadRedisRestoreResultDocument() -> RuntimeGuestDocumentLoadResult<RedisRestoreResultDocument> {
+        .failed("redis restore gateway is unavailable")
+    }
 }

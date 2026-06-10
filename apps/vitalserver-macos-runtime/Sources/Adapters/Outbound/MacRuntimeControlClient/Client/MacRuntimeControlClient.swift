@@ -110,6 +110,10 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try fileReader.redisBackups()
     }
 
+    public func loadRuntimeDataBackups() throws -> [RuntimeBackup] {
+        try fileReader.runtimeDataBackups()
+    }
+
     public func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
         fileReader.updateBundleSummaryResult(url: url)
     }
@@ -156,6 +160,14 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.rollbackRuntime(backupURL: backupURL)
     }
 
+    public func restoreRedisBackup(backupURL: URL) async throws -> RuntimeCommandResult {
+        try await commandWorker.restoreRedisBackup(backupURL: backupURL)
+    }
+
+    public func restoreRuntimeDataBackup(backupURL: URL) async throws -> RuntimeCommandResult {
+        try await commandWorker.restoreRuntimeDataBackup(backupURL: backupURL)
+    }
+
     public func deleteBackup(url: URL) async throws -> RuntimeCommandResult {
         try await commandWorker.deleteBackup(url: url)
     }
@@ -178,6 +190,10 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
 
     public func createRedisBackup() async throws -> RuntimeCommandResult {
         try await commandWorker.createRedisBackup()
+    }
+
+    public func createRuntimeDataBackup() async throws -> RuntimeCommandResult {
+        try await commandWorker.createRuntimeDataBackup()
     }
 
     public func startRuntimeServices() async throws -> RuntimeCommandResult {

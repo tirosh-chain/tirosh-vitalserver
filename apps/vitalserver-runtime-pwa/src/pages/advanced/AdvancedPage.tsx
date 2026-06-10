@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import {
   useCreateRedisBackup,
+  useCreateRuntimeDataBackup,
   useDeleteHostBackup,
   useHostBackups,
   useRedisBackups,
@@ -9,9 +10,11 @@ import {
   useRepairProxy,
   useRepairRuntime,
   useRepairVMDisk,
+  useRuntimeDataBackups,
   useRuntimeCapabilities,
   useRuntimeOverview,
-  useRollbackBackup
+  useRollbackBackup,
+  useRestoreRuntimeDataBackup
 } from "@/console/hooks";
 import { canControlRecovery } from "@/domain/runtime-control/capabilities/runtimeCapabilities";
 import type {
@@ -40,9 +43,12 @@ export function AdvancedPage() {
   const capabilities = useRuntimeCapabilities();
   const hostBackups = useHostBackups();
   const redisBackups = useRedisBackups();
+  const runtimeDataBackups = useRuntimeDataBackups();
   const rollbackBackup = useRollbackBackup();
   const deleteHostBackup = useDeleteHostBackup();
   const createRedisBackup = useCreateRedisBackup();
+  const createRuntimeDataBackup = useCreateRuntimeDataBackup();
+  const restoreRuntimeDataBackup = useRestoreRuntimeDataBackup();
   const repairRuntime = useRepairRuntime();
   const repairProxy = useRepairProxy();
   const repairDatastore = useRepairDatastore();
@@ -51,6 +57,8 @@ export function AdvancedPage() {
   const [selectedHostBackup, setSelectedHostBackup] =
     useState<RuntimeBackup | null>(null);
   const [selectedRedisBackup, setSelectedRedisBackup] =
+    useState<RuntimeBackup | null>(null);
+  const [selectedRuntimeDataBackup, setSelectedRuntimeDataBackup] =
     useState<RuntimeBackup | null>(null);
   const [proxyPort, setProxyPort] = useState("");
   const canRollback = capabilities.data?.canRollback === true;
@@ -64,15 +72,19 @@ export function AdvancedPage() {
       repairVMDisk.data ??
       rollbackBackup.data ??
       deleteHostBackup.data ??
+      createRuntimeDataBackup.data ??
+      restoreRuntimeDataBackup.data ??
       createRedisBackup.data,
     [
+      createRuntimeDataBackup.data,
       createRedisBackup.data,
       deleteHostBackup.data,
       repairDatastore.data,
       repairVMDisk.data,
       repairProxy.data,
       repairRuntime.data,
-      rollbackBackup.data
+      rollbackBackup.data,
+      restoreRuntimeDataBackup.data
     ]
   );
 
@@ -83,6 +95,8 @@ export function AdvancedPage() {
     repairVMDisk.error ??
     rollbackBackup.error ??
     deleteHostBackup.error ??
+    createRuntimeDataBackup.error ??
+    restoreRuntimeDataBackup.error ??
     createRedisBackup.error;
   const configuredProxyPort =
     parseOptionalNumber(proxyPort) ??
@@ -145,6 +159,46 @@ export function AdvancedPage() {
             <ErrorState
               title="Failed to read rollback backups"
               error={hostBackups.error}
+            />
+          ) : null}
+        </div>
+
+        <div className="subsection">
+          <h3>Runtime data recovery</h3>
+          <BackupTable
+            rows={runtimeDataBackups.data ?? []}
+            selected={selectedRuntimeDataBackup}
+            onSelect={setSelectedRuntimeDataBackup}
+            emptyText="No runtime data backups are available."
+          />
+          <div className="action-row">
+            <ConfirmButton
+              confirmMessage="Create a runtime data backup now?"
+              disabled={createRuntimeDataBackup.isPending || !canRepair}
+              onClick={() => createRuntimeDataBackup.mutate("")}
+            >
+              Create Runtime Data Backup
+            </ConfirmButton>
+            <ConfirmButton
+              confirmMessage="Restore the selected runtime data backup? Current runtime data will be replaced."
+              disabled={
+                !selectedRuntimeDataBackup?.path ||
+                restoreRuntimeDataBackup.isPending ||
+                !canRepair
+              }
+              onClick={() =>
+                selectedRuntimeDataBackup?.path
+                  ? restoreRuntimeDataBackup.mutate(selectedRuntimeDataBackup.path)
+                  : undefined
+              }
+            >
+              Restore Runtime Data Backup
+            </ConfirmButton>
+          </div>
+          {runtimeDataBackups.isError ? (
+            <ErrorState
+              title="Failed to read runtime data backups"
+              error={runtimeDataBackups.error}
             />
           ) : null}
         </div>

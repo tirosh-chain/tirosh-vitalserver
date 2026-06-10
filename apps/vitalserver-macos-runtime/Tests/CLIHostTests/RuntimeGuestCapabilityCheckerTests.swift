@@ -62,6 +62,7 @@ private func supportedState() -> GuestRuntimeStateDocument {
             prepareUpdateShutdown: true,
             activateUpdate: true,
             redisBackup: true,
+            redisRestore: true,
             repairDatastore: true
         ),
         vmIP: "192.168.64.2",

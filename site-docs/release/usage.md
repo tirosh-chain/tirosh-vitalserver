@@ -41,8 +41,9 @@ or Host proxy port conflict blocks this install.
 이 경우 installer를 반복 실행하지 않습니다.
 [Reset Installer](reset-installer.md)로 정리한 뒤 다시 설치합니다.
 
-일반 Uninstall은 현재 사용자 절차로 제공하지 않습니다. 재설치 가능한 상태를 보장하지 않기
-때문입니다.
+내부 Clean uninstall과 Reset Installer는 목적이 다릅니다. Clean uninstall은 정상 제거 흐름이고,
+Reset Installer는 재설치 blocker를 제거하는 recovery package입니다. 차이는
+[Clean Uninstall and Reset Installer](clean-uninstall.md)를 봅니다.
 
 ## 2. Helper app에서 확인할 것
 

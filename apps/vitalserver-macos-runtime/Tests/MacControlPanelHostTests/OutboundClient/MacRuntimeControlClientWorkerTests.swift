@@ -362,6 +362,10 @@ private final class AdapterStubFileReader: RuntimeHostFileReading {
         [RuntimeBackup(path: "/redis/latest", sizeBytes: 2)]
     }
 
+    func runtimeDataBackups() throws -> [RuntimeBackup] {
+        [RuntimeBackup(path: "/runtime-data/latest", sizeBytes: 3)]
+    }
+
     func logTextResult(sourceID: RuntimeLogSource, lineLimit: Int) -> RuntimeHostTextReadResult {
         .loaded("log:\(sourceID.rawValue):\(lineLimit)")
     }

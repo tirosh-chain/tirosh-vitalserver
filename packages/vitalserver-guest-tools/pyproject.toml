@@ -17,6 +17,7 @@ tirosh-vitalserver-health = "tirosh_guest_tools.adapters.inbound.cli:vitalserver
 tirosh-vitalserver-compose = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_compose"
 tirosh-vitalserver-command-poller = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_command_poller"
 tirosh-vitalserver-redis-backup = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_redis_backup"
+tirosh-vitalserver-redis-restore = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_redis_restore"
 tirosh-vitalserver-repair-datastore = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_repair_datastore"
 tirosh-vitalserver-activate-update = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_activate_update"
 tirosh-vitalserver-prepare-update-shutdown = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_prepare_update_shutdown"

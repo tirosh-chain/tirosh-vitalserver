@@ -98,6 +98,7 @@ public protocol RuntimeControlAPIReadHandler {
     func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse
     func loadBackups() async throws -> [RuntimeBackup]
     func loadRedisBackups() async throws -> [RuntimeBackup]
+    func loadRuntimeDataBackups() async throws -> [RuntimeBackup]
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse
     func startRuntimeServices() async throws -> RuntimeControlCommandResponse
     func stopRuntimeServices() async throws -> RuntimeControlCommandResponse
@@ -106,10 +107,13 @@ public protocol RuntimeControlAPIReadHandler {
     func repairDatastore() async throws -> RuntimeControlCommandResponse
     func repairVMDisk() async throws -> RuntimeControlCommandResponse
     func createRedisBackup() async throws -> RuntimeControlCommandResponse
+    func createRuntimeDataBackup() async throws -> RuntimeControlCommandResponse
     func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse
     func verifyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func applyUpdateBundle(bundle: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func rollbackBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
+    func restoreRedisBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
+    func restoreRuntimeDataBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func exportLogs(destination: RuntimeControlFileReference) async throws -> RuntimeLogExportResult
     func uninstallRuntime(clean: Bool) async throws -> RuntimeControlCommandResponse

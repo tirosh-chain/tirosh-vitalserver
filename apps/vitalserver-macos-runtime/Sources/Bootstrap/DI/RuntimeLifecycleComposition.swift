@@ -130,7 +130,9 @@ public struct RuntimeLifecycleComposition {
             updateShutdownRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateShutdownRequestFile),
             updateShutdownResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateShutdownResultFile),
             datastoreRepairRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairRequestFile),
-            datastoreRepairResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairResultFile)
+            datastoreRepairResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairResultFile),
+            redisRestoreRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.redisRestoreRequestFile),
+            redisRestoreResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.redisRestoreResultFile)
         )
     }
 }

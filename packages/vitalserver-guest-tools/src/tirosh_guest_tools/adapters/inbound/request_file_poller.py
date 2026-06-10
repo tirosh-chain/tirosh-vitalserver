@@ -45,6 +45,11 @@ REQUESTS: list[tuple[Path, str, str]] = [
         RuntimeService.REDIS_BACKUP.value,
         OperationName.REDIS_BACKUP.value,
     ),
+    (
+        RUNTIME_DIR / RuntimeFileName.REDIS_RESTORE_REQUEST.value,
+        RuntimeService.REDIS_RESTORE.value,
+        OperationName.REDIS_RESTORE.value,
+    ),
 ]
 
 

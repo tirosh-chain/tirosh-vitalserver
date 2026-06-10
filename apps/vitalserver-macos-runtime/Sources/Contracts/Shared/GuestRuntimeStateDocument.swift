@@ -80,17 +80,20 @@ public struct GuestRuntimeCapabilities: Codable, Equatable, Sendable {
     public let prepareUpdateShutdown: Bool
     public let activateUpdate: Bool
     public let redisBackup: Bool
+    public let redisRestore: Bool
     public let repairDatastore: Bool
 
     public init(
         prepareUpdateShutdown: Bool,
         activateUpdate: Bool,
         redisBackup: Bool,
+        redisRestore: Bool,
         repairDatastore: Bool
     ) {
         self.prepareUpdateShutdown = prepareUpdateShutdown
         self.activateUpdate = activateUpdate
         self.redisBackup = redisBackup
+        self.redisRestore = redisRestore
         self.repairDatastore = repairDatastore
     }
 }

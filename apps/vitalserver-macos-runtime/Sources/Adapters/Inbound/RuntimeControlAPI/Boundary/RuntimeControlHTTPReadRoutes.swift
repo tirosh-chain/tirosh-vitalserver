@@ -89,6 +89,8 @@ struct RuntimeControlHTTPReadRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadBackups())
         case .redisBackups:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadRedisBackups())
+        case .runtimeDataBackups:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeDataBackups())
         case .applySettings,
              .startServices,
              .stopServices,
@@ -97,6 +99,7 @@ struct RuntimeControlHTTPReadRoutes {
              .repairDatastore,
              .repairVMDisk,
              .createRedisBackup,
+             .createRuntimeDataBackup,
              .updateBundleSummary,
              .verifyUpdateBundle,
              .applyUpdateBundle,
@@ -104,7 +107,8 @@ struct RuntimeControlHTTPReadRoutes {
              .deleteBackup,
              .exportLogs,
              .uninstall,
-             .restoreRedisBackup:
+             .restoreRedisBackup,
+             .restoreRuntimeDataBackup:
             return nil
         }
     }

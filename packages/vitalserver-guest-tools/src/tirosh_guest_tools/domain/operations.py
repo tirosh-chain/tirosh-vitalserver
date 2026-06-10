@@ -17,6 +17,7 @@ class OperationName(StrEnum):
     ACTIVATE_UPDATE = "activate-update"
     PREPARE_UPDATE_SHUTDOWN = "prepare-update-shutdown"
     REDIS_BACKUP = "redis-backup"
+    REDIS_RESTORE = "redis-restore"
     REPAIR_DATASTORE = "repair-datastore"
 
 
@@ -80,6 +81,7 @@ class GuestOperationResult:
     step: str = ""
     reason_codes: tuple[str, ...] = ()
     archive: str = ""
+    restored_archive: str = ""
     redis_backup_path: str = ""
     shutdown_phase: ShutdownPhase | None = None
 
@@ -98,6 +100,8 @@ class GuestOperationResult:
             document["reasonCodes"] = list(self.reason_codes)
         if self.archive:
             document["archive"] = self.archive
+        if self.restored_archive:
+            document["restoredArchive"] = self.restored_archive
         if self.redis_backup_path:
             document["redisBackupPath"] = self.redis_backup_path
         if self.shutdown_phase is not None:

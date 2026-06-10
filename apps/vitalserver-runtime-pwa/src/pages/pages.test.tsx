@@ -9,6 +9,7 @@ const hooks = vi.hoisted(() => ({
   useApplyRuntimeSettings: vi.fn(),
   useApplyUpdateBundle: vi.fn(),
   useCreateRedisBackup: vi.fn(),
+  useCreateRuntimeDataBackup: vi.fn(),
   useCreateTestKitBeds: vi.fn(),
   useDeleteHostBackup: vi.fn(),
   useDeleteTestKitBeds: vi.fn(),
@@ -25,7 +26,9 @@ const hooks = vi.hoisted(() => ({
   useResetTestKitVirtualRecorders: vi.fn(),
   useRestartTestKitVirtualRecorders: vi.fn(),
   useRollbackBackup: vi.fn(),
+  useRestoreRuntimeDataBackup: vi.fn(),
   useRuntimeCapabilities: vi.fn(),
+  useRuntimeDataBackups: vi.fn(),
   useRuntimeEvents: vi.fn(),
   useRuntimeOverview: vi.fn(),
   useRuntimeSettings: vi.fn(),
@@ -737,6 +740,8 @@ describe("runtime console pages", () => {
     const rollback = pendingMutation();
     const deleteHostBackup = pendingMutation();
     const createRedisBackup = pendingMutation();
+    const createRuntimeDataBackup = pendingMutation();
+    const restoreRuntimeDataBackup = pendingMutation();
     const repairRuntime = pendingMutation();
     const repairDatastore = pendingMutation();
     const repairVMDisk = pendingMutation();
@@ -744,6 +749,8 @@ describe("runtime console pages", () => {
     hooks.useRollbackBackup.mockReturnValue(rollback);
     hooks.useDeleteHostBackup.mockReturnValue(deleteHostBackup);
     hooks.useCreateRedisBackup.mockReturnValue(createRedisBackup);
+    hooks.useCreateRuntimeDataBackup.mockReturnValue(createRuntimeDataBackup);
+    hooks.useRestoreRuntimeDataBackup.mockReturnValue(restoreRuntimeDataBackup);
     hooks.useRepairRuntime.mockReturnValue(repairRuntime);
     hooks.useRepairDatastore.mockReturnValue(repairDatastore);
     hooks.useRepairVMDisk.mockReturnValue(repairVMDisk);
@@ -755,6 +762,9 @@ describe("runtime console pages", () => {
     fireEvent.click(screen.getByRole("button", { name: "Rollback" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete Backup" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Redis Backup" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create Runtime Data Backup" }));
+    fireEvent.click(screen.getByRole("row", { name: /runtime-data-a/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Restore Runtime Data Backup" }));
     fireEvent.click(screen.getByRole("button", { name: "Repair Runtime" }));
     fireEvent.click(screen.getByRole("button", { name: "Repair Data Store" }));
     fireEvent.click(screen.getByRole("button", { name: "Repair VM Disk" }));
@@ -766,6 +776,8 @@ describe("runtime console pages", () => {
     expect(rollback.mutate).toHaveBeenCalledWith("/tmp/backup-a");
     expect(deleteHostBackup.mutate).toHaveBeenCalledWith("/tmp/backup-a");
     expect(createRedisBackup.mutate).toHaveBeenCalledWith("");
+    expect(createRuntimeDataBackup.mutate).toHaveBeenCalledWith("");
+    expect(restoreRuntimeDataBackup.mutate).toHaveBeenCalledWith("/tmp/runtime-data-a");
     expect(repairRuntime.mutate).toHaveBeenCalled();
     expect(repairDatastore.mutate).toHaveBeenCalled();
     expect(repairVMDisk.mutate).toHaveBeenCalled();
@@ -895,12 +907,14 @@ function setupDefaultHooks() {
   hooks.useHostLogs.mockReturnValue(query({ text: "line one\nline two" }));
   hooks.useHostBackups.mockReturnValue(query([{ path: "/tmp/backup-a", sizeBytes: 2048 }]));
   hooks.useRedisBackups.mockReturnValue(query([{ path: "/tmp/redis-a", sizeBytes: 1024 }]));
+  hooks.useRuntimeDataBackups.mockReturnValue(query([{ path: "/tmp/runtime-data-a", sizeBytes: 4096 }]));
   hooks.useTestKitStatus.mockReturnValue(query(testKitStatus()));
 
   for (const mock of [
     hooks.useApplyRuntimeSettings,
     hooks.useApplyUpdateBundle,
     hooks.useCreateRedisBackup,
+    hooks.useCreateRuntimeDataBackup,
     hooks.useCreateTestKitBeds,
     hooks.useDeleteHostBackup,
     hooks.useDeleteTestKitBeds,
@@ -914,6 +928,7 @@ function setupDefaultHooks() {
     hooks.useResetTestKitVirtualRecorders,
     hooks.useRestartTestKitVirtualRecorders,
     hooks.useRollbackBackup,
+    hooks.useRestoreRuntimeDataBackup,
     hooks.useStartRuntimeServices,
     hooks.useStartTestKitVirtualRecorders,
     hooks.useStopRuntimeServices,
