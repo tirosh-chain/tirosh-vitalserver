@@ -1122,8 +1122,8 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         let useCase = RuntimeGuestActivationUseCase()
 
         XCTAssertEqual(
-            useCase.waitStartedLogMessage(timeoutSeconds: 180),
-            "waiting for guest update activation result timeoutSeconds=180.0"
+            useCase.waitStartedLogMessage(timeoutSeconds: 900),
+            "waiting for guest update activation result timeoutSeconds=900.0"
         )
         XCTAssertEqual(
             try useCase.waitConfiguration(timeoutSeconds: 180),
@@ -1220,12 +1220,12 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         let useCase = RuntimeGuestShutdownUseCase()
 
         XCTAssertEqual(
-            useCase.waitStartedLogMessage(timeoutSeconds: 300),
-            "waiting for guest update shutdown result timeoutSeconds=300.0"
+            useCase.waitStartedLogMessage(timeoutSeconds: 900),
+            "waiting for guest update shutdown result timeoutSeconds=900.0"
         )
         XCTAssertEqual(
-            try useCase.waitConfiguration(timeoutSeconds: 300),
-            GuestShutdownWaitConfiguration(maxAttempts: 100, progressEveryAttempts: 5)
+            try useCase.waitConfiguration(timeoutSeconds: 900),
+            GuestShutdownWaitConfiguration(maxAttempts: 300, progressEveryAttempts: 5)
         )
         XCTAssertEqual(
             try useCase.waitConfiguration(timeoutSeconds: 1),

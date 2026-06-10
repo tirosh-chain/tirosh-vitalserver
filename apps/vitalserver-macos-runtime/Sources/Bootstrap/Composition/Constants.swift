@@ -145,8 +145,11 @@ public enum Constants {
         public static let serviceStopPollIntervalSeconds = 0.5
         public static let datastoreRepairWaitTimeoutSeconds = 300.0
         public static let redisBackupWaitTimeoutSeconds = 300.0
-        public static let updateActivationWaitTimeoutSeconds = 180.0
-        public static let updateShutdownWaitTimeoutSeconds = 300.0
+        // Must be long enough for explicit guest-side update sequences:
+        // compose quiesce + compose up/down + service stabilization + final sync + poweroff request.
+        // If any Guest phase times out, it should fail explicitly before Host waits out.
+        public static let updateActivationWaitTimeoutSeconds = 900.0
+        public static let updateShutdownWaitTimeoutSeconds = 900.0
         public static let vmBootLifecycleDeadlineSeconds = 600.0
         public static let runtimeStateStaleAfterSeconds = 30.0
         public static let watchdogRecoveryWaitSeconds = 20.0

@@ -165,6 +165,10 @@ services." 메시지로 오래 머무르면 Guest worker가 Redis 백업 이후 
 멈춘 것입니다. Docker Compose stop의 container grace timeout은 subprocess 자체의 완료를 보장하지
 않으므로 Guest command는 별도 command timeout을 가져야 합니다. Timeout은 Host가 추측해서 넘기지
 말고 Guest dependency failure result로 기록되어야 rollback/force-stop 경로가 명시적으로 실행됩니다.
+Host가 update activation/shutdown 결과를 기다리는 전체 타임아웃은 Guest 측 종료·활성화 단계 최대
+실행 시간보다 작아서는 안 됩니다. 현재는 Host와 Guest 경계의 명시적 실패를 보존하기 위해
+activation/shutdown 대기 상한을 900초로 맞추었고, 타임아웃이 터지기 전에 Guest는 반드시
+`failed` 또는 `failed` 단계 reason code를 남겨야 합니다.
 Guest는 final sync와 `systemctl --no-block poweroff` 요청이 성공한 뒤에만
 `ready`/`poweroff-requested` result를 기록해야 합니다. Poweroff 요청 전에 ready를 먼저 쓰면 Host가
 실제 요청 실패나 sync hang을 성공 상태로 오해할 수 있습니다.
