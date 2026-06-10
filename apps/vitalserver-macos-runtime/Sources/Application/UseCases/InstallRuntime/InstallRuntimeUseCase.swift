@@ -80,7 +80,7 @@ public struct InstallRuntimeUseCase {
             return InstallRuntimePlan(
                 mode: .provision,
                 operationPlan: RuntimeOperationPlans.installProvision,
-                activeStatus: .initializing,
+                activeStatus: .installing,
                 completionStatus: .initializing,
                 completionMessage: "runtime initialized; runtime services starting"
             )

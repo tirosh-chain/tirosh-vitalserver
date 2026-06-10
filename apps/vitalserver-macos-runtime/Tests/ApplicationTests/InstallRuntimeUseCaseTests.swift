@@ -24,7 +24,7 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
 
         XCTAssertEqual(plan.mode, .provision)
         XCTAssertEqual(plan.operationPlan, RuntimeOperationPlans.installProvision)
-        XCTAssertEqual(plan.activeStatus, .initializing)
+        XCTAssertEqual(plan.activeStatus, .installing)
         XCTAssertEqual(plan.completionStatus, .initializing)
         XCTAssertEqual(plan.completionMessage, "runtime initialized; runtime services starting")
     }

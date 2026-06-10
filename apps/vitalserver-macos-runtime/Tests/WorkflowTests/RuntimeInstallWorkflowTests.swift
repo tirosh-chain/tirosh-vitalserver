@@ -35,10 +35,10 @@ final class RuntimeInstallWorkflowTests: XCTestCase {
 
         XCTAssertEqual(harness.executedPlans, RuntimeOperationPlans.installProvision.steps.map(InstallRuntimeUseCase().stepExecutionPlan))
         XCTAssertFalse(harness.executedPlans.contains(.waitInstallRuntimeHealth))
-        XCTAssertEqual(harness.statuses.first?.level, .initializing)
+        XCTAssertEqual(harness.statuses.first?.level, .installing)
         XCTAssertEqual(harness.statuses.last?.level, .initializing)
         XCTAssertEqual(harness.statuses.last?.message, "runtime initialized; runtime services starting")
-        XCTAssertTrue(harness.progressEvents.allSatisfy { $0.status == .initializing })
+        XCTAssertTrue(harness.progressEvents.allSatisfy { $0.status == .installing })
         XCTAssertTrue(harness.stateEvents.contains("state:provisioned:provision:-:runtime install provisioned:"))
     }
 
@@ -286,7 +286,7 @@ private extension InstallRuntimePlan {
     static let provision = InstallRuntimePlan(
         mode: .provision,
         operationPlan: RuntimeOperationPlans.installProvision,
-        activeStatus: .initializing,
+        activeStatus: .installing,
         completionStatus: .initializing,
         completionMessage: "runtime initialized; runtime services starting"
     )

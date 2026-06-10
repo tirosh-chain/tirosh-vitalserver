@@ -161,6 +161,19 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         XCTAssertNil(plan.logMessage)
     }
 
+    func testStatusManagedOperationGuardPlanDoesNotBlockInitializationHealthObservation() {
+        let useCase = WatchdogRuntimeUseCase()
+
+        let plan = useCase.statusManagedOperationGuardPlan(
+            status: status(level: .initializing, operation: .install, updatedAt: "2026-05-22T00:00:00Z"),
+            now: date("2026-05-22T00:05:00Z"),
+            graceSeconds: 1_800
+        )
+
+        XCTAssertNil(plan.activeOperation)
+        XCTAssertNil(plan.logMessage)
+    }
+
     func testStatusManagedOperationGuardPlanDoesNotHideInvalidOrStaleState() {
         let useCase = WatchdogRuntimeUseCase()
 
