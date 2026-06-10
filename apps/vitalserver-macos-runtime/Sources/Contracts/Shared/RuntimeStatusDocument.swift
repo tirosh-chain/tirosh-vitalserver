@@ -2,6 +2,7 @@ import Foundation
 
 public enum RuntimeStatusLevel: Codable, Equatable, Sendable {
     case installing
+    case initializing
     case updating
     case recovering
     case healthy
@@ -13,6 +14,8 @@ public enum RuntimeStatusLevel: Codable, Equatable, Sendable {
         switch rawValue {
         case "installing":
             self = .installing
+        case "initializing":
+            self = .initializing
         case "updating":
             self = .updating
         case "recovering":
@@ -32,6 +35,8 @@ public enum RuntimeStatusLevel: Codable, Equatable, Sendable {
         switch self {
         case .installing:
             return "installing"
+        case .initializing:
+            return "initializing"
         case .updating:
             return "updating"
         case .recovering:

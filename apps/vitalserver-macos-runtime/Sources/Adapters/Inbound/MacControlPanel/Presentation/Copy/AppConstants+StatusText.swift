@@ -19,6 +19,7 @@ public extension AppConstants {
         public static let unhealthy = "Unhealthy"
         public static let starting = "Starting"
         public static let installing = "Installing"
+        public static let initializing = "Initializing"
         public static let updating = "Updating"
         public static let recovering = "Recovering"
         public static let degraded = "Degraded"
@@ -430,6 +431,8 @@ public extension AppConstants {
             switch rawValue.lowercased() {
             case "installing":
                 return installing
+            case "initializing":
+                return initializing
             case "updating":
                 return updating
             case "recovering":

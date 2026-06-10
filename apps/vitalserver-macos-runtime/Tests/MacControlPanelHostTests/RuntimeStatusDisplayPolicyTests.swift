@@ -157,7 +157,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             vmServiceLoaded: false,
             proxyServiceLoaded: false,
             watchdogServiceLoaded: true,
-            runtimeState: .degraded,
+            runtimeState: .installing,
             operation: .status,
             guestHTTP: "000failed",
             hostProxyHTTP: nil,
@@ -236,7 +236,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestLogSyncServiceState: .notLoaded,
             sleepPreventionServiceState: .notLoaded,
             watchdogServiceState: .loaded,
-            runtimeState: .degraded,
+            runtimeState: .installing,
             operation: .status,
             guestHTTP: "000failed",
             hostProxyHTTP: nil,
@@ -272,6 +272,53 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
         XCTAssertEqual(item(AppConstants.Labels.vitalDBObserver, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
         XCTAssertEqual(item(GeneratedRelease.redisUIName, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
+    }
+
+    func testAdvancedServiceHealthShowsInitializingWhileRuntimeBecomesReady() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: false,
+            proxyServiceLoaded: false,
+            guestLogSyncServiceLoaded: false,
+            sleepPreventionServiceLoaded: false,
+            watchdogServiceLoaded: true,
+            vmServiceState: .notLoaded,
+            proxyServiceState: .notLoaded,
+            guestLogSyncServiceState: .notLoaded,
+            sleepPreventionServiceState: .notLoaded,
+            watchdogServiceState: .loaded,
+            runtimeState: .initializing,
+            operation: .install,
+            installStateDocument: RuntimeInstallStateDocument(
+                state: .provisioned,
+                mode: .provision,
+                updatedAt: "2026-06-09T14:06:25Z",
+                message: "runtime install provisioned"
+            ),
+            guestHTTP: "000failed",
+            hostProxyHTTP: nil,
+            redisUIHTTP: "503",
+            swaggerUIHTTP: nil
+        )
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "000",
+            auditProxyStatus: nil,
+            containerLogsPresent: false,
+            containerLogsBytes: 0,
+            composeServices: []
+        )
+
+        let overall = policy.overallHealth(status: status, observation: observation)
+        let vitalServer = policy.vitalServerAvailability(status: status, observation: observation)
+        let vmHealth = policy.advancedVMHealth(status: status)
+        let serviceHealth = policy.advancedServiceHealth(status: status, observation: observation)
+
+        XCTAssertEqual(overall.text, AppConstants.StatusText.initializing)
+        XCTAssertEqual(vitalServer.text, AppConstants.StatusText.initializing)
+        XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, AppConstants.StatusText.initializing)
+        XCTAssertEqual(item(AppConstants.Labels.proxyService, in: serviceHealth)?.value.text, AppConstants.StatusText.initializing)
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.initializing)
+        XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.initializing)
     }
 
     func testAdvancedServiceHealthPreservesServiceStateReadFailuresDuringUpdate() {

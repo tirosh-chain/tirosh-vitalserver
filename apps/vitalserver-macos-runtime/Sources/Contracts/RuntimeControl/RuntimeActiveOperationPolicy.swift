@@ -32,6 +32,9 @@ public enum RuntimeActiveOperationPolicy {
     }
 
     public static func isInstallInProgress(_ status: RuntimeStatus) -> Bool {
+        guard status.runtimeState == .installing else {
+            return false
+        }
         if let progress = status.progress,
            isInstallOperation(progress.operation) {
             return !isTerminal(progress.phase)
@@ -39,10 +42,11 @@ public enum RuntimeActiveOperationPolicy {
         if let installState = status.installStateDocument?.state {
             return isInstallStateInProgress(installState, status: status)
         }
-        guard isInstallOperation(status.operation) else {
-            return status.runtimeState == .installing
-        }
-        return status.runtimeState == .installing || status.runtimeState == .degraded
+        return true
+    }
+
+    public static func isInitializationInProgress(_ status: RuntimeStatus) -> Bool {
+        status.runtimeState == .initializing
     }
 
     public static func isTerminal(_ phase: RuntimeProgressPhase) -> Bool {

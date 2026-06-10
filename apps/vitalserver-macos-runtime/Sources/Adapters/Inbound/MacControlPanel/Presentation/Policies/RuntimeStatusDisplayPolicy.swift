@@ -257,6 +257,7 @@ private struct AppRuntimeStatusOverallHealthVocabulary: RuntimeStatusOverallHeal
     var healthyText: String { AppConstants.StatusText.healthy }
     var notInstalledText: String { AppConstants.StatusText.notInstalled }
     var installingText: String { AppConstants.StatusText.installing }
+    var initializingText: String { AppConstants.StatusText.initializing }
     var updatingText: String { AppConstants.StatusText.updating }
     var recoveringText: String { AppConstants.StatusText.recovering }
     var needsAttentionText: String { AppConstants.StatusText.needsAttention }
@@ -287,6 +288,7 @@ private struct AppRuntimeStatusHealthDetailsVocabulary: RuntimeStatusHealthDetai
     var waitingText: String { AppConstants.StatusText.waiting }
     var guestStateStaleText: String { AppConstants.StatusText.guestStateStale }
     var installingText: String { AppConstants.StatusText.installing }
+    var initializingText: String { AppConstants.StatusText.initializing }
     var updatingText: String { AppConstants.StatusText.updating }
     var notReportedText: String { AppConstants.StatusText.notReported }
     var reachableText: String { AppConstants.StatusText.reachable }
@@ -332,6 +334,7 @@ private struct AppRuntimeStatusAdvancedVMHealthVocabulary: RuntimeStatusAdvanced
     var waitingText: String { AppConstants.StatusText.waiting }
     var guestStateStaleText: String { AppConstants.StatusText.guestStateStale }
     var installingText: String { AppConstants.StatusText.installing }
+    var initializingText: String { AppConstants.StatusText.initializing }
     var updatingText: String { AppConstants.StatusText.updating }
     var notReportedText: String { AppConstants.StatusText.notReported }
     var reachableText: String { AppConstants.StatusText.reachable }
@@ -358,6 +361,7 @@ private struct AppRuntimeStatusAdvancedVMHealthVocabulary: RuntimeStatusAdvanced
 
 private struct AppRuntimeStatusVitalServerAvailabilityVocabulary: RuntimeStatusVitalServerAvailabilityVocabulary {
     var installingText: String { AppConstants.StatusText.installing }
+    var initializingText: String { AppConstants.StatusText.initializing }
     var updatingText: String { AppConstants.StatusText.updating }
     var notReportedText: String { AppConstants.StatusText.notReported }
     var reachableText: String { AppConstants.StatusText.reachable }
@@ -379,6 +383,7 @@ private struct AppRuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusAdv
     var waitingText: String { AppConstants.StatusText.waiting }
     var guestStateStaleText: String { AppConstants.StatusText.guestStateStale }
     var installingText: String { AppConstants.StatusText.installing }
+    var initializingText: String { AppConstants.StatusText.initializing }
     var updatingText: String { AppConstants.StatusText.updating }
     var notReportedText: String { AppConstants.StatusText.notReported }
     var reachableText: String { AppConstants.StatusText.reachable }

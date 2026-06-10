@@ -47,7 +47,7 @@ describe("runtime control error summaries", () => {
       issues: [
         {
           path: ["status", "runtimeState"],
-          message: "Invalid enum value. Expected 'installing' | 'updating' | ...",
+          message: "Invalid enum value. Expected 'installing' | 'initializing' | ...",
           code: "invalid_enum_value"
         }
       ]

@@ -1080,7 +1080,7 @@
 
     function runtimeHealthText(status) {
       if (!status.runtimeInstalled) return "Runtime is not installed";
-      if (["installing", "updating", "recovering"].includes(status.runtimeState)) return titleCase(status.runtimeState);
+      if (["installing", "initializing", "updating", "recovering"].includes(status.runtimeState)) return titleCase(status.runtimeState);
       if (successfulHTTPStatus(status.hostProxyHTTP)) return "VitalServer is reachable";
       return "VitalServer is unavailable";
     }
@@ -1089,7 +1089,7 @@
       if (!status || !status.runtimeInstalled) {
         return { title: "Runtime is not installed", action: "Install" };
       }
-      if (["healthy", "installing", "updating", "recovering"].includes(status.runtimeState)) {
+      if (["healthy", "installing", "initializing", "updating", "recovering"].includes(status.runtimeState)) {
         return null;
       }
       const reasons = status.failureReasons || [];

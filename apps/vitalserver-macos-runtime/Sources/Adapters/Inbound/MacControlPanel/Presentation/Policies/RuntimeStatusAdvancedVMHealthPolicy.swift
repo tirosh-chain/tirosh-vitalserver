@@ -31,6 +31,7 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
 
     public func vmHealth(status: RuntimeStatus) -> [RuntimeStatusHealthDetailItem] {
         let installInProgress = RuntimeActiveOperationPolicy.isInstallInProgress(status)
+        let initializationInProgress = RuntimeActiveOperationPolicy.isInitializationInProgress(status)
         var items = [
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.runtimeInstallationLabel,
@@ -47,7 +48,8 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
                 label: vocabulary.vmServiceLabel,
                 value: value(serviceValuePolicy.serviceValue(
                     state: status.vmServiceState,
-                    installInProgress: installInProgress
+                    installInProgress: installInProgress,
+                    initializationInProgress: initializationInProgress
                 ))
             ),
             RuntimeStatusHealthDetailItem(

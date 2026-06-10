@@ -28,15 +28,17 @@ final class RuntimeInstallWorkflowTests: XCTestCase {
         XCTAssertTrue(harness.logs.contains("runtime install completed home=/runtime-home"))
     }
 
-    func testProvisionInstallCompletesDegradedWithoutClaimingHealth() throws {
+    func testProvisionInstallCompletesInitializingWithoutClaimingHealth() throws {
         let harness = InstallRuntimeUseCaseHarness()
 
         try harness.run(.provision)
 
         XCTAssertEqual(harness.executedPlans, RuntimeOperationPlans.installProvision.steps.map(InstallRuntimeUseCase().stepExecutionPlan))
         XCTAssertFalse(harness.executedPlans.contains(.waitInstallRuntimeHealth))
-        XCTAssertEqual(harness.statuses.last?.level, .degraded)
-        XCTAssertEqual(harness.statuses.last?.message, "runtime install provisioned; runtime services starting")
+        XCTAssertEqual(harness.statuses.first?.level, .initializing)
+        XCTAssertEqual(harness.statuses.last?.level, .initializing)
+        XCTAssertEqual(harness.statuses.last?.message, "runtime initialized; runtime services starting")
+        XCTAssertTrue(harness.progressEvents.allSatisfy { $0.status == .initializing })
         XCTAssertTrue(harness.stateEvents.contains("state:provisioned:provision:-:runtime install provisioned:"))
     }
 
@@ -111,7 +113,7 @@ final class RuntimeInstallWorkflowTests: XCTestCase {
 
         try harness.run(.provision)
 
-        XCTAssertEqual(harness.statuses.last?.level, .degraded)
+        XCTAssertEqual(harness.statuses.last?.level, .initializing)
         XCTAssertTrue(harness.logs.contains {
             $0.contains("runtime install progress write failed")
         })
@@ -276,6 +278,7 @@ private extension InstallRuntimePlan {
     static let full = InstallRuntimePlan(
         mode: .full,
         operationPlan: RuntimeOperationPlans.install,
+        activeStatus: .installing,
         completionStatus: .healthy,
         completionMessage: "runtime install completed"
     )
@@ -283,8 +286,9 @@ private extension InstallRuntimePlan {
     static let provision = InstallRuntimePlan(
         mode: .provision,
         operationPlan: RuntimeOperationPlans.installProvision,
-        completionStatus: .degraded,
-        completionMessage: "runtime install provisioned; runtime services starting"
+        activeStatus: .initializing,
+        completionStatus: .initializing,
+        completionMessage: "runtime initialized; runtime services starting"
     )
 }
 

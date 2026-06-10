@@ -854,7 +854,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         {
           "schemaVersion": 2,
           "product": "VitalServerHelper",
-          "status": "degraded",
+          "status": "initializing",
           "operation": "watchdog",
           "message": "watchdog recovery deferred",
           "updatedAt": "2026-06-09T14:09:32Z",
@@ -864,6 +864,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "vmService": "loaded",
           "proxyService": "loaded",
           "watchdogService": "loaded",
+          "hostProxyHTTP": "000failed",
+          "guestHTTP": "000failed",
           "rootfsBase": "present",
           "vmDisk": "present",
           "failureReasons": []
@@ -892,10 +894,12 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let status = reader.loadStatus(settings: RuntimeSettings())
 
+        XCTAssertEqual(status.runtimeState, .initializing)
+        XCTAssertNil(status.statusDocumentError)
         XCTAssertEqual(status.installStateDocument?.state, .provisioned)
         XCTAssertEqual(status.installStateDocument?.mode, .provision)
         XCTAssertNil(status.installStateDocumentError)
-        XCTAssertTrue(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isInitializationInProgress(status))
     }
 
     func testStatusReaderReportsRuntimeInstallStateReadFailure() throws {

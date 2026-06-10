@@ -16,17 +16,20 @@ public struct InstallRuntimeRequest: Equatable, Sendable {
 public struct InstallRuntimePlan: Equatable, Sendable {
     public let mode: RuntimeInstallMode
     public let operationPlan: RuntimeOperationPlan
+    public let activeStatus: RuntimeStatusLevel
     public let completionStatus: RuntimeStatusLevel
     public let completionMessage: String
 
     public init(
         mode: RuntimeInstallMode,
         operationPlan: RuntimeOperationPlan,
+        activeStatus: RuntimeStatusLevel,
         completionStatus: RuntimeStatusLevel,
         completionMessage: String
     ) {
         self.mode = mode
         self.operationPlan = operationPlan
+        self.activeStatus = activeStatus
         self.completionStatus = completionStatus
         self.completionMessage = completionMessage
     }
@@ -69,6 +72,7 @@ public struct InstallRuntimeUseCase {
             return InstallRuntimePlan(
                 mode: .full,
                 operationPlan: RuntimeOperationPlans.install,
+                activeStatus: .installing,
                 completionStatus: .healthy,
                 completionMessage: "runtime install completed"
             )
@@ -76,13 +80,15 @@ public struct InstallRuntimeUseCase {
             return InstallRuntimePlan(
                 mode: .provision,
                 operationPlan: RuntimeOperationPlans.installProvision,
-                completionStatus: .degraded,
-                completionMessage: "runtime install provisioned; runtime services starting"
+                activeStatus: .initializing,
+                completionStatus: .initializing,
+                completionMessage: "runtime initialized; runtime services starting"
             )
         case .unknown:
             return InstallRuntimePlan(
                 mode: request.mode,
                 operationPlan: RuntimeOperationPlans.install,
+                activeStatus: .installing,
                 completionStatus: .critical,
                 completionMessage: "runtime install failed"
             )
@@ -181,13 +187,14 @@ public struct InstallRuntimeUseCase {
 
     public func stepProgressEvent(
         step: RuntimeWorkflowStep,
+        status: RuntimeStatusLevel,
         stepStatus: RuntimeProgressStepStatus,
         phase: RuntimeProgressPhase,
         message: String
     ) -> RuntimeStepExecutionEvent {
         RuntimeStepExecutionEvent(
             operation: .install,
-            status: .installing,
+            status: status,
             step: step,
             stepStatus: stepStatus,
             phase: phase,

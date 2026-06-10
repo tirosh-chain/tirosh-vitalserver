@@ -22,6 +22,7 @@ describe("runtime presentation formatting", () => {
   });
 
   it("maps runtime state values to display labels", () => {
+    expect(formatRuntimeState("initializing")).toBe("Initializing");
     expect(formatRuntimeState("healthy")).toBe("Healthy");
     expect(formatRuntimeState("critical")).toBe("Critical");
     expect(formatRuntimeState(undefined)).toBe("Unknown");

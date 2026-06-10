@@ -502,7 +502,8 @@ Single-node self-healing runtime
 
 | status | 의미 |
 |---|---|
-| `installing` | installer가 runtime instance를 provision 중 |
+| `installing` | 최초 설치 패키지가 runtime 파일, VM disk, service, 설정을 배치/등록 중 |
+| `initializing` | 설치/provision 산출물이 준비됐고 runtime service, guest, HTTP endpoint가 사용 가능 상태로 올라오는 중 |
 | `updating` | update bundle 적용 중 |
 | `recovering` | rollback 또는 복구 동작 중 |
 | `healthy` | 현재 health 기준 통과 |
@@ -541,6 +542,7 @@ Single-node self-healing runtime
 
 ```text
 install start       -> installing
+install provisioned -> initializing
 install success     -> healthy
 install failure     -> critical
 health success      -> healthy

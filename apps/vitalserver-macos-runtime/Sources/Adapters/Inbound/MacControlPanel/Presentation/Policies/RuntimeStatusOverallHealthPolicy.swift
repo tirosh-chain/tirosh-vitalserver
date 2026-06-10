@@ -6,6 +6,7 @@ public protocol RuntimeStatusOverallHealthVocabulary {
     var healthyText: String { get }
     var notInstalledText: String { get }
     var installingText: String { get }
+    var initializingText: String { get }
     var updatingText: String { get }
     var recoveringText: String { get }
     var needsAttentionText: String { get }
@@ -50,6 +51,9 @@ public struct RuntimeStatusOverallHealthPolicy {
         if RuntimeActiveOperationPolicy.isInstallInProgress(status) {
             return value(vocabulary.installingText, .warning)
         }
+        if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
+            return value(vocabulary.initializingText, .warning)
+        }
         if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
             return value(vocabulary.updatingText, .warning)
         }
@@ -66,6 +70,8 @@ public struct RuntimeStatusOverallHealthPolicy {
         switch status.runtimeState {
         case .some(.installing):
             return value(vocabulary.installingText, .warning)
+        case .some(.initializing):
+            return value(vocabulary.initializingText, .warning)
         case .some(.updating):
             return value(vocabulary.updatingText, .warning)
         case .some(.recovering):

@@ -145,7 +145,7 @@ public struct RuntimeInstallWorkflow {
         )
         let startPlan = installUseCase().startPlan(runtimeHomePath: executionContext.runtimeHomePath)
         log(startPlan.logMessage, operations: operations)
-        try operations.writer.writeStatus(.installing, .install, startPlan.statusMessage)
+        try operations.writer.writeStatus(installPlan.activeStatus, .install, startPlan.statusMessage)
 
         let settings: Settings
         do {
@@ -200,6 +200,7 @@ public struct RuntimeInstallWorkflow {
                 try installUseCase().requireCommands([.executeStep(step)], in: decision)
                 decision = try execute(
                     step,
+                    status: installPlan.activeStatus,
                     settings: settings,
                     from: decision.state,
                     context: context,
@@ -256,6 +257,7 @@ public struct RuntimeInstallWorkflow {
 
     private func execute<Settings>(
         _ step: RuntimeWorkflowStep,
+        status: RuntimeStatusLevel,
         settings: Settings,
         from state: RuntimeInstallWorkflowState,
         context: RuntimeInstallTransitionContext,
@@ -271,6 +273,7 @@ public struct RuntimeInstallWorkflow {
         writeProgressBestEffort(
             installUseCase().stepProgressEvent(
                 step: step,
+                status: status,
                 stepStatus: .started,
                 phase: .running,
                 message: installUseCase().stepStartedMessage(step)
@@ -286,6 +289,7 @@ public struct RuntimeInstallWorkflow {
             writeProgressBestEffort(
                 installUseCase().stepProgressEvent(
                     step: step,
+                    status: status,
                     stepStatus: .completed,
                     phase: .running,
                     message: installUseCase().stepCompletedMessage(step)
@@ -305,6 +309,7 @@ public struct RuntimeInstallWorkflow {
             writeProgressBestEffort(
                 installUseCase().stepProgressEvent(
                     step: step,
+                    status: status,
                     stepStatus: .failed,
                     phase: .failed,
                     message: installUseCase().stepFailedMessage(step, reason: reason)

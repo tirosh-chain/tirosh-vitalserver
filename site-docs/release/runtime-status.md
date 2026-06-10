@@ -45,7 +45,8 @@ Overall health는 Helper runtime을 현재 사용할 수 있는지 요약합니�
 | Healthy | runtime 실행 파일, VM, guest HTTP, host proxy가 사용 가능 | Recorders/Beds에서 실제 관측 상태 확인 |
 | Needs attention | 실행은 가능하지만 일부 상태나 관측에 주의가 필요 | Advanced, Observability 확인 |
 | Critical | runtime 실행 또는 사용에 직접 장애가 있음 | Advanced failure reasons, Logs 확인 |
-| Installing | 설치 또는 초기 runtime 구성이 진행 중 | 4~5분 정도 완료 대기, 오래 지속되면 install log 확인 |
+| Installing | 최초 설치 패키지가 runtime 파일, VM disk, service, 설정을 배치/등록하는 중 | installer 화면, install log 확인 |
+| Initializing | 설치/provision 산출물이 준비됐고 runtime service, guest, HTTP endpoint가 사용 가능 상태로 올라오는 중 | 4~5분 정도 완료 대기, 오래 지속되면 Status failure reasons와 Logs 확인 |
 | Updating | update bundle 적용, guest activation, rollback 진행 중 | Update progress, Logs 확인 |
 | Recovering | watchdog 또는 repair 흐름이 복구 중 | Advanced, Observability 확인 |
 | Not installed | Helper runtime이 설치 또는 실행 가능한 상태가 아님 | 설치 또는 Reset Installer 확인 |
@@ -54,9 +55,10 @@ Overall health는 Helper runtime을 현재 사용할 수 있는지 요약합니�
 `Healthy`라도 recorder나 bed가 모두 정상이라는 뜻은 아닙니다. runtime이 사용 가능하다는 요약이고,
 실제 관측 상태는 Recorders/Beds 화면에서 확인합니다.
 
-처음 설치할 때는 VM 생성, service 등록, guest 준비, health 확인이 순서대로 진행됩니다. 이 구간에
-Advanced의 일부 service나 HTTP endpoint가 아직 준비되지 않아도 `Installing`이 표시되면 설치
-진행 중으로 읽습니다.
+처음 설치할 때는 VM 생성, service 등록, guest 준비, health 확인이 순서대로 진행됩니다. `Installing`은
+설치 작업 자체를 뜻하고, `Initializing`은 설치/provision 산출물이 준비된 뒤 runtime service와 guest가
+사용 가능 상태로 올라오는 중이라는 뜻입니다. 이 구간에 Advanced의 일부 service나 HTTP endpoint가
+아직 준비되지 않아도 해당 active operation 상태를 우선 표시합니다.
 
 ## 3. Runtime service
 
@@ -82,12 +84,13 @@ Runtime service 상태는 Advanced 화면에서 봅니다. 이 값은 macOS laun
 | Read failed | service 상태 읽기에 실패함 |
 | Permission denied | 권한 문제로 service 상태를 읽지 못함 |
 | Installing | 설치 중이라 service 상태보다 operation 상태를 우선 표시 |
+| Initializing | 초기 기동 중이라 service 상태보다 operation 상태를 우선 표시 |
 | Updating | update 중이라 service 상태보다 operation 상태를 우선 표시 |
 | Unavailable | 표시할 명시 값이 없음 |
 | Unknown | 계약에 없는 service 상태가 들어옴 |
 
-service가 `Stopped`라도 항상 장애는 아닙니다. install, update, repair, stop/start 같은 operation
-중인지 함께 확인합니다. 단, `Read failed`와 `Permission denied`는 설치 중에도 별도 실패로 남겨
+service가 `Stopped`라도 항상 장애는 아닙니다. install, initialization, update, repair, stop/start 같은
+operation 중인지 함께 확인합니다. 단, `Read failed`와 `Permission denied`는 설치 중에도 별도 실패로 남겨
 표시합니다.
 
 ## 4. Recorder와 Bed

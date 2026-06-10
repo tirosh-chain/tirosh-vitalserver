@@ -5,6 +5,7 @@ import Errors
 
 public protocol RuntimeStatusVitalServerAvailabilityVocabulary: RuntimeStatusReachabilityLabelVocabulary {
     var installingText: String { get }
+    var initializingText: String { get }
     var updatingText: String { get }
 }
 
@@ -47,6 +48,8 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
         let text: String
         if RuntimeActiveOperationPolicy.isInstallInProgress(status) {
             text = vocabulary.installingText
+        } else if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
+            text = vocabulary.initializingText
         } else if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
             text = vocabulary.updatingText
         } else if !status.effectiveRuntimeInstallationState.isExecutable {
@@ -67,6 +70,7 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
 
     private func availabilitySeverity(_ status: RuntimeStatus) -> RuntimeStatusReachabilityPolicy.Severity {
         if RuntimeActiveOperationPolicy.isInstallInProgress(status) ||
+            RuntimeActiveOperationPolicy.isInitializationInProgress(status) ||
             RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
             return .warning
         }

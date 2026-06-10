@@ -22,11 +22,11 @@ DMG 안에는 `Install VitalServer Helper.pkg`와 문제 해결용 `Troubleshoot
 설치 후 Helper app을 열고 Status 화면에서 runtime 상태를 확인합니다.
 
 처음 설치한 직후에는 VM과 runtime service가 순서대로 준비되기 때문에 완료까지 보통 4~5분 정도
-걸릴 수 있습니다. 이 동안 Status나 Advanced 화면에 `Installing`이 보이면 정상적인 설치 진행
-상태로 보고 기다립니다.
+걸릴 수 있습니다. 이 동안 Status나 Advanced 화면에 `Installing` 또는 `Initializing`이 보이면
+정상적인 설치/초기 기동 진행 상태로 보고 기다립니다.
 
-`Installing`이 오래 유지되거나 `Critical`로 바뀌면 installer 화면 메시지, Status의 failure
-reason, Logs 화면을 함께 확인합니다.
+`Installing` 또는 `Initializing`이 오래 유지되거나 `Critical`로 바뀌면 installer 화면 메시지,
+Status의 failure reason, Logs 화면을 함께 확인합니다.
 
 ### 1-2. 설치가 막히는 경우
 
@@ -65,8 +65,9 @@ Advanced, Observability, Logs 화면으로 이동합니다.
 | Logs | 지원 자료를 모으거나 상세 로그를 볼 때 | command, update activation, VM, container, watchdog logs |
 
 설치 직후 Advanced에서 일부 service나 HTTP endpoint가 아직 준비되지 않아도, active operation이
-`Installing`이면 설치 진행 중으로 봅니다. 설치가 끝난 뒤에도 `Stopped`, `Unavailable`,
-`Read failed`가 남아 있을 때 세부 점검을 시작합니다.
+`Installing`이면 설치 작업 중으로, `Initializing`이면 runtime service와 guest가 사용 가능 상태로
+올라오는 중으로 봅니다. 설치와 초기 기동이 끝난 뒤에도 `Stopped`, `Unavailable`, `Read failed`가
+남아 있을 때 세부 점검을 시작합니다.
 
 ### 2-2. 상태를 읽을 때 주의할 점
 

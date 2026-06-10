@@ -9,6 +9,7 @@ const unknownRecord = z.record(z.string(), z.unknown());
 const resourceUsageSchema = unknownRecord.nullable();
 const knownRuntimeStateSchema = z.enum([
   "installing",
+  "initializing",
   "updating",
   "recovering",
   "healthy",

@@ -1,6 +1,7 @@
 import Errors
 public protocol RuntimeStatusHTTPValueVocabulary: RuntimeStatusReachabilityLabelVocabulary {
     var installingText: String { get }
+    var initializingText: String { get }
     var updatingText: String { get }
 }
 
@@ -34,10 +35,14 @@ public struct RuntimeStatusHTTPValuePolicy {
         httpStatus: String?,
         uptimeText: String?,
         installInProgress: Bool = false,
+        initializationInProgress: Bool = false,
         updateInProgress: Bool = false
     ) -> RuntimeStatusHTTPValue {
         if installInProgress {
             return installingValue(uptimeText: uptimeText)
+        }
+        if initializationInProgress {
+            return initializingValue(uptimeText: uptimeText)
         }
         if updateInProgress {
             return updatingValue(uptimeText: uptimeText)
@@ -56,6 +61,14 @@ public struct RuntimeStatusHTTPValuePolicy {
     public func installingValue(uptimeText: String?) -> RuntimeStatusHTTPValue {
         RuntimeStatusHTTPValue(
             text: vocabulary.installingText,
+            severity: .warning,
+            uptimeText: uptimeText
+        )
+    }
+
+    public func initializingValue(uptimeText: String?) -> RuntimeStatusHTTPValue {
+        RuntimeStatusHTTPValue(
+            text: vocabulary.initializingText,
             severity: .warning,
             uptimeText: uptimeText
         )

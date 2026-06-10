@@ -260,7 +260,10 @@ public struct WatchdogRuntimeUseCase {
         now: Date,
         graceSeconds: TimeInterval
     ) -> WatchdogRuntimeManagedOperationGuardPlan {
-        guard status.status == .installing || status.status == .updating || status.status == .recovering else {
+        guard status.status == .installing ||
+            status.status == .initializing ||
+            status.status == .updating ||
+            status.status == .recovering else {
             return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: nil, logMessage: nil)
         }
         guard RuntimeManagedOperationPolicy.isProtectedFromWatchdogRecovery(status.operation) else {

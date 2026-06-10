@@ -421,7 +421,7 @@ struct RuntimeAdvancedPanel: View {
         switch viewModel.status.runtimeState {
         case .some(.healthy):
             return .green
-        case .some(.installing), .some(.updating), .some(.recovering):
+        case .some(.installing), .some(.initializing), .some(.updating), .some(.recovering):
             return .orange
         case .some(.degraded):
             return .yellow

@@ -12,6 +12,7 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
 
         XCTAssertEqual(plan.mode, .full)
         XCTAssertEqual(plan.operationPlan, RuntimeOperationPlans.install)
+        XCTAssertEqual(plan.activeStatus, .installing)
         XCTAssertEqual(plan.completionStatus, .healthy)
         XCTAssertEqual(plan.completionMessage, "runtime install completed")
     }
@@ -23,8 +24,9 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
 
         XCTAssertEqual(plan.mode, .provision)
         XCTAssertEqual(plan.operationPlan, RuntimeOperationPlans.installProvision)
-        XCTAssertEqual(plan.completionStatus, .degraded)
-        XCTAssertEqual(plan.completionMessage, "runtime install provisioned; runtime services starting")
+        XCTAssertEqual(plan.activeStatus, .initializing)
+        XCTAssertEqual(plan.completionStatus, .initializing)
+        XCTAssertEqual(plan.completionMessage, "runtime initialized; runtime services starting")
     }
 
     func testTransitionReturnsExplicitDecisionWithoutPersistingState() throws {
@@ -71,6 +73,7 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
         let start = useCase.startPlan(runtimeHomePath: "/runtime")
         let event = useCase.stepProgressEvent(
             step: .startInstalledServices,
+            status: plan.activeStatus,
             stepStatus: .started,
             phase: .running,
             message: useCase.stepStartedMessage(.startInstalledServices)
@@ -286,6 +289,7 @@ final class InstallRuntimeUseCaseTests: XCTestCase {
         let installPlan = InstallRuntimePlan(
             mode: .full,
             operationPlan: emptyPlan,
+            activeStatus: .installing,
             completionStatus: .healthy,
             completionMessage: "done"
         )

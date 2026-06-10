@@ -456,7 +456,7 @@ final class RuntimeControlContractsTests: XCTestCase {
 
     func testActiveOperationPolicyTreatsNonTerminalInstallProgressAsInProgress() {
         let status = RuntimeStatus(
-            runtimeState: .degraded,
+            runtimeState: .installing,
             operation: .status,
             progress: RuntimeProgressDocument(
                 operation: .install,
@@ -494,7 +494,7 @@ final class RuntimeControlContractsTests: XCTestCase {
 
     func testActiveOperationPolicyDoesNotTreatTerminalInstallProgressAsInProgress() {
         let status = RuntimeStatus(
-            runtimeState: .degraded,
+            runtimeState: .installing,
             operation: .install,
             progress: RuntimeProgressDocument(
                 operation: .install,
@@ -523,17 +523,24 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(nonUpdate))
     }
 
-    func testActiveOperationPolicyUsesExplicitInstallOperationForLegacyDegradedInstall() {
+    func testActiveOperationPolicyTreatsInitializingRuntimeStateAsInitializationInProgress() {
+        let initializing = RuntimeStatus(runtimeState: .initializing, operation: .install)
+
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(initializing))
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isInitializationInProgress(initializing))
+    }
+
+    func testActiveOperationPolicyDoesNotInferInstallProgressFromLegacyDegradedInstall() {
         let installing = RuntimeStatus(runtimeState: .degraded, operation: .install)
         let degradedWithoutInstallOperation = RuntimeStatus(runtimeState: .degraded, operation: .health)
 
-        XCTAssertTrue(RuntimeActiveOperationPolicy.isInstallInProgress(installing))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(installing))
         XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(degradedWithoutInstallOperation))
     }
 
-    func testActiveOperationPolicyUsesInstallStateDocumentWhenRuntimeStatusWasOverwritten() {
+    func testActiveOperationPolicyUsesInitializingStatusForProvisionedInstallState() {
         let status = RuntimeStatus(
-            runtimeState: .degraded,
+            runtimeState: .initializing,
             operation: .watchdog,
             installStateDocument: RuntimeInstallStateDocument(
                 state: .provisioned,
@@ -543,7 +550,8 @@ final class RuntimeControlContractsTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isInitializationInProgress(status))
     }
 
     func testActiveOperationPolicyStopsUsingProvisionedInstallStateAfterRuntimeIsReady() {
@@ -569,6 +577,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         )
 
         XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInitializationInProgress(status))
     }
 
     func testActiveOperationPolicyTreatsCompletedInstallStateDocumentAsTerminal() {

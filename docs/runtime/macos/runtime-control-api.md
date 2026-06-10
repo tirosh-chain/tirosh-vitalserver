@@ -83,7 +83,7 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 | UI label | Source of truth | Display vocabulary |
 |---|---|---|
 | Runtime installation | `RuntimeStatus.runtimeInstalled` | `Installed`, `Not Installed` |
-| Runtime state | `RuntimeStatus.runtimeState` | `Installing`, `Updating`, `Recovering`, `Healthy`, `Degraded`, `Critical`, `Unknown` |
+| Runtime state | `RuntimeStatus.runtimeState` | `Installing`, `Initializing`, `Updating`, `Recovering`, `Healthy`, `Degraded`, `Critical`, `Unknown` |
 | VM/proxy/watchdog/guest log sync/sleep prevention service | launchd loaded flags | `Running`, `Stopped` |
 | VitalServer/Network access/Redis UI/Swagger UI | HTTP probe fields | `Reachable`, `Unreachable`, `Waiting` |
 | Redis container health | guest compose observation | `Healthy`, `Unhealthy`, `Starting`, `Running`, `Stopped` |

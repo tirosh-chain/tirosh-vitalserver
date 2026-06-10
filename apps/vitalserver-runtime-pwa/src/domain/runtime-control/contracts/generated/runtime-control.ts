@@ -1331,7 +1331,7 @@ export interface components {
             uptimeSeconds?: number | null;
         };
         /** @enum {string} */
-        RuntimeState: "installing" | "updating" | "recovering" | "healthy" | "degraded" | "critical";
+        RuntimeState: "installing" | "initializing" | "updating" | "recovering" | "healthy" | "degraded" | "critical";
         ResourceUsage: {
             [key: string]: unknown;
         } | null;

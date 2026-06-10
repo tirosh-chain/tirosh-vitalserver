@@ -8,6 +8,7 @@ public struct RuntimeStatusPollingIntervalPolicy {
 
     public func statusPollingIntervalNanoseconds(status: RuntimeStatus) -> UInt64 {
         if RuntimeActiveOperationPolicy.isInstallInProgress(status)
+            || RuntimeActiveOperationPolicy.isInitializationInProgress(status)
             || RuntimeActiveOperationPolicy.isUpdateInProgress(status)
             || status.runtimeState == .recovering {
             return Self.activeOperationInterval

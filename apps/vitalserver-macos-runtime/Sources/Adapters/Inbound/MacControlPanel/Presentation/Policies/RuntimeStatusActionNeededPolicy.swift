@@ -82,7 +82,7 @@ public struct RuntimeStatusActionNeededPolicy {
     }
 
     private func isManagedOperationInProgress(_ state: RuntimeState?) -> Bool {
-        state == .installing || state == .updating || state == .recovering
+        state == .installing || state == .initializing || state == .updating || state == .recovering
     }
 
     private func userFacingProblemTitle(_ status: RuntimeStatus) -> String {

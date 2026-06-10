@@ -32,6 +32,7 @@ public struct RuntimeStatusGuestReadinessPresentationPolicy {
         staleText: String
     ) -> RuntimeStatusHTTPValue {
         guard !RuntimeActiveOperationPolicy.isInstallInProgress(status),
+              !RuntimeActiveOperationPolicy.isInitializationInProgress(status),
               !RuntimeActiveOperationPolicy.isUpdateInProgress(status)
         else {
             return computedValue
