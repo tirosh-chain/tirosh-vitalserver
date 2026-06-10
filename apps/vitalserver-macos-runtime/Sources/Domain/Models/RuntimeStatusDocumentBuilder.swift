@@ -65,7 +65,10 @@ public enum RuntimeStatusDocumentBuilder {
             swaggerUIHTTP: input.healthSnapshot.swaggerUIHTTP,
             rootfsBase: input.healthSnapshot.rootfsBase,
             vmDisk: input.healthSnapshot.vmDisk,
-            failureReasons: input.healthSnapshot.failureReasons,
+            failureReasons: RuntimeStatusFailureReasonPolicy.failureReasons(
+                status: input.status,
+                snapshot: input.healthSnapshot
+            ),
             latestBackup: input.latestBackup,
             progress: input.progress,
             containerObservation: input.healthSnapshot.containerObservation,

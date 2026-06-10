@@ -76,6 +76,30 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
         XCTAssertNil(document.progress)
     }
 
+    func testBuildSuppressesTransientFailureReasonsDuringInstallInitialization() {
+        let document = RuntimeStatusDocumentBuilder.build(RuntimeStatusDocumentInput(
+            product: "VitalServerHelper",
+            status: .initializing,
+            operation: .install,
+            message: "runtime initialized; runtime services starting",
+            updatedAt: "2026-06-10T05:33:48Z",
+            productRoot: "/product",
+            runtimeHome: "/product/vm",
+            runtimeVersion: "0.1.0",
+            healthSnapshot: snapshot(failureReasons: [
+                .unknown("vm-runtime-state-missing"),
+                .hostProxyHTTP("failed"),
+                .auditProxyHTTP("failed"),
+                .containerObservationMissing,
+            ]),
+            latestBackup: nil
+        ))
+
+        XCTAssertEqual(document.status, RuntimeStatusLevel.initializing)
+        XCTAssertEqual(document.failureReasons, [RuntimeFailureReason]())
+        XCTAssertNil(document.domainErrors)
+    }
+
     private func snapshot(failureReasons: [RuntimeFailureReason]) -> RuntimeHealthSnapshot {
         RuntimeHealthSnapshot(
             vmExecutable: .executable,

@@ -72,6 +72,42 @@ final class RuntimeEventFactoryTests: XCTestCase {
         XCTAssertEqual(event.failureReasons, [])
     }
 
+    func testObservedStatusEventSuppressesTransientFailureReasonsDuringInitialization() {
+        let event = factory().observedStatusEvent(
+            status: .initializing,
+            previousStatus: .installing,
+            operation: .install,
+            message: "runtime initialized; runtime services starting",
+            healthSnapshot: RuntimeHealthSnapshot(
+                vmExecutable: .executable,
+                proxyExecutable: .executable,
+                rootfsBase: .present,
+                vmDisk: .present,
+                vmService: .loaded,
+                proxyService: .loaded,
+                watchdogService: .loaded,
+                vmState: .unreachable,
+                vmErrors: [],
+                vmIP: nil,
+                proxyPort: 80,
+                hostProxyHTTP: "failed",
+                guestHTTP: "missing-vm-ip",
+                redisUIHTTP: "missing",
+                swaggerUIHTTP: "missing",
+                failureReasons: [
+                    .unknown("vm-runtime-state-missing"),
+                    .hostProxyHTTP("failed"),
+                    .auditProxyHTTP("failed"),
+                    .containerObservationMissing,
+                ]
+            ),
+            eventType: .statusChanged
+        )
+
+        XCTAssertEqual(event.status, RuntimeStatusLevel.initializing)
+        XCTAssertEqual(event.failureReasons, [RuntimeFailureReason]())
+    }
+
     func testCommandEventFormatsCommandContextWithExecutionAndOutputIssues() {
         let event = factory().commandEvent(
             .runtimeCommandFailed,

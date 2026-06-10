@@ -1,4 +1,5 @@
 import Contracts
+import Domain
 import Foundation
 
 public struct RuntimeEventFactory {
@@ -40,7 +41,10 @@ public struct RuntimeEventFactory {
             runtimeVersion: runtimeVersion(),
             vmState: healthSnapshot.vmState,
             vmErrors: healthSnapshot.vmErrors,
-            failureReasons: healthSnapshot.failureReasons,
+            failureReasons: RuntimeStatusFailureReasonPolicy.failureReasons(
+                status: status,
+                snapshot: healthSnapshot
+            ),
             containerObservation: healthSnapshot.containerObservation,
             vitalDBObservation: healthSnapshot.vitalDBObservation,
             progress: progress
