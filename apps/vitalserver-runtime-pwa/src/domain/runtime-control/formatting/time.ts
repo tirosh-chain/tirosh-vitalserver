@@ -23,6 +23,40 @@ export function formatLocalDateTime(value: string | null | undefined): string {
   )} ${sign}${offsetHours}:${offsetRemainder}`;
 }
 
+export function formatLocalDateTimeWithAge(
+  value: string | null | undefined
+): string {
+  const formatted = formatLocalDateTime(value);
+  const age = formatAgeSince(value);
+  return age === "Unknown" ? formatted : `${formatted} · ${age} ago`;
+}
+
+export function formatAgeSince(value: string | null | undefined): string {
+  if (!value) {
+    return "Unknown";
+  }
+
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) {
+    return "Unknown";
+  }
+
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) {
+    return `${hours}h`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
 export function formatUptimeSince(value: string | null | undefined): string {
   if (!value) {
     return "Unknown";

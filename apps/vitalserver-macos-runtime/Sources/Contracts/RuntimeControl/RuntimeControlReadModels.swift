@@ -318,7 +318,10 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
     public let observationCount: Int
     public let duplicateObservationCount: Int
     public let currentAnomalyCount: Int
+    public let latestAnomalyKind: VitalDBAnomalyKind?
     public let latestAnomalySeverity: VitalDBAnomalySeverity?
+    public let latestAnomalyMessage: String?
+    public let latestAnomalyObservedAt: String?
     public let presentInLatestObservation: Bool
     public let activityTimeline: [RuntimeVitalRecorderActivityPoint]?
 
@@ -335,7 +338,10 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         observationCount: Int,
         duplicateObservationCount: Int = 0,
         currentAnomalyCount: Int,
+        latestAnomalyKind: VitalDBAnomalyKind? = nil,
         latestAnomalySeverity: VitalDBAnomalySeverity?,
+        latestAnomalyMessage: String? = nil,
+        latestAnomalyObservedAt: String? = nil,
         presentInLatestObservation: Bool = true
     ) {
         self.init(
@@ -351,7 +357,10 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
             observationCount: observationCount,
             duplicateObservationCount: duplicateObservationCount,
             currentAnomalyCount: currentAnomalyCount,
+            latestAnomalyKind: latestAnomalyKind,
             latestAnomalySeverity: latestAnomalySeverity,
+            latestAnomalyMessage: latestAnomalyMessage,
+            latestAnomalyObservedAt: latestAnomalyObservedAt,
             presentInLatestObservation: presentInLatestObservation,
             activityTimeline: nil
         )
@@ -370,7 +379,10 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         observationCount: Int,
         duplicateObservationCount: Int,
         currentAnomalyCount: Int,
+        latestAnomalyKind: VitalDBAnomalyKind?,
         latestAnomalySeverity: VitalDBAnomalySeverity?,
+        latestAnomalyMessage: String?,
+        latestAnomalyObservedAt: String?,
         presentInLatestObservation: Bool,
         activityTimeline: [RuntimeVitalRecorderActivityPoint]?
     ) {
@@ -386,7 +398,10 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         self.observationCount = observationCount
         self.duplicateObservationCount = duplicateObservationCount
         self.currentAnomalyCount = currentAnomalyCount
+        self.latestAnomalyKind = latestAnomalyKind
         self.latestAnomalySeverity = latestAnomalySeverity
+        self.latestAnomalyMessage = latestAnomalyMessage
+        self.latestAnomalyObservedAt = latestAnomalyObservedAt
         self.presentInLatestObservation = presentInLatestObservation
         self.activityTimeline = activityTimeline
     }
@@ -397,6 +412,9 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
     public let bedID: String
     public let name: String?
     public let vrcode: String?
+    public let linkedRecorderStatus: RuntimeVitalRecorderStatus?
+    public let linkedRecorderIP: String?
+    public let linkedRecorderLastSeenAt: String?
     public let status: RuntimeVitalBedStatus
     public let patientConnected: Bool?
     public let firstSeenAt: String?
@@ -404,12 +422,18 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
     public let observationCount: Int
     public let duplicateObservationCount: Int
     public let currentAnomalyCount: Int
+    public let latestAnomalyKind: VitalDBAnomalyKind?
     public let latestAnomalySeverity: VitalDBAnomalySeverity?
+    public let latestAnomalyMessage: String?
+    public let latestAnomalyObservedAt: String?
 
     public init(
         bedID: String,
         name: String?,
         vrcode: String?,
+        linkedRecorderStatus: RuntimeVitalRecorderStatus? = nil,
+        linkedRecorderIP: String? = nil,
+        linkedRecorderLastSeenAt: String? = nil,
         status: RuntimeVitalBedStatus,
         patientConnected: Bool?,
         firstSeenAt: String?,
@@ -417,11 +441,17 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
         observationCount: Int,
         duplicateObservationCount: Int = 0,
         currentAnomalyCount: Int,
-        latestAnomalySeverity: VitalDBAnomalySeverity?
+        latestAnomalyKind: VitalDBAnomalyKind? = nil,
+        latestAnomalySeverity: VitalDBAnomalySeverity?,
+        latestAnomalyMessage: String? = nil,
+        latestAnomalyObservedAt: String? = nil
     ) {
         self.bedID = bedID
         self.name = name
         self.vrcode = vrcode
+        self.linkedRecorderStatus = linkedRecorderStatus
+        self.linkedRecorderIP = linkedRecorderIP
+        self.linkedRecorderLastSeenAt = linkedRecorderLastSeenAt
         self.status = status
         self.patientConnected = patientConnected
         self.firstSeenAt = firstSeenAt
@@ -429,7 +459,10 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
         self.observationCount = observationCount
         self.duplicateObservationCount = duplicateObservationCount
         self.currentAnomalyCount = currentAnomalyCount
+        self.latestAnomalyKind = latestAnomalyKind
         self.latestAnomalySeverity = latestAnomalySeverity
+        self.latestAnomalyMessage = latestAnomalyMessage
+        self.latestAnomalyObservedAt = latestAnomalyObservedAt
     }
 }
 
@@ -626,12 +659,19 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
                 return lhs.vrcode < rhs.vrcode
             }
         }
+        let recorderRecordsByVrcode = Dictionary(
+            records.map { ($0.vrcode, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
 
         let beds = bedBuilders.values.map { builder in
             let latestBed = latestBeds[builder.bedID]
             let anomalies = latestAnomaliesBySubject[builder.bedID] ?? []
+            let linkedRecorder = (latestBed?.vrcode ?? builder.vrcode)
+                .flatMap { recorderRecordsByVrcode[$0] }
             return builder.record(
                 latestBed: latestBed,
+                linkedRecorder: linkedRecorder,
                 currentAnomalies: anomalies,
                 duplicateObservationCount: bedDuplicateObservationCounts[builder.bedID, default: 0]
             )
@@ -1147,6 +1187,7 @@ private struct RecorderBuilder {
         activityTimeline projectedActivityTimeline: [RuntimeVitalRecorderActivityPoint]? = nil
     ) -> RuntimeVitalRecorderRecord {
         let presentInLatestObservation = latestRecorder != nil
+        let latestAnomaly = latestAnomaly(in: currentAnomalies)
         return RuntimeVitalRecorderRecord(
             vrcode: vrcode,
             status: status(latestRecorder),
@@ -1160,7 +1201,10 @@ private struct RecorderBuilder {
             observationCount: observationCount,
             duplicateObservationCount: duplicateObservationCount,
             currentAnomalyCount: currentAnomalies.count,
-            latestAnomalySeverity: currentAnomalies.sorted { $0.observedAt > $1.observedAt }.first?.severity,
+            latestAnomalyKind: latestAnomaly?.kind,
+            latestAnomalySeverity: latestAnomaly?.severity,
+            latestAnomalyMessage: latestAnomaly?.message,
+            latestAnomalyObservedAt: latestAnomaly?.observedAt,
             presentInLatestObservation: presentInLatestObservation,
             activityTimeline: projectedActivityTimeline
         )
@@ -1216,14 +1260,19 @@ private struct BedBuilder {
 
     func record(
         latestBed: VitalDBBedObservation?,
+        linkedRecorder: RuntimeVitalRecorderRecord?,
         currentAnomalies: [VitalDBAnomalyObservation],
         duplicateObservationCount: Int
     ) -> RuntimeVitalBedRecord {
         let presentInLatestObservation = latestBed != nil
+        let latestAnomaly = latestAnomaly(in: currentAnomalies)
         return RuntimeVitalBedRecord(
             bedID: bedID,
             name: presentInLatestObservation ? latestBed?.name : name,
             vrcode: presentInLatestObservation ? latestBed?.vrcode : vrcode,
+            linkedRecorderStatus: linkedRecorder?.status,
+            linkedRecorderIP: linkedRecorder?.lastIP,
+            linkedRecorderLastSeenAt: linkedRecorder?.lastSeenAt,
             status: status(latestBed),
             patientConnected: presentInLatestObservation ? latestBed?.patientConnected : patientConnected,
             firstSeenAt: firstSeenAt,
@@ -1231,7 +1280,10 @@ private struct BedBuilder {
             observationCount: observationCount,
             duplicateObservationCount: duplicateObservationCount,
             currentAnomalyCount: currentAnomalies.count,
-            latestAnomalySeverity: currentAnomalies.sorted { $0.observedAt > $1.observedAt }.first?.severity
+            latestAnomalyKind: latestAnomaly?.kind,
+            latestAnomalySeverity: latestAnomaly?.severity,
+            latestAnomalyMessage: latestAnomaly?.message,
+            latestAnomalyObservedAt: latestAnomaly?.observedAt
         )
     }
 
@@ -1255,6 +1307,15 @@ private struct BedBuilder {
         }
         return Swift.max(current, next)
     }
+}
+
+private func latestAnomaly(in anomalies: [VitalDBAnomalyObservation]) -> VitalDBAnomalyObservation? {
+    anomalies.sorted { left, right in
+        if left.observedAt == right.observedAt {
+            return left.id < right.id
+        }
+        return left.observedAt > right.observedAt
+    }.first
 }
 
 public enum RuntimeVitalDBObservationReadState: String, Codable, Equatable, Sendable {

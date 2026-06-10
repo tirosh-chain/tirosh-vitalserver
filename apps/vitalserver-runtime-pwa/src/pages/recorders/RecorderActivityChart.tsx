@@ -165,7 +165,7 @@ export function RecorderActivityChart({
           ) : null}
           {latestActivity ? (
             <span className="chart-meta">
-              Last sample {formatTime(latestActivity.observedAt)}
+              Last activity {formatTime(latestActivity.observedAt)}
             </span>
           ) : null}
         </div>

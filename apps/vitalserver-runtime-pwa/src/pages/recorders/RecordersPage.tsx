@@ -10,7 +10,10 @@ import {
   formatRecorderStatus,
   recorderStatusTone
 } from "@/domain/runtime-control/formatting/status";
-import { formatLocalDateTime } from "@/domain/runtime-control/formatting/time";
+import {
+  formatLocalDateTime,
+  formatLocalDateTimeWithAge
+} from "@/domain/runtime-control/formatting/time";
 import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
 import { DataTable } from "@/components/DataTable";
 import { ErrorState } from "@/components/ErrorState";
@@ -96,6 +99,10 @@ export function RecordersPage() {
             {
               label: "Recorder anomalies",
               value: summary?.recorderAnomalies ?? NOT_REPORTED
+            },
+            {
+              label: "Data updated",
+              value: formatLocalDateTime(recordersQuery.data?.updatedAt)
             }
           ]}
         />
@@ -120,7 +127,7 @@ export function RecordersPage() {
             getRowKey={(recorder) => recorder.vrcode}
             selectedKey={selectedRecorder?.vrcode}
             onSelectRow={(recorder) => setSelectedVrcode(recorder.vrcode)}
-            emptyText="No VRecorders have been observed."
+            emptyText="No VRecorders found."
             columns={[
               {
                 key: "vrcode",
@@ -150,12 +157,12 @@ export function RecordersPage() {
               {
                 key: "lastSeen",
                 header: "Last seen",
-                render: (recorder) => formatLocalDateTime(recorder.lastSeenAt)
+                render: (recorder) => formatLocalDateTimeWithAge(recorder.lastSeenAt)
               },
               {
                 key: "anomaly",
                 header: "Anomaly",
-                render: (recorder) => recorder.currentAnomalyCount
+                render: (recorder) => formatAnomalySummary(recorder)
               }
             ]}
           />
@@ -199,15 +206,13 @@ function RecorderDetails({
           },
           { label: "Patient", value: formatBoolean(recorder.patientConnected) },
           { label: "First seen", value: formatLocalDateTime(recorder.firstSeenAt) },
-          { label: "Last seen", value: formatLocalDateTime(recorder.lastSeenAt) },
-          { label: "Status observations", value: recorder.observationCount },
           {
-            label: "Duplicate observations",
-            value: recorder.duplicateObservationCount
+            label: "Last seen",
+            value: formatLocalDateTimeWithAge(recorder.lastSeenAt)
           },
           {
-            label: "Recorder anomalies",
-            value: recorder.currentAnomalyCount
+            label: "Latest anomaly",
+            value: formatAnomalySummary(recorder)
           }
         ]}
       />
@@ -225,6 +230,39 @@ function RecorderDetails({
       </div>
     </Panel>
   );
+}
+
+function formatAnomalySummary(
+  record: Pick<
+    VitalDBRecorderRecord,
+    | "currentAnomalyCount"
+    | "latestAnomalyKind"
+    | "latestAnomalySeverity"
+    | "latestAnomalyMessage"
+  >
+): string {
+  if (record.currentAnomalyCount <= 0) {
+    return "None";
+  }
+  const kind = formatAnomalyKind(record.latestAnomalyKind);
+  const severity = record.latestAnomalySeverity
+    ? ` · ${record.latestAnomalySeverity}`
+    : "";
+  const message = record.latestAnomalyMessage
+    ? ` · ${record.latestAnomalyMessage}`
+    : "";
+  return `${kind}${severity}${message}`;
+}
+
+function formatAnomalyKind(value: string | null | undefined): string {
+  if (!value) {
+    return "Reported anomaly";
+  }
+  return value
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function sortByLastSeen(

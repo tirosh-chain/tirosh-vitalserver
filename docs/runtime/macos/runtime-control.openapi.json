@@ -2206,16 +2206,32 @@
           },
           "observationCount": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Number of stored VitalDB observation snapshots that included this VRecorder identity after same-snapshot duplicates were collapsed."
           },
           "duplicateObservationCount": {
             "type": "integer",
             "minimum": 0,
-            "description": "Number of extra source recorder observations collapsed because they shared this VRecorder identity."
+            "description": "Number of extra source recorder records collapsed because they shared this VRecorder identity in a snapshot."
           },
           "currentAnomalyCount": {
             "type": "integer",
             "minimum": 0
+          },
+          "latestAnomalyKind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "offline",
+              "duplicate-ip",
+              "backend-unavailable",
+              "stale-recorder",
+              "observer-unhealthy",
+              null
+            ],
+            "description": "Kind of the latest current anomaly for this VRecorder, or null when no current anomaly exists."
           },
           "latestAnomalySeverity": {
             "oneOf": [
@@ -2226,6 +2242,20 @@
                 "type": "null"
               }
             ]
+          },
+          "latestAnomalyMessage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Message from the latest current anomaly for this VRecorder, or null when no current anomaly exists."
+          },
+          "latestAnomalyObservedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Timestamp of the latest current anomaly for this VRecorder, or null when no current anomaly exists."
           },
           "presentInLatestObservation": {
             "type": "boolean",
@@ -2361,6 +2391,31 @@
               "null"
             ]
           },
+          "linkedRecorderStatus": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeVitalRecorderStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit status of the VRecorder linked to this bed, or null when no linked recorder record is available."
+          },
+          "linkedRecorderIP": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IP address reported by the VRecorder linked to this bed, or null when no linked recorder record is available."
+          },
+          "linkedRecorderLastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last seen timestamp reported by the VRecorder linked to this bed, or null when no linked recorder record is available."
+          },
           "status": {
             "$ref": "#/components/schemas/RuntimeVitalBedStatus"
           },
@@ -2384,16 +2439,32 @@
           },
           "observationCount": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Number of stored VitalDB observation snapshots that included this bed identity after same-snapshot duplicates were collapsed."
           },
           "duplicateObservationCount": {
             "type": "integer",
             "minimum": 0,
-            "description": "Number of extra source bed observations collapsed because they shared this bed identity."
+            "description": "Number of extra source bed records collapsed because they shared this bed identity in a snapshot."
           },
           "currentAnomalyCount": {
             "type": "integer",
             "minimum": 0
+          },
+          "latestAnomalyKind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "offline",
+              "duplicate-ip",
+              "backend-unavailable",
+              "stale-recorder",
+              "observer-unhealthy",
+              null
+            ],
+            "description": "Kind of the latest current anomaly for this bed, or null when no current anomaly exists."
           },
           "latestAnomalySeverity": {
             "oneOf": [
@@ -2404,6 +2475,20 @@
                 "type": "null"
               }
             ]
+          },
+          "latestAnomalyMessage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Message from the latest current anomaly for this bed, or null when no current anomaly exists."
+          },
+          "latestAnomalyObservedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Timestamp of the latest current anomaly for this bed, or null when no current anomaly exists."
           }
         }
       },

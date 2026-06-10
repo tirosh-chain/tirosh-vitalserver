@@ -522,7 +522,10 @@ const vitalDBRecorderRecordSchema = z
     observationCount: z.number(),
     duplicateObservationCount: z.number(),
     currentAnomalyCount: z.number(),
+    latestAnomalyKind: vitalDBAnomalyKindSchema.nullable().optional(),
     latestAnomalySeverity: anomalySeveritySchema.nullable().optional(),
+    latestAnomalyMessage: nullableString.optional(),
+    latestAnomalyObservedAt: nullableString.optional(),
     presentInLatestObservation: z.boolean(),
     activityTimeline: z.array(recorderActivityPointSchema).optional()
   })
@@ -533,6 +536,9 @@ const vitalDBBedRecordSchema = z
     bedID: z.string(),
     name: nullableString,
     vrcode: nullableString,
+    linkedRecorderStatus: recorderStatusSchema.nullable().optional(),
+    linkedRecorderIP: nullableString.optional(),
+    linkedRecorderLastSeenAt: nullableString.optional(),
     status: bedStatusSchema,
     patientConnected: nullableBoolean,
     firstSeenAt: nullableString,
@@ -540,7 +546,10 @@ const vitalDBBedRecordSchema = z
     observationCount: z.number(),
     duplicateObservationCount: z.number(),
     currentAnomalyCount: z.number(),
-    latestAnomalySeverity: anomalySeveritySchema.nullable().optional()
+    latestAnomalyKind: vitalDBAnomalyKindSchema.nullable().optional(),
+    latestAnomalySeverity: anomalySeveritySchema.nullable().optional(),
+    latestAnomalyMessage: nullableString.optional(),
+    latestAnomalyObservedAt: nullableString.optional()
   })
   .passthrough();
 

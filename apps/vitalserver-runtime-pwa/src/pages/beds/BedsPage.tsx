@@ -7,7 +7,10 @@ import {
   formatRecorderStatus,
   recorderStatusTone
 } from "@/domain/runtime-control/formatting/status";
-import { formatLocalDateTime } from "@/domain/runtime-control/formatting/time";
+import {
+  formatLocalDateTime,
+  formatLocalDateTimeWithAge
+} from "@/domain/runtime-control/formatting/time";
 import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
 import { DataTable } from "@/components/DataTable";
 import { ErrorState } from "@/components/ErrorState";
@@ -66,7 +69,11 @@ export function BedsPage() {
               label: "Assignments",
               value: summary?.bedAssignments ?? NOT_REPORTED
             },
-            { label: "Bed anomalies", value: summary?.bedAnomalies ?? NOT_REPORTED }
+            { label: "Bed anomalies", value: summary?.bedAnomalies ?? NOT_REPORTED },
+            {
+              label: "Data updated",
+              value: formatLocalDateTime(recordersQuery.data?.updatedAt)
+            }
           ]}
         />
 
@@ -90,7 +97,7 @@ export function BedsPage() {
             getRowKey={(bed) => bed.bedID}
             selectedKey={selectedBed?.bedID}
             onSelectRow={(bed) => setSelectedBedID(bed.bedID)}
-            emptyText="No beds have been observed."
+            emptyText="No beds found."
             columns={[
               {
                 key: "bed",
@@ -119,12 +126,12 @@ export function BedsPage() {
               {
                 key: "lastSeen",
                 header: "Last seen",
-                render: (bed) => formatLocalDateTime(bed.lastSeenAt)
+                render: (bed) => formatLocalDateTimeWithAge(bed.lastSeenAt)
               },
               {
                 key: "anomaly",
                 header: "Anomaly",
-                render: (bed) => bed.currentAnomalyCount
+                render: (bed) => formatAnomalySummary(bed)
               }
             ]}
           />
@@ -152,16 +159,62 @@ function BedDetails({ bed }: { bed: VitalDBBedRecord }) {
           { label: "Bed ID", value: bed.bedID },
           { label: "Name", value: bed.name ?? NOT_REPORTED },
           { label: "VRecorder", value: bed.vrcode ?? NOT_REPORTED },
+          {
+            label: "VRecorder status",
+            value: bed.linkedRecorderStatus ? (
+              <StatusBadge tone={recorderStatusTone(bed.linkedRecorderStatus)}>
+                {formatRecorderStatus(bed.linkedRecorderStatus)}
+              </StatusBadge>
+            ) : (
+              NOT_REPORTED
+            )
+          },
+          { label: "VRecorder IP", value: bed.linkedRecorderIP ?? NOT_REPORTED },
+          {
+            label: "VRecorder last seen",
+            value: formatLocalDateTimeWithAge(bed.linkedRecorderLastSeenAt)
+          },
           { label: "Patient", value: formatBoolean(bed.patientConnected) },
           { label: "First seen", value: formatLocalDateTime(bed.firstSeenAt) },
-          { label: "Last seen", value: formatLocalDateTime(bed.lastSeenAt) },
-          { label: "Observations", value: bed.observationCount },
-          { label: "Duplicate observations", value: bed.duplicateObservationCount },
-          { label: "Bed anomalies", value: bed.currentAnomalyCount }
+          { label: "Last seen", value: formatLocalDateTimeWithAge(bed.lastSeenAt) },
+          { label: "Latest anomaly", value: formatAnomalySummary(bed) }
         ]}
       />
     </Panel>
   );
+}
+
+function formatAnomalySummary(
+  record: Pick<
+    VitalDBBedRecord,
+    | "currentAnomalyCount"
+    | "latestAnomalyKind"
+    | "latestAnomalySeverity"
+    | "latestAnomalyMessage"
+  >
+): string {
+  if (record.currentAnomalyCount <= 0) {
+    return "None";
+  }
+  const kind = formatAnomalyKind(record.latestAnomalyKind);
+  const severity = record.latestAnomalySeverity
+    ? ` · ${record.latestAnomalySeverity}`
+    : "";
+  const message = record.latestAnomalyMessage
+    ? ` · ${record.latestAnomalyMessage}`
+    : "";
+  return `${kind}${severity}${message}`;
+}
+
+function formatAnomalyKind(value: string | null | undefined): string {
+  if (!value) {
+    return "Reported anomaly";
+  }
+  return value
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function shorten(value: string): string {

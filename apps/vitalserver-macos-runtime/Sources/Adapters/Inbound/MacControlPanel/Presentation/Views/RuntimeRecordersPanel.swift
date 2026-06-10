@@ -55,7 +55,7 @@ struct RuntimeRecordersPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             summaryMetrics
             if filteredRecorders.isEmpty {
-                Text(AppConstants.StatusText.noVitalRecorderObservations)
+                Text(AppConstants.StatusText.noVitalRecorderData)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
@@ -70,7 +70,7 @@ struct RuntimeRecordersPanel: View {
                             recorderRow(recorder)
                         }
                     }
-                    .frame(minWidth: 710, alignment: .leading)
+                    .frame(minWidth: 850, alignment: .leading)
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
@@ -139,6 +139,7 @@ struct RuntimeRecordersPanel: View {
                 summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
                 summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
                 summaryMetric(AppConstants.Labels.recorderAnomalies, "\(currentRecorders.reduce(0) { $0 + $1.currentAnomalyCount })")
+                summaryMetric("Data updated", viewModel.presentationFormatter.systemTimeText(viewModel.vitalRecorders.updatedAt))
             }
             LazyVGrid(columns: summaryColumns, alignment: .leading, spacing: 8) {
                 summaryMetric(AppConstants.Labels.knownRecorders, "\(viewModel.vitalRecorders.recorders.count)")
@@ -147,6 +148,7 @@ struct RuntimeRecordersPanel: View {
                 summaryMetric(AppConstants.Labels.staleRecorders, "\(count(.stale))")
                 summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
                 summaryMetric(AppConstants.Labels.recorderAnomalies, "\(currentRecorders.reduce(0) { $0 + $1.currentAnomalyCount })")
+                summaryMetric("Data updated", viewModel.presentationFormatter.systemTimeText(viewModel.vitalRecorders.updatedAt))
             }
         }
     }
@@ -196,8 +198,8 @@ struct RuntimeRecordersPanel: View {
             tableHeader(AppConstants.Labels.recorderStatus, minWidth: 80)
             tableHeader("IP", minWidth: 120)
             tableHeader(AppConstants.Labels.bed, minWidth: 120)
-            tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 170)
-            tableHeader(AppConstants.Labels.anomaly, minWidth: 70)
+            tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 220)
+            tableHeader(AppConstants.Labels.anomaly, minWidth: 130)
         }
         .padding(10)
     }
@@ -215,8 +217,8 @@ struct RuntimeRecordersPanel: View {
                     .frame(minWidth: 80, alignment: .leading)
                 tableValue(reportedText(recorder.lastIP, missing: "IP not reported"), minWidth: 120)
                 tableValue(reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"), minWidth: 120)
-                tableValue(reportedText(recorder.lastSeenAt, missing: "Last seen not reported"), minWidth: 170)
-                tableValue(recorderAnomalyText(recorder), minWidth: 70)
+                tableValue(viewModel.presentationFormatter.systemTimeTextWithAge(recorder.lastSeenAt), minWidth: 220)
+                tableValue(recorderAnomalyText(recorder), minWidth: 130)
             }
             .padding(10)
             .contentShape(Rectangle())
@@ -275,7 +277,7 @@ struct RuntimeRecordersPanel: View {
                         activityControls
                     }
                     if let latestSample = activityDisplay.latestSample {
-                        Text("Last sample \(viewModel.presentationFormatter.systemTimeText(latestSample.observedAt))")
+                        Text("Last activity \(viewModel.presentationFormatter.systemTimeText(latestSample.observedAt))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -291,7 +293,7 @@ struct RuntimeRecordersPanel: View {
                             activityControls
                         }
                         if let latestSample = activityDisplay.latestSample {
-                            Text("Last sample \(viewModel.presentationFormatter.systemTimeText(latestSample.observedAt))")
+                            Text("Last activity \(viewModel.presentationFormatter.systemTimeText(latestSample.observedAt))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -517,10 +519,8 @@ struct RuntimeRecordersPanel: View {
             detailRow("Bed ID", reportedText(linkedBed(for: recorder)?.bedID ?? recorder.bedID, missing: "Bed ID not reported"))
             detailRow(AppConstants.Labels.patient, patientText(recorder.patientConnected))
             detailRow("First seen", viewModel.presentationFormatter.systemTimeText(recorder.firstSeenAt))
-            detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeText(recorder.lastSeenAt))
-            detailRow("Status observations", "\(recorder.observationCount)")
-            detailRow("Duplicate observations", "\(recorder.duplicateObservationCount)")
-            detailRow(AppConstants.Labels.recorderAnomalies, "\(recorder.currentAnomalyCount)")
+            detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeTextWithAge(recorder.lastSeenAt))
+            detailRow("Latest anomaly", recorderAnomalyDetailText(recorder))
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -654,6 +654,15 @@ struct RuntimeRecordersPanel: View {
 
     private func recorderAnomalyText(_ recorder: RuntimeVitalRecorderRecord) -> String {
         displayPolicy.recorderAnomalyText(recorder)
+    }
+
+    private func recorderAnomalyDetailText(_ recorder: RuntimeVitalRecorderRecord) -> String {
+        displayPolicy.anomalyDetailText(
+            kind: recorder.latestAnomalyKind,
+            severity: recorder.latestAnomalySeverity,
+            message: recorder.latestAnomalyMessage,
+            count: recorder.currentAnomalyCount
+        )
     }
 
     private func statusColor(_ status: RuntimeVitalRecorderStatus) -> Color {

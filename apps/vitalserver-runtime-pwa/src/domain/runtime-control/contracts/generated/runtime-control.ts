@@ -1009,11 +1009,21 @@ export interface components {
             patientConnected?: boolean | null;
             firstSeenAt?: string | null;
             lastSeenAt?: string | null;
+            /** @description Number of stored VitalDB observation snapshots that included this VRecorder identity after same-snapshot duplicates were collapsed. */
             observationCount: number;
-            /** @description Number of extra source recorder observations collapsed because they shared this VRecorder identity. */
+            /** @description Number of extra source recorder records collapsed because they shared this VRecorder identity in a snapshot. */
             duplicateObservationCount: number;
             currentAnomalyCount: number;
+            /**
+             * @description Kind of the latest current anomaly for this VRecorder, or null when no current anomaly exists.
+             * @enum {string|null}
+             */
+            latestAnomalyKind?: "offline" | "duplicate-ip" | "backend-unavailable" | "stale-recorder" | "observer-unhealthy" | null;
             latestAnomalySeverity?: components["schemas"]["VitalDBAnomalySeverity"] | null;
+            /** @description Message from the latest current anomaly for this VRecorder, or null when no current anomaly exists. */
+            latestAnomalyMessage?: string | null;
+            /** @description Timestamp of the latest current anomaly for this VRecorder, or null when no current anomaly exists. */
+            latestAnomalyObservedAt?: string | null;
             /** @description True when this recorder is present in the latest VitalDB observation snapshot; false means it is historical. */
             presentInLatestObservation: boolean;
             /** @description Chronological activity samples for the VRecorder, derived from VitalDB observer snapshots. */
@@ -1046,15 +1056,31 @@ export interface components {
             bedID: string;
             name?: string | null;
             vrcode?: string | null;
+            /** @description Explicit status of the VRecorder linked to this bed, or null when no linked recorder record is available. */
+            linkedRecorderStatus?: components["schemas"]["RuntimeVitalRecorderStatus"] | null;
+            /** @description IP address reported by the VRecorder linked to this bed, or null when no linked recorder record is available. */
+            linkedRecorderIP?: string | null;
+            /** @description Last seen timestamp reported by the VRecorder linked to this bed, or null when no linked recorder record is available. */
+            linkedRecorderLastSeenAt?: string | null;
             status: components["schemas"]["RuntimeVitalBedStatus"];
             patientConnected?: boolean | null;
             firstSeenAt?: string | null;
             lastSeenAt?: string | null;
+            /** @description Number of stored VitalDB observation snapshots that included this bed identity after same-snapshot duplicates were collapsed. */
             observationCount: number;
-            /** @description Number of extra source bed observations collapsed because they shared this bed identity. */
+            /** @description Number of extra source bed records collapsed because they shared this bed identity in a snapshot. */
             duplicateObservationCount: number;
             currentAnomalyCount: number;
+            /**
+             * @description Kind of the latest current anomaly for this bed, or null when no current anomaly exists.
+             * @enum {string|null}
+             */
+            latestAnomalyKind?: "offline" | "duplicate-ip" | "backend-unavailable" | "stale-recorder" | "observer-unhealthy" | null;
             latestAnomalySeverity?: components["schemas"]["VitalDBAnomalySeverity"] | null;
+            /** @description Message from the latest current anomaly for this bed, or null when no current anomaly exists. */
+            latestAnomalyMessage?: string | null;
+            /** @description Timestamp of the latest current anomaly for this bed, or null when no current anomaly exists. */
+            latestAnomalyObservedAt?: string | null;
         };
         /** @enum {string} */
         RuntimeVitalBedStatus: "online" | "stale" | "offline" | "notObserved" | "unknown";

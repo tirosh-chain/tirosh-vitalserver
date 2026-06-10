@@ -48,7 +48,12 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
 
     func testRecorderAnomalyTextDistinguishesHistoryFromCurrentZero() {
         XCTAssertEqual(policy.recorderAnomalyText(recorder(currentAnomalyCount: 0)), "-")
-        XCTAssertEqual(policy.recorderAnomalyText(recorder(currentAnomalyCount: 3)), "3")
+        XCTAssertEqual(
+            policy.recorderAnomalyText(
+                recorder(currentAnomalyCount: 3, latestAnomalyKind: .staleRecorder)
+            ),
+            "Stale Recorder"
+        )
         XCTAssertEqual(
             policy.recorderAnomalyText(recorder(currentAnomalyCount: 3, presentInLatestObservation: false)),
             "History"
@@ -106,6 +111,7 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
         vrcode: String = "vr-1",
         status: RuntimeVitalRecorderStatus = .online,
         currentAnomalyCount: Int,
+        latestAnomalyKind: VitalDBAnomalyKind? = nil,
         lastSeenAt: String? = nil,
         bedName: String? = nil,
         presentInLatestObservation: Bool = true
@@ -122,6 +128,7 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
             lastSeenAt: lastSeenAt,
             observationCount: 1,
             currentAnomalyCount: currentAnomalyCount,
+            latestAnomalyKind: latestAnomalyKind,
             latestAnomalySeverity: nil,
             presentInLatestObservation: presentInLatestObservation
         )

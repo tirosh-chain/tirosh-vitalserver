@@ -328,12 +328,14 @@ describe("runtime console pages", () => {
     expect(screen.getByRole("img", { name: /Packet activity/ })).toBeInTheDocument();
     expect(screen.getByText("34 B/s")).toBeInTheDocument();
     expect(screen.getByText("Room entries")).toBeInTheDocument();
-    expect(screen.getByText("Status observations")).toBeInTheDocument();
+    expect(screen.getAllByText("Recorder anomalies").length).toBeGreaterThan(0);
+    expect(screen.getByText("Data updated")).toBeInTheDocument();
+    expect(screen.getAllByText(/Stale Recorder · warning/).length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByPlaceholderText("Search VRecorders"), {
       target: { value: "missing" }
     });
-    expect(screen.getByText("No VRecorders have been observed.")).toBeInTheDocument();
+    expect(screen.getByText("No VRecorders found.")).toBeInTheDocument();
   });
 
   it("browses all recorder activity in twelve hour windows with one minute buckets", () => {
@@ -422,11 +424,14 @@ describe("runtime console pages", () => {
     expect(screen.getByText("Known beds")).toBeInTheDocument();
     expect(screen.getAllByText("OR-1").length).toBeGreaterThan(0);
     expect(screen.getByText("Bed Details")).toBeInTheDocument();
+    expect(screen.getByText("VRecorder status")).toBeInTheDocument();
+    expect(screen.getByText("VRecorder IP")).toBeInTheDocument();
+    expect(screen.getAllByText(/Offline · warning/).length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByPlaceholderText("Search beds"), {
       target: { value: "none" }
     });
-    expect(screen.getByText("No beds have been observed.")).toBeInTheDocument();
+    expect(screen.getByText("No beds found.")).toBeInTheDocument();
   });
 
   it("does not render missing bed query data as an empty bed list", () => {
@@ -437,7 +442,7 @@ describe("runtime console pages", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Bed history response is incomplete"
     );
-    expect(screen.queryByText("No beds have been observed.")).not.toBeInTheDocument();
+    expect(screen.queryByText("No beds found.")).not.toBeInTheDocument();
   });
 
   it("renders observability events and reacts to filters", () => {
@@ -1074,7 +1079,11 @@ function recorders() {
         lastSeenAt: "2026-05-31T01:00:00Z",
         observationCount: 3,
         duplicateObservationCount: 0,
-        currentAnomalyCount: 0,
+        currentAnomalyCount: 1,
+        latestAnomalyKind: "stale-recorder",
+        latestAnomalySeverity: "warning",
+        latestAnomalyMessage: "Recorder activity is stale.",
+        latestAnomalyObservedAt: "2026-05-31T01:00:00Z",
         presentInLatestObservation: true,
         activityTimeline: [
           {
@@ -1096,12 +1105,12 @@ function recorders() {
       currentRecorders: 1,
       onlineRecorders: 1,
       staleRecorders: 0,
-      recorderAnomalies: 0,
+      recorderAnomalies: 1,
       knownBeds: 1,
       onlineBeds: 1,
       staleBeds: 0,
       bedAssignments: 1,
-      bedAnomalies: 0
+      bedAnomalies: 1
     },
     activityHistory: {
       source: "notProvided",
@@ -1158,13 +1167,20 @@ function beds() {
       bedID: "bed-1",
       name: "OR-1",
       vrcode: "VR_A",
+      linkedRecorderStatus: "online",
+      linkedRecorderIP: "192.168.64.20",
+      linkedRecorderLastSeenAt: "2026-05-31T01:00:00Z",
       status: "online",
       patientConnected: true,
       firstSeenAt: "2026-05-31T00:00:00Z",
       lastSeenAt: "2026-05-31T01:00:00Z",
       observationCount: 2,
       duplicateObservationCount: 0,
-      currentAnomalyCount: 0
+      currentAnomalyCount: 1,
+      latestAnomalyKind: "offline",
+      latestAnomalySeverity: "warning",
+      latestAnomalyMessage: "Bed link is offline.",
+      latestAnomalyObservedAt: "2026-05-31T01:00:00Z"
     }
   ];
 }

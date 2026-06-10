@@ -986,6 +986,14 @@ final class RuntimeControlContractsTests: XCTestCase {
                     subject: "VR_A",
                     message: "Recorder latency is above threshold."
                 ),
+                VitalDBAnomalyObservation(
+                    id: "anomaly-bed-a",
+                    kind: .offline,
+                    severity: VitalDBAnomalySeverity.info,
+                    observedAt: "2026-05-26T00:00:30Z",
+                    subject: "bed-a",
+                    message: "Bed link is recovering."
+                ),
             ]
         )
 
@@ -1001,7 +1009,10 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.recorders[0].observationCount, 2)
         XCTAssertEqual(history.recorders[0].presentInLatestObservation, true)
         XCTAssertEqual(history.recorders[0].currentAnomalyCount, 1)
+        XCTAssertEqual(history.recorders[0].latestAnomalyKind, VitalDBAnomalyKind.staleRecorder)
         XCTAssertEqual(history.recorders[0].latestAnomalySeverity, VitalDBAnomalySeverity.warning)
+        XCTAssertEqual(history.recorders[0].latestAnomalyMessage, "Recorder latency is above threshold.")
+        XCTAssertEqual(history.recorders[0].latestAnomalyObservedAt, "2026-05-26T00:01:00Z")
         XCTAssertNil(history.recorders[0].activityTimeline)
         XCTAssertEqual(history.activityHistory.source, .notProvided)
         XCTAssertEqual(history.recorders[1].status, RuntimeVitalRecorderStatus.notObserved)
@@ -1011,11 +1022,20 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.beds.map(\.bedID), ["bed-a", "bed-b"])
         XCTAssertEqual(history.beds[0].name, "OR A Updated")
         XCTAssertEqual(history.beds[0].vrcode, "VR_A")
+        XCTAssertEqual(history.beds[0].linkedRecorderStatus, RuntimeVitalRecorderStatus.online)
+        XCTAssertEqual(history.beds[0].linkedRecorderIP, "192.168.64.12")
+        XCTAssertEqual(history.beds[0].linkedRecorderLastSeenAt, "2026-05-26T00:01:00Z")
         XCTAssertEqual(history.beds[0].status, RuntimeVitalBedStatus.online)
         XCTAssertEqual(history.beds[0].patientConnected, false)
         XCTAssertEqual(history.beds[0].observationCount, 2)
+        XCTAssertEqual(history.beds[0].currentAnomalyCount, 1)
+        XCTAssertEqual(history.beds[0].latestAnomalyKind, VitalDBAnomalyKind.offline)
+        XCTAssertEqual(history.beds[0].latestAnomalySeverity, VitalDBAnomalySeverity.info)
+        XCTAssertEqual(history.beds[0].latestAnomalyMessage, "Bed link is recovering.")
         XCTAssertEqual(history.beds[1].name, "OR B")
         XCTAssertEqual(history.beds[1].status, RuntimeVitalBedStatus.notObserved)
+        XCTAssertEqual(history.beds[1].linkedRecorderStatus, RuntimeVitalRecorderStatus.notObserved)
+        XCTAssertEqual(history.beds[1].linkedRecorderIP, "192.168.64.11")
         XCTAssertEqual(history.beds[1].observationCount, 1)
         XCTAssertEqual(history.summary.knownRecorders, 2)
         XCTAssertEqual(history.summary.currentRecorders, 1)
@@ -1026,7 +1046,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.summary.onlineBeds, 1)
         XCTAssertEqual(history.summary.staleBeds, 0)
         XCTAssertEqual(history.summary.bedAssignments, 1)
-        XCTAssertEqual(history.summary.bedAnomalies, 0)
+        XCTAssertEqual(history.summary.bedAnomalies, 1)
     }
 
     func testVitalRecorderHistoryKeepsCurrentOfflineBedDistinctFromNotObserved() {

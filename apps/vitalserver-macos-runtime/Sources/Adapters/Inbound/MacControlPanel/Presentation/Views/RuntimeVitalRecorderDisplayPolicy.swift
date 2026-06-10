@@ -91,7 +91,33 @@ public struct RuntimeVitalRecorderDisplayPolicy {
         if !recorder.presentInLatestObservation {
             return "History"
         }
-        return recorder.currentAnomalyCount == 0 ? "-" : "\(recorder.currentAnomalyCount)"
+        guard recorder.currentAnomalyCount > 0 else {
+            return "-"
+        }
+        return anomalyKindText(recorder.latestAnomalyKind) ?? "\(recorder.currentAnomalyCount)"
+    }
+
+    public func bedAnomalyText(_ bed: RuntimeVitalBedRecord) -> String {
+        guard bed.currentAnomalyCount > 0 else {
+            return "-"
+        }
+        return anomalyKindText(bed.latestAnomalyKind) ?? "\(bed.currentAnomalyCount)"
+    }
+
+    public func anomalyDetailText(
+        kind: VitalDBAnomalyKind?,
+        severity: VitalDBAnomalySeverity?,
+        message: String?,
+        count: Int
+    ) -> String {
+        guard count > 0 else {
+            return "None"
+        }
+        let title = anomalyKindText(kind) ?? "Reported anomaly"
+        let severityText = severity.map { " · \($0.rawValue)" } ?? ""
+        let reportedMessage = reportedText(message, missing: "")
+        let messageText = reportedMessage.isEmpty ? "" : " · \(reportedMessage)"
+        return "\(title)\(severityText)\(messageText)"
     }
 
     public func sortedRecorders(
@@ -175,6 +201,18 @@ public struct RuntimeVitalRecorderDisplayPolicy {
         }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed.lowercased()
+    }
+
+    private func anomalyKindText(_ kind: VitalDBAnomalyKind?) -> String? {
+        guard let kind else {
+            return nil
+        }
+        return kind.rawValue
+            .split(separator: "-")
+            .map { part in
+                part.prefix(1).uppercased() + part.dropFirst()
+            }
+            .joined(separator: " ")
     }
 
     private func compareReportedTimestamp(_ lhs: String?, _ rhs: String?) -> ComparisonResult {

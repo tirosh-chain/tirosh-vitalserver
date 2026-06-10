@@ -164,6 +164,17 @@ public struct RuntimePresentationFormatter {
         return formatter.string(from: date)
     }
 
+    public func systemTimeTextWithAge(_ timestamp: String?, now: Date = Date(), timeZone: TimeZone = .current) -> String {
+        let text = systemTimeText(timestamp, timeZone: timeZone)
+        guard let timestamp,
+              !timestamp.isEmpty,
+              let date = iso8601Date(timestamp)
+        else {
+            return text
+        }
+        return "\(text) · \(ageText(since: date, now: now)) ago"
+    }
+
     public func logExportDefaultName(date: Date = Date()) -> String {
         "vitalserver-logs-\(logExportTimestamp(date: date)).zip"
     }
@@ -180,6 +191,22 @@ public struct RuntimePresentationFormatter {
         }
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.date(from: timestamp)
+    }
+
+    private func ageText(since date: Date, now: Date) -> String {
+        let seconds = max(0, Int(now.timeIntervalSince(date)))
+        if seconds < 60 {
+            return "\(seconds)s"
+        }
+        let minutes = seconds / 60
+        if minutes < 60 {
+            return "\(minutes)m"
+        }
+        let hours = minutes / 60
+        if hours < 48 {
+            return "\(hours)h"
+        }
+        return "\(hours / 24)d"
     }
 
     private func logExportTimestamp(date: Date) -> String {

@@ -92,7 +92,13 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 
 `RuntimeVitalRecorderStatus.notObserved` and `RuntimeVitalBedStatus.notObserved` mean the recorder or bed is known from history but is absent from the latest VitalDB observation. It is distinct from `offline`, which requires the current owner observation to report the subject as present and not online.
 
-`RuntimeVitalRecorderRecord.duplicateObservationCount` and `RuntimeVitalBedRecord.duplicateObservationCount` report the number of extra source observations that were collapsed because they shared the same VRecorder or bed identity. `0` means the source observation did not contain duplicates for that identity.
+`RuntimeVitalRecorderRecord.observationCount` and `RuntimeVitalBedRecord.observationCount` are support/debug metadata, not primary operator UI fields. They count how many stored VitalDB observation snapshots included the VRecorder or bed identity after same-snapshot duplicates were collapsed. `RuntimeVitalRecorderRecord.duplicateObservationCount` and `RuntimeVitalBedRecord.duplicateObservationCount` report the number of extra source records collapsed because they shared the same VRecorder or bed identity in a snapshot. `0` means no duplicate source records were collapsed for that identity.
+
+`RuntimeVitalRecorderHistory.updatedAt` is displayed as `Data updated`. It is the latest VitalDB observation snapshot timestamp used to assemble the recorder/bed history response. It is distinct from each record's `lastSeenAt`, which comes from the recorder or bed activity source.
+
+`RuntimeVitalRecorderRecord.latestAnomalyKind`, `latestAnomalySeverity`, `latestAnomalyMessage`, and `latestAnomalyObservedAt` describe the latest current anomaly for that VRecorder. The matching `RuntimeVitalBedRecord` fields describe the latest current anomaly for that bed. These fields remain null when there is no current anomaly.
+
+`RuntimeVitalBedRecord.linkedRecorderStatus`, `linkedRecorderIP`, and `linkedRecorderLastSeenAt` are copied from the explicit VRecorder read model record linked by `vrcode`. They remain null when no linked VRecorder record is available; clients must not infer them from bed status.
 
 `RuntimeStatus.sleepPreventionServiceLoaded` reports the optional host launchd service that keeps the Mac awake while VitalServer is running. It prevents idle system sleep so the host proxy, VM, and VRecorder TCP streams remain online, but it cannot prevent manual Sleep, lid close, shutdown, or managed power-policy sleep.
 
@@ -181,7 +187,8 @@ SQLite projection을 source로 유지합니다.
 IP는 마지막 관측 주소일 뿐 identity로 쓰지 않습니다. 이 read model은 접속했었던 VRecorder 목록, last IP,
 version, bed, first/last seen, latest status, current anomaly count, `activityTimeline`을 PWA/SwiftUI가
 바로 표시할 수 있게 정리한 결과입니다. `activityTimeline`은 snapshot history에서 vrcode별
-`recorders[].activity`를 시간순으로 모은 chart-friendly sample list입니다.
+`recorders[].activity`를 시간순으로 모은 recorder activity point list입니다. 각 point는 해당 시각의
+message count, byte count, room count를 담아 활동 차트를 그리기 위한 값입니다.
 `activityHistory.source`는 `sqliteProjection`, `unavailable`, `notProvided` 중 하나입니다.
 `sqliteProjection`의 empty timeline은 activity bucket projection을 읽었지만 해당 recorder activity가
 없었다는 뜻이고, `notProvided`는 caller가 activity projection을 제공하지 않은 construction path입니다.

@@ -68,7 +68,6 @@ public extension AppConstants {
         public static let bed = "Bed"
         public static let patient = "Patient"
         public static let anomaly = "Anomaly"
-        public static let observations = "Observations"
         public static let operation = "Operation"
         public static let runtimeVersion = "Runtime version"
         public static let updatedAt = "Updated at"

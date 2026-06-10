@@ -58,7 +58,7 @@ Advanced, Observability, Logs 화면으로 이동합니다.
 |---|---|---|
 | Status | 설치 직후, 평소 상태 확인, 장애 첫 확인 | overall health, VitalServer 연결, PWA 연결, data directory, recorder summary |
 | Recorders | recorder가 보이지 않거나 stale/offline일 때 | VRecorder status, IP, 연결 bed, last seen, anomaly count |
-| Beds | bed와 recorder 연결 상태를 볼 때 | bed status, 연결 VRecorder, patient 연결 여부, observation count |
+| Beds | bed와 recorder 연결 상태를 볼 때 | bed status, 연결 VRecorder, patient 연결 여부 |
 | Advanced | runtime service나 VM 상태를 볼 때 | VM/service 상태, active operation, runtime version, failure reasons |
 | Observability | 상태 변화의 시간 순서를 볼 때 | event timeline, recorder anomaly, relationship history |
 | Logs | 지원 자료를 모으거나 상세 로그를 볼 때 | command, update activation, VM, container, watchdog logs |

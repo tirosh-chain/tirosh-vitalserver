@@ -56,7 +56,7 @@ struct RuntimeBedsPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             summaryMetrics
             if filteredBeds.isEmpty {
-                Text(AppConstants.StatusText.noBedObservations)
+                Text(AppConstants.StatusText.noBedData)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
@@ -71,7 +71,7 @@ struct RuntimeBedsPanel: View {
                             bedRow(bed)
                         }
                     }
-                    .frame(minWidth: 760, alignment: .leading)
+                    .frame(minWidth: 900, alignment: .leading)
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
@@ -106,6 +106,7 @@ struct RuntimeBedsPanel: View {
                 summaryMetric(AppConstants.Labels.staleBeds, "\(count(.stale))")
                 summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
                 summaryMetric(AppConstants.Labels.bedAnomalies, "\(viewModel.vitalRecorders.beds.reduce(0) { $0 + $1.currentAnomalyCount })")
+                summaryMetric("Data updated", viewModel.presentationFormatter.systemTimeText(viewModel.vitalRecorders.updatedAt))
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], alignment: .leading, spacing: 8) {
                 summaryMetric(AppConstants.Labels.knownBeds, "\(viewModel.vitalRecorders.beds.count)")
@@ -113,6 +114,7 @@ struct RuntimeBedsPanel: View {
                 summaryMetric(AppConstants.Labels.staleBeds, "\(count(.stale))")
                 summaryMetric("Assignments", "\(viewModel.vitalRelationships.assignments.count)")
                 summaryMetric(AppConstants.Labels.bedAnomalies, "\(viewModel.vitalRecorders.beds.reduce(0) { $0 + $1.currentAnomalyCount })")
+                summaryMetric("Data updated", viewModel.presentationFormatter.systemTimeText(viewModel.vitalRecorders.updatedAt))
             }
         }
     }
@@ -147,8 +149,8 @@ struct RuntimeBedsPanel: View {
             tableHeader("Name", minWidth: 140)
             tableHeader("VRecorder", minWidth: 140)
             tableHeader(AppConstants.Labels.recorderStatus, minWidth: 90)
-            tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 180)
-            tableHeader(AppConstants.Labels.anomaly, minWidth: 70)
+            tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 220)
+            tableHeader(AppConstants.Labels.anomaly, minWidth: 130)
         }
         .padding(10)
     }
@@ -166,8 +168,8 @@ struct RuntimeBedsPanel: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(statusColor(bed.status))
                     .frame(minWidth: 90, alignment: .leading)
-                tableValue(viewModel.presentationFormatter.systemTimeText(bed.lastSeenAt), minWidth: 180)
-                tableValue(bed.currentAnomalyCount == 0 ? "-" : "\(bed.currentAnomalyCount)", minWidth: 70)
+                tableValue(viewModel.presentationFormatter.systemTimeTextWithAge(bed.lastSeenAt), minWidth: 220)
+                tableValue(bedAnomalyText(bed), minWidth: 130)
             }
             .padding(10)
             .contentShape(Rectangle())
@@ -189,7 +191,7 @@ struct RuntimeBedsPanel: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(statusColor(bed.status))
             Spacer()
-            Text(viewModel.presentationFormatter.systemTimeText(bed.lastSeenAt))
+            Text(viewModel.presentationFormatter.systemTimeTextWithAge(bed.lastSeenAt))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -207,18 +209,17 @@ struct RuntimeBedsPanel: View {
             detailRow("VRecorder", reportedText(bed.vrcode, missing: "VRecorder not reported"))
             detailRow(
                 "VRecorder status",
-                bed.vrcode == nil ? "VRecorder not reported" : "Recorder status not reported by bed record"
+                linkedRecorderStatusText(bed)
             )
             detailRow(
                 "VRecorder IP",
-                bed.vrcode == nil ? "VRecorder not reported" : "Recorder IP not reported by bed record"
+                reportedText(bed.linkedRecorderIP, missing: bed.vrcode == nil ? "VRecorder not reported" : "VRecorder IP not reported")
             )
+            detailRow("VRecorder last seen", viewModel.presentationFormatter.systemTimeTextWithAge(bed.linkedRecorderLastSeenAt))
             detailRow(AppConstants.Labels.patient, patientText(bed.patientConnected))
             detailRow("First seen", viewModel.presentationFormatter.systemTimeText(bed.firstSeenAt))
-            detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeText(bed.lastSeenAt))
-            detailRow(AppConstants.Labels.observations, "\(bed.observationCount)")
-            detailRow("Duplicate observations", "\(bed.duplicateObservationCount)")
-            detailRow(AppConstants.Labels.bedAnomalies, "\(bed.currentAnomalyCount)")
+            detailRow(AppConstants.Labels.recorderLastSeen, viewModel.presentationFormatter.systemTimeTextWithAge(bed.lastSeenAt))
+            detailRow("Latest anomaly", bedAnomalyDetailText(bed))
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -348,6 +349,26 @@ struct RuntimeBedsPanel: View {
 
     private func count(_ status: RuntimeVitalBedStatus) -> Int {
         viewModel.vitalRecorders.beds.filter { $0.status == status }.count
+    }
+
+    private func bedAnomalyText(_ bed: RuntimeVitalBedRecord) -> String {
+        displayPolicy.bedAnomalyText(bed)
+    }
+
+    private func bedAnomalyDetailText(_ bed: RuntimeVitalBedRecord) -> String {
+        displayPolicy.anomalyDetailText(
+            kind: bed.latestAnomalyKind,
+            severity: bed.latestAnomalySeverity,
+            message: bed.latestAnomalyMessage,
+            count: bed.currentAnomalyCount
+        )
+    }
+
+    private func linkedRecorderStatusText(_ bed: RuntimeVitalBedRecord) -> String {
+        guard let status = bed.linkedRecorderStatus else {
+            return bed.vrcode == nil ? "VRecorder not reported" : "VRecorder status not reported"
+        }
+        return displayPolicy.statusText(status)
     }
 
     private func statusColor(_ status: RuntimeVitalBedStatus) -> Color {

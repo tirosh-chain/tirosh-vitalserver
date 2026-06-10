@@ -55,7 +55,7 @@ struct RuntimeObservabilityPanel: View {
         observationSection(AppConstants.Labels.recorderAnomalies) {
             vitalDBObservationReadIssue
             if observation == nil {
-                emptyObservation(AppConstants.StatusText.noVitalRecorderObservations)
+                emptyObservation(AppConstants.StatusText.noVitalRecorderData)
             } else if anomalyRows.isEmpty {
                 emptyObservation(AppConstants.StatusText.noRecorderAnomalies)
             } else {
