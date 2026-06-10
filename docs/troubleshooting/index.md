@@ -75,6 +75,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-064 | dev DMG rebuild가 unmounted stale attachment 때문에 실패함 | Packaging / Local development | resolved | [Dev DMG Rebuild Stale Unmounted Attachment](064_dev-dmg-rebuild-stale-unmounted-attachment.md) |
 | TS-065 | Clean uninstall과 Reset Installer 경계가 혼동됨 | Uninstall / Packaging | active | [Clean Uninstall and Reset Installer Boundary](065_clean-uninstall-reset-installer-boundary.md) |
 | TS-066 | Clean uninstall 성공 후 progress viewer만 실패를 표시함 | Uninstall | active | [Clean Uninstall Progress Viewer Shows Failed After Successful Uninstall](066_clean-uninstall-progress-viewer-stale-run.md) |
+| TS-067 | 초기 설치 직후 VM bootstrap 중 Degraded가 표시됨 | Runtime health / Packaging | resolved | [Initial Install Shows Degraded During VM Bootstrap](067_initial-install-watchdog-degraded.md) |
 
 ## Follow-up 규칙
 

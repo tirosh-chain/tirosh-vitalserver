@@ -195,6 +195,39 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoveryDeferred])
     }
 
+    func testInstallInitializationBootstrappingDeferralKeepsInitializingStatus() throws {
+        let harness = WatchdogHarness(
+            currentRuntimeStatus: .loaded(status(
+                level: .initializing,
+                operation: .install,
+                updatedAt: "2026-05-31T00:00:00Z"
+            )),
+            snapshots: [
+                healthSnapshot(
+                    vmLifecycle: RuntimeVMLifecycleDocument(
+                        state: .bootstrapping,
+                        operation: .install,
+                        startedAt: "2026-05-31T00:00:00Z",
+                        updatedAt: "2026-05-31T00:00:01Z",
+                        deadlineAt: "2999-01-01T00:00:00Z"
+                    ),
+                    vmState: .starting,
+                    vmIP: nil,
+                    guestHTTP: RuntimeHTTPStatusText.missingVMIP,
+                    failureReasons: [.guestHTTP(RuntimeHTTPStatusText.missingVMIP)]
+                ),
+            ]
+        )
+
+        try harness.runner.run()
+
+        XCTAssertEqual(harness.proxyLivenessPorts, [])
+        XCTAssertEqual(harness.vmRuntimeRestartCalls, 0)
+        XCTAssertTrue(harness.restartedServices.isEmpty)
+        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.initializing])
+        XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoveryDeferred])
+    }
+
     func testVMLifecycleMarkFailureKeepsOriginalHealthySnapshotVisible() throws {
         let lifecycle = RuntimeVMLifecycleDocument(
             state: .bootstrapping,
@@ -271,6 +304,7 @@ private final class WatchdogHarness {
     var collectGuestLogsResult: RuntimeBestEffortOperationResult = .completed
 
     private let activeOperation: RuntimeOperation?
+    private let currentRuntimeStatus: RuntimeStatusDocumentLoadResult
     private let automaticRecoveryEnabled: Bool
     private let automaticRecoveryReadError: Error?
     private let lifecycleMarkError: Error?
@@ -280,6 +314,7 @@ private final class WatchdogHarness {
 
     init(
         activeOperation: RuntimeOperation? = nil,
+        currentRuntimeStatus: RuntimeStatusDocumentLoadResult = .missing,
         automaticRecoveryEnabled: Bool = true,
         automaticRecoveryReadError: Error? = nil,
         lifecycleMarkError: Error? = nil,
@@ -288,6 +323,7 @@ private final class WatchdogHarness {
         snapshots: [RuntimeHealthSnapshot] = [healthSnapshot()]
     ) {
         self.activeOperation = activeOperation
+        self.currentRuntimeStatus = currentRuntimeStatus
         self.automaticRecoveryEnabled = automaticRecoveryEnabled
         self.automaticRecoveryReadError = automaticRecoveryReadError
         self.lifecycleMarkError = lifecycleMarkError
@@ -311,6 +347,9 @@ private final class WatchdogHarness {
                 },
                 activeManagedOperation: {
                     self.activeOperation
+                },
+                currentRuntimeStatus: {
+                    self.currentRuntimeStatus
                 },
                 healthSnapshot: {
                     self.healthCalls += 1
@@ -434,5 +473,35 @@ private func runningLifecycle() -> RuntimeVMLifecycleDocument {
         state: .running,
         startedAt: "2026-05-31T00:00:00Z",
         updatedAt: "2026-05-31T00:00:01Z"
+    )
+}
+
+private func status(
+    level: RuntimeStatusLevel,
+    operation: RuntimeOperation,
+    updatedAt: String
+) -> RuntimeStatusDocument {
+    RuntimeStatusDocument(
+        product: "VitalServerHelper",
+        status: level,
+        operation: operation,
+        message: "status",
+        updatedAt: updatedAt,
+        productRoot: "/product",
+        runtimeHome: "/product/vm",
+        runtimeVersion: "0.1.0",
+        vmService: .loaded,
+        proxyService: .loaded,
+        watchdogService: .loaded,
+        vmIP: "192.168.64.2",
+        proxyPort: 80,
+        hostProxyHTTP: "200",
+        guestHTTP: "200",
+        redisUIHTTP: "200",
+        swaggerUIHTTP: "200",
+        rootfsBase: .present,
+        vmDisk: .present,
+        failureReasons: [],
+        latestBackup: nil
     )
 }

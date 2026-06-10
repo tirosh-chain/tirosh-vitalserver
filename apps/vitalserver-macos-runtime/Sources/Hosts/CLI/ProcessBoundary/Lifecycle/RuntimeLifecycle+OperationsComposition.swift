@@ -98,6 +98,7 @@ extension RuntimeLifecycle {
                 activeManagedOperation: {
                     runtimeManagedOperationGuard().activeOperation()
                 },
+                currentRuntimeStatus: statusReporter.loadStatusResult,
                 healthSnapshot: {
                     runtimeHealthSnapshot()
                 },

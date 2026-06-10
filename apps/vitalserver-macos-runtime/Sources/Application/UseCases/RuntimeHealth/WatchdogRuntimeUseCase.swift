@@ -400,6 +400,27 @@ public struct WatchdogRuntimeUseCase {
         )
     }
 
+    public func observedStatusPlan(
+        _ plan: WatchdogRuntimeObservedStatusPlan,
+        currentStatus: RuntimeStatusDocumentLoadResult
+    ) -> WatchdogRuntimeObservedStatusPlan {
+        guard plan.eventType == .recoveryDeferred else {
+            return plan
+        }
+        guard case .loaded(let status) = currentStatus,
+              status.status == .initializing,
+              status.operation == .install else {
+            return plan
+        }
+        return WatchdogRuntimeObservedStatusPlan(
+            status: .initializing,
+            message: plan.message,
+            eventType: plan.eventType,
+            printMessage: plan.printMessage,
+            logMessage: plan.logMessage
+        )
+    }
+
     private func healthPassPlan() -> WatchdogRuntimeHealthPassPlan {
         WatchdogRuntimeHealthPassPlan(
             statusMessage: "runtime watchdog passed",

@@ -117,6 +117,55 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.printMessage, "watchdog: deferred")
     }
 
+    func testDeferredObservationPreservesInstallInitializationStatus() {
+        let useCase = WatchdogRuntimeUseCase()
+        let deferred = WatchdogRuntimeObservedStatusPlan(
+            status: .degraded,
+            message: "watchdog recovery deferred: vm-lifecycle-bootstrapping",
+            eventType: .recoveryDeferred,
+            printMessage: "watchdog: deferred",
+            logMessage: "watchdog recovery deferred: vm-lifecycle-bootstrapping"
+        )
+
+        let plan = useCase.observedStatusPlan(
+            deferred,
+            currentStatus: .loaded(status(
+                level: .initializing,
+                operation: .install,
+                updatedAt: "2026-05-22T00:00:00Z"
+            ))
+        )
+
+        XCTAssertEqual(plan.status, .initializing)
+        XCTAssertEqual(plan.message, deferred.message)
+        XCTAssertEqual(plan.eventType, .recoveryDeferred)
+    }
+
+    func testDeferredObservationDoesNotPreserveMissingFailedOrNonInstallStatus() {
+        let useCase = WatchdogRuntimeUseCase()
+        let deferred = WatchdogRuntimeObservedStatusPlan(
+            status: .degraded,
+            message: "watchdog recovery deferred: vm-lifecycle-bootstrapping",
+            eventType: .recoveryDeferred,
+            printMessage: "watchdog: deferred",
+            logMessage: "watchdog recovery deferred: vm-lifecycle-bootstrapping"
+        )
+
+        XCTAssertEqual(useCase.observedStatusPlan(deferred, currentStatus: .missing).status, .degraded)
+        XCTAssertEqual(useCase.observedStatusPlan(deferred, currentStatus: .failed("permission denied")).status, .degraded)
+        XCTAssertEqual(
+            useCase.observedStatusPlan(
+                deferred,
+                currentStatus: .loaded(status(
+                    level: .initializing,
+                    operation: .applyBundle,
+                    updatedAt: "2026-05-22T00:00:00Z"
+                ))
+            ).status,
+            .degraded
+        )
+    }
+
     func testLifecycleMarkPlanOnlyMarksStartingOrBootstrappingLifecycle() {
         let useCase = WatchdogRuntimeUseCase()
         let bootstrapping = RuntimeVMLifecycleDocument(

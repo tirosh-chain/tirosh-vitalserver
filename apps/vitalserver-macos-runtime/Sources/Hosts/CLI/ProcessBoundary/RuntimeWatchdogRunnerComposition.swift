@@ -19,6 +19,7 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
     let fileStore: RuntimeFileStore
     let now: () -> Date
     let activeManagedOperation: () -> RuntimeOperation?
+    let currentRuntimeStatus: () -> RuntimeStatusDocumentLoadResult
     let healthSnapshot: () -> RuntimeHealthSnapshot
     let httpStatusCode: (String) -> String
     let proxyLivenessURL: (Int) -> String
@@ -52,6 +53,7 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
         fileStore: RuntimeFileStore,
         now: @escaping () -> Date,
         activeManagedOperation: @escaping () -> RuntimeOperation?,
+        currentRuntimeStatus: @escaping () -> RuntimeStatusDocumentLoadResult,
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         httpStatusCode: @escaping (String) -> String,
         proxyLivenessURL: @escaping (Int) -> String,
@@ -84,6 +86,7 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
         self.fileStore = fileStore
         self.now = now
         self.activeManagedOperation = activeManagedOperation
+        self.currentRuntimeStatus = currentRuntimeStatus
         self.healthSnapshot = healthSnapshot
         self.httpStatusCode = httpStatusCode
         self.proxyLivenessURL = proxyLivenessURL
@@ -123,6 +126,7 @@ public struct RuntimeWatchdogRunnerComposition {
                 rotateRuntimeLogs: operations.rotateRuntimeLogs,
                 collectGuestLogs: operations.collectGuestLogs,
                 activeManagedOperation: operations.activeManagedOperation,
+                currentRuntimeStatus: operations.currentRuntimeStatus,
                 healthSnapshot: operations.healthSnapshot,
                 proxyLivenessHTTP: { port in
                     guard let port else {
