@@ -10,7 +10,10 @@ from tirosh_guest_tools.contracts import (
     ComposeService,
     RuntimeFileName,
 )
-from tirosh_guest_tools.domain.errors import GuestUseCaseInputError
+from tirosh_guest_tools.domain.errors import (
+    GuestDependencyError,
+    GuestUseCaseInputError,
+)
 from tirosh_guest_tools.domain.operations import ComposeAction
 from tirosh_guest_tools.domain.runtime_config import RuntimeConfig
 from tirosh_guest_tools.infrastructure.common import (
@@ -24,6 +27,7 @@ from tirosh_guest_tools.infrastructure.common import (
 from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 logger = logging.getLogger(__name__)
+COMPOSE_STOP_COMMAND_TIMEOUT_BUFFER_SECONDS = 60
 
 
 def run_compose_action(action: ComposeAction | str) -> None:
@@ -39,7 +43,21 @@ def run_compose_action(action: ComposeAction | str) -> None:
     elif action == ComposeAction.TESTKIT_UP_LOGGED:
         start_testkit_logged(runtime_config)
     elif action == ComposeAction.STOP:
-        compose(["stop", "--timeout", str(SETTINGS.compose.stop_timeout_seconds)])
+        stop_timeout_seconds = SETTINGS.compose.stop_timeout_seconds
+        command_timeout_seconds = (
+            stop_timeout_seconds + COMPOSE_STOP_COMMAND_TIMEOUT_BUFFER_SECONDS
+        )
+        try:
+            compose(
+                ["stop", "--timeout", str(stop_timeout_seconds)],
+                timeout_seconds=command_timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise GuestDependencyError(
+                "docker compose stop timed out after "
+                f"{command_timeout_seconds:g}s",
+                code="compose-stop-timeout",
+            ) from error
         run(["sync"])
     else:
         raise GuestUseCaseInputError(
@@ -64,8 +82,9 @@ def compose(
     arguments: list[str],
     *,
     check: bool = True,
+    timeout_seconds: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return run(compose_command(arguments), check=check)
+    return run(compose_command(arguments), check=check, timeout_seconds=timeout_seconds)
 
 
 def load_optional_docker_images() -> None:

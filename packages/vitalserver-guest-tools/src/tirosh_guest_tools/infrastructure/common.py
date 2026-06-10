@@ -65,6 +65,7 @@ def run(
     check: bool = True,
     stdout: int | TextIO | None = None,
     stderr: int | TextIO | None = None,
+    timeout_seconds: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         arguments,
@@ -72,6 +73,7 @@ def run(
         text=True,
         stdout=stdout,
         stderr=stderr,
+        timeout=timeout_seconds,
     )
 
 
@@ -134,8 +136,12 @@ def request_version_from(path: Path) -> str:
     return version
 
 
-def systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return run(["systemctl", *arguments], check=check)
+def systemctl(
+    *arguments: str,
+    check: bool = True,
+    timeout_seconds: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return run(["systemctl", *arguments], check=check, timeout_seconds=timeout_seconds)
 
 
 def service_is_running(service: str) -> bool:

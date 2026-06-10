@@ -23,7 +23,6 @@ public protocol RuntimeControlClient {
     func repairVMDisk() async throws -> RuntimeCommandResult
     func repairRuntimeServices() async throws -> RuntimeCommandResult
     func createRedisBackup() async throws -> RuntimeCommandResult
-    func createRuntimeDataBackup() async throws -> RuntimeCommandResult
     func startRuntimeServices() async throws -> RuntimeCommandResult
     func stopRuntimeServices() async throws -> RuntimeCommandResult
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
@@ -73,6 +72,7 @@ public protocol RuntimeHostClient {
     func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult
     func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult
     func restoreRedisBackup(backupURL: URL) async throws -> RuntimeCommandResult
+    func createRuntimeDataBackup() async throws -> RuntimeCommandResult
     func restoreRuntimeDataBackup(backupURL: URL) async throws -> RuntimeCommandResult
     func deleteBackup(url: URL) async throws -> RuntimeCommandResult
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult

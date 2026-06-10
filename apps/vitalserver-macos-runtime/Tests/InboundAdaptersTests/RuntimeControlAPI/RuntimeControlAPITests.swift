@@ -1126,24 +1126,30 @@ final class RuntimeControlAPITests: XCTestCase {
         ))
         let backups = try await handler.loadBackups()
         let redisBackups = try await handler.loadRedisBackups()
+        let runtimeDataBackups = try await handler.loadRuntimeDataBackups()
         let summary = try await handler.updateBundleSummary(bundle: bundle)
         let verify = try await handler.verifyUpdateBundle(bundle: bundle)
         let apply = try await handler.applyUpdateBundle(bundle: bundle)
         let rollback = try await handler.rollbackBackup(backup)
+        let createRuntimeDataBackup = try await handler.createRuntimeDataBackup()
         let delete = try await handler.deleteBackup(backup)
         let export = try await handler.exportLogs(destination: destination)
 
         XCTAssertEqual(logText.text, "log:helperMessage:25")
         XCTAssertEqual(backups.map(\.path), ["/backups/rollback"])
         XCTAssertEqual(redisBackups.map(\.path), ["/runtime/data/backups/redis/redis-1.tar.gz"])
+        XCTAssertEqual(runtimeDataBackups.map(\.path), ["/backups/runtime-data/20260610T000000Z-manual"])
         XCTAssertEqual(summary.summary, "summary /bundles/update.tar.gz")
         XCTAssertEqual(verify.result.stdout, "verify /bundles/update.tar.gz")
         XCTAssertEqual(apply.result.stdout, "apply /bundles/update.tar.gz")
         XCTAssertEqual(rollback.result.stdout, "rollback /backups/latest")
+        XCTAssertEqual(createRuntimeDataBackup.result.stdout, "runtime data backup created")
         XCTAssertEqual(delete.result.stdout, "delete /backups/latest")
         XCTAssertEqual(export.destination.path, "/tmp/vitalserver-logs.zip")
         XCTAssertEqual(client.backupLatestPaths, ["latest-backup"])
         XCTAssertEqual(client.loadRedisBackupsCount, 1)
+        XCTAssertEqual(client.loadRuntimeDataBackupsCount, 1)
+        XCTAssertEqual(client.createRuntimeDataBackupCount, 1)
     }
 
     @MainActor
@@ -1162,10 +1168,12 @@ final class RuntimeControlAPITests: XCTestCase {
             }),
             ("loadBackups", { _ = try await handler.loadBackups() }),
             ("loadRedisBackups", { _ = try await handler.loadRedisBackups() }),
+            ("loadRuntimeDataBackups", { _ = try await handler.loadRuntimeDataBackups() }),
             ("updateBundleSummary", { _ = try await handler.updateBundleSummary(bundle: bundle) }),
             ("verifyUpdateBundle", { _ = try await handler.verifyUpdateBundle(bundle: bundle) }),
             ("applyUpdateBundle", { _ = try await handler.applyUpdateBundle(bundle: bundle) }),
             ("rollbackBackup", { _ = try await handler.rollbackBackup(backup) }),
+            ("createRuntimeDataBackup", { _ = try await handler.createRuntimeDataBackup() }),
             ("deleteBackup", { _ = try await handler.deleteBackup(backup) }),
             ("exportLogs", { _ = try await handler.exportLogs(destination: destination) }),
         ]

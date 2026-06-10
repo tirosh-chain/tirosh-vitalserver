@@ -11,8 +11,7 @@ from tirosh_guest_tools.application import update_shutdown
 from tirosh_guest_tools.application.contexts import PrepareUpdateShutdownContext
 from tirosh_guest_tools.contracts import RuntimeService
 from tirosh_guest_tools.domain.errors import GuestDependencyError
-from tirosh_guest_tools.domain.operations import ComposeAction
-from tirosh_guest_tools.domain.operations import ShutdownPhase
+from tirosh_guest_tools.domain.operations import ComposeAction, ShutdownPhase
 
 
 def test_prepare_update_shutdown_writes_poweroff_requested_phase(
@@ -65,7 +64,12 @@ def test_prepare_update_shutdown_writes_poweroff_requested_phase(
     monkeypatch.setattr(
         update_shutdown.subprocess,
         "run",
-        lambda command, check: events.append(":".join(command)),
+        lambda command, **kwargs: events.append(":".join(command)),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "run",
+        lambda command, **kwargs: events.append(":".join(command)),
     )
     monkeypatch.setattr(
         update_shutdown,
@@ -90,11 +94,85 @@ def test_prepare_update_shutdown_writes_poweroff_requested_phase(
         "stop-services",
         "observe:shutdown-post-sync",
         "write:running:prepared",
-        "observe:shutdown-poweroff-requested",
-        "write:ready:poweroff-requested",
         "sync",
         "poweroff",
+        "observe:shutdown-poweroff-requested",
+        "write:ready:poweroff-requested",
     ]
+
+
+def test_prepare_update_shutdown_reports_poweroff_request_failure_before_ready(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    request_file = tmp_path / "prepare-update-shutdown.request"
+    result_file = tmp_path / "prepare-update-shutdown-result.json"
+    request_file.write_text(
+        json.dumps({"requestId": "req-1", "version": "1.2.3"}),
+        encoding="utf-8",
+    )
+    events: list[str] = []
+    write_result = update_shutdown.write_result
+
+    monkeypatch.setattr(update_shutdown, "REQUEST_FILE", request_file)
+    monkeypatch.setattr(update_shutdown, "RESULT_FILE", result_file)
+    monkeypatch.setattr(update_shutdown, "mount_runtime_share", lambda: None)
+    monkeypatch.setattr(update_shutdown, "utc_now", lambda: "2026-06-01T00:00:00Z")
+    monkeypatch.setattr(
+        update_shutdown,
+        "write_result",
+        lambda *args, **kwargs: _record_write_result(
+            write_result,
+            events,
+            *args,
+            **kwargs,
+        ),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "collect_guest_observability",
+        lambda phase: events.append(f"observe:{phase.value}"),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "backup_redis",
+        lambda context: _record_backup(context, events),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "quiesce_shutdown_sidecars",
+        lambda: events.append("quiesce"),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "stop_runtime_services",
+        lambda: events.append("stop-services"),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "run",
+        lambda command, **kwargs: events.append(":".join(command)),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "request_guest_poweroff",
+        lambda: (_ for _ in ()).throw(
+            update_shutdown.GuestPoweroffRequestError(
+                "systemctl poweroff failed",
+                code="guest-poweroff-request-failed",
+            )
+        ),
+    )
+
+    with pytest.raises(update_shutdown.GuestPoweroffRequestError):
+        update_shutdown.run_prepare_update_shutdown()
+
+    document = json.loads(result_file.read_text(encoding="utf-8"))
+    assert document["status"] == "failed"
+    assert document["shutdownPhase"] == ShutdownPhase.POWEROFF_FAILED.value
+    assert "systemctl poweroff failed" in document["message"]
+    assert "write:ready:poweroff-requested" not in events
+    assert not request_file.exists()
 
 
 def test_quiesce_shutdown_sidecars_stops_dispatchers_and_waits_for_redis_backup(
@@ -170,7 +248,11 @@ def test_quiesce_shutdown_sidecars_waits_for_existing_redis_backup(
 ) -> None:
     events: list[str] = []
 
-    monkeypatch.setattr(update_shutdown, "REDIS_BACKUP_ACTIVE_WAIT_TIMEOUT_SECONDS", 0.0)
+    monkeypatch.setattr(
+        update_shutdown,
+        "REDIS_BACKUP_ACTIVE_WAIT_TIMEOUT_SECONDS",
+        0.0,
+    )
     monkeypatch.setattr(
         update_shutdown,
         "systemctl",

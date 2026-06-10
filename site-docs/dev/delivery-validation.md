@@ -160,6 +160,15 @@ poller가 unit `failed` 또는 dispatch failure를 명시 result로 기록해야
 failure를 받아 update를 실패로 전환해야 합니다. VM kernel panic이 뒤따라 보이더라도 먼저
 guest shutdown service가 explicit result를 남겼는지 확인합니다.
 
+`prepare-update-shutdown-result.json`이 `running` 상태에서 "Redis backup completed. Stopping guest
+services." 메시지로 오래 머무르면 Guest worker가 Redis 백업 이후 runtime compose stop 단계에서
+멈춘 것입니다. Docker Compose stop의 container grace timeout은 subprocess 자체의 완료를 보장하지
+않으므로 Guest command는 별도 command timeout을 가져야 합니다. Timeout은 Host가 추측해서 넘기지
+말고 Guest dependency failure result로 기록되어야 rollback/force-stop 경로가 명시적으로 실행됩니다.
+Guest는 final sync와 `systemctl --no-block poweroff` 요청이 성공한 뒤에만
+`ready`/`poweroff-requested` result를 기록해야 합니다. Poweroff 요청 전에 ready를 먼저 쓰면 Host가
+실제 요청 실패나 sync hang을 성공 상태로 오해할 수 있습니다.
+
 Settings apply는 update가 아닙니다. CPU, memory, disk increase, network mode, bridged interface,
 Vital files directory처럼 VM runtime 구성 자체가 바뀐 경우만 VM runtime restart requirement를 만듭니다.
 URL, admin password, start on boot, auto recovery, sleep prevention, Redis backup retention 변경은

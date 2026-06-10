@@ -131,7 +131,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     public func createRuntimeDataBackup() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.createRuntimeDataBackup())
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeControlCommandResponse(result: try await hostClient.createRuntimeDataBackup())
     }
 
     public func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse {

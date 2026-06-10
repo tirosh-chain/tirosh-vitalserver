@@ -79,7 +79,7 @@ extension RuntimeViewModel {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.runtimeDataBackupRunning,
             successMessage: AppConstants.StatusText.runtimeDataBackupCompleted,
-            action: { try await self.controlClient.createRuntimeDataBackup() }
+            action: { try await self.hostClient.createRuntimeDataBackup() }
         ).isSuccess
         if didCreateBackup {
             await refresh()

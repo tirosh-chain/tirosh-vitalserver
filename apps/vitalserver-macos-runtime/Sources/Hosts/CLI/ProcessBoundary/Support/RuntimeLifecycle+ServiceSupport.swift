@@ -67,7 +67,7 @@ extension RuntimeLifecycle {
         try StopRuntimeVMProcessUseCase().forceKillAndWait(
             killSignal: SIGKILL,
             noSuchProcessErrorNumber: Int32(ESRCH),
-            timeoutSeconds: Constants.Runtime.vmStopWaitTimeoutSeconds,
+            timeoutSeconds: Constants.Runtime.vmForceStopWaitTimeoutSeconds,
             pollIntervalSeconds: Constants.Runtime.serviceStopPollIntervalSeconds,
             operations: ProcessState.stopOperations(
                 pidFile: paths.pidFile,

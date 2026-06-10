@@ -156,7 +156,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     func createRuntimeDataBackup() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.createRuntimeDataBackup())
+        RuntimeControlCommandResponse(result: try await hostClient.createRuntimeDataBackup())
     }
 
     func updateBundleSummary(bundle: RuntimeControlFileReference) async throws -> RuntimeUpdateBundleSummaryResponse {

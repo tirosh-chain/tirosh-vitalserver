@@ -600,11 +600,14 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         controlClient.loadStatusCount = 0
 
         viewModel.chooseVitalFilesDirectory()
+        await viewModel.createRuntimeDataBackup()
         await viewModel.refresh()
 
-        XCTAssertEqual(controlClient.loadStatusCount, 1)
+        XCTAssertEqual(controlClient.loadStatusCount, 2)
+        XCTAssertEqual(controlClient.createRuntimeDataBackupCount, 0)
+        XCTAssertEqual(hostClient.createRuntimeDataBackupCount, 1)
         XCTAssertEqual(nativeShell.createdDirectoryURLs, [URL(fileURLWithPath: "/Users/test/Vital Files")])
-        XCTAssertEqual(hostClient.loadBackupsCount, 1)
+        XCTAssertEqual(hostClient.loadBackupsCount, 2)
     }
 
     func testHealthRefreshDoesNotLoadHeavyObservationHistories() async {

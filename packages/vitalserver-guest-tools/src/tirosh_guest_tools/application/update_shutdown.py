@@ -26,6 +26,7 @@ from tirosh_guest_tools.infrastructure.common import (
     mount_runtime_share,
     request_id_from,
     request_version_from,
+    run,
     systemctl,
     utc_now,
     write_json,
@@ -37,6 +38,8 @@ LOG_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_LOG.value
 SIDECAR_STOP_TIMEOUT_SECONDS = 30.0
 SIDECAR_STOP_POLL_SECONDS = 0.5
 REDIS_BACKUP_ACTIVE_WAIT_TIMEOUT_SECONDS = 300.0
+FINAL_SYNC_TIMEOUT_SECONDS = 60.0
+POWEROFF_REQUEST_TIMEOUT_SECONDS = 15.0
 logger = logging.getLogger(__name__)
 
 
@@ -131,6 +134,9 @@ def run_prepare(context: PrepareUpdateShutdownContext) -> None:
         step=ShutdownPhase.PREPARED.value,
         shutdown_phase=ShutdownPhase.PREPARED,
     )
+    logger.info("final sync started before guest poweroff")
+    run(["sync"], timeout_seconds=FINAL_SYNC_TIMEOUT_SECONDS)
+    request_guest_poweroff()
     collect_guest_observability(ObservationPhase.SHUTDOWN_POWEROFF_REQUESTED)
     write_result(
         context,
@@ -140,9 +146,6 @@ def run_prepare(context: PrepareUpdateShutdownContext) -> None:
         shutdown_phase=ShutdownPhase.POWEROFF_REQUESTED,
     )
     REQUEST_FILE.unlink(missing_ok=True)
-    logger.info("final sync started before guest poweroff")
-    subprocess.run(["sync"], check=True)
-    request_guest_poweroff()
 
 
 def collect_guest_observability(phase: ObservationPhase) -> None:
@@ -265,7 +268,12 @@ def read_service_active_state(service: RuntimeService) -> str:
 
 
 def request_guest_poweroff() -> None:
-    result = systemctl("poweroff", check=False)
+    result = systemctl(
+        "--no-block",
+        "poweroff",
+        check=False,
+        timeout_seconds=POWEROFF_REQUEST_TIMEOUT_SECONDS,
+    )
     if result.returncode == 0:
         return
     stderr = (result.stderr or "").strip()
