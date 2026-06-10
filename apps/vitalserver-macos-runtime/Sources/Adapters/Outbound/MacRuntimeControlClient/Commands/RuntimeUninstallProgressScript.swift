@@ -52,6 +52,8 @@ enum RuntimeUninstallProgressScript {
         marker_run_id=\(shellQuote("runID=\(runID)"))
         completed_marker=\(shellQuote("\(completedMarker) runID=\(runID)"))
         failed_marker_prefix=\(shellQuote(failedMarkerPrefix))
+        started_marker=\(shellQuote("\(startedMarker) runID=\(runID)"))
+        observed_worker_start=false
         printf "\(terminalTitle)\\n"
         printf "Log: %s\\n\\n" "${log_file}"
         touch "${log_file}" 2>/dev/null || true
@@ -72,9 +74,12 @@ enum RuntimeUninstallProgressScript {
             printf "\\n\(terminalFailedMessage)\\n"
             break
           fi
+          if grep -q "${started_marker}" "${log_file}" 2>/dev/null; then
+            observed_worker_start=true
+          fi
           if [ -s "${worker_pid_file}" ]; then
             worker_pid="$(cat "${worker_pid_file}" 2>/dev/null || true)"
-            if [ -n "${worker_pid}" ] && ! kill -0 "${worker_pid}" 2>/dev/null; then
+            if [ "${observed_worker_start}" = true ] && [ -n "${worker_pid}" ] && ! kill -0 "${worker_pid}" 2>/dev/null; then
               rm -f "${worker_pid_file}" 2>/dev/null || true
               finish_tail
               printf "\\n\(terminalFailedMessage)\\n"

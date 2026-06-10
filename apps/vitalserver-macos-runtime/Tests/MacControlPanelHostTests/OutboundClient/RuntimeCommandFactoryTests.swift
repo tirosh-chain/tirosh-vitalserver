@@ -113,7 +113,8 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         let logURL = directory.appendingPathComponent("uninstall.log")
         let pidURL = directory.appendingPathComponent("uninstall.pid")
         let viewerURL = directory.appendingPathComponent("viewer.command")
-        try "".write(to: logURL, atomically: true, encoding: .utf8)
+        try "\(RuntimeUninstallProgressScript.startedMarker) runID=viewer-test\n"
+            .write(to: logURL, atomically: true, encoding: .utf8)
         try "99999999\n".write(to: pidURL, atomically: true, encoding: .utf8)
         try RuntimeUninstallProgressScript.viewerScript(
             logPath: logURL.path,
@@ -152,6 +153,63 @@ final class RuntimeCommandFactoryTests: XCTestCase {
             "\(RuntimeUninstallProgressScript.failedMarkerPrefix)\(RuntimeUninstallProgressScript.missingMarkerStatus)"
         ))
         XCTAssertTrue(terminalOutput.contains(RuntimeUninstallProgressScript.terminalFailedMessage))
+    }
+
+    func testUninstallProgressViewerDoesNotTreatDifferentRunWorkerExitAsFailure() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitalserver-uninstall-progress-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let logURL = directory.appendingPathComponent("uninstall.log")
+        let pidURL = directory.appendingPathComponent("uninstall.pid")
+        let viewerURL = directory.appendingPathComponent("viewer.command")
+        try "\(RuntimeUninstallProgressScript.startedMarker) runID=other-run\n"
+            .write(to: logURL, atomically: true, encoding: .utf8)
+        try "99999999\n".write(to: pidURL, atomically: true, encoding: .utf8)
+        try RuntimeUninstallProgressScript.viewerScript(
+            logPath: logURL.path,
+            workerPIDPath: pidURL.path,
+            runID: "viewer-test",
+            shellQuote: RuntimeShellCommandFactory.shellQuote
+        ).write(to: viewerURL, atomically: true, encoding: .utf8)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [viewerURL.path]
+        let input = Pipe()
+        let output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = output
+        defer {
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+
+        try process.run()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) {
+            let completedLine = "\(RuntimeUninstallProgressScript.completedMarker) runID=viewer-test\n"
+            if let data = completedLine.data(using: .utf8),
+               let handle = try? FileHandle(forWritingTo: logURL) {
+                handle.seekToEndOfFile()
+                handle.write(data)
+                try? handle.close()
+            }
+        }
+        input.fileHandleForWriting.write(Data("\n".utf8))
+        input.fileHandleForWriting.closeFile()
+
+        let deadline = Date().addingTimeInterval(5)
+        while process.isRunning && Date() < deadline {
+            usleep(100_000)
+        }
+
+        XCTAssertFalse(process.isRunning)
+        let terminalOutput = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        XCTAssertTrue(terminalOutput.contains(RuntimeUninstallProgressScript.terminalCompletedMessage))
+        XCTAssertFalse(terminalOutput.contains(RuntimeUninstallProgressScript.terminalFailedMessage))
     }
 
     func testCommandWithLogCapturesExitStatus() {
