@@ -107,6 +107,16 @@ enum RuntimeUninstallProgressScript {
           fi
           sed -n '2p' "${worker_pid_file}" 2>/dev/null
         }
+        worker_process_exited() {
+          worker_pid="$1"
+          if [ -z "${worker_pid}" ]; then
+            return 1
+          fi
+          if ps -p "${worker_pid}" -o pid= >/dev/null 2>&1; then
+            return 1
+          fi
+          return 0
+        }
         current_result_state() {
           if [ ! -s "${result_file}" ]; then
             return 1
@@ -160,7 +170,7 @@ enum RuntimeUninstallProgressScript {
           fi
           worker_pid="$(current_worker_pid || true)"
           if [ -n "${worker_pid}" ]; then
-            if [ "${observed_worker_start}" = true ] && [ -n "${worker_pid}" ] && ! kill -0 "${worker_pid}" 2>/dev/null; then
+            if [ "${observed_worker_start}" = true ] && worker_process_exited "${worker_pid}"; then
               if wait_for_terminal_result; then
                 continue
               fi

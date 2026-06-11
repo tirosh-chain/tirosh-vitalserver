@@ -70,6 +70,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains("chmod 0644 \"${worker_pid_file}\""))
         XCTAssertTrue(command.contains("background_pid=$!"))
         XCTAssertTrue(command.contains("kill -0"))
+        XCTAssertTrue(command.contains("ps -p \"${worker_pid}\" -o pid="))
         XCTAssertTrue(command.contains("\(RuntimeUninstallProgressScript.failedMarkerPrefix)\(RuntimeUninstallProgressScript.missingMarkerStatus)"))
         XCTAssertFalse(command.contains("&;"))
         XCTAssertFalse(command.contains("} < /dev/null >> \"${log_file}\" 2>&1 &"))
@@ -110,8 +111,23 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(script.contains("echo \"${marker_run_id}\""))
         XCTAssertTrue(script.contains("echo \"${background_pid}\""))
         XCTAssertTrue(script.contains("> \"${worker_pid_file}\""))
+        XCTAssertTrue(script.contains("ps -p \"${worker_pid}\" -o pid="))
         XCTAssertFalse(script.contains("&;"))
         XCTAssertFalse(script.contains("} < /dev/null >> \"${log_file}\" 2>&1 &"))
+    }
+
+    func testUninstallProgressViewerDoesNotUseSignalPermissionAsWorkerState() {
+        let viewer = RuntimeUninstallProgressScript.viewerScript(
+            logPath: "/tmp/uninstall.log",
+            workerPIDPath: "/tmp/uninstall.pid",
+            resultPath: "/tmp/uninstall-result.json",
+            runID: "viewer-test",
+            shellQuote: RuntimeShellCommandFactory.shellQuote
+        )
+
+        XCTAssertTrue(viewer.contains("worker_process_exited()"))
+        XCTAssertTrue(viewer.contains("ps -p \"${worker_pid}\" -o pid="))
+        XCTAssertFalse(viewer.contains("kill -0 \"${worker_pid}\""))
     }
 
     func testUninstallProgressViewerFailsWhenWorkerPidDisappearsWithoutTerminalMarker() throws {
