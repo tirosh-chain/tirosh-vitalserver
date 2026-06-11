@@ -171,6 +171,9 @@ retention 변경은 VM runtime restart requirement를 만들지 않습니다.
 `Restart VM runtime when required`가 꺼져 있고 VM runtime restart가 필요한 설정을 저장하면 상태는
 `configure` operation의 degraded message로 "VM runtime restart required"를 표시할 수 있습니다.
 이 경우 설정 저장 실패가 아니라, 현재 실행 중인 VM에는 아직 반영되지 않았다는 뜻입니다.
+Status의 data directory는 saved settings가 아니라 현재 VM runtime에 적용된 Vital files directory를
+기준으로 표시해야 합니다. Vital files directory를 저장한 직후 VM restart 전인데 Status 경로가 새
+경로로 바뀌면 saved settings와 applied runtime settings가 섞인 것입니다.
 
 | 확인 항목 | 의미 |
 |---|---|
@@ -198,3 +201,9 @@ update shutdown request가 VM reboot 뒤 다시 실행된 것입니다. Guest sh
 contract이므로 worker가 request를 로드하고 running result를 쓴 뒤 즉시 request file을 소비해야 합니다.
 request file을 poweroff 직전까지 남겨두면 Settings restart, watchdog restart, service start가 모두
 update shutdown 경로를 다시 밟아 guest services를 내려버릴 수 있습니다.
+
+`launchd.out.log`에 `Failed to execute shutdown binary`가 있고 `vm-lifecycle.json`이 `stopping`에
+머물러 있으면 Guest는 poweroff target까지 갔지만 Host VM process가 종료되지 않은 상태입니다. 이때
+Status는 `guest-runtime-state-stale`, `missing-vm-ip`, `host-proxy-http-*`를 연쇄로 표시할 수 있습니다.
+원인은 proxy 단독 장애가 아니라 VM stop 교착이므로, Settings restart 또는 watchdog recovery가 VM
+runtime services force-stop 후 start/health wait로 빠져나왔는지 확인합니다.

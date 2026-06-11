@@ -172,6 +172,12 @@ activation/shutdown 대기 상한을 900초로 맞추었고, 타임아웃이 터
 Guest는 final sync와 `systemctl --no-block poweroff` 요청이 성공한 뒤에만
 `ready`/`poweroff-requested` result를 기록해야 합니다. Poweroff 요청 전에 ready를 먼저 쓰면 Host가
 실제 요청 실패나 sync hang을 성공 상태로 오해할 수 있습니다.
+Guest가 poweroff target에 도달했더라도 VM process가 종료되지 않을 수 있습니다. `Failed to execute
+shutdown binary`, VM lifecycle `stopping`, `guest-runtime-state-stale`이 함께 보이면 Host는 guest
+shutdown success를 추정하지 말고 bounded wait 실패로 처리한 뒤 VM runtime services force-stop 경로로
+빠져나와야 합니다. Settings restart도 update shutdown과 같은 VM stop 위험을 가지므로, guest shutdown
+wait 또는 poweroff wait 실패 시 force-stop 후 runtime start/health wait로 이어지는 escape hatch가
+필요합니다.
 Guest shutdown request는 single-shot trigger입니다. Worker는 request를 로드하고 `running/starting`
 result를 기록한 직후 request file을 소비해야 합니다. 성공 끝까지 request를 남겨두면 poweroff 또는
 process termination 중 worker가 사라졌을 때 같은 request가 다음 VM boot에서 다시 dispatch되고,
@@ -202,6 +208,10 @@ restart requirement를 만들면 안 됩니다. Settings UI가 모든 configure 
 Settings UI는 draft 설정과 Host가 읽은 runtime 설정을 분리해서 표시해야 합니다. Status/Info 탭은
 draft 값을 현재 적용 상태처럼 보여주면 안 되며, Settings 탭은 VM runtime restart가 필요한 변경과
 restart 없이 저장할 때의 pending 상태를 Apply 전에 사용자에게 명시적으로 알려야 합니다.
+Host는 VM runtime start가 성공했을 때 실제 start에 사용한 VM config를 applied VM config snapshot으로
+기록하고, Settings read contract는 saved config와 applied config를 함께 제공해야 합니다. Vital files
+directory처럼 VM restart 전에는 적용되지 않는 값은 Status/Info에서 applied snapshot을 기준으로
+표시하고, saved config를 현재 runtime state로 승격하면 안 됩니다.
 
 ### 4-2. 영역별로 봐야 하는 것
 

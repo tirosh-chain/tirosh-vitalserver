@@ -91,6 +91,7 @@ def test_prepare_update_shutdown_writes_poweroff_requested_phase(
         "quiesce",
         "backup",
         "write:running:redis-backup",
+        "write:running:guest-services-stop",
         "stop-services",
         "observe:shutdown-post-sync",
         "write:running:prepared",

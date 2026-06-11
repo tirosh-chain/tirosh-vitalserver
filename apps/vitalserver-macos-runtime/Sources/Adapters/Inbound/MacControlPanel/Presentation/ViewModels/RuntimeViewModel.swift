@@ -7,6 +7,7 @@ import Errors
 public final class RuntimeViewModel: ObservableObject {
     @Published var status: RuntimeStatus
     @Published private(set) var runtimeSettings = RuntimeSettings()
+    @Published private(set) var savedSettings = RuntimeSettings()
     @Published var settings = RuntimeSettings()
     @Published var selectedBundleURL: URL?
     @Published var selectedBundleSummary = ""
@@ -114,8 +115,13 @@ public final class RuntimeViewModel: ObservableObject {
             resolvedSettings,
             fillMissing: initialSettings == nil
         )
-        let resolvedStatus = initialStatus ?? controlClient.loadStatus(settings: displaySettings)
-        self.runtimeSettings = displaySettings
+        let displayRuntimeSettings = Self.settingsWithAdvertisedServiceURLPresets(
+            displaySettings.runtimeAppliedSettings,
+            fillMissing: initialSettings == nil
+        )
+        let resolvedStatus = initialStatus ?? controlClient.loadStatus(settings: displayRuntimeSettings)
+        self.runtimeSettings = displayRuntimeSettings
+        self.savedSettings = displaySettings
         self.settings = displaySettings
         self.status = resolvedStatus
         self.containerObservation = resolvedStatus.containerObservation
@@ -288,7 +294,8 @@ public final class RuntimeViewModel: ObservableObject {
         guard validateSettings() else {
             return
         }
-        let settingsToApply = settings
+        var settingsToApply = settings
+        settingsToApply.appliedVMSettings = nil
         let applySettingsResult = await runClientAction(
             preparingMessage: AppConstants.StatusText.settingsApplyPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
@@ -390,6 +397,21 @@ public final class RuntimeViewModel: ObservableObject {
         await refreshHealthStatus()
     }
 
+    func restartVMRuntimeFromSettings() async {
+        guard controlClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        _ = await runClientAction(
+            preparingMessage: AppConstants.StatusText.restartVMRuntimePreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.restartVMRuntimeRunning,
+            successMessage: AppConstants.StatusText.restartVMRuntimeCompleted,
+            action: { try await self.controlClient.repairRuntimeServices() }
+        )
+        await refresh()
+    }
+
     func startRuntimeServices() async {
         guard controlClient.capabilities.canControlRuntimeServices else {
             message = AppConstants.StatusText.actionUnavailable
@@ -442,7 +464,8 @@ public final class RuntimeViewModel: ObservableObject {
     private func loadRuntimeSettings() async {
         let nextSettings = await snapshots.loadSettings()
         let loadedSettings = Self.settingsWithAdvertisedServiceURLPresets(nextSettings, fillMissing: true)
-        runtimeSettings = loadedSettings
+        runtimeSettings = Self.settingsWithAdvertisedServiceURLPresets(loadedSettings.runtimeAppliedSettings, fillMissing: true)
+        savedSettings = loadedSettings
         settings = loadedSettings
     }
 

@@ -107,6 +107,14 @@ VM runtime restart가 필요한 설정은 VM 실행 조건을 바꾸는 값입�
 켜져 있어도 VM을 내리지 않습니다. 반대로 CPU, memory, disk 증가, network, Vital files directory를
 바꾸고 이 옵션을 끄면 설정은 저장되지만 현재 실행 중인 VM에는 다음 VM runtime restart 때 반영됩니다.
 
+Settings 탭은 저장된 설정을 보여주고, Status/Info 탭은 현재 VM runtime에 적용된 설정을 보여줍니다.
+예를 들어 Vital files directory를 바꾸고 VM runtime restart를 하지 않았다면 Settings 탭에는 새 경로가
+보이지만 Status의 data directory는 이전 적용 경로를 유지해야 합니다. 이 차이가 있으면 Settings 탭의
+restart 안내가 아직 반영되지 않은 VM runtime 변경을 표시합니다.
+`Requires VM restart` badge는 해당 설정이 VM runtime restart 후에 적용되는 값이라는 뜻입니다. 설정을
+저장한 뒤 아직 VM runtime에 적용되지 않은 변경이 있으면 badge를 눌러 VM runtime restart 확인을 열 수
+있습니다.
+
 Settings apply는 update bundle 적용이 아닙니다. 진행 상태가 보이면 operation은 `configure`로
 해석하고, update bundle 검증/적용 상태와 섞어 판단하지 않습니다.
 

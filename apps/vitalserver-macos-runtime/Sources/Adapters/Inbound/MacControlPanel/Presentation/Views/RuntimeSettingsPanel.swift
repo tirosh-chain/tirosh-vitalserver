@@ -6,6 +6,7 @@ import Errors
 struct RuntimeSettingsPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @Binding var showingApplySettingsConfirmation: Bool
+    @State private var showingRestartVMRuntimeConfirmation = false
     private let actionAvailabilityPolicy = RuntimeControlActionAvailabilityPolicy()
     private let restartNoticePolicy = RuntimeSettingsRestartNoticePolicy()
 
@@ -121,6 +122,14 @@ struct RuntimeSettingsPanel: View {
         .onChange(of: viewModel.settings.runtimeControlPort) { _ in
             viewModel.syncAdvertisedURLWithProxyIfNeeded()
         }
+        .alert(AppConstants.Actions.restartVMRuntime, isPresented: $showingRestartVMRuntimeConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.restartVMRuntime, role: .destructive) {
+                Task { await viewModel.restartVMRuntimeFromSettings() }
+            }
+        } message: {
+            Text(AppConstants.StatusText.restartVMRuntimeConfirmation)
+        }
     }
 
     @ViewBuilder
@@ -185,6 +194,16 @@ struct RuntimeSettingsPanel: View {
 
     private var restartNotice: RuntimeSettingsRestartNoticeDecision {
         restartNoticePolicy.decision(draft: viewModel.settings, runtime: viewModel.runtimeSettings)
+    }
+
+    private var savedRestartNotice: RuntimeSettingsRestartNoticeDecision {
+        restartNoticePolicy.decision(draft: viewModel.savedSettings, runtime: viewModel.runtimeSettings)
+    }
+
+    private var canRestartSavedVMRuntime: Bool {
+        savedRestartNotice.requiresRestart
+            && viewModel.capabilities.canControlRuntimeServices
+            && !viewModel.isBusy
     }
 
     private var restartRequirementNotice: some View {
@@ -345,11 +364,20 @@ struct RuntimeSettingsPanel: View {
     }
 
     private var restartRequiredBadge: some View {
-        Label(AppConstants.Labels.requiresVMRestart, systemImage: "arrow.clockwise")
-            .font(.caption2)
-            .foregroundStyle(.orange)
-            .labelStyle(.titleAndIcon)
-            .fixedSize()
+        Button {
+            showingRestartVMRuntimeConfirmation = true
+        } label: {
+            Label(AppConstants.Labels.requiresVMRestart, systemImage: "arrow.clockwise")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .labelStyle(.titleAndIcon)
+                .fixedSize()
+        }
+        .buttonStyle(.plain)
+        .disabled(!canRestartSavedVMRuntime)
+        .help(canRestartSavedVMRuntime
+            ? AppConstants.StatusText.restartVMRuntimeConfirmation
+            : restartNotice.message)
     }
 
     private func settingPortField(_ label: String, value: Binding<Int>) -> some View {

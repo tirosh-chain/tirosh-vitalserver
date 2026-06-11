@@ -58,6 +58,7 @@ extension RuntimeSettingsReadResult: Equatable where Value: Equatable {}
 
 public struct RuntimeSettingsReadSnapshot: Equatable, Sendable {
     public let vmConfig: RuntimeSettingsReadResult<RuntimeVMConfigSettingsReadInput>
+    public let appliedVMConfig: RuntimeSettingsReadResult<RuntimeVMConfigSettingsReadInput>
     public let diskGiB: RuntimeSettingsReadResult<Int>
     public let guestRuntimeSettings: RuntimeSettingsReadResult<RuntimeGuestRuntimeSettingsReadInput>
     public let proxyPort: RuntimeSettingsReadResult<Int>
@@ -65,12 +66,14 @@ public struct RuntimeSettingsReadSnapshot: Equatable, Sendable {
 
     public init(
         vmConfig: RuntimeSettingsReadResult<RuntimeVMConfigSettingsReadInput>,
+        appliedVMConfig: RuntimeSettingsReadResult<RuntimeVMConfigSettingsReadInput> = .missing,
         diskGiB: RuntimeSettingsReadResult<Int>,
         guestRuntimeSettings: RuntimeSettingsReadResult<RuntimeGuestRuntimeSettingsReadInput>,
         proxyPort: RuntimeSettingsReadResult<Int>,
         startOnBoot: RuntimeSettingsReadResult<Bool>
     ) {
         self.vmConfig = vmConfig
+        self.appliedVMConfig = appliedVMConfig
         self.diskGiB = diskGiB
         self.guestRuntimeSettings = guestRuntimeSettings
         self.proxyPort = proxyPort
@@ -101,6 +104,15 @@ public enum RuntimeSettingsReadPolicy {
             break
         case .failed(let message):
             settings = appendReadIssue(source: "vmDisk", message: message, to: settings)
+        }
+
+        switch snapshot.appliedVMConfig {
+        case .loaded(let appliedVMConfig):
+            settings = applyAppliedVMConfig(appliedVMConfig, to: settings)
+        case .missing:
+            break
+        case .failed(let message):
+            settings = appendReadIssue(source: "appliedVMConfig", message: message, to: settings)
         }
 
         switch snapshot.guestRuntimeSettings {
@@ -139,6 +151,43 @@ public enum RuntimeSettingsReadPolicy {
         }
 
         return settings
+    }
+
+    public static func applyAppliedVMConfig(
+        _ input: RuntimeVMConfigSettingsReadInput,
+        to settings: RuntimeSettings
+    ) -> RuntimeSettings {
+        guard let networkMode = RuntimeNetworkMode(rawValue: input.networkMode) else {
+            return appendReadIssue(
+                source: "appliedVMConfig.network.mode",
+                message: "network mode is invalid: \(input.networkMode)",
+                to: settings
+            )
+        }
+        if networkMode == .bridged,
+           input.bridgedInterface?.isEmpty != false {
+            return appendReadIssue(
+                source: "appliedVMConfig.network.bridgedInterface",
+                message: "bridgedInterface is missing for bridged network mode",
+                to: settings
+            )
+        }
+        guard let vitalFilesDirectoryHostPath = input.vitalFilesDirectoryHostPath else {
+            return appendReadIssue(
+                source: "appliedVMConfig.vitalFilesDirectory",
+                message: "vitalFilesDirectory is missing",
+                to: settings
+            )
+        }
+        var next = settings
+        next.appliedVMSettings = RuntimeAppliedVMSettings(
+            cpuCount: input.cpuCount,
+            memoryGiB: max(Int(input.memoryMiB / 1024), 1),
+            networkMode: networkMode,
+            bridgedInterface: input.bridgedInterface,
+            vitalFilesDirectory: vitalFilesDirectoryHostPath
+        )
+        return next
     }
 
     public static func applyVMConfig(

@@ -126,6 +126,12 @@ def run_prepare(context: PrepareUpdateShutdownContext) -> None:
         "Redis backup completed. Stopping guest services.",
         step=OperationName.REDIS_BACKUP.value,
     )
+    write_result(
+        context,
+        OperationStatus.RUNNING,
+        "Stopping guest services.",
+        step="guest-services-stop",
+    )
     stop_runtime_services()
     collect_guest_observability(ObservationPhase.SHUTDOWN_POST_SYNC)
     write_result(

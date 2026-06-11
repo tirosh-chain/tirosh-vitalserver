@@ -172,6 +172,7 @@ struct Launcher {
             switch result {
             case .success:
                 do {
+                    try writeAppliedVMConfig(config, to: paths.installed.appliedVMConfig, fileStore: fileStore)
                     try lifecycleStore.write(
                         state: .bootstrapping,
                         operation: .startServices,
@@ -204,6 +205,17 @@ struct Launcher {
         _ = configurationFactory
         _ = delegate
         _ = terminationHandler
+    }
+
+    private func writeAppliedVMConfig(
+        _ config: VMRuntimeConfig,
+        to url: URL,
+        fileStore: RuntimeFileWriting
+    ) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try fileStore.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try fileStore.writeData(try encoder.encode(config), to: url, options: .atomic)
     }
 
     private func removeStaleRuntimeState(

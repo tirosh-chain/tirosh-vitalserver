@@ -354,6 +354,30 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.settings.vitalServerURL, "http://127.0.0.1:80/")
     }
 
+    func testApplySettingsDoesNotSendAppliedVMSettingsSnapshot() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var installedSettings = RuntimeSettings()
+        installedSettings.vitalFilesDirectory = "/saved/vital-files"
+        installedSettings.appliedVMSettings = RuntimeAppliedVMSettings(
+            cpuCount: 4,
+            memoryGiB: 4,
+            networkMode: .shared,
+            bridgedInterface: nil,
+            vitalFilesDirectory: "/applied/vital-files"
+        )
+        client.settings = installedSettings
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.applySettings()
+
+        XCTAssertNil(client.lastAppliedSettings?.appliedVMSettings)
+        XCTAssertEqual(client.lastAppliedSettings?.vitalFilesDirectory, "/saved/vital-files")
+    }
+
     func testViewModelLoadsAdvertisedServiceURLInitialValuesFromEmptyInstalledSettings() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         var installedSettings = RuntimeSettings()
@@ -412,6 +436,77 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.lastLoadHealthStatusSettings?.vitalFilesDirectory, "/applied/vital-files")
         XCTAssertEqual(viewModel.runtimeSettings.vitalFilesDirectory, "/applied/vital-files")
         XCTAssertEqual(viewModel.settings.vitalFilesDirectory, "/draft/vital-files")
+    }
+
+    func testStatusUsesAppliedVMSettingsUntilSavedSettingsAreRestarted() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var installedSettings = RuntimeSettings()
+        installedSettings.cpuCount = 8
+        installedSettings.memoryGiB = 8
+        installedSettings.vitalFilesDirectory = "/saved/vital-files"
+        installedSettings.appliedVMSettings = RuntimeAppliedVMSettings(
+            cpuCount: 4,
+            memoryGiB: 4,
+            networkMode: .shared,
+            bridgedInterface: nil,
+            vitalFilesDirectory: "/applied/vital-files"
+        )
+        client.settings = installedSettings
+
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        XCTAssertEqual(viewModel.settings.vitalFilesDirectory, "/saved/vital-files")
+        XCTAssertEqual(viewModel.runtimeSettings.vitalFilesDirectory, "/applied/vital-files")
+        XCTAssertEqual(client.lastLoadStatusSettings?.vitalFilesDirectory, "/applied/vital-files")
+
+        client.loadStatusCount = 0
+        await viewModel.refreshHealthStatus()
+
+        XCTAssertEqual(client.lastLoadHealthStatusSettings?.vitalFilesDirectory, "/applied/vital-files")
+    }
+
+    func testSavedSettingsStayDistinctFromDraftSettingsForRestartActions() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var installedSettings = RuntimeSettings()
+        installedSettings.vitalFilesDirectory = "/saved/vital-files"
+        installedSettings.appliedVMSettings = RuntimeAppliedVMSettings(
+            cpuCount: 4,
+            memoryGiB: 4,
+            networkMode: .shared,
+            bridgedInterface: nil,
+            vitalFilesDirectory: "/applied/vital-files"
+        )
+        client.settings = installedSettings
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        viewModel.settings.vitalFilesDirectory = "/draft/vital-files"
+
+        XCTAssertEqual(viewModel.savedSettings.vitalFilesDirectory, "/saved/vital-files")
+        XCTAssertEqual(viewModel.settings.vitalFilesDirectory, "/draft/vital-files")
+        XCTAssertEqual(viewModel.runtimeSettings.vitalFilesDirectory, "/applied/vital-files")
+    }
+
+    func testRestartVMRuntimeFromSettingsUsesRuntimeServiceRestartPort() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.restartVMRuntimeFromSettings()
+
+        XCTAssertEqual(client.repairRuntimeServicesCount, 1)
+        XCTAssertEqual(client.loadHealthStatusCount, 0)
+        XCTAssertGreaterThanOrEqual(client.loadStatusCount, 2)
     }
 
     func testOpenVitalFilesDirectoryUsesRuntimeSettingsInsteadOfDraftSettings() {
@@ -1427,6 +1522,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var runtimeDataBackupsToLoad: [RuntimeBackup] = []
     var lastLoadStatusSettings: RuntimeSettings?
     var lastLoadHealthStatusSettings: RuntimeSettings?
+    var lastAppliedSettings: RuntimeSettings?
     var settings = RuntimeSettings()
     var status = RuntimeStatus()
     var healthStatus = RuntimeStatus()
@@ -1527,6 +1623,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult {
         applySettingsCount += 1
+        lastAppliedSettings = settings
         return success()
     }
 

@@ -68,6 +68,53 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertFalse(settings.preventSystemSleep)
     }
 
+    func testLoadsAppliedVMSettingsFromAppliedVMConfigSnapshot() throws {
+        let directory = try temporaryDirectory()
+        let vmConfig = directory.appendingPathComponent("vm-config.json")
+        let appliedVMConfig = directory.appendingPathComponent("applied-vm-config.json")
+        let guestSettings = directory.appendingPathComponent("runtime-settings.json")
+
+        try """
+        {
+          "cpuCount": 8,
+          "memoryMiB": 8192,
+          "network": { "mode": "shared", "bridgedInterface": null },
+          "vitalFilesDirectory": { "hostPath": "/Volumes/New Vital Files" },
+          "autoRecoveryEnabled": true,
+          "preventSystemSleep": true
+        }
+        """.write(to: vmConfig, atomically: true, encoding: .utf8)
+        try """
+        {
+          "cpuCount": 4,
+          "memoryMiB": 4096,
+          "network": { "mode": "shared", "bridgedInterface": null },
+          "vitalFilesDirectory": { "hostPath": "/Volumes/Applied Vital Files" },
+          "autoRecoveryEnabled": true,
+          "preventSystemSleep": true
+        }
+        """.write(to: appliedVMConfig, atomically: true, encoding: .utf8)
+        try writeGuestRuntimeSettings(guestSettings)
+
+        let reader = SystemRuntimeSettingsReader(
+            paths: RuntimeSettingsPaths(
+                vmConfig: vmConfig.path,
+                appliedVMConfig: appliedVMConfig.path,
+                vmDisk: directory.appendingPathComponent("missing-disk.img").path,
+                guestRuntimeSettings: guestSettings.path,
+                proxyLaunchDaemon: directory.appendingPathComponent("missing-proxy.plist").path
+            ),
+            runCommand: startOnBootCommand()
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.vitalFilesDirectory, "/Volumes/New Vital Files")
+        XCTAssertEqual(settings.cpuCount, 8)
+        XCTAssertEqual(settings.runtimeAppliedSettings.vitalFilesDirectory, "/Volumes/Applied Vital Files")
+        XCTAssertEqual(settings.runtimeAppliedSettings.cpuCount, 4)
+    }
+
     func testReportsSettingsReadIssuesWithoutReplacingMissingFilesWithErrors() throws {
         let directory = try temporaryDirectory()
         let vmConfig = directory.appendingPathComponent("vm-config.json")

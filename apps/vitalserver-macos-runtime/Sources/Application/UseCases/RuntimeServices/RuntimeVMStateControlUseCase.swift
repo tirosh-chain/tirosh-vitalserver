@@ -56,6 +56,7 @@ public struct RuntimeVMStateControlOperations {
     public var prepareGuestShutdown: (String) throws -> Void
     public var clearGuestShutdownPreparation: () throws -> Void
     public var stopRuntimeServicesAfterGuestPoweroff: (pid_t) throws -> Void
+    public var forceStopRuntimeServicesAfterGuestShutdownFailure: () throws -> Void
     public var startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
     public var waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
     public var writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
@@ -67,6 +68,7 @@ public struct RuntimeVMStateControlOperations {
         prepareGuestShutdown: @escaping (String) throws -> Void,
         clearGuestShutdownPreparation: @escaping () throws -> Void,
         stopRuntimeServicesAfterGuestPoweroff: @escaping (pid_t) throws -> Void,
+        forceStopRuntimeServicesAfterGuestShutdownFailure: @escaping () throws -> Void,
         startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
@@ -77,6 +79,7 @@ public struct RuntimeVMStateControlOperations {
         self.prepareGuestShutdown = prepareGuestShutdown
         self.clearGuestShutdownPreparation = clearGuestShutdownPreparation
         self.stopRuntimeServicesAfterGuestPoweroff = stopRuntimeServicesAfterGuestPoweroff
+        self.forceStopRuntimeServicesAfterGuestShutdownFailure = forceStopRuntimeServicesAfterGuestShutdownFailure
         self.startRuntimeServices = startRuntimeServices
         self.waitForHealth = waitForHealth
         self.writeStatus = writeStatus
@@ -279,8 +282,16 @@ public struct RuntimeVMStateControlUseCase {
             }
         }
 
-        try operations.prepareGuestShutdown(version)
-        try operations.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID)
+        do {
+            try operations.prepareGuestShutdown(version)
+            try operations.stopRuntimeServicesAfterGuestPoweroff(expectedVMProcessID)
+        } catch {
+            guard shouldForceStopAfterUpdateShutdownFailure(error) else {
+                throw error
+            }
+            operations.log("settings restart guest shutdown failed; forcing VM runtime services stop before restart error=\(describeSettingsRestartError(error))")
+            try operations.forceStopRuntimeServicesAfterGuestShutdownFailure()
+        }
         try operations.startRuntimeServices(plan.startPolicy)
         try operations.waitForHealth(plan.startPolicy)
         try operations.writeStatus(plan.completionStatus, plan.operation, plan.completionStatusMessage)
@@ -413,5 +424,9 @@ public struct RuntimeVMStateControlUseCase {
             return true
         }
         return false
+    }
+
+    private func describeSettingsRestartError(_ error: Error) -> String {
+        String(describing: error)
     }
 }

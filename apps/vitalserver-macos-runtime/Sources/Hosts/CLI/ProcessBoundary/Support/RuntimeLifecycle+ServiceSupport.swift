@@ -119,6 +119,7 @@ extension RuntimeLifecycle {
                     try guestGateway.clearUpdateShutdownPreparation()
                 },
                 stopRuntimeServicesAfterGuestPoweroff: stopRuntimeServicesAfterGuestPoweroff,
+                forceStopRuntimeServicesAfterGuestShutdownFailure: forceStopRuntimeServicesAfterGuestShutdownFailureForUpdate,
                 startRuntimeServices: startRuntimeServices,
                 waitForHealth: waitForHealth,
                 writeStatus: runtimeStatusWriterAction(),

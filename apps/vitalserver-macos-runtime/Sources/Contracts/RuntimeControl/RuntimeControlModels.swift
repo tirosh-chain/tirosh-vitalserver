@@ -140,6 +140,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         case preventSystemSleep
         case redisBackupRetentionCount
         case restartAfterSave
+        case appliedVMSettings
     }
 
     public var readIssues: [RuntimeSettingsReadIssue]
@@ -164,6 +165,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var preventSystemSleep: Bool
     public var redisBackupRetentionCount: Int
     public var restartAfterSave: Bool
+    public var appliedVMSettings: RuntimeAppliedVMSettings?
 
     public init(
         readIssues: [RuntimeSettingsReadIssue] = [],
@@ -187,7 +189,8 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         autoRecoveryEnabled: Bool = true,
         preventSystemSleep: Bool = true,
         redisBackupRetentionCount: Int = RuntimeSettingsInitialValues.redisBackupRetentionCount,
-        restartAfterSave: Bool = false
+        restartAfterSave: Bool = false,
+        appliedVMSettings: RuntimeAppliedVMSettings? = nil
     ) {
         self.readIssues = readIssues
         self.cpuCount = cpuCount
@@ -211,6 +214,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.preventSystemSleep = preventSystemSleep
         self.redisBackupRetentionCount = redisBackupRetentionCount
         self.restartAfterSave = restartAfterSave
+        self.appliedVMSettings = appliedVMSettings
     }
 
     public init(from decoder: Decoder) throws {
@@ -253,7 +257,8 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
             autoRecoveryEnabled: try container.decode(Bool.self, forKey: .autoRecoveryEnabled),
             preventSystemSleep: try container.decode(Bool.self, forKey: .preventSystemSleep),
             redisBackupRetentionCount: try container.decode(Int.self, forKey: .redisBackupRetentionCount),
-            restartAfterSave: try container.decode(Bool.self, forKey: .restartAfterSave)
+            restartAfterSave: try container.decode(Bool.self, forKey: .restartAfterSave),
+            appliedVMSettings: try container.decodeIfPresent(RuntimeAppliedVMSettings.self, forKey: .appliedVMSettings)
         )
     }
 
@@ -285,6 +290,45 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         try container.encode(preventSystemSleep, forKey: .preventSystemSleep)
         try container.encode(redisBackupRetentionCount, forKey: .redisBackupRetentionCount)
         try container.encode(restartAfterSave, forKey: .restartAfterSave)
+        try container.encodeIfPresent(appliedVMSettings, forKey: .appliedVMSettings)
+    }
+}
+
+public struct RuntimeAppliedVMSettings: Codable, Equatable, Sendable {
+    public let cpuCount: Int
+    public let memoryGiB: Int
+    public let networkMode: RuntimeNetworkMode
+    public let bridgedInterface: String?
+    public let vitalFilesDirectory: String
+
+    public init(
+        cpuCount: Int,
+        memoryGiB: Int,
+        networkMode: RuntimeNetworkMode,
+        bridgedInterface: String?,
+        vitalFilesDirectory: String
+    ) {
+        self.cpuCount = cpuCount
+        self.memoryGiB = memoryGiB
+        self.networkMode = networkMode
+        self.bridgedInterface = bridgedInterface
+        self.vitalFilesDirectory = vitalFilesDirectory
+    }
+}
+
+public extension RuntimeSettings {
+    var runtimeAppliedSettings: RuntimeSettings {
+        guard let appliedVMSettings else {
+            return self
+        }
+        var runtime = self
+        runtime.cpuCount = appliedVMSettings.cpuCount
+        runtime.memoryGiB = appliedVMSettings.memoryGiB
+        runtime.networkMode = appliedVMSettings.networkMode
+        runtime.bridgedInterface = appliedVMSettings.bridgedInterface
+        runtime.vitalFilesDirectory = appliedVMSettings.vitalFilesDirectory
+        runtime.appliedVMSettings = appliedVMSettings
+        return runtime
     }
 }
 

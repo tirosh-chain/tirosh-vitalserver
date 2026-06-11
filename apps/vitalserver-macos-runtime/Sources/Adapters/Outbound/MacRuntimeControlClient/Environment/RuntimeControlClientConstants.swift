@@ -87,6 +87,7 @@ enum RuntimeControlClientConstants {
         static let runtimeOperationLease = installed.runtimeOperationLease.path
         static let runtimeEvents = installed.runtimeEvents.path
         static let runtimeObservabilityDB = installed.runtimeObservabilityDB.path
+        static let appliedVMConfig = installed.appliedVMConfig.path
         static let vmLifecycle = installed.vmLifecycle.path
         static let managerApp = installed.managerApp.path
         static let installLog = installed.installLog.path

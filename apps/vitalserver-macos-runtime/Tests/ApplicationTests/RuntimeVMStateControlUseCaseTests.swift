@@ -42,6 +42,53 @@ final class RuntimeVMStateControlUseCaseTests: XCTestCase {
         ])
     }
 
+    func testSettingsRestartForceStopsAndStartsWhenGuestShutdownWaitFails() throws {
+        let harness = RuntimeVMStateControlHarness()
+        harness.prepareError = RuntimeGuestUpdateUseCaseError.operationFailed("guest update shutdown timed out")
+
+        try harness.restartAfterSettingsApply()
+
+        XCTAssertEqual(harness.events, [
+            "log:runtime settings applied; preparing guest shutdown before restart",
+            "status:recovering:configure:runtime settings applied; preparing guest shutdown before restart",
+            "pid",
+            "version",
+            "prepare:0.1.13",
+            "log:settings restart guest shutdown failed; forcing VM runtime services stop before restart error=guest update shutdown timed out",
+            "force-stop-runtime-services",
+            "start:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
+            "wait-health:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
+            "status:healthy:configure:runtime restarted after settings apply",
+            "log:runtime restarted after settings apply",
+            "clear",
+        ])
+    }
+
+    func testSettingsRestartForceStopsAndStartsWhenPoweroffWaitFails() throws {
+        let harness = RuntimeVMStateControlHarness()
+        harness.stopAfterPoweroffError = StopRuntimeVMProcessUseCaseError.runtimeOperationFailed(
+            "VM process did not stop within 900s"
+        )
+
+        try harness.restartAfterSettingsApply()
+
+        XCTAssertEqual(harness.events, [
+            "log:runtime settings applied; preparing guest shutdown before restart",
+            "status:recovering:configure:runtime settings applied; preparing guest shutdown before restart",
+            "pid",
+            "version",
+            "prepare:0.1.13",
+            "stop-after-poweroff:4242",
+            "log:settings restart guest shutdown failed; forcing VM runtime services stop before restart error=VM process did not stop within 900s",
+            "force-stop-runtime-services",
+            "start:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
+            "wait-health:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync,ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
+            "status:healthy:configure:runtime restarted after settings apply",
+            "log:runtime restarted after settings apply",
+            "clear",
+        ])
+    }
+
     func testWatchdogRecoveryRestartsVMRuntimeThroughStateControlOwner() throws {
         let harness = RuntimeVMStateControlHarness()
 
@@ -289,6 +336,12 @@ private final class RuntimeVMStateControlHarness {
                 },
                 stopRuntimeServicesAfterGuestPoweroff: { pid in
                     self.events.append("stop-after-poweroff:\(pid)")
+                    if let stopAfterPoweroffError = self.stopAfterPoweroffError {
+                        throw stopAfterPoweroffError
+                    }
+                },
+                forceStopRuntimeServicesAfterGuestShutdownFailure: {
+                    self.events.append("force-stop-runtime-services")
                 },
                 startRuntimeServices: { policy in
                     self.events.append("start:\(serviceLabels(for: policy))")

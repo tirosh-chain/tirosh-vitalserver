@@ -10,17 +10,20 @@ protocol RuntimeSettingsReading: Sendable {
 
 struct RuntimeSettingsPaths {
     var vmConfig = RuntimeControlClientConstants.Paths.vmConfig
+    var appliedVMConfig = RuntimeControlClientConstants.Paths.appliedVMConfig
     var vmDisk = RuntimeControlClientConstants.Paths.vmDisk
     var guestRuntimeSettings = RuntimeControlClientConstants.Paths.guestRuntimeSettings
     var proxyLaunchDaemon = RuntimeControlClientConstants.Paths.proxyLaunchDaemon
 
     init(
         vmConfig: String = RuntimeControlClientConstants.Paths.vmConfig,
+        appliedVMConfig: String = RuntimeControlClientConstants.Paths.appliedVMConfig,
         vmDisk: String = RuntimeControlClientConstants.Paths.vmDisk,
         guestRuntimeSettings: String = RuntimeControlClientConstants.Paths.guestRuntimeSettings,
         proxyLaunchDaemon: String = RuntimeControlClientConstants.Paths.proxyLaunchDaemon
     ) {
         self.vmConfig = vmConfig
+        self.appliedVMConfig = appliedVMConfig
         self.vmDisk = vmDisk
         self.guestRuntimeSettings = guestRuntimeSettings
         self.proxyLaunchDaemon = proxyLaunchDaemon
@@ -49,6 +52,7 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
     private func loadSnapshot() -> RuntimeSettingsReadSnapshot {
         RuntimeSettingsReadSnapshot(
             vmConfig: VMConfigDocument.loadResult(path: paths.vmConfig, fileStore: fileStore),
+            appliedVMConfig: VMConfigDocument.loadResult(path: paths.appliedVMConfig, fileStore: fileStore),
             diskGiB: diskSizeGiB(path: paths.vmDisk),
             guestRuntimeSettings: GuestRuntimeSettings.loadResult(
                 path: paths.guestRuntimeSettings,

@@ -7,6 +7,7 @@ public enum RuntimeFileNames {
     public static let runtimeOperationLease = "runtime-operation-lease.json"
     public static let runtimeEvents = "runtime-events.jsonl"
     public static let runtimeObservabilityDB = "runtime-observability.sqlite"
+    public static let appliedVMConfig = "applied-vm-config.json"
     public static let runtimeInstallState = "tirosh-vitalserver-install-state.json"
     public static let runtimeUninstallState = "tirosh-vitalserver-uninstall-state.json"
     public static let vmIP = "vm-ip"

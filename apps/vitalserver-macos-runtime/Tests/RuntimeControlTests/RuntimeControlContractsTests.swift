@@ -172,9 +172,42 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertFalse(settings.preventSystemSleep)
     }
 
+    func testRuntimeSettingsReadPolicyKeepsSavedAndAppliedVMSettingsDistinct() {
+        let settings = RuntimeSettingsReadPolicy.settings(from: RuntimeSettingsReadSnapshot(
+            vmConfig: .loaded(RuntimeVMConfigSettingsReadInput(
+                cpuCount: 8,
+                memoryMiB: 8192,
+                networkMode: "shared",
+                bridgedInterface: nil,
+                vitalFilesDirectoryHostPath: "/Volumes/New Vital Files",
+                autoRecoveryEnabled: true,
+                preventSystemSleep: true
+            )),
+            appliedVMConfig: .loaded(RuntimeVMConfigSettingsReadInput(
+                cpuCount: 4,
+                memoryMiB: 4096,
+                networkMode: "shared",
+                bridgedInterface: nil,
+                vitalFilesDirectoryHostPath: "/Volumes/Applied Vital Files",
+                autoRecoveryEnabled: true,
+                preventSystemSleep: true
+            )),
+            diskGiB: .loaded(32),
+            guestRuntimeSettings: .missing,
+            proxyPort: .missing,
+            startOnBoot: .missing
+        ))
+
+        XCTAssertEqual(settings.vitalFilesDirectory, "/Volumes/New Vital Files")
+        XCTAssertEqual(settings.runtimeAppliedSettings.vitalFilesDirectory, "/Volumes/Applied Vital Files")
+        XCTAssertEqual(settings.runtimeAppliedSettings.cpuCount, 4)
+        XCTAssertEqual(settings.runtimeAppliedSettings.memoryGiB, 4)
+    }
+
     func testRuntimeSettingsReadPolicyPreservesMissingAndFailedSnapshotMeanings() {
         let settings = RuntimeSettingsReadPolicy.settings(from: RuntimeSettingsReadSnapshot(
             vmConfig: .missing,
+            appliedVMConfig: .failed("applied config denied"),
             diskGiB: .failed("disk size denied"),
             guestRuntimeSettings: .missing,
             proxyPort: .failed("proxy plist denied"),
@@ -186,6 +219,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertFalse(settings.startOnBootConfigurable)
         XCTAssertEqual(settings.readIssues, [
             RuntimeSettingsReadIssue(source: "vmDisk", message: "disk size denied"),
+            RuntimeSettingsReadIssue(source: "appliedVMConfig", message: "applied config denied"),
             RuntimeSettingsReadIssue(source: "guestRuntimeSettings", message: "runtime settings document is missing"),
             RuntimeSettingsReadIssue(source: "proxyLaunchDaemon", message: "proxy plist denied"),
             RuntimeSettingsReadIssue(source: "startOnBoot", message: "launchctl denied"),
