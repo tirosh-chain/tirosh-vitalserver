@@ -89,6 +89,7 @@ public enum VMRuntimeConfigComposition {
 
     public static func ensureRuntimeDefaults(_ config: inout VMRuntimeConfig, paths: InstalledRuntimePaths) {
         ensureNetworkIdentity(&config)
+        ensureKernelCommandLineGuards(&config)
         if config.cloudInitPath == nil || config.cloudInitPath?.isEmpty == true {
             config.cloudInitPath = paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.cloudInit).path
         }
@@ -109,6 +110,15 @@ public enum VMRuntimeConfigComposition {
         if config.sshAuthorizedKeys == nil {
             config.sshAuthorizedKeys = []
         }
+    }
+
+    private static func ensureKernelCommandLineGuards(_ config: inout VMRuntimeConfig) {
+        var tokens = config.kernelCommandLine
+            .split(separator: " ")
+            .map(String.init)
+            .filter { !$0.hasPrefix("bpf_jit_enable=") }
+        tokens.append("bpf_jit_enable=0")
+        config.kernelCommandLine = tokens.joined(separator: " ")
     }
 
     public static func prettyJSONEncoder() -> JSONEncoder {

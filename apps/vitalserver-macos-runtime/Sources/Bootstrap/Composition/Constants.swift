@@ -50,7 +50,7 @@ public enum Constants {
         public static let initialRamdisk = "initrd.img"
         public static let disk = "vm-disk.img"
         public static let cloudInit = "seed.iso"
-        public static let commandLine = "console=hvc0 root=/dev/vda1 rw"
+        public static let commandLine = "console=hvc0 root=/dev/vda1 rw bpf_jit_enable=0"
     }
 
     public enum Defaults {

@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 import Errors
+import Bootstrap
 
 final class GuestCommandDispatcherSupportTests: XCTestCase {
     func testGuestCommandPollerDispatchesAllHostWrittenRequests() throws {
@@ -68,6 +69,22 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(bootstrap.contains("docker run --rm --network none \"${DOCKER_SMOKE_IMAGE}\" true"))
         XCTAssertTrue(bootstrap.contains("\"guest-bootstrap-docker-runtime-failed\""))
         XCTAssertTrue(bootstrap.contains("load_bundled_docker_images\nrun_docker_runtime_smoke\ncleanup_docker_cache"))
+    }
+
+    func testDockerRuntimeDisablesBPFJITBeforeDockerStarts() throws {
+        let bootstrap = try readGuestSupportFile("bootstrap.sh")
+        let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
+
+        XCTAssertTrue(Constants.BootAssets.commandLine.contains("bpf_jit_enable=0"))
+        XCTAssertTrue(bootstrap.contains("BPF_JIT_SYSCTL_FILE=\"/etc/sysctl.d/99-vitalserver-bpf-jit.conf\""))
+        XCTAssertTrue(bootstrap.contains("net.core.bpf_jit_enable = 0"))
+        XCTAssertTrue(bootstrap.contains("sysctl -w net.core.bpf_jit_enable=0"))
+        XCTAssertTrue(bootstrap.contains("write_runtime_state\nconfigure_bpf_jit_for_virtualization\n\nsystemctl enable --now docker"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("BPF_JIT_SYSCTL_FILE=\"/etc/sysctl.d/99-vitalserver-bpf-jit.conf\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("net.core.bpf_jit_enable = 0"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("sysctl -w net.core.bpf_jit_enable=0"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("\"bpfJIT\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("configure_bpf_jit_for_virtualization\ninstall_runtime_packages"))
     }
 
     func testPrepareAirgapRootfsWritesRuntimeManifestAndSmokeStatus() throws {

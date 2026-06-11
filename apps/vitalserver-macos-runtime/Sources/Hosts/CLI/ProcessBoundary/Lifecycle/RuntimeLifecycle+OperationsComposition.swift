@@ -79,6 +79,8 @@ extension RuntimeLifecycle {
 
     func runtimeManagedOperationGuard() -> RuntimeManagedOperationGuardComposition {
         RuntimeManagedOperationGuardComposition.make(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
             statusReporter: statusReporter,
             operationLeaseRepository: JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease),
             guestGateway: guestGateway,

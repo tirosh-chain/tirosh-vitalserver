@@ -38,6 +38,7 @@ public struct GuardManagedRuntimeOperationUseCase {
             from: watchdog.guestBootstrapManagedOperationGuardPlan(
                 operation: bootstrap.operation,
                 updatedAt: bootstrap.updatedAt,
+                vmLifecycle: bootstrap.vmLifecycle,
                 now: operations.now(),
                 graceSeconds: graceSeconds
             ),
@@ -59,10 +60,16 @@ public struct GuardManagedRuntimeOperationUseCase {
 public struct RuntimeGuestBootstrapOperation {
     public let operation: RuntimeOperation
     public let updatedAt: Date?
+    public let vmLifecycle: RuntimeVMLifecycleDocument?
 
-    public init(operation: RuntimeOperation, updatedAt: Date?) {
+    public init(
+        operation: RuntimeOperation,
+        updatedAt: Date?,
+        vmLifecycle: RuntimeVMLifecycleDocument? = nil
+    ) {
         self.operation = operation
         self.updatedAt = updatedAt
+        self.vmLifecycle = vmLifecycle
     }
 }
 

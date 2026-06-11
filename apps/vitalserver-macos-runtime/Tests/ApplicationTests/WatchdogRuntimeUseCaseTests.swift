@@ -252,6 +252,53 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         )
     }
 
+    func testGuestBootstrapGuardDoesNotBlockAfterVMLifecycleDeadline() {
+        let useCase = WatchdogRuntimeUseCase()
+
+        let plan = useCase.guestBootstrapManagedOperationGuardPlan(
+            operation: .install,
+            updatedAt: date("2026-05-22T00:09:00Z"),
+            vmLifecycle: RuntimeVMLifecycleDocument(
+                state: .bootstrapping,
+                operation: .install,
+                startedAt: "2026-05-22T00:00:00Z",
+                updatedAt: "2026-05-22T00:00:01Z",
+                deadlineAt: "2026-05-22T00:10:00Z",
+                message: "VM process started; waiting for guest runtime"
+            ),
+            now: date("2026-05-22T00:10:01Z"),
+            graceSeconds: 1_800
+        )
+
+        XCTAssertNil(plan.activeOperation)
+        XCTAssertEqual(
+            plan.logMessage,
+            "watchdog guest bootstrap guard expired by VM lifecycle deadline operation=install state=bootstrapping deadlineAt=2026-05-22T00:10:00Z"
+        )
+    }
+
+    func testGuestBootstrapGuardBlocksBeforeVMLifecycleDeadline() {
+        let useCase = WatchdogRuntimeUseCase()
+
+        let plan = useCase.guestBootstrapManagedOperationGuardPlan(
+            operation: .install,
+            updatedAt: date("2026-05-22T00:09:00Z"),
+            vmLifecycle: RuntimeVMLifecycleDocument(
+                state: .bootstrapping,
+                operation: .install,
+                startedAt: "2026-05-22T00:00:00Z",
+                updatedAt: "2026-05-22T00:00:01Z",
+                deadlineAt: "2026-05-22T00:10:00Z",
+                message: "VM process started; waiting for guest runtime"
+            ),
+            now: date("2026-05-22T00:09:30Z"),
+            graceSeconds: 1_800
+        )
+
+        XCTAssertEqual(plan.activeOperation, .install)
+        XCTAssertNil(plan.logMessage)
+    }
+
     func testStatusManagedOperationGuardPlanPreservesLoadResultMeanings() {
         let useCase = WatchdogRuntimeUseCase()
         let now = date("2026-05-22T00:05:00Z")

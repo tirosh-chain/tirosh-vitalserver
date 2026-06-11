@@ -8,6 +8,7 @@ READY_FILE="${RUNTIME_DIR}/rootfs-ready"
 RUNTIME_MANIFEST_FILE="${RUNTIME_DIR}/rootfs-runtime-manifest.json"
 DOCKER_SMOKE_IMAGE="${VITALSERVER_DOCKER_SMOKE_IMAGE:-redis:3.2.12-alpine}"
 LOCAL_DOCKER_SMOKE_IMAGE="vitalserver-rootfs-smoke:local"
+BPF_JIT_SYSCTL_FILE="/etc/sysctl.d/99-vitalserver-bpf-jit.conf"
 
 if [ "$(id -u)" -ne 0 ]; then
   printf "error: run with sudo\n" >&2
@@ -95,6 +96,28 @@ verify_runtime_packages() {
   docker compose version >/dev/null
 }
 
+configure_bpf_jit_for_virtualization() {
+  local actual
+
+  cat > "${BPF_JIT_SYSCTL_FILE}" <<'EOF'
+# VitalServer runs Docker inside Apple Virtualization on arm64.
+# Keep BPF interpreted to avoid Ubuntu arm64 BPF JIT kernel panics during Docker netlink activity.
+net.core.bpf_jit_enable = 0
+EOF
+
+  if [ ! -e /proc/sys/net/core/bpf_jit_enable ]; then
+    printf "error: BPF JIT sysctl is missing; cannot prove Docker runtime guard\n" >&2
+    return 1
+  fi
+
+  sysctl -w net.core.bpf_jit_enable=0 >/dev/null
+  actual="$(cat /proc/sys/net/core/bpf_jit_enable)"
+  if [ "${actual}" != "0" ]; then
+    printf "error: BPF JIT remains enabled: net.core.bpf_jit_enable=%s\n" "${actual}" >&2
+    return 1
+  fi
+}
+
 json_string() {
   python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().rstrip("\n")))'
 }
@@ -102,7 +125,7 @@ json_string() {
 write_runtime_manifest() {
   local smoke_status="$1"
   local smoke_message="$2"
-  local created_at kernel docker_version containerd_version runc_version compose_version
+  local created_at kernel docker_version containerd_version runc_version compose_version bpf_jit_enable
 
   created_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   kernel="$(uname -r 2>/dev/null || true)"
@@ -110,6 +133,7 @@ write_runtime_manifest() {
   containerd_version="$(containerd --version 2>/dev/null || true)"
   runc_version="$(runc --version 2>/dev/null | head -n 1 || true)"
   compose_version="$(docker compose version 2>/dev/null || true)"
+  bpf_jit_enable="$(cat /proc/sys/net/core/bpf_jit_enable 2>/dev/null || true)"
 
   cat > "${RUNTIME_MANIFEST_FILE}" <<EOF
 {
@@ -120,6 +144,10 @@ write_runtime_manifest() {
   "containerd": $(printf "%s" "${containerd_version}" | json_string),
   "runc": $(printf "%s" "${runc_version}" | json_string),
   "compose": $(printf "%s" "${compose_version}" | json_string),
+  "bpfJIT": {
+    "sysctlFile": $(printf "%s" "${BPF_JIT_SYSCTL_FILE}" | json_string),
+    "net.core.bpf_jit_enable": $(printf "%s" "${bpf_jit_enable}" | json_string)
+  },
   "dockerSmoke": {
     "image": $(printf "%s" "${DOCKER_SMOKE_IMAGE}" | json_string),
     "status": $(printf "%s" "${smoke_status}" | json_string),
@@ -177,6 +205,7 @@ build_local_docker_smoke_image() {
   rm -rf "${workdir}"
 }
 
+configure_bpf_jit_for_virtualization
 install_runtime_packages
 verify_runtime_packages
 run_docker_runtime_smoke

@@ -220,11 +220,22 @@ Fresh install에서 `vm-lifecycle.json`이 `bootstrapping`에 머물고 guest `b
 script는 시작 시 `running` result를 쓰더라도 실패 trap에서 최종 `completed`가 아닌 상태를 반드시
 `failed`로 덮어써야 합니다. `running`은 한 번 썼다는 marker가 아니라 아직 완료되지 않은 operation
 state입니다.
+Watchdog의 guest bootstrap guard는 Host가 소유한 `vm-lifecycle.json`의 waiting deadline을 넘어서는
+`running` bootstrap result를 active operation으로 취급하면 안 됩니다. VM이 kernel panic이나 early
+termination으로 guest trap을 실행하지 못하면 bootstrap result가 `running`에 머물 수 있으므로,
+deadline 이후에는 Host lifecycle stale/failure 관측이 recovery 또는 critical 상태로 드러나야 합니다.
 Golden rootfs는 `/mnt/tirosh/run/rootfs-runtime-manifest.json`의 `dockerSmoke.status=passed`를
 가진 경우에만 `rootfs-base.raw.gz`로 압축할 수 있습니다. `docker --version`, `docker compose version`,
 package install success, `rootfs-ready` marker는 runtime proof가 아닙니다. Fresh install bootstrap도
 image bundle load 직후 disposable smoke container start를 수행하고, 실패하면
 `guest-bootstrap-docker-runtime-failed`를 기록해야 합니다.
+Ubuntu arm64 guest가 Docker image load 이후 첫 container start 또는 Docker netlink activity에서
+`__bpf_prog_run_save_cb` / `Kernel panic - not syncing: Oops - Undefined instruction`로 죽으면
+Docker image 문제가 아니라 Apple Virtualization 환경에서 Ubuntu generic kernel의 BPF JIT 실행 경로가
+깨진 것으로 봅니다. Rootfs 준비와 fresh install bootstrap은 Docker를 시작하기 전에
+`net.core.bpf_jit_enable=0`을 적용하고, golden rootfs manifest는 `bpfJIT.net.core.bpf_jit_enable`이
+`"0"`인 경우에만 압축을 허용해야 합니다. Smoke를 삭제하면 문제가 숨겨질 뿐이며, guard가 적용된
+상태에서 실제 bundle image smoke가 통과해야 runtime proof로 인정합니다.
 
 ### 4-2. 영역별로 봐야 하는 것
 

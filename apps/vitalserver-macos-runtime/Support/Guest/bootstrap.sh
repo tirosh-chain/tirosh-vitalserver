@@ -11,6 +11,7 @@ RUNTIME_STATE_FILE="${RUNTIME_DIR}/runtime-state.json"
 BOOTSTRAP_RESULT_FILE="${RUNTIME_DIR}/bootstrap-result.json"
 BOOTSTRAP_RESULT_STATUS=""
 DOCKER_SMOKE_IMAGE="${VITALSERVER_DOCKER_SMOKE_IMAGE:-redis:3.2.12-alpine}"
+BPF_JIT_SYSCTL_FILE="/etc/sysctl.d/99-vitalserver-bpf-jit.conf"
 GUEST_TOOLS_HOME="/opt/tirosh/guest-tools"
 GUEST_TOOLS_VENV="${GUEST_TOOLS_HOME}/venv"
 PYTHON_WHEEL_DIR="${DEPLOY_DIR}/python-wheels"
@@ -156,6 +157,35 @@ python_venv_ready() {
 
   rm -rf "${test_venv}"
   return 1
+}
+
+configure_bpf_jit_for_virtualization() {
+  local actual
+
+  cat > "${BPF_JIT_SYSCTL_FILE}" <<'EOF'
+# VitalServer runs Docker inside Apple Virtualization on arm64.
+# Keep BPF interpreted to avoid Ubuntu arm64 BPF JIT kernel panics during Docker netlink activity.
+net.core.bpf_jit_enable = 0
+EOF
+
+  if [ ! -e /proc/sys/net/core/bpf_jit_enable ]; then
+    write_bootstrap_result \
+      "failed" \
+      "Guest BPF JIT sysctl is missing; Docker runtime guard cannot be proven." \
+      "guest-bootstrap-docker-runtime-failed"
+    return 1
+  fi
+
+  sysctl -w net.core.bpf_jit_enable=0 >/dev/null
+  actual="$(cat /proc/sys/net/core/bpf_jit_enable)"
+  if [ "${actual}" != "0" ]; then
+    write_bootstrap_result \
+      "failed" \
+      "Guest BPF JIT remained enabled before Docker runtime start." \
+      "guest-bootstrap-docker-runtime-failed"
+    printf "error: BPF JIT remains enabled: net.core.bpf_jit_enable=%s\n" "${actual}" >&2
+    return 1
+  fi
 }
 
 runtime_packages_ready() {
@@ -379,6 +409,7 @@ require_runtime_packages
 
 install_guest_runtime_files
 write_runtime_state
+configure_bpf_jit_for_virtualization
 
 systemctl enable --now docker
 hostnamectl set-hostname "tirosh-vitalserver"

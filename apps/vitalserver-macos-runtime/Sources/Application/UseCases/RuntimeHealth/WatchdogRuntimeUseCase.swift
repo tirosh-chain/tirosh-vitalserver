@@ -287,9 +287,24 @@ public struct WatchdogRuntimeUseCase {
     public func guestBootstrapManagedOperationGuardPlan(
         operation: RuntimeOperation,
         updatedAt: Date?,
+        vmLifecycle: RuntimeVMLifecycleDocument? = nil,
         now: Date,
         graceSeconds: TimeInterval
     ) -> WatchdogRuntimeManagedOperationGuardPlan {
+        if let vmLifecycle {
+            guard vmLifecycle.state == .starting || vmLifecycle.state == .bootstrapping else {
+                return WatchdogRuntimeManagedOperationGuardPlan(
+                    activeOperation: nil,
+                    logMessage: "watchdog guest bootstrap guard ignored VM lifecycle state operation=\(operation.rawValue) state=\(vmLifecycle.state.rawValue)"
+                )
+            }
+            guard vmLifecycle.isWaitingForGuest(at: now) else {
+                return WatchdogRuntimeManagedOperationGuardPlan(
+                    activeOperation: nil,
+                    logMessage: "watchdog guest bootstrap guard expired by VM lifecycle deadline operation=\(operation.rawValue) state=\(vmLifecycle.state.rawValue) deadlineAt=\(vmLifecycle.deadlineAt ?? "missing")"
+                )
+            }
+        }
         guard let updatedAt else {
             return WatchdogRuntimeManagedOperationGuardPlan(
                 activeOperation: operation,

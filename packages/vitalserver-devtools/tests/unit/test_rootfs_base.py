@@ -49,6 +49,32 @@ def test_require_runtime_manifest_rejects_failed_docker_smoke(tmp_path):
         require_runtime_manifest(source)
 
 
+def test_require_runtime_manifest_rejects_missing_bpf_jit_guard(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(
+        source,
+        status="passed",
+        message="docker runtime smoke passed",
+        bpf_jit_enable=None,
+    )
+
+    with pytest.raises(SystemExit, match="missing bpfJIT guard"):
+        require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_enabled_bpf_jit(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(
+        source,
+        status="passed",
+        message="docker runtime smoke passed",
+        bpf_jit_enable="1",
+    )
+
+    with pytest.raises(SystemExit, match="BPF JIT guard is not applied"):
+        require_runtime_manifest(source)
+
+
 def test_require_stopped_lifecycle_rejects_stopping_vm(tmp_path):
     source = tmp_path / "vm" / "runtime" / "vm-disk.img"
     lifecycle = tmp_path / "vm" / "run" / "vm-lifecycle.json"
@@ -121,17 +147,29 @@ def rootfs_source_with_lifecycle(tmp_path: Path) -> Path:
     return source
 
 
-def write_runtime_manifest(source: Path, *, status: str, message: str) -> None:
+def write_runtime_manifest(
+    source: Path,
+    *,
+    status: str,
+    message: str,
+    bpf_jit_enable: str | None = "0",
+) -> None:
     manifest = source.parent.parent / "data" / "run" / "rootfs-runtime-manifest.json"
     manifest.parent.mkdir(parents=True)
+    document = {
+        "schemaVersion": 1,
+        "dockerSmoke": {
+            "image": "redis:3.2.12-alpine",
+            "status": status,
+            "message": message,
+        },
+    }
+    if bpf_jit_enable is not None:
+        document["bpfJIT"] = {
+            "sysctlFile": "/etc/sysctl.d/99-vitalserver-bpf-jit.conf",
+            "net.core.bpf_jit_enable": bpf_jit_enable,
+        }
     manifest.write_text(
-        json.dumps({
-            "schemaVersion": 1,
-            "dockerSmoke": {
-                "image": "redis:3.2.12-alpine",
-                "status": status,
-                "message": message,
-            },
-        }),
+        json.dumps(document),
         encoding="utf-8",
     )
