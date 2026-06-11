@@ -109,6 +109,27 @@ def test_wait_for_rootfs_ready_rejects_kernel_panic_log(tmp_path):
         )
 
 
+def test_wait_for_rootfs_ready_rejects_bpf_jit_sysctl_failure(tmp_path):
+    log_file = tmp_path / "logs" / "launcher.log"
+    log_file.parent.mkdir(parents=True)
+    log_file.write_text(
+        'cloud-init[1062]: sysctl: setting key "net.core.bpf_jit_enable": Invalid argument\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match="VM launcher log shows terminal guest failure",
+    ):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+            )
+        )
+
+
 def test_running_vm_processes_for_home_reads_explicit_vm_home(monkeypatch, tmp_path):
     def fake_run(command, text, capture_output, check):
         assert command == ["ps", "eww", "-axo", "pid=,command="]

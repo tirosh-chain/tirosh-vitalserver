@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
+from urllib.parse import urlparse
 
 from tirosh_vitalserver.devtools.core.errors import DomainError
 
@@ -127,7 +129,7 @@ def ubuntu_boot_asset_plan(
     return UbuntuBootAssetPlan(
         config_path=config_path,
         runtime_dir=runtime_dir,
-        download_dir=runtime_dir / "downloads",
+        download_dir=runtime_dir / "downloads" / ubuntu_download_cache_key(base_url),
         disk_image=runtime_dir / disk_image_name,
         disk_image_name=disk_image_name,
         rootfs_size=rootfs_size,
@@ -136,6 +138,17 @@ def ubuntu_boot_asset_plan(
         arch=arch,
         assets=assets,
     )
+
+
+def ubuntu_download_cache_key(base_url: str) -> str:
+    normalized = base_url.rstrip("/")
+    label = urlparse(normalized).path.rstrip("/").split("/")[-1] or "ubuntu"
+    safe_label = "".join(
+        character if character.isalnum() or character in ".-_" else "-"
+        for character in label
+    )
+    digest = sha256(normalized.encode("utf-8")).hexdigest()[:12]
+    return f"{safe_label}-{digest}"
 
 
 def require_minimum_rootfs_size(value: str) -> None:

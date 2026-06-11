@@ -96,14 +96,14 @@ final class VMRuntimeConfigTests: XCTestCase {
         XCTAssertEqual(config.sshAuthorizedKeys, [])
     }
 
-    func testEnsureRuntimeDefaultsAppliesBPFJITKernelGuardToExistingConfig() {
+    func testEnsureRuntimeDefaultsRemovesUnsupportedBPFJITKernelGuardFromExistingConfig() {
         let paths = InstalledRuntimePaths(runtimeHome: URL(fileURLWithPath: "/runtime-root"))
         var config = VMRuntimeConfig.default(paths: paths)
         config.kernelCommandLine = "console=hvc0 root=/dev/vda1 rw bpf_jit_enable=1"
 
         VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: paths)
 
-        XCTAssertEqual(config.kernelCommandLine, "console=hvc0 root=/dev/vda1 rw bpf_jit_enable=0")
+        XCTAssertEqual(config.kernelCommandLine, "console=hvc0 root=/dev/vda1 rw")
     }
 
     func testValidateBootFilesUsesFileStoreExistence() throws {

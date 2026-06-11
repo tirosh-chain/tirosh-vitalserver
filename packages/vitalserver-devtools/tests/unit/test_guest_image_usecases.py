@@ -15,6 +15,7 @@ from tirosh_vitalserver.devtools.core.errors import DomainError
 from tirosh_vitalserver.devtools.core.guest_image import (
     UbuntuBootAssetPlan,
     ubuntu_boot_asset_plan,
+    ubuntu_download_cache_key,
 )
 
 
@@ -70,6 +71,12 @@ def test_prepare_ubuntu_boot_assets_builds_plan_from_config(
     assert plan is not None
     assert plan.arch == "arm64"
     assert plan.runtime_dir == Path("runtime")
+    assert (
+        plan.download_dir
+        == Path("runtime")
+        / "downloads"
+        / ubuntu_download_cache_key("https://example.invalid/noble")
+    )
     assert plan.rootfs_size == "8G"
     assert plan.disk_image_name == "disk.img"
 
@@ -82,7 +89,7 @@ def test_default_ubuntu_image_config_uses_pinned_noble_release_source() -> None:
 
     assert ubuntu_config.version == "24.04"
     assert ubuntu_config.base_url == (
-        "https://cloud-images.ubuntu.com/releases/noble/release-20260518"
+        "https://cloud-images.ubuntu.com/releases/noble/release-20250313"
     )
     assert not ubuntu_config.base_url.endswith("/release")
 
@@ -102,3 +109,16 @@ def test_ubuntu_boot_asset_plan_rejects_rootfs_smaller_than_airgap_minimum() -> 
             kernel_suffix="vmlinuz-generic",
             initrd_suffix="initrd-generic",
         )
+
+
+def test_ubuntu_download_cache_key_preserves_release_source_identity() -> None:
+    old_release = ubuntu_download_cache_key(
+        "https://cloud-images.ubuntu.com/releases/noble/release-20250313"
+    )
+    new_release = ubuntu_download_cache_key(
+        "https://cloud-images.ubuntu.com/releases/noble/release-20260518"
+    )
+
+    assert old_release.startswith("release-20250313-")
+    assert new_release.startswith("release-20260518-")
+    assert old_release != new_release

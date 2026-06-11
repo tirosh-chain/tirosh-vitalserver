@@ -46,6 +46,7 @@ ROOTFS_TERMINAL_LOG_PATTERNS = (
     "Internal error: Oops:",
     "Kernel panic - not syncing",
     "Attempted to kill init",
+    'sysctl: setting key "net.core.bpf_jit_enable": Invalid argument',
     "watchdog: BUG: soft lockup",
     "rcu: INFO: rcu_preempt detected stalls",
 )

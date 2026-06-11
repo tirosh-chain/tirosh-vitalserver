@@ -49,29 +49,30 @@ def test_require_runtime_manifest_rejects_failed_docker_smoke(tmp_path):
         require_runtime_manifest(source)
 
 
-def test_require_runtime_manifest_rejects_missing_bpf_jit_guard(tmp_path):
+def test_require_runtime_manifest_rejects_missing_compose_smoke(tmp_path):
     source = rootfs_source_with_lifecycle(tmp_path)
     write_runtime_manifest(
         source,
         status="passed",
         message="docker runtime smoke passed",
-        bpf_jit_enable=None,
+        compose_status=None,
     )
 
-    with pytest.raises(SystemExit, match="missing bpfJIT guard"):
+    with pytest.raises(SystemExit, match="missing composeSmoke result"):
         require_runtime_manifest(source)
 
 
-def test_require_runtime_manifest_rejects_enabled_bpf_jit(tmp_path):
+def test_require_runtime_manifest_rejects_failed_compose_smoke(tmp_path):
     source = rootfs_source_with_lifecycle(tmp_path)
     write_runtime_manifest(
         source,
         status="passed",
         message="docker runtime smoke passed",
-        bpf_jit_enable="1",
+        compose_status="failed",
+        compose_message="edge did not become ready",
     )
 
-    with pytest.raises(SystemExit, match="BPF JIT guard is not applied"):
+    with pytest.raises(SystemExit, match="Compose runtime smoke did not pass"):
         require_runtime_manifest(source)
 
 
@@ -152,7 +153,8 @@ def write_runtime_manifest(
     *,
     status: str,
     message: str,
-    bpf_jit_enable: str | None = "0",
+    compose_status: str | None = "passed",
+    compose_message: str = "compose runtime smoke passed",
 ) -> None:
     manifest = source.parent.parent / "data" / "run" / "rootfs-runtime-manifest.json"
     manifest.parent.mkdir(parents=True)
@@ -164,10 +166,11 @@ def write_runtime_manifest(
             "message": message,
         },
     }
-    if bpf_jit_enable is not None:
-        document["bpfJIT"] = {
-            "sysctlFile": "/etc/sysctl.d/99-vitalserver-bpf-jit.conf",
-            "net.core.bpf_jit_enable": bpf_jit_enable,
+    if compose_status is not None:
+        document["composeSmoke"] = {
+            "project": "vitalserver-rootfs-smoke",
+            "status": compose_status,
+            "message": compose_message,
         }
     manifest.write_text(
         json.dumps(document),

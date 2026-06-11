@@ -86,7 +86,8 @@ struct Launcher {
             let previous = config
             VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: installedPaths)
             if config.network.macAddress != previous.network.macAddress
-                || config.cloudInitPath != previous.cloudInitPath {
+                || config.cloudInitPath != previous.cloudInitPath
+                || config.kernelCommandLine != previous.kernelCommandLine {
                 let data = try JSONEncoder.pretty.encode(config)
                 try fileStore.writeData(data, to: paths.config, options: [])
                 print("updated \(paths.config.path) with missing runtime defaults")

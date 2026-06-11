@@ -94,16 +94,17 @@ def require_runtime_manifest(source: Path) -> None:
             "error: rootfs Docker runtime smoke did not pass; refusing to "
             f"compress unproven rootfs: status={smoke_status} message={smoke_message}"
         )
-    bpf_jit = document.get("bpfJIT")
-    if not isinstance(bpf_jit, dict):
+    compose_smoke = document.get("composeSmoke")
+    if not isinstance(compose_smoke, dict):
         raise SystemExit(
-            "error: rootfs runtime manifest is missing bpfJIT guard; "
+            "error: rootfs runtime manifest is missing composeSmoke result; "
             f"manifest={manifest}"
         )
-    bpf_jit_enable = bpf_jit.get("net.core.bpf_jit_enable")
-    if bpf_jit_enable != "0":
+    compose_status = compose_smoke.get("status")
+    if compose_status != "passed":
+        compose_message = compose_smoke.get("message")
         raise SystemExit(
-            "error: rootfs BPF JIT guard is not applied; refusing to compress "
-            f"rootfs that may kernel panic during Docker runtime: "
-            f"net.core.bpf_jit_enable={bpf_jit_enable}"
+            "error: rootfs Compose runtime smoke did not pass; refusing to "
+            f"compress unproven rootfs: status={compose_status} "
+            f"message={compose_message}"
         )

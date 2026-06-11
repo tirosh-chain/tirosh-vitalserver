@@ -89,7 +89,7 @@ public enum VMRuntimeConfigComposition {
 
     public static func ensureRuntimeDefaults(_ config: inout VMRuntimeConfig, paths: InstalledRuntimePaths) {
         ensureNetworkIdentity(&config)
-        ensureKernelCommandLineGuards(&config)
+        removeUnsupportedKernelCommandLineGuards(&config)
         if config.cloudInitPath == nil || config.cloudInitPath?.isEmpty == true {
             config.cloudInitPath = paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.cloudInit).path
         }
@@ -112,12 +112,11 @@ public enum VMRuntimeConfigComposition {
         }
     }
 
-    private static func ensureKernelCommandLineGuards(_ config: inout VMRuntimeConfig) {
-        var tokens = config.kernelCommandLine
+    private static func removeUnsupportedKernelCommandLineGuards(_ config: inout VMRuntimeConfig) {
+        let tokens = config.kernelCommandLine
             .split(separator: " ")
             .map(String.init)
             .filter { !$0.hasPrefix("bpf_jit_enable=") }
-        tokens.append("bpf_jit_enable=0")
         config.kernelCommandLine = tokens.joined(separator: " ")
     }
 
