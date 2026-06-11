@@ -7,6 +7,7 @@ struct RuntimeUninstallProgressScriptPlan {
     let viewerScriptPath: String
     let workerScriptPath: String
     let workerPIDPath: String
+    let resultPath: String
     let runID: String
 
     init(
@@ -16,6 +17,7 @@ struct RuntimeUninstallProgressScriptPlan {
         viewerScriptPath: String,
         workerScriptPath: String? = nil,
         workerPIDPath: String? = nil,
+        resultPath: String? = nil,
         runID: String = UUID().uuidString
     ) {
         self.command = command
@@ -24,6 +26,7 @@ struct RuntimeUninstallProgressScriptPlan {
         self.viewerScriptPath = viewerScriptPath
         self.workerScriptPath = workerScriptPath ?? "\(viewerScriptPath).worker"
         self.workerPIDPath = workerPIDPath ?? "\(viewerScriptPath).pid"
+        self.resultPath = resultPath ?? "\(viewerScriptPath).result.json"
         self.runID = runID
     }
 }
@@ -36,11 +39,15 @@ enum RuntimeUninstallProgressScript {
     static let terminalTitle = "VitalServer uninstall progress"
     static let terminalCompletedMessage = "Uninstall completed."
     static let terminalFailedMessage = "Uninstall failed. Check the log above."
+    static let terminalResultMissingMessage = "Uninstall result is unavailable. Check the log above."
+    static let terminalFreshInstallReadinessNotCheckedMessage = "Fresh install readiness was not checked by clean uninstall."
     static let terminalOpenFailedMessage = "uninstall progress viewer failed to open"
+    static let terminalOpenSkippedMessage = "uninstall progress viewer open skipped"
 
     static func viewerScript(
         logPath: String,
         workerPIDPath: String,
+        resultPath: String,
         runID: String = UUID().uuidString,
         shellQuote: (String) -> String
     ) -> String {
@@ -49,6 +56,8 @@ enum RuntimeUninstallProgressScript {
         set -u
         log_file=\(shellQuote(logPath))
         worker_pid_file=\(shellQuote(workerPIDPath))
+        result_file=\(shellQuote(resultPath))
+        plain_run_id=\(shellQuote(runID))
         marker_run_id=\(shellQuote("runID=\(runID)"))
         completed_marker=\(shellQuote("\(completedMarker) runID=\(runID)"))
         failed_marker_prefix=\(shellQuote(failedMarkerPrefix))
@@ -85,7 +94,44 @@ enum RuntimeUninstallProgressScript {
           fi
           sed -n '2p' "${worker_pid_file}" 2>/dev/null
         }
+        current_result_state() {
+          if [ ! -s "${result_file}" ]; then
+            return 1
+          fi
+          if ! grep -q "${plain_run_id}" "${result_file}" 2>/dev/null; then
+            return 1
+          fi
+          sed -n 's/.*"state":"\\([^"]*\\)","exitCode".*/\\1/p' "${result_file}" 2>/dev/null | tail -n 1
+        }
+        current_result_readiness_state() {
+          if [ ! -s "${result_file}" ]; then
+            return 1
+          fi
+          if ! grep -q "${plain_run_id}" "${result_file}" 2>/dev/null; then
+            return 1
+          fi
+          sed -n 's/.*"freshInstallReadiness":{"state":"\\([^"]*\\)".*/\\1/p' "${result_file}" 2>/dev/null | tail -n 1
+        }
+        print_readiness_note_if_needed() {
+          readiness_state="$(current_result_readiness_state || true)"
+          if [ "${readiness_state}" = "not-checked" ]; then
+            printf "\(terminalFreshInstallReadinessNotCheckedMessage)\\n"
+          fi
+        }
         while true; do
+          result_state="$(current_result_state || true)"
+          if [ "${result_state}" = "completed" ]; then
+            finish_tail
+            printf "\\n\(terminalCompletedMessage)\\n"
+            print_readiness_note_if_needed
+            break
+          fi
+          if [ "${result_state}" = "failed" ]; then
+            finish_tail
+            printf "\\n\(terminalFailedMessage)\\n"
+            print_readiness_note_if_needed
+            break
+          fi
           if grep -q "${completed_marker}" "${log_file}" 2>/dev/null; then
             finish_tail
             printf "\\n\(terminalCompletedMessage)\\n"
@@ -107,7 +153,7 @@ enum RuntimeUninstallProgressScript {
               fi
               rm -f "${worker_pid_file}" 2>/dev/null || true
               finish_tail
-              printf "\\n\(terminalFailedMessage)\\n"
+              printf "\\n\(terminalResultMissingMessage)\\n"
               break
             fi
           fi
@@ -127,10 +173,24 @@ enum RuntimeUninstallProgressScript {
         set +e
         log_file=\(shellQuote(plan.logPath))
         worker_pid_file=\(shellQuote(plan.workerPIDPath))
+        result_file=\(shellQuote(plan.resultPath))
+        plain_run_id=\(shellQuote(plan.runID))
         marker_run_id=\(shellQuote("runID=\(plan.runID)"))
         started_marker=\(shellQuote("\(startedMarker) runID=\(plan.runID)"))
         completed_marker=\(shellQuote("\(completedMarker) runID=\(plan.runID)"))
         failed_marker_prefix=\(shellQuote(failedMarkerPrefix))
+
+        write_result() {
+          result_state="$1"
+          exit_code="$2"
+          uninstall_completed="$3"
+          message="$4"
+          readiness_state="$5"
+          result_tmp="${result_file}.tmp"
+          printf '%s\\n' "{\\"schemaVersion\\":1,\\"runID\\":\\"${plain_run_id}\\",\\"state\\":\\"${result_state}\\",\\"exitCode\\":${exit_code},\\"uninstallCompleted\\":${uninstall_completed},\\"freshInstallReadiness\\":{\\"state\\":\\"${readiness_state}\\",\\"blockers\\":[]},\\"message\\":\\"${message}\\"}" > "${result_tmp}"
+          mv "${result_tmp}" "${result_file}" 2>/dev/null || cp "${result_tmp}" "${result_file}" 2>/dev/null || true
+          chmod 0644 "${result_file}" 2>/dev/null || true
+        }
 
         has_terminal_marker() {
           grep -q "${completed_marker}" "${log_file}" 2>/dev/null \
@@ -146,6 +206,7 @@ enum RuntimeUninstallProgressScript {
           if ! has_terminal_marker; then
             echo "${failed_marker_prefix}signal-${signal_name} ${marker_run_id}" >> "${log_file}"
           fi
+          write_result "failed" 129 false "uninstall terminated by signal" "not-checked"
           cleanup_pid_file
           exit 129
         }
@@ -156,12 +217,15 @@ enum RuntimeUninstallProgressScript {
 
         {
           echo "${started_marker}"
+          write_result "running" 0 false "uninstall running" "not-checked"
           \(plan.command)
           background_status=$?
           if [ "${background_status}" -eq 0 ]; then
             echo "${completed_marker}"
+            write_result "completed" 0 true "uninstall completed" "not-checked"
           else
             echo "${failed_marker_prefix}${background_status} ${marker_run_id}"
+            write_result "failed" "${background_status}" false "uninstall failed" "not-checked"
           fi
           cleanup_pid_file
           exit "${background_status}"
@@ -194,6 +258,7 @@ enum RuntimeUninstallProgressScript {
         let viewerScript = viewerScript(
             logPath: plan.logPath,
             workerPIDPath: plan.workerPIDPath,
+            resultPath: plan.resultPath,
             runID: plan.runID,
             shellQuote: shellQuote
         )
@@ -204,21 +269,38 @@ enum RuntimeUninstallProgressScript {
         viewer_script=\(shellQuote(plan.viewerScriptPath))
         worker_script=\(shellQuote(plan.workerScriptPath))
         worker_pid_file=\(shellQuote(plan.workerPIDPath))
+        result_file=\(shellQuote(plan.resultPath))
+        plain_run_id=\(shellQuote(plan.runID))
         marker_run_id=\(shellQuote("runID=\(plan.runID)"))
         started_marker=\(shellQuote("\(startedMarker) runID=\(plan.runID)"))
         completed_marker=\(shellQuote("\(completedMarker) runID=\(plan.runID)"))
         failed_marker_prefix=\(shellQuote(failedMarkerPrefix))
+        write_result() {
+          result_state="$1"
+          exit_code="$2"
+          uninstall_completed="$3"
+          message="$4"
+          readiness_state="$5"
+          result_tmp="${result_file}.tmp"
+          printf '%s\\n' "{\\"schemaVersion\\":1,\\"runID\\":\\"${plain_run_id}\\",\\"state\\":\\"${result_state}\\",\\"exitCode\\":${exit_code},\\"uninstallCompleted\\":${uninstall_completed},\\"freshInstallReadiness\\":{\\"state\\":\\"${readiness_state}\\",\\"blockers\\":[]},\\"message\\":\\"${message}\\"}" > "${result_tmp}"
+          mv "${result_tmp}" "${result_file}" 2>/dev/null || cp "${result_tmp}" "${result_file}" 2>/dev/null || true
+          chmod 0644 "${result_file}" 2>/dev/null || true
+        }
         if [ -s "${log_file}" ]; then
           cp "${log_file}" "${previous_log_file}"
         fi
         : > "${log_file}"
         chmod 0644 "${log_file}" 2>/dev/null || true
         rm -f "${worker_pid_file}"
+        rm -f "${result_file}" "${result_file}.tmp"
+        write_result "running" 0 false "uninstall starting" "not-checked"
         printf %s \(shellQuote(viewerScript)) > "${viewer_script}"
         printf %s \(shellQuote(workerScript)) > "${worker_script}"
         chmod 0755 "${viewer_script}"
         chmod 0755 "${worker_script}"
-        if ! open -a Terminal "${viewer_script}" >/dev/null 2>&1; then
+        if [ "${VITALSERVER_UNINSTALL_PROGRESS_OPEN:-1}" = "0" ]; then
+          echo "\(terminalOpenSkippedMessage)" >> "${log_file}"
+        elif ! open -a Terminal "${viewer_script}" >/dev/null 2>&1; then
           echo "\(terminalOpenFailedMessage)" >> "${log_file}"
         fi
         /bin/bash "${worker_script}" </dev/null >> "${log_file}" 2>&1 &
@@ -241,6 +323,7 @@ enum RuntimeUninstallProgressScript {
             if ! grep -q "${completed_marker}" "${log_file}" 2>/dev/null \
               && ! grep -q "${failed_marker_prefix}.*${marker_run_id}" "${log_file}" 2>/dev/null; then
               echo "${failed_marker_prefix}${background_status} ${marker_run_id}" >> "${log_file}"
+              write_result "failed" "${background_status}" false "uninstall failed before terminal marker" "not-checked"
             fi
             rm -f "${worker_pid_file}"
             exit "${background_status}"
@@ -248,6 +331,7 @@ enum RuntimeUninstallProgressScript {
           sleep 0.5
         done
         echo "\(failedMarkerPrefix)\(missingMarkerStatus) ${marker_run_id}" >> "${log_file}"
+        write_result "failed" 1 false "uninstall start marker missing" "not-checked"
         exit 1
         """
     }

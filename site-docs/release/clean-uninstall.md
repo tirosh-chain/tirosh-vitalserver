@@ -31,7 +31,26 @@ Clean uninstall은 user data 보존을 하지 않습니다. 설정된 external V
 clean 대상에 포함됩니다. 다만 configured path를 읽지 못하면 external directory cleanup을 추정하지
 않고 명시적으로 skip log를 남깁니다.
 
-## 3. Reset Installer를 쓰는 상황
+## 3. Progress 결과 판정
+
+Helper app에서 시작한 Clean uninstall은 background worker와 progress viewer를 사용합니다. viewer는
+log marker만으로 성공/실패를 추정하지 않고 현재 runID의 result document를 우선합니다.
+
+result document는 uninstall workflow 결과와 fresh install readiness를 분리해서 기록합니다.
+
+| 필드 | 의미 |
+|---|---|
+| `runID` | 현재 progress viewer와 worker가 공유하는 실행 ID |
+| `state` | `running`, `completed`, `failed` 같은 progress 결과 |
+| `exitCode` | worker command의 exit code |
+| `uninstallCompleted` | uninstall workflow 자체가 성공했는지 |
+| `freshInstallReadiness.state` | fresh install blocker 검증 여부. Clean uninstall progress에서는 `not-checked`가 정상입니다. |
+| `freshInstallReadiness.blockers` | readiness가 검증된 경우의 blocker 목록. `not-checked`이면 비어 있어도 fresh install 가능을 뜻하지 않습니다. |
+
+따라서 `uninstallCompleted=true`는 Clean uninstall workflow 성공만 뜻합니다. 새 설치가 계속 막히면
+Reset Installer 또는 fresh install preflight 결과의 blocker를 별도로 봐야 합니다.
+
+## 4. Reset Installer를 쓰는 상황
 
 Reset Installer는 정상 제거 UX가 아니라 recovery tool입니다. 아래 blocker가 보이면 Reset
 Installer를 사용합니다.
@@ -52,7 +71,7 @@ Reset Installer가 성공하려면 다음 상태가 모두 정리되어야 합�
 | package receipt | receipt가 남으면 fresh install 전용 package가 기존 설치로 판단함 |
 | Host proxy listener | VitalServer가 띄운 nginx가 orphan process로 port를 점유할 수 있음 |
 
-## 4. 과거 삭제 실패 원인
+## 5. 과거 삭제 실패 원인
 
 삭제가 안 된 것처럼 보였던 문제는 대부분 단순 파일 삭제 실패가 아니라 Host-owned state가
 남은 문제였습니다.
@@ -68,10 +87,11 @@ Reset Installer가 성공하려면 다음 상태가 모두 정리되어야 합�
 이 원인들은 파일 존재 여부만으로 판단하면 안 됩니다. launchd, process, package receipt, status
 writer가 각각 명시적으로 관측되어야 합니다.
 
-## 5. 운영 원칙
+## 6. 운영 원칙
 
 - Clean uninstall 성공을 fresh install 가능 상태로 추정하지 않습니다.
 - Reset Installer 성공은 runtime artifact, launchd service, package receipt blocker가 없는지로 확인합니다.
 - Helper app이나 PWA가 background uninstaller 시작을 보고해도 uninstall 완료로 표시하지 않습니다.
+- Progress viewer는 현재 runID의 result document를 우선하고, log tail은 진단 정보로만 취급합니다.
 - 제거 후 runtime status writer가 product root를 다시 만들면 안 됩니다.
 - 외부 nginx, Docker, Homebrew, 사용자 문서처럼 Helper가 소유하지 않은 상태는 삭제하지 않습니다.
