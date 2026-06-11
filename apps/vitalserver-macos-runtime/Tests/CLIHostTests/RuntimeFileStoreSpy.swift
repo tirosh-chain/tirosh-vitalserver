@@ -24,7 +24,7 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     }
 
     func directoryExists(_ url: URL) -> Bool {
-        directories.contains(url)
+        directories.contains { $0.path == url.path }
     }
 
     func isExecutableFile(atPath path: String) -> Bool {
@@ -107,6 +107,14 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
         if let createDirectoryError {
             throw createDirectoryError
         }
+        if withIntermediateDirectories {
+            var current = url
+            while current.path != "/" {
+                directories.insert(current)
+                current = current.deletingLastPathComponent()
+            }
+            return
+        }
         directories.insert(url)
     }
 
@@ -133,7 +141,7 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
                 let suffix = String(directory.path.dropFirst(source.path.count))
                 directories.insert(URL(fileURLWithPath: destination.path + suffix))
             }
-            for (url, data) in files where url.path.hasPrefix(source.path + "/") {
+            for (url, data) in Array(files) where url.path.hasPrefix(source.path + "/") {
                 let suffix = String(url.path.dropFirst(source.path.count))
                 files[URL(fileURLWithPath: destination.path + suffix)] = data
             }
@@ -143,8 +151,27 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     }
 
     func moveItem(at source: URL, to destination: URL) throws {
-        files[destination] = try readData(source)
-        files.removeValue(forKey: source)
+        if let data = files[source] {
+            files[destination] = data
+            files.removeValue(forKey: source)
+            return
+        }
+        if directories.contains(where: { $0.path == source.path }) {
+            directories = Set(directories.filter { $0.path != source.path })
+            directories.insert(destination)
+            for directory in Array(directories) where directory.path.hasPrefix(source.path + "/") {
+                let suffix = String(directory.path.dropFirst(source.path.count))
+                directories.remove(directory)
+                directories.insert(URL(fileURLWithPath: destination.path + suffix))
+            }
+            for (url, data) in Array(files) where url.path.hasPrefix(source.path + "/") {
+                let suffix = String(url.path.dropFirst(source.path.count))
+                files.removeValue(forKey: url)
+                files[URL(fileURLWithPath: destination.path + suffix)] = data
+            }
+            return
+        }
+        _ = try readData(source)
     }
 
     func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] {

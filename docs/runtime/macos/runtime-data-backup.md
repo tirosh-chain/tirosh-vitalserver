@@ -25,3 +25,19 @@ Backup creation writes a manifest last. Restore must reject missing, duplicated,
 Redis restore is guest-owned. Host stages the selected archive into the shared runtime data directory and writes a `redis-restore.request`; the guest command poller dispatches `tirosh-vitalserver-redis-restore.service`, which validates the archive, stops Docker Compose, replaces the Redis volume contents, starts Compose, and writes `redis-restore-result.json`.
 
 Older guests that do not report the `redisRestore` capability cannot complete runtime data restore. Host must report that capability failure explicitly instead of guessing Redis volume internals.
+
+## Troubleshooting
+
+### Create backup fails with missing `redis-data`
+
+Symptom:
+
+```text
+required runtime data backup artifact is missing id=redis-data path=/mnt/tirosh/backups/redis/<archive>.tar.gz
+```
+
+Cause: the guest `redis-backup-result.json` reports the archive path from the guest mount namespace (`/mnt/tirosh/...`). The Host backup store reads from the macOS filesystem, so it must translate that path through the explicit shared data directory contract before archiving.
+
+Fix direction: convert `/mnt/tirosh/<relative>` to `<installed data directory>/<relative>` before passing the Redis archive to `RuntimeDataBackupStore.createBackup`.
+
+Prevention principle: Host may consume guest-reported paths only through an explicit mount contract. It must not treat guest absolute paths as Host paths or infer equivalent locations from filenames.

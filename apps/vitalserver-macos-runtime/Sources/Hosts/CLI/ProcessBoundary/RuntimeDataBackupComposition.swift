@@ -15,9 +15,10 @@ struct RuntimeDataBackupComposition {
         guard let archive = redisBackup.archive, !archive.isEmpty else {
             throw LauncherError.runtimeOperationFailed("runtime data backup requires a redis archive")
         }
+        let redisArchive = try hostSharedDataURL(forGuestArchivePath: archive)
         let backup = try runtimeDataBackupStore().createBackup(
             reason: "manual",
-            redisArchive: URL(fileURLWithPath: archive),
+            redisArchive: redisArchive,
             startOnBootState: try startOnBootStateData()
         )
         try validateManifest(backup)
@@ -125,6 +126,27 @@ struct RuntimeDataBackupComposition {
             try lifecycle.startVMServiceForGuestOperation()
         }
         try waitForRedisRestoreResult(requestID: requestID)
+    }
+
+    private func hostSharedDataURL(forGuestArchivePath archive: String) throws -> URL {
+        let guestDataPrefix = "/mnt/tirosh/"
+        guard archive.hasPrefix(guestDataPrefix) else {
+            throw LauncherError.runtimeOperationFailed(
+                "redis backup archive path is outside guest shared data mount archive=\(archive)"
+            )
+        }
+
+        let relativePath = String(archive.dropFirst(guestDataPrefix.count))
+        let components = relativePath.split(separator: "/").map(String.init)
+        guard !components.isEmpty, !components.contains("..") else {
+            throw LauncherError.runtimeOperationFailed(
+                "redis backup archive path is invalid archive=\(archive)"
+            )
+        }
+
+        return components.reduce(lifecycle.installedPaths.dataDirectory) { url, component in
+            url.appendingPathComponent(component)
+        }
     }
 
     private func waitForRedisRestoreResult(requestID: String) throws {
