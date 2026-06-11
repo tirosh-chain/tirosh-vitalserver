@@ -11,7 +11,7 @@
 .PHONY: internal/vm/update/verify/release
 .PHONY: internal/vm/image-update/verify internal/vm/image-update/verify/dev
 .PHONY: internal/vm/image-update/verify/release
-.PHONY: internal/vm/airgap-rootfs internal/vm/golden-rootfs
+.PHONY: internal/vm/airgap-rootfs internal/vm/golden-rootfs internal/vm/golden-rootfs/negative
 
 VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false
 VM_UPDATE_BUNDLE_KIND ?= product-update
@@ -33,17 +33,27 @@ VM_PKG_ROOTFS_CONTRACT_FINGERPRINT := $(shell cksum $(VM_PKG_ROOTFS_CONTRACT_INP
 VM_RECREATE_GOLDEN_ROOTFS ?= false
 VM_GOLDEN_HOME := .tmp/vitalserver-vm-golden
 VM_GOLDEN_RUNTIME_DIR := $(VM_GOLDEN_HOME)/runtime
+VM_GOLDEN_NEGATIVE_HOME ?= .tmp/vitalserver-vm-golden-negative
 
 VM_INSTALL_SETTINGS ?=
 VM_UNINSTALL_ARGS ?=
 
 internal/vm/airgap-rootfs: internal/vm/download internal/vm/stage
-	@rm -f "$(VM_HOME)/data/run/rootfs-ready"
 	@$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
 		--vm-home "$(VM_HOME)" \
 		stop >/dev/null 2>&1 || true
 	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
 		--vm-home "$(VM_HOME)"
+	@if [ -n "$(VM_ROOTFS_RUN_ID)" ]; then \
+		$(VM_BUILD_RUNNER) macos-runtime-rootfs-begin \
+			--vm-home "$(VM_HOME)" \
+			--run-id "$(VM_ROOTFS_RUN_ID)"; \
+	else \
+		rm -f "$(VM_HOME)/data/run/rootfs-ready"; \
+	fi
+	@if [ -n "$(VM_ROOTFS_SMOKE_FAIL_STAGE)" ] || [ "$(VM_ROOTFS_SMOKE_FAIL_CLEANUP)" = "true" ]; then \
+		python3 -c 'import json, sys; from pathlib import Path; path = Path(sys.argv[1]); document = json.loads(path.read_text(encoding="utf-8")); document["faultInjection"] = {"testMode": True, "failStage": sys.argv[2], "failCleanup": sys.argv[3] == "true"}; path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")' "$(VM_HOME)/data/deploy/build-metadata/rootfs-input.json" "$(VM_ROOTFS_SMOKE_FAIL_STAGE)" "$(VM_ROOTFS_SMOKE_FAIL_CLEANUP)"; \
+	fi
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" cloud-init \
 		--runtime-dir "$(VM_RUNTIME_DIR)" \
 		--bootstrap-script "/mnt/tirosh/deploy/prepare-airgap-rootfs.sh"
@@ -66,6 +76,7 @@ internal/vm/golden-rootfs:
 		&& [ "$${rootfs_contract_actual}" = "$${rootfs_contract_expected}" ]; then \
 		printf "Reusing golden rootfs cache: %s\n" "$(VM_PKG_ROOTFS_CACHE)"; \
 	else \
+		rootfs_run_id="$$(uuidgen | tr '[:upper:]' '[:lower:]')"; \
 		if [ "$(VM_RECREATE_GOLDEN_ROOTFS)" != "false" ]; then \
 			printf "Recreating golden rootfs cache: %s\n" "$(VM_PKG_ROOTFS_CACHE)"; \
 		elif [ -s "$(VM_PKG_ROOTFS_CACHE)" ]; then \
@@ -77,7 +88,8 @@ internal/vm/golden-rootfs:
 		fi; \
 		$(MAKE) internal/vm/airgap-rootfs \
 			VM_HOME="$(abspath $(VM_GOLDEN_HOME))" \
-			VM_RECREATE_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)"; \
+			VM_RECREATE_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)" \
+			VM_ROOTFS_RUN_ID="$${rootfs_run_id}"; \
 		test -s "$(VM_GOLDEN_HOME)/data/run/rootfs-ready" || { \
 			printf "missing air-gapped rootfs marker after prepare: %s\n" "$(VM_GOLDEN_HOME)/data/run/rootfs-ready" >&2; \
 			exit 1; \
@@ -85,10 +97,49 @@ internal/vm/golden-rootfs:
 		$(VM_BUILD_RUNNER) rootfs-base \
 			--source "$(VM_GOLDEN_RUNTIME_DIR)/vm-disk.img" \
 			--output "$(VM_PKG_ROOTFS_CACHE)" \
-			--compression-threads "$(VM_COMPRESSION_THREADS)"; \
+			--compression-threads "$(VM_COMPRESSION_THREADS)" \
+			--expected-run-id "$${rootfs_run_id}"; \
 		mkdir -p "$(dir $(VM_PKG_ROOTFS_CONTRACT_STAMP))"; \
 		printf "%s\n" "$${rootfs_contract_expected}" >"$(VM_PKG_ROOTFS_CONTRACT_STAMP)"; \
 	fi
+
+internal/vm/golden-rootfs/negative:
+	@set -e; \
+	rootfs_run_id="$$(uuidgen | tr '[:upper:]' '[:lower:]')"; \
+	printf "Running golden rootfs negative VM test: edge-ready fault runId=%s\n" "$${rootfs_run_id}"; \
+	set +e; \
+	$(MAKE) internal/vm/airgap-rootfs \
+		VM_HOME="$(abspath $(VM_GOLDEN_NEGATIVE_HOME))" \
+		VM_RECREATE_ROOTFS=true \
+		VM_ROOTFS_RUN_ID="$${rootfs_run_id}" \
+		VM_ROOTFS_SMOKE_FAIL_STAGE="edge-ready"; \
+	status="$$?"; \
+	set -e; \
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
+		--vm-home "$(abspath $(VM_GOLDEN_NEGATIVE_HOME))" \
+		stop >/dev/null 2>&1 || true; \
+	$(VM_BUILD_RUNNER) macos-runtime-wait-stopped \
+		--vm-home "$(abspath $(VM_GOLDEN_NEGATIVE_HOME))" \
+		--timeout "$(VM_WAIT_TIMEOUT)" >/dev/null 2>&1 || true; \
+	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
+		--vm-home "$(abspath $(VM_GOLDEN_NEGATIVE_HOME))"; \
+	if [ "$${status}" -eq 0 ]; then \
+		printf "error: negative golden rootfs VM test unexpectedly passed\n" >&2; \
+		exit 1; \
+	fi; \
+	set +e; \
+	$(VM_BUILD_RUNNER) rootfs-base \
+		--source "$(VM_GOLDEN_NEGATIVE_HOME)/runtime/vm-disk.img" \
+		--output "$(VM_GOLDEN_NEGATIVE_HOME)/rootfs-base.should-not-exist.raw.gz" \
+		--compression-threads "1" \
+		--expected-run-id "$${rootfs_run_id}" >/tmp/tirosh-golden-rootfs-negative-rootfs-base.log 2>&1; \
+	rootfs_base_status="$$?"; \
+	set -e; \
+	if [ "$${rootfs_base_status}" -eq 0 ]; then \
+		printf "error: negative rootfs-base gate unexpectedly passed\n" >&2; \
+		exit 1; \
+	fi; \
+	printf "Golden rootfs negative VM test passed: edge-ready fault was rejected\n"
 
 internal/vm/nginx/artifact:
 	@test -x "$(VM_NGINX_SOURCE_BIN)" || { \

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
+    begin_golden_rootfs_run,
     build_runtime,
     check_runtime_health,
     control_runtime,
@@ -17,6 +18,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import
 )
 from tirosh_vitalserver.devtools.application.inputs import (
     RequireBridgedIdentityInput,
+    RootfsRunInput,
     RuntimeBuildInput,
     RuntimeControlInput,
     RuntimeHealthInput,
@@ -57,6 +59,10 @@ def start_detached(input: RuntimeVmHomeInput) -> int:
 
 def require_no_running(input: RuntimeVmHomeInput) -> int:
     return require_no_running_runtime(input)
+
+
+def begin_rootfs_run(input: RootfsRunInput) -> int:
+    return begin_golden_rootfs_run(input)
 
 
 def print_ip(input: RuntimeVmHomeInput) -> int:

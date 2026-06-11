@@ -98,7 +98,8 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(prepareAirgapRootfs.contains("tirosh-vitalserver-rootfs-smoke"))
         XCTAssertFalse(prepareAirgapRootfs.contains("docker run --rm --network none"))
         XCTAssertFalse(prepareAirgapRootfs.contains("docker compose --project-name"))
-        XCTAssertTrue(prepareAirgapRootfs.contains("printf \"manifest=%s\\n\" \"${RUNTIME_MANIFEST_FILE}\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("\"runId\": manifest[\"runId\"]"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("ready_path.write_text"))
     }
 
     func testGuestCommandFailuresClearRequestFilesAfterWritingFailureResult() throws {

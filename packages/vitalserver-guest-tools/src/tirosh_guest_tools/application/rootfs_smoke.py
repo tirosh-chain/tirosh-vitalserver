@@ -9,6 +9,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +34,7 @@ EDGE_READY_POLL_SECONDS = 3.0
 EDGE_READY_HTTP_TIMEOUT_SECONDS = 5.0
 COMPOSE_CLEANUP_TIMEOUT_SECONDS = 180.0
 DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS = 30.0
+MINIMUM_DISK_FREE_KIB = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,11 @@ class RootfsSmokeContext:
     compose_project_name: str
     docker_smoke_image: str
     local_docker_smoke_image: str
+    run_id: str
+    test_mode: bool
+    fail_stage: str
+    fail_cleanup: bool
+    minimum_disk_free_kib: int
 
 
 @dataclass(frozen=True)
@@ -114,6 +121,7 @@ class RootfsSmokeRun:
         runtime = collect_runtime_versions(self.operations)
         return {
             "schemaVersion": 2,
+            "runId": self.context.run_id,
             "createdAt": self.created_at,
             "updatedAt": utc_now(),
             "ubuntu": {
@@ -133,6 +141,20 @@ class RootfsSmokeRun:
 
 
 def default_context() -> RootfsSmokeContext:
+    metadata = read_rootfs_input_document(DEPLOY_DIR)
+    fault_injection = metadata.get("faultInjection")
+    if not isinstance(fault_injection, dict):
+        fault_injection = {}
+    test_mode = os.environ.get("VITALSERVER_ROOTFS_SMOKE_TEST_MODE") == "1" or (
+        fault_injection.get("testMode") is True
+    )
+    fail_stage = os.environ.get("VITALSERVER_ROOTFS_SMOKE_FAIL_STAGE")
+    if fail_stage is None and test_mode:
+        metadata_fail_stage = fault_injection.get("failStage")
+        fail_stage = metadata_fail_stage if isinstance(metadata_fail_stage, str) else ""
+    fail_cleanup = os.environ.get("VITALSERVER_ROOTFS_SMOKE_FAIL_CLEANUP") == "1"
+    if not fail_cleanup and test_mode:
+        fail_cleanup = fault_injection.get("failCleanup") is True
     return RootfsSmokeContext(
         runtime_dir=RUNTIME_DIR,
         deploy_dir=DEPLOY_DIR,
@@ -145,6 +167,16 @@ def default_context() -> RootfsSmokeContext:
             "redis:3.2.12-alpine",
         ),
         local_docker_smoke_image="vitalserver-rootfs-smoke:local",
+        run_id=rootfs_run_id(DEPLOY_DIR),
+        test_mode=test_mode,
+        fail_stage=fail_stage or "",
+        fail_cleanup=fail_cleanup,
+        minimum_disk_free_kib=int(
+            os.environ.get(
+                "VITALSERVER_ROOTFS_SMOKE_MINIMUM_DISK_FREE_KIB",
+                str(MINIMUM_DISK_FREE_KIB),
+            )
+        ),
     )
 
 
@@ -177,6 +209,7 @@ def run_rootfs_smoke(
 
     try:
         execute_stage(run, "docker-smoke", docker_smoke)
+        execute_stage(run, "disk-space", disk_space)
         execute_stage(run, "compose-build", compose_build)
         execute_stage(run, "compose-up", compose_up)
         execute_stage(run, "edge-ready", edge_ready)
@@ -213,6 +246,7 @@ def execute_stage(
     )
     run.write_manifest()
     try:
+        fail_stage_if_requested(run, name)
         message, details = action(run)
     except subprocess.TimeoutExpired as error:
         run.stages[-1] = SmokeStageResult(
@@ -274,6 +308,49 @@ def docker_smoke(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
             )
 
     return "docker runtime smoke passed", {"image": smoke_image}
+
+
+def disk_space(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
+    paths = ["/", "/var/lib/docker", str(run.context.vital_files_mount)]
+    results: list[dict[str, Any]] = []
+    for path in paths:
+        completed = run_checked(
+            run,
+            ["df", "-Pk", path],
+            timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+        )
+        free_kib = parse_df_available_kib(completed.stdout, path)
+        passed = free_kib >= run.context.minimum_disk_free_kib
+        results.append(
+            {
+                "path": path,
+                "availableKiB": free_kib,
+                "minimumKiB": run.context.minimum_disk_free_kib,
+                "passed": passed,
+            }
+        )
+        if not passed:
+            raise RuntimeError(
+                "insufficient rootfs disk space: "
+                f"path={path} availableKiB={free_kib} "
+                f"minimumKiB={run.context.minimum_disk_free_kib}"
+            )
+    return "rootfs disk space check passed", {"filesystems": results}
+
+
+def parse_df_available_kib(output: str, path: str) -> int:
+    lines = [line for line in output.splitlines() if line.strip()]
+    if len(lines) < 2:
+        raise RuntimeError(f"df output missing filesystem row for {path}")
+    columns = lines[-1].split()
+    if len(columns) < 4:
+        raise RuntimeError(f"df output malformed for {path}: {lines[-1]}")
+    try:
+        return int(columns[3])
+    except ValueError as error:
+        raise RuntimeError(
+            f"df output available column is not an integer for {path}: {columns[3]}"
+        ) from error
 
 
 def build_local_docker_smoke_image(run: RootfsSmokeRun) -> str:
@@ -356,6 +433,12 @@ def edge_ready(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
 
 
 def cleanup_compose(run: RootfsSmokeRun) -> bool:
+    if run.context.test_mode and run.context.fail_cleanup:
+        run.cleanup = {
+            "status": RootfsSmokeStatus.CLEANUP_FAILED.value,
+            "message": "test fault injected cleanup failure",
+        }
+        return False
     completed = run.operations.run(
         compose_command(run, ["down", "-v", "--remove-orphans"]),
         check=False,
@@ -474,18 +557,10 @@ def collect_runtime_versions(operations: RootfsSmokeOperations) -> dict[str, str
 
 
 def read_ubuntu_metadata(deploy_dir: Path) -> dict[str, str]:
-    metadata = deploy_dir / "build-metadata" / "rootfs-input.json"
-    if not metadata.is_file():
+    document = read_rootfs_input_document(deploy_dir)
+    if not document:
         return {
             "metadataStatus": "missing",
-            "baseUrl": "",
-            "cacheKey": "",
-        }
-    try:
-        document = json.loads(metadata.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {
-            "metadataStatus": "invalid",
             "baseUrl": "",
             "cacheKey": "",
         }
@@ -503,6 +578,38 @@ def read_ubuntu_metadata(deploy_dir: Path) -> dict[str, str]:
         "baseUrl": base_url if isinstance(base_url, str) else "",
         "cacheKey": cache_key if isinstance(cache_key, str) else "",
     }
+
+
+def rootfs_run_id(deploy_dir: Path) -> str:
+    document = read_rootfs_input_document(deploy_dir)
+    run_id = document.get("runId")
+    if isinstance(run_id, str) and run_id.strip():
+        return run_id
+    return str(uuid.uuid4())
+
+
+def read_rootfs_input_document(deploy_dir: Path) -> dict[str, Any]:
+    metadata = deploy_dir / "build-metadata" / "rootfs-input.json"
+    if not metadata.is_file():
+        return {}
+    try:
+        document = json.loads(metadata.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"ubuntu": None}
+    return document if isinstance(document, dict) else {"ubuntu": None}
+
+
+def fail_stage_if_requested(run: RootfsSmokeRun, name: str) -> None:
+    if not run.context.test_mode:
+        return
+    if run.context.fail_stage != name:
+        return
+    if name == "edge-ready":
+        raise subprocess.TimeoutExpired(
+            ["fault-injection", name],
+            EDGE_READY_TIMEOUT_SECONDS,
+        )
+    raise RuntimeError(f"test fault injected stage failure: {name}")
 
 
 def compose_command(run: RootfsSmokeRun, arguments: list[str]) -> list[str]:

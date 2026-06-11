@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
+    require_ready_marker,
     require_runtime_manifest,
     require_stopped_lifecycle,
     run_rootfs_base,
@@ -32,6 +33,29 @@ def test_require_runtime_manifest_accepts_passed_rootfs_smoke(tmp_path):
     write_runtime_manifest(source)
 
     require_runtime_manifest(source)
+
+
+def test_require_ready_marker_accepts_matching_run_id(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_ready_marker(source, run_id="run-test")
+
+    require_ready_marker(source, expected_run_id="run-test")
+
+
+def test_require_ready_marker_rejects_stale_run_id(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_ready_marker(source, run_id="old-run")
+
+    with pytest.raises(SystemExit, match="runId does not match"):
+        require_ready_marker(source, expected_run_id="run-test")
+
+
+def test_require_runtime_manifest_rejects_stale_run_id(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(source, run_id="old-run")
+
+    with pytest.raises(SystemExit, match="runId does not match"):
+        require_runtime_manifest(source, expected_run_id="run-test")
 
 
 def test_require_runtime_manifest_rejects_missing_manifest(tmp_path):
@@ -89,6 +113,14 @@ def test_require_runtime_manifest_rejects_missing_compose_stage(tmp_path):
     write_runtime_manifest(source, omitted_stages={"compose-up"})
 
     with pytest.raises(SystemExit, match="missing compose-up stage"):
+        require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_missing_disk_space_stage(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(source, omitted_stages={"disk-space"})
+
+    with pytest.raises(SystemExit, match="missing disk-space stage"):
         require_runtime_manifest(source)
 
 
@@ -155,10 +187,16 @@ def test_run_rootfs_base_rejects_corrupt_compressor_output(tmp_path, monkeypatch
     source.write_bytes(b"disk")
     lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
     write_runtime_manifest(source)
+    write_ready_marker(source)
 
     def write_corrupt_gzip(source: Path, output: Path, *, threads: int) -> None:
         output.write_bytes(b"not a gzip")
 
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base"
+        ".running_vm_processes_for_home",
+        lambda vm_home: [],
+    )
     monkeypatch.setattr(
         "tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base.gzip_file",
         write_corrupt_gzip,
@@ -170,6 +208,7 @@ def test_run_rootfs_base_rejects_corrupt_compressor_output(tmp_path, monkeypatch
             output=output,
             force=True,
             compression_threads=1,
+            expected_run_id="run-test",
         ))
 
 
@@ -187,6 +226,7 @@ def write_runtime_manifest(
     source: Path,
     *,
     schema_version: int = 2,
+    run_id: str = "run-test",
     metadata_status: str = "loaded",
     base_url: str = "https://example.invalid/release",
     cache_key: str = "release-abcd",
@@ -200,7 +240,13 @@ def write_runtime_manifest(
     stage_statuses = stage_statuses or {}
     omitted_stages = omitted_stages or set()
     stages = []
-    for name in ("docker-smoke", "compose-build", "compose-up", "edge-ready"):
+    for name in (
+        "docker-smoke",
+        "disk-space",
+        "compose-build",
+        "compose-up",
+        "edge-ready",
+    ):
         if name in omitted_stages:
             continue
         status, message = stage_statuses.get(name, ("passed", f"{name} passed"))
@@ -214,6 +260,7 @@ def write_runtime_manifest(
         })
     document = {
         "schemaVersion": schema_version,
+        "runId": run_id,
         "ubuntu": {
             "metadataStatus": metadata_status,
             "baseUrl": base_url,
@@ -237,5 +284,20 @@ def write_runtime_manifest(
     }
     manifest.write_text(
         json.dumps(document),
+        encoding="utf-8",
+    )
+
+
+def write_ready_marker(source: Path, *, run_id: str = "run-test") -> None:
+    marker = source.parent.parent / "data" / "run" / "rootfs-ready"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "runId": run_id,
+                "readyAt": "2026-06-11T00:00:02Z",
+            }
+        ),
         encoding="utf-8",
     )

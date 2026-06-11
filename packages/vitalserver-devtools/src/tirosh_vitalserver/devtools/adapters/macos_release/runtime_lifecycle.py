@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import time
 import urllib.error
@@ -25,6 +26,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_state import (
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
 from tirosh_vitalserver.devtools.application.inputs import (
     RequireBridgedIdentityInput,
+    RootfsRunInput,
     RuntimeBuildInput,
     RuntimeControlInput,
     RuntimeHealthInput,
@@ -49,6 +51,14 @@ ROOTFS_TERMINAL_LOG_PATTERNS = (
     'sysctl: setting key "net.core.bpf_jit_enable": Invalid argument',
     "watchdog: BUG: soft lockup",
     "rcu: INFO: rcu_preempt detected stalls",
+)
+
+ROOTFS_REQUIRED_STAGES = (
+    "docker-smoke",
+    "disk-space",
+    "compose-build",
+    "compose-up",
+    "edge-ready",
 )
 
 
@@ -164,6 +174,47 @@ def require_no_running_runtime(input: RuntimeVmHomeInput) -> int:
     return 0
 
 
+def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
+    root = repo_root()
+    vm_home = resolve_path(root, input.vm_home)
+    run_dir = vm_home / "run"
+    data_run_dir = vm_home / "data/run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    data_run_dir.mkdir(parents=True, exist_ok=True)
+
+    stale_paths = [
+        data_run_dir / "rootfs-ready",
+        data_run_dir / "rootfs-runtime-manifest.json",
+        data_run_dir / "rootfs-smoke-diagnostics",
+    ]
+    removed: list[str] = []
+    for path in stale_paths:
+        if path.is_dir():
+            shutil.rmtree(path)
+            removed.append(str(path))
+        elif path.exists():
+            path.unlink()
+            removed.append(str(path))
+
+    context = {
+        "schemaVersion": 1,
+        "runId": input.run_id,
+        "createdAt": utc_timestamp(),
+        "removedStaleProof": removed,
+    }
+    context_path = rootfs_run_context_path(vm_home)
+    context_path.write_text(
+        json.dumps(context, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(f"Golden rootfs run started: runId={input.run_id}")
+    if removed:
+        print("Invalidated stale rootfs proof:")
+        for path in removed:
+            print(f"  {path}")
+    return 0
+
+
 def print_runtime_ip(input: RuntimeVmHomeInput) -> int:
     try:
         print(read_runtime_state_vm_ip(input.vm_home))
@@ -215,19 +266,42 @@ def wait_for_runtime_http(input: RuntimeWaitInput) -> int:
 
 def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
     marker = vm_home_path(input.vm_home) / "data/run/rootfs-ready"
+    manifest = vm_home_path(input.vm_home) / "data/run/rootfs-runtime-manifest.json"
+    expected_run_id = expected_rootfs_run_id(input.vm_home, input.expected_run_id)
     print(f"Waiting for air-gapped rootfs marker: {marker}")
+    if expected_run_id:
+        print(f"Expected golden rootfs runId: {expected_run_id}")
     deadline = time.monotonic() + input.timeout
+    last_state = "not-started"
     while time.monotonic() < deadline:
+        manifest_result = inspect_rootfs_manifest(
+            manifest,
+            expected_run_id=expected_run_id,
+        )
+        if manifest_result["terminal"]:
+            raise SystemExit(str(manifest_result["message"]))
+        last_state = str(manifest_result["message"])
         if marker.is_file() and marker.stat().st_size > 0:
-            print("Air-gapped rootfs marker is ready:")
-            for line in marker.read_text().splitlines():
-                print(f"  {line}")
-            return 0
+            marker_result = inspect_rootfs_ready_marker(
+                marker,
+                expected_run_id=expected_run_id,
+            )
+            if marker_result["terminal"]:
+                raise SystemExit(str(marker_result["message"]))
+            if marker_result["ready"] and manifest_result["ready"]:
+                print("Air-gapped rootfs marker is ready:")
+                print(f"  runId={marker_result['runId']}")
+                print(f"  manifest={manifest}")
+                print("  manifestStatus=passed")
+                return 0
+            last_state = (
+                f"{marker_result['message']}; {manifest_result['message']}"
+            )
         fail_if_runtime_lifecycle_failed(input.vm_home)
         fail_if_rootfs_launcher_log_has_terminal_failure(input.vm_home)
         time.sleep(3)
     raise SystemExit(
-        f"error: timed out waiting for {marker}\n"
+        f"error: timed out waiting for {marker}: last={last_state}\n"
         f"Check VM launcher log: {launcher_log(input.vm_home)}"
     )
 
@@ -400,6 +474,197 @@ def fail_if_rootfs_launcher_log_has_terminal_failure(vm_home: str | Path) -> Non
             f"for rootfs marker: pattern={pattern!r}\n"
             f"Check VM launcher log: {log_file}"
         )
+
+
+def inspect_rootfs_manifest(
+    manifest: Path,
+    *,
+    expected_run_id: str | None,
+) -> dict[str, object]:
+    if not manifest.is_file():
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": f"manifest missing: {manifest}",
+        }
+    try:
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": f"error: rootfs manifest is unreadable: {manifest}: {error}",
+        }
+    if not isinstance(document, dict):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": f"error: rootfs manifest is not an object: {manifest}",
+        }
+    run_id = document.get("runId")
+    if not isinstance(run_id, str) or not run_id.strip():
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": f"error: rootfs manifest is missing runId: {manifest}",
+        }
+    if expected_run_id and run_id != expected_run_id:
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": (
+                "stale rootfs manifest runId mismatch: "
+                f"expected={expected_run_id} actual={run_id}"
+            ),
+        }
+    schema_version = document.get("schemaVersion")
+    if schema_version != 2:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: rootfs manifest schema is unsupported while waiting: "
+                f"expected=2 actual={schema_version} manifest={manifest}"
+            ),
+        }
+    stages = document.get("stages")
+    if not isinstance(stages, list):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": f"error: rootfs manifest is missing stages: {manifest}",
+        }
+    for stage_name in ROOTFS_REQUIRED_STAGES:
+        stage = rootfs_stage(stages, stage_name)
+        if stage is None:
+            return {
+                "ready": False,
+                "terminal": False,
+                "message": f"waiting for rootfs stage: {stage_name}",
+            }
+        status = stage.get("status")
+        if status == "passed":
+            continue
+        if status in {"failed", "timeout"}:
+            return {
+                "ready": False,
+                "terminal": True,
+                "message": (
+                    f"error: rootfs stage failed while waiting: "
+                    f"name={stage_name} status={status} "
+                    f"message={stage.get('message')}"
+                ),
+            }
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": f"waiting for rootfs stage: {stage_name} status={status}",
+        }
+    cleanup = document.get("cleanup")
+    cleanup_status = cleanup.get("status") if isinstance(cleanup, dict) else None
+    if cleanup_status == "passed":
+        return {
+            "ready": True,
+            "terminal": False,
+            "message": "manifest passed",
+        }
+    if cleanup_status == "cleanup-failed":
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": "error: rootfs cleanup failed while waiting",
+        }
+    return {
+        "ready": False,
+        "terminal": False,
+        "message": f"waiting for rootfs cleanup: status={cleanup_status}",
+    }
+
+
+def inspect_rootfs_ready_marker(
+    marker: Path,
+    *,
+    expected_run_id: str | None,
+) -> dict[str, object]:
+    try:
+        document = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": f"error: rootfs ready marker is unreadable: {marker}: {error}",
+        }
+    if not isinstance(document, dict):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": f"error: rootfs ready marker is not an object: {marker}",
+        }
+    run_id = document.get("runId")
+    if expected_run_id and run_id != expected_run_id:
+        return {
+            "ready": False,
+            "terminal": False,
+            "runId": run_id,
+            "message": (
+                "stale rootfs ready marker runId mismatch: "
+                f"expected={expected_run_id} actual={run_id}"
+            ),
+        }
+    if not isinstance(run_id, str) or not run_id.strip():
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": f"error: rootfs ready marker is missing runId: {marker}",
+        }
+    return {
+        "ready": True,
+        "terminal": False,
+        "runId": run_id,
+        "message": "ready marker passed",
+    }
+
+
+def rootfs_stage(stages: list[object], name: str) -> dict[str, object] | None:
+    for stage in stages:
+        if isinstance(stage, dict) and stage.get("name") == name:
+            return stage
+    return None
+
+
+def expected_rootfs_run_id(
+    vm_home: str | Path,
+    explicit: str | None,
+) -> str | None:
+    if explicit:
+        return explicit
+    context = rootfs_run_context_path(vm_home_path(vm_home))
+    if not context.is_file():
+        return None
+    try:
+        document = json.loads(context.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(
+            f"error: failed to read golden rootfs run context: {context}: {error}"
+        ) from error
+    if not isinstance(document, dict):
+        raise SystemExit(
+            f"error: golden rootfs run context is invalid: expected object: {context}"
+        )
+    run_id = document.get("runId")
+    if not isinstance(run_id, str) or not run_id.strip():
+        raise SystemExit(
+            f"error: golden rootfs run context is missing runId: {context}"
+        )
+    return run_id
+
+
+def rootfs_run_context_path(vm_home: Path) -> Path:
+    return vm_home / "run/golden-rootfs-run.json"
+
+
+def utc_timestamp() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
 def launcher_log(vm_home: str | Path) -> Path:

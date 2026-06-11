@@ -128,12 +128,40 @@ tirosh-vitalserver-rootfs-smoke
 systemctl enable docker
 systemctl enable avahi-daemon
 
-{
-  printf "ready_at=%s\n" "$(date -Iseconds)"
-  printf "docker=%s\n" "$(docker --version 2>/dev/null || true)"
-  printf "compose=%s\n" "$(docker compose version 2>/dev/null || true)"
-  printf "manifest=%s\n" "${RUNTIME_MANIFEST_FILE}"
-  printf "python_venv=ready\n"
-} >"${READY_FILE}"
+python3 - "${RUNTIME_MANIFEST_FILE}" "${READY_FILE}" <<'PY'
+import json
+import subprocess
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+ready_path = Path(sys.argv[2])
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+def command_output(command):
+    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    return (completed.stdout or completed.stderr).strip()
+
+
+ready_path.write_text(
+    json.dumps(
+        {
+            "schemaVersion": 1,
+            "runId": manifest["runId"],
+            "readyAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "docker": command_output(["docker", "--version"]),
+            "compose": command_output(["docker", "compose", "version"]),
+            "manifest": str(manifest_path),
+            "pythonVenv": "ready",
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
 
 printf "Air-gapped rootfs package prerequisites are ready.\n"

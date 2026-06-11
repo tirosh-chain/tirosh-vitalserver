@@ -97,6 +97,7 @@ class RootfsBaseInput:
     output: Path
     force: bool
     compression_threads: int | None
+    expected_run_id: str | None
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,7 @@ class GuestDeploymentInput:
     runtime_dir: Path
     deploy_dir: Path | None
     docker_bundle: Path | None
+    rootfs_run_id: str | None
 
 
 @dataclass(frozen=True)
@@ -172,6 +174,14 @@ class RuntimeWaitInput:
     config: Path
     vm_home: Path
     timeout: int
+    expected_run_id: str | None = None
+
+
+@dataclass(frozen=True)
+class RootfsRunInput:
+    config: Path
+    vm_home: Path
+    run_id: str
 
 
 @dataclass(frozen=True)

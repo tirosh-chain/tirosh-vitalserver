@@ -108,27 +108,32 @@ def stage_guest_deployment(
     stage_rootfs_input_metadata(
         deploy_dir=deploy_dir,
         base_url=load_ubuntu_image_config(config).base_url,
+        run_id=input.rootfs_run_id,
     )
     ensure_vm_data_dirs(plan)
     print(f"guest deployment bundle is ready: {deploy_dir}")
     return 0
 
 
-def stage_rootfs_input_metadata(*, deploy_dir: Path, base_url: str) -> None:
+def stage_rootfs_input_metadata(
+    *,
+    deploy_dir: Path,
+    base_url: str,
+    run_id: str | None = None,
+) -> None:
     metadata = deploy_dir / "build-metadata" / "rootfs-input.json"
     metadata.parent.mkdir(parents=True, exist_ok=True)
+    document = {
+        "schemaVersion": 1,
+        "ubuntu": {
+            "baseUrl": base_url,
+            "cacheKey": ubuntu_download_cache_key(base_url),
+        },
+    }
+    if run_id:
+        document["runId"] = run_id
     metadata.write_text(
-        json.dumps(
-            {
-                "schemaVersion": 1,
-                "ubuntu": {
-                    "baseUrl": base_url,
-                    "cacheKey": ubuntu_download_cache_key(base_url),
-                },
-            },
-            indent=2,
-            sort_keys=True,
-        )
+        json.dumps(document, indent=2, sort_keys=True)
         + "\n",
         encoding="utf-8",
     )

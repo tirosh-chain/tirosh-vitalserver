@@ -225,8 +225,9 @@ Watchdog의 guest bootstrap guard는 Host가 소유한 `vm-lifecycle.json`의 wa
 termination으로 guest trap을 실행하지 못하면 bootstrap result가 `running`에 머물 수 있으므로,
 deadline 이후에는 Host lifecycle stale/failure 관측이 recovery 또는 critical 상태로 드러나야 합니다.
 Golden rootfs는 `/mnt/tirosh/run/rootfs-runtime-manifest.json` schema v2의 stage 결과가 모두 통과한
-경우에만 `rootfs-base.raw.gz`로 압축할 수 있습니다. 필수 stage는 `docker-smoke`, `compose-build`,
-`compose-up`, `edge-ready`이며, `cleanup.status=passed`도 함께 필요합니다. Manifest의
+경우에만 `rootfs-base.raw.gz`로 압축할 수 있습니다. 필수 stage는 `docker-smoke`, `disk-space`,
+`compose-build`, `compose-up`, `edge-ready`이며, `cleanup.status=passed`도 함께 필요합니다.
+Manifest와 `rootfs-ready` marker는 현재 golden rootfs run의 `runId`와 일치해야 합니다. Manifest의
 `ubuntu.metadataStatus`는 `loaded`여야 하고, `ubuntu.baseUrl`, `ubuntu.cacheKey`, `ubuntu.kernel`은
 비어 있으면 안 됩니다. 입력 Ubuntu 이미지가 무엇인지 모르는 rootfs는 smoke가 통과해도 release artifact가
 될 수 없습니다.

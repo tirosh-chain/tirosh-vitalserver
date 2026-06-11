@@ -3,7 +3,7 @@
 > ID: TS-069  
 > Category: Packaging / Local development / Guest bootstrap  
 > Owner: devtools golden rootfs pipeline  
-> Status: active
+> Status: implemented
 
 ## Symptoms
 
@@ -28,7 +28,7 @@ error: rootfs runtime manifest is missing; rebuild the golden rootfs with Docker
 - 현재 run의 `rootfs-ready`
 - 현재 run의 `rootfs-runtime-manifest.json`
 - manifest schema v2
-- `docker-smoke`, `compose-build`, `compose-up`, `edge-ready`, `cleanup` 통과
+- `docker-smoke`, `disk-space`, `compose-build`, `compose-up`, `edge-ready`, `cleanup` 통과
 - `ubuntu.metadataStatus=loaded`
 - 비어 있지 않은 `ubuntu.baseUrl`, `ubuntu.cacheKey`, `ubuntu.kernel`
 - VM lifecycle `stopped`
@@ -108,7 +108,7 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 
 ## Prevention
 
-제품/도구 수정 방향:
+적용된 제품/도구 수정:
 
 1. Golden rootfs run identity를 명시합니다.
    - rootfs 준비 시작 시 `runId`를 생성합니다.
@@ -133,6 +133,22 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
    - `rootfs_size < 8G`는 VM 실행 전 domain gate에서 실패합니다.
    - guest smoke는 disk free space stage를 추가해 Docker/Compose 성공 후 남은 공간이 너무 작으면
      manifest 실패로 기록합니다.
+
+## Applied Fix
+
+- `macos-runtime-rootfs-begin` command가 golden rootfs run context를 만들고 stale
+  `rootfs-ready`, manifest, diagnostics를 invalidates 합니다.
+- guest deploy metadata의 `runId`가 guest-tools rootfs smoke manifest로 전달됩니다.
+- `rootfs-ready`는 JSON marker가 되었고 `runId`를 포함합니다.
+- `macos-runtime-wait-rootfs-ready`는 marker만 보지 않고 manifest schema, expected `runId`,
+  required stages, cleanup status를 함께 확인합니다.
+- `rootfs-base` compression gate는 stopped lifecycle, no running VM process, manifest `runId`,
+  ready marker `runId`, required stages, cleanup status를 모두 확인합니다.
+- rootfs gzip output은 temporary file validation 후 atomic replace 합니다.
+- test-only fault injection은 deploy metadata의 `faultInjection`으로만 활성화되며,
+  `testMode=true`가 아니면 guest smoke가 무시합니다.
+- `make internal/vm/golden-rootfs/negative`는 실제 VM에서 `edge-ready` fault를 주입하고,
+  manifest failure, VM process cleanup, rootfs-base rejection을 검증합니다.
 
 ## Required Negative Cases
 
@@ -180,3 +196,6 @@ terminal guest failure, stale proof, or process cleanup bugs.
 - 2026-06-11: golden rootfs smoke was moved into guest-tools and manifest schema v2 was added.
 - 2026-06-11: remaining gap identified: robust validation must include stale marker/manifest,
   current-run identity, failed-run artifact protection, and VM process cleanup negative cases.
+- 2026-06-11: TS-069 fix implemented with runId proof, stale proof invalidation,
+  manifest-aware wait, rootfs-base runId gate, disk-space stage, atomic gzip output,
+  and actual negative VM validation for `edge-ready` timeout fault.

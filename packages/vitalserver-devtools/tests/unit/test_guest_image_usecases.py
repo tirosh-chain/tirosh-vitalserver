@@ -142,6 +142,21 @@ def test_stage_rootfs_input_metadata_preserves_ubuntu_source_identity(
     }
 
 
+def test_stage_rootfs_input_metadata_preserves_run_identity(
+    tmp_path: Path,
+) -> None:
+    base_url = "https://cloud-images.ubuntu.com/releases/noble/release-20250313"
+
+    stage_rootfs_input_metadata(
+        deploy_dir=tmp_path,
+        base_url=base_url,
+        run_id="run-test",
+    )
+
+    metadata = load_json(tmp_path / "build-metadata/rootfs-input.json")
+    assert metadata["runId"] == "run-test"
+
+
 def load_json(path: Path) -> dict[str, object]:
     import json
 

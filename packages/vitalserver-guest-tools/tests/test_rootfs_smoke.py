@@ -24,11 +24,13 @@ def test_rootfs_smoke_writes_manifest_v2_for_success(tmp_path: Path) -> None:
 
     document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
     assert document["schemaVersion"] == 2
+    assert document["runId"] == "run-test"
     assert document["ubuntu"]["metadataStatus"] == "loaded"
     assert document["ubuntu"]["baseUrl"] == "https://example.invalid/release"
     assert document["ubuntu"]["cacheKey"] == "release-abcd"
     assert document["ubuntu"]["kernel"] == "6.8.0-test"
     assert stage_status(document, "docker-smoke") == "passed"
+    assert stage_status(document, "disk-space") == "passed"
     assert stage_status(document, "compose-build") == "passed"
     assert stage_status(document, "compose-up") == "passed"
     assert stage_status(document, "edge-ready") == "passed"
@@ -57,6 +59,33 @@ def test_rootfs_smoke_records_timeout_and_diagnostics(
     assert document["cleanup"]["status"] == "passed"
     assert (context.diagnostics_dir / "manifest.partial.json").is_file()
     assert (context.diagnostics_dir / "compose-logs.txt").is_file()
+
+
+def test_rootfs_smoke_records_fault_injected_compose_up_failure(tmp_path: Path) -> None:
+    context = smoke_context(
+        tmp_path,
+        test_mode=True,
+        fail_stage="compose-up",
+    )
+    write_metadata(context.deploy_dir)
+
+    with pytest.raises(SystemExit):
+        run_rootfs_smoke(context=context, operations=fake_operations())
+
+    document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert stage_status(document, "compose-up") == "failed"
+    assert document["cleanup"]["status"] == "passed"
+
+
+def test_rootfs_smoke_fails_when_disk_space_is_too_low(tmp_path: Path) -> None:
+    context = smoke_context(tmp_path, minimum_disk_free_kib=999999999)
+    write_metadata(context.deploy_dir)
+
+    with pytest.raises(SystemExit):
+        run_rootfs_smoke(context=context, operations=fake_operations())
+
+    document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert stage_status(document, "disk-space") == "failed"
 
 
 def test_rootfs_smoke_fails_when_cleanup_fails(tmp_path: Path) -> None:
@@ -92,7 +121,14 @@ def test_rootfs_smoke_cli_is_registered() -> None:
     assert "tirosh-vitalserver-rootfs-smoke" in pyproject.read_text(encoding="utf-8")
 
 
-def smoke_context(tmp_path: Path) -> RootfsSmokeContext:
+def smoke_context(
+    tmp_path: Path,
+    *,
+    test_mode: bool = False,
+    fail_stage: str = "",
+    fail_cleanup: bool = False,
+    minimum_disk_free_kib: int = 1,
+) -> RootfsSmokeContext:
     runtime_dir = tmp_path / "run"
     deploy_dir = tmp_path / "deploy"
     diagnostics_dir = runtime_dir / "rootfs-smoke-diagnostics"
@@ -107,6 +143,11 @@ def smoke_context(tmp_path: Path) -> RootfsSmokeContext:
         compose_project_name="vitalserver-rootfs-smoke",
         docker_smoke_image="redis:3.2.12-alpine",
         local_docker_smoke_image="vitalserver-rootfs-smoke:local",
+        run_id="run-test",
+        test_mode=test_mode,
+        fail_stage=fail_stage,
+        fail_cleanup=fail_cleanup,
+        minimum_disk_free_kib=minimum_disk_free_kib,
     )
 
 
@@ -150,6 +191,11 @@ def completed(
         stdout = "6.8.0-test\n"
     elif arguments[:2] == ["docker", "--version"]:
         stdout = "Docker version test\n"
+    elif arguments[:2] == ["df", "-Pk"]:
+        stdout = (
+            "Filesystem 1024-blocks Used Available Capacity Mounted on\n"
+            "/dev/vda1 8388608 1024 8387584 1% /\n"
+        )
     elif arguments[:2] == ["docker", "compose"] and arguments[-3:] == [
         "ps",
         "--format",

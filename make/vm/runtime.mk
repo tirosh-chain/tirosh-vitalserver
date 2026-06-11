@@ -6,6 +6,9 @@ VM_RECREATE_ROOTFS ?= false
 VM_WAIT_TIMEOUT ?= 300
 VM_HTTP_WAIT_TIMEOUT ?= 600
 VM_ROOTFS_READY_TIMEOUT ?= 300
+VM_ROOTFS_RUN_ID ?=
+VM_ROOTFS_SMOKE_FAIL_STAGE ?=
+VM_ROOTFS_SMOKE_FAIL_CLEANUP ?= false
 
 VM_RUNTIME_DIR := $(VM_HOME)/runtime
 
@@ -59,9 +62,15 @@ internal/vm/up-bridged: internal/vm/bridged/preflight internal/vm/prepare intern
 internal/vm/down: internal/vm/stop
 
 internal/vm/stage: internal/vm/init
+	@set -e; \
+	rootfs_run_args=""; \
+	if [ -n "$(VM_ROOTFS_RUN_ID)" ]; then \
+		rootfs_run_args="--rootfs-run-id $(VM_ROOTFS_RUN_ID)"; \
+	fi; \
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" guest-deploy \
 		--vm-home "$(VM_HOME)" \
-		--runtime-dir "$(VM_MACOS_RUNTIME_DIR)"
+		--runtime-dir "$(VM_MACOS_RUNTIME_DIR)" \
+		$$rootfs_run_args
 
 internal/vm/start: internal/vm/sign
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
@@ -102,9 +111,15 @@ internal/vm/wait/http:
 		--timeout "$(VM_HTTP_WAIT_TIMEOUT)"
 
 internal/vm/wait/rootfs-ready:
+	@set -e; \
+	run_args=""; \
+	if [ -n "$(VM_ROOTFS_RUN_ID)" ]; then \
+		run_args="--expected-run-id $(VM_ROOTFS_RUN_ID)"; \
+	fi; \
 	$(VM_BUILD_RUNNER) macos-runtime-wait-rootfs-ready \
 		--vm-home "$(VM_HOME)" \
-		--timeout "$(VM_ROOTFS_READY_TIMEOUT)"
+		--timeout "$(VM_ROOTFS_READY_TIMEOUT)" \
+		$$run_args
 
 internal/vm/wait/stopped:
 	$(VM_BUILD_RUNNER) macos-runtime-wait-stopped \

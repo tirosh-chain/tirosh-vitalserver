@@ -123,6 +123,7 @@ def main() -> int:
                 output=args.output,
                 force=args.force,
                 compression_threads=args.compression_threads,
+                expected_run_id=args.expected_run_id,
             )
         )
     )
@@ -185,6 +186,7 @@ def main() -> int:
     guest_deploy.add_argument("--runtime-dir", type=Path, required=True)
     guest_deploy.add_argument("--deploy-dir", type=Path)
     guest_deploy.add_argument("--docker-bundle", type=Path)
+    guest_deploy.add_argument("--rootfs-run-id")
     guest_deploy.set_defaults(
         handler=lambda args: guest_services_usecases.stage_guest_deployment(
             usecase_inputs.GuestDeploymentInput(
@@ -193,6 +195,7 @@ def main() -> int:
                 runtime_dir=args.runtime_dir,
                 deploy_dir=args.deploy_dir,
                 docker_bundle=args.docker_bundle,
+                rootfs_run_id=args.rootfs_run_id,
             )
         )
     )
@@ -358,6 +361,22 @@ def main() -> int:
         ),
     )
 
+    runtime_rootfs_begin = subparsers.add_parser(
+        "macos-runtime-rootfs-begin",
+        help="start a new golden rootfs proof run and invalidate stale proof files",
+    )
+    runtime_rootfs_begin.add_argument("--vm-home", type=Path, required=True)
+    runtime_rootfs_begin.add_argument("--run-id", required=True)
+    runtime_rootfs_begin.set_defaults(
+        handler=lambda args: macos_runtime_usecases.begin_rootfs_run(
+            usecase_inputs.RootfsRunInput(
+                config=args.config,
+                vm_home=args.vm_home,
+                run_id=args.run_id,
+            )
+        ),
+    )
+
     runtime_ip = subparsers.add_parser(
         "macos-runtime-ip",
         help="print the guest VM IP recorded by the runtime",
@@ -402,6 +421,7 @@ def main() -> int:
     )
     runtime_wait_rootfs.add_argument("--vm-home", type=Path, required=True)
     runtime_wait_rootfs.add_argument("--timeout", type=int, required=True)
+    runtime_wait_rootfs.add_argument("--expected-run-id")
     runtime_wait_rootfs.set_defaults(
         handler=lambda args: macos_runtime_usecases.wait_rootfs_ready(
             runtime_wait_input(args)
@@ -830,6 +850,7 @@ def runtime_wait_input(
         config=args.config,
         vm_home=args.vm_home,
         timeout=args.timeout,
+        expected_run_id=getattr(args, "expected_run_id", None),
     )
 
 
@@ -957,6 +978,7 @@ def add_rootfs_base_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--force", type=parse_bool, default=False)
     parser.add_argument("--compression-threads", type=int)
+    parser.add_argument("--expected-run-id")
 
 
 def add_proxy_arguments(parser: argparse.ArgumentParser) -> None:

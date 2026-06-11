@@ -10,7 +10,10 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import
     wait_for_rootfs_ready,
     wait_for_runtime_stopped,
 )
-from tirosh_vitalserver.devtools.application.inputs import RuntimeVmHomeInput, RuntimeWaitInput
+from tirosh_vitalserver.devtools.application.inputs import (
+    RuntimeVmHomeInput,
+    RuntimeWaitInput,
+)
 
 
 def test_wait_for_runtime_stopped_accepts_stopped_lifecycle(tmp_path):
@@ -36,6 +39,90 @@ def test_wait_for_runtime_stopped_rejects_stopping_lifecycle(tmp_path):
                 config=tmp_path / "config.toml",
                 vm_home=tmp_path,
                 timeout=0,
+            )
+        )
+
+
+def test_wait_for_rootfs_ready_accepts_matching_marker_and_manifest(tmp_path):
+    write_rootfs_manifest(tmp_path, run_id="run-test")
+    write_rootfs_marker(tmp_path, run_id="run-test")
+
+    result = wait_for_rootfs_ready(
+        RuntimeWaitInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path,
+            timeout=1,
+            expected_run_id="run-test",
+        )
+    )
+
+    assert result == 0
+
+
+def test_wait_for_rootfs_ready_rejects_failed_manifest_even_with_marker(tmp_path):
+    write_rootfs_manifest(
+        tmp_path,
+        run_id="run-test",
+        stage_statuses={"edge-ready": ("timeout", "edge did not respond")},
+    )
+    write_rootfs_marker(tmp_path, run_id="run-test")
+
+    with pytest.raises(SystemExit, match="rootfs stage failed"):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="run-test",
+            )
+        )
+
+
+def test_wait_for_rootfs_ready_rejects_manifest_without_run_id(tmp_path):
+    write_rootfs_manifest(tmp_path, run_id="run-test")
+    manifest = tmp_path / "data/run/rootfs-runtime-manifest.json"
+    document = json.loads(manifest.read_text(encoding="utf-8"))
+    document.pop("runId")
+    manifest.write_text(json.dumps(document), encoding="utf-8")
+    write_rootfs_marker(tmp_path, run_id="run-test")
+
+    with pytest.raises(SystemExit, match="rootfs manifest is missing runId"):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+            )
+        )
+
+
+def test_wait_for_rootfs_ready_rejects_invalid_run_context(tmp_path):
+    write_rootfs_manifest(tmp_path, run_id="stale-run")
+    write_rootfs_marker(tmp_path, run_id="stale-run")
+    run_context = tmp_path / "run/golden-rootfs-run.json"
+    run_context.parent.mkdir(parents=True)
+    run_context.write_text(json.dumps({"schemaVersion": 1}), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="golden rootfs run context is missing runId"):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+            )
+        )
+
+
+def test_wait_for_rootfs_ready_rejects_marker_without_manifest(tmp_path):
+    write_rootfs_marker(tmp_path, run_id="run-test")
+
+    with pytest.raises(SystemExit, match="timed out waiting"):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=0,
+                expected_run_id="run-test",
             )
         )
 
@@ -113,7 +200,8 @@ def test_wait_for_rootfs_ready_rejects_bpf_jit_sysctl_failure(tmp_path):
     log_file = tmp_path / "logs" / "launcher.log"
     log_file.parent.mkdir(parents=True)
     log_file.write_text(
-        'cloud-init[1062]: sysctl: setting key "net.core.bpf_jit_enable": Invalid argument\n',
+        "cloud-init[1062]: sysctl: setting key "
+        '"net.core.bpf_jit_enable": Invalid argument\n',
         encoding="utf-8",
     )
 
@@ -202,3 +290,59 @@ def test_require_no_running_runtime_accepts_no_process(monkeypatch, tmp_path):
     )
 
     assert result == 0
+
+
+def write_rootfs_manifest(
+    vm_home,
+    *,
+    run_id: str,
+    stage_statuses: dict[str, tuple[str, str]] | None = None,
+) -> None:
+    manifest = vm_home / "data/run/rootfs-runtime-manifest.json"
+    manifest.parent.mkdir(parents=True)
+    stage_statuses = stage_statuses or {}
+    stages = []
+    for name in (
+        "docker-smoke",
+        "disk-space",
+        "compose-build",
+        "compose-up",
+        "edge-ready",
+    ):
+        status, message = stage_statuses.get(name, ("passed", f"{name} passed"))
+        stages.append(
+            {
+                "name": name,
+                "status": status,
+                "message": message,
+                "startedAt": "2026-06-11T00:00:00Z",
+                "completedAt": "2026-06-11T00:00:01Z",
+                "details": {},
+            }
+        )
+    manifest.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "runId": run_id,
+                "stages": stages,
+                "cleanup": {"status": "passed", "message": "cleanup passed"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_rootfs_marker(vm_home, *, run_id: str) -> None:
+    marker = vm_home / "data/run/rootfs-ready"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "runId": run_id,
+                "readyAt": "2026-06-11T00:00:02Z",
+            }
+        ),
+        encoding="utf-8",
+    )

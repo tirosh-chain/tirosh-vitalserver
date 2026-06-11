@@ -58,6 +58,7 @@ include make/vm.mk
 	devtools/docker/images devtools/sign devtools/sign/bridged devtools/bridged/preflight \
 	devtools/init devtools/download devtools/cloud-init devtools/stage \
 	devtools/airgap-rootfs devtools/golden-rootfs devtools/start devtools/start/detached \
+	devtools/golden-rootfs/negative \
 	devtools/wait/ip devtools/wait/http devtools/package/clean
 
 dist/dmg/release: internal/vm/dmg/release
@@ -146,6 +147,7 @@ devtools/cloud-init: internal/vm/cloud-init
 devtools/stage: internal/vm/stage
 devtools/airgap-rootfs: internal/vm/airgap-rootfs
 devtools/golden-rootfs: internal/vm/golden-rootfs
+devtools/golden-rootfs/negative: internal/vm/golden-rootfs/negative
 devtools/start: internal/vm/start
 devtools/start/detached: internal/vm/start/detached
 devtools/wait/ip: internal/vm/wait/ip
