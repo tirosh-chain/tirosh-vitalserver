@@ -9,7 +9,8 @@ DEPLOY_DIR="${MOUNT_POINT}/deploy"
 RUNTIME_DIR="${MOUNT_POINT}/run"
 RUNTIME_STATE_FILE="${RUNTIME_DIR}/runtime-state.json"
 BOOTSTRAP_RESULT_FILE="${RUNTIME_DIR}/bootstrap-result.json"
-BOOTSTRAP_RESULT_WRITTEN=0
+BOOTSTRAP_RESULT_STATUS=""
+DOCKER_SMOKE_IMAGE="${VITALSERVER_DOCKER_SMOKE_IMAGE:-redis:3.2.12-alpine}"
 GUEST_TOOLS_HOME="/opt/tirosh/guest-tools"
 GUEST_TOOLS_VENV="${GUEST_TOOLS_HOME}/venv"
 PYTHON_WHEEL_DIR="${DEPLOY_DIR}/python-wheels"
@@ -55,13 +56,15 @@ cat > "${BOOTSTRAP_RESULT_FILE}" <<EOF
   "updatedAt" : "${updated_at}"
 }
 EOF
-  BOOTSTRAP_RESULT_WRITTEN=1
+  BOOTSTRAP_RESULT_STATUS="${status}"
 }
 
 write_bootstrap_failed_on_exit() {
   local status="$?"
-  if [ "${status}" -ne 0 ] && [ "${BOOTSTRAP_RESULT_WRITTEN}" -eq 0 ]; then
-    write_bootstrap_result "failed" "Guest bootstrap failed." "guest-bootstrap-failed" || true
+  if [ "${status}" -ne 0 ] \
+    && [ "${BOOTSTRAP_RESULT_STATUS}" != "completed" ] \
+    && [ "${BOOTSTRAP_RESULT_STATUS}" != "failed" ]; then
+    write_bootstrap_result "failed" "Guest bootstrap failed before completion." "guest-bootstrap-failed" || true
   fi
   exit "${status}"
 }
@@ -303,6 +306,30 @@ cleanup_docker_cache() {
   docker image prune -f >/dev/null 2>&1 || true
 }
 
+run_docker_runtime_smoke() {
+  local output
+
+  if ! docker image inspect "${DOCKER_SMOKE_IMAGE}" >/dev/null 2>&1; then
+    write_bootstrap_result \
+      "failed" \
+      "Guest Docker runtime smoke image is missing." \
+      "guest-bootstrap-docker-runtime-failed"
+    return 1
+  fi
+
+  if output="$(docker run --rm --network none "${DOCKER_SMOKE_IMAGE}" true 2>&1)"; then
+    printf "Docker runtime smoke passed using %s.\n" "${DOCKER_SMOKE_IMAGE}"
+    return 0
+  fi
+
+  printf "error: docker runtime smoke failed: %s\n" "${output}" >&2
+  write_bootstrap_result \
+    "failed" \
+    "Guest Docker runtime smoke failed." \
+    "guest-bootstrap-docker-runtime-failed"
+  return 1
+}
+
 start_optional_testkit() {
   /usr/local/bin/tirosh-vitalserver-compose testkit-up-logged
 }
@@ -360,6 +387,7 @@ systemctl enable --now avahi-daemon
 mkdir -p "${VITAL_FILES_MOUNT_POINT}" "${MOUNT_POINT}/vr-release"
 
 load_bundled_docker_images
+run_docker_runtime_smoke
 cleanup_docker_cache
 
 if ! docker image inspect vitalserver:2.3.4 >/dev/null 2>&1; then

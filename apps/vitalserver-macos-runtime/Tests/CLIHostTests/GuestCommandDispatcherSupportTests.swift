@@ -49,6 +49,40 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(prepareAirgapRootfs.contains("python3 -m venv \"${test_venv}\""))
     }
 
+    func testBootstrapFailureOverwritesRunningResult() throws {
+        let bootstrap = try readGuestSupportFile("bootstrap.sh")
+
+        XCTAssertTrue(bootstrap.contains("BOOTSTRAP_RESULT_STATUS=\"\""))
+        XCTAssertTrue(bootstrap.contains("BOOTSTRAP_RESULT_STATUS=\"${status}\""))
+        XCTAssertTrue(bootstrap.contains("[ \"${BOOTSTRAP_RESULT_STATUS}\" != \"completed\" ]"))
+        XCTAssertTrue(bootstrap.contains("[ \"${BOOTSTRAP_RESULT_STATUS}\" != \"failed\" ]"))
+        XCTAssertTrue(bootstrap.contains("write_bootstrap_result \"failed\" \"Guest bootstrap failed before completion.\" \"guest-bootstrap-failed\""))
+        XCTAssertFalse(bootstrap.contains("BOOTSTRAP_RESULT_WRITTEN"))
+    }
+
+    func testBootstrapRunsDockerRuntimeSmokeBeforeComposeUp() throws {
+        let bootstrap = try readGuestSupportFile("bootstrap.sh")
+
+        XCTAssertTrue(bootstrap.contains("DOCKER_SMOKE_IMAGE=\"${VITALSERVER_DOCKER_SMOKE_IMAGE:-redis:3.2.12-alpine}\""))
+        XCTAssertTrue(bootstrap.contains("run_docker_runtime_smoke()"))
+        XCTAssertTrue(bootstrap.contains("docker run --rm --network none \"${DOCKER_SMOKE_IMAGE}\" true"))
+        XCTAssertTrue(bootstrap.contains("\"guest-bootstrap-docker-runtime-failed\""))
+        XCTAssertTrue(bootstrap.contains("load_bundled_docker_images\nrun_docker_runtime_smoke\ncleanup_docker_cache"))
+    }
+
+    func testPrepareAirgapRootfsWritesRuntimeManifestAndSmokeStatus() throws {
+        let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
+
+        XCTAssertTrue(prepareAirgapRootfs.contains("RUNTIME_MANIFEST_FILE=\"${RUNTIME_DIR}/rootfs-runtime-manifest.json\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("DOCKER_SMOKE_IMAGE=\"${VITALSERVER_DOCKER_SMOKE_IMAGE:-redis:3.2.12-alpine}\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("busybox-static"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("LOCAL_DOCKER_SMOKE_IMAGE=\"vitalserver-rootfs-smoke:local\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("\"dockerSmoke\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("docker import \"${tarball}\" \"${LOCAL_DOCKER_SMOKE_IMAGE}\""))
+        XCTAssertTrue(prepareAirgapRootfs.contains("docker run --rm --network none \"${smoke_image}\" ${smoke_command}"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("printf \"manifest=%s\\n\" \"${RUNTIME_MANIFEST_FILE}\""))
+    }
+
     func testGuestCommandFailuresClearRequestFilesAfterWritingFailureResult() throws {
         let activation = try readGuestToolsFile("application/update_activation.py")
         let shutdown = try readGuestToolsFile("application/update_shutdown.py")

@@ -43,6 +43,7 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
     case guestBootstrapResultMissing
     case guestBootstrapResultUnavailable
     case guestBootstrapMissingRuntimePackages
+    case guestBootstrapDockerRuntimeFailed
     case guestBootstrapFailed
     case unknown(String)
 
@@ -72,6 +73,8 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
             self = .guestDiskIO
         case "vm-guest-bootstrap-missing-runtime-packages":
             self = .guestBootstrapMissingRuntimePackages
+        case "vm-guest-bootstrap-docker-runtime-failed":
+            self = .guestBootstrapDockerRuntimeFailed
         case "vm-guest-bootstrap-result-missing":
             self = .guestBootstrapResultMissing
         case "vm-guest-bootstrap-result-unavailable":
@@ -139,6 +142,8 @@ public enum RuntimeVMError: Codable, Equatable, Sendable {
             "vm-guest-bootstrap-result-unavailable"
         case .guestBootstrapMissingRuntimePackages:
             "vm-guest-bootstrap-missing-runtime-packages"
+        case .guestBootstrapDockerRuntimeFailed:
+            "vm-guest-bootstrap-docker-runtime-failed"
         case .guestBootstrapFailed:
             "vm-guest-bootstrap-failed"
         case .unknown(let value):
@@ -169,7 +174,7 @@ public extension RuntimeVMError {
         case .runtimeStateMissing, .runtimeStateInvalid, .runtimeStateStale:
             return .guestAgent
         case .guestBootstrapResultMissing, .guestBootstrapResultUnavailable,
-             .guestBootstrapMissingRuntimePackages, .guestBootstrapFailed:
+             .guestBootstrapMissingRuntimePackages, .guestBootstrapDockerRuntimeFailed, .guestBootstrapFailed:
             return .guestBootstrap
         case .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
             return .guestStorage
@@ -196,7 +201,7 @@ public extension RuntimeVMError {
             return .waitForGuest
         case .guestBootstrapResultUnavailable:
             return .inspectLogs
-        case .guestBootstrapMissingRuntimePackages, .guestBootstrapFailed:
+        case .guestBootstrapMissingRuntimePackages, .guestBootstrapDockerRuntimeFailed, .guestBootstrapFailed:
             return .repairGuestBootstrap
         case .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
             return .backupAndRecreateVM

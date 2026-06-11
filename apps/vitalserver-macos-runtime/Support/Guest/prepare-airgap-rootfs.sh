@@ -5,6 +5,9 @@ MOUNT_TAG="tirosh"
 MOUNT_POINT="/mnt/tirosh"
 RUNTIME_DIR="${MOUNT_POINT}/run"
 READY_FILE="${RUNTIME_DIR}/rootfs-ready"
+RUNTIME_MANIFEST_FILE="${RUNTIME_DIR}/rootfs-runtime-manifest.json"
+DOCKER_SMOKE_IMAGE="${VITALSERVER_DOCKER_SMOKE_IMAGE:-redis:3.2.12-alpine}"
+LOCAL_DOCKER_SMOKE_IMAGE="vitalserver-rootfs-smoke:local"
 
 if [ "$(id -u)" -ne 0 ]; then
   printf "error: run with sudo\n" >&2
@@ -50,6 +53,7 @@ install_runtime_packages() {
   apt-get update
   apt-get install -y \
     avahi-daemon \
+    busybox-static \
     ca-certificates \
     cloud-guest-utils \
     curl \
@@ -91,8 +95,91 @@ verify_runtime_packages() {
   docker compose version >/dev/null
 }
 
+json_string() {
+  python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().rstrip("\n")))'
+}
+
+write_runtime_manifest() {
+  local smoke_status="$1"
+  local smoke_message="$2"
+  local created_at kernel docker_version containerd_version runc_version compose_version
+
+  created_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  kernel="$(uname -r 2>/dev/null || true)"
+  docker_version="$(docker --version 2>/dev/null || true)"
+  containerd_version="$(containerd --version 2>/dev/null || true)"
+  runc_version="$(runc --version 2>/dev/null | head -n 1 || true)"
+  compose_version="$(docker compose version 2>/dev/null || true)"
+
+  cat > "${RUNTIME_MANIFEST_FILE}" <<EOF
+{
+  "schemaVersion": 1,
+  "createdAt": $(printf "%s" "${created_at}" | json_string),
+  "kernel": $(printf "%s" "${kernel}" | json_string),
+  "docker": $(printf "%s" "${docker_version}" | json_string),
+  "containerd": $(printf "%s" "${containerd_version}" | json_string),
+  "runc": $(printf "%s" "${runc_version}" | json_string),
+  "compose": $(printf "%s" "${compose_version}" | json_string),
+  "dockerSmoke": {
+    "image": $(printf "%s" "${DOCKER_SMOKE_IMAGE}" | json_string),
+    "status": $(printf "%s" "${smoke_status}" | json_string),
+    "message": $(printf "%s" "${smoke_message}" | json_string)
+  }
+}
+EOF
+}
+
+run_docker_runtime_smoke() {
+  local output smoke_image smoke_command temporary_image
+
+  if ! docker image inspect "${DOCKER_SMOKE_IMAGE}" >/dev/null 2>&1; then
+    build_local_docker_smoke_image
+    smoke_image="${LOCAL_DOCKER_SMOKE_IMAGE}"
+    smoke_command="/bin/busybox true"
+    temporary_image=1
+  else
+    smoke_image="${DOCKER_SMOKE_IMAGE}"
+    smoke_command="true"
+    temporary_image=0
+  fi
+
+  if output="$(docker run --rm --network none "${smoke_image}" ${smoke_command} 2>&1)"; then
+    if [ "${temporary_image}" -eq 1 ]; then
+      docker image rm -f "${smoke_image}" >/dev/null 2>&1 || true
+    fi
+    DOCKER_SMOKE_IMAGE="${smoke_image}"
+    write_runtime_manifest "passed" "docker runtime smoke passed"
+    return 0
+  fi
+
+  if [ "${temporary_image}" -eq 1 ]; then
+    docker image rm -f "${smoke_image}" >/dev/null 2>&1 || true
+  fi
+  DOCKER_SMOKE_IMAGE="${smoke_image}"
+  write_runtime_manifest "failed" "${output}"
+  printf "error: docker runtime smoke failed: %s\n" "${output}" >&2
+  return 1
+}
+
+build_local_docker_smoke_image() {
+  local workdir rootfs tarball
+
+  workdir="$(mktemp -d)"
+  rootfs="${workdir}/rootfs"
+  tarball="${workdir}/rootfs.tar"
+  mkdir -p "${rootfs}/bin"
+  cp /bin/busybox "${rootfs}/bin/busybox"
+  tar -C "${rootfs}" -cf "${tarball}" .
+  if ! docker import "${tarball}" "${LOCAL_DOCKER_SMOKE_IMAGE}" >/dev/null; then
+    rm -rf "${workdir}"
+    return 1
+  fi
+  rm -rf "${workdir}"
+}
+
 install_runtime_packages
 verify_runtime_packages
+run_docker_runtime_smoke
 systemctl enable docker
 systemctl enable avahi-daemon
 
@@ -100,6 +187,7 @@ systemctl enable avahi-daemon
   printf "ready_at=%s\n" "$(date -Iseconds)"
   printf "docker=%s\n" "$(docker --version 2>/dev/null || true)"
   printf "compose=%s\n" "$(docker compose version 2>/dev/null || true)"
+  printf "manifest=%s\n" "${RUNTIME_MANIFEST_FILE}"
   printf "python_venv=ready\n"
 } >"${READY_FILE}"
 

@@ -89,6 +89,28 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
         XCTAssertTrue(snapshot.vmErrors.contains(RuntimeVMError.guestBootstrapMissingRuntimePackages))
     }
 
+    func testFreshBootstrapDockerRuntimeFailureIsEvaluatedByUseCaseNotAdapter() {
+        let snapshot = EvaluateRuntimeHealthUseCase().snapshot(observation: observation(
+            guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
+            loadedGuestRuntimeState: GuestRuntimeStateDocument(
+                vmIP: "192.168.64.2",
+                updatedAt: "2026-05-21T12:35:00Z",
+                bootID: "current-boot",
+                guestHTTP: RuntimeHTTPStatusText.bootstrapPending,
+                redisUIHTTP: "failed",
+                swaggerUIHTTP: "failed"
+            ),
+            guestBootstrapResult: .loaded(bootstrapResult(
+                status: .failed,
+                bootID: "current-boot",
+                reasonCodes: [.guestBootstrapDockerRuntimeFailed]
+            ))
+        ))
+
+        XCTAssertTrue(snapshot.failureReasons.contains(RuntimeFailureReason.guestBootstrapDockerRuntimeFailed))
+        XCTAssertTrue(snapshot.vmErrors.contains(RuntimeVMError.guestBootstrapDockerRuntimeFailed))
+    }
+
     func testComposeServicesReadResultLoadsFreshReportedServices() {
         let services = [
             RuntimeContainerServiceObservation(service: "app", state: "running", health: "healthy"),

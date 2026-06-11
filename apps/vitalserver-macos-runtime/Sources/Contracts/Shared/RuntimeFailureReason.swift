@@ -81,6 +81,7 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case guestBootstrapResultMissing
     case guestBootstrapResultUnavailable
     case guestBootstrapMissingRuntimePackages
+    case guestBootstrapDockerRuntimeFailed
     case guestBootstrapFailed
     case guestRuntimeStateMissing
     case runtimeStatusDocumentMissing
@@ -158,6 +159,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .guestBootstrapResultUnavailable
         case .guestBootstrapMissingRuntimePackages:
             self = .guestBootstrapMissingRuntimePackages
+        case .guestBootstrapDockerRuntimeFailed:
+            self = .guestBootstrapDockerRuntimeFailed
         case .guestBootstrapFailed:
             self = .guestBootstrapFailed
         case .unknown(let value):
@@ -177,6 +180,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .missingVMDisk
         case "guest-bootstrap-missing-runtime-packages":
             self = .guestBootstrapMissingRuntimePackages
+        case "guest-bootstrap-docker-runtime-failed":
+            self = .guestBootstrapDockerRuntimeFailed
         case "guest-bootstrap-result-missing":
             self = .guestBootstrapResultMissing
         case "guest-bootstrap-result-unavailable":
@@ -352,6 +357,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "guest-bootstrap-result-unavailable"
         case .guestBootstrapMissingRuntimePackages:
             return "guest-bootstrap-missing-runtime-packages"
+        case .guestBootstrapDockerRuntimeFailed:
+            return "guest-bootstrap-docker-runtime-failed"
         case .guestBootstrapFailed:
             return "guest-bootstrap-failed"
         case .guestRuntimeStateMissing:
@@ -647,7 +654,7 @@ public extension RuntimeFailureReason {
         case .guestRuntimeStateStale:
             return .guestAgent
         case .guestBootstrapResultMissing, .guestBootstrapResultUnavailable,
-             .guestBootstrapMissingRuntimePackages, .guestBootstrapFailed:
+             .guestBootstrapMissingRuntimePackages, .guestBootstrapDockerRuntimeFailed, .guestBootstrapFailed:
             return .guestBootstrap
         case .auditProxyHTTP, .containerService:
             return .container
@@ -738,7 +745,7 @@ public extension RuntimeFailureReason {
             return .waitForGuest
         case .guestBootstrapResultUnavailable:
             return .inspectLogs
-        case .guestBootstrapMissingRuntimePackages, .guestBootstrapFailed:
+        case .guestBootstrapMissingRuntimePackages, .guestBootstrapDockerRuntimeFailed, .guestBootstrapFailed:
             return .repairGuestBootstrap
         case .unknown:
             return .inspectLogs

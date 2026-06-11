@@ -542,6 +542,7 @@ final class ContractsTests: XCTestCase {
             .guestBootstrapResultMissing,
             .guestBootstrapResultUnavailable,
             .guestBootstrapMissingRuntimePackages,
+            .guestBootstrapDockerRuntimeFailed,
             .guestBootstrapFailed,
         ]
 
@@ -566,6 +567,7 @@ final class ContractsTests: XCTestCase {
             "vm-guest-bootstrap-result-missing",
             "vm-guest-bootstrap-result-unavailable",
             "vm-guest-bootstrap-missing-runtime-packages",
+            "vm-guest-bootstrap-docker-runtime-failed",
             "vm-guest-bootstrap-failed",
         ])
 
@@ -616,6 +618,7 @@ final class ContractsTests: XCTestCase {
           "guest-bootstrap-result-missing",
           "guest-bootstrap-result-unavailable",
           "guest-bootstrap-missing-runtime-packages",
+          "guest-bootstrap-docker-runtime-failed",
           "vm-runtime-state-missing",
           "vm-disk-attachment-invalid",
           "guest-runtime-state-load-failed-decode_failed",
@@ -653,17 +656,18 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(reasons[16], .guestBootstrapResultMissing)
         XCTAssertEqual(reasons[17], .guestBootstrapResultUnavailable)
         XCTAssertEqual(reasons[18], .guestBootstrapMissingRuntimePackages)
-        XCTAssertEqual(reasons[19], .guestRuntimeStateMissing)
-        XCTAssertEqual(reasons[20], .vmDiskAttachmentInvalid)
-        XCTAssertEqual(reasons[21], .guestRuntimeStateLoadFailed("decode_failed"))
-        XCTAssertEqual(reasons[22], .guestRuntimeStateMetadataReadFailed("stat_permission_denied"))
-        XCTAssertEqual(reasons[23], .vmLaunchFailed("virtualization"))
-        XCTAssertEqual(reasons[24], .vmConfigurationInvalid("network"))
-        XCTAssertEqual(reasons[25], .hostResourceUnavailable("memory"))
-        XCTAssertEqual(reasons[26], .guestFilesystemError)
-        XCTAssertEqual(reasons[27], .guestFilesystemReadOnly)
-        XCTAssertEqual(reasons[28], .guestDiskIO)
-        XCTAssertEqual(reasons[29], .unknown("future-reason"))
+        XCTAssertEqual(reasons[19], .guestBootstrapDockerRuntimeFailed)
+        XCTAssertEqual(reasons[20], .guestRuntimeStateMissing)
+        XCTAssertEqual(reasons[21], .vmDiskAttachmentInvalid)
+        XCTAssertEqual(reasons[22], .guestRuntimeStateLoadFailed("decode_failed"))
+        XCTAssertEqual(reasons[23], .guestRuntimeStateMetadataReadFailed("stat_permission_denied"))
+        XCTAssertEqual(reasons[24], .vmLaunchFailed("virtualization"))
+        XCTAssertEqual(reasons[25], .vmConfigurationInvalid("network"))
+        XCTAssertEqual(reasons[26], .hostResourceUnavailable("memory"))
+        XCTAssertEqual(reasons[27], .guestFilesystemError)
+        XCTAssertEqual(reasons[28], .guestFilesystemReadOnly)
+        XCTAssertEqual(reasons[29], .guestDiskIO)
+        XCTAssertEqual(reasons[30], .unknown("future-reason"))
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
@@ -687,6 +691,7 @@ final class ContractsTests: XCTestCase {
             "guest-bootstrap-result-missing",
             "guest-bootstrap-result-unavailable",
             "guest-bootstrap-missing-runtime-packages",
+            "guest-bootstrap-docker-runtime-failed",
             "vm-runtime-state-missing",
             "vm-disk-attachment-invalid",
             "guest-runtime-state-load-failed-decode_failed",
@@ -812,6 +817,8 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultMissing.recoveryAction, .waitForGuest)
         XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultUnavailable.domainCategory, .guestBootstrap)
         XCTAssertEqual(RuntimeFailureReason.guestBootstrapResultUnavailable.recoveryAction, .inspectLogs)
+        XCTAssertEqual(RuntimeFailureReason.guestBootstrapDockerRuntimeFailed.domainCategory, .guestBootstrap)
+        XCTAssertEqual(RuntimeFailureReason.guestBootstrapDockerRuntimeFailed.recoveryAction, .repairGuestBootstrap)
     }
 
     func testRuntimeDomainErrorDocumentOwnsCodeCategorySeverityAndRecoveryAction() throws {

@@ -213,6 +213,19 @@ Host는 VM runtime start가 성공했을 때 실제 start에 사용한 VM config
 directory처럼 VM restart 전에는 적용되지 않는 값은 Status/Info에서 applied snapshot을 기준으로
 표시하고, saved config를 현재 runtime state로 승격하면 안 됩니다.
 
+Fresh install에서 `vm-lifecycle.json`이 `bootstrapping`에 머물고 guest `bootstrap-result.json`이
+`running`인 채 오래 유지되면 `bootstrap.log`를 먼저 확인합니다. Redis 또는 첫 container start 단계에서
+`runc`/Docker가 실패했는데 bootstrap result가 `failed`로 바뀌지 않으면 Host는 실제 bootstrap 실패를
+보지 못하고 stale runtime state, host proxy failure, audit proxy failure만 표시합니다. Guest bootstrap
+script는 시작 시 `running` result를 쓰더라도 실패 trap에서 최종 `completed`가 아닌 상태를 반드시
+`failed`로 덮어써야 합니다. `running`은 한 번 썼다는 marker가 아니라 아직 완료되지 않은 operation
+state입니다.
+Golden rootfs는 `/mnt/tirosh/run/rootfs-runtime-manifest.json`의 `dockerSmoke.status=passed`를
+가진 경우에만 `rootfs-base.raw.gz`로 압축할 수 있습니다. `docker --version`, `docker compose version`,
+package install success, `rootfs-ready` marker는 runtime proof가 아닙니다. Fresh install bootstrap도
+image bundle load 직후 disposable smoke container start를 수행하고, 실패하면
+`guest-bootstrap-docker-runtime-failed`를 기록해야 합니다.
+
 ### 4-2. 영역별로 봐야 하는 것
 
 | 영역 | 확인할 것 | 깨지면 생기는 문제 |

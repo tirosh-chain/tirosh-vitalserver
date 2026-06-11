@@ -19,6 +19,7 @@ def run_rootfs_base(input: RootfsBaseInput) -> int:
     if not source.is_file() or source.stat().st_size == 0:
         raise SystemExit(f"missing rootfs source: {source}")
     require_stopped_lifecycle(source)
+    require_runtime_manifest(source)
     if (
         output.exists()
         and not force
@@ -62,4 +63,34 @@ def require_stopped_lifecycle(source: Path) -> None:
         raise SystemExit(
             "error: rootfs source VM lifecycle has terminal failure reason; "
             f"refusing to compress failed VM disk: terminalReason={terminal_reason}"
+        )
+
+
+def require_runtime_manifest(source: Path) -> None:
+    runtime_dir = source.parent
+    vm_home = runtime_dir.parent
+    manifest = vm_home / "data" / "run" / "rootfs-runtime-manifest.json"
+    if not manifest.is_file():
+        raise SystemExit(
+            "error: rootfs runtime manifest is missing; rebuild the golden "
+            f"rootfs with Docker runtime smoke validation: {manifest}"
+        )
+    try:
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(
+            f"error: rootfs runtime manifest is unreadable: {manifest}: {error}"
+        ) from error
+    docker_smoke = document.get("dockerSmoke")
+    if not isinstance(docker_smoke, dict):
+        raise SystemExit(
+            "error: rootfs runtime manifest is missing dockerSmoke result; "
+            f"manifest={manifest}"
+        )
+    smoke_status = docker_smoke.get("status")
+    if smoke_status != "passed":
+        smoke_message = docker_smoke.get("message")
+        raise SystemExit(
+            "error: rootfs Docker runtime smoke did not pass; refusing to "
+            f"compress unproven rootfs: status={smoke_status} message={smoke_message}"
         )

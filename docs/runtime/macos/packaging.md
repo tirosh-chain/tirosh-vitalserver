@@ -641,7 +641,9 @@ make devtools/golden-rootfs
 make dist/pkg/dev
 ```
 
-기본 package용 rootfs는 `8G`(8 GiB)입니다. `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. `make devtools/golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker를 기록한 뒤 종료됩니다. Container는 시작하지 않기 때문에 운영 데이터나 Redis volume을 golden rootfs에 섞지 않습니다.
+기본 package용 rootfs는 `8G`(8 GiB)입니다. `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. `make devtools/golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker와 `/mnt/tirosh/run/rootfs-runtime-manifest.json` manifest를 기록한 뒤 종료됩니다. Manifest의 `dockerSmoke.status`가 `passed`가 아니면 rootfs 압축 단계는 실패해야 합니다. 이 smoke는 disposable container start만 검증하며 운영 Redis volume이나 VitalServer service stack을 golden rootfs에 섞지 않습니다.
+
+Fresh install bootstrap도 Docker image bundle을 로드한 직후 `redis:3.2.12-alpine` smoke container를 `--network none`으로 실행합니다. 이 단계가 실패하면 `bootstrap-result.json`은 `guest-bootstrap-docker-runtime-failed` reason code를 기록하고 compose up으로 진행하지 않습니다. Docker version 출력이나 compose binary 존재만으로는 rootfs가 준비됐다고 보지 않습니다.
 
 반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. cache가 없으면 `make dist/pkg/dev`가 자동으로 한 번 생성합니다. release 검증처럼 clean rootfs를 반드시 다시 만들려면:
 

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tirosh_vitalserver.devtools.adapters.guest_image.rootfs_base import (
+    require_runtime_manifest,
     require_stopped_lifecycle,
     run_rootfs_base,
 )
@@ -24,6 +25,28 @@ def test_require_stopped_lifecycle_accepts_stopped_vm(tmp_path):
     lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
 
     require_stopped_lifecycle(source)
+
+
+def test_require_runtime_manifest_accepts_passed_docker_smoke(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(source, status="passed", message="docker runtime smoke passed")
+
+    require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_missing_manifest(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+
+    with pytest.raises(SystemExit, match="runtime manifest is missing"):
+        require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_failed_docker_smoke(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(source, status="failed", message="runc EOF")
+
+    with pytest.raises(SystemExit, match="Docker runtime smoke did not pass"):
+        require_runtime_manifest(source)
 
 
 def test_require_stopped_lifecycle_rejects_stopping_vm(tmp_path):
@@ -69,6 +92,7 @@ def test_run_rootfs_base_rejects_corrupt_compressor_output(tmp_path, monkeypatch
     lifecycle.parent.mkdir(parents=True)
     source.write_bytes(b"disk")
     lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    write_runtime_manifest(source, status="passed", message="docker runtime smoke passed")
 
     def write_corrupt_gzip(source: Path, output: Path, *, threads: int) -> None:
         output.write_bytes(b"not a gzip")
@@ -85,3 +109,29 @@ def test_run_rootfs_base_rejects_corrupt_compressor_output(tmp_path, monkeypatch
             force=True,
             compression_threads=1,
         ))
+
+
+def rootfs_source_with_lifecycle(tmp_path: Path) -> Path:
+    source = tmp_path / "vm" / "runtime" / "vm-disk.img"
+    lifecycle = tmp_path / "vm" / "run" / "vm-lifecycle.json"
+    source.parent.mkdir(parents=True)
+    lifecycle.parent.mkdir(parents=True)
+    source.write_bytes(b"disk")
+    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+    return source
+
+
+def write_runtime_manifest(source: Path, *, status: str, message: str) -> None:
+    manifest = source.parent.parent / "data" / "run" / "rootfs-runtime-manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        json.dumps({
+            "schemaVersion": 1,
+            "dockerSmoke": {
+                "image": "redis:3.2.12-alpine",
+                "status": status,
+                "message": message,
+            },
+        }),
+        encoding="utf-8",
+    )

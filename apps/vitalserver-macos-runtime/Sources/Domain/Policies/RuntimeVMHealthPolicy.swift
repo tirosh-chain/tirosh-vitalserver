@@ -99,6 +99,8 @@ public enum RuntimeVMHealthPolicy {
         switch failureReason {
         case .guestBootstrapMissingRuntimePackages:
             return .guestBootstrapMissingRuntimePackages
+        case .guestBootstrapDockerRuntimeFailed:
+            return .guestBootstrapDockerRuntimeFailed
         case .guestBootstrapFailed:
             return .guestBootstrapFailed
         default:
@@ -123,6 +125,7 @@ public enum RuntimeVMHealthPolicy {
             || errors.contains(.guestFilesystemReadOnly)
             || errors.contains(.guestDiskIO)
             || errors.contains(.guestBootstrapMissingRuntimePackages)
+            || errors.contains(.guestBootstrapDockerRuntimeFailed)
             || errors.contains(.guestBootstrapFailed) {
             return .failed
         }

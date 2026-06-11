@@ -280,6 +280,8 @@ public extension AppConstants {
                 return "Guest bootstrap result unavailable"
             case .guestBootstrapMissingRuntimePackages:
                 return "Guest bootstrap missing runtime packages"
+            case .guestBootstrapDockerRuntimeFailed:
+                return "Guest bootstrap Docker runtime failed"
             case .guestBootstrapFailed:
                 return "Guest bootstrap failed"
             case .unknown(let rawValue):
@@ -339,6 +341,8 @@ public extension AppConstants {
                 return "Guest bootstrap result unavailable"
             case .guestBootstrapMissingRuntimePackages:
                 return "Guest bootstrap missing runtime packages"
+            case .guestBootstrapDockerRuntimeFailed:
+                return "Guest bootstrap Docker runtime failed"
             case .guestBootstrapFailed:
                 return "Guest bootstrap failed"
             case .guestRuntimeStateMissing:
