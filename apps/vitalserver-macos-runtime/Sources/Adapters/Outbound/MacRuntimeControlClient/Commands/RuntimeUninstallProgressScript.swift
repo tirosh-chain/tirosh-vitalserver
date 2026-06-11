@@ -85,6 +85,19 @@ enum RuntimeUninstallProgressScript {
           done
           return 1
         }
+        has_terminal_result() {
+          result_state="$(current_result_state || true)"
+          [ "${result_state}" = "completed" ] || [ "${result_state}" = "failed" ] || has_terminal_marker
+        }
+        wait_for_terminal_result() {
+          for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+            if has_terminal_result; then
+              return 0
+            fi
+            sleep 0.2
+          done
+          return 1
+        }
         current_worker_pid() {
           if [ ! -s "${worker_pid_file}" ]; then
             return 1
@@ -148,7 +161,7 @@ enum RuntimeUninstallProgressScript {
           worker_pid="$(current_worker_pid || true)"
           if [ -n "${worker_pid}" ]; then
             if [ "${observed_worker_start}" = true ] && [ -n "${worker_pid}" ] && ! kill -0 "${worker_pid}" 2>/dev/null; then
-              if wait_for_terminal_marker; then
+              if wait_for_terminal_result; then
                 continue
               fi
               rm -f "${worker_pid_file}" 2>/dev/null || true

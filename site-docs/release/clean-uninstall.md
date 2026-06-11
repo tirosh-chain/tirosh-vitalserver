@@ -50,6 +50,12 @@ result document는 uninstall workflow 결과와 fresh install readiness를 분�
 따라서 `uninstallCompleted=true`는 Clean uninstall workflow 성공만 뜻합니다. 새 설치가 계속 막히면
 Reset Installer 또는 fresh install preflight 결과의 blocker를 별도로 봐야 합니다.
 
+viewer가 `Uninstall result is unavailable`을 표시해도, 먼저
+`/private/tmp/tirosh-vitalserver-uninstall-progress.command.result.json`을 확인합니다. 해당 파일의
+현재 `runID`가 맞고 `state=completed`, `uninstallCompleted=true`이면 uninstall workflow는 성공한
+것입니다. 이 경우는 worker 종료와 result/marker 관측 사이의 progress viewer race로 분류하고,
+cleanup 실패로 보지 않습니다.
+
 ## 4. Reset Installer를 쓰는 상황
 
 Reset Installer는 정상 제거 UX가 아니라 recovery tool입니다. 아래 blocker가 보이면 Reset

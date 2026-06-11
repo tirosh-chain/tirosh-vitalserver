@@ -344,6 +344,64 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertFalse(terminalOutput.contains(RuntimeUninstallProgressScript.terminalFailedMessage))
     }
 
+    func testUninstallProgressViewerWaitsForResultDocumentAfterOwnedWorkerExit() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitalserver-uninstall-progress-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let logURL = directory.appendingPathComponent("uninstall.log")
+        let pidURL = directory.appendingPathComponent("uninstall.pid")
+        let resultURL = directory.appendingPathComponent("uninstall-result.json")
+        let viewerURL = directory.appendingPathComponent("viewer.command")
+        try "\(RuntimeUninstallProgressScript.startedMarker) runID=viewer-test\n"
+            .write(to: logURL, atomically: true, encoding: .utf8)
+        try "runID=viewer-test\n99999999\n".write(to: pidURL, atomically: true, encoding: .utf8)
+        try RuntimeUninstallProgressScript.viewerScript(
+            logPath: logURL.path,
+            workerPIDPath: pidURL.path,
+            resultPath: resultURL.path,
+            runID: "viewer-test",
+            shellQuote: RuntimeShellCommandFactory.shellQuote
+        ).write(to: viewerURL, atomically: true, encoding: .utf8)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [viewerURL.path]
+        let input = Pipe()
+        let output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = output
+        defer {
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+
+        try process.run()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) {
+            let result = """
+            {"schemaVersion":1,"runID":"viewer-test","state":"completed","exitCode":0,"uninstallCompleted":true,"freshInstallReadiness":{"state":"not-checked","blockers":[]},"message":"uninstall completed"}
+
+            """
+            try? result.write(to: resultURL, atomically: true, encoding: .utf8)
+        }
+        input.fileHandleForWriting.write(Data("\n".utf8))
+        input.fileHandleForWriting.closeFile()
+
+        let deadline = Date().addingTimeInterval(5)
+        while process.isRunning && Date() < deadline {
+            usleep(100_000)
+        }
+
+        XCTAssertFalse(process.isRunning)
+        let terminalOutput = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        XCTAssertTrue(terminalOutput.contains(RuntimeUninstallProgressScript.terminalCompletedMessage), terminalOutput)
+        XCTAssertFalse(terminalOutput.contains(RuntimeUninstallProgressScript.terminalResultMissingMessage), terminalOutput)
+        XCTAssertFalse(terminalOutput.contains(RuntimeUninstallProgressScript.terminalFailedMessage), terminalOutput)
+    }
+
     func testUninstallProgressViewerUsesResultDocumentBeforeConflictingLogMarker() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("vitalserver-uninstall-progress-\(UUID().uuidString)")
