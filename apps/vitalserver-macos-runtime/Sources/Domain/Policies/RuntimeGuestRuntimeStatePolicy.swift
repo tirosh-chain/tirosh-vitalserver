@@ -26,7 +26,8 @@ public enum RuntimeGuestRuntimeStatePolicy {
                 failureReasons: guestHTTP.failureReasons
             )
         }
-        if readFailureReasons.contains(.guestRuntimeStateInvalid) {
+        if readFailureReasons.contains(where: \.isGuestRuntimeStateReadFailure)
+            || readFailureReasons.contains(.guestRuntimeStateInvalid) {
             return RuntimeGuestRuntimeStateInputAssessment(state: .invalid)
         }
         if loadedState != nil {

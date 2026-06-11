@@ -32,7 +32,10 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
             return XCTFail("expected suppressed recovery decision")
         }
         XCTAssertEqual(plan.status, .critical)
-        XCTAssertEqual(plan.message, "watchdog recovery suppressed: guest-filesystem-read-only")
+        XCTAssertEqual(
+            plan.message,
+            "watchdog recovery suppressed: guest-filesystem-read-only; action=backup-and-recreate-vm"
+        )
         XCTAssertEqual(plan.eventType, .recoverySuppressed)
         XCTAssertEqual(plan.printMessage, "watchdog: suppressed")
     }

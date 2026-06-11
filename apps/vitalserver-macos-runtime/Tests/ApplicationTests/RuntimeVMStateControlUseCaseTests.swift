@@ -72,6 +72,27 @@ final class RuntimeVMStateControlUseCaseTests: XCTestCase {
         ])
     }
 
+    func testWatchdogRecoveryForceStopsAndRetriesWhenLaunchdGracefulStopFails() throws {
+        let harness = RuntimeVMStateControlHarness()
+        harness.vmRuntimeRestartErrors = [
+            RuntimeVMRuntimeRestartError.gracefulStopFailed(
+                service: .vm,
+                message: "launchd still owns VM process"
+            ),
+        ]
+
+        try harness.restartVMRuntimeForWatchdogRecovery()
+
+        XCTAssertEqual(harness.events, [
+            "log:watchdog requested VM runtime restart",
+            "restart-vm-runtime",
+            "log:watchdog VM runtime restart failed during graceful stop; forcing VM runtime services stop error=graceful stop failed for ai.tirosh.vitalserver.helper.vm: launchd still owns VM process",
+            "force-stop-after-graceful-stop-failure",
+            "restart-vm-runtime",
+            "log:watchdog dispatched VM runtime restart",
+        ])
+    }
+
     func testVMRuntimeRestartRejectsSettingsIntent() {
         let harness = RuntimeVMStateControlHarness()
 

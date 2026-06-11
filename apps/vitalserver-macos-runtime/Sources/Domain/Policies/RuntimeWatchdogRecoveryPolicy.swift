@@ -113,8 +113,8 @@ public enum RuntimeWatchdogRecoveryPolicy {
     private static func observationSourceIssue(_ reasons: [RuntimeFailureReason]) -> RuntimeFailureReason? {
         reasons.first { reason in
             switch reason {
-            case .containerObservationReadFailed(let message):
-                return message != RuntimeFailureReason.guestRuntimeStateStale.rawValue
+            case .containerObservationReadFailed:
+                return !reason.isContainerObservationReadFailureFromStaleGuestRuntimeState
             case .containerObservationMissing,
                  .vitalDBObservationMissing, .vitalDBObservationReadFailed:
                 return true

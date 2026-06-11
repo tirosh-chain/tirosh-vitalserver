@@ -119,8 +119,8 @@ public struct RuntimeServiceController {
 
     public func restartVMRuntimeServices() throws {
         log("safely restarting VM runtime services")
-        try stopAndWaitIfLoaded(.guestLogSync)
-        try stopAndWaitIfLoaded(.vm)
+        try stopForVMRuntimeRestart(.guestLogSync)
+        try stopForVMRuntimeRestart(.vm)
         try startLaunchdService(.vm)
         try startLaunchdService(.guestLogSync)
     }
@@ -148,6 +148,17 @@ public struct RuntimeServiceController {
     private func stopAndWaitIfLoaded(_ service: RuntimeManagedService) throws {
         if try serviceOperator.stopIfLoaded(service) {
             try waitForStoppedService(service)
+        }
+    }
+
+    private func stopForVMRuntimeRestart(_ service: RuntimeManagedService) throws {
+        do {
+            try stopAndWaitIfLoaded(service)
+        } catch {
+            throw RuntimeVMRuntimeRestartError.gracefulStopFailed(
+                service: service,
+                message: String(describing: error)
+            )
         }
     }
 

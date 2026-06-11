@@ -158,7 +158,7 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
         )
     }
 
-    func testObservationMapsGuestRuntimeReadIssueToInvalidFailureReasonInUseCase() {
+    func testObservationMapsGuestRuntimeReadIssueToExplicitFailureReasonInUseCase() {
         let useCase = EvaluateRuntimeHealthUseCase()
         let observation = useCase.observation(from: healthReads(
             guestRuntimeState: RuntimeGuestRuntimeStateObservation(
@@ -170,9 +170,29 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
         ))
 
         XCTAssertEqual(observation.guestRuntimeState, RuntimeGuestRuntimeStateInput.invalid)
-        XCTAssertTrue(observation.configurationFailureReasons.contains(RuntimeFailureReason.guestRuntimeStateInvalid))
+        XCTAssertTrue(observation.configurationFailureReasons.contains(
+            RuntimeFailureReason.guestRuntimeStateLoadFailed("runtime-state_unreadable")
+        ))
         XCTAssertEqual(observation.containerObservation.observedValue?.composeServicesReadState, .invalid)
         XCTAssertEqual(observation.containerObservation.observedValue?.composeServicesReadError, "guest-runtime-state-invalid")
+    }
+
+    func testObservationKeepsRuntimeStateMetadataReadFailureDistinct() {
+        let useCase = EvaluateRuntimeHealthUseCase()
+        let observation = useCase.observation(from: healthReads(
+            guestRuntimeState: RuntimeGuestRuntimeStateObservation(
+                loadedState: nil,
+                freshState: nil,
+                isFresh: false,
+                readIssue: .metadataReadFailed("stat permission denied")
+            )
+        ))
+
+        XCTAssertEqual(observation.guestRuntimeState, RuntimeGuestRuntimeStateInput.invalid)
+        XCTAssertEqual(observation.configurationFailureReasons, [
+            .guestRuntimeStateMetadataReadFailed("stat_permission_denied"),
+        ])
+        XCTAssertEqual(observation.containerObservation.observedValue?.composeServicesReadState, .invalid)
     }
 }
 

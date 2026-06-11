@@ -394,14 +394,22 @@ Pull request는 변경 목적과 검증 근거가 함께 보여야 합니다. �
   root filesystem read-only, filesystem error, disk I/O error가 명시되면 `guest-filesystem-read-only`,
   `guest-filesystem-error`, `guest-disk-io-error` reason으로 기록하고, `unknown(vm-...)`이나 단순
   host proxy failure로 축약하지 않습니다. 이 reason은 데이터 보존이 필요한 상태이므로 watchdog 자동
-  recovery는 억제하고 backup/recreate 판단으로 연결합니다.
+  recovery는 억제하고 backup/recreate 판단으로 연결합니다. 억제 status/event message는 reason만
+  남기지 말고 `action=backup-and-recreate-vm`을 함께 기록해 자동 restart가 아닌 데이터 보존형 조치임을
+  UI와 로그에서 구분할 수 있어야 합니다.
+- Guest runtime-state read issue는 단순 `guest-runtime-state-invalid`로 축약하지 않습니다. load failure와
+  metadata read failure는 각각 `guest-runtime-state-load-failed-*`,
+  `guest-runtime-state-metadata-read-failed-*` reason으로 유지하고, runtime state input만 invalid로
+  평가합니다. Watchdog은 stale runtime-state에서 파생된 container observation read issue와 실제
+  observation source failure를 typed helper로 구분해야 합니다.
 - VM/Host error raw string이 이미 category와 recovery action을 가진다면 `unknown(...)`으로 보관하지
   않습니다. Guest runtime state missing, VM disk attachment invalid, VM launch failure, VM configuration
   invalid, Host resource unavailable 같은 상태는 `RuntimeFailureReason` typed case로 승격하고, raw string
   parsing은 이전 status/event 문서를 읽기 위한 contract 호환 경로로만 둡니다.
-- Watchdog VM restart 중 graceful stop이 typed VM stop failure로 실패하면 Host가 VM process를 force-stop하고
-  launchd 상태를 unload한 뒤 VM runtime restart를 한 번 재시도합니다. 이 fallback은 stop failure를 empty
-  success로 숨기지 않고 로그와 command failure 경로에 남겨야 합니다.
+- Watchdog VM restart 중 graceful stop이 typed VM stop failure 또는 launchd service graceful-stop failure로
+  실패하면 Host가 VM process를 force-stop하고 launchd 상태를 unload한 뒤 VM runtime restart를 한 번
+  재시도합니다. 이 fallback은 stop failure를 empty success로 숨기지 않고 로그와 command failure 경로에
+  남겨야 하며, start/configuration failure까지 넓게 삼키면 안 됩니다.
 - release 문서의 운영 주장과 dev 문서의 구현 근거가 어긋나지 않게 합니다.
 
 ## 8. Release 전에 확인할 것

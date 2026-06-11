@@ -59,7 +59,9 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains("echo \"${started_marker}\""))
         XCTAssertTrue(command.contains("echo \"${completed_marker}\""))
         XCTAssertTrue(command.contains("echo \"${failed_marker_prefix}${background_status} ${marker_run_id}\""))
-        XCTAssertTrue(command.contains("echo \"${background_pid}\" > \"${worker_pid_file}\""))
+        XCTAssertTrue(command.contains("echo \"${marker_run_id}\""))
+        XCTAssertTrue(command.contains("echo \"${background_pid}\""))
+        XCTAssertTrue(command.contains("> \"${worker_pid_file}\""))
         XCTAssertTrue(command.contains("chmod 0644 \"${worker_pid_file}\""))
         XCTAssertTrue(command.contains("background_pid=$!"))
         XCTAssertTrue(command.contains("kill -0"))
@@ -99,7 +101,9 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(script.contains("chmod 0644 \"${log_file}\""))
         XCTAssertTrue(script.contains("chmod 0644 \"${worker_pid_file}\""))
         XCTAssertFalse(script.contains("nohup"))
-        XCTAssertTrue(script.contains("echo \"${background_pid}\" > \"${worker_pid_file}\""))
+        XCTAssertTrue(script.contains("echo \"${marker_run_id}\""))
+        XCTAssertTrue(script.contains("echo \"${background_pid}\""))
+        XCTAssertTrue(script.contains("> \"${worker_pid_file}\""))
         XCTAssertFalse(script.contains("&;"))
         XCTAssertFalse(script.contains("} < /dev/null >> \"${log_file}\" 2>&1 &"))
     }
@@ -115,7 +119,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         let viewerURL = directory.appendingPathComponent("viewer.command")
         try "\(RuntimeUninstallProgressScript.startedMarker) runID=viewer-test\n"
             .write(to: logURL, atomically: true, encoding: .utf8)
-        try "99999999\n".write(to: pidURL, atomically: true, encoding: .utf8)
+        try "runID=viewer-test\n99999999\n".write(to: pidURL, atomically: true, encoding: .utf8)
         try RuntimeUninstallProgressScript.viewerScript(
             logPath: logURL.path,
             workerPIDPath: pidURL.path,
@@ -165,6 +169,63 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         let pidURL = directory.appendingPathComponent("uninstall.pid")
         let viewerURL = directory.appendingPathComponent("viewer.command")
         try "\(RuntimeUninstallProgressScript.startedMarker) runID=other-run\n"
+            .write(to: logURL, atomically: true, encoding: .utf8)
+        try "runID=other-run\n99999999\n".write(to: pidURL, atomically: true, encoding: .utf8)
+        try RuntimeUninstallProgressScript.viewerScript(
+            logPath: logURL.path,
+            workerPIDPath: pidURL.path,
+            runID: "viewer-test",
+            shellQuote: RuntimeShellCommandFactory.shellQuote
+        ).write(to: viewerURL, atomically: true, encoding: .utf8)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [viewerURL.path]
+        let input = Pipe()
+        let output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = output
+        defer {
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+
+        try process.run()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) {
+            let completedLine = "\(RuntimeUninstallProgressScript.completedMarker) runID=viewer-test\n"
+            if let data = completedLine.data(using: .utf8),
+               let handle = try? FileHandle(forWritingTo: logURL) {
+                handle.seekToEndOfFile()
+                handle.write(data)
+                try? handle.close()
+            }
+        }
+        input.fileHandleForWriting.write(Data("\n".utf8))
+        input.fileHandleForWriting.closeFile()
+
+        let deadline = Date().addingTimeInterval(5)
+        while process.isRunning && Date() < deadline {
+            usleep(100_000)
+        }
+
+        XCTAssertFalse(process.isRunning)
+        let terminalOutput = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        XCTAssertTrue(terminalOutput.contains(RuntimeUninstallProgressScript.terminalCompletedMessage))
+        XCTAssertFalse(terminalOutput.contains(RuntimeUninstallProgressScript.terminalFailedMessage))
+    }
+
+    func testUninstallProgressViewerIgnoresLegacyPidFileWithoutRunID() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitalserver-uninstall-progress-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let logURL = directory.appendingPathComponent("uninstall.log")
+        let pidURL = directory.appendingPathComponent("uninstall.pid")
+        let viewerURL = directory.appendingPathComponent("viewer.command")
+        try "\(RuntimeUninstallProgressScript.startedMarker) runID=viewer-test\n"
             .write(to: logURL, atomically: true, encoding: .utf8)
         try "99999999\n".write(to: pidURL, atomically: true, encoding: .utf8)
         try RuntimeUninstallProgressScript.viewerScript(
@@ -223,7 +284,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         let viewerURL = directory.appendingPathComponent("viewer.command")
         try "\(RuntimeUninstallProgressScript.startedMarker) runID=viewer-test\n"
             .write(to: logURL, atomically: true, encoding: .utf8)
-        try "99999999\n".write(to: pidURL, atomically: true, encoding: .utf8)
+        try "runID=viewer-test\n99999999\n".write(to: pidURL, atomically: true, encoding: .utf8)
         try RuntimeUninstallProgressScript.viewerScript(
             logPath: logURL.path,
             workerPIDPath: pidURL.path,

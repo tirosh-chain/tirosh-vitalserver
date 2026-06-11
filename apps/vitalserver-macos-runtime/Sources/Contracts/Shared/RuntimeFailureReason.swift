@@ -87,6 +87,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case runtimeStatusDocumentStale
     case runtimeStatusDocumentInvalid
     case guestRuntimeStateInvalid
+    case guestRuntimeStateLoadFailed(String)
+    case guestRuntimeStateMetadataReadFailed(String)
     case observabilityEventStoreUnavailable
     case observabilityEventStoreCorrupt
     case vmLifecycleDocumentInvalid
@@ -193,6 +195,14 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .runtimeStatusDocumentInvalid
         case "guest-runtime-state-invalid":
             self = .guestRuntimeStateInvalid
+        case let value where value.hasPrefix("guest-runtime-state-load-failed-"):
+            self = .guestRuntimeStateLoadFailed(
+                String(value.dropFirst("guest-runtime-state-load-failed-".count))
+            )
+        case let value where value.hasPrefix("guest-runtime-state-metadata-read-failed-"):
+            self = .guestRuntimeStateMetadataReadFailed(
+                String(value.dropFirst("guest-runtime-state-metadata-read-failed-".count))
+            )
         case "observability-event-store-unavailable":
             self = .observabilityEventStoreUnavailable
         case "observability-event-store-corrupt":
@@ -354,6 +364,10 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "runtime-status-document-invalid"
         case .guestRuntimeStateInvalid:
             return "guest-runtime-state-invalid"
+        case .guestRuntimeStateLoadFailed(let reason):
+            return "guest-runtime-state-load-failed-\(reason)"
+        case .guestRuntimeStateMetadataReadFailed(let reason):
+            return "guest-runtime-state-metadata-read-failed-\(reason)"
         case .observabilityEventStoreUnavailable:
             return "observability-event-store-unavailable"
         case .observabilityEventStoreCorrupt:
@@ -606,7 +620,8 @@ public extension RuntimeFailureReason {
              .runtimeStatusDocumentInvalid, .observabilityEventStoreUnavailable, .observabilityEventStoreCorrupt,
              .containerObservationMissing, .containerObservationReadFailed:
             return .observability
-        case .guestRuntimeStateMissing, .guestRuntimeStateInvalid:
+        case .guestRuntimeStateMissing, .guestRuntimeStateInvalid,
+             .guestRuntimeStateLoadFailed, .guestRuntimeStateMetadataReadFailed:
             return .guestAgent
         case .vmLifecycleDocumentInvalid, .vmLifecycleDocumentStale,
              .vmPidFileStale, .vmProcessExited, .vmLaunchFailed,
@@ -682,7 +697,8 @@ public extension RuntimeFailureReason {
              .observabilityEventStoreUnavailable, .observabilityEventStoreCorrupt,
              .containerObservationMissing, .containerObservationReadFailed:
             return .inspectLogs
-        case .guestRuntimeStateMissing, .guestRuntimeStateInvalid:
+        case .guestRuntimeStateMissing, .guestRuntimeStateInvalid,
+             .guestRuntimeStateLoadFailed, .guestRuntimeStateMetadataReadFailed:
             return .restartGuestAgent
         case .vmPidFileStale, .vmProcessExited, .launchdServiceCrashed, .launchdServiceThrottled:
             return .restartVMService
@@ -731,6 +747,22 @@ public extension RuntimeFailureReason {
 
     var requiresDataPreservationBeforeRecovery: Bool {
         recoveryAction == .backupAndRecreateVM
+    }
+
+    var isGuestRuntimeStateReadFailure: Bool {
+        switch self {
+        case .guestRuntimeStateLoadFailed, .guestRuntimeStateMetadataReadFailed:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isContainerObservationReadFailureFromStaleGuestRuntimeState: Bool {
+        guard case .containerObservationReadFailed(let message) = self else {
+            return false
+        }
+        return RuntimeFailureReason(rawValue: message) == .guestRuntimeStateStale
     }
 
     private var vmError: RuntimeVMError? {

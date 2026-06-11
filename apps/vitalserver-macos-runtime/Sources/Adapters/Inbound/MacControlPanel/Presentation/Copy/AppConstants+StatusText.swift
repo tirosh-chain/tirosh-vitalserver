@@ -347,6 +347,10 @@ public extension AppConstants {
                 return "Runtime status invalid"
             case .guestRuntimeStateInvalid:
                 return "Guest runtime state invalid"
+            case .guestRuntimeStateLoadFailed(let reason):
+                return "Guest runtime state load failed (\(titleCasedStatus(reason)))"
+            case .guestRuntimeStateMetadataReadFailed(let reason):
+                return "Guest runtime state metadata read failed (\(titleCasedStatus(reason)))"
             case .observabilityEventStoreUnavailable:
                 return "Observability store unavailable"
             case .observabilityEventStoreCorrupt:

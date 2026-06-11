@@ -618,6 +618,8 @@ final class ContractsTests: XCTestCase {
           "guest-bootstrap-missing-runtime-packages",
           "vm-runtime-state-missing",
           "vm-disk-attachment-invalid",
+          "guest-runtime-state-load-failed-decode_failed",
+          "guest-runtime-state-metadata-read-failed-stat_permission_denied",
           "vm-launch-failed-virtualization",
           "vm-invalid-configuration-network",
           "vm-host-resource-unavailable-memory",
@@ -653,13 +655,15 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(reasons[18], .guestBootstrapMissingRuntimePackages)
         XCTAssertEqual(reasons[19], .guestRuntimeStateMissing)
         XCTAssertEqual(reasons[20], .vmDiskAttachmentInvalid)
-        XCTAssertEqual(reasons[21], .vmLaunchFailed("virtualization"))
-        XCTAssertEqual(reasons[22], .vmConfigurationInvalid("network"))
-        XCTAssertEqual(reasons[23], .hostResourceUnavailable("memory"))
-        XCTAssertEqual(reasons[24], .guestFilesystemError)
-        XCTAssertEqual(reasons[25], .guestFilesystemReadOnly)
-        XCTAssertEqual(reasons[26], .guestDiskIO)
-        XCTAssertEqual(reasons[27], .unknown("future-reason"))
+        XCTAssertEqual(reasons[21], .guestRuntimeStateLoadFailed("decode_failed"))
+        XCTAssertEqual(reasons[22], .guestRuntimeStateMetadataReadFailed("stat_permission_denied"))
+        XCTAssertEqual(reasons[23], .vmLaunchFailed("virtualization"))
+        XCTAssertEqual(reasons[24], .vmConfigurationInvalid("network"))
+        XCTAssertEqual(reasons[25], .hostResourceUnavailable("memory"))
+        XCTAssertEqual(reasons[26], .guestFilesystemError)
+        XCTAssertEqual(reasons[27], .guestFilesystemReadOnly)
+        XCTAssertEqual(reasons[28], .guestDiskIO)
+        XCTAssertEqual(reasons[29], .unknown("future-reason"))
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
@@ -685,6 +689,8 @@ final class ContractsTests: XCTestCase {
             "guest-bootstrap-missing-runtime-packages",
             "vm-runtime-state-missing",
             "vm-disk-attachment-invalid",
+            "guest-runtime-state-load-failed-decode_failed",
+            "guest-runtime-state-metadata-read-failed-stat_permission_denied",
             "vm-launch-failed-virtualization",
             "vm-invalid-configuration-network",
             "vm-host-resource-unavailable-memory",
@@ -721,6 +727,16 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason(vmError: .runtimeStateMissing), .guestRuntimeStateMissing)
         XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateMissing.domainCategory, .guestAgent)
         XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateMissing.recoveryAction, .restartGuestAgent)
+        XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateLoadFailed("decode_failed").domainCategory, .guestAgent)
+        XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateLoadFailed("decode_failed").recoveryAction, .restartGuestAgent)
+        XCTAssertEqual(
+            RuntimeFailureReason.guestRuntimeStateMetadataReadFailed("stat_permission_denied").domainCategory,
+            .guestAgent
+        )
+        XCTAssertEqual(
+            RuntimeFailureReason.guestRuntimeStateMetadataReadFailed("stat_permission_denied").recoveryAction,
+            .restartGuestAgent
+        )
 
         XCTAssertEqual(RuntimeFailureReason(vmError: .diskAttachmentInvalid), .vmDiskAttachmentInvalid)
         XCTAssertEqual(RuntimeFailureReason.vmDiskAttachmentInvalid.domainCategory, .guestStorage)

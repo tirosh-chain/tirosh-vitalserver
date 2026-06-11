@@ -576,7 +576,7 @@ final class RuntimeServiceControllerTests: XCTestCase {
         XCTAssertEqual(serviceManager.restartedLabels, [])
     }
 
-    func testRestartVMRuntimeServicesPropagatesNonVMPrepareFailureWithoutStart() {
+    func testRestartVMRuntimeServicesWrapsGuestLogSyncGracefulStopFailureWithoutStart() {
         let serviceManager = ServiceControllerServiceManagerSpy()
         let controller = RuntimeServiceController(
             serviceManager: serviceManager,
@@ -587,7 +587,15 @@ final class RuntimeServiceControllerTests: XCTestCase {
             log: { _ in }
         )
 
-        XCTAssertThrowsError(try controller.restartVMRuntimeServices())
+        XCTAssertThrowsError(try controller.restartVMRuntimeServices()) { error in
+            XCTAssertEqual(
+                error as? RuntimeVMRuntimeRestartError,
+                .gracefulStopFailed(
+                    service: .guestLogSync,
+                    message: "graceful stop failed"
+                )
+            )
+        }
         XCTAssertEqual(serviceManager.startedLabels, [])
         XCTAssertEqual(serviceManager.restartedLabels, [])
     }

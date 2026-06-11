@@ -199,7 +199,8 @@ public struct EvaluateRuntimeHealthUseCase {
                 readError: nil
             )
         }
-        if readFailureReasons.contains(.guestRuntimeStateInvalid) {
+        if readFailureReasons.contains(where: \.isGuestRuntimeStateReadFailure)
+            || readFailureReasons.contains(.guestRuntimeStateInvalid) {
             return RuntimeComposeServicesReadResult(
                 state: .invalid,
                 services: [],
@@ -340,10 +341,10 @@ public struct EvaluateRuntimeHealthUseCase {
     private func guestRuntimeStateReadFailureReasons(
         _ issue: RuntimeGuestRuntimeStateReadIssue?
     ) -> [RuntimeFailureReason] {
-        guard issue != nil else {
+        guard let issue else {
             return []
         }
-        return [.guestRuntimeStateInvalid]
+        return [issue.failureReason]
     }
 
     private func proxyPortFailureReasons(

@@ -431,7 +431,7 @@ public struct WatchdogRuntimeUseCase {
     private func suppressedPlan(reason: String) -> WatchdogRuntimeObservedStatusPlan {
         observedStatusPlan(
             status: .critical,
-            message: "watchdog recovery suppressed: \(reason)",
+            message: "watchdog recovery suppressed: \(reason); action=backup-and-recreate-vm",
             eventType: .recoverySuppressed,
             printMessage: "watchdog: suppressed"
         )

@@ -28,6 +28,34 @@ public enum RuntimeGuestRuntimeStateReadIssue: Equatable, Sendable {
     case metadataReadFailed(String)
 }
 
+public extension RuntimeGuestRuntimeStateReadIssue {
+    var failureReason: RuntimeFailureReason {
+        switch self {
+        case .loadFailed(let message):
+            return .guestRuntimeStateLoadFailed(Self.failureToken(message))
+        case .metadataReadFailed(let message):
+            return .guestRuntimeStateMetadataReadFailed(Self.failureToken(message))
+        }
+    }
+
+    private static func failureToken(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .unicodeScalars
+            .map { scalar in
+                CharacterSet.alphanumerics.contains(scalar)
+                    || scalar == "-"
+                    || scalar == "_"
+                    || scalar == "."
+                    ? Character(scalar)
+                    : "_"
+            }
+            .prefix(80)
+            .map(String.init)
+            .joined()
+    }
+}
+
 public struct RuntimeContainerLogsMetadata {
     public let present: Bool
     public let bytes: UInt64?

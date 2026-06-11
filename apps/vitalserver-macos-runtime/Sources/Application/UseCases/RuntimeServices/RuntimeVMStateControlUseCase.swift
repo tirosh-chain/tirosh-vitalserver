@@ -187,6 +187,17 @@ public enum RuntimeVMStateControlError: Error, Equatable, CustomStringConvertibl
     }
 }
 
+public enum RuntimeVMRuntimeRestartError: Error, Equatable, CustomStringConvertible {
+    case gracefulStopFailed(service: RuntimeManagedService, message: String)
+
+    public var description: String {
+        switch self {
+        case .gracefulStopFailed(let service, let message):
+            return "graceful stop failed for \(service.label): \(message)"
+        }
+    }
+}
+
 public struct RuntimeVMStateControlUseCase {
     public init() {}
 
@@ -395,6 +406,12 @@ public struct RuntimeVMStateControlUseCase {
     }
 
     private func shouldForceStopAfterVMRuntimeRestartFailure(_ error: Error) -> Bool {
-        error is StopRuntimeVMProcessUseCaseError
+        if error is StopRuntimeVMProcessUseCaseError {
+            return true
+        }
+        if error is RuntimeVMRuntimeRestartError {
+            return true
+        }
+        return false
     }
 }

@@ -126,6 +126,22 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         )
     }
 
+    func testNonStaleContainerObservationReadIssueBlocksAutomaticRecovery() {
+        let decision = RuntimeWatchdogRecoveryPolicy.decision(
+            snapshot: healthSnapshot(
+                vmLifecycle: runningLifecycle(),
+                failureReasons: [.containerObservationReadFailed("guest-runtime-state-invalid")]
+            ),
+            hostProxyLivenessHTTP: "204",
+            automaticRecoveryEnabled: true
+        )
+
+        XCTAssertEqual(
+            decision,
+            .unrecoverable(reason: "container-observation-read-failed-guest-runtime-state-invalid")
+        )
+    }
+
     func testReportsUnrecoverableWhenInstalledArtifactsAreMissing() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(vmExecutable: .missing, failureReasons: [.missingVMBin]),
