@@ -175,6 +175,65 @@ def test_prepare_update_shutdown_reports_poweroff_request_failure_before_ready(
     assert not request_file.exists()
 
 
+def test_prepare_update_shutdown_consumes_request_before_guest_side_effects(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    request_file = tmp_path / "prepare-update-shutdown.request"
+    result_file = tmp_path / "prepare-update-shutdown-result.json"
+    request_file.write_text(
+        json.dumps({"requestId": "req-1", "version": "1.2.3"}),
+        encoding="utf-8",
+    )
+    events: list[str] = []
+    write_result = update_shutdown.write_result
+
+    monkeypatch.setattr(update_shutdown, "REQUEST_FILE", request_file)
+    monkeypatch.setattr(update_shutdown, "RESULT_FILE", result_file)
+    monkeypatch.setattr(update_shutdown, "mount_runtime_share", lambda: None)
+    monkeypatch.setattr(update_shutdown, "utc_now", lambda: "2026-06-01T00:00:00Z")
+    monkeypatch.setattr(
+        update_shutdown,
+        "write_result",
+        lambda *args, **kwargs: _record_write_result(
+            write_result,
+            events,
+            *args,
+            **kwargs,
+        ),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "collect_guest_observability",
+        lambda phase: events.append(f"observe:{phase.value}"),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "quiesce_shutdown_sidecars",
+        lambda: events.append(f"quiesce:requestExists={request_file.exists()}"),
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "backup_redis",
+        lambda context: (_ for _ in ()).throw(
+            GuestDependencyError("backup failed", code="redis-backup-failed")
+        ),
+    )
+
+    with pytest.raises(GuestDependencyError):
+        update_shutdown.run_prepare_update_shutdown()
+
+    document = json.loads(result_file.read_text(encoding="utf-8"))
+    assert document["status"] == "failed"
+    assert document["requestId"] == "req-1"
+    assert not request_file.exists()
+    assert events[:3] == [
+        "write:running:starting",
+        "observe:shutdown-pre-stop",
+        "quiesce:requestExists=False",
+    ]
+
+
 def test_quiesce_shutdown_sidecars_stops_dispatchers_and_waits_for_redis_backup(
     monkeypatch: Any,
 ) -> None:

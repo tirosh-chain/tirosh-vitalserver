@@ -177,6 +177,7 @@ retention 변경은 VM runtime restart requirement를 만들지 않습니다.
 | `runtime-events.jsonl`의 `configure` 직후 event | 설정 apply가 실제로 runtime restart를 요청했는지 확인 |
 | `vm-lifecycle.json` | VM이 `stopping`, `stopped`, `failed` 중 어디에 머물렀는지 확인 |
 | `launchd.out.log`의 guest shutdown 로그 | Docker/containerd stop, filesystem remount, poweroff 실패 여부 확인 |
+| `prepare-update-shutdown.request` | Settings apply인데 update shutdown request가 남아 반복 실행되는지 확인 |
 | failure reasons | `host-proxy-http-*`, `audit-proxy-http-failed`, `guest-runtime-state-stale`이 연쇄인지 확인 |
 
 증상이 `configure` 직후 VM stop 요청, guest runtime state stale, host proxy HTTP 실패 순서로 이어지면
@@ -190,3 +191,10 @@ I/O가 아직 남아 있으면 디스크 오류가 드러나거나 악화될 수
 Settings apply가 guest shutdown worker를 공유하더라도 update bundle 적용으로 보지 않습니다. Settings
 restart progress는 `configure` operation으로 해석하고, update bundle 적용은 `apply-bundle` operation과
 Update 탭의 progress로 따로 확인합니다.
+
+`status=Recovering`, `operation=configure`인데 `prepare-update-shutdown-result.json`이
+`prepare-update-shutdown` running/prepared 상태로 남고 같은 request ID가 반복 로그에 나타나면, 이전
+update shutdown request가 VM reboot 뒤 다시 실행된 것입니다. Guest shutdown request는 single-shot
+contract이므로 worker가 request를 로드하고 running result를 쓴 뒤 즉시 request file을 소비해야 합니다.
+request file을 poweroff 직전까지 남겨두면 Settings restart, watchdog restart, service start가 모두
+update shutdown 경로를 다시 밟아 guest services를 내려버릴 수 있습니다.

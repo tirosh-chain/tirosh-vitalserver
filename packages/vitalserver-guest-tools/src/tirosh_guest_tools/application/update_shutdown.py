@@ -112,6 +112,7 @@ def prepare_context() -> PrepareUpdateShutdownContext | None:
         "Guest update shutdown preparation started.",
         step="starting",
     )
+    REQUEST_FILE.unlink(missing_ok=True)
     return context
 
 

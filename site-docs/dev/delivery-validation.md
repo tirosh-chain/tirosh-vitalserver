@@ -172,6 +172,10 @@ activation/shutdown 대기 상한을 900초로 맞추었고, 타임아웃이 터
 Guest는 final sync와 `systemctl --no-block poweroff` 요청이 성공한 뒤에만
 `ready`/`poweroff-requested` result를 기록해야 합니다. Poweroff 요청 전에 ready를 먼저 쓰면 Host가
 실제 요청 실패나 sync hang을 성공 상태로 오해할 수 있습니다.
+Guest shutdown request는 single-shot trigger입니다. Worker는 request를 로드하고 `running/starting`
+result를 기록한 직후 request file을 소비해야 합니다. 성공 끝까지 request를 남겨두면 poweroff 또는
+process termination 중 worker가 사라졌을 때 같은 request가 다음 VM boot에서 다시 dispatch되고,
+Settings restart나 watchdog recovery가 update shutdown 경로로 오염될 수 있습니다.
 
 Settings apply는 update가 아닙니다. CPU, memory, disk increase, network mode, bridged interface,
 Vital files directory처럼 VM runtime 구성 자체가 바뀐 경우만 VM runtime restart requirement를 만듭니다.
