@@ -223,6 +223,7 @@ install_guest_tools() {
     tirosh-runtime-state \
     tirosh-vitalserver-health \
     tirosh-vitalserver-compose \
+    tirosh-vitalserver-rootfs-smoke \
     tirosh-vitalserver-command-poller \
     tirosh-vitalserver-redis-backup \
     tirosh-vitalserver-redis-restore \

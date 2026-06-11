@@ -1,0 +1,562 @@
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import tarfile
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from tirosh_guest_tools.contracts import RootfsSmokeStatus
+from tirosh_guest_tools.infrastructure.common import (
+    DEPLOY_DIR,
+    RUNTIME_DIR,
+    VITAL_FILES_MOUNT_POINT,
+    mount_runtime_share,
+    mount_vital_files_share,
+    utc_now,
+    write_json,
+)
+
+DOCKER_SMOKE_TIMEOUT_SECONDS = 60.0
+COMPOSE_BUILD_TIMEOUT_SECONDS = 600.0
+COMPOSE_UP_TIMEOUT_SECONDS = 300.0
+EDGE_READY_TIMEOUT_SECONDS = 600.0
+EDGE_READY_POLL_SECONDS = 3.0
+EDGE_READY_HTTP_TIMEOUT_SECONDS = 5.0
+COMPOSE_CLEANUP_TIMEOUT_SECONDS = 180.0
+DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS = 30.0
+
+
+@dataclass(frozen=True)
+class RootfsSmokeContext:
+    runtime_dir: Path
+    deploy_dir: Path
+    vital_files_mount: Path
+    manifest_path: Path
+    diagnostics_dir: Path
+    compose_project_name: str
+    docker_smoke_image: str
+    local_docker_smoke_image: str
+
+
+@dataclass(frozen=True)
+class RootfsSmokeOperations:
+    mount_runtime_share: Callable[[], None]
+    mount_vital_files_share: Callable[[], None]
+    run: Callable[..., subprocess.CompletedProcess[str]]
+    http_status: Callable[[str, float], int]
+    sleep: Callable[[float], None]
+
+
+@dataclass(frozen=True)
+class SmokeStageResult:
+    name: str
+    status: RootfsSmokeStatus
+    started_at: str
+    completed_at: str
+    message: str
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "status": self.status.value,
+            "startedAt": self.started_at,
+            "completedAt": self.completed_at,
+            "message": self.message,
+            "details": self.details,
+        }
+
+
+class RootfsSmokeStageFailed(RuntimeError):
+    pass
+
+
+class RootfsSmokeCommandFailed(RuntimeError):
+    def __init__(self, completed: subprocess.CompletedProcess[str]) -> None:
+        self.completed = completed
+        command = (
+            " ".join(completed.args)
+            if isinstance(completed.args, list)
+            else str(completed.args)
+        )
+        super().__init__(
+            f"command failed: {command} exit={completed.returncode} "
+            f"stdout={completed.stdout} stderr={completed.stderr}"
+        )
+
+
+@dataclass
+class RootfsSmokeRun:
+    context: RootfsSmokeContext
+    operations: RootfsSmokeOperations
+    created_at: str = field(default_factory=utc_now)
+    stages: list[SmokeStageResult] = field(default_factory=list)
+    cleanup: dict[str, str] = field(
+        default_factory=lambda: {
+            "status": RootfsSmokeStatus.NOT_RUN.value,
+            "message": "cleanup has not run yet",
+        }
+    )
+
+    def write_manifest(self) -> None:
+        write_json(self.context.manifest_path, self.as_json())
+
+    def as_json(self) -> dict[str, Any]:
+        runtime = collect_runtime_versions(self.operations)
+        return {
+            "schemaVersion": 2,
+            "createdAt": self.created_at,
+            "updatedAt": utc_now(),
+            "ubuntu": {
+                **read_ubuntu_metadata(self.context.deploy_dir),
+                "kernel": runtime["kernel"],
+            },
+            "runtime": {
+                "docker": runtime["docker"],
+                "containerd": runtime["containerd"],
+                "runc": runtime["runc"],
+                "compose": runtime["compose"],
+            },
+            "stages": [stage.as_json() for stage in self.stages],
+            "cleanup": self.cleanup,
+            "diagnostics": {"path": str(self.context.diagnostics_dir)},
+        }
+
+
+def default_context() -> RootfsSmokeContext:
+    return RootfsSmokeContext(
+        runtime_dir=RUNTIME_DIR,
+        deploy_dir=DEPLOY_DIR,
+        vital_files_mount=VITAL_FILES_MOUNT_POINT,
+        manifest_path=RUNTIME_DIR / "rootfs-runtime-manifest.json",
+        diagnostics_dir=RUNTIME_DIR / "rootfs-smoke-diagnostics",
+        compose_project_name="vitalserver-rootfs-smoke",
+        docker_smoke_image=os.environ.get(
+            "VITALSERVER_DOCKER_SMOKE_IMAGE",
+            "redis:3.2.12-alpine",
+        ),
+        local_docker_smoke_image="vitalserver-rootfs-smoke:local",
+    )
+
+
+def default_operations() -> RootfsSmokeOperations:
+    return RootfsSmokeOperations(
+        mount_runtime_share=mount_runtime_share,
+        mount_vital_files_share=mount_vital_files_share,
+        run=run_command,
+        http_status=http_status,
+        sleep=time.sleep,
+    )
+
+
+def run_rootfs_smoke(
+    *,
+    context: RootfsSmokeContext | None = None,
+    operations: RootfsSmokeOperations | None = None,
+) -> None:
+    context = context or default_context()
+    operations = operations or default_operations()
+    operations.mount_runtime_share()
+    operations.mount_vital_files_share()
+    context.runtime_dir.mkdir(parents=True, exist_ok=True)
+    context.vital_files_mount.mkdir(parents=True, exist_ok=True)
+
+    run = RootfsSmokeRun(context=context, operations=operations)
+    run.write_manifest()
+    failed = False
+    diagnostics_collected = False
+
+    try:
+        execute_stage(run, "docker-smoke", docker_smoke)
+        execute_stage(run, "compose-build", compose_build)
+        execute_stage(run, "compose-up", compose_up)
+        execute_stage(run, "edge-ready", edge_ready)
+    except RootfsSmokeStageFailed:
+        failed = True
+        collect_diagnostics(run)
+        diagnostics_collected = True
+    finally:
+        cleanup_passed = cleanup_compose(run)
+        if not cleanup_passed:
+            failed = True
+        if failed and not diagnostics_collected:
+            collect_diagnostics(run)
+        run.write_manifest()
+
+    if failed:
+        raise SystemExit(1)
+
+
+def execute_stage(
+    run: RootfsSmokeRun,
+    name: str,
+    action: Callable[[RootfsSmokeRun], tuple[str, dict[str, Any]]],
+) -> None:
+    started_at = utc_now()
+    run.stages.append(
+        SmokeStageResult(
+            name=name,
+            status=RootfsSmokeStatus.RUNNING,
+            started_at=started_at,
+            completed_at="",
+            message="stage is running",
+        )
+    )
+    run.write_manifest()
+    try:
+        message, details = action(run)
+    except subprocess.TimeoutExpired as error:
+        run.stages[-1] = SmokeStageResult(
+            name=name,
+            status=RootfsSmokeStatus.TIMEOUT,
+            started_at=started_at,
+            completed_at=utc_now(),
+            message=f"stage timed out after {error.timeout:g}s",
+            details={"command": error.cmd},
+        )
+        run.write_manifest()
+        raise RootfsSmokeStageFailed(name) from error
+    except Exception as error:
+        run.stages[-1] = SmokeStageResult(
+            name=name,
+            status=RootfsSmokeStatus.FAILED,
+            started_at=started_at,
+            completed_at=utc_now(),
+            message=str(error),
+        )
+        run.write_manifest()
+        raise RootfsSmokeStageFailed(name) from error
+
+    run.stages[-1] = SmokeStageResult(
+        name=name,
+        status=RootfsSmokeStatus.PASSED,
+        started_at=started_at,
+        completed_at=utc_now(),
+        message=message,
+        details=details,
+    )
+    run.write_manifest()
+
+
+def docker_smoke(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
+    smoke_image = run.context.docker_smoke_image
+    smoke_command = ["true"]
+    temporary_image = False
+    inspect = run.operations.run(
+        ["docker", "image", "inspect", smoke_image],
+        check=False,
+    )
+    if inspect.returncode != 0:
+        smoke_image = build_local_docker_smoke_image(run)
+        smoke_command = ["/bin/busybox", "true"]
+        temporary_image = True
+
+    try:
+        run_checked(
+            run,
+            ["docker", "run", "--rm", "--network", "none", smoke_image, *smoke_command],
+            timeout_seconds=DOCKER_SMOKE_TIMEOUT_SECONDS,
+        )
+    finally:
+        if temporary_image:
+            run.operations.run(
+                ["docker", "image", "rm", "-f", smoke_image],
+                check=False,
+            )
+
+    return "docker runtime smoke passed", {"image": smoke_image}
+
+
+def build_local_docker_smoke_image(run: RootfsSmokeRun) -> str:
+    with tempfile.TemporaryDirectory() as temporary:
+        workdir = Path(temporary)
+        rootfs = workdir / "rootfs"
+        tarball = workdir / "rootfs.tar"
+        rootfs.mkdir()
+        (rootfs / "bin").mkdir()
+        shutil.copy2("/bin/busybox", rootfs / "bin/busybox")
+        with tarfile.open(tarball, "w") as archive:
+            archive.add(rootfs, arcname=".")
+        run_checked(
+            run,
+            ["docker", "import", str(tarball), run.context.local_docker_smoke_image],
+            timeout_seconds=DOCKER_SMOKE_TIMEOUT_SECONDS,
+        )
+    return run.context.local_docker_smoke_image
+
+
+def compose_build(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
+    run_checked(
+        run,
+        compose_command(run, ["build", "app", "audit-proxy", "vitaldb-observer"]),
+        timeout_seconds=COMPOSE_BUILD_TIMEOUT_SECONDS,
+    )
+    return "compose images built", {}
+
+
+def compose_up(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
+    run_checked(
+        run,
+        compose_command(run, ["up", "-d", "redis"]),
+        timeout_seconds=COMPOSE_UP_TIMEOUT_SECONDS,
+    )
+    run_checked(
+        run,
+        compose_command(
+            run,
+            [
+                "up",
+                "-d",
+                "app",
+                "audit-proxy",
+                "vitaldb-observer",
+                "redis-ui",
+                "swagger-ui",
+            ],
+        ),
+        timeout_seconds=COMPOSE_UP_TIMEOUT_SECONDS,
+    )
+    run_checked(
+        run,
+        compose_command(run, ["up", "-d", "edge"]),
+        timeout_seconds=COMPOSE_UP_TIMEOUT_SECONDS,
+    )
+    return "compose stack started", {}
+
+
+def edge_ready(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
+    deadline = time.monotonic() + EDGE_READY_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        try:
+            status = run.operations.http_status(
+                "http://127.0.0.1/ready",
+                EDGE_READY_HTTP_TIMEOUT_SECONDS,
+            )
+        except (OSError, TimeoutError, urllib.error.URLError):
+            status = 0
+        if 200 <= status < 300:
+            return "edge readiness endpoint returned success", {
+                "httpStatus": status,
+                "services": compose_services(run),
+            }
+        run.operations.sleep(EDGE_READY_POLL_SECONDS)
+    raise subprocess.TimeoutExpired(
+        ["http", "GET", "http://127.0.0.1/ready"],
+        EDGE_READY_TIMEOUT_SECONDS,
+    )
+
+
+def cleanup_compose(run: RootfsSmokeRun) -> bool:
+    completed = run.operations.run(
+        compose_command(run, ["down", "-v", "--remove-orphans"]),
+        check=False,
+        timeout_seconds=COMPOSE_CLEANUP_TIMEOUT_SECONDS,
+    )
+    if completed.returncode == 0:
+        run.cleanup = {
+            "status": RootfsSmokeStatus.PASSED.value,
+            "message": "compose down -v completed",
+        }
+        return True
+    run.cleanup = {
+        "status": RootfsSmokeStatus.CLEANUP_FAILED.value,
+        "message": command_output(completed),
+    }
+    return False
+
+
+def compose_services(run: RootfsSmokeRun) -> list[dict[str, Any]]:
+    completed = run.operations.run(
+        compose_command(run, ["ps", "--format", "json"]),
+        check=False,
+        timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+    )
+    if completed.returncode != 0:
+        return []
+    text = completed.stdout.strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            return [item for item in parsed if isinstance(item, dict)]
+        if isinstance(parsed, dict):
+            return [parsed]
+    except json.JSONDecodeError:
+        services: list[dict[str, Any]] = []
+        for line in text.splitlines():
+            try:
+                parsed_line = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed_line, dict):
+                services.append(parsed_line)
+        return services
+    return []
+
+
+def collect_diagnostics(run: RootfsSmokeRun) -> None:
+    run.context.diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    diagnostics = {
+        "docker-version.txt": ["docker", "--version"],
+        "docker-info.txt": ["docker", "info"],
+        "compose-ps.json": compose_command(run, ["ps", "--format", "json"]),
+        "compose-logs.txt": compose_command(run, ["logs", "--tail=300"]),
+        "journal-cloud-final.txt": [
+            "journalctl",
+            "-u",
+            "cloud-final",
+            "--no-pager",
+            "-n",
+            "300",
+        ],
+        "journal-docker.txt": [
+            "journalctl",
+            "-u",
+            "docker",
+            "--no-pager",
+            "-n",
+            "300",
+        ],
+        "df.txt": ["df", "-h"],
+    }
+    for name, command in diagnostics.items():
+        completed = run.operations.run(
+            command,
+            check=False,
+            timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+        )
+        (run.context.diagnostics_dir / name).write_text(
+            command_output(completed),
+            encoding="utf-8",
+        )
+
+    completed = run.operations.run(
+        ["dmesg", "--ctime"],
+        check=False,
+        timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+    )
+    dmesg_tail = "\n".join(command_output(completed).splitlines()[-300:])
+    (run.context.diagnostics_dir / "dmesg-tail.txt").write_text(
+        dmesg_tail + "\n",
+        encoding="utf-8",
+    )
+    (run.context.diagnostics_dir / "manifest.partial.json").write_text(
+        json.dumps(run.as_json(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def collect_runtime_versions(operations: RootfsSmokeOperations) -> dict[str, str]:
+    commands = {
+        "kernel": ["uname", "-r"],
+        "docker": ["docker", "--version"],
+        "containerd": ["containerd", "--version"],
+        "runc": ["runc", "--version"],
+        "compose": ["docker", "compose", "version"],
+    }
+    versions: dict[str, str] = {}
+    for key, command in commands.items():
+        completed = operations.run(command, check=False)
+        versions[key] = (
+            completed.stdout.splitlines()[0].strip() if completed.stdout else ""
+        )
+    return versions
+
+
+def read_ubuntu_metadata(deploy_dir: Path) -> dict[str, str]:
+    metadata = deploy_dir / "build-metadata" / "rootfs-input.json"
+    if not metadata.is_file():
+        return {
+            "metadataStatus": "missing",
+            "baseUrl": "",
+            "cacheKey": "",
+        }
+    try:
+        document = json.loads(metadata.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "metadataStatus": "invalid",
+            "baseUrl": "",
+            "cacheKey": "",
+        }
+    ubuntu = document.get("ubuntu")
+    if not isinstance(ubuntu, dict):
+        return {
+            "metadataStatus": "invalid",
+            "baseUrl": "",
+            "cacheKey": "",
+        }
+    base_url = ubuntu.get("baseUrl")
+    cache_key = ubuntu.get("cacheKey")
+    return {
+        "metadataStatus": "loaded",
+        "baseUrl": base_url if isinstance(base_url, str) else "",
+        "cacheKey": cache_key if isinstance(cache_key, str) else "",
+    }
+
+
+def compose_command(run: RootfsSmokeRun, arguments: list[str]) -> list[str]:
+    return [
+        "docker",
+        "compose",
+        "--project-name",
+        run.context.compose_project_name,
+        "-f",
+        str(run.context.deploy_dir / "compose.yaml"),
+        *arguments,
+    ]
+
+
+def run_checked(
+    run: RootfsSmokeRun,
+    arguments: list[str],
+    *,
+    timeout_seconds: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    completed = run.operations.run(
+        arguments,
+        check=False,
+        timeout_seconds=timeout_seconds,
+    )
+    if completed.returncode != 0:
+        raise RootfsSmokeCommandFailed(completed)
+    return completed
+
+
+def run_command(
+    arguments: list[str],
+    *,
+    check: bool = True,
+    timeout_seconds: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    completed = subprocess.run(
+        arguments,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=timeout_seconds,
+    )
+    if check and completed.returncode != 0:
+        raise RootfsSmokeCommandFailed(completed)
+    return completed
+
+
+def http_status(url: str, timeout_seconds: float) -> int:
+    with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
+        return int(response.status)
+
+
+def command_output(completed: subprocess.CompletedProcess[str]) -> str:
+    stdout = completed.stdout or ""
+    stderr = completed.stderr or ""
+    return stdout + (("\n" + stderr) if stderr else "")

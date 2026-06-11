@@ -60,6 +60,7 @@ class RuntimeCommand(StrEnum):
     RUNTIME_STATE = "tirosh-runtime-state"
     VITALSERVER_HEALTH = "tirosh-vitalserver-health"
     VITALSERVER_COMPOSE = "tirosh-vitalserver-compose"
+    VITALSERVER_ROOTFS_SMOKE = "tirosh-vitalserver-rootfs-smoke"
     VITALSERVER_COMMAND_POLLER = "tirosh-vitalserver-command-poller"
     VITALSERVER_REDIS_BACKUP = "tirosh-vitalserver-redis-backup"
     VITALSERVER_REDIS_RESTORE = "tirosh-vitalserver-redis-restore"
@@ -69,6 +70,15 @@ class RuntimeCommand(StrEnum):
     VITALSERVER_CONTAINER_LOGS = "tirosh-vitalserver-container-logs"
     VITALSERVER_DIAGNOSTICS = "tirosh-vitalserver-diagnostics"
     GUEST_TOOLS_INSTALL_CONFIG = "tirosh-guest-tools-install-config"
+
+
+class RootfsSmokeStatus(StrEnum):
+    NOT_RUN = "not-run"
+    RUNNING = "running"
+    PASSED = "passed"
+    FAILED = "failed"
+    TIMEOUT = "timeout"
+    CLEANUP_FAILED = "cleanup-failed"
 
 
 class RuntimeConfigKey(StrEnum):

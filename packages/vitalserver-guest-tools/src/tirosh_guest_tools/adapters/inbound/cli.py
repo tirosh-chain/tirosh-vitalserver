@@ -30,18 +30,19 @@ from tirosh_guest_tools.application.redis_backup import (
 from tirosh_guest_tools.application.redis_backup import (
     run_redis_backup,
 )
-from tirosh_guest_tools.application.redis_restore import (
-    LOG_FILE as REDIS_RESTORE_LOG_FILE,
-)
-from tirosh_guest_tools.application.redis_restore import (
-    run_redis_restore,
-)
 from tirosh_guest_tools.application.redis_repair import (
     LOG_FILE as REDIS_REPAIR_LOG_FILE,
 )
 from tirosh_guest_tools.application.redis_repair import (
     run_repair_datastore,
 )
+from tirosh_guest_tools.application.redis_restore import (
+    LOG_FILE as REDIS_RESTORE_LOG_FILE,
+)
+from tirosh_guest_tools.application.redis_restore import (
+    run_redis_restore,
+)
+from tirosh_guest_tools.application.rootfs_smoke import run_rootfs_smoke
 from tirosh_guest_tools.application.runtime_state import run_runtime_state_action
 from tirosh_guest_tools.application.update_activation import (
     LOG_FILE as ACTIVATE_UPDATE_LOG_FILE,
@@ -179,6 +180,16 @@ def vitalserver_compose() -> int:
     args = parser.parse_args()
     configure_logging(SETTINGS.logging)
     run_compose_action(args.action)
+    return 0
+
+
+def vitalserver_rootfs_smoke() -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate golden rootfs Docker and Compose runtime behavior."
+    )
+    parser.parse_args()
+    configure_logging(SETTINGS.logging)
+    run_rootfs_smoke()
     return 0
 
 

@@ -224,13 +224,18 @@ Watchdog의 guest bootstrap guard는 Host가 소유한 `vm-lifecycle.json`의 wa
 `running` bootstrap result를 active operation으로 취급하면 안 됩니다. VM이 kernel panic이나 early
 termination으로 guest trap을 실행하지 못하면 bootstrap result가 `running`에 머물 수 있으므로,
 deadline 이후에는 Host lifecycle stale/failure 관측이 recovery 또는 critical 상태로 드러나야 합니다.
-Golden rootfs는 `/mnt/tirosh/run/rootfs-runtime-manifest.json`의 `dockerSmoke.status=passed`와
-`composeSmoke.status=passed`를 가진 경우에만 `rootfs-base.raw.gz`로 압축할 수 있습니다.
+Golden rootfs는 `/mnt/tirosh/run/rootfs-runtime-manifest.json` schema v2의 stage 결과가 모두 통과한
+경우에만 `rootfs-base.raw.gz`로 압축할 수 있습니다. 필수 stage는 `docker-smoke`, `compose-build`,
+`compose-up`, `edge-ready`이며, `cleanup.status=passed`도 함께 필요합니다. Manifest의
+`ubuntu.metadataStatus`는 `loaded`여야 하고, `ubuntu.baseUrl`, `ubuntu.cacheKey`, `ubuntu.kernel`은
+비어 있으면 안 됩니다. 입력 Ubuntu 이미지가 무엇인지 모르는 rootfs는 smoke가 통과해도 release artifact가
+될 수 없습니다.
 `docker --version`, `docker compose version`, package install success, `rootfs-ready` marker는 runtime
 proof가 아닙니다. Rootfs 준비 VM은 Docker disposable container smoke 이후 실제 deploy bundle의
-Compose stack을 올리고 `/ready`를 확인한 뒤 `docker compose down -v`로 state를 정리해야 합니다.
-Fresh install bootstrap도 image bundle load 직후 disposable smoke container start를 수행하고, 실패하면
-`guest-bootstrap-docker-runtime-failed`를 기록해야 합니다.
+Compose stack을 올리고 `/ready`를 확인한 뒤 `docker compose down -v`로 state를 정리해야 합니다. 실패
+시 `rootfs-smoke-diagnostics`에 compose ps/logs, Docker info, journal, dmesg tail, df, partial manifest를
+남겨야 합니다. Fresh install bootstrap도 image bundle load 직후 disposable smoke container start를
+수행하고, 실패하면 `guest-bootstrap-docker-runtime-failed`를 기록해야 합니다.
 Ubuntu arm64 guest가 Docker image load 이후 첫 container start 또는 Docker netlink activity에서
 `__bpf_prog_run_save_cb` / `Kernel panic - not syncing: Oops - Undefined instruction`로 죽으면
 Docker image 문제가 아니라 Apple Virtualization 환경에서 Ubuntu generic kernel의 BPF JIT 실행 경로가
@@ -238,7 +243,7 @@ Docker image 문제가 아니라 Apple Virtualization 환경에서 Ubuntu generi
 거부될 수 있고, `bpf_jit_enable=0` boot argument는 runtime guard로 증명되지 않습니다. Rootfs 준비와
 fresh install bootstrap은 커널 sysctl fallback을 만들지 말고, 실제 Docker smoke container start가
 통과했는지를 runtime proof로 사용해야 합니다. Smoke를 삭제하면 문제가 숨겨질 뿐이며, Ubuntu cloud
-image/kernel 입력은 manifest의 `kernel`과 `dockerSmoke.status=passed`로 검증된 버전으로 pin해야 합니다.
+image/kernel 입력은 manifest의 `ubuntu.kernel`과 rootfs smoke stages로 검증된 버전으로 pin해야 합니다.
 Ubuntu image download cache는 `base_url` identity를 포함해야 합니다. Release URL만 바꿨는데 같은
 `ubuntu-24.04-server-cloudimg-arm64.img` cache 파일을 재사용하면 config pin이 실제 VM 입력으로
 반영되지 않고, 검증했다고 믿은 kernel과 실제 packaged kernel이 달라집니다.

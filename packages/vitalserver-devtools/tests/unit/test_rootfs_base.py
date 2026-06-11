@@ -27,9 +27,9 @@ def test_require_stopped_lifecycle_accepts_stopped_vm(tmp_path):
     require_stopped_lifecycle(source)
 
 
-def test_require_runtime_manifest_accepts_passed_docker_smoke(tmp_path):
+def test_require_runtime_manifest_accepts_passed_rootfs_smoke(tmp_path):
     source = rootfs_source_with_lifecycle(tmp_path)
-    write_runtime_manifest(source, status="passed", message="docker runtime smoke passed")
+    write_runtime_manifest(source)
 
     require_runtime_manifest(source)
 
@@ -41,38 +41,73 @@ def test_require_runtime_manifest_rejects_missing_manifest(tmp_path):
         require_runtime_manifest(source)
 
 
-def test_require_runtime_manifest_rejects_failed_docker_smoke(tmp_path):
+def test_require_runtime_manifest_rejects_unsupported_schema(tmp_path):
     source = rootfs_source_with_lifecycle(tmp_path)
-    write_runtime_manifest(source, status="failed", message="runc EOF")
+    write_runtime_manifest(source, schema_version=1)
 
-    with pytest.raises(SystemExit, match="Docker runtime smoke did not pass"):
+    with pytest.raises(SystemExit, match="schema is unsupported"):
         require_runtime_manifest(source)
 
 
-def test_require_runtime_manifest_rejects_missing_compose_smoke(tmp_path):
+def test_require_runtime_manifest_rejects_missing_kernel(tmp_path):
     source = rootfs_source_with_lifecycle(tmp_path)
-    write_runtime_manifest(
-        source,
-        status="passed",
-        message="docker runtime smoke passed",
-        compose_status=None,
-    )
+    write_runtime_manifest(source, kernel="")
 
-    with pytest.raises(SystemExit, match="missing composeSmoke result"):
+    with pytest.raises(SystemExit, match="missing explicit Ubuntu input"):
         require_runtime_manifest(source)
 
 
-def test_require_runtime_manifest_rejects_failed_compose_smoke(tmp_path):
+def test_require_runtime_manifest_rejects_missing_input_metadata(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(source, metadata_status="missing")
+
+    with pytest.raises(SystemExit, match="missing explicit Ubuntu input"):
+        require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_empty_cache_key(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(source, cache_key="")
+
+    with pytest.raises(SystemExit, match="missing explicit Ubuntu input"):
+        require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_failed_docker_stage(tmp_path):
     source = rootfs_source_with_lifecycle(tmp_path)
     write_runtime_manifest(
         source,
-        status="passed",
-        message="docker runtime smoke passed",
-        compose_status="failed",
-        compose_message="edge did not become ready",
+        stage_statuses={"docker-smoke": ("failed", "runc EOF")},
     )
 
-    with pytest.raises(SystemExit, match="Compose runtime smoke did not pass"):
+    with pytest.raises(SystemExit, match="docker-smoke stage did not pass"):
+        require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_missing_compose_stage(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(source, omitted_stages={"compose-up"})
+
+    with pytest.raises(SystemExit, match="missing compose-up stage"):
+        require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_failed_edge_ready_stage(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(
+        source,
+        stage_statuses={"edge-ready": ("timeout", "edge did not become ready")},
+    )
+
+    with pytest.raises(SystemExit, match="edge-ready stage did not pass"):
+        require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_failed_cleanup(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(source, cleanup_status="cleanup-failed")
+
+    with pytest.raises(SystemExit, match="cleanup did not pass"):
         require_runtime_manifest(source)
 
 
@@ -119,7 +154,7 @@ def test_run_rootfs_base_rejects_corrupt_compressor_output(tmp_path, monkeypatch
     lifecycle.parent.mkdir(parents=True)
     source.write_bytes(b"disk")
     lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
-    write_runtime_manifest(source, status="passed", message="docker runtime smoke passed")
+    write_runtime_manifest(source)
 
     def write_corrupt_gzip(source: Path, output: Path, *, threads: int) -> None:
         output.write_bytes(b"not a gzip")
@@ -151,27 +186,55 @@ def rootfs_source_with_lifecycle(tmp_path: Path) -> Path:
 def write_runtime_manifest(
     source: Path,
     *,
-    status: str,
-    message: str,
-    compose_status: str | None = "passed",
-    compose_message: str = "compose runtime smoke passed",
+    schema_version: int = 2,
+    metadata_status: str = "loaded",
+    base_url: str = "https://example.invalid/release",
+    cache_key: str = "release-abcd",
+    kernel: str = "6.8.0-test",
+    stage_statuses: dict[str, tuple[str, str]] | None = None,
+    omitted_stages: set[str] | None = None,
+    cleanup_status: str = "passed",
 ) -> None:
     manifest = source.parent.parent / "data" / "run" / "rootfs-runtime-manifest.json"
     manifest.parent.mkdir(parents=True)
-    document = {
-        "schemaVersion": 1,
-        "dockerSmoke": {
-            "image": "redis:3.2.12-alpine",
+    stage_statuses = stage_statuses or {}
+    omitted_stages = omitted_stages or set()
+    stages = []
+    for name in ("docker-smoke", "compose-build", "compose-up", "edge-ready"):
+        if name in omitted_stages:
+            continue
+        status, message = stage_statuses.get(name, ("passed", f"{name} passed"))
+        stages.append({
+            "name": name,
             "status": status,
+            "startedAt": "2026-06-11T00:00:00Z",
+            "completedAt": "2026-06-11T00:00:01Z",
             "message": message,
+            "details": {},
+        })
+    document = {
+        "schemaVersion": schema_version,
+        "ubuntu": {
+            "metadataStatus": metadata_status,
+            "baseUrl": base_url,
+            "cacheKey": cache_key,
+            "kernel": kernel,
+        },
+        "runtime": {
+            "docker": "Docker version test",
+            "containerd": "containerd test",
+            "runc": "runc test",
+            "compose": "Docker Compose test",
+        },
+        "stages": stages,
+        "cleanup": {
+            "status": cleanup_status,
+            "message": "cleanup message",
+        },
+        "diagnostics": {
+            "path": "/mnt/tirosh/run/rootfs-smoke-diagnostics",
         },
     }
-    if compose_status is not None:
-        document["composeSmoke"] = {
-            "project": "vitalserver-rootfs-smoke",
-            "status": compose_status,
-            "message": compose_message,
-        }
     manifest.write_text(
         json.dumps(document),
         encoding="utf-8",

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
+from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.build_config import load_config
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
@@ -22,7 +24,9 @@ from tirosh_vitalserver.devtools.config.docker_images import load_docker_images_
 from tirosh_vitalserver.devtools.config.guest_deploy import (
     load_guest_deploy_config,
 )
+from tirosh_vitalserver.devtools.config.guest_image import load_ubuntu_image_config
 from tirosh_vitalserver.devtools.config.paths import resolve_path
+from tirosh_vitalserver.devtools.core.guest_image import ubuntu_download_cache_key
 from tirosh_vitalserver.devtools.core.guest_services import (
     guest_deploy_plan,
 )
@@ -101,6 +105,30 @@ def stage_guest_deployment(
         optional_docker_bundle=optional_docker_bundle,
     )
     stage_guest_deploy(plan)
+    stage_rootfs_input_metadata(
+        deploy_dir=deploy_dir,
+        base_url=load_ubuntu_image_config(config).base_url,
+    )
     ensure_vm_data_dirs(plan)
     print(f"guest deployment bundle is ready: {deploy_dir}")
     return 0
+
+
+def stage_rootfs_input_metadata(*, deploy_dir: Path, base_url: str) -> None:
+    metadata = deploy_dir / "build-metadata" / "rootfs-input.json"
+    metadata.parent.mkdir(parents=True, exist_ok=True)
+    metadata.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "ubuntu": {
+                    "baseUrl": base_url,
+                    "cacheKey": ubuntu_download_cache_key(base_url),
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )

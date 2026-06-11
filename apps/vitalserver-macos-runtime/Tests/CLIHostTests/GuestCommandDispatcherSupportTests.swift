@@ -84,24 +84,20 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(prepareAirgapRootfs.contains("net.core.bpf_jit_enable"))
         XCTAssertFalse(prepareAirgapRootfs.contains("sysctl -w net.core.bpf_jit_enable"))
         XCTAssertFalse(prepareAirgapRootfs.contains("\"bpfJIT\""))
-        XCTAssertTrue(prepareAirgapRootfs.contains("install_runtime_packages\nverify_runtime_packages\nrun_docker_runtime_smoke\nrun_compose_runtime_smoke"))
+        XCTAssertFalse(prepareAirgapRootfs.contains("run_docker_runtime_smoke"))
+        XCTAssertFalse(prepareAirgapRootfs.contains("run_compose_runtime_smoke"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("tirosh-vitalserver-rootfs-smoke"))
     }
 
-    func testPrepareAirgapRootfsWritesRuntimeManifestAndSmokeStatus() throws {
+    func testPrepareAirgapRootfsDelegatesRootfsSmokeToGuestTools() throws {
         let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
 
         XCTAssertTrue(prepareAirgapRootfs.contains("RUNTIME_MANIFEST_FILE=\"${RUNTIME_DIR}/rootfs-runtime-manifest.json\""))
-        XCTAssertTrue(prepareAirgapRootfs.contains("DOCKER_SMOKE_IMAGE=\"${VITALSERVER_DOCKER_SMOKE_IMAGE:-redis:3.2.12-alpine}\""))
         XCTAssertTrue(prepareAirgapRootfs.contains("busybox-static"))
-        XCTAssertTrue(prepareAirgapRootfs.contains("LOCAL_DOCKER_SMOKE_IMAGE=\"vitalserver-rootfs-smoke:local\""))
-        XCTAssertTrue(prepareAirgapRootfs.contains("\"dockerSmoke\""))
-        XCTAssertTrue(prepareAirgapRootfs.contains("docker import \"${tarball}\" \"${LOCAL_DOCKER_SMOKE_IMAGE}\""))
-        XCTAssertTrue(prepareAirgapRootfs.contains("docker run --rm --network none \"${smoke_image}\" ${smoke_command}"))
-        XCTAssertTrue(prepareAirgapRootfs.contains("COMPOSE_PROJECT_NAME=\"vitalserver-rootfs-smoke\""))
-        XCTAssertTrue(prepareAirgapRootfs.contains("\"composeSmoke\""))
-        XCTAssertTrue(prepareAirgapRootfs.contains("compose_smoke up -d edge"))
-        XCTAssertTrue(prepareAirgapRootfs.contains("wait_for_compose_edge_ready"))
-        XCTAssertTrue(prepareAirgapRootfs.contains("compose_smoke_cleanup"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("install_guest_tools_for_rootfs_smoke"))
+        XCTAssertTrue(prepareAirgapRootfs.contains("tirosh-vitalserver-rootfs-smoke"))
+        XCTAssertFalse(prepareAirgapRootfs.contains("docker run --rm --network none"))
+        XCTAssertFalse(prepareAirgapRootfs.contains("docker compose --project-name"))
         XCTAssertTrue(prepareAirgapRootfs.contains("printf \"manifest=%s\\n\" \"${RUNTIME_MANIFEST_FILE}\""))
     }
 

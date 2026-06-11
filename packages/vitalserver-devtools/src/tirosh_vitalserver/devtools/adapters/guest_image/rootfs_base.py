@@ -81,30 +81,66 @@ def require_runtime_manifest(source: Path) -> None:
         raise SystemExit(
             f"error: rootfs runtime manifest is unreadable: {manifest}: {error}"
         ) from error
-    docker_smoke = document.get("dockerSmoke")
-    if not isinstance(docker_smoke, dict):
+    schema_version = document.get("schemaVersion")
+    if schema_version != 2:
         raise SystemExit(
-            "error: rootfs runtime manifest is missing dockerSmoke result; "
+            "error: rootfs runtime manifest schema is unsupported; "
+            f"expected=2 actual={schema_version} manifest={manifest}"
+        )
+    ubuntu = document.get("ubuntu")
+    if (
+        not isinstance(ubuntu, dict)
+        or ubuntu.get("metadataStatus") != "loaded"
+        or not non_empty_string(ubuntu.get("baseUrl"))
+        or not non_empty_string(ubuntu.get("cacheKey"))
+        or not non_empty_string(ubuntu.get("kernel"))
+    ):
+        raise SystemExit(
+            "error: rootfs runtime manifest is missing explicit Ubuntu input "
+            "metadata or kernel; "
             f"manifest={manifest}"
         )
-    smoke_status = docker_smoke.get("status")
-    if smoke_status != "passed":
-        smoke_message = docker_smoke.get("message")
+    stages = document.get("stages")
+    if not isinstance(stages, list):
         raise SystemExit(
-            "error: rootfs Docker runtime smoke did not pass; refusing to "
-            f"compress unproven rootfs: status={smoke_status} message={smoke_message}"
-        )
-    compose_smoke = document.get("composeSmoke")
-    if not isinstance(compose_smoke, dict):
-        raise SystemExit(
-            "error: rootfs runtime manifest is missing composeSmoke result; "
+            "error: rootfs runtime manifest is missing stage results; "
             f"manifest={manifest}"
         )
-    compose_status = compose_smoke.get("status")
-    if compose_status != "passed":
-        compose_message = compose_smoke.get("message")
+    require_stage_passed(stages, "docker-smoke", manifest)
+    require_stage_passed(stages, "compose-build", manifest)
+    require_stage_passed(stages, "compose-up", manifest)
+    require_stage_passed(stages, "edge-ready", manifest)
+    cleanup = document.get("cleanup")
+    cleanup_status = cleanup.get("status") if isinstance(cleanup, dict) else None
+    if cleanup_status != "passed":
         raise SystemExit(
-            "error: rootfs Compose runtime smoke did not pass; refusing to "
-            f"compress unproven rootfs: status={compose_status} "
-            f"message={compose_message}"
+            "error: rootfs smoke cleanup did not pass; refusing to compress "
+            f"unproven rootfs: status={cleanup_status} manifest={manifest}"
         )
+
+
+def require_stage_passed(stages: list[object], name: str, manifest: Path) -> None:
+    stage = next(
+        (
+            value
+            for value in stages
+            if isinstance(value, dict) and value.get("name") == name
+        ),
+        None,
+    )
+    if not isinstance(stage, dict):
+        raise SystemExit(
+            f"error: rootfs runtime manifest is missing {name} stage; "
+            f"manifest={manifest}"
+        )
+    status = stage.get("status")
+    if status != "passed":
+        message = stage.get("message")
+        raise SystemExit(
+            f"error: rootfs {name} stage did not pass; refusing to compress "
+            f"unproven rootfs: status={status} message={message}"
+        )
+
+
+def non_empty_string(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())

@@ -9,6 +9,9 @@ from tirosh_vitalserver.devtools.application.inputs import UbuntuBootAssetsInput
 from tirosh_vitalserver.devtools.application.usecases import (
     guest_image as guest_image_usecases,
 )
+from tirosh_vitalserver.devtools.application.usecases.guest_services import (
+    stage_rootfs_input_metadata,
+)
 from tirosh_vitalserver.devtools.config.build_toml import load_build_toml
 from tirosh_vitalserver.devtools.config.guest_image import load_ubuntu_image_config
 from tirosh_vitalserver.devtools.core.errors import DomainError
@@ -122,3 +125,27 @@ def test_ubuntu_download_cache_key_preserves_release_source_identity() -> None:
     assert old_release.startswith("release-20250313-")
     assert new_release.startswith("release-20260518-")
     assert old_release != new_release
+
+
+def test_stage_rootfs_input_metadata_preserves_ubuntu_source_identity(
+    tmp_path: Path,
+) -> None:
+    base_url = "https://cloud-images.ubuntu.com/releases/noble/release-20250313"
+
+    stage_rootfs_input_metadata(deploy_dir=tmp_path, base_url=base_url)
+
+    metadata = load_json(tmp_path / "build-metadata/rootfs-input.json")
+    assert metadata["schemaVersion"] == 1
+    assert metadata["ubuntu"] == {
+        "baseUrl": base_url,
+        "cacheKey": ubuntu_download_cache_key(base_url),
+    }
+
+
+def load_json(path: Path) -> dict[str, object]:
+    import json
+
+    with path.open(encoding="utf-8") as handle:
+        document = json.load(handle)
+    assert isinstance(document, dict)
+    return document
