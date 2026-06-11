@@ -40,6 +40,25 @@ final class JSONFileRuntimeOperationLeaseRepositoryTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    func testAcquireHeartbeatAndReleaseUseFileLock() throws {
+        let directory = temporaryDirectory()
+        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeOperationLease)
+        let fileLock = RecordingOperationLeaseFileLock()
+        let repository = JSONFileRuntimeOperationLeaseRepository(url: url, fileLock: fileLock)
+
+        try repository.acquire(operationLease(operationId: "lease-1", operation: .applyBundle))
+        try repository.heartbeat(
+            operationId: "lease-1",
+            heartbeatAt: "2026-05-22T00:10:00Z",
+            expiresAt: "2026-05-22T01:10:00Z"
+        )
+        try repository.release(operationId: "lease-1")
+
+        XCTAssertEqual(fileLock.lockedURLs, [url, url, url])
+
+        try? FileManager.default.removeItem(at: directory)
+    }
+
     func testReleaseFailsWhenOperationIdDoesNotMatch() throws {
         let directory = temporaryDirectory()
         let url = directory.appendingPathComponent(RuntimeFileNames.runtimeOperationLease)
@@ -149,7 +168,11 @@ final class JSONFileRuntimeOperationLeaseRepositoryTests: XCTestCase {
     func testAcquireAndReleaseUseInjectedFileStore() throws {
         let url = URL(fileURLWithPath: "/runtime/operation-lease.json")
         let fileStore = OperationLeaseFileStore()
-        let repository = JSONFileRuntimeOperationLeaseRepository(url: url, fileStore: fileStore)
+        let repository = JSONFileRuntimeOperationLeaseRepository(
+            url: url,
+            fileStore: fileStore,
+            fileLock: NoopOperationLeaseFileLock()
+        )
         let document = operationLease(operationId: "lease-1", operation: .applyBundle)
 
         try repository.acquire(document)
@@ -184,6 +207,21 @@ final class JSONFileRuntimeOperationLeaseRepositoryTests: XCTestCase {
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    }
+}
+
+private struct NoopOperationLeaseFileLock: RuntimeFileLocking {
+    func withExclusiveLock<T>(for url: URL, _ body: () throws -> T) throws -> T {
+        try body()
+    }
+}
+
+private final class RecordingOperationLeaseFileLock: RuntimeFileLocking {
+    private(set) var lockedURLs: [URL] = []
+
+    func withExclusiveLock<T>(for url: URL, _ body: () throws -> T) throws -> T {
+        lockedURLs.append(url)
+        return try body()
     }
 }
 

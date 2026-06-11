@@ -392,6 +392,7 @@ public enum RuntimeOperationLeaseRepositoryError: Error, Equatable, CustomString
     case existingOperation(operationId: String, operation: String)
     case readFailed(String)
     case createFailed(String)
+    case lockFailed(path: String, reason: String)
     case operationIdMismatch(expected: String, actual: String)
 
     public var description: String {
@@ -402,6 +403,8 @@ public enum RuntimeOperationLeaseRepositoryError: Error, Equatable, CustomString
             return "runtime operation lease read failed: \(reason)"
         case .createFailed(let path):
             return "runtime operation lease create failed path=\(path)"
+        case .lockFailed(let path, let reason):
+            return "runtime operation lease lock failed path=\(path) reason=\(reason)"
         case .operationIdMismatch(let expected, let actual):
             return "runtime operation lease operationId mismatch expected=\(expected) actual=\(actual)"
         }

@@ -36,7 +36,18 @@ logger = logging.getLogger(__name__)
 
 def run_redis_backup() -> RedisBackupOutcome:
     mount_runtime_share()
-    request_id = read_request_id()
+    try:
+        request_id = read_request_id()
+    except Exception:
+        write_result(
+            "",
+            OperationStatus.FAILED,
+            "Redis backup request metadata is invalid.",
+            None,
+        )
+        REQUEST_FILE.unlink(missing_ok=True)
+        logger.exception("redis backup request metadata is invalid")
+        raise
     stamp = utc_now().replace(":", "").replace("-", "")
     archive = BACKUP_DIR / f"redis-{stamp}.tar.gz"
     try:
@@ -64,6 +75,7 @@ def run_redis_backup() -> RedisBackupOutcome:
                 "Redis backup is running.",
                 archive,
             )
+            REQUEST_FILE.unlink(missing_ok=True)
         create_backup(archive)
         prune_backups(retention)
         if request_id:
@@ -73,7 +85,6 @@ def run_redis_backup() -> RedisBackupOutcome:
                 "Redis backup completed.",
                 archive,
             )
-            REQUEST_FILE.unlink(missing_ok=True)
         logger.info(
             "redis backup completed",
             extra={"fields": {"archive": str(archive)}},
@@ -87,7 +98,6 @@ def run_redis_backup() -> RedisBackupOutcome:
                 f"Redis backup failed: {error}",
                 archive,
             )
-            REQUEST_FILE.unlink(missing_ok=True)
         logger.exception(
             "redis backup failed",
             extra={"fields": {"requestId": request_id or None}},
@@ -111,7 +121,7 @@ def write_result(
     request_id: str,
     status: OperationStatus,
     message: str,
-    archive: Path,
+    archive: Path | None,
 ) -> None:
     write_json(
         RESULT_FILE,
@@ -122,7 +132,7 @@ def write_result(
             status=status,
             message=message,
             updated_at=utc_now(),
-            archive=str(archive),
+            archive=str(archive) if archive is not None else "",
         ).as_json(),
     )
 

@@ -61,6 +61,7 @@ def run_activate_update() -> None:
             OperationStatus.FAILED,
             "Activation request metadata is invalid.",
         )
+        REQUEST_FILE.unlink(missing_ok=True)
         logger.exception("activation request metadata is invalid")
         raise
     logger.info(
@@ -72,11 +73,11 @@ def run_activate_update() -> None:
         OperationStatus.RUNNING,
         "Guest update activation started.",
     )
+    REQUEST_FILE.unlink(missing_ok=True)
     try:
         activate_runtime()
     except Exception:
         collect_guest_observability(ObservationPhase.ACTIVATION_FAILURE)
-        REQUEST_FILE.unlink(missing_ok=True)
         write_result(
             request_id,
             OperationStatus.FAILED,
@@ -88,7 +89,6 @@ def run_activate_update() -> None:
         )
         raise
     collect_guest_observability(ObservationPhase.ACTIVATION_POST)
-    REQUEST_FILE.unlink(missing_ok=True)
     write_result(
         request_id,
         OperationStatus.COMPLETED,

@@ -36,16 +36,26 @@ def run_repair_datastore() -> None:
         logger.info("request file is missing; exiting")
         write_result("", OperationStatus.SKIPPED, "request file is missing")
         return
-    request_id = request_id_from(REQUEST_FILE)
+    try:
+        request_id = request_id_from(REQUEST_FILE)
+    except Exception:
+        write_result(
+            "",
+            OperationStatus.FAILED,
+            "Datastore repair request metadata is invalid.",
+        )
+        REQUEST_FILE.unlink(missing_ok=True)
+        logger.exception("datastore repair request metadata is invalid")
+        raise
     write_result(
         request_id,
         OperationStatus.RUNNING,
         "Datastore repair is running.",
     )
+    REQUEST_FILE.unlink(missing_ok=True)
     try:
         restart_runtime_compose()
     except Exception:
-        REQUEST_FILE.unlink(missing_ok=True)
         write_result(
             request_id,
             OperationStatus.FAILED,
@@ -56,7 +66,6 @@ def run_repair_datastore() -> None:
             extra={"fields": {"requestId": request_id}},
         )
         raise
-    REQUEST_FILE.unlink(missing_ok=True)
     write_result(
         request_id,
         OperationStatus.COMPLETED,

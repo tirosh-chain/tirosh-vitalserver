@@ -22,6 +22,22 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
         XCTAssertEqual(repository.query(RuntimeEventQuery(limit: 10)).events.map(\.id), ["event-1", "event-2"])
     }
 
+    func testAppendUsesFileLock() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let url = directory.appendingPathComponent(RuntimeFileNames.runtimeEvents)
+        let fileLock = RecordingRuntimeEventFileLock()
+        let repository = JSONLRuntimeEventRepository(url: url, fileLock: fileLock)
+
+        try repository.append(event(id: "event-1", status: .healthy))
+        try repository.append(event(id: "event-2", status: .degraded))
+
+        XCTAssertEqual(fileLock.lockedURLs, [url, url])
+    }
+
     func testRotatesRuntimeEventsAndReadsAcrossRotatedFiles() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -190,7 +206,11 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
     func testAppendAndQueryUseInjectedFileStore() throws {
         let url = URL(fileURLWithPath: "/runtime/events.jsonl")
         let fileStore = EventLogFileStore()
-        let repository = JSONLRuntimeEventRepository(url: url, fileStore: fileStore)
+        let repository = JSONLRuntimeEventRepository(
+            url: url,
+            fileStore: fileStore,
+            fileLock: NoopRuntimeEventFileLock()
+        )
 
         try repository.append(event(id: "event-1", status: .healthy))
         try repository.append(event(id: "event-2", status: .degraded))
@@ -229,6 +249,21 @@ final class JSONLRuntimeEventRepositoryTests: XCTestCase {
             containerObservation: nil,
             progress: nil
         )
+    }
+}
+
+private struct NoopRuntimeEventFileLock: RuntimeFileLocking {
+    func withExclusiveLock<T>(for url: URL, _ body: () throws -> T) throws -> T {
+        try body()
+    }
+}
+
+private final class RecordingRuntimeEventFileLock: RuntimeFileLocking {
+    private(set) var lockedURLs: [URL] = []
+
+    func withExclusiveLock<T>(for url: URL, _ body: () throws -> T) throws -> T {
+        lockedURLs.append(url)
+        return try body()
     }
 }
 

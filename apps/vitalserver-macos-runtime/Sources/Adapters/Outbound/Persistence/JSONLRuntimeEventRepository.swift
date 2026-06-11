@@ -11,17 +11,20 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
     private let rotationMaxBytes: UInt64
     private let rotationKeepCount: Int
     private let fileStore: RuntimeFileStore
+    private let fileLock: RuntimeFileLocking
 
     public init(
         url: URL,
         rotationMaxBytes: UInt64 = Self.defaultRotationMaxBytes,
         rotationKeepCount: Int = Self.defaultRotationKeepCount,
-        fileStore: RuntimeFileStore = SystemRuntimeFileStore()
+        fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
+        fileLock: RuntimeFileLocking = POSIXRuntimeFileLock()
     ) {
         self.url = url
         self.rotationMaxBytes = rotationMaxBytes
         self.rotationKeepCount = rotationKeepCount
         self.fileStore = fileStore
+        self.fileLock = fileLock
     }
 
     public func append(_ event: RuntimeEventDocument) throws {
@@ -29,12 +32,14 @@ public struct JSONLRuntimeEventRepository: RuntimeEventRepository {
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(event) + Data("\n".utf8)
         try fileStore.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try rotateIfNeeded(incomingBytes: UInt64(data.count))
+        try fileLock.withExclusiveLock(for: url) {
+            try rotateIfNeeded(incomingBytes: UInt64(data.count))
 
-        if try eventLogFileIsPresent(url) {
-            try fileStore.writeData(try fileStore.readData(url) + data, to: url, options: .atomic)
-        } else {
-            try fileStore.writeData(data, to: url, options: .atomic)
+            if try eventLogFileIsPresent(url) {
+                try fileStore.writeData(try fileStore.readData(url) + data, to: url, options: .atomic)
+            } else {
+                try fileStore.writeData(data, to: url, options: .atomic)
+            }
         }
     }
 

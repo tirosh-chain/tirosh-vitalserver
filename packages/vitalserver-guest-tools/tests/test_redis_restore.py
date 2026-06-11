@@ -40,7 +40,12 @@ def test_run_redis_restore_replaces_volume_and_writes_completed_result(
     monkeypatch.setattr(redis_restore, "mount_runtime_share", lambda: None)
     monkeypatch.setattr(redis_restore, "utc_now", lambda: "2026-06-10T00:00:00Z")
     commands: list[list[str]] = []
-    monkeypatch.setattr(redis_restore, "run", lambda args: _record(commands, args))
+    request_exists_at_command: list[bool] = []
+    monkeypatch.setattr(
+        redis_restore,
+        "run",
+        lambda args: _record(commands, args, request_exists_at_command, request),
+    )
     monkeypatch.setattr(
         redis_restore,
         "output",
@@ -56,6 +61,7 @@ def test_run_redis_restore_replaces_volume_and_writes_completed_result(
     assert document["status"] == "completed"
     assert document["restoredArchive"] == str(archive)
     assert not request.exists()
+    assert request_exists_at_command[0] is False
     assert commands[0][-1] == "stop"
     assert commands[1][-2:] == ["up", "-d"]
 
@@ -77,6 +83,10 @@ def test_redis_restore_rejects_unsafe_archive_member(tmp_path: Path) -> None:
 def _record(
     commands: list[list[str]],
     args: list[str],
+    request_exists_at_command: list[bool] | None = None,
+    request: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     commands.append(args)
+    if request_exists_at_command is not None and request is not None:
+        request_exists_at_command.append(request.exists())
     return subprocess.CompletedProcess(args, 0, "", "")

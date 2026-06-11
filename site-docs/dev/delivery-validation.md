@@ -176,6 +176,23 @@ Guest shutdown request는 single-shot trigger입니다. Worker는 request를 로
 result를 기록한 직후 request file을 소비해야 합니다. 성공 끝까지 request를 남겨두면 poweroff 또는
 process termination 중 worker가 사라졌을 때 같은 request가 다음 VM boot에서 다시 dispatch되고,
 Settings restart나 watchdog recovery가 update shutdown 경로로 오염될 수 있습니다.
+이 규칙은 `prepare-update-shutdown`에만 한정하지 않습니다. `activate-update`, datastore repair,
+Redis backup, Redis restore처럼 Guest command request file로 dispatch되는 작업은 모두 worker가
+`running` result를 쓴 직후 request를 소비해야 합니다. Invalid request도 failed result를 남긴 뒤
+소비해서 같은 invalid trigger가 반복 실행되지 않게 합니다.
+
+Host의 mutating runtime operation은 `runtime-operation-lease.json`을 source of truth로 사용합니다.
+Lease acquire, heartbeat, release는 파일 lock으로 보호되어야 하며, `missing`을 읽은 뒤 atomic write만
+수행하는 방식은 충분하지 않습니다. 두 Host process가 동시에 들어오면 둘 다 `missing`을 보고 서로의
+lease를 덮을 수 있기 때문입니다. Lock 실패는 busy/failed state로 드러나야 하며, operation이 없다고
+추정하고 다음 단계로 진행하면 안 됩니다.
+
+Lock은 state를 대신하지 않습니다. Lock은 같은 owner 영역의 동시 write를 막는 장치이고, operation
+상태는 lease document, request/result document, workflow state document로 명시되어야 합니다. UI나
+watchdog은 lock 파일, pid file, progress marker를 source of truth로 사용하지 말고 typed document를
+읽어야 합니다.
+JSONL event append처럼 read-modify-write로 보이는 기록도 lock 대상입니다. Event 유실은 operation
+상태를 직접 바꾸지는 않지만, 장애 원인 분석에 필요한 관측 기록을 사라지게 만들 수 있습니다.
 
 Settings apply는 update가 아닙니다. CPU, memory, disk increase, network mode, bridged interface,
 Vital files directory처럼 VM runtime 구성 자체가 바뀐 경우만 VM runtime restart requirement를 만듭니다.

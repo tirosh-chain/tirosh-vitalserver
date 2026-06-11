@@ -34,12 +34,28 @@ logger = logging.getLogger(__name__)
 
 def run_redis_restore() -> None:
     mount_runtime_share()
-    request = read_request()
+    try:
+        request = read_request()
+    except Exception:
+        write_result(
+            "",
+            OperationStatus.FAILED,
+            "Redis restore request metadata is invalid.",
+            None,
+        )
+        REQUEST_FILE.unlink(missing_ok=True)
+        logger.exception("redis restore request metadata is invalid")
+        raise
     archive = request.archive
     try:
         logger.info(
             "redis restore started",
-            extra={"fields": {"requestId": request.request_id, "archive": str(archive)}},
+            extra={
+                "fields": {
+                    "requestId": request.request_id,
+                    "archive": str(archive),
+                }
+            },
         )
         write_result(
             request.request_id,
@@ -47,6 +63,7 @@ def run_redis_restore() -> None:
             "Redis restore is running.",
             archive,
         )
+        REQUEST_FILE.unlink(missing_ok=True)
         restore_archive(archive)
         write_result(
             request.request_id,
@@ -54,7 +71,6 @@ def run_redis_restore() -> None:
             "Redis restore completed.",
             archive,
         )
-        REQUEST_FILE.unlink(missing_ok=True)
         logger.info(
             "redis restore completed",
             extra={"fields": {"archive": str(archive)}},
@@ -66,7 +82,6 @@ def run_redis_restore() -> None:
             f"Redis restore failed: {error}",
             archive,
         )
-        REQUEST_FILE.unlink(missing_ok=True)
         logger.exception("redis restore failed")
         raise
 
@@ -113,9 +128,15 @@ def validate_archive_path(archive: Path) -> None:
 
 def restore_archive(archive: Path) -> None:
     validate_archive_members(archive)
-    logger.info("redis compose stop started", extra={"fields": {"step": "compose-stop"}})
+    logger.info(
+        "redis compose stop started",
+        extra={"fields": {"step": "compose-stop"}},
+    )
     run(compose_command(["stop"]))
-    logger.info("redis compose stop completed", extra={"fields": {"step": "compose-stop"}})
+    logger.info(
+        "redis compose stop completed",
+        extra={"fields": {"step": "compose-stop"}},
+    )
     redis_volume_mount = output(
         ["docker", "volume", "inspect", "-f", "{{ .Mountpoint }}", REDIS_VOLUME]
     ).strip()
@@ -160,7 +181,7 @@ def write_result(
     request_id: str,
     status: OperationStatus,
     message: str,
-    archive: Path,
+    archive: Path | None,
 ) -> None:
     write_json(
         RESULT_FILE,
@@ -171,6 +192,6 @@ def write_result(
             status=status,
             message=message,
             updated_at=utc_now(),
-            restored_archive=str(archive),
+            restored_archive=str(archive) if archive is not None else "",
         ).as_json(),
     )

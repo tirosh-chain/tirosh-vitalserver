@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -9,6 +11,45 @@ from tirosh_guest_tools.application import update_activation
 from tirosh_guest_tools.contracts import RuntimeService
 from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.operations import ComposeAction, ObservationPhase
+
+
+def test_run_activate_update_consumes_request_before_activation_side_effects(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    request = tmp_path / "activate-update.request"
+    result = tmp_path / "activate-update-result.json"
+    request.write_text(
+        json.dumps({"requestId": "activate-1", "version": "1.2.3"}),
+        encoding="utf-8",
+    )
+    events: list[str] = []
+
+    monkeypatch.setattr(update_activation, "REQUEST_FILE", request)
+    monkeypatch.setattr(update_activation, "RESULT_FILE", result)
+    monkeypatch.setattr(update_activation, "mount_runtime_share", lambda: None)
+    monkeypatch.setattr(update_activation, "utc_now", lambda: "2026-06-10T00:00:00Z")
+    monkeypatch.setattr(
+        update_activation,
+        "activate_runtime",
+        lambda: events.append(f"activate-runtime:request-exists={request.exists()}"),
+    )
+    monkeypatch.setattr(
+        update_activation,
+        "collect_guest_observability",
+        lambda phase: events.append(f"observe:{ObservationPhase(phase).value}"),
+    )
+
+    update_activation.run_activate_update()
+
+    assert events == [
+        "activate-runtime:request-exists=False",
+        "observe:activation-post",
+    ]
+    document = json.loads(result.read_text(encoding="utf-8"))
+    assert document["requestId"] == "activate-1"
+    assert document["status"] == "completed"
+    assert not request.exists()
 
 
 def test_activate_runtime_quiesces_compose_units_before_recreating_stack(
