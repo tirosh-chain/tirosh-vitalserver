@@ -5,11 +5,12 @@ from types import SimpleNamespace
 import pytest
 
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
+    require_no_running_runtime,
     running_vm_processes_for_home,
     wait_for_rootfs_ready,
     wait_for_runtime_stopped,
 )
-from tirosh_vitalserver.devtools.application.inputs import RuntimeWaitInput
+from tirosh_vitalserver.devtools.application.inputs import RuntimeVmHomeInput, RuntimeWaitInput
 
 
 def test_wait_for_runtime_stopped_accepts_stopped_lifecycle(tmp_path):
@@ -87,6 +88,27 @@ def test_wait_for_rootfs_ready_rejects_terminal_launcher_log(tmp_path):
         )
 
 
+def test_wait_for_rootfs_ready_rejects_kernel_panic_log(tmp_path):
+    log_file = tmp_path / "logs" / "launcher.log"
+    log_file.parent.mkdir(parents=True)
+    log_file.write_text(
+        "[ 155.971753] Kernel panic - not syncing: Attempted to kill init!\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match="VM launcher log shows terminal guest failure",
+    ):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+            )
+        )
+
+
 def test_running_vm_processes_for_home_reads_explicit_vm_home(monkeypatch, tmp_path):
     def fake_run(command, text, capture_output, check):
         assert command == ["ps", "eww", "-axo", "pid=,command="]
@@ -116,3 +138,46 @@ def test_running_vm_processes_for_home_does_not_hide_process_read_failure(
 
     with pytest.raises(SystemExit, match="failed to inspect running VM processes"):
         running_vm_processes_for_home(tmp_path)
+
+
+def test_require_no_running_runtime_rejects_stale_vm_process(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".repo_root",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".running_vm_processes_for_home",
+        lambda vm_home: [1234],
+    )
+
+    with pytest.raises(SystemExit, match="VM launcher process is still running"):
+        require_no_running_runtime(
+            RuntimeVmHomeInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path / "vm",
+            )
+        )
+
+
+def test_require_no_running_runtime_accepts_no_process(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".repo_root",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".running_vm_processes_for_home",
+        lambda vm_home: [],
+    )
+
+    result = require_no_running_runtime(
+        RuntimeVmHomeInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path / "vm",
+        )
+    )
+
+    assert result == 0

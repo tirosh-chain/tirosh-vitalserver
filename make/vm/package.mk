@@ -42,6 +42,8 @@ internal/vm/airgap-rootfs: internal/vm/download internal/vm/stage
 	@$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
 		--vm-home "$(VM_HOME)" \
 		stop >/dev/null 2>&1 || true
+	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
+		--vm-home "$(VM_HOME)"
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" cloud-init \
 		--runtime-dir "$(VM_RUNTIME_DIR)" \
 		--bootstrap-script "/mnt/tirosh/deploy/prepare-airgap-rootfs.sh"

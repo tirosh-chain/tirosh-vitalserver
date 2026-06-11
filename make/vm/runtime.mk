@@ -5,6 +5,7 @@ VM_ROOTFS_SIZE ?= 8G
 VM_RECREATE_ROOTFS ?= false
 VM_WAIT_TIMEOUT ?= 300
 VM_HTTP_WAIT_TIMEOUT ?= 600
+VM_ROOTFS_READY_TIMEOUT ?= 300
 
 VM_RUNTIME_DIR := $(VM_HOME)/runtime
 
@@ -103,7 +104,7 @@ internal/vm/wait/http:
 internal/vm/wait/rootfs-ready:
 	$(VM_BUILD_RUNNER) macos-runtime-wait-rootfs-ready \
 		--vm-home "$(VM_HOME)" \
-		--timeout "$(VM_HTTP_WAIT_TIMEOUT)"
+		--timeout "$(VM_ROOTFS_READY_TIMEOUT)"
 
 internal/vm/wait/stopped:
 	$(VM_BUILD_RUNNER) macos-runtime-wait-stopped \

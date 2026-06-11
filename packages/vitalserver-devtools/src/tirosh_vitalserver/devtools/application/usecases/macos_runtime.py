@@ -6,6 +6,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import
     control_runtime,
     print_runtime_ip,
     require_bridged_codesign_identity,
+    require_no_running_runtime,
     sign_runtime,
     start_runtime_detached,
     sync_runtime_release_sources,
@@ -52,6 +53,10 @@ def control(input: RuntimeControlInput) -> int:
 
 def start_detached(input: RuntimeVmHomeInput) -> int:
     return start_runtime_detached(input)
+
+
+def require_no_running(input: RuntimeVmHomeInput) -> int:
+    return require_no_running_runtime(input)
 
 
 def print_ip(input: RuntimeVmHomeInput) -> int:

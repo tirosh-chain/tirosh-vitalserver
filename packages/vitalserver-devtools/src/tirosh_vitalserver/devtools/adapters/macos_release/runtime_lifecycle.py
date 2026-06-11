@@ -44,6 +44,8 @@ ROOTFS_TERMINAL_LOG_PATTERNS = (
     "Remounting filesystem read-only",
     "Unable to handle kernel NULL pointer dereference",
     "Internal error: Oops:",
+    "Kernel panic - not syncing",
+    "Attempted to kill init",
     "watchdog: BUG: soft lockup",
     "rcu: INFO: rcu_preempt detected stalls",
 )
@@ -144,6 +146,20 @@ def start_runtime_detached(input: RuntimeVmHomeInput) -> int:
             start_new_session=True,
         )
     print(f"VM launcher started in background. Logs: {log_file}")
+    return 0
+
+
+def require_no_running_runtime(input: RuntimeVmHomeInput) -> int:
+    root = repo_root()
+    vm_home = resolve_path(root, input.vm_home)
+    running_processes = running_vm_processes_for_home(vm_home)
+    if running_processes:
+        raise SystemExit(
+            "error: VM launcher process is still running for VM_HOME; "
+            f"refusing to continue with mutable runtime files: {vm_home}: "
+            f"pids={','.join(str(pid) for pid in running_processes)}"
+        )
+    print(f"No VM launcher process is running for {vm_home}")
     return 0
 
 

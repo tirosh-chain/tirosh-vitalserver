@@ -344,6 +344,20 @@ def main() -> int:
         ),
     )
 
+    runtime_require_no_running = subparsers.add_parser(
+        "macos-runtime-require-no-running",
+        help="fail if a VM launcher process already uses the VM home",
+    )
+    runtime_require_no_running.add_argument("--vm-home", type=Path, required=True)
+    runtime_require_no_running.set_defaults(
+        handler=lambda args: macos_runtime_usecases.require_no_running(
+            usecase_inputs.RuntimeVmHomeInput(
+                config=args.config,
+                vm_home=args.vm_home,
+            )
+        ),
+    )
+
     runtime_ip = subparsers.add_parser(
         "macos-runtime-ip",
         help="print the guest VM IP recorded by the runtime",
