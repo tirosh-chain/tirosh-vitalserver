@@ -78,6 +78,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-067 | 초기 설치 직후 VM bootstrap 중 Degraded가 표시됨 | Runtime health / Packaging | resolved | [Initial Install Shows Degraded During VM Bootstrap](067_initial-install-watchdog-degraded.md) |
 | TS-068 | Settings Apply가 update처럼 VM shutdown을 표시함 | Runtime health / Runtime Control PWA | resolved | [Settings Apply Enters Update-Like Shutdown](068_settings-apply-update-shutdown-confusion.md) |
 | TS-069 | Golden rootfs build가 stale marker/manifest를 proof로 믿을 수 있음 | Packaging / Local development / Guest bootstrap | implemented | [Golden Rootfs Build Trusts Stale Proof After Failed VM Preparation](069_golden-rootfs-stale-proof-negative-validation.md) |
+| TS-070 | Golden disk가 실제 Runtime boot proof를 제공하지 않음 | Packaging / Local development / Runtime health / Guest bootstrap | active | [Golden Disk Runtime Boot Proof Gap](070_golden-disk-runtime-boot-proof-gap.md) |
 
 ## Follow-up 규칙
 
