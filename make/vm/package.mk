@@ -11,7 +11,7 @@
 .PHONY: internal/vm/update/verify/release
 .PHONY: internal/vm/image-update/verify internal/vm/image-update/verify/dev
 .PHONY: internal/vm/image-update/verify/release
-.PHONY: internal/vm/airgap-rootfs internal/vm/golden-rootfs internal/vm/golden-rootfs/negative
+.PHONY: internal/vm/airgap-rootfs internal/vm/golden-rootfs internal/vm/golden-rootfs/negative internal/vm/golden-rootfs/runtime-smoke
 
 VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false
 VM_UPDATE_BUNDLE_KIND ?= product-update
@@ -34,6 +34,7 @@ VM_RECREATE_GOLDEN_ROOTFS ?= false
 VM_GOLDEN_HOME := .tmp/vitalserver-vm-golden
 VM_GOLDEN_RUNTIME_DIR := $(VM_GOLDEN_HOME)/runtime
 VM_GOLDEN_NEGATIVE_HOME ?= .tmp/vitalserver-vm-golden-negative
+VM_GOLDEN_RUNTIME_SMOKE_HOME ?= .tmp/vitalserver-vm-golden-runtime-smoke
 
 VM_INSTALL_SETTINGS ?=
 VM_UNINSTALL_ARGS ?=
@@ -140,6 +141,47 @@ internal/vm/golden-rootfs/negative:
 		exit 1; \
 	fi; \
 	printf "Golden rootfs negative VM test passed: edge-ready fault was rejected\n"
+
+internal/vm/golden-rootfs/runtime-smoke: internal/vm/golden-rootfs
+	@set -e; \
+	runtime_smoke_run_id="$$(uuidgen | tr '[:upper:]' '[:lower:]')"; \
+	runtime_smoke_home="$(abspath $(VM_GOLDEN_RUNTIME_SMOKE_HOME))"; \
+	runtime_smoke_runtime_dir="$${runtime_smoke_home}/runtime"; \
+	printf "Running golden disk runtime boot smoke: runId=%s\n" "$${runtime_smoke_run_id}"; \
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
+		--vm-home "$${runtime_smoke_home}" \
+		stop >/dev/null 2>&1 || true; \
+	$(VM_BUILD_RUNNER) macos-runtime-wait-stopped \
+		--vm-home "$${runtime_smoke_home}" \
+		--timeout "$(VM_WAIT_TIMEOUT)" >/dev/null 2>&1 || true; \
+	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
+		--vm-home "$${runtime_smoke_home}"; \
+	trap '$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control --vm-home "'"$${runtime_smoke_home}"'" stop >/dev/null 2>&1 || true; $(VM_BUILD_RUNNER) macos-runtime-wait-stopped --vm-home "'"$${runtime_smoke_home}"'" --timeout "$(VM_WAIT_TIMEOUT)" >/dev/null 2>&1 || true; $(VM_BUILD_RUNNER) macos-runtime-require-no-running --vm-home "'"$${runtime_smoke_home}"'" || true' EXIT; \
+	$(MAKE) internal/vm/init \
+		VM_HOME="$${runtime_smoke_home}"; \
+	mkdir -p "$${runtime_smoke_runtime_dir}"; \
+	cp "$(VM_GOLDEN_RUNTIME_DIR)/Image" "$${runtime_smoke_runtime_dir}/Image"; \
+	cp "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" "$${runtime_smoke_runtime_dir}/initrd.img"; \
+	gzip -dc "$(VM_PKG_ROOTFS_CACHE)" > "$${runtime_smoke_runtime_dir}/vm-disk.img"; \
+	$(MAKE) internal/vm/cloud-init \
+		VM_HOME="$${runtime_smoke_home}"; \
+	$(MAKE) internal/vm/stage \
+		VM_HOME="$${runtime_smoke_home}" \
+		VM_RUNTIME_BOOT_SMOKE=true \
+		VM_RUNTIME_BOOT_SMOKE_RUN_ID="$${runtime_smoke_run_id}"; \
+	$(VM_BUILD_RUNNER) macos-runtime-boot-smoke-begin \
+		--vm-home "$${runtime_smoke_home}" \
+		--run-id "$${runtime_smoke_run_id}"; \
+	$(MAKE) internal/vm/start/detached \
+		VM_HOME="$${runtime_smoke_home}"; \
+	$(MAKE) internal/vm/wait/runtime-boot-smoke \
+		VM_HOME="$${runtime_smoke_home}" \
+		VM_RUNTIME_BOOT_SMOKE_RUN_ID="$${runtime_smoke_run_id}"; \
+	$(MAKE) internal/vm/stop \
+		VM_HOME="$${runtime_smoke_home}"; \
+	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
+		--vm-home "$${runtime_smoke_home}"; \
+	printf "Golden disk runtime boot smoke passed\n"
 
 internal/vm/nginx/artifact:
 	@test -x "$(VM_NGINX_SOURCE_BIN)" || { \

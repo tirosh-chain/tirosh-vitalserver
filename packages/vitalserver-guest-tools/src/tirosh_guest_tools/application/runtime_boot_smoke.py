@@ -1,0 +1,676 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import urllib.error
+import urllib.request
+import uuid
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from tirosh_guest_tools.contracts import (
+    ComposeService,
+    RootfsSmokeStatus,
+    RuntimeConfigKey,
+    RuntimeFileName,
+    RuntimeService,
+)
+from tirosh_guest_tools.infrastructure.common import (
+    DEPLOY_DIR,
+    RUNTIME_DIR,
+    mount_runtime_share,
+    read_json,
+    utc_now,
+    write_json,
+)
+
+BOOTSTRAP_RESULT_SCHEMA_VERSION = 3
+RUNTIME_STATE_SCHEMA_VERSION = 1
+RUNTIME_BOOT_SMOKE_SCHEMA_VERSION = 1
+MAX_RUNTIME_STATE_AGE_SECONDS = 180
+HTTP_TIMEOUT_SECONDS = 5.0
+SYSTEMD_TIMEOUT_SECONDS = 10.0
+
+RUNTIME_BOOT_SMOKE_MANIFEST = "runtime-boot-smoke-manifest.json"
+
+REQUIRED_SYSTEMD_UNITS = (
+    "docker.service",
+    RuntimeService.RUNTIME_STATE.value,
+    RuntimeService.COMPOSE.value,
+    "tirosh-guest-observability.service",
+    RuntimeService.COMMAND_POLLER.value,
+)
+
+REQUIRED_CAPABILITIES = (
+    "prepareUpdateShutdown",
+    "activateUpdate",
+    "redisBackup",
+    "redisRestore",
+    "repairDatastore",
+)
+
+REQUIRED_REQUEST_RESULT_PAIRS = (
+    (
+        RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.value,
+        RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_RESULT.value,
+    ),
+    (
+        RuntimeFileName.ACTIVATE_UPDATE_REQUEST.value,
+        RuntimeFileName.ACTIVATE_UPDATE_RESULT.value,
+    ),
+    (
+        RuntimeFileName.REDIS_BACKUP_REQUEST.value,
+        RuntimeFileName.REDIS_BACKUP_RESULT.value,
+    ),
+    (
+        RuntimeFileName.REDIS_RESTORE_REQUEST.value,
+        RuntimeFileName.REDIS_RESTORE_RESULT.value,
+    ),
+    (
+        RuntimeFileName.REPAIR_DATASTORE_REQUEST.value,
+        RuntimeFileName.REPAIR_DATASTORE_RESULT.value,
+    ),
+)
+
+BASE_REQUIRED_COMPOSE_SERVICES = (
+    ComposeService.REDIS.value,
+    ComposeService.APP.value,
+    ComposeService.AUDIT_PROXY.value,
+    ComposeService.VITALDB_OBSERVER.value,
+    ComposeService.REDIS_UI.value,
+    ComposeService.SWAGGER_UI.value,
+    ComposeService.EDGE.value,
+)
+
+
+@dataclass(frozen=True)
+class RuntimeBootSmokeContext:
+    runtime_dir: Path
+    deploy_dir: Path
+    manifest_path: Path
+    run_id: str
+    max_runtime_state_age_seconds: int
+    dev_build: bool
+
+
+@dataclass(frozen=True)
+class RuntimeBootSmokeOperations:
+    mount_runtime_share: Callable[[], None]
+    read_json: Callable[[Path], dict[str, Any]]
+    write_json: Callable[[Path, dict[str, Any]], None]
+    run: Callable[..., subprocess.CompletedProcess[str]]
+    http_status: Callable[[str, float], int]
+    now: Callable[[], datetime]
+
+
+@dataclass(frozen=True)
+class RuntimeBootSmokeStage:
+    name: str
+    status: RootfsSmokeStatus
+    started_at: str
+    completed_at: str
+    message: str
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "status": self.status.value,
+            "startedAt": self.started_at,
+            "completedAt": self.completed_at,
+            "message": self.message,
+            "details": self.details,
+        }
+
+
+class RuntimeBootSmokeStageFailed(RuntimeError):
+    pass
+
+
+@dataclass
+class RuntimeBootSmokeRun:
+    context: RuntimeBootSmokeContext
+    operations: RuntimeBootSmokeOperations
+    created_at: str = field(default_factory=utc_now)
+    stages: list[RuntimeBootSmokeStage] = field(default_factory=list)
+
+    def write_manifest(self) -> None:
+        self.operations.write_json(self.context.manifest_path, self.as_json())
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "schemaVersion": RUNTIME_BOOT_SMOKE_SCHEMA_VERSION,
+            "runId": self.context.run_id,
+            "createdAt": self.created_at,
+            "updatedAt": utc_now(),
+            "status": overall_status(self.stages),
+            "stages": [stage.as_json() for stage in self.stages],
+        }
+
+
+def default_context() -> RuntimeBootSmokeContext:
+    runtime_config = read_optional_json(
+        DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value
+    )
+    metadata = read_optional_json(DEPLOY_DIR / "build-metadata/rootfs-input.json")
+    smoke_metadata = metadata.get("runtimeBootSmoke")
+    if not isinstance(smoke_metadata, dict):
+        smoke_metadata = {}
+    run_id = smoke_metadata.get("runId")
+    explicit_run_id = (
+        run_id if isinstance(run_id, str) and run_id.strip() else str(uuid.uuid4())
+    )
+    testkit_enabled = runtime_config.get(RuntimeConfigKey.TESTKIT_ENABLED.value)
+    return RuntimeBootSmokeContext(
+        runtime_dir=RUNTIME_DIR,
+        deploy_dir=DEPLOY_DIR,
+        manifest_path=RUNTIME_DIR / RUNTIME_BOOT_SMOKE_MANIFEST,
+        run_id=explicit_run_id,
+        max_runtime_state_age_seconds=MAX_RUNTIME_STATE_AGE_SECONDS,
+        dev_build=testkit_enabled is True,
+    )
+
+
+def default_operations() -> RuntimeBootSmokeOperations:
+    return RuntimeBootSmokeOperations(
+        mount_runtime_share=mount_runtime_share,
+        read_json=read_json,
+        write_json=write_json,
+        run=run_command,
+        http_status=http_status,
+        now=lambda: datetime.now(UTC),
+    )
+
+
+def run_runtime_boot_smoke(
+    *,
+    context: RuntimeBootSmokeContext | None = None,
+    operations: RuntimeBootSmokeOperations | None = None,
+) -> None:
+    context = context or default_context()
+    operations = operations or default_operations()
+    operations.mount_runtime_share()
+    context.runtime_dir.mkdir(parents=True, exist_ok=True)
+    run = RuntimeBootSmokeRun(context=context, operations=operations)
+    run.write_manifest()
+
+    try:
+        bootstrap_result = execute_stage(
+            run,
+            "bootstrap-result",
+            lambda active_run: validate_bootstrap_result(active_run),
+        )
+        runtime_state = execute_stage(
+            run,
+            "runtime-state",
+            lambda active_run: validate_runtime_state(active_run, bootstrap_result),
+        )
+        execute_stage(
+            run,
+            "systemd-units",
+            validate_systemd_units,
+        )
+        execute_stage(
+            run,
+            "http",
+            validate_http,
+        )
+        execute_stage(
+            run,
+            "compose-services",
+            lambda active_run: validate_compose_services(active_run, runtime_state),
+        )
+        execute_stage(
+            run,
+            "disk-health",
+            lambda active_run: validate_disk_health(active_run, runtime_state),
+        )
+        execute_stage(
+            run,
+            "capabilities",
+            lambda active_run: validate_capabilities(active_run, runtime_state),
+        )
+        execute_stage(
+            run,
+            "command-dispatch",
+            validate_command_dispatch,
+        )
+        execute_stage(
+            run,
+            "feature-readiness",
+            lambda active_run: validate_feature_readiness(active_run, runtime_state),
+        )
+    except RuntimeBootSmokeStageFailed:
+        run.write_manifest()
+        raise SystemExit(1) from None
+
+    run.write_manifest()
+
+
+def execute_stage(
+    run: RuntimeBootSmokeRun,
+    name: str,
+    action: Callable[[RuntimeBootSmokeRun], tuple[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    started_at = utc_now()
+    run.stages.append(
+        RuntimeBootSmokeStage(
+            name=name,
+            status=RootfsSmokeStatus.RUNNING,
+            started_at=started_at,
+            completed_at="",
+            message="stage is running",
+        )
+    )
+    run.write_manifest()
+    try:
+        message, details = action(run)
+    except Exception as error:
+        run.stages[-1] = RuntimeBootSmokeStage(
+            name=name,
+            status=RootfsSmokeStatus.FAILED,
+            started_at=started_at,
+            completed_at=utc_now(),
+            message=str(error),
+        )
+        run.write_manifest()
+        raise RuntimeBootSmokeStageFailed(name) from error
+
+    run.stages[-1] = RuntimeBootSmokeStage(
+        name=name,
+        status=RootfsSmokeStatus.PASSED,
+        started_at=started_at,
+        completed_at=utc_now(),
+        message=message,
+        details=details,
+    )
+    run.write_manifest()
+    return details
+
+
+def validate_bootstrap_result(
+    run: RuntimeBootSmokeRun,
+) -> tuple[str, dict[str, Any]]:
+    path = run.context.runtime_dir / RuntimeFileName.BOOTSTRAP_RESULT.value
+    document = run.operations.read_json(path)
+    require_equal(
+        document.get("schemaVersion"),
+        BOOTSTRAP_RESULT_SCHEMA_VERSION,
+        f"bootstrap result schema mismatch: {path}",
+    )
+    status = document.get("status")
+    if status != "completed":
+        raise RuntimeError(
+            f"bootstrap result is not completed: status={status} "
+            f"reasonCodes={document.get('reasonCodes')}"
+        )
+    boot_id = require_non_empty_string(document.get("bootID"), "bootstrap bootID")
+    updated_at = require_non_empty_string(
+        document.get("updatedAt"),
+        "bootstrap updatedAt",
+    )
+    return (
+        "bootstrap result completed",
+        {
+            "path": str(path),
+            "bootID": boot_id,
+            "updatedAt": updated_at,
+            "reasonCodes": list_value(document.get("reasonCodes")),
+        },
+    )
+
+
+def validate_runtime_state(
+    run: RuntimeBootSmokeRun,
+    bootstrap_result: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    path = run.context.runtime_dir / RuntimeFileName.RUNTIME_STATE.value
+    document = run.operations.read_json(path)
+    require_equal(
+        document.get("schemaVersion"),
+        RUNTIME_STATE_SCHEMA_VERSION,
+        f"runtime state schema mismatch: {path}",
+    )
+    boot_id = require_non_empty_string(document.get("bootID"), "runtime state bootID")
+    bootstrap_boot_id = bootstrap_result.get("bootID")
+    if bootstrap_boot_id and boot_id != bootstrap_boot_id:
+        raise RuntimeError(
+            "runtime state bootID does not match bootstrap result: "
+            f"runtime={boot_id} bootstrap={bootstrap_boot_id}"
+        )
+    vm_ip = require_non_empty_string(document.get("vmIP"), "runtime state vmIP")
+    if vm_ip.startswith(("127.", "169.254.")):
+        raise RuntimeError(f"runtime state vmIP is not routable: {vm_ip}")
+    updated_at = require_non_empty_string(
+        document.get("updatedAt"),
+        "runtime state updatedAt",
+    )
+    age_seconds = document_age_seconds(updated_at, run.operations.now())
+    if age_seconds > run.context.max_runtime_state_age_seconds:
+        raise RuntimeError(
+            "runtime state is stale: "
+            f"ageSeconds={age_seconds:.1f} "
+            f"maxSeconds={run.context.max_runtime_state_age_seconds}"
+        )
+    probe_errors = document.get("probeErrors")
+    if not isinstance(probe_errors, list):
+        raise RuntimeError("runtime state probeErrors must be an explicit list")
+    if probe_errors:
+        raise RuntimeError(f"runtime state contains probe errors: {probe_errors}")
+    return (
+        "runtime state is valid and fresh",
+        {
+            "path": str(path),
+            "bootID": boot_id,
+            "vmIP": vm_ip,
+            "updatedAt": updated_at,
+            "ageSeconds": round(age_seconds, 1),
+            "document": document,
+        },
+    )
+
+
+def validate_systemd_units(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]]:
+    units = []
+    for service in REQUIRED_SYSTEMD_UNITS:
+        active_state = systemd_active_state(run, service)
+        units.append({"service": service, "activeState": active_state})
+        if active_state != "active":
+            raise RuntimeError(
+                f"required systemd unit is not active: "
+                f"service={service} activeState={active_state}"
+            )
+    if run.context.dev_build:
+        active_state = systemd_active_state(run, RuntimeService.TESTKIT.value)
+        units.append(
+            {
+                "service": RuntimeService.TESTKIT.value,
+                "activeState": active_state,
+                "requiredForDevBuild": True,
+            }
+        )
+        if active_state != "active":
+            raise RuntimeError(
+                f"testkit service is required for dev build: activeState={active_state}"
+            )
+    return "required systemd units are active", {"units": units}
+
+
+def validate_http(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]]:
+    endpoints = []
+    for name, url in (
+        ("ready", "http://127.0.0.1/ready"),
+        ("health", "http://127.0.0.1/health"),
+    ):
+        status = run.operations.http_status(url, HTTP_TIMEOUT_SECONDS)
+        endpoints.append({"name": name, "url": url, "status": status})
+        if not 200 <= status < 300:
+            raise RuntimeError(f"runtime HTTP endpoint is not ready: {url} {status}")
+    return "runtime HTTP endpoints are ready", {"endpoints": endpoints}
+
+
+def validate_compose_services(
+    run: RuntimeBootSmokeRun,
+    runtime_state: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    document = runtime_state_document(runtime_state)
+    services = document.get("containerServices")
+    if not isinstance(services, list) or not services:
+        raise RuntimeError("runtime state containerServices is missing or empty")
+    expected = set(BASE_REQUIRED_COMPOSE_SERVICES)
+    if run.context.dev_build:
+        expected.add(ComposeService.TESTKIT.value)
+    observed: dict[str, dict[str, Any]] = {}
+    for service in services:
+        if not isinstance(service, dict):
+            continue
+        name = service.get("service")
+        if isinstance(name, str) and name:
+            observed[name] = service
+    missing = sorted(expected - set(observed))
+    if missing:
+        raise RuntimeError(f"runtime state is missing compose services: {missing}")
+    unhealthy = [
+        {
+            "service": name,
+            "state": observed[name].get("state"),
+            "health": observed[name].get("health"),
+            "exitCode": observed[name].get("exitCode"),
+        }
+        for name in sorted(expected)
+        if not service_is_ready(observed[name])
+    ]
+    if unhealthy:
+        raise RuntimeError(f"compose services are not ready: {unhealthy}")
+    return "required compose services are ready", {"services": observed}
+
+
+def validate_disk_health(
+    run: RuntimeBootSmokeRun,
+    runtime_state: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    document = runtime_state_document(runtime_state)
+    disk_health = document.get("diskHealth")
+    if not isinstance(disk_health, dict):
+        raise RuntimeError("runtime state diskHealth is missing")
+    if disk_health.get("rootFilesystemReadOnly") is not False:
+        raise RuntimeError(
+            "root filesystem is not explicitly writable: "
+            f"{disk_health.get('rootFilesystemReadOnly')}"
+        )
+    kernel_errors = disk_health.get("kernelErrors")
+    if kernel_errors not in ([], None):
+        raise RuntimeError(f"kernel disk errors reported: {kernel_errors}")
+    return "disk health is clean", {"diskHealth": disk_health}
+
+
+def validate_capabilities(
+    run: RuntimeBootSmokeRun,
+    runtime_state: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    document = runtime_state_document(runtime_state)
+    capabilities = document.get("capabilities")
+    if not isinstance(capabilities, dict):
+        raise RuntimeError("runtime state capabilities is missing")
+    for capability in REQUIRED_CAPABILITIES:
+        value = capabilities.get(capability)
+        if value is not True:
+            raise RuntimeError(
+                f"runtime capability is not available: {capability}={value}"
+            )
+    return "runtime capabilities are available", {"capabilities": capabilities}
+
+
+def validate_command_dispatch(
+    run: RuntimeBootSmokeRun,
+) -> tuple[str, dict[str, Any]]:
+    stale_requests = []
+    for request_name, result_name in REQUIRED_REQUEST_RESULT_PAIRS:
+        request_path = run.context.runtime_dir / request_name
+        result_path = run.context.runtime_dir / result_name
+        if request_path.exists() and not result_path.exists():
+            stale_requests.append(
+                {
+                    "request": str(request_path),
+                    "missingResult": str(result_path),
+                }
+            )
+    if stale_requests:
+        raise RuntimeError(f"stale guest command requests exist: {stale_requests}")
+    write_probe = run.context.runtime_dir / ".runtime-boot-smoke-write-check"
+    write_probe.write_text(run.context.run_id, encoding="utf-8")
+    if write_probe.read_text(encoding="utf-8") != run.context.run_id:
+        raise RuntimeError("runtime directory write probe could not be verified")
+    write_probe.unlink()
+    return (
+        "guest command dispatch paths are available",
+        {
+            "requestResultPairs": [
+                {"request": request, "result": result}
+                for request, result in REQUIRED_REQUEST_RESULT_PAIRS
+            ]
+        },
+    )
+
+
+def validate_feature_readiness(
+    run: RuntimeBootSmokeRun,
+    runtime_state: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    document = runtime_state_document(runtime_state)
+    runtime_config = run.operations.read_json(
+        run.context.deploy_dir / RuntimeFileName.RUNTIME_CONFIG.value
+    )
+    required_config_keys = [
+        RuntimeConfigKey.PUBLIC_HOST.value,
+        RuntimeConfigKey.PUBLIC_PORT.value,
+        RuntimeConfigKey.REDIS_BACKUP_RETENTION_COUNT.value,
+        RuntimeConfigKey.VITAL_FILES_DIRECTORY.value,
+    ]
+    missing_config = [key for key in required_config_keys if key not in runtime_config]
+    if missing_config:
+        raise RuntimeError(f"runtime config is missing keys: {missing_config}")
+    vitaldb_observation = document.get("vitalDBObservation")
+    if vitaldb_observation is not None and not isinstance(vitaldb_observation, dict):
+        raise RuntimeError("vitalDBObservation must be object or null")
+    http_probes = document.get("httpProbes")
+    if not isinstance(http_probes, dict):
+        raise RuntimeError("runtime state httpProbes is missing")
+    missing_http_probes = [
+        name
+        for name in ("guestHTTP", "redisUIHTTP", "swaggerUIHTTP")
+        if name not in http_probes
+    ]
+    if missing_http_probes:
+        raise RuntimeError(f"runtime state http probes missing: {missing_http_probes}")
+    return (
+        "feature read contracts are available",
+        {
+            "runtimeConfigKeys": required_config_keys,
+            "httpProbes": http_probes,
+            "vitalDBObservationStatus": (
+                "available" if isinstance(vitaldb_observation, dict) else "unavailable"
+            ),
+            "scenarioSmokeRequired": [
+                "settings-apply",
+                "update-apply",
+                "redis-backup-restore",
+                "runtime-data-backup-restore",
+                "observability-event-append",
+                "testkit-recorder-flow",
+                "export-logs",
+                "clean-uninstall-reset",
+            ],
+        },
+    )
+
+
+def systemd_active_state(run: RuntimeBootSmokeRun, service: str) -> str:
+    completed = run.operations.run(
+        ["systemctl", "show", "--property=ActiveState", "--value", service],
+        check=False,
+        capture_output=True,
+        timeout_seconds=SYSTEMD_TIMEOUT_SECONDS,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"failed to read systemd unit state: {service}: "
+            f"{completed.stderr.strip() or completed.returncode}"
+        )
+    active_state = (completed.stdout or "").strip()
+    if not active_state:
+        raise RuntimeError(f"systemd unit state is empty: {service}")
+    return active_state
+
+
+def runtime_state_document(runtime_state: dict[str, Any]) -> dict[str, Any]:
+    document = runtime_state.get("document")
+    if not isinstance(document, dict):
+        raise RuntimeError("runtime state document is missing from stage details")
+    return document
+
+
+def service_is_ready(service: dict[str, Any]) -> bool:
+    state = service.get("state")
+    health = service.get("health")
+    exit_code = service.get("exitCode")
+    if state != "running":
+        return False
+    if exit_code not in (None, 0, "0", ""):
+        return False
+    return health in (None, "", "healthy", "starting")
+
+
+def run_command(
+    arguments: list[str],
+    *,
+    check: bool = True,
+    capture_output: bool = False,
+    timeout_seconds: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        arguments,
+        check=check,
+        capture_output=capture_output,
+        text=True,
+        timeout=timeout_seconds,
+    )
+
+
+def http_status(url: str, timeout_seconds: float) -> int:
+    request = urllib.request.Request(url, method="HEAD")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            return response.status
+    except urllib.error.HTTPError as error:
+        return error.code
+    except (OSError, TimeoutError, urllib.error.URLError) as error:
+        raise RuntimeError(f"HTTP probe failed: {url}: {error}") from error
+
+
+def read_optional_json(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def require_equal(actual: object, expected: object, message: str) -> None:
+    if actual != expected:
+        raise RuntimeError(f"{message}: expected={expected} actual={actual}")
+
+
+def require_non_empty_string(value: object, subject: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError(f"{subject} is missing")
+    return value
+
+
+def document_age_seconds(updated_at: str, now: datetime) -> float:
+    try:
+        parsed = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise RuntimeError(f"timestamp is invalid: {updated_at}") from error
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return max((now - parsed.astimezone(UTC)).total_seconds(), 0.0)
+
+
+def list_value(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
+
+
+def overall_status(stages: Sequence[RuntimeBootSmokeStage]) -> str:
+    if not stages:
+        return RootfsSmokeStatus.NOT_RUN.value
+    if any(stage.status == RootfsSmokeStatus.FAILED for stage in stages):
+        return RootfsSmokeStatus.FAILED.value
+    if all(stage.status == RootfsSmokeStatus.PASSED for stage in stages):
+        return RootfsSmokeStatus.PASSED.value
+    return RootfsSmokeStatus.RUNNING.value

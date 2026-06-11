@@ -5,12 +5,15 @@ from types import SimpleNamespace
 import pytest
 
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
+    begin_runtime_boot_smoke_run,
     require_no_running_runtime,
     running_vm_processes_for_home,
     wait_for_rootfs_ready,
+    wait_for_runtime_boot_smoke,
     wait_for_runtime_stopped,
 )
 from tirosh_vitalserver.devtools.application.inputs import (
+    RuntimeBootSmokeRunInput,
     RuntimeVmHomeInput,
     RuntimeWaitInput,
 )
@@ -28,10 +31,18 @@ def test_wait_for_runtime_stopped_accepts_stopped_lifecycle(tmp_path):
     assert result == 0
 
 
-def test_wait_for_runtime_stopped_rejects_stopping_lifecycle(tmp_path):
+def test_wait_for_runtime_stopped_rejects_stopping_lifecycle_with_running_process(
+    monkeypatch,
+    tmp_path,
+):
     lifecycle = tmp_path / "run" / "vm-lifecycle.json"
     lifecycle.parent.mkdir(parents=True)
     lifecycle.write_text(json.dumps({"state": "stopping"}), encoding="utf-8")
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".running_vm_processes_for_home",
+        lambda vm_home: [1234],
+    )
 
     with pytest.raises(SystemExit, match="timed out waiting for VM lifecycle stopped"):
         wait_for_runtime_stopped(
@@ -39,6 +50,50 @@ def test_wait_for_runtime_stopped_rejects_stopping_lifecycle(tmp_path):
                 config=tmp_path / "config.toml",
                 vm_home=tmp_path,
                 timeout=0,
+            )
+        )
+
+
+def test_wait_for_runtime_stopped_accepts_stopping_lifecycle_without_process(
+    monkeypatch,
+    tmp_path,
+):
+    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
+    lifecycle.parent.mkdir(parents=True)
+    lifecycle.write_text(json.dumps({"state": "stopping"}), encoding="utf-8")
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".running_vm_processes_for_home",
+        lambda vm_home: [],
+    )
+
+    result = wait_for_runtime_stopped(
+        RuntimeWaitInput(config=tmp_path / "config.toml", vm_home=tmp_path, timeout=1)
+    )
+
+    assert result == 0
+
+
+def test_wait_for_runtime_stopped_rejects_failed_lifecycle(tmp_path):
+    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
+    lifecycle.parent.mkdir(parents=True)
+    lifecycle.write_text(
+        json.dumps(
+            {
+                "state": "failed",
+                "terminalReason": "guest-kernel-panic",
+                "message": "guest kernel panic detected",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="VM lifecycle failed while waiting"):
+        wait_for_runtime_stopped(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
             )
         )
 
@@ -125,6 +180,103 @@ def test_wait_for_rootfs_ready_rejects_marker_without_manifest(tmp_path):
                 expected_run_id="run-test",
             )
         )
+
+
+def test_wait_for_runtime_boot_smoke_accepts_passed_manifest(tmp_path):
+    write_runtime_boot_smoke_manifest(tmp_path, run_id="runtime-run-test")
+
+    result = wait_for_runtime_boot_smoke(
+        RuntimeWaitInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path,
+            timeout=1,
+            expected_run_id="runtime-run-test",
+        )
+    )
+
+    assert result == 0
+
+
+def test_wait_for_runtime_boot_smoke_rejects_failed_stage(tmp_path):
+    write_runtime_boot_smoke_manifest(
+        tmp_path,
+        run_id="runtime-run-test",
+        stage_statuses={"runtime-state": ("failed", "runtime state is invalid")},
+    )
+
+    with pytest.raises(SystemExit, match="runtime boot smoke stage failed"):
+        wait_for_runtime_boot_smoke(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="runtime-run-test",
+            )
+        )
+
+
+def test_wait_for_runtime_boot_smoke_rejects_stale_run_id(tmp_path):
+    write_runtime_boot_smoke_manifest(tmp_path, run_id="stale-run")
+
+    with pytest.raises(SystemExit, match="timed out waiting"):
+        wait_for_runtime_boot_smoke(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=0,
+                expected_run_id="runtime-run-test",
+            )
+        )
+
+
+def test_wait_for_runtime_boot_smoke_rejects_stopped_lifecycle(tmp_path):
+    lifecycle = tmp_path / "run" / "vm-lifecycle.json"
+    lifecycle.parent.mkdir(parents=True)
+    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="VM lifecycle stopped"):
+        wait_for_runtime_boot_smoke(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="runtime-run-test",
+            )
+        )
+
+
+def test_begin_runtime_boot_smoke_run_invalidates_stale_proof(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".repo_root",
+        lambda: tmp_path,
+    )
+    write_runtime_boot_smoke_manifest(tmp_path / "vm", run_id="stale-run")
+    lifecycle = tmp_path / "vm/run/vm-lifecycle.json"
+    lifecycle.parent.mkdir(parents=True, exist_ok=True)
+    lifecycle.write_text(json.dumps({"state": "stopped"}), encoding="utf-8")
+
+    result = begin_runtime_boot_smoke_run(
+        RuntimeBootSmokeRunInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path / "vm",
+            run_id="runtime-run-test",
+        )
+    )
+
+    assert result == 0
+    assert not (tmp_path / "vm/data/run/runtime-boot-smoke-manifest.json").exists()
+    assert not lifecycle.exists()
+    context = json.loads(
+        (tmp_path / "vm/run/runtime-boot-smoke-run.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert context["runId"] == "runtime-run-test"
+    assert context["removedStaleProof"] == [
+        str(tmp_path / "vm/data/run/runtime-boot-smoke-manifest.json"),
+        str(tmp_path / "vm/run/vm-lifecycle.json"),
+    ]
 
 
 def test_wait_for_rootfs_ready_rejects_failed_lifecycle(tmp_path):
@@ -342,6 +494,51 @@ def write_rootfs_marker(vm_home, *, run_id: str) -> None:
                 "schemaVersion": 1,
                 "runId": run_id,
                 "readyAt": "2026-06-11T00:00:02Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_runtime_boot_smoke_manifest(
+    vm_home,
+    *,
+    run_id: str,
+    stage_statuses: dict[str, tuple[str, str]] | None = None,
+) -> None:
+    manifest = vm_home / "data/run/runtime-boot-smoke-manifest.json"
+    manifest.parent.mkdir(parents=True)
+    stage_statuses = stage_statuses or {}
+    stages = []
+    for name in (
+        "bootstrap-result",
+        "runtime-state",
+        "systemd-units",
+        "http",
+        "compose-services",
+        "disk-health",
+        "capabilities",
+        "command-dispatch",
+        "feature-readiness",
+    ):
+        status, message = stage_statuses.get(name, ("passed", f"{name} passed"))
+        stages.append(
+            {
+                "name": name,
+                "status": status,
+                "message": message,
+                "startedAt": "2026-06-11T00:00:00Z",
+                "completedAt": "2026-06-11T00:00:01Z",
+                "details": {},
+            }
+        )
+    manifest.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "runId": run_id,
+                "status": "failed" if stage_statuses else "passed",
+                "stages": stages,
             }
         ),
         encoding="utf-8",

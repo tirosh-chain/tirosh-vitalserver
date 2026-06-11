@@ -61,6 +61,7 @@ class RuntimeCommand(StrEnum):
     VITALSERVER_HEALTH = "tirosh-vitalserver-health"
     VITALSERVER_COMPOSE = "tirosh-vitalserver-compose"
     VITALSERVER_ROOTFS_SMOKE = "tirosh-vitalserver-rootfs-smoke"
+    VITALSERVER_RUNTIME_BOOT_SMOKE = "tirosh-vitalserver-runtime-boot-smoke"
     VITALSERVER_COMMAND_POLLER = "tirosh-vitalserver-command-poller"
     VITALSERVER_REDIS_BACKUP = "tirosh-vitalserver-redis-backup"
     VITALSERVER_REDIS_RESTORE = "tirosh-vitalserver-redis-restore"

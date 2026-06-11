@@ -185,6 +185,13 @@ class RootfsRunInput:
 
 
 @dataclass(frozen=True)
+class RuntimeBootSmokeRunInput:
+    config: Path
+    vm_home: Path
+    run_id: str
+
+
+@dataclass(frozen=True)
 class RuntimeHealthInput:
     config: Path
     vm_home: Path

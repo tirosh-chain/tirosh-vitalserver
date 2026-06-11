@@ -263,6 +263,73 @@ P1 negative validation:
    - at least one actual VM negative runtime smoke
    - one non-destructive feature smoke for read-only feature contracts
 
+## Implementation Status
+
+2026-06-11 phase 1 implemented the Runtime boot smoke contract layer.
+
+- Added guest command `tirosh-vitalserver-runtime-boot-smoke`.
+- Added manifest `runtime-boot-smoke-manifest.json`.
+- Added Host/devtools wait gate `macos-runtime-wait-runtime-boot-smoke`.
+- Added Make target `internal/vm/golden-rootfs/runtime-smoke`.
+- Bootstrap runs runtime boot smoke only when deploy metadata explicitly sets
+  `runtimeBootSmoke.enabled=true`.
+- Runtime boot smoke currently validates the 18 positive proof items through these stages:
+  - `bootstrap-result`
+  - `runtime-state`
+  - `systemd-units`
+  - `http`
+  - `compose-services`
+  - `disk-health`
+  - `capabilities`
+  - `command-dispatch`
+  - `feature-readiness`
+
+Implemented command-level negative coverage:
+
+| Case | Coverage |
+|---|---|
+| bootstrap result remains running | unit test |
+| bootstrap result failed | unit test |
+| runtime state missing | unit test |
+| runtime state invalid | unit test |
+| runtime state stale | unit test |
+| runtime state missing bootID | unit test |
+| runtime-state service inactive | unit test |
+| guest HTTP unavailable | unit test |
+| disk health read-only | unit test |
+| capability missing | unit test |
+| stale request file exists | unit test |
+| observer endpoint invalid JSON/read model shape | unit test |
+| dev testkit unavailable | unit test |
+| runtime boot smoke manifest failed stage | devtools unit test |
+| runtime boot smoke manifest stale runId | devtools unit test |
+| runtime boot smoke stale lifecycle proof | devtools unit test |
+| wait-stopped stale stopping lifecycle with no launcher process | devtools unit test |
+
+2026-06-11 phase 2 verified the actual golden disk runtime boot path locally.
+
+- `make internal/vm/golden-rootfs/runtime-smoke` passed end-to-end.
+- Positive VM proof runId: `ce055712-8df2-41df-ba7a-fe2b266c87bd`.
+- The target now invalidates stale `runtime-boot-smoke-manifest.json` and
+  stale `vm-lifecycle.json` before starting a new runtime smoke run.
+- Bootstrap starts the compose stack through `tirosh-vitalserver-compose.service`
+  so the systemd proof matches the actual runtime owner.
+- Compose stop is bounded to avoid multi-minute VM shutdown hangs during build
+  verification.
+- `macos-runtime-wait-stopped` accepts explicit Host process absence when a stale
+  lifecycle document remains in `stopping`, while still rejecting lifecycle
+  `failed`.
+
+Still separate from this phase:
+
+- Actual VM runtime smoke must be wired into CI/release validation.
+- Runtime data backup/restore create and restore scenarios remain separate workflow smoke.
+- Redis backup/restore create and restore scenarios remain separate workflow smoke.
+- Settings apply restart/no-restart scenario remains separate workflow smoke.
+- Update activation/shutdown/rollback scenario remains separate workflow smoke.
+- Observability event append/read and export logs archive completeness remain separate
+  workflow smoke.
+
 ## Operational Notes
 
 Do not merge this into TS-069. TS-069 proves the golden rootfs preparation run. TS-070 proves that
@@ -284,3 +351,9 @@ separate.
 
 - 2026-06-11: TS-069 closed the rootfs proof/stale marker gap. Remaining robust golden disk work
   requires actual Runtime boot proof and runtime negative cases.
+- 2026-06-11: Runtime boot smoke phase 1 added guest manifest validation, Host wait gate,
+  Make target, and command-level positive/P0 negative tests. Mutating feature workflows are
+  still tracked as separate scenario smoke work.
+- 2026-06-11: Runtime boot smoke phase 2 passed an actual golden disk boot and exposed two
+  host-side robustness gaps: stale lifecycle proof before smoke start and stale `stopping`
+  lifecycle after launcher exit. Both are now covered by devtools tests.

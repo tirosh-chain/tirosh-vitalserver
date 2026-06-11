@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
     begin_golden_rootfs_run,
+    begin_runtime_boot_smoke_run,
     build_runtime,
     check_runtime_health,
     control_runtime,
@@ -12,6 +13,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import
     start_runtime_detached,
     sync_runtime_release_sources,
     wait_for_rootfs_ready,
+    wait_for_runtime_boot_smoke,
     wait_for_runtime_http,
     wait_for_runtime_ip,
     wait_for_runtime_stopped,
@@ -19,6 +21,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import
 from tirosh_vitalserver.devtools.application.inputs import (
     RequireBridgedIdentityInput,
     RootfsRunInput,
+    RuntimeBootSmokeRunInput,
     RuntimeBuildInput,
     RuntimeControlInput,
     RuntimeHealthInput,
@@ -65,6 +68,10 @@ def begin_rootfs_run(input: RootfsRunInput) -> int:
     return begin_golden_rootfs_run(input)
 
 
+def begin_runtime_boot_smoke(input: RuntimeBootSmokeRunInput) -> int:
+    return begin_runtime_boot_smoke_run(input)
+
+
 def print_ip(input: RuntimeVmHomeInput) -> int:
     return print_runtime_ip(input)
 
@@ -79,6 +86,10 @@ def wait_http(input: RuntimeWaitInput) -> int:
 
 def wait_rootfs_ready(input: RuntimeWaitInput) -> int:
     return wait_for_rootfs_ready(input)
+
+
+def wait_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
+    return wait_for_runtime_boot_smoke(input)
 
 
 def wait_stopped(input: RuntimeWaitInput) -> int:

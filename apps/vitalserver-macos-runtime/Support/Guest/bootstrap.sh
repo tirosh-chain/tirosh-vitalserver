@@ -224,6 +224,7 @@ install_guest_tools() {
     tirosh-vitalserver-health \
     tirosh-vitalserver-compose \
     tirosh-vitalserver-rootfs-smoke \
+    tirosh-vitalserver-runtime-boot-smoke \
     tirosh-vitalserver-command-poller \
     tirosh-vitalserver-redis-backup \
     tirosh-vitalserver-redis-restore \
@@ -245,6 +246,7 @@ install_guest_runtime_files() {
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-runtime-state" /usr/local/bin/tirosh-runtime-state
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-compose" /usr/local/bin/tirosh-vitalserver-compose
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-health" /usr/local/bin/tirosh-vitalserver-health
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-runtime-boot-smoke" /usr/local/bin/tirosh-vitalserver-runtime-boot-smoke
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-container-logs" /usr/local/bin/tirosh-vitalserver-container-logs
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-diagnostics" /usr/local/bin/tirosh-vitalserver-diagnostics
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-redis-backup" /usr/local/bin/tirosh-vitalserver-redis-backup
@@ -335,6 +337,29 @@ start_optional_testkit() {
   /usr/local/bin/tirosh-vitalserver-compose testkit-up-logged
 }
 
+runtime_boot_smoke_enabled() {
+  python3 - <<'PY'
+import json
+from pathlib import Path
+
+path = Path("/mnt/tirosh/deploy/build-metadata/rootfs-input.json")
+try:
+    document = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(1)
+runtime_boot_smoke = document.get("runtimeBootSmoke")
+if isinstance(runtime_boot_smoke, dict) and runtime_boot_smoke.get("enabled") is True:
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+run_runtime_boot_smoke_if_requested() {
+  if runtime_boot_smoke_enabled; then
+    /usr/local/bin/tirosh-vitalserver-runtime-boot-smoke
+  fi
+}
+
 wait_for_vitalserver_edge() {
   local deadline code http_status
 
@@ -404,7 +429,7 @@ if ! docker image inspect vitalserver-audit-proxy:0.1.0 >/dev/null 2>&1; then
     build audit-proxy
 fi
 
-/usr/local/bin/tirosh-vitalserver-compose up
+systemctl start tirosh-vitalserver-compose.service
 
 wait_for_vitalserver_edge
 systemctl restart tirosh-runtime-state.service
@@ -412,3 +437,4 @@ systemctl restart tirosh-runtime-state.service
 write_bootstrap_result "completed" "Guest bootstrap completed."
 printf "VitalServer edge is ready on this VM at port 80.\n"
 start_optional_testkit
+run_runtime_boot_smoke_if_requested

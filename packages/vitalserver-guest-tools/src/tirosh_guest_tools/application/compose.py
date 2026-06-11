@@ -27,7 +27,7 @@ from tirosh_guest_tools.infrastructure.common import (
 from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 logger = logging.getLogger(__name__)
-COMPOSE_STOP_COMMAND_TIMEOUT_BUFFER_SECONDS = 60
+COMPOSE_STOP_COMMAND_TIMEOUT_BUFFER_SECONDS = 10
 
 
 def run_compose_action(action: ComposeAction | str) -> None:

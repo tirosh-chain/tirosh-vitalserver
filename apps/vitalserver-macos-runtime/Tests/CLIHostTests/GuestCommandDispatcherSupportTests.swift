@@ -69,6 +69,8 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(bootstrap.contains("docker run --rm --network none \"${DOCKER_SMOKE_IMAGE}\" true"))
         XCTAssertTrue(bootstrap.contains("\"guest-bootstrap-docker-runtime-failed\""))
         XCTAssertTrue(bootstrap.contains("load_bundled_docker_images\nrun_docker_runtime_smoke\ncleanup_docker_cache"))
+        XCTAssertTrue(bootstrap.contains("systemctl start tirosh-vitalserver-compose.service"))
+        XCTAssertFalse(bootstrap.contains("\n/usr/local/bin/tirosh-vitalserver-compose up\n"))
     }
 
     func testDockerRuntimeSmokeRunsWithoutUnsupportedBPFJITSysctlGuard() throws {
@@ -195,6 +197,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         )
         XCTAssertTrue(bootstrap.contains("tirosh-guest-observed"))
         XCTAssertTrue(bootstrap.contains("tirosh-runtime-state"))
+        XCTAssertTrue(bootstrap.contains("tirosh-vitalserver-runtime-boot-smoke"))
         XCTAssertTrue(bootstrap.contains("tirosh-vitalserver-activate-update"))
         let activationUseCase = try readGuestToolsFile("application/update_activation.py")
         let shutdownUseCase = try readGuestToolsFile("application/update_shutdown.py")
@@ -206,11 +209,14 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(shutdownUseCase.contains("ObservationPhase.SHUTDOWN_POWEROFF_REQUESTED"))
         XCTAssertTrue(shutdownUseCase.contains("ObservationPhase.SHUTDOWN_FAILURE"))
         let wrapper = try readGuestSupportFile("bin/tirosh-vitalserver-compose")
+        let runtimeBootSmokeWrapper = try readGuestSupportFile("bin/tirosh-vitalserver-runtime-boot-smoke")
         let service = try readGuestSupportFile("systemd/tirosh-vitalserver-compose.service")
         let activationService = try readGuestSupportFile("systemd/tirosh-vitalserver-activate-update.service")
         let testkitService = try readGuestSupportFile("systemd/tirosh-vitalserver-testkit.service")
         XCTAssertTrue(wrapper.contains("exec /opt/tirosh/guest-tools/venv/bin/"))
+        XCTAssertTrue(runtimeBootSmokeWrapper.contains("tirosh-vitalserver-runtime-boot-smoke"))
         XCTAssertTrue(service.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-compose up"))
+        XCTAssertTrue(service.contains("TimeoutStopSec=45"))
         XCTAssertTrue(
             activationService.contains(
                 "Conflicts=tirosh-vitalserver-compose.service tirosh-vitalserver-testkit.service"

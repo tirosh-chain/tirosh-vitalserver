@@ -27,6 +27,7 @@ from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_
 from tirosh_vitalserver.devtools.application.inputs import (
     RequireBridgedIdentityInput,
     RootfsRunInput,
+    RuntimeBootSmokeRunInput,
     RuntimeBuildInput,
     RuntimeControlInput,
     RuntimeHealthInput,
@@ -59,6 +60,18 @@ ROOTFS_REQUIRED_STAGES = (
     "compose-build",
     "compose-up",
     "edge-ready",
+)
+
+RUNTIME_BOOT_SMOKE_REQUIRED_STAGES = (
+    "bootstrap-result",
+    "runtime-state",
+    "systemd-units",
+    "http",
+    "compose-services",
+    "disk-health",
+    "capabilities",
+    "command-dispatch",
+    "feature-readiness",
 )
 
 
@@ -215,6 +228,46 @@ def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
     return 0
 
 
+def begin_runtime_boot_smoke_run(input: RuntimeBootSmokeRunInput) -> int:
+    root = repo_root()
+    vm_home = resolve_path(root, input.vm_home)
+    run_dir = vm_home / "run"
+    data_run_dir = vm_home / "data/run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    data_run_dir.mkdir(parents=True, exist_ok=True)
+
+    stale_paths = [
+        data_run_dir / "runtime-boot-smoke-manifest.json",
+        run_dir / "vm-lifecycle.json",
+    ]
+    removed: list[str] = []
+    for path in stale_paths:
+        if path.is_dir():
+            shutil.rmtree(path)
+            removed.append(str(path))
+        elif path.exists():
+            path.unlink()
+            removed.append(str(path))
+
+    context = {
+        "schemaVersion": 1,
+        "runId": input.run_id,
+        "createdAt": utc_timestamp(),
+        "removedStaleProof": removed,
+    }
+    context_path = runtime_boot_smoke_run_context_path(vm_home)
+    context_path.write_text(
+        json.dumps(context, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(f"Runtime boot smoke run started: runId={input.run_id}")
+    if removed:
+        print("Invalidated stale runtime boot smoke proof:")
+        for path in removed:
+            print(f"  {path}")
+    return 0
+
+
 def print_runtime_ip(input: RuntimeVmHomeInput) -> int:
     try:
         print(read_runtime_state_vm_ip(input.vm_home))
@@ -306,8 +359,40 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
     )
 
 
+def wait_for_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
+    manifest = vm_home_path(input.vm_home) / "data/run/runtime-boot-smoke-manifest.json"
+    expected_run_id = input.expected_run_id
+    print(f"Waiting for runtime boot smoke manifest: {manifest}")
+    if expected_run_id:
+        print(f"Expected runtime boot smoke runId: {expected_run_id}")
+    deadline = time.monotonic() + input.timeout
+    last_state = "not-started"
+    while time.monotonic() < deadline:
+        result = inspect_runtime_boot_smoke_manifest(
+            manifest,
+            expected_run_id=expected_run_id,
+        )
+        if result["terminal"]:
+            raise SystemExit(str(result["message"]))
+        if result["ready"]:
+            print("Runtime boot smoke passed:")
+            print(f"  runId={result['runId']}")
+            print(f"  manifest={manifest}")
+            return 0
+        last_state = str(result["message"])
+        fail_if_runtime_lifecycle_failed(input.vm_home)
+        fail_if_runtime_lifecycle_stopped(input.vm_home, "runtime boot smoke")
+        fail_if_rootfs_launcher_log_has_terminal_failure(input.vm_home)
+        time.sleep(3)
+    raise SystemExit(
+        f"error: timed out waiting for runtime boot smoke: {manifest}: "
+        f"last={last_state}\nCheck VM launcher log: {launcher_log(input.vm_home)}"
+    )
+
+
 def wait_for_runtime_stopped(input: RuntimeWaitInput) -> int:
-    lifecycle = vm_home_path(input.vm_home) / "run/vm-lifecycle.json"
+    vm_home = vm_home_path(input.vm_home)
+    lifecycle = vm_home / "run/vm-lifecycle.json"
     print(f"Waiting for VM lifecycle stopped: {lifecycle}")
     deadline = time.monotonic() + input.timeout
     last_state = "not-started"
@@ -318,9 +403,20 @@ def wait_for_runtime_stopped(input: RuntimeWaitInput) -> int:
             if state == "stopped":
                 print("VM lifecycle is stopped")
                 return 0
+            if state == "failed":
+                terminal_reason = document.get("terminalReason", "unknown")
+                message = document.get("message", "")
+                raise SystemExit(
+                    "error: VM lifecycle failed while waiting for stopped: "
+                    f"terminalReason={terminal_reason} message={message}\n"
+                    f"Check VM launcher log: {launcher_log(input.vm_home)}"
+                )
             last_state = str(state)
         except (OSError, json.JSONDecodeError) as error:
             last_state = str(error)
+        if not running_vm_processes_for_home(vm_home):
+            print("VM launcher process is not running")
+            return 0
         time.sleep(2)
     raise SystemExit(
         f"error: timed out waiting for VM lifecycle stopped: {lifecycle} "
@@ -452,6 +548,26 @@ def fail_if_runtime_lifecycle_failed(vm_home: str | Path) -> None:
         f"terminalReason={terminal_reason} message={message}\n"
         f"Check VM launcher log: {launcher_log(vm_home)}"
     )
+
+
+def fail_if_runtime_lifecycle_stopped(vm_home: str | Path, operation: str) -> None:
+    lifecycle = vm_home_path(vm_home) / "run/vm-lifecycle.json"
+    if not lifecycle.exists():
+        return
+    try:
+        document = json.loads(lifecycle.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(
+            f"error: failed to read VM lifecycle while waiting for {operation}: "
+            f"{lifecycle}: {error}"
+        ) from error
+
+    state = document.get("state")
+    if state == "stopped":
+        raise SystemExit(
+            f"error: VM lifecycle stopped while waiting for {operation}\n"
+            f"Check VM launcher log: {launcher_log(vm_home)}"
+        )
 
 
 def fail_if_rootfs_launcher_log_has_terminal_failure(vm_home: str | Path) -> None:
@@ -625,6 +741,123 @@ def inspect_rootfs_ready_marker(
     }
 
 
+def inspect_runtime_boot_smoke_manifest(
+    manifest: Path,
+    *,
+    expected_run_id: str | None,
+) -> dict[str, object]:
+    if not manifest.is_file():
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": f"runtime boot smoke manifest missing: {manifest}",
+        }
+    try:
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                f"error: runtime boot smoke manifest is unreadable: "
+                f"{manifest}: {error}"
+            ),
+        }
+    if not isinstance(document, dict):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                f"error: runtime boot smoke manifest is not an object: {manifest}"
+            ),
+        }
+    run_id = document.get("runId")
+    if not isinstance(run_id, str) or not run_id.strip():
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                f"error: runtime boot smoke manifest is missing runId: {manifest}"
+            ),
+        }
+    if expected_run_id and run_id != expected_run_id:
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": (
+                "stale runtime boot smoke manifest runId mismatch: "
+                f"expected={expected_run_id} actual={run_id}"
+            ),
+        }
+    schema_version = document.get("schemaVersion")
+    if schema_version != 1:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: runtime boot smoke manifest schema is unsupported: "
+                f"expected=1 actual={schema_version} manifest={manifest}"
+            ),
+        }
+    status = document.get("status")
+    stages = document.get("stages")
+    if not isinstance(stages, list):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                f"error: runtime boot smoke manifest is missing stages: {manifest}"
+            ),
+        }
+    for stage_name in RUNTIME_BOOT_SMOKE_REQUIRED_STAGES:
+        stage = rootfs_stage(stages, stage_name)
+        if stage is None:
+            return {
+                "ready": False,
+                "terminal": False,
+                "message": f"waiting for runtime boot smoke stage: {stage_name}",
+            }
+        stage_status = stage.get("status")
+        if stage_status == "passed":
+            continue
+        if stage_status in {"failed", "timeout", "cleanup-failed"}:
+            return {
+                "ready": False,
+                "terminal": True,
+                "message": (
+                    "error: runtime boot smoke stage failed while waiting: "
+                    f"name={stage_name} status={stage_status} "
+                    f"message={stage.get('message')}"
+                ),
+            }
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": (
+                f"waiting for runtime boot smoke stage: "
+                f"{stage_name} status={stage_status}"
+            ),
+        }
+    if status == "passed":
+        return {
+            "ready": True,
+            "terminal": False,
+            "runId": run_id,
+            "message": "runtime boot smoke passed",
+        }
+    if status == "failed":
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": f"error: runtime boot smoke failed: {manifest}",
+        }
+    return {
+        "ready": False,
+        "terminal": False,
+        "message": f"waiting for runtime boot smoke status: {status}",
+    }
+
+
 def rootfs_stage(stages: list[object], name: str) -> dict[str, object] | None:
     for stage in stages:
         if isinstance(stage, dict) and stage.get("name") == name:
@@ -661,6 +894,10 @@ def expected_rootfs_run_id(
 
 def rootfs_run_context_path(vm_home: Path) -> Path:
     return vm_home / "run/golden-rootfs-run.json"
+
+
+def runtime_boot_smoke_run_context_path(vm_home: Path) -> Path:
+    return vm_home / "run/runtime-boot-smoke-run.json"
 
 
 def utc_timestamp() -> str:

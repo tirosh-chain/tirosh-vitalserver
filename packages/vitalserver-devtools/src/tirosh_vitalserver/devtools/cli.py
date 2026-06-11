@@ -377,6 +377,22 @@ def main() -> int:
         ),
     )
 
+    runtime_boot_smoke_begin = subparsers.add_parser(
+        "macos-runtime-boot-smoke-begin",
+        help="start a new runtime boot smoke run and invalidate stale proof files",
+    )
+    runtime_boot_smoke_begin.add_argument("--vm-home", type=Path, required=True)
+    runtime_boot_smoke_begin.add_argument("--run-id", required=True)
+    runtime_boot_smoke_begin.set_defaults(
+        handler=lambda args: macos_runtime_usecases.begin_runtime_boot_smoke(
+            usecase_inputs.RuntimeBootSmokeRunInput(
+                config=args.config,
+                vm_home=args.vm_home,
+                run_id=args.run_id,
+            )
+        ),
+    )
+
     runtime_ip = subparsers.add_parser(
         "macos-runtime-ip",
         help="print the guest VM IP recorded by the runtime",
@@ -424,6 +440,19 @@ def main() -> int:
     runtime_wait_rootfs.add_argument("--expected-run-id")
     runtime_wait_rootfs.set_defaults(
         handler=lambda args: macos_runtime_usecases.wait_rootfs_ready(
+            runtime_wait_input(args)
+        ),
+    )
+
+    runtime_wait_boot_smoke = subparsers.add_parser(
+        "macos-runtime-wait-runtime-boot-smoke",
+        help="wait until runtime boot smoke manifest reports passed",
+    )
+    runtime_wait_boot_smoke.add_argument("--vm-home", type=Path, required=True)
+    runtime_wait_boot_smoke.add_argument("--timeout", type=int, required=True)
+    runtime_wait_boot_smoke.add_argument("--expected-run-id")
+    runtime_wait_boot_smoke.set_defaults(
+        handler=lambda args: macos_runtime_usecases.wait_runtime_boot_smoke(
             runtime_wait_input(args)
         ),
     )

@@ -15,7 +15,7 @@ commandBinDir = "/usr/local/bin"
 
 [compose]
 projectName = "vitalserver"
-stopTimeoutSeconds = 120
+stopTimeoutSeconds = 20
 
 [intervals]
 commandPollSeconds = 3
