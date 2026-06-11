@@ -71,7 +71,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         ))
 
         XCTAssertEqual(snapshot.failureReasons, [
-            .unknown("vm-runtime-state-missing"),
+            .guestRuntimeStateMissing,
             .guestBootstrapMissingRuntimePackages,
         ])
         XCTAssertEqual(snapshot.vmErrors, [
@@ -392,7 +392,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
 
         XCTAssertEqual(snapshot.vmState, .unreachable)
         XCTAssertEqual(snapshot.vmErrors, [.runtimeStateMissing])
-        XCTAssertEqual(snapshot.failureReasons.map(\.rawValue), ["vm-runtime-state-missing"])
+        XCTAssertEqual(snapshot.failureReasons, [.guestRuntimeStateMissing])
     }
 
     func testVMHealthPolicyDefinesHostAndGuestFailureModes() {
@@ -425,11 +425,17 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
             .guestFilesystemReadOnly,
             .guestDiskIO,
         ])
+        XCTAssertEqual(snapshot.failureReasons, [
+            .vmLaunchFailed("virtualization"),
+            .vmDiskAttachmentInvalid,
+            .guestFilesystemReadOnly,
+            .guestDiskIO,
+        ])
         XCTAssertEqual(snapshot.failureReasons.map(\.rawValue), [
             "vm-launch-failed-virtualization",
             "vm-disk-attachment-invalid",
-            "vm-guest-filesystem-read-only",
-            "vm-guest-disk-io-error",
+            "guest-filesystem-read-only",
+            "guest-disk-io-error",
         ])
     }
 
@@ -445,7 +451,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
 
         XCTAssertEqual(snapshot.vmState, .failed)
         XCTAssertEqual(snapshot.vmErrors, [.diskAttachmentInvalid])
-        XCTAssertEqual(snapshot.failureReasons.map(\.rawValue), ["vm-disk-attachment-invalid"])
+        XCTAssertEqual(snapshot.failureReasons, [.vmDiskAttachmentInvalid])
     }
 
     private func healthyInput(

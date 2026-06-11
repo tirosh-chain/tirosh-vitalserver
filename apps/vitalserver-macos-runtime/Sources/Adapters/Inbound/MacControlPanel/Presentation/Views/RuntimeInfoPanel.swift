@@ -81,7 +81,7 @@ struct RuntimeInfoPanel: View {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 pathRow(AppConstants.Labels.appBundle, viewModel.installationInfo.appBundlePath)
                 pathRow(AppConstants.Labels.runtimeHome, viewModel.installationInfo.runtimeHomePath)
-                pathRow(AppConstants.Labels.dataDirectory, viewModel.settings.vitalFilesDirectory)
+                pathRow(AppConstants.Labels.dataDirectory, viewModel.runtimeSettings.vitalFilesDirectory)
                 pathRow(AppConstants.Labels.backupDirectory, viewModel.installationInfo.backupsPath)
             }
         }

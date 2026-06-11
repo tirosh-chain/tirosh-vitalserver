@@ -37,10 +37,35 @@ extension RuntimeBackup {
 
     static func loadRuntimeDataBackups(fileStore: RuntimeFileStore = SystemRuntimeFileStore()) throws -> [RuntimeBackup] {
         let directory = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeDataBackups)
+        let directoryState = fileStore.pathState(at: directory)
+        switch directoryState {
+        case .directory:
+            break
+        case .missing:
+            return []
+        case .inspectFailed(let reason):
+            throw RuntimeBackupListError.pathInspectionFailed(path: directory.path, reason: reason)
+        case .file, .other, .unknown:
+            throw RuntimeBackupListError.unexpectedPathState(path: directory.path, state: directoryState.rawValue)
+        }
         let discovered = try fileStore.contentsOfDirectory(at: directory, skipsHiddenFiles: true)
-            .filter { fileStore.pathState(at: $0) == .directory }
+            .filter { try runtimeDataBackupEntryIsDirectory($0, fileStore: fileStore) }
             .map { RuntimeBackup(path: $0.path, sizeBytes: try directorySize($0, fileStore: fileStore)) }
         return discovered.sorted { $0.name > $1.name }
+    }
+
+    private static func runtimeDataBackupEntryIsDirectory(_ url: URL, fileStore: RuntimeFileStore) throws -> Bool {
+        let state = fileStore.pathState(at: url)
+        switch state {
+        case .directory:
+            return true
+        case .file, .missing:
+            return false
+        case .inspectFailed(let reason):
+            throw RuntimeBackupListError.pathInspectionFailed(path: url.path, reason: reason)
+        case .other, .unknown:
+            throw RuntimeBackupListError.unexpectedPathState(path: url.path, state: state.rawValue)
+        }
     }
 
     private static func latestBackup(

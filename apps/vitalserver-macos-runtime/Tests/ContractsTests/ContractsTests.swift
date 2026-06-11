@@ -616,6 +616,14 @@ final class ContractsTests: XCTestCase {
           "guest-bootstrap-result-missing",
           "guest-bootstrap-result-unavailable",
           "guest-bootstrap-missing-runtime-packages",
+          "vm-runtime-state-missing",
+          "vm-disk-attachment-invalid",
+          "vm-launch-failed-virtualization",
+          "vm-invalid-configuration-network",
+          "vm-host-resource-unavailable-memory",
+          "guest-filesystem-error",
+          "guest-filesystem-read-only",
+          "guest-disk-io-error",
           "future-reason"
         ]
         """
@@ -643,7 +651,15 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(reasons[16], .guestBootstrapResultMissing)
         XCTAssertEqual(reasons[17], .guestBootstrapResultUnavailable)
         XCTAssertEqual(reasons[18], .guestBootstrapMissingRuntimePackages)
-        XCTAssertEqual(reasons[19], .unknown("future-reason"))
+        XCTAssertEqual(reasons[19], .guestRuntimeStateMissing)
+        XCTAssertEqual(reasons[20], .vmDiskAttachmentInvalid)
+        XCTAssertEqual(reasons[21], .vmLaunchFailed("virtualization"))
+        XCTAssertEqual(reasons[22], .vmConfigurationInvalid("network"))
+        XCTAssertEqual(reasons[23], .hostResourceUnavailable("memory"))
+        XCTAssertEqual(reasons[24], .guestFilesystemError)
+        XCTAssertEqual(reasons[25], .guestFilesystemReadOnly)
+        XCTAssertEqual(reasons[26], .guestDiskIO)
+        XCTAssertEqual(reasons[27], .unknown("future-reason"))
 
         let encoded = try JSONEncoder().encode(reasons)
         let roundTripped = try JSONDecoder().decode([RuntimeFailureReason].self, from: encoded)
@@ -667,6 +683,14 @@ final class ContractsTests: XCTestCase {
             "guest-bootstrap-result-missing",
             "guest-bootstrap-result-unavailable",
             "guest-bootstrap-missing-runtime-packages",
+            "vm-runtime-state-missing",
+            "vm-disk-attachment-invalid",
+            "vm-launch-failed-virtualization",
+            "vm-invalid-configuration-network",
+            "vm-host-resource-unavailable-memory",
+            "guest-filesystem-error",
+            "guest-filesystem-read-only",
+            "guest-disk-io-error",
             "future-reason",
         ])
     }
@@ -692,9 +716,36 @@ final class ContractsTests: XCTestCase {
             .inspectVitalDBObservation
         )
 
-        XCTAssertEqual(RuntimeFailureReason.unknown("vm-disk-attachment-invalid").domainCategory, .guestStorage)
-        XCTAssertEqual(RuntimeFailureReason.unknown("vm-disk-attachment-invalid").recoveryAction, .backupAndRecreateVM)
-        XCTAssertTrue(RuntimeFailureReason.unknown("vm-disk-attachment-invalid").requiresDataPreservationBeforeRecovery)
+        XCTAssertEqual(RuntimeFailureReason(rawValue: "vm-disk-attachment-invalid"), .vmDiskAttachmentInvalid)
+
+        XCTAssertEqual(RuntimeFailureReason(vmError: .runtimeStateMissing), .guestRuntimeStateMissing)
+        XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateMissing.domainCategory, .guestAgent)
+        XCTAssertEqual(RuntimeFailureReason.guestRuntimeStateMissing.recoveryAction, .restartGuestAgent)
+
+        XCTAssertEqual(RuntimeFailureReason(vmError: .diskAttachmentInvalid), .vmDiskAttachmentInvalid)
+        XCTAssertEqual(RuntimeFailureReason.vmDiskAttachmentInvalid.domainCategory, .guestStorage)
+        XCTAssertEqual(RuntimeFailureReason.vmDiskAttachmentInvalid.recoveryAction, .backupAndRecreateVM)
+        XCTAssertTrue(RuntimeFailureReason.vmDiskAttachmentInvalid.requiresDataPreservationBeforeRecovery)
+
+        XCTAssertEqual(RuntimeFailureReason(vmError: .guestFilesystemError), .guestFilesystemError)
+        XCTAssertEqual(RuntimeFailureReason(vmError: .guestFilesystemReadOnly), .guestFilesystemReadOnly)
+        XCTAssertEqual(RuntimeFailureReason(vmError: .guestDiskIO), .guestDiskIO)
+        XCTAssertEqual(RuntimeFailureReason.guestFilesystemReadOnly.domainCategory, .guestStorage)
+        XCTAssertEqual(RuntimeFailureReason.guestFilesystemReadOnly.domainSeverity, .critical)
+        XCTAssertEqual(RuntimeFailureReason.guestFilesystemReadOnly.recoveryAction, .backupAndRecreateVM)
+        XCTAssertTrue(RuntimeFailureReason.guestFilesystemReadOnly.requiresDataPreservationBeforeRecovery)
+
+        XCTAssertEqual(RuntimeFailureReason(vmError: .launchFailed("virtualization")), .vmLaunchFailed("virtualization"))
+        XCTAssertEqual(RuntimeFailureReason.vmLaunchFailed("virtualization").domainCategory, .vmLifecycle)
+        XCTAssertEqual(RuntimeFailureReason.vmLaunchFailed("virtualization").recoveryAction, .inspectLogs)
+
+        XCTAssertEqual(RuntimeFailureReason(vmError: .invalidConfiguration("network")), .vmConfigurationInvalid("network"))
+        XCTAssertEqual(RuntimeFailureReason.vmConfigurationInvalid("network").domainCategory, .configuration)
+        XCTAssertEqual(RuntimeFailureReason.vmConfigurationInvalid("network").recoveryAction, .fixConfiguration)
+
+        XCTAssertEqual(RuntimeFailureReason(vmError: .hostResourceUnavailable("memory")), .hostResourceUnavailable("memory"))
+        XCTAssertEqual(RuntimeFailureReason.hostResourceUnavailable("memory").domainCategory, .hostResources)
+        XCTAssertEqual(RuntimeFailureReason.hostResourceUnavailable("memory").recoveryAction, .freeHostResources)
 
         XCTAssertEqual(RuntimeFailureReason.redisUIHTTP("failed").domainSeverity, .warning)
         XCTAssertEqual(RuntimeFailureReason.redisUIHTTP("failed").recoveryAction, .inspectLogs)

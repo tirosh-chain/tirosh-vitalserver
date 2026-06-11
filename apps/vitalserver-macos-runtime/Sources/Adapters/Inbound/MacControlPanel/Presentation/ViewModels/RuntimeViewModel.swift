@@ -6,6 +6,7 @@ import Errors
 @MainActor
 public final class RuntimeViewModel: ObservableObject {
     @Published var status: RuntimeStatus
+    @Published private(set) var runtimeSettings = RuntimeSettings()
     @Published var settings = RuntimeSettings()
     @Published var selectedBundleURL: URL?
     @Published var selectedBundleSummary = ""
@@ -109,11 +110,13 @@ public final class RuntimeViewModel: ObservableObject {
         self.helperMessageLog = helperMessageLog
         let loadedSettings = initialSettings ?? controlClient.loadSettings()
         let resolvedSettings = localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings
-        let resolvedStatus = initialStatus ?? controlClient.loadStatus(settings: resolvedSettings)
-        self.settings = Self.settingsWithAdvertisedServiceURLPresets(
+        let displaySettings = Self.settingsWithAdvertisedServiceURLPresets(
             resolvedSettings,
             fillMissing: initialSettings == nil
         )
+        let resolvedStatus = initialStatus ?? controlClient.loadStatus(settings: displaySettings)
+        self.runtimeSettings = displaySettings
+        self.settings = displaySettings
         self.status = resolvedStatus
         self.containerObservation = resolvedStatus.containerObservation
         let snapshots = RuntimePresentationSnapshotLoader(
@@ -174,7 +177,7 @@ public final class RuntimeViewModel: ObservableObject {
 
     func refresh() async {
         await loadRuntimeSettings()
-        applyStatusRefreshResult(await statusRefresher.refreshStatus(settings: settings, isBusy: isBusy))
+        applyStatusRefreshResult(await statusRefresher.refreshStatus(settings: runtimeSettings, isBusy: isBusy))
         await refreshReleaseInfo()
         await refreshBackupList()
         await refreshRuntimeEvents()
@@ -192,7 +195,7 @@ public final class RuntimeViewModel: ObservableObject {
     }
 
     func refreshHealthStatus() async {
-        applyStatusRefreshResult(await statusRefresher.refreshHealthStatus(settings: settings, isBusy: isBusy))
+        applyStatusRefreshResult(await statusRefresher.refreshHealthStatus(settings: runtimeSettings, isBusy: isBusy))
         healthNotificationCoordinator.handleTransition(to: status)
     }
 
@@ -201,7 +204,7 @@ public final class RuntimeViewModel: ObservableObject {
         defer { isBusy = false }
 
         applyStatusRefreshResult(await statusRefresher.healthCheckStatus(
-            settings: settings,
+            settings: runtimeSettings,
             completedMessage: AppConstants.StatusText.healthCheckCompleted
         ))
         await refreshRuntimeEvents()
@@ -438,7 +441,9 @@ public final class RuntimeViewModel: ObservableObject {
 
     private func loadRuntimeSettings() async {
         let nextSettings = await snapshots.loadSettings()
-        settings = Self.settingsWithAdvertisedServiceURLPresets(nextSettings, fillMissing: true)
+        let loadedSettings = Self.settingsWithAdvertisedServiceURLPresets(nextSettings, fillMissing: true)
+        runtimeSettings = loadedSettings
+        settings = loadedSettings
     }
 
     private func normalizeAdvertisedURLSettings() {
@@ -545,7 +550,7 @@ public final class RuntimeViewModel: ObservableObject {
 
     func refreshOperationDetail(pendingDetail: String) async {
         applyStatusRefreshResult(await statusRefresher.operationDetail(
-            settings: settings,
+            settings: runtimeSettings,
             pendingDetail: pendingDetail
         ))
     }
@@ -562,7 +567,7 @@ public final class RuntimeViewModel: ObservableObject {
     private func waitForAppliedSettings() async {
         for _ in 0..<12 {
             await loadRuntimeSettings()
-            applyStatusRefreshResult(await statusRefresher.refreshHealthStatus(settings: settings, isBusy: isBusy))
+            applyStatusRefreshResult(await statusRefresher.refreshHealthStatus(settings: runtimeSettings, isBusy: isBusy))
             await refreshLogsIfLive()
             if RuntimeReadinessPolicy.isReady(status) || !settings.restartAfterSave {
                 return

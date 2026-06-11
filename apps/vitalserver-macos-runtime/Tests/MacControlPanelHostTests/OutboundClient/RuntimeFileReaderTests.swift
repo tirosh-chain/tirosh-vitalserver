@@ -413,6 +413,66 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertThrowsError(try RuntimeBackup.loadRedisBackups(fileStore: fileStore))
     }
 
+    func testRuntimeDataBackupListTreatsMissingManagedDirectoryAsEmpty() throws {
+        let fileStore = PathStateRuntimeFileStore(pathStates: [
+            RuntimeControlClientConstants.Paths.runtimeDataBackups: .missing,
+        ])
+
+        let backups = try RuntimeBackup.loadRuntimeDataBackups(fileStore: fileStore)
+
+        XCTAssertEqual(backups, [])
+    }
+
+    func testRuntimeDataBackupListReportsManagedDirectoryInspectionFailure() {
+        let fileStore = PathStateRuntimeFileStore(pathStates: [
+            RuntimeControlClientConstants.Paths.runtimeDataBackups: .inspectFailed("permission denied"),
+        ])
+
+        XCTAssertThrowsError(try RuntimeBackup.loadRuntimeDataBackups(fileStore: fileStore)) { error in
+            XCTAssertEqual(
+                error as? RuntimeBackupListError,
+                .pathInspectionFailed(
+                    path: RuntimeControlClientConstants.Paths.runtimeDataBackups,
+                    reason: "permission denied"
+                )
+            )
+        }
+    }
+
+    func testRuntimeDataBackupListReportsUnexpectedManagedDirectoryState() {
+        let fileStore = PathStateRuntimeFileStore(pathStates: [
+            RuntimeControlClientConstants.Paths.runtimeDataBackups: .file,
+        ])
+
+        XCTAssertThrowsError(try RuntimeBackup.loadRuntimeDataBackups(fileStore: fileStore)) { error in
+            XCTAssertEqual(
+                error as? RuntimeBackupListError,
+                .unexpectedPathState(path: RuntimeControlClientConstants.Paths.runtimeDataBackups, state: "file")
+            )
+        }
+    }
+
+    func testRuntimeDataBackupListReportsChildInspectionFailure() {
+        let directory = RuntimeControlClientConstants.Paths.runtimeDataBackups
+        let child = URL(fileURLWithPath: directory).appendingPathComponent("20260611T000000Z-manual")
+        let fileStore = PathStateRuntimeFileStore(
+            pathStates: [
+                directory: .directory,
+                child.path: .inspectFailed("permission denied"),
+            ],
+            directoryContents: [
+                directory: [child],
+            ]
+        )
+
+        XCTAssertThrowsError(try RuntimeBackup.loadRuntimeDataBackups(fileStore: fileStore)) { error in
+            XCTAssertEqual(
+                error as? RuntimeBackupListError,
+                .pathInspectionFailed(path: child.path, reason: "permission denied")
+            )
+        }
+    }
+
     func testBackupListPropagatesSizeReadFailure() {
         let fileStore = BackupSizeFailingRuntimeFileStore()
 

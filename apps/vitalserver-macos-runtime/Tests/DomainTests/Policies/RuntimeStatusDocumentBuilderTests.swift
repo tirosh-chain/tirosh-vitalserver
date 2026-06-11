@@ -87,7 +87,7 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
             runtimeHome: "/product/vm",
             runtimeVersion: "0.1.0",
             healthSnapshot: snapshot(failureReasons: [
-                .unknown("vm-runtime-state-missing"),
+                .guestRuntimeStateMissing,
                 .hostProxyHTTP("failed"),
                 .auditProxyHTTP("failed"),
                 .containerObservationMissing,

@@ -178,6 +178,9 @@ Vital files directory처럼 VM runtime 구성 자체가 바뀐 경우만 VM runt
 URL, admin password, start on boot, auto recovery, sleep prevention, Redis backup retention 변경은
 restart requirement를 만들면 안 됩니다. Settings UI가 모든 configure field를 보내더라도 policy는
 제출된 field 이름이 아니라 Host가 제공한 명시적 현재 상태와 planned state의 차이를 비교해야 합니다.
+Settings UI는 draft 설정과 Host가 읽은 runtime 설정을 분리해서 표시해야 합니다. Status/Info 탭은
+draft 값을 현재 적용 상태처럼 보여주면 안 되며, Settings 탭은 VM runtime restart가 필요한 변경과
+restart 없이 저장할 때의 pending 상태를 Apply 전에 사용자에게 명시적으로 알려야 합니다.
 
 ### 4-2. 영역별로 봐야 하는 것
 
@@ -378,12 +381,27 @@ Pull request는 변경 목적과 검증 근거가 함께 보여야 합니다. �
 - Settings apply의 `restartAfterSave`는 저장 후 항상 restart가 아니라, Configure policy가 VM runtime
   restart requirement를 반환했을 때 즉시 restart할지에 대한 intent입니다. policy 없이 UI나 CLI가
   restart 여부를 추정하면 안 됩니다.
+- Settings UI의 restart 안내는 실행 정책이 아니라 표시 정책입니다. 실제 restart requirement의 source of
+  truth는 Configure policy이고, UI는 현재 runtime 설정과 draft 설정의 차이를 사용자에게 설명하는 데
+  그쳐야 합니다.
 - VM stop/restart/poweroff 변경은 단일 VM state control 경로를 통하게 합니다. Settings, update,
   repair, watchdog이 guest shutdown 준비 contract를 우회해 개별적으로 VM service를 멈추지 않습니다.
   Settings restart, update shutdown-stop, rollback/update service start-stop, watchdog VM recovery,
   service-control, repair/guest-operation VM start/restart는 VM state control owner entrypoint를 통해
   Host side effect를 실행합니다. Update/rollback workflow는 operation plan 의미를 보존하되, Host service
   start/stop sequencing을 직접 소유하지 않습니다.
+- Guest filesystem 또는 disk I/O 장애는 proxy/HTTP failure보다 상위의 guest storage 상태로 남깁니다.
+  root filesystem read-only, filesystem error, disk I/O error가 명시되면 `guest-filesystem-read-only`,
+  `guest-filesystem-error`, `guest-disk-io-error` reason으로 기록하고, `unknown(vm-...)`이나 단순
+  host proxy failure로 축약하지 않습니다. 이 reason은 데이터 보존이 필요한 상태이므로 watchdog 자동
+  recovery는 억제하고 backup/recreate 판단으로 연결합니다.
+- VM/Host error raw string이 이미 category와 recovery action을 가진다면 `unknown(...)`으로 보관하지
+  않습니다. Guest runtime state missing, VM disk attachment invalid, VM launch failure, VM configuration
+  invalid, Host resource unavailable 같은 상태는 `RuntimeFailureReason` typed case로 승격하고, raw string
+  parsing은 이전 status/event 문서를 읽기 위한 contract 호환 경로로만 둡니다.
+- Watchdog VM restart 중 graceful stop이 typed VM stop failure로 실패하면 Host가 VM process를 force-stop하고
+  launchd 상태를 unload한 뒤 VM runtime restart를 한 번 재시도합니다. 이 fallback은 stop failure를 empty
+  success로 숨기지 않고 로그와 command failure 경로에 남겨야 합니다.
 - release 문서의 운영 주장과 dev 문서의 구현 근거가 어긋나지 않게 합니다.
 
 ## 8. Release 전에 확인할 것

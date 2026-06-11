@@ -158,7 +158,7 @@ struct RuntimeStatusPanel: View {
     }
 
     private var vitalServerStatusAndURL: some View {
-        let url = viewModel.presentationFormatter.vitalServerStatusURL(settings: viewModel.settings)
+        let url = viewModel.presentationFormatter.vitalServerStatusURL(settings: viewModel.runtimeSettings)
         return serviceStatusAndURL(
             displayURL: url.displayURL,
             openURL: url.openURL,
@@ -167,7 +167,7 @@ struct RuntimeStatusPanel: View {
     }
 
     private var remoteConsoleStatusAndURL: some View {
-        let url = viewModel.presentationFormatter.remoteConsoleStatusURL(settings: viewModel.settings)
+        let url = viewModel.presentationFormatter.remoteConsoleStatusURL(settings: viewModel.runtimeSettings)
         return serviceStatusAndURL(
             displayURL: url.displayURL,
             openURL: url.openURL,
@@ -206,7 +206,7 @@ struct RuntimeStatusPanel: View {
     }
 
     private var dataDirectoryLink: some View {
-        linkButton(viewModel.settings.vitalFilesDirectory) {
+        linkButton(viewModel.runtimeSettings.vitalFilesDirectory) {
             viewModel.openVitalFilesDirectory()
         }
         .disabled(!viewModel.capabilities.canOpenLocalFiles)

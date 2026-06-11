@@ -134,9 +134,15 @@ extension RuntimeLifecycle {
                 restartVMRuntimeServices: {
                     try serviceController.restartVMRuntimeServices()
                 },
+                forceStopRuntimeServicesAfterGracefulStopFailure: forceStopRuntimeServicesAfterWatchdogRestartFailure,
+                describeError: RuntimeErrorDescription.describe,
                 log: log
             )
         )
+    }
+
+    func forceStopRuntimeServicesAfterWatchdogRestartFailure() throws {
+        try forceStopVMProcessAndUnloadRuntimeServices()
     }
 
     func prepareGuestShutdownAndStopRuntimeServicesAfterPoweroffForUpdate(_ manifest: UpdateBundleManifest) throws {

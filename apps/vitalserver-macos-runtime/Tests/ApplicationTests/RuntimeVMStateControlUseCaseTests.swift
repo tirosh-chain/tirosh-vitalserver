@@ -54,6 +54,24 @@ final class RuntimeVMStateControlUseCaseTests: XCTestCase {
         ])
     }
 
+    func testWatchdogRecoveryForceStopsAndRetriesWhenVMRuntimeRestartFailsDuringStop() throws {
+        let harness = RuntimeVMStateControlHarness()
+        harness.vmRuntimeRestartErrors = [
+            StopRuntimeVMProcessUseCaseError.runtimeOperationFailed("timed out waiting for VM stop"),
+        ]
+
+        try harness.restartVMRuntimeForWatchdogRecovery()
+
+        XCTAssertEqual(harness.events, [
+            "log:watchdog requested VM runtime restart",
+            "restart-vm-runtime",
+            "log:watchdog VM runtime restart failed during graceful stop; forcing VM runtime services stop error=timed out waiting for VM stop",
+            "force-stop-after-graceful-stop-failure",
+            "restart-vm-runtime",
+            "log:watchdog dispatched VM runtime restart",
+        ])
+    }
+
     func testVMRuntimeRestartRejectsSettingsIntent() {
         let harness = RuntimeVMStateControlHarness()
 
@@ -225,6 +243,7 @@ private final class RuntimeVMStateControlHarness {
     var prepareError: Error?
     var stopRuntimeServicesError: Error?
     var stopAfterPoweroffError: Error?
+    var vmRuntimeRestartErrors: [Error] = []
 
     func restartAfterSettingsApply() throws {
         try RuntimeVMStateControlUseCase().restart(
@@ -272,6 +291,15 @@ private final class RuntimeVMStateControlHarness {
             operations: RuntimeVMRuntimeRestartOperations(
                 restartVMRuntimeServices: {
                     self.events.append("restart-vm-runtime")
+                    if !self.vmRuntimeRestartErrors.isEmpty {
+                        throw self.vmRuntimeRestartErrors.removeFirst()
+                    }
+                },
+                forceStopRuntimeServicesAfterGracefulStopFailure: {
+                    self.events.append("force-stop-after-graceful-stop-failure")
+                },
+                describeError: { error in
+                    "\(error)"
                 },
                 log: { message in
                     self.events.append("log:\(message)")
@@ -286,6 +314,15 @@ private final class RuntimeVMStateControlHarness {
             operations: RuntimeVMRuntimeRestartOperations(
                 restartVMRuntimeServices: {
                     self.events.append("restart-vm-runtime")
+                    if !self.vmRuntimeRestartErrors.isEmpty {
+                        throw self.vmRuntimeRestartErrors.removeFirst()
+                    }
+                },
+                forceStopRuntimeServicesAfterGracefulStopFailure: {
+                    self.events.append("force-stop-after-graceful-stop-failure")
+                },
+                describeError: { error in
+                    "\(error)"
                 },
                 log: { message in
                     self.events.append("log:\(message)")

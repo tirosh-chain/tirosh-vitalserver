@@ -95,7 +95,7 @@ final class RuntimeEventFactoryTests: XCTestCase {
                 redisUIHTTP: "missing",
                 swaggerUIHTTP: "missing",
                 failureReasons: [
-                    .unknown("vm-runtime-state-missing"),
+                    .guestRuntimeStateMissing,
                     .hostProxyHTTP("failed"),
                     .auditProxyHTTP("failed"),
                     .containerObservationMissing,

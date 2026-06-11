@@ -10,7 +10,7 @@ public extension RuntimeViewModel {
             message = AppConstants.StatusText.actionUnavailable
             return
         }
-        openFolder(settings.vitalFilesDirectory)
+        openFolder(runtimeSettings.vitalFilesDirectory)
     }
 
     func openFolder(_ path: String) {
@@ -21,7 +21,7 @@ public extension RuntimeViewModel {
 
     func vitalFileFoldersResult() -> Result<[VitalFilesFolder], Error> {
         Result {
-            try hostClient.vitalFileFolders(root: settings.vitalFilesDirectory)
+            try hostClient.vitalFileFolders(root: runtimeSettings.vitalFilesDirectory)
         }
     }
 

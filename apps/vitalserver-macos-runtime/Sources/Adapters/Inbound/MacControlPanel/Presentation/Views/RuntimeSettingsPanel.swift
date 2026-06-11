@@ -7,6 +7,7 @@ struct RuntimeSettingsPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @Binding var showingApplySettingsConfirmation: Bool
     private let actionAvailabilityPolicy = RuntimeControlActionAvailabilityPolicy()
+    private let restartNoticePolicy = RuntimeSettingsRestartNoticePolicy()
 
     var body: some View {
         ScrollView {
@@ -17,7 +18,8 @@ struct RuntimeSettingsPanel: View {
                         AppConstants.Labels.cpu,
                         value: $viewModel.settings.cpuCount,
                         range: cpuCountRange,
-                        suffix: AppConstants.Labels.unitVCPU
+                        suffix: AppConstants.Labels.unitVCPU,
+                        requiresRestart: true
                     )
                     .disabled(!viewModel.capabilities.canEditVMResources)
                     settingSlider(
@@ -25,7 +27,8 @@ struct RuntimeSettingsPanel: View {
                         value: $viewModel.settings.memoryGiB,
                         range: memoryRange,
                         step: AppConstants.SettingsLimits.memoryStepGiB,
-                        suffix: AppConstants.Labels.unitGiB
+                        suffix: AppConstants.Labels.unitGiB,
+                        requiresRestart: true
                     )
                     .disabled(!viewModel.capabilities.canEditVMResources)
                     settingHelp(AppConstants.Labels.memoryAllocationHelp)
@@ -34,7 +37,8 @@ struct RuntimeSettingsPanel: View {
                         value: $viewModel.settings.diskGiB,
                         range: diskSizeRange,
                         step: AppConstants.SettingsLimits.diskStepGiB,
-                        suffix: AppConstants.Labels.unitGiB
+                        suffix: AppConstants.Labels.unitGiB,
+                        requiresRestart: true
                     )
                     .disabled(!viewModel.capabilities.canEditVMResources)
                     settingWarning(AppConstants.Labels.diskIncreaseOnlyHelp(viewModel.settings.minimumDiskGiB))
@@ -42,6 +46,7 @@ struct RuntimeSettingsPanel: View {
                 settingsSection(AppConstants.Labels.sectionNetwork) {
                     settingRow(AppConstants.Labels.mode) {
                         networkModeSelector
+                        restartRequiredBadge
                     }
                     settingHelp(networkModeHelp)
                     settingPortField(AppConstants.Labels.proxyPort, value: $viewModel.settings.proxyPort)
@@ -52,7 +57,11 @@ struct RuntimeSettingsPanel: View {
                     settingHelp(AppConstants.Labels.runtimeControlPortHelp)
                 }
                 settingsSection(AppConstants.Labels.sectionStorage) {
-                    settingDirectoryField(AppConstants.Labels.vitalFilesDirectory, text: $viewModel.settings.vitalFilesDirectory)
+                    settingDirectoryField(
+                        AppConstants.Labels.vitalFilesDirectory,
+                        text: $viewModel.settings.vitalFilesDirectory,
+                        requiresRestart: true
+                    )
                 }
                 settingsSection(AppConstants.Labels.sectionRedisData) {
                     settingRow(AppConstants.Labels.redisBackupRetention) {
@@ -90,6 +99,7 @@ struct RuntimeSettingsPanel: View {
                     settingToggle(AppConstants.Labels.restartServicesAfterSave, isOn: $viewModel.settings.restartAfterSave)
                         .disabled(!viewModel.capabilities.canControlRuntimeServices)
                 }
+                restartRequirementNotice
                 applyActionRow
             }
             .frame(maxWidth: 760, alignment: .leading)
@@ -171,6 +181,23 @@ struct RuntimeSettingsPanel: View {
             || viewModel.capabilities.canOpenLocalFiles
             || viewModel.capabilities.canResetAdminPassword
             || viewModel.capabilities.canControlRuntimeServices
+    }
+
+    private var restartNotice: RuntimeSettingsRestartNoticeDecision {
+        restartNoticePolicy.decision(draft: viewModel.settings, runtime: viewModel.runtimeSettings)
+    }
+
+    private var restartRequirementNotice: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: restartNotice.requiresRestart ? "arrow.clockwise.circle.fill" : "checkmark.circle")
+                .foregroundStyle(restartNotice.requiresRestart ? .orange : .secondary)
+                .imageScale(.medium)
+                .frame(width: 18)
+            Text(restartNotice.message)
+                .font(.caption)
+                .foregroundStyle(restartNotice.requiresRestart ? .primary : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var applyActionRow: some View {
@@ -261,10 +288,14 @@ struct RuntimeSettingsPanel: View {
         value: Binding<Int>,
         range: ClosedRange<Int>,
         step: Int = 1,
-        suffix: String = ""
+        suffix: String = "",
+        requiresRestart: Bool = false
     ) -> some View {
         settingRow(label) {
             settingSliderControl(value: value, range: range, step: step, suffix: suffix)
+            if requiresRestart {
+                restartRequiredBadge
+            }
         }
     }
 
@@ -290,7 +321,11 @@ struct RuntimeSettingsPanel: View {
         }
     }
 
-    private func settingDirectoryField(_ label: String, text: Binding<String>) -> some View {
+    private func settingDirectoryField(
+        _ label: String,
+        text: Binding<String>,
+        requiresRestart: Bool = false
+    ) -> some View {
         settingRow(label) {
             HStack(spacing: 8) {
                 TextField("", text: text)
@@ -302,8 +337,19 @@ struct RuntimeSettingsPanel: View {
                     viewModel.chooseVitalFilesDirectory()
                 }
                 .disabled(viewModel.isBusy || !viewModel.capabilities.canOpenLocalFiles)
+                if requiresRestart {
+                    restartRequiredBadge
+                }
             }
         }
+    }
+
+    private var restartRequiredBadge: some View {
+        Label(AppConstants.Labels.requiresVMRestart, systemImage: "arrow.clockwise")
+            .font(.caption2)
+            .foregroundStyle(.orange)
+            .labelStyle(.titleAndIcon)
+            .fixedSize()
     }
 
     private func settingPortField(_ label: String, value: Binding<Int>) -> some View {

@@ -127,14 +127,24 @@ public enum RuntimeBackupManifestLoaderError: Error, Equatable, CustomStringConv
 }
 
 
-public enum RuntimeBackupListError: Error, Equatable, CustomStringConvertible {
+public enum RuntimeBackupListError: Error, Equatable, CustomStringConvertible, LocalizedError {
     case invalidLatestBackupPath(String)
+    case pathInspectionFailed(path: String, reason: String)
+    case unexpectedPathState(path: String, state: String)
 
     public var description: String {
         switch self {
         case .invalidLatestBackupPath(let path):
             return "latest backup path is not a backup directory: \(path)"
+        case .pathInspectionFailed(let path, let reason):
+            return "backup list path inspection failed: \(path) reason=\(reason)"
+        case .unexpectedPathState(let path, let state):
+            return "backup list path state is unexpected: \(path) state=\(state)"
         }
+    }
+
+    public var errorDescription: String? {
+        description
     }
 }
 

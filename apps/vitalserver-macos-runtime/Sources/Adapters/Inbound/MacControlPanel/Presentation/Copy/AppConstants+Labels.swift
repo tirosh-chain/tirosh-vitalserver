@@ -174,6 +174,7 @@ public extension AppConstants {
         public static let staticVMAddress = "Static VM address"
         public static let staticVMAddressHelp = "Not available in shared/NAT mode. For bridged deployments, prefer DHCP reservation by fixed VM MAC address."
         public static let vitalFilesDirectory = "Vital files directory"
+        public static let requiresVMRestart = "Requires VM restart"
         public static func diskIncreaseOnlyHelp(_ minimumGiB: Int) -> String {
             "Disk size can only be increased after installation. Current minimum is \(minimumGiB) GiB."
         }

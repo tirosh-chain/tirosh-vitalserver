@@ -86,13 +86,19 @@ public struct RuntimeVMStateControlOperations {
 
 public struct RuntimeVMRuntimeRestartOperations {
     public var restartVMRuntimeServices: () throws -> Void
+    public var forceStopRuntimeServicesAfterGracefulStopFailure: () throws -> Void
+    public var describeError: (Error) -> String
     public var log: (String) -> Void
 
     public init(
         restartVMRuntimeServices: @escaping () throws -> Void,
+        forceStopRuntimeServicesAfterGracefulStopFailure: @escaping () throws -> Void,
+        describeError: @escaping (Error) -> String,
         log: @escaping (String) -> Void
     ) {
         self.restartVMRuntimeServices = restartVMRuntimeServices
+        self.forceStopRuntimeServicesAfterGracefulStopFailure = forceStopRuntimeServicesAfterGracefulStopFailure
+        self.describeError = describeError
         self.log = log
     }
 }
@@ -279,7 +285,16 @@ public struct RuntimeVMStateControlUseCase {
         }
         let plan = restartPlan(intent: intent)
         operations.log(plan.requestedStatusMessage)
-        try operations.restartVMRuntimeServices()
+        do {
+            try operations.restartVMRuntimeServices()
+        } catch {
+            guard shouldForceStopAfterVMRuntimeRestartFailure(error) else {
+                throw error
+            }
+            operations.log("watchdog VM runtime restart failed during graceful stop; forcing VM runtime services stop error=\(operations.describeError(error))")
+            try operations.forceStopRuntimeServicesAfterGracefulStopFailure()
+            try operations.restartVMRuntimeServices()
+        }
         operations.log(plan.completionStatusMessage)
     }
 
@@ -377,5 +392,9 @@ public struct RuntimeVMStateControlUseCase {
             return true
         }
         return false
+    }
+
+    private func shouldForceStopAfterVMRuntimeRestartFailure(_ error: Error) -> Bool {
+        error is StopRuntimeVMProcessUseCaseError
     }
 }

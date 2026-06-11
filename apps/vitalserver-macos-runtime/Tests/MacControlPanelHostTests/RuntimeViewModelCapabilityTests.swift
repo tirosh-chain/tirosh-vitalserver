@@ -395,6 +395,44 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.settings.remoteConsoleURL, "http://127.0.0.1:18322/")
     }
 
+    func testStatusRefreshUsesRuntimeSettingsInsteadOfDraftSettings() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var installedSettings = RuntimeSettings()
+        installedSettings.vitalFilesDirectory = "/applied/vital-files"
+        client.settings = installedSettings
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.settings.vitalFilesDirectory = "/draft/vital-files"
+
+        await viewModel.refreshHealthStatus()
+
+        XCTAssertEqual(client.lastLoadHealthStatusSettings?.vitalFilesDirectory, "/applied/vital-files")
+        XCTAssertEqual(viewModel.runtimeSettings.vitalFilesDirectory, "/applied/vital-files")
+        XCTAssertEqual(viewModel.settings.vitalFilesDirectory, "/draft/vital-files")
+    }
+
+    func testOpenVitalFilesDirectoryUsesRuntimeSettingsInsteadOfDraftSettings() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        var installedSettings = RuntimeSettings()
+        installedSettings.vitalFilesDirectory = "/applied/vital-files"
+        client.settings = installedSettings
+        let nativeShell = FakeRuntimeNativeShell()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+        viewModel.settings.vitalFilesDirectory = "/draft/vital-files"
+
+        viewModel.openVitalFilesDirectory()
+
+        XCTAssertEqual(nativeShell.openedFileURLs.map(\.path), ["/applied/vital-files"])
+    }
+
     func testApplySettingsRejectsExplicitEmptyAdvertisedServiceURLs() {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let viewModel = RuntimeViewModel(
@@ -1387,6 +1425,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var backupLoadError: Error?
     var backupsToLoad: [RuntimeBackup] = []
     var runtimeDataBackupsToLoad: [RuntimeBackup] = []
+    var lastLoadStatusSettings: RuntimeSettings?
+    var lastLoadHealthStatusSettings: RuntimeSettings?
     var settings = RuntimeSettings()
     var status = RuntimeStatus()
     var healthStatus = RuntimeStatus()
@@ -1403,11 +1443,13 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
         loadStatusCount += 1
+        lastLoadStatusSettings = settings
         return status
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
         loadHealthStatusCount += 1
+        lastLoadHealthStatusSettings = settings
         return healthStatus
     }
 

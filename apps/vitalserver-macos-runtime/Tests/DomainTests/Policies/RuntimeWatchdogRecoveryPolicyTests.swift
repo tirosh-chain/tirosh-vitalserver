@@ -18,7 +18,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
     func testSuppressesAutomaticRecoveryForGuestStorageErrors() {
         let snapshot = healthSnapshot(
             vmErrors: [.guestFilesystemReadOnly],
-            failureReasons: [.guestHTTP("failed")]
+            failureReasons: [.guestFilesystemReadOnly, .guestHTTP("failed")]
         )
 
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
@@ -27,13 +27,13 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
             automaticRecoveryEnabled: true
         )
 
-        XCTAssertEqual(decision, .recoverySuppressed(reason: "vm-guest-filesystem-read-only"))
+        XCTAssertEqual(decision, .recoverySuppressed(reason: "guest-filesystem-read-only"))
     }
 
     func testSuppressesAutomaticRecoveryForPreservationSensitiveFailureReasons() {
         let snapshot = healthSnapshot(
             guestHTTP: "failed",
-            failureReasons: [.unknown("vm-disk-attachment-invalid")]
+            failureReasons: [.vmDiskAttachmentInvalid]
         )
 
         let decision = RuntimeWatchdogRecoveryPolicy.decision(

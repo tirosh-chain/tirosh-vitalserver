@@ -79,11 +79,11 @@ public enum RuntimeWatchdogRecoveryPolicy {
     }
 
     public static func automaticRecoverySuppressionReason(_ snapshot: RuntimeHealthSnapshot) -> String? {
-        if let protectedError = snapshot.vmErrors.first(where: { $0.requiresDataPreservationBeforeRecovery }) {
-            return protectedError.rawValue
-        }
         if let protectedReason = snapshot.failureReasons.first(where: { $0.requiresDataPreservationBeforeRecovery }) {
             return protectedReason.rawValue
+        }
+        if let protectedError = snapshot.vmErrors.first(where: { $0.requiresDataPreservationBeforeRecovery }) {
+            return RuntimeFailureReason(vmError: protectedError).rawValue
         }
         return nil
     }

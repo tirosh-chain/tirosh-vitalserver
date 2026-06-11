@@ -87,6 +87,13 @@ public extension AppConstants {
         public static let settingsApplyRunning = "Applying runtime settings..."
         public static let settingsApplied = "Runtime settings applied."
         public static let applySettingsConfirmation = "Apply these settings to the installed runtime?\n\nThis may update launchd services, rewrite runtime configuration, and restart the VM runtime only when a changed setting requires it and restart is enabled."
+        public static let noVMRuntimeRestartRequired = "No VM runtime restart required for these changes."
+        public static func vmRuntimeWillRestartAfterSave(requiredBy: String) -> String {
+            "The VM runtime will restart after save. Required by: \(requiredBy)."
+        }
+        public static func vmRuntimeRestartRequiredButDisabled(requiredBy: String) -> String {
+            "Saved changes will not become active until the VM runtime restarts. Required by: \(requiredBy)."
+        }
         public static let updateBundleApplied = "Update bundle applied."
         public static let updateBundleAppliedRelaunching = "Update bundle applied. Relaunching VitalServer Helper..."
         public static let updateBundlePreparing = "Preparing update bundle..."
@@ -330,6 +337,8 @@ public extension AppConstants {
                 return "Guest bootstrap missing runtime packages"
             case .guestBootstrapFailed:
                 return "Guest bootstrap failed"
+            case .guestRuntimeStateMissing:
+                return "Guest runtime state missing"
             case .runtimeStatusDocumentMissing:
                 return "Runtime status missing"
             case .runtimeStatusDocumentStale:
@@ -350,6 +359,20 @@ public extension AppConstants {
                 return "VM PID file stale"
             case .vmProcessExited:
                 return "VM process exited"
+            case .vmDiskAttachmentInvalid:
+                return "VM disk attachment invalid"
+            case .guestFilesystemError:
+                return "Guest filesystem error"
+            case .guestFilesystemReadOnly:
+                return "Guest filesystem read-only"
+            case .guestDiskIO:
+                return "Guest disk I/O error"
+            case .vmLaunchFailed(let reason):
+                return "VM launch failed (\(titleCasedStatus(reason)))"
+            case .vmConfigurationInvalid(let subject):
+                return "VM configuration invalid (\(titleCasedStatus(subject)))"
+            case .hostResourceUnavailable(let subject):
+                return "Host resource unavailable (\(titleCasedStatus(subject)))"
             case .launchdServiceCrashed(let service, let exitCode):
                 return "\(titleCasedStatus(service)) service crashed with exit \(exitCode)"
             case .launchdServiceThrottled(let service):

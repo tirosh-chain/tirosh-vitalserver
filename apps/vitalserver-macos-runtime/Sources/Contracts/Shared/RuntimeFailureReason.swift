@@ -82,6 +82,7 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case guestBootstrapResultUnavailable
     case guestBootstrapMissingRuntimePackages
     case guestBootstrapFailed
+    case guestRuntimeStateMissing
     case runtimeStatusDocumentMissing
     case runtimeStatusDocumentStale
     case runtimeStatusDocumentInvalid
@@ -92,6 +93,13 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case vmLifecycleDocumentStale
     case vmPidFileStale
     case vmProcessExited
+    case vmDiskAttachmentInvalid
+    case guestFilesystemError
+    case guestFilesystemReadOnly
+    case guestDiskIO
+    case vmLaunchFailed(String)
+    case vmConfigurationInvalid(String)
+    case hostResourceUnavailable(String)
     case launchdServiceCrashed(service: String, exitCode: Int)
     case launchdServiceThrottled(service: String)
     case hostProxyListenerMismatch(port: Int, listeners: String)
@@ -119,14 +127,25 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
         case .missingIPAddress:
             self = .guestHTTP(RuntimeHTTPStatusText.missingVMIP)
         case .runtimeStateMissing:
-            self = .unknown(vmError.rawValue)
+            self = .guestRuntimeStateMissing
         case .runtimeStateInvalid:
             self = .guestRuntimeStateInvalid
         case .runtimeStateStale:
             self = .guestRuntimeStateStale
-        case .launchFailed, .invalidConfiguration, .hostResourceUnavailable,
-             .diskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
-            self = .unknown(vmError.rawValue)
+        case .launchFailed(let reason):
+            self = .vmLaunchFailed(reason)
+        case .invalidConfiguration(let subject):
+            self = .vmConfigurationInvalid(subject)
+        case .hostResourceUnavailable(let subject):
+            self = .hostResourceUnavailable(subject)
+        case .diskAttachmentInvalid:
+            self = .vmDiskAttachmentInvalid
+        case .guestFilesystemError:
+            self = .guestFilesystemError
+        case .guestFilesystemReadOnly:
+            self = .guestFilesystemReadOnly
+        case .guestDiskIO:
+            self = .guestDiskIO
         case .guestHTTP(let status):
             self = .guestHTTP(status)
         case .guestHTTPProbeFailed(let status):
@@ -162,6 +181,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .guestBootstrapResultUnavailable
         case "guest-bootstrap-failed":
             self = .guestBootstrapFailed
+        case "vm-runtime-state-missing":
+            self = .guestRuntimeStateMissing
         case "guest-runtime-state-stale":
             self = .guestRuntimeStateStale
         case "runtime-status-document-missing":
@@ -188,6 +209,14 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             self = .vmPidFileStale
         case "vm-process-exited":
             self = .vmProcessExited
+        case "vm-disk-attachment-invalid":
+            self = .vmDiskAttachmentInvalid
+        case "guest-filesystem-error":
+            self = .guestFilesystemError
+        case "guest-filesystem-read-only":
+            self = .guestFilesystemReadOnly
+        case "guest-disk-io-error":
+            self = .guestDiskIO
         case "host-proxy-config-invalid":
             self = .hostProxyConfigInvalid
         case "host-proxy-listener-scan-unavailable":
@@ -223,6 +252,12 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
                 self = .vitalDBObservationReadFailed(
                     String(rawValue.dropFirst("vitaldb-observation-read-failed-".count))
                 )
+            } else if rawValue.hasPrefix("vm-launch-failed-") {
+                self = .vmLaunchFailed(String(rawValue.dropFirst("vm-launch-failed-".count)))
+            } else if rawValue.hasPrefix("vm-invalid-configuration-") {
+                self = .vmConfigurationInvalid(String(rawValue.dropFirst("vm-invalid-configuration-".count)))
+            } else if rawValue.hasPrefix("vm-host-resource-unavailable-") {
+                self = .hostResourceUnavailable(String(rawValue.dropFirst("vm-host-resource-unavailable-".count)))
             } else if let parsed = RuntimeFailureReason.parseContainerService(rawValue) {
                 self = parsed
             } else if let parsed = RuntimeFailureReason.parseVitalDBAnomaly(rawValue) {
@@ -309,6 +344,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "guest-bootstrap-missing-runtime-packages"
         case .guestBootstrapFailed:
             return "guest-bootstrap-failed"
+        case .guestRuntimeStateMissing:
+            return "vm-runtime-state-missing"
         case .runtimeStatusDocumentMissing:
             return "runtime-status-document-missing"
         case .runtimeStatusDocumentStale:
@@ -329,6 +366,20 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "vm-pid-file-stale"
         case .vmProcessExited:
             return "vm-process-exited"
+        case .vmDiskAttachmentInvalid:
+            return "vm-disk-attachment-invalid"
+        case .guestFilesystemError:
+            return "guest-filesystem-error"
+        case .guestFilesystemReadOnly:
+            return "guest-filesystem-read-only"
+        case .guestDiskIO:
+            return "guest-disk-io-error"
+        case .vmLaunchFailed(let reason):
+            return "vm-launch-failed-\(reason)"
+        case .vmConfigurationInvalid(let subject):
+            return "vm-invalid-configuration-\(subject)"
+        case .hostResourceUnavailable(let subject):
+            return "vm-host-resource-unavailable-\(subject)"
         case .launchdServiceCrashed(let service, let exitCode):
             return "launchd-service-\(service)-crashed-exit-\(exitCode)"
         case .launchdServiceThrottled(let service):
@@ -555,11 +606,18 @@ public extension RuntimeFailureReason {
              .runtimeStatusDocumentInvalid, .observabilityEventStoreUnavailable, .observabilityEventStoreCorrupt,
              .containerObservationMissing, .containerObservationReadFailed:
             return .observability
-        case .guestRuntimeStateInvalid:
+        case .guestRuntimeStateMissing, .guestRuntimeStateInvalid:
             return .guestAgent
         case .vmLifecycleDocumentInvalid, .vmLifecycleDocumentStale,
-             .vmPidFileStale, .vmProcessExited, .launchdServiceCrashed, .launchdServiceThrottled:
+             .vmPidFileStale, .vmProcessExited, .vmLaunchFailed,
+             .launchdServiceCrashed, .launchdServiceThrottled:
             return .vmLifecycle
+        case .vmDiskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
+            return .guestStorage
+        case .vmConfigurationInvalid:
+            return .configuration
+        case .hostResourceUnavailable:
+            return .hostResources
         case .hostProxyListenerMismatch, .hostProxyListenerScanUnavailable, .hostProxyListenerScanInspectionFailed,
              .hostProxyListenerScanFailed, .hostProxyConfigInvalid:
             return .hostProxy
@@ -624,12 +682,20 @@ public extension RuntimeFailureReason {
              .observabilityEventStoreUnavailable, .observabilityEventStoreCorrupt,
              .containerObservationMissing, .containerObservationReadFailed:
             return .inspectLogs
-        case .guestRuntimeStateInvalid:
+        case .guestRuntimeStateMissing, .guestRuntimeStateInvalid:
             return .restartGuestAgent
         case .vmPidFileStale, .vmProcessExited, .launchdServiceCrashed, .launchdServiceThrottled:
             return .restartVMService
         case .vmLifecycleDocumentInvalid, .vmLifecycleDocumentStale:
             return .inspectLogs
+        case .vmDiskAttachmentInvalid, .guestFilesystemError, .guestFilesystemReadOnly, .guestDiskIO:
+            return .backupAndRecreateVM
+        case .vmLaunchFailed:
+            return .inspectLogs
+        case .vmConfigurationInvalid:
+            return .fixConfiguration
+        case .hostResourceUnavailable:
+            return .freeHostResources
         case .hostProxyListenerMismatch:
             return .freeProxyPort
         case .hostProxyListenerScanUnavailable, .hostProxyListenerScanInspectionFailed, .hostProxyListenerScanFailed:
