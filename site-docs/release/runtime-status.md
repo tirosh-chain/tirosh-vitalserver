@@ -93,6 +93,13 @@ service가 `Stopped`라도 항상 장애는 아닙니다. install, initializatio
 operation 중인지 함께 확인합니다. 단, `Read failed`와 `Permission denied`는 설치 중에도 별도 실패로 남겨
 표시합니다.
 
+Guest container service 상태는 guest runtime-state의 `containerServices` 계약에서 옵니다. 컨테이너가
+restart 중일 때 `docker compose ps`가 빈 결과를 내보내면 empty success로 취급하지 않고 `read-failed`
+container observation으로 올립니다. Advanced 화면에서 service가 `Not reported`와 다른 상태를 반복해서
+오가면, 먼저 `runtime-status.json`의 `containerObservation.composeServicesReadState`와
+`composeServicesReadError`를 확인합니다. 이 값이 `read-failed`, `missing`, `stale`이면 UI 표시 문제가
+아니라 guest service 관측 계약이 명시적으로 실패하거나 아직 보고되지 않은 상태입니다.
+
 ## 4. Recorder와 Bed
 
 Recorders/Beds 화면은 recorder observer와 audit proxy에서 만든 관측 결과를 표시합니다.

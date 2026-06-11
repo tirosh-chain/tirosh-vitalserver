@@ -186,6 +186,13 @@ public struct EvaluateRuntimeHealthUseCase {
         readFailureReasons: [RuntimeFailureReason]
     ) -> RuntimeComposeServicesReadResult {
         if let guestState = freshState {
+            if let composeReadError = composeServicesProbeError(guestState) {
+                return RuntimeComposeServicesReadResult(
+                    state: .readFailed,
+                    services: guestState.containerServices ?? [],
+                    readError: composeReadError
+                )
+            }
             guard let services = guestState.containerServices else {
                 return RuntimeComposeServicesReadResult(
                     state: .missing,
@@ -219,6 +226,15 @@ public struct EvaluateRuntimeHealthUseCase {
             services: [],
             readError: "guest-runtime-state-missing"
         )
+    }
+
+    private func composeServicesProbeError(_ guestState: GuestRuntimeStateDocument) -> String? {
+        guard let error = guestState.probeErrors?.first(where: { error in
+            error.source == "docker compose ps"
+        }) else {
+            return nil
+        }
+        return "\(error.source): \(error.message)"
     }
 
     public func hostProxyListenerFailureReasons(

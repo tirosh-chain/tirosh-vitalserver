@@ -15,8 +15,8 @@ from tirosh_guest_tools.contracts import RuntimeFileName
 from tirosh_guest_tools.domain.runtime_state import (
     GuestRuntimeState,
     ProbeError,
-    RuntimeDiskHealth,
     RuntimeContainerService,
+    RuntimeDiskHealth,
     RuntimeHTTPProbeStatus,
     RuntimeResourceUsage,
 )
@@ -301,6 +301,7 @@ def compose_services(
         "-f",
         str(compose_path),
         "ps",
+        "--all",
         "--format",
         "json",
     ]
@@ -310,6 +311,13 @@ def compose_services(
         append_probe_error(probe_errors, "docker compose ps", error)
         return None
     documents = parse_compose_documents(output)
+    if not documents:
+        append_probe_error(
+            probe_errors,
+            "docker compose ps",
+            "no service documents reported",
+        )
+        return None
     services: list[RuntimeContainerService] = []
     now = datetime.now(UTC)
     for item in documents:

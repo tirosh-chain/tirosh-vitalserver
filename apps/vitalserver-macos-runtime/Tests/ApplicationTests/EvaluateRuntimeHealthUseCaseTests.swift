@@ -117,6 +117,26 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
         XCTAssertEqual(result.readError, "container-services-missing")
     }
 
+    func testComposeServicesReadResultPreservesGuestComposeProbeFailure() {
+        let result = EvaluateRuntimeHealthUseCase().composeServicesReadResult(
+            freshState: guestState(
+                containerServices: nil,
+                probeErrors: [
+                    GuestRuntimeProbeError(
+                        source: "docker compose ps",
+                        message: "no service documents reported"
+                    ),
+                ]
+            ),
+            loadedState: nil,
+            readFailureReasons: []
+        )
+
+        XCTAssertEqual(result.state, .readFailed)
+        XCTAssertEqual(result.services, [])
+        XCTAssertEqual(result.readError, "docker compose ps: no service documents reported")
+    }
+
     func testComposeServicesReadResultKeepsInvalidStaleAndMissingRuntimeStateDistinct() {
         let useCase = EvaluateRuntimeHealthUseCase()
 
@@ -197,7 +217,8 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
 }
 
 private func guestState(
-    containerServices: [RuntimeContainerServiceObservation]?
+    containerServices: [RuntimeContainerServiceObservation]?,
+    probeErrors: [GuestRuntimeProbeError]? = nil
 ) -> GuestRuntimeStateDocument {
     GuestRuntimeStateDocument(
         vmIP: "192.168.64.2",
@@ -206,7 +227,8 @@ private func guestState(
         guestHTTP: "200",
         redisUIHTTP: "200",
         swaggerUIHTTP: "200",
-        containerServices: containerServices
+        containerServices: containerServices,
+        probeErrors: probeErrors
     )
 }
 
