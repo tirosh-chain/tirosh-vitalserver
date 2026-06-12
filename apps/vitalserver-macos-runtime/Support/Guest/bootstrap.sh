@@ -320,7 +320,7 @@ run_docker_runtime_smoke() {
     return 1
   fi
 
-  if output="$(docker run --rm --network none "${DOCKER_SMOKE_IMAGE}" true 2>&1)"; then
+  if output="$(docker run --rm --network none --security-opt seccomp=unconfined "${DOCKER_SMOKE_IMAGE}" true 2>&1)"; then
     printf "Docker runtime smoke passed using %s.\n" "${DOCKER_SMOKE_IMAGE}"
     return 0
   fi

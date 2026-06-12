@@ -28,6 +28,7 @@ from tirosh_guest_tools.infrastructure.common import (
 
 DOCKER_SMOKE_TIMEOUT_SECONDS = 60.0
 DOCKER_IMAGE_LOAD_TIMEOUT_SECONDS = 240.0
+DOCKER_SECCOMP_SECURITY_OPT = "seccomp=unconfined"
 COMPOSE_BUILD_TIMEOUT_SECONDS = 600.0
 COMPOSE_UP_TIMEOUT_SECONDS = 300.0
 EDGE_READY_TIMEOUT_SECONDS = 600.0
@@ -382,7 +383,17 @@ def docker_smoke(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
     try:
         run_checked(
             run,
-            ["docker", "run", "--rm", "--network", "none", smoke_image, *smoke_command],
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                "none",
+                "--security-opt",
+                DOCKER_SECCOMP_SECURITY_OPT,
+                smoke_image,
+                *smoke_command,
+            ],
             timeout_seconds=DOCKER_SMOKE_TIMEOUT_SECONDS,
         )
     finally:

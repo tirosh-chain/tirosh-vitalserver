@@ -63,8 +63,8 @@ non_system_dylib_prefixes = ["/opt/", "/usr/local/"]
 [guest.ubuntu]
 release = "noble"
 version = "24.04"
-base_url = "https://cloud-images.ubuntu.com/releases/noble/release-20260518"
-apt_snapshot = "20260501T000000Z"
+base_url = "https://cloud-images.ubuntu.com/releases/noble/release-20250516"
+apt_snapshot = "20250515T000000Z"
 arch = "auto"
 kernel_suffix = "vmlinuz-generic"
 initrd_suffix = "initrd-generic"

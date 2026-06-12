@@ -36,7 +36,7 @@ def test_rootfs_smoke_writes_manifest_v2_for_success(tmp_path: Path) -> None:
     assert document["apt"]["runId"] == "run-test"
     assert document["apt"]["snapshot"] == "20250313T000000Z"
     assert document["apt"]["blockedUpgrades"] == []
-    assert document["aptInstalled"]["packages"]["docker.io"] == "29.1.3-test"
+    assert document["aptInstalled"]["packages"]["docker.io"] == "26.1.3-test"
     assert stage_status(document, "docker-service") == "passed"
     assert stage_status(document, "runtime-version") == "passed"
     assert stage_status(document, "docker-image-load") == "passed"
@@ -170,6 +170,35 @@ def test_rootfs_smoke_cli_is_registered() -> None:
     assert "tirosh-vitalserver-rootfs-smoke" in pyproject.read_text(encoding="utf-8")
 
 
+def test_rootfs_smoke_runs_docker_smoke_without_seccomp(tmp_path: Path) -> None:
+    context = smoke_context(tmp_path)
+    write_metadata(context.deploy_dir)
+    write_apt_plan(context.apt_plan_path)
+    write_apt_installed(context.apt_installed_path)
+    commands: list[list[str]] = []
+
+    def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(arguments)
+        return completed(arguments)
+
+    run_rootfs_smoke(context=context, operations=fake_operations(run=run))
+
+    docker_runs = [command for command in commands if command[:2] == ["docker", "run"]]
+    assert docker_runs == [
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--security-opt",
+            "seccomp=unconfined",
+            "redis:3.2.12-alpine",
+            "true",
+        ]
+    ]
+
+
 def smoke_context(
     tmp_path: Path,
     *,
@@ -251,7 +280,7 @@ def write_apt_installed(path: Path) -> None:
             {
                 "schemaVersion": 1,
                 "packages": {
-                    "docker.io": "29.1.3-test",
+                    "docker.io": "26.1.3-test",
                     "python3-venv": "3.12-test",
                 },
             }

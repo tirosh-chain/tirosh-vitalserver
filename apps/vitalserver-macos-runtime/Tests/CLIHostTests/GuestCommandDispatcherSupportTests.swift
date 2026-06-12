@@ -66,7 +66,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
         XCTAssertTrue(bootstrap.contains("DOCKER_SMOKE_IMAGE=\"${VITALSERVER_DOCKER_SMOKE_IMAGE:-redis:3.2.12-alpine}\""))
         XCTAssertTrue(bootstrap.contains("run_docker_runtime_smoke()"))
-        XCTAssertTrue(bootstrap.contains("docker run --rm --network none \"${DOCKER_SMOKE_IMAGE}\" true"))
+        XCTAssertTrue(bootstrap.contains("docker run --rm --network none --security-opt seccomp=unconfined \"${DOCKER_SMOKE_IMAGE}\" true"))
         XCTAssertTrue(bootstrap.contains("\"guest-bootstrap-docker-runtime-failed\""))
         XCTAssertTrue(bootstrap.contains("load_bundled_docker_images\nrun_docker_runtime_smoke\ncleanup_docker_cache"))
         XCTAssertTrue(bootstrap.contains("systemctl start tirosh-vitalserver-compose.service"))
@@ -76,11 +76,21 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(bootstrap.contains("runtime boot smoke enabled flag must be explicit boolean"))
     }
 
+    func testRuntimeComposeDisablesContainerSeccompForAppleVirtualizationGuestKernel() throws {
+        let compose = try readGuestSupportFile("compose.yaml")
+
+        XCTAssertEqual(
+            compose.components(separatedBy: "seccomp=unconfined").count - 1,
+            8
+        )
+    }
+
     func testDockerRuntimeSmokeRunsWithoutUnsupportedBPFJITSysctlGuard() throws {
         let bootstrap = try readGuestSupportFile("bootstrap.sh")
         let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
 
         XCTAssertFalse(Constants.BootAssets.commandLine.contains("bpf_jit_enable"))
+        XCTAssertTrue(Constants.BootAssets.commandLine.contains("seccomp=0"))
         XCTAssertFalse(bootstrap.contains("BPF_JIT_SYSCTL_FILE"))
         XCTAssertFalse(bootstrap.contains("net.core.bpf_jit_enable"))
         XCTAssertFalse(bootstrap.contains("sysctl -w net.core.bpf_jit_enable"))

@@ -113,6 +113,9 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 - launcher log에 kernel panic/Oops/RCU stall, read-only filesystem, invalid ELF, 반복 I/O error, signal ILL/userspace crash/systemd freeze가 있으면 timeout까지 기다리지 말고 terminal guest failure로 봅니다.
 - launcher log에 `EXT4-fs error`, `Aborting journal`, `checksum invalid`가 있으면
   `Remounting filesystem read-only`보다 앞선 원인 신호로 봅니다.
+- `docker.service` start 실패 직전에 `EXT4-fs error ... checksum invalid`와
+  `Remounting filesystem read-only`가 나오면 Docker daemon failure로 축소하지 않습니다.
+  mutable root disk attachment/write synchronization 문제로 분류합니다.
 - apt log에 `Release file ... is not valid yet`가 있으면 apt repository 문제가 아니라 golden rootfs
   guest clock이 compile input으로 고정되지 않은 상태를 먼저 의심합니다. `rootfs-input.json`에
   `guestClockUtc`가 있고, guest bootstrap이 `apt-get update` 전에 `guest-clock` stage를 통과했는지
@@ -125,10 +128,21 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 - panic stack에 `Undefined instruction`과 `seccomp_run_filters`가 함께 보이면 Docker/rootfs smoke
   중 seccomp kernel path가 무너진 것으로 분류합니다. 이 경우 container image architecture mismatch로
   축소하지 않습니다.
+- `docker-image-load`가 passed 된 뒤 `docker-smoke` 시작 직후
+  `tirosh-vitalserver-rootfs-smoke`가 `Illegal instruction`으로 죽고 kernel stack에
+  `seccomp_run_filters`가 보이면 Docker image bundle 또는 load 단계 문제가 아닙니다. Apple
+  Virtualization.framework guest kernel에서 container seccomp path가 terminal failure를 만든
+  것입니다.
+- panic process가 `systemd-journal`, `systemd-network`, `systemd-resolve`처럼 Docker container가
+  아닌 기본 systemd 서비스여도 같은 분류입니다. 이 경우 container `security_opt`만으로는
+  충분하지 않고 guest kernel command line의 `seccomp=0` contract가 필요합니다.
 - `docker.io` install 중 service auto-start가 아니라 rootfs smoke의 `docker-service` stage에서
   `dockerd` start가 kernel panic/Oops로 실패하면 Docker package 설치 순서 문제가 아닙니다.
   Ubuntu cloud image serial/kernel과 Apple Virtualization guest 조합을 compile input으로 보고
   검증된 `guest.ubuntu.base_url` / `guest.ubuntu.apt_snapshot` 조합으로 올립니다.
+- `EXT4-fs error` 이후 `Accessing a corrupted shared library`, `Illegal instruction`, systemd Oops가
+  번갈아 보이면 Docker binary만의 문제가 아닙니다. 쓰기 가능한 root disk attachment와 guest kernel
+  device path contract를 먼저 분리합니다.
 - VM process가 남아 있으면 mutable runtime files를 다시 쓰면 안 됩니다.
 
 ## Actions
@@ -209,13 +223,16 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
     - 실패를 숨기기 위해 vCPU를 낮추지 않습니다.
     - resource override는 rootfs proof를 대체하지 않습니다.
     - `docker-image-load`는 bundle path/size와 stage timeout을 manifest에 남깁니다.
+    - 쓰기 가능한 root disk는 durable attachment policy와 NVMe storage controller로 붙입니다.
+      seed ISO는 read-only block device여도 되지만 root disk는 `/dev/vda1` 같은 attach-order 기반
+      device name에 의존하지 않고 `root=LABEL=cloudimg-rootfs`로 부팅합니다.
 11. Docker daemon start가 특정 cloud image kernel에서 반복 panic하면 cloud image serial을 올립니다.
     - rootfs compile은 제품 compile과 같으므로 VM boot asset도 source input입니다.
     - `config/vm-build.toml`의 `guest.ubuntu.base_url`과 `apt_snapshot`은 함께 바꿉니다.
-    - 현재 Noble boot asset은 `release-20260518`입니다. Docker/containerd/runc package set은
-      `20260501T000000Z` snapshot으로 고정합니다. 이 조합은 base image의 Python package
-      level과 맞는 첫 snapshot 후보입니다. Docker package major를 피하기 위해 Python/package
-      dependency mismatch를 허용하지 않습니다.
+    - 현재 Noble boot asset은 `release-20250516`입니다. Docker/containerd/runc package set은
+      `20250515T000000Z` snapshot으로 고정합니다. 이 조합은 base image의 Python package
+      level과 맞추면서 Docker 29 계열 seccomp panic 후보를 피합니다. Docker package major를
+      피하기 위해 Python/package dependency mismatch를 허용하지 않습니다.
 
 ## Applied Guards
 
@@ -241,9 +258,15 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 - macOS VM configuration no longer attaches `VZVirtioEntropyDeviceConfiguration`; repeated
   `hwrng`/`virtio_rng` panic stacks during product compile are treated as a launcher configuration
   regression, not as a guest bootstrap failure.
-- Golden rootfs compile now blocks service auto-start during apt install, starts Docker explicitly in
-  `docker-service`, and pins the Noble boot asset to `release-20260518` after repeated Docker daemon
-  kernel panics on the older boot image.
+- Golden rootfs compile now blocks service auto-start during apt install and starts Docker explicitly in
+  `docker-service`; the Noble boot asset and apt snapshot are pinned together as rootfs compile inputs.
+- Guest kernel command line includes `seccomp=0`, and existing VM configs are normalized to add that
+  token. Docker runtime smoke and product compose services also run with `seccomp=unconfined`. This is
+  an explicit Apple Virtualization guest kernel compatibility contract, not a fallback: rootfs compile
+  must fail visibly if this policy is removed and the guest kernel re-enters the seccomp Oops path.
+- Writable root disks use uncached, full-synchronization `VZDiskImageStorageDeviceAttachment`
+  policy. Rootfs compile treats repeated EXT4 checksum/read-only transitions as disk attachment
+  integrity failures, not as Docker service failures.
 - Rootfs guest clock is now an explicit Host-provided input. `prepare-airgap-rootfs.sh` fails in
   `guest-clock` when `guestClockUtc` is missing or invalid, and apt starts only after that clock has
   been applied.

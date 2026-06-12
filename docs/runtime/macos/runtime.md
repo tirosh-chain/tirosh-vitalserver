@@ -12,6 +12,7 @@ VM이 실제로 어떻게 준비되고 실행되는지 정리합니다. boot ass
 | guest 초기화는 누가 하나? | cloud-init이 `Support/Guest/bootstrap.sh` 실행 |
 | `.vital` 파일은 어디에 두나? | macOS shared directory |
 | VM IP `192.168.64.x`는 정상인가? | shared/NAT mode에서는 정상 |
+| 최소 macOS는? | macOS 14.0 이상. 쓰기 가능한 root disk는 Apple Virtualization NVMe controller로 붙입니다. |
 
 runtime 단계의 source of truth는 Swift CLI인 `vitalserver-vm`입니다. Shell script는 launchd나 installer가 호출하기 쉬운 wrapper로만 남기고, 설치 후 상태 전이와 복구 정책은 Swift HostCLI layer에 둡니다. `RuntimeLifecycle`은 CLI command를 typed workflow/runner로 연결하는 facade이고, 실제 install/update/rollback/guest activation/repair 단계는 `Runtime*Workflow`와 focused runner가 담당합니다.
 
@@ -63,7 +64,7 @@ VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make devtools/init
   "diskPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/vm-disk.img",
   "initialRamdiskPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/initrd.img",
   "cloudInitPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/seed.iso",
-  "kernelCommandLine": "console=hvc0 root=/dev/vda1 rw",
+  "kernelCommandLine": "console=hvc0 root=LABEL=cloudimg-rootfs rw seccomp=0",
   "kernelPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/Image",
   "memoryMiB": 8192,
   "network": {

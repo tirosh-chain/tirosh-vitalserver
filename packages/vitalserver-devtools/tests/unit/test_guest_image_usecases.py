@@ -94,9 +94,9 @@ def test_default_ubuntu_image_config_uses_pinned_noble_release_source() -> None:
 
     assert ubuntu_config.version == "24.04"
     assert ubuntu_config.base_url == (
-        "https://cloud-images.ubuntu.com/releases/noble/release-20260518"
+        "https://cloud-images.ubuntu.com/releases/noble/release-20250516"
     )
-    assert ubuntu_config.apt_snapshot == "20260501T000000Z"
+    assert ubuntu_config.apt_snapshot == "20250515T000000Z"
     assert not ubuntu_config.base_url.endswith("/release")
 
 
@@ -137,11 +137,11 @@ def test_ubuntu_download_cache_key_preserves_release_source_identity() -> None:
         "https://cloud-images.ubuntu.com/releases/noble/release-20250313"
     )
     new_release = ubuntu_download_cache_key(
-        "https://cloud-images.ubuntu.com/releases/noble/release-20260518"
+        "https://cloud-images.ubuntu.com/releases/noble/release-20250516"
     )
 
     assert old_release.startswith("release-20250313-")
-    assert new_release.startswith("release-20260518-")
+    assert new_release.startswith("release-20250516-")
     assert old_release != new_release
 
 

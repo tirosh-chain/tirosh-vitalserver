@@ -96,14 +96,14 @@ final class VMRuntimeConfigTests: XCTestCase {
         XCTAssertEqual(config.sshAuthorizedKeys, [])
     }
 
-    func testEnsureRuntimeDefaultsRemovesUnsupportedBPFJITKernelGuardFromExistingConfig() {
+    func testEnsureRuntimeDefaultsNormalizesKernelGuardsForExistingConfig() {
         let paths = InstalledRuntimePaths(runtimeHome: URL(fileURLWithPath: "/runtime-root"))
         var config = VMRuntimeConfig.default(paths: paths)
         config.kernelCommandLine = "console=hvc0 root=/dev/vda1 rw bpf_jit_enable=1"
 
         VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: paths)
 
-        XCTAssertEqual(config.kernelCommandLine, "console=hvc0 root=/dev/vda1 rw")
+        XCTAssertEqual(config.kernelCommandLine, "console=hvc0 rw root=LABEL=cloudimg-rootfs seccomp=0")
     }
 
     func testValidateBootFilesUsesFileStoreExistence() throws {
@@ -256,18 +256,47 @@ final class VMRuntimeConfigTests: XCTestCase {
         }
     }
 
-    private func factoryConfig(cloudInitPath: String?) -> VMRuntimeConfig {
+    func testConfigurationFactoryUsesDurableStoragePolicyForWritableRootDisk() throws {
+        let source = try readRuntimeSourceFile(
+            "Adapters/Outbound/VirtualMachine/VMConfigurationFactory.swift"
+        )
+
+        XCTAssertTrue(source.contains("readOnly: false,\n                cachingMode: .uncached,"))
+        XCTAssertTrue(source.contains("synchronizationMode: .full"))
+        XCTAssertTrue(source.contains("VZNVMExpressControllerDeviceConfiguration(attachment: attachment)"))
+    }
+
+    private func factoryConfig(
+        diskPath: String? = nil,
+        cloudInitPath: String?
+    ) -> VMRuntimeConfig {
         VMRuntimeConfig(
             cpuCount: 4,
             memoryMiB: 4096,
             kernelPath: "/runtime/kernel",
             initialRamdiskPath: nil,
-            diskPath: nil,
+            diskPath: diskPath,
             cloudInitPath: cloudInitPath,
             kernelCommandLine: "console=hvc0",
             network: NetworkConfig(mode: .shared, bridgedInterface: nil, macAddress: nil),
             sharedDirectory: nil,
             vitalFilesDirectory: nil
         )
+    }
+
+    private func readRuntimeSourceFile(_ relativePath: String) throws -> String {
+        var current = URL(fileURLWithPath: #filePath)
+        while current.path != "/" {
+            let candidate = current
+                .appendingPathComponent("apps/vitalserver-macos-runtime/Sources")
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return try String(
+                    contentsOf: candidate.appendingPathComponent(relativePath),
+                    encoding: .utf8
+                )
+            }
+            current.deleteLastPathComponent()
+        }
+        throw NSError(domain: "VMRuntimeConfigTests", code: 1)
     }
 }
