@@ -58,6 +58,10 @@ ROOTFS_TERMINAL_LOG_PATTERNS = (
     "Read-only file system",
     "invalid ELF header",
     "Input/output error",
+    "terminated by signal ILL",
+    "Caught <ILL>",
+    "Freezing execution",
+    "BUG: Bad rss-counter state",
 )
 
 RUNTIME_BOOT_SMOKE_REQUIRED_STAGES = (

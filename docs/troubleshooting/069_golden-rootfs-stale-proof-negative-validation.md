@@ -15,6 +15,7 @@ error: timed out waiting for .../.tmp/vitalserver-vm-golden/data/run/rootfs-read
 error: VM launcher log shows terminal guest failure while waiting for rootfs marker: pattern='Internal error: Oops:'
 error: VM launcher log shows terminal guest failure while waiting for rootfs marker: pattern='rcu: INFO: rcu_preempt detected stalls'
 error: VM launcher log shows terminal guest failure while waiting for rootfs marker: pattern='Read-only file system'
+error: VM launcher log shows terminal guest failure while waiting for rootfs marker: pattern='Caught <ILL>'
 error: VM launcher process is still running for VM_HOME; refusing to continue with mutable runtime files: ... pids=...
 error: rootfs runtime manifest is missing; rebuild the golden rootfs with Docker runtime smoke validation
 ```
@@ -80,7 +81,7 @@ tail -n 240 .tmp/vitalserver-vm-golden/logs/launcher.log
 .venv/bin/vitalserver-devtools macos-runtime-require-no-running \
   --vm-home .tmp/vitalserver-vm-golden
 
-rg -n "Internal error: Oops|Kernel panic|rcu_preempt|Undefined instruction|not syncing|Read-only file system|invalid ELF header|Input/output error|timed out waiting for|terminal guest failure" \
+rg -n "Internal error: Oops|Kernel panic|rcu_preempt|Undefined instruction|not syncing|Read-only file system|invalid ELF header|Input/output error|terminated by signal ILL|Caught <ILL>|Freezing execution|timed out waiting for|terminal guest failure" \
   .tmp/vitalserver-vm-golden/logs/launcher.log
 
 ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
@@ -92,7 +93,7 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 - manifest가 있어도 schema v2가 아니면 proof가 아닙니다.
 - stage가 `running`, `failed`, `timeout`, `not-run`이면 proof가 아닙니다.
 - `cleanup.status`가 `passed`가 아니면 proof가 아닙니다.
-- launcher log에 kernel panic/Oops/RCU stall, read-only filesystem, invalid ELF, 반복 I/O error가 있으면 timeout까지 기다리지 말고 terminal guest failure로 봅니다.
+- launcher log에 kernel panic/Oops/RCU stall, read-only filesystem, invalid ELF, 반복 I/O error, signal ILL/systemd freeze가 있으면 timeout까지 기다리지 말고 terminal guest failure로 봅니다.
 - VM process가 남아 있으면 mutable runtime files를 다시 쓰면 안 됩니다.
 
 ## Actions
@@ -166,6 +167,7 @@ P0 negative validation은 실제 VM 또는 command-level integration으로 반�
 | launcher log contains `Internal error: Oops` | wait fails before timeout |
 | launcher log contains `rcu_preempt detected stalls` | wait fails before timeout |
 | launcher log contains read-only filesystem or invalid ELF header before manifest exists | wait fails before timeout |
+| launcher log contains signal ILL or systemd freeze while a rootfs stage is running | wait fails before timeout |
 | VM launcher process remains after failure | negative runner fails cleanup verification |
 | previous `rootfs-base.raw.gz` exists before failed run | output is not updated or reported as new |
 
