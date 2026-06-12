@@ -20,11 +20,40 @@ class UbuntuAssetNames:
 
 
 @dataclass(frozen=True)
+class RuntimeDataDiskConfig:
+    disk_image_name: str
+    disk_size: str
+    filesystem_label: str
+    mount_path: str
+    docker_data_root: str
+    containerd_root: str
+
+
+@dataclass(frozen=True)
+class RuntimeDataDiskPlan:
+    config_path: Path
+    vm_home: Path
+    runtime_dir: Path
+    disk_image: Path
+    disk_image_name: str
+    disk_size: str
+    filesystem_label: str
+    mount_path: str
+    docker_data_root: str
+    containerd_root: str
+
+
+@dataclass(frozen=True)
 class GuestRuntimeConfig:
     runtime_dir: Path
     rootfs_size: str
     recreate_rootfs: bool
     disk_image_name: str
+    runtime_data_disk: RuntimeDataDiskConfig
+
+    @property
+    def runtime_data_disk_image(self) -> Path:
+        return self.runtime_dir / self.runtime_data_disk.disk_image_name
 
 
 @dataclass(frozen=True)
@@ -140,6 +169,39 @@ def ubuntu_boot_asset_plan(
         arch=arch,
         assets=assets,
     )
+
+
+def runtime_data_disk_plan(
+    *,
+    config_path: Path,
+    vm_home: Path,
+    runtime_config: GuestRuntimeConfig,
+) -> RuntimeDataDiskPlan:
+    runtime_dir = vm_home / "runtime"
+    disk = runtime_config.runtime_data_disk
+    require_ext_filesystem_label(disk.filesystem_label, "guest.runtime_data.filesystem_label")
+    return RuntimeDataDiskPlan(
+        config_path=config_path,
+        vm_home=vm_home,
+        runtime_dir=runtime_dir,
+        disk_image=runtime_dir / disk.disk_image_name,
+        disk_image_name=disk.disk_image_name,
+        disk_size=disk.disk_size,
+        filesystem_label=disk.filesystem_label,
+        mount_path=disk.mount_path,
+        docker_data_root=disk.docker_data_root,
+        containerd_root=disk.containerd_root,
+    )
+
+
+def require_ext_filesystem_label(value: str, field_name: str) -> None:
+    if not value:
+        raise DomainError(f"error: {field_name} must not be empty")
+    if len(value.encode("utf-8")) > 16:
+        raise DomainError(
+            f"error: {field_name} is too long for ext filesystem label: "
+            f"value={value} maxBytes=16"
+        )
 
 
 def require_ubuntu_snapshot_id(value: str) -> str:

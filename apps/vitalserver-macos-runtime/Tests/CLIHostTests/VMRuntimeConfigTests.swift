@@ -96,6 +96,16 @@ final class VMRuntimeConfigTests: XCTestCase {
         XCTAssertEqual(config.sshAuthorizedKeys, [])
     }
 
+    func testEnsureRuntimeDefaultsWritesExplicitRuntimeDataDiskPathWhenMissing() {
+        let paths = InstalledRuntimePaths(runtimeHome: URL(fileURLWithPath: "/runtime-root"))
+        var config = VMRuntimeConfig.default(paths: paths)
+        config.runtimeDataDiskPath = nil
+
+        VMRuntimeConfig.ensureRuntimeDefaults(&config, paths: paths)
+
+        XCTAssertEqual(config.runtimeDataDiskPath, "/runtime-root/runtime/runtime-data.img")
+    }
+
     func testEnsureRuntimeDefaultsNormalizesKernelGuardsForExistingConfig() {
         let paths = InstalledRuntimePaths(runtimeHome: URL(fileURLWithPath: "/runtime-root"))
         var config = VMRuntimeConfig.default(paths: paths)
@@ -125,6 +135,30 @@ final class VMRuntimeConfigTests: XCTestCase {
         )
 
         XCTAssertNoThrow(try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore))
+    }
+
+    func testValidateBootFilesIncludesExplicitRuntimeDataDiskPath() {
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: "/runtime/kernel")] = Data()
+        let config = VMRuntimeConfig(
+            cpuCount: 4,
+            memoryMiB: 4096,
+            kernelPath: "/runtime/kernel",
+            initialRamdiskPath: nil,
+            diskPath: nil,
+            runtimeDataDiskPath: "/runtime/runtime-data.img",
+            cloudInitPath: nil,
+            kernelCommandLine: "console=hvc0",
+            network: NetworkConfig(mode: .shared, bridgedInterface: nil, macAddress: nil),
+            sharedDirectory: nil,
+            vitalFilesDirectory: nil
+        )
+
+        XCTAssertThrowsError(try VMRuntimeConfig.validateBootFiles(config, fileStore: fileStore)) { error in
+            guard case LauncherError.missingFile("/runtime/runtime-data.img") = error else {
+                return XCTFail("expected missingFile, got \(error)")
+            }
+        }
     }
 
     func testValidateBootFilesReportsMissingPath() {
@@ -218,6 +252,27 @@ final class VMRuntimeConfigTests: XCTestCase {
         }
     }
 
+    func testConfigurationFactoryRejectsMissingExplicitRuntimeDataDiskPath() {
+        let fileStore = RuntimeFileStoreSpy()
+        let factory = VMConfigurationFactory(
+            fileStore: fileStore,
+            detached: true,
+            serialInput: FileHandle.standardInput,
+            serialOutput: FileHandle.standardOutput
+        )
+        let config = factoryConfig(
+            runtimeDataDiskPath: "/runtime/runtime-data.img",
+            cloudInitPath: nil
+        )
+
+        XCTAssertThrowsError(try factory.build(from: config)) { error in
+            XCTAssertEqual(
+                error as? VMConfigurationFactoryError,
+                .missingStorageFile("/runtime/runtime-data.img")
+            )
+        }
+    }
+
     func testConfigurationFactoryRejectsCloudInitStoragePathInspectionFailure() {
         let fileStore = RuntimeFileStoreSpy()
         fileStore.pathStates["/runtime/cloud-init.iso"] = .inspectFailed("permission denied")
@@ -268,6 +323,7 @@ final class VMRuntimeConfigTests: XCTestCase {
 
     private func factoryConfig(
         diskPath: String? = nil,
+        runtimeDataDiskPath: String? = nil,
         cloudInitPath: String?
     ) -> VMRuntimeConfig {
         VMRuntimeConfig(
@@ -276,6 +332,7 @@ final class VMRuntimeConfigTests: XCTestCase {
             kernelPath: "/runtime/kernel",
             initialRamdiskPath: nil,
             diskPath: diskPath,
+            runtimeDataDiskPath: runtimeDataDiskPath,
             cloudInitPath: cloudInitPath,
             kernelCommandLine: "console=hvc0",
             network: NetworkConfig(mode: .shared, bridgedInterface: nil, macAddress: nil),

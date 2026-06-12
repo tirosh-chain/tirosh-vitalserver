@@ -74,6 +74,14 @@ disk_image_name = "vm-disk.img"
 rootfs_size = "8G"
 runtime_dir = "~/.tirosh/vitalserver-vm/runtime"
 
+[guest.runtime_data]
+disk_image_name = "runtime-data.img"
+disk_size = "16G"
+filesystem_label = "vital-runtime"
+mount_path = "/mnt/runtime"
+docker_data_root = "/mnt/runtime/docker"
+containerd_root = "/mnt/runtime/containerd"
+
 [guest.cloud_init]
 seed_directory_name = "cloud-init-seed"
 seed_iso_name = "seed.iso"

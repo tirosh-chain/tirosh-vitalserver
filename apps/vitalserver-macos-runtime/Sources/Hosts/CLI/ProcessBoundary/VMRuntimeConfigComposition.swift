@@ -21,6 +21,7 @@ public enum VMRuntimeConfigComposition {
             kernelPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.kernel).path,
             initialRamdiskPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.initialRamdisk).path,
             diskPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk).path,
+            runtimeDataDiskPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.runtimeDataDisk).path,
             cloudInitPath: paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.cloudInit).path,
             kernelCommandLine: Constants.BootAssets.commandLine,
             network: NetworkConfig(
@@ -92,6 +93,9 @@ public enum VMRuntimeConfigComposition {
         normalizeKernelCommandLine(&config)
         if config.cloudInitPath == nil || config.cloudInitPath?.isEmpty == true {
             config.cloudInitPath = paths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.cloudInit).path
+        }
+        if config.runtimeDataDiskPath == nil || config.runtimeDataDiskPath?.isEmpty == true {
+            config.runtimeDataDiskPath = paths.runtimeDataDisk.path
         }
         if config.vitalFilesDirectory == nil {
             config.vitalFilesDirectory = SharedDirectoryConfig(

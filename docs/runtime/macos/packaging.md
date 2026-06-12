@@ -182,7 +182,9 @@ dist/VitalServerHelper-<version>.dmg
       Image
       initrd.img
       rootfs-base.raw.gz  # immutable package payload
-      vm-disk.img         # install 시 생성되는 mutable runtime disk
+      rootfs-base.raw.gz.manifest.json # rootfs artifact proof sidecar
+      vm-disk.img         # install 시 생성되는 mutable rootfs runtime disk
+      runtime-data.img    # install 시 생성/보존되는 Docker/containerd runtime data disk
       vm-config.json      # install 시 생성/수정
       seed.iso            # install 시 생성
       runtime-version.json

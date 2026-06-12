@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -38,6 +39,17 @@ COMPOSE_CLEANUP_TIMEOUT_SECONDS = 180.0
 DOCKER_PRUNE_TIMEOUT_SECONDS = 300.0
 DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS = 30.0
 MINIMUM_DISK_FREE_KIB = 1024 * 1024
+MINIMUM_DISK_FREE_INODES = 1024
+
+
+@dataclass(frozen=True)
+class RuntimeDataContract:
+    disk_image_name: str
+    disk_size: str
+    filesystem_label: str
+    mount_path: str
+    docker_data_root: str
+    containerd_root: str
 
 
 @dataclass(frozen=True)
@@ -58,6 +70,11 @@ class RootfsSmokeContext:
     fail_stage: str
     fail_cleanup: bool
     minimum_disk_free_kib: int
+    runtime_data: RuntimeDataContract | None
+    docker_daemon_config_path: Path
+    containerd_config_path: Path
+    rootfs_docker_store_path: Path
+    rootfs_containerd_store_path: Path
 
 
 @dataclass(frozen=True)
@@ -128,6 +145,18 @@ class RootfsSmokeRun:
             "message": "cleanup has not run yet",
         }
     )
+    runtime_data: dict[str, Any] = field(
+        default_factory=lambda: {
+            "status": RootfsSmokeStatus.NOT_RUN.value,
+            "message": "runtime data disk mount has not run yet",
+        }
+    )
+    docker_images: dict[str, Any] = field(
+        default_factory=lambda: {
+            "status": RootfsSmokeStatus.NOT_RUN.value,
+            "message": "Docker image bundle validation has not run yet",
+        }
+    )
 
     def write_manifest(self) -> None:
         write_json(self.context.manifest_path, self.as_json())
@@ -150,6 +179,8 @@ class RootfsSmokeRun:
             },
             "apt": read_apt_plan(self.context.apt_plan_path),
             "aptInstalled": read_apt_installed(self.context.apt_installed_path),
+            "runtimeData": self.runtime_data,
+            "dockerImages": self.docker_images,
             "stages": [stage.as_json() for stage in self.stages],
             "cleanup": self.cleanup,
             "diagnostics": {"path": str(self.context.diagnostics_dir)},
@@ -198,6 +229,11 @@ def default_context() -> RootfsSmokeContext:
                 str(MINIMUM_DISK_FREE_KIB),
             )
         ),
+        runtime_data=read_runtime_data_contract(metadata),
+        docker_daemon_config_path=Path("/etc/docker/daemon.json"),
+        containerd_config_path=Path("/etc/containerd/config.toml"),
+        rootfs_docker_store_path=Path("/var/lib/docker"),
+        rootfs_containerd_store_path=Path("/var/lib/containerd"),
     )
 
 
@@ -229,6 +265,8 @@ def run_rootfs_smoke(
     diagnostics_collected = False
 
     try:
+        execute_stage(run, "runtime-data-mount", runtime_data_mount)
+        execute_stage(run, "runtime-data-configure", runtime_data_configure)
         execute_stage(run, "docker-service", docker_service)
         execute_stage(run, "runtime-version", runtime_version)
         execute_stage(run, "docker-image-load", docker_image_load)
@@ -254,6 +292,7 @@ def run_rootfs_smoke(
 
 
 def docker_service(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
+    contract = require_runtime_data_contract(run)
     run_checked(
         run,
         ["systemctl", "start", "docker"],
@@ -264,7 +303,303 @@ def docker_service(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
         ["docker", "info", "--format", "{{json .ServerVersion}}"],
         timeout_seconds=DOCKER_SMOKE_TIMEOUT_SECONDS,
     )
-    return "docker service is running", {"serverVersion": completed.stdout.strip()}
+    root_dir = docker_root_dir(run)
+    if root_dir != contract.docker_data_root:
+        raise RuntimeError(
+            "Docker data-root does not match runtime data contract: "
+            f"expected={contract.docker_data_root} actual={root_dir}"
+        )
+    return "docker service is running", {
+        "serverVersion": completed.stdout.strip(),
+        "dockerDataRoot": root_dir,
+    }
+
+
+def docker_root_dir(run: RootfsSmokeRun) -> str:
+    completed = run_checked(
+        run,
+        ["docker", "info", "--format", "{{json .DockerRootDir}}"],
+        timeout_seconds=DOCKER_SMOKE_TIMEOUT_SECONDS,
+    )
+    text = completed.stdout.strip()
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"docker info returned invalid DockerRootDir JSON: {text}") from error
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError(f"docker info returned invalid DockerRootDir: {text}")
+    return value
+
+
+def runtime_data_mount(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
+    contract = require_runtime_data_contract(run)
+
+    mount_path = Path(contract.mount_path)
+    mount_path.mkdir(parents=True, exist_ok=True)
+    proof = mounted_runtime_data_proof(run, contract)
+    if proof is None:
+        source = runtime_data_device_source(run, contract)
+        created_filesystem = False
+        if source is None:
+            source = provision_runtime_data_filesystem(run, contract)
+            created_filesystem = True
+        run_checked(
+            run,
+            ["mount", "-t", "ext4", source, contract.mount_path],
+            timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+        )
+        proof = mounted_runtime_data_proof(run, contract)
+        if proof is None:
+            run.runtime_data = {
+                "status": RootfsSmokeStatus.FAILED.value,
+                "message": "runtime data disk did not mount after provisioning",
+                "mountPath": contract.mount_path,
+                "filesystemLabel": contract.filesystem_label,
+            }
+            raise RuntimeError("runtime data disk did not mount after provisioning")
+        proof["createdFilesystem"] = created_filesystem
+
+    Path(contract.docker_data_root).mkdir(parents=True, exist_ok=True)
+    Path(contract.containerd_root).mkdir(parents=True, exist_ok=True)
+    run.runtime_data = proof
+    return "runtime data disk is mounted", proof
+
+
+def require_runtime_data_contract(run: RootfsSmokeRun) -> RuntimeDataContract:
+    contract = run.context.runtime_data
+    if contract is None:
+        run.runtime_data = {
+            "status": RootfsSmokeStatus.FAILED.value,
+            "message": "runtime data contract is missing or invalid",
+        }
+        raise RuntimeError("runtime data contract is missing or invalid")
+    return contract
+
+
+def runtime_data_configure(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
+    contract = require_runtime_data_contract(run)
+    write_docker_daemon_config(run.context.docker_daemon_config_path, contract)
+    write_containerd_config(run, contract)
+    run_checked(
+        run,
+        ["systemctl", "daemon-reload"],
+        timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+    )
+    return "runtime data daemon configuration is written", {
+        "dockerDaemonConfig": str(run.context.docker_daemon_config_path),
+        "containerdConfig": str(run.context.containerd_config_path),
+        "dockerDataRoot": contract.docker_data_root,
+        "containerdRoot": contract.containerd_root,
+    }
+
+
+def write_docker_daemon_config(path: Path, contract: RuntimeDataContract) -> None:
+    if path.exists():
+        try:
+            document = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"Docker daemon config is unreadable: {path}: {error}") from error
+        if not isinstance(document, dict):
+            raise RuntimeError(f"Docker daemon config must be an object: {path}")
+        existing = document.get("data-root")
+        if existing is not None and existing != contract.docker_data_root:
+            raise RuntimeError(
+                "Docker daemon config has conflicting data-root: "
+                f"path={path} expected={contract.docker_data_root} actual={existing}"
+            )
+    else:
+        document = {}
+    document["data-root"] = contract.docker_data_root
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_containerd_config(
+    run: RootfsSmokeRun,
+    contract: RuntimeDataContract,
+) -> None:
+    completed = run_checked(
+        run,
+        ["containerd", "config", "default"],
+        timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+    )
+    config = containerd_config_with_root(completed.stdout, contract.containerd_root)
+    path = run.context.containerd_config_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(config, encoding="utf-8")
+
+
+def containerd_config_with_root(config: str, root: str) -> str:
+    if not config.strip():
+        raise RuntimeError("containerd config default returned empty output")
+    lines = config.splitlines()
+    replaced = False
+    for index, line in enumerate(lines):
+        if line.startswith("root = "):
+            lines[index] = f'root = "{root}"'
+            replaced = True
+            break
+    if not replaced:
+        raise RuntimeError("containerd default config is missing top-level root")
+    return "\n".join(lines) + "\n"
+
+
+def mounted_runtime_data_proof(
+    run: RootfsSmokeRun,
+    contract: RuntimeDataContract,
+) -> dict[str, Any] | None:
+    completed = run.operations.run(
+        ["findmnt", "--json", "--mountpoint", contract.mount_path],
+        check=False,
+        timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+    )
+    if completed.returncode != 0 or not completed.stdout.strip():
+        return None
+    try:
+        document = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"findmnt returned invalid JSON: {error}") from error
+    filesystems = document.get("filesystems")
+    if not isinstance(filesystems, list) or not filesystems:
+        return None
+    mount = filesystems[0]
+    if not isinstance(mount, dict):
+        raise RuntimeError("findmnt filesystem entry is invalid")
+    target = mount.get("target")
+    source = mount.get("source")
+    fstype = mount.get("fstype")
+    if target != contract.mount_path:
+        raise RuntimeError(
+            "runtime data mount target mismatch: "
+            f"expected={contract.mount_path} actual={target}"
+        )
+    if fstype not in ("ext4", "ext2", "ext3"):
+        raise RuntimeError(
+            "runtime data filesystem type is unsupported: "
+            f"mountPath={contract.mount_path} fstype={fstype}"
+        )
+    if not isinstance(source, str) or not source.strip():
+        raise RuntimeError(
+            "runtime data mount source is missing: "
+            f"mountPath={contract.mount_path}"
+        )
+    actual_label = filesystem_label(run, source)
+    if actual_label is None:
+        raise RuntimeError(
+            "runtime data filesystem label is missing: "
+            f"expected={contract.filesystem_label} source={source} "
+            f"mountPath={contract.mount_path}"
+        )
+    if actual_label != contract.filesystem_label:
+        raise RuntimeError(
+            "runtime data mount source label does not match contract: "
+            f"expected={contract.filesystem_label} actual={actual_label} "
+            f"source={source}"
+        )
+    return {
+        "status": RootfsSmokeStatus.PASSED.value,
+        "message": "runtime data disk is mounted",
+        "diskImageName": contract.disk_image_name,
+        "diskSize": contract.disk_size,
+        "filesystemLabel": contract.filesystem_label,
+        "mountPath": contract.mount_path,
+        "dockerDataRoot": contract.docker_data_root,
+        "containerdRoot": contract.containerd_root,
+        "source": source if isinstance(source, str) else "",
+        "fstype": fstype,
+        "createdFilesystem": False,
+    }
+
+
+def runtime_data_device_source(
+    run: RootfsSmokeRun,
+    contract: RuntimeDataContract,
+) -> str | None:
+    completed = run.operations.run(
+        ["findfs", f"LABEL={contract.filesystem_label}"],
+        check=False,
+        timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+    )
+    source = completed.stdout.strip()
+    if completed.returncode == 0 and source:
+        return source
+    return None
+
+
+def filesystem_label(run: RootfsSmokeRun, source: str) -> str | None:
+    completed = run.operations.run(
+        ["blkid", "-s", "LABEL", "-o", "value", source],
+        check=False,
+        timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+    )
+    label = completed.stdout.strip()
+    if completed.returncode == 0 and label:
+        return label
+    return None
+
+
+def provision_runtime_data_filesystem(
+    run: RootfsSmokeRun,
+    contract: RuntimeDataContract,
+) -> str:
+    candidate = runtime_data_blank_disk_candidate(run, contract)
+    run_checked(
+        run,
+        ["mkfs.ext4", "-F", "-L", contract.filesystem_label, candidate],
+        timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+    )
+    return candidate
+
+
+def runtime_data_blank_disk_candidate(
+    run: RootfsSmokeRun,
+    contract: RuntimeDataContract,
+) -> str:
+    completed = run_checked(
+        run,
+        [
+            "lsblk",
+            "--json",
+            "--bytes",
+            "--output",
+            "NAME,PATH,TYPE,SIZE,FSTYPE,MOUNTPOINTS",
+        ],
+        timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+    )
+    try:
+        document = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"lsblk returned invalid JSON: {error}") from error
+    blockdevices = document.get("blockdevices")
+    if not isinstance(blockdevices, list):
+        raise RuntimeError("lsblk output is missing blockdevices")
+    expected_size = size_to_bytes(contract.disk_size)
+    candidates = [
+        str(device["path"])
+        for device in blockdevices
+        if runtime_data_blank_disk_matches(device, expected_size)
+    ]
+    if len(candidates) != 1:
+        raise RuntimeError(
+            "runtime data blank disk candidate count is invalid: "
+            f"expected=1 actual={len(candidates)} candidates={candidates}"
+        )
+    return candidates[0]
+
+
+def runtime_data_blank_disk_matches(device: object, expected_size: int) -> bool:
+    if not isinstance(device, dict):
+        return False
+    mountpoints = device.get("mountpoints")
+    children = device.get("children")
+    return (
+        device.get("type") == "disk"
+        and isinstance(device.get("path"), str)
+        and device.get("size") == expected_size
+        and not device.get("fstype")
+        and (not isinstance(mountpoints, list) or not any(mountpoints))
+        and not children
+    )
 
 
 def runtime_version(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
@@ -276,22 +611,47 @@ def docker_image_load(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
     bundle = run.context.docker_image_bundle_path
     if not bundle.is_file():
         raise RuntimeError(f"missing Docker image bundle: {bundle}")
+    contract = read_docker_images_contract(run.context.deploy_dir)
     bundle_bytes = bundle.stat().st_size
+    bundle_sha256 = sha256_file(bundle)
+    guest_architecture = guest_machine_architecture(run)
+    expected_architectures = expected_guest_architectures(contract["platform"])
+    details = {
+        "bundle": str(bundle),
+        "bundleBytes": bundle_bytes,
+        "bundleSha256": bundle_sha256,
+        "platform": contract["platform"],
+        "guestArchitecture": guest_architecture,
+        "expectedGuestArchitectures": expected_architectures,
+        "timeoutSeconds": DOCKER_IMAGE_LOAD_TIMEOUT_SECONDS,
+    }
+    if guest_architecture not in expected_architectures:
+        run.docker_images = {
+            "status": RootfsSmokeStatus.FAILED.value,
+            "message": "Docker image platform does not match guest architecture",
+            **details,
+        }
+        raise RuntimeError(
+            "Docker image platform does not match guest architecture: "
+            f"platform={contract['platform']} guest={guest_architecture} "
+            f"expected={expected_architectures}"
+        )
     update_current_stage(
         run,
         message="loading Docker image bundle",
-        details={
-            "bundle": str(bundle),
-            "bundleBytes": bundle_bytes,
-            "timeoutSeconds": DOCKER_IMAGE_LOAD_TIMEOUT_SECONDS,
-        },
+        details=details,
     )
     run_checked(
         run,
         ["docker", "load", "-i", str(bundle)],
         timeout_seconds=DOCKER_IMAGE_LOAD_TIMEOUT_SECONDS,
     )
-    return "Docker image bundle loaded", {"bundle": str(bundle), "bundleBytes": bundle_bytes}
+    run.docker_images = {
+        "status": RootfsSmokeStatus.PASSED.value,
+        "message": "Docker image bundle matched guest architecture and loaded",
+        **details,
+    }
+    return "Docker image bundle loaded", details
 
 
 def execute_stage(
@@ -408,7 +768,13 @@ def docker_smoke(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
 
 
 def disk_space(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
-    paths = ["/", "/var/lib/docker", str(run.context.vital_files_mount)]
+    contract = require_runtime_data_contract(run)
+    paths = [
+        "/",
+        contract.docker_data_root,
+        contract.containerd_root,
+        str(run.context.vital_files_mount),
+    ]
     results: list[dict[str, Any]] = []
     for path in paths:
         completed = run_checked(
@@ -417,13 +783,22 @@ def disk_space(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
             timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
         )
         free_kib = parse_df_available_kib(completed.stdout, path)
+        inode_completed = run_checked(
+            run,
+            ["df", "-Pki", path],
+            timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+        )
+        free_inodes = parse_df_available_inodes(inode_completed.stdout, path)
         passed = free_kib >= run.context.minimum_disk_free_kib
+        inode_passed = free_inodes >= MINIMUM_DISK_FREE_INODES
         results.append(
             {
                 "path": path,
                 "availableKiB": free_kib,
                 "minimumKiB": run.context.minimum_disk_free_kib,
-                "passed": passed,
+                "availableInodes": free_inodes,
+                "minimumInodes": MINIMUM_DISK_FREE_INODES,
+                "passed": passed and inode_passed,
             }
         )
         if not passed:
@@ -432,7 +807,13 @@ def disk_space(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
                 f"path={path} availableKiB={free_kib} "
                 f"minimumKiB={run.context.minimum_disk_free_kib}"
             )
-    return "rootfs disk space check passed", {"filesystems": results}
+        if not inode_passed:
+            raise RuntimeError(
+                "insufficient rootfs free inodes: "
+                f"path={path} availableInodes={free_inodes} "
+                f"minimumInodes={MINIMUM_DISK_FREE_INODES}"
+            )
+    return "rootfs and runtime data disk space check passed", {"filesystems": results}
 
 
 def parse_df_available_kib(output: str, path: str) -> int:
@@ -447,6 +828,21 @@ def parse_df_available_kib(output: str, path: str) -> int:
     except ValueError as error:
         raise RuntimeError(
             f"df output available column is not an integer for {path}: {columns[3]}"
+        ) from error
+
+
+def parse_df_available_inodes(output: str, path: str) -> int:
+    lines = [line for line in output.splitlines() if line.strip()]
+    if len(lines) < 2:
+        raise RuntimeError(f"df inode output missing filesystem row for {path}")
+    columns = lines[-1].split()
+    if len(columns) < 4:
+        raise RuntimeError(f"df inode output malformed for {path}: {lines[-1]}")
+    try:
+        return int(columns[3])
+    except ValueError as error:
+        raise RuntimeError(
+            f"df inode output free column is not an integer for {path}: {columns[3]}"
         ) from error
 
 
@@ -570,8 +966,14 @@ def cleanup_compose(run: RootfsSmokeRun) -> bool:
             return False
     verification = verify_docker_store_is_empty(run)
     results.extend(verification)
+    rootfs_store_verification = verify_rootfs_runtime_stores_are_empty(run)
+    results.extend(rootfs_store_verification)
     failed_verification = next(
-        (result for result in verification if result["status"] != "passed"),
+        (
+            result
+            for result in [*verification, *rootfs_store_verification]
+            if result["status"] != "passed"
+        ),
         None,
     )
     if failed_verification is not None:
@@ -633,6 +1035,54 @@ def verify_docker_store_is_empty(run: RootfsSmokeRun) -> list[dict[str, Any]]:
             }
         )
     return results
+
+
+def verify_rootfs_runtime_stores_are_empty(run: RootfsSmokeRun) -> list[dict[str, Any]]:
+    return [
+        directory_empty_result(
+            "rootfs-docker-store-empty",
+            run.context.rootfs_docker_store_path,
+        ),
+        directory_empty_result(
+            "rootfs-containerd-store-empty",
+            run.context.rootfs_containerd_store_path,
+        ),
+    ]
+
+
+def directory_empty_result(name: str, path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {
+            "name": name,
+            "status": "passed",
+            "exitCode": 0,
+            "message": "missing",
+            "path": str(path),
+        }
+    if not path.is_dir():
+        return {
+            "name": name,
+            "status": "failed",
+            "exitCode": 1,
+            "message": "path is not a directory",
+            "path": str(path),
+        }
+    entries = sorted(entry.name for entry in path.iterdir())
+    if entries:
+        return {
+            "name": name,
+            "status": "failed",
+            "exitCode": 1,
+            "message": ",".join(entries),
+            "path": str(path),
+        }
+    return {
+        "name": name,
+        "status": "passed",
+        "exitCode": 0,
+        "message": "",
+        "path": str(path),
+    }
 
 
 def compose_services(run: RootfsSmokeRun) -> list[dict[str, Any]]:
@@ -762,6 +1212,75 @@ def read_ubuntu_metadata(deploy_dir: Path) -> dict[str, str]:
     }
 
 
+def read_runtime_data_contract(document: dict[str, Any]) -> RuntimeDataContract | None:
+    runtime_data = document.get("runtimeData")
+    if not isinstance(runtime_data, dict):
+        return None
+    values: dict[str, str] = {}
+    for key in (
+        "diskImageName",
+        "diskSize",
+        "filesystemLabel",
+        "mountPath",
+        "dockerDataRoot",
+        "containerdRoot",
+    ):
+        value = runtime_data.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return None
+        values[key] = value
+    return RuntimeDataContract(
+        disk_image_name=values["diskImageName"],
+        disk_size=values["diskSize"],
+        filesystem_label=values["filesystemLabel"],
+        mount_path=values["mountPath"],
+        docker_data_root=values["dockerDataRoot"],
+        containerd_root=values["containerdRoot"],
+    )
+
+
+def read_docker_images_contract(deploy_dir: Path) -> dict[str, str]:
+    document = read_rootfs_input_document(deploy_dir)
+    docker_images = document.get("dockerImages")
+    if not isinstance(docker_images, dict):
+        raise RuntimeError("rootfs input metadata is missing dockerImages contract")
+    platform = docker_images.get("platform")
+    if not isinstance(platform, str) or not platform.strip():
+        raise RuntimeError("rootfs input metadata has invalid dockerImages.platform")
+    return {"platform": platform}
+
+
+def guest_machine_architecture(run: RootfsSmokeRun) -> str:
+    completed = run_checked(
+        run,
+        ["uname", "-m"],
+        timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+    )
+    value = completed.stdout.strip()
+    if not value:
+        raise RuntimeError("guest architecture probe returned empty output")
+    return value
+
+
+def expected_guest_architectures(platform: str) -> list[str]:
+    mapping = {
+        "linux/arm64": ["aarch64", "arm64"],
+        "linux/amd64": ["x86_64", "amd64"],
+    }
+    expected = mapping.get(platform)
+    if expected is None:
+        raise RuntimeError(f"unsupported Docker image platform: {platform}")
+    return expected
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def read_apt_plan(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {
@@ -837,6 +1356,25 @@ def read_rootfs_input_document(deploy_dir: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         return {"ubuntu": None}
     return document if isinstance(document, dict) else {"ubuntu": None}
+
+
+def size_to_bytes(value: str) -> int:
+    suffix = value[-1:].lower()
+    unit = suffix if suffix in ("k", "m", "g") else ""
+    number_text = value[:-1] if unit else value
+    try:
+        number = int(number_text)
+    except ValueError as error:
+        raise RuntimeError(f"invalid size value: {value}") from error
+    multipliers = {
+        "": 1,
+        "k": 1024,
+        "m": 1024 * 1024,
+        "g": 1024 * 1024 * 1024,
+    }
+    if unit not in multipliers:
+        raise RuntimeError(f"invalid size unit: {value}")
+    return number * multipliers[unit]
 
 
 def fail_stage_if_requested(run: RootfsSmokeRun, name: str) -> None:

@@ -432,6 +432,421 @@ seccomp/BPF는 주 원인은 아니었지만 실제 위험 후보였습니다. �
 
 이 guard는 root cause를 가리기 위한 workaround가 아닙니다. storage issue를 해결한 뒤에도 Apple Virtualization guest kernel과 container runtime의 seccomp/BPF path는 별도 compatibility surface입니다. 제거하려면 같은 수준의 golden rootfs compile proof와 runtime boot proof가 필요합니다.
 
+## 설계 회고: rootfs와 runtime data disk 분리
+
+### 이번 fix와 장기 설계는 다릅니다
+
+이번에 실제로 해결한 것은 writable rootfs disk의 storage contract입니다.
+
+정확히는 golden rootfs compile이 rootfs를 대량 write workload에 사용하면서도, Host storage attachment와 Guest boot identity contract가 충분히 명시적이고 안정적이지 않았습니다. 따라서 이번 fix는 rootfs 자체를 더 안전하게 쓰도록 아래 contract를 강화한 것입니다.
+
+- writable root disk를 NVMe controller로 attach
+- writable root disk attachment에 uncached/full synchronization 적용
+- Guest boot root를 device name이 아니라 filesystem label로 식별
+- current run proof 없이는 rootfs artifact를 만들지 않음
+
+하지만 더 좋은 장기 설계는 rootfs와 Docker/runtime data disk를 분리하는 것입니다. disk 분리는 이번 fix를 대체하지 않습니다. rootfs에도 apt install, cloud-init, guest tools install, config write, manifest write가 남기 때문에 rootfs storage contract는 여전히 안정적이어야 합니다.
+
+### 초기 구조의 문제
+
+초기 구조에서는 rootfs가 OS base와 Docker runtime state를 동시에 담당했습니다.
+
+```text
+rootfs disk
+  /
+  /usr
+  /etc
+  /var
+  /var/lib/docker
+```
+
+이 구조에서 아래 작업은 모두 rootfs에 write를 발생시켰습니다.
+
+- `docker load`
+- `docker compose up`
+- containerd metadata write
+- overlay2 layer write
+- Docker build cache write
+- Docker volume write
+
+rootfs의 본래 역할은 제품 VM의 base artifact입니다.
+
+```text
+rootfs
+  OS
+  system packages
+  guest tools
+  bootstrap scripts
+  product runtime baseline
+```
+
+하지만 실제 compile run에서는 rootfs가 아래 상태까지 함께 담았습니다.
+
+```text
+rootfs
+  OS
+  Docker image layers
+  container runtime state
+  smoke test container state
+  build cache
+  compose runtime state
+```
+
+이렇게 되면 rootfs가 base image인지 runtime state disk인지 애매해집니다. 또한 Docker smoke가 성공했더라도 cleanup이 불완전하면 package 안에 Docker image/layer/cache가 남을 수 있습니다.
+
+### 권장 구조
+
+제품 VM과 golden rootfs compile은 장기적으로 disk 역할을 분리해야 합니다.
+
+```text
+rootfs disk
+  /
+  /usr
+  /etc
+  /opt/vitalserver
+  guest tools
+  product runtime baseline
+
+runtime data disk
+  /var/lib/docker
+  /var/lib/containerd
+  /var/log
+  service data
+  volumes
+
+seed/shared disk
+  cloud-init
+  config
+  install bundle
+  host-guest exchange
+```
+
+Docker data-root는 rootfs 밖으로 이동합니다.
+
+```json
+{
+  "data-root": "/mnt/runtime/docker"
+}
+```
+
+containerd state도 같은 원칙으로 runtime data disk에 둡니다.
+
+```text
+/var/lib/containerd -> /mnt/runtime/containerd
+```
+
+이 구조는 rootfs corruption을 100% 막는 해결책이 아닙니다. 대신 Docker 대량 write를 rootfs에서 떼어내 rootfs 오염, stale runtime state, package size regression, smoke container state 잔류 위험을 줄입니다.
+
+### Golden rootfs compile에서의 의미
+
+golden rootfs compile에서는 Docker/Compose smoke를 실제로 수행해야 합니다. 다만 smoke 중 생성되는 runtime state가 최종 rootfs artifact에 남아서는 안 됩니다.
+
+권장 compile 구조는 아래입니다.
+
+```text
+1. rootfs disk
+   - OS 설치
+   - Docker engine 설치
+   - guest tools 설치
+   - product bootstrap 준비
+   - 최종 artifact 압축 대상
+
+2. ephemeral Docker data disk
+   - docker load
+   - docker smoke
+   - compose up
+   - cleanup 검증
+   - compile 종료 후 폐기
+
+3. deploy bundle
+   - docker-images.tar.gz
+   - app config
+   - first boot/update 때 load
+```
+
+이 방식이면 golden rootfs 안에 smoke 시점의 Docker image/layer/container state가 남을 가능성이 크게 줄어듭니다. 특히 아래 위험을 줄입니다.
+
+- pkg 크기가 수백 MB 증가
+- `/var/lib/docker`에 image layer가 남음
+- container `StartedAt`이 compile 시점으로 남음
+- 설치 직후 service uptime이 비정상적으로 표시됨
+- rootfs cleanup 검증이 복잡해짐
+
+## 수정 계획 및 구현 현황
+
+rootfs와 runtime data disk 분리는 별도 설계 변경으로 시작했지만, 2026-06-12 기준 1차 구현은
+compile artifact와 product runtime bootstrap 경로까지 반영되었습니다.
+
+현재 구현 상태:
+
+- `[guest.runtime_data]` build config contract를 추가했습니다.
+- golden rootfs run 시작 시 ephemeral runtime data disk를 새로 생성하고 stale disk를 재사용하지 않습니다.
+- golden rootfs run context에 runtime data disk contract를 기록합니다.
+- Host `vm-config.json`에 `runtimeDataDiskPath`를 명시해 VM attach 입력으로 전달합니다.
+- Guest deploy metadata인 `rootfs-input.json`에 runtime data disk mount/data-root contract를 기록합니다.
+- Swift VM config와 VMConfigurationFactory는 명시된 runtime data disk를 durable writable NVMe storage로 attach할 수 있습니다.
+- Guest rootfs smoke는 runtime data disk를 mount/provision하고 `rootfs-runtime-manifest.json`에 mount proof를 기록합니다.
+- Guest rootfs smoke는 Docker daemon `data-root`와 containerd `root`를 runtime data disk contract에 맞춰 설정합니다.
+- Guest rootfs smoke는 `docker info`의 `DockerRootDir`이 contract의 `dockerDataRoot`와 다르면 실패합니다.
+- cleanup proof는 Docker store cleanup 외에도 rootfs 내부 `/var/lib/docker`, `/var/lib/containerd`에 runtime state가 남았는지 검증합니다.
+- rootfs identity cleanup은 `/etc/machine-id`, SSH host keys, cloud-init instance state를 정리하고 `rootfs-identity-cleanup.json` proof를 남깁니다.
+- `rootfs-ready` marker는 identity cleanup proof를 참조하며, rootfs compression gate는 이 proof가 없으면 artifact 생성을 거부합니다.
+- rootfs compression gate는 `runtime-data-mount`, `runtime-data-configure`, Docker image architecture/digest proof, filesystem resource proof, identity cleanup proof가 없으면 rootfs artifact 생성을 거부합니다.
+- `rootfs-base.raw.gz`는 `rootfs-base.raw.gz.manifest.json` sidecar manifest로 `sha256`, size, source runId, source disk, runtime manifest, ready marker를 기록합니다.
+- 기존 rootfs gzip cache는 sidecar manifest가 current proof와 일치할 때만 재사용합니다.
+- product install은 `runtime-data.img`를 별도 disk로 생성하고, `vm-config.json.runtimeDataDiskPath`에 명시합니다.
+- product bootstrap은 Docker 시작 전에 `tirosh-vitalserver-runtime-data-prepare`를 실행해 `/mnt/runtime` mount, Docker `data-root`, containerd `root`, `/etc/fstab` contract를 준비합니다.
+- runtime boot smoke는 `runtime-data` stage에서 `/mnt/runtime` mount와 `docker info DockerRootDir`이 contract와 일치하는지 검증합니다.
+- runtime data backup/restore의 logical 범위와 whole-disk backup 정책은 별도 product policy로 계속 관리합니다.
+
+### Phase 1. Disk role contract를 먼저 고정합니다
+
+목표:
+
+- Host가 disk를 attach할 때 "첫 번째 disk", "두 번째 disk" 같은 순서나 filename으로 의미를 추정하지 않습니다.
+- disk마다 role, owner, lifecycle, mount point, artifact 포함 여부를 명시합니다.
+
+계약 초안:
+
+| Role | Owner | Lifecycle | Guest identity | Mount point | Artifact 포함 |
+|---|---|---|---|---|---|
+| `rootfs` | Host | compile 후 압축, runtime에서 boot disk | `LABEL=cloudimg-rootfs` | `/` | yes |
+| `runtimeData` | Host/Guest contract | runtime 지속, compile smoke에서는 ephemeral | `LABEL=vital-runtime` | `/mnt/runtime` | no |
+| `seedShared` | Host | run마다 재생성 가능 | share tag 또는 seed ISO | `/mnt/tirosh` | no |
+
+`runtimeData`의 ext filesystem label은 16 bytes 이하로 유지합니다. `vital-runtime-data`처럼 긴 label은 ext tooling에서 `vital-runtime-da`로 truncate되어 proof mismatch를 만들 수 있으므로, build config planning에서 거부해야 합니다.
+
+예상 변경 지점:
+
+- `config/vm-build.toml`
+  - `[guest.runtime_data]`에 runtime data disk size/name/label/mount point 추가
+  - compile smoke용 ephemeral data disk 설정 추가
+- `packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/config/build_toml.py`
+  - config decode 실패를 default success로 만들지 않고 명시 error로 처리
+- `apps/vitalserver-macos-runtime/Sources/Hosts/CLI/ProcessBoundary/VMRuntimeConfig.swift`
+  - `diskPath` 단일 의미를 유지할지, `rootfsDiskPath`/`runtimeDataDiskPath`로 분리할지 결정
+- `apps/vitalserver-macos-runtime/Sources/Adapters/Outbound/VirtualMachine/VMConfigurationFactory.swift`
+  - storage device construction을 role 기반으로 변경
+
+테스트:
+
+- `VMRuntimeConfigTests`
+  - rootfs/runtimeData/seedShared가 role별로 decode되는지 검증
+  - missing runtimeData disk contract가 필요한 workflow에서 실패하는지 검증
+- `test_guest_deploy_config.py` 또는 build config unit test
+  - `vm-build.toml`의 runtime data disk 설정이 explicit하게 읽히는지 검증
+
+완료 조건:
+
+- Host code에서 runtime data disk 의미를 filename, attach order, path substring으로 추정하는 코드가 없습니다.
+- rootfs disk와 runtime data disk의 read/write policy가 코드에서 분리되어 보입니다.
+
+### Phase 2. Runtime data disk provision과 mount proof를 추가합니다
+
+목표:
+
+- runtime data disk를 생성하고 filesystem label을 부여합니다.
+- Guest가 `/mnt/runtime`을 mount한 뒤, mount proof를 명시적으로 기록합니다.
+- mount 실패, permission 실패, filesystem mismatch는 degraded success가 아니라 실패입니다.
+
+예상 변경 지점:
+
+- `packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/adapters/guest_image/rootfs_base.py`
+  - rootfs 압축 전 runtime data disk가 artifact에 포함되지 않는지 검증
+- `packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/application/usecases/macos_runtime.py`
+  - golden rootfs run 시작 시 ephemeral runtime data disk 준비/무효화 단계 추가
+- `apps/vitalserver-macos-runtime/Support/Guest/prepare-airgap-rootfs.sh`
+  - `/mnt/runtime` mount preflight 추가
+  - mount 실패 시 `rootfs-failure.json`에 typed failure 기록
+- `packages/vitalserver-guest-tools/src/tirosh_guest_tools/application/rootfs_smoke.py`
+  - manifest에 runtime data mount proof 추가
+
+Guest proof 초안:
+
+```json
+{
+  "runtimeData": {
+    "status": "mounted",
+    "deviceLabel": "vital-runtime",
+    "mountPoint": "/mnt/runtime",
+    "dockerDataRoot": "/mnt/runtime/docker",
+    "containerdRoot": "/mnt/runtime/containerd"
+  }
+}
+```
+
+테스트:
+
+- `packages/vitalserver-guest-tools/tests/test_rootfs_smoke.py`
+  - mount proof가 없으면 manifest success가 되지 않는지 검증
+  - mount proof가 explicit failure이면 rootfs-ready가 쓰이지 않는지 검증
+- `packages/vitalserver-devtools/tests/unit/test_rootfs_base.py`
+  - runtime data disk artifact가 rootfs compression input으로 들어오면 실패하는지 검증
+
+완료 조건:
+
+- `rootfs-runtime-manifest.json`에서 runtime data disk mount 상태를 확인할 수 있습니다.
+- mount 실패가 `rootfs-ready` 부재와 typed failure로 드러납니다.
+
+### Phase 3. Docker/containerd data-root를 runtime data disk로 옮깁니다
+
+상태: golden rootfs compile smoke 범위는 구현 완료. product runtime install/update 범위는 Phase 5에서 별도 처리합니다.
+
+목표:
+
+- Docker와 containerd의 대량 write가 rootfs가 아니라 `/mnt/runtime` 아래로 갑니다.
+- `/var/lib/docker`, `/var/lib/containerd`가 rootfs에 runtime state를 남기면 compile proof가 실패합니다.
+
+예상 변경 지점:
+
+- `packages/vitalserver-guest-tools/src/tirosh_guest_tools/application/rootfs_smoke.py`
+  - runtime data mount 후 Docker service 시작 전에 `/etc/docker/daemon.json`과 `/etc/containerd/config.toml`을 명시적으로 작성
+  - `docker info`에서 `DockerRootDir`이 `/mnt/runtime/docker`인지 검증
+  - disk-space proof를 `/`, `/mnt/runtime/docker`, `/mnt/runtime/containerd`, vital files mount 기준으로 기록
+  - cleanup proof에 rootfs 내부 Docker/containerd state 잔류 검증 추가
+- `packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/adapters/macos_release/runtime_lifecycle.py`
+  - rootfs-ready wait에서 `runtime-data-configure` stage를 required proof로 검증
+- `packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/adapters/guest_image/rootfs_base.py`
+  - rootfs compression gate에서 `runtime-data-configure` stage를 required proof로 검증
+- product Compose/runtime bootstrap script
+  - runtime boot에서도 같은 data-root contract 사용
+
+테스트:
+
+- `test_rootfs_smoke.py`
+  - Docker Root Dir가 rootfs 아래면 실패
+  - `/var/lib/docker`에 image/layer/container state가 남으면 실패
+  - cleanup 후 `/mnt/runtime/docker`에는 compile smoke state가 비어 있어야 함
+- runtime boot smoke test
+  - first boot에서 runtime data disk가 mounted 상태일 때만 service stack start
+
+완료 조건:
+
+- `docker info`가 `/mnt/runtime/docker`를 보고합니다.
+- rootfs artifact 안에 smoke image/layer/cache가 남지 않습니다.
+- pkg 크기 증가는 deploy bundle 크기 변화로만 설명됩니다.
+- rootfs 내부 Docker/containerd runtime state가 남으면 compile proof가 실패합니다.
+
+### Phase 4. Golden rootfs compile에 ephemeral runtime data disk를 붙입니다
+
+상태: golden rootfs compile 범위는 구현 완료. 성공/실패 후 diagnostic artifact 보존 정책은 필요 시 별도 개선합니다.
+
+목표:
+
+- golden rootfs smoke는 실제 Docker/Compose를 실행하되, smoke state는 최종 rootfs artifact에 포함하지 않습니다.
+- compile이 끝나면 ephemeral runtime data disk를 폐기합니다.
+
+예상 변경 지점:
+
+- `Makefile` 또는 macOS runtime build target
+  - `internal/vm/airgap-rootfs` run 전에 ephemeral runtime data disk 생성
+  - compile 성공/실패 후 launcher stop과 함께 ephemeral data disk cleanup
+- `packages/vitalserver-devtools/src/tirosh_vitalserver/devtools/cli.py`
+  - runtime data disk prepare/invalidate/check command 추가 여부 검토
+- `apps/vitalserver-macos-runtime/Sources/Adapters/Outbound/VirtualMachine/VMConfigurationFactory.swift`
+  - compile VM config에서 rootfs disk와 runtimeData disk를 함께 attach
+
+주의:
+
+- cleanup command가 실패해도 실패를 숨기지 않습니다.
+- compile 실패 후 ephemeral disk를 남길 경우에는 diagnostic artifact로 분류하고, 다음 run에서 재사용하지 않습니다.
+
+테스트:
+
+- devtools unit test
+  - stale ephemeral runtime data disk가 있으면 새 run에서 invalidate되는지 검증
+  - current runId와 다른 runtime data proof가 있으면 실패하는지 검증
+- full verification
+  - `make dist/dmg/dev/compile VM_RECREATE_GOLDEN_ROOTFS=true`
+
+완료 조건:
+
+- rootfs compression 대상은 rootfs disk 하나입니다.
+- ephemeral runtime data disk는 package/dmg/pkg에 포함되지 않습니다.
+- compile 실패 후 다음 run이 stale runtime data state를 재사용하지 않습니다.
+
+### Phase 5. Runtime install/update/backup 정책을 분리합니다
+
+상태: fresh install의 runtime data disk 생성/보존 contract와 bootstrap data-root 적용은 구현했습니다. update와 backup의 세부 정책은 기존 logical runtime data backup 정책과 함께 별도 evolution 대상으로 남깁니다.
+
+목표:
+
+- 제품 runtime에서는 runtime data disk가 사용자의 지속 데이터입니다.
+- rootfs update와 runtime data backup/restore의 책임을 분리합니다.
+
+예상 변경 지점:
+
+- `apps/vitalserver-macos-runtime/Sources/Adapters/Outbound/Process/RuntimeInstallVMDiskProvisioner.swift`
+  - rootfs disk provision과 runtime data disk provision 분리
+- `apps/vitalserver-macos-runtime/Sources/Application/UseCases/InstallRuntime`
+  - fresh install에서 runtime data disk 생성
+  - reinstall/reset에서 보존/삭제 정책 명시
+- `apps/vitalserver-macos-runtime/Sources/Application/UseCases/UpdateRuntime`
+  - rootfs update가 runtime data disk를 덮어쓰지 않도록 guard 추가
+- `apps/vitalserver-macos-runtime/Sources/Adapters/Outbound/Persistence/RuntimeDataBackupStore.swift`
+  - runtime data disk 전체를 backup 대상으로 볼지, 내부 logical data만 backup할지 정책 결정
+
+테스트:
+
+- `RuntimeInstallVMDiskProvisionerTests`
+  - fresh install은 rootfs와 runtime data disk를 모두 준비
+  - rootfs 재생성은 runtime data disk를 삭제하지 않음
+- update/rollback tests
+  - rootfs 교체 후 runtime data disk identity가 유지되는지 검증
+- backup/restore tests
+  - backup 범위가 문서화된 runtime data contract와 일치하는지 검증
+
+완료 조건:
+
+- rootfs update와 runtime data 보존/삭제 정책이 코드와 문서에서 분리됩니다.
+- clean uninstall/reset installer가 runtime data disk를 어떻게 처리하는지 명시됩니다.
+
+### Phase 6. Status, observability, troubleshooting을 갱신합니다
+
+상태: compile/runtime boot proof는 강화했습니다. Status UI에서 rootfs disk와 runtime data disk를 별도 health surface로 노출하는 작업은 후속 UI/API contract로 남깁니다.
+
+목표:
+
+- 사용자는 rootfs와 runtime data의 차이를 operational symptom으로 이해할 수 있어야 합니다.
+- 개발자는 compile/package size/service uptime 이상을 disk role 관점으로 triage할 수 있어야 합니다.
+
+예상 변경 지점:
+
+- `RuntimeStatusDocument`
+  - rootfs disk 상태와 runtime data disk 상태를 분리해서 표현할지 검토
+- `RuntimeStatusPanel`
+  - 사용자에게 필요한 수준으로 runtime data mount/status 표시
+- `docs/runtime/macos`
+  - disk role contract 문서 추가
+- `site-docs/release`
+  - 사용자 노출 문서에는 "Vital files directory", "runtime data", "backup/reset" 의미만 반영
+
+테스트:
+
+- status document builder tests
+  - runtime data disk missing/mount failed/healthy가 구분되는지 검증
+- UI display policy tests
+  - missing과 failed가 같은 빈 문자열로 표시되지 않는지 검증
+
+완료 조건:
+
+- Status에서 rootfs artifact 상태와 runtime data 상태가 섞이지 않습니다.
+- troubleshooting 문서가 package size 증가, service uptime 이상, Docker state 잔류를 disk role 관점으로 안내합니다.
+
+### 권장 커밋 순서
+
+작업은 아래 단위로 쪼갭니다.
+
+1. `Document runtime disk role contract`
+2. `Model runtime data disk config`
+3. `Add guest runtime data mount proof`
+4. `Move Docker state to runtime data disk`
+5. `Use ephemeral runtime data disk for golden rootfs compile`
+6. `Separate runtime data disk install and update policy`
+7. `Expose runtime data disk status and docs`
+
+각 커밋은 관련 test와 문서를 함께 포함해야 합니다.
+
 ## 검증
 
 ### 검증 명령

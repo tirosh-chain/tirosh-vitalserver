@@ -5,6 +5,7 @@ import Errors
 public struct RuntimeInstallVMDiskProvisioningContext {
     public let rootfsBase: URL
     public let vmDisk: URL
+    public let runtimeDataDisk: URL?
     public let gunzipExecutable: String
     public let truncateExecutable: String
     public let freeSpaceMarginBytes: UInt64
@@ -12,12 +13,14 @@ public struct RuntimeInstallVMDiskProvisioningContext {
     public init(
         rootfsBase: URL,
         vmDisk: URL,
+        runtimeDataDisk: URL? = nil,
         gunzipExecutable: String,
         truncateExecutable: String,
         freeSpaceMarginBytes: UInt64
     ) {
         self.rootfsBase = rootfsBase
         self.vmDisk = vmDisk
+        self.runtimeDataDisk = runtimeDataDisk
         self.gunzipExecutable = gunzipExecutable
         self.truncateExecutable = truncateExecutable
         self.freeSpaceMarginBytes = freeSpaceMarginBytes
@@ -67,7 +70,10 @@ public struct RuntimeInstallVMDiskProvisioner {
         self.operations = operations
     }
 
-    public func provision(diskGiB: Int) throws {
+    public func provision(
+        diskGiB: Int,
+        runtimeDataDiskGiB: Int = 16
+    ) throws {
         let vmDiskState = try stateForExistingOrMissingFile(context.vmDisk)
         if vmDiskState == .missing {
             try requireExistingFile(context.rootfsBase)
@@ -75,6 +81,9 @@ public struct RuntimeInstallVMDiskProvisioner {
         }
         try requireExistingFile(context.vmDisk)
         try operations.runRequired(context.truncateExecutable, ["-s", "\(diskGiB)G", context.vmDisk.path])
+        if let runtimeDataDisk = context.runtimeDataDisk {
+            try provisionRuntimeDataDisk(runtimeDataDisk, diskGiB: runtimeDataDiskGiB)
+        }
     }
 
     private func createDiskFromRootfs() throws {
@@ -97,6 +106,25 @@ public struct RuntimeInstallVMDiskProvisioner {
         )
         try operations.moveItem(temporary, context.vmDisk)
         operations.log("created vm disk path=\(context.vmDisk.path) source=\(context.rootfsBase.lastPathComponent)")
+    }
+
+    private func provisionRuntimeDataDisk(_ disk: URL, diskGiB: Int) throws {
+        let state = try stateForExistingOrMissingFile(disk)
+        switch state {
+        case .present, .executable:
+            operations.log("preserved runtime data disk path=\(disk.path)")
+        case .missing:
+            try operations.requireFreeSpace(
+                disk.deletingLastPathComponent(),
+                UInt64(diskGiB) * 1024 * 1024 * 1024 + context.freeSpaceMarginBytes,
+                "provision-runtime-data-disk"
+            )
+            try operations.runRequired(context.truncateExecutable, ["-s", "\(diskGiB)G", disk.path])
+            operations.log("created runtime data disk path=\(disk.path) size=\(diskGiB)G")
+        case .inspectFailed, .unknown:
+            // Covered by stateForExistingOrMissingFile before this switch.
+            break
+        }
     }
 
     private func requireExistingFile(_ url: URL) throws {

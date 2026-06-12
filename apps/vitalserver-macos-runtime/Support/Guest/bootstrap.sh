@@ -225,6 +225,7 @@ install_guest_tools() {
     tirosh-vitalserver-compose \
     tirosh-vitalserver-rootfs-smoke \
     tirosh-vitalserver-runtime-boot-smoke \
+    tirosh-vitalserver-runtime-data-prepare \
     tirosh-vitalserver-command-poller \
     tirosh-vitalserver-redis-backup \
     tirosh-vitalserver-redis-restore \
@@ -247,6 +248,7 @@ install_guest_runtime_files() {
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-compose" /usr/local/bin/tirosh-vitalserver-compose
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-health" /usr/local/bin/tirosh-vitalserver-health
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-runtime-boot-smoke" /usr/local/bin/tirosh-vitalserver-runtime-boot-smoke
+  install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-runtime-data-prepare" /usr/local/bin/tirosh-vitalserver-runtime-data-prepare
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-container-logs" /usr/local/bin/tirosh-vitalserver-container-logs
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-diagnostics" /usr/local/bin/tirosh-vitalserver-diagnostics
   install -m 0755 "${DEPLOY_DIR}/bin/tirosh-vitalserver-redis-backup" /usr/local/bin/tirosh-vitalserver-redis-backup
@@ -440,6 +442,7 @@ expand_root_filesystem
 require_runtime_packages
 
 install_guest_runtime_files
+/usr/local/bin/tirosh-vitalserver-runtime-data-prepare
 write_runtime_state
 
 systemctl enable --now docker

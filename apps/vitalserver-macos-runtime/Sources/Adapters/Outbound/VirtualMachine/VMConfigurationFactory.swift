@@ -63,6 +63,17 @@ public final class VMConfigurationFactory {
             storageDevices.append(VZNVMExpressControllerDeviceConfiguration(attachment: attachment))
         }
 
+        if let runtimeDataDiskPath = config.runtimeDataDiskPath, !runtimeDataDiskPath.isEmpty {
+            try validateStoragePath(runtimeDataDiskPath)
+            let attachment = try VZDiskImageStorageDeviceAttachment(
+                url: URL(fileURLWithPath: runtimeDataDiskPath),
+                readOnly: false,
+                cachingMode: .uncached,
+                synchronizationMode: .full
+            )
+            storageDevices.append(VZNVMExpressControllerDeviceConfiguration(attachment: attachment))
+        }
+
         if let cloudInitPath = config.cloudInitPath,
            !cloudInitPath.isEmpty {
             try validateStoragePath(cloudInitPath)

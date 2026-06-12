@@ -49,6 +49,7 @@ public enum Constants {
         public static let kernel = "Image"
         public static let initialRamdisk = "initrd.img"
         public static let disk = "vm-disk.img"
+        public static let runtimeDataDisk = "runtime-data.img"
         public static let cloudInit = "seed.iso"
         public static let rootCommandLineToken = "root=LABEL=cloudimg-rootfs"
         public static let commandLine = "console=hvc0 \(rootCommandLineToken) rw seccomp=0"
@@ -69,6 +70,7 @@ public enum Constants {
             return min(maximumCPUCount, systemCPUCount)
         }
         public static let defaultDiskGiB = 32
+        public static let defaultRuntimeDataDiskGiB = 16
         public static let minimumDiskGiB = 4
         public static let maximumDiskGiB = 512
         public static let diskStepGiB = 4

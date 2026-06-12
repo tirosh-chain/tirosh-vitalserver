@@ -31,6 +31,7 @@ VM_PKG_BUILD_DIR ?= $(call VM_TOML_VALUE,workspace.build_dir)
 VM_PKG_ROOTFS_CACHE ?= $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz
 VM_PKG_ROOTFS_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/rootfs-base.contract
 VM_PKG_ROOTFS_CONTRACT_INPUTS := \
+	config/vm-build.toml \
 	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/prepare-airgap-rootfs.sh \
 	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/bootstrap.sh \
 	packages/vitalserver-guest-tools/pyproject.toml \
@@ -72,7 +73,7 @@ internal/vm/airgap-rootfs:
 	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
 		--vm-home "$(VM_HOME)"
 	@if [ -n "$(VM_ROOTFS_RUN_ID)" ]; then \
-		$(VM_BUILD_RUNNER) macos-runtime-rootfs-begin \
+		$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-rootfs-begin \
 			--vm-home "$(VM_HOME)" \
 			--run-id "$(VM_ROOTFS_RUN_ID)"; \
 	else \

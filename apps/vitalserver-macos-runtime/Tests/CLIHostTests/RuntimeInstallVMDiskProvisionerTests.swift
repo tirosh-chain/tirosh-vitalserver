@@ -52,6 +52,50 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
         ])
     }
 
+    func testProvisionCreatesMissingRuntimeDataDiskWhenConfigured() throws {
+        let events = EventLog()
+        let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
+        let vmDisk = URL(fileURLWithPath: "/runtime/vm.img")
+        let runtimeDataDisk = URL(fileURLWithPath: "/runtime/runtime-data.img")
+        let provisioner = makeProvisioner(
+            rootfs: rootfs,
+            vmDisk: vmDisk,
+            runtimeDataDisk: runtimeDataDisk,
+            existingFiles: { [rootfs, vmDisk] },
+            events: events
+        )
+
+        try provisioner.provision(diskGiB: 64, runtimeDataDiskGiB: 16)
+
+        XCTAssertEqual(events.values, [
+            "run:/usr/bin/truncate -s 64G /runtime/vm.img",
+            "free-space:/runtime:17179869312:provision-runtime-data-disk",
+            "run:/usr/bin/truncate -s 16G /runtime/runtime-data.img",
+            "log:created runtime data disk path=/runtime/runtime-data.img size=16G",
+        ])
+    }
+
+    func testProvisionPreservesExistingRuntimeDataDiskWhenConfigured() throws {
+        let events = EventLog()
+        let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
+        let vmDisk = URL(fileURLWithPath: "/runtime/vm.img")
+        let runtimeDataDisk = URL(fileURLWithPath: "/runtime/runtime-data.img")
+        let provisioner = makeProvisioner(
+            rootfs: rootfs,
+            vmDisk: vmDisk,
+            runtimeDataDisk: runtimeDataDisk,
+            existingFiles: { [rootfs, vmDisk, runtimeDataDisk] },
+            events: events
+        )
+
+        try provisioner.provision(diskGiB: 64, runtimeDataDiskGiB: 16)
+
+        XCTAssertEqual(events.values, [
+            "run:/usr/bin/truncate -s 64G /runtime/vm.img",
+            "log:preserved runtime data disk path=/runtime/runtime-data.img",
+        ])
+    }
+
     func testProvisionFailsWhenDiskAndRootfsAreMissing() {
         let events = EventLog()
         let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
@@ -150,6 +194,7 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
     private func makeProvisioner(
         rootfs: URL,
         vmDisk: URL,
+        runtimeDataDisk: URL? = nil,
         existingFiles: @escaping () -> Set<URL>,
         events: EventLog,
         fileState: ((URL) -> RuntimeFileState)? = nil,
@@ -159,6 +204,7 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
             context: RuntimeInstallVMDiskProvisioningContext(
                 rootfsBase: rootfs,
                 vmDisk: vmDisk,
+                runtimeDataDisk: runtimeDataDisk,
                 gunzipExecutable: "/usr/bin/gunzip",
                 truncateExecutable: "/usr/bin/truncate",
                 freeSpaceMarginBytes: 128

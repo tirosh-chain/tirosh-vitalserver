@@ -248,12 +248,18 @@ Guest userspace가 `Illegal instruction`이나 `Segmentation fault`로 죽어 ma
 `macos-runtime-force-stop`으로 정리해야 합니다. 정리 후 `macos-runtime-require-no-running`이
 통과하지 않으면 다음 compile을 시작하면 안 됩니다.
 Golden rootfs는 `/mnt/tirosh/run/rootfs-runtime-manifest.json` schema v2의 stage 결과가 모두 통과한
-경우에만 `rootfs-base.raw.gz`로 압축할 수 있습니다. 필수 stage는 `docker-smoke`, `disk-space`,
-`compose-build`, `compose-up`, `edge-ready`이며, `cleanup.status=passed`도 함께 필요합니다.
+경우에만 `rootfs-base.raw.gz`로 압축할 수 있습니다. 필수 stage는 `runtime-data-mount`,
+`runtime-data-configure`, `docker-service`, `runtime-version`, `docker-image-load`, `docker-smoke`,
+`disk-space`, `compose-build`, `compose-up`, `edge-ready`이며, `cleanup.status=passed`도 함께
+필요합니다.
 Manifest와 `rootfs-ready` marker는 현재 golden rootfs run의 `runId`와 일치해야 합니다. Manifest의
 `ubuntu.metadataStatus`는 `loaded`여야 하고, `ubuntu.baseUrl`, `ubuntu.cacheKey`,
 `ubuntu.aptSnapshot`, `ubuntu.kernel`은 비어 있으면 안 됩니다. 입력 Ubuntu 이미지와 apt snapshot이
 무엇인지 모르는 rootfs는 smoke가 통과해도 release artifact가 될 수 없습니다.
+Manifest에는 Docker image bundle의 `bundleSha256`, target platform, guest architecture, runtime data
+mount proof, filesystem free bytes/inodes proof가 있어야 합니다. `rootfs-ready` marker에는 identity
+cleanup proof가 있어야 하며, 최종 `rootfs-base.raw.gz`는 `rootfs-base.raw.gz.manifest.json` sidecar와
+checksum이 일치할 때만 cache artifact로 재사용할 수 있습니다.
 Golden rootfs input metadata에는 `guestClockUtc`도 포함되어야 합니다. Guest bootstrap은 NTP를
 fallback으로 삼지 않고, apt snapshot source를 읽기 전에 Host가 제공한 UTC 시각을 적용해야 합니다.
 `Release file ... is not valid yet`는 apt mirror 문제가 아니라 compile VM clock 계약이 깨진 신호로

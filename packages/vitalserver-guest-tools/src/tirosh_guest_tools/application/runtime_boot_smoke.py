@@ -17,6 +17,7 @@ from tirosh_guest_tools.application.runtime_boot_smoke_manifest import (
     RuntimeBootSmokeRun,
     RuntimeBootSmokeStage,
 )
+from tirosh_guest_tools.application.runtime_data_prepare import read_runtime_data_contract
 from tirosh_guest_tools.contracts import (
     ComposeService,
     RootfsSmokeStatus,
@@ -166,6 +167,11 @@ def run_runtime_boot_smoke(
             run,
             "systemd-units",
             validate_systemd_units,
+        )
+        execute_stage(
+            run,
+            "runtime-data",
+            validate_runtime_data,
         )
         execute_stage(
             run,
@@ -364,6 +370,74 @@ def validate_http(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]]:
         if not 200 <= status < 300:
             raise RuntimeError(f"runtime HTTP endpoint is not ready: {url} {status}")
     return "runtime HTTP endpoints are ready", {"endpoints": endpoints}
+
+
+def validate_runtime_data(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]]:
+    contract = read_runtime_data_contract(run.context.deploy_dir)
+    completed = run.operations.run(
+        ["findmnt", "--json", "--mountpoint", contract.mount_path],
+        check=False,
+        capture_output=True,
+        timeout_seconds=SYSTEMD_TIMEOUT_SECONDS,
+    )
+    if completed.returncode != 0 or not completed.stdout.strip():
+        raise RuntimeError(
+            "runtime data disk is not mounted: "
+            f"mountPath={contract.mount_path}"
+        )
+    try:
+        mount_document = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"findmnt returned invalid JSON: {error}") from error
+    filesystems = mount_document.get("filesystems")
+    if not isinstance(filesystems, list) or not filesystems:
+        raise RuntimeError(
+            "runtime data mount proof is missing filesystems: "
+            f"mountPath={contract.mount_path}"
+        )
+    mount = filesystems[0]
+    if not isinstance(mount, dict):
+        raise RuntimeError("runtime data mount proof is invalid")
+    if mount.get("target") != contract.mount_path:
+        raise RuntimeError(
+            "runtime data mount target mismatch: "
+            f"expected={contract.mount_path} actual={mount.get('target')}"
+        )
+    if mount.get("fstype") not in ("ext4", "ext3", "ext2"):
+        raise RuntimeError(
+            "runtime data filesystem type is unsupported: "
+            f"mountPath={contract.mount_path} fstype={mount.get('fstype')}"
+        )
+    docker_root_completed = run.operations.run(
+        ["docker", "info", "--format", "{{json .DockerRootDir}}"],
+        check=False,
+        capture_output=True,
+        timeout_seconds=SYSTEMD_TIMEOUT_SECONDS,
+    )
+    if docker_root_completed.returncode != 0:
+        raise RuntimeError(
+            "failed to read Docker root dir: "
+            f"{docker_root_completed.stderr.strip() or docker_root_completed.returncode}"
+        )
+    try:
+        docker_root = json.loads(docker_root_completed.stdout.strip())
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"docker info returned invalid DockerRootDir JSON: {error}") from error
+    if docker_root != contract.docker_data_root:
+        raise RuntimeError(
+            "Docker data-root does not match runtime data contract: "
+            f"expected={contract.docker_data_root} actual={docker_root}"
+        )
+    return (
+        "runtime data disk is mounted and used by Docker",
+        {
+            "mountPath": contract.mount_path,
+            "dockerDataRoot": docker_root,
+            "containerdRoot": contract.containerd_root,
+            "source": mount.get("source"),
+            "fstype": mount.get("fstype"),
+        },
+    )
 
 
 def validate_compose_services(

@@ -23,6 +23,9 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_state import (
     runtime_state_file,
     vm_home_path,
 )
+from tirosh_vitalserver.devtools.adapters.guest_image.runtime_data_disk import (
+    prepare_ephemeral_runtime_data_disk,
+)
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
 from tirosh_vitalserver.devtools.application.inputs import (
     RequireBridgedIdentityInput,
@@ -36,12 +39,17 @@ from tirosh_vitalserver.devtools.application.inputs import (
     RuntimeVmHomeInput,
     RuntimeWaitInput,
 )
+from tirosh_vitalserver.devtools.config.build_toml import load_build_toml
+from tirosh_vitalserver.devtools.config.guest_image import load_guest_runtime_config
 from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
 )
 from tirosh_vitalserver.devtools.config.paths import resolve_path
+from tirosh_vitalserver.devtools.core.guest_image import runtime_data_disk_plan
 
 ROOTFS_REQUIRED_STAGES = (
+    "runtime-data-mount",
+    "runtime-data-configure",
     "docker-service",
     "runtime-version",
     "docker-image-load",
@@ -241,11 +249,13 @@ def force_stop_runtime(input: RuntimeWaitInput) -> int:
 
 def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
     root = repo_root()
+    config_path = resolve_path(root, input.config)
     vm_home = resolve_path(root, input.vm_home)
     run_dir = vm_home / "run"
     data_run_dir = vm_home / "data/run"
     run_dir.mkdir(parents=True, exist_ok=True)
     data_run_dir.mkdir(parents=True, exist_ok=True)
+    require_vm_config(vm_home)
 
     stale_paths = [
         data_run_dir / "rootfs-ready",
@@ -266,11 +276,22 @@ def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
             path.unlink()
             removed.append(str(path))
 
+    runtime_config = load_guest_runtime_config(load_build_toml(config_path))
+    runtime_data = prepare_ephemeral_runtime_data_disk(
+        runtime_data_disk_plan(
+            config_path=config_path,
+            vm_home=vm_home,
+            runtime_config=runtime_config,
+        )
+    )
+    write_vm_config_runtime_data_disk_path(vm_home, str(runtime_data["path"]))
+
     context = {
         "schemaVersion": 1,
         "runId": input.run_id,
         "createdAt": utc_timestamp(),
         "removedStaleProof": removed,
+        "runtimeDataDisk": runtime_data,
     }
     context_path = rootfs_run_context_path(vm_home)
     context_path.write_text(
@@ -283,6 +304,34 @@ def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
         for path in removed:
             print(f"  {path}")
     return 0
+
+
+def write_vm_config_runtime_data_disk_path(
+    vm_home: Path,
+    runtime_data_disk_path: str,
+) -> None:
+    config_path = vm_home / "runtime/vm-config.json"
+    require_vm_config(vm_home)
+    try:
+        document = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"error: VM config is unreadable: {config_path}: {error}") from error
+    if not isinstance(document, dict):
+        raise SystemExit(f"error: VM config is invalid: expected object: {config_path}")
+    document["runtimeDataDiskPath"] = runtime_data_disk_path
+    config_path.write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def require_vm_config(vm_home: Path) -> None:
+    config_path = vm_home / "runtime/vm-config.json"
+    if not config_path.is_file():
+        raise SystemExit(
+            "error: VM config is missing; initialize the VM before starting "
+            f"golden rootfs run: {config_path}"
+        )
 
 
 def begin_runtime_boot_smoke_run(input: RuntimeBootSmokeRunInput) -> int:

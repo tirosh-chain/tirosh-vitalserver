@@ -44,6 +44,7 @@ from tirosh_guest_tools.application.redis_restore import (
 )
 from tirosh_guest_tools.application.rootfs_smoke import run_rootfs_smoke
 from tirosh_guest_tools.application.runtime_boot_smoke import run_runtime_boot_smoke
+from tirosh_guest_tools.application.runtime_data_prepare import prepare_runtime_data
 from tirosh_guest_tools.application.runtime_state import run_runtime_state_action
 from tirosh_guest_tools.application.update_activation import (
     LOG_FILE as ACTIVATE_UPDATE_LOG_FILE,
@@ -201,6 +202,15 @@ def vitalserver_runtime_boot_smoke() -> int:
     parser.parse_args()
     configure_logging(SETTINGS.logging)
     run_runtime_boot_smoke()
+    return 0
+
+
+def vitalserver_runtime_data_prepare() -> int:
+    parser = argparse.ArgumentParser(
+        description="Prepare the guest runtime data disk contract."
+    )
+    parser.parse_args()
+    prepare_runtime_data()
     return 0
 
 

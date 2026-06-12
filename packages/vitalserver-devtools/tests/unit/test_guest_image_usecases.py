@@ -14,10 +14,16 @@ from tirosh_vitalserver.devtools.application.usecases.guest_services import (
     stage_rootfs_input_metadata,
 )
 from tirosh_vitalserver.devtools.config.build_toml import load_build_toml
-from tirosh_vitalserver.devtools.config.guest_image import load_ubuntu_image_config
+from tirosh_vitalserver.devtools.config.guest_image import (
+    load_guest_runtime_config,
+    load_ubuntu_image_config,
+)
 from tirosh_vitalserver.devtools.core.errors import DomainError
 from tirosh_vitalserver.devtools.core.guest_image import (
+    RuntimeDataDiskConfig,
     UbuntuBootAssetPlan,
+    GuestRuntimeConfig,
+    runtime_data_disk_plan,
     ubuntu_boot_asset_plan,
     ubuntu_download_cache_key,
 )
@@ -44,6 +50,14 @@ def test_prepare_ubuntu_boot_assets_builds_plan_from_config(
                     "runtime_dir": "runtime",
                     "rootfs_size": "8G",
                     "disk_image_name": "disk.img",
+                },
+                "runtime_data": {
+                    "disk_image_name": "runtime-data.img",
+                    "disk_size": "16G",
+                    "filesystem_label": "vital-runtime",
+                    "mount_path": "/mnt/runtime",
+                    "docker_data_root": "/mnt/runtime/docker",
+                    "containerd_root": "/mnt/runtime/containerd",
                 },
             },
         }
@@ -84,6 +98,75 @@ def test_prepare_ubuntu_boot_assets_builds_plan_from_config(
     )
     assert plan.rootfs_size == "8G"
     assert plan.disk_image_name == "disk.img"
+
+
+def test_guest_runtime_config_loads_explicit_runtime_data_disk_contract() -> None:
+    runtime_config = load_guest_runtime_config(
+        {
+            "guest": {
+                "runtime": {
+                    "runtime_dir": "runtime",
+                    "rootfs_size": "8G",
+                    "disk_image_name": "vm-disk.img",
+                },
+                "runtime_data": {
+                    "disk_image_name": "runtime-data.img",
+                    "disk_size": "16G",
+                    "filesystem_label": "vital-runtime",
+                    "mount_path": "/mnt/runtime",
+                    "docker_data_root": "/mnt/runtime/docker",
+                    "containerd_root": "/mnt/runtime/containerd",
+                },
+            },
+        }
+    )
+
+    assert runtime_config.runtime_dir == Path("runtime")
+    assert runtime_config.runtime_data_disk_image == Path("runtime/runtime-data.img")
+    assert runtime_config.runtime_data_disk.disk_size == "16G"
+    assert runtime_config.runtime_data_disk.filesystem_label == "vital-runtime"
+    assert runtime_config.runtime_data_disk.mount_path == "/mnt/runtime"
+    assert runtime_config.runtime_data_disk.docker_data_root == "/mnt/runtime/docker"
+    assert runtime_config.runtime_data_disk.containerd_root == "/mnt/runtime/containerd"
+
+
+def test_guest_runtime_config_requires_runtime_data_disk_contract() -> None:
+    with pytest.raises(SystemExit, match=r"missing \[guest.runtime_data\]"):
+        load_guest_runtime_config(
+            {
+                "guest": {
+                    "runtime": {
+                        "runtime_dir": "runtime",
+                        "rootfs_size": "8G",
+                        "disk_image_name": "vm-disk.img",
+                    },
+                },
+            }
+        )
+
+
+def test_runtime_data_disk_plan_rejects_ext_label_too_long(tmp_path: Path) -> None:
+    runtime_config = GuestRuntimeConfig(
+        runtime_dir=tmp_path / "runtime",
+        rootfs_size="8G",
+        recreate_rootfs=False,
+        disk_image_name="vm-disk.img",
+        runtime_data_disk=RuntimeDataDiskConfig(
+            disk_image_name="runtime-data.img",
+            disk_size="16G",
+            filesystem_label="vital-runtime-data",
+            mount_path="/mnt/runtime",
+            docker_data_root="/mnt/runtime/docker",
+            containerd_root="/mnt/runtime/containerd",
+        ),
+    )
+
+    with pytest.raises(DomainError, match="too long for ext filesystem label"):
+        runtime_data_disk_plan(
+            config_path=tmp_path / "vm-build.toml",
+            vm_home=tmp_path / "vm-home",
+            runtime_config=runtime_config,
+        )
 
 
 def test_default_ubuntu_image_config_uses_pinned_noble_release_source() -> None:
@@ -154,6 +237,8 @@ def test_stage_rootfs_input_metadata_preserves_ubuntu_source_identity(
         deploy_dir=tmp_path,
         base_url=base_url,
         apt_snapshot="20250313T000000Z",
+        runtime_data=runtime_data_disk_config(),
+        docker_platform="linux/arm64",
     )
 
     metadata = load_json(tmp_path / "build-metadata/rootfs-input.json")
@@ -164,6 +249,15 @@ def test_stage_rootfs_input_metadata_preserves_ubuntu_source_identity(
         metadata["guestClockUtc"],
     )
     assert metadata["runtimeBootSmoke"] == {"enabled": False}
+    assert metadata["dockerImages"] == {"platform": "linux/arm64"}
+    assert metadata["runtimeData"] == {
+        "diskImageName": "runtime-data.img",
+        "diskSize": "16G",
+        "filesystemLabel": "vital-runtime",
+        "mountPath": "/mnt/runtime",
+        "dockerDataRoot": "/mnt/runtime/docker",
+        "containerdRoot": "/mnt/runtime/containerd",
+    }
     assert metadata["ubuntu"] == {
         "aptSnapshot": "20250313T000000Z",
         "baseUrl": base_url,
@@ -180,6 +274,8 @@ def test_stage_rootfs_input_metadata_preserves_run_identity(
         deploy_dir=tmp_path,
         base_url=base_url,
         apt_snapshot="20250313T000000Z",
+        runtime_data=runtime_data_disk_config(),
+        docker_platform="linux/arm64",
         run_id="run-test",
     )
 
@@ -194,3 +290,14 @@ def load_json(path: Path) -> dict[str, object]:
         document = json.load(handle)
     assert isinstance(document, dict)
     return document
+
+
+def runtime_data_disk_config() -> RuntimeDataDiskConfig:
+    return RuntimeDataDiskConfig(
+        disk_image_name="runtime-data.img",
+        disk_size="16G",
+        filesystem_label="vital-runtime",
+        mount_path="/mnt/runtime",
+        docker_data_root="/mnt/runtime/docker",
+        containerd_root="/mnt/runtime/containerd",
+    )

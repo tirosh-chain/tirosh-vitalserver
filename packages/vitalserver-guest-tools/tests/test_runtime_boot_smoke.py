@@ -34,6 +34,8 @@ def test_runtime_boot_smoke_writes_manifest_for_success(tmp_path: Path) -> None:
     assert stage_status(document, "bootstrap-result") == "passed"
     assert stage_status(document, "runtime-state") == "passed"
     assert stage_status(document, "systemd-units") == "passed"
+    assert stage_status(document, "runtime-data") == "passed"
+    assert stage_details(document, "runtime-data")["dockerDataRoot"] == "/mnt/runtime/docker"
     assert stage_status(document, "http") == "passed"
     assert stage_status(document, "compose-services") == "passed"
     assert stage_status(document, "disk-health") == "passed"
@@ -136,6 +138,20 @@ def test_runtime_boot_smoke_rejects_inactive_systemd_unit(tmp_path: Path) -> Non
 
     document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
     assert "required systemd unit is not active" in failed_stage_message(document)
+
+
+def test_runtime_boot_smoke_rejects_wrong_docker_data_root(tmp_path: Path) -> None:
+    context = runtime_boot_context(tmp_path)
+    write_valid_runtime_documents(context)
+
+    with pytest.raises(SystemExit):
+        run_runtime_boot_smoke(
+            context=context,
+            operations=fake_operations(docker_root="/var/lib/docker"),
+        )
+
+    document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert "Docker data-root does not match" in failed_stage_message(document)
 
 
 def test_runtime_boot_smoke_rejects_unready_http(tmp_path: Path) -> None:
@@ -420,6 +436,19 @@ def write_valid_runtime_documents(
             "vitalFilesDirectory": "/mnt/tirosh-vital-files",
         },
     )
+    write_json(
+        context.deploy_dir / "build-metadata/rootfs-input.json",
+        {
+            "runtimeData": {
+                "diskImageName": "runtime-data.img",
+                "diskSize": "16G",
+                "filesystemLabel": "vital-runtime",
+                "mountPath": "/mnt/runtime",
+                "dockerDataRoot": "/mnt/runtime/docker",
+                "containerdRoot": "/mnt/runtime/containerd",
+            },
+        },
+    )
 
 
 def write_default_context_documents(deploy_dir: Path, *, run_id: str) -> None:
@@ -445,11 +474,31 @@ def fake_operations(
     inactive_service: str | None = None,
     http_status: Callable[[str, float], int] | None = None,
     sleep: Callable[[float], None] | None = None,
+    docker_root: str = "/mnt/runtime/docker",
 ) -> RuntimeBootSmokeOperations:
     def run(
         arguments: list[str],
         **kwargs: object,
     ) -> subprocess.CompletedProcess[str]:
+        if arguments[:2] == ["findmnt", "--json"]:
+            return subprocess.CompletedProcess(
+                arguments,
+                0,
+                json.dumps(
+                    {
+                        "filesystems": [
+                            {
+                                "target": "/mnt/runtime",
+                                "source": "/dev/nvme1n1",
+                                "fstype": "ext4",
+                            }
+                        ]
+                    }
+                ),
+                "",
+            )
+        if arguments == ["docker", "info", "--format", "{{json .DockerRootDir}}"]:
+            return subprocess.CompletedProcess(arguments, 0, json.dumps(docker_root), "")
         service = arguments[-1]
         active_state = "inactive" if service == inactive_service else "active"
         return subprocess.CompletedProcess(arguments, 0, active_state + "\n", "")
@@ -484,6 +533,18 @@ def stage_status(document: dict[str, object], name: str) -> str:
             status = stage.get("status")
             assert isinstance(status, str)
             return status
+    raise AssertionError(f"missing stage: {name}")
+
+
+def stage_details(document: dict[str, object], name: str) -> dict[str, object]:
+    stages = document["stages"]
+    assert isinstance(stages, list)
+    for stage in stages:
+        assert isinstance(stage, dict)
+        if stage.get("name") == name:
+            details = stage.get("details")
+            assert isinstance(details, dict)
+            return details
     raise AssertionError(f"missing stage: {name}")
 
 

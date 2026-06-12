@@ -9,6 +9,7 @@ public struct VMRuntimeConfig: Codable {
     public var kernelPath: String
     public var initialRamdiskPath: String?
     public var diskPath: String?
+    public var runtimeDataDiskPath: String?
     public var cloudInitPath: String?
     public var kernelCommandLine: String
     public var network: NetworkConfig
@@ -24,6 +25,7 @@ public struct VMRuntimeConfig: Codable {
         kernelPath: String,
         initialRamdiskPath: String?,
         diskPath: String?,
+        runtimeDataDiskPath: String? = nil,
         cloudInitPath: String?,
         kernelCommandLine: String,
         network: NetworkConfig,
@@ -38,6 +40,7 @@ public struct VMRuntimeConfig: Codable {
         self.kernelPath = kernelPath
         self.initialRamdiskPath = initialRamdiskPath
         self.diskPath = diskPath
+        self.runtimeDataDiskPath = runtimeDataDiskPath
         self.cloudInitPath = cloudInitPath
         self.kernelCommandLine = kernelCommandLine
         self.network = network
@@ -65,7 +68,12 @@ public struct VMRuntimeConfig: Codable {
     }
 
     public static func validateBootFilePaths(_ config: VMRuntimeConfig, fileStore: RuntimeFileReading) throws {
-        for path in [config.kernelPath, config.initialRamdiskPath, config.diskPath].compactMap({ $0 }) {
+        for path in [
+            config.kernelPath,
+            config.initialRamdiskPath,
+            config.diskPath,
+            config.runtimeDataDiskPath,
+        ].compactMap({ $0 }) {
             let url = URL(fileURLWithPath: path)
             let state = fileStore.pathState(at: url)
             switch state {

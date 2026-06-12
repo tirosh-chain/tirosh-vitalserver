@@ -255,6 +255,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         runtimeDirectory.appendingPathComponent("vm-disk.img")
     }
 
+    public var runtimeDataDisk: URL {
+        runtimeDirectory.appendingPathComponent("runtime-data.img")
+    }
+
     public var guestRuntimeConfig: URL {
         deployDirectory.appendingPathComponent("runtime-config.json")
     }

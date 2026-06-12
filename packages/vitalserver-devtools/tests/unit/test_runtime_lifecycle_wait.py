@@ -709,6 +709,8 @@ def write_rootfs_manifest(
     stage_statuses = stage_statuses or {}
     stages = []
     for name in (
+        "runtime-data-mount",
+        "runtime-data-configure",
         "docker-service",
         "runtime-version",
         "docker-image-load",

@@ -105,6 +105,7 @@ config/vm-build.toml
 | 다운로드 경로 | `~/.tirosh/vitalserver-vm/runtime/downloads/` |
 | 실행 경로 | `~/.tirosh/vitalserver-vm/runtime/` |
 | root disk target size | `8G` (8 GiB) |
+| runtime data disk size | `16G` (16 GiB) |
 
 root disk 크기를 바꾸려면:
 
@@ -114,7 +115,7 @@ VM_ROOTFS_SIZE=32G make devtools/download
 
 `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. 예를 들어 `32G`는 32 GiB root disk target size입니다.
 
-`8G`는 packaging 효율과 air-gapped runtime package 설치 여유를 함께 고려한 golden rootfs base 크기입니다. 설치 wizard에서 사용자가 고르는 runtime disk 크기와 다릅니다. 설치 시에는 `rootfs-base.raw.gz`를 `vm-disk.img`로 풀고, 기본 32 GiB 또는 사용자가 고른 크기로 sparse disk를 확장합니다. 설치 후 disk 크기는 증가만 허용합니다.
+`8G`는 packaging 효율과 air-gapped runtime package 설치 여유를 함께 고려한 golden rootfs base 크기입니다. 설치 wizard에서 사용자가 고르는 rootfs runtime disk 크기와 다릅니다. 설치 시에는 `rootfs-base.raw.gz`를 `vm-disk.img`로 풀고, 기본 32 GiB 또는 사용자가 고른 크기로 sparse disk를 확장합니다. Docker/containerd runtime state는 별도 `runtime-data.img`를 `/mnt/runtime`에 mount해서 사용합니다. 설치 후 rootfs disk 크기는 증가만 허용하고, runtime data disk는 rootfs update로 덮어쓰지 않습니다.
 
 ## Cloud-Init
 
@@ -384,6 +385,20 @@ Golden image는 여러 병원과 여러 Mac mini/Mac Studio에 복제될 수 있
 공통으로 배포해도 되는 값은 OS, kernel, initrd, base rootfs, container image, compose/nginx template입니다.
 
 Redis data, Vital 파일, bed/VR mapping 같은 runtime state는 image에 넣지 않고 운영 volume에만 저장합니다.
+
+## Runtime Data Disk
+
+제품 runtime은 rootfs disk와 runtime data disk를 분리합니다.
+
+| Disk | 파일 | Guest mount | 역할 |
+|---|---|---|---|
+| rootfs | `runtime/vm-disk.img` | `/` | OS, guest tools, bootstrap, product baseline |
+| runtime data | `runtime/runtime-data.img` | `/mnt/runtime` | Docker data-root, containerd root, service runtime state |
+| shared data | VirtioFS share | `/mnt/tirosh` | deploy bundle, run documents, Host/Guest exchange |
+
+Fresh install은 `runtime-data.img`가 없으면 16 GiB sparse disk를 생성합니다. Guest bootstrap은 Docker를 시작하기 전에 `tirosh-vitalserver-runtime-data-prepare`를 실행해 `LABEL=vital-runtime` filesystem을 mount하고, Docker `data-root`를 `/mnt/runtime/docker`로 설정합니다. Runtime boot smoke는 `/mnt/runtime` mount와 `docker info`의 `DockerRootDir`이 이 contract와 일치하지 않으면 실패합니다.
+
+The runtime data filesystem label must stay within the ext filesystem label limit, currently 16 bytes. A longer label is rejected at build config planning time because ext tooling truncates it and makes mount proof ambiguous.
 
 ## Signing
 

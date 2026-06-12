@@ -108,6 +108,7 @@ extension RuntimeLifecycle {
             context: RuntimeInstallVMDiskProvisioningContext(
                 rootfsBase: rootfsBase,
                 vmDisk: vmDisk,
+                runtimeDataDisk: installedPaths.runtimeDataDisk,
                 gunzipExecutable: Constants.Commands.gunzip,
                 truncateExecutable: Constants.Commands.truncate,
                 freeSpaceMarginBytes: Constants.Runtime.freeSpaceMarginBytes
@@ -136,7 +137,10 @@ extension RuntimeLifecycle {
                 runRequired: runRequired,
                 log: log
             )
-        ).provision(diskGiB: settings.diskGiB)
+        ).provision(
+            diskGiB: settings.diskGiB,
+            runtimeDataDiskGiB: Constants.Defaults.defaultRuntimeDataDiskGiB
+        )
     }
 
     func configureInstalledVMRuntime(_ settings: RuntimeInstallSettings) throws {

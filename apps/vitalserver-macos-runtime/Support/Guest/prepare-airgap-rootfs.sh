@@ -9,6 +9,7 @@ RUNTIME_DIR="${MOUNT_POINT}/run"
 READY_FILE="${RUNTIME_DIR}/rootfs-ready"
 RUNTIME_MANIFEST_FILE="${RUNTIME_DIR}/rootfs-runtime-manifest.json"
 FAILURE_FILE="${RUNTIME_DIR}/rootfs-failure.json"
+IDENTITY_CLEANUP_FILE="${RUNTIME_DIR}/rootfs-identity-cleanup.json"
 APT_PLAN_TEXT_FILE="${RUNTIME_DIR}/rootfs-apt-plan.txt"
 APT_PLAN_JSON_FILE="${RUNTIME_DIR}/rootfs-apt-plan.json"
 APT_INSTALLED_TEXT_FILE="${RUNTIME_DIR}/rootfs-apt-installed.txt"
@@ -441,6 +442,43 @@ stop_rootfs_runtime_services() {
   rm -rf /run/docker /run/containerd /var/run/docker.sock /var/lib/docker/tmp/*
 }
 
+cleanup_rootfs_identity_state() {
+  ROOTFS_STAGE="rootfs-identity-cleanup"
+  rm -f /etc/ssh/ssh_host_* || true
+  rm -rf /var/lib/cloud/instances /var/lib/cloud/instance /var/lib/cloud/data || true
+  rm -rf /var/log/journal/* /run/log/journal/* || true
+  journalctl --rotate >/dev/null 2>&1 || true
+  journalctl --vacuum-time=1s >/dev/null 2>&1 || true
+  truncate -s 0 /etc/machine-id
+  rm -f /var/lib/dbus/machine-id || true
+  python3 - "${IDENTITY_CLEANUP_FILE}" <<'PY'
+import json
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+path = Path(sys.argv[1])
+proof = {
+    "schemaVersion": 1,
+    "status": "passed",
+    "cleanedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "machineIdEmpty": Path("/etc/machine-id").read_text(encoding="utf-8") == "",
+    "sshHostKeys": sorted(str(item) for item in Path("/etc/ssh").glob("ssh_host_*")),
+    "cloudInitInstanceExists": Path("/var/lib/cloud/instance").exists()
+        or Path("/var/lib/cloud/instances").exists(),
+}
+if not proof["machineIdEmpty"]:
+    proof["status"] = "failed"
+if proof["sshHostKeys"]:
+    proof["status"] = "failed"
+if proof["cloudInitInstanceExists"]:
+    proof["status"] = "failed"
+path.write_text(json.dumps(proof, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+if proof["status"] != "passed":
+    raise SystemExit(1)
+PY
+}
+
 install_guest_tools_for_rootfs_smoke() {
   local wheel
 
@@ -471,9 +509,10 @@ stop_rootfs_runtime_services
 ROOTFS_STAGE="systemd-enable"
 systemctl enable docker
 systemctl enable avahi-daemon
+cleanup_rootfs_identity_state
 
 ROOTFS_STAGE="ready-marker"
-python3 - "${RUNTIME_MANIFEST_FILE}" "${READY_FILE}" <<'PY'
+python3 - "${RUNTIME_MANIFEST_FILE}" "${READY_FILE}" "${IDENTITY_CLEANUP_FILE}" <<'PY'
 import json
 import subprocess
 import sys
@@ -482,7 +521,9 @@ from pathlib import Path
 
 manifest_path = Path(sys.argv[1])
 ready_path = Path(sys.argv[2])
+identity_cleanup_path = Path(sys.argv[3])
 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+identity_cleanup = json.loads(identity_cleanup_path.read_text(encoding="utf-8"))
 
 
 def command_output(command):
@@ -498,6 +539,10 @@ ready_path.write_text(
             "readyAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "docker": command_output(["docker", "--version"]),
             "compose": command_output(["docker", "compose", "version"]),
+            "identityCleanup": {
+                "status": identity_cleanup.get("status"),
+                "proof": str(identity_cleanup_path),
+            },
             "manifest": str(manifest_path),
             "pythonVenv": "ready",
         },

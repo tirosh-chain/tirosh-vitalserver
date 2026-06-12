@@ -25,9 +25,15 @@ from tirosh_vitalserver.devtools.config.docker_images import load_docker_images_
 from tirosh_vitalserver.devtools.config.guest_deploy import (
     load_guest_deploy_config,
 )
-from tirosh_vitalserver.devtools.config.guest_image import load_ubuntu_image_config
+from tirosh_vitalserver.devtools.config.guest_image import (
+    load_guest_runtime_config,
+    load_ubuntu_image_config,
+)
 from tirosh_vitalserver.devtools.config.paths import resolve_path
-from tirosh_vitalserver.devtools.core.guest_image import ubuntu_download_cache_key
+from tirosh_vitalserver.devtools.core.guest_image import (
+    RuntimeDataDiskConfig,
+    ubuntu_download_cache_key,
+)
 from tirosh_vitalserver.devtools.core.guest_services import (
     guest_deploy_plan,
 )
@@ -107,10 +113,13 @@ def stage_guest_deployment(
     )
     stage_guest_deploy(plan)
     ubuntu_config = load_ubuntu_image_config(config)
+    runtime_config = load_guest_runtime_config(config)
     stage_rootfs_input_metadata(
         deploy_dir=deploy_dir,
         base_url=ubuntu_config.base_url,
         apt_snapshot=ubuntu_config.apt_snapshot,
+        runtime_data=runtime_config.runtime_data_disk,
+        docker_platform=docker_config.platform,
         run_id=input.rootfs_run_id,
     )
     ensure_vm_data_dirs(plan)
@@ -123,6 +132,8 @@ def stage_rootfs_input_metadata(
     deploy_dir: Path,
     base_url: str,
     apt_snapshot: str,
+    runtime_data: RuntimeDataDiskConfig,
+    docker_platform: str,
     run_id: str | None = None,
 ) -> None:
     metadata = deploy_dir / "build-metadata" / "rootfs-input.json"
@@ -134,6 +145,17 @@ def stage_rootfs_input_metadata(
         ),
         "runtimeBootSmoke": {
             "enabled": False,
+        },
+        "dockerImages": {
+            "platform": docker_platform,
+        },
+        "runtimeData": {
+            "diskImageName": runtime_data.disk_image_name,
+            "diskSize": runtime_data.disk_size,
+            "filesystemLabel": runtime_data.filesystem_label,
+            "mountPath": runtime_data.mount_path,
+            "dockerDataRoot": runtime_data.docker_data_root,
+            "containerdRoot": runtime_data.containerd_root,
         },
         "ubuntu": {
             "aptSnapshot": apt_snapshot,

@@ -17,6 +17,7 @@ tirosh-vitalserver-health = "tirosh_guest_tools.adapters.inbound.cli:vitalserver
 tirosh-vitalserver-compose = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_compose"
 tirosh-vitalserver-rootfs-smoke = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_rootfs_smoke"
 tirosh-vitalserver-runtime-boot-smoke = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_runtime_boot_smoke"
+tirosh-vitalserver-runtime-data-prepare = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_runtime_data_prepare"
 tirosh-vitalserver-command-poller = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_command_poller"
 tirosh-vitalserver-redis-backup = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_redis_backup"
 tirosh-vitalserver-redis-restore = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_redis_restore"
