@@ -435,6 +435,12 @@ verify_runtime_packages() {
   docker compose version >/dev/null
 }
 
+stop_rootfs_runtime_services() {
+  ROOTFS_STAGE="rootfs-runtime-service-cleanup"
+  systemctl stop docker.service docker.socket containerd.service >/dev/null 2>&1 || true
+  rm -rf /run/docker /run/containerd /var/run/docker.sock /var/lib/docker/tmp/*
+}
+
 install_guest_tools_for_rootfs_smoke() {
   local wheel
 
@@ -461,6 +467,7 @@ verify_runtime_packages
 install_guest_tools_for_rootfs_smoke
 ROOTFS_STAGE="rootfs-smoke"
 tirosh-vitalserver-rootfs-smoke
+stop_rootfs_runtime_services
 ROOTFS_STAGE="systemd-enable"
 systemctl enable docker
 systemctl enable avahi-daemon

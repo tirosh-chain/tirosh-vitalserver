@@ -4,7 +4,7 @@
 import Contracts
 
 public extension Constants {
-    static let launcherVersion = "0.1.13"
+    static let launcherVersion = "0.1.14"
     static let launcherChannel = UpdateBundleChannel(
         rawValue: "dev"
     )

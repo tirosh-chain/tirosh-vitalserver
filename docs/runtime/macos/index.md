@@ -17,6 +17,7 @@
 | [Packaging and Update](packaging.md) | `make dist/pkg/dev`, `make dist/dmg/dev`, PKG 설치 흐름, install settings, update bundle 계약 확인 |
 | [Update](update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 확인 |
 | [Runtime](runtime.md) | VM boot asset, cloud-init, guest bootstrap, data sharing, network mode, identity/signing 정책 확인 |
+| [Golden Rootfs Compile RCA](golden-rootfs-compile-rca.md) | golden rootfs compile 장기 실패의 원인, 증거, 해결책, 예방 규칙 확인 |
 | [Troubleshooting](../../troubleshooting/index.md) | 502, cloud-init 재실행, disk full, update 실패, bridged entitlement, stale pid 같은 문제 확인 |
 
 ## 핵심 구조
@@ -86,4 +87,5 @@ make runtime/down
 | 패키지 산출물과 설치/update 계약 | [Packaging and Update](packaging.md) |
 | update 적용과 rollback 계약 | [Update](update.md) |
 | VM runtime 동작과 네트워크 정책 | [Runtime](runtime.md) |
+| golden rootfs compile RCA | [Golden Rootfs Compile RCA](golden-rootfs-compile-rca.md) |
 | 장애 증상과 조치 | [Troubleshooting](../../troubleshooting/index.md) |

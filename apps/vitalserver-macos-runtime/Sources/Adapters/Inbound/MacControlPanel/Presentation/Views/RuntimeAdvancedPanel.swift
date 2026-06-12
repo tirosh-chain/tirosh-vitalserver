@@ -81,10 +81,10 @@ struct RuntimeAdvancedPanel: View {
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { date in
             uptimeNow = date
         }
-        .onChange(of: viewModel.settings.proxyPort) { _ in
+        .onChange(of: viewModel.settings.proxyPort) {
             viewModel.syncAdvertisedURLWithProxyIfNeeded()
         }
-        .onChange(of: viewModel.settings.runtimeControlPort) { _ in
+        .onChange(of: viewModel.settings.runtimeControlPort) {
             viewModel.syncAdvertisedURLWithProxyIfNeeded()
         }
     }

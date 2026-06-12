@@ -23,7 +23,7 @@ struct RuntimeLogPanel: View {
                 .onAppear {
                     scrollToLatestLog(proxy, animated: false)
                 }
-                .onChange(of: viewModel.logText) { _ in
+                .onChange(of: viewModel.logText) {
                     if viewModel.logStreaming {
                         scrollToLatestLog(proxy)
                     }
@@ -95,7 +95,7 @@ struct RuntimeLogPanel: View {
             }
             .frame(width: 210)
             .labelsHidden()
-            .onChange(of: viewModel.selectedLogSource) { _ in
+            .onChange(of: viewModel.selectedLogSource) {
                 Task { await viewModel.refreshLogs() }
             }
         }
@@ -116,7 +116,7 @@ struct RuntimeLogPanel: View {
             }
             .frame(width: 120)
             .labelsHidden()
-            .onChange(of: viewModel.logLineLimit) { _ in
+            .onChange(of: viewModel.logLineLimit) {
                 Task { await viewModel.refreshLogs() }
             }
         }
@@ -129,7 +129,7 @@ struct RuntimeLogPanel: View {
                 .toggleStyle(.checkbox)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .onChange(of: viewModel.logStreaming) { isLive in
+                .onChange(of: viewModel.logStreaming) { _, isLive in
                     if isLive {
                         Task { await viewModel.refreshLogs() }
                     }

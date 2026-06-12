@@ -35,6 +35,7 @@ EDGE_READY_TIMEOUT_SECONDS = 600.0
 EDGE_READY_POLL_SECONDS = 3.0
 EDGE_READY_HTTP_TIMEOUT_SECONDS = 5.0
 COMPOSE_CLEANUP_TIMEOUT_SECONDS = 180.0
+DOCKER_PRUNE_TIMEOUT_SECONDS = 300.0
 DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS = 30.0
 MINIMUM_DISK_FREE_KIB = 1024 * 1024
 
@@ -121,7 +122,7 @@ class RootfsSmokeRun:
             "compose": "",
         }
     )
-    cleanup: dict[str, str] = field(
+    cleanup: dict[str, Any] = field(
         default_factory=lambda: {
             "status": RootfsSmokeStatus.NOT_RUN.value,
             "message": "cleanup has not run yet",
@@ -535,22 +536,103 @@ def cleanup_compose(run: RootfsSmokeRun) -> bool:
             "message": "test fault injected cleanup failure",
         }
         return False
-    completed = run.operations.run(
-        compose_command(run, ["down", "-v", "--remove-orphans"]),
-        check=False,
-        timeout_seconds=COMPOSE_CLEANUP_TIMEOUT_SECONDS,
+    commands = [
+        (
+            "compose-down",
+            compose_command(run, ["down", "-v", "--remove-orphans", "--rmi", "all"]),
+            COMPOSE_CLEANUP_TIMEOUT_SECONDS,
+        ),
+        (
+            "docker-builder-prune",
+            ["docker", "builder", "prune", "--all", "--force"],
+            DOCKER_PRUNE_TIMEOUT_SECONDS,
+        ),
+        (
+            "docker-system-prune",
+            ["docker", "system", "prune", "--all", "--force", "--volumes"],
+            DOCKER_PRUNE_TIMEOUT_SECONDS,
+        ),
+    ]
+    results: list[dict[str, Any]] = []
+    for name, command, timeout_seconds in commands:
+        completed = run.operations.run(
+            command,
+            check=False,
+            timeout_seconds=timeout_seconds,
+        )
+        results.append(cleanup_command_result(name, completed))
+        if completed.returncode != 0:
+            run.cleanup = {
+                "status": RootfsSmokeStatus.CLEANUP_FAILED.value,
+                "message": f"{name} failed: {command_output(completed)}",
+                "commands": results,
+            }
+            return False
+    verification = verify_docker_store_is_empty(run)
+    results.extend(verification)
+    failed_verification = next(
+        (result for result in verification if result["status"] != "passed"),
+        None,
     )
-    if completed.returncode == 0:
+    if failed_verification is not None:
         run.cleanup = {
-            "status": RootfsSmokeStatus.PASSED.value,
-            "message": "compose down -v completed",
+            "status": RootfsSmokeStatus.CLEANUP_FAILED.value,
+            "message": f"{failed_verification['name']} failed: {failed_verification['message']}",
+            "commands": results,
         }
-        return True
+        return False
     run.cleanup = {
-        "status": RootfsSmokeStatus.CLEANUP_FAILED.value,
+        "status": RootfsSmokeStatus.PASSED.value,
+        "message": "compose stack and Docker store cleanup completed",
+        "commands": results,
+    }
+    return True
+
+
+def cleanup_command_result(
+    name: str,
+    completed: subprocess.CompletedProcess[str],
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "status": "passed" if completed.returncode == 0 else "failed",
+        "exitCode": completed.returncode,
         "message": command_output(completed),
     }
-    return False
+
+
+def verify_docker_store_is_empty(run: RootfsSmokeRun) -> list[dict[str, Any]]:
+    checks = [
+        ("docker-containers-empty", ["docker", "ps", "--all", "--quiet"]),
+        ("docker-images-empty", ["docker", "images", "--all", "--quiet"]),
+        ("docker-volumes-empty", ["docker", "volume", "ls", "--quiet"]),
+    ]
+    results: list[dict[str, Any]] = []
+    for name, command in checks:
+        completed = run.operations.run(
+            command,
+            check=False,
+            timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+        )
+        output = completed.stdout.strip()
+        if completed.returncode != 0:
+            status = "failed"
+            message = command_output(completed)
+        elif output:
+            status = "failed"
+            message = output
+        else:
+            status = "passed"
+            message = ""
+        results.append(
+            {
+                "name": name,
+                "status": status,
+                "exitCode": completed.returncode,
+                "message": message,
+            }
+        )
+    return results
 
 
 def compose_services(run: RootfsSmokeRun) -> list[dict[str, Any]]:

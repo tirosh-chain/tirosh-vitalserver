@@ -151,7 +151,7 @@ struct RuntimeObservabilityPanel: View {
             }
             .frame(width: 170)
             .labelsHidden()
-            .onChange(of: viewModel.runtimeEventPeriod) { _ in
+            .onChange(of: viewModel.runtimeEventPeriod) {
                 Task { await viewModel.refreshRuntimeEvents() }
             }
         }
@@ -172,7 +172,7 @@ struct RuntimeObservabilityPanel: View {
             }
             .frame(width: 230)
             .labelsHidden()
-            .onChange(of: viewModel.runtimeEventFilter) { _ in
+            .onChange(of: viewModel.runtimeEventFilter) {
                 Task { await viewModel.refreshRuntimeEvents() }
             }
         }
@@ -193,7 +193,7 @@ struct RuntimeObservabilityPanel: View {
             }
             .frame(width: 100)
             .labelsHidden()
-            .onChange(of: viewModel.runtimeEventLimit) { _ in
+            .onChange(of: viewModel.runtimeEventLimit) {
                 Task { await viewModel.refreshRuntimeEvents() }
             }
         }

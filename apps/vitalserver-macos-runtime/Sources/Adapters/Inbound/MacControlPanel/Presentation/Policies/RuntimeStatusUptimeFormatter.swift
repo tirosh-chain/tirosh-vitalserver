@@ -22,7 +22,7 @@ public struct RuntimeStatusUptimeFormatter {
                 }
             }
         }
-        guard let seconds = liveSeconds ?? observedSeconds ?? seconds else {
+        guard let seconds = observedSeconds ?? seconds ?? liveSeconds else {
             return nil
         }
         let days = seconds / 86_400

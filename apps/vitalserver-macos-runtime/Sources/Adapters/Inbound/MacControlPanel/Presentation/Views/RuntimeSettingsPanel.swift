@@ -19,8 +19,7 @@ struct RuntimeSettingsPanel: View {
                         AppConstants.Labels.cpu,
                         value: $viewModel.settings.cpuCount,
                         range: cpuCountRange,
-                        suffix: AppConstants.Labels.unitVCPU,
-                        requiresRestart: true
+                        suffix: AppConstants.Labels.unitVCPU
                     )
                     .disabled(!viewModel.capabilities.canEditVMResources)
                     settingSlider(
@@ -28,8 +27,7 @@ struct RuntimeSettingsPanel: View {
                         value: $viewModel.settings.memoryGiB,
                         range: memoryRange,
                         step: AppConstants.SettingsLimits.memoryStepGiB,
-                        suffix: AppConstants.Labels.unitGiB,
-                        requiresRestart: true
+                        suffix: AppConstants.Labels.unitGiB
                     )
                     .disabled(!viewModel.capabilities.canEditVMResources)
                     settingHelp(AppConstants.Labels.memoryAllocationHelp)
@@ -38,8 +36,7 @@ struct RuntimeSettingsPanel: View {
                         value: $viewModel.settings.diskGiB,
                         range: diskSizeRange,
                         step: AppConstants.SettingsLimits.diskStepGiB,
-                        suffix: AppConstants.Labels.unitGiB,
-                        requiresRestart: true
+                        suffix: AppConstants.Labels.unitGiB
                     )
                     .disabled(!viewModel.capabilities.canEditVMResources)
                     settingWarning(AppConstants.Labels.diskIncreaseOnlyHelp(viewModel.settings.minimumDiskGiB))
@@ -47,7 +44,6 @@ struct RuntimeSettingsPanel: View {
                 settingsSection(AppConstants.Labels.sectionNetwork) {
                     settingRow(AppConstants.Labels.mode) {
                         networkModeSelector
-                        restartRequiredBadge
                     }
                     settingHelp(networkModeHelp)
                     settingPortField(AppConstants.Labels.proxyPort, value: $viewModel.settings.proxyPort)
@@ -60,8 +56,7 @@ struct RuntimeSettingsPanel: View {
                 settingsSection(AppConstants.Labels.sectionStorage) {
                     settingDirectoryField(
                         AppConstants.Labels.vitalFilesDirectory,
-                        text: $viewModel.settings.vitalFilesDirectory,
-                        requiresRestart: true
+                        text: $viewModel.settings.vitalFilesDirectory
                     )
                 }
                 settingsSection(AppConstants.Labels.sectionRedisData) {
@@ -97,10 +92,8 @@ struct RuntimeSettingsPanel: View {
                             .disabled(!viewModel.capabilities.canControlRuntimeServices)
                         settingHelp(AppConstants.Labels.preventSystemSleepHelp)
                     }
-                    settingToggle(AppConstants.Labels.restartServicesAfterSave, isOn: $viewModel.settings.restartAfterSave)
-                        .disabled(!viewModel.capabilities.canControlRuntimeServices)
                 }
-                restartRequirementNotice
+                restartRuntimeSection
                 applyActionRow
             }
             .frame(maxWidth: 760, alignment: .leading)
@@ -110,16 +103,16 @@ struct RuntimeSettingsPanel: View {
             clampCPUCountToSystemLimit()
             clampMemoryToSystemLimit()
         }
-        .onChange(of: viewModel.settings.cpuCount) { _ in
+        .onChange(of: viewModel.settings.cpuCount) {
             clampCPUCountToSystemLimit()
         }
-        .onChange(of: viewModel.settings.memoryGiB) { _ in
+        .onChange(of: viewModel.settings.memoryGiB) {
             clampMemoryToSystemLimit()
         }
-        .onChange(of: viewModel.settings.proxyPort) { _ in
+        .onChange(of: viewModel.settings.proxyPort) {
             viewModel.syncAdvertisedURLWithProxyIfNeeded()
         }
-        .onChange(of: viewModel.settings.runtimeControlPort) { _ in
+        .onChange(of: viewModel.settings.runtimeControlPort) {
             viewModel.syncAdvertisedURLWithProxyIfNeeded()
         }
         .alert(AppConstants.Actions.restartVMRuntime, isPresented: $showingRestartVMRuntimeConfirmation) {
@@ -206,17 +199,60 @@ struct RuntimeSettingsPanel: View {
             && !viewModel.isBusy
     }
 
-    private var restartRequirementNotice: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: restartNotice.requiresRestart ? "arrow.clockwise.circle.fill" : "checkmark.circle")
-                .foregroundStyle(restartNotice.requiresRestart ? .orange : .secondary)
-                .imageScale(.medium)
-                .frame(width: 18)
-            Text(restartNotice.message)
-                .font(.caption)
-                .foregroundStyle(restartNotice.requiresRestart ? .primary : .secondary)
-                .fixedSize(horizontal: false, vertical: true)
+    private var restartRuntimeSection: some View {
+        settingsSection(AppConstants.Labels.vmRuntimeRestart) {
+            VStack(alignment: .leading, spacing: 8) {
+                settingToggle(AppConstants.Labels.restartServicesAfterSave, isOn: $viewModel.settings.restartAfterSave)
+                    .disabled(!viewModel.capabilities.canControlRuntimeServices)
+                HStack(alignment: .top, spacing: 8) {
+                    restartRequirementIndicator
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(restartNotice.message)
+                            .font(.caption)
+                            .foregroundStyle(restartNotice.requiresRestart ? .primary : .secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if savedRestartNotice.requiresRestart && savedRestartNotice.message != restartNotice.message {
+                            Text(savedRestartNotice.message)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Spacer()
+                    if canRestartSavedVMRuntime {
+                        Button(AppConstants.Actions.restartVMRuntime) {
+                            showingRestartVMRuntimeConfirmation = true
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    private var restartRequirementIndicator: some View {
+        Button {
+            if canRestartSavedVMRuntime {
+                showingRestartVMRuntimeConfirmation = true
+            }
+        } label: {
+            Label(
+                restartNotice.requiresRestart || savedRestartNotice.requiresRestart
+                    ? AppConstants.Labels.requiresVMRestart
+                    : AppConstants.StatusText.noVMRuntimeRestartRequired,
+                systemImage: restartNotice.requiresRestart || savedRestartNotice.requiresRestart
+                    ? "arrow.clockwise.circle.fill"
+                    : "checkmark.circle"
+            )
+            .font(.caption)
+            .foregroundStyle(restartNotice.requiresRestart || savedRestartNotice.requiresRestart ? .orange : .secondary)
+            .labelStyle(.titleAndIcon)
+            .fixedSize()
+        }
+        .buttonStyle(.plain)
+        .disabled(!canRestartSavedVMRuntime)
+        .help(canRestartSavedVMRuntime
+            ? AppConstants.StatusText.restartVMRuntimeConfirmation
+            : restartNotice.message)
     }
 
     private var applyActionRow: some View {
@@ -307,14 +343,10 @@ struct RuntimeSettingsPanel: View {
         value: Binding<Int>,
         range: ClosedRange<Int>,
         step: Int = 1,
-        suffix: String = "",
-        requiresRestart: Bool = false
+        suffix: String = ""
     ) -> some View {
         settingRow(label) {
             settingSliderControl(value: value, range: range, step: step, suffix: suffix)
-            if requiresRestart {
-                restartRequiredBadge
-            }
         }
     }
 
@@ -342,8 +374,7 @@ struct RuntimeSettingsPanel: View {
 
     private func settingDirectoryField(
         _ label: String,
-        text: Binding<String>,
-        requiresRestart: Bool = false
+        text: Binding<String>
     ) -> some View {
         settingRow(label) {
             HStack(spacing: 8) {
@@ -356,28 +387,8 @@ struct RuntimeSettingsPanel: View {
                     viewModel.chooseVitalFilesDirectory()
                 }
                 .disabled(viewModel.isBusy || !viewModel.capabilities.canOpenLocalFiles)
-                if requiresRestart {
-                    restartRequiredBadge
-                }
             }
         }
-    }
-
-    private var restartRequiredBadge: some View {
-        Button {
-            showingRestartVMRuntimeConfirmation = true
-        } label: {
-            Label(AppConstants.Labels.requiresVMRestart, systemImage: "arrow.clockwise")
-                .font(.caption2)
-                .foregroundStyle(.orange)
-                .labelStyle(.titleAndIcon)
-                .fixedSize()
-        }
-        .buttonStyle(.plain)
-        .disabled(!canRestartSavedVMRuntime)
-        .help(canRestartSavedVMRuntime
-            ? AppConstants.StatusText.restartVMRuntimeConfirmation
-            : restartNotice.message)
     }
 
     private func settingPortField(_ label: String, value: Binding<Int>) -> some View {

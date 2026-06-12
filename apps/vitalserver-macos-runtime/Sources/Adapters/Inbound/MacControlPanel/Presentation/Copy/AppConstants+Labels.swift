@@ -183,6 +183,7 @@ public extension AppConstants {
         public static let automaticRecoveryHelp = "Automatically restarts the VM or network proxy when VitalServer is not ready. Disable only for troubleshooting."
         public static let preventSystemSleep = "Keep Mac awake for VRecorder traffic"
         public static let preventSystemSleepHelp = "Prevents idle system sleep while VitalServer services run so the host proxy, VM, and VRecorder TCP streams stay online. The screen can still lock. Manual Sleep, lid close, shutdown, or managed power policy can still disconnect the network."
+        public static let vmRuntimeRestart = "VM runtime restart"
         public static let restartServicesAfterSave = "Restart VM runtime when required"
         public static let resetAdminPassword = "Reset admin password"
         public static let newAdminPassword = "New admin password"

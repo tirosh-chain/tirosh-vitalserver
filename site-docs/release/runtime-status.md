@@ -171,6 +171,7 @@ retention 변경은 VM runtime restart requirement를 만들지 않습니다.
 `Restart VM runtime when required`가 꺼져 있고 VM runtime restart가 필요한 설정을 저장하면 상태는
 `configure` operation의 degraded message로 "VM runtime restart required"를 표시할 수 있습니다.
 이 경우 설정 저장 실패가 아니라, 현재 실행 중인 VM에는 아직 반영되지 않았다는 뜻입니다.
+Settings의 `VM runtime restart` 영역에서 pending restart를 확인하고 `Restart VM Runtime`으로 적용합니다.
 Status의 data directory는 saved settings가 아니라 현재 VM runtime에 적용된 Vital files directory를
 기준으로 표시해야 합니다. Vital files directory를 저장한 직후 VM restart 전인데 Status 경로가 새
 경로로 바뀌면 saved settings와 applied runtime settings가 섞인 것입니다.

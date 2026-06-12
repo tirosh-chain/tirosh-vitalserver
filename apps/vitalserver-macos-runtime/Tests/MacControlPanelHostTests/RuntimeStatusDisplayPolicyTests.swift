@@ -526,7 +526,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(actionNeeded?.severity, .critical)
     }
 
-    func testUptimeUsesDockerStartedAtWithNanosecondFraction() {
+    func testUptimePrefersExplicitSecondsOverDockerStartedAt() {
         let status = RuntimeStatus(
             runtimeInstalled: true,
             vmServiceLoaded: true,
@@ -546,6 +546,35 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     service: "app",
                     startedAt: "2026-05-26T04:35:35.123456789Z",
                     uptimeSeconds: 1
+                ),
+            ]
+        )
+        let now = ISO8601DateFormatter().date(from: "2026-05-26T04:35:40Z")!
+
+        let items = policy.healthDetails(status: status, observation: observation, now: now)
+
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:01")
+    }
+
+    func testUptimeUsesDockerStartedAtWithNanosecondFractionWhenExplicitSecondsAreMissing() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .healthy,
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: true,
+            containerLogsBytes: 1,
+            composeServices: [
+                RuntimeContainerServiceObservation(
+                    service: "app",
+                    startedAt: "2026-05-26T04:35:35.123456789Z"
                 ),
             ]
         )

@@ -140,7 +140,7 @@ def test_rootfs_smoke_fails_when_cleanup_fails(tmp_path: Path) -> None:
     write_apt_installed(context.apt_installed_path)
 
     def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        if arguments[-3:] == ["down", "-v", "--remove-orphans"]:
+        if arguments[-5:] == ["down", "-v", "--remove-orphans", "--rmi", "all"]:
             return subprocess.CompletedProcess(arguments, 1, "", "cleanup failed")
         return completed(arguments)
 
@@ -150,6 +150,58 @@ def test_rootfs_smoke_fails_when_cleanup_fails(tmp_path: Path) -> None:
     document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
     assert document["cleanup"]["status"] == "cleanup-failed"
     assert "cleanup failed" in document["cleanup"]["message"]
+
+
+def test_rootfs_smoke_prunes_docker_state_before_success(tmp_path: Path) -> None:
+    context = smoke_context(tmp_path)
+    write_metadata(context.deploy_dir)
+    write_apt_plan(context.apt_plan_path)
+    write_apt_installed(context.apt_installed_path)
+    commands: list[list[str]] = []
+
+    def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(arguments)
+        return completed(arguments)
+
+    run_rootfs_smoke(context=context, operations=fake_operations(run=run))
+
+    assert compose_command_suffix(commands, ["down", "-v", "--remove-orphans", "--rmi", "all"])
+    assert ["docker", "builder", "prune", "--all", "--force"] in commands
+    assert ["docker", "system", "prune", "--all", "--force", "--volumes"] in commands
+    assert ["docker", "ps", "--all", "--quiet"] in commands
+    assert ["docker", "images", "--all", "--quiet"] in commands
+    assert ["docker", "volume", "ls", "--quiet"] in commands
+
+    document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert document["cleanup"]["status"] == "passed"
+    cleanup_commands = document["cleanup"]["commands"]
+    assert [item["name"] for item in cleanup_commands] == [
+        "compose-down",
+        "docker-builder-prune",
+        "docker-system-prune",
+        "docker-containers-empty",
+        "docker-images-empty",
+        "docker-volumes-empty",
+    ]
+
+
+def test_rootfs_smoke_fails_when_docker_images_remain_after_cleanup(tmp_path: Path) -> None:
+    context = smoke_context(tmp_path)
+    write_metadata(context.deploy_dir)
+    write_apt_plan(context.apt_plan_path)
+    write_apt_installed(context.apt_installed_path)
+
+    def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if arguments == ["docker", "images", "--all", "--quiet"]:
+            return subprocess.CompletedProcess(arguments, 0, "image-id\n", "")
+        return completed(arguments)
+
+    with pytest.raises(SystemExit):
+        run_rootfs_smoke(context=context, operations=fake_operations(run=run))
+
+    document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert document["cleanup"]["status"] == "cleanup-failed"
+    assert "docker-images-empty failed" in document["cleanup"]["message"]
 
 
 def test_rootfs_smoke_records_missing_input_metadata(tmp_path: Path) -> None:
@@ -355,3 +407,7 @@ def stage_details(document: dict[str, object], name: str) -> dict[str, object]:
             assert isinstance(details, dict)
             return details
     raise AssertionError(f"missing stage: {name}")
+
+
+def compose_command_suffix(commands: list[list[str]], suffix: list[str]) -> bool:
+    return any(command[-len(suffix) :] == suffix for command in commands)
