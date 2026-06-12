@@ -49,6 +49,17 @@ ROOTFS_REQUIRED_STAGES = (
     "edge-ready",
 )
 
+ROOTFS_TERMINAL_LOG_PATTERNS = (
+    "Internal error: Oops:",
+    "Kernel panic - not syncing",
+    "rcu: INFO: rcu_preempt detected stalls",
+    "Unable to handle kernel NULL pointer dereference",
+    "Remounting filesystem read-only",
+    "Read-only file system",
+    "invalid ELF header",
+    "Input/output error",
+)
+
 RUNTIME_BOOT_SMOKE_REQUIRED_STAGES = (
     "bootstrap-result",
     "runtime-state",
@@ -338,6 +349,7 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
                 f"{marker_result['message']}; {manifest_result['message']}"
             )
         fail_if_runtime_lifecycle_failed(input.vm_home)
+        fail_if_rootfs_launcher_log_has_terminal_failure(input.vm_home)
         time.sleep(3)
     raise SystemExit(
         f"error: timed out waiting for {marker}: last={last_state}\n"
@@ -552,6 +564,28 @@ def fail_if_runtime_lifecycle_stopped(vm_home: str | Path, operation: str) -> No
         raise SystemExit(
             f"error: VM lifecycle stopped while waiting for {operation}\n"
             f"Check VM launcher log: {launcher_log(vm_home)}"
+        )
+
+
+def fail_if_rootfs_launcher_log_has_terminal_failure(vm_home: str | Path) -> None:
+    log_file = launcher_log(vm_home)
+    if not log_file.exists():
+        return
+    try:
+        log_text = log_file.read_text(encoding="utf-8", errors="replace")
+    except OSError as error:
+        raise SystemExit(
+            "error: failed to read VM launcher log while waiting for rootfs: "
+            f"{log_file}: {error}"
+        ) from error
+
+    for pattern in ROOTFS_TERMINAL_LOG_PATTERNS:
+        if pattern not in log_text:
+            continue
+        raise SystemExit(
+            "error: VM launcher log shows terminal guest failure while waiting "
+            f"for rootfs marker: pattern={pattern!r}\n"
+            f"Check VM launcher log: {log_file}"
         )
 
 
