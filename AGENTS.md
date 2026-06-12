@@ -26,6 +26,10 @@ Do not use fallback at contract, repository, domain, recovery, update, API comma
 
 Absence, decode failure, permission failure, and dependency failure must not become empty/default success.
 
+Build/test/devtools probes may fail fast on external symptoms, but they must not convert logs, missing files, stale documents, or probe failures into domain/runtime state.
+
+Optional behavior must be explicitly configured; missing or unreadable configuration must be reported as unavailable/error, not silently treated as disabled.
+
 Allowed fallback is limited to display labels, input presets, documented config defaults, explicit migrations, and reported degraded operation.
 
 ## Purity Boundaries
