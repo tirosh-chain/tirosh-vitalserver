@@ -1,8 +1,8 @@
 .PHONY: internal/vm/nginx/artifact internal/vm/nginx/bundle internal/vm/docker/images
 .PHONY: internal/vm/require-release-branch
-.PHONY: internal/vm/pkg internal/vm/pkg/dev internal/vm/pkg/release
+.PHONY: internal/vm/pkg internal/vm/pkg/dev internal/vm/pkg/dev/compile internal/vm/pkg/release
 .PHONY: internal/vm/reset-installer internal/vm/reset-installer/dev internal/vm/reset-installer/release
-.PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/dev internal/vm/dmg/release
+.PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/dev internal/vm/dmg/dev/compile internal/vm/dmg/release
 .PHONY: internal/vm/pkg/clean internal/vm/pkg/install internal/vm/pkg/uninstall/dev
 .PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release
 .PHONY: internal/vm/image-update internal/vm/image-update/dev
@@ -11,17 +11,22 @@
 .PHONY: internal/vm/update/verify/release
 .PHONY: internal/vm/image-update/verify internal/vm/image-update/verify/dev
 .PHONY: internal/vm/image-update/verify/release
-.PHONY: internal/vm/airgap-rootfs internal/vm/golden-rootfs internal/vm/golden-rootfs/negative internal/vm/golden-rootfs/runtime-smoke
+.PHONY: internal/vm/airgap-rootfs internal/vm/golden-rootfs internal/vm/golden-rootfs/compile internal/vm/golden-rootfs/negative internal/vm/golden-rootfs/runtime-smoke
 
+# Public update bundle knobs.
 VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false
 VM_UPDATE_BUNDLE_KIND ?= product-update
 VM_UPDATE_TARGET_PLATFORM ?=
 VM_UPDATE_ROOTFS_BASE ?=
 
+# Public package artifact knobs.
 VM_NGINX_SOURCE_BIN ?= /opt/homebrew/opt/nginx/bin/nginx
 VM_NGINX_BIN ?=
+
+# Internal package artifact paths.
 VM_NGINX_ARTIFACT_BIN := .artifacts/nginx/macos/bin/nginx
 
+# Internal package rootfs cache paths.
 VM_PKG_BUILD_DIR ?= $(call VM_TOML_VALUE,workspace.build_dir)
 VM_PKG_ROOTFS_CACHE ?= $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz
 VM_PKG_ROOTFS_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/rootfs-base.contract
@@ -30,12 +35,15 @@ VM_PKG_ROOTFS_CONTRACT_INPUTS := \
 	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/bootstrap.sh
 VM_PKG_ROOTFS_CONTRACT_FINGERPRINT := $(shell cksum $(VM_PKG_ROOTFS_CONTRACT_INPUTS) | cksum | awk '{print $$1 "-" $$2}')
 
-VM_RECREATE_GOLDEN_ROOTFS ?= false
+# Internal golden rootfs workspaces.
 VM_GOLDEN_HOME := .tmp/vitalserver-vm-golden
 VM_GOLDEN_RUNTIME_DIR := $(VM_GOLDEN_HOME)/runtime
+
+# Diagnostic/CI golden rootfs workspaces.
 VM_GOLDEN_NEGATIVE_HOME ?= .tmp/vitalserver-vm-golden-negative
 VM_GOLDEN_RUNTIME_SMOKE_HOME ?= .tmp/vitalserver-vm-golden-runtime-smoke
 
+# Public install/uninstall knobs.
 VM_INSTALL_SETTINGS ?=
 VM_UNINSTALL_ARGS ?=
 
@@ -70,7 +78,7 @@ internal/vm/golden-rootfs:
 	if [ -s "$(VM_PKG_ROOTFS_CONTRACT_STAMP)" ]; then \
 		rootfs_contract_actual="$$(cat "$(VM_PKG_ROOTFS_CONTRACT_STAMP)")"; \
 	fi; \
-	if [ "$(VM_RECREATE_GOLDEN_ROOTFS)" = "false" ] \
+	if [ "$(VM_RECREATE_ROOTFS)" = "false" ] \
 		&& [ -s "$(VM_PKG_ROOTFS_CACHE)" ] \
 		&& [ -s "$(VM_GOLDEN_RUNTIME_DIR)/Image" ] \
 		&& [ -s "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" ] \
@@ -78,7 +86,7 @@ internal/vm/golden-rootfs:
 		printf "Reusing golden rootfs cache: %s\n" "$(VM_PKG_ROOTFS_CACHE)"; \
 	else \
 		rootfs_run_id="$$(uuidgen | tr '[:upper:]' '[:lower:]')"; \
-		if [ "$(VM_RECREATE_GOLDEN_ROOTFS)" != "false" ]; then \
+		if [ "$(VM_RECREATE_ROOTFS)" != "false" ]; then \
 			printf "Recreating golden rootfs cache: %s\n" "$(VM_PKG_ROOTFS_CACHE)"; \
 		elif [ -s "$(VM_PKG_ROOTFS_CACHE)" ]; then \
 			if [ -z "$${rootfs_contract_actual}" ]; then \
@@ -89,7 +97,7 @@ internal/vm/golden-rootfs:
 		fi; \
 		$(MAKE) internal/vm/airgap-rootfs \
 			VM_HOME="$(abspath $(VM_GOLDEN_HOME))" \
-			VM_RECREATE_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)" \
+			VM_RECREATE_ROOTFS="$(VM_RECREATE_ROOTFS)" \
 			VM_ROOTFS_RUN_ID="$${rootfs_run_id}"; \
 		test -s "$(VM_GOLDEN_HOME)/data/run/rootfs-ready" || { \
 			printf "missing air-gapped rootfs marker after prepare: %s\n" "$(VM_GOLDEN_HOME)/data/run/rootfs-ready" >&2; \
@@ -103,6 +111,9 @@ internal/vm/golden-rootfs:
 		mkdir -p "$(dir $(VM_PKG_ROOTFS_CONTRACT_STAMP))"; \
 		printf "%s\n" "$${rootfs_contract_expected}" >"$(VM_PKG_ROOTFS_CONTRACT_STAMP)"; \
 	fi
+
+internal/vm/golden-rootfs/compile:
+	$(MAKE) internal/vm/golden-rootfs VM_RECREATE_ROOTFS=true
 
 internal/vm/golden-rootfs/negative:
 	@set -e; \
@@ -231,11 +242,14 @@ internal/vm/pkg/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/pkg/dev:
 	$(MAKE) internal/vm/pkg VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
+internal/vm/pkg/dev/compile: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+internal/vm/pkg/dev/compile:
+	$(MAKE) internal/vm/pkg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
+
 internal/vm/pkg/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
-internal/vm/pkg/release: VM_RECREATE_GOLDEN_ROOTFS := true
 internal/vm/pkg/release:
 	$(MAKE) internal/vm/require-release-branch
-	$(MAKE) internal/vm/pkg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_GOLDEN_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)"
+	$(MAKE) internal/vm/pkg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
 
 internal/vm/dmg: internal/vm/golden-rootfs pwa/build
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-dmg \
@@ -253,11 +267,14 @@ internal/vm/dmg/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/dmg/dev:
 	$(MAKE) internal/vm/dmg VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
+internal/vm/dmg/dev/compile: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+internal/vm/dmg/dev/compile:
+	$(MAKE) internal/vm/dmg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
+
 internal/vm/dmg/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
-internal/vm/dmg/release: VM_RECREATE_GOLDEN_ROOTFS := true
 internal/vm/dmg/release:
 	$(MAKE) internal/vm/require-release-branch
-	$(MAKE) internal/vm/dmg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_GOLDEN_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)"
+	$(MAKE) internal/vm/dmg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
 
 internal/vm/reset-installer:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-reset-installer-pkg \
@@ -313,10 +330,9 @@ internal/vm/image-update/dev:
 	$(MAKE) internal/vm/image-update VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
 internal/vm/image-update/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
-internal/vm/image-update/release: VM_RECREATE_GOLDEN_ROOTFS := true
 internal/vm/image-update/release:
 	$(MAKE) internal/vm/require-release-branch
-	$(MAKE) internal/vm/image-update VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_GOLDEN_ROOTFS="$(VM_RECREATE_GOLDEN_ROOTFS)"
+	$(MAKE) internal/vm/image-update VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
 
 internal/vm/update/verify:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle-verify \

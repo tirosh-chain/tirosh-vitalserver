@@ -7,7 +7,7 @@
 
 ## Symptoms
 
-`make internal/vm/golden-rootfs VM_RECREATE_GOLDEN_ROOTFS=true` 또는
+`make devtools/golden-rootfs/compile`, `make dist/dmg/dev/compile`, 또는
 `make dist/dmg/dev` 중 golden rootfs 준비가 불안정하게 실패합니다. 대표 증상은 아래처럼 보입니다.
 
 ```text

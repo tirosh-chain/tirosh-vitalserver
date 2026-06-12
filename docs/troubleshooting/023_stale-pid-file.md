@@ -1,4 +1,4 @@
-# 023 `make vm-status`가 stale pid file을 표시
+# 023 `make runtime/status`가 stale pid file을 표시
 
 > ID: TS-023  
 > Category: Local development  
@@ -20,8 +20,8 @@ VM process가 이미 종료되었지만 pid file이 남아 있습니다. sandbox
 일반 shell에서 다시 실행하면 stale pid file이 정리됩니다.
 
 ```sh
-make vm-status
-make vm-status
+make runtime/status
+make runtime/status
 ```
 
 첫 번째 호출에서 stale을 감지하고, 두 번째 호출에서 `stopped`가 보여야 합니다.

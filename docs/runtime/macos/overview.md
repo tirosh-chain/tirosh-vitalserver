@@ -51,14 +51,14 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 
 | 시나리오 | 사용자가 보는 것 | 개발/운영자가 쓰는 것 | 세부 문서 |
 |---|---|---|---|
-| 신규 현장 설치 | `VitalServerHelper-<version>.dmg` 안의 installer package | `make vm-dmg-release` | [Packaging and Update](packaging.md) |
-| 폐쇄망 Product Update | offline product update bundle tarball | `make vm-update-bundle-release`, Helper app Update 탭 | [Packaging and Update](packaging.md) |
-| VM Image Update | offline VM image update bundle tarball | `make vm-rootfs-update-bundle-release`, Danger Zone | [Packaging and Update](packaging.md), [Update](update.md) |
+| 신규 현장 설치 | `VitalServerHelper-<version>.dmg` 안의 installer package | `make dist/dmg/release` | [Packaging and Update](packaging.md) |
+| 폐쇄망 Product Update | offline product update bundle tarball | `make dist/update/release`, Helper app Update 탭 | [Packaging and Update](packaging.md) |
+| VM Image Update | offline VM image update bundle tarball | `make dist/image-update/release`, Danger Zone | [Packaging and Update](packaging.md), [Update](update.md) |
 | 온라인 업데이트 | 같은 update bundle 계약, download source만 온라인 | release hardening 대상 | [Packaging and Update](packaging.md) |
-| 설치 후 상태 확인 | `/Applications/VitalServer Helper.app` Status 탭 | `make vm-installed-health`, `vitalserver-vm runtime health` | [Runtime](runtime.md), [Troubleshooting](../../troubleshooting/index.md) |
+| 설치 후 상태 확인 | `/Applications/VitalServer Helper.app` Status 탭 | `make dist/installed/health`, `vitalserver-vm runtime health` | [Runtime](runtime.md), [Troubleshooting](../../troubleshooting/index.md) |
 | 운영 설정 변경 | Helper app Settings/Advanced 탭 | `vitalserver-vm runtime configure ... --restart` | [Runtime](runtime.md) |
 | 장애 대응 | Helper app Status/Logs/Advanced/Danger Zone, uninstaller | watchdog log, runtime status, troubleshooting guide | [Troubleshooting](../../troubleshooting/index.md) |
-| 개발 VM PoC | package 없이 VM/proxy 직접 실행 | `make vm-up`, `make vm-health`, `make vm-down` | [Runtime](runtime.md) |
+| 개발 VM PoC | package 없이 VM/proxy 직접 실행 | `make runtime/up`, `make runtime/health`, `make runtime/down` | [Runtime](runtime.md) |
 | 구조 판단/리뷰 | 왜 host proxy인지, 책임이 어디인지 | ADR, architecture 문서 | [Architecture](architecture.md), [ADR 0001](../../adr/0001-macos-host-proxy-for-vrecorder-ip.md), [ADR 0002](../../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md), [ADR 0003](../../adr/0003-helper-layer-and-component-version-model.md), [ADR 0004](../../adr/0004-product-update-and-vm-image-update-contract.md) |
 
 ## 문서 지도
@@ -71,7 +71,7 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 | [ADR 0002](../../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeControlClient boundary를 볼 때 |
 | [ADR 0003](../../adr/0003-helper-layer-and-component-version-model.md) | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image layer와 version model을 볼 때 |
 | [ADR 0004](../../adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 계약을 볼 때 |
-| [Packaging and Update](packaging.md) | `make vm-pkg-dev`/`make vm-pkg-release`, `make vm-dmg-dev`/`make vm-dmg-release`, update bundle, install settings, release artifact 흐름을 볼 때 |
+| [Packaging and Update](packaging.md) | `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/dmg/dev`/`make dist/dmg/release`, update bundle, install settings, release artifact 흐름을 볼 때 |
 | [Update](update.md) | bundle 적용 과정, 보존/변경되는 항목, guest-side activation, rollback 실패 조건을 볼 때 |
 | [Runtime](runtime.md) | VM boot asset, cloud-init, guest bootstrap, data sharing, network mode, identity/signing 정책을 볼 때 |
 | [Troubleshooting](../../troubleshooting/index.md) | 502, stale pid, cloud-init 재실행, disk full, update 실패, package cleanup, bridged entitlement 문제를 볼 때 |
@@ -81,26 +81,27 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 ### 제품 설치물 만들기
 
 ```sh
-make vm-dmg-dev
+make dist/dmg/dev
 ```
 
 clean golden rootfs부터 다시 만들어 release 검증에 가깝게 빌드하려면:
 
 ```sh
-make vm-dmg-release
+make dist/dmg/dev/compile
+make dist/dmg/release
 ```
 
 ### `.pkg`만 만들기
 
 ```sh
-make vm-pkg-dev
+make dist/pkg/dev
 ```
 
 ### update bundle 만들기
 
 ```sh
-make vm-update-bundle-release
-make vm-update-bundle-verify-release
+make dist/update/release
+make dist/update/verify/release
 ```
 
 생성 위치:
@@ -109,7 +110,7 @@ make vm-update-bundle-verify-release
 dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz
 ```
 
-Product Update bundle은 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor/VM Driver tools, host nginx bundle, Service Stack/guest deploy 같은 artifact를 `.tar.gz`로 묶습니다. `make vm-update-bundle-release`는 rootfs를 포함하지 않는 `product-update` bundle을 만듭니다. `guest-deploy` 변경은 기본 migration과 guest activation 경로를 통해 VM 내부에 반영됩니다. VM Image/rootfs 자체를 바꿔야 하는 경우에만 `make vm-rootfs-update-bundle-release`를 사용하며, 이 흐름은 Danger Zone의 `vm-image-update` 대상입니다. VM Image bundle도 기존 mutable `vm-disk.img`를 자동 교체하지 않습니다.
+Product Update bundle은 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor/VM Driver tools, host nginx bundle, Service Stack/guest deploy 같은 artifact를 `.tar.gz`로 묶습니다. `make dist/update/release`는 rootfs를 포함하지 않는 `product-update` bundle을 만듭니다. `guest-deploy` 변경은 기본 migration과 guest activation 경로를 통해 VM 내부에 반영됩니다. VM Image/rootfs 자체를 바꿔야 하는 경우에만 `make dist/image-update/release`를 사용하며, 이 흐름은 Danger Zone의 `vm-image-update` 대상입니다. VM Image bundle도 기존 mutable `vm-disk.img`를 자동 교체하지 않습니다.
 
 ## 레이어와 버전 모델
 
@@ -153,17 +154,17 @@ Hotfix, service-only update, updater bridge update는 별도 bundle kind를 만�
 ### 개발용 설치 테스트
 
 ```sh
-make vm-pkg-install
-make vm-installed-health
-make vm-pkg-uninstall-dev
+make dist/install/dev
+make dist/installed/health
+make dist/uninstall/dev
 ```
 
 ### package 없이 VM 직접 실행
 
 ```sh
-make vm-up
-make vm-health
-make vm-down
+make runtime/up
+make runtime/health
+make runtime/down
 ```
 
 ## 산출물 기준

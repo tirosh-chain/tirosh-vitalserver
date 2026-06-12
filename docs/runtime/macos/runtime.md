@@ -85,7 +85,7 @@ VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make devtools/init
 PoC에서는 Git에 Linux image를 넣지 않습니다.
 
 ```sh
-make runtime/download
+make devtools/download
 ```
 
 설정 파일:
@@ -94,7 +94,7 @@ make runtime/download
 config/vm-build.toml
 ```
 
-`make runtime/download`는 build-machine 전용 Python package인
+`make devtools/download`는 build-machine 전용 Python package인
 `packages/vitalserver-devtools`의 `vitalserver-devtools ubuntu` CLI를 호출합니다.
 
 | 항목 | 기본값 |
@@ -108,7 +108,7 @@ config/vm-build.toml
 root disk 크기를 바꾸려면:
 
 ```sh
-VM_ROOTFS_SIZE=32G make runtime/download
+VM_ROOTFS_SIZE=32G make devtools/download
 ```
 
 `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. 예를 들어 `32G`는 32 GiB root disk target size입니다.

@@ -10,7 +10,7 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | 현장 적용 UI는? | Product Update는 Helper app의 Update 탭, VM Image Update는 Danger Zone |
 | CLI backend는? | `/usr/local/bin/vitalserver-vm runtime apply-bundle` |
 | 검증 기준은? | `manifest.json`, `checksums.txt`, artifact sha256/size |
-| Product Update bundle에 rootfs가 들어가나? | 아니다. `make runtime/update-bundle`은 rootfs를 제외한다 |
+| Product Update bundle에 rootfs가 들어가나? | 아니다. `make dist/update/release`는 rootfs를 제외한다 |
 | rootfs 포함 bundle은 언제 쓰나? | VM Image/rootfs 자체를 교체해야 할 때 `make dist/image-update/release`를 사용한다 |
 | mutable VM disk는 교체하나? | 기본적으로 교체하지 않는다 |
 | Redis/Vital files 데이터는 보존하나? | 보존 대상이다 |

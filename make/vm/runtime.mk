@@ -1,14 +1,25 @@
 .PHONY: internal/vm/up internal/vm/up-bridged internal/vm/down internal/vm/prepare internal/vm/start internal/vm/start/detached internal/vm/start/bridged internal/vm/stop internal/vm/status internal/vm/clean internal/vm/ip internal/vm/wait/ip internal/vm/wait/http internal/vm/wait/rootfs-ready internal/vm/wait/runtime-boot-smoke internal/vm/wait/stopped internal/vm/proxy/start internal/vm/health internal/vm/e2e/smoke internal/vm/coverage
 .PHONY: internal/vm/version-source internal/vm/build internal/vm/sign internal/vm/sign/bridged internal/vm/bridged/preflight internal/vm/init internal/vm/download internal/vm/cloud-init internal/vm/stage internal/vm/interfaces internal/vm/network/shared internal/vm/network/bridged
 
+# Public runtime/devtools knobs.
 VM_ROOTFS_SIZE ?= 8G
+
+# Internal orchestration: package targets pass this from the golden rootfs compile policy.
 VM_RECREATE_ROOTFS ?= false
+
+# Diagnostic/CI wait knobs.
 VM_WAIT_TIMEOUT ?= 300
 VM_HTTP_WAIT_TIMEOUT ?= 600
 VM_ROOTFS_READY_TIMEOUT ?= 300
+
+# Internal orchestration: generated per golden rootfs compile run.
 VM_ROOTFS_RUN_ID ?=
+
+# Diagnostic/CI fault injection knobs.
 VM_ROOTFS_SMOKE_FAIL_STAGE ?=
 VM_ROOTFS_SMOKE_FAIL_CLEANUP ?= false
+
+# Diagnostic/CI runtime boot smoke knobs.
 VM_RUNTIME_BOOT_SMOKE ?= false
 VM_RUNTIME_BOOT_SMOKE_RUN_ID ?=
 

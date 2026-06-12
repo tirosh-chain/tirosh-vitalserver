@@ -609,16 +609,16 @@ administrator privilege로 호출합니다.
 | `/usr/local/bin/vitalserver-vm` | 현재 local control binary. Updater, Supervisor, VM Driver 명령을 제공 |
 | `/usr/local/bin/tirosh-vitalserver-uninstall` | 제거 source of truth, Helper/Terminal/MDM 공통 backend |
 
-현재 개발용 app bundle은 `make vm-app`으로 생성합니다.
+현재 개발용 app bundle은 `make devtools/app`으로 생성합니다.
 
 ```sh
-make vm-app
+make devtools/app
 open ".tmp/VitalServer Helper.app"
 ```
 
 제품 DMG는 drag-and-drop app wrapper가 아니라 installer pkg를 전달합니다.
-`make vm-pkg`는 Helper app을 `/Applications/VitalServer Helper.app` payload로 포함하고,
-`make vm-dmg`는 DMG root에 `Install VitalServer Helper.pkg`만 배치합니다.
+`make dist/pkg/dev`는 Helper app을 `/Applications/VitalServer Helper.app` payload로 포함하고,
+`make dist/dmg/dev`는 DMG root에 `Install VitalServer Helper.pkg`만 배치합니다.
 
 현재 배포 기준은 unsigned입니다. `.pkg`와 `.dmg`에 Developer ID 서명/notarization을 적용하지 않습니다. 단, nginx binary와 dylib는 `install_name_tool`로 load path를 수정하므로 실행 가능한 Mach-O 상태를 위해 ad-hoc signing(`codesign --sign -`)만 수행합니다.
 

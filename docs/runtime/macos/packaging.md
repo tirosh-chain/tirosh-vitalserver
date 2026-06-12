@@ -521,7 +521,7 @@ install settings JSON
 
 | artifact type | 생성 여부 | Swift verify | Swift apply |
 |---|---:|---:|---:|
-| `rootfs-base` | `vm-rootfs-update-bundle-release`에서만 포함 | 예 | `rootfs-base.raw.gz` 교체 |
+| `rootfs-base` | `make dist/image-update/release`에서만 포함 | 예 | `rootfs-base.raw.gz` 교체 |
 | `app-bundle` | 기본 포함 | 예 | `/Applications/VitalServer Helper.app` 교체 |
 | `runtime-tools` | 기본 포함 | 예 | `/usr/local/bin` Updater/Supervisor/VM Driver tools 교체 |
 | `nginx-bundle` | 기본 포함 | 예 | host nginx bundle 교체 |
@@ -645,18 +645,21 @@ make dist/pkg/dev
 
 Fresh install bootstrap도 Docker image bundle을 로드한 직후 `redis:3.2.12-alpine` smoke container를 `--network none`으로 실행합니다. 이 단계가 실패하면 `bootstrap-result.json`은 `guest-bootstrap-docker-runtime-failed` reason code를 기록하고 compose up으로 진행하지 않습니다. Docker version 출력이나 compose binary 존재만으로는 rootfs가 준비됐다고 보지 않습니다.
 
-반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. cache가 없으면 `make dist/pkg/dev`가 자동으로 한 번 생성합니다. release 검증처럼 clean rootfs를 반드시 다시 만들려면:
+반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. cache가 없으면 `make dist/pkg/dev`가 자동으로 한 번 생성합니다. VM build를 제품 compile로 보고 clean golden rootfs부터 다시 만들려면 profile target을 사용합니다.
+
+```sh
+make dist/pkg/dev/compile
+make dist/dmg/dev/compile
+```
+
+release 검증처럼 clean rootfs와 release branch guard를 함께 적용하려면:
 
 ```sh
 make dist/pkg/release
 make dist/dmg/release
 ```
 
-동일한 동작을 변수로 직접 지정할 수도 있습니다.
-
-```sh
-VM_RECREATE_GOLDEN_ROOTFS=true make dist/pkg/dev
-```
+VM compile 여부는 profile target이 소유합니다. 동일 의미의 긴 `VAR=value` 호환 명령은 유지하지 않습니다.
 
 ## Update Bundle
 
@@ -691,7 +694,7 @@ update bundle도 압축이 필요합니다. 다만 압축 대상은 update artif
 | Service Stack / guest deploy bundle | `guest-deploy.tar.gz` | 기본 포함 | VM shared deploy script/config, compose, container image bundle 교체 |
 | migration | executable files | 기본 포함 | cloud-init seed refresh 등 설치된 VM/runtime 상태 변경 |
 | Docker images | `vitalserver-images.tar.gz` | 필요 시 포함 | container image 갱신이 있을 때만 무겁게 포함 |
-| VM Image / rootfs base | `rootfs-base.raw.gz` | `vm-rootfs-update-bundle-release`에서만 포함 | 신규 설치 또는 base OS/package 변경용. 기존 `vm-disk.img`를 자동 교체하지 않음 |
+| VM Image / rootfs base | `rootfs-base.raw.gz` | `make dist/image-update/release`에서만 포함 | 신규 설치 또는 base OS/package 변경용. 기존 `vm-disk.img`를 자동 교체하지 않음 |
 
 따라서 “bundle을 만든다”는 것은 보통 작은 product artifact를 압축해 묶는다는 뜻입니다. rootfs나 Docker image 갱신이 없는 Product Update bundle은 package build보다 훨씬 가벼워야 합니다.
 

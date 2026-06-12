@@ -16,6 +16,12 @@ This repository is a monorepo. Changes must respect package boundaries and avoid
 
 Documentation is part of the product. Important architectural decisions, repeated failure patterns, and troubleshooting lessons must be written close to the relevant context. Troubleshooting entries should explain symptom, cause, fix direction, and prevention principle.
 
+Repeated operational failures must be promoted into troubleshooting docs with symptom, cause, fix direction, and prevention.
+
+VM build is product compile: kernel panic, guest boot failure, rootfs proof failure, and runtime smoke failure are compile failures to expose explicitly, not conditions to hide or bypass.
+
+VM compile failures must report explicit proof context: runId when available, failing stage, failure reason or matched pattern, and relevant artifact/log paths.
+
 Prefer one focused change per commit. When code changes introduce or clarify an operational rule, update the related documentation in the same change.
 
 ## Fallback Boundaries
@@ -27,6 +33,8 @@ Do not use fallback at contract, repository, domain, recovery, update, API comma
 Absence, decode failure, permission failure, and dependency failure must not become empty/default success.
 
 Build/test/devtools probes may fail fast on external symptoms, but they must not convert logs, missing files, stale documents, or probe failures into domain/runtime state.
+
+Build/devtools may classify external logs as compile/test failure evidence, but those classifications must stay in diagnostics and must not become runtime/domain state.
 
 Optional behavior must be explicitly configured; missing or unreadable configuration must be reported as unavailable/error, not silently treated as disabled.
 

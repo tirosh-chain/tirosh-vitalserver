@@ -12,7 +12,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 
 | ID | 증상 | Category | Status | 먼저 볼 문서 |
 |---|---|---|---|---|
-| TS-001 | boot asset이 없다고 실패 | Local development | archived | [`make vm-start`가 boot asset 없음으로 실패](001_boot-asset-missing.md) |
+| TS-001 | boot asset이 없다고 실패 | Local development | archived | [`make devtools/start`가 boot asset 없음으로 실패](001_boot-asset-missing.md) |
 | TS-002 | VM IP가 `192.168.64.x` | Network | active | [VM IP가 `192.168.64.x`로 보임](002_vm-shared-nat-ip.md) |
 | TS-003 | bridged mode가 `Killed: 9` | Network | archived | [bridged mode가 `Killed: 9`로 종료됨](003_bridged-mode-killed-9.md) |
 | TS-004 | Docker 설치 중 disk full | Guest bootstrap | resolved | [`docker.io` 설치 중 `No space left on device`](004_docker-install-disk-full.md) |
@@ -34,7 +34,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-020 | app container health가 오래 starting | Guest containers | active | [app container가 오래 `health: starting` 상태](020_app-container-health-starting.md) |
 | TS-021 | Ubuntu arm64 `flash-kernel` 실패 | Guest bootstrap | resolved | [Ubuntu arm64 cloud image에서 `flash-kernel`이 실패](021_ubuntu-flash-kernel-failure.md) |
 | TS-022 | 설치된 runtime binary에 virtualization entitlement가 없음 | Packaging | resolved | [설치된 runtime binary에 virtualization entitlement가 없음](022_missing-virtualization-entitlement.md) |
-| TS-023 | stale pid file | Local development | archived | [`make vm-status`가 stale pid file을 표시](023_stale-pid-file.md) |
+| TS-023 | stale pid file | Local development | archived | [`make runtime/status`가 stale pid file을 표시](023_stale-pid-file.md) |
 | TS-024 | pkg 설치가 `Running package scripts...`에서 실패 | Packaging | active | [pkg 설치가 `Running package scripts...`에서 실패함](024_pkg-postinstall-timeout.md) |
 | TS-025 | update 후 VM disk attachment invalid | Update | active | [update 후 VM disk attachment가 invalid로 실패](025_update-vm-disk-attachment-race.md) |
 | TS-026 | PWA가 Runtime Control API unreachable 표시 | Runtime Control PWA | active | [PWA가 Runtime Control API unreachable을 표시](026_pwa-runtime-control-api-unreachable.md) |

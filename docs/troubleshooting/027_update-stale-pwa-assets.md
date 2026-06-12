@@ -31,7 +31,7 @@ ls -la "/Applications/VitalServer Helper.app/Contents/Resources/runtime-control-
 
 조치:
 
-- update bundle 생성은 `make vm-update-bundle-*` 경로를 사용합니다. 이 target은 `pwa-build`를 선행 실행합니다.
+- update bundle 생성은 `make dist/update/*` 경로를 사용합니다. 이 target은 `pwa/build`를 선행 실행합니다.
 - 먼저 Runtime Events에서 `operation=apply-bundle`의 `step failed`와 이어지는 `operation=rollback` 여부를 확인합니다.
   rollback이 있었다면 runtime health가 다시 healthy여도 최신 PWA가 적용된 것이 아닙니다.
 - 적용 후 `curl http://127.0.0.1:18321/`의 asset hash가 `apps/vitalserver-runtime-pwa/dist/index.html`과 같은지 확인합니다.

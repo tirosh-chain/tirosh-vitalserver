@@ -44,7 +44,7 @@ include make/vm.mk
 .PHONY: \
 	dist/dmg/release dist/pkg/release dist/update/release \
 	dist/update/verify/release dist/image-update/release \
-	dist/image-update/verify/release dist/dmg/dev dist/pkg/dev \
+	dist/image-update/verify/release dist/dmg/dev dist/dmg/dev/compile dist/pkg/dev dist/pkg/dev/compile \
 	dist/update/dev dist/update/verify/dev \
 	dist/image-update/dev dist/image-update/verify/dev \
 	dist/reset-installer/dev dist/reset-installer/release \
@@ -57,7 +57,7 @@ include make/vm.mk
 	devtools/version-source devtools/build devtools/app devtools/nginx/artifact devtools/nginx/bundle \
 	devtools/docker/images devtools/sign devtools/sign/bridged devtools/bridged/preflight \
 	devtools/init devtools/download devtools/cloud-init devtools/stage \
-	devtools/airgap-rootfs devtools/golden-rootfs devtools/golden-rootfs/runtime-smoke devtools/start devtools/start/detached \
+	devtools/airgap-rootfs devtools/golden-rootfs devtools/golden-rootfs/compile devtools/golden-rootfs/runtime-smoke devtools/start devtools/start/detached \
 	devtools/golden-rootfs/negative \
 	devtools/wait/ip devtools/wait/http devtools/package/clean
 
@@ -68,7 +68,9 @@ dist/update/verify/release: internal/vm/update/verify/release
 dist/image-update/release: internal/vm/image-update/release
 dist/image-update/verify/release: internal/vm/image-update/verify/release
 dist/dmg/dev: internal/vm/dmg/dev
+dist/dmg/dev/compile: internal/vm/dmg/dev/compile
 dist/pkg/dev: internal/vm/pkg/dev
+dist/pkg/dev/compile: internal/vm/pkg/dev/compile
 dist/update/dev: internal/vm/update/dev
 dist/update/verify/dev: internal/vm/update/verify/dev
 dist/image-update/dev: internal/vm/image-update/dev
@@ -147,6 +149,7 @@ devtools/cloud-init: internal/vm/cloud-init
 devtools/stage: internal/vm/stage
 devtools/airgap-rootfs: internal/vm/airgap-rootfs
 devtools/golden-rootfs: internal/vm/golden-rootfs
+devtools/golden-rootfs/compile: internal/vm/golden-rootfs/compile
 devtools/golden-rootfs/negative: internal/vm/golden-rootfs/negative
 devtools/golden-rootfs/runtime-smoke: internal/vm/golden-rootfs/runtime-smoke
 devtools/start: internal/vm/start
@@ -228,6 +231,7 @@ help/dist:
 	@printf "\n"
 	@printf "SYNOPSIS\n"
 	@printf "  make dist/{pkg|dmg|update|image-update}/{dev|release} [VM_RELEASE_BRANCH=main]\n"
+	@printf "  make dist/{pkg|dmg}/dev/compile\n"
 	@printf "  make dist/reset-installer/{dev|release}\n"
 	@printf "  make dist/{update|image-update}/verify/{dev|release}\n"
 	@printf "  make dist/{install|uninstall}/dev [VM_UNINSTALL_ARGS=--clean]\n"
@@ -235,8 +239,10 @@ help/dist:
 	@printf "\n"
 	@printf "ARTIFACT TARGETS\n"
 	@printf "  dist/pkg/dev                  Build development pkg\n"
+	@printf "  dist/pkg/dev/compile          Build development pkg and recompile the VM golden rootfs\n"
 	@printf "  dist/pkg/release              Build release pkg from clean golden rootfs\n"
 	@printf "  dist/dmg/dev                  Build development installer dmg\n"
+	@printf "  dist/dmg/dev/compile          Build development dmg and recompile the VM golden rootfs\n"
 	@printf "  dist/dmg/release              Build release installer dmg from clean golden rootfs\n"
 	@printf "  dist/update/dev               Build development product update bundle\n"
 	@printf "  dist/update/release           Build release product update bundle\n"
@@ -261,7 +267,12 @@ help/dist:
 	@printf "VARIABLES\n"
 	@printf "  VM_RELEASE_BRANCH=main        Override the release branch guard\n"
 	@printf "  VM_COMPRESSION_THREADS=N      Use pigz with N compression threads when available\n"
+	@printf "  VM_CODESIGN_IDENTITY=-        Codesign identity for local unsigned/dev artifacts\n"
+	@printf "  VM_NGINX_BIN=/path/nginx      Use a prepared nginx artifact instead of source binary\n"
 	@printf "  VM_UNINSTALL_ARGS=--clean     Run development uninstall in clean mode\n"
+	@printf "\n"
+	@printf "PROFILE TARGETS\n"
+	@printf "  Use dist/{pkg|dmg}/dev/compile for VM compile builds.\n"
 
 help/runtime:
 	@printf "NAME\n"
@@ -299,7 +310,7 @@ help/devtools:
 	@printf "\n"
 	@printf "SYNOPSIS\n"
 	@printf "  make devtools/{version-source|build|app|init|download|cloud-init|stage}\n"
-	@printf "  make devtools/{airgap-rootfs|golden-rootfs|start|start/detached}\n"
+	@printf "  make devtools/{airgap-rootfs|golden-rootfs|golden-rootfs/compile|start|start/detached}\n"
 	@printf "  make devtools/nginx/{artifact|bundle}\n"
 	@printf "  make devtools/docker/images\n"
 	@printf "  make devtools/{sign|sign/bridged|bridged/preflight|wait/ip|wait/http|package/clean}\n"
@@ -322,6 +333,8 @@ help/devtools:
 	@printf "  devtools/stage                Stage guest deployment bundle only\n"
 	@printf "  devtools/airgap-rootfs        Prepare rootfs with guest packages for offline install\n"
 	@printf "  devtools/golden-rootfs        Build package golden rootfs cache\n"
+	@printf "  devtools/golden-rootfs/compile\n"
+	@printf "                                Recompile package golden rootfs cache from scratch\n"
 	@printf "  devtools/start                Start runtime in foreground with serial console\n"
 	@printf "  devtools/start/detached       Start runtime in background\n"
 	@printf "  devtools/wait/ip              Wait until guest writes its runtime IP\n"
@@ -330,6 +343,8 @@ help/devtools:
 	@printf "\n"
 	@printf "VARIABLES\n"
 	@printf "  VM_COMPRESSION_THREADS=N      Use pigz with N compression threads when available\n"
+	@printf "  VM_ROOTFS_READY_TIMEOUT=300   Diagnostic wait timeout for rootfs compile proof\n"
+	@printf "  VM_ROOTFS_SMOKE_FAIL_STAGE=x  Diagnostic fault injection for golden rootfs negative tests\n"
 
 help/proxy:
 	@printf "NAME\n"
