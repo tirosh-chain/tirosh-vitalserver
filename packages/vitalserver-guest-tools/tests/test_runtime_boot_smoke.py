@@ -178,6 +178,50 @@ def test_runtime_boot_smoke_requires_dev_testkit_service(tmp_path: Path) -> None
     assert "testkit service is required for dev build" in failed_stage_message(document)
 
 
+@pytest.mark.parametrize("health", [None, "", "starting", "unhealthy"])
+def test_runtime_boot_smoke_rejects_service_without_explicit_healthy_status(
+    tmp_path: Path,
+    health: object,
+) -> None:
+    context = runtime_boot_context(tmp_path)
+    write_valid_runtime_documents(context)
+    state_path = context.runtime_dir / "runtime-state.json"
+    document = read_json(state_path)
+    document["containerServices"][0]["health"] = health
+    write_json(state_path, document)
+
+    with pytest.raises(SystemExit):
+        run_runtime_boot_smoke(context=context, operations=fake_operations())
+
+    manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert "compose services are not ready" in failed_stage_message(manifest)
+
+
+def test_runtime_boot_smoke_waits_for_compose_service_to_become_healthy(
+    tmp_path: Path,
+) -> None:
+    context = runtime_boot_context(tmp_path, compose_ready_timeout_seconds=10)
+    write_valid_runtime_documents(context)
+    state_path = context.runtime_dir / "runtime-state.json"
+    document = read_json(state_path)
+    document["containerServices"][0]["health"] = "starting"
+    write_json(state_path, document)
+
+    def mark_healthy(seconds: float) -> None:
+        refreshed = read_json(state_path)
+        refreshed["containerServices"][0]["health"] = "healthy"
+        write_json(state_path, refreshed)
+
+    run_runtime_boot_smoke(
+        context=context,
+        operations=fake_operations(sleep=mark_healthy),
+    )
+
+    manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["status"] == "passed"
+    assert stage_status(manifest, "compose-services") == "passed"
+
+
 def test_runtime_boot_smoke_cli_is_registered() -> None:
     pyproject = Path(__file__).parents[1] / "pyproject.toml"
     assert "tirosh-vitalserver-runtime-boot-smoke" in pyproject.read_text(
@@ -282,6 +326,7 @@ def test_runtime_boot_smoke_default_context_rejects_missing_or_invalid_inputs(
 def runtime_boot_context(
     tmp_path: Path,
     *,
+    compose_ready_timeout_seconds: float = 0,
     dev_build: bool = False,
 ) -> RuntimeBootSmokeContext:
     runtime_dir = tmp_path / "run"
@@ -294,6 +339,7 @@ def runtime_boot_context(
         manifest_path=runtime_dir / RUNTIME_BOOT_SMOKE_MANIFEST,
         run_id="runtime-run-test",
         max_runtime_state_age_seconds=180,
+        compose_ready_timeout_seconds=compose_ready_timeout_seconds,
         dev_build=dev_build,
     )
 
@@ -398,6 +444,7 @@ def fake_operations(
     *,
     inactive_service: str | None = None,
     http_status: Callable[[str, float], int] | None = None,
+    sleep: Callable[[float], None] | None = None,
 ) -> RuntimeBootSmokeOperations:
     def run(
         arguments: list[str],
@@ -414,6 +461,7 @@ def fake_operations(
         run=run,
         http_status=http_status or (lambda url, timeout_seconds: 200),
         now=lambda: NOW,
+        sleep=sleep or (lambda seconds: None),
     )
 
 

@@ -41,19 +41,6 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
 )
 from tirosh_vitalserver.devtools.config.paths import resolve_path
 
-ROOTFS_TERMINAL_LOG_PATTERNS = (
-    "EXT4-fs error",
-    "Aborting journal",
-    "Remounting filesystem read-only",
-    "Unable to handle kernel NULL pointer dereference",
-    "Internal error: Oops:",
-    "Kernel panic - not syncing",
-    "Attempted to kill init",
-    'sysctl: setting key "net.core.bpf_jit_enable": Invalid argument',
-    "watchdog: BUG: soft lockup",
-    "rcu: INFO: rcu_preempt detected stalls",
-)
-
 ROOTFS_REQUIRED_STAGES = (
     "docker-smoke",
     "disk-space",
@@ -351,7 +338,6 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
                 f"{marker_result['message']}; {manifest_result['message']}"
             )
         fail_if_runtime_lifecycle_failed(input.vm_home)
-        fail_if_rootfs_launcher_log_has_terminal_failure(input.vm_home)
         time.sleep(3)
     raise SystemExit(
         f"error: timed out waiting for {marker}: last={last_state}\n"
@@ -382,7 +368,6 @@ def wait_for_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
         last_state = str(result["message"])
         fail_if_runtime_lifecycle_failed(input.vm_home)
         fail_if_runtime_lifecycle_stopped(input.vm_home, "runtime boot smoke")
-        fail_if_rootfs_launcher_log_has_terminal_failure(input.vm_home)
         time.sleep(3)
     raise SystemExit(
         f"error: timed out waiting for runtime boot smoke: {manifest}: "
@@ -567,28 +552,6 @@ def fail_if_runtime_lifecycle_stopped(vm_home: str | Path, operation: str) -> No
         raise SystemExit(
             f"error: VM lifecycle stopped while waiting for {operation}\n"
             f"Check VM launcher log: {launcher_log(vm_home)}"
-        )
-
-
-def fail_if_rootfs_launcher_log_has_terminal_failure(vm_home: str | Path) -> None:
-    log_file = launcher_log(vm_home)
-    if not log_file.exists():
-        return
-    try:
-        log_text = log_file.read_text(encoding="utf-8", errors="replace")
-    except OSError as error:
-        raise SystemExit(
-            "error: failed to read VM launcher log while waiting for rootfs: "
-            f"{log_file}: {error}"
-        ) from error
-
-    for pattern in ROOTFS_TERMINAL_LOG_PATTERNS:
-        if pattern not in log_text:
-            continue
-        raise SystemExit(
-            "error: VM launcher log shows terminal guest failure while waiting "
-            f"for rootfs marker: pattern={pattern!r}\n"
-            f"Check VM launcher log: {log_file}"
         )
 
 

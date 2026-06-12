@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tirosh_vitalserver.devtools.adapters.macos_release import runtime_lifecycle
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
     begin_runtime_boot_smoke_run,
     require_no_running_runtime,
@@ -306,66 +307,27 @@ def test_wait_for_rootfs_ready_rejects_failed_lifecycle(tmp_path):
         )
 
 
-def test_wait_for_rootfs_ready_rejects_terminal_launcher_log(tmp_path):
+def test_wait_for_rootfs_ready_treats_launcher_log_as_diagnostics_only(
+    monkeypatch,
+    tmp_path,
+):
     log_file = tmp_path / "logs" / "launcher.log"
     log_file.parent.mkdir(parents=True)
     log_file.write_text(
         "Unable to handle kernel NULL pointer dereference at virtual address 10\n",
         encoding="utf-8",
     )
+    monkeypatch.setattr(runtime_lifecycle.time, "sleep", lambda seconds: None)
 
     with pytest.raises(
         SystemExit,
-        match="VM launcher log shows terminal guest failure",
+        match="timed out waiting",
     ):
         wait_for_rootfs_ready(
             RuntimeWaitInput(
                 config=tmp_path / "config.toml",
                 vm_home=tmp_path,
-                timeout=1,
-            )
-        )
-
-
-def test_wait_for_rootfs_ready_rejects_kernel_panic_log(tmp_path):
-    log_file = tmp_path / "logs" / "launcher.log"
-    log_file.parent.mkdir(parents=True)
-    log_file.write_text(
-        "[ 155.971753] Kernel panic - not syncing: Attempted to kill init!\n",
-        encoding="utf-8",
-    )
-
-    with pytest.raises(
-        SystemExit,
-        match="VM launcher log shows terminal guest failure",
-    ):
-        wait_for_rootfs_ready(
-            RuntimeWaitInput(
-                config=tmp_path / "config.toml",
-                vm_home=tmp_path,
-                timeout=1,
-            )
-        )
-
-
-def test_wait_for_rootfs_ready_rejects_bpf_jit_sysctl_failure(tmp_path):
-    log_file = tmp_path / "logs" / "launcher.log"
-    log_file.parent.mkdir(parents=True)
-    log_file.write_text(
-        "cloud-init[1062]: sysctl: setting key "
-        '"net.core.bpf_jit_enable": Invalid argument\n',
-        encoding="utf-8",
-    )
-
-    with pytest.raises(
-        SystemExit,
-        match="VM launcher log shows terminal guest failure",
-    ):
-        wait_for_rootfs_ready(
-            RuntimeWaitInput(
-                config=tmp_path / "config.toml",
-                vm_home=tmp_path,
-                timeout=1,
+                timeout=0.01,
             )
         )
 

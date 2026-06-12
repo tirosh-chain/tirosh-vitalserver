@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from tirosh_guest_tools.application.runtime_boot_smoke_manifest import (
+    RUNTIME_BOOT_SMOKE_MANIFEST,
+    RuntimeBootSmokeContext,
+    RuntimeBootSmokeOperations,
+    RuntimeBootSmokeRun,
+    RuntimeBootSmokeStage,
+)
 from tirosh_guest_tools.contracts import (
     ComposeService,
     RootfsSmokeStatus,
@@ -28,12 +35,11 @@ from tirosh_guest_tools.infrastructure.common import (
 
 BOOTSTRAP_RESULT_SCHEMA_VERSION = 3
 RUNTIME_STATE_SCHEMA_VERSION = 1
-RUNTIME_BOOT_SMOKE_SCHEMA_VERSION = 1
 MAX_RUNTIME_STATE_AGE_SECONDS = 180
+COMPOSE_READY_TIMEOUT_SECONDS = 120.0
+COMPOSE_READY_POLL_SECONDS = 2.0
 HTTP_TIMEOUT_SECONDS = 5.0
 SYSTEMD_TIMEOUT_SECONDS = 10.0
-
-RUNTIME_BOOT_SMOKE_MANIFEST = "runtime-boot-smoke-manifest.json"
 
 REQUIRED_SYSTEMD_UNITS = (
     "docker.service",
@@ -85,69 +91,8 @@ BASE_REQUIRED_COMPOSE_SERVICES = (
 )
 
 
-@dataclass(frozen=True)
-class RuntimeBootSmokeContext:
-    runtime_dir: Path
-    deploy_dir: Path
-    manifest_path: Path
-    run_id: str
-    max_runtime_state_age_seconds: int
-    dev_build: bool
-
-
-@dataclass(frozen=True)
-class RuntimeBootSmokeOperations:
-    mount_runtime_share: Callable[[], None]
-    read_json: Callable[[Path], dict[str, Any]]
-    write_json: Callable[[Path, dict[str, Any]], None]
-    run: Callable[..., subprocess.CompletedProcess[str]]
-    http_status: Callable[[str, float], int]
-    now: Callable[[], datetime]
-
-
-@dataclass(frozen=True)
-class RuntimeBootSmokeStage:
-    name: str
-    status: RootfsSmokeStatus
-    started_at: str
-    completed_at: str
-    message: str
-    details: dict[str, Any] = field(default_factory=dict)
-
-    def as_json(self) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "status": self.status.value,
-            "startedAt": self.started_at,
-            "completedAt": self.completed_at,
-            "message": self.message,
-            "details": self.details,
-        }
-
-
 class RuntimeBootSmokeStageFailed(RuntimeError):
     pass
-
-
-@dataclass
-class RuntimeBootSmokeRun:
-    context: RuntimeBootSmokeContext
-    operations: RuntimeBootSmokeOperations
-    created_at: str = field(default_factory=utc_now)
-    stages: list[RuntimeBootSmokeStage] = field(default_factory=list)
-
-    def write_manifest(self) -> None:
-        self.operations.write_json(self.context.manifest_path, self.as_json())
-
-    def as_json(self) -> dict[str, Any]:
-        return {
-            "schemaVersion": RUNTIME_BOOT_SMOKE_SCHEMA_VERSION,
-            "runId": self.context.run_id,
-            "createdAt": self.created_at,
-            "updatedAt": utc_now(),
-            "status": overall_status(self.stages),
-            "stages": [stage.as_json() for stage in self.stages],
-        }
 
 
 def default_context() -> RuntimeBootSmokeContext:
@@ -177,6 +122,7 @@ def default_context() -> RuntimeBootSmokeContext:
         manifest_path=RUNTIME_DIR / RUNTIME_BOOT_SMOKE_MANIFEST,
         run_id=run_id,
         max_runtime_state_age_seconds=MAX_RUNTIME_STATE_AGE_SECONDS,
+        compose_ready_timeout_seconds=COMPOSE_READY_TIMEOUT_SECONDS,
         dev_build=testkit_enabled is True,
     )
 
@@ -189,6 +135,7 @@ def default_operations() -> RuntimeBootSmokeOperations:
         run=run_command,
         http_status=http_status,
         now=lambda: datetime.now(UTC),
+        sleep=time.sleep,
     )
 
 
@@ -423,36 +370,21 @@ def validate_compose_services(
     run: RuntimeBootSmokeRun,
     runtime_state: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
+    expected = expected_compose_services(run.context.dev_build)
+    deadline = time.monotonic() + run.context.compose_ready_timeout_seconds
     document = runtime_state_document(runtime_state)
-    services = document.get("containerServices")
-    if not isinstance(services, list) or not services:
-        raise RuntimeError("runtime state containerServices is missing or empty")
-    expected = set(BASE_REQUIRED_COMPOSE_SERVICES)
-    if run.context.dev_build:
-        expected.add(ComposeService.TESTKIT.value)
-    observed: dict[str, dict[str, Any]] = {}
-    for service in services:
-        if not isinstance(service, dict):
-            continue
-        name = service.get("service")
-        if isinstance(name, str) and name:
-            observed[name] = service
-    missing = sorted(expected - set(observed))
-    if missing:
-        raise RuntimeError(f"runtime state is missing compose services: {missing}")
-    unhealthy = [
-        {
-            "service": name,
-            "state": observed[name].get("state"),
-            "health": observed[name].get("health"),
-            "exitCode": observed[name].get("exitCode"),
-        }
-        for name in sorted(expected)
-        if not service_is_ready(observed[name])
-    ]
-    if unhealthy:
-        raise RuntimeError(f"compose services are not ready: {unhealthy}")
-    return "required compose services are ready", {"services": observed}
+    while True:
+        observed = observed_compose_services(document)
+        missing = sorted(expected - set(observed))
+        if missing:
+            raise RuntimeError(f"runtime state is missing compose services: {missing}")
+        unhealthy = unhealthy_compose_services(expected, observed)
+        if not unhealthy:
+            return "required compose services are ready", {"services": observed}
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"compose services are not ready: {unhealthy}")
+        run.operations.sleep(COMPOSE_READY_POLL_SECONDS)
+        document = read_runtime_state_document(run)
 
 
 def validate_disk_health(
@@ -600,6 +532,54 @@ def runtime_state_document(runtime_state: dict[str, Any]) -> dict[str, Any]:
     return document
 
 
+def read_runtime_state_document(run: RuntimeBootSmokeRun) -> dict[str, Any]:
+    path = run.context.runtime_dir / RuntimeFileName.RUNTIME_STATE.value
+    document = run.operations.read_json(path)
+    require_equal(
+        document.get("schemaVersion"),
+        RUNTIME_STATE_SCHEMA_VERSION,
+        f"runtime state schema mismatch: {path}",
+    )
+    return document
+
+
+def expected_compose_services(dev_build: bool) -> set[str]:
+    expected = set(BASE_REQUIRED_COMPOSE_SERVICES)
+    if dev_build:
+        expected.add(ComposeService.TESTKIT.value)
+    return expected
+
+
+def observed_compose_services(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    services = document.get("containerServices")
+    if not isinstance(services, list) or not services:
+        raise RuntimeError("runtime state containerServices is missing or empty")
+    observed: dict[str, dict[str, Any]] = {}
+    for service in services:
+        if not isinstance(service, dict):
+            continue
+        name = service.get("service")
+        if isinstance(name, str) and name:
+            observed[name] = service
+    return observed
+
+
+def unhealthy_compose_services(
+    expected: set[str],
+    observed: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "service": name,
+            "state": observed[name].get("state"),
+            "health": observed[name].get("health"),
+            "exitCode": observed[name].get("exitCode"),
+        }
+        for name in sorted(expected)
+        if not service_is_ready(observed[name])
+    ]
+
+
 def service_is_ready(service: dict[str, Any]) -> bool:
     state = service.get("state")
     health = service.get("health")
@@ -608,7 +588,7 @@ def service_is_ready(service: dict[str, Any]) -> bool:
         return False
     if exit_code not in (None, 0, "0", ""):
         return False
-    return health in (None, "", "healthy", "starting")
+    return health == "healthy"
 
 
 def run_command(
@@ -675,13 +655,3 @@ def document_age_seconds(updated_at: str, now: datetime) -> float:
 
 def list_value(value: object) -> list[object]:
     return value if isinstance(value, list) else []
-
-
-def overall_status(stages: Sequence[RuntimeBootSmokeStage]) -> str:
-    if not stages:
-        return RootfsSmokeStatus.NOT_RUN.value
-    if any(stage.status == RootfsSmokeStatus.FAILED for stage in stages):
-        return RootfsSmokeStatus.FAILED.value
-    if all(stage.status == RootfsSmokeStatus.PASSED for stage in stages):
-        return RootfsSmokeStatus.PASSED.value
-    return RootfsSmokeStatus.RUNNING.value
