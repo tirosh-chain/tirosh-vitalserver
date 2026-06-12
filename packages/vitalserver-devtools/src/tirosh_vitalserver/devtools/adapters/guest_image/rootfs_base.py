@@ -148,6 +148,9 @@ def require_runtime_manifest(
             "error: rootfs runtime manifest is missing stage results; "
             f"manifest={manifest}"
         )
+    require_stage_passed(stages, "docker-service", manifest)
+    require_stage_passed(stages, "runtime-version", manifest)
+    require_stage_passed(stages, "docker-image-load", manifest)
     require_stage_passed(stages, "docker-smoke", manifest)
     require_stage_passed(stages, "disk-space", manifest)
     require_stage_passed(stages, "compose-build", manifest)

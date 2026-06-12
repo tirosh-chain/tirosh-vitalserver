@@ -143,6 +143,7 @@ internal/vm/golden-rootfs:
 				printf "Golden rootfs cache contract changed; rebuilding: %s\n" "$(VM_PKG_ROOTFS_CACHE)"; \
 			fi; \
 		fi; \
+		$(MAKE) internal/vm/docker/images; \
 		$(MAKE) internal/vm/airgap-rootfs \
 			VM_HOME="$(abspath $(VM_GOLDEN_HOME))" \
 			VM_RECREATE_ROOTFS="$(VM_RECREATE_ROOTFS)" \

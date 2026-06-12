@@ -82,8 +82,9 @@ build 세부 구현은 `packages/vitalserver-devtools`와
 
 Golden rootfs compile은 VM을 띄우는 단순 준비 단계가 아니라 제품 compile 단계입니다.
 `guest.ubuntu.base_url`과 `guest.ubuntu.apt_snapshot`은 함께 rootfs compile input입니다.
-`prepare-airgap-rootfs.sh`는 실제 package install 전에 `APT::Snapshot`을 적용하고 apt plan을
-기록합니다. Python/util-linux, Docker/container runtime처럼 base runtime을 바꾸는 upgrade가
+`prepare-airgap-rootfs.sh`는 실제 package install 전에 direct Ubuntu snapshot source를 적용하고 apt plan을
+기록합니다. Host가 제공한 `guestClockUtc`와 snapshot package index가 맞지 않거나, Python/util-linux,
+Docker/container runtime처럼 base runtime을 바꾸는 upgrade가
 감지되면 rootfs smoke까지 가지 않고 compile failure로 올립니다. `macos-runtime-wait-rootfs-ready`는 현재 run의
 `rootfs-failure.json`, manifest stage, launcher log의 kernel panic/Oops/SIGILL을 모두
 확인해야 하며, `rootfs-base` 압축은 apt plan proof와 smoke proof가 모두 통과한 경우에만 허용됩니다.
@@ -253,6 +254,10 @@ Manifest와 `rootfs-ready` marker는 현재 golden rootfs run의 `runId`와 일�
 `ubuntu.metadataStatus`는 `loaded`여야 하고, `ubuntu.baseUrl`, `ubuntu.cacheKey`,
 `ubuntu.aptSnapshot`, `ubuntu.kernel`은 비어 있으면 안 됩니다. 입력 Ubuntu 이미지와 apt snapshot이
 무엇인지 모르는 rootfs는 smoke가 통과해도 release artifact가 될 수 없습니다.
+Golden rootfs input metadata에는 `guestClockUtc`도 포함되어야 합니다. Guest bootstrap은 NTP를
+fallback으로 삼지 않고, apt snapshot source를 읽기 전에 Host가 제공한 UTC 시각을 적용해야 합니다.
+`Release file ... is not valid yet`는 apt mirror 문제가 아니라 compile VM clock 계약이 깨진 신호로
+분류합니다.
 `docker --version`, `docker compose version`, package install success, `rootfs-ready` marker는 runtime
 proof가 아닙니다. Rootfs 준비 VM은 Docker disposable container smoke 이후 실제 deploy bundle의
 Compose stack을 올리고 `/ready`를 확인한 뒤 `docker compose down -v`로 state를 정리해야 합니다. 실패

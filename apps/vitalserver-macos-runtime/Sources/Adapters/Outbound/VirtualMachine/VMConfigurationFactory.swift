@@ -35,7 +35,6 @@ public final class VMConfigurationFactory {
         vmConfiguration.bootLoader = bootLoader
         vmConfiguration.cpuCount = config.cpuCount
         vmConfiguration.memorySize = config.memoryMiB * 1024 * 1024
-        vmConfiguration.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
         vmConfiguration.serialPorts = [serialPortConfiguration()]
         vmConfiguration.networkDevices = [try networkDeviceConfiguration(config.network)]
         vmConfiguration.directorySharingDevices = try [config.sharedDirectory, config.vitalFilesDirectory]

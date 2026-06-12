@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -93,9 +94,9 @@ def test_default_ubuntu_image_config_uses_pinned_noble_release_source() -> None:
 
     assert ubuntu_config.version == "24.04"
     assert ubuntu_config.base_url == (
-        "https://cloud-images.ubuntu.com/releases/noble/release-20250313"
+        "https://cloud-images.ubuntu.com/releases/noble/release-20260518"
     )
-    assert ubuntu_config.apt_snapshot == "20250313T000000Z"
+    assert ubuntu_config.apt_snapshot == "20260501T000000Z"
     assert not ubuntu_config.base_url.endswith("/release")
 
 
@@ -157,6 +158,11 @@ def test_stage_rootfs_input_metadata_preserves_ubuntu_source_identity(
 
     metadata = load_json(tmp_path / "build-metadata/rootfs-input.json")
     assert metadata["schemaVersion"] == 1
+    assert isinstance(metadata["guestClockUtc"], str)
+    assert re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
+        metadata["guestClockUtc"],
+    )
     assert metadata["runtimeBootSmoke"] == {"enabled": False}
     assert metadata["ubuntu"] == {
         "aptSnapshot": "20250313T000000Z",

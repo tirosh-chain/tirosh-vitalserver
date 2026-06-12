@@ -37,6 +37,10 @@ def test_rootfs_smoke_writes_manifest_v2_for_success(tmp_path: Path) -> None:
     assert document["apt"]["snapshot"] == "20250313T000000Z"
     assert document["apt"]["blockedUpgrades"] == []
     assert document["aptInstalled"]["packages"]["docker.io"] == "29.1.3-test"
+    assert stage_status(document, "docker-service") == "passed"
+    assert stage_status(document, "runtime-version") == "passed"
+    assert stage_status(document, "docker-image-load") == "passed"
+    assert stage_details(document, "docker-image-load")["bundleBytes"] == 6
     assert stage_status(document, "docker-smoke") == "passed"
     assert stage_status(document, "disk-space") == "passed"
     assert stage_status(document, "compose-build") == "passed"
@@ -87,6 +91,33 @@ def test_rootfs_smoke_records_fault_injected_compose_up_failure(tmp_path: Path) 
     document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
     assert stage_status(document, "compose-up") == "failed"
     assert document["cleanup"]["status"] == "passed"
+
+
+def test_rootfs_smoke_records_docker_image_load_timeout_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = smoke_context(tmp_path)
+    write_metadata(context.deploy_dir)
+    write_apt_plan(context.apt_plan_path)
+    write_apt_installed(context.apt_installed_path)
+    monkeypatch.setattr(rootfs_smoke, "DOCKER_IMAGE_LOAD_TIMEOUT_SECONDS", 2.0)
+
+    def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if arguments[:2] == ["docker", "load"]:
+            raise subprocess.TimeoutExpired(arguments, kwargs["timeout_seconds"])
+        return completed(arguments)
+
+    with pytest.raises(SystemExit):
+        run_rootfs_smoke(context=context, operations=fake_operations(run=run))
+
+    document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert stage_status(document, "docker-image-load") == "timeout"
+    details = stage_details(document, "docker-image-load")
+    assert details["bundle"] == str(context.docker_image_bundle_path)
+    assert details["bundleBytes"] == 6
+    assert details["timeoutSeconds"] == 2.0
+    assert details["command"] == ["docker", "load", "-i", str(context.docker_image_bundle_path)]
 
 
 def test_rootfs_smoke_fails_when_disk_space_is_too_low(tmp_path: Path) -> None:
@@ -152,6 +183,9 @@ def smoke_context(
     diagnostics_dir = runtime_dir / "rootfs-smoke-diagnostics"
     runtime_dir.mkdir(parents=True)
     deploy_dir.mkdir(parents=True)
+    docker_image_bundle = deploy_dir / "docker-images" / "vitalserver-images.tar.gz"
+    docker_image_bundle.parent.mkdir(parents=True)
+    docker_image_bundle.write_bytes(b"bundle")
     return RootfsSmokeContext(
         runtime_dir=runtime_dir,
         deploy_dir=deploy_dir,
@@ -159,6 +193,7 @@ def smoke_context(
         manifest_path=runtime_dir / "rootfs-runtime-manifest.json",
         apt_plan_path=runtime_dir / "rootfs-apt-plan.json",
         apt_installed_path=runtime_dir / "rootfs-apt-installed.json",
+        docker_image_bundle_path=docker_image_bundle,
         diagnostics_dir=diagnostics_dir,
         compose_project_name="vitalserver-rootfs-smoke",
         docker_smoke_image="redis:3.2.12-alpine",
@@ -278,4 +313,16 @@ def stage_status(document: dict[str, object], name: str) -> str:
         assert isinstance(stage, dict)
         if stage["name"] == name:
             return str(stage["status"])
+    raise AssertionError(f"missing stage: {name}")
+
+
+def stage_details(document: dict[str, object], name: str) -> dict[str, object]:
+    stages = document["stages"]
+    assert isinstance(stages, list)
+    for stage in stages:
+        assert isinstance(stage, dict)
+        if stage["name"] == name:
+            details = stage["details"]
+            assert isinstance(details, dict)
+            return details
     raise AssertionError(f"missing stage: {name}")

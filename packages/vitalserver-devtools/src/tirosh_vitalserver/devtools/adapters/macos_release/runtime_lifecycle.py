@@ -42,6 +42,9 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
 from tirosh_vitalserver.devtools.config.paths import resolve_path
 
 ROOTFS_REQUIRED_STAGES = (
+    "docker-service",
+    "runtime-version",
+    "docker-image-load",
     "docker-smoke",
     "disk-space",
     "compose-build",
@@ -51,17 +54,24 @@ ROOTFS_REQUIRED_STAGES = (
 
 ROOTFS_TERMINAL_LOG_PATTERNS = (
     "Internal error: Oops:",
+    "Internal error: Oops - Undefined instruction",
+    "Undefined instruction",
+    "seccomp_run_filters",
     "Kernel panic - not syncing",
     "rcu: INFO: rcu_preempt detected stalls",
     "Unable to handle kernel NULL pointer dereference",
+    "EXT4-fs error",
+    "Aborting journal",
+    "Journal has aborted",
+    "checksum invalid",
     "Remounting filesystem read-only",
     "Read-only file system",
     "invalid ELF header",
     "Input/output error",
+    "Segmentation fault",
     "terminated by signal ILL",
     "Caught <ILL>",
     "Illegal instruction",
-    "Segmentation fault",
     "Freezing execution",
     "BUG: Bad rss-counter state",
     "Attempted to kill init",
@@ -673,12 +683,21 @@ def fail_if_rootfs_launcher_log_has_terminal_failure(
     for pattern in ROOTFS_TERMINAL_LOG_PATTERNS:
         if pattern not in log_text:
             continue
+        matched_line = first_log_line_containing(log_text, pattern)
         raise SystemExit(
             "error: VM launcher log shows terminal guest failure while waiting "
             f"for rootfs marker: runId={expected_run_id or 'unknown'} "
-            f"pattern={pattern!r}\n"
+            f"pattern={pattern!r}"
+            f"{f' line={matched_line!r}' if matched_line else ''}\n"
             f"Check VM launcher log: {log_file}"
         )
+
+
+def first_log_line_containing(log_text: str, pattern: str) -> str | None:
+    for line in log_text.splitlines():
+        if pattern in line:
+            return line.strip()
+    return None
 
 
 def inspect_rootfs_manifest(

@@ -406,7 +406,7 @@ Control API, 기존 설치된 uninstaller가 반드시 살아 있다고 가정�
 | 경계 | 호출자 | 피호출자 | 입력 계약 | 출력/부작용 |
 |---|---|---|---|---|
 | build orchestration | `make/vm.mk` | `vitalserver-devtools` | `vm-build.toml`, source tree, optional Make overrides | `.tmp/vitalserver-vm-pkg/*`, `dist/*` |
-| Ubuntu/rootfs build | `make devtools/golden-rootfs` | Python `ubuntu`, `cloud-init`, Swift launcher | Ubuntu cloud image URL, apt snapshot, deploy bundle, bootstrap script | clean `vm-disk.img`, compressed `rootfs-base.raw.gz` |
+| Ubuntu/rootfs build | `make devtools/golden-rootfs` | Python `ubuntu`, `cloud-init`, Swift launcher | Ubuntu cloud image URL, apt snapshot, deploy bundle, Docker image bundle, bootstrap script | clean `vm-disk.img`, compressed `rootfs-base.raw.gz` |
 | nginx bundle | `make devtools/nginx/bundle` | Python `nginx-bundle` | pinned macOS nginx binary, expected version | self-contained `nginx/sbin`, `nginx/lib` bundle |
 | Docker image bundle | `make devtools/docker/images` | Python `docker-images` | Dockerfile, image list, build platform | `vitalserver-images.tar.gz` |
 | PKG/DMG staging | `vitalserver-devtools release-pkg` / `release-dmg` | Python build CLI, Swift, macOS packaging tools | release manifest, app source, rootfs base, nginx binary, Docker image list, templates | package root under `.tmp/vitalserver-vm-pkg/root`, `dist/*` |
@@ -627,6 +627,11 @@ nginx:1.24-alpine
 
 Docker image bundle은 guest VM architecture에 맞춰 `linux/arm64`로 생성합니다. Apple Virtualization Framework 기반 guest가 arm64 Ubuntu로 부팅되므로, amd64 image를 넣으면 guest에서 `exec format error`가 발생합니다. Redis Commander는 Docker Hub의 `latest`가 아니라 GHCR의 pinned multi-arch image를 사용합니다.
 
+Golden rootfs compile은 Docker image bundle을 먼저 만들고 guest deploy bundle에 포함한 뒤,
+rootfs smoke의 `docker-service` stage에서 Docker daemon을 명시 시작하고 `docker-image-load` stage에서
+`docker load`로 검증합니다. Compose smoke가 registry
+pull에 성공해서 통과하는 것은 air-gapped proof가 아니므로 rootfs artifact proof로 인정하지 않습니다.
+
 생성/설치 경로는 아래와 같습니다.
 
 ```text
@@ -643,7 +648,10 @@ make devtools/golden-rootfs
 make dist/pkg/dev
 ```
 
-기본 package용 rootfs는 `8G`(8 GiB)입니다. `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. `make devtools/golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker와 `/mnt/tirosh/run/rootfs-runtime-manifest.json` manifest를 기록한 뒤 종료됩니다. Manifest의 apt plan runId/snapshot proof, Docker smoke, disk-space, compose build/up, edge-ready, cleanup stage가 모두 통과하지 않으면 rootfs 압축 단계는 실패해야 합니다. 이 smoke는 disposable container start와 실제 deploy Compose stack readiness를 검증하며 운영 Redis volume을 golden rootfs에 섞지 않습니다.
+기본 package용 rootfs는 `8G`(8 GiB)입니다. `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. `make devtools/golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker와 `/mnt/tirosh/run/rootfs-runtime-manifest.json` manifest를 기록한 뒤 종료됩니다. Manifest의 apt plan runId/snapshot proof, Docker service start, runtime version, Docker image load, Docker smoke, disk-space, compose build/up, edge-ready, cleanup stage가 모두 통과하지 않으면 rootfs 압축 단계는 실패해야 합니다. 이 smoke는 disposable container start와 실제 deploy Compose stack readiness를 검증하며 운영 Redis volume을 golden rootfs에 섞지 않습니다.
+
+Kernel panic, ext4 read-only remount, `docker-image-load` timeout은 resource를 낮춰 우회하지 않고
+terminal compile failure proof로 기록합니다.
 
 Fresh install bootstrap도 Docker image bundle을 로드한 직후 `redis:3.2.12-alpine` smoke container를 `--network none`으로 실행합니다. 이 단계가 실패하면 `bootstrap-result.json`은 `guest-bootstrap-docker-runtime-failed` reason code를 기록하고 compose up으로 진행하지 않습니다. Docker version 출력이나 compose binary 존재만으로는 rootfs가 준비됐다고 보지 않습니다.
 

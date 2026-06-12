@@ -83,6 +83,7 @@ internal/vm/stage: internal/vm/init
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" guest-deploy \
 		--vm-home "$(VM_HOME)" \
 		--runtime-dir "$(VM_MACOS_RUNTIME_DIR)" \
+		--docker-bundle "$(call VM_TOML_VALUE,guest.docker_images.bundle_path)" \
 		$$rootfs_run_args; \
 	if [ "$(VM_RUNTIME_BOOT_SMOKE)" = "true" ]; then \
 		python3 -c 'import json, sys; from pathlib import Path; path = Path(sys.argv[1]); document = json.loads(path.read_text(encoding="utf-8")); document["runtimeBootSmoke"] = {"enabled": True, "runId": sys.argv[2]}; path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")' "$(VM_HOME)/data/deploy/build-metadata/rootfs-input.json" "$(VM_RUNTIME_BOOT_SMOKE_RUN_ID)"; \

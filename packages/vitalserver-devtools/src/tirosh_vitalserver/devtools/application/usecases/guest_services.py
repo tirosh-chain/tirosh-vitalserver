@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.build_config import load_config
@@ -128,6 +129,9 @@ def stage_rootfs_input_metadata(
     metadata.parent.mkdir(parents=True, exist_ok=True)
     document = {
         "schemaVersion": 1,
+        "guestClockUtc": datetime.now(UTC).replace(microsecond=0).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
         "runtimeBootSmoke": {
             "enabled": False,
         },

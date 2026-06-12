@@ -14,6 +14,8 @@ APT_PLAN_JSON_FILE="${RUNTIME_DIR}/rootfs-apt-plan.json"
 APT_INSTALLED_TEXT_FILE="${RUNTIME_DIR}/rootfs-apt-installed.txt"
 APT_INSTALLED_JSON_FILE="${RUNTIME_DIR}/rootfs-apt-installed.json"
 APT_SNAPSHOT_CONF="/etc/apt/apt.conf.d/50vitalserver-snapshot"
+POLICY_RC_D="/usr/sbin/policy-rc.d"
+POLICY_RC_D_BACKUP="/usr/sbin/policy-rc.d.vitalserver-backup"
 GUEST_TOOLS_HOME="/opt/tirosh/guest-tools"
 GUEST_TOOLS_VENV="${GUEST_TOOLS_HOME}/venv"
 PYTHON_WHEEL_DIR="${MOUNT_POINT}/deploy/python-wheels"
@@ -26,6 +28,7 @@ RUNTIME_APT_PACKAGES=(
   cloud-guest-utils
   curl
   docker.io
+  docker-compose-v2
   procps
   psmisc
   python3-minimal
@@ -147,6 +150,38 @@ remove_flash_kernel_package() {
   fi
 }
 
+stop_background_apt_services() {
+  systemctl stop \
+    apt-daily.service \
+    apt-daily.timer \
+    apt-daily-upgrade.service \
+    apt-daily-upgrade.timer \
+    dpkg-db-backup.service \
+    dpkg-db-backup.timer \
+    packagekit.service \
+    unattended-upgrades.service \
+    >/dev/null 2>&1 || true
+}
+
+install_service_start_blocker() {
+  if [ -e "${POLICY_RC_D}" ] && [ ! -e "${POLICY_RC_D_BACKUP}" ]; then
+    mv "${POLICY_RC_D}" "${POLICY_RC_D_BACKUP}"
+  fi
+  cat >"${POLICY_RC_D}" <<'EOF'
+#!/bin/sh
+exit 101
+EOF
+  chmod 0755 "${POLICY_RC_D}"
+}
+
+remove_service_start_blocker() {
+  if [ -e "${POLICY_RC_D_BACKUP}" ]; then
+    mv "${POLICY_RC_D_BACKUP}" "${POLICY_RC_D}"
+  elif [ -e "${POLICY_RC_D}" ]; then
+    rm -f "${POLICY_RC_D}"
+  fi
+}
+
 repair_package_state() {
   if ! dpkg --configure -a; then
     apt-get -f install -y
@@ -175,16 +210,78 @@ print(snapshot)
 PY
 }
 
+read_guest_clock_utc() {
+  python3 - "${MOUNT_POINT}/deploy/build-metadata/rootfs-input.json" <<'PY'
+import json
+import re
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+metadata = Path(sys.argv[1])
+document = json.loads(metadata.read_text(encoding="utf-8"))
+guest_clock = document.get("guestClockUtc")
+if not isinstance(guest_clock, str) or not re.fullmatch(
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
+    guest_clock,
+):
+    raise SystemExit(
+        "error: rootfs input metadata has invalid guestClockUtc; "
+        "expected YYYY-MM-DDTHH:MM:SSZ"
+    )
+datetime.strptime(guest_clock, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+print(guest_clock)
+PY
+}
+
+configure_guest_clock() {
+  local guest_clock_utc
+
+  ROOTFS_STAGE="guest-clock"
+  guest_clock_utc="$(read_guest_clock_utc)"
+  timedatectl set-ntp false >/dev/null 2>&1 || true
+  date -u --set="${guest_clock_utc}" >/dev/null
+  printf "Rootfs guest clock set to %s\n" "${guest_clock_utc}"
+}
+
 configure_apt_snapshot() {
   ROOTFS_STAGE="apt-snapshot"
   APT_SNAPSHOT="$(read_apt_snapshot)"
   export APT_SNAPSHOT
-  printf 'APT::Snapshot "%s";\n' "${APT_SNAPSHOT}" >"${APT_SNAPSHOT_CONF}"
+  rm -f "${APT_SNAPSHOT_CONF}"
+  configure_snapshot_sources "${APT_SNAPSHOT}"
+  clear_apt_indexes
+}
+
+configure_snapshot_sources() {
+  local snapshot="$1"
+  local source
+
+  ROOTFS_STAGE="apt-snapshot-sources"
+  for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+    if [ -e "${source}" ]; then
+      mv "${source}" "${source}.vitalserver-disabled"
+    fi
+  done
+
+  cat >"/etc/apt/sources.list.d/vitalserver-snapshot.sources" <<EOF
+Types: deb
+URIs: https://snapshot.ubuntu.com/ubuntu/${snapshot}
+Suites: noble noble-updates noble-security
+Components: main restricted universe multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+EOF
+}
+
+clear_apt_indexes() {
+  ROOTFS_STAGE="apt-index-clean"
+  rm -rf /var/lib/apt/lists/*
+  mkdir -p /var/lib/apt/lists/partial
 }
 
 record_apt_plan() {
   ROOTFS_STAGE="apt-plan"
-  apt-get -s install -y "${RUNTIME_APT_PACKAGES[@]}" >"${APT_PLAN_TEXT_FILE}"
+  apt-get -s install -y --no-install-recommends "${RUNTIME_APT_PACKAGES[@]}" >"${APT_PLAN_TEXT_FILE}"
   python3 - "${APT_PLAN_TEXT_FILE}" "${APT_PLAN_JSON_FILE}" "${ROOTFS_BLOCKED_UPGRADE_PACKAGES[*]}" "${RUNTIME_APT_PACKAGES[*]}" "${APT_SNAPSHOT}" "${MOUNT_POINT}/deploy/build-metadata/rootfs-input.json" <<'PY'
 import json
 import sys
@@ -251,7 +348,7 @@ PY
 record_installed_runtime_packages() {
   ROOTFS_STAGE="apt-installed"
   : >"${APT_INSTALLED_TEXT_FILE}"
-  for package in "${RUNTIME_APT_PACKAGES[@]}" docker-compose-v2 docker-compose-plugin containerd runc; do
+  for package in "${RUNTIME_APT_PACKAGES[@]}" containerd runc; do
     version="$(dpkg-query -W -f='${Version}' "${package}" 2>/dev/null || true)"
     if [ -n "${version}" ]; then
       printf "%s\t%s\n" "${package}" "${version}" >>"${APT_INSTALLED_TEXT_FILE}"
@@ -287,25 +384,28 @@ PY
 }
 
 install_runtime_packages() {
+  local apt_install_status
+
   export DEBIAN_FRONTEND=noninteractive
 
   ROOTFS_STAGE="apt-prepare"
-  timedatectl set-ntp true >/dev/null 2>&1 || true
-  systemctl restart systemd-timesyncd >/dev/null 2>&1 || true
+  configure_guest_clock
+  stop_background_apt_services
+  configure_apt_snapshot
   disable_flash_kernel_hook
   remove_flash_kernel_package
   repair_package_state
-  configure_apt_snapshot
 
+  ROOTFS_STAGE="apt-update"
   apt-get update
   record_apt_plan
   ROOTFS_STAGE="apt-install"
-  apt-get install -y "${RUNTIME_APT_PACKAGES[@]}"
-
-  if ! docker compose version >/dev/null 2>&1; then
-    ROOTFS_STAGE="apt-install-compose"
-    apt-get install -y docker-compose-v2 \
-      || apt-get install -y docker-compose-plugin
+  install_service_start_blocker
+  apt_install_status=0
+  apt-get install -y --no-install-recommends "${RUNTIME_APT_PACKAGES[@]}" || apt_install_status="$?"
+  remove_service_start_blocker
+  if [ "${apt_install_status}" -ne 0 ]; then
+    return "${apt_install_status}"
   fi
   record_installed_runtime_packages
 

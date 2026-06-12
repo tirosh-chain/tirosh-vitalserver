@@ -27,6 +27,7 @@ from tirosh_guest_tools.infrastructure.common import (
 )
 
 DOCKER_SMOKE_TIMEOUT_SECONDS = 60.0
+DOCKER_IMAGE_LOAD_TIMEOUT_SECONDS = 240.0
 COMPOSE_BUILD_TIMEOUT_SECONDS = 600.0
 COMPOSE_UP_TIMEOUT_SECONDS = 300.0
 EDGE_READY_TIMEOUT_SECONDS = 600.0
@@ -45,6 +46,7 @@ class RootfsSmokeContext:
     manifest_path: Path
     apt_plan_path: Path
     apt_installed_path: Path
+    docker_image_bundle_path: Path
     diagnostics_dir: Path
     compose_project_name: str
     docker_smoke_image: str
@@ -109,6 +111,15 @@ class RootfsSmokeRun:
     operations: RootfsSmokeOperations
     created_at: str = field(default_factory=utc_now)
     stages: list[SmokeStageResult] = field(default_factory=list)
+    runtime_versions: dict[str, str] = field(
+        default_factory=lambda: {
+            "kernel": "",
+            "docker": "",
+            "containerd": "",
+            "runc": "",
+            "compose": "",
+        }
+    )
     cleanup: dict[str, str] = field(
         default_factory=lambda: {
             "status": RootfsSmokeStatus.NOT_RUN.value,
@@ -120,7 +131,6 @@ class RootfsSmokeRun:
         write_json(self.context.manifest_path, self.as_json())
 
     def as_json(self) -> dict[str, Any]:
-        runtime = collect_runtime_versions(self.operations)
         return {
             "schemaVersion": 2,
             "runId": self.context.run_id,
@@ -128,13 +138,13 @@ class RootfsSmokeRun:
             "updatedAt": utc_now(),
             "ubuntu": {
                 **read_ubuntu_metadata(self.context.deploy_dir),
-                "kernel": runtime["kernel"],
+                "kernel": self.runtime_versions["kernel"],
             },
             "runtime": {
-                "docker": runtime["docker"],
-                "containerd": runtime["containerd"],
-                "runc": runtime["runc"],
-                "compose": runtime["compose"],
+                "docker": self.runtime_versions["docker"],
+                "containerd": self.runtime_versions["containerd"],
+                "runc": self.runtime_versions["runc"],
+                "compose": self.runtime_versions["compose"],
             },
             "apt": read_apt_plan(self.context.apt_plan_path),
             "aptInstalled": read_apt_installed(self.context.apt_installed_path),
@@ -166,6 +176,9 @@ def default_context() -> RootfsSmokeContext:
         manifest_path=RUNTIME_DIR / "rootfs-runtime-manifest.json",
         apt_plan_path=RUNTIME_DIR / "rootfs-apt-plan.json",
         apt_installed_path=RUNTIME_DIR / "rootfs-apt-installed.json",
+        docker_image_bundle_path=DEPLOY_DIR
+        / "docker-images"
+        / "vitalserver-images.tar.gz",
         diagnostics_dir=RUNTIME_DIR / "rootfs-smoke-diagnostics",
         compose_project_name="vitalserver-rootfs-smoke",
         docker_smoke_image=os.environ.get(
@@ -214,6 +227,9 @@ def run_rootfs_smoke(
     diagnostics_collected = False
 
     try:
+        execute_stage(run, "docker-service", docker_service)
+        execute_stage(run, "runtime-version", runtime_version)
+        execute_stage(run, "docker-image-load", docker_image_load)
         execute_stage(run, "docker-smoke", docker_smoke)
         execute_stage(run, "disk-space", disk_space)
         execute_stage(run, "compose-build", compose_build)
@@ -233,6 +249,47 @@ def run_rootfs_smoke(
 
     if failed:
         raise SystemExit(1)
+
+
+def docker_service(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
+    run_checked(
+        run,
+        ["systemctl", "start", "docker"],
+        timeout_seconds=DOCKER_SMOKE_TIMEOUT_SECONDS,
+    )
+    completed = run_checked(
+        run,
+        ["docker", "info", "--format", "{{json .ServerVersion}}"],
+        timeout_seconds=DOCKER_SMOKE_TIMEOUT_SECONDS,
+    )
+    return "docker service is running", {"serverVersion": completed.stdout.strip()}
+
+
+def runtime_version(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
+    run.runtime_versions = collect_runtime_versions(run.operations)
+    return "runtime versions collected", run.runtime_versions
+
+
+def docker_image_load(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
+    bundle = run.context.docker_image_bundle_path
+    if not bundle.is_file():
+        raise RuntimeError(f"missing Docker image bundle: {bundle}")
+    bundle_bytes = bundle.stat().st_size
+    update_current_stage(
+        run,
+        message="loading Docker image bundle",
+        details={
+            "bundle": str(bundle),
+            "bundleBytes": bundle_bytes,
+            "timeoutSeconds": DOCKER_IMAGE_LOAD_TIMEOUT_SECONDS,
+        },
+    )
+    run_checked(
+        run,
+        ["docker", "load", "-i", str(bundle)],
+        timeout_seconds=DOCKER_IMAGE_LOAD_TIMEOUT_SECONDS,
+    )
+    return "Docker image bundle loaded", {"bundle": str(bundle), "bundleBytes": bundle_bytes}
 
 
 def execute_stage(
@@ -255,13 +312,15 @@ def execute_stage(
         fail_stage_if_requested(run, name)
         message, details = action(run)
     except subprocess.TimeoutExpired as error:
+        details = dict(run.stages[-1].details)
+        details["command"] = error.cmd
         run.stages[-1] = SmokeStageResult(
             name=name,
             status=RootfsSmokeStatus.TIMEOUT,
             started_at=started_at,
             completed_at=utc_now(),
             message=f"stage timed out after {error.timeout:g}s",
-            details={"command": error.cmd},
+            details=details,
         )
         run.write_manifest()
         raise RootfsSmokeStageFailed(name) from error
@@ -281,6 +340,26 @@ def execute_stage(
         status=RootfsSmokeStatus.PASSED,
         started_at=started_at,
         completed_at=utc_now(),
+        message=message,
+        details=details,
+    )
+    run.write_manifest()
+
+
+def update_current_stage(
+    run: RootfsSmokeRun,
+    *,
+    message: str,
+    details: dict[str, Any],
+) -> None:
+    if not run.stages:
+        return
+    current = run.stages[-1]
+    run.stages[-1] = SmokeStageResult(
+        name=current.name,
+        status=current.status,
+        started_at=current.started_at,
+        completed_at=current.completed_at,
         message=message,
         details=details,
     )

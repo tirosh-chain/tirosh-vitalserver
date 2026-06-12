@@ -310,6 +310,9 @@ def write_runtime_manifest(
     omitted_stages = omitted_stages or set()
     stages = []
     for name in (
+        "docker-service",
+        "runtime-version",
+        "docker-image-load",
         "docker-smoke",
         "disk-space",
         "compose-build",
