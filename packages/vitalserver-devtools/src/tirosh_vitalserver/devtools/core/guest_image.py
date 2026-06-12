@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -30,6 +31,7 @@ class GuestRuntimeConfig:
 class UbuntuImageConfig:
     version: str
     base_url: str
+    apt_snapshot: str
     arch: str
     kernel_suffix: str
     initrd_suffix: str
@@ -137,6 +139,15 @@ def ubuntu_boot_asset_plan(
         base_url=base_url,
         arch=arch,
         assets=assets,
+    )
+
+
+def require_ubuntu_snapshot_id(value: str) -> str:
+    if re.fullmatch(r"\d{8}T\d{6}Z", value):
+        return value
+    raise DomainError(
+        "error: unsupported guest.ubuntu.apt_snapshot; expected "
+        f"YYYYMMDDTHHMMSSZ: {value}"
     )
 
 

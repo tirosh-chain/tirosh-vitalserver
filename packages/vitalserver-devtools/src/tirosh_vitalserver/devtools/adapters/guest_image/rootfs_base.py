@@ -128,6 +128,7 @@ def require_runtime_manifest(
         or ubuntu.get("metadataStatus") != "loaded"
         or not non_empty_string(ubuntu.get("baseUrl"))
         or not non_empty_string(ubuntu.get("cacheKey"))
+        or not non_empty_string(ubuntu.get("aptSnapshot"))
         or not non_empty_string(ubuntu.get("kernel"))
     ):
         raise SystemExit(
@@ -135,6 +136,12 @@ def require_runtime_manifest(
             "metadata or kernel; "
             f"manifest={manifest}"
         )
+    require_apt_plan(
+        document,
+        manifest,
+        expected_run_id=str(document["runId"]),
+        expected_snapshot=str(ubuntu["aptSnapshot"]),
+    )
     stages = document.get("stages")
     if not isinstance(stages, list):
         raise SystemExit(
@@ -223,6 +230,50 @@ def require_stage_passed(stages: list[object], name: str, manifest: Path) -> Non
         raise SystemExit(
             f"error: rootfs {name} stage did not pass; refusing to compress "
             f"unproven rootfs: status={status} message={message}"
+        )
+
+
+def require_apt_plan(
+    document: dict[str, object],
+    manifest: Path,
+    *,
+    expected_run_id: str,
+    expected_snapshot: str,
+) -> None:
+    apt = document.get("apt")
+    if not isinstance(apt, dict):
+        raise SystemExit(
+            "error: rootfs runtime manifest is missing apt plan proof; "
+            f"manifest={manifest}"
+        )
+    status = apt.get("status")
+    if status != "allowed":
+        raise SystemExit(
+            "error: rootfs apt plan is not allowed; refusing to compress "
+            f"unproven rootfs: status={status} manifest={manifest}"
+        )
+    run_id = apt.get("runId")
+    if run_id != expected_run_id:
+        raise SystemExit(
+            "error: rootfs apt plan runId does not match manifest; "
+            f"expected={expected_run_id} actual={run_id} manifest={manifest}"
+        )
+    snapshot = apt.get("snapshot")
+    if snapshot != expected_snapshot:
+        raise SystemExit(
+            "error: rootfs apt plan snapshot does not match Ubuntu input; "
+            f"expected={expected_snapshot} actual={snapshot} manifest={manifest}"
+        )
+    blocked = apt.get("blockedUpgrades")
+    if not isinstance(blocked, list):
+        raise SystemExit(
+            "error: rootfs apt plan is missing blocked upgrade proof; "
+            f"manifest={manifest}"
+        )
+    if blocked:
+        raise SystemExit(
+            "error: rootfs apt plan mutates base runtime packages; refusing "
+            f"to compress unproven rootfs: blockedUpgrades={blocked}"
         )
 
 

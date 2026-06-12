@@ -361,6 +361,18 @@ def main() -> int:
         ),
     )
 
+    runtime_force_stop = subparsers.add_parser(
+        "macos-runtime-force-stop",
+        help="force stop VM launcher processes that explicitly use the VM home",
+    )
+    runtime_force_stop.add_argument("--vm-home", type=Path, required=True)
+    runtime_force_stop.add_argument("--timeout", type=int, required=True)
+    runtime_force_stop.set_defaults(
+        handler=lambda args: macos_runtime_usecases.force_stop(
+            runtime_wait_input(args)
+        ),
+    )
+
     runtime_rootfs_begin = subparsers.add_parser(
         "macos-runtime-rootfs-begin",
         help="start a new golden rootfs proof run and invalidate stale proof files",

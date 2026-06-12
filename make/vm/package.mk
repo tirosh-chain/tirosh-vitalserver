@@ -32,7 +32,10 @@ VM_PKG_ROOTFS_CACHE ?= $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz
 VM_PKG_ROOTFS_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/rootfs-base.contract
 VM_PKG_ROOTFS_CONTRACT_INPUTS := \
 	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/prepare-airgap-rootfs.sh \
-	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/bootstrap.sh
+	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/bootstrap.sh \
+	packages/vitalserver-guest-tools/pyproject.toml \
+	packages/vitalserver-guest-tools/src/tirosh_guest_tools/contracts.py \
+	packages/vitalserver-guest-tools/src/tirosh_guest_tools/application/rootfs_smoke.py
 VM_PKG_ROOTFS_CONTRACT_FINGERPRINT := $(shell cksum $(VM_PKG_ROOTFS_CONTRACT_INPUTS) | cksum | awk '{print $$1 "-" $$2}')
 
 # Internal golden rootfs workspaces.
@@ -42,12 +45,27 @@ VM_GOLDEN_RUNTIME_DIR := $(VM_GOLDEN_HOME)/runtime
 # Diagnostic/CI golden rootfs workspaces.
 VM_GOLDEN_NEGATIVE_HOME ?= .tmp/vitalserver-vm-golden-negative
 VM_GOLDEN_RUNTIME_SMOKE_HOME ?= .tmp/vitalserver-vm-golden-runtime-smoke
+VM_AIRGAP_CLEANUP_WAIT_TIMEOUT ?= 30
+VM_AIRGAP_FORCE_STOP_TIMEOUT ?= 5
 
 # Public install/uninstall knobs.
 VM_INSTALL_SETTINGS ?=
 VM_UNINSTALL_ARGS ?=
 
-internal/vm/airgap-rootfs: internal/vm/download internal/vm/stage
+internal/vm/airgap-rootfs:
+	@$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
+		--vm-home "$(VM_HOME)" \
+		stop >/dev/null 2>&1 || true
+	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
+		--vm-home "$(VM_HOME)"
+	$(MAKE) internal/vm/download \
+		VM_HOME="$(VM_HOME)" \
+		VM_RECREATE_ROOTFS="$(VM_RECREATE_ROOTFS)"
+	$(MAKE) internal/vm/stage \
+		VM_HOME="$(VM_HOME)" \
+		VM_ROOTFS_RUN_ID="$(VM_ROOTFS_RUN_ID)" \
+		VM_RUNTIME_BOOT_SMOKE="$(VM_RUNTIME_BOOT_SMOKE)" \
+		VM_RUNTIME_BOOT_SMOKE_RUN_ID="$(VM_RUNTIME_BOOT_SMOKE_RUN_ID)"
 	@$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
 		--vm-home "$(VM_HOME)" \
 		stop >/dev/null 2>&1 || true
@@ -66,10 +84,40 @@ internal/vm/airgap-rootfs: internal/vm/download internal/vm/stage
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" cloud-init \
 		--runtime-dir "$(VM_RUNTIME_DIR)" \
 		--bootstrap-script "/mnt/tirosh/deploy/prepare-airgap-rootfs.sh"
-	$(MAKE) internal/vm/start/detached
-	$(MAKE) internal/vm/wait/rootfs-ready
-	$(MAKE) internal/vm/stop
-	@printf "Air-gapped rootfs is prepared: %s\n" "$(VM_RUNTIME_DIR)/vm-disk.img"
+	@set -e; \
+	cleanup_airgap_rootfs() { \
+		status="$$?"; \
+		cleanup_status="$${status}"; \
+		$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
+			--vm-home "$(VM_HOME)" \
+			stop >/dev/null 2>&1 || true; \
+		if ! $(VM_BUILD_RUNNER) macos-runtime-wait-stopped \
+			--vm-home "$(VM_HOME)" \
+			--timeout "$(VM_AIRGAP_CLEANUP_WAIT_TIMEOUT)" >/dev/null 2>&1; then \
+			$(VM_BUILD_RUNNER) macos-runtime-force-stop \
+				--vm-home "$(VM_HOME)" \
+				--timeout "$(VM_AIRGAP_FORCE_STOP_TIMEOUT)" || cleanup_status="1"; \
+		fi; \
+		if ! $(VM_BUILD_RUNNER) macos-runtime-require-no-running \
+			--vm-home "$(VM_HOME)"; then \
+			$(VM_BUILD_RUNNER) macos-runtime-force-stop \
+				--vm-home "$(VM_HOME)" \
+				--timeout "$(VM_AIRGAP_FORCE_STOP_TIMEOUT)" || cleanup_status="1"; \
+		fi; \
+		exit "$${cleanup_status}"; \
+	}; \
+	trap cleanup_airgap_rootfs EXIT; \
+	$(MAKE) internal/vm/start/detached \
+		VM_HOME="$(VM_HOME)"; \
+	$(MAKE) internal/vm/wait/rootfs-ready \
+		VM_HOME="$(VM_HOME)" \
+		VM_ROOTFS_RUN_ID="$(VM_ROOTFS_RUN_ID)"; \
+	$(MAKE) internal/vm/stop \
+		VM_HOME="$(VM_HOME)"; \
+	trap - EXIT; \
+	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
+		--vm-home "$(VM_HOME)"; \
+	printf "Air-gapped rootfs is prepared: %s\n" "$(VM_RUNTIME_DIR)/vm-disk.img"
 
 internal/vm/golden-rootfs:
 	@set -e; \

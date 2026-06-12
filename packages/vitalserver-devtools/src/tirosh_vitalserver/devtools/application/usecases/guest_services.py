@@ -105,9 +105,11 @@ def stage_guest_deployment(
         optional_docker_bundle=optional_docker_bundle,
     )
     stage_guest_deploy(plan)
+    ubuntu_config = load_ubuntu_image_config(config)
     stage_rootfs_input_metadata(
         deploy_dir=deploy_dir,
-        base_url=load_ubuntu_image_config(config).base_url,
+        base_url=ubuntu_config.base_url,
+        apt_snapshot=ubuntu_config.apt_snapshot,
         run_id=input.rootfs_run_id,
     )
     ensure_vm_data_dirs(plan)
@@ -119,6 +121,7 @@ def stage_rootfs_input_metadata(
     *,
     deploy_dir: Path,
     base_url: str,
+    apt_snapshot: str,
     run_id: str | None = None,
 ) -> None:
     metadata = deploy_dir / "build-metadata" / "rootfs-input.json"
@@ -129,6 +132,7 @@ def stage_rootfs_input_metadata(
             "enabled": False,
         },
         "ubuntu": {
+            "aptSnapshot": apt_snapshot,
             "baseUrl": base_url,
             "cacheKey": ubuntu_download_cache_key(base_url),
         },

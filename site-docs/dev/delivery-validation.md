@@ -22,6 +22,8 @@ Docker image bundle, update bundle, Reset Installer package까지 함께 다룹�
 | 실패는 남긴다 | build 실패, health 실패, rollback 실패는 기록으로 남김 |
 | 상태를 섞지 않는다 | missing, invalid, failed, stale, empty를 서로 바꾸지 않음 |
 | 문서와 구현을 같이 본다 | 운영 절차가 바뀌면 release/dev 문서도 함께 바뀜 |
+| VM build는 product compile | kernel panic, guest boot failure, rootfs proof failure, runtime smoke failure를 숨기지 않음 |
+| VM compile input은 증명한다 | Ubuntu image URL, apt snapshot, rootfs runId, guest failure marker, apt plan, smoke manifest를 compile proof로 확인 |
 
 ### 1-2. 결과물이 하나가 아닌 이유
 
@@ -70,10 +72,21 @@ Reset Installer PKG를 전달하고, installer 또는 Helper app UI에서 적용
 | 목적 | command |
 |---|---|
 | 설치된 runtime health 확인 | `make dist/installed/health` |
+| dev DMG를 VM compile 포함해 생성 | `make dist/dmg/dev/compile` |
+| dev PKG를 VM compile 포함해 생성 | `make dist/pkg/dev/compile` |
+| golden rootfs만 compile | `make devtools/golden-rootfs/compile` |
 | testkit release wheel 설치 | `make testkit/install-release TESTKIT_VERSION=<version>` |
 
 build 세부 구현은 `packages/vitalserver-devtools`와
 `docs/runtime/macos/packaging.md`를 기준으로 봅니다.
+
+Golden rootfs compile은 VM을 띄우는 단순 준비 단계가 아니라 제품 compile 단계입니다.
+`guest.ubuntu.base_url`과 `guest.ubuntu.apt_snapshot`은 함께 rootfs compile input입니다.
+`prepare-airgap-rootfs.sh`는 실제 package install 전에 `APT::Snapshot`을 적용하고 apt plan을
+기록합니다. Python/util-linux, Docker/container runtime처럼 base runtime을 바꾸는 upgrade가
+감지되면 rootfs smoke까지 가지 않고 compile failure로 올립니다. `macos-runtime-wait-rootfs-ready`는 현재 run의
+`rootfs-failure.json`, manifest stage, launcher log의 kernel panic/Oops/SIGILL을 모두
+확인해야 하며, `rootfs-base` 압축은 apt plan proof와 smoke proof가 모두 통과한 경우에만 허용됩니다.
 
 ## 3. 무엇을 검증할까
 
@@ -224,13 +237,22 @@ Watchdog의 guest bootstrap guard는 Host가 소유한 `vm-lifecycle.json`의 wa
 `running` bootstrap result를 active operation으로 취급하면 안 됩니다. VM이 kernel panic이나 early
 termination으로 guest trap을 실행하지 못하면 bootstrap result가 `running`에 머물 수 있으므로,
 deadline 이후에는 Host lifecycle stale/failure 관측이 recovery 또는 critical 상태로 드러나야 합니다.
+VM build는 제품 compile로 취급합니다. `make dist/dmg/dev/compile`, `make dist/pkg/dev/compile`,
+`make devtools/golden-rootfs/compile`은 golden rootfs와 runtime smoke proof를 새로 요구하며,
+kernel panic, guest boot failure, rootfs proof failure, runtime smoke failure를 우회하지 않습니다.
+실패는 runId, failing stage, failure reason 또는 matched pattern, artifact/log path와 함께 드러나야 합니다.
+Guest userspace가 `Illegal instruction`이나 `Segmentation fault`로 죽어 manifest가 `running`에 멈춘
+경우도 timeout이 아니라 compile failure 증거로 분류해야 합니다.
+실패 후에는 graceful stop과 bounded wait를 수행하고, launcher가 남으면 VM_HOME-scoped
+`macos-runtime-force-stop`으로 정리해야 합니다. 정리 후 `macos-runtime-require-no-running`이
+통과하지 않으면 다음 compile을 시작하면 안 됩니다.
 Golden rootfs는 `/mnt/tirosh/run/rootfs-runtime-manifest.json` schema v2의 stage 결과가 모두 통과한
 경우에만 `rootfs-base.raw.gz`로 압축할 수 있습니다. 필수 stage는 `docker-smoke`, `disk-space`,
 `compose-build`, `compose-up`, `edge-ready`이며, `cleanup.status=passed`도 함께 필요합니다.
 Manifest와 `rootfs-ready` marker는 현재 golden rootfs run의 `runId`와 일치해야 합니다. Manifest의
-`ubuntu.metadataStatus`는 `loaded`여야 하고, `ubuntu.baseUrl`, `ubuntu.cacheKey`, `ubuntu.kernel`은
-비어 있으면 안 됩니다. 입력 Ubuntu 이미지가 무엇인지 모르는 rootfs는 smoke가 통과해도 release artifact가
-될 수 없습니다.
+`ubuntu.metadataStatus`는 `loaded`여야 하고, `ubuntu.baseUrl`, `ubuntu.cacheKey`,
+`ubuntu.aptSnapshot`, `ubuntu.kernel`은 비어 있으면 안 됩니다. 입력 Ubuntu 이미지와 apt snapshot이
+무엇인지 모르는 rootfs는 smoke가 통과해도 release artifact가 될 수 없습니다.
 `docker --version`, `docker compose version`, package install success, `rootfs-ready` marker는 runtime
 proof가 아닙니다. Rootfs 준비 VM은 Docker disposable container smoke 이후 실제 deploy bundle의
 Compose stack을 올리고 `/ready`를 확인한 뒤 `docker compose down -v`로 state를 정리해야 합니다. 실패
@@ -248,6 +270,10 @@ image/kernel 입력은 manifest의 `ubuntu.kernel`과 rootfs smoke stages로 검
 Ubuntu image download cache는 `base_url` identity를 포함해야 합니다. Release URL만 바꿨는데 같은
 `ubuntu-24.04-server-cloudimg-arm64.img` cache 파일을 재사용하면 config pin이 실제 VM 입력으로
 반영되지 않고, 검증했다고 믿은 kernel과 실제 packaged kernel이 달라집니다.
+`rootfs-apt-plan.json`이 Python, util-linux, curl 같은 base runtime package upgrade를 막았다면,
+guard 목록을 넓혀 통과시키지 않습니다. 이는 Ubuntu cloud image와 apt snapshot/package set이 하나의
+reproducible input으로 고정되지 않았다는 신호입니다. apt plan의 `runId`와 `snapshot`은 manifest의
+현재 run 및 `ubuntu.aptSnapshot`과 일치해야 합니다.
 
 ### 4-2. 영역별로 봐야 하는 것
 

@@ -43,6 +43,8 @@ class RootfsSmokeContext:
     deploy_dir: Path
     vital_files_mount: Path
     manifest_path: Path
+    apt_plan_path: Path
+    apt_installed_path: Path
     diagnostics_dir: Path
     compose_project_name: str
     docker_smoke_image: str
@@ -134,6 +136,8 @@ class RootfsSmokeRun:
                 "runc": runtime["runc"],
                 "compose": runtime["compose"],
             },
+            "apt": read_apt_plan(self.context.apt_plan_path),
+            "aptInstalled": read_apt_installed(self.context.apt_installed_path),
             "stages": [stage.as_json() for stage in self.stages],
             "cleanup": self.cleanup,
             "diagnostics": {"path": str(self.context.diagnostics_dir)},
@@ -160,6 +164,8 @@ def default_context() -> RootfsSmokeContext:
         deploy_dir=DEPLOY_DIR,
         vital_files_mount=VITAL_FILES_MOUNT_POINT,
         manifest_path=RUNTIME_DIR / "rootfs-runtime-manifest.json",
+        apt_plan_path=RUNTIME_DIR / "rootfs-apt-plan.json",
+        apt_installed_path=RUNTIME_DIR / "rootfs-apt-installed.json",
         diagnostics_dir=RUNTIME_DIR / "rootfs-smoke-diagnostics",
         compose_project_name="vitalserver-rootfs-smoke",
         docker_smoke_image=os.environ.get(
@@ -561,6 +567,7 @@ def read_ubuntu_metadata(deploy_dir: Path) -> dict[str, str]:
     if not document:
         return {
             "metadataStatus": "missing",
+            "aptSnapshot": "",
             "baseUrl": "",
             "cacheKey": "",
         }
@@ -568,16 +575,77 @@ def read_ubuntu_metadata(deploy_dir: Path) -> dict[str, str]:
     if not isinstance(ubuntu, dict):
         return {
             "metadataStatus": "invalid",
+            "aptSnapshot": "",
             "baseUrl": "",
             "cacheKey": "",
         }
     base_url = ubuntu.get("baseUrl")
     cache_key = ubuntu.get("cacheKey")
+    apt_snapshot = ubuntu.get("aptSnapshot")
     return {
         "metadataStatus": "loaded",
+        "aptSnapshot": apt_snapshot if isinstance(apt_snapshot, str) else "",
         "baseUrl": base_url if isinstance(base_url, str) else "",
         "cacheKey": cache_key if isinstance(cache_key, str) else "",
     }
+
+
+def read_apt_plan(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {
+            "schemaVersion": 1,
+            "status": "missing",
+            "path": str(path),
+            "blockedUpgrades": [],
+        }
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "schemaVersion": 1,
+            "status": "invalid",
+            "path": str(path),
+            "error": str(error),
+            "blockedUpgrades": [],
+        }
+    if not isinstance(document, dict):
+        return {
+            "schemaVersion": 1,
+            "status": "invalid",
+            "path": str(path),
+            "error": "expected object",
+            "blockedUpgrades": [],
+        }
+    return document
+
+
+def read_apt_installed(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {
+            "schemaVersion": 1,
+            "status": "missing",
+            "path": str(path),
+            "packages": {},
+        }
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "schemaVersion": 1,
+            "status": "invalid",
+            "path": str(path),
+            "error": str(error),
+            "packages": {},
+        }
+    if not isinstance(document, dict):
+        return {
+            "schemaVersion": 1,
+            "status": "invalid",
+            "path": str(path),
+            "error": "expected object",
+            "packages": {},
+        }
+    return document
 
 
 def rootfs_run_id(deploy_dir: Path) -> str:

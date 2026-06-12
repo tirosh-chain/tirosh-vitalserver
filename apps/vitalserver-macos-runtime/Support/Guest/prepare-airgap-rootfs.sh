@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eEuo pipefail
 
 MOUNT_TAG="tirosh"
 MOUNT_POINT="/mnt/tirosh"
@@ -8,14 +8,119 @@ VITAL_FILES_MOUNT_POINT="/mnt/tirosh-vital-files"
 RUNTIME_DIR="${MOUNT_POINT}/run"
 READY_FILE="${RUNTIME_DIR}/rootfs-ready"
 RUNTIME_MANIFEST_FILE="${RUNTIME_DIR}/rootfs-runtime-manifest.json"
+FAILURE_FILE="${RUNTIME_DIR}/rootfs-failure.json"
+APT_PLAN_TEXT_FILE="${RUNTIME_DIR}/rootfs-apt-plan.txt"
+APT_PLAN_JSON_FILE="${RUNTIME_DIR}/rootfs-apt-plan.json"
+APT_INSTALLED_TEXT_FILE="${RUNTIME_DIR}/rootfs-apt-installed.txt"
+APT_INSTALLED_JSON_FILE="${RUNTIME_DIR}/rootfs-apt-installed.json"
+APT_SNAPSHOT_CONF="/etc/apt/apt.conf.d/50vitalserver-snapshot"
 GUEST_TOOLS_HOME="/opt/tirosh/guest-tools"
 GUEST_TOOLS_VENV="${GUEST_TOOLS_HOME}/venv"
 PYTHON_WHEEL_DIR="${MOUNT_POINT}/deploy/python-wheels"
+ROOTFS_STAGE="startup"
+
+RUNTIME_APT_PACKAGES=(
+  avahi-daemon
+  busybox-static
+  ca-certificates
+  cloud-guest-utils
+  curl
+  docker.io
+  procps
+  psmisc
+  python3-minimal
+  python3-venv
+  util-linux
+)
+
+ROOTFS_BLOCKED_UPGRADE_PACKAGES=(
+  bsdextrautils
+  bsdutils
+  containerd
+  curl
+  docker.io
+  eject
+  fdisk
+  libblkid1
+  libcurl3t64-gnutls
+  libcurl4t64
+  libfdisk1
+  libmount1
+  libpython3-stdlib
+  libpython3.12-minimal
+  libpython3.12-stdlib
+  libpython3.12t64
+  libsmartcols1
+  libuuid1
+  mount
+  python3
+  python3-minimal
+  python3-pkg-resources
+  python3-setuptools
+  python3.12
+  python3.12-minimal
+  runc
+  util-linux
+  uuid-runtime
+)
 
 if [ "$(id -u)" -ne 0 ]; then
   printf "error: run with sudo\n" >&2
   exit 1
 fi
+
+record_failure() {
+  local exit_code="$1"
+  local stage="$2"
+
+  if [ "${exit_code}" -eq 0 ]; then
+    return
+  fi
+  if [ ! -d "${RUNTIME_DIR}" ]; then
+    return
+  fi
+
+  python3 - "${FAILURE_FILE}" "${MOUNT_POINT}/deploy/build-metadata/rootfs-input.json" "${stage}" "${exit_code}" "${APT_PLAN_JSON_FILE}" "${RUNTIME_MANIFEST_FILE}" <<'PY' || true
+import json
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+failure_path = Path(sys.argv[1])
+input_path = Path(sys.argv[2])
+stage = sys.argv[3]
+exit_code = int(sys.argv[4])
+apt_plan_path = Path(sys.argv[5])
+manifest_path = Path(sys.argv[6])
+run_id = ""
+try:
+    document = json.loads(input_path.read_text(encoding="utf-8"))
+    if isinstance(document, dict) and isinstance(document.get("runId"), str):
+        run_id = document["runId"]
+except (OSError, json.JSONDecodeError):
+    pass
+failure_path.write_text(
+    json.dumps(
+        {
+            "schemaVersion": 1,
+            "runId": run_id,
+            "failedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "stage": stage,
+            "exitCode": exit_code,
+            "reason": "guest-rootfs-prepare-failed",
+            "aptPlanPath": str(apt_plan_path),
+            "manifestPath": str(manifest_path),
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
+}
+
+trap 'record_failure "$?" "${ROOTFS_STAGE}"' ERR
 
 mount_share() {
   local tag="$1"
@@ -48,33 +153,161 @@ repair_package_state() {
   fi
 }
 
+read_apt_snapshot() {
+  python3 - "${MOUNT_POINT}/deploy/build-metadata/rootfs-input.json" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+metadata = Path(sys.argv[1])
+document = json.loads(metadata.read_text(encoding="utf-8"))
+ubuntu = document.get("ubuntu")
+if not isinstance(ubuntu, dict):
+    raise SystemExit("error: rootfs input metadata is missing ubuntu object")
+snapshot = ubuntu.get("aptSnapshot")
+if not isinstance(snapshot, str) or not re.fullmatch(r"\d{8}T\d{6}Z", snapshot):
+    raise SystemExit(
+        "error: rootfs input metadata has invalid ubuntu.aptSnapshot; "
+        "expected YYYYMMDDTHHMMSSZ"
+    )
+print(snapshot)
+PY
+}
+
+configure_apt_snapshot() {
+  ROOTFS_STAGE="apt-snapshot"
+  APT_SNAPSHOT="$(read_apt_snapshot)"
+  export APT_SNAPSHOT
+  printf 'APT::Snapshot "%s";\n' "${APT_SNAPSHOT}" >"${APT_SNAPSHOT_CONF}"
+}
+
+record_apt_plan() {
+  ROOTFS_STAGE="apt-plan"
+  apt-get -s install -y "${RUNTIME_APT_PACKAGES[@]}" >"${APT_PLAN_TEXT_FILE}"
+  python3 - "${APT_PLAN_TEXT_FILE}" "${APT_PLAN_JSON_FILE}" "${ROOTFS_BLOCKED_UPGRADE_PACKAGES[*]}" "${RUNTIME_APT_PACKAGES[*]}" "${APT_SNAPSHOT}" "${MOUNT_POINT}/deploy/build-metadata/rootfs-input.json" <<'PY'
+import json
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+text_path = Path(sys.argv[1])
+json_path = Path(sys.argv[2])
+guard_packages = sorted(value for value in sys.argv[3].split() if value)
+install_packages = sorted(value for value in sys.argv[4].split() if value)
+apt_snapshot = sys.argv[5]
+metadata_path = Path(sys.argv[6])
+run_id = ""
+try:
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if isinstance(metadata, dict) and isinstance(metadata.get("runId"), str):
+        run_id = metadata["runId"]
+except (OSError, json.JSONDecodeError):
+    run_id = ""
+sections = {
+    "The following NEW packages will be installed:": "newPackages",
+    "The following packages will be upgraded:": "upgradedPackages",
+    "The following packages will be REMOVED:": "removedPackages",
+}
+result = {value: [] for value in sections.values()}
+current = None
+for raw_line in text_path.read_text(encoding="utf-8").splitlines():
+    line = raw_line.rstrip()
+    stripped = line.strip()
+    if stripped in sections:
+        current = sections[stripped]
+        continue
+    if current is None:
+        continue
+    if not line.startswith(" ") and not line.startswith("\t"):
+        current = None
+        continue
+    result[current].extend(value for value in stripped.split() if value)
+for key, values in result.items():
+    result[key] = sorted(set(values))
+blocked = sorted(set(result["upgradedPackages"]).intersection(guard_packages))
+document = {
+    "schemaVersion": 1,
+    "runId": run_id,
+    "generatedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "status": "blocked" if blocked else "allowed",
+    "snapshot": apt_snapshot,
+    "installPackages": install_packages,
+    "guardPackages": guard_packages,
+    "blockedUpgrades": blocked,
+    **result,
+}
+json_path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+if blocked:
+    print(
+        "error: rootfs apt plan mutates base runtime packages: "
+        + ",".join(blocked),
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+PY
+}
+
+record_installed_runtime_packages() {
+  ROOTFS_STAGE="apt-installed"
+  : >"${APT_INSTALLED_TEXT_FILE}"
+  for package in "${RUNTIME_APT_PACKAGES[@]}" docker-compose-v2 docker-compose-plugin containerd runc; do
+    version="$(dpkg-query -W -f='${Version}' "${package}" 2>/dev/null || true)"
+    if [ -n "${version}" ]; then
+      printf "%s\t%s\n" "${package}" "${version}" >>"${APT_INSTALLED_TEXT_FILE}"
+    fi
+  done
+  python3 - "${APT_INSTALLED_JSON_FILE}" "${APT_INSTALLED_TEXT_FILE}" <<'PY'
+import json
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+output = Path(sys.argv[1])
+installed = Path(sys.argv[2])
+packages = {}
+for line in installed.read_text(encoding="utf-8").splitlines():
+    package, _, version = line.rstrip("\n").partition("\t")
+    if package and version:
+        packages[package] = version
+output.write_text(
+    json.dumps(
+        {
+            "schemaVersion": 1,
+            "generatedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "packages": packages,
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
+}
+
 install_runtime_packages() {
   export DEBIAN_FRONTEND=noninteractive
 
+  ROOTFS_STAGE="apt-prepare"
   timedatectl set-ntp true >/dev/null 2>&1 || true
   systemctl restart systemd-timesyncd >/dev/null 2>&1 || true
   disable_flash_kernel_hook
   remove_flash_kernel_package
   repair_package_state
+  configure_apt_snapshot
 
   apt-get update
-  apt-get install -y \
-    avahi-daemon \
-    busybox-static \
-    ca-certificates \
-    cloud-guest-utils \
-    curl \
-    docker.io \
-    procps \
-    psmisc \
-    python3-minimal \
-    python3-venv \
-    util-linux
+  record_apt_plan
+  ROOTFS_STAGE="apt-install"
+  apt-get install -y "${RUNTIME_APT_PACKAGES[@]}"
 
   if ! docker compose version >/dev/null 2>&1; then
+    ROOTFS_STAGE="apt-install-compose"
     apt-get install -y docker-compose-v2 \
       || apt-get install -y docker-compose-plugin
   fi
+  record_installed_runtime_packages
 
   apt-get clean
   rm -rf /var/lib/apt/lists/*
@@ -105,6 +338,7 @@ verify_runtime_packages() {
 install_guest_tools_for_rootfs_smoke() {
   local wheel
 
+  ROOTFS_STAGE="guest-tools-install"
   wheel="$(find "${PYTHON_WHEEL_DIR}" -maxdepth 1 -name 'tirosh_vitalserver_guest_tools-*.whl' -type f | sort | tail -n 1 || true)"
   if [ -z "${wheel}" ]; then
     printf "error: missing guest tools wheel under %s\n" "${PYTHON_WHEEL_DIR}" >&2
@@ -122,12 +356,16 @@ mount_share "${VITAL_FILES_MOUNT_TAG}" "${VITAL_FILES_MOUNT_POINT}"
 mkdir -p "${RUNTIME_DIR}"
 
 install_runtime_packages
+ROOTFS_STAGE="runtime-package-verify"
 verify_runtime_packages
 install_guest_tools_for_rootfs_smoke
+ROOTFS_STAGE="rootfs-smoke"
 tirosh-vitalserver-rootfs-smoke
+ROOTFS_STAGE="systemd-enable"
 systemctl enable docker
 systemctl enable avahi-daemon
 
+ROOTFS_STAGE="ready-marker"
 python3 - "${RUNTIME_MANIFEST_FILE}" "${READY_FILE}" <<'PY'
 import json
 import subprocess

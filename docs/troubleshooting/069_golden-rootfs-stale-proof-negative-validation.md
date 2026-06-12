@@ -16,7 +16,11 @@ error: VM launcher log shows terminal guest failure while waiting for rootfs mar
 error: VM launcher log shows terminal guest failure while waiting for rootfs marker: pattern='rcu: INFO: rcu_preempt detected stalls'
 error: VM launcher log shows terminal guest failure while waiting for rootfs marker: pattern='Read-only file system'
 error: VM launcher log shows terminal guest failure while waiting for rootfs marker: pattern='Caught <ILL>'
+error: VM launcher log shows terminal guest failure while waiting for rootfs marker: pattern='Illegal instruction'
+error: guest rootfs preparation failed while waiting for rootfs marker: runId=... stage=apt-plan exitCode=1 reason=guest-rootfs-prepare-failed
+error: rootfs apt plan is not allowed; refusing to compress unproven rootfs: status=blocked
 error: VM launcher process is still running for VM_HOME; refusing to continue with mutable runtime files: ... pids=...
+VM launcher process ignored graceful stop; sending SIGKILL for ... pids=...
 error: rootfs runtime manifest is missing; rebuild the golden rootfs with Docker runtime smoke validation
 ```
 
@@ -33,6 +37,8 @@ error: rootfs runtime manifest is missing; rebuild the golden rootfs with Docker
 - `docker-smoke`, `disk-space`, `compose-build`, `compose-up`, `edge-ready`, `cleanup` 통과
 - `ubuntu.metadataStatus=loaded`
 - 비어 있지 않은 `ubuntu.baseUrl`, `ubuntu.cacheKey`, `ubuntu.kernel`
+- `apt.status=allowed`, `blockedUpgrades=[]`
+- `apt.snapshot` and `ubuntu.aptSnapshot` match the current compile input
 - VM lifecycle `stopped`
 - 남아 있는 VM launcher process 없음
 
@@ -59,6 +65,8 @@ compressed rootfs output이 같은 run의 proof인지 명시적으로 묶이지 
 - manifest failed
 - manifest running
 - launcher terminal failure
+- guest preparation failure marker
+- apt plan blocked by base runtime package mutation
 - VM lifecycle failed
 - VM lifecycle stopped with terminal reason
 - VM launcher process still running
@@ -75,13 +83,15 @@ AGENTS.md의 state/fallback boundary를 위반합니다. Rootfs 준비 proof는 
 ```sh
 ls -l .tmp/vitalserver-vm-golden/data/run
 sed -n '1,260p' .tmp/vitalserver-vm-golden/data/run/rootfs-runtime-manifest.json
+sed -n '1,220p' .tmp/vitalserver-vm-golden/data/run/rootfs-failure.json
+sed -n '1,220p' .tmp/vitalserver-vm-golden/data/run/rootfs-apt-plan.json
 sed -n '1,160p' .tmp/vitalserver-vm-golden/run/vm-lifecycle.json
 tail -n 240 .tmp/vitalserver-vm-golden/logs/launcher.log
 
 .venv/bin/vitalserver-devtools macos-runtime-require-no-running \
   --vm-home .tmp/vitalserver-vm-golden
 
-rg -n "Internal error: Oops|Kernel panic|rcu_preempt|Undefined instruction|not syncing|Read-only file system|invalid ELF header|Input/output error|terminated by signal ILL|Caught <ILL>|Freezing execution|timed out waiting for|terminal guest failure" \
+rg -n "Internal error: Oops|Kernel panic|rcu_preempt|Undefined instruction|not syncing|Read-only file system|invalid ELF header|Input/output error|terminated by signal ILL|Caught <ILL>|Illegal instruction|Segmentation fault|Attempted to kill init|Freezing execution|timed out waiting for|terminal guest failure" \
   .tmp/vitalserver-vm-golden/logs/launcher.log
 
 ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
@@ -93,7 +103,10 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 - manifest가 있어도 schema v2가 아니면 proof가 아닙니다.
 - stage가 `running`, `failed`, `timeout`, `not-run`이면 proof가 아닙니다.
 - `cleanup.status`가 `passed`가 아니면 proof가 아닙니다.
-- launcher log에 kernel panic/Oops/RCU stall, read-only filesystem, invalid ELF, 반복 I/O error, signal ILL/systemd freeze가 있으면 timeout까지 기다리지 말고 terminal guest failure로 봅니다.
+- `apt.status`가 `allowed`가 아니거나 `blockedUpgrades`가 비어 있지 않으면 proof가 아닙니다.
+- `apt.snapshot`이 manifest의 `ubuntu.aptSnapshot`과 다르면 proof가 아닙니다.
+- `rootfs-failure.json`이 현재 runId로 남아 있으면 Guest가 rootfs 준비를 명시 실패한 것입니다.
+- launcher log에 kernel panic/Oops/RCU stall, read-only filesystem, invalid ELF, 반복 I/O error, signal ILL/userspace crash/systemd freeze가 있으면 timeout까지 기다리지 말고 terminal guest failure로 봅니다.
 - VM process가 남아 있으면 mutable runtime files를 다시 쓰면 안 됩니다.
 
 ## Actions
@@ -104,9 +117,12 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 2. 현재 `launcher.log`, `vm-lifecycle.json`, `rootfs-runtime-manifest.json`,
    `rootfs-smoke-diagnostics`를 보존합니다.
 3. `macos-runtime-require-no-running`이 통과하지 않으면 golden rootfs 재시도를 시작하지 않습니다.
-4. stale marker/manifest가 의심되면 현재 run proof와 구분될 때까지 `rootfs-base.raw.gz`를 release
+4. 재시도 전 남은 launcher가 graceful stop에 반응하지 않으면
+   `macos-runtime-force-stop --vm-home .tmp/vitalserver-vm-golden --timeout <seconds>`로
+   VM_HOME을 명시한 프로세스만 정리합니다.
+5. stale marker/manifest가 의심되면 현재 run proof와 구분될 때까지 `rootfs-base.raw.gz`를 release
    산출물로 사용하지 않습니다.
-5. rootfs size가 8G 미만이면 VM을 띄우기 전에 config/domain validation에서 실패해야 합니다. 실제
+6. rootfs size가 8G 미만이면 VM을 띄우기 전에 config/domain validation에서 실패해야 합니다. 실제
    VM disk 부족으로 증상을 재현하려고 작은 rootfs를 부팅하지 않습니다.
 
 ## Prevention
@@ -132,10 +148,21 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 5. 실패 후 process cleanup을 검증합니다.
    - negative runner는 `macos-runtime-require-no-running`을 마지막에 실행합니다.
    - 실패가 expected여도 VM launcher process가 남으면 test 실패입니다.
+   - compile cleanup은 graceful stop 후 bounded wait를 수행하고, launcher가 남으면 VM_HOME-scoped
+     `macos-runtime-force-stop`으로 SIGTERM/SIGKILL을 명시적으로 수행합니다.
+   - force cleanup이 끝난 뒤에도 process가 남으면 compile 실패입니다.
 6. Rootfs size는 두 단계로 방어합니다.
    - `rootfs_size < 8G`는 VM 실행 전 domain gate에서 실패합니다.
    - guest smoke는 disk free space stage를 추가해 Docker/Compose 성공 후 남은 공간이 너무 작으면
      manifest 실패로 기록합니다.
+7. Live apt mutation은 compile input으로 취급합니다.
+   - `guest.ubuntu.apt_snapshot`은 Ubuntu cloud image `base_url`과 함께 rootfs compile input입니다.
+   - `prepare-airgap-rootfs.sh`는 apt update/install 전에 `APT::Snapshot`을 설정합니다.
+   - `prepare-airgap-rootfs.sh`는 실제 install 전에 `rootfs-apt-plan.json`을 기록합니다.
+   - Python, util-linux, Docker/container runtime 같은 base runtime package upgrade가 감지되면
+     `rootfs-failure.json`을 남기고 compile을 실패시킵니다.
+   - 압축 gate는 `apt.status=allowed`와 빈 `blockedUpgrades`만 proof로 인정합니다.
+   - 압축 gate는 apt plan의 runId/snapshot이 manifest의 runId/snapshot과 일치해야만 통과시킵니다.
 
 ## Applied Fix
 
@@ -146,7 +173,13 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 - `macos-runtime-wait-rootfs-ready`는 marker만 보지 않고 manifest schema, expected `runId`,
   required stages, cleanup status를 함께 확인합니다.
 - `rootfs-base` compression gate는 stopped lifecycle, no running VM process, manifest `runId`,
-  ready marker `runId`, required stages, cleanup status를 모두 확인합니다.
+  ready marker `runId`, required stages, cleanup status, apt plan proof를 모두 확인합니다.
+- guest preparation failure marker(`rootfs-failure.json`)는 `wait-rootfs-ready`에서 즉시 terminal
+  failure로 처리됩니다.
+- guest apt plan(`rootfs-apt-plan.json`)은 runId와 apt snapshot을 포함해 manifest에 포함되고,
+  blocked base runtime upgrade 또는 snapshot mismatch는 rootfs artifact 압축을 막습니다.
+- `macos-runtime-force-stop`은 VM_HOME을 명시적으로 가진 launcher process만 대상으로 삼고,
+  cleanup trap은 실패 후 이 command를 사용해 다음 compile을 막는 stale launcher를 남기지 않습니다.
 - rootfs gzip output은 temporary file validation 후 atomic replace 합니다.
 - test-only fault injection은 deploy metadata의 `faultInjection`으로만 활성화되며,
   `testMode=true`가 아니면 guest smoke가 무시합니다.
@@ -168,6 +201,9 @@ P0 negative validation은 실제 VM 또는 command-level integration으로 반�
 | launcher log contains `rcu_preempt detected stalls` | wait fails before timeout |
 | launcher log contains read-only filesystem or invalid ELF header before manifest exists | wait fails before timeout |
 | launcher log contains signal ILL or systemd freeze while a rootfs stage is running | wait fails before timeout |
+| launcher log contains rootfs smoke `Illegal instruction` while a rootfs stage is running | wait fails before timeout |
+| `rootfs-failure.json` exists for the current run | wait fails before timeout |
+| apt plan contains blocked base runtime package upgrade | compile fails before rootfs smoke and compression is rejected |
 | VM launcher process remains after failure | negative runner fails cleanup verification |
 | previous `rootfs-base.raw.gz` exists before failed run | output is not updated or reported as new |
 
@@ -190,6 +226,11 @@ process.
 When this case recurs, do not fix it by increasing timeout alone. Longer timeout only hides
 terminal guest failure, stale proof, or process cleanup bugs.
 
+If `rootfs-apt-plan.json` reports blocked base runtime upgrades, do not make the guard list
+looser just to make the build pass. Treat it as an input drift: the Ubuntu cloud image,
+kernel/initrd, apt snapshot, and runtime package set are no longer one reproducible compile
+input. Keep the apt plan guard as the proof that the base runtime did not mutate unexpectedly.
+
 ## Related Cases
 
 - TS-004: rootfs size and Docker install disk full
@@ -204,3 +245,6 @@ terminal guest failure, stale proof, or process cleanup bugs.
 - 2026-06-11: TS-069 fix implemented with runId proof, stale proof invalidation,
   manifest-aware wait, rootfs-base runId gate, disk-space stage, atomic gzip output,
   and actual negative VM validation for `edge-ready` timeout fault.
+- 2026-06-12: golden rootfs compile now pins `guest.ubuntu.apt_snapshot`, records apt plan
+  runId/snapshot proof, detects blocked apt mutation before kernel panic/timeout, and
+  force-cleans VM_HOME-scoped launcher processes that ignore graceful stop.

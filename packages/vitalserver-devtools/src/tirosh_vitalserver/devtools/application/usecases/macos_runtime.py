@@ -6,6 +6,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import
     build_runtime,
     check_runtime_health,
     control_runtime,
+    force_stop_runtime,
     print_runtime_ip,
     require_bridged_codesign_identity,
     require_no_running_runtime,
@@ -62,6 +63,10 @@ def start_detached(input: RuntimeVmHomeInput) -> int:
 
 def require_no_running(input: RuntimeVmHomeInput) -> int:
     return require_no_running_runtime(input)
+
+
+def force_stop(input: RuntimeWaitInput) -> int:
+    return force_stop_runtime(input)
 
 
 def begin_rootfs_run(input: RootfsRunInput) -> int:

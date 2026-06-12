@@ -97,6 +97,73 @@ def test_require_runtime_manifest_rejects_empty_cache_key(tmp_path):
         require_runtime_manifest(source)
 
 
+def test_require_runtime_manifest_rejects_missing_apt_snapshot(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(source, apt_snapshot="")
+
+    with pytest.raises(SystemExit, match="missing explicit Ubuntu input"):
+        require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_missing_apt_plan(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(source, apt=None)
+
+    with pytest.raises(SystemExit, match="missing apt plan proof"):
+        require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_blocked_apt_plan(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(
+        source,
+        apt={
+            "schemaVersion": 1,
+            "runId": "run-test",
+            "status": "blocked",
+            "snapshot": "20250313T000000Z",
+            "blockedUpgrades": ["python3"],
+        },
+    )
+
+    with pytest.raises(SystemExit, match="apt plan is not allowed"):
+        require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_apt_plan_snapshot_mismatch(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(
+        source,
+        apt={
+            "schemaVersion": 1,
+            "runId": "run-test",
+            "status": "allowed",
+            "snapshot": "20260518T000000Z",
+            "blockedUpgrades": [],
+        },
+    )
+
+    with pytest.raises(SystemExit, match="apt plan snapshot does not match"):
+        require_runtime_manifest(source)
+
+
+def test_require_runtime_manifest_rejects_apt_plan_run_id_mismatch(tmp_path):
+    source = rootfs_source_with_lifecycle(tmp_path)
+    write_runtime_manifest(
+        source,
+        apt={
+            "schemaVersion": 1,
+            "runId": "old-run",
+            "status": "allowed",
+            "snapshot": "20250313T000000Z",
+            "blockedUpgrades": [],
+        },
+    )
+
+    with pytest.raises(SystemExit, match="apt plan runId does not match"):
+        require_runtime_manifest(source)
+
+
 def test_require_runtime_manifest_rejects_failed_docker_stage(tmp_path):
     source = rootfs_source_with_lifecycle(tmp_path)
     write_runtime_manifest(
@@ -230,10 +297,12 @@ def write_runtime_manifest(
     metadata_status: str = "loaded",
     base_url: str = "https://example.invalid/release",
     cache_key: str = "release-abcd",
+    apt_snapshot: str = "20250313T000000Z",
     kernel: str = "6.8.0-test",
     stage_statuses: dict[str, tuple[str, str]] | None = None,
     omitted_stages: set[str] | None = None,
     cleanup_status: str = "passed",
+    apt: dict[str, object] | None | bool = True,
 ) -> None:
     manifest = source.parent.parent / "data" / "run" / "rootfs-runtime-manifest.json"
     manifest.parent.mkdir(parents=True)
@@ -263,6 +332,7 @@ def write_runtime_manifest(
         "runId": run_id,
         "ubuntu": {
             "metadataStatus": metadata_status,
+            "aptSnapshot": apt_snapshot,
             "baseUrl": base_url,
             "cacheKey": cache_key,
             "kernel": kernel,
@@ -282,6 +352,20 @@ def write_runtime_manifest(
             "path": "/mnt/tirosh/run/rootfs-smoke-diagnostics",
         },
     }
+    if apt is True:
+        document["apt"] = {
+            "schemaVersion": 1,
+            "runId": run_id,
+            "status": "allowed",
+            "snapshot": apt_snapshot,
+            "blockedUpgrades": [],
+            "installPackages": ["docker.io", "python3-venv"],
+            "newPackages": ["docker.io"],
+            "upgradedPackages": [],
+            "removedPackages": [],
+        }
+    elif isinstance(apt, dict):
+        document["apt"] = apt
     manifest.write_text(
         json.dumps(document),
         encoding="utf-8",

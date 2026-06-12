@@ -34,6 +34,7 @@ def test_prepare_ubuntu_boot_assets_builds_plan_from_config(
                 "ubuntu": {
                     "version": "24.04",
                     "base_url": "https://example.invalid/noble",
+                    "apt_snapshot": "20250313T000000Z",
                     "arch": "auto",
                     "kernel_suffix": "vmlinuz-generic",
                     "initrd_suffix": "initrd-generic",
@@ -94,7 +95,23 @@ def test_default_ubuntu_image_config_uses_pinned_noble_release_source() -> None:
     assert ubuntu_config.base_url == (
         "https://cloud-images.ubuntu.com/releases/noble/release-20250313"
     )
+    assert ubuntu_config.apt_snapshot == "20250313T000000Z"
     assert not ubuntu_config.base_url.endswith("/release")
+
+
+def test_ubuntu_image_config_rejects_invalid_apt_snapshot() -> None:
+    with pytest.raises(DomainError, match="unsupported guest.ubuntu.apt_snapshot"):
+        load_ubuntu_image_config(
+            {
+                "guest": {
+                    "ubuntu": {
+                        "version": "24.04",
+                        "base_url": "https://example.invalid/noble",
+                        "apt_snapshot": "2025-03-13",
+                    },
+                },
+            }
+        )
 
 
 def test_ubuntu_boot_asset_plan_rejects_rootfs_smaller_than_airgap_minimum() -> None:
@@ -132,12 +149,17 @@ def test_stage_rootfs_input_metadata_preserves_ubuntu_source_identity(
 ) -> None:
     base_url = "https://cloud-images.ubuntu.com/releases/noble/release-20250313"
 
-    stage_rootfs_input_metadata(deploy_dir=tmp_path, base_url=base_url)
+    stage_rootfs_input_metadata(
+        deploy_dir=tmp_path,
+        base_url=base_url,
+        apt_snapshot="20250313T000000Z",
+    )
 
     metadata = load_json(tmp_path / "build-metadata/rootfs-input.json")
     assert metadata["schemaVersion"] == 1
     assert metadata["runtimeBootSmoke"] == {"enabled": False}
     assert metadata["ubuntu"] == {
+        "aptSnapshot": "20250313T000000Z",
         "baseUrl": base_url,
         "cacheKey": ubuntu_download_cache_key(base_url),
     }
@@ -151,6 +173,7 @@ def test_stage_rootfs_input_metadata_preserves_run_identity(
     stage_rootfs_input_metadata(
         deploy_dir=tmp_path,
         base_url=base_url,
+        apt_snapshot="20250313T000000Z",
         run_id="run-test",
     )
 

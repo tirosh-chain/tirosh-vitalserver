@@ -6,6 +6,7 @@ import pytest
 
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
     begin_runtime_boot_smoke_run,
+    force_stop_runtime,
     require_no_running_runtime,
     running_vm_processes_for_home,
     wait_for_rootfs_ready,
@@ -170,6 +171,78 @@ def test_wait_for_rootfs_ready_rejects_invalid_run_context(tmp_path):
 
 def test_wait_for_rootfs_ready_rejects_marker_without_manifest(tmp_path):
     write_rootfs_marker(tmp_path, run_id="run-test")
+
+    with pytest.raises(SystemExit, match="timed out waiting"):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=0,
+                expected_run_id="run-test",
+            )
+        )
+
+
+def test_wait_for_rootfs_ready_rejects_guest_failure_marker(tmp_path):
+    write_rootfs_failure(tmp_path, run_id="run-test", stage="apt-plan", exit_code=1)
+
+    with pytest.raises(
+        SystemExit,
+        match="guest rootfs preparation failed.*stage=apt-plan",
+    ):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="run-test",
+            )
+        )
+
+
+def test_wait_for_rootfs_ready_ignores_stale_guest_failure_marker(tmp_path):
+    write_rootfs_failure(tmp_path, run_id="old-run", stage="apt-plan", exit_code=1)
+
+    with pytest.raises(SystemExit, match="timed out waiting"):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=0,
+                expected_run_id="run-test",
+            )
+        )
+
+
+def test_wait_for_rootfs_ready_rejects_blocked_apt_plan(tmp_path):
+    write_rootfs_apt_plan(
+        tmp_path,
+        run_id="run-test",
+        status="blocked",
+        blocked=["python3", "util-linux"],
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match="rootfs apt plan mutates base runtime packages",
+    ):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="run-test",
+            )
+        )
+
+
+def test_wait_for_rootfs_ready_ignores_stale_blocked_apt_plan(tmp_path):
+    write_rootfs_apt_plan(
+        tmp_path,
+        run_id="old-run",
+        status="blocked",
+        blocked=["python3", "util-linux"],
+    )
 
     with pytest.raises(SystemExit, match="timed out waiting"):
         wait_for_rootfs_ready(
@@ -380,6 +453,27 @@ def test_wait_for_rootfs_ready_rejects_guest_execution_freeze_log(tmp_path):
         )
 
 
+def test_wait_for_rootfs_ready_rejects_guest_userspace_crash_log(tmp_path):
+    log_file = tmp_path / "logs" / "launcher.log"
+    log_file.parent.mkdir(parents=True)
+    log_file.write_text(
+        "/mnt/tirosh/deploy/prepare-airgap-rootfs.sh: line 127: 7191 Illegal instruction     (core dumped) tirosh-vitalserver-rootfs-smoke\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        SystemExit,
+        match="VM launcher log shows terminal guest failure",
+    ):
+        wait_for_rootfs_ready(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+            )
+        )
+
+
 def test_running_vm_processes_for_home_reads_explicit_vm_home(monkeypatch, tmp_path):
     def fake_run(command, text, capture_output, check):
         assert command == ["ps", "eww", "-axo", "pid=,command="]
@@ -454,6 +548,70 @@ def test_require_no_running_runtime_accepts_no_process(monkeypatch, tmp_path):
     assert result == 0
 
 
+def test_force_stop_runtime_sends_sigkill_when_sigterm_leaves_process(
+    monkeypatch,
+    tmp_path,
+):
+    calls = iter([[1234], [1234], [1234], []])
+    signals = []
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".repo_root",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".running_vm_processes_for_home",
+        lambda vm_home: next(calls),
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".os.kill",
+        lambda pid, signal: signals.append((pid, signal)),
+    )
+
+    result = force_stop_runtime(
+        RuntimeWaitInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path / "vm",
+            timeout=0,
+        )
+    )
+
+    assert result == 0
+    assert signals == [(1234, 15), (1234, 9)]
+
+
+def test_force_stop_runtime_accepts_no_process(monkeypatch, tmp_path):
+    signals = []
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".repo_root",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".running_vm_processes_for_home",
+        lambda vm_home: [],
+    )
+    monkeypatch.setattr(
+        "tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle"
+        ".os.kill",
+        lambda pid, signal: signals.append((pid, signal)),
+    )
+
+    result = force_stop_runtime(
+        RuntimeWaitInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path / "vm",
+            timeout=1,
+        )
+    )
+
+    assert result == 0
+    assert signals == []
+
+
 def write_rootfs_manifest(
     vm_home,
     *,
@@ -504,6 +662,53 @@ def write_rootfs_marker(vm_home, *, run_id: str) -> None:
                 "schemaVersion": 1,
                 "runId": run_id,
                 "readyAt": "2026-06-11T00:00:02Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_rootfs_failure(
+    vm_home,
+    *,
+    run_id: str,
+    stage: str,
+    exit_code: int,
+) -> None:
+    failure = vm_home / "data/run/rootfs-failure.json"
+    failure.parent.mkdir(parents=True, exist_ok=True)
+    failure.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "runId": run_id,
+                "stage": stage,
+                "exitCode": exit_code,
+                "reason": "guest-rootfs-prepare-failed",
+                "aptPlanPath": "/mnt/tirosh/run/rootfs-apt-plan.json",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_rootfs_apt_plan(
+    vm_home,
+    *,
+    run_id: str,
+    status: str,
+    blocked: list[str],
+) -> None:
+    apt_plan = vm_home / "data/run/rootfs-apt-plan.json"
+    apt_plan.parent.mkdir(parents=True, exist_ok=True)
+    apt_plan.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "runId": run_id,
+                "status": status,
+                "snapshot": "20250313T000000Z",
+                "blockedUpgrades": blocked,
             }
         ),
         encoding="utf-8",

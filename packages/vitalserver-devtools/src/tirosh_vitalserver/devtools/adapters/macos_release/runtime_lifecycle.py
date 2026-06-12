@@ -60,8 +60,11 @@ ROOTFS_TERMINAL_LOG_PATTERNS = (
     "Input/output error",
     "terminated by signal ILL",
     "Caught <ILL>",
+    "Illegal instruction",
+    "Segmentation fault",
     "Freezing execution",
     "BUG: Bad rss-counter state",
+    "Attempted to kill init",
 )
 
 RUNTIME_BOOT_SMOKE_REQUIRED_STAGES = (
@@ -189,6 +192,43 @@ def require_no_running_runtime(input: RuntimeVmHomeInput) -> int:
     return 0
 
 
+def force_stop_runtime(input: RuntimeWaitInput) -> int:
+    root = repo_root()
+    vm_home = resolve_path(root, input.vm_home)
+    deadline = time.monotonic() + input.timeout
+
+    terminate_processes_for_home(vm_home, signal=15, label="SIGTERM")
+    while time.monotonic() < deadline:
+        if not running_vm_processes_for_home(vm_home):
+            print(f"VM launcher process stopped for {vm_home}")
+            return 0
+        time.sleep(1)
+
+    remaining = running_vm_processes_for_home(vm_home)
+    if not remaining:
+        print(f"VM launcher process stopped for {vm_home}")
+        return 0
+
+    print(
+        "VM launcher process ignored graceful stop; sending SIGKILL for "
+        f"{vm_home}: pids={','.join(str(pid) for pid in remaining)}"
+    )
+    terminate_processes_for_home(vm_home, signal=9, label="SIGKILL")
+
+    kill_deadline = time.monotonic() + max(1, min(input.timeout, 5))
+    while time.monotonic() < kill_deadline:
+        if not running_vm_processes_for_home(vm_home):
+            print(f"VM launcher process force stopped for {vm_home}")
+            return 0
+        time.sleep(1)
+
+    remaining = running_vm_processes_for_home(vm_home)
+    raise SystemExit(
+        "error: VM launcher process is still running after force stop for "
+        f"{vm_home}: pids={','.join(str(pid) for pid in remaining)}"
+    )
+
+
 def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
     root = repo_root()
     vm_home = resolve_path(root, input.vm_home)
@@ -201,6 +241,11 @@ def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
         data_run_dir / "rootfs-ready",
         data_run_dir / "rootfs-runtime-manifest.json",
         data_run_dir / "rootfs-smoke-diagnostics",
+        data_run_dir / "rootfs-failure.json",
+        data_run_dir / "rootfs-apt-plan.json",
+        data_run_dir / "rootfs-apt-plan.txt",
+        data_run_dir / "rootfs-apt-installed.json",
+        data_run_dir / "rootfs-apt-installed.txt",
     ]
     removed: list[str] = []
     for path in stale_paths:
@@ -322,6 +367,8 @@ def wait_for_runtime_http(input: RuntimeWaitInput) -> int:
 def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
     marker = vm_home_path(input.vm_home) / "data/run/rootfs-ready"
     manifest = vm_home_path(input.vm_home) / "data/run/rootfs-runtime-manifest.json"
+    failure = vm_home_path(input.vm_home) / "data/run/rootfs-failure.json"
+    apt_plan = vm_home_path(input.vm_home) / "data/run/rootfs-apt-plan.json"
     expected_run_id = expected_rootfs_run_id(input.vm_home, input.expected_run_id)
     print(f"Waiting for air-gapped rootfs marker: {marker}")
     if expected_run_id:
@@ -329,6 +376,22 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
     deadline = time.monotonic() + input.timeout
     last_state = "not-started"
     while time.monotonic() < deadline:
+        failure_result = inspect_rootfs_failure_marker(
+            failure,
+            expected_run_id=expected_run_id,
+        )
+        if failure_result["terminal"]:
+            raise SystemExit(str(failure_result["message"]))
+        if failure_result["message"]:
+            last_state = str(failure_result["message"])
+        apt_plan_result = inspect_rootfs_apt_plan(
+            apt_plan,
+            expected_run_id=expected_run_id,
+        )
+        if apt_plan_result["terminal"]:
+            raise SystemExit(str(apt_plan_result["message"]))
+        if apt_plan_result["message"]:
+            last_state = str(apt_plan_result["message"])
         manifest_result = inspect_rootfs_manifest(
             manifest,
             expected_run_id=expected_run_id,
@@ -353,7 +416,10 @@ def wait_for_rootfs_ready(input: RuntimeWaitInput) -> int:
                 f"{marker_result['message']}; {manifest_result['message']}"
             )
         fail_if_runtime_lifecycle_failed(input.vm_home)
-        fail_if_rootfs_launcher_log_has_terminal_failure(input.vm_home)
+        fail_if_rootfs_launcher_log_has_terminal_failure(
+            input.vm_home,
+            expected_run_id=expected_run_id,
+        )
         time.sleep(3)
     raise SystemExit(
         f"error: timed out waiting for {marker}: last={last_state}\n"
@@ -527,6 +593,23 @@ def running_vm_processes_for_home(vm_home: Path) -> list[int]:
     return pids
 
 
+def terminate_processes_for_home(vm_home: Path, *, signal: int, label: str) -> None:
+    pids = running_vm_processes_for_home(vm_home)
+    if not pids:
+        print(f"No VM launcher process is running for {vm_home}")
+        return
+    for pid in pids:
+        try:
+            os.kill(pid, signal)
+            print(f"sent {label} to VM launcher pid={pid} vmHome={vm_home}")
+        except ProcessLookupError:
+            print(f"VM launcher already stopped before {label}: pid={pid}")
+        except PermissionError as error:
+            raise SystemExit(
+                f"error: failed to send {label} to VM launcher pid={pid}: {error}"
+            ) from error
+
+
 def fail_if_runtime_lifecycle_failed(vm_home: str | Path) -> None:
     lifecycle = vm_home_path(vm_home) / "run/vm-lifecycle.json"
     if not lifecycle.exists():
@@ -571,7 +654,11 @@ def fail_if_runtime_lifecycle_stopped(vm_home: str | Path, operation: str) -> No
         )
 
 
-def fail_if_rootfs_launcher_log_has_terminal_failure(vm_home: str | Path) -> None:
+def fail_if_rootfs_launcher_log_has_terminal_failure(
+    vm_home: str | Path,
+    *,
+    expected_run_id: str | None = None,
+) -> None:
     log_file = launcher_log(vm_home)
     if not log_file.exists():
         return
@@ -588,7 +675,8 @@ def fail_if_rootfs_launcher_log_has_terminal_failure(vm_home: str | Path) -> Non
             continue
         raise SystemExit(
             "error: VM launcher log shows terminal guest failure while waiting "
-            f"for rootfs marker: pattern={pattern!r}\n"
+            f"for rootfs marker: runId={expected_run_id or 'unknown'} "
+            f"pattern={pattern!r}\n"
             f"Check VM launcher log: {log_file}"
         )
 
@@ -739,6 +827,120 @@ def inspect_rootfs_ready_marker(
         "terminal": False,
         "runId": run_id,
         "message": "ready marker passed",
+    }
+
+
+def inspect_rootfs_failure_marker(
+    failure: Path,
+    *,
+    expected_run_id: str | None,
+) -> dict[str, object]:
+    if not failure.is_file():
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": "",
+        }
+    try:
+        document = json.loads(failure.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": f"error: rootfs failure marker is unreadable: {failure}: {error}",
+        }
+    if not isinstance(document, dict):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": f"error: rootfs failure marker is not an object: {failure}",
+        }
+    run_id = document.get("runId")
+    if expected_run_id and run_id and run_id != expected_run_id:
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": (
+                "stale rootfs failure marker runId mismatch: "
+                f"expected={expected_run_id} actual={run_id}"
+            ),
+        }
+    stage = document.get("stage", "unknown")
+    exit_code = document.get("exitCode", "unknown")
+    reason = document.get("reason", "unknown")
+    apt_plan_path = document.get("aptPlanPath", "")
+    return {
+        "ready": False,
+        "terminal": True,
+        "message": (
+            "error: guest rootfs preparation failed while waiting for "
+            f"rootfs marker: runId={run_id or 'unknown'} stage={stage} "
+            f"exitCode={exit_code} reason={reason} "
+            f"failure={failure} aptPlan={apt_plan_path}"
+        ),
+    }
+
+
+def inspect_rootfs_apt_plan(
+    apt_plan: Path,
+    *,
+    expected_run_id: str | None,
+) -> dict[str, object]:
+    if not apt_plan.is_file():
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": "",
+        }
+    try:
+        document = json.loads(apt_plan.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": f"error: rootfs apt plan is unreadable: {apt_plan}: {error}",
+        }
+    if not isinstance(document, dict):
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": f"error: rootfs apt plan is not an object: {apt_plan}",
+        }
+    run_id = document.get("runId")
+    if expected_run_id and run_id != expected_run_id:
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": (
+                "stale rootfs apt plan runId mismatch: "
+                f"expected={expected_run_id} actual={run_id}"
+            ),
+        }
+    status = document.get("status")
+    if status == "blocked":
+        blocked = document.get("blockedUpgrades")
+        return {
+            "ready": False,
+            "terminal": True,
+            "message": (
+                "error: rootfs apt plan mutates base runtime packages while "
+                f"waiting for rootfs marker: blockedUpgrades={blocked} "
+                f"aptPlan={apt_plan}"
+            ),
+        }
+    if status == "allowed":
+        return {
+            "ready": False,
+            "terminal": False,
+            "message": "rootfs apt plan allowed",
+        }
+    return {
+        "ready": False,
+        "terminal": True,
+        "message": (
+            f"error: rootfs apt plan has unsupported status: "
+            f"status={status} aptPlan={apt_plan}"
+        ),
     }
 
 

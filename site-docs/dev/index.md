@@ -30,6 +30,10 @@ release는 Helper-managed runtime을 중심으로 다룹니다. 이미 운영 �
 - missing, invalid, failed, stale, empty는 서로 다른 의미로 유지합니다.
 - Vital Server integration은 Helper runtime contract 뒤에서 명시적으로 연결합니다.
 - release 문서의 운영 주장과 dev 문서의 구현 근거가 서로 어긋나지 않아야 합니다.
+- VM build는 product compile입니다. kernel panic, guest boot failure, rootfs proof failure,
+  runtime smoke failure는 숨기지 않고 compile failure로 드러냅니다.
+- Golden rootfs compile은 Ubuntu image URL과 apt snapshot을 입력으로 고정하고, apt plan/failure
+  marker/smoke manifest가 현재 run의 proof일 때만 artifact 생성을 허용합니다.
 
 ## 3. 구현 관점
 

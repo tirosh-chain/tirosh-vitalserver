@@ -18,6 +18,8 @@ from tirosh_guest_tools.application.rootfs_smoke import (
 def test_rootfs_smoke_writes_manifest_v2_for_success(tmp_path: Path) -> None:
     context = smoke_context(tmp_path)
     write_metadata(context.deploy_dir)
+    write_apt_plan(context.apt_plan_path)
+    write_apt_installed(context.apt_installed_path)
     operations = fake_operations()
 
     run_rootfs_smoke(context=context, operations=operations)
@@ -26,9 +28,15 @@ def test_rootfs_smoke_writes_manifest_v2_for_success(tmp_path: Path) -> None:
     assert document["schemaVersion"] == 2
     assert document["runId"] == "run-test"
     assert document["ubuntu"]["metadataStatus"] == "loaded"
+    assert document["ubuntu"]["aptSnapshot"] == "20250313T000000Z"
     assert document["ubuntu"]["baseUrl"] == "https://example.invalid/release"
     assert document["ubuntu"]["cacheKey"] == "release-abcd"
     assert document["ubuntu"]["kernel"] == "6.8.0-test"
+    assert document["apt"]["status"] == "allowed"
+    assert document["apt"]["runId"] == "run-test"
+    assert document["apt"]["snapshot"] == "20250313T000000Z"
+    assert document["apt"]["blockedUpgrades"] == []
+    assert document["aptInstalled"]["packages"]["docker.io"] == "29.1.3-test"
     assert stage_status(document, "docker-smoke") == "passed"
     assert stage_status(document, "disk-space") == "passed"
     assert stage_status(document, "compose-build") == "passed"
@@ -44,6 +52,8 @@ def test_rootfs_smoke_records_timeout_and_diagnostics(
 ) -> None:
     context = smoke_context(tmp_path)
     write_metadata(context.deploy_dir)
+    write_apt_plan(context.apt_plan_path)
+    write_apt_installed(context.apt_installed_path)
 
     def timeout_http(url: str, timeout_seconds: float) -> int:
         raise TimeoutError("edge did not answer")
@@ -68,6 +78,8 @@ def test_rootfs_smoke_records_fault_injected_compose_up_failure(tmp_path: Path) 
         fail_stage="compose-up",
     )
     write_metadata(context.deploy_dir)
+    write_apt_plan(context.apt_plan_path)
+    write_apt_installed(context.apt_installed_path)
 
     with pytest.raises(SystemExit):
         run_rootfs_smoke(context=context, operations=fake_operations())
@@ -80,6 +92,8 @@ def test_rootfs_smoke_records_fault_injected_compose_up_failure(tmp_path: Path) 
 def test_rootfs_smoke_fails_when_disk_space_is_too_low(tmp_path: Path) -> None:
     context = smoke_context(tmp_path, minimum_disk_free_kib=999999999)
     write_metadata(context.deploy_dir)
+    write_apt_plan(context.apt_plan_path)
+    write_apt_installed(context.apt_installed_path)
 
     with pytest.raises(SystemExit):
         run_rootfs_smoke(context=context, operations=fake_operations())
@@ -91,6 +105,8 @@ def test_rootfs_smoke_fails_when_disk_space_is_too_low(tmp_path: Path) -> None:
 def test_rootfs_smoke_fails_when_cleanup_fails(tmp_path: Path) -> None:
     context = smoke_context(tmp_path)
     write_metadata(context.deploy_dir)
+    write_apt_plan(context.apt_plan_path)
+    write_apt_installed(context.apt_installed_path)
 
     def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if arguments[-3:] == ["down", "-v", "--remove-orphans"]:
@@ -112,8 +128,10 @@ def test_rootfs_smoke_records_missing_input_metadata(tmp_path: Path) -> None:
 
     document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
     assert document["ubuntu"]["metadataStatus"] == "missing"
+    assert document["ubuntu"]["aptSnapshot"] == ""
     assert document["ubuntu"]["baseUrl"] == ""
     assert document["ubuntu"]["cacheKey"] == ""
+    assert document["apt"]["status"] == "missing"
 
 
 def test_rootfs_smoke_cli_is_registered() -> None:
@@ -139,6 +157,8 @@ def smoke_context(
         deploy_dir=deploy_dir,
         vital_files_mount=tmp_path / "vital-files",
         manifest_path=runtime_dir / "rootfs-runtime-manifest.json",
+        apt_plan_path=runtime_dir / "rootfs-apt-plan.json",
+        apt_installed_path=runtime_dir / "rootfs-apt-installed.json",
         diagnostics_dir=diagnostics_dir,
         compose_project_name="vitalserver-rootfs-smoke",
         docker_smoke_image="redis:3.2.12-alpine",
@@ -158,9 +178,47 @@ def write_metadata(deploy_dir: Path) -> None:
         json.dumps(
             {
                 "ubuntu": {
+                    "aptSnapshot": "20250313T000000Z",
                     "baseUrl": "https://example.invalid/release",
                     "cacheKey": "release-abcd",
                 }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_apt_plan(path: Path, *, status: str = "allowed") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "runId": "run-test",
+                "status": status,
+                "snapshot": "20250313T000000Z",
+                "installPackages": ["docker.io", "python3-venv"],
+                "guardPackages": ["docker.io", "python3"],
+                "newPackages": ["docker.io"],
+                "upgradedPackages": [],
+                "removedPackages": [],
+                "blockedUpgrades": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def write_apt_installed(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "packages": {
+                    "docker.io": "29.1.3-test",
+                    "python3-venv": "3.12-test",
+                },
             }
         ),
         encoding="utf-8",

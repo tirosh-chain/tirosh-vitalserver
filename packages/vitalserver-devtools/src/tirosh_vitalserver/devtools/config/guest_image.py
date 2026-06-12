@@ -13,6 +13,7 @@ from tirosh_vitalserver.devtools.core.guest_image import (
     CloudInitConfig,
     GuestRuntimeConfig,
     UbuntuImageConfig,
+    require_ubuntu_snapshot_id,
 )
 
 
@@ -40,6 +41,9 @@ def load_ubuntu_image_config(config: TomlTable) -> UbuntuImageConfig:
     return UbuntuImageConfig(
         version=required_string(ubuntu, "version", path=path),
         base_url=required_string(ubuntu, "base_url", path=path),
+        apt_snapshot=require_ubuntu_snapshot_id(
+            required_string(ubuntu, "apt_snapshot", path=path)
+        ),
         arch=optional_string(ubuntu, "arch", "auto", path=path),
         kernel_suffix=optional_string(
             ubuntu,
