@@ -136,6 +136,7 @@ def test_stage_rootfs_input_metadata_preserves_ubuntu_source_identity(
 
     metadata = load_json(tmp_path / "build-metadata/rootfs-input.json")
     assert metadata["schemaVersion"] == 1
+    assert metadata["runtimeBootSmoke"] == {"enabled": False}
     assert metadata["ubuntu"] == {
         "baseUrl": base_url,
         "cacheKey": ubuntu_download_cache_key(base_url),

@@ -340,23 +340,59 @@ start_optional_testkit() {
 runtime_boot_smoke_enabled() {
   python3 - <<'PY'
 import json
+import sys
 from pathlib import Path
 
 path = Path("/mnt/tirosh/deploy/build-metadata/rootfs-input.json")
 try:
     document = json.loads(path.read_text(encoding="utf-8"))
-except (OSError, json.JSONDecodeError):
-    raise SystemExit(1)
+except OSError as error:
+    print(
+        f"error: runtime boot smoke metadata is unreadable: {path}: {error}",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+except json.JSONDecodeError as error:
+    print(
+        f"error: runtime boot smoke metadata is invalid JSON: {path}: {error}",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+if not isinstance(document, dict):
+    print(
+        f"error: runtime boot smoke metadata must be an object: {path}",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
 runtime_boot_smoke = document.get("runtimeBootSmoke")
-if isinstance(runtime_boot_smoke, dict) and runtime_boot_smoke.get("enabled") is True:
+if not isinstance(runtime_boot_smoke, dict):
+    print(
+        "error: runtime boot smoke metadata is missing runtimeBootSmoke",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+enabled = runtime_boot_smoke.get("enabled")
+if enabled is True:
     raise SystemExit(0)
-raise SystemExit(1)
+if enabled is False:
+    raise SystemExit(1)
+print(
+    "error: runtime boot smoke enabled flag must be explicit boolean",
+    file=sys.stderr,
+)
+raise SystemExit(2)
 PY
 }
 
 run_runtime_boot_smoke_if_requested() {
   if runtime_boot_smoke_enabled; then
     /usr/local/bin/tirosh-vitalserver-runtime-boot-smoke
+  else
+    local smoke_status=$?
+    if [ "${smoke_status}" -eq 1 ]; then
+      return 0
+    fi
+    return "${smoke_status}"
   fi
 }
 

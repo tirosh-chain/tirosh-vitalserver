@@ -8,10 +8,12 @@ from pathlib import Path
 
 import pytest
 
+from tirosh_guest_tools.application import runtime_boot_smoke
 from tirosh_guest_tools.application.runtime_boot_smoke import (
     RUNTIME_BOOT_SMOKE_MANIFEST,
     RuntimeBootSmokeContext,
     RuntimeBootSmokeOperations,
+    default_context,
     run_runtime_boot_smoke,
 )
 from tirosh_guest_tools.infrastructure.common import read_json, write_json
@@ -183,6 +185,100 @@ def test_runtime_boot_smoke_cli_is_registered() -> None:
     )
 
 
+def test_runtime_boot_smoke_default_context_reads_explicit_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    deploy_dir = tmp_path / "deploy"
+    runtime_dir = tmp_path / "run"
+    deploy_dir.mkdir()
+    runtime_dir.mkdir()
+    write_default_context_documents(deploy_dir, run_id="explicit-run")
+    monkeypatch.setattr(runtime_boot_smoke, "DEPLOY_DIR", deploy_dir)
+    monkeypatch.setattr(runtime_boot_smoke, "RUNTIME_DIR", runtime_dir)
+
+    context = default_context()
+
+    assert context.run_id == "explicit-run"
+    assert context.dev_build is True
+    assert context.manifest_path == runtime_dir / RUNTIME_BOOT_SMOKE_MANIFEST
+
+
+@pytest.mark.parametrize(
+    ("mutate", "expected_message"),
+    [
+        (
+            lambda deploy_dir: (deploy_dir / "runtime-config.json").unlink(),
+            "runtime config is missing",
+        ),
+        (
+            lambda deploy_dir: (deploy_dir / "runtime-config.json").write_text(
+                "{",
+                encoding="utf-8",
+            ),
+            "runtime config is invalid JSON",
+        ),
+        (
+            lambda deploy_dir: (deploy_dir / "runtime-config.json").write_text(
+                "[]",
+                encoding="utf-8",
+            ),
+            "runtime config must be a JSON object",
+        ),
+        (
+            lambda deploy_dir: update_json(
+                deploy_dir / "runtime-config.json",
+                {"testkitEnabled": None},
+            ),
+            "runtime config testkitEnabled must be an explicit boolean",
+        ),
+        (
+            lambda deploy_dir: (
+                deploy_dir / "build-metadata/rootfs-input.json"
+            ).unlink(),
+            "runtime boot smoke metadata is missing",
+        ),
+        (
+            lambda deploy_dir: (
+                deploy_dir / "build-metadata/rootfs-input.json"
+            ).write_text("{", encoding="utf-8"),
+            "runtime boot smoke metadata is invalid JSON",
+        ),
+        (
+            lambda deploy_dir: update_json(
+                deploy_dir / "build-metadata/rootfs-input.json",
+                {"runtimeBootSmoke": {"enabled": False, "runId": "explicit-run"}},
+            ),
+            "runtime boot smoke is not explicitly enabled",
+        ),
+        (
+            lambda deploy_dir: update_json(
+                deploy_dir / "build-metadata/rootfs-input.json",
+                {"runtimeBootSmoke": {"enabled": True}},
+            ),
+            "runtime boot smoke runId is missing",
+        ),
+    ],
+)
+def test_runtime_boot_smoke_default_context_rejects_missing_or_invalid_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mutate: Callable[[Path], None],
+    expected_message: str,
+) -> None:
+    deploy_dir = tmp_path / "deploy"
+    runtime_dir = tmp_path / "run"
+    deploy_dir.mkdir()
+    runtime_dir.mkdir()
+    write_default_context_documents(deploy_dir, run_id="explicit-run")
+    mutate(deploy_dir)
+    monkeypatch.setattr(runtime_boot_smoke, "DEPLOY_DIR", deploy_dir)
+    monkeypatch.setattr(runtime_boot_smoke, "RUNTIME_DIR", runtime_dir)
+
+    with pytest.raises(RuntimeError, match=expected_message):
+        default_context()
+
+
 def runtime_boot_context(
     tmp_path: Path,
     *,
@@ -276,6 +372,24 @@ def write_valid_runtime_documents(
             "redisBackupRetentionCount": 5,
             "testkitEnabled": testkit_enabled,
             "vitalFilesDirectory": "/mnt/tirosh-vital-files",
+        },
+    )
+
+
+def write_default_context_documents(deploy_dir: Path, *, run_id: str) -> None:
+    write_json(
+        deploy_dir / "runtime-config.json",
+        {
+            "testkitEnabled": True,
+        },
+    )
+    write_json(
+        deploy_dir / "build-metadata/rootfs-input.json",
+        {
+            "runtimeBootSmoke": {
+                "enabled": True,
+                "runId": run_id,
+            },
         },
     )
 

@@ -125,6 +125,9 @@ def stage_rootfs_input_metadata(
     metadata.parent.mkdir(parents=True, exist_ok=True)
     document = {
         "schemaVersion": 1,
+        "runtimeBootSmoke": {
+            "enabled": False,
+        },
         "ubuntu": {
             "baseUrl": base_url,
             "cacheKey": ubuntu_download_cache_key(base_url),

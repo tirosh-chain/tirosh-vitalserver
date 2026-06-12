@@ -71,6 +71,9 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(bootstrap.contains("load_bundled_docker_images\nrun_docker_runtime_smoke\ncleanup_docker_cache"))
         XCTAssertTrue(bootstrap.contains("systemctl start tirosh-vitalserver-compose.service"))
         XCTAssertFalse(bootstrap.contains("\n/usr/local/bin/tirosh-vitalserver-compose up\n"))
+        XCTAssertTrue(bootstrap.contains("\"runtimeBootSmoke\""))
+        XCTAssertTrue(bootstrap.contains("runtime boot smoke metadata is missing runtimeBootSmoke"))
+        XCTAssertTrue(bootstrap.contains("runtime boot smoke enabled flag must be explicit boolean"))
     }
 
     func testDockerRuntimeSmokeRunsWithoutUnsupportedBPFJITSysctlGuard() throws {

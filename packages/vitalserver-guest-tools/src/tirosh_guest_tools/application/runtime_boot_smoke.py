@@ -4,7 +4,6 @@ import json
 import subprocess
 import urllib.error
 import urllib.request
-import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -152,23 +151,31 @@ class RuntimeBootSmokeRun:
 
 
 def default_context() -> RuntimeBootSmokeContext:
-    runtime_config = read_optional_json(
-        DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value
+    runtime_config = read_required_json_object(
+        DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value,
+        "runtime config",
     )
-    metadata = read_optional_json(DEPLOY_DIR / "build-metadata/rootfs-input.json")
+    metadata = read_required_json_object(
+        DEPLOY_DIR / "build-metadata/rootfs-input.json",
+        "runtime boot smoke metadata",
+    )
     smoke_metadata = metadata.get("runtimeBootSmoke")
     if not isinstance(smoke_metadata, dict):
-        smoke_metadata = {}
-    run_id = smoke_metadata.get("runId")
-    explicit_run_id = (
-        run_id if isinstance(run_id, str) and run_id.strip() else str(uuid.uuid4())
+        raise RuntimeError("runtime boot smoke metadata is missing runtimeBootSmoke")
+    if smoke_metadata.get("enabled") is not True:
+        raise RuntimeError("runtime boot smoke is not explicitly enabled")
+    run_id = require_non_empty_string(
+        smoke_metadata.get("runId"),
+        "runtime boot smoke runId",
     )
     testkit_enabled = runtime_config.get(RuntimeConfigKey.TESTKIT_ENABLED.value)
+    if not isinstance(testkit_enabled, bool):
+        raise RuntimeError("runtime config testkitEnabled must be an explicit boolean")
     return RuntimeBootSmokeContext(
         runtime_dir=RUNTIME_DIR,
         deploy_dir=DEPLOY_DIR,
         manifest_path=RUNTIME_DIR / RUNTIME_BOOT_SMOKE_MANIFEST,
-        run_id=explicit_run_id,
+        run_id=run_id,
         max_runtime_state_age_seconds=MAX_RUNTIME_STATE_AGE_SECONDS,
         dev_build=testkit_enabled is True,
     )
@@ -190,9 +197,9 @@ def run_runtime_boot_smoke(
     context: RuntimeBootSmokeContext | None = None,
     operations: RuntimeBootSmokeOperations | None = None,
 ) -> None:
-    context = context or default_context()
     operations = operations or default_operations()
     operations.mount_runtime_share()
+    context = context or default_context()
     context.runtime_dir.mkdir(parents=True, exist_ok=True)
     run = RuntimeBootSmokeRun(context=context, operations=operations)
     run.write_manifest()
@@ -631,14 +638,18 @@ def http_status(url: str, timeout_seconds: float) -> int:
         raise RuntimeError(f"HTTP probe failed: {url}: {error}") from error
 
 
-def read_optional_json(path: Path) -> dict[str, Any]:
+def read_required_json_object(path: Path, subject: str) -> dict[str, Any]:
     if not path.is_file():
-        return {}
+        raise RuntimeError(f"{subject} is missing: {path}")
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return value if isinstance(value, dict) else {}
+    except OSError as error:
+        raise RuntimeError(f"{subject} is unreadable: {path}: {error}") from error
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"{subject} is invalid JSON: {path}: {error}") from error
+    if not isinstance(value, dict):
+        raise RuntimeError(f"{subject} must be a JSON object: {path}")
+    return value
 
 
 def require_equal(actual: object, expected: object, message: str) -> None:
