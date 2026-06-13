@@ -10,6 +10,7 @@ struct RuntimeAdvancedPanel: View {
     @Binding var showingRepairDatastoreConfirmation: Bool
     @Binding var showingRepairVMDiskConfirmation: Bool
     @Binding var showingRepairRuntimeServicesConfirmation: Bool
+    @Binding var showingRestartVMRuntimeConfirmation: Bool
     @Binding var showingStartServicesConfirmation: Bool
     @Binding var showingStopServicesConfirmation: Bool
     @Binding var hoveredServiceLink: String?
@@ -31,6 +32,7 @@ struct RuntimeAdvancedPanel: View {
         showingRepairDatastoreConfirmation: Binding<Bool>,
         showingRepairVMDiskConfirmation: Binding<Bool>,
         showingRepairRuntimeServicesConfirmation: Binding<Bool>,
+        showingRestartVMRuntimeConfirmation: Binding<Bool>,
         showingStartServicesConfirmation: Binding<Bool>,
         showingStopServicesConfirmation: Binding<Bool>,
         hoveredServiceLink: Binding<String?>,
@@ -48,6 +50,7 @@ struct RuntimeAdvancedPanel: View {
         self._showingRepairDatastoreConfirmation = showingRepairDatastoreConfirmation
         self._showingRepairVMDiskConfirmation = showingRepairVMDiskConfirmation
         self._showingRepairRuntimeServicesConfirmation = showingRepairRuntimeServicesConfirmation
+        self._showingRestartVMRuntimeConfirmation = showingRestartVMRuntimeConfirmation
         self._showingStartServicesConfirmation = showingStartServicesConfirmation
         self._showingStopServicesConfirmation = showingStopServicesConfirmation
         self._hoveredServiceLink = hoveredServiceLink
@@ -327,6 +330,15 @@ struct RuntimeAdvancedPanel: View {
 
                 recoverySubsection(AppConstants.Labels.sectionRuntimeRepair) {
                     HStack(spacing: 10) {
+                        Button(AppConstants.Actions.restartVMRuntime) {
+                            showingRestartVMRuntimeConfirmation = true
+                        }
+                        .disabled(!actionAvailabilityPolicy.canControlRuntimeServices(
+                            status: viewModel.status,
+                            capabilities: viewModel.capabilities,
+                            isBusy: viewModel.isBusy
+                        ))
+
                         Button(AppConstants.Actions.repairRuntimeServices) {
                             showingRepairRuntimeServicesConfirmation = true
                         }

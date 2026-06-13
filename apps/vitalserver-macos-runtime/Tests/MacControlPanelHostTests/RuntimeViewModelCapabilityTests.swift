@@ -1123,7 +1123,11 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         render(RuntimeBedsPanel(viewModel: viewModel))
         render(RuntimeObservabilityPanel(viewModel: viewModel))
         render(RuntimeLogPanel(viewModel: viewModel))
-        render(RuntimeSettingsPanel(viewModel: viewModel, showingApplySettingsConfirmation: .constant(false)))
+        render(RuntimeSettingsPanel(
+            viewModel: viewModel,
+            showingApplySettingsConfirmation: .constant(false),
+            showingRestartVMRuntimeConfirmation: .constant(false)
+        ))
         render(RuntimeUpdatePanel(viewModel: viewModel, showingUpdateConfirmation: .constant(false)))
         render(RuntimeInfoPanel(viewModel: viewModel))
         render(RuntimeDangerZonePanel(
@@ -1141,6 +1145,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             showingRepairDatastoreConfirmation: .constant(false),
             showingRepairVMDiskConfirmation: .constant(false),
             showingRepairRuntimeServicesConfirmation: .constant(false),
+            showingRestartVMRuntimeConfirmation: .constant(false),
             showingStartServicesConfirmation: .constant(false),
             showingStopServicesConfirmation: .constant(false),
             hoveredServiceLink: Binding<String?>(get: { nil }, set: { _ in }),

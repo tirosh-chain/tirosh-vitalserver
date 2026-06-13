@@ -6,7 +6,7 @@ import Errors
 struct RuntimeSettingsPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @Binding var showingApplySettingsConfirmation: Bool
-    @State private var showingRestartVMRuntimeConfirmation = false
+    @Binding var showingRestartVMRuntimeConfirmation: Bool
     private let actionAvailabilityPolicy = RuntimeControlActionAvailabilityPolicy()
     private let restartNoticePolicy = RuntimeSettingsRestartNoticePolicy()
 
@@ -115,14 +115,6 @@ struct RuntimeSettingsPanel: View {
         .onChange(of: viewModel.settings.runtimeControlPort) {
             viewModel.syncAdvertisedURLWithProxyIfNeeded()
         }
-        .alert(AppConstants.Actions.restartVMRuntime, isPresented: $showingRestartVMRuntimeConfirmation) {
-            Button(AppConstants.Actions.cancel, role: .cancel) {}
-            Button(AppConstants.Actions.restartVMRuntime, role: .destructive) {
-                Task { await viewModel.restartVMRuntimeFromSettings() }
-            }
-        } message: {
-            Text(AppConstants.StatusText.restartVMRuntimeConfirmation)
-        }
     }
 
     @ViewBuilder
@@ -189,70 +181,70 @@ struct RuntimeSettingsPanel: View {
         restartNoticePolicy.decision(draft: viewModel.settings, runtime: viewModel.runtimeSettings)
     }
 
-    private var savedRestartNotice: RuntimeSettingsRestartNoticeDecision {
-        restartNoticePolicy.decision(draft: viewModel.savedSettings, runtime: viewModel.runtimeSettings)
-    }
-
-    private var canRestartSavedVMRuntime: Bool {
-        savedRestartNotice.requiresRestart
-            && viewModel.capabilities.canControlRuntimeServices
-            && !viewModel.isBusy
-    }
-
     private var restartRuntimeSection: some View {
         settingsSection(AppConstants.Labels.vmRuntimeRestart) {
-            VStack(alignment: .leading, spacing: 8) {
-                settingToggle(AppConstants.Labels.restartServicesAfterSave, isOn: $viewModel.settings.restartAfterSave)
-                    .disabled(!viewModel.capabilities.canControlRuntimeServices)
-                HStack(alignment: .top, spacing: 8) {
-                    restartRequirementIndicator
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(restartNotice.message)
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(restartNotice.message)
+                        .font(.caption)
+                        .foregroundStyle(restartNotice.requiresRestart ? .primary : .secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    let savedNotice = restartNoticePolicy.decision(
+                        draft: viewModel.savedSettings,
+                        runtime: viewModel.runtimeSettings
+                    )
+                    if savedNotice.requiresRestart && savedNotice.message != restartNotice.message {
+                        Text(savedNotice.message)
                             .font(.caption)
-                            .foregroundStyle(restartNotice.requiresRestart ? .primary : .secondary)
+                            .foregroundStyle(.orange)
                             .fixedSize(horizontal: false, vertical: true)
-                        if savedRestartNotice.requiresRestart && savedRestartNotice.message != restartNotice.message {
-                            Text(savedRestartNotice.message)
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    Spacer()
-                    if canRestartSavedVMRuntime {
-                        Button(AppConstants.Actions.restartVMRuntime) {
-                            showingRestartVMRuntimeConfirmation = true
-                        }
                     }
                 }
+                Spacer(minLength: 16)
+                restartRequirementBadge
             }
         }
     }
 
-    private var restartRequirementIndicator: some View {
-        Button {
-            if canRestartSavedVMRuntime {
-                showingRestartVMRuntimeConfirmation = true
-            }
+    private var restartRequirementBadge: some View {
+        let savedNotice = restartNoticePolicy.decision(
+            draft: viewModel.savedSettings,
+            runtime: viewModel.runtimeSettings
+        )
+        let requiresRestart = restartNotice.requiresRestart || savedNotice.requiresRestart
+        return Button {
+            showingRestartVMRuntimeConfirmation = true
         } label: {
             Label(
-                restartNotice.requiresRestart || savedRestartNotice.requiresRestart
+                requiresRestart
                     ? AppConstants.Labels.requiresVMRestart
                     : AppConstants.StatusText.noVMRuntimeRestartRequired,
-                systemImage: restartNotice.requiresRestart || savedRestartNotice.requiresRestart
+                systemImage: requiresRestart
                     ? "arrow.clockwise.circle.fill"
-                    : "checkmark.circle"
+                    : "checkmark.circle.fill"
             )
-            .font(.caption)
-            .foregroundStyle(restartNotice.requiresRestart || savedRestartNotice.requiresRestart ? .orange : .secondary)
+            .font(.system(size: 14, weight: .semibold))
             .labelStyle(.titleAndIcon)
+            .foregroundStyle(requiresRestart ? .orange : .secondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill((requiresRestart ? Color.orange : Color.secondary).opacity(0.12))
+            )
+            .overlay(
+                Capsule()
+                    .stroke((requiresRestart ? Color.orange : Color.secondary).opacity(0.35), lineWidth: 1)
+            )
             .fixedSize()
         }
         .buttonStyle(.plain)
-        .disabled(!canRestartSavedVMRuntime)
-        .help(canRestartSavedVMRuntime
-            ? AppConstants.StatusText.restartVMRuntimeConfirmation
-            : restartNotice.message)
+        .disabled(
+            !requiresRestart
+                || !viewModel.capabilities.canControlRuntimeServices
+                || viewModel.isBusy
+        )
+        .help(requiresRestart ? AppConstants.StatusText.restartVMRuntimeConfirmation : restartNotice.message)
     }
 
     private var applyActionRow: some View {

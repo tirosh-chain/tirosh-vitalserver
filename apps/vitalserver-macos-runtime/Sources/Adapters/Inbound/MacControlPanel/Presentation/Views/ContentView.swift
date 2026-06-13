@@ -15,6 +15,7 @@ public struct ContentView: View {
     @State private var showingRepairDatastoreConfirmation = false
     @State private var showingRepairVMDiskConfirmation = false
     @State private var showingRepairRuntimeServicesConfirmation = false
+    @State private var showingRestartVMRuntimeConfirmation = false
     @State private var showingStartServicesConfirmation = false
     @State private var showingStopServicesConfirmation = false
     @State private var showingUninstallConfirmation = false
@@ -115,6 +116,14 @@ public struct ContentView: View {
             }
         } message: {
             Text(AppConstants.StatusText.repairRuntimeServicesConfirmation)
+        }
+        .alert(AppConstants.Actions.restartVMRuntime, isPresented: $showingRestartVMRuntimeConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.restartVMRuntime, role: .destructive) {
+                Task { await viewModel.restartVMRuntimeFromSettings() }
+            }
+        } message: {
+            Text(AppConstants.StatusText.restartVMRuntimeConfirmation)
         }
         .alert(AppConstants.Actions.startRuntimeServices, isPresented: $showingStartServicesConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -283,7 +292,8 @@ public struct ContentView: View {
         case .settings:
             RuntimeSettingsPanel(
                 viewModel: viewModel,
-                showingApplySettingsConfirmation: $showingApplySettingsConfirmation
+                showingApplySettingsConfirmation: $showingApplySettingsConfirmation,
+                showingRestartVMRuntimeConfirmation: $showingRestartVMRuntimeConfirmation
             )
         case .update:
             RuntimeUpdatePanel(
@@ -302,6 +312,7 @@ public struct ContentView: View {
                 showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
                 showingRepairVMDiskConfirmation: $showingRepairVMDiskConfirmation,
                 showingRepairRuntimeServicesConfirmation: $showingRepairRuntimeServicesConfirmation,
+                showingRestartVMRuntimeConfirmation: $showingRestartVMRuntimeConfirmation,
                 showingStartServicesConfirmation: $showingStartServicesConfirmation,
                 showingStopServicesConfirmation: $showingStopServicesConfirmation,
                 hoveredServiceLink: $hoveredServiceLink
