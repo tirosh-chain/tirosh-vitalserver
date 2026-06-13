@@ -15,6 +15,7 @@ tirosh-write-runtime-state = "tirosh_guest_tools.adapters.inbound.cli:write_runt
 tirosh-runtime-state = "tirosh_guest_tools.adapters.inbound.cli:runtime_state"
 tirosh-vitalserver-health = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_health"
 tirosh-vitalserver-compose = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_compose"
+tirosh-vitalserver-bootstrap = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_bootstrap"
 tirosh-vitalserver-rootfs-smoke = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_rootfs_smoke"
 tirosh-vitalserver-runtime-boot-smoke = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_runtime_boot_smoke"
 tirosh-vitalserver-runtime-data-prepare = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_runtime_data_prepare"

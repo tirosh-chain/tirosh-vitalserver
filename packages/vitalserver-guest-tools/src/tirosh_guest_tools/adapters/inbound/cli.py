@@ -20,6 +20,7 @@ from tirosh_guest_tools.adapters.outbound.runtime.health import check_runtime_he
 from tirosh_guest_tools.adapters.outbound.runtime.state_writer import (
     write_runtime_state,
 )
+from tirosh_guest_tools.application.bootstrap import run_guest_bootstrap
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.observability import (
     write_guest_observability_snapshot,
@@ -182,6 +183,14 @@ def vitalserver_compose() -> int:
     args = parser.parse_args()
     configure_logging(SETTINGS.logging)
     run_compose_action(args.action)
+    return 0
+
+
+def vitalserver_bootstrap() -> int:
+    parser = argparse.ArgumentParser(description="Run guest bootstrap workflow.")
+    parser.parse_args()
+    configure_logging(SETTINGS.logging)
+    run_guest_bootstrap()
     return 0
 
 
