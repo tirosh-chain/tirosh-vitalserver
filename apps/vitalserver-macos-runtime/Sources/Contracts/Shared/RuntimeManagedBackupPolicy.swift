@@ -11,4 +11,17 @@ public enum RuntimeManagedBackupPolicy {
         }
         return backupURL.path.hasPrefix(backupsRootURL.path + "/")
     }
+
+    public static func isRuntimeDataBackupURL(_ url: URL, runtimeDataBackupsRoot: URL) -> Bool {
+        let backupURL = url.standardizedFileURL
+        let backupsRootURL = runtimeDataBackupsRoot.standardizedFileURL
+        guard backupURL.deletingLastPathComponent().path == backupsRootURL.path else {
+            return false
+        }
+        let name = backupURL.lastPathComponent
+        guard !name.isEmpty, !name.hasPrefix(".") else {
+            return false
+        }
+        return backupURL.path.hasPrefix(backupsRootURL.path + "/")
+    }
 }

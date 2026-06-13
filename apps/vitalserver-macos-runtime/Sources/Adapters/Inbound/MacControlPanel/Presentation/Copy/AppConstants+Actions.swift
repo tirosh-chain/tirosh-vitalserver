@@ -26,6 +26,8 @@ public extension AppConstants {
         public static let createRedisBackup = "Create Redis-only Backup"
         public static let restoreRedisBackup = "Restore Redis-only Backup"
         public static let deleteBackup = "Delete Backup"
+        public static let deleteUpdateBackup = "Delete Update Backup"
+        public static let deleteVitalServerBackup = "Delete VitalServer Backup"
         public static let checkRecorders = "Check Recorders"
         public static let openBackups = "Open Backups"
         public static let openLogs = "Open Logs"

@@ -10,6 +10,12 @@ VitalServer backup with Create VitalServer Backup and Restore VitalServer Backup
 actions. Restore requires an explicitly selected VitalServer backup from the
 Host-provided backup list.
 
+VitalServer backup deletion is exposed separately in Danger Zone as Delete
+VitalServer Backup. It deletes only an explicitly selected direct child of the
+Host-reported VitalServer backup directory. Update/rollback backup deletion is a
+separate Delete Update Backup action and must not share UI copy that hides the
+target type.
+
 Redis-only backup/restore is an advanced repair affordance. It is useful for
 surgical recovery or repair workflows, but it is not the default product backup
 model. Normal users should create and restore one VitalServer backup instead of

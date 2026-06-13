@@ -20,16 +20,16 @@ final class RuntimeBackupActionPlannerTests: XCTestCase {
         XCTAssertEqual(plan.success?.backupURL, URL(fileURLWithPath: backupPath))
     }
 
-    func testDeletePlanRequiresManagedBackupInsideReportedRoot() {
-        let invalidOutsideRoot = planner.deletePlan(
+    func testDeleteUpdateBackupPlanRequiresManagedBackupInsideReportedRoot() {
+        let invalidOutsideRoot = planner.deleteUpdateBackupPlan(
             selectedBackupPath: "/other/2026-before-update",
             backupsPath: "/runtime/backups"
         )
-        let invalidName = planner.deletePlan(
+        let invalidName = planner.deleteUpdateBackupPlan(
             selectedBackupPath: "/runtime/backups/manual-copy",
             backupsPath: "/runtime/backups"
         )
-        let valid = planner.deletePlan(
+        let valid = planner.deleteUpdateBackupPlan(
             selectedBackupPath: "/runtime/backups/2026-before-update",
             backupsPath: "/runtime/backups"
         )
@@ -41,11 +41,55 @@ final class RuntimeBackupActionPlannerTests: XCTestCase {
 
     func testDeletePlanReportsMissingInputs() {
         XCTAssertEqual(
-            planner.deletePlan(selectedBackupPath: nil, backupsPath: "/runtime/backups").failure,
+            planner.deleteUpdateBackupPlan(selectedBackupPath: nil, backupsPath: "/runtime/backups").failure,
             .missingBackup
         )
         XCTAssertEqual(
-            planner.deletePlan(selectedBackupPath: "/runtime/backups/2026-before-update", backupsPath: nil).failure,
+            planner.deleteUpdateBackupPlan(
+                selectedBackupPath: "/runtime/backups/2026-before-update",
+                backupsPath: nil
+            ).failure,
+            .backupsRootNotReported
+        )
+    }
+
+    func testDeleteRuntimeDataBackupPlanRequiresDirectBackupInsideReportedRoot() {
+        let invalidOutsideRoot = planner.deleteRuntimeDataBackupPlan(
+            selectedBackupPath: "/other/20260613T000000Z-manual",
+            runtimeDataBackupsPath: "/runtime/backups/runtime-data"
+        )
+        let invalidNestedPath = planner.deleteRuntimeDataBackupPlan(
+            selectedBackupPath: "/runtime/backups/runtime-data/20260613T000000Z-manual/nested",
+            runtimeDataBackupsPath: "/runtime/backups/runtime-data"
+        )
+        let invalidHiddenName = planner.deleteRuntimeDataBackupPlan(
+            selectedBackupPath: "/runtime/backups/runtime-data/.staging",
+            runtimeDataBackupsPath: "/runtime/backups/runtime-data"
+        )
+        let valid = planner.deleteRuntimeDataBackupPlan(
+            selectedBackupPath: "/runtime/backups/runtime-data/20260613T000000Z-manual",
+            runtimeDataBackupsPath: "/runtime/backups/runtime-data"
+        )
+
+        XCTAssertEqual(invalidOutsideRoot.failure, .invalidBackup)
+        XCTAssertEqual(invalidNestedPath.failure, .invalidBackup)
+        XCTAssertEqual(invalidHiddenName.failure, .invalidBackup)
+        XCTAssertEqual(valid.success?.backupURL, URL(fileURLWithPath: "/runtime/backups/runtime-data/20260613T000000Z-manual"))
+    }
+
+    func testDeleteRuntimeDataBackupPlanReportsMissingInputs() {
+        XCTAssertEqual(
+            planner.deleteRuntimeDataBackupPlan(
+                selectedBackupPath: nil,
+                runtimeDataBackupsPath: "/runtime/backups/runtime-data"
+            ).failure,
+            .missingBackup
+        )
+        XCTAssertEqual(
+            planner.deleteRuntimeDataBackupPlan(
+                selectedBackupPath: "/runtime/backups/runtime-data/20260613T000000Z-manual",
+                runtimeDataBackupsPath: nil
+            ).failure,
             .backupsRootNotReported
         )
     }

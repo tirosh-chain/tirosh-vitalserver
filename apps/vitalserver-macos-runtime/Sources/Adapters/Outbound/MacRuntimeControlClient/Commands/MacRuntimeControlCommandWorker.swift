@@ -198,10 +198,13 @@ public actor MacRuntimeControlCommandWorker {
 
     private func ensureManagedBackupDeletionTarget(_ url: URL) throws {
         let backupsRoot = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.backups)
-        guard RuntimeManagedBackupPolicy.isManagedBackupURL(url, backupsRoot: backupsRoot) else {
+        let runtimeDataBackupsRoot = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeDataBackups)
+        guard RuntimeManagedBackupPolicy.isManagedBackupURL(url, backupsRoot: backupsRoot)
+            || RuntimeManagedBackupPolicy.isRuntimeDataBackupURL(url, runtimeDataBackupsRoot: runtimeDataBackupsRoot)
+        else {
             throw RuntimeClientError.invalidBackupDeletionTarget(
                 path: url.path,
-                backupsRoot: backupsRoot.path
+                backupsRoot: "\(backupsRoot.path), \(runtimeDataBackupsRoot.path)"
             )
         }
     }

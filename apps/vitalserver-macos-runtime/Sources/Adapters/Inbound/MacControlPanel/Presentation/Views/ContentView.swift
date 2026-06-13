@@ -11,6 +11,7 @@ public struct ContentView: View {
     @State private var showingRollbackConfirmation = false
     @State private var showingRestoreRuntimeDataBackupConfirmation = false
     @State private var showingDeleteBackupConfirmation = false
+    @State private var showingDeleteRuntimeDataBackupConfirmation = false
     @State private var showingRepairProxyConfirmation = false
     @State private var showingRepairDatastoreConfirmation = false
     @State private var showingRepairVMDiskConfirmation = false
@@ -74,15 +75,26 @@ public struct ContentView: View {
                 viewModel.selectedRuntimeDataBackupPath,
             ].compactMap { $0 }.joined(separator: "\n\n"))
         }
-        .alert(AppConstants.Actions.deleteBackup, isPresented: $showingDeleteBackupConfirmation) {
+        .alert(AppConstants.Actions.deleteUpdateBackup, isPresented: $showingDeleteBackupConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
-            Button(AppConstants.Actions.deleteBackup, role: .destructive) {
+            Button(AppConstants.Actions.deleteUpdateBackup, role: .destructive) {
                 Task { await viewModel.deleteSelectedBackup() }
             }
         } message: {
             Text([
                 AppConstants.StatusText.deleteBackupConfirmation,
                 viewModel.selectedBackupPath,
+            ].compactMap { $0 }.joined(separator: "\n\n"))
+        }
+        .alert(AppConstants.Actions.deleteVitalServerBackup, isPresented: $showingDeleteRuntimeDataBackupConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.deleteVitalServerBackup, role: .destructive) {
+                Task { await viewModel.deleteSelectedRuntimeDataBackup() }
+            }
+        } message: {
+            Text([
+                AppConstants.StatusText.deleteRuntimeDataBackupConfirmation,
+                viewModel.selectedRuntimeDataBackupPath,
             ].compactMap { $0 }.joined(separator: "\n\n"))
         }
         .alert(AppConstants.Actions.repairProxyPort, isPresented: $showingRepairProxyConfirmation) {
@@ -322,6 +334,7 @@ public struct ContentView: View {
             RuntimeDangerZonePanel(
                 viewModel: viewModel,
                 showingDeleteBackupConfirmation: $showingDeleteBackupConfirmation,
+                showingDeleteRuntimeDataBackupConfirmation: $showingDeleteRuntimeDataBackupConfirmation,
                 showingUninstallConfirmation: $showingUninstallConfirmation,
                 showingCleanUninstallConfirmation: $showingCleanUninstallConfirmation
             )

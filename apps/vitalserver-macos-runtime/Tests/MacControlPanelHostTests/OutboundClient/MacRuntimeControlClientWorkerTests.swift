@@ -232,12 +232,16 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
             logExporter: AdapterFakeLogExporter()
         )
 
-        let delete = try await worker.deleteBackup(
+        let deleteUpdateBackup = try await worker.deleteBackup(
             url: URL(fileURLWithPath: "\(RuntimeControlClientConstants.Paths.backups)/20260522-before-0.1.3")
+        )
+        let deleteRuntimeDataBackup = try await worker.deleteBackup(
+            url: URL(fileURLWithPath: "\(RuntimeControlClientConstants.Paths.runtimeDataBackups)/20260613T000000Z-manual")
         )
         let repair = try await worker.repairProxy()
 
-        XCTAssertEqual(delete.stdout, "ran")
+        XCTAssertEqual(deleteUpdateBackup.stdout, "ran")
+        XCTAssertEqual(deleteRuntimeDataBackup.stdout, "ran")
         XCTAssertEqual(repair.stdout, "ran")
     }
 }

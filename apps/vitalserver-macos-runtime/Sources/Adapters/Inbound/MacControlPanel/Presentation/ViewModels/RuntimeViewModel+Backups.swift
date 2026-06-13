@@ -175,4 +175,33 @@ extension RuntimeViewModel {
             await refresh()
         }
     }
+
+    func deleteSelectedRuntimeDataBackup() async {
+        guard controlClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        let plan: RuntimeBackupActionPlan
+        switch RuntimeBackupActionPlanner().deleteRuntimeDataBackupPlan(
+            selectedBackupPath: selectedRuntimeDataBackupPath,
+            runtimeDataBackupsPath: installationInfo.runtimeDataBackupsPath
+        ) {
+        case .success(let actionPlan):
+            plan = actionPlan
+        case .failure(let failure):
+            message = failure.message
+            return
+        }
+        let didDelete = await runClientAction(
+            preparingMessage: AppConstants.StatusText.runtimeDataBackupDeletePreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.runtimeDataBackupDeleteRunning,
+            successMessage: AppConstants.StatusText.runtimeDataBackupDeleted,
+            action: { try await self.hostClient.deleteBackup(url: plan.backupURL) }
+        ).isSuccess
+        if didDelete {
+            self.selectedRuntimeDataBackupPath = nil
+            await refresh()
+        }
+    }
 }

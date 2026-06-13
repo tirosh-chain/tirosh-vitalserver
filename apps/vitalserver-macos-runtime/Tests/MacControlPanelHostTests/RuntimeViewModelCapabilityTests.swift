@@ -124,6 +124,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.createRedisBackup()
         await viewModel.createRuntimeDataBackup()
         await viewModel.restoreRuntimeDataBackup()
+        await viewModel.deleteSelectedRuntimeDataBackup()
         await viewModel.startRuntimeServices()
         await viewModel.stopRuntimeServices()
         await viewModel.exportLogs()
@@ -253,17 +254,28 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
     func testRuntimeDataBackupActionsCallExplicitPorts() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
-        client.runtimeDataBackupsToLoad = [RuntimeBackup(path: "/backups/runtime-data/selected", sizeBytes: nil)]
+        client.runtimeDataBackupsToLoad = [
+            RuntimeBackup(path: "/runtime/data/backups/runtime-data/selected", sizeBytes: nil)
+        ]
         let viewModel = RuntimeViewModel(controlClient: client, hostClient: client, healthNotifications: NoopHealthNotifications())
-        viewModel.runtimeDataBackups = [RuntimeBackup(path: "/backups/runtime-data/selected", sizeBytes: nil)]
-        viewModel.selectedRuntimeDataBackupPath = "/backups/runtime-data/selected"
+        viewModel.runtimeDataBackups = [
+            RuntimeBackup(path: "/runtime/data/backups/runtime-data/selected", sizeBytes: nil)
+        ]
+        viewModel.selectedRuntimeDataBackupPath = "/runtime/data/backups/runtime-data/selected"
 
         await viewModel.createRuntimeDataBackup()
         await viewModel.restoreRuntimeDataBackup()
+        await viewModel.deleteSelectedRuntimeDataBackup()
 
         XCTAssertEqual(client.createRuntimeDataBackupCount, 1)
         XCTAssertEqual(client.restoreRuntimeDataBackupCount, 1)
-        XCTAssertEqual(client.restoredRuntimeDataBackupURLs, [URL(fileURLWithPath: "/backups/runtime-data/selected")])
+        XCTAssertEqual(client.deleteBackupCount, 1)
+        XCTAssertEqual(client.restoredRuntimeDataBackupURLs, [
+            URL(fileURLWithPath: "/runtime/data/backups/runtime-data/selected")
+        ])
+        XCTAssertEqual(client.deletedBackupURLs, [
+            URL(fileURLWithPath: "/runtime/data/backups/runtime-data/selected")
+        ])
     }
 
     func testNativeShellProvidesDirectorySelectionWithoutLeakingPanelDetailsToController() {
@@ -1136,6 +1148,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         render(RuntimeDangerZonePanel(
             viewModel: viewModel,
             showingDeleteBackupConfirmation: .constant(false),
+            showingDeleteRuntimeDataBackupConfirmation: .constant(false),
             showingUninstallConfirmation: .constant(false),
             showingCleanUninstallConfirmation: .constant(false)
         ))
@@ -1523,6 +1536,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var verifiedBundleURLs: [URL] = []
     var restoredRuntimeDataBackupURLs: [URL] = []
     var exportLogDestinationURLs: [URL] = []
+    var deletedBackupURLs: [URL] = []
     var exportLogsResult: RuntimeLogExportResult?
     var releaseInfoLoadError: Error?
     var backupLoadError: Error?
@@ -1658,6 +1672,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func deleteBackup(url: URL) async throws -> RuntimeCommandResult {
         deleteBackupCount += 1
+        deletedBackupURLs.append(url)
         return success()
     }
 

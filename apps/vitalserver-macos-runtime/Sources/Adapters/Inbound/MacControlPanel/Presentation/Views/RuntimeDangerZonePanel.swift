@@ -4,6 +4,7 @@ import Errors
 struct RuntimeDangerZonePanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @Binding var showingDeleteBackupConfirmation: Bool
+    @Binding var showingDeleteRuntimeDataBackupConfirmation: Bool
     @Binding var showingUninstallConfirmation: Bool
     @Binding var showingCleanUninstallConfirmation: Bool
     private let actionAvailabilityPolicy = RuntimeControlActionAvailabilityPolicy()
@@ -18,7 +19,8 @@ struct RuntimeDangerZonePanel: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                backupDeletionCard
+                updateBackupDeletionCard
+                vitalServerBackupDeletionCard
                 destructiveOperationsCard
             }
             .frame(maxWidth: 900, alignment: .leading)
@@ -26,10 +28,10 @@ struct RuntimeDangerZonePanel: View {
         }
     }
 
-    private var backupDeletionCard: some View {
-        advancedCard(AppConstants.Actions.deleteBackup) {
+    private var updateBackupDeletionCard: some View {
+        advancedCard(AppConstants.Actions.deleteUpdateBackup) {
             VStack(alignment: .leading, spacing: 12) {
-                Text(AppConstants.StatusText.deleteBackupConfirmation)
+                Text(AppConstants.Labels.updateBackupDeletionHelp)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -39,7 +41,7 @@ struct RuntimeDangerZonePanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 } else if !viewModel.backups.isEmpty {
                     Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
-                        settingRow(AppConstants.Labels.rollbackBackup) {
+                        settingRow(AppConstants.Labels.updateBackup) {
                             Picker("", selection: $viewModel.selectedBackupPath) {
                                 ForEach(viewModel.backups) { backup in
                                     Text("\(backup.name) (\(viewModel.presentationFormatter.backupSizeText(backup)))")
@@ -70,13 +72,63 @@ struct RuntimeDangerZonePanel: View {
                         .truncationMode(.middle)
                         .textSelection(.enabled)
                 }
-                Button(AppConstants.Actions.deleteBackup, role: .destructive) {
+                Button(AppConstants.Actions.deleteUpdateBackup, role: .destructive) {
                     showingDeleteBackupConfirmation = true
                 }
                 .disabled(
                     viewModel.isBusy
                         || !viewModel.hasSelectedBackup
                         || !viewModel.capabilities.canRollback
+                )
+            }
+        }
+    }
+
+    private var vitalServerBackupDeletionCard: some View {
+        advancedCard(AppConstants.Actions.deleteVitalServerBackup) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(AppConstants.Labels.vitalServerBackupDeletionHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let runtimeDataBackupListErrorMessage = viewModel.runtimeDataBackupListErrorMessage {
+                    Text(runtimeDataBackupListErrorMessage)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if !viewModel.runtimeDataBackups.isEmpty {
+                    Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
+                        settingRow(AppConstants.Labels.vitalServerBackup) {
+                            Picker("", selection: $viewModel.selectedRuntimeDataBackupPath) {
+                                ForEach(viewModel.runtimeDataBackups) { backup in
+                                    Text("\(backup.name) (\(viewModel.presentationFormatter.backupSizeText(backup)))")
+                                        .tag(Optional(backup.path))
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(maxWidth: 520)
+                        }
+                        if let selectedBackup = viewModel.selectedRuntimeDataBackup {
+                            statusRow(AppConstants.Labels.selectedBackup) {
+                                Text(selectedBackup.path)
+                                    .font(.system(.body, design: .monospaced))
+                                    .lineLimit(2)
+                                    .truncationMode(.middle)
+                                    .textSelection(.enabled)
+                            }
+                            statusRow(
+                                AppConstants.Labels.backupSize,
+                                viewModel.presentationFormatter.backupSizeText(selectedBackup)
+                            )
+                        }
+                    }
+                }
+                Button(AppConstants.Actions.deleteVitalServerBackup, role: .destructive) {
+                    showingDeleteRuntimeDataBackupConfirmation = true
+                }
+                .disabled(
+                    viewModel.isBusy
+                        || !viewModel.hasSelectedRuntimeDataBackup
+                        || !viewModel.capabilities.canControlRuntimeServices
                 )
             }
         }

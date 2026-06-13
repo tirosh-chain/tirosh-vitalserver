@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import Errors
 
 public struct RuntimeBackupActionPlan: Equatable {
@@ -37,6 +38,16 @@ public struct RuntimeBackupActionPlanner {
         selectedBackupPath: String?,
         backupsPath: String?
     ) -> Result<RuntimeBackupActionPlan, RuntimeBackupActionPlanFailure> {
+        deleteUpdateBackupPlan(
+            selectedBackupPath: selectedBackupPath,
+            backupsPath: backupsPath
+        )
+    }
+
+    public func deleteUpdateBackupPlan(
+        selectedBackupPath: String?,
+        backupsPath: String?
+    ) -> Result<RuntimeBackupActionPlan, RuntimeBackupActionPlanFailure> {
         guard let selectedBackupPath else {
             return .failure(.missingBackup)
         }
@@ -47,6 +58,26 @@ public struct RuntimeBackupActionPlanner {
         guard backupSelectionPolicy.isManagedBackupURL(
             backupURL,
             backupsRoot: URL(fileURLWithPath: backupsPath)
+        ) else {
+            return .failure(.invalidBackup)
+        }
+        return .success(RuntimeBackupActionPlan(backupURL: backupURL))
+    }
+
+    public func deleteRuntimeDataBackupPlan(
+        selectedBackupPath: String?,
+        runtimeDataBackupsPath: String?
+    ) -> Result<RuntimeBackupActionPlan, RuntimeBackupActionPlanFailure> {
+        guard let selectedBackupPath else {
+            return .failure(.missingBackup)
+        }
+        guard let runtimeDataBackupsPath else {
+            return .failure(.backupsRootNotReported)
+        }
+        let backupURL = URL(fileURLWithPath: selectedBackupPath)
+        guard RuntimeManagedBackupPolicy.isRuntimeDataBackupURL(
+            backupURL,
+            runtimeDataBackupsRoot: URL(fileURLWithPath: runtimeDataBackupsPath)
         ) else {
             return .failure(.invalidBackup)
         }
