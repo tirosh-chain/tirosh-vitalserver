@@ -110,6 +110,22 @@ def test_runtime_boot_smoke_writes_manifest_for_success(tmp_path: Path) -> None:
             ),
             "vitalDBObservation must be object or null",
         ),
+        (
+            lambda context: update_runtime_service(
+                context,
+                "app",
+                {"uptimeSeconds": None},
+            ),
+            "compose service uptime is invalid for runtime smoke",
+        ),
+        (
+            lambda context: update_runtime_service(
+                context,
+                "app",
+                {"uptimeSeconds": 41_126_400},
+            ),
+            "compose service uptime is invalid for runtime smoke",
+        ),
     ],
 )
 def test_runtime_boot_smoke_rejects_invalid_contracts(
@@ -489,6 +505,20 @@ def write_default_context_documents(deploy_dir: Path, *, run_id: str) -> None:
             },
         },
     )
+
+
+def update_runtime_service(
+    context: RuntimeBootSmokeContext,
+    service_name: str,
+    changes: dict[str, object],
+) -> None:
+    path = context.runtime_dir / "runtime-state.json"
+    document = read_json(path)
+    services = document["containerServices"]
+    for service in services:
+        if service["service"] == service_name:
+            service.update(changes)
+    write_json(path, document)
 
 
 def fake_operations(

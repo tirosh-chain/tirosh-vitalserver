@@ -556,6 +556,37 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:01")
     }
 
+    func testUptimeDoesNotExtrapolateExplicitSecondsFromObservedAt() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            runtimeState: .healthy,
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            runtimeStateUpdatedAt: "2025-02-21T21:19:33Z",
+            containerLogsPresent: true,
+            containerLogsBytes: 1,
+            composeServices: [
+                RuntimeContainerServiceObservation(
+                    service: "app",
+                    startedAt: "2025-02-21T21:19:33.326442446Z",
+                    uptimeSeconds: 45
+                ),
+            ]
+        )
+        let now = ISO8601DateFormatter().date(from: "2026-06-13T00:00:00Z")!
+
+        let items = policy.advancedServiceHealth(status: status, observation: observation, now: now)
+
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:45")
+    }
+
     func testUptimeUsesDockerStartedAtWithNanosecondFractionWhenExplicitSecondsAreMissing() {
         let status = RuntimeStatus(
             runtimeInstalled: true,
@@ -585,7 +616,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:04")
     }
 
-    func testUptimeFallsBackToObservedAtWhenStartedAtIsMissing() {
+    func testUptimeUsesExplicitSecondsWhenStartedAtIsMissing() {
         let status = RuntimeStatus(
             runtimeInstalled: true,
             vmServiceLoaded: true,
@@ -609,7 +640,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
         let items = policy.healthDetails(status: status, observation: observation, now: now)
 
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:15")
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:10")
     }
 
     func testUptimeDisplaysDaysBeforeClockDuration() {

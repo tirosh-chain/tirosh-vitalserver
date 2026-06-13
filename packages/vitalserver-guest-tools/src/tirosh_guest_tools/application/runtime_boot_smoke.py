@@ -41,6 +41,7 @@ RUNTIME_STATE_SCHEMA_VERSION = 1
 MAX_RUNTIME_STATE_AGE_SECONDS = 180
 COMPOSE_READY_TIMEOUT_SECONDS = 120.0
 COMPOSE_READY_POLL_SECONDS = 2.0
+MAX_RUNTIME_SMOKE_SERVICE_UPTIME_SECONDS = 86_400
 HTTP_TIMEOUT_SECONDS = 5.0
 SYSTEMD_TIMEOUT_SECONDS = 10.0
 
@@ -464,6 +465,12 @@ def validate_compose_services(
             raise RuntimeError(f"runtime state is missing compose services: {missing}")
         unhealthy = unhealthy_compose_services(expected, observed)
         if not unhealthy:
+            invalid_uptime = invalid_compose_service_uptime(expected, observed)
+            if invalid_uptime:
+                raise RuntimeError(
+                    "compose service uptime is invalid for runtime smoke: "
+                    f"{invalid_uptime}"
+                )
             return "required compose services are ready", {"services": observed}
         if time.monotonic() >= deadline:
             raise RuntimeError(f"compose services are not ready: {unhealthy}")
@@ -670,6 +677,22 @@ def unhealthy_compose_services(
         for name in sorted(expected)
         if not service_is_ready(observed[name])
     ]
+
+
+def invalid_compose_service_uptime(
+    expected: set[str],
+    observed: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    invalid: list[dict[str, Any]] = []
+    for name in sorted(expected):
+        uptime_seconds = observed[name].get("uptimeSeconds")
+        if (
+            not isinstance(uptime_seconds, int)
+            or uptime_seconds < 0
+            or uptime_seconds > MAX_RUNTIME_SMOKE_SERVICE_UPTIME_SECONDS
+        ):
+            invalid.append({"service": name, "uptimeSeconds": uptime_seconds})
+    return invalid
 
 
 def service_is_ready(service: dict[str, Any]) -> bool:

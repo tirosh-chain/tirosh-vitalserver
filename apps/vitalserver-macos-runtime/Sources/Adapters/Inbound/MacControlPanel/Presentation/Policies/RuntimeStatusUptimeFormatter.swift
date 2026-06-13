@@ -10,21 +10,23 @@ public struct RuntimeStatusUptimeFormatter {
         observedAt: String?,
         now: Date
     ) -> String? {
+        _ = observedAt
+        guard let seconds = seconds ?? liveSeconds(startedAt: startedAt, now: now) else {
+            return nil
+        }
+        return formatDuration(seconds: seconds)
+    }
+
+    private func liveSeconds(startedAt: String?, now: Date) -> Int? {
         let liveSeconds = startedAt.flatMap { value in
             parseISODate(value).map { startedAt in
                 max(Int(now.timeIntervalSince(startedAt)), 0)
             }
         }
-        let observedSeconds = seconds.flatMap { seconds in
-            observedAt.flatMap { value in
-                parseISODate(value).map { observedAt in
-                    seconds + max(Int(now.timeIntervalSince(observedAt)), 0)
-                }
-            }
-        }
-        guard let seconds = observedSeconds ?? seconds ?? liveSeconds else {
-            return nil
-        }
+        return liveSeconds
+    }
+
+    private func formatDuration(seconds: Int) -> String {
         let days = seconds / 86_400
         let hours = (seconds % 86_400) / 3_600
         let minutes = (seconds % 3_600) / 60

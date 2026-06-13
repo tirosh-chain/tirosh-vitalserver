@@ -83,6 +83,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-072 | Release package build input failure를 비싼 build 후에야 감지함 | Packaging / Local development | implemented | [Release Package Build Late Failure Before Preflight](072_release-package-preflight-late-failure.md) |
 | TS-073 | Installed bootstrap이 rootfs input metadata 누락으로 Critical이 됨 | Packaging / Install / Guest bootstrap | implemented | [Installed Bootstrap Missing Rootfs Input Metadata](073_installed-bootstrap-missing-rootfs-input-metadata.md) |
 | TS-074 | Installed bootstrap이 빈 `lsblk PARTNUM` 출력으로 실패함 | Packaging / Install / Guest bootstrap | implemented | [Installed bootstrap fails when lsblk PARTNUM is empty](074_installed-bootstrap-lsblk-partnum-empty.md) |
+| TS-075 | Service liveness uptime이 수백 일로 표시됨 | Runtime health / Runtime Control PWA | implemented | [Service liveness uptime shows hundreds of days](075_service-liveness-uptime-clock-skew.md) |
 
 ## Follow-up 규칙
 
