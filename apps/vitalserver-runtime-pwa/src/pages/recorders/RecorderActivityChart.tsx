@@ -101,7 +101,6 @@ export function RecorderActivityChart({
     ? (latestBucket.byteCount / Math.max(latestBucket.endMs - latestBucket.startMs, 1)) * 1_000
     : 0;
   const packetCount = latestBucket?.messageCount ?? 0;
-  const roomCount = latestBucket?.roomCount ?? 0;
   const activityReported = activityTimeline !== undefined;
 
   return (
@@ -237,8 +236,7 @@ export function RecorderActivityChart({
             { label: "Packets", value: packetCount },
             { label: "Total packets", value: totalPackets },
             { label: "Total data", value: formatBytes(totalBytes) },
-            { label: "Data rate", value: `${formatBytes(latestRate)}/s` },
-            { label: "Room entries", value: roomCount }
+            { label: "Data rate", value: `${formatBytes(latestRate)}/s` }
           ]}
         />
       ) : null}

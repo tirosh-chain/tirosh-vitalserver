@@ -340,7 +340,7 @@ describe("runtime console pages", () => {
     expect(screen.getAllByText("VR_A").length).toBeGreaterThan(0);
     expect(screen.getByRole("img", { name: /Packet activity/ })).toBeInTheDocument();
     expect(screen.getByText("0 B/s")).toBeInTheDocument();
-    expect(screen.getByText("Room entries")).toBeInTheDocument();
+    expect(screen.queryByText("Room entries")).not.toBeInTheDocument();
     expect(screen.getAllByText("Recorder anomalies").length).toBeGreaterThan(0);
     expect(screen.getByText("Data updated")).toBeInTheDocument();
     expect(screen.getAllByText(/Stale Recorder · warning/).length).toBeGreaterThan(0);

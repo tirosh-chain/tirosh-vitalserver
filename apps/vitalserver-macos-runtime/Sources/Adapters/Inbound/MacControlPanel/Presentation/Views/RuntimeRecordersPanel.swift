@@ -350,13 +350,11 @@ struct RuntimeRecordersPanel: View {
                         activityMetric("Packets", activityDisplay.latestBucket.map { "\($0.messageCount)" } ?? "-")
                         activityMetric("Total packets", activityDisplay.totalPackets.map(String.init) ?? "-")
                         activityMetric("Data rate", activityDisplay.latestBucketBytesPerSecond.map(formatBytesPerSecond) ?? "-")
-                        activityMetric("Room entries", activityDisplay.latestBucket.map { "\($0.roomCount)" } ?? "-")
                     }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 12)], alignment: .leading, spacing: 8) {
                         activityMetric("Packets", activityDisplay.latestBucket.map { "\($0.messageCount)" } ?? "-")
                         activityMetric("Total packets", activityDisplay.totalPackets.map(String.init) ?? "-")
                         activityMetric("Data rate", activityDisplay.latestBucketBytesPerSecond.map(formatBytesPerSecond) ?? "-")
-                        activityMetric("Room entries", activityDisplay.latestBucket.map { "\($0.roomCount)" } ?? "-")
                     }
                 }
                 }
