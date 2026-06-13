@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import shutil
 import tomllib
 import zipfile
@@ -13,6 +14,8 @@ from tirosh_vitalserver.devtools.core.guest_services import (
     IGNORED_NAMES,
     GuestDeployPlan,
     GuestPythonWheelProject,
+    RootfsInputMetadataPlan,
+    rootfs_input_metadata_document,
 )
 
 
@@ -38,6 +41,16 @@ def stage_guest_deploy(plan: GuestDeployPlan) -> None:
             plan.optional_docker_bundle_source,
             plan.optional_docker_bundle_destination,
         )
+
+
+def stage_rootfs_input_metadata(plan: RootfsInputMetadataPlan) -> None:
+    metadata = plan.deploy_dir / "build-metadata" / "rootfs-input.json"
+    metadata.parent.mkdir(parents=True, exist_ok=True)
+    metadata.write_text(
+        json.dumps(rootfs_input_metadata_document(plan), indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def ensure_vm_data_dirs(plan: GuestDeployPlan) -> None:

@@ -7,17 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tirosh_guest_tools.application.runtime_data_contract import (
+    RuntimeDataContract,
+    prepare_runtime_data_directories,
+)
 from tirosh_guest_tools.infrastructure.common import DEPLOY_DIR
-
-
-@dataclass(frozen=True)
-class RuntimeDataContract:
-    disk_image_name: str
-    disk_size: str
-    filesystem_label: str
-    mount_path: str
-    docker_data_root: str
-    containerd_root: str
 
 
 @dataclass(frozen=True)
@@ -54,9 +48,9 @@ def prepare_runtime_data(
     context = context or default_context()
     operations = operations or default_operations()
     contract = read_runtime_data_contract(context.deploy_dir)
+    stop_docker_services(operations)
     mount_runtime_data_disk(contract, operations)
-    Path(contract.docker_data_root).mkdir(parents=True, exist_ok=True)
-    Path(contract.containerd_root).mkdir(parents=True, exist_ok=True)
+    prepare_runtime_data_directories(contract)
     write_docker_daemon_config(context.docker_daemon_config_path, contract)
     write_containerd_config(context.containerd_config_path, contract, operations)
     write_fstab(context.fstab_path, contract)
@@ -67,14 +61,26 @@ def prepare_runtime_data(
     )
 
 
+def stop_docker_services(operations: RuntimeDataPrepareOperations) -> None:
+    run_checked(
+        operations,
+        ["systemctl", "stop", "docker.service", "docker.socket", "containerd.service"],
+        timeout_seconds=30.0,
+    )
+
+
 def read_runtime_data_contract(deploy_dir: Path) -> RuntimeDataContract:
     metadata = deploy_dir / "build-metadata/rootfs-input.json"
     try:
         document = json.loads(metadata.read_text(encoding="utf-8"))
     except OSError as error:
-        raise RuntimeError(f"runtime data metadata is unreadable: {metadata}: {error}") from error
+        raise RuntimeError(
+            f"runtime data metadata is unreadable: {metadata}: {error}"
+        ) from error
     except json.JSONDecodeError as error:
-        raise RuntimeError(f"runtime data metadata is invalid JSON: {metadata}: {error}") from error
+        raise RuntimeError(
+            f"runtime data metadata is invalid JSON: {metadata}: {error}"
+        ) from error
     if not isinstance(document, dict):
         raise RuntimeError(f"runtime data metadata must be an object: {metadata}")
     runtime_data = document.get("runtimeData")
@@ -156,8 +162,7 @@ def mounted_runtime_data_proof(
     actual_source = mount.get("source")
     if not isinstance(actual_source, str) or not actual_source.strip():
         raise RuntimeError(
-            "runtime data mount source is missing: "
-            f"mountPath={contract.mount_path}"
+            f"runtime data mount source is missing: mountPath={contract.mount_path}"
         )
     actual_label = filesystem_label(actual_source, operations)
     if actual_label is None:
@@ -274,7 +279,9 @@ def write_docker_daemon_config(path: Path, contract: RuntimeDataContract) -> Non
         try:
             document = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
-            raise RuntimeError(f"Docker daemon config is unreadable: {path}: {error}") from error
+            raise RuntimeError(
+                f"Docker daemon config is unreadable: {path}: {error}"
+            ) from error
         if not isinstance(document, dict):
             raise RuntimeError(f"Docker daemon config must be an object: {path}")
         existing = document.get("data-root")
@@ -287,7 +294,9 @@ def write_docker_daemon_config(path: Path, contract: RuntimeDataContract) -> Non
         document = {}
     document["data-root"] = contract.docker_data_root
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def write_containerd_config(
@@ -321,10 +330,7 @@ def containerd_config_with_root(config: str, root: str) -> str:
 
 
 def write_fstab(path: Path, contract: RuntimeDataContract) -> None:
-    line = (
-        f"LABEL={contract.filesystem_label} {contract.mount_path} "
-        "ext4 defaults 0 2"
-    )
+    line = f"LABEL={contract.filesystem_label} {contract.mount_path} ext4 defaults 0 2"
     existing = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
     filtered = [
         item

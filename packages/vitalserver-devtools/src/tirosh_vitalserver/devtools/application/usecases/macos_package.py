@@ -48,6 +48,10 @@ from tirosh_vitalserver.devtools.application.usecases.host_proxy import (
     build_nginx as build_nginx_bundle,
 )
 from tirosh_vitalserver.devtools.config.docker_images import load_docker_images_config
+from tirosh_vitalserver.devtools.config.guest_image import (
+    load_guest_runtime_config,
+    load_ubuntu_image_config,
+)
 from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
 )
@@ -55,6 +59,7 @@ from tirosh_vitalserver.devtools.config.paths import resolve_path
 from tirosh_vitalserver.devtools.config.release_manifest import load_release_manifest
 from tirosh_vitalserver.devtools.core.guest_services import (
     DockerImagePlan,
+    RootfsInputMetadataPlan,
     guest_deploy_plan,
 )
 from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
@@ -482,6 +487,10 @@ def install_pkg(input: MacOSPackageInstallInput) -> int:
 def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
     root = repo_root()
     settings = load_macos_release_settings(input.config, root)
+    config = load_config(input.config)
+    ubuntu_config = load_ubuntu_image_config(config)
+    runtime_config = load_guest_runtime_config(config)
+    docker_config = load_docker_images_config(config, root)
     runtime_dir = settings.runtime_dir
     release_file = resolve_path(root, input.release_file)
     release = load_release_manifest(release_file)
@@ -558,6 +567,13 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
             config=settings.guest_deploy,
             docker_bundle=settings.docker_bundle,
             optional_docker_bundle=optional_docker_bundle,
+        ),
+        rootfs_input_metadata_plan=RootfsInputMetadataPlan(
+            deploy_dir=package_vm_home / "data/deploy",
+            base_url=ubuntu_config.base_url,
+            apt_snapshot=ubuntu_config.apt_snapshot,
+            runtime_data=runtime_config.runtime_data_disk,
+            docker_platform=input.docker_platform or docker_config.platform,
         ),
         proxy_port=input.proxy_port,
         settings=settings,

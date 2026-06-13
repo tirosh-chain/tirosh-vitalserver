@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from tirosh_vitalserver.devtools.core.guest_services import GuestDeployPlan
+from tirosh_vitalserver.devtools.core.guest_services import (
+    GuestDeployPlan,
+    RootfsInputMetadataPlan,
+)
 from tirosh_vitalserver.devtools.core.macos_release.settings import MacOSReleaseSettings
 from tirosh_vitalserver.devtools.core.release_manifest import ReleaseManifest
 
@@ -25,6 +28,7 @@ class PackageContext:
     rootfs_base: Path
     golden_runtime_dir: Path
     guest_deploy_plan: GuestDeployPlan
+    rootfs_input_metadata_plan: RootfsInputMetadataPlan
     proxy_port: str
     settings: MacOSReleaseSettings
 

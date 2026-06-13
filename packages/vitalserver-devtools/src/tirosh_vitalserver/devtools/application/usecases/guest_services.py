@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import json
 from dataclasses import replace
-from datetime import UTC, datetime
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.build_config import load_config
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
     ensure_vm_data_dirs,
     stage_guest_deploy,
+)
+from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
+    stage_rootfs_input_metadata as write_rootfs_input_metadata,
 )
 from tirosh_vitalserver.devtools.adapters.guest_services.docker_images import (
     build_docker_image_bundle as run_docker_image_bundle,
@@ -30,11 +31,9 @@ from tirosh_vitalserver.devtools.config.guest_image import (
     load_ubuntu_image_config,
 )
 from tirosh_vitalserver.devtools.config.paths import resolve_path
-from tirosh_vitalserver.devtools.core.guest_image import (
-    RuntimeDataDiskConfig,
-    ubuntu_download_cache_key,
-)
+from tirosh_vitalserver.devtools.core.guest_image import RuntimeDataDiskConfig
 from tirosh_vitalserver.devtools.core.guest_services import (
+    RootfsInputMetadataPlan,
     guest_deploy_plan,
 )
 
@@ -136,37 +135,13 @@ def stage_rootfs_input_metadata(
     docker_platform: str,
     run_id: str | None = None,
 ) -> None:
-    metadata = deploy_dir / "build-metadata" / "rootfs-input.json"
-    metadata.parent.mkdir(parents=True, exist_ok=True)
-    document = {
-        "schemaVersion": 1,
-        "guestClockUtc": datetime.now(UTC).replace(microsecond=0).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        ),
-        "runtimeBootSmoke": {
-            "enabled": False,
-        },
-        "dockerImages": {
-            "platform": docker_platform,
-        },
-        "runtimeData": {
-            "diskImageName": runtime_data.disk_image_name,
-            "diskSize": runtime_data.disk_size,
-            "filesystemLabel": runtime_data.filesystem_label,
-            "mountPath": runtime_data.mount_path,
-            "dockerDataRoot": runtime_data.docker_data_root,
-            "containerdRoot": runtime_data.containerd_root,
-        },
-        "ubuntu": {
-            "aptSnapshot": apt_snapshot,
-            "baseUrl": base_url,
-            "cacheKey": ubuntu_download_cache_key(base_url),
-        },
-    }
-    if run_id:
-        document["runId"] = run_id
-    metadata.write_text(
-        json.dumps(document, indent=2, sort_keys=True)
-        + "\n",
-        encoding="utf-8",
+    write_rootfs_input_metadata(
+        RootfsInputMetadataPlan(
+            deploy_dir=deploy_dir,
+            base_url=base_url,
+            apt_snapshot=apt_snapshot,
+            runtime_data=runtime_data,
+            docker_platform=docker_platform,
+            run_id=run_id,
+        )
     )

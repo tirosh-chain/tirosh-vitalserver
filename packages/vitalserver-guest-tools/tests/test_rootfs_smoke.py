@@ -42,9 +42,10 @@ def test_rootfs_smoke_writes_manifest_v2_for_success(tmp_path: Path) -> None:
     assert document["dockerImages"]["status"] == "passed"
     assert document["dockerImages"]["platform"] == "linux/arm64"
     assert document["dockerImages"]["guestArchitecture"] == "aarch64"
-    assert document["dockerImages"]["bundleSha256"] == hashlib.sha256(
-        b"bundle"
-    ).hexdigest()
+    assert (
+        document["dockerImages"]["bundleSha256"]
+        == hashlib.sha256(b"bundle").hexdigest()
+    )
     assert document["runtimeData"]["status"] == "passed"
     assert document["runtimeData"]["mountPath"] == str(tmp_path / "runtime-data")
     assert document["runtimeData"]["dockerDataRoot"] == str(
@@ -75,6 +76,8 @@ def test_rootfs_smoke_writes_manifest_v2_for_success(tmp_path: Path) -> None:
     assert json.loads(
         context.docker_daemon_config_path.read_text(encoding="utf-8")
     ) == {"data-root": str(tmp_path / "runtime-data/docker")}
+    assert (tmp_path / "runtime-data/docker/tmp").is_dir()
+    assert (tmp_path / "runtime-data/containerd").is_dir()
     assert f'root = "{tmp_path / "runtime-data/containerd"}"' in (
         context.containerd_config_path.read_text(encoding="utf-8")
     )
@@ -160,7 +163,12 @@ def test_rootfs_smoke_records_docker_image_load_timeout_input(
     assert details["platform"] == "linux/arm64"
     assert details["guestArchitecture"] == "aarch64"
     assert details["timeoutSeconds"] == 2.0
-    assert details["command"] == ["docker", "load", "-i", str(context.docker_image_bundle_path)]
+    assert details["command"] == [
+        "docker",
+        "load",
+        "-i",
+        str(context.docker_image_bundle_path),
+    ]
 
 
 def test_rootfs_smoke_fails_when_docker_platform_mismatches_guest_architecture(
@@ -222,7 +230,9 @@ def test_rootfs_smoke_fails_when_docker_uses_rootfs_store(tmp_path: Path) -> Non
 
     def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if arguments == ["docker", "info", "--format", "{{json .DockerRootDir}}"]:
-            return subprocess.CompletedProcess(arguments, 0, json.dumps("/var/lib/docker"), "")
+            return subprocess.CompletedProcess(
+                arguments, 0, json.dumps("/var/lib/docker"), ""
+            )
         return completed(arguments)
 
     with pytest.raises(SystemExit):
@@ -288,9 +298,13 @@ def test_rootfs_smoke_prunes_docker_state_before_success(tmp_path: Path) -> None
         commands.append(arguments)
         return completed(arguments)
 
-    run_rootfs_smoke(context=context, operations=fake_operations(context=context, run=run))
+    run_rootfs_smoke(
+        context=context, operations=fake_operations(context=context, run=run)
+    )
 
-    assert compose_command_suffix(commands, ["down", "-v", "--remove-orphans", "--rmi", "all"])
+    assert compose_command_suffix(
+        commands, ["down", "-v", "--remove-orphans", "--rmi", "all"]
+    )
     assert ["docker", "builder", "prune", "--all", "--force"] in commands
     assert ["docker", "system", "prune", "--all", "--force", "--volumes"] in commands
     assert ["docker", "ps", "--all", "--quiet"] in commands
@@ -312,7 +326,9 @@ def test_rootfs_smoke_prunes_docker_state_before_success(tmp_path: Path) -> None
     ]
 
 
-def test_rootfs_smoke_fails_when_docker_images_remain_after_cleanup(tmp_path: Path) -> None:
+def test_rootfs_smoke_fails_when_docker_images_remain_after_cleanup(
+    tmp_path: Path,
+) -> None:
     context = smoke_context(tmp_path)
     write_metadata(context.deploy_dir)
     write_apt_plan(context.apt_plan_path)
@@ -409,7 +425,9 @@ def test_rootfs_smoke_provisions_runtime_data_disk_when_label_is_missing(
             return completed(arguments)
         return completed(arguments)
 
-    run_rootfs_smoke(context=context, operations=fake_operations(context=context, run=run))
+    run_rootfs_smoke(
+        context=context, operations=fake_operations(context=context, run=run)
+    )
 
     assert [
         "mkfs.ext4",
@@ -485,7 +503,9 @@ def test_rootfs_smoke_runs_docker_smoke_without_seccomp(tmp_path: Path) -> None:
         commands.append(arguments)
         return completed(arguments)
 
-    run_rootfs_smoke(context=context, operations=fake_operations(context=context, run=run))
+    run_rootfs_smoke(
+        context=context, operations=fake_operations(context=context, run=run)
+    )
 
     docker_runs = [command for command in commands if command[:2] == ["docker", "run"]]
     assert docker_runs == [
@@ -671,9 +691,7 @@ def completed(
         stdout = json.dumps(docker_root)
     elif arguments == ["containerd", "config", "default"]:
         stdout = (
-            "version = 2\n"
-            'root = "/var/lib/containerd"\n'
-            'state = "/run/containerd"\n'
+            'version = 2\nroot = "/var/lib/containerd"\nstate = "/run/containerd"\n'
         )
     elif arguments[:2] == ["findmnt", "--json"]:
         mount_path = arguments[-1]
@@ -720,7 +738,9 @@ def completed(
 
 
 def runtime_data_contract(base_path: Path | None = None) -> RuntimeDataContract:
-    mount_path = Path("/mnt/runtime") if base_path is None else base_path / "runtime-data"
+    mount_path = (
+        Path("/mnt/runtime") if base_path is None else base_path / "runtime-data"
+    )
     return RuntimeDataContract(
         disk_image_name="runtime-data.img",
         disk_size="16G",

@@ -16,6 +16,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from tirosh_guest_tools.application.runtime_data_contract import (
+    RuntimeDataContract,
+    prepare_runtime_data_directories,
+)
 from tirosh_guest_tools.contracts import RootfsSmokeStatus
 from tirosh_guest_tools.infrastructure.common import (
     DEPLOY_DIR,
@@ -40,16 +44,6 @@ DOCKER_PRUNE_TIMEOUT_SECONDS = 300.0
 DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS = 30.0
 MINIMUM_DISK_FREE_KIB = 1024 * 1024
 MINIMUM_DISK_FREE_INODES = 1024
-
-
-@dataclass(frozen=True)
-class RuntimeDataContract:
-    disk_image_name: str
-    disk_size: str
-    filesystem_label: str
-    mount_path: str
-    docker_data_root: str
-    containerd_root: str
 
 
 @dataclass(frozen=True)
@@ -325,7 +319,9 @@ def docker_root_dir(run: RootfsSmokeRun) -> str:
     try:
         value = json.loads(text)
     except json.JSONDecodeError as error:
-        raise RuntimeError(f"docker info returned invalid DockerRootDir JSON: {text}") from error
+        raise RuntimeError(
+            f"docker info returned invalid DockerRootDir JSON: {text}"
+        ) from error
     if not isinstance(value, str) or not value.strip():
         raise RuntimeError(f"docker info returned invalid DockerRootDir: {text}")
     return value
@@ -359,8 +355,7 @@ def runtime_data_mount(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
             raise RuntimeError("runtime data disk did not mount after provisioning")
         proof["createdFilesystem"] = created_filesystem
 
-    Path(contract.docker_data_root).mkdir(parents=True, exist_ok=True)
-    Path(contract.containerd_root).mkdir(parents=True, exist_ok=True)
+    prepare_runtime_data_directories(contract)
     run.runtime_data = proof
     return "runtime data disk is mounted", proof
 
@@ -398,7 +393,9 @@ def write_docker_daemon_config(path: Path, contract: RuntimeDataContract) -> Non
         try:
             document = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
-            raise RuntimeError(f"Docker daemon config is unreadable: {path}: {error}") from error
+            raise RuntimeError(
+                f"Docker daemon config is unreadable: {path}: {error}"
+            ) from error
         if not isinstance(document, dict):
             raise RuntimeError(f"Docker daemon config must be an object: {path}")
         existing = document.get("data-root")
@@ -411,7 +408,9 @@ def write_docker_daemon_config(path: Path, contract: RuntimeDataContract) -> Non
         document = {}
     document["data-root"] = contract.docker_data_root
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def write_containerd_config(
@@ -480,8 +479,7 @@ def mounted_runtime_data_proof(
         )
     if not isinstance(source, str) or not source.strip():
         raise RuntimeError(
-            "runtime data mount source is missing: "
-            f"mountPath={contract.mount_path}"
+            f"runtime data mount source is missing: mountPath={contract.mount_path}"
         )
     actual_label = filesystem_label(run, source)
     if actual_label is None:
@@ -979,7 +977,10 @@ def cleanup_compose(run: RootfsSmokeRun) -> bool:
     if failed_verification is not None:
         run.cleanup = {
             "status": RootfsSmokeStatus.CLEANUP_FAILED.value,
-            "message": f"{failed_verification['name']} failed: {failed_verification['message']}",
+            "message": (
+                f"{failed_verification['name']} failed: "
+                f"{failed_verification['message']}"
+            ),
             "commands": results,
         }
         return False

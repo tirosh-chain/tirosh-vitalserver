@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -14,7 +15,11 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
 )
 from tirosh_vitalserver.devtools.core.errors import DomainError
-from tirosh_vitalserver.devtools.core.guest_services import GuestDeployPlan
+from tirosh_vitalserver.devtools.core.guest_image import RuntimeDataDiskConfig
+from tirosh_vitalserver.devtools.core.guest_services import (
+    GuestDeployPlan,
+    RootfsInputMetadataPlan,
+)
 from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
 from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
     default_clean_uninstaller_pkg_output,
@@ -187,6 +192,20 @@ def test_build_dmg_stages_installer_and_clean_uninstaller_pkg(
             optional_docker_bundle_destination=None,
             vm_data_dirs=[],
         ),
+        rootfs_input_metadata_plan=RootfsInputMetadataPlan(
+            deploy_dir=tmp_path / "deploy",
+            base_url="https://example.invalid/noble",
+            apt_snapshot="20250515T000000Z",
+            runtime_data=RuntimeDataDiskConfig(
+                disk_image_name="runtime-data.img",
+                disk_size="16G",
+                filesystem_label="vital-runtime",
+                mount_path="/mnt/runtime",
+                docker_data_root="/mnt/runtime/docker",
+                containerd_root="/mnt/runtime/containerd",
+            ),
+            docker_platform="linux/arm64",
+        ),
         proxy_port="80",
         settings=settings,
     )
@@ -203,6 +222,162 @@ def test_build_dmg_stages_installer_and_clean_uninstaller_pkg(
     assert commands[-1][:2] == ["hdiutil", "create"]
     assert str(staging) in commands[-1]
     assert str(dmg_output) in commands[-1]
+
+
+def test_build_pkg_stages_rootfs_input_metadata_for_installed_bootstrap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "repo"
+    runtime_dir = root / "apps/vitalserver-macos-runtime"
+    packaging_dir = runtime_dir / "Support/Packaging"
+    packaging_dir.mkdir(parents=True)
+    for name in [
+        "preinstall",
+        "proxy-run.template",
+        "uninstall.template",
+        "postinstall.template",
+        "components.plist.template",
+    ]:
+        path = packaging_dir / name
+        path.write_text("#!/bin/sh\n", encoding="utf-8")
+        path.chmod(0o755)
+    (runtime_dir / "Entitlements.shared.plist").write_text(
+        "<plist></plist>",
+        encoding="utf-8",
+    )
+    (root / "infra/macos-nginx").mkdir(parents=True)
+    (root / "infra/macos-nginx/vitalserver.conf.template").write_text(
+        "proxy",
+        encoding="utf-8",
+    )
+    support_guest = runtime_dir / "Support/Guest"
+    support_guest.mkdir(parents=True)
+    (support_guest / "bootstrap.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    app_bundle = tmp_path / "VitalServer Helper.app"
+    app_bundle.mkdir()
+    (app_bundle / "Contents").mkdir()
+    nginx_bundle = tmp_path / "nginx"
+    nginx_bundle.mkdir()
+    (nginx_bundle / "nginx").write_text("nginx", encoding="utf-8")
+    runtime_cli = tmp_path / "vitalserver-vm"
+    runtime_cli.write_text("vm", encoding="utf-8")
+    runtime_cli.chmod(0o755)
+    rootfs_base = tmp_path / "rootfs-base.raw.gz"
+    rootfs_base.write_text("rootfs", encoding="utf-8")
+    docker_bundle = tmp_path / "docker-images.tar.gz"
+    docker_bundle.write_text("docker", encoding="utf-8")
+    golden = tmp_path / "golden"
+    golden.mkdir()
+    (golden / "Image").write_text("kernel", encoding="utf-8")
+    (golden / "initrd.img").write_text("initrd", encoding="utf-8")
+
+    settings = load_macos_release_settings(repo_root() / "config/vm-build.toml", root)
+    settings = replace(
+        settings,
+        runtime_dir=runtime_dir,
+        app_bundle=app_bundle,
+        runtime_cli=runtime_cli,
+        nginx_bundle=nginx_bundle,
+        docker_bundle=docker_bundle,
+        pkg_root=tmp_path / "pkg-root",
+        pkg_scripts=tmp_path / "pkg-scripts",
+        pkg_component_plist=tmp_path / "components.plist",
+    )
+    package_vm_home = (
+        settings.pkg_root / settings.install.product_root.strip("/")
+    )
+    context = PackageContext(
+        root=root,
+        runtime_dir=runtime_dir,
+        release=ReleaseManifest(
+            channel="dev",
+            helper_version="1.2.3",
+            release_label="1.2.3-dev",
+            minimum_updater_version="1.0.0",
+            vitalserver_version="2.3.4",
+            target_platform="macos-arm64",
+        ),
+        pkg_root=settings.pkg_root,
+        pkg_scripts=settings.pkg_scripts,
+        pkg_output=tmp_path / "dist/VitalServerHelper-1.2.3-dev.pkg",
+        clean_uninstaller_pkg_output=tmp_path / "dist/reset.pkg",
+        dmg_output=tmp_path / "dist/VitalServerHelper-1.2.3-dev.dmg",
+        app_bundle=app_bundle,
+        runtime_cli=runtime_cli,
+        nginx_bundle=nginx_bundle,
+        docker_bundle=docker_bundle,
+        rootfs_base=rootfs_base,
+        golden_runtime_dir=golden,
+        guest_deploy_plan=GuestDeployPlan(
+            support_guest_source=support_guest,
+            deploy_dir=package_vm_home / "data/deploy",
+            includes=[],
+            python_wheel_projects=[],
+            docker_bundle_source=docker_bundle,
+            docker_bundle_destination=(
+                package_vm_home / "data/deploy/docker-images/vitalserver-images.tar.gz"
+            ),
+            optional_docker_bundle_source=None,
+            optional_docker_bundle_destination=None,
+            vm_data_dirs=[],
+        ),
+        rootfs_input_metadata_plan=RootfsInputMetadataPlan(
+            deploy_dir=package_vm_home / "data/deploy",
+            base_url="https://example.invalid/noble",
+            apt_snapshot="20250515T000000Z",
+            runtime_data=RuntimeDataDiskConfig(
+                disk_image_name="runtime-data.img",
+                disk_size="16G",
+                filesystem_label="vital-runtime",
+                mount_path="/mnt/runtime",
+                docker_data_root="/mnt/runtime/docker",
+                containerd_root="/mnt/runtime/containerd",
+            ),
+            docker_platform="linux/arm64",
+        ),
+        proxy_port="80",
+        settings=settings,
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        installer_package,
+        "run",
+        lambda command, **_: commands.append(command),
+    )
+    monkeypatch.setattr(
+        installer_package,
+        "assert_virtualization_entitlement",
+        lambda _: None,
+    )
+    monkeypatch.setattr(installer_package, "render_launchd_templates", lambda _: None)
+    monkeypatch.setattr(
+        installer_package,
+        "render_packaging_executable",
+        lambda _settings, _template, destination: destination.write_text(
+            "#!/bin/sh\n",
+            encoding="utf-8",
+        ),
+    )
+    monkeypatch.setattr(
+        installer_package,
+        "render_packaging_template",
+        lambda _settings, _template, destination, _values: destination.write_text(
+            "<plist></plist>",
+            encoding="utf-8",
+        ),
+    )
+
+    installer_package.build_pkg(context)
+
+    metadata = package_vm_home / "data/deploy/build-metadata/rootfs-input.json"
+    assert metadata.is_file()
+    document = json.loads(metadata.read_text(encoding="utf-8"))
+    assert document["runtimeData"]["diskImageName"] == "runtime-data.img"
+    assert document["runtimeData"]["mountPath"] == "/mnt/runtime"
+    assert document["dockerImages"]["platform"] == "linux/arm64"
+    assert document["ubuntu"]["aptSnapshot"] == "20250515T000000Z"
+    assert any(command[0] == "pkgbuild" for command in commands)
 
 
 def test_build_dmg_fails_when_output_dmg_is_attached(

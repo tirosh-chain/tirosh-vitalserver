@@ -8,6 +8,7 @@ from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
     stage_guest_deploy,
+    stage_rootfs_input_metadata,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
     copy_executable,
@@ -333,6 +334,7 @@ def stage_pkg_root(context: PackageContext) -> None:
         ),
     )
     stage_guest_deploy(context.guest_deploy_plan)
+    stage_rootfs_input_metadata(context.rootfs_input_metadata_plan)
     render_launchd_templates(context)
     copy_executable(packaging_dir / "preinstall", context.pkg_scripts / "preinstall")
     copy_executable(

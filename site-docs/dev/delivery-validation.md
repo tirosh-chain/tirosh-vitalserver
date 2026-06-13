@@ -198,6 +198,22 @@ Release package와 DMG build도 expensive compile 단계에 들어가기 전에 
 전에 필수 tool, golden runtime `Image`/`initrd.img`, `rootfs-base`, Dockerfile 경로, Docker pull image
 manifest와 platform, DMG output attachment 상태를 확인합니다. 이 값들은 build input이므로 누락,
 무효, unavailable, mounted/attached blocked 상태를 빈 값이나 late build failure로 바꾸면 안 됩니다.
+Installed package deploy도 golden rootfs deploy와 같은 bootstrap contracts를 포함해야 합니다.
+`deploy/build-metadata/rootfs-input.json`은 Guest runtime data disk 준비가 읽는 Host-owned contract이며,
+package staging이 Ubuntu source, apt snapshot, runtime data disk, Docker platform 값을 명시적으로 써야
+합니다. Golden rootfs workspace에만 존재하는 metadata를 installed runtime에서 fallback으로 재생성하면
+안 됩니다.
+Runtime data contract 검증은 directory root 존재에서 멈추면 안 됩니다. Installed bootstrap은 Docker
+image bundle load 전에 `dockerDataRoot`와 `dockerDataRoot/tmp`, `containerdRoot`를 명시적으로 준비해야
+하며, golden rootfs smoke도 같은 directory shape를 검증해야 합니다.
+Guest bootstrap ordering도 contract의 일부입니다. `tirosh-vitalserver-runtime-data-prepare`가
+runtime data disk를 mount하고 Docker `data-root`를 쓴 뒤에만 Docker를 활성화해야 합니다.
+`tirosh-vitalserver-container-logs.service`, guest observability, command poller처럼 Docker를 읽거나
+Docker service를 당길 수 있는 background service는 이 시점 이전에 `--now`로 시작하면 안 됩니다.
+설치 후 Guest bootstrap 순서의 source of truth는 `tirosh-vitalserver-bootstrap` CLI가 실행하는
+`GuestBootstrapWorkflow`입니다. `bootstrap.sh`는 deploy share mount, guest-tools wheel 설치,
+workflow exec까지만 담당하는 thin wrapper여야 합니다. Docker start, image load, smoke container,
+compose start, container log start 같은 순서와 guard는 workflow 테스트로 고정합니다.
 Guest shutdown request는 single-shot trigger입니다. Worker는 request를 로드하고 `running/starting`
 result를 기록한 직후 request file을 소비해야 합니다. 성공 끝까지 request를 남겨두면 poweroff 또는
 process termination 중 worker가 사라졌을 때 같은 request가 다음 VM boot에서 다시 dispatch되고,

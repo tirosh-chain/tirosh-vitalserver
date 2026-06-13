@@ -94,6 +94,13 @@ def test_prepare_runtime_data_provisions_mount_and_writes_daemon_contract(
     )
 
     assert [
+        "systemctl",
+        "stop",
+        "docker.service",
+        "docker.socket",
+        "containerd.service",
+    ] in commands
+    assert [
         "mkfs.ext4",
         "-F",
         "-L",
@@ -111,6 +118,8 @@ def test_prepare_runtime_data_provisions_mount_and_writes_daemon_contract(
     assert json.loads(
         context.docker_daemon_config_path.read_text(encoding="utf-8")
     ) == {"data-root": str(tmp_path / "runtime-data/docker")}
+    assert (tmp_path / "runtime-data/docker/tmp").is_dir()
+    assert (tmp_path / "runtime-data/containerd").is_dir()
     assert f'root = "{tmp_path / "runtime-data/containerd"}"' in (
         context.containerd_config_path.read_text(encoding="utf-8")
     )
