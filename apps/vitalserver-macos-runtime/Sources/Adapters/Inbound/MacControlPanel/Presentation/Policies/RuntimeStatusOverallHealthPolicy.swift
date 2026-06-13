@@ -57,6 +57,9 @@ public struct RuntimeStatusOverallHealthPolicy {
         if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
             return value(vocabulary.updatingText, .warning)
         }
+        if RuntimeActiveOperationPolicy.isRecoveryInProgress(status) {
+            return value(vocabulary.recoveringText, .warning)
+        }
         if RuntimeReadinessPolicy.isReady(status) {
             return value(vocabulary.healthyText, .healthy)
         }

@@ -228,6 +228,8 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertEqual(formatter.operationText(.redisRestore), "Redis-only Restore")
         XCTAssertEqual(formatter.operationText(.runtimeDataBackup), "VitalServer Backup")
         XCTAssertEqual(formatter.operationText(.runtimeDataRestore), "VitalServer Restore")
+        XCTAssertEqual(formatter.operationText(.repairDatastore), "Repair Redis Datastore")
+        XCTAssertEqual(formatter.operationText(.repairServices), "Repair Runtime")
         XCTAssertEqual(formatter.operationText(.applyBundle), "Apply Bundle")
         XCTAssertEqual(formatter.operationText(.unknown("custom-op")), "Custom Op")
     }

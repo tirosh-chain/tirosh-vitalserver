@@ -526,6 +526,44 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(status))
     }
 
+    func testActiveOperationPolicyTreatsNonTerminalRestoreProgressAsRecoveryInProgress() {
+        let status = RuntimeStatus(
+            runtimeState: .critical,
+            operation: .watchdog,
+            progress: RuntimeProgressDocument(
+                operation: .runtimeDataRestore,
+                phase: .running,
+                step: nil,
+                stepStatus: nil,
+                message: "restoring",
+                reasonCodes: [],
+                startedAt: nil,
+                updatedAt: "2026-06-13T10:14:07Z"
+            )
+        )
+
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isRecoveryInProgress(status))
+    }
+
+    func testActiveOperationPolicyDoesNotTreatTerminalRestoreProgressAsRecoveryInProgress() {
+        let status = RuntimeStatus(
+            runtimeState: .critical,
+            operation: .runtimeDataRestore,
+            progress: RuntimeProgressDocument(
+                operation: .runtimeDataRestore,
+                phase: .completed,
+                step: nil,
+                stepStatus: nil,
+                message: "restored",
+                reasonCodes: [],
+                startedAt: nil,
+                updatedAt: "2026-06-13T10:14:07Z"
+            )
+        )
+
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isRecoveryInProgress(status))
+    }
+
     func testActiveOperationPolicyDoesNotTreatTerminalInstallProgressAsInProgress() {
         let status = RuntimeStatus(
             runtimeState: .installing,

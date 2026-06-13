@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
+from tirosh_guest_tools.application.bootstrap import GuestBootstrapContext
 from tirosh_guest_tools.infrastructure import bootstrap_operations
 
 
@@ -106,3 +109,46 @@ def test_command_text_rejects_missing_required_output(
 
     with pytest.raises(RuntimeError, match="command returned no output"):
         bootstrap_operations.command_text(["findmnt", "-n", "-o", "SOURCE", "/"])
+
+
+def test_sync_clock_uses_explicit_host_time_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = bootstrap_context(tmp_path)
+    (context.deploy_dir / "host-time.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "epochSeconds": 1_781_273_647,
+                "updatedAt": "2026-06-13T10:14:07Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        bootstrap_operations,
+        "run",
+        lambda command: commands.append(command),
+    )
+
+    bootstrap_operations.sync_clock(context)
+
+    assert commands == [["date", "-u", "-s", "@1781273647"]]
+
+
+def test_sync_clock_rejects_missing_host_time_contract(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="host time contract is unreadable"):
+        bootstrap_operations.sync_clock(bootstrap_context(tmp_path))
+
+
+def bootstrap_context(tmp_path: Path) -> GuestBootstrapContext:
+    deploy_dir = tmp_path / "deploy"
+    deploy_dir.mkdir(parents=True)
+    return GuestBootstrapContext(
+        deploy_dir=deploy_dir,
+        runtime_dir=tmp_path / "run",
+        vital_files_mount=tmp_path / "vital-files",
+        bootstrap_result=tmp_path / "run/bootstrap-result.json",
+    )

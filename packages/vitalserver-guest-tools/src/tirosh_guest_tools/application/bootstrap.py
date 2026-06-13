@@ -16,6 +16,7 @@ EDGE_READY_HTTP_TIMEOUT_SECONDS = 5.0
 
 class GuestBootstrapStep(StrEnum):
     MOUNT_SHARES = "mount-shares"
+    SYNC_CLOCK = "sync-clock"
     WRITE_RUNNING_RESULT = "write-running-result"
     VALIDATE_DEPLOY_CONTRACT = "validate-deploy-contract"
     EXPAND_ROOT_FILESYSTEM = "expand-root-filesystem"
@@ -107,6 +108,7 @@ class GuestBootstrapOperations:
     now: Callable[[], str]
     boot_id: Callable[[], str]
     mount_shares: Callable[[], None]
+    sync_clock: Callable[[GuestBootstrapContext], None]
     write_bootstrap_result: Callable[[Path, BootstrapResultDocument], None]
     missing_deploy_bundle_files: Callable[[GuestBootstrapContext], list[Path]]
     expand_root_filesystem: Callable[[], None]
@@ -192,6 +194,7 @@ class GuestBootstrapWorkflow:
     def plan(self) -> list[tuple[GuestBootstrapStep, Callable[[], None]]]:
         return [
             (GuestBootstrapStep.MOUNT_SHARES, self.operations.mount_shares),
+            (GuestBootstrapStep.SYNC_CLOCK, self.sync_clock),
             (GuestBootstrapStep.WRITE_RUNNING_RESULT, self.write_running_result),
             (GuestBootstrapStep.VALIDATE_DEPLOY_CONTRACT, self.require_deploy_bundle),
             (
@@ -252,6 +255,13 @@ class GuestBootstrapWorkflow:
 
     def write_running_result(self) -> None:
         self.write_bootstrap_result("running", "Guest bootstrap is running.", ())
+
+    def sync_clock(self) -> None:
+        self.state.require_completed(
+            GuestBootstrapStep.MOUNT_SHARES,
+            GuestBootstrapStep.SYNC_CLOCK,
+        )
+        self.operations.sync_clock(self.context)
 
     def write_completed_result(self) -> None:
         self.state.require_completed(

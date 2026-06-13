@@ -10,7 +10,6 @@ struct RuntimeAdvancedPanel: View {
     @Binding var showingRepairDatastoreConfirmation: Bool
     @Binding var showingRepairVMDiskConfirmation: Bool
     @Binding var showingRepairRuntimeServicesConfirmation: Bool
-    @Binding var showingRestartVMRuntimeConfirmation: Bool
     @Binding var showingStartServicesConfirmation: Bool
     @Binding var showingStopServicesConfirmation: Bool
     @Binding var hoveredServiceLink: String?
@@ -18,6 +17,7 @@ struct RuntimeAdvancedPanel: View {
     @State private var showingVMHealth = true
     @State private var showingServiceHealth = true
     @State private var showingRecoveryOperations = false
+    @State private var showingAdvancedRepairTools = false
     @State private var showingNetworkOverrides = false
     @State private var showingAdminOperations = false
     private let displayPolicy = RuntimeStatusDisplayPolicy()
@@ -32,13 +32,13 @@ struct RuntimeAdvancedPanel: View {
         showingRepairDatastoreConfirmation: Binding<Bool>,
         showingRepairVMDiskConfirmation: Binding<Bool>,
         showingRepairRuntimeServicesConfirmation: Binding<Bool>,
-        showingRestartVMRuntimeConfirmation: Binding<Bool>,
         showingStartServicesConfirmation: Binding<Bool>,
         showingStopServicesConfirmation: Binding<Bool>,
         hoveredServiceLink: Binding<String?>,
         showingVMHealth: Bool = true,
         showingServiceHealth: Bool = true,
         showingRecoveryOperations: Bool = false,
+        showingAdvancedRepairTools: Bool = false,
         showingNetworkOverrides: Bool = false,
         showingAdminOperations: Bool = false
     ) {
@@ -50,13 +50,13 @@ struct RuntimeAdvancedPanel: View {
         self._showingRepairDatastoreConfirmation = showingRepairDatastoreConfirmation
         self._showingRepairVMDiskConfirmation = showingRepairVMDiskConfirmation
         self._showingRepairRuntimeServicesConfirmation = showingRepairRuntimeServicesConfirmation
-        self._showingRestartVMRuntimeConfirmation = showingRestartVMRuntimeConfirmation
         self._showingStartServicesConfirmation = showingStartServicesConfirmation
         self._showingStopServicesConfirmation = showingStopServicesConfirmation
         self._hoveredServiceLink = hoveredServiceLink
         self._showingVMHealth = State(initialValue: showingVMHealth)
         self._showingServiceHealth = State(initialValue: showingServiceHealth)
         self._showingRecoveryOperations = State(initialValue: showingRecoveryOperations)
+        self._showingAdvancedRepairTools = State(initialValue: showingAdvancedRepairTools)
         self._showingNetworkOverrides = State(initialValue: showingNetworkOverrides)
         self._showingAdminOperations = State(initialValue: showingAdminOperations)
     }
@@ -287,16 +287,12 @@ struct RuntimeAdvancedPanel: View {
 
                 recoverySubsection(AppConstants.Labels.sectionRuntimeRepair) {
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 10) {
-                            Button(AppConstants.Actions.restartVMRuntime) {
-                                showingRestartVMRuntimeConfirmation = true
-                            }
-                            .disabled(!actionAvailabilityPolicy.canControlRuntimeServices(
-                                status: viewModel.status,
-                                capabilities: viewModel.capabilities,
-                                isBusy: viewModel.isBusy
-                            ))
+                        Text(AppConstants.Labels.runtimeRepairHelp)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
 
+                        HStack(spacing: 10) {
                             Button(AppConstants.Actions.repairRuntimeServices) {
                                 showingRepairRuntimeServicesConfirmation = true
                             }
@@ -304,30 +300,44 @@ struct RuntimeAdvancedPanel: View {
                                 status: viewModel.status,
                                 isBusy: viewModel.isBusy
                             ))
+                        }
 
-                            Button(AppConstants.Actions.repairDatastore) {
-                                showingRepairDatastoreConfirmation = true
-                            }
-                            .disabled(!actionAvailabilityPolicy.canRepairRuntime(
-                                status: viewModel.status,
-                                isBusy: viewModel.isBusy
-                            ))
+                        RuntimeDisclosureSection(
+                            AppConstants.Labels.sectionAdvancedRepairTools,
+                            isExpanded: $showingAdvancedRepairTools
+                        ) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(AppConstants.Labels.advancedRepairToolsHelp)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
 
-                            Button(AppConstants.Actions.repairVMDisk) {
-                                showingRepairVMDiskConfirmation = true
-                            }
-                            .disabled(!actionAvailabilityPolicy.canRepairRuntime(
-                                status: viewModel.status,
-                                isBusy: viewModel.isBusy
-                            ))
+                                HStack(spacing: 10) {
+                                    Button(AppConstants.Actions.repairProxy) {
+                                        showingRepairProxyConfirmation = true
+                                    }
+                                    .disabled(!actionAvailabilityPolicy.canRepairRuntime(
+                                        status: viewModel.status,
+                                        isBusy: viewModel.isBusy
+                                    ))
 
-                            Button(AppConstants.Actions.repairProxy) {
-                                showingRepairProxyConfirmation = true
+                                    Button(AppConstants.Actions.repairVMDisk) {
+                                        showingRepairVMDiskConfirmation = true
+                                    }
+                                    .disabled(!actionAvailabilityPolicy.canRepairRuntime(
+                                        status: viewModel.status,
+                                        isBusy: viewModel.isBusy
+                                    ))
+
+                                    Button(AppConstants.Actions.repairDatastore) {
+                                        showingRepairDatastoreConfirmation = true
+                                    }
+                                    .disabled(!actionAvailabilityPolicy.canRepairRuntime(
+                                        status: viewModel.status,
+                                        isBusy: viewModel.isBusy
+                                    ))
+                                }
                             }
-                            .disabled(!actionAvailabilityPolicy.canRepairRuntime(
-                                status: viewModel.status,
-                                isBusy: viewModel.isBusy
-                            ))
                         }
 
                         Divider()

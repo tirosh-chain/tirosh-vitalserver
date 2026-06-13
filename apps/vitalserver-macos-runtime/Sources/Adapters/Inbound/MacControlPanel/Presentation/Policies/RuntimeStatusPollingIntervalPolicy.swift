@@ -10,6 +10,7 @@ public struct RuntimeStatusPollingIntervalPolicy {
         if RuntimeActiveOperationPolicy.isInstallInProgress(status)
             || RuntimeActiveOperationPolicy.isInitializationInProgress(status)
             || RuntimeActiveOperationPolicy.isUpdateInProgress(status)
+            || RuntimeActiveOperationPolicy.isRecoveryInProgress(status)
             || status.runtimeState == .recovering {
             return Self.activeOperationInterval
         }

@@ -267,6 +267,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         deployDirectory.appendingPathComponent("runtime-settings.json")
     }
 
+    public var hostTime: URL {
+        deployDirectory.appendingPathComponent(RuntimeFileNames.hostTime)
+    }
+
     public var proxyNginxPID: URL {
         nginxLogsDirectory.appendingPathComponent("nginx.pid")
     }

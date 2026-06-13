@@ -39,6 +39,9 @@ def test_run_redis_restore_replaces_volume_and_writes_completed_result(
     monkeypatch.setattr(redis_restore, "RESULT_FILE", result)
     monkeypatch.setattr(redis_restore, "mount_runtime_share", lambda: None)
     monkeypatch.setattr(redis_restore, "utc_now", lambda: "2026-06-10T00:00:00Z")
+    clock_syncs: list[str] = []
+    monkeypatch.setattr(redis_restore, "sync_clock", lambda _: clock_syncs.append("sync-clock"))
+    monkeypatch.setattr(redis_restore, "default_bootstrap_context", lambda: object())
     commands: list[list[str]] = []
     request_exists_at_command: list[bool] = []
     monkeypatch.setattr(
@@ -55,6 +58,7 @@ def test_run_redis_restore_replaces_volume_and_writes_completed_result(
     redis_restore.run_redis_restore()
 
     assert (volume / "dump.rdb").read_text(encoding="utf-8") == "new"
+    assert clock_syncs == ["sync-clock"]
     assert not (volume / "old.rdb").exists()
     document = json.loads(result.read_text(encoding="utf-8"))
     assert document["operation"] == "redis-restore"

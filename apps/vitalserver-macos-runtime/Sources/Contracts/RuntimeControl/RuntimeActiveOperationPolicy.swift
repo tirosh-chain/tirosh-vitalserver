@@ -31,6 +31,32 @@ public enum RuntimeActiveOperationPolicy {
         return status.runtimeState == .updating || status.runtimeState == .recovering
     }
 
+    public static func isRecoveryOperation(_ operation: RuntimeOperation?) -> Bool {
+        switch operation {
+        case .rollback,
+             .redisRestore,
+             .runtimeDataRestore,
+             .repairDatastore,
+             .repairVMDisk,
+             .repairProxy,
+             .repairServices:
+            return true
+        default:
+            return false
+        }
+    }
+
+    public static func isRecoveryInProgress(_ status: RuntimeStatus) -> Bool {
+        if let progress = status.progress,
+           isRecoveryOperation(progress.operation) {
+            return !isTerminal(progress.phase)
+        }
+        guard isRecoveryOperation(status.operation) else {
+            return false
+        }
+        return status.runtimeState == .recovering
+    }
+
     public static func isInstallInProgress(_ status: RuntimeStatus) -> Bool {
         guard status.runtimeState == .installing else {
             return false

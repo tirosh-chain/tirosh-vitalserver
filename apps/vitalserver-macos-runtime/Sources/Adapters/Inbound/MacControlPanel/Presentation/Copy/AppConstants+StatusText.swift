@@ -149,9 +149,9 @@ public extension AppConstants {
         public static let commandCancelled = "Command was cancelled or failed."
         public static let latestBackupFallback = "Latest backup"
         public static let repairProxyConfirmation = "Stops nginx listeners on the configured proxy port, then restarts the host proxy service. Other process types are reported but not stopped automatically."
-        public static let repairDatastoreConfirmation = "Checks and repairs the Redis append-only file inside the VM, then restarts VitalServer containers and host services. Redis creates a timestamped backup before fixing a damaged AOF file. Repair can truncate the corrupted tail of the AOF; use Redis backups for full data recovery."
+        public static let repairDatastoreConfirmation = "Checks and repairs the Redis append-only file inside the VM, then restarts VitalServer containers and host services. Use this only when diagnostics or support identifies Redis datastore corruption. Redis creates a timestamped backup before fixing a damaged AOF file. Repair can truncate the corrupted tail of the AOF; use Redis backups for full data recovery."
         public static let repairVMDiskConfirmation = "Creates a Redis backup first, then archives the current VM disk, recreates it from the installed base image, and restarts runtime services. If the current VM cannot create a Redis backup, repair continues because the old VM disk is archived before replacement. Vital files stored in the configured host directory are preserved."
-        public static let repairRuntimeServicesConfirmation = "Restarts the VM, guest log sync, host proxy, and watchdog services. VitalServer may be briefly unavailable while services restart."
+        public static let repairRuntimeServicesConfirmation = "Restarts the VM runtime services, guest log sync, host proxy, and watchdog. VitalServer may be briefly unavailable while runtime repair runs."
         public static let startRuntimeServicesConfirmation = "Starts the VM, host proxy, and watchdog services, then waits for VitalServer to become healthy."
         public static let stopRuntimeServicesConfirmation = "Stops the watchdog, host proxy, and VM services. VitalServer will be unavailable until runtime services are started again."
         public static let standardUninstallConfirmation = "Creates a Redis backup first, then removes the Helper app, runtime services, tools, VM disk, and package receipt. Logs, backups, Redis backups, and Vital files are preserved. If Redis backup creation fails, uninstall is stopped."
@@ -524,13 +524,13 @@ public extension AppConstants {
             case "runtime-data-restore":
                 return "VitalServer Restore"
             case "repair-datastore":
-                return "Repair Data Store"
+                return "Repair Redis Datastore"
             case "repair-vm-disk":
                 return "Repair VM Disk"
             case "repair-proxy":
                 return "Repair Proxy"
             case "repair-services":
-                return "Repair Runtime Services"
+                return "Repair Runtime"
             case "start-services":
                 return "Start Runtime Services"
             case "stop-services":

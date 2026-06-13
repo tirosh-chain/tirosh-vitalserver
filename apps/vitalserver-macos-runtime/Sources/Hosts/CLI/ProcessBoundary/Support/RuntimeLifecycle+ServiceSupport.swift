@@ -232,7 +232,25 @@ extension RuntimeLifecycle {
     }
 
     func startLaunchdService(_ service: RuntimeManagedService) throws {
+        if service == .vm {
+            try writeHostTimeContract()
+        }
         try serviceController.startLaunchdService(service)
+    }
+
+    func writeHostTimeContract() throws {
+        let document = RuntimeHostTimeDocument(
+            epochSeconds: Int64(Date().timeIntervalSince1970.rounded(.down)),
+            updatedAt: isoTimestamp()
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try fileStore.writeData(
+            try encoder.encode(document),
+            to: installedPaths.hostTime,
+            options: .atomic
+        )
+        log("host time contract written path=\(installedPaths.hostTime.path) epochSeconds=\(document.epochSeconds)")
     }
 
     func startVMServiceForGuestOperation() throws {

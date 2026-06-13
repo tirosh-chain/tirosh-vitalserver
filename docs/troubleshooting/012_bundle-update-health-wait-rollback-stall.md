@@ -43,7 +43,7 @@ Update 탭에서는 적용 중인 현재 step과 Command log tail을 함께 표�
 
 먼저 command log와 container log에서 실제 실패 원인을 확인합니다. update가 이미 rollback 단계에 들어간 경우에는 중간에 강제 종료하면 runtime이 반쯤 교체된 상태로 남을 수 있으므로, 가능한 한 rollback timeout이 끝날 때까지 기다립니다. 반복적으로 health가 회복되지 않으면 새 bundle 또는 재설치로 복구합니다.
 
-Helper app의 Advanced > Recovery operations에는 `Repair Data Store`가 있습니다. 이 작업은 VM 내부에 복구 요청 파일을 만들고, guest systemd path unit이 Redis AOF 검사/복구와 container 재시작을 수행하게 합니다. update 실패 후 Redis 또는 VitalServer health가 회복되지 않을 때 먼저 시도합니다.
+Helper app의 Advanced > Recovery operations > Advanced repair tools에는 `Repair Redis Datastore`가 있습니다. 이 작업은 VM 내부에 복구 요청 파일을 만들고, guest systemd path unit이 Redis AOF 검사/복구와 container 재시작을 수행하게 합니다. Redis AOF corruption이 명확할 때 사용하고, 원인이 불명확한 update 실패 후에는 먼저 `Repair Runtime`을 시도합니다.
 
 Update 과정의 전체 계약, 보존/변경 범위, 0.1.3 실패 분석은 [Update](../runtime/macos/update.md)를 봅니다.
 

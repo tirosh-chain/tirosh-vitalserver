@@ -43,7 +43,7 @@ public struct RuntimeStatusComposeServiceValuePolicy {
         }
         return serviceValue(
             serviceObservation: serviceObservation(service: service, observation: observation),
-            observedAt: observation?.runtimeStateUpdatedAt ?? observation?.runtimeStateFileUpdatedAt,
+            observedAt: observation?.runtimeStateFileUpdatedAt,
             now: now
         )
     }
@@ -74,7 +74,7 @@ public struct RuntimeStatusComposeServiceValuePolicy {
         return uptimeFormatter.formatUptime(
             seconds: serviceObservation?.uptimeSeconds,
             startedAt: serviceObservation?.startedAt,
-            observedAt: observation?.runtimeStateUpdatedAt ?? observation?.runtimeStateFileUpdatedAt,
+            observedAt: observation?.runtimeStateFileUpdatedAt,
             now: now
         )
     }

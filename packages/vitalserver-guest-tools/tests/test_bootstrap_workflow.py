@@ -24,6 +24,8 @@ def test_guest_bootstrap_workflow_orders_runtime_data_before_docker_consumers(
 
     run_guest_bootstrap(context=context, operations=fake_operations(events))
 
+    assert_before(events, "mount-shares", "sync-clock")
+    assert_before(events, "sync-clock", "result:running")
     assert_before(events, "prepare-runtime-data", "start-docker")
     assert_before(
         events,
@@ -122,6 +124,7 @@ def fake_operations(events: list[str]) -> GuestBootstrapOperations:
         now=lambda: "2026-06-13T00:00:00Z",
         boot_id=lambda: "test-boot-id",
         mount_shares=lambda: events.append("mount-shares"),
+        sync_clock=lambda _: events.append("sync-clock"),
         write_bootstrap_result=write_result,
         missing_deploy_bundle_files=lambda _: [],
         expand_root_filesystem=lambda: events.append("expand-root-filesystem"),

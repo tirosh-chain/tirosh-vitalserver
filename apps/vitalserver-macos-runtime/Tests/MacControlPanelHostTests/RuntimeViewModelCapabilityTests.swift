@@ -1148,11 +1148,11 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             showingRepairDatastoreConfirmation: .constant(false),
             showingRepairVMDiskConfirmation: .constant(false),
             showingRepairRuntimeServicesConfirmation: .constant(false),
-            showingRestartVMRuntimeConfirmation: .constant(false),
             showingStartServicesConfirmation: .constant(false),
             showingStopServicesConfirmation: .constant(false),
             hoveredServiceLink: Binding<String?>(get: { nil }, set: { _ in }),
             showingRecoveryOperations: true,
+            showingAdvancedRepairTools: true,
             showingNetworkOverrides: true,
             showingAdminOperations: true
         ))

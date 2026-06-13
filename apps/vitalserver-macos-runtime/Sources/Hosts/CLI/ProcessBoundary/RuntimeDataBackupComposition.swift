@@ -115,6 +115,7 @@ struct RuntimeDataBackupComposition {
 
     private func restoreRedisArchive(_ guestArchivePath: String) throws {
         try lifecycle.requireGuestCapability(.redisRestore)
+        try lifecycle.writeHostTimeContract()
         try lifecycle.guestGateway.removeRedisRestoreResult()
         let requestID = UUID().uuidString
         try lifecycle.guestGateway.writeRedisRestoreRequest(RedisRestoreRequestDocument(

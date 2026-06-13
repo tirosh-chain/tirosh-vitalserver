@@ -24,6 +24,10 @@ from tirosh_guest_tools.infrastructure.common import (
     utc_now,
     write_json,
 )
+from tirosh_guest_tools.infrastructure.bootstrap_operations import (
+    default_bootstrap_context,
+    sync_clock,
+)
 
 REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.REDIS_RESTORE_REQUEST.value
 RESULT_FILE = RUNTIME_DIR / RuntimeFileName.REDIS_RESTORE_RESULT.value
@@ -48,6 +52,7 @@ def run_redis_restore() -> None:
         raise
     archive = request.archive
     try:
+        sync_clock(default_bootstrap_context())
         logger.info(
             "redis restore started",
             extra={

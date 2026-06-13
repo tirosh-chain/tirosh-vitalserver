@@ -312,7 +312,6 @@ public struct ContentView: View {
                 showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
                 showingRepairVMDiskConfirmation: $showingRepairVMDiskConfirmation,
                 showingRepairRuntimeServicesConfirmation: $showingRepairRuntimeServicesConfirmation,
-                showingRestartVMRuntimeConfirmation: $showingRestartVMRuntimeConfirmation,
                 showingStartServicesConfirmation: $showingStartServicesConfirmation,
                 showingStopServicesConfirmation: $showingStopServicesConfirmation,
                 hoveredServiceLink: $hoveredServiceLink

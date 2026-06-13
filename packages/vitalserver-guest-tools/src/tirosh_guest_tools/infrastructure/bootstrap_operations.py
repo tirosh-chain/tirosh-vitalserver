@@ -50,6 +50,7 @@ def default_bootstrap_operations() -> GuestBootstrapOperations:
         now=utc_now,
         boot_id=read_boot_id,
         mount_shares=mount_shares,
+        sync_clock=sync_clock,
         write_bootstrap_result=write_bootstrap_result,
         missing_deploy_bundle_files=missing_deploy_bundle_files,
         expand_root_filesystem=expand_root_filesystem,
@@ -80,6 +81,34 @@ def default_bootstrap_operations() -> GuestBootstrapOperations:
 def mount_shares() -> None:
     mount_runtime_share()
     mount_vital_files_share()
+
+
+def sync_clock(context: GuestBootstrapContext) -> None:
+    host_time_path = context.deploy_dir / "host-time.json"
+    try:
+        document = json.loads(host_time_path.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise RuntimeError(
+            f"host time contract is unreadable: {host_time_path}: {error}"
+        ) from error
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            f"host time contract is invalid JSON: {host_time_path}: {error}"
+        ) from error
+    if not isinstance(document, dict):
+        raise RuntimeError(f"host time contract must be an object: {host_time_path}")
+    schema_version = document.get("schemaVersion")
+    epoch_seconds = document.get("epochSeconds")
+    updated_at = document.get("updatedAt")
+    if schema_version != 1:
+        raise RuntimeError(
+            f"host time contract schemaVersion is unsupported: {schema_version}"
+        )
+    if not isinstance(epoch_seconds, int) or epoch_seconds <= 0:
+        raise RuntimeError("host time contract epochSeconds must be a positive integer")
+    if not isinstance(updated_at, str) or not updated_at:
+        raise RuntimeError("host time contract updatedAt must be a non-empty string")
+    run(["date", "-u", "-s", f"@{epoch_seconds}"])
 
 
 def write_bootstrap_result(path: Path, document: BootstrapResultDocument) -> None:
