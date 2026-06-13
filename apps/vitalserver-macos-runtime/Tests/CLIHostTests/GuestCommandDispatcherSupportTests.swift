@@ -173,9 +173,11 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(repair.contains("REQUEST_FILE.unlink(missing_ok=True)"))
     }
 
-    func testReleaseSyncTargetsGuestToolsRedisRepairUseCase() throws {
+    func testReleaseSyncTargetsGuestToolsInfrastructureAndUseCases() throws {
         let syncRelease = try readRuntimeSupportFile("Build/sync-release.py")
 
+        XCTAssertTrue(syncRelease.contains("\"packages/vitalserver-guest-tools/src/tirosh_guest_tools/infrastructure\""))
+        XCTAssertTrue(syncRelease.contains("\"bootstrap_operations.py\""))
         XCTAssertTrue(syncRelease.contains("\"packages/vitalserver-guest-tools/src/tirosh_guest_tools/application\""))
         XCTAssertTrue(syncRelease.contains("\"redis_repair.py\""))
         XCTAssertFalse(syncRelease.contains("tirosh_guest_tools/redis/repair.py"))
