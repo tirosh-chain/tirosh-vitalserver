@@ -320,6 +320,15 @@ def docker_image_plan_preflight_checks(plan: DockerImagePlan) -> list[PreflightC
 
 
 def check_docker_manifest(*, image: str, platform: str) -> PreflightCheck:
+    local_platform = docker_local_image_platform(image)
+    if local_platform == platform:
+        return PreflightCheck(
+            name=f"docker-manifest:{image}",
+            status=PreflightStatus.PASSED,
+            message="local docker image matches requested platform",
+            detail=f"image={image} platform={platform}",
+        )
+
     command = ["docker", "manifest", "inspect", image]
     try:
         result = subprocess.run(
@@ -373,6 +382,35 @@ def check_docker_manifest(*, image: str, platform: str) -> PreflightCheck:
         message="docker image manifest is available",
         detail=f"image={image} platform={platform}",
     )
+
+
+def docker_local_image_platform(image: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["docker", "image", "inspect", image],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        document = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(document, list) or not document:
+        return None
+    image_document = document[0]
+    if not isinstance(image_document, dict):
+        return None
+    os_name = image_document.get("Os")
+    architecture = image_document.get("Architecture")
+    if not isinstance(os_name, str) or not isinstance(architecture, str):
+        return None
+    return f"{os_name}/{architecture}"
 
 
 def docker_manifest_supports_platform(document: object, platform: str) -> bool:

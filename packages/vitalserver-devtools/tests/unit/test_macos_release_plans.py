@@ -551,6 +551,48 @@ def test_release_package_preflight_reports_unavailable_docker_manifest(
     assert manifest_checks[0] in report.blockers
 
 
+def test_release_package_preflight_accepts_matching_local_docker_image(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(macos_package, "attached_disk_images", lambda: [])
+
+    def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        if command[:3] == ["docker", "image", "inspect"]:
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=0,
+                stdout='[{"Os":"linux","Architecture":"arm64"}]',
+                stderr="",
+            )
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=1,
+            stdout="",
+            stderr="toomanyrequests",
+        )
+
+    monkeypatch.setattr(macos_package.subprocess, "run", run)
+
+    report = macos_package.release_package_preflight_report(
+        release_package_input(tmp_path),
+        output_kind="pkg",
+    )
+
+    manifest_checks = [
+        check for check in report.checks if check.name.startswith("docker-manifest:")
+    ]
+    assert manifest_checks
+    assert all(check.status == PreflightStatus.PASSED for check in manifest_checks)
+    assert not any(
+        command[:3] == ["docker", "manifest", "inspect"] for command in commands
+    )
+
+
 def test_release_package_preflight_reports_docker_platform_mismatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
