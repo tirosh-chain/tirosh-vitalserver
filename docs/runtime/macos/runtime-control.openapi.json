@@ -2634,7 +2634,16 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Derived assignment and relationship event history between VitalDB beds and VRecorders.",
+        "required": [
+          "state",
+          "assignments",
+          "events",
+          "readError"
+        ],
         "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeVitalRelationshipHistoryState"
+          },
           "assignments": {
             "type": "array",
             "items": {
@@ -2656,9 +2665,30 @@
           }
         }
       },
+      "RuntimeVitalRelationshipHistoryState": {
+        "type": "string",
+        "enum": [
+          "loaded",
+          "partiallyLoaded",
+          "readFailed"
+        ]
+      },
       "RuntimeVitalBedAssignmentRecord": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "assignmentID",
+          "bedID",
+          "bedName",
+          "vrcode",
+          "startedAt",
+          "endedAt",
+          "lastSeenAt",
+          "lastObservedAt",
+          "status",
+          "patientConnected",
+          "observationCount"
+        ],
         "properties": {
           "assignmentID": {
             "type": "string"
@@ -2711,6 +2741,18 @@
       "RuntimeVitalRelationshipEventRecord": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "eventID",
+          "observedAt",
+          "eventType",
+          "severity",
+          "bedID",
+          "bedName",
+          "vrcode",
+          "previousVrcode",
+          "previousBedID",
+          "message"
+        ],
         "properties": {
           "eventID": {
             "type": "string"

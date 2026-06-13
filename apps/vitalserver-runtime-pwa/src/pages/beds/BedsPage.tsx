@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
 
-import { useVitalDBRecorders } from "@/console/hooks";
-import type { VitalDBBedRecord } from "@/domain/runtime-control/contracts/runtimeControlTypes";
+import { useVitalDBRecorders, useVitalDBRelationships } from "@/console/hooks";
+import type {
+  VitalDBBedRecord,
+  VitalDBRelationships
+} from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   formatBoolean,
   formatRecorderStatus,
@@ -18,9 +21,11 @@ import { KeyValueRows } from "@/components/KeyValueRows";
 import { MetricStrip } from "@/components/MetricStrip";
 import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
+import { RelationshipHistory } from "@/pages/relationships/RelationshipHistory";
 
 export function BedsPage() {
   const recordersQuery = useVitalDBRecorders();
+  const relationshipsQuery = useVitalDBRelationships();
   const allBeds = useMemo(
     () =>
       recordersQuery.data === undefined
@@ -138,12 +143,33 @@ export function BedsPage() {
         )}
       </Panel>
 
-      {selectedBed ? <BedDetails bed={selectedBed} /> : null}
+      {selectedBed ? (
+        <BedDetails
+          bed={selectedBed}
+          relationships={relationshipsQuery.data}
+          relationshipsError={relationshipsQuery.error}
+        />
+      ) : null}
     </div>
   );
 }
 
-function BedDetails({ bed }: { bed: VitalDBBedRecord }) {
+function BedDetails({
+  bed,
+  relationships,
+  relationshipsError
+}: {
+  bed: VitalDBBedRecord;
+  relationships: VitalDBRelationships | undefined;
+  relationshipsError: unknown;
+}) {
+  const assignments = (relationships?.assignments ?? []).filter(
+    (assignment) => assignment.bedID === bed.bedID
+  );
+  const events = (relationships?.events ?? []).filter(
+    (event) => event.bedID === bed.bedID
+  );
+
   return (
     <Panel title="Bed Details">
       <div className="detail-heading">
@@ -179,6 +205,14 @@ function BedDetails({ bed }: { bed: VitalDBBedRecord }) {
           { label: "Last seen", value: formatLocalDateTimeWithAge(bed.lastSeenAt) },
           { label: "Latest anomaly", value: formatAnomalySummary(bed) }
         ]}
+      />
+
+      <RelationshipHistory
+        title="bed"
+        relationships={relationships}
+        relationshipsError={relationshipsError}
+        assignments={assignments}
+        events={events}
       />
     </Panel>
   );

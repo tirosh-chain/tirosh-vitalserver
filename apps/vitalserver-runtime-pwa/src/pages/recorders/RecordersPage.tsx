@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 
-import { useVitalDBRecorders } from "@/console/hooks";
+import { useVitalDBRecorders, useVitalDBRelationships } from "@/console/hooks";
 import type {
   VitalDBRecorderRecord,
-  VitalDBRecorders
+  VitalDBRecorders,
+  VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   formatBoolean,
@@ -22,9 +23,11 @@ import { MetricStrip } from "@/components/MetricStrip";
 import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
 import { RecorderActivityChart } from "./RecorderActivityChart";
+import { RelationshipHistory } from "@/pages/relationships/RelationshipHistory";
 
 export function RecordersPage() {
   const recordersQuery = useVitalDBRecorders();
+  const relationshipsQuery = useVitalDBRelationships();
   const allRecorders = useMemo(
     () =>
       recordersQuery.data === undefined
@@ -173,6 +176,8 @@ export function RecordersPage() {
         <RecorderDetails
           recorder={selectedRecorder}
           activityHistory={recordersQuery.data.activityHistory}
+          relationships={relationshipsQuery.data}
+          relationshipsError={relationshipsQuery.error}
         />
       ) : null}
     </div>
@@ -181,11 +186,23 @@ export function RecordersPage() {
 
 function RecorderDetails({
   recorder,
-  activityHistory
+  activityHistory,
+  relationships,
+  relationshipsError
 }: {
   recorder: VitalDBRecorderRecord;
   activityHistory: VitalDBRecorders["activityHistory"];
+  relationships: VitalDBRelationships | undefined;
+  relationshipsError: unknown;
 }) {
+  const assignments = (relationships?.assignments ?? []).filter(
+    (assignment) => assignment.vrcode === recorder.vrcode
+  );
+  const events = (relationships?.events ?? []).filter(
+    (event) =>
+      event.vrcode === recorder.vrcode || event.previousVrcode === recorder.vrcode
+  );
+
   return (
     <Panel title="Recorder Details">
       <div className="detail-heading">
@@ -228,6 +245,14 @@ function RecorderDetails({
           <RecorderActivityChart recorder={recorder} />
         )}
       </div>
+
+      <RelationshipHistory
+        title="recorder"
+        relationships={relationships}
+        relationshipsError={relationshipsError}
+        assignments={assignments}
+        events={events}
+      />
     </Panel>
   );
 }

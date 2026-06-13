@@ -13,5 +13,6 @@ export const consoleQueryKeys = {
   runtimeDataBackups: ["host", "backups", "runtime-data"] as const,
   testKitStatus: ["dev", "testkit", "status"] as const,
   recorders: ["vitaldb", "recorders"] as const,
-  beds: ["vitaldb", "beds"] as const
+  beds: ["vitaldb", "beds"] as const,
+  relationships: ["vitaldb", "relationships"] as const
 };

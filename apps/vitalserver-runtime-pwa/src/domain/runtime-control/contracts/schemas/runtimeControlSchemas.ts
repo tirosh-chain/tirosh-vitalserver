@@ -42,6 +42,14 @@ const bedStatusSchema = z.enum([
   "notObserved",
   "unknown"
 ]);
+const relationshipEventTypeSchema = z.enum([
+  "handoff",
+  "duplicateAssignment",
+  "unlinkedBed",
+  "unlinkedRecorder",
+  "staleLink"
+]);
+const relationshipSeveritySchema = z.enum(["info", "warning", "critical"]);
 const anomalySeveritySchema = z.enum(["info", "warning", "critical"]);
 const vitalDBAnomalyKindSchema = z.enum([
   "offline",
@@ -597,6 +605,46 @@ export const vitalDBRecordersSchema = z
   .passthrough();
 
 export const vitalDBBedsSchema = z.array(vitalDBBedRecordSchema);
+
+const vitalDBRelationshipAssignmentSchema = z
+  .object({
+    assignmentID: z.string(),
+    bedID: z.string(),
+    bedName: nullableString,
+    vrcode: z.string(),
+    startedAt: z.string(),
+    endedAt: nullableString,
+    lastSeenAt: nullableString,
+    lastObservedAt: z.string(),
+    status: bedStatusSchema,
+    patientConnected: nullableBoolean,
+    observationCount: z.number()
+  })
+  .passthrough();
+
+const vitalDBRelationshipEventSchema = z
+  .object({
+    eventID: z.string(),
+    observedAt: z.string(),
+    eventType: relationshipEventTypeSchema,
+    severity: relationshipSeveritySchema,
+    bedID: nullableString,
+    bedName: nullableString,
+    vrcode: nullableString,
+    previousVrcode: nullableString,
+    previousBedID: nullableString,
+    message: z.string()
+  })
+  .passthrough();
+
+export const vitalDBRelationshipsSchema = z
+  .object({
+    state: z.enum(["loaded", "partiallyLoaded", "readFailed"]),
+    assignments: z.array(vitalDBRelationshipAssignmentSchema),
+    events: z.array(vitalDBRelationshipEventSchema),
+    readError: nullableString
+  })
+  .passthrough();
 
 export const runtimeLogTextResponseSchema = z
   .object({

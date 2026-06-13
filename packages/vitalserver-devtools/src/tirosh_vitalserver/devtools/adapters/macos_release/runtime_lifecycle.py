@@ -158,6 +158,8 @@ def control_runtime(input: RuntimeControlInput) -> int:
     settings = load_macos_release_settings(input.config, root)
     vm_home = resolve_path(root, input.vm_home)
     command = [str(settings.runtime_cli), *input.runtime_args]
+    if input.runtime_args[:1] == ["start"]:
+        write_host_time_contract(vm_home)
     env = os.environ.copy()
     env["VITALSERVER_VM_HOME"] = str(vm_home)
     return subprocess.run(command, env=env, check=False).returncode
@@ -189,6 +191,7 @@ def start_runtime_detached(input: RuntimeVmHomeInput) -> int:
         print(f"VM is already running: pid {legacy_pid.read_text().strip()}")
         return 0
 
+    write_host_time_contract(vm_home)
     env = os.environ.copy()
     env["VITALSERVER_VM_HOME"] = str(vm_home)
     env["VITALSERVER_VM_DETACHED"] = "1"
@@ -202,6 +205,22 @@ def start_runtime_detached(input: RuntimeVmHomeInput) -> int:
         )
     print(f"VM launcher started in background. Logs: {log_file}")
     return 0
+
+
+def write_host_time_contract(vm_home: Path) -> None:
+    epoch_seconds = int(time.time())
+    host_time = {
+        "epochSeconds": epoch_seconds,
+        "schemaVersion": 1,
+        "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch_seconds)),
+    }
+    path = vm_home / "data/deploy/host-time.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(host_time, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(f"host time contract written: {path} epochSeconds={epoch_seconds}")
 
 
 def require_no_running_runtime(input: RuntimeVmHomeInput) -> int:

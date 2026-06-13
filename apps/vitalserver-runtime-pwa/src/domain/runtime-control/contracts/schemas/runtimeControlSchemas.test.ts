@@ -10,7 +10,8 @@ import {
   runtimeSettingsSchema,
   runtimeUpdateBundleSummaryResponseSchema,
   vitalDBObservationSchema,
-  vitalDBRecordersSchema
+  vitalDBRecordersSchema,
+  vitalDBRelationshipsSchema
 } from "./runtimeControlSchemas";
 
 describe("runtime control contract schemas", () => {
@@ -685,6 +686,20 @@ describe("runtime control contract schemas", () => {
     );
   });
 
+  it("requires VitalDB relationship history lists", () => {
+    expect(() =>
+      vitalDBRelationshipsSchema.parse({
+        state: "loaded",
+        assignments: [],
+        readError: null
+      })
+    ).toThrow();
+
+    expect(vitalDBRelationshipsSchema.parse(fullRelationships())).toEqual(
+      fullRelationships()
+    );
+  });
+
   it("requires log text response text", () => {
     expect(() => runtimeLogTextResponseSchema.parse({})).toThrow();
     expect(runtimeLogTextResponseSchema.parse({ text: "" })).toEqual({ text: "" });
@@ -911,6 +926,43 @@ function fullVitalRecorderHistorySummary(overrides: Record<string, unknown> = {}
     staleBeds: 0,
     bedAssignments: 0,
     bedAnomalies: 0,
+    ...overrides
+  };
+}
+
+function fullRelationships(overrides: Record<string, unknown> = {}) {
+  return {
+    state: "loaded",
+    assignments: [
+      {
+        assignmentID: "assignment-1",
+        bedID: "bed-1",
+        bedName: "OR-1",
+        vrcode: "VR_A",
+        startedAt: "2026-05-31T00:00:00Z",
+        endedAt: null,
+        lastSeenAt: "2026-05-31T01:00:00Z",
+        lastObservedAt: "2026-05-31T01:00:00Z",
+        status: "online",
+        patientConnected: true,
+        observationCount: 1
+      }
+    ],
+    events: [
+      {
+        eventID: "relationship-event-1",
+        observedAt: "2026-05-31T01:00:00Z",
+        eventType: "unlinkedBed",
+        severity: "warning",
+        bedID: "bed-1",
+        bedName: "OR-1",
+        vrcode: "VR_A",
+        previousVrcode: null,
+        previousBedID: null,
+        message: "Bed has no linked VRecorder."
+      }
+    ],
+    readError: null,
     ...overrides
   };
 }

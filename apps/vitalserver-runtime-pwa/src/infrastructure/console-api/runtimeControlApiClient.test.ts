@@ -112,6 +112,12 @@ describe("RuntimeControlApiClient", () => {
       "/runtime/settings": fullSettings({ proxyPort: 80 }),
       "/vitaldb/recorders": fullVitalRecorderHistory(),
       "/vitaldb/beds": [],
+      "/vitaldb/relationships": {
+        state: "loaded",
+        assignments: [],
+        events: [],
+        readError: null
+      },
       "/dev/testkit/status": testKitStatus(),
       "/dev/testkit/beds/create": [{ roomName: "OR-A", bedId: "bed-a" }],
       "/dev/testkit/beds/delete": [{ roomName: "OR-A", bedId: "bed-a" }],
@@ -157,6 +163,7 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.getSettings()).resolves.toMatchObject({ proxyPort: 80 });
     await expect(client.getRecorders()).resolves.toMatchObject({ recorders: [] });
     await expect(client.getBeds()).resolves.toEqual([]);
+    await expect(client.getRelationships()).resolves.toMatchObject({ assignments: [] });
     await expect(client.getTestKitStatus()).resolves.toMatchObject({ enabled: true });
     await expect(client.createTestKitBeds({ count: 1, roomNames: [], prefix: "OR", adminUserId: "admin" })).resolves.toHaveLength(1);
     await expect(client.deleteTestKitBeds({ roomNames: ["OR-A"] })).resolves.toHaveLength(1);

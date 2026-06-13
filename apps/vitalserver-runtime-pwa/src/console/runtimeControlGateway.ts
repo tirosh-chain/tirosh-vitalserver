@@ -24,7 +24,8 @@ import type {
   RuntimeUpdateBundleRequest,
   RuntimeUpdateBundleSummaryResponse,
   VitalDBBeds,
-  VitalDBRecorders
+  VitalDBRecorders,
+  VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 
 export type RuntimeEventQuery = {
@@ -46,6 +47,7 @@ export type RuntimeControlGateway = {
   getRuntimeEvents(query?: RuntimeEventQuery): Promise<RuntimeEventHistory>;
   getRecorders(): Promise<VitalDBRecorders>;
   getBeds(): Promise<VitalDBBeds>;
+  getRelationships(): Promise<VitalDBRelationships>;
   getTestKitStatus(): Promise<RuntimeTestKitStatus>;
   createTestKitBeds(
     request: RuntimeTestKitCreateBedsRequest

@@ -22,8 +22,8 @@
 | Settings | `/settings` | `Implemented` | VM resources, network exposure, storage/Redis, sleep prevention, validation 제공 |
 | Update | `/update` | `Needs review` | bundle selection/apply flow는 UI가 있으나 file picker/download affordance는 browser 제약 검토 필요 |
 | Observability | `/observability` | `Implemented` | observation pipeline, runtime events period/type/limit filtering 제공 |
-| Recorders | `/recorders` | `Implemented` | VRecorder list/detail/activity chart 제공 |
-| Beds | `/beds` | `Implemented` | bed list/detail/relation 표시 제공 |
+| Recorders | `/recorders` | `Implemented` | VRecorder list/detail/activity chart/relationship history 제공 |
+| Beds | `/beds` | `Implemented` | bed list/detail/relationship history 제공 |
 | Logs | `/logs` | `Implemented` | source/line/live stream/read/export controls 제공 |
 | Advanced | `/advanced` | `Capability gated` | Swift Advanced 구조에 맞춰 diagnostics, VM health, service health, recovery operations, advanced network, admin operations 제공 |
 | Danger Zone | `/danger-zone` | `Capability gated` | Swift Danger Zone 구조에 맞춰 update backup 삭제, VitalServer backup 삭제, destructive operations 제공 |
@@ -47,7 +47,7 @@
 | VRecorder history | `Implemented` | `/vitaldb/recorders` | identity는 `vrcode` |
 | VRecorder activity chart | `Needs migration` | `/vitaldb/recorders/{vrcode}/activity` | lazy 12-hour window query로 이동 필요 |
 | Bed history | `Implemented` | `/vitaldb/beds` | bed identity는 `bedID` |
-| Relationship history | `Implemented` | `/vitaldb/relationships` | recorder/bed detail에 연결 가능 |
+| Relationship history | `Implemented` | `/vitaldb/relationships` | recorder/bed detail에 assignments/events 최대 8개씩 표시 |
 | TestKit virtual recorder | `Capability gated` | `/dev/testkit/*` | test-enabled build only |
 | Authentication/session | `Deferred` | planned runtime auth/session contract | 별도 이슈에서 독립 진행 |
 | Online update | `Deferred` | planned update source contract | 인증/session 이후 재검토 |

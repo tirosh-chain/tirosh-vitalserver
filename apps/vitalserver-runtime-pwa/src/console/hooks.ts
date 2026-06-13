@@ -96,6 +96,15 @@ export function useVitalDBBeds() {
   });
 }
 
+export function useVitalDBRelationships() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.relationships,
+    queryFn: () => runtimeControlGateway.getRelationships(),
+    refetchInterval: 5_000
+  });
+}
+
 export function useHostLogs(request: {
   source: RuntimeLogSource;
   lineLimit: number;

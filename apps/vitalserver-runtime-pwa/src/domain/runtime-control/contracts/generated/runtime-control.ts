@@ -1170,35 +1170,38 @@ export interface components {
         RuntimeVitalBedStatus: "online" | "stale" | "offline" | "notObserved" | "unknown";
         /** @description Derived assignment and relationship event history between VitalDB beds and VRecorders. */
         RuntimeVitalRelationshipHistory: {
-            assignments?: components["schemas"]["RuntimeVitalBedAssignmentRecord"][];
-            events?: components["schemas"]["RuntimeVitalRelationshipEventRecord"][];
+            state: components["schemas"]["RuntimeVitalRelationshipHistoryState"];
+            assignments: components["schemas"]["RuntimeVitalBedAssignmentRecord"][];
+            events: components["schemas"]["RuntimeVitalRelationshipEventRecord"][];
             /** @description Relationship projection read issue. Present when assignments or relationship events could not be read completely. */
-            readError?: string | null;
+            readError: string | null;
         };
+        /** @enum {string} */
+        RuntimeVitalRelationshipHistoryState: "loaded" | "partiallyLoaded" | "readFailed";
         RuntimeVitalBedAssignmentRecord: {
-            assignmentID?: string;
-            bedID?: string;
-            bedName?: string | null;
-            vrcode?: string;
-            startedAt?: string;
-            endedAt?: string | null;
-            lastSeenAt?: string | null;
-            lastObservedAt?: string;
-            status?: components["schemas"]["RuntimeVitalBedStatus"];
-            patientConnected?: boolean | null;
-            observationCount?: number;
+            assignmentID: string;
+            bedID: string;
+            bedName: string | null;
+            vrcode: string;
+            startedAt: string;
+            endedAt: string | null;
+            lastSeenAt: string | null;
+            lastObservedAt: string;
+            status: components["schemas"]["RuntimeVitalBedStatus"];
+            patientConnected: boolean | null;
+            observationCount: number;
         };
         RuntimeVitalRelationshipEventRecord: {
-            eventID?: string;
-            observedAt?: string;
-            eventType?: components["schemas"]["RuntimeVitalRelationshipEventType"];
-            severity?: components["schemas"]["RuntimeVitalRelationshipSeverity"];
-            bedID?: string | null;
-            bedName?: string | null;
-            vrcode?: string | null;
-            previousVrcode?: string | null;
-            previousBedID?: string | null;
-            message?: string;
+            eventID: string;
+            observedAt: string;
+            eventType: components["schemas"]["RuntimeVitalRelationshipEventType"];
+            severity: components["schemas"]["RuntimeVitalRelationshipSeverity"];
+            bedID: string | null;
+            bedName: string | null;
+            vrcode: string | null;
+            previousVrcode: string | null;
+            previousBedID: string | null;
+            message: string;
         };
         /** @enum {string} */
         RuntimeVitalRelationshipEventType: "handoff" | "duplicateAssignment" | "unlinkedBed" | "unlinkedRecorder" | "staleLink";

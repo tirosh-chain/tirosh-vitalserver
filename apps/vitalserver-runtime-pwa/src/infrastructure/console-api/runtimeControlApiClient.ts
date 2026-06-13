@@ -34,7 +34,8 @@ import type {
   RuntimeUpdateBundleRequest,
   RuntimeUpdateBundleSummaryResponse,
   VitalDBBeds,
-  VitalDBRecorders
+  VitalDBRecorders,
+  VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   runtimeBackupSchema,
@@ -53,7 +54,8 @@ import {
   runtimeTestKitStatusSchema,
   runtimeUpdateBundleSummaryResponseSchema,
   vitalDBBedsSchema,
-  vitalDBRecordersSchema
+  vitalDBRecordersSchema,
+  vitalDBRelationshipsSchema
 } from "@/domain/runtime-control/contracts/schemas/runtimeControlSchemas";
 import { DEFAULT_APP_SETTINGS } from "@/config/appSettings";
 import type { ZodType } from "zod";
@@ -144,6 +146,10 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
   getBeds(): Promise<VitalDBBeds> {
     return this.get("/vitaldb/beds", vitalDBBedsSchema);
+  }
+
+  getRelationships(): Promise<VitalDBRelationships> {
+    return this.get("/vitaldb/relationships", vitalDBRelationshipsSchema);
   }
 
   getTestKitStatus(): Promise<RuntimeTestKitStatus> {

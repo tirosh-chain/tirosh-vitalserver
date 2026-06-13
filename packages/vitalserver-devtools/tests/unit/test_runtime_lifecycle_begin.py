@@ -2,15 +2,94 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from tirosh_vitalserver.devtools.adapters.macos_release import runtime_lifecycle
 from tirosh_vitalserver.devtools.application.inputs import (
     GoldenRootfsPreflightInput,
+    RuntimeControlInput,
     RootfsRunInput,
     RuntimeVmHomeInput,
 )
+
+
+def test_start_runtime_detached_writes_host_time_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_build_config(tmp_path / "config/vm-build.toml")
+    runtime_cli = tmp_path / "vitalserver-vm"
+    launches: list[tuple[list[str], dict[str, str]]] = []
+
+    monkeypatch.setattr(runtime_lifecycle, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "load_macos_release_settings",
+        lambda *_: SimpleNamespace(runtime_cli=runtime_cli),
+    )
+    monkeypatch.setattr(runtime_lifecycle, "running_vm_processes_for_home", lambda _: [])
+    monkeypatch.setattr(runtime_lifecycle, "process_is_running", lambda _: False)
+    monkeypatch.setattr(runtime_lifecycle.time, "time", lambda: 1_780_000_000)
+
+    class PopenStub:
+        def __init__(self, command, *, env, stdout, stderr, start_new_session):
+            launches.append((command, env))
+
+    monkeypatch.setattr(runtime_lifecycle.subprocess, "Popen", PopenStub)
+
+    result = runtime_lifecycle.start_runtime_detached(
+        RuntimeVmHomeInput(config=Path("config/vm-build.toml"), vm_home=Path("vm"))
+    )
+
+    assert result == 0
+    contract = json.loads(
+        (tmp_path / "vm/data/deploy/host-time.json").read_text(encoding="utf-8")
+    )
+    assert contract == {
+        "epochSeconds": 1_780_000_000,
+        "schemaVersion": 1,
+        "updatedAt": "2026-05-28T20:26:40Z",
+    }
+    assert launches[0][0] == [str(runtime_cli), "start"]
+    assert launches[0][1]["VITALSERVER_VM_HOME"] == str(tmp_path / "vm")
+    assert launches[0][1]["VITALSERVER_VM_DETACHED"] == "1"
+
+
+def test_control_runtime_start_writes_host_time_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_build_config(tmp_path / "config/vm-build.toml")
+    runtime_cli = tmp_path / "vitalserver-vm"
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(runtime_lifecycle, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "load_macos_release_settings",
+        lambda *_: SimpleNamespace(runtime_cli=runtime_cli),
+    )
+    monkeypatch.setattr(runtime_lifecycle.time, "time", lambda: 1_780_000_000)
+
+    def run_stub(command, *, env, check):
+        commands.append(command)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(runtime_lifecycle.subprocess, "run", run_stub)
+
+    result = runtime_lifecycle.control_runtime(
+        RuntimeControlInput(
+            config=Path("config/vm-build.toml"),
+            vm_home=Path("vm"),
+            runtime_args=["start"],
+        )
+    )
+
+    assert result == 0
+    assert commands == [[str(runtime_cli), "start"]]
+    assert (tmp_path / "vm/data/deploy/host-time.json").exists()
 
 
 def test_begin_golden_rootfs_run_records_runtime_data_disk_contract(

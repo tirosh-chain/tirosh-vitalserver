@@ -42,6 +42,7 @@ const hooks = vi.hoisted(() => ({
   useTestKitStatus: vi.fn(),
   useVerifyUpdateBundle: vi.fn(),
   useVitalDBBeds: vi.fn(),
+  useVitalDBRelationships: vi.fn(),
   useVitalDBRecorders: vi.fn(),
   useUninstallRuntime: vi.fn()
 }));
@@ -343,6 +344,10 @@ describe("runtime console pages", () => {
     expect(screen.getAllByText("Recorder anomalies").length).toBeGreaterThan(0);
     expect(screen.getByText("Data updated")).toBeInTheDocument();
     expect(screen.getAllByText(/Stale Recorder · warning/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Relationship history")).toBeInTheDocument();
+    expect(screen.getAllByText("Assignments").length).toBeGreaterThan(0);
+    expect(screen.getByText("Events")).toBeInTheDocument();
+    expect(screen.getByText("Bed has no linked VRecorder.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("Search VRecorders"), {
       target: { value: "missing" }
@@ -439,6 +444,9 @@ describe("runtime console pages", () => {
     expect(screen.getByText("VRecorder status")).toBeInTheDocument();
     expect(screen.getByText("VRecorder IP")).toBeInTheDocument();
     expect(screen.getAllByText(/Offline · warning/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Relationship history")).toBeInTheDocument();
+    expect(screen.getAllByText("Assignments").length).toBeGreaterThan(0);
+    expect(screen.getByText("Events")).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("Search beds"), {
       target: { value: "none" }
@@ -945,6 +953,7 @@ function setupDefaultHooks() {
   hooks.useRuntimeSettings.mockReturnValue(query(settings()));
   hooks.useVitalDBRecorders.mockReturnValue(query(recorders()));
   hooks.useVitalDBBeds.mockReturnValue(query(beds()));
+  hooks.useVitalDBRelationships.mockReturnValue(query(relationships()));
   hooks.useRuntimeEvents.mockReturnValue(query(events()));
   hooks.useHostLogs.mockReturnValue(query({ text: "line one\nline two" }));
   hooks.useHostBackups.mockReturnValue(query([{ path: "/tmp/backup-a", sizeBytes: 2048 }]));
@@ -1255,6 +1264,42 @@ function beds() {
       latestAnomalyObservedAt: "2026-05-31T01:00:00Z"
     }
   ];
+}
+
+function relationships() {
+  return {
+    state: "loaded",
+    assignments: [
+      {
+        assignmentID: "assignment-1",
+        bedID: "bed-1",
+        bedName: "OR-1",
+        vrcode: "VR_A",
+        startedAt: "2026-05-31T00:00:00Z",
+        endedAt: null,
+        lastSeenAt: "2026-05-31T01:00:00Z",
+        lastObservedAt: "2026-05-31T01:00:00Z",
+        status: "online",
+        patientConnected: true,
+        observationCount: 2
+      }
+    ],
+    events: [
+      {
+        eventID: "relationship-event-1",
+        observedAt: "2026-05-31T01:00:00Z",
+        eventType: "unlinkedBed",
+        severity: "warning",
+        bedID: "bed-1",
+        bedName: "OR-1",
+        vrcode: "VR_A",
+        previousVrcode: null,
+        previousBedID: null,
+        message: "Bed has no linked VRecorder."
+      }
+    ],
+    readError: null
+  };
 }
 
 function events() {

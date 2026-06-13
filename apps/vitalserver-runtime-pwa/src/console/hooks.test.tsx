@@ -43,6 +43,7 @@ import {
   useUninstallRuntime,
   useVerifyUpdateBundle,
   useVitalDBBeds,
+  useVitalDBRelationships,
   useVitalDBRecorders
 } from "./hooks";
 
@@ -60,6 +61,7 @@ describe("console hooks", () => {
     await expectQuery(useRuntimeSettings, wrapper, gateway.getSettings);
     await expectQuery(useVitalDBRecorders, wrapper, gateway.getRecorders);
     await expectQuery(useVitalDBBeds, wrapper, gateway.getBeds);
+    await expectQuery(useVitalDBRelationships, wrapper, gateway.getRelationships);
     await expectQuery(useTestKitStatus, wrapper, gateway.getTestKitStatus);
     await expectQuery(useHostBackups, wrapper, gateway.listHostBackups);
     await expectQuery(useRedisBackups, wrapper, gateway.listRedisBackups);
@@ -271,6 +273,12 @@ function createGateway(): GatewayMock {
     getCapabilities: vi.fn().mockResolvedValue(fullCapabilities()),
     getOverview: vi.fn().mockResolvedValue({ status: { runtimeState: "healthy" } }),
     getRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
+    getRelationships: vi.fn().mockResolvedValue({
+      state: "loaded",
+      assignments: [],
+      events: [],
+      readError: null
+    }),
     getRuntimeEvents: vi.fn().mockResolvedValue({ events: [] }),
     getSettings: vi.fn().mockResolvedValue(fullSettings({ proxyPort: 18080 })),
     getStatus: vi.fn().mockResolvedValue({ runtimeState: "healthy" }),
