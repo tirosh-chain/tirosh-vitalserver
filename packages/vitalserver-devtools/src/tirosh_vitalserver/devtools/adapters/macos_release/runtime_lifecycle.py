@@ -866,7 +866,7 @@ def wait_for_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
         if result["terminal"]:
             raise SystemExit(str(result["message"]))
         if result["ready"]:
-            print("Runtime boot smoke passed:")
+            print("SUCCESS: runtime boot smoke passed")
             print(f"  runId={result['runId']}")
             print(f"  manifest={manifest}")
             return 0

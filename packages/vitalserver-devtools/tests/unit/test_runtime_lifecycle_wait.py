@@ -188,7 +188,7 @@ def test_wait_for_rootfs_ready_rejects_guest_failure_marker(tmp_path):
 
     with pytest.raises(
         SystemExit,
-        match="guest rootfs preparation failed.*stage=apt-plan",
+        match=r"guest rootfs preparation failed.*stage=apt-plan",
     ):
         wait_for_rootfs_ready(
             RuntimeWaitInput(
@@ -255,7 +255,7 @@ def test_wait_for_rootfs_ready_ignores_stale_blocked_apt_plan(tmp_path):
         )
 
 
-def test_wait_for_runtime_boot_smoke_accepts_passed_manifest(tmp_path):
+def test_wait_for_runtime_boot_smoke_accepts_passed_manifest(tmp_path, capsys):
     write_runtime_boot_smoke_manifest(tmp_path, run_id="runtime-run-test")
 
     result = wait_for_runtime_boot_smoke(
@@ -268,6 +268,9 @@ def test_wait_for_runtime_boot_smoke_accepts_passed_manifest(tmp_path):
     )
 
     assert result == 0
+    captured = capsys.readouterr()
+    assert "SUCCESS: runtime boot smoke passed" in captured.out
+    assert "runId=runtime-run-test" in captured.out
 
 
 def test_wait_for_runtime_boot_smoke_rejects_failed_stage(tmp_path):
@@ -406,8 +409,10 @@ def test_wait_for_rootfs_ready_rejects_guest_filesystem_corruption_log(tmp_path)
     log_file.write_text(
         "\n".join(
             [
-                "appstreamcli: error while loading shared libraries: invalid ELF header",
-                "E: Unable to mkstemp /tmp/clearsigned.message - GetTempFile (30: Read-only file system)",
+                "appstreamcli: error while loading shared libraries: "
+                "invalid ELF header",
+                "E: Unable to mkstemp /tmp/clearsigned.message - "
+                "GetTempFile (30: Read-only file system)",
             ]
         ),
         encoding="utf-8",
@@ -432,7 +437,8 @@ def test_wait_for_rootfs_ready_reports_ext4_error_before_read_only_result(tmp_pa
     log_file.write_text(
         "\n".join(
             [
-                "EXT4-fs error (device vda1): ext4_lookup: inode #23401: iget: checksum invalid",
+                "EXT4-fs error (device vda1): ext4_lookup: "
+                "inode #23401: iget: checksum invalid",
                 "Aborting journal on device vda1-8.",
                 "EXT4-fs (vda1): Remounting filesystem read-only",
             ]
@@ -442,7 +448,7 @@ def test_wait_for_rootfs_ready_reports_ext4_error_before_read_only_result(tmp_pa
 
     with pytest.raises(
         SystemExit,
-        match="pattern='EXT4-fs error'.*checksum invalid",
+        match=r"pattern='EXT4-fs error'.*checksum invalid",
     ):
         wait_for_rootfs_ready(
             RuntimeWaitInput(
@@ -459,7 +465,8 @@ def test_wait_for_rootfs_ready_rejects_guest_execution_freeze_log(tmp_path):
     log_file.write_text(
         "\n".join(
             [
-                "(udev-worker)[9058]: veth528db2e: Process 'bridge-network-interface' terminated by signal ILL.",
+                "(udev-worker)[9058]: veth528db2e: Process "
+                "'bridge-network-interface' terminated by signal ILL.",
                 "systemd[1]: Caught <ILL>, dumped core as pid 9094.",
                 "systemd[1]: Freezing execution.",
             ]
@@ -484,7 +491,9 @@ def test_wait_for_rootfs_ready_rejects_guest_userspace_crash_log(tmp_path):
     log_file = tmp_path / "logs" / "launcher.log"
     log_file.parent.mkdir(parents=True)
     log_file.write_text(
-        "/mnt/tirosh/deploy/prepare-airgap-rootfs.sh: line 127: 7191 Illegal instruction     (core dumped) tirosh-vitalserver-rootfs-smoke\n",
+        "/mnt/tirosh/deploy/prepare-airgap-rootfs.sh: line 127: "
+        "7191 Illegal instruction     (core dumped) "
+        "tirosh-vitalserver-rootfs-smoke\n",
         encoding="utf-8",
     )
 
@@ -501,18 +510,20 @@ def test_wait_for_rootfs_ready_rejects_guest_userspace_crash_log(tmp_path):
         )
 
 
-def test_wait_for_rootfs_ready_reports_kernel_undefined_instruction_before_userspace_ill(
-    tmp_path,
-):
+def test_wait_for_rootfs_ready_reports_kernel_undefined_instruction_first(tmp_path):
     log_file = tmp_path / "logs" / "launcher.log"
     log_file.parent.mkdir(parents=True)
     log_file.write_text(
         "\n".join(
             [
-                "/mnt/tirosh/deploy/prepare-airgap-rootfs.sh: line 458: 5829 Illegal instruction     (core dumped) tirosh-vitalserver-rootfs-smoke",
-                "Internal error: Oops - Undefined instruction: 0000000002000000 [#1] SMP",
+                "/mnt/tirosh/deploy/prepare-airgap-rootfs.sh: line 458: "
+                "5829 Illegal instruction     (core dumped) "
+                "tirosh-vitalserver-rootfs-smoke",
+                "Internal error: Oops - Undefined instruction: "
+                "0000000002000000 [#1] SMP",
                 "lr : seccomp_run_filters+0xb4/0x230",
-                "Kernel panic - not syncing: Attempted to kill init! exitcode=0x0000008b",
+                "Kernel panic - not syncing: Attempted to kill init! "
+                "exitcode=0x0000008b",
             ]
         ),
         encoding="utf-8",
@@ -539,8 +550,10 @@ def test_wait_for_rootfs_ready_reports_dpkg_tar_segfault_before_illegal_instruct
     log_file.write_text(
         "\n".join(
             [
-                "cloud-init[1064]: dpkg-deb: error: tar subprocess was killed by signal (Segmentation fault), core dumped",
-                "cloud-init[1064]: E: Sub-process /usr/bin/dpkg returned an error code (1)",
+                "cloud-init[1064]: dpkg-deb: error: tar subprocess was "
+                "killed by signal (Segmentation fault), core dumped",
+                "cloud-init[1064]: E: Sub-process /usr/bin/dpkg returned "
+                "an error code (1)",
                 "cloud-init[1064]: Illegal instruction (core dumped)",
             ]
         ),
@@ -549,7 +562,7 @@ def test_wait_for_rootfs_ready_reports_dpkg_tar_segfault_before_illegal_instruct
 
     with pytest.raises(
         SystemExit,
-        match="pattern='Segmentation fault'.*tar subprocess",
+        match=r"pattern='Segmentation fault'.*tar subprocess",
     ):
         wait_for_rootfs_ready(
             RuntimeWaitInput(

@@ -246,11 +246,15 @@ internal/vm/golden-rootfs/runtime-smoke: internal/vm/golden-rootfs
 	$(MAKE) internal/vm/wait/runtime-boot-smoke \
 		VM_HOME="$${runtime_smoke_home}" \
 		VM_RUNTIME_BOOT_SMOKE_RUN_ID="$${runtime_smoke_run_id}"; \
+	printf "Cleaning up runtime smoke VM...\n"; \
 	$(MAKE) internal/vm/stop \
 		VM_HOME="$${runtime_smoke_home}"; \
 	$(VM_BUILD_RUNNER) macos-runtime-require-no-running \
 		--vm-home "$${runtime_smoke_home}"; \
-	printf "Golden disk runtime boot smoke passed\n"
+	trap - EXIT; \
+	printf "\nSUCCESS: golden disk runtime boot smoke passed\n"; \
+	printf "  runId=%s\n" "$${runtime_smoke_run_id}"; \
+	printf "  vmHome=%s\n" "$${runtime_smoke_home}"
 
 internal/vm/nginx/artifact:
 	@test -x "$(VM_NGINX_SOURCE_BIN)" || { \
