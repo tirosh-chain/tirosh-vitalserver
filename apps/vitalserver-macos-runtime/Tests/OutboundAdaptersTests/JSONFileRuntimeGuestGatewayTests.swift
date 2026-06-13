@@ -100,6 +100,20 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
               "shutdownPhase": "poweroff-requested",
               "message": "ready",
               "redisBackupPath": "/mnt/tirosh/backups/redis/redis.tar.gz",
+              "details": {
+                "stopAction": "ordered-compose-stop",
+                "failedService": "app",
+                "remainingServices": ["app", "redis"],
+                "failureSnapshotPath": "/mnt/tirosh/run/guest-observability/shutdown-failure.latest.json",
+                "serviceStates": [
+                  {
+                    "service": "app",
+                    "container": "vitalserver-app-1",
+                    "state": "running",
+                    "health": "healthy"
+                  }
+                ]
+              },
               "updatedAt": "2026-05-21T12:34:57Z"
             }
             """,
@@ -121,6 +135,14 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         XCTAssertEqual(result.status, .ready)
         XCTAssertEqual(result.shutdownPhase, .poweroffRequested)
         XCTAssertEqual(result.redisBackupPath, "/mnt/tirosh/backups/redis/redis.tar.gz")
+        XCTAssertEqual(result.details?.stopAction, "ordered-compose-stop")
+        XCTAssertEqual(result.details?.failedService, "app")
+        XCTAssertEqual(result.details?.remainingServices, ["app", "redis"])
+        XCTAssertEqual(
+            result.details?.failureSnapshotPath,
+            "/mnt/tirosh/run/guest-observability/shutdown-failure.latest.json"
+        )
+        XCTAssertEqual(result.details?.serviceStates?.first?.service, "app")
 
         try harness.cleanup()
     }

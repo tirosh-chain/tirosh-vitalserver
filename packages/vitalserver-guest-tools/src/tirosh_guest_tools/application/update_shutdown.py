@@ -3,7 +3,11 @@ from __future__ import annotations
 import logging
 import subprocess
 import time
+from typing import Any
 
+from tirosh_guest_tools.adapters.outbound.observability.collectors import (
+    OBSERVABILITY_DIR,
+)
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.contexts import PrepareUpdateShutdownContext
 from tirosh_guest_tools.application.observability import (
@@ -57,12 +61,15 @@ def run_prepare_update_shutdown() -> None:
         run_prepare(context)
     except Exception as error:
         logger.exception("guest update shutdown preparation failed")
-        collect_guest_observability(ObservationPhase.SHUTDOWN_FAILURE)
+        snapshot_path = collect_guest_observability(ObservationPhase.SHUTDOWN_FAILURE)
         if context is not None:
+            details = failure_details(error)
+            if snapshot_path is not None:
+                details["failureSnapshotPath"] = snapshot_path
             write_result(
                 context,
                 OperationStatus.FAILED,
-                f"Guest update shutdown failed at: {error}",
+                shutdown_failure_message(error),
                 step=OperationStatus.FAILED.value,
                 reason_codes=(ReasonCode.GUEST_UPDATE_SHUTDOWN_FAILED.value,),
                 shutdown_phase=(
@@ -70,6 +77,7 @@ def run_prepare_update_shutdown() -> None:
                     if isinstance(error, GuestPoweroffRequestError)
                     else None
                 ),
+                details=details,
             )
         REQUEST_FILE.unlink(missing_ok=True)
         raise
@@ -155,14 +163,38 @@ def run_prepare(context: PrepareUpdateShutdownContext) -> None:
     REQUEST_FILE.unlink(missing_ok=True)
 
 
-def collect_guest_observability(phase: ObservationPhase) -> None:
+def collect_guest_observability(phase: ObservationPhase) -> str | None:
     try:
         write_guest_observability_snapshot(phase)
+        return str(OBSERVABILITY_DIR / f"{phase.value}.latest.json")
     except Exception as error:
         logger.warning(
             "guest observability snapshot failed",
             extra={"fields": {"phase": phase.value, "error": str(error)}},
         )
+        return None
+
+
+def failure_details(error: Exception) -> dict[str, Any]:
+    details = getattr(error, "details", None)
+    if isinstance(details, dict):
+        return dict(details)
+    return {}
+
+
+def shutdown_failure_message(error: Exception) -> str:
+    details = failure_details(error)
+    failed_service = details.get("failedService")
+    remaining = details.get("remainingServices")
+    if isinstance(failed_service, str) and isinstance(remaining, list):
+        remaining_text = ", ".join(str(service) for service in remaining)
+        if remaining_text:
+            return (
+                "Guest update shutdown failed at guest-services-stop: "
+                f"service {failed_service} did not stop; "
+                f"remaining services: {remaining_text}"
+            )
+    return f"Guest update shutdown failed at: {error}"
 
 
 def backup_redis(
@@ -298,6 +330,7 @@ def write_result(
     step: str = "",
     reason_codes: tuple[str, ...] = (),
     shutdown_phase: ShutdownPhase | None = None,
+    details: dict[str, Any] | None = None,
 ) -> None:
     write_json(
         RESULT_FILE,
@@ -312,5 +345,6 @@ def write_result(
             reason_codes=reason_codes,
             redis_backup_path=context.redis_backup_path,
             shutdown_phase=shutdown_phase,
+            details=details,
         ).as_json(),
     )

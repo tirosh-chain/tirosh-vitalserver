@@ -106,6 +106,7 @@ public struct GuestUpdateShutdownResultDocument: Codable, Equatable, Sendable {
     public let step: String?
     public let reasonCodes: [String]?
     public let redisBackupPath: String?
+    public let details: GuestUpdateShutdownFailureDetails?
     public let updatedAt: String?
 
     public init(
@@ -118,6 +119,7 @@ public struct GuestUpdateShutdownResultDocument: Codable, Equatable, Sendable {
         step: String? = nil,
         reasonCodes: [String]? = nil,
         redisBackupPath: String? = nil,
+        details: GuestUpdateShutdownFailureDetails? = nil,
         updatedAt: String?
     ) {
         self.schemaVersion = schemaVersion
@@ -129,7 +131,61 @@ public struct GuestUpdateShutdownResultDocument: Codable, Equatable, Sendable {
         self.step = step
         self.reasonCodes = reasonCodes
         self.redisBackupPath = redisBackupPath
+        self.details = details
         self.updatedAt = updatedAt
+    }
+}
+
+public struct GuestUpdateShutdownFailureDetails: Codable, Equatable, Sendable {
+    public let stopAction: String?
+    public let failedService: String?
+    public let stopTimeoutSeconds: Double?
+    public let commandTimeoutSeconds: Double?
+    public let remainingServices: [String]?
+    public let availableServices: [String]?
+    public let serviceStates: [GuestUpdateShutdownServiceState]?
+    public let failureSnapshotPath: String?
+
+    public init(
+        stopAction: String? = nil,
+        failedService: String? = nil,
+        stopTimeoutSeconds: Double? = nil,
+        commandTimeoutSeconds: Double? = nil,
+        remainingServices: [String]? = nil,
+        availableServices: [String]? = nil,
+        serviceStates: [GuestUpdateShutdownServiceState]? = nil,
+        failureSnapshotPath: String? = nil
+    ) {
+        self.stopAction = stopAction
+        self.failedService = failedService
+        self.stopTimeoutSeconds = stopTimeoutSeconds
+        self.commandTimeoutSeconds = commandTimeoutSeconds
+        self.remainingServices = remainingServices
+        self.availableServices = availableServices
+        self.serviceStates = serviceStates
+        self.failureSnapshotPath = failureSnapshotPath
+    }
+}
+
+public struct GuestUpdateShutdownServiceState: Codable, Equatable, Sendable {
+    public let service: String
+    public let container: String
+    public let state: String
+    public let exitCode: Int?
+    public let health: String?
+
+    public init(
+        service: String,
+        container: String,
+        state: String,
+        exitCode: Int? = nil,
+        health: String? = nil
+    ) {
+        self.service = service
+        self.container = container
+        self.state = state
+        self.exitCode = exitCode
+        self.health = health
     }
 }
 

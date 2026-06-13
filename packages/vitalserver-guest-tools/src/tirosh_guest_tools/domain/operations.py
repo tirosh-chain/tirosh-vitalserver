@@ -85,6 +85,7 @@ class GuestOperationResult:
     restored_archive: str = ""
     redis_backup_path: str = ""
     shutdown_phase: ShutdownPhase | None = None
+    details: dict[str, Any] | None = None
 
     def as_json(self) -> dict[str, Any]:
         document: dict[str, Any] = {
@@ -107,4 +108,6 @@ class GuestOperationResult:
             document["redisBackupPath"] = self.redis_backup_path
         if self.shutdown_phase is not None:
             document["shutdownPhase"] = self.shutdown_phase.value
+        if self.details is not None:
+            document["details"] = self.details
         return document

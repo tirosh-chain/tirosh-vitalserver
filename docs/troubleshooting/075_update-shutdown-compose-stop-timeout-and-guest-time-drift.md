@@ -10,7 +10,8 @@
 
 ```text
 bundle apply failed; rollback completed:
-Guest update shutdown failed at: docker compose stop timed out after 30s
+Guest update shutdown failed at guest-services-stop:
+service app did not stop; remaining services: app, redis
 ```
 
 - PWA observability timestamps may show Guest-side dates far behind Host time, such as
@@ -24,12 +25,13 @@ Guest shutdown preparation after Redis backup completed:
 ```text
 redis backup completed
 guest services stop started
-docker compose stop timed out after 30s
+docker compose stop timed out while stopping app after 100s
 ```
 
-The old Guest default used `compose.stopTimeoutSeconds = 20` with a 10 second command
-timeout buffer. This is too short for update shutdown when TestKit sessions, observer
-polling, websocket clients, or container health probes are active.
+Older Guest shutdown used one whole-stack `docker compose stop` call. When one or two
+services remained running, the result only said that compose stop timed out. Operators
+had to inspect `guest-observability/shutdown-failure.latest.json` to learn which
+services were still up.
 
 Guest time drift is a separate but related boot contract issue. Host writes explicit
 `host-time.json`, but if Guest only applies it during first bootstrap, a later restart
@@ -37,17 +39,53 @@ or rollback that reuses the VM disk can keep the image/rootfs clock.
 
 ## Fix Direction
 
-- Increase the Guest compose stop timeout used by update shutdown.
+- Stop Guest compose services in an explicit update shutdown order:
+  `testkit`, `edge`, `swagger-ui`, `redis-ui`, `audit-proxy`, `vitaldb-observer`,
+  `app`, then `redis`.
+- Use service-specific timeouts so `app` and `redis` can take longer than UI/proxy
+  services without hiding which service is blocking shutdown.
+- On timeout, write typed failure details into `prepare-update-shutdown-result.json`:
+  `failedService`, `remainingServices`, `serviceStates`, stop timeouts, and
+  `failureSnapshotPath`.
 - Keep the Host update wait timeout larger than the maximum Guest shutdown path.
 - Run Guest host-time synchronization on every boot before Docker, runtime-state,
   observability, command polling, compose, and TestKit services start.
 - Preserve compose stop timeout as a typed Guest dependency failure. Do not infer
   success from partial logs or missing status.
 
+## Diagnosis
+
+Check the Guest shutdown result first:
+
+```text
+/Library/Application Support/VitalServerHelper/vm/data/run/prepare-update-shutdown-result.json
+```
+
+For ordered stop failures, expect explicit details:
+
+```json
+{
+  "status": "failed",
+  "step": "failed",
+  "message": "Guest update shutdown failed at guest-services-stop: service app did not stop; remaining services: app, redis",
+  "details": {
+    "stopAction": "ordered-compose-stop",
+    "failedService": "app",
+    "remainingServices": ["app", "redis"],
+    "failureSnapshotPath": "/mnt/tirosh/run/guest-observability/shutdown-failure.latest.json"
+  }
+}
+```
+
+Then inspect the snapshot referenced by `failureSnapshotPath`. It is Guest-owned
+observed state, not Host log inference.
+
 ## Prevention
 
 - Runtime smoke and update verification should include an update shutdown case with
   active TestKit/observer traffic.
+- Update shutdown must report the service that failed to stop. A generic compose
+  timeout is not enough to diagnose rollback cause.
 - UI should display Guest-provided timestamps as observed state. It must not correct
   Guest time drift by formatting with Host time.
 - Guest time synchronization must consume the Host-owned `host-time.json` contract.

@@ -84,6 +84,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-073 | Installed bootstrap이 rootfs input metadata 누락으로 Critical이 됨 | Packaging / Install / Guest bootstrap | implemented | [Installed Bootstrap Missing Rootfs Input Metadata](073_installed-bootstrap-missing-rootfs-input-metadata.md) |
 | TS-074 | Installed bootstrap이 빈 `lsblk PARTNUM` 출력으로 실패함 | Packaging / Install / Guest bootstrap | implemented | [Installed bootstrap fails when lsblk PARTNUM is empty](074_installed-bootstrap-lsblk-partnum-empty.md) |
 | TS-075 | Service liveness uptime이 수백 일로 표시됨 | Runtime health / Runtime Control PWA | implemented | [Service liveness uptime shows hundreds of days](075_service-liveness-uptime-clock-skew.md) |
+| TS-076 | Update shutdown 중 compose stop timeout 후 rollback됨 | Update / Guest containers | implemented | [Update shutdown compose stop timeout and guest time drift](075_update-shutdown-compose-stop-timeout-and-guest-time-drift.md) |
 
 ## Follow-up 규칙
 

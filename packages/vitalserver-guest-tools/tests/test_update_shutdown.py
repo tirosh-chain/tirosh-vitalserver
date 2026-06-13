@@ -235,6 +235,74 @@ def test_prepare_update_shutdown_consumes_request_before_guest_side_effects(
     ]
 
 
+def test_prepare_update_shutdown_reports_ordered_stop_failure_details(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    request_file = tmp_path / "prepare-update-shutdown.request"
+    result_file = tmp_path / "prepare-update-shutdown-result.json"
+    request_file.write_text(
+        json.dumps({"requestId": "req-1", "version": "1.2.3"}),
+        encoding="utf-8",
+    )
+
+    stop_error = GuestDependencyError(
+        "docker compose stop timed out while stopping app after 100s",
+        code="compose-stop-timeout",
+    )
+    stop_error.details = {
+        "stopAction": "ordered-compose-stop",
+        "failedService": "app",
+        "remainingServices": ["app", "redis"],
+        "serviceStates": [
+            {"service": "app", "container": "vitalserver-app-1", "state": "running"},
+            {
+                "service": "redis",
+                "container": "vitalserver-redis-1",
+                "state": "running",
+            },
+        ],
+    }
+
+    monkeypatch.setattr(update_shutdown, "REQUEST_FILE", request_file)
+    monkeypatch.setattr(update_shutdown, "RESULT_FILE", result_file)
+    monkeypatch.setattr(update_shutdown, "mount_runtime_share", lambda: None)
+    monkeypatch.setattr(update_shutdown, "utc_now", lambda: "2026-06-01T00:00:00Z")
+    monkeypatch.setattr(update_shutdown, "quiesce_shutdown_sidecars", lambda: None)
+    monkeypatch.setattr(
+        update_shutdown,
+        "backup_redis",
+        lambda context: _record_backup(context, []),
+    )
+    snapshot_path = (
+        "/mnt/tirosh/run/guest-observability/shutdown-failure.latest.json"
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "collect_guest_observability",
+        lambda phase: snapshot_path,
+    )
+    monkeypatch.setattr(
+        update_shutdown,
+        "stop_runtime_services",
+        lambda: (_ for _ in ()).throw(stop_error),
+    )
+
+    with pytest.raises(GuestDependencyError):
+        update_shutdown.run_prepare_update_shutdown()
+
+    document = json.loads(result_file.read_text(encoding="utf-8"))
+    assert document["status"] == "failed"
+    assert document["message"] == (
+        "Guest update shutdown failed at guest-services-stop: "
+        "service app did not stop; remaining services: app, redis"
+    )
+    assert document["details"]["stopAction"] == "ordered-compose-stop"
+    assert document["details"]["failedService"] == "app"
+    assert document["details"]["remainingServices"] == ["app", "redis"]
+    assert document["details"]["failureSnapshotPath"] == snapshot_path
+
+
 def test_quiesce_shutdown_sidecars_stops_dispatchers_and_waits_for_redis_backup(
     monkeypatch: Any,
 ) -> None:
