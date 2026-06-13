@@ -64,6 +64,10 @@ from tirosh_guest_tools.domain.operations import (
     ContainerLogAction,
     RuntimeStateAction,
 )
+from tirosh_guest_tools.infrastructure.bootstrap_operations import (
+    default_bootstrap_context,
+    default_bootstrap_operations,
+)
 from tirosh_guest_tools.infrastructure.logging import configure_logging
 from tirosh_guest_tools.infrastructure.settings import SETTINGS
 from tirosh_guest_tools.infrastructure.system_install import (
@@ -190,7 +194,10 @@ def vitalserver_bootstrap() -> int:
     parser = argparse.ArgumentParser(description="Run guest bootstrap workflow.")
     parser.parse_args()
     configure_logging(SETTINGS.logging)
-    run_guest_bootstrap()
+    run_guest_bootstrap(
+        context=default_bootstrap_context(),
+        operations=default_bootstrap_operations(),
+    )
     return 0
 
 

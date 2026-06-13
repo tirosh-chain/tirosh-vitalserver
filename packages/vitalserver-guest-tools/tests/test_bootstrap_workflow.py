@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from tirosh_guest_tools.application.bootstrap import (
+    BootstrapResultDocument,
+    DockerSmokeResult,
+    EdgeReadinessProbeResult,
     GuestBootstrapContext,
     GuestBootstrapOperations,
     GuestBootstrapWorkflow,
@@ -22,16 +24,16 @@ def test_guest_bootstrap_workflow_orders_runtime_data_before_docker_consumers(
 
     run_guest_bootstrap(context=context, operations=fake_operations(events))
 
-    assert_before(events, "prepare-runtime-data", "run:systemctl enable --now docker")
+    assert_before(events, "prepare-runtime-data", "start-docker")
     assert_before(
         events,
-        "run:systemctl enable --now docker",
-        "run:systemctl start tirosh-vitalserver-command-poller.service",
+        "start-docker",
+        "start-guest-background-services",
     )
     assert_before(
         events,
-        "run:systemctl start tirosh-vitalserver-compose.service",
-        "run:systemctl start tirosh-vitalserver-container-logs.service",
+        "start-compose",
+        "start-container-logs",
     )
     result = json.loads(context.bootstrap_result.read_text(encoding="utf-8"))
     assert result["status"] == "completed"
@@ -96,41 +98,60 @@ def bootstrap_context(tmp_path: Path) -> GuestBootstrapContext:
 
 
 def fake_operations(events: list[str]) -> GuestBootstrapOperations:
-    def run(
-        arguments: list[str],
-        *,
-        check: bool = True,
-    ) -> subprocess.CompletedProcess[str]:
-        events.append("run:" + " ".join(arguments))
-        return subprocess.CompletedProcess(arguments, 0, "", "")
-
-    def output(arguments: list[str]) -> str:
-        events.append("output:" + " ".join(arguments))
-        if arguments == ["findmnt", "-n", "-o", "SOURCE", "/"]:
-            return "/dev/nvme0n1p1\n"
-        if arguments == ["lsblk", "-no", "PKNAME", "/dev/nvme0n1p1"]:
-            return "nvme0n1\n"
-        if arguments == ["lsblk", "-no", "PARTNUM", "/dev/nvme0n1p1"]:
-            return "1\n"
-        if arguments == ["findmnt", "-n", "-o", "FSTYPE", "/"]:
-            return "ext4\n"
-        return ""
-
-    def http_status(url: str, timeout_seconds: float) -> int:
-        events.append(f"http:{url}")
-        return 200
+    def write_result(path: Path, document: BootstrapResultDocument) -> None:
+        events.append(f"result:{document.status}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "bootID": document.boot_id,
+                    "message": document.message,
+                    "operation": document.operation,
+                    "reasonCodes": list(document.reason_codes),
+                    "schemaVersion": document.schema_version,
+                    "status": document.status,
+                    "updatedAt": document.updated_at,
+                }
+            ),
+            encoding="utf-8",
+        )
 
     return GuestBootstrapOperations(
-        run=run,
-        output=output,
-        http_status=http_status,
+        current_time_seconds=lambda: 0.0,
         sleep=lambda _: events.append("sleep"),
         now=lambda: "2026-06-13T00:00:00Z",
         boot_id=lambda: "test-boot-id",
-        mount_runtime_share=lambda: events.append("mount-runtime-share"),
-        mount_vital_files_share=lambda: events.append("mount-vital-files-share"),
-        install_guest_tools_runtime=lambda: events.append("install-guest-tools"),
+        mount_shares=lambda: events.append("mount-shares"),
+        write_bootstrap_result=write_result,
+        missing_deploy_bundle_files=lambda _: [],
+        expand_root_filesystem=lambda: events.append("expand-root-filesystem"),
+        missing_runtime_packages=lambda: [],
+        install_runtime_files=lambda _: events.append("install-runtime-files"),
         prepare_runtime_data=lambda: events.append("prepare-runtime-data"),
+        write_initial_runtime_state=lambda: events.append("write-runtime-state"),
+        start_docker=lambda: events.append("start-docker"),
+        start_avahi=lambda: events.append("start-avahi"),
+        start_guest_background_services=lambda: events.append(
+            "start-guest-background-services"
+        ),
+        prepare_shared_directories=lambda _: events.append(
+            "prepare-shared-directories"
+        ),
+        load_bundled_docker_images=lambda _: events.append("load-docker-images"),
+        run_docker_runtime_smoke=lambda _: DockerSmokeResult(passed=True),
+        cleanup_docker_cache=lambda: events.append("cleanup-docker-cache"),
+        build_missing_images=lambda: events.append("build-missing-images"),
+        start_compose=lambda: events.append("start-compose"),
+        start_container_logs=lambda: events.append("start-container-logs"),
+        probe_edge_readiness=lambda _url, _timeout: EdgeReadinessProbeResult(
+            status_code=200
+        ),
+        write_runtime_state_once=lambda: events.append("write-runtime-state"),
+        write_edge_diagnostics=lambda: events.append("write-edge-diagnostics"),
+        restart_runtime_state=lambda: events.append("restart-runtime-state"),
+        start_optional_testkit=lambda: events.append("start-optional-testkit"),
+        runtime_boot_smoke_enabled=lambda _: False,
+        run_runtime_boot_smoke=lambda: events.append("run-runtime-boot-smoke"),
     )
 
 

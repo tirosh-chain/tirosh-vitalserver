@@ -214,6 +214,10 @@ Docker service를 당길 수 있는 background service는 이 시점 이전에 `
 `GuestBootstrapWorkflow`입니다. `bootstrap.sh`는 deploy share mount, guest-tools wheel 설치,
 workflow exec까지만 담당하는 thin wrapper여야 합니다. Docker start, image load, smoke container,
 compose start, container log start 같은 순서와 guard는 workflow 테스트로 고정합니다.
+`GuestBootstrapWorkflow`는 application layer의 operation order와 guard만 소유하고, 실제 systemd,
+Docker, mount, filesystem, curl, JSON write 구현은 `infrastructure/bootstrap_operations.py`가
+명시 operations로 제공합니다. application bootstrap code가 infrastructure module을 직접 import하거나
+concrete command를 조립하기 시작하면 같은 경계 붕괴가 재발한 것입니다.
 Guest shutdown request는 single-shot trigger입니다. Worker는 request를 로드하고 `running/starting`
 result를 기록한 직후 request file을 소비해야 합니다. 성공 끝까지 request를 남겨두면 poweroff 또는
 process termination 중 worker가 사라졌을 때 같은 request가 다음 VM boot에서 다시 dispatch되고,

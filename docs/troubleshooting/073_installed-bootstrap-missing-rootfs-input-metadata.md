@@ -69,7 +69,9 @@ by installed bootstrap.
 
 Guest bootstrap is now an explicit guest-tools workflow. `bootstrap.sh` only mounts the deploy share,
 installs the guest-tools wheel, and execs `tirosh-vitalserver-bootstrap`; operation order is owned by
-`GuestBootstrapWorkflow`.
+`GuestBootstrapWorkflow`. The workflow stays in the application layer and talks through explicit
+bootstrap operations. Concrete systemd, Docker, mount, filesystem, curl, and JSON writes live in
+`infrastructure/bootstrap_operations.py`.
 
 The workflow enables background services without starting them before runtime data preparation. It starts
 guest background services only after Docker is configured on the runtime data disk, and starts container
@@ -88,3 +90,5 @@ containerd before applying the data-root contract so accidental earlier activati
   mounted, configured, and made visible to Docker.
 - `bootstrap.sh` must stay a thin entrypoint. Guest bootstrap states, guards, effects, and terminal
   result writes belong in `GuestBootstrapWorkflow`, where they can be tested as operation order.
+- Application bootstrap code must not import infrastructure modules or construct systemd/Docker
+  commands directly; those are adapter/infrastructure responsibilities behind explicit operations.

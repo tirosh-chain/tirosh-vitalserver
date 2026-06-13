@@ -23,6 +23,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
     func testBootstrapInstallsWrappersAndExplicitSystemdFiles() throws {
         let bootstrap = try readGuestSupportFile("bootstrap.sh")
         let workflow = try readGuestToolsFile("application/bootstrap.py")
+        let operations = try readGuestToolsFile("infrastructure/bootstrap_operations.py")
 
         XCTAssertTrue(bootstrap.contains("install_guest_tools_runtime"))
         XCTAssertTrue(bootstrap.contains("tirosh-guest-tools-install-config"))
@@ -32,12 +33,13 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(bootstrap.contains("systemctl "))
         XCTAssertFalse(bootstrap.contains("docker "))
         XCTAssertTrue(workflow.contains("class GuestBootstrapWorkflow"))
-        XCTAssertTrue(workflow.contains("RuntimeService.COMMAND_POLLER.value"))
-        XCTAssertTrue(workflow.contains("self.systemctl(\"enable\", service)"))
+        XCTAssertFalse(workflow.contains("from tirosh_guest_tools.infrastructure"))
+        XCTAssertTrue(operations.contains("RuntimeService.COMMAND_POLLER.value"))
+        XCTAssertTrue(operations.contains("systemctl(\"enable\", service)"))
         XCTAssertTrue(workflow.contains("def start_guest_background_services(self)"))
-        XCTAssertTrue(workflow.contains("self.systemctl(\"start\", RuntimeService.COMMAND_POLLER.value)"))
-        XCTAssertTrue(workflow.contains("\"tirosh-vitalserver-command-poller\""))
-        XCTAssertTrue(workflow.contains("\"tirosh-vitalserver-command-poller.service\""))
+        XCTAssertTrue(operations.contains("systemctl(\"start\", RuntimeService.COMMAND_POLLER.value)"))
+        XCTAssertTrue(operations.contains("\"tirosh-vitalserver-command-poller\""))
+        XCTAssertTrue(operations.contains("\"tirosh-vitalserver-command-poller.service\""))
         let observabilityUnit = try readGuestSupportFile(
             "systemd/tirosh-guest-observability.service"
         )
@@ -49,13 +51,13 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
     func testBootstrapChecksActualPythonVenvCreation() throws {
         let bootstrap = try readGuestSupportFile("bootstrap.sh")
-        let workflow = try readGuestToolsFile("application/bootstrap.py")
+        let operations = try readGuestToolsFile("infrastructure/bootstrap_operations.py")
         let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
 
         XCTAssertTrue(bootstrap.contains("python3 -m venv --clear \"${GUEST_TOOLS_VENV}\""))
-        XCTAssertTrue(workflow.contains("TemporaryDirectory(prefix=\"tirosh-venv-check-\")"))
-        XCTAssertTrue(workflow.contains("[\"python3\", \"-m\", \"venv\", str(test_venv)]"))
-        XCTAssertFalse(workflow.contains("[\"python3\", \"-m\", \"venv\", \"--help\"]"))
+        XCTAssertTrue(operations.contains("TemporaryDirectory(prefix=\"tirosh-venv-check-\")"))
+        XCTAssertTrue(operations.contains("[\"python3\", \"-m\", \"venv\", str(test_venv)]"))
+        XCTAssertFalse(operations.contains("[\"python3\", \"-m\", \"venv\", \"--help\"]"))
         XCTAssertTrue(prepareAirgapRootfs.contains("verify_python_venv"))
         XCTAssertTrue(prepareAirgapRootfs.contains("python3 -m venv \"${test_venv}\""))
     }
@@ -73,15 +75,16 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
     func testBootstrapRunsDockerRuntimeSmokeBeforeComposeUp() throws {
         let workflow = try readGuestToolsFile("application/bootstrap.py")
+        let operations = try readGuestToolsFile("infrastructure/bootstrap_operations.py")
 
         XCTAssertTrue(workflow.contains("DOCKER_SMOKE_IMAGE = \"redis:3.2.12-alpine\""))
         XCTAssertTrue(workflow.contains("def run_docker_runtime_smoke(self)"))
-        XCTAssertTrue(workflow.contains("\"--network\","))
-        XCTAssertTrue(workflow.contains("\"seccomp=unconfined\""))
+        XCTAssertTrue(operations.contains("\"--network\","))
+        XCTAssertTrue(operations.contains("\"seccomp=unconfined\""))
         XCTAssertTrue(workflow.contains("\"guest-bootstrap-docker-runtime-failed\""))
         XCTAssertTrue(workflow.contains("GuestBootstrapStep.PREPARE_RUNTIME_DATA"))
         XCTAssertTrue(workflow.contains("GuestBootstrapStep.START_DOCKER"))
-        XCTAssertTrue(workflow.contains("self.systemctl(\"start\", RuntimeService.COMPOSE.value)"))
+        XCTAssertTrue(operations.contains("systemctl(\"start\", RuntimeService.COMPOSE.value)"))
         assertOrder(
             in: workflow,
             first: "(GuestBootstrapStep.PREPARE_RUNTIME_DATA, self.prepare_runtime_data)",
@@ -102,10 +105,10 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
             first: "(GuestBootstrapStep.START_COMPOSE, self.start_compose)",
             second: "(GuestBootstrapStep.START_CONTAINER_LOGS, self.start_container_logs)"
         )
-        XCTAssertFalse(workflow.contains("\n/usr/local/bin/tirosh-vitalserver-compose up\n"))
-        XCTAssertTrue(workflow.contains("\"runtimeBootSmoke\""))
-        XCTAssertTrue(workflow.contains("runtime boot smoke metadata is missing runtimeBootSmoke"))
-        XCTAssertTrue(workflow.contains("runtime boot smoke enabled flag must be explicit boolean"))
+        XCTAssertFalse(operations.contains("\n/usr/local/bin/tirosh-vitalserver-compose up\n"))
+        XCTAssertTrue(operations.contains("\"runtimeBootSmoke\""))
+        XCTAssertTrue(operations.contains("runtime boot smoke metadata is missing runtimeBootSmoke"))
+        XCTAssertTrue(operations.contains("runtime boot smoke enabled flag must be explicit boolean"))
     }
 
     func testRuntimeComposeDisablesContainerSeccompForAppleVirtualizationGuestKernel() throws {
@@ -120,6 +123,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
     func testDockerRuntimeSmokeRunsWithoutUnsupportedBPFJITSysctlGuard() throws {
         let bootstrap = try readGuestSupportFile("bootstrap.sh")
         let workflow = try readGuestToolsFile("application/bootstrap.py")
+        let operations = try readGuestToolsFile("infrastructure/bootstrap_operations.py")
         let prepareAirgapRootfs = try readGuestSupportFile("prepare-airgap-rootfs.sh")
 
         XCTAssertFalse(Constants.BootAssets.commandLine.contains("bpf_jit_enable"))
@@ -128,11 +132,11 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(bootstrap.contains("net.core.bpf_jit_enable"))
         XCTAssertFalse(bootstrap.contains("sysctl -w net.core.bpf_jit_enable"))
         XCTAssertTrue(workflow.contains("def start_docker(self)"))
-        XCTAssertTrue(workflow.contains("self.systemctl(\"enable\", \"--now\", \"docker\")"))
-        XCTAssertTrue(workflow.contains("RuntimeService.CONTAINER_LOGS.value"))
-        XCTAssertTrue(workflow.contains("self.systemctl(\"enable\", service)"))
-        XCTAssertTrue(workflow.contains("self.systemctl(\"start\", RuntimeService.CONTAINER_LOGS.value)"))
-        XCTAssertFalse(workflow.contains("self.systemctl(\"enable\", \"--now\", RuntimeService.CONTAINER_LOGS.value)"))
+        XCTAssertTrue(operations.contains("systemctl(\"enable\", \"--now\", \"docker\")"))
+        XCTAssertTrue(operations.contains("RuntimeService.CONTAINER_LOGS.value"))
+        XCTAssertTrue(operations.contains("systemctl(\"enable\", service)"))
+        XCTAssertTrue(operations.contains("systemctl(\"start\", RuntimeService.CONTAINER_LOGS.value)"))
+        XCTAssertFalse(operations.contains("systemctl(\"enable\", \"--now\", RuntimeService.CONTAINER_LOGS.value)"))
         XCTAssertFalse(prepareAirgapRootfs.contains("BPF_JIT_SYSCTL_FILE"))
         XCTAssertFalse(prepareAirgapRootfs.contains("net.core.bpf_jit_enable"))
         XCTAssertFalse(prepareAirgapRootfs.contains("sysctl -w net.core.bpf_jit_enable"))
