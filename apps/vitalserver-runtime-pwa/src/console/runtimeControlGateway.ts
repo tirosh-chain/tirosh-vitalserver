@@ -92,6 +92,10 @@ export type RuntimeControlGateway = {
   listRuntimeDataBackups(): Promise<RuntimeBackup[]>;
   rollbackBackup(request: RuntimeBackupRequest): Promise<RuntimeCommandResponse>;
   deleteHostBackup(request: RuntimeBackupRequest): Promise<RuntimeCommandResponse>;
+  deleteUpdateBackup(request: RuntimeBackupRequest): Promise<RuntimeCommandResponse>;
+  deleteRuntimeDataBackup(
+    request: RuntimeBackupRequest
+  ): Promise<RuntimeCommandResponse>;
   restoreRedisBackup(request: RuntimeBackupRequest): Promise<RuntimeCommandResponse>;
   restoreRuntimeDataBackup(
     request: RuntimeBackupRequest

@@ -599,6 +599,35 @@
       "delete": {
         "operationId": "deleteHostBackup",
         "summary": "Delete selected local backup",
+        "description": "Compatibility deletion endpoint. Browser clients should prefer Delete Update Backup or Delete VitalServer Backup endpoints so the target backup type stays explicit.",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeBackupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/backups/update": {
+      "delete": {
+        "operationId": "deleteUpdateBackup",
+        "summary": "Delete selected update backup",
+        "description": "Deletes a managed update/rollback backup. This does not delete VitalServer backups or current runtime data.",
         "x-runtime-control-scope": "hostAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
@@ -699,6 +728,32 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteRuntimeDataBackup",
+        "summary": "Delete selected VitalServer backup",
+        "description": "Deletes a selected VitalServer backup. This does not delete update rollback backups or current runtime data.",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeBackupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
           }
         }
       }

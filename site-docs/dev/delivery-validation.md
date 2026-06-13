@@ -183,6 +183,9 @@ services." 메시지로 오래 머무르면 Guest worker가 Redis 백업 이후 
 멈춘 것입니다. Docker Compose stop의 container grace timeout은 subprocess 자체의 완료를 보장하지
 않으므로 Guest command는 별도 command timeout을 가져야 합니다. Timeout은 Host가 추측해서 넘기지
 말고 Guest dependency failure result로 기록되어야 rollback/force-stop 경로가 명시적으로 실행됩니다.
+Update shutdown 기준 compose stop grace timeout은 일반 service stop보다 길게 둡니다. TestKit,
+observer, websocket, Redis save처럼 dev/runtime 부하가 있는 상태에서 20초 수준의 stop timeout은
+정상 종료 중인 컨테이너를 실패로 오인할 수 있습니다.
 Host가 update activation/shutdown 결과를 기다리는 전체 타임아웃은 Guest 측 종료·활성화 단계 최대
 실행 시간보다 작아서는 안 됩니다. 현재는 Host와 Guest 경계의 명시적 실패를 보존하기 위해
 activation/shutdown 대기 상한을 900초로 맞추었고, 타임아웃이 터지기 전에 Guest는 반드시
@@ -196,6 +199,12 @@ shutdown success를 추정하지 말고 bounded wait 실패로 처리한 뒤 VM 
 빠져나와야 합니다. Settings restart도 update shutdown과 같은 VM stop 위험을 가지므로, guest shutdown
 wait 또는 poweroff wait 실패 시 force-stop 후 runtime start/health wait로 이어지는 escape hatch가
 필요합니다.
+
+Guest time은 Host-owned `host-time.json` contract에서 동기화합니다. Bootstrap에서 한 번만 맞추면
+rollback, restart, snapshot 기반 VM disk 재사용 뒤 Guest clock이 rootfs/golden 이미지 생성 시점으로
+되돌아갈 수 있습니다. Guest는 매 boot 초기에 `tirosh-vitalserver-sync-host-time.service`로
+`host-time.json`을 읽고 clock을 맞춘 뒤 Docker, runtime-state, observability, compose 서비스를
+시작해야 합니다. UI나 observer는 timestamp를 현재 시간으로 보정하지 않습니다.
 
 Release package와 DMG build도 expensive compile 단계에 들어가기 전에 Host-owned preflight를 통과해야
 합니다. `release-pkg`와 `release-dmg`는 Swift build, Docker pull/build, `pkgbuild`, `hdiutil create`

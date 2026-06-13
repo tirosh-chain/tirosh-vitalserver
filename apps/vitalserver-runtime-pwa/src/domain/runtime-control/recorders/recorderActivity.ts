@@ -20,6 +20,7 @@ export type RecorderActivityBucket = {
 export type RecorderActivityBucketOptions = {
   bucketSeconds: number;
   rangeSeconds?: number | null;
+  currentTimeMs?: number;
 };
 
 export type RecorderActivityRead = {
@@ -86,8 +87,20 @@ export function readRecorderActivityBuckets(
 
   const earliestMs = parsed[0]?.observedMs ?? null;
 
+  if (
+    options.currentTimeMs !== undefined &&
+    (!Number.isFinite(options.currentTimeMs) || options.currentTimeMs < 0)
+  ) {
+    return {
+      buckets: [],
+      issues: [`currentTimeMs must be a valid timestamp: ${options.currentTimeMs}`]
+    };
+  }
+
+  const rangeEndMs = options.currentTimeMs ?? latestMs;
+  const explicitRangeEndMs = options.currentTimeMs;
   const rangeStartMs = options.rangeSeconds
-    ? latestMs - options.rangeSeconds * 1_000
+    ? rangeEndMs - options.rangeSeconds * 1_000
     : null;
   const bucketMs = options.bucketSeconds * 1_000;
   const buckets = new Map<number, RecorderActivityBucket>();
@@ -119,7 +132,8 @@ export function readRecorderActivityBuckets(
         buckets,
         bucketMs,
         earliestMs,
-        options.rangeSeconds
+        options.rangeSeconds,
+        explicitRangeEndMs
       ),
       issues
     };
@@ -150,7 +164,13 @@ export function readRecorderActivityBuckets(
   }
 
   return {
-    buckets: filledBuckets(buckets, bucketMs, earliestMs, options.rangeSeconds),
+    buckets: filledBuckets(
+      buckets,
+      bucketMs,
+      earliestMs,
+      options.rangeSeconds,
+      explicitRangeEndMs
+    ),
     issues
   };
 }
@@ -294,7 +314,8 @@ function filledBuckets(
   buckets: Map<number, RecorderActivityBucket>,
   bucketMs: number,
   earliestMs: number | null,
-  rangeSeconds?: number | null
+  rangeSeconds?: number | null,
+  rangeEndMs?: number
 ) {
   const bucketStarts = [...buckets.keys()].sort((left, right) => left - right);
   const latestBucketStart = bucketStarts.at(-1);
@@ -302,15 +323,14 @@ function filledBuckets(
     return [];
   }
 
-  const rangeStartMs = rangeSeconds
-    ? latestBucketStart - rangeSeconds * 1_000
-    : null;
+  const endMs = rangeEndMs ?? latestBucketStart;
+  const rangeStartMs = rangeSeconds ? endMs - rangeSeconds * 1_000 : null;
   const firstBucketStart = rangeStartMs
     ? earliestMs !== null && earliestMs < rangeStartMs
       ? Math.floor(rangeStartMs / bucketMs) * bucketMs
       : bucketStarts[0]
     : bucketStarts[0];
-  const lastBucketStart = Math.floor(latestBucketStart / bucketMs) * bucketMs;
+  const lastBucketStart = Math.floor(endMs / bucketMs) * bucketMs;
 
   if (firstBucketStart === undefined) {
     return [];

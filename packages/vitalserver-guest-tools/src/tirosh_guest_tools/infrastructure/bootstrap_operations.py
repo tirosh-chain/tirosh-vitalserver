@@ -111,6 +111,12 @@ def sync_clock(context: GuestBootstrapContext) -> None:
     run(["date", "-u", "-s", f"@{epoch_seconds}"])
 
 
+def sync_host_time() -> None:
+    context = default_bootstrap_context()
+    mount_runtime_share()
+    sync_clock(context)
+
+
 def write_bootstrap_result(path: Path, document: BootstrapResultDocument) -> None:
     write_json(
         path,
@@ -187,6 +193,7 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         "tirosh-write-runtime-state",
         "tirosh-runtime-state",
         "tirosh-vitalserver-compose",
+        "tirosh-vitalserver-sync-host-time",
         "tirosh-vitalserver-health",
         "tirosh-vitalserver-runtime-boot-smoke",
         "tirosh-vitalserver-runtime-data-prepare",
@@ -203,6 +210,7 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         "tirosh-guest-observability.service",
         "tirosh-runtime-state.service",
         "tirosh-vitalserver-compose.service",
+        "tirosh-vitalserver-sync-host-time.service",
         "tirosh-vitalserver-testkit.service",
         "tirosh-vitalserver-container-logs.service",
         "tirosh-vitalserver-redis-backup.service",
@@ -246,6 +254,7 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         systemctl("disable", "--now", service, check=False)
     for service in (
         RuntimeService.RUNTIME_STATE.value,
+        RuntimeService.SYNC_HOST_TIME.value,
         RuntimeService.COMPOSE.value,
         RuntimeService.TESTKIT.value,
         RuntimeService.CONTAINER_LOGS.value,

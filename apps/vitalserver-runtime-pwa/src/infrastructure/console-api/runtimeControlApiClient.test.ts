@@ -41,18 +41,23 @@ describe("RuntimeControlApiClient", () => {
       "/runtime/settings": commandResponse(),
       "/runtime/uninstall": commandResponse(),
       "/runtime/services/repair-proxy": commandResponse(),
-      "/host/backups": commandResponse()
+      "DELETE /host/backups/update": commandResponse(),
+      "DELETE /host/backups/runtime-data": commandResponse()
     });
 
     await client.applySettings({ settings: fullSettings({ proxyPort: 18080 }) });
     await client.uninstallRuntime({ clean: true });
     await client.repairProxy(18080);
-    await client.deleteHostBackup({ backup: { kind: "localPath", value: "/tmp/b" } });
+    await client.deleteUpdateBackup({ backup: { kind: "localPath", value: "/tmp/update" } });
+    await client.deleteRuntimeDataBackup({
+      backup: { kind: "localPath", value: "/tmp/runtime-data" }
+    });
 
     expect(requests.map((request) => request.init.method)).toEqual([
       "PUT",
       "POST",
       "POST",
+      "DELETE",
       "DELETE"
     ]);
     expect(JSON.parse(String(requests[0]?.init.body))).toEqual({
@@ -133,6 +138,8 @@ describe("RuntimeControlApiClient", () => {
       "/host/backups/redis": [{ path: "/tmp/redis", sizeBytes: null }],
       "/host/backups/runtime-data": [{ path: "/tmp/runtime-data", sizeBytes: 10 }],
       "/host/backups/rollback": commandResponse(),
+      "DELETE /host/backups/update": commandResponse(),
+      "DELETE /host/backups/runtime-data": commandResponse(),
       "/host/backups/redis/restore": commandResponse(),
       "/host/backups/runtime-data/restore": commandResponse(),
       "/runtime/redis/backups": commandResponse(),
@@ -171,6 +178,8 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.listRedisBackups()).resolves.toHaveLength(1);
     await expect(client.listRuntimeDataBackups()).resolves.toHaveLength(1);
     await expect(client.rollbackBackup({ backup: { kind: "localPath", value: "/tmp/backup" } })).resolves.toEqual(commandResponse());
+    await expect(client.deleteUpdateBackup({ backup: { kind: "localPath", value: "/tmp/backup" } })).resolves.toEqual(commandResponse());
+    await expect(client.deleteRuntimeDataBackup({ backup: { kind: "localPath", value: "/tmp/runtime-data" } })).resolves.toEqual(commandResponse());
     await expect(client.restoreRedisBackup({ backup: { kind: "localPath", value: "/tmp/redis" } })).resolves.toEqual(commandResponse());
     await expect(client.restoreRuntimeDataBackup({ backup: { kind: "localPath", value: "/tmp/runtime-data" } })).resolves.toEqual(commandResponse());
     await expect(client.createRedisBackup()).resolves.toEqual(commandResponse());
@@ -278,8 +287,9 @@ function clientWithResponses(
   const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const path = new URL(url).pathname;
+    const method = init?.method ?? "GET";
     requests.push({ url, init: init ?? {} });
-    return new Response(JSON.stringify(responses[path] ?? commandResponse()), {
+    return new Response(JSON.stringify(responses[`${method} ${path}`] ?? responses[path] ?? commandResponse()), {
       status,
       headers: { "Content-Type": "application/json" }
     });

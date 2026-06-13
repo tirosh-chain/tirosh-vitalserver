@@ -322,6 +322,26 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.delete("/host/backups", request, runtimeCommandResponseSchema);
   }
 
+  deleteUpdateBackup(
+    request: RuntimeBackupRequest
+  ): Promise<RuntimeCommandResponse> {
+    return this.delete(
+      "/host/backups/update",
+      request,
+      runtimeCommandResponseSchema
+    );
+  }
+
+  deleteRuntimeDataBackup(
+    request: RuntimeBackupRequest
+  ): Promise<RuntimeCommandResponse> {
+    return this.delete(
+      "/host/backups/runtime-data",
+      request,
+      runtimeCommandResponseSchema
+    );
+  }
+
   restoreRedisBackup(
     request: RuntimeBackupRequest
   ): Promise<RuntimeCommandResponse> {

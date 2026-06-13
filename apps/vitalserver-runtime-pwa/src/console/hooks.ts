@@ -192,6 +192,20 @@ export function useDeleteHostBackup() {
   );
 }
 
+export function useDeleteUpdateBackup() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useBackupMutation("host", (path) =>
+    runtimeControlGateway.deleteUpdateBackup(backupRequest(path))
+  );
+}
+
+export function useDeleteRuntimeDataBackup() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useBackupMutation("runtime-data", (path) =>
+    runtimeControlGateway.deleteRuntimeDataBackup(backupRequest(path))
+  );
+}
+
 export function useCreateRedisBackup() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useBackupMutation("redis", () => runtimeControlGateway.createRedisBackup());

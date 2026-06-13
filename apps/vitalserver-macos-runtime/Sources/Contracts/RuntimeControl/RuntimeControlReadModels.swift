@@ -1068,11 +1068,11 @@ private func preferredRecorder(
     if timestampOrder != .orderedSame {
         return timestampOrder == .orderedDescending ? candidate : current
     }
+    if candidate.stale != current.stale {
+        return candidate.stale ? candidate : current
+    }
     if candidate.online != current.online {
         return candidate.online ? candidate : current
-    }
-    if candidate.stale != current.stale {
-        return candidate.stale ? current : candidate
     }
     return candidate
 }
@@ -1217,11 +1217,11 @@ private struct RecorderBuilder {
         guard let recorder else {
             return .notObserved
         }
-        if recorder.online {
-            return .online
-        }
         if recorder.stale {
             return .stale
+        }
+        if recorder.online {
+            return .online
         }
         return .offline
     }

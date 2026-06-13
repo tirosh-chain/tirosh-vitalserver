@@ -1150,6 +1150,29 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.beds.first?.status, RuntimeVitalBedStatus.offline)
     }
 
+    func testVitalRecorderHistoryTreatsExplicitStaleRecorderAsStaleEvenWhenOnlineFlagRemainsSet() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:12:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_STALE",
+                    ip: "192.168.64.20",
+                    lastSeenAt: "2026-05-26T00:00:00Z",
+                    online: true,
+                    stale: true
+                ),
+            ]
+        )
+
+        let history = RuntimeVitalRecorderHistory(observations: [observation])
+
+        XCTAssertEqual(history.recorders.map(\.status), [.stale])
+        XCTAssertEqual(history.summary.onlineRecorders, 0)
+        XCTAssertEqual(history.summary.staleRecorders, 1)
+    }
+
     func testVitalRecorderHistoryReportsCollapsedDuplicateSourceObservations() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:02:00Z",

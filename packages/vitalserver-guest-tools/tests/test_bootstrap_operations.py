@@ -138,6 +138,46 @@ def test_sync_clock_uses_explicit_host_time_contract(
     assert commands == [["date", "-u", "-s", "@1781273647"]]
 
 
+def test_sync_host_time_mounts_runtime_share_before_reading_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = bootstrap_context(tmp_path)
+    (context.deploy_dir / "host-time.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "epochSeconds": 1_781_273_647,
+                "updatedAt": "2026-06-13T10:14:07Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+    events: list[str] = []
+    monkeypatch.setattr(
+        bootstrap_operations,
+        "default_bootstrap_context",
+        lambda: context,
+    )
+    monkeypatch.setattr(
+        bootstrap_operations,
+        "mount_runtime_share",
+        lambda: events.append("mount-runtime-share"),
+    )
+    monkeypatch.setattr(
+        bootstrap_operations,
+        "run",
+        lambda command: events.append(" ".join(command)),
+    )
+
+    bootstrap_operations.sync_host_time()
+
+    assert events == [
+        "mount-runtime-share",
+        "date -u -s @1781273647",
+    ]
+
+
 def test_sync_clock_rejects_missing_host_time_contract(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="host time contract is unreadable"):
         bootstrap_operations.sync_clock(bootstrap_context(tmp_path))

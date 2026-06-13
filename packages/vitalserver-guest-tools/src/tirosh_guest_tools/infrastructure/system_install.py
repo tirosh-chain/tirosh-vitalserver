@@ -26,6 +26,7 @@ COMMANDS = [
     RuntimeCommand.RUNTIME_STATE,
     RuntimeCommand.VITALSERVER_HEALTH,
     RuntimeCommand.VITALSERVER_COMPOSE,
+    RuntimeCommand.VITALSERVER_SYNC_HOST_TIME,
     RuntimeCommand.VITALSERVER_BOOTSTRAP,
     RuntimeCommand.VITALSERVER_ROOTFS_SMOKE,
     RuntimeCommand.VITALSERVER_RUNTIME_BOOT_SMOKE,

@@ -40,6 +40,8 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(operations.contains("systemctl(\"start\", RuntimeService.COMMAND_POLLER.value)"))
         XCTAssertTrue(operations.contains("\"tirosh-vitalserver-command-poller\""))
         XCTAssertTrue(operations.contains("\"tirosh-vitalserver-command-poller.service\""))
+        XCTAssertTrue(operations.contains("\"tirosh-vitalserver-sync-host-time\""))
+        XCTAssertTrue(operations.contains("\"tirosh-vitalserver-sync-host-time.service\""))
         let observabilityUnit = try readGuestSupportFile(
             "systemd/tirosh-guest-observability.service"
         )
@@ -273,14 +275,19 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(shutdownUseCase.contains("ObservationPhase.SHUTDOWN_POWEROFF_REQUESTED"))
         XCTAssertTrue(shutdownUseCase.contains("ObservationPhase.SHUTDOWN_FAILURE"))
         let wrapper = try readGuestSupportFile("bin/tirosh-vitalserver-compose")
+        let syncHostTimeWrapper = try readGuestSupportFile("bin/tirosh-vitalserver-sync-host-time")
         let runtimeBootSmokeWrapper = try readGuestSupportFile("bin/tirosh-vitalserver-runtime-boot-smoke")
         let service = try readGuestSupportFile("systemd/tirosh-vitalserver-compose.service")
+        let syncHostTimeService = try readGuestSupportFile("systemd/tirosh-vitalserver-sync-host-time.service")
         let activationService = try readGuestSupportFile("systemd/tirosh-vitalserver-activate-update.service")
         let testkitService = try readGuestSupportFile("systemd/tirosh-vitalserver-testkit.service")
         XCTAssertTrue(wrapper.contains("exec /opt/tirosh/guest-tools/venv/bin/"))
+        XCTAssertTrue(syncHostTimeWrapper.contains("tirosh-vitalserver-sync-host-time"))
         XCTAssertTrue(runtimeBootSmokeWrapper.contains("tirosh-vitalserver-runtime-boot-smoke"))
         XCTAssertTrue(service.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-compose up"))
-        XCTAssertTrue(service.contains("TimeoutStopSec=45"))
+        XCTAssertTrue(service.contains("TimeoutStopSec=150"))
+        XCTAssertTrue(syncHostTimeService.contains("Before=docker.service"))
+        XCTAssertTrue(syncHostTimeService.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-sync-host-time"))
         XCTAssertTrue(
             activationService.contains(
                 "Conflicts=tirosh-vitalserver-compose.service tirosh-vitalserver-testkit.service"

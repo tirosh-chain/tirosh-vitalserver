@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { PropsWithChildren, ReactElement } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_APP_SETTINGS } from "@/config/appSettings";
 import { AppSettingsProvider } from "@/config/AppSettingsContext";
@@ -12,6 +12,8 @@ const hooks = vi.hoisted(() => ({
   useCreateRuntimeDataBackup: vi.fn(),
   useCreateTestKitBeds: vi.fn(),
   useDeleteHostBackup: vi.fn(),
+  useDeleteRuntimeDataBackup: vi.fn(),
+  useDeleteUpdateBackup: vi.fn(),
   useDeleteTestKitBeds: vi.fn(),
   useDeleteTestKitOrphanVRecorder: vi.fn(),
   useExportHostLogs: vi.fn(),
@@ -122,6 +124,10 @@ beforeEach(() => {
   vi.restoreAllMocks();
   vi.spyOn(globalThis, "confirm").mockReturnValue(true);
   setupDefaultHooks();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("runtime console pages", () => {
@@ -324,12 +330,15 @@ describe("runtime console pages", () => {
   });
 
   it("renders recorder lists, filters history, and selects recorder details", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-31T01:00:30Z"));
+
     renderPage(<RecordersPage />);
 
     expect(screen.getByText("Known recorders")).toBeInTheDocument();
     expect(screen.getAllByText("VR_A").length).toBeGreaterThan(0);
     expect(screen.getByRole("img", { name: /Packet activity/ })).toBeInTheDocument();
-    expect(screen.getByText("34 B/s")).toBeInTheDocument();
+    expect(screen.getByText("0 B/s")).toBeInTheDocument();
     expect(screen.getByText("Room entries")).toBeInTheDocument();
     expect(screen.getAllByText("Recorder anomalies").length).toBeGreaterThan(0);
     expect(screen.getByText("Data updated")).toBeInTheDocument();
@@ -737,20 +746,24 @@ describe("runtime console pages", () => {
   });
 
   it("renders advanced recovery controls and dispatches selected actions", () => {
+    const applySettings = pendingMutation();
     const rollback = pendingMutation();
-    const deleteHostBackup = pendingMutation();
     const createRedisBackup = pendingMutation();
     const createRuntimeDataBackup = pendingMutation();
     const restoreRuntimeDataBackup = pendingMutation();
+    const start = pendingMutation();
+    const stop = pendingMutation();
     const repairRuntime = pendingMutation();
     const repairDatastore = pendingMutation();
     const repairVMDisk = pendingMutation();
     const repairProxy = pendingMutation();
+    hooks.useApplyRuntimeSettings.mockReturnValue(applySettings);
     hooks.useRollbackBackup.mockReturnValue(rollback);
-    hooks.useDeleteHostBackup.mockReturnValue(deleteHostBackup);
     hooks.useCreateRedisBackup.mockReturnValue(createRedisBackup);
     hooks.useCreateRuntimeDataBackup.mockReturnValue(createRuntimeDataBackup);
     hooks.useRestoreRuntimeDataBackup.mockReturnValue(restoreRuntimeDataBackup);
+    hooks.useStartRuntimeServices.mockReturnValue(start);
+    hooks.useStopRuntimeServices.mockReturnValue(stop);
     hooks.useRepairRuntime.mockReturnValue(repairRuntime);
     hooks.useRepairDatastore.mockReturnValue(repairDatastore);
     hooks.useRepairVMDisk.mockReturnValue(repairVMDisk);
@@ -758,13 +771,31 @@ describe("runtime console pages", () => {
 
     renderPage(<AdvancedPage />);
 
+    expect(screen.getByText("VM health")).toBeInTheDocument();
+    expect(screen.getByText("Advanced network")).toBeInTheDocument();
+    expect(screen.getByText("Admin operations")).toBeInTheDocument();
+    expect(screen.getByText("Sleep prevention service")).toBeInTheDocument();
+    expect(screen.getByText("VitalDB Observer")).toBeInTheDocument();
+    expect(screen.getByText("Redis UI")).toBeInTheDocument();
+    expect(screen.getByText("Swagger UI")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("VitalServer URL"), {
+      target: { value: "http://127.0.0.1:18080/" }
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Apply Settings" })[0]);
+    fireEvent.click(screen.getByLabelText("Reset admin password"));
+    fireEvent.change(screen.getByLabelText("New admin password"), {
+      target: { value: "new-admin-password" }
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Apply Settings" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Start Runtime Services" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop Runtime Services" }));
     fireEvent.click(screen.getByRole("row", { name: /backup-a/ }));
     fireEvent.click(screen.getByRole("button", { name: "Rollback" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete Backup" }));
-    fireEvent.click(screen.getByRole("button", { name: "Create Redis Backup" }));
-    fireEvent.click(screen.getByRole("button", { name: "Create Runtime Data Backup" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create Redis-only Backup" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create Backup" }));
     fireEvent.click(screen.getByRole("row", { name: /runtime-data-a/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Restore Runtime Data Backup" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restore Backup" }));
     fireEvent.click(screen.getByRole("button", { name: "Repair Runtime" }));
     fireEvent.click(screen.getByRole("button", { name: "Repair Data Store" }));
     fireEvent.click(screen.getByRole("button", { name: "Repair VM Disk" }));
@@ -773,8 +804,21 @@ describe("runtime console pages", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Repair Proxy" }));
 
+    expect(applySettings.mutate).toHaveBeenNthCalledWith(1, {
+      settings: expect.objectContaining({
+        vitalServerURL: "http://127.0.0.1:18080/",
+        remoteConsoleURL: "http://console.example.test/"
+      })
+    });
+    expect(applySettings.mutate).toHaveBeenNthCalledWith(2, {
+      settings: expect.objectContaining({
+        changeAdminPassword: true,
+        adminPassword: "new-admin-password"
+      })
+    });
+    expect(start.mutate).toHaveBeenCalled();
+    expect(stop.mutate).toHaveBeenCalled();
     expect(rollback.mutate).toHaveBeenCalledWith("/tmp/backup-a");
-    expect(deleteHostBackup.mutate).toHaveBeenCalledWith("/tmp/backup-a");
     expect(createRedisBackup.mutate).toHaveBeenCalledWith("");
     expect(createRuntimeDataBackup.mutate).toHaveBeenCalledWith("");
     expect(restoreRuntimeDataBackup.mutate).toHaveBeenCalledWith("/tmp/runtime-data-a");
@@ -784,32 +828,30 @@ describe("runtime console pages", () => {
     expect(repairProxy.mutate).toHaveBeenCalledWith(18444);
   });
 
-  it("controls runtime services and gated uninstall flow", () => {
-    const start = pendingMutation();
-    const stop = pendingMutation();
+  it("deletes explicit backup types and keeps gated uninstall flow in danger zone", () => {
+    const deleteUpdateBackup = pendingMutation();
+    const deleteRuntimeDataBackup = pendingMutation();
     const uninstall = pendingMutation();
-    hooks.useStartRuntimeServices.mockReturnValue(start);
-    hooks.useStopRuntimeServices.mockReturnValue(stop);
+    hooks.useDeleteUpdateBackup.mockReturnValue(deleteUpdateBackup);
+    hooks.useDeleteRuntimeDataBackup.mockReturnValue(deleteRuntimeDataBackup);
     hooks.useUninstallRuntime.mockReturnValue(uninstall);
 
     renderPage(<DangerZonePage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Start Runtime" }));
-    fireEvent.click(screen.getByRole("button", { name: "Stop Runtime" }));
-    fireEvent.change(screen.getByLabelText("Confirmation"), {
-      target: { value: "UNINSTALL" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Uninstall" }));
-    fireEvent.click(screen.getByLabelText("Clean uninstall"));
+    fireEvent.click(screen.getByRole("row", { name: /backup-a/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Update Backup" }));
+    fireEvent.click(screen.getByRole("row", { name: /runtime-data-a/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete VitalServer Backup" }));
     fireEvent.change(screen.getByLabelText("Confirmation"), {
       target: { value: "CLEAN UNINSTALL" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Clean Uninstall" }));
 
-    expect(start.mutate).toHaveBeenCalled();
-    expect(stop.mutate).toHaveBeenCalled();
-    expect(uninstall.mutate).toHaveBeenNthCalledWith(1, false);
-    expect(uninstall.mutate).toHaveBeenNthCalledWith(2, true);
+    expect(deleteUpdateBackup.mutate).toHaveBeenCalledWith("/tmp/backup-a");
+    expect(deleteRuntimeDataBackup.mutate).toHaveBeenCalledWith("/tmp/runtime-data-a");
+    expect(screen.getByText("Standard uninstall is temporarily unavailable.")).toBeInTheDocument();
+    expect(uninstall.mutate).toHaveBeenCalledOnce();
+    expect(uninstall.mutate).toHaveBeenCalledWith(true);
   });
 
   it("manages TestKit beds, sessions, and orphan cleanup", () => {
@@ -917,6 +959,8 @@ function setupDefaultHooks() {
     hooks.useCreateRuntimeDataBackup,
     hooks.useCreateTestKitBeds,
     hooks.useDeleteHostBackup,
+    hooks.useDeleteRuntimeDataBackup,
+    hooks.useDeleteUpdateBackup,
     hooks.useDeleteTestKitBeds,
     hooks.useDeleteTestKitOrphanVRecorder,
     hooks.useExportHostLogs,
@@ -1006,6 +1050,9 @@ function overview() {
       proxyServiceLoaded: true,
       watchdogServiceLoaded: true,
       guestLogSyncServiceLoaded: true,
+      sleepPreventionServiceLoaded: true,
+      redisUIHTTP: "HTTP 200",
+      swaggerUIHTTP: "HTTP 200",
       cpuUsagePercent: 12,
       dataDirectoryStats: { fileCount: 2, sizeBytes: 4096 },
       memory: { usedBytes: 2048, totalBytes: 4096 },
@@ -1022,7 +1069,17 @@ function overview() {
         containerLogsBytes: null,
         containerLogsUpdatedAt: null,
         containerLogsMetadataError: null,
-        composeServices: [],
+        composeServices: [
+          {
+            service: "vitaldb-observer",
+            name: "vitaldb-observer-1",
+            state: "running",
+            health: "healthy",
+            exitCode: null,
+            startedAt: "2026-05-31T00:00:00Z",
+            uptimeSeconds: 3600
+          }
+        ],
         composeServicesReadError: null
       },
       failureReasons: []

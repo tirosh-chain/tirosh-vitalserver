@@ -380,8 +380,31 @@ export interface paths {
         get: operations["listHostBackups"];
         put?: never;
         post?: never;
-        /** Delete selected local backup */
+        /**
+         * Delete selected local backup
+         * @description Compatibility deletion endpoint. Browser clients should prefer Delete Update Backup or Delete VitalServer Backup endpoints so the target backup type stays explicit.
+         */
         delete: operations["deleteHostBackup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/host/backups/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete selected update backup
+         * @description Deletes a managed update/rollback backup. This does not delete VitalServer backups or current runtime data.
+         */
+        delete: operations["deleteUpdateBackup"];
         options?: never;
         head?: never;
         patch?: never;
@@ -432,7 +455,11 @@ export interface paths {
         get: operations["listRuntimeDataBackups"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete selected VitalServer backup
+         * @description Deletes a selected VitalServer backup. This does not delete update rollback backups or current runtime data.
+         */
+        delete: operations["deleteRuntimeDataBackup"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2097,6 +2124,23 @@ export interface operations {
             501: components["responses"]["NotImplemented"];
         };
     };
+    deleteUpdateBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeBackupRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["CommandResult"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
     listRedisBackups: {
         parameters: {
             query?: never;
@@ -2154,6 +2198,23 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    deleteRuntimeDataBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeBackupRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["CommandResult"];
+            501: components["responses"]["NotImplemented"];
         };
     };
     restoreRuntimeDataBackup: {

@@ -70,6 +70,33 @@ describe("recorder activity", () => {
     expect(buckets.map((bucket) => bucket.synthetic)).toEqual([true, false]);
   });
 
+  it("uses explicit current time as the rolling window end", () => {
+    const buckets = buildRecorderActivityBuckets(
+      [
+        activityPoint({
+          observedAt: "2026-05-28T00:00:00Z",
+          messageCount: 2,
+          byteCount: 200,
+          roomCount: 1
+        })
+      ],
+      {
+        bucketSeconds: 60,
+        rangeSeconds: 5 * 60,
+        currentTimeMs: Date.parse("2026-05-28T00:03:10Z")
+      }
+    );
+
+    expect(buckets.map((bucket) => bucket.startMs)).toEqual([
+      Date.parse("2026-05-28T00:00:00Z"),
+      Date.parse("2026-05-28T00:01:00Z"),
+      Date.parse("2026-05-28T00:02:00Z"),
+      Date.parse("2026-05-28T00:03:00Z")
+    ]);
+    expect(buckets.map((bucket) => bucket.messageCount)).toEqual([2, 0, 0, 0]);
+    expect(buckets.at(-1)?.synthetic).toBe(true);
+  });
+
   it("starts from earliest sample when requested range is larger than available data", () => {
     const buckets = buildRecorderActivityBuckets(
       [

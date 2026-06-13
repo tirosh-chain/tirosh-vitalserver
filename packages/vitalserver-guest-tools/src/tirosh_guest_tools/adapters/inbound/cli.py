@@ -67,6 +67,7 @@ from tirosh_guest_tools.domain.operations import (
 from tirosh_guest_tools.infrastructure.bootstrap_operations import (
     default_bootstrap_context,
     default_bootstrap_operations,
+    sync_host_time,
 )
 from tirosh_guest_tools.infrastructure.logging import configure_logging
 from tirosh_guest_tools.infrastructure.settings import SETTINGS
@@ -187,6 +188,15 @@ def vitalserver_compose() -> int:
     args = parser.parse_args()
     configure_logging(SETTINGS.logging)
     run_compose_action(args.action)
+    return 0
+
+
+def vitalserver_sync_host_time() -> int:
+    parser = argparse.ArgumentParser(
+        description="Synchronize guest clock from the explicit host time contract."
+    )
+    parser.parse_args()
+    sync_host_time()
     return 0
 
 

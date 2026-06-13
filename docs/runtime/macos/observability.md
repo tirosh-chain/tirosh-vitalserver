@@ -280,6 +280,11 @@ Runtime Control API
 | Anomaly | derived | stale recorder, duplicate IP, backend unavailable | observation snapshot |
 | Diagnostics | collector process | collection count/duration/failure | stdout JSONL |
 
+Recorder `online` and `stale` are explicit observer states. Consumers must not infer recorder state
+from activity graphs, anomaly text, last-seen age, or audit proxy connection counts. If a recorder is
+reported as both `online` and `stale`, the read model presents it as `stale` because stale means the
+last known online state is no longer current enough for operator trust.
+
 ### Runtime/watchdog 수집 정보
 
 | 범주 | Source | 수집 정보 | Health 반영 |

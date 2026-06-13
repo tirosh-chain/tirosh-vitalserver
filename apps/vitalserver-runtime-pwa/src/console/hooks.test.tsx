@@ -12,6 +12,8 @@ import {
   useCreateRuntimeDataBackup,
   useCreateTestKitBeds,
   useDeleteHostBackup,
+  useDeleteRuntimeDataBackup,
+  useDeleteUpdateBackup,
   useDeleteTestKitBeds,
   useDeleteTestKitOrphanVRecorder,
   useExportHostLogs,
@@ -119,6 +121,8 @@ describe("console hooks", () => {
 
     await mutateHook(() => useRollbackBackup(), "/tmp/backup", wrapper);
     await mutateHook(() => useDeleteHostBackup(), "/tmp/backup", wrapper);
+    await mutateHook(() => useDeleteUpdateBackup(), "/tmp/update-backup", wrapper);
+    await mutateHook(() => useDeleteRuntimeDataBackup(), "/tmp/runtime-data", wrapper);
     await mutateHook(() => useCreateRedisBackup(), "", wrapper);
     await mutateHook(() => useCreateRuntimeDataBackup(), "", wrapper);
     await mutateHook(() => useRestoreRuntimeDataBackup(), "/tmp/runtime-data", wrapper);
@@ -127,6 +131,12 @@ describe("console hooks", () => {
     });
     expect(gateway.deleteHostBackup).toHaveBeenCalledWith({
       backup: { kind: "localPath", value: "/tmp/backup" }
+    });
+    expect(gateway.deleteUpdateBackup).toHaveBeenCalledWith({
+      backup: { kind: "localPath", value: "/tmp/update-backup" }
+    });
+    expect(gateway.deleteRuntimeDataBackup).toHaveBeenCalledWith({
+      backup: { kind: "localPath", value: "/tmp/runtime-data" }
     });
     expect(gateway.createRedisBackup).toHaveBeenCalled();
     expect(gateway.createRuntimeDataBackup).toHaveBeenCalled();
@@ -251,6 +261,8 @@ function createGateway(): GatewayMock {
     createRuntimeDataBackup: vi.fn().mockResolvedValue(commandResult),
     createTestKitBeds: vi.fn().mockResolvedValue([]),
     deleteHostBackup: vi.fn().mockResolvedValue(commandResult),
+    deleteRuntimeDataBackup: vi.fn().mockResolvedValue(commandResult),
+    deleteUpdateBackup: vi.fn().mockResolvedValue(commandResult),
     deleteTestKitBeds: vi.fn().mockResolvedValue([]),
     deleteTestKitOrphanVRecorder: vi.fn().mockResolvedValue({ deleted: true }),
     deleteTestKitVirtualRecorders: vi.fn().mockResolvedValue(testKitSession()),

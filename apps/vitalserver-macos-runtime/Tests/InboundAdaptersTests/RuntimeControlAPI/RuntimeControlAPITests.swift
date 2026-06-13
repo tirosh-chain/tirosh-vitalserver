@@ -949,6 +949,16 @@ final class RuntimeControlAPITests: XCTestCase {
             path: "/host/backups",
             body: try JSONEncoder().encode(backupRequest)
         )))
+        let deleteUpdateBackup = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
+            method: .delete,
+            path: "/host/backups/update",
+            body: try JSONEncoder().encode(backupRequest)
+        )))
+        let deleteRuntimeDataBackup = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
+            method: .delete,
+            path: "/host/backups/runtime-data",
+            body: try JSONEncoder().encode(backupRequest)
+        )))
         let export = try await decode(RuntimeLogExportResult.self, from: router.route(.init(
             method: .post,
             path: "/host/logs/export",
@@ -960,6 +970,8 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(apply.result.stdout, "apply /bundles/update.tar.gz")
         XCTAssertEqual(rollback.result.stdout, "rollback /backups/latest")
         XCTAssertEqual(deleteBackup.result.stdout, "delete /backups/latest")
+        XCTAssertEqual(deleteUpdateBackup.result.stdout, "delete /backups/latest")
+        XCTAssertEqual(deleteRuntimeDataBackup.result.stdout, "delete /backups/latest")
         XCTAssertEqual(export.destination.path, "/tmp/vitalserver-logs.zip")
     }
 

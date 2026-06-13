@@ -42,5 +42,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case applyUpdateBundle
     case rollbackBackup
     case deleteBackup
+    case deleteUpdateBackup
+    case deleteRuntimeDataBackup
     case exportLogs
 }

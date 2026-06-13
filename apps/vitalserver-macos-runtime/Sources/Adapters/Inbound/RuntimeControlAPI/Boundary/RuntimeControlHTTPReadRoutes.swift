@@ -105,6 +105,8 @@ struct RuntimeControlHTTPReadRoutes {
              .applyUpdateBundle,
              .rollbackBackup,
              .deleteBackup,
+             .deleteUpdateBackup,
+             .deleteRuntimeDataBackup,
              .exportLogs,
              .uninstall,
              .restoreRedisBackup,

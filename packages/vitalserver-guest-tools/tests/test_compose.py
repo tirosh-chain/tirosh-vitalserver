@@ -29,7 +29,7 @@ def test_stop_compose_action_uses_bounded_command_timeout(monkeypatch: Any) -> N
 
     compose.run_compose_action(ComposeAction.STOP)
 
-    assert events == ["compose:stop --timeout 20:timeout=30", "sync"]
+    assert events == ["compose:stop --timeout 120:timeout=130", "sync"]
 
 
 def test_stop_compose_action_reports_timeout_as_dependency_failure(
@@ -48,4 +48,4 @@ def test_stop_compose_action_reports_timeout_as_dependency_failure(
         compose.run_compose_action(ComposeAction.STOP)
 
     assert error.value.code == "compose-stop-timeout"
-    assert "docker compose stop timed out after 30s" in error.value.message
+    assert "docker compose stop timed out after 130s" in error.value.message

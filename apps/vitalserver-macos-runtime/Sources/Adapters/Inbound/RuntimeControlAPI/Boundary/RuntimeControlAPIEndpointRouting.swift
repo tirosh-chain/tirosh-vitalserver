@@ -83,6 +83,10 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .post, path: "/host/backups/rollback", scope: .hostAffordance)
         case .deleteBackup:
             return .init(method: .delete, path: "/host/backups", scope: .hostAffordance)
+        case .deleteUpdateBackup:
+            return .init(method: .delete, path: "/host/backups/update", scope: .hostAffordance)
+        case .deleteRuntimeDataBackup:
+            return .init(method: .delete, path: "/host/backups/runtime-data", scope: .hostAffordance)
         case .exportLogs:
             return .init(method: .post, path: "/host/logs/export", scope: .hostAffordance)
         }

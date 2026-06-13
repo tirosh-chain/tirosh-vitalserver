@@ -43,6 +43,8 @@ public extension RuntimeControlAPIEndpoint {
              .applyUpdateBundle,
              .rollbackBackup,
              .deleteBackup,
+             .deleteUpdateBackup,
+             .deleteRuntimeDataBackup,
              .exportLogs:
             return .unsupported
         }
@@ -93,7 +95,9 @@ public extension RuntimeControlAPIEndpoint {
              .verifyUpdateBundle,
              .applyUpdateBundle,
              .rollbackBackup,
-             .deleteBackup:
+             .deleteBackup,
+             .deleteUpdateBackup,
+             .deleteRuntimeDataBackup:
             return .localServerMediated
         }
     }

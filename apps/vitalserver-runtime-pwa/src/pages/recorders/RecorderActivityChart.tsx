@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { VitalDBRecorderRecord } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
@@ -47,17 +47,24 @@ export function RecorderActivityChart({
   const [allSamplesPageStepHours, setAllSamplesPageStepHours] = useState(
     defaultAllSamplesPageStepHours
   );
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const activityTimeline = recorder.activityTimeline;
   const allSamplesMode = rangeSeconds === null;
   const allSamplesPageStepSeconds = allSamplesPageStepHours * 60 * 60;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const activityRead = useMemo(
     () =>
       readRecorderActivityBuckets(activityTimeline, {
         bucketSeconds,
-        rangeSeconds
+        rangeSeconds,
+        currentTimeMs: allSamplesMode ? undefined : nowMs
       }),
-    [activityTimeline, bucketSeconds, rangeSeconds]
+    [activityTimeline, allSamplesMode, bucketSeconds, nowMs, rangeSeconds]
   );
   const pagedActivity = useMemo(
     () => allSamplesMode
@@ -84,7 +91,6 @@ export function RecorderActivityChart({
     ...buckets.map((bucket) => bucket.messageCount)
   );
   const latestBucket =
-    [...buckets].reverse().find((bucket) => bucket.messageCount > 0) ??
     buckets.at(-1);
   const totalPackets = buckets.reduce(
     (total, bucket) => total + bucket.messageCount,

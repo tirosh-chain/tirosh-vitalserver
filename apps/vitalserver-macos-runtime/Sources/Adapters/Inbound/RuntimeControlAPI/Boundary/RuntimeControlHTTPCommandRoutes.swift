@@ -52,7 +52,9 @@ struct RuntimeControlHTTPCommandRoutes {
         case .restoreRuntimeDataBackup:
             let backupRequest = try request.decodedBody(RuntimeBackupRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.restoreRuntimeDataBackup(backupRequest.backup))
-        case .deleteBackup:
+        case .deleteBackup,
+             .deleteUpdateBackup,
+             .deleteRuntimeDataBackup:
             let backupRequest = try request.decodedBody(RuntimeBackupRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.deleteBackup(backupRequest.backup))
         case .exportLogs:
