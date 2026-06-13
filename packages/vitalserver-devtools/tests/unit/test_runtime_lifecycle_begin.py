@@ -9,6 +9,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release import runtime_lifecycle
 from tirosh_vitalserver.devtools.application.inputs import (
     GoldenRootfsPreflightInput,
     RootfsRunInput,
+    RuntimeVmHomeInput,
 )
 
 
@@ -116,6 +117,50 @@ def test_begin_golden_rootfs_run_requires_initialized_vm_config(
         )
     assert prepared is False
     assert stale_ready.read_text(encoding="utf-8") == "stale"
+
+
+def test_prepare_runtime_data_disk_records_vm_config_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_build_config(tmp_path / "config/vm-build.toml")
+    vm_home = tmp_path / "vm"
+    vm_config = vm_home / "runtime/vm-config.json"
+    vm_config.parent.mkdir(parents=True)
+    vm_config.write_text(
+        json.dumps({"kernelPath": "/runtime/Image"}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(runtime_lifecycle, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "prepare_ephemeral_runtime_data_disk",
+        lambda plan: {
+            "path": str(plan.disk_image),
+            "diskImageName": plan.disk_image_name,
+            "diskSize": plan.disk_size,
+            "filesystemLabel": plan.filesystem_label,
+            "mountPath": plan.mount_path,
+            "dockerDataRoot": plan.docker_data_root,
+            "containerdRoot": plan.containerd_root,
+            "removedStaleDisk": True,
+        },
+    )
+
+    result = runtime_lifecycle.prepare_runtime_data_disk(
+        RuntimeVmHomeInput(
+            config=Path("config/vm-build.toml"),
+            vm_home=Path("vm"),
+        )
+    )
+
+    assert result == 0
+    updated_vm_config = json.loads(vm_config.read_text(encoding="utf-8"))
+    assert updated_vm_config["runtimeDataDiskPath"] == str(
+        vm_home / "runtime/runtime-data.img"
+    )
+    assert not (vm_home / "run/golden-rootfs-run.json").exists()
 
 
 def test_golden_rootfs_preflight_rejects_unavailable_apt_snapshot(

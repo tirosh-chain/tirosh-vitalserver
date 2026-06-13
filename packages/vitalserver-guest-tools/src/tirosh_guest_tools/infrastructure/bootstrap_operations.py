@@ -105,8 +105,8 @@ def missing_deploy_bundle_files(context: GuestBootstrapContext) -> list[Path]:
 
 def expand_root_filesystem() -> None:
     root_source = command_text(["findmnt", "-n", "-o", "SOURCE", "/"])
-    parent_device = command_text(["lsblk", "-no", "PKNAME", root_source])
-    partition_number = command_text(["lsblk", "-no", "PARTNUM", root_source])
+    parent_device = optional_command_text(["lsblk", "-no", "PKNAME", root_source])
+    partition_number = optional_command_text(["lsblk", "-no", "PARTNUM", root_source])
     filesystem_type = command_text(["findmnt", "-n", "-o", "FSTYPE", "/"])
     if not partition_number:
         partition_number = partition_number_from_source(root_source)
@@ -427,6 +427,16 @@ def command_text(arguments: list[str]) -> str:
     if not output:
         raise RuntimeError("command returned no output: " + " ".join(arguments))
     return output[0].strip()
+
+
+def optional_command_text(arguments: list[str]) -> str:
+    output = subprocess.run(
+        arguments,
+        check=False,
+        capture_output=True,
+        text=True,
+    ).stdout.strip().splitlines()
+    return output[0].strip() if output else ""
 
 
 def run(

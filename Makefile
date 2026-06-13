@@ -44,7 +44,9 @@ include make/vm.mk
 .PHONY: \
 	dist/dmg/release dist/pkg/release dist/update/release \
 	dist/update/verify/release dist/image-update/release \
-	dist/image-update/verify/release dist/dmg/dev dist/dmg/dev/compile dist/pkg/dev dist/pkg/dev/compile \
+	dist/image-update/verify/release dist/dmg/dev dist/dmg/dev/compile dist/dmg/dev/runtime-smoke dist/dmg/dev/verify \
+	dist/pkg/dev dist/pkg/dev/compile dist/pkg/dev/runtime-smoke dist/pkg/dev/verify \
+	dist/dmg/release/verify dist/pkg/release/verify \
 	dist/update/dev dist/update/verify/dev \
 	dist/image-update/dev dist/image-update/verify/dev \
 	dist/reset-installer/dev dist/reset-installer/release \
@@ -69,8 +71,14 @@ dist/image-update/release: internal/vm/image-update/release
 dist/image-update/verify/release: internal/vm/image-update/verify/release
 dist/dmg/dev: internal/vm/dmg/dev
 dist/dmg/dev/compile: internal/vm/dmg/dev/compile
+dist/dmg/dev/runtime-smoke: internal/vm/dmg/dev/runtime-smoke
+dist/dmg/dev/verify: internal/vm/dmg/dev/verify
 dist/pkg/dev: internal/vm/pkg/dev
 dist/pkg/dev/compile: internal/vm/pkg/dev/compile
+dist/pkg/dev/runtime-smoke: internal/vm/pkg/dev/runtime-smoke
+dist/pkg/dev/verify: internal/vm/pkg/dev/verify
+dist/dmg/release/verify: internal/vm/dmg/release/verify
+dist/pkg/release/verify: internal/vm/pkg/release/verify
 dist/update/dev: internal/vm/update/dev
 dist/update/verify/dev: internal/vm/update/verify/dev
 dist/image-update/dev: internal/vm/image-update/dev
@@ -232,6 +240,8 @@ help/dist:
 	@printf "SYNOPSIS\n"
 	@printf "  make dist/{pkg|dmg|update|image-update}/{dev|release} [VM_RELEASE_BRANCH=main]\n"
 	@printf "  make dist/{pkg|dmg}/dev/compile\n"
+	@printf "  make dist/{pkg|dmg}/dev/{runtime-smoke|verify}\n"
+	@printf "  make dist/{pkg|dmg}/release/verify\n"
 	@printf "  make dist/reset-installer/{dev|release}\n"
 	@printf "  make dist/{update|image-update}/verify/{dev|release}\n"
 	@printf "  make dist/{install|uninstall}/dev [VM_UNINSTALL_ARGS=--clean]\n"
@@ -240,10 +250,16 @@ help/dist:
 	@printf "ARTIFACT TARGETS\n"
 	@printf "  dist/pkg/dev                  Build development pkg\n"
 	@printf "  dist/pkg/dev/compile          Build development pkg and recompile the VM golden rootfs\n"
+	@printf "  dist/pkg/dev/runtime-smoke    Validate golden runtime boot contract for dev pkg\n"
+	@printf "  dist/pkg/dev/verify           Build dev pkg from clean rootfs and run runtime smoke\n"
 	@printf "  dist/pkg/release              Build release pkg from clean golden rootfs\n"
+	@printf "  dist/pkg/release/verify       Build release pkg and run runtime smoke\n"
 	@printf "  dist/dmg/dev                  Build development installer dmg\n"
 	@printf "  dist/dmg/dev/compile          Build development dmg and recompile the VM golden rootfs\n"
+	@printf "  dist/dmg/dev/runtime-smoke    Validate golden runtime boot contract for dev dmg\n"
+	@printf "  dist/dmg/dev/verify           Build dev dmg from clean rootfs and run runtime smoke\n"
 	@printf "  dist/dmg/release              Build release installer dmg from clean golden rootfs\n"
+	@printf "  dist/dmg/release/verify       Build release dmg and run runtime smoke\n"
 	@printf "  dist/update/dev               Build development product update bundle\n"
 	@printf "  dist/update/release           Build release product update bundle\n"
 	@printf "  dist/image-update/dev         Build development VM image/rootfs update bundle\n"

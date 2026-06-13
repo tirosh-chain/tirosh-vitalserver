@@ -424,6 +424,20 @@ def main() -> int:
         ),
     )
 
+    runtime_data_disk = subparsers.add_parser(
+        "macos-runtime-prepare-runtime-data-disk",
+        help="prepare an ephemeral runtime data disk and record it in VM config",
+    )
+    runtime_data_disk.add_argument("--vm-home", type=Path, required=True)
+    runtime_data_disk.set_defaults(
+        handler=lambda args: macos_runtime_usecases.prepare_runtime_data(
+            usecase_inputs.RuntimeVmHomeInput(
+                config=args.config,
+                vm_home=args.vm_home,
+            )
+        ),
+    )
+
     runtime_ip = subparsers.add_parser(
         "macos-runtime-ip",
         help="print the guest VM IP recorded by the runtime",

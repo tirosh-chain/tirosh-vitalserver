@@ -1,8 +1,8 @@
 .PHONY: internal/vm/nginx/artifact internal/vm/nginx/bundle internal/vm/docker/images
 .PHONY: internal/vm/require-release-branch
-.PHONY: internal/vm/pkg internal/vm/pkg/dev internal/vm/pkg/dev/compile internal/vm/pkg/release
+.PHONY: internal/vm/pkg internal/vm/pkg/dev internal/vm/pkg/dev/compile internal/vm/pkg/dev/runtime-smoke internal/vm/pkg/dev/verify internal/vm/pkg/release internal/vm/pkg/release/verify
 .PHONY: internal/vm/reset-installer internal/vm/reset-installer/dev internal/vm/reset-installer/release
-.PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/dev internal/vm/dmg/dev/compile internal/vm/dmg/release
+.PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/dev internal/vm/dmg/dev/compile internal/vm/dmg/dev/runtime-smoke internal/vm/dmg/dev/verify internal/vm/dmg/release internal/vm/dmg/release/verify
 .PHONY: internal/vm/pkg/clean internal/vm/pkg/install internal/vm/pkg/uninstall/dev
 .PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release
 .PHONY: internal/vm/image-update internal/vm/image-update/dev
@@ -36,7 +36,10 @@ VM_PKG_ROOTFS_CONTRACT_INPUTS := \
 	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/bootstrap.sh \
 	packages/vitalserver-guest-tools/pyproject.toml \
 	packages/vitalserver-guest-tools/src/tirosh_guest_tools/contracts.py \
-	packages/vitalserver-guest-tools/src/tirosh_guest_tools/application/rootfs_smoke.py
+	packages/vitalserver-guest-tools/src/tirosh_guest_tools/application/bootstrap.py \
+	packages/vitalserver-guest-tools/src/tirosh_guest_tools/infrastructure/bootstrap_operations.py \
+	packages/vitalserver-guest-tools/src/tirosh_guest_tools/application/rootfs_smoke.py \
+	packages/vitalserver-guest-tools/src/tirosh_guest_tools/application/runtime_boot_smoke.py
 VM_PKG_ROOTFS_CONTRACT_FINGERPRINT := $(shell cksum $(VM_PKG_ROOTFS_CONTRACT_INPUTS) | cksum | awk '{print $$1 "-" $$2}')
 
 # Internal golden rootfs workspaces.
@@ -223,6 +226,8 @@ internal/vm/golden-rootfs/runtime-smoke: internal/vm/golden-rootfs
 	trap '$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control --vm-home "'"$${runtime_smoke_home}"'" stop >/dev/null 2>&1 || true; $(VM_BUILD_RUNNER) macos-runtime-wait-stopped --vm-home "'"$${runtime_smoke_home}"'" --timeout "$(VM_WAIT_TIMEOUT)" >/dev/null 2>&1 || true; $(VM_BUILD_RUNNER) macos-runtime-require-no-running --vm-home "'"$${runtime_smoke_home}"'" || true' EXIT; \
 	$(MAKE) internal/vm/init \
 		VM_HOME="$${runtime_smoke_home}"; \
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-prepare-runtime-data-disk \
+		--vm-home "$${runtime_smoke_home}"; \
 	mkdir -p "$${runtime_smoke_runtime_dir}"; \
 	cp "$(VM_GOLDEN_RUNTIME_DIR)/Image" "$${runtime_smoke_runtime_dir}/Image"; \
 	cp "$(VM_GOLDEN_RUNTIME_DIR)/initrd.img" "$${runtime_smoke_runtime_dir}/initrd.img"; \
@@ -299,10 +304,21 @@ internal/vm/pkg/dev/compile: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/pkg/dev/compile:
 	$(MAKE) internal/vm/pkg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
 
+internal/vm/pkg/dev/runtime-smoke:
+	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_DEV_RELEASE_FILE)"
+
+internal/vm/pkg/dev/verify:
+	$(MAKE) internal/vm/pkg/dev/compile
+	$(MAKE) internal/vm/pkg/dev/runtime-smoke
+
 internal/vm/pkg/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
 internal/vm/pkg/release:
 	$(MAKE) internal/vm/require-release-branch
 	$(MAKE) internal/vm/pkg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
+
+internal/vm/pkg/release/verify:
+	$(MAKE) internal/vm/pkg/release
+	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_STABLE_RELEASE_FILE)"
 
 internal/vm/dmg: internal/vm/golden-rootfs pwa/build
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-dmg \
@@ -324,10 +340,21 @@ internal/vm/dmg/dev/compile: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/dmg/dev/compile:
 	$(MAKE) internal/vm/dmg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
 
+internal/vm/dmg/dev/runtime-smoke:
+	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_DEV_RELEASE_FILE)"
+
+internal/vm/dmg/dev/verify:
+	$(MAKE) internal/vm/dmg/dev/compile
+	$(MAKE) internal/vm/dmg/dev/runtime-smoke
+
 internal/vm/dmg/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
 internal/vm/dmg/release:
 	$(MAKE) internal/vm/require-release-branch
 	$(MAKE) internal/vm/dmg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
+
+internal/vm/dmg/release/verify:
+	$(MAKE) internal/vm/dmg/release
+	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_STABLE_RELEASE_FILE)"
 
 internal/vm/reset-installer:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-reset-installer-pkg \

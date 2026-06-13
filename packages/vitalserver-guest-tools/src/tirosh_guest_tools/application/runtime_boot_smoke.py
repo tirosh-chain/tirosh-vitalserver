@@ -17,7 +17,9 @@ from tirosh_guest_tools.application.runtime_boot_smoke_manifest import (
     RuntimeBootSmokeRun,
     RuntimeBootSmokeStage,
 )
-from tirosh_guest_tools.application.runtime_data_prepare import read_runtime_data_contract
+from tirosh_guest_tools.application.runtime_data_prepare import (
+    read_runtime_data_contract,
+)
 from tirosh_guest_tools.contracts import (
     ComposeService,
     RootfsSmokeStatus,
@@ -345,16 +347,19 @@ def validate_systemd_units(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any
             )
     if run.context.dev_build:
         active_state = systemd_active_state(run, RuntimeService.TESTKIT.value)
+        result = systemd_result(run, RuntimeService.TESTKIT.value)
         units.append(
             {
                 "service": RuntimeService.TESTKIT.value,
                 "activeState": active_state,
+                "result": result,
                 "requiredForDevBuild": True,
             }
         )
-        if active_state != "active":
+        if result != "success":
             raise RuntimeError(
-                f"testkit service is required for dev build: activeState={active_state}"
+                "testkit service failed for dev build: "
+                f"activeState={active_state} result={result}"
             )
     return "required systemd units are active", {"units": units}
 
@@ -415,14 +420,19 @@ def validate_runtime_data(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]
         timeout_seconds=SYSTEMD_TIMEOUT_SECONDS,
     )
     if docker_root_completed.returncode != 0:
+        reason = (
+            docker_root_completed.stderr.strip()
+            or str(docker_root_completed.returncode)
+        )
         raise RuntimeError(
-            "failed to read Docker root dir: "
-            f"{docker_root_completed.stderr.strip() or docker_root_completed.returncode}"
+            f"failed to read Docker root dir: {reason}"
         )
     try:
         docker_root = json.loads(docker_root_completed.stdout.strip())
     except json.JSONDecodeError as error:
-        raise RuntimeError(f"docker info returned invalid DockerRootDir JSON: {error}") from error
+        raise RuntimeError(
+            f"docker info returned invalid DockerRootDir JSON: {error}"
+        ) from error
     if docker_root != contract.docker_data_root:
         raise RuntimeError(
             "Docker data-root does not match runtime data contract: "
@@ -582,21 +592,29 @@ def validate_feature_readiness(
 
 
 def systemd_active_state(run: RuntimeBootSmokeRun, service: str) -> str:
+    return systemd_property(run, service, "ActiveState")
+
+
+def systemd_result(run: RuntimeBootSmokeRun, service: str) -> str:
+    return systemd_property(run, service, "Result")
+
+
+def systemd_property(run: RuntimeBootSmokeRun, service: str, property_name: str) -> str:
     completed = run.operations.run(
-        ["systemctl", "show", "--property=ActiveState", "--value", service],
+        ["systemctl", "show", f"--property={property_name}", "--value", service],
         check=False,
         capture_output=True,
         timeout_seconds=SYSTEMD_TIMEOUT_SECONDS,
     )
     if completed.returncode != 0:
         raise RuntimeError(
-            f"failed to read systemd unit state: {service}: "
+            f"failed to read systemd unit property: {service}.{property_name}: "
             f"{completed.stderr.strip() or completed.returncode}"
         )
-    active_state = (completed.stdout or "").strip()
-    if not active_state:
-        raise RuntimeError(f"systemd unit state is empty: {service}")
-    return active_state
+    value = (completed.stdout or "").strip()
+    if not value:
+        raise RuntimeError(f"systemd unit property is empty: {service}.{property_name}")
+    return value
 
 
 def runtime_state_document(runtime_state: dict[str, Any]) -> dict[str, Any]:

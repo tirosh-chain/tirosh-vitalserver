@@ -73,7 +73,11 @@ Reset Installer PKG를 전달하고, installer 또는 Helper app UI에서 적용
 |---|---|
 | 설치된 runtime health 확인 | `make dist/installed/health` |
 | dev DMG를 VM compile 포함해 생성 | `make dist/dmg/dev/compile` |
+| dev DMG golden runtime boot 계약 검증 | `make dist/dmg/dev/runtime-smoke` |
+| dev DMG 설치 전 표준 검증 | `make dist/dmg/dev/verify` |
 | dev PKG를 VM compile 포함해 생성 | `make dist/pkg/dev/compile` |
+| dev PKG golden runtime boot 계약 검증 | `make dist/pkg/dev/runtime-smoke` |
+| dev PKG 설치 전 표준 검증 | `make dist/pkg/dev/verify` |
 | golden rootfs만 compile | `make devtools/golden-rootfs/compile` |
 | testkit release wheel 설치 | `make testkit/install-release TESTKIT_VERSION=<version>` |
 
@@ -268,9 +272,13 @@ Watchdog의 guest bootstrap guard는 Host가 소유한 `vm-lifecycle.json`의 wa
 termination으로 guest trap을 실행하지 못하면 bootstrap result가 `running`에 머물 수 있으므로,
 deadline 이후에는 Host lifecycle stale/failure 관측이 recovery 또는 critical 상태로 드러나야 합니다.
 VM build는 제품 compile로 취급합니다. `make dist/dmg/dev/compile`, `make dist/pkg/dev/compile`,
-`make devtools/golden-rootfs/compile`은 golden rootfs와 runtime smoke proof를 새로 요구하며,
-kernel panic, guest boot failure, rootfs proof failure, runtime smoke failure를 우회하지 않습니다.
-실패는 runId, failing stage, failure reason 또는 matched pattern, artifact/log path와 함께 드러나야 합니다.
+`make devtools/golden-rootfs/compile`은 golden rootfs proof를 새로 요구하며, kernel panic,
+guest boot failure, rootfs proof failure를 우회하지 않습니다. 다만 compile passed는 installed
+runtime passed를 뜻하지 않습니다. Guest bootstrap 완료, `runtime-state.json` 생성, systemd/docker/http
+계약은 `make dist/dmg/dev/runtime-smoke` 또는 `make dist/pkg/dev/runtime-smoke`가 소유합니다.
+설치/배포 전 표준 게이트는 `make dist/dmg/dev/verify` 또는 `make dist/pkg/dev/verify`처럼 compile과
+runtime smoke를 묶은 명시 workflow입니다. 실패는 runId, failing stage, failure reason 또는 matched
+pattern, artifact/log path와 함께 드러나야 합니다.
 Guest userspace가 `Illegal instruction`이나 `Segmentation fault`로 죽어 manifest가 `running`에 멈춘
 경우도 timeout이 아니라 compile failure 증거로 분류해야 합니다.
 실패 후에는 graceful stop과 bounded wait를 수행하고, launcher가 남으면 VM_HOME-scoped

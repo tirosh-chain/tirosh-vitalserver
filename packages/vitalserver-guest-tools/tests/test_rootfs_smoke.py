@@ -326,6 +326,33 @@ def test_rootfs_smoke_prunes_docker_state_before_success(tmp_path: Path) -> None
     ]
 
 
+def test_rootfs_smoke_stops_docker_services_before_runtime_data_configure(
+    tmp_path: Path,
+) -> None:
+    context = smoke_context(tmp_path)
+    write_metadata(context.deploy_dir)
+    write_apt_plan(context.apt_plan_path)
+    write_apt_installed(context.apt_installed_path)
+    commands: list[list[str]] = []
+
+    def run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(arguments)
+        return completed(arguments)
+
+    run_rootfs_smoke(
+        context=context,
+        operations=fake_operations(context=context, run=run),
+    )
+
+    stop_index = commands.index(
+        ["systemctl", "stop", "docker.service", "docker.socket", "containerd.service"]
+    )
+    daemon_reload_index = commands.index(["systemctl", "daemon-reload"])
+    docker_start_index = commands.index(["systemctl", "start", "docker"])
+
+    assert stop_index < daemon_reload_index < docker_start_index
+
+
 def test_rootfs_smoke_fails_when_docker_images_remain_after_cleanup(
     tmp_path: Path,
 ) -> None:

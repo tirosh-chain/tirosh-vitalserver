@@ -322,13 +322,25 @@ Implemented command-level negative coverage:
 
 Still separate from this phase:
 
-- Actual VM runtime smoke must be wired into CI/release validation.
+- CI required checks must run an explicit package/runtime validation target before release handoff.
 - Runtime data backup/restore create and restore scenarios remain separate workflow smoke.
 - Redis backup/restore create and restore scenarios remain separate workflow smoke.
 - Settings apply restart/no-restart scenario remains separate workflow smoke.
 - Update activation/shutdown/rollback scenario remains separate workflow smoke.
 - Observability event append/read and export logs archive completeness remain separate
   workflow smoke.
+
+2026-06-13 follow-up added explicit package validation workflows:
+
+- `make dist/dmg/dev/runtime-smoke`
+- `make dist/pkg/dev/runtime-smoke`
+- `make dist/dmg/dev/verify`
+- `make dist/pkg/dev/verify`
+- `make dist/dmg/release/verify`
+- `make dist/pkg/release/verify`
+
+`compile` remains the artifact creation contract. `runtime-smoke` owns golden runtime boot proof.
+`verify` is the installation/release handoff gate that runs both.
 
 ## Operational Notes
 

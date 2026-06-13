@@ -314,6 +314,24 @@ def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
     return 0
 
 
+def prepare_runtime_data_disk(input: RuntimeVmHomeInput) -> int:
+    root = repo_root()
+    config_path = resolve_path(root, input.config)
+    vm_home = resolve_path(root, input.vm_home)
+    require_vm_config(vm_home)
+    runtime_config = load_guest_runtime_config(load_build_toml(config_path))
+    runtime_data = prepare_ephemeral_runtime_data_disk(
+        runtime_data_disk_plan(
+            config_path=config_path,
+            vm_home=vm_home,
+            runtime_config=runtime_config,
+        )
+    )
+    write_vm_config_runtime_data_disk_path(vm_home, str(runtime_data["path"]))
+    print(f"Runtime data disk is ready: {runtime_data['path']}")
+    return 0
+
+
 def preflight_golden_rootfs(input: GoldenRootfsPreflightInput) -> int:
     root = repo_root()
     vm_home = resolve_path(root, input.vm_home)

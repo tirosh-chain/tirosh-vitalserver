@@ -373,6 +373,7 @@ def require_runtime_data_contract(run: RootfsSmokeRun) -> RuntimeDataContract:
 
 def runtime_data_configure(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
     contract = require_runtime_data_contract(run)
+    stop_docker_services(run)
     write_docker_daemon_config(run.context.docker_daemon_config_path, contract)
     write_containerd_config(run, contract)
     run_checked(
@@ -386,6 +387,14 @@ def runtime_data_configure(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
         "dockerDataRoot": contract.docker_data_root,
         "containerdRoot": contract.containerd_root,
     }
+
+
+def stop_docker_services(run: RootfsSmokeRun) -> None:
+    run_checked(
+        run,
+        ["systemctl", "stop", "docker.service", "docker.socket", "containerd.service"],
+        timeout_seconds=DIAGNOSTIC_COMMAND_TIMEOUT_SECONDS,
+    )
 
 
 def write_docker_daemon_config(path: Path, contract: RuntimeDataContract) -> None:

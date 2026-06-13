@@ -7,6 +7,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import
     check_runtime_health,
     control_runtime,
     force_stop_runtime,
+    prepare_runtime_data_disk,
     print_runtime_ip,
     require_bridged_codesign_identity,
     require_no_running_runtime,
@@ -83,6 +84,10 @@ def preflight_golden_rootfs(input: GoldenRootfsPreflightInput) -> int:
 
 def begin_runtime_boot_smoke(input: RuntimeBootSmokeRunInput) -> int:
     return begin_runtime_boot_smoke_run(input)
+
+
+def prepare_runtime_data(input: RuntimeVmHomeInput) -> int:
+    return prepare_runtime_data_disk(input)
 
 
 def print_ip(input: RuntimeVmHomeInput) -> int:

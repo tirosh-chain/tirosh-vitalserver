@@ -64,6 +64,27 @@ Runtime Control PWA는 package/update bundle에 static asset으로 포함됩니�
 빌드 머신에서는 packaging 전에 한 번 `make pwa/install`을 실행해야 하며, 현장 Mac에는 npm/Vite나
 registry 접근이 필요하지 않습니다.
 
+## Build and Runtime Validation Contracts
+
+Packaging workflow 이름은 각 단계가 보장하는 상태를 뜻합니다. `compile`은 artifact 생성 계약이고,
+installed runtime 상태를 추정하지 않습니다. Guest bootstrap 완료와 runtime contract는 별도
+runtime smoke가 소유합니다.
+
+| Target | Contract |
+|---|---|
+| `make dist/dmg/dev/compile` | dev DMG를 clean golden rootfs에서 생성합니다. Rootfs 준비 proof와 package input은 검증하지만 installed runtime success를 뜻하지 않습니다. |
+| `make dist/pkg/dev/compile` | dev PKG를 clean golden rootfs에서 생성합니다. |
+| `make dist/dmg/dev/runtime-smoke` | 현재 golden rootfs/disk로 VM을 부팅하고 guest bootstrap, `bootstrap-result.json`, `runtime-state.json`, systemd/docker/http/command-dispatch contract를 검증합니다. |
+| `make dist/pkg/dev/runtime-smoke` | dev PKG와 같은 golden runtime contract를 검증합니다. |
+| `make dist/dmg/dev/verify` | dev DMG compile 후 runtime smoke를 실행하는 설치 전 표준 gate입니다. |
+| `make dist/pkg/dev/verify` | dev PKG compile 후 runtime smoke를 실행하는 설치 전 표준 gate입니다. |
+| `make dist/dmg/release/verify` | release DMG 생성 후 runtime smoke를 실행합니다. Release branch gate는 release build target이 소유합니다. |
+| `make dist/pkg/release/verify` | release PKG 생성 후 runtime smoke를 실행합니다. |
+
+`compile passed`는 `installed runtime passed`와 다릅니다. 설치 전 검증, 수동 QA 전달, release candidate
+확인에는 `verify` target을 사용합니다. Runtime smoke failure는 fallback으로 보정하지 않고 failing stage,
+runId, manifest, bootstrap log, launcher log를 통해 실패 상태를 드러내야 합니다.
+
 `VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
 `make devtools/build`는 이 값을 Swift `Bootstrap/Composition/GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make devtools/app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`, `make dist/image-update/dev`/`make dist/image-update/release`는 release manifest 값을 artifact name, package version, update bundle version, compatibility metadata에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. 특별한 검증이 아니라면 버전, 표시명, image, update compatibility, optional container service 포함 정책 변경은 이 파일 하나에서 관리합니다.

@@ -35,7 +35,10 @@ def test_runtime_boot_smoke_writes_manifest_for_success(tmp_path: Path) -> None:
     assert stage_status(document, "runtime-state") == "passed"
     assert stage_status(document, "systemd-units") == "passed"
     assert stage_status(document, "runtime-data") == "passed"
-    assert stage_details(document, "runtime-data")["dockerDataRoot"] == "/mnt/runtime/docker"
+    assert (
+        stage_details(document, "runtime-data")["dockerDataRoot"]
+        == "/mnt/runtime/docker"
+    )
     assert stage_status(document, "http") == "passed"
     assert stage_status(document, "compose-services") == "passed"
     assert stage_status(document, "disk-health") == "passed"
@@ -180,18 +183,37 @@ def test_runtime_boot_smoke_rejects_stale_request_file(tmp_path: Path) -> None:
     assert "stale guest command requests exist" in failed_stage_message(document)
 
 
-def test_runtime_boot_smoke_requires_dev_testkit_service(tmp_path: Path) -> None:
+def test_runtime_boot_smoke_rejects_failed_dev_testkit_service(tmp_path: Path) -> None:
     context = runtime_boot_context(tmp_path, dev_build=True)
     write_valid_runtime_documents(context, testkit_enabled=True)
 
     with pytest.raises(SystemExit):
         run_runtime_boot_smoke(
             context=context,
-            operations=fake_operations(inactive_service="tirosh-vitalserver-testkit.service"),
+            operations=fake_operations(
+                service_results={"tirosh-vitalserver-testkit.service": "failed"},
+            ),
         )
 
     document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
-    assert "testkit service is required for dev build" in failed_stage_message(document)
+    assert "testkit service failed for dev build" in failed_stage_message(document)
+
+
+def test_runtime_boot_smoke_accepts_inactive_successful_dev_testkit_oneshot(
+    tmp_path: Path,
+) -> None:
+    context = runtime_boot_context(tmp_path, dev_build=True)
+    write_valid_runtime_documents(context, testkit_enabled=True)
+
+    run_runtime_boot_smoke(
+        context=context,
+        operations=fake_operations(
+            inactive_service="tirosh-vitalserver-testkit.service",
+        ),
+    )
+
+    document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert document["status"] == "passed"
 
 
 @pytest.mark.parametrize("health", [None, "", "starting", "unhealthy"])
@@ -472,6 +494,7 @@ def write_default_context_documents(deploy_dir: Path, *, run_id: str) -> None:
 def fake_operations(
     *,
     inactive_service: str | None = None,
+    service_results: dict[str, str] | None = None,
     http_status: Callable[[str, float], int] | None = None,
     sleep: Callable[[float], None] | None = None,
     docker_root: str = "/mnt/runtime/docker",
@@ -498,10 +521,27 @@ def fake_operations(
                 "",
             )
         if arguments == ["docker", "info", "--format", "{{json .DockerRootDir}}"]:
-            return subprocess.CompletedProcess(arguments, 0, json.dumps(docker_root), "")
+            return subprocess.CompletedProcess(
+                arguments,
+                0,
+                json.dumps(docker_root),
+                "",
+            )
         service = arguments[-1]
-        active_state = "inactive" if service == inactive_service else "active"
-        return subprocess.CompletedProcess(arguments, 0, active_state + "\n", "")
+        if arguments[:2] == ["systemctl", "show"]:
+            property_name = ""
+            for argument in arguments:
+                if argument.startswith("--property="):
+                    property_name = argument.removeprefix("--property=")
+                    break
+            if property_name == "ActiveState":
+                value = "inactive" if service == inactive_service else "active"
+            elif property_name == "Result":
+                value = (service_results or {}).get(service, "success")
+            else:
+                value = "unknown"
+            return subprocess.CompletedProcess(arguments, 0, value + "\n", "")
+        return subprocess.CompletedProcess(arguments, 0, "active\n", "")
 
     return RuntimeBootSmokeOperations(
         mount_runtime_share=lambda: None,
