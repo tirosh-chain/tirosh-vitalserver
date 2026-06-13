@@ -322,8 +322,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create Redis backup
-         * @description Requests a recoverable Redis backup from the runtime guest and returns the command result.
+         * Create Redis-only repair backup
+         * @description Requests a recoverable Redis-only backup from the runtime guest and returns the command result.
          */
         post: operations["createRedisBackup"];
         delete?: never;
@@ -342,8 +342,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create runtime data backup
-         * @description Creates a recoverable runtime data backup for UI continuity, including Redis data, runtime settings, Host runtime state documents, and runtime observability SQLite.
+         * Create VitalServer backup
+         * @description Creates a recoverable VitalServer backup, including Redis data, runtime settings, Host runtime state documents, and runtime observability SQLite.
          */
         post: operations["createRuntimeDataBackup"];
         delete?: never;
@@ -394,7 +394,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List local Redis backups */
+        /** List local Redis-only repair backups */
         get: operations["listRedisBackups"];
         put?: never;
         post?: never;
@@ -413,7 +413,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Restore selected Redis backup */
+        /** Restore selected Redis-only repair backup */
         post: operations["restoreRedisBackup"];
         delete?: never;
         options?: never;
@@ -428,7 +428,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List local runtime data backups */
+        /** List local VitalServer backups */
         get: operations["listRuntimeDataBackups"];
         put?: never;
         post?: never;
@@ -448,8 +448,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Restore selected runtime data backup
-         * @description Restores Redis data, runtime settings, Host runtime state documents, start-on-boot state, and runtime observability SQLite from a verified runtime data backup.
+         * Restore selected VitalServer backup
+         * @description Restores Redis data, runtime settings, Host runtime state documents, start-on-boot state, and runtime observability SQLite from a verified VitalServer backup.
          */
         post: operations["restoreRuntimeDataBackup"];
         delete?: never;
@@ -1386,6 +1386,7 @@ export interface components {
             runtimeHomePath?: string;
             backupsPath?: string;
             redisBackupsPath?: string;
+            runtimeDataBackupsPath?: string;
         };
         RuntimeControlCommandResponse: {
             result?: components["schemas"]["RuntimeCommandResult"];
@@ -2105,7 +2106,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Local Redis backup list */
+            /** @description Local Redis-only repair backup list */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2143,7 +2144,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Local runtime data backup list */
+            /** @description Local VitalServer backup list */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -138,19 +138,22 @@ public struct RuntimeInstallInfo: Codable, Equatable, Sendable {
     public let runtimeHomePath: String?
     public let backupsPath: String?
     public let redisBackupsPath: String?
+    public let runtimeDataBackupsPath: String?
 
     public init(
         appBundlePath: String? = nil,
         packageIdentifier: String? = nil,
         runtimeHomePath: String? = nil,
         backupsPath: String? = nil,
-        redisBackupsPath: String? = nil
+        redisBackupsPath: String? = nil,
+        runtimeDataBackupsPath: String? = nil
     ) {
         self.appBundlePath = appBundlePath
         self.packageIdentifier = packageIdentifier
         self.runtimeHomePath = runtimeHomePath
         self.backupsPath = backupsPath
         self.redisBackupsPath = redisBackupsPath
+        self.runtimeDataBackupsPath = runtimeDataBackupsPath
     }
 }
 

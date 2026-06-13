@@ -85,6 +85,17 @@ Advanced, Observability, Logs 화면으로 이동합니다.
 
 자세한 상태값 의미는 [Runtime Status](runtime-status.md)를 봅니다.
 
+### 2-3. Backup과 restore
+
+일반 backup/restore는 Advanced -> Recovery operations의 `VitalServer backup`을 사용합니다.
+이 backup은 Helper가 관리하는 runtime 설정, Host runtime 상태, observability history, Redis data를
+하나의 복구 단위로 묶습니다. 따라서 일반 사용자는 runtime data와 Redis를 따로 backup하거나 따로
+restore하지 않습니다.
+
+`Redis-only recovery`는 Repair 성격의 고급 조치입니다. VM disk repair, uninstall, 장애 분석처럼
+Redis data만 별도로 보존하거나 복원해야 하는 상황에서 지원 담당자가 사용합니다. 정상 운영에서
+전체 상태를 되돌릴 때는 Redis-only backup 대신 VitalServer backup을 선택합니다.
+
 ## 3. Settings 적용
 
 Settings 화면의 `Restart VM runtime when required`는 저장 후 항상 runtime service를 재시작한다는

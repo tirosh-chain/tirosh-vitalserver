@@ -28,6 +28,18 @@ extension RuntimeViewModel {
         openFolder(redisBackupsPath)
     }
 
+    func openRuntimeDataBackups() {
+        guard controlClient.capabilities.canOpenLocalFiles else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        guard let runtimeDataBackupsPath = installationInfo.runtimeDataBackupsPath else {
+            message = AppConstants.StatusText.notReported
+            return
+        }
+        openFolder(runtimeDataBackupsPath)
+    }
+
     func createRedisBackup() async {
         guard controlClient.capabilities.canControlRuntimeServices else {
             message = AppConstants.StatusText.actionUnavailable

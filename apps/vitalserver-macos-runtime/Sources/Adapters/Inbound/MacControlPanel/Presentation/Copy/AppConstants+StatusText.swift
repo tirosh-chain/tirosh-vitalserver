@@ -113,15 +113,15 @@ public extension AppConstants {
         public static let backupDeleted = "Backup deleted."
         public static let backupDeletePreparing = "Preparing backup deletion..."
         public static let backupDeleteRunning = "Deleting backup..."
-        public static let redisBackupPreparing = "Preparing Redis backup..."
-        public static let redisBackupRunning = "Creating Redis backup..."
-        public static let redisBackupCompleted = "Redis backup completed."
-        public static let runtimeDataBackupPreparing = "Preparing runtime data backup..."
-        public static let runtimeDataBackupRunning = "Creating runtime data backup..."
-        public static let runtimeDataBackupCompleted = "Runtime data backup completed."
-        public static let runtimeDataRestorePreparing = "Preparing runtime data restore..."
-        public static let runtimeDataRestoreRunning = "Restoring runtime data..."
-        public static let runtimeDataRestoreCompleted = "Runtime data restore completed."
+        public static let redisBackupPreparing = "Preparing Redis-only backup..."
+        public static let redisBackupRunning = "Creating Redis-only backup..."
+        public static let redisBackupCompleted = "Redis-only backup completed."
+        public static let runtimeDataBackupPreparing = "Preparing VitalServer backup..."
+        public static let runtimeDataBackupRunning = "Creating VitalServer backup..."
+        public static let runtimeDataBackupCompleted = "VitalServer backup completed."
+        public static let runtimeDataRestorePreparing = "Preparing VitalServer restore..."
+        public static let runtimeDataRestoreRunning = "Restoring VitalServer backup..."
+        public static let runtimeDataRestoreCompleted = "VitalServer restore completed."
         public static let folderMissingTitle = "Folder does not exist"
         public static func folderMissingCreateQuestion(path: String) -> String {
             "The folder does not exist:\n\n\(path)\n\nCreate it now?"
@@ -157,7 +157,7 @@ public extension AppConstants {
         public static let standardUninstallConfirmation = "Creates a Redis backup first, then removes the Helper app, runtime services, tools, VM disk, and package receipt. Logs, backups, Redis backups, and Vital files are preserved. If Redis backup creation fails, uninstall is stopped."
         public static let cleanUninstallConfirmation = "Removes the Helper app, runtime services, tools, VM disk, logs, backups, Redis backups, package receipt, and configured Vital files directory."
         public static let deleteBackupConfirmation = "Delete the selected managed backup? This cannot be undone."
-        public static let restoreRuntimeDataBackupConfirmation = "Restore the selected runtime data backup? This replaces current runtime data and may restart runtime services."
+        public static let restoreRuntimeDataBackupConfirmation = "Restore the selected VitalServer backup? This replaces current runtime data, settings, observability history, and Redis data, and may restart runtime services."
         public static let bridgedModeUnavailable = "Bridged mode is not available in this build."
         public static let diskDecreaseUnavailable = "Disk size can only be increased."
         public static let vitalFilesDirectoryRequired = "Vital files directory must be an absolute path."
@@ -516,7 +516,13 @@ public extension AppConstants {
             case "rollback":
                 return "Rollback"
             case "redis-backup":
-                return "Redis Backup"
+                return "Redis-only Backup"
+            case "redis-restore":
+                return "Redis-only Restore"
+            case "runtime-data-backup":
+                return "VitalServer Backup"
+            case "runtime-data-restore":
+                return "VitalServer Restore"
             case "repair-datastore":
                 return "Repair Data Store"
             case "repair-vm-disk":

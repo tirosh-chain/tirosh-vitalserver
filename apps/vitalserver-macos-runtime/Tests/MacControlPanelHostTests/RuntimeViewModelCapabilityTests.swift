@@ -130,6 +130,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.openLogs()
         viewModel.openBackups()
         viewModel.openRedisBackups()
+        viewModel.openRuntimeDataBackups()
         viewModel.openVitalFilesDirectory()
 
         XCTAssertEqual(client.applySettingsCount, 0)
@@ -603,6 +604,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.openLogs()
         viewModel.openBackups()
         viewModel.openRedisBackups()
+        viewModel.openRuntimeDataBackups()
         viewModel.openVitalServer()
         viewModel.openRuntimeControlPWA()
         viewModel.openVitalDBWebsite()
@@ -612,6 +614,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             URL(fileURLWithPath: "/logs"),
             URL(fileURLWithPath: "/backups"),
             URL(fileURLWithPath: "/runtime/data/backups/redis"),
+            URL(fileURLWithPath: "/runtime/data/backups/runtime-data"),
         ])
         XCTAssertEqual(nativeShell.openedWebURLs, [
             URL(string: RuntimeControlLocalAPIConstants.pwaURL),
@@ -1721,7 +1724,8 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         RuntimeInstallInfo(
             runtimeHomePath: "/runtime",
             backupsPath: "/backups",
-            redisBackupsPath: "/runtime/data/backups/redis"
+            redisBackupsPath: "/runtime/data/backups/redis",
+            runtimeDataBackupsPath: "/runtime/data/backups/runtime-data"
         )
     }
 

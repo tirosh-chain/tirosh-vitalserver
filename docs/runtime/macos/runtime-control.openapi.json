@@ -510,8 +510,8 @@
     "/runtime/redis/backups": {
       "post": {
         "operationId": "createRedisBackup",
-        "summary": "Create Redis backup",
-        "description": "Requests a recoverable Redis backup from the runtime guest and returns the command result.",
+        "summary": "Create Redis-only repair backup",
+        "description": "Requests a recoverable Redis-only backup from the runtime guest and returns the command result.",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
@@ -528,8 +528,8 @@
     "/runtime/data/backups": {
       "post": {
         "operationId": "createRuntimeDataBackup",
-        "summary": "Create runtime data backup",
-        "description": "Creates a recoverable runtime data backup for UI continuity, including Redis data, runtime settings, Host runtime state documents, and runtime observability SQLite.",
+        "summary": "Create VitalServer backup",
+        "description": "Creates a recoverable VitalServer backup, including Redis data, runtime settings, Host runtime state documents, and runtime observability SQLite.",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
@@ -625,13 +625,13 @@
     "/host/backups/redis": {
       "get": {
         "operationId": "listRedisBackups",
-        "summary": "List local Redis backups",
+        "summary": "List local Redis-only repair backups",
         "x-runtime-control-scope": "hostAffordance",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
           "200": {
-            "description": "Local Redis backup list",
+            "description": "Local Redis-only repair backup list",
             "content": {
               "application/json": {
                 "schema": {
@@ -652,7 +652,7 @@
     "/host/backups/redis/restore": {
       "post": {
         "operationId": "restoreRedisBackup",
-        "summary": "Restore selected Redis backup",
+        "summary": "Restore selected Redis-only repair backup",
         "x-runtime-control-scope": "hostAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
@@ -679,13 +679,13 @@
     "/host/backups/runtime-data": {
       "get": {
         "operationId": "listRuntimeDataBackups",
-        "summary": "List local runtime data backups",
+        "summary": "List local VitalServer backups",
         "x-runtime-control-scope": "hostAffordance",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
           "200": {
-            "description": "Local runtime data backup list",
+            "description": "Local VitalServer backup list",
             "content": {
               "application/json": {
                 "schema": {
@@ -706,8 +706,8 @@
     "/host/backups/runtime-data/restore": {
       "post": {
         "operationId": "restoreRuntimeDataBackup",
-        "summary": "Restore selected runtime data backup",
-        "description": "Restores Redis data, runtime settings, Host runtime state documents, start-on-boot state, and runtime observability SQLite from a verified runtime data backup.",
+        "summary": "Restore selected VitalServer backup",
+        "description": "Restores Redis data, runtime settings, Host runtime state documents, start-on-boot state, and runtime observability SQLite from a verified VitalServer backup.",
         "x-runtime-control-scope": "hostAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
@@ -3663,6 +3663,9 @@
             "type": "string"
           },
           "redisBackupsPath": {
+            "type": "string"
+          },
+          "runtimeDataBackupsPath": {
             "type": "string"
           }
         }

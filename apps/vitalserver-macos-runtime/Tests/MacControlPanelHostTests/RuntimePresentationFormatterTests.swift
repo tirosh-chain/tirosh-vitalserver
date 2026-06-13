@@ -224,9 +224,24 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertEqual(formatter.runtimeStateText(.healthy), AppConstants.StatusText.healthy)
         XCTAssertEqual(formatter.runtimeStateText(.degraded), AppConstants.StatusText.degraded)
         XCTAssertEqual(formatter.runtimeStateText(.unknown("needs-admin-review")), "Needs Admin Review")
-        XCTAssertEqual(formatter.operationText(.redisBackup), "Redis Backup")
+        XCTAssertEqual(formatter.operationText(.redisBackup), "Redis-only Backup")
+        XCTAssertEqual(formatter.operationText(.redisRestore), "Redis-only Restore")
+        XCTAssertEqual(formatter.operationText(.runtimeDataBackup), "VitalServer Backup")
+        XCTAssertEqual(formatter.operationText(.runtimeDataRestore), "VitalServer Restore")
         XCTAssertEqual(formatter.operationText(.applyBundle), "Apply Bundle")
         XCTAssertEqual(formatter.operationText(.unknown("custom-op")), "Custom Op")
+    }
+
+    func testBackupPresentationCopyUsesSingleVitalServerBackupAsDefaultPath() {
+        XCTAssertEqual(AppConstants.Labels.sectionRuntimeDataRecovery, "VitalServer backup")
+        XCTAssertEqual(AppConstants.Labels.runtimeDataBackup, "VitalServer backup")
+        XCTAssertTrue(AppConstants.Labels.runtimeDataRecoveryHelp.contains("Redis data"))
+        XCTAssertEqual(AppConstants.Actions.createBackup, "Create VitalServer Backup")
+        XCTAssertEqual(AppConstants.Actions.restoreBackup, "Restore VitalServer Backup")
+        XCTAssertEqual(AppConstants.Labels.sectionRedisDataRecovery, "Redis-only recovery")
+        XCTAssertTrue(AppConstants.Labels.redisDataRecoveryHelp.contains("Advanced repair action"))
+        XCTAssertEqual(AppConstants.Actions.createRedisBackup, "Create Redis-only Backup")
+        XCTAssertEqual(AppConstants.Actions.restoreRedisBackup, "Restore Redis-only Backup")
     }
 
     func testSystemTimeTextFormatsISO8601TimestampInRequestedTimeZone() {

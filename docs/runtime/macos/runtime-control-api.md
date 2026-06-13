@@ -268,8 +268,8 @@ Stable build는 local API server는 유지하되 이 dev console route는 제공
 | `POST` | `/runtime/services/repair-proxy` | repair host proxy |
 | `POST` | `/runtime/services/repair-datastore` | repair datastore |
 | `POST` | `/runtime/services/repair-vm-disk` | archive and recreate the mutable VM disk from the installed base image |
-| `POST` | `/runtime/redis/backups` | create recoverable Redis backup |
-| `POST` | `/runtime/data/backups` | create recoverable runtime data backup for UI continuity |
+| `POST` | `/runtime/redis/backups` | create advanced Redis-only repair backup |
+| `POST` | `/runtime/data/backups` | create user-facing VitalServer backup containing Host runtime state and Redis data |
 | `POST` | `/runtime/uninstall` | uninstall runtime |
 
 ## Host Affordance Routes
@@ -277,10 +277,10 @@ Stable build는 local API server는 유지하되 이 dev console route는 제공
 | Method | Path | 계약 |
 |---|---|---|
 | `GET` | `/host/backups` | list local backups |
-| `GET` | `/host/backups/redis` | list local Redis backups |
-| `POST` | `/host/backups/redis/restore` | restore selected Redis backup |
-| `GET` | `/host/backups/runtime-data` | list local runtime data backups |
-| `POST` | `/host/backups/runtime-data/restore` | restore selected runtime data backup |
+| `GET` | `/host/backups/redis` | list local Redis-only repair backups |
+| `POST` | `/host/backups/redis/restore` | restore selected Redis-only repair backup |
+| `GET` | `/host/backups/runtime-data` | list local VitalServer backups |
+| `POST` | `/host/backups/runtime-data/restore` | restore selected VitalServer backup |
 | `POST` | `/host/logs/read` | read selected log text |
 | `GET` | `/host/logs/stream` | SSE host log text snapshot subscription |
 | `POST` | `/host/logs/export` | export local logs |

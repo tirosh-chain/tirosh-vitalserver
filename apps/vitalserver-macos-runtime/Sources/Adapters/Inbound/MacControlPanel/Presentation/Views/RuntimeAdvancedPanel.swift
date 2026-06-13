@@ -199,7 +199,7 @@ struct RuntimeAdvancedPanel: View {
                         )
 
                         Button(AppConstants.Actions.openBackups) {
-                            viewModel.openBackups()
+                            viewModel.openRuntimeDataBackups()
                         }
                         .disabled(!viewModel.capabilities.canOpenLocalFiles)
                     }
@@ -285,91 +285,94 @@ struct RuntimeAdvancedPanel: View {
                     }
                 }
 
-                Divider()
-
-                recoverySubsection(AppConstants.Labels.sectionRedisDataRecovery) {
-                    Text(AppConstants.Labels.redisDataRecoveryHelp)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
-                        Button(AppConstants.Actions.createRedisBackup) {
-                            Task { await viewModel.createRedisBackup() }
-                        }
-                        .disabled(
-                            !actionAvailabilityPolicy.canCreateRedisBackup(
+                recoverySubsection(AppConstants.Labels.sectionRuntimeRepair) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 10) {
+                            Button(AppConstants.Actions.restartVMRuntime) {
+                                showingRestartVMRuntimeConfirmation = true
+                            }
+                            .disabled(!actionAvailabilityPolicy.canControlRuntimeServices(
                                 status: viewModel.status,
                                 capabilities: viewModel.capabilities,
                                 isBusy: viewModel.isBusy
-                            )
-                        )
-                        Button(AppConstants.Actions.restoreRedisBackup) {}
-                            .disabled(true)
-                        Button(AppConstants.Actions.openBackups) {
-                            viewModel.openRedisBackups()
+                            ))
+
+                            Button(AppConstants.Actions.repairRuntimeServices) {
+                                showingRepairRuntimeServicesConfirmation = true
+                            }
+                            .disabled(!actionAvailabilityPolicy.canRepairRuntime(
+                                status: viewModel.status,
+                                isBusy: viewModel.isBusy
+                            ))
+
+                            Button(AppConstants.Actions.repairDatastore) {
+                                showingRepairDatastoreConfirmation = true
+                            }
+                            .disabled(!actionAvailabilityPolicy.canRepairRuntime(
+                                status: viewModel.status,
+                                isBusy: viewModel.isBusy
+                            ))
+
+                            Button(AppConstants.Actions.repairVMDisk) {
+                                showingRepairVMDiskConfirmation = true
+                            }
+                            .disabled(!actionAvailabilityPolicy.canRepairRuntime(
+                                status: viewModel.status,
+                                isBusy: viewModel.isBusy
+                            ))
+
+                            Button(AppConstants.Actions.repairProxy) {
+                                showingRepairProxyConfirmation = true
+                            }
+                            .disabled(!actionAvailabilityPolicy.canRepairRuntime(
+                                status: viewModel.status,
+                                isBusy: viewModel.isBusy
+                            ))
                         }
-                        .disabled(!viewModel.capabilities.canOpenLocalFiles)
-                        Text(AppConstants.StatusText.planned)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if viewModel.isCreatingRedisBackup {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text(viewModel.operationDetail.isEmpty ? viewModel.message : viewModel.operationDetail)
+
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(AppConstants.Labels.sectionRedisDataRecovery)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            Text(AppConstants.Labels.redisDataRecoveryHelp)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
+                                .fixedSize(horizontal: false, vertical: true)
+                            HStack(spacing: 10) {
+                                Button(AppConstants.Actions.createRedisBackup) {
+                                    Task { await viewModel.createRedisBackup() }
+                                }
+                                .disabled(
+                                    !actionAvailabilityPolicy.canCreateRedisBackup(
+                                        status: viewModel.status,
+                                        capabilities: viewModel.capabilities,
+                                        isBusy: viewModel.isBusy
+                                    )
+                                )
+                                Button(AppConstants.Actions.restoreRedisBackup) {}
+                                    .disabled(true)
+                                Button(AppConstants.Actions.openBackups) {
+                                    viewModel.openRedisBackups()
+                                }
+                                .disabled(!viewModel.capabilities.canOpenLocalFiles)
+                                Text(AppConstants.StatusText.planned)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if viewModel.isCreatingRedisBackup {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                    Text(viewModel.operationDetail.isEmpty ? viewModel.message : viewModel.operationDetail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
+                            }
                         }
-                    }
-                }
-
-                Divider()
-
-                recoverySubsection(AppConstants.Labels.sectionRuntimeRepair) {
-                    HStack(spacing: 10) {
-                        Button(AppConstants.Actions.restartVMRuntime) {
-                            showingRestartVMRuntimeConfirmation = true
-                        }
-                        .disabled(!actionAvailabilityPolicy.canControlRuntimeServices(
-                            status: viewModel.status,
-                            capabilities: viewModel.capabilities,
-                            isBusy: viewModel.isBusy
-                        ))
-
-                        Button(AppConstants.Actions.repairRuntimeServices) {
-                            showingRepairRuntimeServicesConfirmation = true
-                        }
-                        .disabled(!actionAvailabilityPolicy.canRepairRuntime(
-                            status: viewModel.status,
-                            isBusy: viewModel.isBusy
-                        ))
-
-                        Button(AppConstants.Actions.repairDatastore) {
-                            showingRepairDatastoreConfirmation = true
-                        }
-                        .disabled(!actionAvailabilityPolicy.canRepairRuntime(
-                            status: viewModel.status,
-                            isBusy: viewModel.isBusy
-                        ))
-
-                        Button(AppConstants.Actions.repairVMDisk) {
-                            showingRepairVMDiskConfirmation = true
-                        }
-                        .disabled(!actionAvailabilityPolicy.canRepairRuntime(
-                            status: viewModel.status,
-                            isBusy: viewModel.isBusy
-                        ))
-
-                        Button(AppConstants.Actions.repairProxy) {
-                            showingRepairProxyConfirmation = true
-                        }
-                        .disabled(!actionAvailabilityPolicy.canRepairRuntime(
-                            status: viewModel.status,
-                            isBusy: viewModel.isBusy
-                        ))
                     }
                 }
             }

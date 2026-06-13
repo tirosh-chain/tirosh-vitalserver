@@ -1,8 +1,19 @@
-# Runtime Data Backup
+# VitalServer Backup
 
-Runtime data backup is the recovery contract for UI continuity data, excluding logs.
+VitalServer backup is the user-facing recovery contract for Helper-managed VitalServer
+state. The internal command and API name remains `runtime-data-backup`, but product
+UI must present this as one VitalServer backup because the archive includes both Host
+runtime state and Guest Redis data.
 
-The macOS Helper exposes this contract in Advanced -> Recovery operations -> Runtime data backup with Create Backup and Restore Backup actions. Restore requires an explicitly selected runtime data backup from the Host-provided backup list.
+The macOS Helper exposes this contract in Advanced -> Recovery operations ->
+VitalServer backup with Create VitalServer Backup and Restore VitalServer Backup
+actions. Restore requires an explicitly selected VitalServer backup from the
+Host-provided backup list.
+
+Redis-only backup/restore is an advanced repair affordance. It is useful for
+surgical recovery or repair workflows, but it is not the default product backup
+model. Normal users should create and restore one VitalServer backup instead of
+coordinating separate runtime and Redis archives.
 
 Required artifacts:
 

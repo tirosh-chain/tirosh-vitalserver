@@ -98,6 +98,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let installInfo = RuntimeInstallInfo(backupsPath: "/rollback/backups")
 
         XCTAssertNil(installInfo.redisBackupsPath)
+        XCTAssertNil(installInfo.runtimeDataBackupsPath)
     }
 
     func testEndpointMatchingIgnoresQueryString() {
@@ -1020,6 +1021,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(installInfo.packageIdentifier, "ai.tirosh.vitalserver.helper")
         XCTAssertEqual(installInfo.backupsPath, "/backups")
         XCTAssertEqual(installInfo.redisBackupsPath, "/runtime/data/backups/redis")
+        XCTAssertEqual(installInfo.runtimeDataBackupsPath, "/runtime/data/backups/runtime-data")
         XCTAssertEqual(observationSnapshot.state, .loaded)
         XCTAssertEqual(observationSnapshot.observation?.observedAt, "2026-05-25T00:00:00Z")
         XCTAssertEqual(recorders.updatedAt, "2026-05-25T00:00:00Z")
@@ -2439,7 +2441,8 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeInstallInfo(
             runtimeHomePath: "/runtime/home",
             backupsPath: "/runtime/backups",
-            redisBackupsPath: "/runtime/home/data/backups/redis"
+            redisBackupsPath: "/runtime/home/data/backups/redis",
+            runtimeDataBackupsPath: "/runtime/home/data/backups/runtime-data"
         )
     }
 
@@ -2889,7 +2892,8 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
             packageIdentifier: "ai.tirosh.vitalserver.helper",
             runtimeHomePath: "/runtime",
             backupsPath: "/backups",
-            redisBackupsPath: "/runtime/data/backups/redis"
+            redisBackupsPath: "/runtime/data/backups/redis",
+            runtimeDataBackupsPath: "/runtime/data/backups/runtime-data"
         )
     }
 

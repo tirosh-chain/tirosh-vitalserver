@@ -218,7 +218,8 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
             packageIdentifier: RuntimeControlClientConstants.Product.packageIdentifier,
             runtimeHomePath: RuntimeControlClientConstants.Paths.vmHome,
             backupsPath: RuntimeControlClientConstants.Paths.backups,
-            redisBackupsPath: RuntimeControlClientConstants.Paths.redisBackups
+            redisBackupsPath: RuntimeControlClientConstants.Paths.redisBackups,
+            runtimeDataBackupsPath: RuntimeControlClientConstants.Paths.runtimeDataBackups
         )
     }
 
