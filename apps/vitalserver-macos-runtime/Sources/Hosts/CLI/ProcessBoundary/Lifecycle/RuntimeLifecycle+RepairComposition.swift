@@ -20,8 +20,8 @@ extension RuntimeLifecycle {
     func runtimeServiceControlRunner() -> RuntimeServiceControlRunner {
         RuntimeServiceControlComposition.make(
             operations: RuntimeServiceControlCompositionOperations(
-                startRuntimeServices: startRuntimeServicesForServiceControl,
-                stopRuntimeServices: stopRuntimeServicesForServiceControl,
+                startRuntimeServices: startRuntimeServices,
+                stopRuntimeServices: stopRuntimeServices,
                 launchdState: { service in
                     healthChecker.launchdState(service)
                 },

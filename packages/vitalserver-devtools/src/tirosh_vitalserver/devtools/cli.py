@@ -389,6 +389,25 @@ def main() -> int:
         ),
     )
 
+    runtime_rootfs_preflight = subparsers.add_parser(
+        "macos-runtime-preflight-golden-rootfs",
+        help=(
+            "fail fast when golden rootfs inputs or external dependencies "
+            "block VM preparation"
+        ),
+    )
+    runtime_rootfs_preflight.add_argument("--vm-home", type=Path, required=True)
+    runtime_rootfs_preflight.add_argument("--expected-run-id", required=True)
+    runtime_rootfs_preflight.set_defaults(
+        handler=lambda args: macos_runtime_usecases.preflight_golden_rootfs(
+            usecase_inputs.GoldenRootfsPreflightInput(
+                config=args.config,
+                vm_home=args.vm_home,
+                expected_run_id=args.expected_run_id,
+            )
+        ),
+    )
+
     runtime_boot_smoke_begin = subparsers.add_parser(
         "macos-runtime-boot-smoke-begin",
         help="start a new runtime boot smoke run and invalidate stale proof files",

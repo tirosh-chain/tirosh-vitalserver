@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -9,6 +10,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from tirosh_vitalserver.devtools.adapters.guest_image.runtime_data_disk import (
+    prepare_ephemeral_runtime_data_disk,
+)
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_app import (
     build_swift,
     sign_runtime_cli_with_entitlements,
@@ -23,11 +27,9 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_state import (
     runtime_state_file,
     vm_home_path,
 )
-from tirosh_vitalserver.devtools.adapters.guest_image.runtime_data_disk import (
-    prepare_ephemeral_runtime_data_disk,
-)
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
 from tirosh_vitalserver.devtools.application.inputs import (
+    GoldenRootfsPreflightInput,
     RequireBridgedIdentityInput,
     RootfsRunInput,
     RuntimeBootSmokeRunInput,
@@ -46,6 +48,12 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
 )
 from tirosh_vitalserver.devtools.config.paths import resolve_path
 from tirosh_vitalserver.devtools.core.guest_image import runtime_data_disk_plan
+from tirosh_vitalserver.devtools.core.preflight import (
+    PreflightCheck,
+    PreflightReport,
+    PreflightStatus,
+    print_preflight_report,
+)
 
 ROOTFS_REQUIRED_STAGES = (
     "runtime-data-mount",
@@ -306,6 +314,342 @@ def begin_golden_rootfs_run(input: RootfsRunInput) -> int:
     return 0
 
 
+def preflight_golden_rootfs(input: GoldenRootfsPreflightInput) -> int:
+    root = repo_root()
+    vm_home = resolve_path(root, input.vm_home)
+    report = golden_rootfs_preflight_report(
+        vm_home=vm_home,
+        expected_run_id=input.expected_run_id,
+    )
+    print_preflight_report(report)
+    if report.passed:
+        return 0
+    raise SystemExit(1)
+
+
+def golden_rootfs_preflight_report(
+    *,
+    vm_home: Path,
+    expected_run_id: str,
+) -> PreflightReport:
+    checks: list[PreflightCheck] = []
+    rootfs_input = vm_home / "data/deploy/build-metadata/rootfs-input.json"
+    run_context = rootfs_run_context_path(vm_home)
+    checks.append(check_expected_run_id(expected_run_id))
+    checks.append(check_no_vm_process(vm_home))
+    checks.append(check_json_run_id(run_context, expected_run_id, "golden-run-context"))
+    metadata_check, metadata = check_rootfs_input_metadata(
+        rootfs_input,
+        expected_run_id,
+    )
+    checks.append(metadata_check)
+    checks.extend(check_rootfs_preflight_proof_absence(vm_home))
+    snapshot = read_metadata_apt_snapshot(metadata)
+    if snapshot:
+        checks.extend(check_apt_snapshot_available(snapshot))
+    return PreflightReport(
+        name="golden-rootfs",
+        checks=tuple(checks),
+    )
+
+
+def check_expected_run_id(expected_run_id: str) -> PreflightCheck:
+    if not expected_run_id.strip():
+        return PreflightCheck(
+            name="expected-run-id",
+            status=PreflightStatus.MISSING,
+            message="expected golden rootfs runId is missing",
+        )
+    return PreflightCheck(
+        name="expected-run-id",
+        status=PreflightStatus.PASSED,
+        message=f"expected runId={expected_run_id}",
+    )
+
+
+def check_no_vm_process(vm_home: Path) -> PreflightCheck:
+    try:
+        pids = running_vm_processes_for_home(vm_home)
+    except SystemExit as error:
+        return PreflightCheck(
+            name="vm-process",
+            status=PreflightStatus.FAILED,
+            message="failed to inspect VM process state",
+            detail=str(error),
+        )
+    if pids:
+        return PreflightCheck(
+            name="vm-process",
+            status=PreflightStatus.BLOCKED,
+            message="VM launcher process is already running",
+            detail=f"vmHome={vm_home} pids={','.join(str(pid) for pid in pids)}",
+        )
+    return PreflightCheck(
+        name="vm-process",
+        status=PreflightStatus.PASSED,
+        message=f"no VM launcher process is running for {vm_home}",
+    )
+
+
+def check_json_run_id(path: Path, expected_run_id: str, name: str) -> PreflightCheck:
+    document_check, document = read_json_object_for_preflight(path, name)
+    if document_check.blocks:
+        return document_check
+    run_id = document.get("runId")
+    if not isinstance(run_id, str) or not run_id.strip():
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.INVALID,
+            message=f"{name} is missing runId",
+            detail=str(path),
+        )
+    if run_id != expected_run_id:
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.BLOCKED,
+            message=f"{name} runId does not match expected run",
+            detail=f"expected={expected_run_id} actual={run_id} path={path}",
+        )
+    return PreflightCheck(
+        name=name,
+        status=PreflightStatus.PASSED,
+        message=f"{name} runId matches expected run",
+        detail=f"runId={run_id}",
+    )
+
+
+def check_rootfs_input_metadata(
+    path: Path,
+    expected_run_id: str,
+) -> tuple[PreflightCheck, dict[str, object]]:
+    document_check, document = read_json_object_for_preflight(
+        path,
+        "rootfs-input-metadata",
+    )
+    if document_check.blocks:
+        return document_check, {}
+    schema_version = document.get("schemaVersion")
+    if schema_version != 1:
+        return (
+            PreflightCheck(
+                name="rootfs-input-metadata",
+                status=PreflightStatus.INVALID,
+                message="rootfs input metadata schema is unsupported",
+                detail=f"expected=1 actual={schema_version} path={path}",
+            ),
+            document,
+        )
+    run_id = document.get("runId")
+    if run_id != expected_run_id:
+        return (
+            PreflightCheck(
+                name="rootfs-input-metadata",
+                status=PreflightStatus.BLOCKED,
+                message="rootfs input metadata runId does not match expected run",
+                detail=f"expected={expected_run_id} actual={run_id} path={path}",
+            ),
+            document,
+        )
+    guest_clock = document.get("guestClockUtc")
+    if not isinstance(guest_clock, str) or not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
+        guest_clock,
+    ):
+        return (
+            PreflightCheck(
+                name="rootfs-input-metadata",
+                status=PreflightStatus.INVALID,
+                message="rootfs input metadata has invalid guestClockUtc",
+                detail=f"path={path}",
+            ),
+            document,
+        )
+    ubuntu = document.get("ubuntu")
+    if not isinstance(ubuntu, dict):
+        return (
+            PreflightCheck(
+                name="rootfs-input-metadata",
+                status=PreflightStatus.MISSING,
+                message="rootfs input metadata is missing ubuntu object",
+                detail=f"path={path}",
+            ),
+            document,
+        )
+    snapshot = ubuntu.get("aptSnapshot")
+    if not isinstance(snapshot, str) or not re.fullmatch(
+        r"\d{8}T\d{6}Z",
+        snapshot,
+    ):
+        return (
+            PreflightCheck(
+                name="rootfs-input-metadata",
+                status=PreflightStatus.INVALID,
+                message="rootfs input metadata has invalid ubuntu.aptSnapshot",
+                detail=f"snapshot={snapshot!r} path={path}",
+            ),
+            document,
+        )
+    return (
+        PreflightCheck(
+            name="rootfs-input-metadata",
+            status=PreflightStatus.PASSED,
+            message="rootfs input metadata is valid",
+            detail=f"runId={expected_run_id} aptSnapshot={snapshot}",
+        ),
+        document,
+    )
+
+
+def read_json_object_for_preflight(
+    path: Path,
+    name: str,
+) -> tuple[PreflightCheck, dict[str, object]]:
+    if not path.exists():
+        return (
+            PreflightCheck(
+                name=name,
+                status=PreflightStatus.MISSING,
+                message=f"{name} is missing",
+                detail=str(path),
+            ),
+            {},
+        )
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except PermissionError as error:
+        return (
+            PreflightCheck(
+                name=name,
+                status=PreflightStatus.FAILED,
+                message=f"{name} read was denied",
+                detail=f"{path}: {error}",
+            ),
+            {},
+        )
+    except (OSError, json.JSONDecodeError) as error:
+        return (
+            PreflightCheck(
+                name=name,
+                status=PreflightStatus.INVALID,
+                message=f"{name} is unreadable",
+                detail=f"{path}: {error}",
+            ),
+            {},
+        )
+    if not isinstance(document, dict):
+        return (
+            PreflightCheck(
+                name=name,
+                status=PreflightStatus.INVALID,
+                message=f"{name} is not an object",
+                detail=str(path),
+            ),
+            {},
+        )
+    return (
+        PreflightCheck(
+            name=name,
+            status=PreflightStatus.PASSED,
+            message=f"{name} is readable",
+            detail=str(path),
+        ),
+        document,
+    )
+
+
+def check_rootfs_preflight_proof_absence(vm_home: Path) -> list[PreflightCheck]:
+    run_dir = vm_home / "data/run"
+    paths = {
+        "rootfs-ready": run_dir / "rootfs-ready",
+        "rootfs-runtime-manifest": run_dir / "rootfs-runtime-manifest.json",
+        "rootfs-failure": run_dir / "rootfs-failure.json",
+        "rootfs-apt-plan": run_dir / "rootfs-apt-plan.json",
+    }
+    checks: list[PreflightCheck] = []
+    for name, path in paths.items():
+        if path.exists():
+            checks.append(
+                PreflightCheck(
+                    name=name,
+                    status=PreflightStatus.BLOCKED,
+                    message=f"{name} exists before VM start",
+                    detail=str(path),
+                )
+            )
+        else:
+            checks.append(
+                PreflightCheck(
+                    name=name,
+                    status=PreflightStatus.PASSED,
+                    message=f"{name} is absent before VM start",
+                    detail=str(path),
+                )
+            )
+    return checks
+
+
+def read_metadata_apt_snapshot(metadata: dict[str, object]) -> str | None:
+    ubuntu = metadata.get("ubuntu")
+    if not isinstance(ubuntu, dict):
+        return None
+    snapshot = ubuntu.get("aptSnapshot")
+    return snapshot if isinstance(snapshot, str) else None
+
+
+def check_apt_snapshot_available(snapshot: str) -> list[PreflightCheck]:
+    urls = [
+        f"https://snapshot.ubuntu.com/ubuntu/{snapshot}/dists/noble/InRelease",
+        f"https://snapshot.ubuntu.com/ubuntu/{snapshot}/dists/noble-updates/InRelease",
+        f"https://snapshot.ubuntu.com/ubuntu/{snapshot}/dists/noble-security/InRelease",
+    ]
+    return [probe_apt_snapshot_url(url) for url in urls]
+
+
+def probe_apt_snapshot_url(url: str) -> PreflightCheck:
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "vitalserver-devtools"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            status = response.getcode()
+            response.read(1)
+    except urllib.error.HTTPError as error:
+        return PreflightCheck(
+            name="apt-snapshot",
+            status=PreflightStatus.UNAVAILABLE,
+            message="Ubuntu apt snapshot endpoint is unavailable",
+            detail=f"url={url} status={error.code}",
+        )
+    except urllib.error.URLError as error:
+        return PreflightCheck(
+            name="apt-snapshot",
+            status=PreflightStatus.UNAVAILABLE,
+            message="Ubuntu apt snapshot endpoint could not be reached",
+            detail=f"url={url} reason={error.reason}",
+        )
+    except TimeoutError as error:
+        return PreflightCheck(
+            name="apt-snapshot",
+            status=PreflightStatus.UNAVAILABLE,
+            message="Ubuntu apt snapshot endpoint timed out",
+            detail=f"url={url} error={error}",
+        )
+    if status < 200 or status >= 300:
+        return PreflightCheck(
+            name="apt-snapshot",
+            status=PreflightStatus.UNAVAILABLE,
+            message="Ubuntu apt snapshot endpoint returned unexpected status",
+            detail=f"url={url} status={status}",
+        )
+    return PreflightCheck(
+        name="apt-snapshot",
+        status=PreflightStatus.PASSED,
+        message="Ubuntu apt snapshot endpoint is reachable",
+        detail=f"url={url} status={status}",
+    )
+
+
 def write_vm_config_runtime_data_disk_path(
     vm_home: Path,
     runtime_data_disk_path: str,
@@ -315,7 +659,9 @@ def write_vm_config_runtime_data_disk_path(
     try:
         document = json.loads(config_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        raise SystemExit(f"error: VM config is unreadable: {config_path}: {error}") from error
+        raise SystemExit(
+            f"error: VM config is unreadable: {config_path}: {error}"
+        ) from error
     if not isinstance(document, dict):
         raise SystemExit(f"error: VM config is invalid: expected object: {config_path}")
     document["runtimeDataDiskPath"] = runtime_data_disk_path
@@ -915,7 +1261,10 @@ def inspect_rootfs_failure_marker(
         return {
             "ready": False,
             "terminal": True,
-            "message": f"error: rootfs failure marker is unreadable: {failure}: {error}",
+            "message": (
+                f"error: rootfs failure marker is unreadable: "
+                f"{failure}: {error}"
+            ),
         }
     if not isinstance(document, dict):
         return {

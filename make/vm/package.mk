@@ -82,6 +82,9 @@ internal/vm/airgap-rootfs:
 	@if [ -n "$(VM_ROOTFS_SMOKE_FAIL_STAGE)" ] || [ "$(VM_ROOTFS_SMOKE_FAIL_CLEANUP)" = "true" ]; then \
 		python3 -c 'import json, sys; from pathlib import Path; path = Path(sys.argv[1]); document = json.loads(path.read_text(encoding="utf-8")); document["faultInjection"] = {"testMode": True, "failStage": sys.argv[2], "failCleanup": sys.argv[3] == "true"}; path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")' "$(VM_HOME)/data/deploy/build-metadata/rootfs-input.json" "$(VM_ROOTFS_SMOKE_FAIL_STAGE)" "$(VM_ROOTFS_SMOKE_FAIL_CLEANUP)"; \
 	fi
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-preflight-golden-rootfs \
+		--vm-home "$(VM_HOME)" \
+		--expected-run-id "$(VM_ROOTFS_RUN_ID)"
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" cloud-init \
 		--runtime-dir "$(VM_RUNTIME_DIR)" \
 		--bootstrap-script "/mnt/tirosh/deploy/prepare-airgap-rootfs.sh"

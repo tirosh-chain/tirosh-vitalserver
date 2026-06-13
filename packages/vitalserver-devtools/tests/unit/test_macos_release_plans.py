@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -7,6 +8,8 @@ import pytest
 
 from tirosh_vitalserver.devtools.adapters.macos_release import installer_package
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
+from tirosh_vitalserver.devtools.application.inputs import ReleasePackageInput
+from tirosh_vitalserver.devtools.application.usecases import macos_package
 from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
 )
@@ -19,6 +22,7 @@ from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
     package_clean_plan,
     package_outputs,
 )
+from tirosh_vitalserver.devtools.core.preflight import PreflightStatus
 from tirosh_vitalserver.devtools.core.release_manifest import ReleaseManifest
 
 
@@ -252,6 +256,213 @@ def test_build_dmg_detaches_output_dmg_when_attached_without_mount(
     installer_package.detach_unmounted_dmg_output_attachments(dmg_output)
 
     assert commands == [["hdiutil", "detach", "/dev/disk5"]]
+
+
+def test_release_package_preflight_reports_missing_rootfs_before_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    golden = tmp_path / "golden"
+    golden.mkdir()
+    (golden / "Image").write_text("kernel", encoding="utf-8")
+    (golden / "initrd.img").write_text("initrd", encoding="utf-8")
+    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(macos_package, "attached_disk_images", lambda: [])
+    monkeypatch.setattr(
+        macos_package.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout='{"manifests":[{"platform":{"os":"linux","architecture":"arm64"}}]}',
+            stderr="",
+        ),
+    )
+
+    report = macos_package.release_package_preflight_report(
+        release_package_input(tmp_path, rootfs_base=tmp_path / "missing.raw.gz"),
+        output_kind="pkg",
+    )
+
+    rootfs_check = next(check for check in report.checks if check.name == "rootfs-base")
+    assert rootfs_check.status == PreflightStatus.MISSING
+    assert report.blockers == (rootfs_check,)
+
+
+def test_release_dmg_preflight_blocks_mounted_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = repo_root()
+    input = release_package_input(tmp_path)
+    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
+    release = ReleaseManifest(
+        channel="dev",
+        helper_version="1.2.3",
+        release_label="1.2.3-dev",
+        minimum_updater_version="1.0.0",
+        vitalserver_version="2.3.4",
+        target_platform="macos-arm64",
+    )
+    dmg_output = package_outputs(
+        settings=settings,
+        release=release,
+        requested_output=input.output,
+        output_kind="dmg",
+    ).dmg_output
+    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        macos_package,
+        "load_release_manifest",
+        lambda path: release,
+    )
+    monkeypatch.setattr(
+        macos_package,
+        "attached_disk_images",
+        lambda: [
+            {
+                "image-path": str(dmg_output),
+                "system-entities": [{"mount-point": "/Volumes/VitalServer Helper"}],
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        macos_package.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout='{"manifests":[{"platform":{"os":"linux","architecture":"arm64"}}]}',
+            stderr="",
+        ),
+    )
+
+    report = macos_package.release_package_preflight_report(input, output_kind="dmg")
+
+    attachment = next(
+        check for check in report.checks if check.name == "dmg-output-attachment"
+    )
+    assert attachment.status == PreflightStatus.BLOCKED
+    assert attachment in report.blockers
+
+
+def test_release_package_preflight_reports_unavailable_docker_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(macos_package, "attached_disk_images", lambda: [])
+    monkeypatch.setattr(
+        macos_package.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0],
+            returncode=1,
+            stdout="",
+            stderr="manifest unknown",
+        ),
+    )
+
+    report = macos_package.release_package_preflight_report(
+        release_package_input(tmp_path),
+        output_kind="pkg",
+    )
+
+    manifest_checks = [
+        check for check in report.checks if check.name.startswith("docker-manifest:")
+    ]
+    assert manifest_checks
+    assert manifest_checks[0].status == PreflightStatus.UNAVAILABLE
+    assert manifest_checks[0] in report.blockers
+
+
+def test_release_package_preflight_reports_docker_platform_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        macos_package.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout='{"manifests":[{"platform":{"os":"linux","architecture":"amd64"}}]}',
+            stderr="",
+        ),
+    )
+
+    report = macos_package.release_package_preflight_report(
+        release_package_input(tmp_path),
+        output_kind="pkg",
+    )
+
+    manifest_checks = [
+        check for check in report.checks if check.name.startswith("docker-manifest:")
+    ]
+    assert manifest_checks
+    assert manifest_checks[0].status == PreflightStatus.INVALID
+    assert manifest_checks[0] in report.blockers
+
+
+def test_release_package_preflight_rejects_directory_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "dist/output.pkg"
+    output.mkdir(parents=True)
+    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        macos_package.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0],
+            returncode=0,
+            stdout='{"manifests":[{"platform":{"os":"linux","architecture":"arm64"}}]}',
+            stderr="",
+        ),
+    )
+
+    report = macos_package.release_package_preflight_report(
+        release_package_input(tmp_path, output=output),
+        output_kind="pkg",
+    )
+
+    output_check = next(check for check in report.checks if check.name == "pkg-output")
+    assert output_check.status == PreflightStatus.INVALID
+    assert output_check in report.blockers
+
+
+def release_package_input(
+    tmp_path: Path,
+    *,
+    rootfs_base: Path | None = None,
+    output: Path | None = None,
+) -> ReleasePackageInput:
+    root = repo_root()
+    rootfs = rootfs_base or tmp_path / "rootfs-base.raw.gz"
+    golden = tmp_path / "golden"
+    golden.mkdir(exist_ok=True)
+    if rootfs_base is None:
+        rootfs.write_text("rootfs", encoding="utf-8")
+    (golden / "Image").write_text("kernel", encoding="utf-8")
+    (golden / "initrd.img").write_text("initrd", encoding="utf-8")
+    return ReleasePackageInput(
+        config=root / "config/vm-build.toml",
+        release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
+        output=output or tmp_path / "dist/VitalServerHelper-1.2.3-dev.dmg",
+        output_kind="pkg",
+        rootfs_base=rootfs,
+        golden_runtime_dir=golden,
+        proxy_port="80",
+        compression_threads=None,
+        sdkroot=None,
+        clang_module_cache=None,
+        codesign_identity="-",
+        nginx_binary=None,
+        nginx_expected_version=None,
+        docker_platform=None,
+    )
 
 
 def test_default_update_migrations_include_guest_runtime_settings_read_model() -> None:

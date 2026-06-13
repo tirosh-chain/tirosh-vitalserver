@@ -19,7 +19,11 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import
     wait_for_runtime_ip,
     wait_for_runtime_stopped,
 )
+from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
+    preflight_golden_rootfs as run_preflight_golden_rootfs,
+)
 from tirosh_vitalserver.devtools.application.inputs import (
+    GoldenRootfsPreflightInput,
     RequireBridgedIdentityInput,
     RootfsRunInput,
     RuntimeBootSmokeRunInput,
@@ -71,6 +75,10 @@ def force_stop(input: RuntimeWaitInput) -> int:
 
 def begin_rootfs_run(input: RootfsRunInput) -> int:
     return begin_golden_rootfs_run(input)
+
+
+def preflight_golden_rootfs(input: GoldenRootfsPreflightInput) -> int:
+    return run_preflight_golden_rootfs(input)
 
 
 def begin_runtime_boot_smoke(input: RuntimeBootSmokeRunInput) -> int:

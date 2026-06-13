@@ -122,8 +122,11 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {
-        let response = RuntimeControlCommandResponse(result: try await commandClient.applySettings(settings))
-        localAPISettings.apply(settings: settings)
+        let result = try await commandClient.applySettings(settings)
+        if result.exitCode == 0 {
+            localAPISettings.apply(settings: settings)
+        }
+        let response = RuntimeControlCommandResponse(result: result)
         return response
     }
 

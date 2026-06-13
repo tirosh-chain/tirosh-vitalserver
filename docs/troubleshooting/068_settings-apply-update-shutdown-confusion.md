@@ -42,3 +42,28 @@ status가 `updating` 또는 operation `apply-bundle`처럼 보이면 설정 적�
 - Configure 정책은 제출된 필드 이름만 보지 않고, Host가 제공한 명시적 현재 상태와 planned state의 차이를 비교합니다.
 - settings apply, update apply, repair는 guest shutdown mechanism을 공유할 수 있지만 operation/status는 caller가 명시적으로 제공합니다.
 - shared worker name이나 log phrase만 보고 operation state를 추정하지 않습니다.
+
+## 2026-06-13 Follow-up: Failed Apply Must Not Mutate Local Presentation State
+
+### Symptom
+
+Advanced network의 advertised service URL이 비어 있거나 invalid인 상태에서 Settings Apply를 눌러도
+사용자에게 명확한 실패 상태가 보이지 않고, 일부 local API 설정은 적용된 것처럼 보일 수 있었습니다.
+
+### Cause
+
+Control Panel host composition이 CLI `configure` 결과를 받은 뒤 `exitCode`를 확인하지 않고
+`localAPISettings.apply(settings:)`를 호출했습니다. 따라서 command boundary에서는 실패한 설정이
+presentation-local state에 성공처럼 반영될 수 있었습니다.
+
+### Fix Direction
+
+Local API port 같은 presentation-local 설정은 `applySettings` command가 성공한 경우에만 갱신합니다.
+command failure response는 그대로 UI로 전달되어야 하며, local coordinator가 실패한 draft 값을 현재
+상태로 승격하면 안 됩니다.
+
+### Prevention Principle
+
+- Command result owner가 실패를 반환하면 composition/presentation 계층은 local state를 성공처럼 mutate하지 않습니다.
+- Missing, invalid, failed, saved, applied, draft settings는 서로 다른 의미이며 refresh 또는 display 보정으로 합치지 않습니다.
+- Settings apply 실패 case test는 response preservation과 local state non-mutation을 함께 검증합니다.

@@ -34,10 +34,24 @@ public enum RuntimeServiceControlComposition {
     public static func make(
         operations: RuntimeServiceControlCompositionOperations
     ) -> RuntimeServiceControlRunner {
-        RuntimeServiceControlRunner(
-            useCase: ControlRuntimeServicesUseCase(),
+        let vmStateControl = RuntimeVMStateControlUseCase()
+        let vmStateOperations = RuntimeVMServiceControlOperations(
             startRuntimeServices: operations.startRuntimeServices,
-            stopRuntimeServices: operations.stopRuntimeServices,
+            stopRuntimeServices: operations.stopRuntimeServices
+        )
+        return RuntimeServiceControlRunner(
+            useCase: ControlRuntimeServicesUseCase(),
+            startRuntimeServices: { policy in
+                try vmStateControl.startRuntimeServicesForServiceControl(
+                    policy,
+                    operations: vmStateOperations
+                )
+            },
+            stopRuntimeServices: {
+                try vmStateControl.stopRuntimeServicesForServiceControl(
+                    operations: vmStateOperations
+                )
+            },
             serviceStates: { services in
                 Dictionary(uniqueKeysWithValues: services.map { service in
                     (service, operations.launchdState(service))

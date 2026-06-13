@@ -2888,6 +2888,92 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
+    func testRuntimeServiceControlGoesThroughVMStateControlOwner() throws {
+        let root = packageRoot()
+        let compositionText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Hosts/CLI/ProcessBoundary/RuntimeServiceControlComposition.swift"
+            ),
+            encoding: .utf8
+        )
+        for token in [
+            "RuntimeVMStateControlUseCase()",
+            "RuntimeVMServiceControlOperations",
+            "startRuntimeServicesForServiceControl",
+            "stopRuntimeServicesForServiceControl",
+        ] {
+            XCTAssertTrue(
+                compositionText.contains(token),
+                "Runtime service-control must pass VM effects through VM state owner: \(token)"
+            )
+        }
+
+        let repairCompositionText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Hosts/CLI/ProcessBoundary/Lifecycle/RuntimeLifecycle+RepairComposition.swift"
+            ),
+            encoding: .utf8
+        )
+        XCTAssertFalse(
+            repairCompositionText.contains("startRuntimeServices: startRuntimeServicesForServiceControl"),
+            "Repair/service-control composition must not pre-wrap VM start outside the owner composition"
+        )
+        XCTAssertFalse(
+            repairCompositionText.contains("stopRuntimeServices: stopRuntimeServicesForServiceControl"),
+            "Repair/service-control composition must not pre-wrap VM stop outside the owner composition"
+        )
+    }
+
+    func testVMStateControlOwnerIsOnlyComposedAtApprovedHostBoundaries() throws {
+        let root = packageRoot()
+        let files = try sourceLikeFiles(root: root.appendingPathComponent("Sources"))
+        let allowedOwnerCompositionFiles: Set<String> = [
+            "Sources/Hosts/CLI/ProcessBoundary/Support/RuntimeLifecycle+ServiceSupport.swift",
+            "Sources/Hosts/CLI/ProcessBoundary/RuntimeServiceControlComposition.swift",
+        ]
+
+        for file in files {
+            let relativePath = relativePackagePath(file, root: root)
+            let text = try String(contentsOf: file, encoding: .utf8)
+            guard text.contains("RuntimeVMStateControlUseCase()") else {
+                continue
+            }
+            XCTAssertTrue(
+                allowedOwnerCompositionFiles.contains(relativePath),
+                "VM state-control owner must only be composed at approved Host boundaries: \(relativePath)"
+            )
+        }
+    }
+
+    func testDirectVMServiceControllerEffectsStayBehindStateControlBridge() throws {
+        let root = packageRoot()
+        let files = try sourceLikeFiles(root: root.appendingPathComponent("Sources"))
+        let allowedEffectBridgeFiles: Set<String> = [
+            "Sources/Hosts/CLI/ProcessBoundary/Support/RuntimeLifecycle+ServiceSupport.swift",
+        ]
+        let directVMEffectTokens = [
+            "serviceController.startRuntimeServices(",
+            "serviceController.stopRuntimeServices(",
+            "serviceController.restartVMRuntimeServices(",
+            "serviceController.stopRuntimeServicesAfterGuestPoweroff(",
+            "serviceController.unloadRuntimeServicesAfterForcedVMStop(",
+            "serviceController.startLaunchdService(.vm)",
+        ]
+
+        for file in files {
+            let relativePath = relativePackagePath(file, root: root)
+            let text = try String(contentsOf: file, encoding: .utf8)
+            let matchedTokens = directVMEffectTokens.filter { text.contains($0) }
+            guard !matchedTokens.isEmpty else {
+                continue
+            }
+            XCTAssertTrue(
+                allowedEffectBridgeFiles.contains(relativePath),
+                "Direct VM service-controller effects must stay behind RuntimeVMStateControlUseCase bridge: \(relativePath) tokens=\(matchedTokens)"
+            )
+        }
+    }
+
     func testRuntimeDatastoreRepairKeepsStatefulWorkflowOnly() {
         let root = packageRoot()
         XCTAssertTrue(
@@ -3985,6 +4071,16 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
                 "template",
             ].contains(file.pathExtension) || file.lastPathComponent.contains(".template")
         }
+    }
+
+    private func relativePackagePath(_ file: URL, root: URL) -> String {
+        let rootPath = root.standardizedFileURL.path
+        let filePath = file.standardizedFileURL.path
+        let prefix = rootPath.hasSuffix("/") ? rootPath : "\(rootPath)/"
+        guard filePath.hasPrefix(prefix) else {
+            return filePath
+        }
+        return String(filePath.dropFirst(prefix.count))
     }
 
     private func swiftFiles(root: URL) throws -> [URL] {

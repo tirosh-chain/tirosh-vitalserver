@@ -346,6 +346,11 @@ if blocked:
 PY
 }
 
+update_apt_indexes() {
+  ROOTFS_STAGE="apt-index-update"
+  apt-get update
+}
+
 record_installed_runtime_packages() {
   ROOTFS_STAGE="apt-installed"
   : >"${APT_INSTALLED_TEXT_FILE}"
@@ -397,8 +402,7 @@ install_runtime_packages() {
   remove_flash_kernel_package
   repair_package_state
 
-  ROOTFS_STAGE="apt-update"
-  apt-get update
+  update_apt_indexes
   record_apt_plan
   ROOTFS_STAGE="apt-install"
   install_service_start_blocker

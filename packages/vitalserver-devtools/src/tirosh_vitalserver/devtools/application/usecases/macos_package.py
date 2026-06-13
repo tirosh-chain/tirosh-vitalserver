@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -9,6 +12,10 @@ from tirosh_vitalserver.devtools.adapters.guest_services.docker_images import (
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
     remove_path,
+)
+from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
+    attached_disk_images,
+    attached_image_mount_points,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
     build_dmg as run_build_dmg,
@@ -46,7 +53,10 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
 )
 from tirosh_vitalserver.devtools.config.paths import resolve_path
 from tirosh_vitalserver.devtools.config.release_manifest import load_release_manifest
-from tirosh_vitalserver.devtools.core.guest_services import guest_deploy_plan
+from tirosh_vitalserver.devtools.core.guest_services import (
+    DockerImagePlan,
+    guest_deploy_plan,
+)
 from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
     settings_install_home,
 )
@@ -58,9 +68,16 @@ from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
     package_clean_plan,
     package_outputs,
 )
+from tirosh_vitalserver.devtools.core.preflight import (
+    PreflightCheck,
+    PreflightReport,
+    PreflightStatus,
+    print_preflight_report,
+)
 
 
 def build_pkg(input: ReleasePackageInput) -> int:
+    preflight_release_package(input, output_kind="pkg")
     context = prepare_package_context(input)
     run_build_pkg(context)
     print(f"release pkg is ready: {context.pkg_output}")
@@ -68,11 +85,317 @@ def build_pkg(input: ReleasePackageInput) -> int:
 
 
 def build_dmg(input: ReleasePackageInput) -> int:
+    preflight_release_package(input, output_kind="dmg")
     context = prepare_package_context(input)
     run_build_pkg(context)
     run_build_dmg(context)
     print(f"release dmg is ready: {context.dmg_output}")
     return 0
+
+
+def preflight_release_package(
+    input: ReleasePackageInput,
+    *,
+    output_kind: str,
+) -> int:
+    report = release_package_preflight_report(input, output_kind=output_kind)
+    print_preflight_report(report)
+    if report.passed:
+        return 0
+    raise SystemExit(1)
+
+
+def release_package_preflight_report(
+    input: ReleasePackageInput,
+    *,
+    output_kind: str,
+) -> PreflightReport:
+    root = repo_root()
+    settings = load_macos_release_settings(input.config, root)
+    release_file = resolve_path(root, input.release_file)
+    release = load_release_manifest(release_file)
+    outputs = package_outputs(
+        settings=settings,
+        release=release,
+        requested_output=resolve_path(root, input.output) if input.output else None,
+        output_kind=output_kind,
+    )
+    rootfs_base = resolve_path(root, input.rootfs_base)
+    golden_runtime_dir = resolve_path(root, input.golden_runtime_dir)
+    checks: list[PreflightCheck] = [
+        check_required_tool("swift"),
+        check_required_tool("codesign"),
+        check_required_tool("pkgbuild"),
+        check_required_file(rootfs_base, "rootfs-base"),
+        check_required_file(golden_runtime_dir / "Image", "golden-kernel-image"),
+        check_required_file(golden_runtime_dir / "initrd.img", "golden-initrd"),
+        check_output_path(outputs.pkg_output, "pkg-output"),
+    ]
+    if output_kind == "dmg":
+        checks.append(check_required_tool("hdiutil"))
+        checks.append(check_output_path(outputs.dmg_output, "dmg-output"))
+        checks.append(check_dmg_output_state(outputs.dmg_output))
+    checks.extend(
+        docker_image_bundle_preflight_checks(
+            root=root,
+            config=input.config,
+            bundle_path=settings.docker_bundle,
+            platform=input.docker_platform,
+            compression_threads=input.compression_threads,
+            include_optional="testkit" in release.optional_container_services,
+        )
+    )
+    return PreflightReport(name=f"release-{output_kind}", checks=tuple(checks))
+
+
+def check_required_tool(name: str) -> PreflightCheck:
+    if shutil.which(name):
+        return PreflightCheck(
+            name=f"tool:{name}",
+            status=PreflightStatus.PASSED,
+            message=f"required tool is available: {name}",
+        )
+    return PreflightCheck(
+        name=f"tool:{name}",
+        status=PreflightStatus.MISSING,
+        message=f"required tool is missing: {name}",
+    )
+
+
+def check_required_file(path: Path, name: str) -> PreflightCheck:
+    if path.is_file():
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.PASSED,
+            message=f"required package input exists: {path}",
+        )
+    if path.exists():
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.INVALID,
+            message="required package input is not a file",
+            detail=str(path),
+        )
+    return PreflightCheck(
+        name=name,
+        status=PreflightStatus.MISSING,
+        message="required package input is missing",
+        detail=str(path),
+    )
+
+
+def check_output_path(path: Path, name: str) -> PreflightCheck:
+    if path.exists() and path.is_dir():
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.INVALID,
+            message="package output path is a directory",
+            detail=str(path),
+        )
+    parent = path.parent
+    if parent.exists() and not parent.is_dir():
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.INVALID,
+            message="package output parent is not a directory",
+            detail=str(parent),
+        )
+    return PreflightCheck(
+        name=name,
+        status=PreflightStatus.PASSED,
+        message=f"package output path is usable: {path}",
+    )
+
+
+def check_dmg_output_state(dmg_output: Path) -> PreflightCheck:
+    try:
+        attached = attached_disk_images()
+    except RuntimeError as error:
+        return PreflightCheck(
+            name="dmg-output-attachment",
+            status=PreflightStatus.FAILED,
+            message="failed to inspect attached disk images",
+            detail=str(error),
+        )
+    expected_path = str(dmg_output.resolve(strict=False))
+    for image in attached:
+        image_path = image.get("image-path")
+        if not isinstance(image_path, str):
+            continue
+        if str(Path(image_path).resolve(strict=False)) != expected_path:
+            continue
+        mount_points = attached_image_mount_points(image)
+        if mount_points:
+            return PreflightCheck(
+                name="dmg-output-attachment",
+                status=PreflightStatus.BLOCKED,
+                message="DMG output is currently mounted",
+                detail=f"{expected_path} ({', '.join(mount_points)})",
+            )
+        return PreflightCheck(
+            name="dmg-output-attachment",
+            status=PreflightStatus.BLOCKED,
+            message="DMG output is attached without a mount point",
+            detail=expected_path,
+        )
+    return PreflightCheck(
+        name="dmg-output-attachment",
+        status=PreflightStatus.PASSED,
+        message=f"DMG output is not attached: {expected_path}",
+    )
+
+
+def docker_image_bundle_preflight_checks(
+    *,
+    root: Path,
+    config: Path,
+    bundle_path: Path,
+    platform: str | None,
+    compression_threads: int | None,
+    include_optional: bool,
+) -> list[PreflightCheck]:
+    build_config = load_config(config)
+    docker_config = load_docker_images_config(build_config, root)
+    plan = docker_image_bundle_build_plan(
+        root=root,
+        docker_config=docker_config,
+        bundle_path=bundle_path,
+        platform=platform,
+        compression_threads=compression_threads,
+    )
+    checks = docker_image_plan_preflight_checks(plan.image_plan)
+    if (
+        include_optional
+        and docker_config.optional_images
+        and docker_config.optional_bundle_path is not None
+    ):
+        optional_config = replace(docker_config, images=docker_config.optional_images)
+        optional_plan = docker_image_bundle_build_plan(
+            root=root,
+            docker_config=optional_config,
+            bundle_path=docker_config.optional_bundle_path,
+            platform=platform,
+            compression_threads=compression_threads,
+        )
+        checks.extend(docker_image_plan_preflight_checks(optional_plan.image_plan))
+    return checks
+
+
+def docker_image_plan_preflight_checks(plan: DockerImagePlan) -> list[PreflightCheck]:
+    docker_tool = check_required_tool("docker")
+    checks = [docker_tool]
+    checks.append(check_required_file(plan.app_dockerfile, "dockerfile:app"))
+    if plan.audit_proxy_image in plan.images:
+        checks.append(
+            check_required_file(
+                plan.audit_proxy_dockerfile,
+                "dockerfile:audit-proxy",
+            )
+        )
+    if plan.vitaldb_observer_image in plan.images:
+        checks.append(
+            check_required_file(
+                plan.vitaldb_observer_dockerfile,
+                "dockerfile:vitaldb-observer",
+            )
+        )
+    if plan.testkit_image in plan.images:
+        checks.append(
+            check_required_file(
+                plan.testkit_dockerfile,
+                "dockerfile:testkit",
+            )
+        )
+    if not docker_tool.blocks:
+        checks.extend(
+            check_docker_manifest(image=image, platform=plan.platform)
+            for image in plan.pull_images
+        )
+    return checks
+
+
+def check_docker_manifest(*, image: str, platform: str) -> PreflightCheck:
+    command = ["docker", "manifest", "inspect", image]
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except FileNotFoundError:
+        return PreflightCheck(
+            name=f"docker-manifest:{image}",
+            status=PreflightStatus.MISSING,
+            message="docker command is missing",
+            detail=image,
+        )
+    except subprocess.TimeoutExpired:
+        return PreflightCheck(
+            name=f"docker-manifest:{image}",
+            status=PreflightStatus.UNAVAILABLE,
+            message="docker manifest inspect timed out",
+            detail=f"image={image} platform={platform}",
+        )
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        return PreflightCheck(
+            name=f"docker-manifest:{image}",
+            status=PreflightStatus.UNAVAILABLE,
+            message="docker image manifest is unavailable",
+            detail=f"image={image} platform={platform} {stderr}".strip(),
+        )
+    try:
+        document = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        return PreflightCheck(
+            name=f"docker-manifest:{image}",
+            status=PreflightStatus.INVALID,
+            message="docker image manifest output is invalid JSON",
+            detail=f"image={image} error={error}",
+        )
+    if not docker_manifest_supports_platform(document, platform):
+        return PreflightCheck(
+            name=f"docker-manifest:{image}",
+            status=PreflightStatus.INVALID,
+            message="docker image manifest does not include requested platform",
+            detail=f"image={image} platform={platform}",
+        )
+    return PreflightCheck(
+        name=f"docker-manifest:{image}",
+        status=PreflightStatus.PASSED,
+        message="docker image manifest is available",
+        detail=f"image={image} platform={platform}",
+    )
+
+
+def docker_manifest_supports_platform(document: object, platform: str) -> bool:
+    requested_os, requested_architecture = docker_platform_parts(platform)
+    if not isinstance(document, dict):
+        return False
+    manifests = document.get("manifests")
+    if not isinstance(manifests, list):
+        return True
+    for manifest in manifests:
+        if not isinstance(manifest, dict):
+            continue
+        manifest_platform = manifest.get("platform")
+        if not isinstance(manifest_platform, dict):
+            continue
+        if (
+            manifest_platform.get("os") == requested_os
+            and manifest_platform.get("architecture") == requested_architecture
+        ):
+            return True
+    return False
+
+
+def docker_platform_parts(platform: str) -> tuple[str, str]:
+    parts = platform.split("/")
+    if len(parts) < 2 or not parts[0] or not parts[1]:
+        return platform, ""
+    return parts[0], parts[1]
 
 
 def build_reset_installer_pkg(input: ReleaseResetInstallerPackageInput) -> int:

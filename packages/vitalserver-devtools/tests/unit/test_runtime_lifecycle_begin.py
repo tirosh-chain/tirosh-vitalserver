@@ -6,7 +6,10 @@ from pathlib import Path
 import pytest
 
 from tirosh_vitalserver.devtools.adapters.macos_release import runtime_lifecycle
-from tirosh_vitalserver.devtools.application.inputs import RootfsRunInput
+from tirosh_vitalserver.devtools.application.inputs import (
+    GoldenRootfsPreflightInput,
+    RootfsRunInput,
+)
 
 
 def test_begin_golden_rootfs_run_records_runtime_data_disk_contract(
@@ -97,7 +100,11 @@ def test_begin_golden_rootfs_run_requires_initialized_vm_config(
             "removedStaleDisk": False,
         }
 
-    monkeypatch.setattr(runtime_lifecycle, "prepare_ephemeral_runtime_data_disk", prepare)
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "prepare_ephemeral_runtime_data_disk",
+        prepare,
+    )
 
     with pytest.raises(SystemExit, match="VM config is missing"):
         runtime_lifecycle.begin_golden_rootfs_run(
@@ -109,6 +116,139 @@ def test_begin_golden_rootfs_run_requires_initialized_vm_config(
         )
     assert prepared is False
     assert stale_ready.read_text(encoding="utf-8") == "stale"
+
+
+def test_golden_rootfs_preflight_rejects_unavailable_apt_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vm_home = tmp_path / "vm"
+    write_rootfs_input(vm_home, run_id="run-test")
+    write_run_context(vm_home, run_id="run-test")
+    monkeypatch.setattr(runtime_lifecycle, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "running_vm_processes_for_home",
+        lambda _: [],
+    )
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "check_apt_snapshot_available",
+        lambda snapshot: [
+            runtime_lifecycle.PreflightCheck(
+                name="apt-snapshot",
+                status=runtime_lifecycle.PreflightStatus.UNAVAILABLE,
+                message="Ubuntu apt snapshot endpoint is unavailable",
+                detail=f"snapshot={snapshot} status=503",
+            )
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        runtime_lifecycle.preflight_golden_rootfs(
+            GoldenRootfsPreflightInput(
+                config=Path("config/vm-build.toml"),
+                vm_home=Path("vm"),
+                expected_run_id="run-test",
+            )
+        )
+
+
+def test_golden_rootfs_preflight_rejects_invalid_rootfs_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vm_home = tmp_path / "vm"
+    write_run_context(vm_home, run_id="run-test")
+    metadata = vm_home / "data/deploy/build-metadata/rootfs-input.json"
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "runId": "run-test",
+                "guestClockUtc": "2026-06-13T02:00:00Z",
+                "ubuntu": {"aptSnapshot": ""},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(runtime_lifecycle, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "running_vm_processes_for_home",
+        lambda _: [],
+    )
+
+    report = runtime_lifecycle.golden_rootfs_preflight_report(
+        vm_home=vm_home,
+        expected_run_id="run-test",
+    )
+
+    assert not report.passed
+    assert any(
+        check.status == runtime_lifecycle.PreflightStatus.INVALID
+        and check.name == "rootfs-input-metadata"
+        for check in report.blockers
+    )
+
+
+def test_golden_rootfs_preflight_rejects_stale_proof_before_vm_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vm_home = tmp_path / "vm"
+    write_rootfs_input(vm_home, run_id="run-test")
+    write_run_context(vm_home, run_id="run-test")
+    ready = vm_home / "data/run/rootfs-ready"
+    ready.parent.mkdir(parents=True)
+    ready.write_text(json.dumps({"runId": "old-run"}), encoding="utf-8")
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "running_vm_processes_for_home",
+        lambda _: [],
+    )
+    monkeypatch.setattr(runtime_lifecycle, "check_apt_snapshot_available", lambda _: [])
+
+    report = runtime_lifecycle.golden_rootfs_preflight_report(
+        vm_home=vm_home,
+        expected_run_id="run-test",
+    )
+
+    assert not report.passed
+    assert any(check.name == "rootfs-ready" for check in report.blockers)
+
+
+def test_golden_rootfs_preflight_accepts_explicit_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vm_home = tmp_path / "vm"
+    write_rootfs_input(vm_home, run_id="run-test")
+    write_run_context(vm_home, run_id="run-test")
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "running_vm_processes_for_home",
+        lambda _: [],
+    )
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "check_apt_snapshot_available",
+        lambda _: [
+            runtime_lifecycle.PreflightCheck(
+                name="apt-snapshot",
+                status=runtime_lifecycle.PreflightStatus.PASSED,
+                message="snapshot ok",
+            )
+        ],
+    )
+
+    report = runtime_lifecycle.golden_rootfs_preflight_report(
+        vm_home=vm_home,
+        expected_run_id="run-test",
+    )
+
+    assert report.passed
 
 
 def write_build_config(path: Path) -> None:
@@ -128,5 +268,33 @@ mount_path = "/mnt/runtime"
 docker_data_root = "/mnt/runtime/docker"
 containerd_root = "/mnt/runtime/containerd"
 """.lstrip(),
+        encoding="utf-8",
+    )
+
+
+def write_run_context(vm_home: Path, *, run_id: str) -> None:
+    path = vm_home / "run/golden-rootfs-run.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps({"schemaVersion": 1, "runId": run_id}),
+        encoding="utf-8",
+    )
+
+
+def write_rootfs_input(vm_home: Path, *, run_id: str) -> None:
+    path = vm_home / "data/deploy/build-metadata/rootfs-input.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "runId": run_id,
+                "guestClockUtc": "2026-06-13T02:00:00Z",
+                "ubuntu": {
+                    "aptSnapshot": "20250515T000000Z",
+                    "baseUrl": "https://cloud-images.ubuntu.com/releases/noble",
+                },
+            }
+        ),
         encoding="utf-8",
     )

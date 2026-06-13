@@ -192,6 +192,12 @@ shutdown success를 추정하지 말고 bounded wait 실패로 처리한 뒤 VM 
 빠져나와야 합니다. Settings restart도 update shutdown과 같은 VM stop 위험을 가지므로, guest shutdown
 wait 또는 poweroff wait 실패 시 force-stop 후 runtime start/health wait로 이어지는 escape hatch가
 필요합니다.
+
+Release package와 DMG build도 expensive compile 단계에 들어가기 전에 Host-owned preflight를 통과해야
+합니다. `release-pkg`와 `release-dmg`는 Swift build, Docker pull/build, `pkgbuild`, `hdiutil create`
+전에 필수 tool, golden runtime `Image`/`initrd.img`, `rootfs-base`, Dockerfile 경로, Docker pull image
+manifest와 platform, DMG output attachment 상태를 확인합니다. 이 값들은 build input이므로 누락,
+무효, unavailable, mounted/attached blocked 상태를 빈 값이나 late build failure로 바꾸면 안 됩니다.
 Guest shutdown request는 single-shot trigger입니다. Worker는 request를 로드하고 `running/starting`
 result를 기록한 직후 request file을 소비해야 합니다. 성공 끝까지 request를 남겨두면 poweroff 또는
 process termination 중 worker가 사라졌을 때 같은 request가 다음 VM boot에서 다시 dispatch되고,
@@ -222,6 +228,9 @@ restart requirement를 만들면 안 됩니다. Settings UI가 모든 configure 
 Settings UI는 draft 설정과 Host가 읽은 runtime 설정을 분리해서 표시해야 합니다. Status/Info 탭은
 draft 값을 현재 적용 상태처럼 보여주면 안 되며, Settings 탭은 VM runtime restart가 필요한 변경과
 restart 없이 저장할 때의 pending 상태를 Apply 전에 사용자에게 명시적으로 알려야 합니다.
+Settings apply command가 실패하면 Control Panel host composition은 response를 그대로 반환하고
+presentation-local state를 mutate하지 않아야 합니다. Local API port처럼 helper UI가 소유한 값도
+command success가 확인되기 전에는 failed draft를 현재 상태로 승격하면 안 됩니다.
 Host는 VM runtime start가 성공했을 때 실제 start에 사용한 VM config를 applied VM config snapshot으로
 기록하고, Settings read contract는 saved config와 applied config를 함께 제공해야 합니다. Vital files
 directory처럼 VM restart 전에는 적용되지 않는 값은 Status/Info에서 applied snapshot을 기준으로
@@ -285,6 +294,13 @@ Ubuntu image download cache는 `base_url` identity를 포함해야 합니다. Re
 guard 목록을 넓혀 통과시키지 않습니다. 이는 Ubuntu cloud image와 apt snapshot/package set이 하나의
 reproducible input으로 고정되지 않았다는 신호입니다. apt plan의 `runId`와 `snapshot`은 manifest의
 현재 run 및 `ubuntu.aptSnapshot`과 일치해야 합니다.
+Golden rootfs compile은 VM start 전에 Host-owned preflight를 통과해야 합니다. `internal/vm/airgap-rootfs`
+는 `rootfs-input.json`과 `golden-rootfs-run.json`이 같은 current `runId`를 가리키는지, 이전
+`rootfs-ready`/manifest/failure/apt-plan proof가 남아 있지 않은지, VM launcher process가 없는지,
+`ubuntu.aptSnapshot`의 `noble`, `noble-updates`, `noble-security` InRelease endpoint가 reachable한지
+먼저 확인합니다. Missing metadata, decode failure, stale proof, running VM, and external unavailable은
+서로 다른 blocker입니다. 이 값들을 empty/default success로 바꾸거나 Guest `apt-get install` 실패까지
+미루면 안 됩니다.
 
 ### 4-2. 영역별로 봐야 하는 것
 
@@ -482,6 +498,8 @@ Pull request는 변경 목적과 검증 근거가 함께 보여야 합니다. �
 - Settings UI는 새 설정의 advertised service URL 초기값을 명시적으로 제공하되, 사용자가 비우거나
   provider가 invalid 값을 준 상태를 apply 시 fallback으로 복구하지 않습니다. 빈 값과 invalid 값은
   validation error 또는 read issue로 남겨야 합니다.
+- Settings apply 실패 response를 받은 composition/presentation 계층은 local coordinator state를
+  성공처럼 mutate하지 않습니다. 실패 case test는 response와 local state를 함께 검증합니다.
 - Settings apply의 `restartAfterSave`는 저장 후 항상 restart가 아니라, Configure policy가 VM runtime
   restart requirement를 반환했을 때 즉시 restart할지에 대한 intent입니다. policy 없이 UI나 CLI가
   restart 여부를 추정하면 안 됩니다.
