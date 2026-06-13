@@ -287,6 +287,7 @@ public enum RuntimeInstallVMDiskProvisioningError: Error, CustomStringConvertibl
     case missingFile(String)
     case fileInspectionFailed(path: String, reason: String)
     case unexpectedFileState(path: String, state: String)
+    case runtimeDataDiskTooSmall(path: String, actualBytes: UInt64, requiredBytes: UInt64)
 
     public var description: String {
         switch self {
@@ -296,6 +297,8 @@ public enum RuntimeInstallVMDiskProvisioningError: Error, CustomStringConvertibl
             return "file inspection failed: \(path) reason=\(reason)"
         case .unexpectedFileState(let path, let state):
             return "unexpected file state: \(path) state=\(state)"
+        case .runtimeDataDiskTooSmall(let path, let actualBytes, let requiredBytes):
+            return "runtime data disk is too small: \(path) actualBytes=\(actualBytes) requiredBytes=\(requiredBytes)"
         }
     }
 }
@@ -577,6 +580,8 @@ public enum VMConfigurationFactoryError: Error, Equatable {
     case storagePathInspectionFailed(path: String, reason: String)
     case unexpectedStoragePathState(path: String, state: String)
     case missingStorageFile(String)
+    case missingRootDiskPath
+    case missingRuntimeDataDiskPath
 }
 
 

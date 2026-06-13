@@ -2576,7 +2576,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         XCTAssertTrue(
             text.contains("let loadedSettings = initialSettings ?? controlClient.loadSettings()")
                 && text.contains("localAPISettings?.settingsWithLocalAPIPort(loadedSettings) ?? loadedSettings")
-                && text.contains("initialStatus ?? controlClient.loadStatus(settings: displaySettings)"),
+                && text.contains("initialStatus ?? controlClient.loadStatus(settings: displayRuntimeSettings)"),
             "RuntimeViewModel init must use explicit initialStatus or load status from the control client"
         )
         XCTAssertFalse(

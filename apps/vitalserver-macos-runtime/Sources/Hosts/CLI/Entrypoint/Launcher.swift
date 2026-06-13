@@ -144,6 +144,14 @@ struct Launcher {
             throw LauncherError.bridgedInterfaceUnavailable(interface)
         } catch VMConfigurationFactoryError.missingStorageFile(let path) {
             throw LauncherError.missingFile(path)
+        } catch VMConfigurationFactoryError.missingRootDiskPath {
+            throw LauncherError.runtimeOperationFailed(
+                "VM root disk path is missing in vm-config.json"
+            )
+        } catch VMConfigurationFactoryError.missingRuntimeDataDiskPath {
+            throw LauncherError.runtimeOperationFailed(
+                "VM runtime data disk path is missing in vm-config.json"
+            )
         } catch VMConfigurationFactoryError.storagePathInspectionFailed(let path, let reason) {
             throw LauncherError.runtimeOperationFailed(
                 "VM storage path inspection failed path=\(path) reason=\(reason)"

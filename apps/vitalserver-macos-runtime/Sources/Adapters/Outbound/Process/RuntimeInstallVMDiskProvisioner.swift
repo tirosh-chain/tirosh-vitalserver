@@ -5,7 +5,7 @@ import Errors
 public struct RuntimeInstallVMDiskProvisioningContext {
     public let rootfsBase: URL
     public let vmDisk: URL
-    public let runtimeDataDisk: URL?
+    public let runtimeDataDisk: URL
     public let gunzipExecutable: String
     public let truncateExecutable: String
     public let freeSpaceMarginBytes: UInt64
@@ -13,7 +13,7 @@ public struct RuntimeInstallVMDiskProvisioningContext {
     public init(
         rootfsBase: URL,
         vmDisk: URL,
-        runtimeDataDisk: URL? = nil,
+        runtimeDataDisk: URL,
         gunzipExecutable: String,
         truncateExecutable: String,
         freeSpaceMarginBytes: UInt64
@@ -81,9 +81,7 @@ public struct RuntimeInstallVMDiskProvisioner {
         }
         try requireExistingFile(context.vmDisk)
         try operations.runRequired(context.truncateExecutable, ["-s", "\(diskGiB)G", context.vmDisk.path])
-        if let runtimeDataDisk = context.runtimeDataDisk {
-            try provisionRuntimeDataDisk(runtimeDataDisk, diskGiB: runtimeDataDiskGiB)
-        }
+        try provisionRuntimeDataDisk(context.runtimeDataDisk, diskGiB: runtimeDataDiskGiB)
     }
 
     private func createDiskFromRootfs() throws {
@@ -112,6 +110,7 @@ public struct RuntimeInstallVMDiskProvisioner {
         let state = try stateForExistingOrMissingFile(disk)
         switch state {
         case .present, .executable:
+            try validateExistingRuntimeDataDisk(disk, diskGiB: diskGiB)
             operations.log("preserved runtime data disk path=\(disk.path)")
         case .missing:
             try operations.requireFreeSpace(
@@ -124,6 +123,18 @@ public struct RuntimeInstallVMDiskProvisioner {
         case .inspectFailed, .unknown:
             // Covered by stateForExistingOrMissingFile before this switch.
             break
+        }
+    }
+
+    private func validateExistingRuntimeDataDisk(_ disk: URL, diskGiB: Int) throws {
+        let requiredBytes = UInt64(diskGiB) * 1024 * 1024 * 1024
+        let actualBytes = try operations.fileSize(disk)
+        guard actualBytes >= requiredBytes else {
+            throw RuntimeInstallVMDiskProvisioningError.runtimeDataDiskTooSmall(
+                path: disk.path,
+                actualBytes: actualBytes,
+                requiredBytes: requiredBytes
+            )
         }
     }
 

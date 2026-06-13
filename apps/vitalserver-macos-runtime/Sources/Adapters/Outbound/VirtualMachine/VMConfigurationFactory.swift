@@ -51,32 +51,32 @@ public final class VMConfigurationFactory {
         _ config: VMRuntimeConfig
     ) throws -> [VZStorageDeviceConfiguration] {
         var storageDevices: [VZStorageDeviceConfiguration] = []
-
-        if let diskPath = config.diskPath, !diskPath.isEmpty {
-            try validateStoragePath(diskPath)
-            let attachment = try VZDiskImageStorageDeviceAttachment(
-                url: URL(fileURLWithPath: diskPath),
-                readOnly: false,
-                cachingMode: .uncached,
-                synchronizationMode: .full
-            )
-            storageDevices.append(VZNVMExpressControllerDeviceConfiguration(attachment: attachment))
+        let diskPath = try requireRootDiskPath(config)
+        let runtimeDataDiskPath = try requireRuntimeDataDiskPath(config)
+        try validateStoragePath(diskPath)
+        try validateStoragePath(runtimeDataDiskPath)
+        if let cloudInitPath = config.cloudInitPath, !cloudInitPath.isEmpty {
+            try validateStoragePath(cloudInitPath)
         }
 
-        if let runtimeDataDiskPath = config.runtimeDataDiskPath, !runtimeDataDiskPath.isEmpty {
-            try validateStoragePath(runtimeDataDiskPath)
-            let attachment = try VZDiskImageStorageDeviceAttachment(
-                url: URL(fileURLWithPath: runtimeDataDiskPath),
-                readOnly: false,
-                cachingMode: .uncached,
-                synchronizationMode: .full
-            )
-            storageDevices.append(VZNVMExpressControllerDeviceConfiguration(attachment: attachment))
-        }
+        let attachment = try VZDiskImageStorageDeviceAttachment(
+            url: URL(fileURLWithPath: diskPath),
+            readOnly: false,
+            cachingMode: .uncached,
+            synchronizationMode: .full
+        )
+        storageDevices.append(VZNVMExpressControllerDeviceConfiguration(attachment: attachment))
+
+        let runtimeDataAttachment = try VZDiskImageStorageDeviceAttachment(
+            url: URL(fileURLWithPath: runtimeDataDiskPath),
+            readOnly: false,
+            cachingMode: .uncached,
+            synchronizationMode: .full
+        )
+        storageDevices.append(VZNVMExpressControllerDeviceConfiguration(attachment: runtimeDataAttachment))
 
         if let cloudInitPath = config.cloudInitPath,
            !cloudInitPath.isEmpty {
-            try validateStoragePath(cloudInitPath)
             let attachment = try VZDiskImageStorageDeviceAttachment(
                 url: URL(fileURLWithPath: cloudInitPath),
                 readOnly: true
@@ -85,6 +85,20 @@ public final class VMConfigurationFactory {
         }
 
         return storageDevices
+    }
+
+    private func requireRootDiskPath(_ config: VMRuntimeConfig) throws -> String {
+        guard let diskPath = config.diskPath, !diskPath.isEmpty else {
+            throw VMConfigurationFactoryError.missingRootDiskPath
+        }
+        return diskPath
+    }
+
+    private func requireRuntimeDataDiskPath(_ config: VMRuntimeConfig) throws -> String {
+        guard let runtimeDataDiskPath = config.runtimeDataDiskPath, !runtimeDataDiskPath.isEmpty else {
+            throw VMConfigurationFactoryError.missingRuntimeDataDiskPath
+        }
+        return runtimeDataDiskPath
     }
 
     private func validateStoragePath(_ path: String) throws {

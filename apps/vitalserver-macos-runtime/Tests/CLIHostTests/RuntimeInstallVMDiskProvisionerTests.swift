@@ -10,10 +10,12 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
         let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
         let vmDisk = URL(fileURLWithPath: "/runtime/vm.img")
         let temporary = URL(fileURLWithPath: "/runtime/.vm.img.tmp")
+        let runtimeDataDisk = URL(fileURLWithPath: "/runtime/runtime-data.img")
         var existingFiles: Set<URL> = [rootfs, temporary]
         let provisioner = makeProvisioner(
             rootfs: rootfs,
             vmDisk: vmDisk,
+            runtimeDataDisk: runtimeDataDisk,
             existingFiles: { existingFiles },
             events: events,
             moveItem: { source, destination in
@@ -31,6 +33,9 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
             "move:/runtime/.vm.img.tmp:/runtime/vm.img",
             "log:created vm disk path=/runtime/vm.img source=rootfs.raw.gz",
             "run:/usr/bin/truncate -s 64G /runtime/vm.img",
+            "free-space:/runtime:17179869312:provision-runtime-data-disk",
+            "run:/usr/bin/truncate -s 16G /runtime/runtime-data.img",
+            "log:created runtime data disk path=/runtime/runtime-data.img size=16G",
         ])
     }
 
@@ -38,10 +43,12 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
         let events = EventLog()
         let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
         let vmDisk = URL(fileURLWithPath: "/runtime/vm.img")
+        let runtimeDataDisk = URL(fileURLWithPath: "/runtime/runtime-data.img")
         let provisioner = makeProvisioner(
             rootfs: rootfs,
             vmDisk: vmDisk,
-            existingFiles: { [rootfs, vmDisk] },
+            runtimeDataDisk: runtimeDataDisk,
+            existingFiles: { [rootfs, vmDisk, runtimeDataDisk] },
             events: events
         )
 
@@ -49,6 +56,7 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
 
         XCTAssertEqual(events.values, [
             "run:/usr/bin/truncate -s 128G /runtime/vm.img",
+            "log:preserved runtime data disk path=/runtime/runtime-data.img",
         ])
     }
 
@@ -96,13 +104,42 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
         ])
     }
 
+    func testProvisionFailsWhenExistingRuntimeDataDiskIsTooSmall() {
+        let events = EventLog()
+        let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
+        let vmDisk = URL(fileURLWithPath: "/runtime/vm.img")
+        let runtimeDataDisk = URL(fileURLWithPath: "/runtime/runtime-data.img")
+        let provisioner = makeProvisioner(
+            rootfs: rootfs,
+            vmDisk: vmDisk,
+            runtimeDataDisk: runtimeDataDisk,
+            existingFiles: { [rootfs, vmDisk, runtimeDataDisk] },
+            events: events,
+            fileSize: { url in
+                url == runtimeDataDisk ? 1024 : 240
+            }
+        )
+
+        XCTAssertThrowsError(try provisioner.provision(diskGiB: 64, runtimeDataDiskGiB: 16)) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "runtime data disk is too small: /runtime/runtime-data.img actualBytes=1024 requiredBytes=17179869184"
+            )
+        }
+        XCTAssertEqual(events.values, [
+            "run:/usr/bin/truncate -s 64G /runtime/vm.img",
+        ])
+    }
+
     func testProvisionFailsWhenDiskAndRootfsAreMissing() {
         let events = EventLog()
         let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
         let vmDisk = URL(fileURLWithPath: "/runtime/vm.img")
+        let runtimeDataDisk = URL(fileURLWithPath: "/runtime/runtime-data.img")
         let provisioner = makeProvisioner(
             rootfs: rootfs,
             vmDisk: vmDisk,
+            runtimeDataDisk: runtimeDataDisk,
             existingFiles: { [] },
             events: events
         )
@@ -117,9 +154,11 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
         let events = EventLog()
         let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
         let vmDisk = URL(fileURLWithPath: "/runtime/vm.img")
+        let runtimeDataDisk = URL(fileURLWithPath: "/runtime/runtime-data.img")
         let provisioner = makeProvisioner(
             rootfs: rootfs,
             vmDisk: vmDisk,
+            runtimeDataDisk: runtimeDataDisk,
             existingFiles: { [rootfs] },
             events: events,
             fileState: { url in
@@ -140,9 +179,11 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
         let events = EventLog()
         let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
         let vmDisk = URL(fileURLWithPath: "/runtime/vm.img")
+        let runtimeDataDisk = URL(fileURLWithPath: "/runtime/runtime-data.img")
         let provisioner = makeProvisioner(
             rootfs: rootfs,
             vmDisk: vmDisk,
+            runtimeDataDisk: runtimeDataDisk,
             existingFiles: { [] },
             events: events,
             fileState: { url in
@@ -164,9 +205,11 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
         let rootfs = URL(fileURLWithPath: "/runtime/rootfs.raw.gz")
         let vmDisk = URL(fileURLWithPath: "/runtime/vm.img")
         let temporary = URL(fileURLWithPath: "/runtime/.vm.img.tmp")
+        let runtimeDataDisk = URL(fileURLWithPath: "/runtime/runtime-data.img")
         let provisioner = makeProvisioner(
             rootfs: rootfs,
             vmDisk: vmDisk,
+            runtimeDataDisk: runtimeDataDisk,
             existingFiles: { [rootfs] },
             events: events,
             fileState: { url in
@@ -194,10 +237,11 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
     private func makeProvisioner(
         rootfs: URL,
         vmDisk: URL,
-        runtimeDataDisk: URL? = nil,
+        runtimeDataDisk: URL,
         existingFiles: @escaping () -> Set<URL>,
         events: EventLog,
         fileState: ((URL) -> RuntimeFileState)? = nil,
+        fileSize: ((URL) throws -> UInt64)? = nil,
         moveItem: @escaping (URL, URL) throws -> Void = { _, _ in }
     ) -> RuntimeInstallVMDiskProvisioner {
         RuntimeInstallVMDiskProvisioner(
@@ -213,8 +257,8 @@ final class RuntimeInstallVMDiskProvisionerTests: XCTestCase {
                 fileState: fileState ?? { url in
                     existingFiles().contains(url) ? .present : .missing
                 },
-                fileSize: { _ in
-                    240
+                fileSize: fileSize ?? { url in
+                    url == runtimeDataDisk ? UInt64(16) * 1024 * 1024 * 1024 : 240
                 },
                 requireFreeSpace: { url, bytes, operation in
                     events.append("free-space:\(url.path):\(bytes):\(operation)")

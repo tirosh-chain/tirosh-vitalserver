@@ -239,6 +239,8 @@ final class VMRuntimeConfigTests: XCTestCase {
 
     func testConfigurationFactoryRejectsMissingExplicitCloudInitStoragePath() {
         let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: "/runtime/vm.img")] = Data()
+        fileStore.files[URL(fileURLWithPath: "/runtime/runtime-data.img")] = Data()
         let factory = VMConfigurationFactory(
             fileStore: fileStore,
             detached: true,
@@ -252,8 +254,46 @@ final class VMRuntimeConfigTests: XCTestCase {
         }
     }
 
+    func testConfigurationFactoryRejectsMissingRootDiskPathContract() {
+        let fileStore = RuntimeFileStoreSpy()
+        let factory = VMConfigurationFactory(
+            fileStore: fileStore,
+            detached: true,
+            serialInput: FileHandle.standardInput,
+            serialOutput: FileHandle.standardOutput
+        )
+        let config = factoryConfig(
+            diskPath: nil,
+            cloudInitPath: nil
+        )
+
+        XCTAssertThrowsError(try factory.build(from: config)) { error in
+            XCTAssertEqual(error as? VMConfigurationFactoryError, .missingRootDiskPath)
+        }
+    }
+
+    func testConfigurationFactoryRejectsMissingRuntimeDataDiskPathContract() {
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: "/runtime/vm.img")] = Data()
+        let factory = VMConfigurationFactory(
+            fileStore: fileStore,
+            detached: true,
+            serialInput: FileHandle.standardInput,
+            serialOutput: FileHandle.standardOutput
+        )
+        let config = factoryConfig(
+            runtimeDataDiskPath: nil,
+            cloudInitPath: nil
+        )
+
+        XCTAssertThrowsError(try factory.build(from: config)) { error in
+            XCTAssertEqual(error as? VMConfigurationFactoryError, .missingRuntimeDataDiskPath)
+        }
+    }
+
     func testConfigurationFactoryRejectsMissingExplicitRuntimeDataDiskPath() {
         let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: "/runtime/vm.img")] = Data()
         let factory = VMConfigurationFactory(
             fileStore: fileStore,
             detached: true,
@@ -275,6 +315,8 @@ final class VMRuntimeConfigTests: XCTestCase {
 
     func testConfigurationFactoryRejectsCloudInitStoragePathInspectionFailure() {
         let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: "/runtime/vm.img")] = Data()
+        fileStore.files[URL(fileURLWithPath: "/runtime/runtime-data.img")] = Data()
         fileStore.pathStates["/runtime/cloud-init.iso"] = .inspectFailed("permission denied")
         let factory = VMConfigurationFactory(
             fileStore: fileStore,
@@ -294,6 +336,8 @@ final class VMRuntimeConfigTests: XCTestCase {
 
     func testConfigurationFactoryRejectsUnexpectedCloudInitStoragePathState() {
         let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: "/runtime/vm.img")] = Data()
+        fileStore.files[URL(fileURLWithPath: "/runtime/runtime-data.img")] = Data()
         fileStore.pathStates["/runtime/cloud-init.iso"] = .directory
         let factory = VMConfigurationFactory(
             fileStore: fileStore,
@@ -311,19 +355,23 @@ final class VMRuntimeConfigTests: XCTestCase {
         }
     }
 
-    func testConfigurationFactoryUsesDurableStoragePolicyForWritableRootDisk() throws {
+    func testConfigurationFactoryUsesDurableStoragePolicyForWritableRootAndRuntimeDataDisks() throws {
         let source = try readRuntimeSourceFile(
             "Adapters/Outbound/VirtualMachine/VMConfigurationFactory.swift"
         )
 
-        XCTAssertTrue(source.contains("readOnly: false,\n                cachingMode: .uncached,"))
-        XCTAssertTrue(source.contains("synchronizationMode: .full"))
-        XCTAssertTrue(source.contains("VZNVMExpressControllerDeviceConfiguration(attachment: attachment)"))
+        XCTAssertGreaterThanOrEqual(source.components(separatedBy: "readOnly: false").count - 1, 2)
+        XCTAssertGreaterThanOrEqual(source.components(separatedBy: "cachingMode: .uncached").count - 1, 2)
+        XCTAssertGreaterThanOrEqual(source.components(separatedBy: "synchronizationMode: .full").count - 1, 2)
+        XCTAssertGreaterThanOrEqual(
+            source.components(separatedBy: "VZNVMExpressControllerDeviceConfiguration").count - 1,
+            2
+        )
     }
 
     private func factoryConfig(
-        diskPath: String? = nil,
-        runtimeDataDiskPath: String? = nil,
+        diskPath: String? = "/runtime/vm.img",
+        runtimeDataDiskPath: String? = "/runtime/runtime-data.img",
         cloudInitPath: String?
     ) -> VMRuntimeConfig {
         VMRuntimeConfig(
