@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.core.update_bundle_models import BuildUpdateBundleInput
+from tirosh_vitalserver.devtools.core.upstream_vitalserver_contract import (
+    VerificationMode,
+)
 
 
 @dataclass(frozen=True)
@@ -121,6 +124,12 @@ class GuestDeploymentInput:
 @dataclass(frozen=True)
 class RequireGitBranchInput:
     branch: str
+
+
+@dataclass(frozen=True)
+class VerifyUpstreamVitalServerInput:
+    mode: VerificationMode
+    manifest: Path | None
 
 
 @dataclass(frozen=True)
@@ -325,8 +334,8 @@ __all__ = [
     "NginxBundleInput",
     "OpenProductUrlInput",
     "PythonWorkspaceToolInput",
-    "ReleasePackageInput",
     "ReleaseDmgArtifactVerifyInput",
+    "ReleasePackageInput",
     "ReleaseTroubleshootingToolsInput",
     "ReleaseUpdateBundleInput",
     "RenderTemplateInput",

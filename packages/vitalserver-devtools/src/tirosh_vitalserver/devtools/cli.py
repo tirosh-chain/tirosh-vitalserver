@@ -41,6 +41,9 @@ from tirosh_vitalserver.devtools.application.usecases import (
     update_bundle as update_bundle_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
+    upstream_vitalserver as upstream_vitalserver_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
     workspace as workspace_usecases,
 )
 from tirosh_vitalserver.devtools.config.build_toml import (
@@ -208,6 +211,25 @@ def main() -> int:
     require_branch.set_defaults(
         handler=lambda args: toolchain_usecases.require_git_branch(
             usecase_inputs.RequireGitBranchInput(branch=args.branch)
+        )
+    )
+
+    verify_upstream = subparsers.add_parser(
+        "verify-upstream-vitalserver",
+        help="verify the pinned upstream VitalServer submodule contract",
+    )
+    verify_upstream.add_argument(
+        "--mode",
+        choices=("approved", "candidate"),
+        default="approved",
+    )
+    verify_upstream.add_argument("--manifest", type=Path)
+    verify_upstream.set_defaults(
+        handler=lambda args: upstream_vitalserver_usecases.verify_upstream_vitalserver(
+            usecase_inputs.VerifyUpstreamVitalServerInput(
+                mode=upstream_vitalserver_usecases.parse_verification_mode(args.mode),
+                manifest=args.manifest,
+            )
         )
     )
 

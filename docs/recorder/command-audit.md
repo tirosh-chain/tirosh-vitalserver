@@ -94,6 +94,13 @@ VRecorder LAN IP가 아니라 runtime/proxy 내부 주소가 될 수 있습니�
 VitalServer를 수정하지 않고 audit proxy가 같은 `ip_<vrcode>` key만 보정합니다. 추가 Redis key는
 만들지 않습니다.
 
+이 책임 경계는 `config/upstream-vitalserver-contract.json`과 `repo/verify-submodule`로 검증합니다.
+Release verify에서는 approved upstream commit이어야 하고, `join_vr`, `join_bed`, `send_data`,
+`recv_vr_ipaddr`, Redis `ip_<vrcode>` read/write contract가 유지되어야 합니다. `x-forwarded-for`,
+`VITALSERVER_TRUST_PROXY`, `get_vr_client_ip` 같은 upstream proxy-header IP patch marker는 실패로
+처리합니다. 새 upstream 후보는 `repo/verify-submodule-candidate`로 compatibility를 먼저 확인한 뒤
+승인 manifest에 추가합니다.
+
 보정은 단순 delay write가 아니라 다음 순서로 수행합니다.
 
 ```text

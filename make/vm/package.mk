@@ -311,13 +311,14 @@ internal/vm/pkg/dev/compile:
 internal/vm/pkg/dev/runtime-smoke:
 	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_DEV_RELEASE_FILE)"
 
-internal/vm/pkg/dev/review: pwa/check pwa/test
+internal/vm/pkg/dev/review: repo/verify-submodule pwa/check pwa/test
 	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test \
 		--package-path "$(VM_SWIFT_PACKAGE_DIR)" \
 		--filter 'RuntimeLogArchiveRetention|RuntimeSettingsReadPolicy|RuntimeLogExporterTests|RuntimeLogCollectorTests|RuntimeSettingsValidatorTests|RuntimeLifecycleCommandTests|RuntimeConfigureRunnerTests'
 	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- pytest \
 		packages/vitalserver-devtools/tests/unit/test_macos_release_plans.py \
-		packages/vitalserver-devtools/tests/unit/test_packaging_templates.py
+		packages/vitalserver-devtools/tests/unit/test_packaging_templates.py \
+		packages/vitalserver-devtools/tests/unit/test_upstream_vitalserver_contract.py
 
 internal/vm/pkg/dev/verify:
 	$(MAKE) internal/vm/pkg/dev/review

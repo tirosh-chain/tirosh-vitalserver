@@ -89,6 +89,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-078 | Upstream Redis backup command가 Redis SAVE 응답을 무기한 기다림 | Packaging / Troubleshooting Tools / Redis migration | implemented | [Upstream Redis SAVE Timeout](078_upstream-redis-save-timeout.md) |
 | TS-079 | VitalServer Helper backup restore 실패가 UI progress/message에 표시되지 않음 | Data store / Runtime health | implemented | [Runtime Data Restore Silent Failure](079_runtime-data-restore-silent-failure.md) |
 | TS-080 | Update shutdown이 Compose service 목록 stdout 누락으로 실패함 | Update / Guest containers | implemented | [Update Shutdown Compose Services Stdout Missing](080_update-shutdown-compose-services-stdout-missing.md) |
+| TS-081 | Upstream VitalServer contract verification이 release compile 전에 실패함 | Packaging / Upstream integration | active | [Upstream VitalServer Contract Verification Failure](081_upstream-vitalserver-contract-verification.md) |
 
 ## Follow-up 규칙
 
