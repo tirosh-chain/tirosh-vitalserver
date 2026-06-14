@@ -1,110 +1,108 @@
-# Backup & Restore Contracts
+# Backup/Restore 계약
 
 이 문서는 Vital Server Helper의 backup/restore 구현 계약을 정리합니다.
 Release `usage.md`는 운영자가 눌러야 하는 메뉴와 판단 순서를 다루고, 이 문서는
 artifact 구성, data schema owner, restore compatibility, migration tool의 구현 기준을 다룹니다.
 
-## 1. Product Surfaces
+## 1. 제품 표면
 
-| Product surface | Internal operation | Intended use |
+| 제품 표면 | 내부 operation | 사용 목적 |
 |---|---|---|
-| VitalServer backup | `runtime-data-backup` | Helper-managed runtime state와 Guest Redis data를 하나의 복구 단위로 backup/restore |
+| VitalServer backup | `runtime-data-backup` | Helper가 관리하는 runtime state와 Guest Redis data를 하나의 복구 단위로 backup/restore |
 | Redis-only recovery | Redis backup/restore request | VM disk repair, uninstall, migration, 장애 분석처럼 Redis data만 분리해야 하는 고급 조치 |
 | Upstream Redis backup command | Troubleshooting Tools command | 기존 upstream VitalServer Redis data directory를 Helper Redis-only import archive로 변환 |
 
 일반 운영자는 VitalServer backup을 사용합니다. Redis-only recovery는 전체 runtime 상태를 되돌리는
 기능이 아니라 Redis data만 바꾸는 repair 기능입니다.
 
-## 2. Runtime Data Backup Artifacts
+## 2. Runtime Data Backup Artifact
 
 VitalServer backup은 하나의 restore unit이지만 artifact마다 schema owner가 다릅니다.
 
-| Artifact | Owner | Schema owner | Restore target |
+| Artifact | Owner | Schema owner | Restore 대상 |
 |---|---|---|---|
-| `redis-data` | Guest | VitalServer Redis key/value layout | Redis Docker volume through guest `redis-restore` |
-| `runtime-vm-config` | Host | VM runtime config contract | installed VM config document |
-| `guest-runtime-config` | Host | Guest deploy/runtime config contract | deployed guest runtime config document |
+| `redis-data` | Guest | VitalServer Redis key/value layout | guest `redis-restore`를 통한 Redis Docker volume |
+| `runtime-vm-config` | Host | VM runtime config contract | 설치된 VM config document |
+| `guest-runtime-config` | Host | Guest deploy/runtime config contract | 배포된 guest runtime config document |
 | `guest-runtime-settings` | Host | Runtime settings contract | runtime settings document |
 | `proxy-launch-daemon-settings` | Host | macOS launchd plist contract | proxy LaunchDaemon plist |
 | `start-on-boot-state` | Host | `RuntimeDataBackupStartOnBootStateDocument` | launchctl enabled/disabled state |
-| `runtime-status-document` | Host | Host runtime status document | optional UI continuity state |
-| `runtime-events-document` | Host | Host runtime event JSONL contract | optional UI continuity event history |
-| `runtime-observability-database` | Host | SQLite observability projection schema | optional UI continuity projection snapshot |
+| `runtime-status-document` | Host | Host runtime status document | UI continuity용 optional state |
+| `runtime-events-document` | Host | Host runtime event JSONL contract | UI continuity용 optional event history |
+| `runtime-observability-database` | Host | SQLite observability projection schema | UI continuity용 optional projection snapshot |
 
-Required recovery artifacts are Redis data, VM config, guest config, guest settings,
-proxy LaunchDaemon settings, and start-on-boot state. Status, events, and observability
-SQLite are optional continuity artifacts: if they are missing from the backup, restore
-continues without synthesizing replacement state.
+Required recovery artifact는 Redis data, VM config, guest config, guest settings,
+proxy LaunchDaemon settings, start-on-boot state입니다. Status, events, observability
+SQLite는 optional continuity artifact입니다. Backup에 없으면 restore는 대체 상태를 만들지 않고
+required artifact만 복원합니다.
 
 ## 3. Compatibility Gate
 
-Restore must check `RuntimeDataBackupManifest.dataCompatibilityVersion` before writing any
-artifact to runtime destinations.
+Restore는 runtime destination에 artifact를 쓰기 전에
+`RuntimeDataBackupManifest.dataCompatibilityVersion`을 확인해야 합니다.
 
-The compatibility version is a data layout contract. It is not the same as product
-`runtimeVersion`. Product version is recorded for operator context, but restore must not
-infer compatibility from product version, filenames, artifact presence, or successful
-checksums alone.
+Compatibility version은 data layout 계약입니다. 제품 `runtimeVersion`과 같은 의미가 아닙니다.
+Product version은 운영자 context를 위해 기록하지만, restore는 product version, filename,
+artifact 존재 여부, checksum 성공만으로 compatibility를 추정하면 안 됩니다.
 
-Restore rejects a backup when:
+Restore는 아래 경우 backup을 거부합니다.
 
-- `dataCompatibilityVersion` is missing;
-- the declared compatibility version is not supported by the current Helper;
-- manifest schema/product/artifact identity validation fails;
-- required artifact state, path, size, or checksum validation fails.
+- `dataCompatibilityVersion`이 없음
+- 현재 Helper가 선언된 compatibility version을 지원하지 않음
+- manifest schema, product, artifact identity validation 실패
+- required artifact state, path, size, checksum validation 실패
 
-If old backup support is required, implement an explicit migration before restore writes
-files. A restore flow must not partially apply artifacts and then discover later that
-another artifact is incompatible.
+오래된 backup을 지원해야 한다면 restore가 파일을 쓰기 전에 명시 migration을 구현해야 합니다.
+Restore flow는 artifact 일부를 적용한 뒤 나중에 다른 artifact가 incompatible하다는 사실을 발견하면
+안 됩니다.
 
-## 4. When To Bump Compatibility
+## 4. Compatibility Version을 올리는 기준
 
-Bump `RuntimeDataBackupCompatibility.currentDataCompatibilityVersion` when an older backup
-cannot be restored safely by the current runtime without migration.
+이전 backup을 현재 runtime이 migration 없이 안전하게 restore할 수 없으면
+`RuntimeDataBackupCompatibility.currentDataCompatibilityVersion`을 올립니다.
 
-Typical bump triggers:
+대표적인 bump 기준은 아래와 같습니다.
 
-- Redis key/value layout changes in a way current VitalServer cannot read old data;
-- VM config, guest runtime config, or guest runtime settings removes or reinterprets a
-  required field;
-- start-on-boot service labels or launchd plist semantics change incompatibly;
-- `runtime-observability.sqlite` schema changes make restored snapshots unsafe or
-  unreadable for current read-only query paths.
+- 현재 VitalServer가 old Redis data를 읽을 수 없을 정도로 Redis key/value layout이 변경됨
+- VM config, guest runtime config, guest runtime settings에서 required field가 제거되거나 의미가 변경됨
+- start-on-boot service label 또는 launchd plist 의미가 호환되지 않게 변경됨
+- `runtime-observability.sqlite` schema 변경으로 restored snapshot이 현재 read-only query path에서
+  안전하지 않거나 읽을 수 없음
 
-Do not bump for additive optional fields that can be handled through explicit missing-state
-semantics. Missing, invalid, failed, stale, zero, and empty must remain different meanings.
+명시적인 missing-state 처리로 복원 가능한 additive optional field 때문에 compatibility version을
+올리면 안 됩니다. Missing, invalid, failed, stale, zero, empty는 서로 다른 의미로 유지해야 합니다.
 
-## 5. Redis-only And Upstream Migration
+## 5. Redis-only와 Upstream Migration
 
-Redis-only backup/restore is Guest-owned. Host stages or selects an archive, writes a typed
-request, waits for a typed result, and reports capability/read failures explicitly. Host must
-not infer Redis internals from filenames, logs, or Docker volume paths.
+Redis-only backup/restore는 Guest-owned 작업입니다. Host는 archive를 staging하거나 선택하고,
+typed request를 쓰고, typed result를 기다린 뒤 capability/read failure를 명시적으로 보고합니다.
+Host는 filename, log, Docker volume path로 Redis 내부 상태를 추정하지 않습니다.
 
-The DMG Troubleshooting Tools command `Create Upstream Redis Backup.command` is a migration
-helper for existing upstream VitalServer Redis data. It asks for the upstream Redis data
-directory and creates `redis-upstream-import.tar.gz` for Helper import.
+DMG Troubleshooting Tools의 `Create Upstream Redis Backup.command`는 기존 upstream VitalServer Redis
+data를 migration하기 위한 helper입니다. 이 command는 upstream Redis data directory를 입력받아
+Helper import용 `redis-upstream-import.tar.gz`를 만듭니다.
 
-The command may run bundled Redis tooling to issue `SAVE` before archiving. `SAVE` does not
-stop Redis, but it can briefly block Redis while writing `dump.rdb`. If automatic refresh is
-skipped, the operator must ensure `dump.rdb` is current by running `SAVE`/`BGSAVE` or stopping
-upstream Redis before selecting the data directory.
+Command는 archive를 만들기 전에 bundled Redis tooling으로 `SAVE`를 실행할 수 있습니다. `SAVE`는
+Redis를 중지하지 않지만 `dump.rdb`를 쓰는 동안 Redis를 잠깐 block할 수 있습니다. 자동 refresh를
+건너뛰면 운영자는 data directory를 선택하기 전에 upstream Redis에서 `SAVE`/`BGSAVE`를 실행하거나
+Redis를 중지해 `dump.rdb`가 최신인지 확인해야 합니다.
 
-Generated upstream Redis archives are imported through Advanced -> Recovery operations ->
-Redis-only recovery -> Import Backups, then restored with Restore Redis-only Backup.
+생성된 upstream Redis archive는 Advanced -> Recovery operations -> Redis-only recovery ->
+Import Backups로 가져온 뒤 Restore Redis-only Backup으로 복원합니다.
 
-Troubleshooting Tools command logs are written under the current user's temp directory:
+Troubleshooting Tools command log는 현재 사용자 temp directory에 남깁니다.
 
 | Command | Log |
 |---|---|
 | Reset for Reinstall | `tirosh-vitalserver-reset-for-reinstall.log` |
 | Create Upstream Redis Backup | `tirosh-vitalserver-upstream-redis-backup.log` |
 
-## 6. Documentation Rule
+## 6. 문서화 규칙
 
-When backup/restore behavior changes, update both:
+Backup/restore 동작이 바뀌면 아래 문서를 함께 갱신합니다.
 
-- release usage docs with the operator-visible menu/result change;
-- this dev contract with schema owner, compatibility, or migration implications.
+- release usage 문서: 운영자가 보는 메뉴, 결과, 실패 안내
+- 이 dev 계약 문서: schema owner, compatibility, migration 의미
 
-Repeated restore failures must also be promoted into troubleshooting docs with symptom,
-cause, fix direction, and prevention.
+반복되는 restore failure는 symptom, cause, fix direction, prevention을 갖춘 troubleshooting 문서로
+승격합니다.

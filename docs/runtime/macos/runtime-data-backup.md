@@ -1,119 +1,121 @@
 # VitalServer Backup
 
-VitalServer backup is the user-facing recovery contract for Helper-managed VitalServer
-state. The internal command and API name remains `runtime-data-backup`, but product
-UI must present this as one VitalServer backup because the archive includes both Host
-runtime state and Guest Redis data.
+VitalServer backup은 Helper가 관리하는 VitalServer 상태를 복구하기 위한 사용자-facing 계약입니다.
+내부 command와 API 이름은 `runtime-data-backup`이지만, 제품 UI에서는 하나의 VitalServer backup으로
+표시해야 합니다. 이 backup은 Host runtime state와 Guest Redis data를 함께 포함하기 때문입니다.
 
-The macOS Helper exposes this contract in Advanced -> Recovery operations ->
-VitalServer backup with Create VitalServer Backup and Restore VitalServer Backup
-actions. Restore requires an explicitly selected VitalServer backup from the
-Host-provided backup list.
+macOS Helper는 Advanced -> Recovery operations -> VitalServer backup에서 이 계약을 제공합니다.
+사용자는 Create VitalServer Backup과 Restore VitalServer Backup action을 사용합니다. Restore는
+Host가 제공한 backup 목록에서 명시적으로 선택한 VitalServer backup이 있어야 진행됩니다.
 
-VitalServer backup deletion is exposed separately in Danger Zone as Delete
-VitalServer Backup. It deletes only an explicitly selected direct child of the
-Host-reported VitalServer backup directory. Update/rollback backup deletion is a
-separate Delete Update Backup action and must not share UI copy that hides the
-target type.
+VitalServer backup 삭제는 Danger Zone의 Delete VitalServer Backup으로 분리합니다. 이 작업은
+Host가 보고한 VitalServer backup directory의 direct child만 삭제합니다. Update/rollback backup 삭제는
+별도 Delete Update Backup action이며, UI copy가 두 대상의 차이를 숨기면 안 됩니다.
 
-Redis-only backup/restore is an advanced repair affordance. It is useful for
-surgical recovery or repair workflows, but it is not the default product backup
-model. Normal users should create and restore one VitalServer backup instead of
-coordinating separate runtime and Redis archives.
+Redis-only backup/restore는 고급 repair 기능입니다. Surgical recovery나 repair workflow에는 유용하지만
+기본 product backup model은 아닙니다. 일반 사용자는 runtime archive와 Redis archive를 따로 조합하지
+말고 하나의 VitalServer backup을 만들고 복원해야 합니다.
 
-Required artifacts:
+필수 artifact:
 
-| Artifact | Owner | Restore target |
+| Artifact | Owner | Restore 대상 |
 |---|---|---|
-| `redis-data` | Guest | Redis Docker volume through explicit guest `redis-restore` request/result |
-| `runtime-vm-config` | Host | installed VM config document |
-| `guest-runtime-config` | Host | deployed guest runtime config document |
+| `redis-data` | Guest | 명시적인 guest `redis-restore` request/result를 통한 Redis Docker volume |
+| `runtime-vm-config` | Host | 설치된 VM config document |
+| `guest-runtime-config` | Host | 배포된 guest runtime config document |
 | `guest-runtime-settings` | Host | runtime settings document |
 | `proxy-launch-daemon-settings` | Host | proxy LaunchDaemon plist |
-| `start-on-boot-state` | Host | launchctl enabled/disabled state for managed services |
-| `runtime-status-document` | Host | Host runtime status document *(optional: skipped when missing)* |
-| `runtime-events-document` | Host | Host runtime event document *(optional: skipped when missing)* |
-| `runtime-observability-database` | Host | `runtime-observability.sqlite` snapshot *(optional: skipped when missing)* |
+| `start-on-boot-state` | Host | managed service의 launchctl enabled/disabled state |
+| `runtime-status-document` | Host | Host runtime status document *(optional: 없으면 skip)* |
+| `runtime-events-document` | Host | Host runtime event document *(optional: 없으면 skip)* |
+| `runtime-observability-database` | Host | `runtime-observability.sqlite` snapshot *(optional: 없으면 skip)* |
 
-The restore process treats `runtime-status-document`, `runtime-events-document`, and `runtime-observability-database` as best-effort artifacts. If missing, restore will continue using existing host-side files and still restore required artifacts.
+Restore process는 `runtime-status-document`, `runtime-events-document`,
+`runtime-observability-database`를 best-effort artifact로 취급합니다. Backup에 없으면 restore는
+기존 Host-side file을 유지하고 required artifact만 복원합니다.
 
-## Artifact Schema Ownership
+## Artifact Schema 소유권
 
-VitalServer backup is one restore unit, but every artifact has its own data schema owner.
-The backup manifest records artifact identity, path, size, checksum, and the global
-`dataCompatibilityVersion`. The manifest does not make every artifact share one file
-format.
+VitalServer backup은 하나의 restore unit이지만 artifact마다 data schema owner가 다릅니다.
+Backup manifest는 artifact identity, path, size, checksum, global `dataCompatibilityVersion`을
+기록합니다. Manifest가 모든 artifact를 하나의 file format으로 합치는 것은 아닙니다.
 
-| Artifact | Data schema owner | Restore compatibility note |
+| Artifact | Data schema owner | Restore compatibility 기준 |
 |---|---|---|
-| `redis-data` | Guest VitalServer Redis schema | Restored by Guest Redis restore worker. Redis key/value layout changes that cannot be read by the current Guest runtime require a `dataCompatibilityVersion` bump or an explicit migration. |
-| `runtime-vm-config` | Host VM runtime config contract | Host reads this file before/while starting the VM. Breaking config changes require a compatibility bump or an explicit config migration before restore. |
-| `guest-runtime-config` | Guest deploy/runtime config contract | Host deploys the file; Guest bootstrap and services consume it. Breaking field changes require a compatibility bump or migration. |
-| `guest-runtime-settings` | Runtime settings contract | Host UI and Guest runtime both consume this document. Settings schema changes must preserve explicit missing/invalid/default meanings. |
-| `proxy-launch-daemon-settings` | macOS launchd plist contract | Host LaunchDaemon setup consumes it. Breaking service label/path semantics require compatibility review. |
-| `start-on-boot-state` | Host generated start-on-boot state document | Current schema is `RuntimeDataBackupStartOnBootStateDocument.schemaVersion`. Restore must reject unsupported document schema instead of guessing service state. |
-| `runtime-status-document` | Host runtime status document | Optional UI continuity artifact. Missing means unavailable; restore does not synthesize status. Breaking status schema can be skipped or gated by backup compatibility. |
-| `runtime-events-document` | Host runtime event JSONL contract | Optional observability continuity artifact. Decode or schema changes must not be hidden as an empty event list. |
-| `runtime-observability-database` | Host SQLite observability projection schema | Optional UI continuity artifact. SQLite schema changes can make old snapshots unreadable; restore must be gated or migrated before the current Helper opens the database. |
+| `redis-data` | Guest VitalServer Redis schema | Guest Redis restore worker가 복원합니다. 현재 Guest runtime이 읽을 수 없는 Redis key/value layout 변경은 `dataCompatibilityVersion` bump 또는 명시 migration이 필요합니다. |
+| `runtime-vm-config` | Host VM runtime config contract | Host가 VM start 전후에 읽습니다. Breaking config change는 restore 전 compatibility bump 또는 config migration이 필요합니다. |
+| `guest-runtime-config` | Guest deploy/runtime config contract | Host가 배포하고 Guest bootstrap/service가 소비합니다. Breaking field change는 compatibility bump 또는 migration이 필요합니다. |
+| `guest-runtime-settings` | Runtime settings contract | Host UI와 Guest runtime이 함께 소비합니다. Settings schema 변경은 missing/invalid/default 의미를 명시적으로 보존해야 합니다. |
+| `proxy-launch-daemon-settings` | macOS launchd plist contract | Host LaunchDaemon setup이 소비합니다. Service label/path 의미가 깨지는 변경은 compatibility review가 필요합니다. |
+| `start-on-boot-state` | Host generated start-on-boot state document | 현재 schema는 `RuntimeDataBackupStartOnBootStateDocument.schemaVersion`입니다. Restore는 service state를 추정하지 말고 unsupported document schema를 거부해야 합니다. |
+| `runtime-status-document` | Host runtime status document | Optional UI continuity artifact입니다. Missing은 unavailable을 뜻하며 restore는 status를 합성하지 않습니다. Breaking status schema는 skip하거나 backup compatibility로 gate해야 합니다. |
+| `runtime-events-document` | Host runtime event JSONL contract | Optional observability continuity artifact입니다. Decode/schema change를 empty event list로 숨기면 안 됩니다. |
+| `runtime-observability-database` | Host SQLite observability projection schema | Optional UI continuity artifact입니다. SQLite schema change가 old snapshot을 unreadable하게 만들 수 있으므로, 현재 Helper가 DB를 열기 전에 gate 또는 migration이 필요합니다. |
 
-## Compatibility Contract
+## Compatibility 계약
 
-Runtime data backup restore is gated by `RuntimeDataBackupManifest.dataCompatibilityVersion`.
-The current Helper writes `RuntimeDataBackupCompatibility.currentDataCompatibilityVersion`
-when creating a backup. Restore rejects a backup when:
+Runtime data backup restore는 `RuntimeDataBackupManifest.dataCompatibilityVersion`으로 gate합니다.
+현재 Helper는 backup 생성 시 `RuntimeDataBackupCompatibility.currentDataCompatibilityVersion`을
+씁니다. Restore는 아래 경우 backup을 거부합니다.
 
-- the manifest is missing `dataCompatibilityVersion`;
-- the manifest declares a version not supported by the current Helper;
-- the manifest schema, product, required artifact set, artifact state, size, checksum,
-  or relative artifact path validation fails.
+- manifest에 `dataCompatibilityVersion`이 없음
+- manifest가 현재 Helper가 지원하지 않는 version을 선언함
+- manifest schema, product, required artifact set, artifact state, size, checksum,
+  relative artifact path validation 실패
 
-This compatibility version is a data layout contract, not a product version string.
-`runtimeVersion` is still recorded for operator context, but restore must not use it as
-the only compatibility decision. Product version and data compatibility version can
-move at different speeds.
+Compatibility version은 data layout 계약이며 product version string이 아닙니다.
+`runtimeVersion`은 운영자 context를 위해 계속 기록하지만 restore compatibility의 유일한 판단 기준이
+되어서는 안 됩니다. Product version과 data compatibility version은 서로 다른 속도로 움직일 수 있습니다.
 
-### When To Bump `dataCompatibilityVersion`
+### `dataCompatibilityVersion`을 올리는 기준
 
-Bump the compatibility version when a backup made by the previous format can no longer
-be restored safely by the current runtime without an explicit migration. Examples:
+이전 format으로 만든 backup을 현재 runtime이 명시 migration 없이 안전하게 restore할 수 없으면
+compatibility version을 올립니다. 예시는 아래와 같습니다.
 
-- Redis key/value layout changes in a way the current VitalServer cannot read old data;
-- `runtime-vm-config`, `guest-runtime-config`, or `guest-runtime-settings` changes remove
-  or reinterpret required fields;
-- `runtime-observability.sqlite` schema changes make restored snapshots unreadable or
-  unsafe for read-only query paths;
-- launchd service labels or start-on-boot state semantics change in a non-compatible way.
+- 현재 VitalServer가 old data를 읽을 수 없을 정도로 Redis key/value layout이 변경됨
+- `runtime-vm-config`, `guest-runtime-config`, `guest-runtime-settings`에서 required field가 제거되거나
+  의미가 바뀜
+- `runtime-observability.sqlite` schema 변경으로 restored snapshot이 unreadable하거나 read-only query
+  path에서 unsafe함
+- launchd service label 또는 start-on-boot state 의미가 호환되지 않게 바뀜
 
-Do not bump the compatibility version for additive optional fields that older backups can
-restore with explicit missing-state handling. Missing, invalid, failed, stale, zero, and
-empty meanings must remain distinct.
+명시적인 missing-state 처리로 restore 가능한 additive optional field 때문에 compatibility version을
+올리면 안 됩니다. Missing, invalid, failed, stale, zero, empty는 서로 다른 의미로 유지해야 합니다.
 
-If restore support for an older compatibility version is required, add an explicit
-migration path before any file is written to runtime destinations. Restore must not
-partially apply a backup and then discover that a later artifact is incompatible.
+오래된 compatibility version을 지원해야 한다면 restore가 runtime destination에 file을 쓰기 전에
+명시 migration path를 추가합니다. Restore가 일부 artifact를 적용한 뒤 나중에 다른 artifact가
+incompatible하다는 사실을 발견하면 안 됩니다.
 
-Backup creation writes a manifest last. Restore must reject missing, duplicated,
-non-archived, unchecked, size-mismatched, checksum-mismatched, path-escaping, or
-compatibility-incompatible artifacts. Missing backup directories, decode failures,
-permission failures, guest capability failures, and guest result read failures are
-operation failures; they are not empty backup lists or successful restores.
+Backup creation은 manifest를 마지막에 씁니다. Restore는 missing, duplicated, non-archived,
+unchecked, size-mismatched, checksum-mismatched, path-escaping, compatibility-incompatible artifact를
+거부해야 합니다. Missing backup directory, decode failure, permission failure, guest capability failure,
+guest result read failure는 operation failure입니다. Empty backup list나 successful restore로 바꾸면
+안 됩니다.
 
-Redis restore is guest-owned. Host stages the selected archive into the shared runtime data directory and writes a `redis-restore.request`; the guest command poller dispatches `tirosh-vitalserver-redis-restore.service`, which validates the archive, stops Docker Compose, replaces the Redis volume contents, starts Compose, and writes `redis-restore-result.json`.
+Redis restore는 Guest-owned입니다. Host는 선택한 archive를 shared runtime data directory에 staging하고
+`redis-restore.request`를 씁니다. Guest command poller는 `tirosh-vitalserver-redis-restore.service`를
+dispatch하고, 이 service는 archive를 검증하고 Docker Compose를 stop한 뒤 Redis volume contents를
+교체하고 Compose를 start한 다음 `redis-restore-result.json`을 씁니다.
 
-Older guests that do not report the `redisRestore` capability cannot complete runtime data restore. Host must report that capability failure explicitly instead of guessing Redis volume internals.
+`redisRestore` capability를 보고하지 않는 오래된 Guest는 runtime data restore를 완료할 수 없습니다.
+Host는 Redis volume internals를 추정하지 말고 capability failure를 명시적으로 보고해야 합니다.
 
 ## Troubleshooting
 
-### Create backup fails with missing `redis-data`
+### `redis-data` 누락으로 backup 생성 실패
 
-Symptom:
+증상:
 
 ```text
 required runtime data backup artifact is missing id=redis-data path=/mnt/tirosh/backups/redis/<archive>.tar.gz
 ```
 
-Cause: the guest `redis-backup-result.json` reports the archive path from the guest mount namespace (`/mnt/tirosh/...`). The Host backup store reads from the macOS filesystem, so it must translate that path through the explicit shared data directory contract before archiving.
+원인: Guest의 `redis-backup-result.json`은 guest mount namespace 기준 archive path
+(`/mnt/tirosh/...`)를 보고합니다. Host backup store는 macOS filesystem을 읽으므로, archiving 전에 이
+path를 명시적인 shared data directory contract를 통해 변환해야 합니다.
 
-Fix direction: convert `/mnt/tirosh/<relative>` to `<installed data directory>/<relative>` before passing the Redis archive to `RuntimeDataBackupStore.createBackup`.
+수정 방향: Redis archive를 `RuntimeDataBackupStore.createBackup`에 넘기기 전에
+`/mnt/tirosh/<relative>`를 `<installed data directory>/<relative>`로 변환합니다.
 
-Prevention principle: Host may consume guest-reported paths only through an explicit mount contract. It must not treat guest absolute paths as Host paths or infer equivalent locations from filenames.
+예방 원칙: Host는 guest-reported path를 명시 mount contract를 통해서만 소비해야 합니다.
+Guest absolute path를 Host path로 취급하거나 filename으로 equivalent location을 추정하면 안 됩니다.

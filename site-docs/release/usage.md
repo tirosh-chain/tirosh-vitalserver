@@ -94,7 +94,7 @@ restore하지 않습니다.
 
 선택한 backup이 현재 Helper와 호환되지 않으면 restore는 파일을 덮어쓰기 전에 실패합니다.
 호환성 기준과 backup 내부 artifact 구성은 Dev 문서의
-[Backup & Restore Contracts](../dev/backup-restore-contracts.md)를 봅니다.
+[Backup/Restore 계약](../dev/backup-restore-contracts.md)을 봅니다.
 
 Backup 삭제는 Danger Zone에서 분리되어 있습니다. `Delete VitalServer Backup`은 선택한
 VitalServer backup만 삭제하고, `Delete Update Backup`은 update/rollback용 backup만 삭제합니다.
@@ -116,7 +116,7 @@ Upstream VitalServer에서 Helper로 1회 migration을 할 때는 DMG의 `Troubl
 `Create Upstream Redis Backup.command`를 사용합니다. 생성한 archive는 Advanced -> Recovery operations
 -> Redis-only recovery의 `Import Backups`로 가져온 뒤 `Restore Redis-only Backup`으로 복원합니다.
 upstream Redis archive 생성 방식과 command log 위치는 Dev 문서의
-[Backup & Restore Contracts](../dev/backup-restore-contracts.md)를 봅니다.
+[Backup/Restore 계약](../dev/backup-restore-contracts.md)을 봅니다.
 
 ## 3. Settings 적용
 
