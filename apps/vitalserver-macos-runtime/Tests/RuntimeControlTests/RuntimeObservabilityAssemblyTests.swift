@@ -144,6 +144,46 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
         XCTAssertEqual(readQuery.limit, 2000)
     }
 
+    func testRecorderActivityWindowAssemblerFillsZerosFromInitialConnectionBound() {
+        let query = RuntimeVitalRecorderActivityWindowQuery(
+            vrcode: "VR_A",
+            bucketSeconds: 60,
+            period: .all,
+            pageIndex: 0
+        )
+        let bounds = VitalDBRecorderActivityBucketBounds(
+            vrcode: "VR_A",
+            firstBucketStartedAt: "2026-05-25T00:00:00Z",
+            latestBucketStartedAt: "2026-05-25T00:03:00Z"
+        )
+        let records = [
+            VitalDBRecorderActivityBucketRecord(
+                vrcode: "VR_A",
+                bucketStartedAt: "2026-05-25T00:02:00Z",
+                bucketSeconds: 60,
+                messageCount: 3,
+                byteCount: 900,
+                roomCount: 1,
+                firstObservedAt: "2026-05-25T00:02:05Z",
+                lastObservedAt: "2026-05-25T00:02:05Z"
+            ),
+        ]
+
+        let window = RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+            query: query,
+            bounds: bounds,
+            records: records
+        )
+
+        XCTAssertEqual(window.buckets.map(\.bucketStartedAt), [
+            "2026-05-25T00:00:00Z",
+            "2026-05-25T00:01:00Z",
+            "2026-05-25T00:02:00Z",
+            "2026-05-25T00:03:00Z",
+        ])
+        XCTAssertEqual(window.buckets.map(\.messageCount), [0, 0, 3, 0])
+    }
+
     func testRelationshipHistoryAssemblerMapsLoadedAssignmentsAndPreservesPartialReadFailure() {
         let history = RuntimeVitalDBRelationshipHistoryAssembler.makeHistory(
             reads: RuntimeVitalDBRelationshipProjectionReads(

@@ -77,6 +77,15 @@ enum SQLiteRuntimeObservabilitySchema {
           ON vitaldb_recorder_activity_buckets(vrcode, bucket_started_at)
         """)
         try execute(db, sql: """
+        CREATE TABLE IF NOT EXISTS vitaldb_recorder_activity_ranges (
+          vrcode text primary key,
+          first_seen_at text,
+          last_seen_at text,
+          first_observed_at text not null,
+          last_observed_at text not null
+        )
+        """)
+        try execute(db, sql: """
         CREATE TABLE IF NOT EXISTS vitaldb_bed_assignments (
           id text primary key,
           bed_id text not null,

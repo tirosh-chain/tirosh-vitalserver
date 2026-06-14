@@ -62,9 +62,19 @@ export function RecorderActivityChart({
       readRecorderActivityBuckets(activityTimeline, {
         bucketSeconds,
         rangeSeconds,
-        currentTimeMs: allSamplesMode ? undefined : nowMs
+        currentTimeMs: allSamplesMode ? undefined : nowMs,
+        activityStartedAt: recorder.firstSeenAt,
+        activityEndedAt: recorder.lastSeenAt
       }),
-    [activityTimeline, allSamplesMode, bucketSeconds, nowMs, rangeSeconds]
+    [
+      activityTimeline,
+      allSamplesMode,
+      bucketSeconds,
+      nowMs,
+      rangeSeconds,
+      recorder.firstSeenAt,
+      recorder.lastSeenAt
+    ]
   );
   const pagedActivity = useMemo(
     () => allSamplesMode

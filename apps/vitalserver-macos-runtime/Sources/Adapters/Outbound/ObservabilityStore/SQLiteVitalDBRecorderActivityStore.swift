@@ -53,11 +53,22 @@ extension SQLiteRuntimeObservabilityStore {
             try queryRows(
                 db,
                 sql: """
-                SELECT vrcode, min(bucket_started_at), max(bucket_started_at)
-                FROM vitaldb_recorder_activity_buckets
-                WHERE vrcode = ?
-                GROUP BY vrcode
-                LIMIT 1
+                WITH bucket_bounds AS (
+                  SELECT vrcode,
+                         min(bucket_started_at) AS first_bucket_started_at,
+                         max(bucket_started_at) AS latest_bucket_started_at
+                  FROM vitaldb_recorder_activity_buckets
+                  WHERE vrcode = ?
+                  GROUP BY vrcode
+                )
+                SELECT bucket_bounds.vrcode,
+                       bucket_bounds.first_bucket_started_at,
+                       bucket_bounds.latest_bucket_started_at,
+                       ranges.first_seen_at,
+                       ranges.last_seen_at
+                FROM bucket_bounds
+                LEFT JOIN vitaldb_recorder_activity_ranges ranges
+                  ON ranges.vrcode = bucket_bounds.vrcode
                 """,
                 bindings: [.text(vrcode)]
             ) { statement in
@@ -67,22 +78,28 @@ extension SQLiteRuntimeObservabilityStore {
                     table: "vitaldb_recorder_activity_buckets",
                     column: "vrcode"
                 )
-                let firstBucketStartedAt = try requiredText(
+                let firstActivityStartedAt = try requiredText(
                     statement,
                     1,
                     table: "vitaldb_recorder_activity_buckets",
-                    column: "min(bucket_started_at)"
+                    column: "first_bucket_started_at"
                 )
-                let latestBucketStartedAt = try requiredText(
+                let latestActivityStartedAt = try requiredText(
                     statement,
                     2,
                     table: "vitaldb_recorder_activity_buckets",
-                    column: "max(bucket_started_at)"
+                    column: "latest_bucket_started_at"
                 )
                 return VitalDBRecorderActivityBucketBounds(
                     vrcode: vrcode,
-                    firstBucketStartedAt: firstBucketStartedAt,
-                    latestBucketStartedAt: latestBucketStartedAt
+                    firstBucketStartedAt: earliestActivityTimestamp(
+                        columnText(statement, 3),
+                        firstActivityStartedAt
+                    ) ?? firstActivityStartedAt,
+                    latestBucketStartedAt: latestActivityTimestamp(
+                        columnText(statement, 4),
+                        latestActivityStartedAt
+                    ) ?? latestActivityStartedAt
                 )
             }.first
         }
@@ -96,6 +113,13 @@ extension SQLiteRuntimeObservabilityStore {
             guard let activity = recorder.activity else {
                 continue
             }
+            try upsertRecorderActivityRange(
+                vrcode: recorder.vrcode,
+                firstSeenAt: activity.firstSeenAt,
+                lastSeenAt: activity.lastSeenAt,
+                observedAt: observation.observedAt,
+                db: db
+            )
             for bucket in activity.buckets {
                 try upsertRecorderActivityBucket(
                     vrcode: recorder.vrcode,
@@ -105,6 +129,70 @@ extension SQLiteRuntimeObservabilityStore {
                 )
             }
         }
+    }
+
+    private func upsertRecorderActivityRange(
+        vrcode: String,
+        firstSeenAt: String?,
+        lastSeenAt: String?,
+        observedAt: String,
+        db: OpaquePointer
+    ) throws {
+        guard firstSeenAt != nil || lastSeenAt != nil else {
+            return
+        }
+        let existing = try queryRows(
+            db,
+            sql: """
+            SELECT first_seen_at, last_seen_at, first_observed_at, last_observed_at
+            FROM vitaldb_recorder_activity_ranges
+            WHERE vrcode = ?
+            LIMIT 1
+            """,
+            bindings: [.text(vrcode)]
+        ) { statement in
+            SQLiteVitalDBRecorderActivityRangeRow(
+                firstSeenAt: columnText(statement, 0),
+                lastSeenAt: columnText(statement, 1),
+                firstObservedAt: try requiredText(
+                    statement,
+                    2,
+                    table: "vitaldb_recorder_activity_ranges",
+                    column: "first_observed_at"
+                ),
+                lastObservedAt: try requiredText(
+                    statement,
+                    3,
+                    table: "vitaldb_recorder_activity_ranges",
+                    column: "last_observed_at"
+                )
+            )
+        }.first
+
+        try execute(
+            db,
+            sql: """
+            INSERT INTO vitaldb_recorder_activity_ranges(
+              vrcode,
+              first_seen_at,
+              last_seen_at,
+              first_observed_at,
+              last_observed_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(vrcode) DO UPDATE SET
+              first_seen_at = excluded.first_seen_at,
+              last_seen_at = excluded.last_seen_at,
+              first_observed_at = excluded.first_observed_at,
+              last_observed_at = excluded.last_observed_at
+            """,
+            bindings: [
+                .text(vrcode),
+                .optionalText(earliestActivityTimestamp(existing?.firstSeenAt, firstSeenAt)),
+                .optionalText(latestActivityTimestamp(existing?.lastSeenAt, lastSeenAt)),
+                .text(earliestActivityTimestamp(existing?.firstObservedAt, observedAt) ?? observedAt),
+                .text(latestActivityTimestamp(existing?.lastObservedAt, observedAt) ?? observedAt),
+            ]
+        )
     }
 
     private func upsertRecorderActivityBucket(
@@ -183,4 +271,48 @@ extension SQLiteRuntimeObservabilityStore {
             )
         }
     }
+}
+
+private struct SQLiteVitalDBRecorderActivityRangeRow {
+    let firstSeenAt: String?
+    let lastSeenAt: String?
+    let firstObservedAt: String
+    let lastObservedAt: String
+}
+
+private func earliestActivityTimestamp(_ left: String?, _ right: String?) -> String? {
+    activityTimestampBoundary(left, right, orderedBefore: <)
+}
+
+private func latestActivityTimestamp(_ left: String?, _ right: String?) -> String? {
+    activityTimestampBoundary(left, right, orderedBefore: >)
+}
+
+private func activityTimestampBoundary(
+    _ left: String?,
+    _ right: String?,
+    orderedBefore: (Date, Date) -> Bool
+) -> String? {
+    guard let left else {
+        return right
+    }
+    guard let right else {
+        return left
+    }
+    guard let leftDate = sqliteActivityDate(from: left) else {
+        return left
+    }
+    guard let rightDate = sqliteActivityDate(from: right) else {
+        return right
+    }
+    return orderedBefore(rightDate, leftDate) ? right : left
+}
+
+private func sqliteActivityDate(from value: String) -> Date? {
+    let formatter = ISO8601DateFormatter()
+    if let date = formatter.date(from: value) {
+        return date
+    }
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter.date(from: value)
 }

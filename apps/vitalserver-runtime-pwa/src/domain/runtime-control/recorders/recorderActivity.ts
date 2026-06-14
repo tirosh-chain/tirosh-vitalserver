@@ -21,6 +21,8 @@ export type RecorderActivityBucketOptions = {
   bucketSeconds: number;
   rangeSeconds?: number | null;
   currentTimeMs?: number;
+  activityStartedAt?: string | null;
+  activityEndedAt?: string | null;
 };
 
 export type RecorderActivityRead = {
@@ -85,8 +87,6 @@ export function readRecorderActivityBuckets(
     };
   }
 
-  const earliestMs = parsed[0]?.observedMs ?? null;
-
   if (
     options.currentTimeMs !== undefined &&
     (!Number.isFinite(options.currentTimeMs) || options.currentTimeMs < 0)
@@ -97,8 +97,26 @@ export function readRecorderActivityBuckets(
     };
   }
 
-  const rangeEndMs = options.currentTimeMs ?? latestMs;
-  const explicitRangeEndMs = options.currentTimeMs;
+  const explicitActivityStartMs = explicitActivityTimestamp(
+    options.activityStartedAt,
+    "activityStartedAt",
+    issues
+  );
+  const explicitActivityEndMs = explicitActivityTimestamp(
+    options.activityEndedAt,
+    "activityEndedAt",
+    issues
+  );
+  const earliestObservedMs = parsed[0]?.observedMs ?? null;
+  const earliestMs =
+    explicitActivityStartMs === null || earliestObservedMs === null
+      ? earliestObservedMs
+      : Math.min(explicitActivityStartMs, earliestObservedMs);
+  const latestActivityMs =
+    explicitActivityEndMs === null ? latestMs : Math.max(latestMs, explicitActivityEndMs);
+  const rangeEndMs = options.currentTimeMs ?? latestActivityMs;
+  const explicitRangeEndMs =
+    options.currentTimeMs ?? (explicitActivityEndMs === null ? undefined : latestActivityMs);
   const rangeStartMs = options.rangeSeconds
     ? rangeEndMs - options.rangeSeconds * 1_000
     : null;
@@ -325,11 +343,12 @@ function filledBuckets(
 
   const endMs = rangeEndMs ?? latestBucketStart;
   const rangeStartMs = rangeSeconds ? endMs - rangeSeconds * 1_000 : null;
-  const firstBucketStart = rangeStartMs
-    ? earliestMs !== null && earliestMs < rangeStartMs
+  const firstActivityMs =
+    earliestMs === null ? bucketStarts[0] : Math.min(earliestMs, bucketStarts[0]);
+  const firstBucketStart =
+    rangeStartMs !== null && firstActivityMs < rangeStartMs
       ? Math.floor(rangeStartMs / bucketMs) * bucketMs
-      : bucketStarts[0]
-    : bucketStarts[0];
+      : Math.floor(firstActivityMs / bucketMs) * bucketMs;
   const lastBucketStart = Math.floor(endMs / bucketMs) * bucketMs;
 
   if (firstBucketStart === undefined) {
@@ -378,4 +397,19 @@ function timestamp(value: string | null | undefined): number | null {
   }
   const parsed = new Date(value).getTime();
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+function explicitActivityTimestamp(
+  value: string | null | undefined,
+  label: string,
+  issues: string[]
+): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const parsed = timestamp(value);
+  if (parsed === null) {
+    issues.push(`${label} has invalid timestamp`);
+  }
+  return parsed;
 }

@@ -2,7 +2,7 @@ import Contracts
 import Foundation
 
 public struct SQLiteRuntimeObservabilityStore {
-    public static let schemaVersion = 4
+    public static let schemaVersion = 5
 
     public let url: URL
     let database: SQLiteRuntimeObservabilityConnection

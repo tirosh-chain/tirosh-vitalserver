@@ -122,6 +122,73 @@ describe("recorder activity", () => {
     ]);
   });
 
+  it("fills zero buckets from explicit recorder first seen time", () => {
+    const buckets = buildRecorderActivityBuckets(
+      [
+        activityPoint({
+          observedAt: "2026-05-28T00:03:10Z",
+          messageCount: 4,
+          byteCount: 400,
+          roomCount: 1
+        })
+      ],
+      {
+        bucketSeconds: 60,
+        rangeSeconds: 60 * 60,
+        activityStartedAt: "2026-05-28T00:00:00Z"
+      }
+    );
+
+    expect(buckets.map((bucket) => bucket.startMs)).toEqual([
+      Date.parse("2026-05-28T00:00:00Z"),
+      Date.parse("2026-05-28T00:01:00Z"),
+      Date.parse("2026-05-28T00:02:00Z"),
+      Date.parse("2026-05-28T00:03:00Z")
+    ]);
+    expect(buckets.map((bucket) => bucket.messageCount)).toEqual([0, 0, 0, 4]);
+    expect(buckets.map((bucket) => bucket.synthetic)).toEqual([
+      true,
+      true,
+      true,
+      false
+    ]);
+  });
+
+  it("fills zero buckets until explicit recorder last seen time in all samples mode", () => {
+    const buckets = buildRecorderActivityBuckets(
+      [
+        activityPointWithBuckets({
+          observedAt: "2026-05-28T00:03:10Z",
+          buckets: [
+            {
+              bucketStartedAt: "2026-05-28T00:03:00Z",
+              bucketSeconds: 60,
+              messageCount: 4,
+              byteCount: 400,
+              roomCount: 1
+            }
+          ]
+        })
+      ],
+      {
+        bucketSeconds: 60,
+        rangeSeconds: null,
+        activityStartedAt: "2026-05-28T00:00:00Z",
+        activityEndedAt: "2026-05-28T00:05:30Z"
+      }
+    );
+
+    expect(buckets.map((bucket) => bucket.startMs)).toEqual([
+      Date.parse("2026-05-28T00:00:00Z"),
+      Date.parse("2026-05-28T00:01:00Z"),
+      Date.parse("2026-05-28T00:02:00Z"),
+      Date.parse("2026-05-28T00:03:00Z"),
+      Date.parse("2026-05-28T00:04:00Z"),
+      Date.parse("2026-05-28T00:05:00Z")
+    ]);
+    expect(buckets.map((bucket) => bucket.messageCount)).toEqual([0, 0, 0, 4, 0, 0]);
+  });
+
   it("uses embedded recorder activity buckets from the latest sample", () => {
     const buckets = buildRecorderActivityBuckets(
       [

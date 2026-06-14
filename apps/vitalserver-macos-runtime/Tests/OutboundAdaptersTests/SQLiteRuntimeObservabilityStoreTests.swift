@@ -25,7 +25,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertEqual(
             try querySQLiteText(
                 url: store.url,
-                sql: "SELECT applied_at FROM schema_migrations WHERE version = 4"
+                sql: "SELECT applied_at FROM schema_migrations WHERE version = 5"
             ),
             "2026-06-08T00:00:00Z"
         )
@@ -615,6 +615,29 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         XCTAssertEqual(bucket.lastObservedAt, "2026-05-25T00:01:55Z")
     }
 
+    func testRecorderActivityBoundsStartAtExplicitFirstSeenTime() throws {
+        let harness = try SQLiteStoreHarness()
+        defer {
+            harness.cleanup()
+        }
+
+        try harness.store.append(recorderActivityObservation(
+            observedAt: "2026-05-25T00:10:05Z",
+            firstSeenAt: "2026-05-25T00:00:00Z",
+            lastSeenAt: "2026-05-25T00:12:30Z",
+            bucketStartedAt: "2026-05-25T00:10:00Z",
+            messageCount: 3,
+            byteCount: 900
+        ))
+
+        let bounds = try XCTUnwrap(
+            try harness.store.loadVitalDBRecorderActivityBucketBounds(vrcode: "VR_A")
+        )
+
+        XCTAssertEqual(bounds.firstBucketStartedAt, "2026-05-25T00:00:00Z")
+        XCTAssertEqual(bounds.latestBucketStartedAt, "2026-05-25T00:12:30Z")
+    }
+
     func testQueriesRecorderActivityBucketsByRecorderAndTimeRange() throws {
         let harness = try SQLiteStoreHarness()
         defer {
@@ -951,6 +974,8 @@ private func makeVitalDBProjectionStore(url: URL) -> SQLiteRuntimeObservabilityS
 private func recorderActivityObservation(
     observedAt: String,
     vrcode: String = "VR_A",
+    firstSeenAt: String? = nil,
+    lastSeenAt: String? = nil,
     bucketStartedAt: String = "2026-05-25T00:01:00Z",
     messageCount: Int,
     byteCount: Int
@@ -968,6 +993,8 @@ private func recorderActivityObservation(
                     messageCount: messageCount,
                     byteCount: byteCount,
                     roomCount: 1,
+                    firstSeenAt: firstSeenAt,
+                    lastSeenAt: lastSeenAt,
                     buckets: [
                         VitalDBRecorderActivityBucket(
                             bucketStartedAt: bucketStartedAt,
