@@ -19,6 +19,7 @@ public enum RuntimeLifecycleCommand: Equatable {
     case redisBackup
     case redisRestore(URL)
     case runtimeDataBackup
+    case automaticBackup
     case runtimeDataRestore(URL)
     case repairDatastore
     case repairVMDisk
@@ -80,6 +81,8 @@ extension RuntimeLifecycleCommand {
             ))
         case "runtime-data-backup":
             return .runtimeDataBackup
+        case "automatic-backup":
+            return .automaticBackup
         case "runtime-data-restore":
             return .runtimeDataRestore(try requiredBundleURL(
                 in: remaining,
@@ -115,7 +118,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime health
       vitalserver-vm runtime guest-log-sync
       vitalserver-vm runtime watchdog
-      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--redis-backup-retention <count>] [--restart]
+      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--restart]
       vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
@@ -124,6 +127,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime redis-backup
       vitalserver-vm runtime redis-restore <archive.tar.gz>
       vitalserver-vm runtime runtime-data-backup
+      vitalserver-vm runtime automatic-backup
       vitalserver-vm runtime runtime-data-restore <backup-dir>
       vitalserver-vm runtime repair-datastore
       vitalserver-vm runtime repair-vm-disk
@@ -267,13 +271,23 @@ extension RuntimeLifecycleCommand {
                 )
             }
             return .preventSystemSleep(enabled)
-        case .redisBackupRetention:
+        case .automaticBackup:
+            guard let enabled = RuntimeBooleanParser.parse(value) else {
+                throw RuntimeLifecycleCommandParseError.missingArgument("--automatic-backup must be true or false")
+            }
+            return .automaticBackup(enabled)
+        case .backupScheduleTimes:
+            let times = value
+                .split(separator: ",", omittingEmptySubsequences: false)
+                .map { String($0) }
+            return .backupScheduleTimes(times)
+        case .backupRetention:
             guard let count = Int(value) else {
                 throw RuntimeLifecycleCommandParseError.missingArgument(
-                    "--redis-backup-retention must be an integer"
+                    "--backup-retention must be an integer"
                 )
             }
-            return .redisBackupRetention(count)
+            return .backupRetention(count)
         case .restart:
             throw RuntimeLifecycleCommandParseError.missingArgument("--restart does not accept a value")
         case .unknown(let key):

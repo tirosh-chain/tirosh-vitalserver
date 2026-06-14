@@ -14,12 +14,14 @@ public struct RunConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRunt
         let resolvedRequest = try operations.effects.resolveSecretFileChanges(request)
         let currentVMConfig = try operations.readers.loadVMConfig(context.vmConfigURL)
         let currentGuestRuntimeConfig = try operations.readers.loadGuestRuntimeConfig(context.guestRuntimeConfigURL)
+        let currentGuestRuntimeSettings = try operations.readers.loadGuestRuntimeSettings(context.guestRuntimeSettingsURL)
         let currentVMDiskSizeGiB = try operations.readers.loadVMDiskSizeGiB()
         let plan = try useCase.plan(
             resolvedRequest,
             context: context,
             currentVMConfig: currentVMConfig,
             currentGuestRuntimeConfig: currentGuestRuntimeConfig,
+            currentGuestRuntimeSettings: currentGuestRuntimeSettings,
             currentVMDiskSizeGiB: currentVMDiskSizeGiB
         )
         let effectPlan = useCase.effectExecutionPlan(plan.effects)
@@ -52,15 +54,18 @@ public struct RunConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRunt
 public struct ConfigureRuntimeStateReaders<VMConfig: ConfigureRuntimeMutableVMRuntimeConfiguration> {
     public var loadVMConfig: (URL) throws -> VMConfig
     public var loadGuestRuntimeConfig: (URL) throws -> GuestRuntimeConfigDocument
+    public var loadGuestRuntimeSettings: (URL) throws -> GuestRuntimeSettingsDocument
     public var loadVMDiskSizeGiB: () throws -> Int
 
     public init(
         loadVMConfig: @escaping (URL) throws -> VMConfig,
         loadGuestRuntimeConfig: @escaping (URL) throws -> GuestRuntimeConfigDocument,
+        loadGuestRuntimeSettings: @escaping (URL) throws -> GuestRuntimeSettingsDocument,
         loadVMDiskSizeGiB: @escaping () throws -> Int
     ) {
         self.loadVMConfig = loadVMConfig
         self.loadGuestRuntimeConfig = loadGuestRuntimeConfig
+        self.loadGuestRuntimeSettings = loadGuestRuntimeSettings
         self.loadVMDiskSizeGiB = loadVMDiskSizeGiB
     }
 }

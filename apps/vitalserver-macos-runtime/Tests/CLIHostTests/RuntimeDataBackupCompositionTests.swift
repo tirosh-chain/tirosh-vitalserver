@@ -60,6 +60,44 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
         XCTAssertEqual(manifest.artifacts.first { $0.id == .redisData }?.sourcePath, hostRedisArchive.path)
     }
 
+    func testAutomaticBackupRejectsInvalidRetentionBeforeGuestRedisRequest() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let productRoot = URL(fileURLWithPath: "/product")
+        let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+        let requestURL = installedPaths.guestRunDirectory
+            .appendingPathComponent(Constants.Runtime.redisBackupRequestFile)
+        fileStore.files[installedPaths.guestRuntimeSettings] = try JSONEncoder().encode(
+            GuestRuntimeSettingsDocument(
+                vitalServerURL: "https://vitalserver.example",
+                remoteConsoleURL: "https://console.example",
+                publicHost: "vitalserver.example",
+                publicPort: 443,
+                automaticBackupEnabled: true,
+                backupScheduleTimes: ["03:15"],
+                backupRetentionCount: 0
+            )
+        )
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installedPaths.runtimeHome,
+                installed: installedPaths,
+                config: installedPaths.vmConfig,
+                pidFile: installedPaths.pidFile
+            ),
+            clock: RuntimeDataBackupFixedClock(),
+            sleeper: RuntimeDataBackupResultSleeper {},
+            commandRunner: RuntimeDataBackupCommandRunner(),
+            serviceManager: RuntimeDataBackupServiceManager(),
+            guestGateway: RuntimeDataBackupGuestGateway(),
+            fileStore: fileStore
+        )
+
+        XCTAssertThrowsError(try lifecycle.runtimeDataBackupComposition().createAutomaticBackup()) { error in
+            XCTAssertTrue(String(describing: error).contains("automatic backup retention is invalid value=0"))
+        }
+        XCTAssertNil(fileStore.files[requestURL])
+    }
+
     private func writeRequiredRuntimeDataBackupSources(
         _ paths: InstalledRuntimePaths,
         fileStore: RuntimeFileStoreSpy

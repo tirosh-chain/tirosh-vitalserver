@@ -139,7 +139,9 @@ export const runtimeSettingsSchema = z
     startOnBootConfigurable: z.boolean(),
     autoRecoveryEnabled: z.boolean(),
     preventSystemSleep: z.boolean(),
-    redisBackupRetentionCount: z.number(),
+    automaticBackupEnabled: z.boolean(),
+    backupScheduleTimes: z.string().array(),
+    backupRetentionCount: z.number(),
     restartAfterSave: z.boolean()
   })
   .passthrough();

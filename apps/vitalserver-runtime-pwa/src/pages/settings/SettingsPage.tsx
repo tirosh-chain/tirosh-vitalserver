@@ -324,16 +324,38 @@ export function SettingsPage() {
               }
             />
           </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={draft.automaticBackupEnabled}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("automaticBackupEnabled", event.target.checked)
+              }
+            />
+            Automatic backups
+          </label>
+          <label>
+            Backup times
+            <input
+              value={draft.backupScheduleTimes}
+              disabled={!canControlServices}
+              placeholder="03:15, 15:15"
+              onChange={(event) =>
+                updateField("backupScheduleTimes", event.target.value)
+              }
+            />
+          </label>
           <label>
             Backup archives
             <input
               type="number"
               min="1"
               max="30"
-              value={draft.redisBackupRetentionCount}
+              value={draft.backupRetentionCount}
               disabled={!canControlServices}
               onChange={(event) =>
-                updateField("redisBackupRetentionCount", event.target.value)
+                updateField("backupRetentionCount", event.target.value)
               }
             />
           </label>

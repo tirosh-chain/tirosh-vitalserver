@@ -115,6 +115,8 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeOperation.prepareUpdateShutdown.rawValue, "prepare-update-shutdown")
         XCTAssertEqual(RuntimeOperation(rawValue: "runtime-data-backup"), .runtimeDataBackup)
         XCTAssertEqual(RuntimeOperation.runtimeDataBackup.rawValue, "runtime-data-backup")
+        XCTAssertEqual(RuntimeOperation(rawValue: "automatic-backup"), .automaticBackup)
+        XCTAssertEqual(RuntimeOperation.automaticBackup.rawValue, "automatic-backup")
     }
 
     func testManagedRuntimeBackupManifestFactoryPreservesRootfsBackupMeaning() {

@@ -48,7 +48,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         XCTAssertEqual(
             backup.path,
             paths.backupsDirectory
-                .appendingPathComponent("runtime-data")
+                .appendingPathComponent("vitalserver-helper")
                 .appendingPathComponent("20260610T000000Z-manual-backup")
                 .path
         )
@@ -115,7 +115,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             )
         }
         XCTAssertFalse(FileManager.default.fileExists(
-            atPath: paths.backupsDirectory.appendingPathComponent("runtime-data/.staging-20260610T000000Z").path
+            atPath: paths.backupsDirectory.appendingPathComponent("vitalserver-helper/.staging-20260610T000000Z").path
         ))
     }
 

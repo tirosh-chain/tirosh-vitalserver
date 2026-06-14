@@ -830,7 +830,9 @@ function fullSettings() {
     startOnBootConfigurable: true,
     autoRecoveryEnabled: true,
     preventSystemSleep: true,
-    redisBackupRetentionCount: 30,
+    automaticBackupEnabled: true,
+    backupScheduleTimes: ["03:15"],
+        backupRetentionCount: 30,
     restartAfterSave: true
   };
 }

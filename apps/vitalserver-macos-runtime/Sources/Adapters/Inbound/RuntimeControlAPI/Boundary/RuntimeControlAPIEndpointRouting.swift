@@ -64,11 +64,11 @@ public extension RuntimeControlAPIEndpoint {
         case .redisBackups:
             return .init(method: .get, path: "/host/backups/redis", scope: .hostAffordance)
         case .runtimeDataBackups:
-            return .init(method: .get, path: "/host/backups/runtime-data", scope: .hostAffordance)
+            return .init(method: .get, path: "/host/backups/vitalserver-helper", scope: .hostAffordance)
         case .restoreRedisBackup:
             return .init(method: .post, path: "/host/backups/redis/restore", scope: .hostAffordance)
         case .restoreRuntimeDataBackup:
-            return .init(method: .post, path: "/host/backups/runtime-data/restore", scope: .hostAffordance)
+            return .init(method: .post, path: "/host/backups/vitalserver-helper/restore", scope: .hostAffordance)
         case .logText:
             return .init(method: .post, path: "/host/logs/read", scope: .hostAffordance)
         case .logStream:
@@ -86,7 +86,7 @@ public extension RuntimeControlAPIEndpoint {
         case .deleteUpdateBackup:
             return .init(method: .delete, path: "/host/backups/update", scope: .hostAffordance)
         case .deleteRuntimeDataBackup:
-            return .init(method: .delete, path: "/host/backups/runtime-data", scope: .hostAffordance)
+            return .init(method: .delete, path: "/host/backups/vitalserver-helper", scope: .hostAffordance)
         case .exportLogs:
             return .init(method: .post, path: "/host/logs/export", scope: .hostAffordance)
         }

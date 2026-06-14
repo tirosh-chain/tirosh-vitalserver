@@ -11,7 +11,6 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
     public var publicPort: Int
     public var adminPassword: String
     public var vitalFilesDirectory: String
-    public var redisBackupRetentionCount: Int
     public var redisUiPort: Int
     public var swaggerUiPort: Int
     public var testkitEnabled: Bool
@@ -27,7 +26,6 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
         case publicPort
         case adminPassword
         case vitalFilesDirectory
-        case redisBackupRetentionCount
         case redisUiPort
         case swaggerUiPort
         case testkitEnabled
@@ -44,7 +42,6 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
         publicPort: Int,
         adminPassword: String,
         vitalFilesDirectory: String,
-        redisBackupRetentionCount: Int,
         redisUiPort: Int,
         swaggerUiPort: Int,
         testkitEnabled: Bool
@@ -59,7 +56,6 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
         self.publicPort = publicPort
         self.adminPassword = adminPassword
         self.vitalFilesDirectory = vitalFilesDirectory
-        self.redisBackupRetentionCount = redisBackupRetentionCount
         self.redisUiPort = redisUiPort
         self.swaggerUiPort = swaggerUiPort
         self.testkitEnabled = testkitEnabled
@@ -79,10 +75,6 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
         self.remoteConsoleURL = try container.decode(String.self, forKey: .remoteConsoleURL)
         self.adminPassword = try container.decode(String.self, forKey: .adminPassword)
         self.vitalFilesDirectory = try container.decode(String.self, forKey: .vitalFilesDirectory)
-        self.redisBackupRetentionCount = try container.decode(
-            Int.self,
-            forKey: .redisBackupRetentionCount
-        )
         self.redisUiPort = try container.decode(Int.self, forKey: .redisUiPort)
         self.swaggerUiPort = try container.decode(Int.self, forKey: .swaggerUiPort)
         self.testkitEnabled = try container.decode(
@@ -92,78 +84,31 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
     }
 }
 
-public enum GuestRuntimeConfigDocumentMigration {
-    public static func decodeCurrentOrLegacy(_ data: Data, decoder: JSONDecoder = JSONDecoder()) throws -> GuestRuntimeConfigDocument {
-        do {
-            return try decoder.decode(GuestRuntimeConfigDocument.self, from: data)
-        } catch {
-            return try decoder.decode(LegacyGuestRuntimeConfigDocument.self, from: data).migrated()
-        }
-    }
-}
-
-private struct LegacyGuestRuntimeConfigDocument: Decodable {
-    let vitalserverHttpPort: Int
-    let redisHost: String
-    let redisPort: Int
-    let trustProxy: Bool
-    let vitalServerURL: String?
-    let remoteConsoleURL: String?
-    let publicHost: String
-    let publicPort: Int
-    let adminPassword: String
-    let vitalFilesDirectory: String
-    let redisBackupRetentionCount: Int
-    let redisUiPort: Int
-    let swaggerUiPort: Int
-    let testkitEnabled: Bool
-
-    func migrated() -> GuestRuntimeConfigDocument {
-        GuestRuntimeConfigDocument(
-            vitalserverHttpPort: vitalserverHttpPort,
-            redisHost: redisHost,
-            redisPort: redisPort,
-            trustProxy: trustProxy,
-            vitalServerURL: vitalServerURL ?? legacyVitalServerURL(publicHost: publicHost, publicPort: publicPort),
-            remoteConsoleURL: remoteConsoleURL ?? "",
-            publicHost: publicHost,
-            publicPort: publicPort,
-            adminPassword: adminPassword,
-            vitalFilesDirectory: vitalFilesDirectory,
-            redisBackupRetentionCount: redisBackupRetentionCount,
-            redisUiPort: redisUiPort,
-            swaggerUiPort: swaggerUiPort,
-            testkitEnabled: testkitEnabled
-        )
-    }
-
-    private func legacyVitalServerURL(publicHost: String, publicPort: Int) -> String {
-        guard !publicHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return ""
-        }
-        return "http://\(publicHost):\(publicPort)/"
-    }
-}
-
 public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
     public var vitalServerURL: String
     public var remoteConsoleURL: String
     public var publicHost: String
     public var publicPort: Int
-    public var redisBackupRetentionCount: Int
+    public var automaticBackupEnabled: Bool
+    public var backupScheduleTimes: [String]
+    public var backupRetentionCount: Int
 
     public init(
         vitalServerURL: String,
         remoteConsoleURL: String,
         publicHost: String,
         publicPort: Int,
-        redisBackupRetentionCount: Int
+        automaticBackupEnabled: Bool = RuntimeSettingsInitialBackupDefaults.automaticBackupEnabled,
+        backupScheduleTimes: [String] = RuntimeSettingsInitialBackupDefaults.backupScheduleTimes,
+        backupRetentionCount: Int = RuntimeSettingsInitialBackupDefaults.backupRetentionCount
     ) {
         self.vitalServerURL = vitalServerURL
         self.remoteConsoleURL = remoteConsoleURL
         self.publicHost = publicHost
         self.publicPort = publicPort
-        self.redisBackupRetentionCount = redisBackupRetentionCount
+        self.automaticBackupEnabled = automaticBackupEnabled
+        self.backupScheduleTimes = backupScheduleTimes
+        self.backupRetentionCount = backupRetentionCount
     }
 
     public init(runtimeConfig: GuestRuntimeConfigDocument) {
@@ -171,8 +116,13 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
             vitalServerURL: runtimeConfig.vitalServerURL,
             remoteConsoleURL: runtimeConfig.remoteConsoleURL,
             publicHost: runtimeConfig.publicHost,
-            publicPort: runtimeConfig.publicPort,
-            redisBackupRetentionCount: runtimeConfig.redisBackupRetentionCount
+            publicPort: runtimeConfig.publicPort
         )
     }
+}
+
+public enum RuntimeSettingsInitialBackupDefaults {
+    public static let automaticBackupEnabled = true
+    public static let backupScheduleTimes = ["03:15"]
+    public static let backupRetentionCount = 30
 }

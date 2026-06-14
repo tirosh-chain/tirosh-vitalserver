@@ -8,7 +8,7 @@ describe("runtime settings policy", () => {
     expect(isProtectedVitalFilesDirectory("/Users/Shared/TiroshVitalServer/vital")).toBe(false);
   });
 
-  it("validates VM, port, disk, and Redis backup limits", () => {
+  it("validates VM, port, disk, and backup limits", () => {
     const result = validateRuntimeSettings(fullSettings({
       cpuCount: 0,
       memoryGiB: 0,
@@ -17,7 +17,9 @@ describe("runtime settings policy", () => {
       proxyPort: 70_000,
       runtimeControlPort: 70_000,
       publicPort: 0,
-      redisBackupRetentionCount: 31
+      automaticBackupEnabled: true,
+    backupScheduleTimes: ["03:15"],
+    backupRetentionCount: 31
     }));
 
     expect(result.valid).toBe(false);
@@ -47,7 +49,9 @@ function fullSettings(overrides = {}) {
     startOnBootConfigurable: true,
     autoRecoveryEnabled: true,
     preventSystemSleep: true,
-    redisBackupRetentionCount: 30,
+    automaticBackupEnabled: true,
+    backupScheduleTimes: ["03:15"],
+        backupRetentionCount: 30,
     restartAfterSave: true,
     ...overrides
   };

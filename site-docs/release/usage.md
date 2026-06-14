@@ -92,6 +92,11 @@ Advanced, Observability, Logs 화면으로 이동합니다.
 하나의 복구 단위로 묶습니다. 따라서 일반 사용자는 runtime data와 Redis를 따로 backup하거나 따로
 restore하지 않습니다.
 
+자동 backup도 같은 VitalServer backup을 만듭니다. Settings의 `VitalServer Helper backups`에서
+자동 backup 사용 여부, 하루 실행 시간들, 보관할 archive 개수를 설정합니다. 보관 개수는
+`backups/vitalserver-helper` 아래의 VitalServer backup 개수이며 Redis-only archive 개수가 아닙니다.
+기본 보관 개수는 30개입니다.
+
 선택한 backup이 현재 Helper와 호환되지 않으면 restore는 파일을 덮어쓰기 전에 실패합니다.
 호환성 기준과 backup 내부 artifact 구성은 Dev 문서의
 [Backup/Restore 계약](../dev/backup-restore-contracts.md)을 봅니다.
@@ -102,7 +107,7 @@ VitalServer backup만 삭제하고, `Delete Update Backup`은 update/rollback용
 
 삭제 전에 별도로 보관한 VitalServer backup을 다시 사용하려면 Finder로 임의 위치에 복사하지 말고
 Advanced -> Recovery operations의 `Import Backups`를 사용합니다. Import는 선택한 backup 폴더를
-Helper가 보고한 `backups/runtime-data` 관리 폴더의 직접 자식으로 복사하며, 같은 이름의 backup이
+Helper가 보고한 `backups/vitalserver-helper` 관리 폴더의 직접 자식으로 복사하며, 같은 이름의 backup이
 이미 있으면 덮어쓰지 않습니다. `Open Backups`는 해당 VitalServer backup 관리 폴더를 엽니다.
 
 `Redis-only recovery`는 Repair 성격의 고급 조치입니다. VM disk repair, uninstall, 장애 분석처럼
@@ -133,7 +138,7 @@ VM runtime restart가 필요한 설정은 VM 실행 조건을 바꾸는 값입�
 | network mode, bridged interface | VM network device 재구성이 필요하므로 VM runtime restart 필요 |
 | Vital files directory | VM shared directory mount 재구성이 필요하므로 VM runtime restart 필요 |
 | VitalServer URL, Remote Console URL, public host/port | runtime config 문서 갱신, VM runtime restart requirement 없음 |
-| admin password, VitalServer Helper backup retention | guest runtime settings 갱신, VM runtime restart requirement 없음 |
+| admin password, VitalServer Helper backup schedule/retention | guest runtime settings와 Host launchd backup scheduler 갱신, VM runtime restart requirement 없음 |
 | start on boot, auto recovery, sleep prevention | Host launchd/config 정책 갱신, VM runtime restart requirement 없음 |
 
 따라서 URL이나 VitalServer Helper backup retention 같은 설정만 바꿨는데 `Restart VM runtime when required`가

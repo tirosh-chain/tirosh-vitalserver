@@ -9,11 +9,22 @@ artifact 구성, data schema owner, backup-level restore compatibility, migratio
 | 제품 표면 | 내부 operation | 사용 목적 |
 |---|---|---|
 | VitalServer backup | `runtime-data-backup` | Helper가 관리하는 runtime state와 Guest Redis data를 하나의 복구 단위로 backup/restore |
+| Automatic VitalServer backup | Host launchd `automatic-backup` | Settings schedule에 따라 VitalServer backup을 자동 생성하고 보관 개수를 적용 |
 | Redis-only recovery | Redis backup/restore request | VM disk repair, uninstall, migration, 장애 분석처럼 Redis data만 분리해야 하는 고급 조치 |
 | Upstream Redis backup command | Troubleshooting Tools command | 기존 upstream VitalServer Redis data directory를 Helper Redis-only import archive로 변환 |
 
 일반 운영자는 VitalServer backup을 사용합니다. Redis-only recovery는 전체 runtime 상태를 되돌리는
 기능이 아니라 Redis data만 바꾸는 repair 기능입니다.
+
+자동 backup도 Redis-only archive가 아니라 VitalServer backup을 생성합니다. Host launchd job
+`ai.tirosh.vitalserver.helper.automatic-backup`이 Settings의 `automaticBackupEnabled`,
+`backupScheduleTimes`, `backupRetentionCount`를 source of truth로 사용합니다. Schedule은 macOS
+local time `HH:mm` 값이며, Helper app process가 실행 중인지에 의존하지 않아야 합니다.
+
+Automatic backup command는 실행 시점에 runtime operation lease를 acquire합니다. 다른 mutating runtime
+operation이 active이면 실패 상태를 만들지 않고 해당 run을 skipped로 기록합니다. Backup 생성 성공 후
+`backups/vitalserver-helper` 아래의 오래된 VitalServer backup directory를 `backupRetentionCount`에
+맞춰 제거합니다. Retention은 Redis-only archive에는 적용하지 않습니다.
 
 ## 2. Runtime Data Backup Artifact
 
@@ -56,6 +67,10 @@ Restore는 아래 경우 backup을 거부합니다.
 오래된 backup을 지원해야 한다면 restore가 파일을 쓰기 전에 명시 migration을 구현해야 합니다.
 Restore flow는 artifact 일부를 적용한 뒤 나중에 다른 artifact가 incompatible하다는 사실을 발견하면
 안 됩니다.
+
+이 문서가 도입된 compatibility baseline 이전 backup은 지원하지 않습니다. Legacy runtime-data backup
+kind/path/manifest를 추정해서 읽는 fallback을 추가하지 않습니다. 이후 버전에서 하위호환이 필요하면
+새 baseline의 `restoreCompatibilityVersion`을 기준으로 명시 migration을 작성합니다.
 
 ## 4. Compatibility Version을 올리는 기준
 

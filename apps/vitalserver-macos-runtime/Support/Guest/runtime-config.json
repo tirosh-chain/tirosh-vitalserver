@@ -5,7 +5,6 @@
   "publicHost": "",
   "publicPort": 80,
   "redisHost": "redis",
-  "redisBackupRetentionCount": 30,
   "redisPort": 6379,
   "redisUiPort": 18081,
   "swaggerUiPort": 18082,

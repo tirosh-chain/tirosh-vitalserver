@@ -35,8 +35,9 @@ plist, start-on-boot state, status/events document, observability SQLite는 서�
 
 ## Actions
 
-Backup manifest는 `restoreCompatibilityVersion`을 포함해야 합니다. Restore는 아래 경우 file을 쓰기 전에
-backup을 거부해야 합니다.
+Backup manifest는 `backupKind=vitalserver-helper`와 `restoreCompatibilityVersion`을 포함해야 합니다.
+이 버전부터 이전 `runtime-data` kind/path를 읽는 fallback은 지원하지 않습니다. Restore는 아래 경우
+file을 쓰기 전에 backup을 거부해야 합니다.
 
 - `restoreCompatibilityVersion`이 없음
 - 선언된 compatibility version을 현재 Helper가 지원하지 않음

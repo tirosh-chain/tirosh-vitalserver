@@ -113,7 +113,9 @@ final class RuntimeControlContractsTests: XCTestCase {
                 remoteConsoleURL: "https://console.settings.example.test/",
                 publicHost: "settings.example.test",
                 publicPort: 8443,
-                redisBackupRetentionCount: 31
+                automaticBackupEnabled: true,
+                backupScheduleTimes: ["03:15"],
+                backupRetentionCount: 31
             ),
             to: RuntimeSettings()
         )
@@ -122,11 +124,11 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(settings.remoteConsoleURL, "https://console.settings.example.test/")
         XCTAssertEqual(settings.publicHost, "settings.example.test")
         XCTAssertEqual(settings.publicPort, 8443)
-        XCTAssertEqual(settings.redisBackupRetentionCount, 30)
+        XCTAssertEqual(settings.backupRetentionCount, 30)
         XCTAssertEqual(settings.readIssues, [
             RuntimeSettingsReadIssue(
-                source: "guestRuntimeSettings.redisBackupRetentionCount",
-                message: "redisBackupRetentionCount is out of range: 31"
+                source: "guestRuntimeSettings.backupRetentionCount",
+                message: "backupRetentionCount is out of range: 31"
             ),
         ])
     }
@@ -148,7 +150,9 @@ final class RuntimeControlContractsTests: XCTestCase {
                 remoteConsoleURL: "https://console.example.test/",
                 publicHost: "example.test",
                 publicPort: 8443,
-                redisBackupRetentionCount: 12
+                automaticBackupEnabled: true,
+                backupScheduleTimes: ["03:15", "15:15"],
+                backupRetentionCount: 12
             )),
             proxyPort: .loaded(19090),
             startOnBoot: .loaded(false)
@@ -164,7 +168,8 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(settings.remoteConsoleURL, "https://console.example.test/")
         XCTAssertEqual(settings.publicHost, "example.test")
         XCTAssertEqual(settings.publicPort, 8443)
-        XCTAssertEqual(settings.redisBackupRetentionCount, 12)
+        XCTAssertEqual(settings.backupScheduleTimes, ["03:15", "15:15"])
+        XCTAssertEqual(settings.backupRetentionCount, 12)
         XCTAssertEqual(settings.proxyPort, 19090)
         XCTAssertFalse(settings.startOnBoot)
         XCTAssertTrue(settings.startOnBootConfigurable)

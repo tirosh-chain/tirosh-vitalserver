@@ -200,6 +200,9 @@ extension RuntimeLifecycle {
                 setSystemSleepPrevention: { enabled in
                     try setSystemSleepPrevention(enabled)
                 },
+                setAutomaticBackupSchedule: { enabled, scheduleTimes in
+                    try setAutomaticBackupSchedule(enabled: enabled, scheduleTimes: scheduleTimes)
+                },
                 restartRuntimeServices: {
                     try restartRuntimeAfterSettingsApply()
                 },

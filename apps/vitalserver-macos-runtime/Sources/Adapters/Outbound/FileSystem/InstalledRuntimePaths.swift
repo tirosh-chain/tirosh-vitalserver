@@ -92,7 +92,23 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
     }
 
     public var backupsDirectory: URL {
-        productRoot.appendingPathComponent("backups")
+        productRoot.appendingPathComponent(RuntimeBackupStorageLayout.rootDirectoryName)
+    }
+
+    public var vitalServerHelperBackupsDirectory: URL {
+        RuntimeBackupStorageLayout.vitalServerHelperBackupsDirectory(under: backupsDirectory)
+    }
+
+    public var redisOnlyBackupsDirectory: URL {
+        RuntimeBackupStorageLayout.redisOnlyBackupsDirectory(under: backupsDirectory)
+    }
+
+    public var updateRollbackBackupsDirectory: URL {
+        RuntimeBackupStorageLayout.updateRollbackBackupsDirectory(under: backupsDirectory)
+    }
+
+    public var vmDiskRepairBackupsDirectory: URL {
+        RuntimeBackupStorageLayout.vmDiskRepairBackupsDirectory(under: backupsDirectory)
     }
 
     public var redisBackupsDirectory: URL {
@@ -285,6 +301,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var proxyLaunchDaemon: URL {
         URL(fileURLWithPath: "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist")
+    }
+
+    public var automaticBackupLaunchDaemon: URL {
+        URL(fileURLWithPath: "/Library/LaunchDaemons/\(RuntimeAutomaticBackupSchedule.launchDaemonPlistName)")
     }
 
     public var managerCommandLog: URL {

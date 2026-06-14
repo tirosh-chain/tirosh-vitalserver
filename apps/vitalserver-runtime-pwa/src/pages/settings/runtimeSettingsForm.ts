@@ -9,7 +9,9 @@ export type RuntimeSettingsDraft = {
   vitalFilesDirectory: string;
   publicHost: string;
   publicPort: string;
-  redisBackupRetentionCount: string;
+  automaticBackupEnabled: boolean;
+  backupScheduleTimes: string;
+  backupRetentionCount: string;
   startOnBoot: boolean;
   autoRecoveryEnabled: boolean;
   preventSystemSleep: boolean;
@@ -25,7 +27,9 @@ export const emptyRuntimeSettingsDraft: RuntimeSettingsDraft = {
   vitalFilesDirectory: "",
   publicHost: "",
   publicPort: "",
-  redisBackupRetentionCount: "",
+  automaticBackupEnabled: false,
+  backupScheduleTimes: "",
+  backupRetentionCount: "",
   startOnBoot: false,
   autoRecoveryEnabled: false,
   preventSystemSleep: false,
@@ -44,7 +48,9 @@ export function runtimeSettingsToDraft(
     vitalFilesDirectory: settings.vitalFilesDirectory,
     publicHost: settings.publicHost,
     publicPort: formatNumber(settings.publicPort),
-    redisBackupRetentionCount: formatNumber(settings.redisBackupRetentionCount),
+    automaticBackupEnabled: settings.automaticBackupEnabled,
+    backupScheduleTimes: settings.backupScheduleTimes.join(", "),
+    backupRetentionCount: formatNumber(settings.backupRetentionCount),
     startOnBoot: settings.startOnBoot,
     autoRecoveryEnabled: settings.autoRecoveryEnabled,
     preventSystemSleep: settings.preventSystemSleep,
@@ -73,7 +79,12 @@ export function draftToRuntimeSettings(
     publicPort: customAdvertisedURL ? requiredNumber(draft.publicPort) : proxyPort,
     adminPassword: current.adminPassword,
     changeAdminPassword: current.changeAdminPassword,
-    redisBackupRetentionCount: requiredNumber(draft.redisBackupRetentionCount),
+    automaticBackupEnabled: draft.automaticBackupEnabled,
+    backupScheduleTimes: draft.backupScheduleTimes
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+    backupRetentionCount: requiredNumber(draft.backupRetentionCount),
     startOnBoot: draft.startOnBoot,
     autoRecoveryEnabled: draft.autoRecoveryEnabled,
     preventSystemSleep: draft.preventSystemSleep,

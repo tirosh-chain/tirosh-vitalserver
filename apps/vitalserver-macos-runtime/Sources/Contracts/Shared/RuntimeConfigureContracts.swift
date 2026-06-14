@@ -15,7 +15,9 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
     case startOnBoot
     case autoRecovery
     case preventSystemSleep
-    case redisBackupRetention
+    case automaticBackup
+    case backupScheduleTimes
+    case backupRetention
     case restart
     case unknown(String)
 
@@ -53,8 +55,12 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             self = .autoRecovery
         case "--prevent-system-sleep":
             self = .preventSystemSleep
-        case "--redis-backup-retention":
-            self = .redisBackupRetention
+        case "--automatic-backup":
+            self = .automaticBackup
+        case "--backup-schedule-times":
+            self = .backupScheduleTimes
+        case "--backup-retention":
+            self = .backupRetention
         case "--restart":
             self = .restart
         default:
@@ -96,8 +102,12 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             return "--auto-recovery"
         case .preventSystemSleep:
             return "--prevent-system-sleep"
-        case .redisBackupRetention:
-            return "--redis-backup-retention"
+        case .automaticBackup:
+            return "--automatic-backup"
+        case .backupScheduleTimes:
+            return "--backup-schedule-times"
+        case .backupRetention:
+            return "--backup-retention"
         case .restart:
             return "--restart"
         case .unknown(let value):

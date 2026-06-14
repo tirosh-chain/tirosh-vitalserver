@@ -607,7 +607,8 @@
         ["start on boot", settings.startOnBoot],
         ["auto recovery", settings.autoRecoveryEnabled],
         ["prevent Mac sleep", settings.preventSystemSleep],
-        ["Helper backup archives", settings.redisBackupRetentionCount]
+        ["Helper backup archives", settings.backupRetentionCount],
+        ["Helper backup times", (settings.backupScheduleTimes || []).join(", ")]
       ];
       $("settingsMetrics").innerHTML = metricsHTML(values);
     }

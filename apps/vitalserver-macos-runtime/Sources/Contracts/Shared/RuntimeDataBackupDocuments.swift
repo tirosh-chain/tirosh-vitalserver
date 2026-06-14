@@ -1,7 +1,7 @@
 import Foundation
 
 public enum RuntimeDataBackupKind: String, Codable, Equatable, Sendable {
-    case runtimeData = "runtime-data"
+    case vitalServerHelper = "vitalserver-helper"
 }
 
 public enum RuntimeDataBackupCompatibility {
@@ -149,7 +149,7 @@ public struct RuntimeDataBackupManifest: Codable, Equatable, Sendable {
     public init(
         schemaVersion: Int = 1,
         restoreCompatibilityVersion: Int? = RuntimeDataBackupCompatibility.currentRestoreCompatibilityVersion,
-        backupKind: RuntimeDataBackupKind = .runtimeData,
+        backupKind: RuntimeDataBackupKind = .vitalServerHelper,
         product: String,
         createdAt: String,
         reason: String,

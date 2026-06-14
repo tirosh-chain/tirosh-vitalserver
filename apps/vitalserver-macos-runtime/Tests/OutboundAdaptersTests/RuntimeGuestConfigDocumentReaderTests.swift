@@ -68,7 +68,6 @@ final class RuntimeGuestConfigDocumentReaderTests: XCTestCase {
           "publicPort": 8080,
           "adminPassword": "admin",
           "vitalFilesDirectory": "/mnt/tirosh-vital-files",
-          "redisBackupRetentionCount": 20,
           "redisUiPort": 18081,
           "swaggerUiPort": 18082,
           "testkitEnabled": false
@@ -94,7 +93,6 @@ final class RuntimeGuestConfigDocumentReaderTests: XCTestCase {
             publicPort: 443,
             adminPassword: "admin",
             vitalFilesDirectory: "/mnt/tirosh-vital-files",
-            redisBackupRetentionCount: 20,
             redisUiPort: 18081,
             swaggerUiPort: 18082,
             testkitEnabled: false

@@ -29,7 +29,7 @@ public struct ConfigureRuntimeContext<NetworkMode: Equatable> {
     public let minimumDiskGiB: Int
     public let maximumDiskGiB: Int
     public let diskStepGiB: Int
-    public let maximumRedisBackupRetentionCount: Int
+    public let maximumBackupRetentionCount: Int
     public let defaultPublicPort: Int
     public let sharedNetworkMode: NetworkMode
     public let bridgedNetworkMode: NetworkMode
@@ -48,7 +48,7 @@ public struct ConfigureRuntimeContext<NetworkMode: Equatable> {
         minimumDiskGiB: Int,
         maximumDiskGiB: Int,
         diskStepGiB: Int,
-        maximumRedisBackupRetentionCount: Int,
+        maximumBackupRetentionCount: Int,
         defaultPublicPort: Int,
         sharedNetworkMode: NetworkMode,
         bridgedNetworkMode: NetworkMode,
@@ -66,7 +66,7 @@ public struct ConfigureRuntimeContext<NetworkMode: Equatable> {
         self.minimumDiskGiB = minimumDiskGiB
         self.maximumDiskGiB = maximumDiskGiB
         self.diskStepGiB = diskStepGiB
-        self.maximumRedisBackupRetentionCount = maximumRedisBackupRetentionCount
+        self.maximumBackupRetentionCount = maximumBackupRetentionCount
         self.defaultPublicPort = defaultPublicPort
         self.sharedNetworkMode = sharedNetworkMode
         self.bridgedNetworkMode = bridgedNetworkMode
@@ -105,7 +105,9 @@ public enum ConfigureRuntimeChange<NetworkMode: Equatable>: Equatable {
     case startOnBoot(Bool)
     case autoRecovery(Bool)
     case preventSystemSleep(Bool)
-    case redisBackupRetention(Int)
+    case automaticBackup(Bool)
+    case backupScheduleTimes([String])
+    case backupRetention(Int)
 }
 
 public struct ConfigureRuntimeSecretFileInput: Equatable, Sendable {
@@ -147,6 +149,7 @@ public enum ConfigureRuntimeEffect: Equatable, Sendable {
     case restrictSecretFile(URL)
     case setStartOnBoot(Bool)
     case setSystemSleepPrevention(Bool)
+    case setAutomaticBackupSchedule(enabled: Bool, scheduleTimes: [String])
     case restartRuntimeServices
 }
 
@@ -216,6 +219,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                      .setSystemSleepPrevention:
                     return true
                 case .restrictSecretFile,
+                     .setAutomaticBackupSchedule,
                      .restartRuntimeServices:
                     return false
                 }
@@ -223,6 +227,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
             postWriteEffects: effects.filter { effect in
                 switch effect {
                 case .restrictSecretFile,
+                     .setAutomaticBackupSchedule,
                      .restartRuntimeServices:
                     return true
                 case .createDirectory,
@@ -241,10 +246,12 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         context: ConfigureRuntimeContext<VMConfig.ConfigureNetworkMode>,
         currentVMConfig: VMConfig,
         currentGuestRuntimeConfig: GuestRuntimeConfigDocument,
+        currentGuestRuntimeSettings: GuestRuntimeSettingsDocument,
         currentVMDiskSizeGiB: Int
     ) throws -> ConfigureRuntimePlan<VMConfig> {
         var vmConfig = currentVMConfig
         var guestConfig = currentGuestRuntimeConfig
+        var guestRuntimeSettings = currentGuestRuntimeSettings
         var effects: [ConfigureRuntimeEffect] = []
 
         for change in request.changes {
@@ -253,6 +260,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                 context: context,
                 vmConfig: &vmConfig,
                 guestConfig: &guestConfig,
+                guestRuntimeSettings: &guestRuntimeSettings,
                 effects: &effects
             )
         }
@@ -261,6 +269,12 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         let requestedDiskGiB = requestedDiskGiB(in: request)
         if let requestedDiskGiB, requestedDiskGiB < currentVMDiskSizeGiB {
             throw invalid("--disk-gib can only increase the VM disk; current disk is \(currentVMDiskSizeGiB) GiB")
+        }
+        if request.changes.contains(where: \.changesAutomaticBackupSchedule) {
+            effects.append(.setAutomaticBackupSchedule(
+                enabled: guestRuntimeSettings.automaticBackupEnabled,
+                scheduleTimes: guestRuntimeSettings.backupScheduleTimes
+            ))
         }
         effects.append(.restrictSecretFile(context.guestRuntimeConfigURL))
         let restartRequirement = restartRequirement(
@@ -277,7 +291,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         return ConfigureRuntimePlan(
             vmConfig: vmConfig,
             guestRuntimeConfig: guestConfig,
-            guestRuntimeSettings: GuestRuntimeSettingsDocument(runtimeConfig: guestConfig),
+            guestRuntimeSettings: guestRuntimeSettings,
             effects: effects,
             restart: restart,
             restartRequirement: restartRequirement,
@@ -330,6 +344,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         context: ConfigureRuntimeContext<VMConfig.ConfigureNetworkMode>,
         vmConfig: inout VMConfig,
         guestConfig: inout GuestRuntimeConfigDocument,
+        guestRuntimeSettings: inout GuestRuntimeSettingsDocument,
         effects: inout [ConfigureRuntimeEffect]
     ) throws {
         switch change {
@@ -393,22 +408,28 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                 throw invalid("--vitalserver-url must be an absolute http/https URL")
             }
             guestConfig.vitalServerURL = value
+            guestRuntimeSettings.vitalServerURL = value
             applyVitalServerURLCompatibilityFields(value, to: &guestConfig, context: context)
+            guestRuntimeSettings.publicHost = guestConfig.publicHost
+            guestRuntimeSettings.publicPort = guestConfig.publicPort
         case .remoteConsoleURL(let value):
             guard RuntimeAdvertisedURLPolicy.isValidAdvertisedURL(value) else {
                 throw invalid("--remote-console-url must be an absolute http/https URL")
             }
             guestConfig.remoteConsoleURL = value
+            guestRuntimeSettings.remoteConsoleURL = value
         case .publicHost(let value):
             guard RuntimeTextValidator.isSingleLine(value) else {
                 throw invalid("--public-host must not contain newlines")
             }
             guestConfig.publicHost = value
+            guestRuntimeSettings.publicHost = value
         case .publicPort(let port):
             guard (1...65_535).contains(port) else {
                 throw invalid("--public-port must be between 1 and 65535")
             }
             guestConfig.publicPort = port
+            guestRuntimeSettings.publicPort = port
         case .adminPassword(let value):
             guard !value.isEmpty, RuntimeTextValidator.isSingleLine(value) else {
                 throw invalid("--admin-password must not be empty or contain newlines")
@@ -423,13 +444,22 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         case .preventSystemSleep(let enabled):
             vmConfig.configurePreventSystemSleep = enabled
             effects.append(.setSystemSleepPrevention(enabled))
-        case .redisBackupRetention(let count):
-            guard (1...context.maximumRedisBackupRetentionCount).contains(count) else {
+        case .automaticBackup(let enabled):
+            guestRuntimeSettings.automaticBackupEnabled = enabled
+        case .backupScheduleTimes(let scheduleTimes):
+            guard !scheduleTimes.isEmpty,
+                  scheduleTimes.allSatisfy(RuntimeBackupSchedulePolicy.isValidTime) else {
+                throw invalid("--backup-schedule-times must be comma-separated HH:mm values")
+            }
+            guestRuntimeSettings.backupScheduleTimes = scheduleTimes
+        case .backupRetention(let count):
+            guard RuntimeBackupSchedulePolicy.isValidRetentionCount(count),
+                  count <= context.maximumBackupRetentionCount else {
                 throw invalid(
-                    "--redis-backup-retention must be between 1 and \(context.maximumRedisBackupRetentionCount)"
+                    "--backup-retention must be between 1 and \(context.maximumBackupRetentionCount)"
                 )
             }
-            guestConfig.redisBackupRetentionCount = count
+            guestRuntimeSettings.backupRetentionCount = count
         }
     }
 
@@ -460,5 +490,16 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
 
     private func invalid(_ message: String) -> ConfigureRuntimeError {
         .invalidArgument(message)
+    }
+}
+
+private extension ConfigureRuntimeChange {
+    var changesAutomaticBackupSchedule: Bool {
+        switch self {
+        case .automaticBackup, .backupScheduleTimes:
+            return true
+        default:
+            return false
+        }
     }
 }

@@ -2194,7 +2194,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "RuntimeSettingsReadPolicy.applyGuestRuntimeSettings",
             "RuntimeSettingsReadPolicy.appendReadIssue",
             "var settings = RuntimeSettings()",
-            "redisBackupRetentionCount is out of range",
+            "backupRetentionCount is out of range",
             "network mode is invalid",
             "bridgedInterface is missing for bridged network mode",
             "autoRecoveryEnabled is missing",

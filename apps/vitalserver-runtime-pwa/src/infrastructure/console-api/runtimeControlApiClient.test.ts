@@ -42,7 +42,7 @@ describe("RuntimeControlApiClient", () => {
       "/runtime/uninstall": commandResponse(),
       "/runtime/services/repair-proxy": commandResponse(),
       "DELETE /host/backups/update": commandResponse(),
-      "DELETE /host/backups/runtime-data": commandResponse()
+      "DELETE /host/backups/vitalserver-helper": commandResponse()
     });
 
     await client.applySettings({ settings: fullSettings({ proxyPort: 18080 }) });
@@ -142,12 +142,12 @@ describe("RuntimeControlApiClient", () => {
       "/host/update-bundles/apply": commandResponse(),
       "/host/backups": [{ path: "/tmp/backup", sizeBytes: 1 }],
       "/host/backups/redis": [{ path: "/tmp/redis", sizeBytes: null }],
-      "/host/backups/runtime-data": [{ path: "/tmp/runtime-data", sizeBytes: 10 }],
+      "/host/backups/vitalserver-helper": [{ path: "/tmp/runtime-data", sizeBytes: 10 }],
       "/host/backups/rollback": commandResponse(),
       "DELETE /host/backups/update": commandResponse(),
-      "DELETE /host/backups/runtime-data": commandResponse(),
+      "DELETE /host/backups/vitalserver-helper": commandResponse(),
       "/host/backups/redis/restore": commandResponse(),
-      "/host/backups/runtime-data/restore": commandResponse(),
+      "/host/backups/vitalserver-helper/restore": commandResponse(),
       "/runtime/redis/backups": commandResponse(),
       "/runtime/data/backups": commandResponse(),
       "/runtime/services/start": commandResponse(),
@@ -359,7 +359,9 @@ function fullSettingsShape() {
     startOnBootConfigurable: true,
     autoRecoveryEnabled: true,
     preventSystemSleep: true,
-    redisBackupRetentionCount: 30,
+    automaticBackupEnabled: true,
+    backupScheduleTimes: ["03:15"],
+        backupRetentionCount: 30,
     restartAfterSave: true
   };
 }

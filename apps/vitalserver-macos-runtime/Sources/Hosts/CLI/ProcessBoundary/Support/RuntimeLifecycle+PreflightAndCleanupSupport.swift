@@ -22,6 +22,9 @@ extension RuntimeLifecycle {
                     healthChecker.launchdState(service)
                 },
                 createRedisBackup: createRedisBackup,
+                disableAutomaticBackupScheduler: {
+                    try setAutomaticBackupSchedule(enabled: false, scheduleTimes: [])
+                },
                 disableRuntimeServicesForUninstall: {
                     try serviceController.disableRuntimeServicesForUninstall()
                 },

@@ -69,12 +69,17 @@ PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/
 | `POST` | `/runtime/data/backups` |
 | `GET` | `/host/backups` |
 | `GET` | `/host/backups/redis` |
-| `GET` | `/host/backups/runtime-data` |
-| `POST` | `/host/backups/runtime-data/restore` |
+| `GET` | `/host/backups/vitalserver-helper` |
+| `POST` | `/host/backups/vitalserver-helper/restore` |
 | `POST` | `/host/logs/read` |
 | `GET` | `/host/logs/stream` |
 
 TestKit route와 browser 확인용 dev console은 test-enabled build에서만 노출됩니다.
+
+Automatic VitalServer backup은 별도 HTTP command route가 아니라 Settings contract로 제어됩니다.
+`automaticBackupEnabled`, `backupScheduleTimes`, `backupRetentionCount`를 저장하면 Host configure
+command가 macOS launchd job `ai.tirosh.vitalserver.helper.automatic-backup`을 갱신합니다. Job은
+`runtime automatic-backup`을 실행하며, 생성 대상은 Redis-only archive가 아니라 VitalServer backup입니다.
 
 ## Status Vocabulary
 
@@ -279,8 +284,8 @@ Stable build는 local API server는 유지하되 이 dev console route는 제공
 | `GET` | `/host/backups` | list local backups |
 | `GET` | `/host/backups/redis` | list local Redis-only repair backups |
 | `POST` | `/host/backups/redis/restore` | restore selected Redis-only repair backup |
-| `GET` | `/host/backups/runtime-data` | list local VitalServer backups |
-| `POST` | `/host/backups/runtime-data/restore` | restore selected VitalServer backup |
+| `GET` | `/host/backups/vitalserver-helper` | list local VitalServer backups |
+| `POST` | `/host/backups/vitalserver-helper/restore` | restore selected VitalServer backup |
 | `POST` | `/host/logs/read` | read selected log text |
 | `GET` | `/host/logs/stream` | SSE host log text snapshot subscription |
 | `POST` | `/host/logs/export` | export local logs |

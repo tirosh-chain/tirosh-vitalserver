@@ -34,7 +34,9 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "remoteConsoleURL": "https://console.tirosh.ai/",
           "publicHost": "example.test",
           "publicPort": 8080,
-          "redisBackupRetentionCount": 30
+          "automaticBackupEnabled": true,
+          "backupScheduleTimes": ["03:15"],
+          "backupRetentionCount": 30
         }
         """.write(to: guestSettings, atomically: true, encoding: .utf8)
         try writeProxyLaunchDaemon(proxyLaunchDaemon, proxyPort: 19090)
@@ -62,7 +64,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(settings.publicHost, "example.test")
         XCTAssertEqual(settings.publicPort, 8080)
-        XCTAssertEqual(settings.redisBackupRetentionCount, 30)
+        XCTAssertEqual(settings.backupRetentionCount, 30)
         XCTAssertEqual(settings.proxyPort, 19090)
         XCTAssertFalse(settings.autoRecoveryEnabled)
         XCTAssertFalse(settings.preventSystemSleep)
@@ -146,7 +148,6 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         {
           "publicHost": "legacy.example.test",
           "publicPort": 8080,
-          "redisBackupRetentionCount": 12
         }
         """.write(to: secretGuestConfig, atomically: true, encoding: .utf8)
 
@@ -166,7 +167,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.publicPort, RuntimeSettings().publicPort)
         XCTAssertEqual(settings.vitalServerURL, RuntimeSettings().vitalServerURL)
         XCTAssertEqual(settings.remoteConsoleURL, RuntimeSettings().remoteConsoleURL)
-        XCTAssertEqual(settings.redisBackupRetentionCount, RuntimeSettings().redisBackupRetentionCount)
+        XCTAssertEqual(settings.backupRetentionCount, RuntimeSettings().backupRetentionCount)
         XCTAssertEqual(settings.readIssues, [
             RuntimeSettingsReadIssue(
                 source: "guestRuntimeSettings",
@@ -419,7 +420,9 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "remoteConsoleURL": "https://console.settings.example.test/",
           "publicHost": "settings.example.test",
           "publicPort": 8443,
-          "redisBackupRetentionCount": 12
+          "automaticBackupEnabled": true,
+          "backupScheduleTimes": ["03:15"],
+          "backupRetentionCount": 12
         }
         """.write(to: guestSettings, atomically: true, encoding: .utf8)
 
@@ -439,13 +442,13 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.publicPort, 8443)
         XCTAssertEqual(settings.vitalServerURL, "https://settings.example.test/")
         XCTAssertEqual(settings.remoteConsoleURL, "https://console.settings.example.test/")
-        XCTAssertEqual(settings.redisBackupRetentionCount, 12)
+        XCTAssertEqual(settings.backupRetentionCount, 12)
     }
 
     func testReportsOutOfRangeGuestRuntimeBackupRetention() throws {
         let directory = try temporaryDirectory()
         let guestSettings = directory.appendingPathComponent("runtime-settings.json")
-        try writeGuestRuntimeSettings(guestSettings, redisBackupRetentionCount: 31)
+        try writeGuestRuntimeSettings(guestSettings, backupRetentionCount: 31)
 
         let reader = SystemRuntimeSettingsReader(
             paths: RuntimeSettingsPaths(
@@ -459,10 +462,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let settings = reader.load()
 
-        XCTAssertEqual(settings.redisBackupRetentionCount, 30)
+        XCTAssertEqual(settings.backupRetentionCount, 30)
         XCTAssertTrue(settings.readIssues.contains(RuntimeSettingsReadIssue(
-            source: "guestRuntimeSettings.redisBackupRetentionCount",
-            message: "redisBackupRetentionCount is out of range: 31"
+            source: "guestRuntimeSettings.backupRetentionCount",
+            message: "backupRetentionCount is out of range: 31"
         )))
     }
 
@@ -477,7 +480,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         settings.remoteConsoleURL = "https://console.tirosh.ai/"
         settings.publicHost = "public.test"
         settings.publicPort = 8080
-        settings.redisBackupRetentionCount = 20
+        settings.backupRetentionCount = 20
         settings.startOnBoot = false
         settings.autoRecoveryEnabled = false
         settings.preventSystemSleep = false
@@ -495,7 +498,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionProxyPort, in: arguments), "18080")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionVitalServerURL, in: arguments), "https://vitaldb.tirosh.ai/")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionRemoteConsoleURL, in: arguments), "https://console.tirosh.ai/")
-        XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionRedisBackupRetention, in: arguments), "20")
+        XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionBackupRetention, in: arguments), "20")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionStartOnBoot, in: arguments), "false")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionAutoRecovery, in: arguments), "false")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionPreventSystemSleep, in: arguments), "false")
@@ -1484,7 +1487,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         remoteConsoleURL: String = "https://console.tirosh.ai/",
         publicHost: String = "vitaldb.tirosh.ai",
         publicPort: Int = 443,
-        redisBackupRetentionCount: Int = 20
+        backupRetentionCount: Int = 20
     ) throws {
         try """
         {
@@ -1492,7 +1495,9 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "remoteConsoleURL": "\(remoteConsoleURL)",
           "publicHost": "\(publicHost)",
           "publicPort": \(publicPort),
-          "redisBackupRetentionCount": \(redisBackupRetentionCount)
+          "automaticBackupEnabled": true,
+          "backupScheduleTimes": ["03:15"],
+          "backupRetentionCount": \(backupRetentionCount)
         }
         """.write(to: url, atomically: true, encoding: .utf8)
     }

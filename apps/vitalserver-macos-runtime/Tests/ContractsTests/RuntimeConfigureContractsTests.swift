@@ -20,7 +20,9 @@ final class RuntimeConfigureContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--start-on-boot"), .startOnBoot)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--auto-recovery"), .autoRecovery)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--prevent-system-sleep"), .preventSystemSleep)
-        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--redis-backup-retention"), .redisBackupRetention)
+        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--automatic-backup"), .automaticBackup)
+        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--backup-schedule-times"), .backupScheduleTimes)
+        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--backup-retention"), .backupRetention)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--restart"), .restart)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--future"), .unknown("--future"))
     }

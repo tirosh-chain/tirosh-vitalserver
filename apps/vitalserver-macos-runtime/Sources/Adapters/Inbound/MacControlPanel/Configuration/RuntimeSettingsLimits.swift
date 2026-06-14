@@ -28,8 +28,8 @@ extension AppConstants {
             let steppedMaximum = (cappedMaximum / memoryStepGiB) * memoryStepGiB
             return max(minimumMemoryGiB, steppedMaximum)
         }
-        static let minimumRedisBackupRetentionCount = 1
-        static let maximumRedisBackupRetentionCount = 30
-        static let redisBackupRetentionStep = 1
+        static let minimumBackupRetentionCount = 1
+        static let maximumBackupRetentionCount = 30
+        static let backupRetentionStep = 1
     }
 }

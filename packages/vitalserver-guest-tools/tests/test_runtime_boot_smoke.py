@@ -469,7 +469,6 @@ def write_valid_runtime_documents(
         {
             "publicHost": "127.0.0.1",
             "publicPort": 18080,
-            "redisBackupRetentionCount": 5,
             "testkitEnabled": testkit_enabled,
             "vitalFilesDirectory": "/mnt/tirosh-vital-files",
         },

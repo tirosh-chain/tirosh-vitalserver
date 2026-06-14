@@ -214,7 +214,6 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         "tirosh-vitalserver-testkit.service",
         "tirosh-vitalserver-container-logs.service",
         "tirosh-vitalserver-redis-backup.service",
-        "tirosh-vitalserver-redis-backup.timer",
         "tirosh-vitalserver-redis-restore.service",
         "tirosh-vitalserver-repair-datastore.service",
         "tirosh-vitalserver-activate-update.service",
@@ -258,7 +257,6 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         RuntimeService.COMPOSE.value,
         RuntimeService.TESTKIT.value,
         RuntimeService.CONTAINER_LOGS.value,
-        RuntimeService.REDIS_BACKUP_TIMER.value,
         RuntimeService.COMMAND_POLLER.value,
         "tirosh-guest-observability.service",
     ):
@@ -279,7 +277,6 @@ def start_avahi() -> None:
 
 
 def start_guest_background_services() -> None:
-    systemctl("start", RuntimeService.REDIS_BACKUP_TIMER.value)
     systemctl("start", RuntimeService.COMMAND_POLLER.value)
     systemctl("start", "tirosh-guest-observability.service")
 

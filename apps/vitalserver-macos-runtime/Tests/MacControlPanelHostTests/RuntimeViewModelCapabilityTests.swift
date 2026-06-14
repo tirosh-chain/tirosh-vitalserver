@@ -245,27 +245,27 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
     func testRuntimeDataBackupRefreshSelectsExplicitRuntimeDataBackup() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         client.runtimeDataBackupsToLoad = [
-            RuntimeBackup(path: "/backups/runtime-data/20260610T010101Z-manual", sizeBytes: 2048),
+            RuntimeBackup(path: "/backups/vitalserver-helper/20260610T010101Z-manual", sizeBytes: 2048),
         ]
         let viewModel = RuntimeViewModel(controlClient: client, hostClient: client, healthNotifications: NoopHealthNotifications())
 
         await viewModel.refreshBackupList()
 
-        XCTAssertEqual(viewModel.runtimeDataBackups.map(\.path), ["/backups/runtime-data/20260610T010101Z-manual"])
-        XCTAssertEqual(viewModel.selectedRuntimeDataBackupPath, "/backups/runtime-data/20260610T010101Z-manual")
+        XCTAssertEqual(viewModel.runtimeDataBackups.map(\.path), ["/backups/vitalserver-helper/20260610T010101Z-manual"])
+        XCTAssertEqual(viewModel.selectedRuntimeDataBackupPath, "/backups/vitalserver-helper/20260610T010101Z-manual")
         XCTAssertEqual(viewModel.selectedRuntimeDataBackup?.sizeBytes, 2048)
     }
 
     func testRuntimeDataBackupActionsCallExplicitPorts() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         client.runtimeDataBackupsToLoad = [
-            RuntimeBackup(path: "/runtime/data/backups/runtime-data/selected", sizeBytes: nil)
+            RuntimeBackup(path: "/runtime/data/backups/vitalserver-helper/selected", sizeBytes: nil)
         ]
         let viewModel = RuntimeViewModel(controlClient: client, hostClient: client, healthNotifications: NoopHealthNotifications())
         viewModel.runtimeDataBackups = [
-            RuntimeBackup(path: "/runtime/data/backups/runtime-data/selected", sizeBytes: nil)
+            RuntimeBackup(path: "/runtime/data/backups/vitalserver-helper/selected", sizeBytes: nil)
         ]
-        viewModel.selectedRuntimeDataBackupPath = "/runtime/data/backups/runtime-data/selected"
+        viewModel.selectedRuntimeDataBackupPath = "/runtime/data/backups/vitalserver-helper/selected"
 
         await viewModel.createRuntimeDataBackup()
         await viewModel.restoreRuntimeDataBackup()
@@ -275,10 +275,10 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.restoreRuntimeDataBackupCount, 1)
         XCTAssertEqual(client.deleteBackupCount, 1)
         XCTAssertEqual(client.restoredRuntimeDataBackupURLs, [
-            URL(fileURLWithPath: "/runtime/data/backups/runtime-data/selected")
+            URL(fileURLWithPath: "/runtime/data/backups/vitalserver-helper/selected")
         ])
         XCTAssertEqual(client.deletedBackupURLs, [
-            URL(fileURLWithPath: "/runtime/data/backups/runtime-data/selected")
+            URL(fileURLWithPath: "/runtime/data/backups/vitalserver-helper/selected")
         ])
     }
 
@@ -630,7 +630,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             URL(fileURLWithPath: "/logs"),
             URL(fileURLWithPath: "/backups"),
             URL(fileURLWithPath: "/runtime/data/backups/redis"),
-            URL(fileURLWithPath: "/runtime/data/backups/runtime-data"),
+            URL(fileURLWithPath: "/runtime/data/backups/vitalserver-helper"),
         ])
         XCTAssertEqual(nativeShell.openedWebURLs, [
             URL(string: RuntimeControlLocalAPIConstants.pwaURL),
@@ -644,11 +644,11 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let nativeShell = FakeRuntimeNativeShell()
         let sourceURL = URL(fileURLWithPath: "/external/20260614T043455Z-manual", isDirectory: true)
-        let destinationURL = URL(fileURLWithPath: "/runtime/data/backups/runtime-data/20260614T043455Z-manual", isDirectory: true)
+        let destinationURL = URL(fileURLWithPath: "/runtime/data/backups/vitalserver-helper/20260614T043455Z-manual", isDirectory: true)
         nativeShell.directoryURL = sourceURL
         nativeShell.pathStates = [
             sourceURL.path: .directory,
-            "/runtime/data/backups/runtime-data": .directory,
+            "/runtime/data/backups/vitalserver-helper": .directory,
             destinationURL.path: .missing,
         ]
         client.runtimeDataBackupsToLoad = [
@@ -751,8 +751,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         nativeShell.directoryURL = sourceURL
         nativeShell.pathStates = [
             sourceURL.path: .directory,
-            "/runtime/data/backups/runtime-data": .directory,
-            "/runtime/data/backups/runtime-data/20260614T043455Z-manual": .directory,
+            "/runtime/data/backups/vitalserver-helper": .directory,
+            "/runtime/data/backups/vitalserver-helper/20260614T043455Z-manual": .directory,
         ]
         let viewModel = RuntimeViewModel(
             controlClient: client,
@@ -1413,8 +1413,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         viewModel.runtimeEventsLast24HoursCount = 1
         viewModel.backups = [RuntimeBackup(path: "/backups/backup-001.tar.gz", sizeBytes: 1024)]
         viewModel.selectedBackupPath = "/backups/backup-001.tar.gz"
-        viewModel.runtimeDataBackups = [RuntimeBackup(path: "/backups/runtime-data/backup-001", sizeBytes: 2048)]
-        viewModel.selectedRuntimeDataBackupPath = "/backups/runtime-data/backup-001"
+        viewModel.runtimeDataBackups = [RuntimeBackup(path: "/backups/vitalserver-helper/backup-001", sizeBytes: 2048)]
+        viewModel.selectedRuntimeDataBackupPath = "/backups/vitalserver-helper/backup-001"
         viewModel.settings.vitalServerURL = "https://vitaldb.tirosh.ai/"
         viewModel.settings.remoteConsoleURL = "https://console.tirosh.ai/"
         viewModel.settings.changeAdminPassword = true
@@ -1875,7 +1875,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
             runtimeHomePath: "/runtime",
             backupsPath: "/backups",
             redisBackupsPath: "/runtime/data/backups/redis",
-            runtimeDataBackupsPath: "/runtime/data/backups/runtime-data"
+            runtimeDataBackupsPath: "/runtime/data/backups/vitalserver-helper"
         )
     }
 

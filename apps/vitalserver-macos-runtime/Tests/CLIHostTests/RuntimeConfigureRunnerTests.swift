@@ -31,7 +31,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 .startOnBoot(false),
                 .autoRecovery(false),
                 .preventSystemSleep(false),
-                .redisBackupRetention(20),
+                .backupRetention(20),
             ],
             restart: true
         ))
@@ -61,14 +61,13 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(guestConfig.publicPort, 443)
         XCTAssertEqual(guestConfig.adminPassword, "secret")
         XCTAssertEqual(guestConfig.vitalFilesDirectory, Constants.Defaults.vitalFilesDirectoryGuestMountPath)
-        XCTAssertEqual(guestConfig.redisBackupRetentionCount, 20)
         let settingsData = try XCTUnwrap(harness.fileStore.files[harness.paths.guestRuntimeSettings])
         let guestSettings = try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: settingsData)
         XCTAssertEqual(guestSettings.vitalServerURL, "https://vitaldb.tirosh.ai/")
         XCTAssertEqual(guestSettings.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(guestSettings.publicHost, "vitaldb.tirosh.ai")
         XCTAssertEqual(guestSettings.publicPort, 443)
-        XCTAssertEqual(guestSettings.redisBackupRetentionCount, 20)
+        XCTAssertEqual(guestSettings.backupRetentionCount, 20)
     }
 
     func testConfigureWithoutRestartDoesNotRestartServices() throws {
@@ -101,12 +100,12 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         let harness = try Harness()
 
         XCTAssertThrowsError(try harness.runner.configure(RuntimeConfigureCommand(
-            changes: [.redisBackupRetention(0)]
+            changes: [.backupRetention(0)]
         ))) { error in
             guard case LauncherError.missingArgument(let message) = error else {
                 return XCTFail("expected missingArgument, got \(error)")
             }
-            XCTAssertEqual(message, "--redis-backup-retention must be between 1 and 30")
+            XCTAssertEqual(message, "--backup-retention must be between 1 and 30")
         }
     }
 
@@ -162,6 +161,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         var restrictedFiles: [URL] = []
         var startOnBootValues: [Bool] = []
         var systemSleepPreventionValues: [Bool] = []
+        var automaticBackupSchedules: [(enabled: Bool, scheduleTimes: [String])] = []
         var restartCount = 0
         var runner: RuntimeConfigureRunner!
 
@@ -181,7 +181,11 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
             )
             fileStore.files[vmConfigURL] = try JSONEncoder().encode(vmConfig)
             fileStore.files[paths.vmDisk] = Data([0])
-            fileStore.files[paths.guestRuntimeConfig] = try JSONEncoder().encode(Self.defaultGuestRuntimeConfig())
+            let guestConfig = Self.defaultGuestRuntimeConfig()
+            fileStore.files[paths.guestRuntimeConfig] = try JSONEncoder().encode(guestConfig)
+            fileStore.files[paths.guestRuntimeSettings] = try JSONEncoder().encode(
+                GuestRuntimeSettingsDocument(runtimeConfig: guestConfig)
+            )
             fileStore.files[URL(fileURLWithPath: "/tmp/admin-password")] = Data("secret".utf8)
 
             runner = RuntimeConfigureRunner(
@@ -211,6 +215,9 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                     setSystemSleepPrevention: { [weak self] enabled in
                         self?.systemSleepPreventionValues.append(enabled)
                     },
+                    setAutomaticBackupSchedule: { [weak self] enabled, scheduleTimes in
+                        self?.automaticBackupSchedules.append((enabled: enabled, scheduleTimes: scheduleTimes))
+                    },
                     restartRuntimeServices: { [weak self] in
                         self?.restartCount += 1
                     }
@@ -235,7 +242,6 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 publicPort: Constants.Guest.publicPort,
                 adminPassword: Constants.Guest.defaultAdminPassword,
                 vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
-                redisBackupRetentionCount: Constants.Defaults.redisBackupRetentionCount,
                 redisUiPort: Constants.Guest.redisUIPort,
                 swaggerUiPort: Constants.Guest.swaggerUIPort,
                 testkitEnabled: Constants.testkitContainerIncluded

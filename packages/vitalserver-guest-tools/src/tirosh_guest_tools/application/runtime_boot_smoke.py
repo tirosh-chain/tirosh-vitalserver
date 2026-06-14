@@ -557,7 +557,6 @@ def validate_feature_readiness(
     required_config_keys = [
         RuntimeConfigKey.PUBLIC_HOST.value,
         RuntimeConfigKey.PUBLIC_PORT.value,
-        RuntimeConfigKey.REDIS_BACKUP_RETENTION_COUNT.value,
         RuntimeConfigKey.VITAL_FILES_DIRECTORY.value,
     ]
     missing_config = [key for key in required_config_keys if key not in runtime_config]

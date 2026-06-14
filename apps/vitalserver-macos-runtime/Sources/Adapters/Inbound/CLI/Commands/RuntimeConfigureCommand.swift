@@ -29,5 +29,7 @@ public enum RuntimeConfigureChange: Equatable, Sendable {
     case startOnBoot(Bool)
     case autoRecovery(Bool)
     case preventSystemSleep(Bool)
-    case redisBackupRetention(Int)
+    case automaticBackup(Bool)
+    case backupScheduleTimes([String])
+    case backupRetention(Int)
 }

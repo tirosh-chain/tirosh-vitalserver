@@ -162,6 +162,8 @@ struct RuntimeLifecycle {
             try restoreRedisBackup(archive)
         case .runtimeDataBackup:
             try createRuntimeDataBackup()
+        case .automaticBackup:
+            try createAutomaticBackup()
         case .runtimeDataRestore(let backup):
             try restoreRuntimeDataBackup(backup)
         case .repairDatastore:
@@ -295,6 +297,17 @@ struct RuntimeLifecycle {
             let backup = try runtimeDataBackupComposition().createBackup()
             print("runtime data backup completed")
             print("backup: \(backup.path)")
+        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeDataBackupStoreError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func createAutomaticBackup() throws {
+        do {
+            let result = try runtimeDataBackupComposition().createAutomaticBackup()
+            print(result)
         } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
             throw LauncherError.runtimeOperationFailed(message)
         } catch let error as RuntimeDataBackupStoreError {

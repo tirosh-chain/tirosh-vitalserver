@@ -164,8 +164,8 @@ Runtime boot smoke는 최소 아래를 통과해야 합니다.
 | disk health | root filesystem not read-only; no kernel disk error lines |
 | capabilities | `prepareUpdateShutdown`, `activateUpdate`, `redisBackup`, `redisRestore`, `repairDatastore` are explicit booleans |
 | command dispatch | command poller service active; request/result directory writable; no stale request files |
-| backup read models | host, Redis, runtime-data backup lists distinguish missing/error/empty |
-| runtime data backup root | missing directory is reported as unavailable, not empty success |
+| backup read models | host, Redis-only, VitalServer backup lists distinguish missing/error/empty |
+| VitalServer backup root | missing directory is reported as unavailable, not empty success |
 | settings read contract | saved config and applied VM config snapshot are both present when applicable |
 | observability read | event store and runtime observability DB can be opened read-only |
 | recorder observation | VitalDB observer endpoint returns schema-valid JSON or explicit unavailable state |
@@ -194,7 +194,7 @@ P0 negative validation은 실제 VM 또는 command-level integration으로 반�
 | capability missing | remove `capabilities` from runtime-state | runtime smoke rejects incomplete feature contract |
 | command poller inactive | stop `tirosh-vitalserver-command-poller.service` | runtime smoke rejects command dispatch unavailable |
 | stale request file exists | leave backup/update/repair request without matching result | runtime smoke rejects stale dispatch trigger |
-| runtime data backup root missing | remove runtime-data backup directory | runtime smoke reports unavailable, not empty list |
+| VitalServer backup root missing | remove VitalServer backup directory | runtime smoke reports unavailable, not empty list |
 | backup list decode failure | write invalid backup metadata | runtime smoke rejects read model corruption |
 | settings applied snapshot missing | remove applied VM config snapshot | runtime smoke rejects Settings/Status mismatch risk |
 | observability DB unreadable | remove permission or corrupt sqlite file | runtime smoke rejects observability read issue |

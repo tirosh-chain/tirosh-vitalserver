@@ -31,20 +31,26 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
     public let remoteConsoleURL: String
     public let publicHost: String
     public let publicPort: Int
-    public let redisBackupRetentionCount: Int
+    public let automaticBackupEnabled: Bool
+    public let backupScheduleTimes: [String]
+    public let backupRetentionCount: Int
 
     public init(
         vitalServerURL: String,
         remoteConsoleURL: String,
         publicHost: String,
         publicPort: Int,
-        redisBackupRetentionCount: Int
+        automaticBackupEnabled: Bool,
+        backupScheduleTimes: [String],
+        backupRetentionCount: Int
     ) {
         self.vitalServerURL = vitalServerURL
         self.remoteConsoleURL = remoteConsoleURL
         self.publicHost = publicHost
         self.publicPort = publicPort
-        self.redisBackupRetentionCount = redisBackupRetentionCount
+        self.automaticBackupEnabled = automaticBackupEnabled
+        self.backupScheduleTimes = backupScheduleTimes
+        self.backupRetentionCount = backupRetentionCount
     }
 }
 
@@ -231,12 +237,14 @@ public enum RuntimeSettingsReadPolicy {
         next.remoteConsoleURL = input.remoteConsoleURL
         next.publicHost = input.publicHost
         next.publicPort = input.publicPort
-        let retentionCount = min(max(input.redisBackupRetentionCount, 1), 30)
-        next.redisBackupRetentionCount = retentionCount
-        if retentionCount != input.redisBackupRetentionCount {
+        next.automaticBackupEnabled = input.automaticBackupEnabled
+        next.backupScheduleTimes = input.backupScheduleTimes
+        let retentionCount = min(max(input.backupRetentionCount, 1), 30)
+        next.backupRetentionCount = retentionCount
+        if retentionCount != input.backupRetentionCount {
             next = appendReadIssue(
-                source: "guestRuntimeSettings.redisBackupRetentionCount",
-                message: "redisBackupRetentionCount is out of range: \(input.redisBackupRetentionCount)",
+                source: "guestRuntimeSettings.backupRetentionCount",
+                message: "backupRetentionCount is out of range: \(input.backupRetentionCount)",
                 to: next
             )
         }

@@ -24,6 +24,7 @@ public struct RuntimeUninstallCompositionOperations {
     let configuredExternalVitalFilesDirectory: () -> RuntimeConfiguredExternalVitalFilesDirectoryRead
     let serviceState: (RuntimeManagedService) -> RuntimeServiceState
     let createRedisBackup: () throws -> Void
+    let disableAutomaticBackupScheduler: () throws -> Void
     let disableRuntimeServicesForUninstall: () throws -> Void
     let stopRuntimeServices: () throws -> Void
     let forceStopRuntimeServicesForUninstall: () throws -> Void
@@ -40,6 +41,7 @@ public struct RuntimeUninstallCompositionOperations {
         configuredExternalVitalFilesDirectory: @escaping () -> RuntimeConfiguredExternalVitalFilesDirectoryRead,
         serviceState: @escaping (RuntimeManagedService) -> RuntimeServiceState,
         createRedisBackup: @escaping () throws -> Void,
+        disableAutomaticBackupScheduler: @escaping () throws -> Void,
         disableRuntimeServicesForUninstall: @escaping () throws -> Void,
         stopRuntimeServices: @escaping () throws -> Void,
         forceStopRuntimeServicesForUninstall: @escaping () throws -> Void,
@@ -55,6 +57,7 @@ public struct RuntimeUninstallCompositionOperations {
         self.configuredExternalVitalFilesDirectory = configuredExternalVitalFilesDirectory
         self.serviceState = serviceState
         self.createRedisBackup = createRedisBackup
+        self.disableAutomaticBackupScheduler = disableAutomaticBackupScheduler
         self.disableRuntimeServicesForUninstall = disableRuntimeServicesForUninstall
         self.stopRuntimeServices = stopRuntimeServices
         self.forceStopRuntimeServicesForUninstall = forceStopRuntimeServicesForUninstall
@@ -119,7 +122,7 @@ public enum RuntimeUninstallComposition {
             configuredVitalFilesDirectoryReadFailure: vitalFilesDirectoryRead.failure,
             launchDaemonPlists: RuntimeManagedService.stopOrder.map {
                 URL(fileURLWithPath: RuntimeManagedServicePaths.launchDaemonPlist($0))
-            },
+            } + [context.installedPaths.automaticBackupLaunchDaemon],
             runtimeTools: [
                 context.installedPaths.launcher,
                 URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
@@ -150,6 +153,7 @@ public enum RuntimeUninstallComposition {
             effects: RuntimeUninstallEffects(
                 createRedisBackup: operations.createRedisBackup,
                 stopRuntimeServices: { clean, forceClean in
+                    try operations.disableAutomaticBackupScheduler()
                     try operations.disableRuntimeServicesForUninstall()
                     if forceClean {
                         try operations.forceStopRuntimeServicesForUninstall()

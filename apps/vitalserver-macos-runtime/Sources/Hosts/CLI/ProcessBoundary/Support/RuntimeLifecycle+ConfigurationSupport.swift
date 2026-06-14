@@ -70,6 +70,72 @@ extension RuntimeLifecycle {
         log("system sleep prevention \(enabled ? "enabled" : "disabled")")
     }
 
+    func setAutomaticBackupSchedule(enabled: Bool, scheduleTimes: [String]) throws {
+        let plist = installedPaths.automaticBackupLaunchDaemon
+        let service = "system/\(RuntimeAutomaticBackupSchedule.launchDaemonLabel)"
+
+        if !enabled {
+            _ = runProcess(Constants.Commands.launchctl, arguments: ["bootout", service])
+            if fileStore.fileExists(plist) {
+                try fileStore.removeItem(at: plist)
+            }
+            log("automatic backup scheduler disabled")
+            return
+        }
+
+        let data = try automaticBackupLaunchDaemonPlist(scheduleTimes: scheduleTimes)
+        try fileStore.writeData(data, to: plist, options: .atomic)
+        try runRequired(Constants.Commands.chmod, arguments: ["0644", plist.path])
+        try runRequired(Constants.Commands.chown, arguments: ["root:wheel", plist.path])
+
+        _ = runProcess(Constants.Commands.launchctl, arguments: ["bootout", service])
+        let result = runProcess(Constants.Commands.launchctl, arguments: ["bootstrap", "system", plist.path])
+        if result.exitCode != 0 {
+            throw LauncherError.runtimeOperationFailed(
+                result.stderr.isEmpty ? "automatic backup scheduler bootstrap failed" : result.stderr
+            )
+        }
+        log("automatic backup scheduler enabled scheduleTimes=\(scheduleTimes.joined(separator: ","))")
+    }
+
+    private func automaticBackupLaunchDaemonPlist(scheduleTimes: [String]) throws -> Data {
+        guard !scheduleTimes.isEmpty else {
+            throw LauncherError.missingArgument("automatic backup schedule must include at least one HH:mm value")
+        }
+        let calendarIntervals = try scheduleTimes.map { value -> [String: Int] in
+            let parts = value.split(separator: ":", omittingEmptySubsequences: false)
+            guard parts.count == 2,
+                  RuntimeBackupSchedulePolicy.isValidTime(value),
+                  let hour = Int(parts[0]),
+                  let minute = Int(parts[1]) else {
+                throw LauncherError.missingArgument("automatic backup schedule time must be HH:mm value=\(value)")
+            }
+            return ["Hour": hour, "Minute": minute]
+        }
+        let document: [String: Any] = [
+            "Label": RuntimeAutomaticBackupSchedule.launchDaemonLabel,
+            "ProgramArguments": [
+                Constants.InstallPaths.vmBin,
+                "runtime",
+                "automatic-backup",
+            ],
+            "EnvironmentVariables": [
+                Constants.Environment.vmHome: paths.home.path,
+            ],
+            "StartCalendarInterval": calendarIntervals,
+            "ThrottleInterval": 60,
+            "StandardOutPath": installedPaths.centralRuntimeLogsDirectory
+                .appendingPathComponent("automatic-backup.out.log").path,
+            "StandardErrorPath": installedPaths.centralRuntimeLogsDirectory
+                .appendingPathComponent("automatic-backup.err.log").path,
+        ]
+        return try PropertyListSerialization.data(
+            fromPropertyList: document,
+            format: .xml,
+            options: 0
+        )
+    }
+
     func preventSystemSleepEnabled() throws -> Bool {
         switch runtimeConfigFlagReader().preventSystemSleepFlag() {
         case .configured(_, let value), .defaulted(_, let value, _):

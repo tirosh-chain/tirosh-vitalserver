@@ -64,7 +64,9 @@ enum RuntimeControlClientConstants {
         static let optionStartOnBoot = "--start-on-boot"
         static let optionAutoRecovery = "--auto-recovery"
         static let optionPreventSystemSleep = "--prevent-system-sleep"
-        static let optionRedisBackupRetention = "--redis-backup-retention"
+        static let optionAutomaticBackup = "--automatic-backup"
+        static let optionBackupScheduleTimes = "--backup-schedule-times"
+        static let optionBackupRetention = "--backup-retention"
         static let optionBridgedInterface = "--bridged-interface"
         static let optionAdminPasswordFile = "--admin-password-file"
         static let optionRestart = "--restart"
@@ -116,7 +118,7 @@ enum RuntimeControlClientConstants {
         static let vitalFiles = installed.vitalFilesDirectory.path
         static let backups = installed.backupsDirectory.path
         static let redisBackups = installed.redisBackupsDirectory.path
-        static let runtimeDataBackups = installed.backupsDirectory.appendingPathComponent("runtime-data").path
+        static let runtimeDataBackups = installed.vitalServerHelperBackupsDirectory.path
         static let vmConfig = installed.vmConfig.path
         static let vmDisk = installed.vmDisk.path
         static let guestRuntimeConfig = installed.guestRuntimeConfig.path

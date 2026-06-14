@@ -77,6 +77,6 @@ public enum RuntimeFreshInstallPreflightComposition {
             installedPaths.uninstaller,
         ] + RuntimeManagedService.stopOrder.map {
             URL(fileURLWithPath: RuntimeManagedServicePaths.launchDaemonPlist($0))
-        }
+        } + [installedPaths.automaticBackupLaunchDaemon]
     }
 }

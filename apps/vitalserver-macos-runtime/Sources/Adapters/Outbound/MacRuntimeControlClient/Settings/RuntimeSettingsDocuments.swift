@@ -59,7 +59,9 @@ struct GuestRuntimeSettings: Decodable {
     let remoteConsoleURL: String
     let publicHost: String
     let publicPort: Int
-    let redisBackupRetentionCount: Int
+    let automaticBackupEnabled: Bool
+    let backupScheduleTimes: [String]
+    let backupRetentionCount: Int
 
     static func loadResult(
         path: String,
@@ -88,7 +90,9 @@ struct GuestRuntimeSettings: Decodable {
             remoteConsoleURL: remoteConsoleURL,
             publicHost: publicHost,
             publicPort: publicPort,
-            redisBackupRetentionCount: redisBackupRetentionCount
+            automaticBackupEnabled: automaticBackupEnabled,
+            backupScheduleTimes: backupScheduleTimes,
+            backupRetentionCount: backupRetentionCount
         )
     }
 }

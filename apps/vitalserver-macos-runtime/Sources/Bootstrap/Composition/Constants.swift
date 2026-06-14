@@ -98,8 +98,8 @@ public enum Constants {
         public static let sharedDirectoryGuestMountPath = "/mnt/tirosh"
         public static let vitalFilesDirectoryTag = "tirosh-vital-files"
         public static let vitalFilesDirectoryGuestMountPath = "/mnt/tirosh-vital-files"
-        public static let redisBackupRetentionCount = 30
-        public static let maximumRedisBackupRetentionCount = 30
+        public static let backupRetentionCount = 30
+        public static let maximumBackupRetentionCount = 30
     }
 
     public enum Network {

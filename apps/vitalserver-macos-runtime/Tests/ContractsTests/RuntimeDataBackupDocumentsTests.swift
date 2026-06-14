@@ -29,7 +29,7 @@ final class RuntimeDataBackupDocumentsTests: XCTestCase {
         )
 
         XCTAssertEqual(decoded.schemaVersion, 1)
-        XCTAssertEqual(decoded.backupKind, .runtimeData)
+        XCTAssertEqual(decoded.backupKind, .vitalServerHelper)
         XCTAssertEqual(decoded.artifacts.map(\.id), RuntimeDataBackupArtifactID.requiredForUIContinuity)
         XCTAssertEqual(decoded.artifacts.first?.state, .archived)
     }

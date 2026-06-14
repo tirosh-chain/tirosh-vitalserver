@@ -138,7 +138,9 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         case startOnBootConfigurable
         case autoRecoveryEnabled
         case preventSystemSleep
-        case redisBackupRetentionCount
+        case automaticBackupEnabled
+        case backupScheduleTimes
+        case backupRetentionCount
         case restartAfterSave
         case appliedVMSettings
     }
@@ -163,7 +165,9 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var startOnBootConfigurable: Bool
     public var autoRecoveryEnabled: Bool
     public var preventSystemSleep: Bool
-    public var redisBackupRetentionCount: Int
+    public var automaticBackupEnabled: Bool
+    public var backupScheduleTimes: [String]
+    public var backupRetentionCount: Int
     public var restartAfterSave: Bool
     public var appliedVMSettings: RuntimeAppliedVMSettings?
 
@@ -188,7 +192,9 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         startOnBootConfigurable: Bool = true,
         autoRecoveryEnabled: Bool = true,
         preventSystemSleep: Bool = true,
-        redisBackupRetentionCount: Int = RuntimeSettingsInitialValues.redisBackupRetentionCount,
+        automaticBackupEnabled: Bool = RuntimeSettingsInitialValues.automaticBackupEnabled,
+        backupScheduleTimes: [String] = RuntimeSettingsInitialValues.backupScheduleTimes,
+        backupRetentionCount: Int = RuntimeSettingsInitialValues.backupRetentionCount,
         restartAfterSave: Bool = false,
         appliedVMSettings: RuntimeAppliedVMSettings? = nil
     ) {
@@ -212,7 +218,9 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.startOnBootConfigurable = startOnBootConfigurable
         self.autoRecoveryEnabled = autoRecoveryEnabled
         self.preventSystemSleep = preventSystemSleep
-        self.redisBackupRetentionCount = redisBackupRetentionCount
+        self.automaticBackupEnabled = automaticBackupEnabled
+        self.backupScheduleTimes = backupScheduleTimes
+        self.backupRetentionCount = backupRetentionCount
         self.restartAfterSave = restartAfterSave
         self.appliedVMSettings = appliedVMSettings
     }
@@ -256,7 +264,9 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
             startOnBootConfigurable: try container.decode(Bool.self, forKey: .startOnBootConfigurable),
             autoRecoveryEnabled: try container.decode(Bool.self, forKey: .autoRecoveryEnabled),
             preventSystemSleep: try container.decode(Bool.self, forKey: .preventSystemSleep),
-            redisBackupRetentionCount: try container.decode(Int.self, forKey: .redisBackupRetentionCount),
+            automaticBackupEnabled: try container.decode(Bool.self, forKey: .automaticBackupEnabled),
+            backupScheduleTimes: try container.decode([String].self, forKey: .backupScheduleTimes),
+            backupRetentionCount: try container.decode(Int.self, forKey: .backupRetentionCount),
             restartAfterSave: try container.decode(Bool.self, forKey: .restartAfterSave),
             appliedVMSettings: try container.decodeIfPresent(RuntimeAppliedVMSettings.self, forKey: .appliedVMSettings)
         )
@@ -288,7 +298,9 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         try container.encode(startOnBootConfigurable, forKey: .startOnBootConfigurable)
         try container.encode(autoRecoveryEnabled, forKey: .autoRecoveryEnabled)
         try container.encode(preventSystemSleep, forKey: .preventSystemSleep)
-        try container.encode(redisBackupRetentionCount, forKey: .redisBackupRetentionCount)
+        try container.encode(automaticBackupEnabled, forKey: .automaticBackupEnabled)
+        try container.encode(backupScheduleTimes, forKey: .backupScheduleTimes)
+        try container.encode(backupRetentionCount, forKey: .backupRetentionCount)
         try container.encode(restartAfterSave, forKey: .restartAfterSave)
         try container.encodeIfPresent(appliedVMSettings, forKey: .appliedVMSettings)
     }
@@ -341,7 +353,9 @@ public enum RuntimeSettingsInitialValues {
     public static let proxyPort = 80
     public static let runtimeControlPort = 18_321
     public static let vitalFilesDirectory = "/Users/Shared/VitalServerHelper/vital-files"
-    public static let redisBackupRetentionCount = 30
+    public static let automaticBackupEnabled = RuntimeSettingsInitialBackupDefaults.automaticBackupEnabled
+    public static let backupScheduleTimes = RuntimeSettingsInitialBackupDefaults.backupScheduleTimes
+    public static let backupRetentionCount = RuntimeSettingsInitialBackupDefaults.backupRetentionCount
 
     public static func vitalServerURL(proxyPort: Int = proxyPort) -> String {
         "http://\(localhost):\(proxyPort)/"

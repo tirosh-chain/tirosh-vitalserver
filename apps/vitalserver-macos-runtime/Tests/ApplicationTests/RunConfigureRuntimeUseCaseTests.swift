@@ -113,7 +113,7 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
             minimumDiskGiB: 4,
             maximumDiskGiB: 128,
             diskStepGiB: 4,
-            maximumRedisBackupRetentionCount: 30,
+            maximumBackupRetentionCount: 30,
             defaultPublicPort: 80,
             sharedNetworkMode: .shared,
             bridgedNetworkMode: .bridged,
@@ -136,6 +136,7 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
             readers: ConfigureRuntimeStateReaders(
                 loadVMConfig: { _ in self.vmConfig },
                 loadGuestRuntimeConfig: { _ in self.guestConfig },
+                loadGuestRuntimeSettings: { _ in self.guestSettings },
                 loadVMDiskSizeGiB: { self.currentDiskGiB }
             ),
             writer: ConfigureRuntimeDocumentWriter(
@@ -197,6 +198,8 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                     preWriteEffects.append("start-on-boot:\(enabled)")
                 case .setSystemSleepPrevention(let enabled):
                     preWriteEffects.append("sleep:\(enabled)")
+                case .setAutomaticBackupSchedule(let enabled, let scheduleTimes):
+                    preWriteEffects.append("automatic-backup:\(enabled):\(scheduleTimes.joined(separator: ","))")
                 case .restartRuntimeServices:
                     postWriteEffects.append("restart")
                 }
@@ -223,10 +226,18 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
             publicPort: 80,
             adminPassword: "admin",
             vitalFilesDirectory: "/mnt/old",
-            redisBackupRetentionCount: 30,
             redisUiPort: 18081,
             swaggerUiPort: 18082,
             testkitEnabled: false
+        )
+        var guestSettings = GuestRuntimeSettingsDocument(
+            vitalServerURL: "",
+            remoteConsoleURL: "",
+            publicHost: "",
+            publicPort: 80,
+            automaticBackupEnabled: true,
+            backupScheduleTimes: ["03:15"],
+            backupRetentionCount: 30
         )
     }
 }

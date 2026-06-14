@@ -30,7 +30,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         settings.networkMode = RuntimeNetworkMode.shared
         settings.diskGiB = 128
         settings.vitalFilesDirectory = "/Users/test/Vital Files"
-        settings.redisBackupRetentionCount = 20
+        settings.backupRetentionCount = 20
         settings.autoRecoveryEnabled = false
         settings.preventSystemSleep = false
         settings.restartAfterSave = true

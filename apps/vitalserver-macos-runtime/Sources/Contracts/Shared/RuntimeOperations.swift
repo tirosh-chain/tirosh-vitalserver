@@ -15,6 +15,7 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
     case redisBackup
     case redisRestore
     case runtimeDataBackup
+    case automaticBackup
     case runtimeDataRestore
     case repairDatastore
     case repairVMDisk
@@ -55,6 +56,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             self = .redisRestore
         case "runtime-data-backup":
             self = .runtimeDataBackup
+        case "automatic-backup":
+            self = .automaticBackup
         case "runtime-data-restore":
             self = .runtimeDataRestore
         case "repair-datastore":
@@ -106,6 +109,8 @@ public enum RuntimeOperation: Codable, Equatable, Sendable {
             return "redis-restore"
         case .runtimeDataBackup:
             return "runtime-data-backup"
+        case .automaticBackup:
+            return "automatic-backup"
         case .runtimeDataRestore:
             return "runtime-data-restore"
         case .repairDatastore:

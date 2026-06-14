@@ -63,8 +63,14 @@ enum RuntimeCommandFactory {
             settings.vitalServerURL,
             RuntimeControlClientConstants.RuntimeCommand.optionRemoteConsoleURL,
             settings.remoteConsoleURL,
-            RuntimeControlClientConstants.RuntimeCommand.optionRedisBackupRetention,
-            String(settings.redisBackupRetentionCount),
+            RuntimeControlClientConstants.RuntimeCommand.optionAutomaticBackup,
+            settings.automaticBackupEnabled
+                ? RuntimeControlClientConstants.RuntimeCommand.boolTrue
+                : RuntimeControlClientConstants.RuntimeCommand.boolFalse,
+            RuntimeControlClientConstants.RuntimeCommand.optionBackupScheduleTimes,
+            settings.backupScheduleTimes.joined(separator: ","),
+            RuntimeControlClientConstants.RuntimeCommand.optionBackupRetention,
+            String(settings.backupRetentionCount),
         ]
         if settings.startOnBootConfigurable {
             arguments += [

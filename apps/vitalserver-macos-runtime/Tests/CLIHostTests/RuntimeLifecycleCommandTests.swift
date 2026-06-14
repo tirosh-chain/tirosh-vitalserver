@@ -16,6 +16,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["guest-log-sync"]), .guestLogSync)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["watchdog"]), .watchdog)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["redis-backup"]), .redisBackup)
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["automatic-backup"]), .automaticBackup)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["repair-datastore"]), .repairDatastore)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["repair-vm-disk"]), .repairVMDisk)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["repair-proxy"]), .repairProxy)

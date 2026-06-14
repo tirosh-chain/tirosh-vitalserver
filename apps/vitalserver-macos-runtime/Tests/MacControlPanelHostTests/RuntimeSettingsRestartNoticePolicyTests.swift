@@ -9,7 +9,7 @@ final class RuntimeSettingsRestartNoticePolicyTests: XCTestCase {
         var draft = RuntimeSettings()
         draft.proxyPort = 18080
         draft.vitalServerURL = "https://vitaldb.tirosh.ai/"
-        draft.redisBackupRetentionCount = 20
+        draft.backupRetentionCount = 20
 
         let decision = policy.decision(draft: draft, runtime: RuntimeSettings())
 

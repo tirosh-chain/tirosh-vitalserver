@@ -59,22 +59,47 @@ struct RuntimeSettingsPanel: View {
                         text: $viewModel.settings.vitalFilesDirectory
                     )
                 }
-                settingsSection(AppConstants.Labels.sectionRedisData) {
-                    settingRow(AppConstants.Labels.redisBackupRetention) {
+                settingsSection(AppConstants.Labels.sectionHelperBackups) {
+                    settingToggle(AppConstants.Labels.automaticBackups, isOn: $viewModel.settings.automaticBackupEnabled)
+                    settingRow(AppConstants.Labels.backupTimes) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(viewModel.settings.backupScheduleTimes.indices, id: \.self) { index in
+                                HStack(spacing: 8) {
+                                    TextField(
+                                        "",
+                                        text: Binding(
+                                            get: { viewModel.settings.backupScheduleTimes[index] },
+                                            set: { viewModel.settings.backupScheduleTimes[index] = $0 }
+                                        )
+                                    )
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 84)
+                                    Button("-") {
+                                        viewModel.settings.backupScheduleTimes.remove(at: index)
+                                    }
+                                    .disabled(viewModel.settings.backupScheduleTimes.count <= 1)
+                                }
+                            }
+                            Button("+") {
+                                viewModel.settings.backupScheduleTimes.append(RuntimeSettingsInitialValues.backupScheduleTimes[0])
+                            }
+                        }
+                    }
+                    settingRow(AppConstants.Labels.backupRetention) {
                         HStack(spacing: 12) {
                             settingSliderControl(
-                                value: $viewModel.settings.redisBackupRetentionCount,
-                                range: AppConstants.SettingsLimits.minimumRedisBackupRetentionCount...AppConstants.SettingsLimits.maximumRedisBackupRetentionCount,
-                                step: AppConstants.SettingsLimits.redisBackupRetentionStep,
+                                value: $viewModel.settings.backupRetentionCount,
+                                range: AppConstants.SettingsLimits.minimumBackupRetentionCount...AppConstants.SettingsLimits.maximumBackupRetentionCount,
+                                step: AppConstants.SettingsLimits.backupRetentionStep,
                                 suffix: "archives"
                             )
                             Button(AppConstants.Actions.openBackups) {
-                                viewModel.openRedisBackups()
+                                viewModel.openRuntimeDataBackups()
                             }
                             .disabled(!viewModel.capabilities.canOpenLocalFiles)
                         }
                     }
-                    settingHelp(AppConstants.Labels.redisBackupRetentionHelp)
+                    settingHelp(AppConstants.Labels.backupRetentionHelp)
                 }
                 settingsSection(AppConstants.Labels.sectionOperations) {
                     settingToggle(AppConstants.Labels.startOnBoot, isOn: $viewModel.settings.startOnBoot)

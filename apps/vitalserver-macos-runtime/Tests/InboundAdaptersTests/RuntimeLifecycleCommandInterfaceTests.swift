@@ -46,8 +46,12 @@ final class RuntimeLifecycleCommandInterfaceTests: XCTestCase {
             .runtimeDataBackup
         )
         XCTAssertEqual(
-            try RuntimeLifecycleCommand.parseArguments(["runtime-data-restore", "/backups/runtime-data/manual"]),
-            .runtimeDataRestore(URL(fileURLWithPath: "/backups/runtime-data/manual"))
+            try RuntimeLifecycleCommand.parseArguments(["automatic-backup"]),
+            .automaticBackup
+        )
+        XCTAssertEqual(
+            try RuntimeLifecycleCommand.parseArguments(["runtime-data-restore", "/backups/vitalserver-helper/manual"]),
+            .runtimeDataRestore(URL(fileURLWithPath: "/backups/vitalserver-helper/manual"))
         )
         XCTAssertEqual(
             try RuntimeLifecycleCommand.parseArguments(["redis-restore", "/backups/redis/redis.tar.gz"]),
@@ -59,6 +63,7 @@ final class RuntimeLifecycleCommandInterfaceTests: XCTestCase {
         XCTAssertTrue(RuntimeLifecycleCommand.usageText.contains("vitalserver-vm runtime install"))
         XCTAssertTrue(RuntimeLifecycleCommand.usageText.contains("vitalserver-vm runtime configure"))
         XCTAssertTrue(RuntimeLifecycleCommand.usageText.contains("vitalserver-vm runtime runtime-data-backup"))
+        XCTAssertTrue(RuntimeLifecycleCommand.usageText.contains("vitalserver-vm runtime automatic-backup"))
         XCTAssertTrue(RuntimeLifecycleCommand.usageText.contains("vitalserver-vm runtime runtime-data-restore"))
         XCTAssertTrue(
             RuntimeLifecycleCommand.usageText.contains(

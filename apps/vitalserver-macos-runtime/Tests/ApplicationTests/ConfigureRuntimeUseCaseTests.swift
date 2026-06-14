@@ -25,13 +25,14 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
                     .startOnBoot(false),
                     .autoRecovery(false),
                     .preventSystemSleep(false),
-                    .redisBackupRetention(20),
+                    .backupRetention(20),
                 ],
                 restart: true
             ),
             context: harness.context,
             currentVMConfig: harness.vmConfig,
             currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
             currentVMDiskSizeGiB: harness.currentDiskGiB
         )
 
@@ -63,13 +64,11 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.guestRuntimeConfig.publicPort, 443)
         XCTAssertEqual(plan.guestRuntimeConfig.adminPassword, "secret")
         XCTAssertEqual(plan.guestRuntimeConfig.vitalFilesDirectory, "/mnt/vital-files")
-        XCTAssertEqual(plan.guestRuntimeConfig.redisBackupRetentionCount, 20)
-
         XCTAssertEqual(plan.guestRuntimeSettings.vitalServerURL, "https://vitaldb.tirosh.ai/")
         XCTAssertEqual(plan.guestRuntimeSettings.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(plan.guestRuntimeSettings.publicHost, "vitaldb.tirosh.ai")
         XCTAssertEqual(plan.guestRuntimeSettings.publicPort, 443)
-        XCTAssertEqual(plan.guestRuntimeSettings.redisBackupRetentionCount, 20)
+        XCTAssertEqual(plan.guestRuntimeSettings.backupRetentionCount, 20)
     }
 
     func testRestartPolicyDoesNotRestartForNonVMRuntimeChanges() throws {
@@ -85,13 +84,14 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
                     .startOnBoot(false),
                     .autoRecovery(false),
                     .preventSystemSleep(false),
-                    .redisBackupRetention(20),
+                    .backupRetention(20),
                 ],
                 restart: true
             ),
             context: harness.context,
             currentVMConfig: harness.vmConfig,
             currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
             currentVMDiskSizeGiB: harness.currentDiskGiB
         )
 
@@ -114,6 +114,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             context: harness.context,
             currentVMConfig: harness.vmConfig,
             currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
             currentVMDiskSizeGiB: harness.currentDiskGiB
         )
 
@@ -139,6 +140,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             context: harness.context,
             currentVMConfig: harness.vmConfig,
             currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
             currentVMDiskSizeGiB: harness.currentDiskGiB
         )
 
@@ -159,6 +161,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             context: harness.context,
             currentVMConfig: harness.vmConfig,
             currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
             currentVMDiskSizeGiB: harness.currentDiskGiB
         )
 
@@ -180,6 +183,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             context: harness.context,
             currentVMConfig: harness.vmConfig,
             currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
             currentVMDiskSizeGiB: harness.currentDiskGiB
         )
 
@@ -200,6 +204,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             context: harness.context,
             currentVMConfig: harness.vmConfig,
             currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
             currentVMDiskSizeGiB: harness.currentDiskGiB
         )) { error in
             XCTAssertEqual(
@@ -244,6 +249,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             context: harness.context,
             currentVMConfig: harness.vmConfig,
             currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
             currentVMDiskSizeGiB: harness.currentDiskGiB
         )) { error in
             XCTAssertEqual(
@@ -290,6 +296,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             context: harness.context,
             currentVMConfig: harness.vmConfig,
             currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
             currentVMDiskSizeGiB: harness.currentDiskGiB
         )) { error in
             XCTAssertEqual(
@@ -307,6 +314,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             context: harness.context,
             currentVMConfig: harness.vmConfig,
             currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
             currentVMDiskSizeGiB: harness.currentDiskGiB
         )) { error in
             XCTAssertEqual(
@@ -327,6 +335,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             context: harness.context,
             currentVMConfig: harness.vmConfig,
             currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
             currentVMDiskSizeGiB: harness.currentDiskGiB
         )
 
@@ -345,6 +354,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             context: harness.context,
             currentVMConfig: vmConfig,
             currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
             currentVMDiskSizeGiB: harness.currentDiskGiB
         )) { error in
             XCTAssertEqual(
@@ -373,7 +383,7 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             minimumDiskGiB: 4,
             maximumDiskGiB: 128,
             diskStepGiB: 4,
-            maximumRedisBackupRetentionCount: 30,
+            maximumBackupRetentionCount: 30,
             defaultPublicPort: 80,
             sharedNetworkMode: .shared,
             bridgedNetworkMode: .bridged,
@@ -406,10 +416,18 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
             publicPort: 80,
             adminPassword: "admin",
             vitalFilesDirectory: "/mnt/old",
-            redisBackupRetentionCount: 30,
             redisUiPort: 18081,
             swaggerUiPort: 18082,
             testkitEnabled: false
+        )
+        var guestSettings = GuestRuntimeSettingsDocument(
+            vitalServerURL: "",
+            remoteConsoleURL: "",
+            publicHost: "",
+            publicPort: 80,
+            automaticBackupEnabled: true,
+            backupScheduleTimes: ["03:15"],
+            backupRetentionCount: 30
         )
     }
 }

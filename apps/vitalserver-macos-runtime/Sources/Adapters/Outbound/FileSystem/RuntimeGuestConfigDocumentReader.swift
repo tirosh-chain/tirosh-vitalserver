@@ -20,6 +20,6 @@ public enum RuntimeGuestConfigDocumentReader {
             throw RuntimeGuestConfigDocumentReadError.unexpectedPathState(path: url.path, state: state.rawValue)
         }
         let data = try fileStore.readData(url)
-        return try GuestRuntimeConfigDocumentMigration.decodeCurrentOrLegacy(data)
+        return try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: data)
     }
 }

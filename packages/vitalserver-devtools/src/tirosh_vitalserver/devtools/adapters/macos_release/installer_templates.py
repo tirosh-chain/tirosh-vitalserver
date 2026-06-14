@@ -154,6 +154,15 @@ def render_launchd_templates(context: PackageContext) -> None:
             "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
         },
     )
+    render_template(
+        launchd / templates.automatic_backup.template_file,
+        daemon_dir / templates.automatic_backup.installed_plist,
+        {
+            "VITALSERVER_VM_BIN": package_install_value(context, "vm_cli"),
+            "VITALSERVER_VM_HOME": install_home(context),
+            "VITALSERVER_RUNTIME_LOGS": install_runtime_logs(context),
+        },
+    )
 
 
 def render_template(template: Path, output: Path, values: dict[str, str]) -> None:

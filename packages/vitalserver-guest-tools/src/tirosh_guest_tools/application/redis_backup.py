@@ -4,7 +4,6 @@ import logging
 import tarfile
 from pathlib import Path
 
-from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
 from tirosh_guest_tools.application.contexts import RedisBackupOutcome
 from tirosh_guest_tools.contracts import RuntimeFileName
 from tirosh_guest_tools.domain.errors import GuestDependencyError
@@ -56,13 +55,11 @@ def run_redis_backup() -> RedisBackupOutcome:
             extra={"fields": {"requestId": request_id or None}},
         )
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-        retention = read_retention_count()
         logger.info(
             "redis backup context loaded",
             extra={
                 "fields": {
                     "requestId": request_id or None,
-                    "retention": retention,
                     "project": PROJECT_NAME,
                     "volume": REDIS_VOLUME,
                 }
@@ -77,7 +74,6 @@ def run_redis_backup() -> RedisBackupOutcome:
             )
             REQUEST_FILE.unlink(missing_ok=True)
         create_backup(archive)
-        prune_backups(retention)
         if request_id:
             write_result(
                 request_id,
@@ -109,12 +105,6 @@ def read_request_id() -> str:
     if not REQUEST_FILE.is_file():
         return ""
     return request_id_from(REQUEST_FILE)
-
-
-def read_retention_count() -> int:
-    return load_config(
-        DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value
-    ).redis_backup_retention_count
 
 
 def write_result(
@@ -186,9 +176,3 @@ def create_backup(archive: Path) -> None:
         "redis archive completed",
         extra={"fields": {"step": "archive", "archive": str(archive)}},
     )
-
-
-def prune_backups(retention_count: int) -> None:
-    backups = sorted(BACKUP_DIR.glob("redis-*.tar.gz"))
-    for backup in backups[: max(len(backups) - retention_count, 0)]:
-        backup.unlink(missing_ok=True)

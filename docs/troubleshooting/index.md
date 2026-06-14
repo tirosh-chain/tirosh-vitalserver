@@ -85,7 +85,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-074 | Installed bootstrap이 빈 `lsblk PARTNUM` 출력으로 실패함 | Packaging / Install / Guest bootstrap | implemented | [Installed bootstrap fails when lsblk PARTNUM is empty](074_installed-bootstrap-lsblk-partnum-empty.md) |
 | TS-075 | Service liveness uptime이 수백 일로 표시됨 | Runtime health / Runtime Control PWA | implemented | [Service liveness uptime shows hundreds of days](075_service-liveness-uptime-clock-skew.md) |
 | TS-076 | Update shutdown 중 compose stop timeout 후 rollback됨 | Update / Guest containers | implemented | [Update shutdown compose stop timeout and guest time drift](076_update-shutdown-compose-stop-timeout-and-guest-time-drift.md) |
-| TS-077 | Runtime data backup restore가 data layout 호환성을 확인해야 함 | Data store / Runtime health | active | [Runtime Data Backup Compatibility Gate](077_runtime-data-backup-compatibility.md) |
+| TS-077 | VitalServer backup restore가 data layout 호환성을 확인해야 함 | Data store / Runtime health | active | [Runtime Data Backup Compatibility Gate](077_runtime-data-backup-compatibility.md) |
 | TS-078 | Upstream Redis backup command가 Redis SAVE 응답을 무기한 기다림 | Packaging / Troubleshooting Tools / Redis migration | implemented | [Upstream Redis SAVE Timeout](078_upstream-redis-save-timeout.md) |
 
 ## Follow-up 규칙

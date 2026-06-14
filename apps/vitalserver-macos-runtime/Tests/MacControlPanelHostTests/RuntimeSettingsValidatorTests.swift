@@ -103,7 +103,7 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
 
     func testRejectsRedisBackupRetentionOutsideRange() {
         var settings = validSettings()
-        settings.redisBackupRetentionCount = 31
+        settings.backupRetentionCount = 31
 
         XCTAssertEqual(
             validator.validate(settings, installedSettings: installedSettings()),

@@ -863,7 +863,7 @@ final class RuntimeControlAPITests: XCTestCase {
             backup: RuntimeControlFileReference(kind: .localPath, value: "/redis-backups/redis.tar.gz")
         )
         let runtimeDataRequest = RuntimeBackupRequest(
-            backup: RuntimeControlFileReference(kind: .localPath, value: "/backups/runtime-data/manual")
+            backup: RuntimeControlFileReference(kind: .localPath, value: "/backups/vitalserver-helper/manual")
         )
 
         let redis = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
@@ -873,12 +873,12 @@ final class RuntimeControlAPITests: XCTestCase {
         )))
         let runtimeData = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
             method: .post,
-            path: "/host/backups/runtime-data/restore",
+            path: "/host/backups/vitalserver-helper/restore",
             body: try JSONEncoder().encode(runtimeDataRequest)
         )))
 
         XCTAssertEqual(redis.result.stdout, "restore redis /redis-backups/redis.tar.gz")
-        XCTAssertEqual(runtimeData.result.stdout, "restore runtime data /backups/runtime-data/manual")
+        XCTAssertEqual(runtimeData.result.stdout, "restore runtime data /backups/vitalserver-helper/manual")
     }
 
     @MainActor
@@ -956,7 +956,7 @@ final class RuntimeControlAPITests: XCTestCase {
         )))
         let deleteRuntimeDataBackup = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
             method: .delete,
-            path: "/host/backups/runtime-data",
+            path: "/host/backups/vitalserver-helper",
             body: try JSONEncoder().encode(backupRequest)
         )))
         let export = try await decode(RuntimeLogExportResult.self, from: router.route(.init(
@@ -1033,7 +1033,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(installInfo.packageIdentifier, "ai.tirosh.vitalserver.helper")
         XCTAssertEqual(installInfo.backupsPath, "/backups")
         XCTAssertEqual(installInfo.redisBackupsPath, "/runtime/data/backups/redis")
-        XCTAssertEqual(installInfo.runtimeDataBackupsPath, "/runtime/data/backups/runtime-data")
+        XCTAssertEqual(installInfo.runtimeDataBackupsPath, "/runtime/data/backups/vitalserver-helper")
         XCTAssertEqual(observationSnapshot.state, .loaded)
         XCTAssertEqual(observationSnapshot.observation?.observedAt, "2026-05-25T00:00:00Z")
         XCTAssertEqual(recorders.updatedAt, "2026-05-25T00:00:00Z")
@@ -1152,7 +1152,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(logText.text, "log:helperMessage:25")
         XCTAssertEqual(backups.map(\.path), ["/backups/rollback"])
         XCTAssertEqual(redisBackups.map(\.path), ["/runtime/data/backups/redis/redis-1.tar.gz"])
-        XCTAssertEqual(runtimeDataBackups.map(\.path), ["/backups/runtime-data/20260610T000000Z-manual"])
+        XCTAssertEqual(runtimeDataBackups.map(\.path), ["/backups/vitalserver-helper/20260610T000000Z-manual"])
         XCTAssertEqual(summary.summary, "summary /bundles/update.tar.gz")
         XCTAssertEqual(verify.result.stdout, "verify /bundles/update.tar.gz")
         XCTAssertEqual(apply.result.stdout, "apply /bundles/update.tar.gz")
@@ -2454,7 +2454,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
             runtimeHomePath: "/runtime/home",
             backupsPath: "/runtime/backups",
             redisBackupsPath: "/runtime/home/data/backups/redis",
-            runtimeDataBackupsPath: "/runtime/home/data/backups/runtime-data"
+            runtimeDataBackupsPath: "/runtime/home/data/backups/vitalserver-helper"
         )
     }
 
@@ -2471,7 +2471,7 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadRuntimeDataBackups() async throws -> [RuntimeBackup] {
-        [RuntimeBackup(path: "/backups/runtime-data/20260610T000000Z-manual", sizeBytes: 2048)]
+        [RuntimeBackup(path: "/backups/vitalserver-helper/20260610T000000Z-manual", sizeBytes: 2048)]
     }
 
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse {
@@ -2818,7 +2818,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
 
     func loadRuntimeDataBackups() throws -> [RuntimeBackup] {
         loadRuntimeDataBackupsCount += 1
-        return [RuntimeBackup(path: "/backups/runtime-data/20260610T000000Z-manual", sizeBytes: 2048)]
+        return [RuntimeBackup(path: "/backups/vitalserver-helper/20260610T000000Z-manual", sizeBytes: 2048)]
     }
 
     func updateBundleSummaryResult(url: URL) -> RuntimeHostTextReadResult {
@@ -2905,7 +2905,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
             runtimeHomePath: "/runtime",
             backupsPath: "/backups",
             redisBackupsPath: "/runtime/data/backups/redis",
-            runtimeDataBackupsPath: "/runtime/data/backups/runtime-data"
+            runtimeDataBackupsPath: "/runtime/data/backups/vitalserver-helper"
         )
     }
 

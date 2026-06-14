@@ -35,12 +35,13 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
         XCTAssertEqual(document.publicPort, 8080)
         XCTAssertEqual(document.adminPassword, "custom-secret")
         XCTAssertEqual(document.vitalFilesDirectory, Constants.Defaults.vitalFilesDirectoryGuestMountPath)
-        XCTAssertEqual(document.redisBackupRetentionCount, Constants.Defaults.redisBackupRetentionCount)
         let settingsData = try XCTUnwrap(fileStore.files[paths.guestRuntimeSettings])
         let settingsDocument = try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: settingsData)
         XCTAssertEqual(settingsDocument.publicHost, "vital.example.test")
         XCTAssertEqual(settingsDocument.publicPort, 8080)
-        XCTAssertEqual(settingsDocument.redisBackupRetentionCount, Constants.Defaults.redisBackupRetentionCount)
+        XCTAssertEqual(settingsDocument.automaticBackupEnabled, true)
+        XCTAssertEqual(settingsDocument.backupScheduleTimes, ["03:15"])
+        XCTAssertEqual(settingsDocument.backupRetentionCount, Constants.Defaults.backupRetentionCount)
         XCTAssertEqual(restricted, [paths.guestRuntimeConfig])
     }
 
@@ -76,7 +77,6 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
             publicPort: publicPort,
             adminPassword: adminPassword,
             vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
-            redisBackupRetentionCount: Constants.Defaults.redisBackupRetentionCount,
             redisUiPort: Constants.Guest.redisUIPort,
             swaggerUiPort: Constants.Guest.swaggerUIPort,
             testkitEnabled: Constants.testkitContainerIncluded

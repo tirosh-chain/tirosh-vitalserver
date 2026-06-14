@@ -18,6 +18,10 @@ extension RuntimeLifecycle {
                     installedPaths.guestRunDirectory,
                     installedPaths.vrReleaseDirectory,
                     installedPaths.backupsDirectory,
+                    installedPaths.vitalServerHelperBackupsDirectory,
+                    installedPaths.redisOnlyBackupsDirectory,
+                    installedPaths.updateRollbackBackupsDirectory,
+                    installedPaths.vmDiskRepairBackupsDirectory,
                     installedPaths.redisBackupsDirectory,
                     installedPaths.productLogsDirectory,
                     installedPaths.centralRuntimeLogsDirectory,
@@ -80,7 +84,6 @@ extension RuntimeLifecycle {
             publicPort: settings.publicPort,
             adminPassword: adminPassword,
             vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
-            redisBackupRetentionCount: Constants.Defaults.redisBackupRetentionCount,
             redisUiPort: Constants.Guest.redisUIPort,
             swaggerUiPort: Constants.Guest.swaggerUIPort,
             testkitEnabled: Constants.testkitContainerIncluded
@@ -212,6 +215,7 @@ extension RuntimeLifecycle {
                     RuntimeManagedServicePaths.launchDaemonPlist(.guestLogSync),
                     RuntimeManagedServicePaths.launchDaemonPlist(.sleepPrevention),
                     RuntimeManagedServicePaths.launchDaemonPlist(.watchdog),
+                    installedPaths.automaticBackupLaunchDaemon.path,
                 ],
                 chownExecutable: Constants.Commands.chown,
                 chmodExecutable: Constants.Commands.chmod,
@@ -223,6 +227,10 @@ extension RuntimeLifecycle {
         ).configure(input: RuntimeInstallPermissionInput(
             proxyPort: settings.proxyPort
         ))
+        try setAutomaticBackupSchedule(
+            enabled: RuntimeSettingsInitialBackupDefaults.automaticBackupEnabled,
+            scheduleTimes: RuntimeSettingsInitialBackupDefaults.backupScheduleTimes
+        )
     }
 
     func startInstalledServices(_ settings: RuntimeInstallSettings) throws {

@@ -54,6 +54,10 @@ installed_plist = "ai.tirosh.vitalserver.helper.sleep-prevention.plist"
 template_file = "ai.tirosh.vitalserver.helper.watchdog.plist.template"
 installed_plist = "ai.tirosh.vitalserver.helper.watchdog.plist"
 
+[macos.launchd.automatic_backup]
+template_file = "ai.tirosh.vitalserver.helper.automatic-backup.plist.template"
+installed_plist = "ai.tirosh.vitalserver.helper.automatic-backup.plist"
+
 [macos.host_proxy.nginx]
 binary_path = ".artifacts/nginx/macos/bin/nginx"
 source_binary_path = "/opt/homebrew/opt/nginx/bin/nginx"

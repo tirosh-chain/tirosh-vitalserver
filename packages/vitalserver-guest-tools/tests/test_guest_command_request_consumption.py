@@ -22,7 +22,6 @@ def test_redis_backup_consumes_request_before_backup_side_effects(
     monkeypatch.setattr(redis_backup, "BACKUP_DIR", backup_dir)
     monkeypatch.setattr(redis_backup, "mount_runtime_share", lambda: None)
     monkeypatch.setattr(redis_backup, "utc_now", lambda: "2026-06-10T00:00:00Z")
-    monkeypatch.setattr(redis_backup, "read_retention_count", lambda: 30)
     monkeypatch.setattr(
         redis_backup,
         "create_backup",
@@ -30,7 +29,6 @@ def test_redis_backup_consumes_request_before_backup_side_effects(
             f"create-backup:request-exists={request.exists()}"
         ),
     )
-    monkeypatch.setattr(redis_backup, "prune_backups", lambda retention: None)
 
     outcome = redis_backup.run_redis_backup()
 

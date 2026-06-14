@@ -12,7 +12,6 @@ class RuntimeConfig:
     admin_password: str
     public_host: str
     public_port: int
-    redis_backup_retention_count: int
     redis_host: str
     redis_port: int
     testkit_enabled: bool
@@ -29,12 +28,6 @@ def runtime_config_from_json(document: dict[str, Any]) -> RuntimeConfig:
             allow_empty=True,
         ),
         public_port=required_int(document, RuntimeConfigKey.PUBLIC_PORT, minimum=1),
-        redis_backup_retention_count=required_int(
-            document,
-            RuntimeConfigKey.REDIS_BACKUP_RETENTION_COUNT,
-            minimum=1,
-            maximum=30,
-        ),
         redis_host=required_str(document, RuntimeConfigKey.REDIS_HOST),
         redis_port=required_int(document, RuntimeConfigKey.REDIS_PORT, minimum=1),
         testkit_enabled=required_bool(document, RuntimeConfigKey.TESTKIT_ENABLED),

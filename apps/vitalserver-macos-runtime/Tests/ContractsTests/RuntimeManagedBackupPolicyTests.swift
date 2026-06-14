@@ -21,18 +21,18 @@ final class RuntimeManagedBackupPolicyTests: XCTestCase {
     }
 
     func testRuntimeDataBackupMustBeDirectChildInsideRuntimeDataBackupRoot() {
-        let root = URL(fileURLWithPath: "/product/backups/runtime-data")
+        let root = URL(fileURLWithPath: "/product/backups/vitalserver-helper")
 
         XCTAssertTrue(RuntimeManagedBackupPolicy.isRuntimeDataBackupURL(
-            URL(fileURLWithPath: "/product/backups/runtime-data/20260613T000000Z-manual"),
+            URL(fileURLWithPath: "/product/backups/vitalserver-helper/20260613T000000Z-manual"),
             runtimeDataBackupsRoot: root
         ))
         XCTAssertFalse(RuntimeManagedBackupPolicy.isRuntimeDataBackupURL(
-            URL(fileURLWithPath: "/product/backups/runtime-data/20260613T000000Z-manual/nested"),
+            URL(fileURLWithPath: "/product/backups/vitalserver-helper/20260613T000000Z-manual/nested"),
             runtimeDataBackupsRoot: root
         ))
         XCTAssertFalse(RuntimeManagedBackupPolicy.isRuntimeDataBackupURL(
-            URL(fileURLWithPath: "/product/backups/runtime-data/.staging"),
+            URL(fileURLWithPath: "/product/backups/vitalserver-helper/.staging"),
             runtimeDataBackupsRoot: root
         ))
         XCTAssertFalse(RuntimeManagedBackupPolicy.isRuntimeDataBackupURL(

@@ -96,7 +96,9 @@ public struct RuntimeDataBackupStore {
         startOnBootState: Data
     ) throws -> URL {
         let stamp = timestamp()
-        let backupRoot = paths.backupsDirectory.appendingPathComponent("runtime-data")
+        let backupRoot = RuntimeBackupStorageLayout.vitalServerHelperBackupsDirectory(
+            under: paths.backupsDirectory
+        )
         let finalBackup = backupRoot.appendingPathComponent("\(stamp)-\(sanitizedPathComponent(reason))")
         let stagingBackup = backupRoot.appendingPathComponent(".staging-\(stamp)")
         let artifactsDirectory = stagingBackup.appendingPathComponent("artifacts")
@@ -514,8 +516,8 @@ public struct RuntimeDataBackupStore {
         } else {
             errors.append("restoreCompatibilityVersion is missing")
         }
-        if manifest.backupKind != .runtimeData {
-            errors.append("backupKind must be runtime-data")
+        if manifest.backupKind != .vitalServerHelper {
+            errors.append("backupKind must be vitalserver-helper")
         }
         if manifest.product != metadata.productIdentifier {
             errors.append("product mismatch expected=\(metadata.productIdentifier) actual=\(manifest.product)")

@@ -26,7 +26,7 @@ public enum RuntimeDataBackupPolicy {
         } else {
             errors.append("runtime data backup restoreCompatibilityVersion is missing")
         }
-        if manifest.backupKind != .runtimeData {
+        if manifest.backupKind != .vitalServerHelper {
             errors.append("runtime data backup kind is unsupported: \(manifest.backupKind.rawValue)")
         }
         if let expectedProduct, manifest.product != expectedProduct {

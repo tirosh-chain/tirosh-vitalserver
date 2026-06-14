@@ -13,6 +13,7 @@ public struct RuntimeConfigureActions {
     public var restrictSecretFile: (URL) throws -> Void
     public var setStartOnBoot: (Bool) throws -> Void
     public var setSystemSleepPrevention: (Bool) throws -> Void
+    public var setAutomaticBackupSchedule: (Bool, [String]) throws -> Void
     public var restartRuntimeServices: () throws -> Void
 
     public init(
@@ -22,6 +23,7 @@ public struct RuntimeConfigureActions {
         restrictSecretFile: @escaping (URL) throws -> Void,
         setStartOnBoot: @escaping (Bool) throws -> Void,
         setSystemSleepPrevention: @escaping (Bool) throws -> Void,
+        setAutomaticBackupSchedule: @escaping (Bool, [String]) throws -> Void,
         restartRuntimeServices: @escaping () throws -> Void
     ) {
         self.resizeVMDiskIfNeeded = resizeVMDiskIfNeeded
@@ -30,6 +32,7 @@ public struct RuntimeConfigureActions {
         self.restrictSecretFile = restrictSecretFile
         self.setStartOnBoot = setStartOnBoot
         self.setSystemSleepPrevention = setSystemSleepPrevention
+        self.setAutomaticBackupSchedule = setAutomaticBackupSchedule
         self.restartRuntimeServices = restartRuntimeServices
     }
 }
@@ -74,6 +77,7 @@ public struct RuntimeConfigureCompositionOperations {
     let restrictSecretFile: (URL) throws -> Void
     let setStartOnBoot: (Bool) throws -> Void
     let setSystemSleepPrevention: (Bool) throws -> Void
+    let setAutomaticBackupSchedule: (Bool, [String]) throws -> Void
     let restartRuntimeServices: () throws -> Void
     let log: (String) -> Void
 
@@ -85,6 +89,7 @@ public struct RuntimeConfigureCompositionOperations {
         restrictSecretFile: @escaping (URL) throws -> Void,
         setStartOnBoot: @escaping (Bool) throws -> Void,
         setSystemSleepPrevention: @escaping (Bool) throws -> Void,
+        setAutomaticBackupSchedule: @escaping (Bool, [String]) throws -> Void,
         restartRuntimeServices: @escaping () throws -> Void,
         log: @escaping (String) -> Void
     ) {
@@ -95,6 +100,7 @@ public struct RuntimeConfigureCompositionOperations {
         self.restrictSecretFile = restrictSecretFile
         self.setStartOnBoot = setStartOnBoot
         self.setSystemSleepPrevention = setSystemSleepPrevention
+        self.setAutomaticBackupSchedule = setAutomaticBackupSchedule
         self.restartRuntimeServices = restartRuntimeServices
         self.log = log
     }
@@ -116,6 +122,7 @@ public enum RuntimeConfigureComposition {
                 restrictSecretFile: operations.restrictSecretFile,
                 setStartOnBoot: operations.setStartOnBoot,
                 setSystemSleepPrevention: operations.setSystemSleepPrevention,
+                setAutomaticBackupSchedule: operations.setAutomaticBackupSchedule,
                 restartRuntimeServices: operations.restartRuntimeServices
             ),
             maximumAllowedCPUCount: context.maximumAllowedCPUCount,
@@ -176,6 +183,9 @@ public struct RuntimeConfigureRunner {
                 },
                 loadGuestRuntimeConfig: { url in
                     try loadGuestRuntimeConfig(from: url)
+                },
+                loadGuestRuntimeSettings: { url in
+                    try loadGuestRuntimeSettings(from: url)
                 },
                 loadVMDiskSizeGiB: {
                     try loadVMDiskSizeGiB()
@@ -241,6 +251,8 @@ public struct RuntimeConfigureRunner {
                 try actions.setStartOnBoot(enabled)
             case .setSystemSleepPrevention(let enabled):
                 try actions.setSystemSleepPrevention(enabled)
+            case .setAutomaticBackupSchedule(let enabled, let scheduleTimes):
+                try actions.setAutomaticBackupSchedule(enabled, scheduleTimes)
             case .restrictSecretFile(let url):
                 try actions.restrictSecretFile(url)
             case .restartRuntimeServices:
@@ -282,7 +294,7 @@ public struct RuntimeConfigureRunner {
             minimumDiskGiB: Constants.Defaults.minimumDiskGiB,
             maximumDiskGiB: Constants.Defaults.maximumDiskGiB,
             diskStepGiB: Constants.Defaults.diskStepGiB,
-            maximumRedisBackupRetentionCount: Constants.Defaults.maximumRedisBackupRetentionCount,
+            maximumBackupRetentionCount: Constants.Defaults.maximumBackupRetentionCount,
             defaultPublicPort: Constants.Guest.publicPort,
             sharedNetworkMode: .shared,
             bridgedNetworkMode: .bridged,
@@ -305,6 +317,25 @@ public struct RuntimeConfigureRunner {
                 "guest runtime config path state is unexpected path=\(path) state=\(state)"
             )
         }
+    }
+
+    private func loadGuestRuntimeSettings(from url: URL) throws -> GuestRuntimeSettingsDocument {
+        switch fileStore.pathState(at: url) {
+        case .file:
+            break
+        case .missing:
+            throw LauncherError.missingFile(url.path)
+        case .inspectFailed(let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "guest runtime settings path inspection failed path=\(url.path) reason=\(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw LauncherError.runtimeOperationFailed(
+                "guest runtime settings path state is unexpected path=\(url.path) state=\(fileStore.pathState(at: url).rawValue)"
+            )
+        }
+        let data = try fileStore.readData(url)
+        return try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: data)
     }
 
     private func prettyJSONEncoder() -> JSONEncoder {
@@ -356,8 +387,12 @@ private extension RuntimeConfigureChange {
             return .autoRecovery(value)
         case .preventSystemSleep(let value):
             return .preventSystemSleep(value)
-        case .redisBackupRetention(let value):
-            return .redisBackupRetention(value)
+        case .automaticBackup(let value):
+            return .automaticBackup(value)
+        case .backupScheduleTimes(let value):
+            return .backupScheduleTimes(value)
+        case .backupRetention(let value):
+            return .backupRetention(value)
         }
     }
 }

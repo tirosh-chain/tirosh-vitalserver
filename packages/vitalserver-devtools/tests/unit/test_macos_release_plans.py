@@ -822,11 +822,11 @@ def release_package_input(
     )
 
 
-def test_default_update_migrations_include_guest_runtime_settings_read_model() -> None:
+def test_default_update_migrations_include_current_baseline_migrations() -> None:
     root = repo_root()
 
     migrations = default_update_migrations(root / "apps/vitalserver-macos-runtime")
 
-    assert migrations[-1].name == "005-write-guest-runtime-settings-read-model"
+    assert migrations[-1].name == "004-refresh-vm-shutdown-timeouts"
     assert all(path.is_file() for path in migrations)
     assert all(path.stat().st_mode & 0o111 for path in migrations)

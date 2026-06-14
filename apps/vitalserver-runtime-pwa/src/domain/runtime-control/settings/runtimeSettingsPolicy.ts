@@ -55,10 +55,16 @@ export function validateRuntimeSettings(
     errors.push("Advertised port must be between 1 and 65535.");
   }
   if (
-    settings.redisBackupRetentionCount < 1 ||
-    settings.redisBackupRetentionCount > 30
+    settings.backupRetentionCount < 1 ||
+    settings.backupRetentionCount > 30
   ) {
     errors.push("VitalServer Helper backups must be between 1 and 30 archives.");
+  }
+  if (
+    settings.backupScheduleTimes.length === 0 ||
+    settings.backupScheduleTimes.some((value) => !/^\d{2}:\d{2}$/.test(value))
+  ) {
+    errors.push("Backup times must use HH:mm format.");
   }
   if (isProtectedVitalFilesDirectory(settings.vitalFilesDirectory)) {
     errors.push(

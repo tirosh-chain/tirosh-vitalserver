@@ -40,7 +40,7 @@
 | Runtime service start/stop | `Capability gated` | `/runtime/services/start`, `/runtime/services/stop` | confirmation 필요 |
 | Runtime repair | `Capability gated` | `/runtime/services/repair-*` | Advanced에서 제공 |
 | Rollback backup list/delete | `Capability gated` | `/host/backups`, `DELETE /host/backups/update` | update backup 삭제는 Danger Zone에서 명시 action으로 제공 |
-| VitalServer backup list/create/restore/delete | `Capability gated` | `/runtime/data/backups`, `/host/backups/runtime-data` | create/restore는 Advanced, delete는 Danger Zone에서 제공 |
+| VitalServer backup list/create/restore/delete | `Capability gated` | `/runtime/data/backups`, `/host/backups/vitalserver-helper` | create/restore는 Advanced, delete는 Danger Zone에서 제공 |
 | Redis backup create/restore | `Capability gated` | `/runtime/redis/backups`, `/host/backups/redis` | restore는 command availability 확인 필요 |
 | Logs read/stream | `Implemented` | `/host/logs/read`, `/host/logs/stream` | host log path는 직접 열지 않음 |
 | Logs export | `Host affordance` | host log export endpoint | browser download endpoint가 없으면 native와 동일 UX 불가 |

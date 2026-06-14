@@ -444,7 +444,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/host/backups/runtime-data": {
+    "/host/backups/vitalserver-helper": {
         parameters: {
             query?: never;
             header?: never;
@@ -465,7 +465,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/host/backups/runtime-data/restore": {
+    "/host/backups/vitalserver-helper/restore": {
         parameters: {
             query?: never;
             header?: never;
@@ -1392,7 +1392,9 @@ export interface components {
             startOnBootConfigurable: boolean;
             autoRecoveryEnabled: boolean;
             preventSystemSleep: boolean;
-            redisBackupRetentionCount: number;
+            automaticBackupEnabled: boolean;
+            backupScheduleTimes: string[];
+            backupRetentionCount: number;
             restartAfterSave: boolean;
         };
         RuntimeSettingsReadIssue: {

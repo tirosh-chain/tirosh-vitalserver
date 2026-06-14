@@ -56,38 +56,38 @@ final class RuntimeBackupActionPlannerTests: XCTestCase {
     func testDeleteRuntimeDataBackupPlanRequiresDirectBackupInsideReportedRoot() {
         let invalidOutsideRoot = planner.deleteRuntimeDataBackupPlan(
             selectedBackupPath: "/other/20260613T000000Z-manual",
-            runtimeDataBackupsPath: "/runtime/backups/runtime-data"
+            runtimeDataBackupsPath: "/runtime/backups/vitalserver-helper"
         )
         let invalidNestedPath = planner.deleteRuntimeDataBackupPlan(
-            selectedBackupPath: "/runtime/backups/runtime-data/20260613T000000Z-manual/nested",
-            runtimeDataBackupsPath: "/runtime/backups/runtime-data"
+            selectedBackupPath: "/runtime/backups/vitalserver-helper/20260613T000000Z-manual/nested",
+            runtimeDataBackupsPath: "/runtime/backups/vitalserver-helper"
         )
         let invalidHiddenName = planner.deleteRuntimeDataBackupPlan(
-            selectedBackupPath: "/runtime/backups/runtime-data/.staging",
-            runtimeDataBackupsPath: "/runtime/backups/runtime-data"
+            selectedBackupPath: "/runtime/backups/vitalserver-helper/.staging",
+            runtimeDataBackupsPath: "/runtime/backups/vitalserver-helper"
         )
         let valid = planner.deleteRuntimeDataBackupPlan(
-            selectedBackupPath: "/runtime/backups/runtime-data/20260613T000000Z-manual",
-            runtimeDataBackupsPath: "/runtime/backups/runtime-data"
+            selectedBackupPath: "/runtime/backups/vitalserver-helper/20260613T000000Z-manual",
+            runtimeDataBackupsPath: "/runtime/backups/vitalserver-helper"
         )
 
         XCTAssertEqual(invalidOutsideRoot.failure, .invalidBackup)
         XCTAssertEqual(invalidNestedPath.failure, .invalidBackup)
         XCTAssertEqual(invalidHiddenName.failure, .invalidBackup)
-        XCTAssertEqual(valid.success?.backupURL, URL(fileURLWithPath: "/runtime/backups/runtime-data/20260613T000000Z-manual"))
+        XCTAssertEqual(valid.success?.backupURL, URL(fileURLWithPath: "/runtime/backups/vitalserver-helper/20260613T000000Z-manual"))
     }
 
     func testDeleteRuntimeDataBackupPlanReportsMissingInputs() {
         XCTAssertEqual(
             planner.deleteRuntimeDataBackupPlan(
                 selectedBackupPath: nil,
-                runtimeDataBackupsPath: "/runtime/backups/runtime-data"
+                runtimeDataBackupsPath: "/runtime/backups/vitalserver-helper"
             ).failure,
             .missingBackup
         )
         XCTAssertEqual(
             planner.deleteRuntimeDataBackupPlan(
-                selectedBackupPath: "/runtime/backups/runtime-data/20260613T000000Z-manual",
+                selectedBackupPath: "/runtime/backups/vitalserver-helper/20260613T000000Z-manual",
                 runtimeDataBackupsPath: nil
             ).failure,
             .backupsRootNotReported
@@ -116,18 +116,18 @@ final class RuntimeBackupActionPlannerTests: XCTestCase {
     func testImportRuntimeDataBackupPlanCopiesFolderIntoRuntimeDataBackupRoot() {
         let plan = planner.importRuntimeDataBackupPlan(
             sourceBackupURL: URL(fileURLWithPath: "/external/20260614T043455Z-manual", isDirectory: true),
-            runtimeDataBackupsRoot: URL(fileURLWithPath: "/runtime/backups/runtime-data", isDirectory: true),
+            runtimeDataBackupsRoot: URL(fileURLWithPath: "/runtime/backups/vitalserver-helper", isDirectory: true),
             sourcePathState: .directory,
             destinationPathState: .missing
         )
 
         XCTAssertEqual(plan.success?.sourceURL.path, "/external/20260614T043455Z-manual")
-        XCTAssertEqual(plan.success?.destinationURL.path, "/runtime/backups/runtime-data/20260614T043455Z-manual")
+        XCTAssertEqual(plan.success?.destinationURL.path, "/runtime/backups/vitalserver-helper/20260614T043455Z-manual")
     }
 
     func testImportRuntimeDataBackupPlanRejectsNonDirectorySourceAndExistingDestination() {
         let source = URL(fileURLWithPath: "/external/20260614T043455Z-manual")
-        let root = URL(fileURLWithPath: "/runtime/backups/runtime-data", isDirectory: true)
+        let root = URL(fileURLWithPath: "/runtime/backups/vitalserver-helper", isDirectory: true)
 
         XCTAssertEqual(
             planner.importRuntimeDataBackupPlan(

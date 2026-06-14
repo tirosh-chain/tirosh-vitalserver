@@ -705,7 +705,7 @@
         }
       }
     },
-    "/host/backups/runtime-data": {
+    "/host/backups/vitalserver-helper": {
       "get": {
         "operationId": "listRuntimeDataBackups",
         "summary": "List local VitalServer backups",
@@ -758,7 +758,7 @@
         }
       }
     },
-    "/host/backups/runtime-data/restore": {
+    "/host/backups/vitalserver-helper/restore": {
       "post": {
         "operationId": "restoreRuntimeDataBackup",
         "summary": "Restore selected VitalServer backup",
@@ -3609,7 +3609,9 @@
           "startOnBootConfigurable",
           "autoRecoveryEnabled",
           "preventSystemSleep",
-          "redisBackupRetentionCount",
+          "automaticBackupEnabled",
+          "backupScheduleTimes",
+          "backupRetentionCount",
           "restartAfterSave"
         ],
         "properties": {
@@ -3683,7 +3685,16 @@
           "preventSystemSleep": {
             "type": "boolean"
           },
-          "redisBackupRetentionCount": {
+          "automaticBackupEnabled": {
+            "type": "boolean"
+          },
+          "backupScheduleTimes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "backupRetentionCount": {
             "type": "integer"
           },
           "restartAfterSave": {

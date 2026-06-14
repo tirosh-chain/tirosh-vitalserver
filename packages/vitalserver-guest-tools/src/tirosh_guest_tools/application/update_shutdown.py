@@ -237,7 +237,6 @@ def quiesce_shutdown_sidecars() -> None:
     stop_sidecar_service(RuntimeService.COMMAND_POLLER)
     stop_sidecar_service(RuntimeService.RUNTIME_STATE)
     stop_sidecar_service(RuntimeService.CONTAINER_LOGS)
-    stop_sidecar_service(RuntimeService.REDIS_BACKUP_TIMER)
     wait_for_unit_inactive(
         RuntimeService.REDIS_BACKUP,
         timeout_seconds=REDIS_BACKUP_ACTIVE_WAIT_TIMEOUT_SECONDS,

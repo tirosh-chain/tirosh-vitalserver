@@ -26,6 +26,9 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
                 createRedisBackup: {
                     events.append("backup")
                 },
+                disableAutomaticBackupScheduler: {
+                    events.append("disable-automatic-backup")
+                },
                 disableRuntimeServicesForUninstall: {
                     events.append("disable")
                 },

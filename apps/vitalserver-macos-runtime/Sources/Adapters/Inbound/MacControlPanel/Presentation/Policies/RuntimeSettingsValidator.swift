@@ -1,17 +1,18 @@
 import Foundation
+import Contracts
 import RuntimeControl
 import Errors
 
 public struct RuntimeSettingsValidator {
     private let vitalFilesDirectoryPolicy: RuntimeVitalFilesDirectoryPolicy
-    private let redisBackupRetentionRange: ClosedRange<Int>
+    private let backupRetentionRange: ClosedRange<Int>
 
     public init(
         vitalFilesDirectoryPolicy: RuntimeVitalFilesDirectoryPolicy = RuntimeVitalFilesDirectoryPolicy(),
-        redisBackupRetentionRange: ClosedRange<Int> = 1...30
+        backupRetentionRange: ClosedRange<Int> = 1...30
     ) {
         self.vitalFilesDirectoryPolicy = vitalFilesDirectoryPolicy
-        self.redisBackupRetentionRange = redisBackupRetentionRange
+        self.backupRetentionRange = backupRetentionRange
     }
 
     public func validate(
@@ -33,8 +34,13 @@ public struct RuntimeSettingsValidator {
             || !isValidAdvertisedURL(settings.remoteConsoleURL) {
             return .invalid("Advertised URLs must be absolute http/https URLs.")
         }
-        if !redisBackupRetentionRange.contains(settings.redisBackupRetentionCount) {
+        if !backupRetentionRange.contains(settings.backupRetentionCount)
+            || !RuntimeBackupSchedulePolicy.isValidRetentionCount(settings.backupRetentionCount) {
             return .invalid("VitalServer Helper backups must be between 1 and 30 archives.")
+        }
+        if settings.backupScheduleTimes.isEmpty
+            || !settings.backupScheduleTimes.allSatisfy(RuntimeBackupSchedulePolicy.isValidTime) {
+            return .invalid("Backup times must use HH:mm format.")
         }
         if let message = vitalFilesDirectoryPolicy.validationMessage(for: settings.vitalFilesDirectory) {
             return .invalid(message)

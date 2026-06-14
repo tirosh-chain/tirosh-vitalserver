@@ -165,7 +165,7 @@ make devtools/stage
 | `bootstrap.sh` | Linux guest 초기 entrypoint. mount/package 확인 후 `bin/`, `systemd/`, Compose stack 연결 |
 | `python-wheels/*` | Guest tools package. runtime env/state, Compose, health, update, repair, Redis backup, observability 명령 |
 | `guest-tools.toml` | Guest tools 운영 설정. interval/path/compose project 같은 package 설정을 명시 |
-| `systemd/*` | runtime state writer, Compose stack, Redis backup timer, observability daemon unit |
+| `systemd/*` | runtime state writer, Compose stack, Guest command workers, observability daemon unit |
 | `compose.yaml` | VM 내부 VitalServer/Redis/UI/edge nginx Compose stack |
 | `nginx/vitalserver.conf` | Compose edge nginx container 설정 |
 | `runtime-config.json` | Host-owned VitalServer container/runtime 계약. Guest는 누락/타입 오류를 default로 보정하지 않고 실패로 드러냄 |
@@ -196,7 +196,7 @@ Guest tools는 `guest-tools.toml`에만 package 운영 default를 둡니다. 로
 `runtime-config.json`은 Host가 제공하는 실행 계약이므로 `adminPassword`,
 `redisHost`, `redisPort`, `vitalServerURL`, `remoteConsoleURL`,
 `publicHost`, `publicPort`, `trustProxy`, `vitalFilesDirectory`,
-`redisBackupRetentionCount`, `testkitEnabled`가 모두 명시돼야 합니다.
+`testkitEnabled`가 모두 명시돼야 합니다.
 Guest는 이 값을 추론하거나 보정하지 않습니다.
 `vitalServerURL`과 `remoteConsoleURL`은 운영자가 등록한 외부 접속 URL을 그대로
 표시하기 위한 Host-owned advertised URL입니다. `publicHost/publicPort`는 guest

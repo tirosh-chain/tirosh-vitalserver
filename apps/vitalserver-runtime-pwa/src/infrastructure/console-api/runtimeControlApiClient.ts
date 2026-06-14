@@ -311,7 +311,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
   }
 
   listRuntimeDataBackups(): Promise<RuntimeBackup[]> {
-    return this.get("/host/backups/runtime-data", runtimeBackupSchema.array());
+    return this.get("/host/backups/vitalserver-helper", runtimeBackupSchema.array());
   }
 
   rollbackBackup(request: RuntimeBackupRequest): Promise<RuntimeCommandResponse> {
@@ -342,7 +342,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     request: RuntimeBackupRequest
   ): Promise<RuntimeCommandResponse> {
     return this.delete(
-      "/host/backups/runtime-data",
+      "/host/backups/vitalserver-helper",
       request,
       runtimeCommandResponseSchema
     );
@@ -362,7 +362,7 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     request: RuntimeBackupRequest
   ): Promise<RuntimeCommandResponse> {
     return this.post(
-      "/host/backups/runtime-data/restore",
+      "/host/backups/vitalserver-helper/restore",
       request,
       runtimeCommandResponseSchema
     );

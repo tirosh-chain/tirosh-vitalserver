@@ -332,8 +332,6 @@ def test_quiesce_shutdown_sidecars_stops_dispatchers_and_waits_for_redis_backup(
         f"state:{RuntimeService.RUNTIME_STATE.value}:inactive",
         f"systemctl:stop:{RuntimeService.CONTAINER_LOGS.value}",
         f"state:{RuntimeService.CONTAINER_LOGS.value}:inactive",
-        f"systemctl:stop:{RuntimeService.REDIS_BACKUP_TIMER.value}",
-        f"state:{RuntimeService.REDIS_BACKUP_TIMER.value}:inactive",
         f"state:{RuntimeService.REDIS_BACKUP.value}:inactive",
     ]
 
@@ -409,8 +407,6 @@ def test_quiesce_shutdown_sidecars_waits_for_existing_redis_backup(
         f"state:{RuntimeService.RUNTIME_STATE.value}:inactive",
         f"systemctl:stop:{RuntimeService.CONTAINER_LOGS.value}",
         f"state:{RuntimeService.CONTAINER_LOGS.value}:inactive",
-        f"systemctl:stop:{RuntimeService.REDIS_BACKUP_TIMER.value}",
-        f"state:{RuntimeService.REDIS_BACKUP_TIMER.value}:inactive",
         f"state:{RuntimeService.REDIS_BACKUP.value}:active",
     ]
 

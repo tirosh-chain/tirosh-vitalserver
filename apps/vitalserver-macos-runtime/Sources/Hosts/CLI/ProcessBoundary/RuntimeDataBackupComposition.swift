@@ -11,18 +11,110 @@ struct RuntimeDataBackupComposition {
     let lifecycle: RuntimeLifecycle
 
     func createBackup() throws -> URL {
+        try createBackup(reason: "manual")
+    }
+
+    func createAutomaticBackup() throws -> String {
+        let settings = try loadGuestRuntimeSettings()
+        guard settings.automaticBackupEnabled else {
+            lifecycle.log("automatic backup skipped because automaticBackupEnabled=false")
+            return "automatic backup skipped: disabled"
+        }
+        guard RuntimeBackupSchedulePolicy.isValidRetentionCount(settings.backupRetentionCount) else {
+            throw LauncherError.runtimeOperationFailed(
+                "automatic backup retention is invalid value=\(settings.backupRetentionCount)"
+            )
+        }
+
+        let operationID = UUID().uuidString
+        let startedAt = lifecycle.isoTimestamp()
+        let expiresAt = ISO8601DateFormatter().string(
+            from: lifecycle.clock.now.addingTimeInterval(Constants.Runtime.runtimeOperationLeaseDurationSeconds)
+        )
+        let lease = RuntimeOperationLeaseDocument(
+            operationId: operationID,
+            operation: .automaticBackup,
+            ownerPID: Int(ProcessInfo.processInfo.processIdentifier),
+            startedAt: startedAt,
+            heartbeatAt: startedAt,
+            expiresAt: expiresAt,
+            message: "automatic VitalServer Helper backup"
+        )
+        let leaseRepository = JSONFileRuntimeOperationLeaseRepository(url: lifecycle.installedPaths.runtimeOperationLease)
+        do {
+            try leaseRepository.acquire(lease)
+        } catch RuntimeOperationLeaseRepositoryError.existingOperation(_, let operation) {
+            lifecycle.log("automatic backup skipped during active runtime operation operation=\(operation)")
+            return "automatic backup skipped: active operation \(operation)"
+        }
+        defer {
+            try? leaseRepository.release(operationId: operationID)
+        }
+
+        let backup = try createBackup(reason: "automatic")
+        try pruneVitalServerHelperBackups(retentionCount: settings.backupRetentionCount)
+        lifecycle.log("automatic backup completed backup=\(backup.path)")
+        return "automatic backup completed: \(backup.path)"
+    }
+
+    private func createBackup(reason: String) throws -> URL {
         let redisBackup = try redisBackupCompositionWithoutStatusMutation().createBackup()
         guard let archive = redisBackup.archive, !archive.isEmpty else {
             throw LauncherError.runtimeOperationFailed("runtime data backup requires a redis archive")
         }
         let redisArchive = try hostSharedDataURL(forGuestArchivePath: archive)
         let backup = try runtimeDataBackupStore().createBackup(
-            reason: "manual",
+            reason: reason,
             redisArchive: redisArchive,
             startOnBootState: try startOnBootStateData()
         )
         try validateManifest(backup)
         return backup
+    }
+
+    private func loadGuestRuntimeSettings() throws -> GuestRuntimeSettingsDocument {
+        let url = lifecycle.installedPaths.guestRuntimeSettings
+        switch lifecycle.fileStore.pathState(at: url) {
+        case .file:
+            break
+        case .missing:
+            throw LauncherError.missingFile(url.path)
+        case .inspectFailed(let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "guest runtime settings path inspection failed path=\(url.path) reason=\(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw LauncherError.runtimeOperationFailed(
+                "guest runtime settings path state is unexpected path=\(url.path) state=\(lifecycle.fileStore.pathState(at: url).rawValue)"
+            )
+        }
+        return try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: lifecycle.fileStore.readData(url))
+    }
+
+    private func pruneVitalServerHelperBackups(retentionCount: Int) throws {
+        guard RuntimeBackupSchedulePolicy.isValidRetentionCount(retentionCount) else {
+            throw LauncherError.runtimeOperationFailed(
+                "automatic backup retention is invalid value=\(retentionCount)"
+            )
+        }
+        let root = lifecycle.installedPaths.vitalServerHelperBackupsDirectory
+        guard case .directory = lifecycle.fileStore.pathState(at: root) else {
+            return
+        }
+        let backups = try lifecycle.fileStore.contentsOfDirectory(at: root, skipsHiddenFiles: true)
+            .filter { url in
+                RuntimeManagedBackupPolicy.isRuntimeDataBackupURL(url, runtimeDataBackupsRoot: root)
+                    && lifecycle.fileStore.pathState(at: url) == .directory
+            }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        let removeCount = backups.count - retentionCount
+        guard removeCount > 0 else {
+            return
+        }
+        for backup in backups.prefix(removeCount) {
+            try lifecycle.fileStore.removeItem(at: backup)
+            lifecycle.log("automatic backup retention removed backup=\(backup.path)")
+        }
     }
 
     func restoreBackup(_ backup: URL) throws {
