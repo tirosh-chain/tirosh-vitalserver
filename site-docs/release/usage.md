@@ -92,11 +92,9 @@ Advanced, Observability, Logs 화면으로 이동합니다.
 하나의 복구 단위로 묶습니다. 따라서 일반 사용자는 runtime data와 Redis를 따로 backup하거나 따로
 restore하지 않습니다.
 
-VitalServer backup은 manifest의 `dataCompatibilityVersion`으로 restore 호환성을 확인합니다.
-이 값은 제품 버전이 아니라 backup 내부 data layout 계약입니다. Redis data, VM config, guest runtime
-config/settings, launchd plist, start-on-boot state, status/events 문서, observability SQLite snapshot은
-각각 schema owner가 다릅니다. Helper가 지원하지 않는 compatibility version이거나 이 값이 없는 backup은
-파일을 덮어쓰기 전에 restore가 실패해야 합니다.
+선택한 backup이 현재 Helper와 호환되지 않으면 restore는 파일을 덮어쓰기 전에 실패합니다.
+호환성 기준과 backup 내부 artifact 구성은 Dev 문서의
+[Backup & Restore Contracts](../dev/backup-restore-contracts.md)를 봅니다.
 
 Backup 삭제는 Danger Zone에서 분리되어 있습니다. `Delete VitalServer Backup`은 선택한
 VitalServer backup만 삭제하고, `Delete Update Backup`은 update/rollback용 backup만 삭제합니다.
@@ -115,14 +113,10 @@ archive만 Redis backup 관리 폴더의 직접 자식으로 복사하며, 같�
 않습니다. `Restore Redis-only Backup`은 선택한 Redis archive만 복원합니다.
 
 Upstream VitalServer에서 Helper로 1회 migration을 할 때는 DMG의 `Troubleshooting Tools` 폴더에 있는
-`Create Upstream Redis Backup.command`를 사용합니다. 이 command는 사용자가 선택한 upstream Redis
-data directory를 `redis-upstream-import.tar.gz`로 묶습니다. command는 번들된 Redis SAVE helper로
-upstream Redis에 `SAVE`를 실행해 `dump.rdb`를 갱신한 뒤 archive를 만들 수 있습니다. `SAVE`는 Redis를
-중지하지 않지만 쓰는 동안 Redis가 잠깐 block될 수 있습니다. 자동 갱신을 건너뛴 경우에는 upstream
-Redis에서 `SAVE`/`BGSAVE`를 직접 실행하거나 Redis를 중지해 `dump.rdb`가 최신 상태인지 확인한 뒤
-진행합니다. 생성한 archive는 Advanced -> Recovery operations -> Redis-only recovery의 `Import Backups`
-로 가져온 뒤 `Restore Redis-only Backup`으로 복원합니다. 이 command의 로그는 현재 사용자 temp directory의
-`tirosh-vitalserver-upstream-redis-backup.log`에 기록됩니다.
+`Create Upstream Redis Backup.command`를 사용합니다. 생성한 archive는 Advanced -> Recovery operations
+-> Redis-only recovery의 `Import Backups`로 가져온 뒤 `Restore Redis-only Backup`으로 복원합니다.
+upstream Redis archive 생성 방식과 command log 위치는 Dev 문서의
+[Backup & Restore Contracts](../dev/backup-restore-contracts.md)를 봅니다.
 
 ## 3. Settings 적용
 

@@ -30,5 +30,6 @@ nav:
       - Overview: dev/index.md
       - Architecture: dev/architecture.md
       - Runtime Contracts: dev/runtime-contracts.md
+      - Backup & Restore Contracts: dev/backup-restore-contracts.md
       - Repository Map: dev/repository-map.md
       - Delivery & Validation: dev/delivery-validation.md

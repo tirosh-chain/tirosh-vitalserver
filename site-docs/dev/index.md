@@ -19,8 +19,10 @@ release는 Helper-managed runtime을 중심으로 다룹니다. 이미 운영 �
 1. [Architecture](architecture.md)에서 Host, Linux guest, PWA, Runtime Control API가
    어떻게 분리되는지 봅니다.
 2. [Runtime Contracts](runtime-contracts.md)에서 상태 의미와 API surface를 확인합니다.
-3. [Repository Map](repository-map.md)에서 repository 안의 실행 단위와 책임을 봅니다.
-4. [Delivery & Validation](delivery-validation.md)에서 package 생성, test, GitHub workflow를 봅니다.
+3. [Backup & Restore Contracts](backup-restore-contracts.md)에서 backup artifact와
+   restore compatibility를 확인합니다.
+4. [Repository Map](repository-map.md)에서 repository 안의 실행 단위와 책임을 봅니다.
+5. [Delivery & Validation](delivery-validation.md)에서 package 생성, test, GitHub workflow를 봅니다.
 
 ## 2. 설계 기준
 
@@ -62,6 +64,7 @@ nginx를 항상 준비하지 않아도 missing, failed, stale 같은 상태 판�
 |---|---|
 | [Architecture](architecture.md) | 제품 구조, Host/Guest, Linux VM, PWA, 1차 hardware target 설명 |
 | [Runtime Contracts](runtime-contracts.md) | 상태 의미, Runtime Control, Observer, Audit Proxy API 계약 설명 |
+| [Backup & Restore Contracts](backup-restore-contracts.md) | VitalServer backup 대상, artifact schema owner, restore compatibility 계약 설명 |
 | [Repository Map](repository-map.md) | 실행 단위, package 책임, monorepo 경계 설명 |
 | [Delivery & Validation](delivery-validation.md) | package/update bundle 생성, testkit, runtime chaos, release 검증, GitHub workflow 설명 |
 
