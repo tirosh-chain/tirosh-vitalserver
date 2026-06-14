@@ -403,35 +403,34 @@ Fallback:
   sudo /usr/local/bin/tirosh-vitalserver-uninstall --clean
 ```
 
-### Reset Installer recovery artifact
+### Troubleshooting Tools recovery artifact
 
 Fresh install이 기존 Host state 때문에 막힌 현장에는 일반 installer와 별도로 reset cleanup만
-수행하는 복구 artifact를 전달합니다. 사용자에게 Terminal 명령만 전달하는 방식은 권한 승인,
-오타, shell 환경, MDM 정책에 따라 흔들리므로 기본 전달물은 signed/notarized macOS flat package로
-둡니다.
+수행하는 복구 artifact를 전달합니다. 이 artifact는 package가 아니라 DMG와 같은 command 기반
+`Troubleshooting Tools` 폴더입니다.
 
 ```text
-VitalServerHelperResetForReinstall-<version>.pkg
+VitalServerHelperTroubleshootingTools-<version>/
 ```
 
 빌드 target:
 
 ```sh
-make dist/reset-installer/dev
-make dist/reset-installer/release
+make dist/troubleshooting/dev
+make dist/troubleshooting/release
 ```
 
-이 package는 제품을 설치하거나 update하지 않습니다. root `postinstall`에서 reset cleanup
-workflow만 실행하고 `/private/tmp/tirosh-vitalserver-uninstall.log`에 진행 상태와 실패 원인을
-남깁니다. GUI를 열 수 없는 깨진 설치 상태를 다루기 위한 artifact이므로 Helper app, Runtime
-Control API, 기존 설치된 uninstaller가 반드시 살아 있다고 가정하면 안 됩니다.
+이 target은 제품을 설치하거나 update하지 않습니다. DMG와 같은 command 기반
+`Troubleshooting Tools` 폴더를 staging하고, command들은 `/private/tmp/tirosh-vitalserver-uninstall.log`에
+진행 상태와 실패 원인을 남깁니다. GUI를 열 수 없는 깨진 설치 상태를 다루기 위한 artifact이므로
+Helper app, Runtime Control API, 기존 설치된 uninstaller가 반드시 살아 있다고 가정하면 안 됩니다.
 
 작성 원칙:
 
-- 별도 package identifier를 사용합니다. 예: `ai.tirosh.vitalserver.helper.reset-installer`.
-- 사용자가 보는 package 이름은 `Reset VitalServer Helper for Reinstall.pkg`로 두고,
+- package를 만들지 않고 `.command` 파일과 필요한 bundled CLI만 제공합니다.
+- 사용자가 보는 command 이름은 `Reset VitalServer Helper for Reinstall.command`로 두고,
   DMG 안에서는 `Troubleshooting Tools` 폴더 아래에 배치합니다.
-- package entrypoint는 `runtime uninstall --force-clean-uninstaller`이며 별도 설정이나 fallback
+- reset command entrypoint는 `runtime uninstall --force-clean-uninstaller`이며 별도 설정이나 fallback
   mode를 숨겨 두지 않습니다.
 - 제거 대상은 Vital Server Helper가 소유한 explicit path, LaunchDaemon label, package receipt,
   runtime process, host proxy listener로 제한합니다.
@@ -444,14 +443,9 @@ Control API, 기존 설치된 uninstaller가 반드시 살아 있다고 가정�
   않은 한 제거하지 않습니다.
 - 기존 `/usr/local/bin/tirosh-vitalserver-uninstall`이 있으면 같은 uninstall 계약을 사용할 수
   있지만, 없거나 실행 불가능한 상태도 명시 failure로 보고해야 합니다.
-- fresh install preflight와 Reset Installer 제거 대상은 같은 state contract를 공유해야 합니다.
-- 완료 후에도 preflight blocker가 남으면 새 installer가 계속 실패해야 하며, recovery package가
+- fresh install preflight와 reset command 제거 대상은 같은 state contract를 공유해야 합니다.
+- 완료 후에도 preflight blocker가 남으면 새 installer가 계속 실패해야 하며, recovery command가
   그 blocker를 empty success로 바꾸면 안 됩니다.
-
-지원팀/MDM용으로는 같은 cleanup workflow를 root script entrypoint로 제공할 수 있습니다. 다만
-사용자에게 직접 전달하는 기본 형식은 `.command` 파일이나 shell snippet보다 signed package가
-적합합니다. macOS Installer가 관리자 권한 요청과 실행 로그 흐름을 제공하고, Gatekeeper/보안
-정책에서 출처를 확인하기 쉽기 때문입니다.
 
 ## 인터페이스 계약
 

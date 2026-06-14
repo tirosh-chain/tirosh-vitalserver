@@ -16,15 +16,13 @@ from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
     attached_disk_images,
     attached_image_mount_points,
+    stage_troubleshooting_tools,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
     build_dmg as run_build_dmg,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
     build_pkg as run_build_pkg,
-)
-from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
-    build_reset_installer_pkg as run_build_reset_installer_pkg,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_app import (
     build_app_bundle,
@@ -42,7 +40,7 @@ from tirosh_vitalserver.devtools.application.inputs import (
     MacOSPackageInstallInput,
     NginxBundleInput,
     ReleasePackageInput,
-    ReleaseResetInstallerPackageInput,
+    ReleaseTroubleshootingToolsInput,
 )
 from tirosh_vitalserver.devtools.application.usecases.host_proxy import (
     build_nginx as build_nginx_bundle,
@@ -67,8 +65,8 @@ from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
 )
 from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
 from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
-    default_clean_uninstaller_pkg_output,
     default_pkg_output,
+    default_troubleshooting_tools_output,
     host_proxy_expected_version,
     package_clean_plan,
     package_outputs,
@@ -441,16 +439,16 @@ def docker_platform_parts(platform: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
-def build_reset_installer_pkg(input: ReleaseResetInstallerPackageInput) -> int:
+def build_troubleshooting_tools(input: ReleaseTroubleshootingToolsInput) -> int:
     root = repo_root()
     settings = load_macos_release_settings(input.config, root)
     runtime_dir = settings.runtime_dir
     release_file = resolve_path(root, input.release_file)
     release = load_release_manifest(release_file)
-    pkg_output = (
+    tools_output = (
         resolve_path(root, input.output)
         if input.output
-        else default_clean_uninstaller_pkg_output(settings, release)
+        else default_troubleshooting_tools_output(settings, release)
     )
 
     sync_release(root, runtime_dir, release_file)
@@ -466,15 +464,13 @@ def build_reset_installer_pkg(input: ReleaseResetInstallerPackageInput) -> int:
         runtime_dir,
         input.codesign_identity,
     )
-    run_build_reset_installer_pkg(
+    stage_troubleshooting_tools(
         settings=settings,
-        release=release,
         runtime_dir=runtime_dir,
         runtime_cli=settings.runtime_cli,
-        scripts_dir=settings.pkg_root.parent / "reset-installer-scripts",
-        pkg_output=pkg_output,
+        tools_dir=tools_output,
     )
-    print(f"reset-for-reinstall pkg is ready: {pkg_output}")
+    print(f"troubleshooting tools are ready: {tools_output}")
     return 0
 
 
@@ -589,7 +585,6 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
         pkg_root=settings.pkg_root,
         pkg_scripts=settings.pkg_scripts,
         pkg_output=outputs.pkg_output,
-        clean_uninstaller_pkg_output=outputs.clean_uninstaller_pkg_output,
         dmg_output=outputs.dmg_output,
         app_bundle=settings.app_bundle,
         runtime_cli=settings.runtime_cli,

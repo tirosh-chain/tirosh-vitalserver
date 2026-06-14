@@ -36,7 +36,6 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     postinstall = tmp_path / "postinstall"
     proxy_run = tmp_path / "vitalserver-proxy-run"
     uninstall = tmp_path / "tirosh-vitalserver-uninstall"
-    clean_uninstall_postinstall = tmp_path / "clean-uninstall-postinstall"
     reset_for_reinstall_command = tmp_path / "reset-for-reinstall.command"
     upstream_redis_backup_command = tmp_path / "upstream-redis-backup.command"
     components = tmp_path / "components.plist"
@@ -55,11 +54,6 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         settings,
         packaging / "uninstall.template",
         uninstall,
-    )
-    render_packaging_executable(
-        settings,
-        packaging / "clean-uninstall-postinstall.template",
-        clean_uninstall_postinstall,
     )
     render_packaging_executable(
         settings,
@@ -88,7 +82,6 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
             postinstall,
             proxy_run,
             uninstall,
-            clean_uninstall_postinstall,
             reset_for_reinstall_command,
             upstream_redis_backup_command,
             components,
@@ -96,9 +89,6 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     )
     preinstall_text = (packaging / "preinstall").read_text(encoding="utf-8")
     uninstall_text = uninstall.read_text(encoding="utf-8")
-    clean_uninstall_postinstall_text = clean_uninstall_postinstall.read_text(
-        encoding="utf-8"
-    )
     reset_for_reinstall_command_text = reset_for_reinstall_command.read_text(
         encoding="utf-8"
     )
@@ -170,39 +160,6 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         in uninstall_text
     )
     assert 'VITALSERVER_VM_HOME="${vm_home}" "${command[@]}"' in uninstall_text
-    assert "vitalserver-vm-reset-installer" in clean_uninstall_postinstall_text
-    assert (
-        "runtime uninstall --force-clean-uninstaller"
-        in clean_uninstall_postinstall_text
-    )
-    assert "/usr/local/bin/tirosh-vitalserver-uninstall" not in (
-        clean_uninstall_postinstall_text
-    )
-    assert (
-        'vm_home="/Library/Application Support/VitalServerHelper/vm"'
-        in clean_uninstall_postinstall_text
-    )
-    assert (
-        'manager_app="/Applications/VitalServer Helper.app"'
-        in clean_uninstall_postinstall_text
-    )
-    assert (
-        '/usr/bin/pgrep -f -- "VitalServer Helper"'
-        in clean_uninstall_postinstall_text
-    )
-    assert (
-        'log "Helper app is still running; terminating process(es): ${pids}"'
-        in clean_uninstall_postinstall_text
-    )
-    assert (
-        'log "Helper app is still running; force killing process(es): ${pids}"'
-        in clean_uninstall_postinstall_text
-    )
-    assert (
-        'log "Helper app could not be terminated; aborting clean uninstall recovery '
-        'before file removal"'
-        in clean_uninstall_postinstall_text
-    )
     assert (
         'vm_bin="${script_dir}/bin/vitalserver-vm-reset-installer"'
         in reset_for_reinstall_command_text
@@ -254,7 +211,6 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert os.access(postinstall, os.X_OK)
     assert os.access(proxy_run, os.X_OK)
     assert os.access(uninstall, os.X_OK)
-    assert os.access(clean_uninstall_postinstall, os.X_OK)
     assert os.access(reset_for_reinstall_command, os.X_OK)
     assert os.access(upstream_redis_backup_command, os.X_OK)
 

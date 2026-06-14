@@ -274,7 +274,7 @@ class ReleasePackageInput:
 
 
 @dataclass(frozen=True)
-class ReleaseResetInstallerPackageInput:
+class ReleaseTroubleshootingToolsInput:
     config: Path
     release_file: Path
     output: Path | None
@@ -319,7 +319,7 @@ __all__ = [
     "OpenProductUrlInput",
     "PythonWorkspaceToolInput",
     "ReleasePackageInput",
-    "ReleaseResetInstallerPackageInput",
+    "ReleaseTroubleshootingToolsInput",
     "ReleaseUpdateBundleInput",
     "RenderTemplateInput",
     "RequireBridgedIdentityInput",

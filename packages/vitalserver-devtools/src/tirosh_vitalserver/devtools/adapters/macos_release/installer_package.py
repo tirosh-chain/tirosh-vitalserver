@@ -35,10 +35,8 @@ from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
 from tirosh_vitalserver.devtools.core.macos_release.settings import (
     MacOSReleaseSettings,
 )
-from tirosh_vitalserver.devtools.core.release_manifest import ReleaseManifest
 
 ROOTFS_BASE_NAME = "rootfs-base.raw.gz"
-RESET_INSTALLER_IDENTIFIER_SUFFIX = ".reset-installer"
 RESET_INSTALLER_CLI_NAME = "vitalserver-vm-reset-installer"
 RESET_INSTALLER_COMMAND_NAME = "Reset VitalServer Helper for Reinstall.command"
 UPSTREAM_REDIS_BACKUP_COMMAND_NAME = "Create Upstream Redis Backup.command"
@@ -196,55 +194,6 @@ def attached_image_device_entry(image: dict[str, object]) -> str | None:
         if isinstance(dev_entry, str) and dev_entry:
             return dev_entry
     return None
-
-
-def build_reset_installer_pkg(
-    *,
-    settings: MacOSReleaseSettings,
-    release: ReleaseManifest,
-    runtime_dir: Path,
-    runtime_cli: Path,
-    scripts_dir: Path,
-    pkg_output: Path,
-) -> None:
-    if scripts_dir.exists():
-        shutil.rmtree(scripts_dir)
-    scripts_dir.mkdir(parents=True, exist_ok=True)
-    pkg_output.parent.mkdir(parents=True, exist_ok=True)
-    if pkg_output.exists():
-        pkg_output.unlink()
-
-    packaging_dir = runtime_dir / "Support/Packaging"
-    copy_executable(runtime_cli, scripts_dir / RESET_INSTALLER_CLI_NAME)
-    render_packaging_executable(
-        settings,
-        packaging_dir / "clean-uninstall-postinstall.template",
-        scripts_dir / "postinstall",
-    )
-    remove_apple_double_files(scripts_dir)
-    subprocess.run(["xattr", "-c", "-r", str(scripts_dir)], check=False)
-    run(
-        [
-            "pkgbuild",
-            "--nopayload",
-            "--scripts",
-            str(scripts_dir),
-            "--filter",
-            r"\.DS_Store$",
-            "--filter",
-            r".*\._.*",
-            "--identifier",
-            f"{settings.package_identifier}{RESET_INSTALLER_IDENTIFIER_SUFFIX}",
-            "--version",
-            release.helper_version,
-            str(pkg_output),
-        ],
-        env={
-            **os.environ,
-            "COPYFILE_DISABLE": "1",
-            "COPY_EXTENDED_ATTRIBUTES_DISABLE": "1",
-        },
-    )
 
 
 def stage_reset_installer_command(

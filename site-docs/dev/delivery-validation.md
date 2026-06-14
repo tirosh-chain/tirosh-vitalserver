@@ -60,7 +60,7 @@ Release 전에 만드는 결과물은 목적이 다릅니다. 먼저 “어떤 �
 | 목적 | command |
 |---|---|
 | release DMG 생성 | `make dist/dmg/release` |
-| legacy standalone reset package 생성 | `make dist/reset-installer/release` |
+| release Troubleshooting Tools 생성 | `make dist/troubleshooting/release` |
 | release Product Update bundle 생성 | `make dist/update/release` |
 | release Product Update bundle 검증 | `make dist/update/verify/release` |
 | VM Image update bundle 생성 | `make dist/image-update/release` |
@@ -448,7 +448,7 @@ release 결과물을 바꿨다면 build machine에서 결과물 검증까지 봅
 | Product Update bundle | `make dist/update/release`와 `make dist/update/verify/release` |
 | VM Image update bundle | `make dist/image-update/release`와 `make dist/image-update/verify/release` |
 | 신규 설치 DMG | `make dist/dmg/release`; DMG 안의 `Troubleshooting Tools` command 포함 여부 확인 |
-| legacy standalone reset package | `make dist/reset-installer/release` |
+| Troubleshooting Tools commands | `make dist/troubleshooting/release` |
 
 ## 6. 변경 완료 기준
 

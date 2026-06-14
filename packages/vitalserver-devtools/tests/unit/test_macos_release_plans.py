@@ -23,7 +23,7 @@ from tirosh_vitalserver.devtools.core.guest_services import (
 )
 from tirosh_vitalserver.devtools.core.macos_release.models import PackageContext
 from tirosh_vitalserver.devtools.core.macos_release.release_plans import (
-    default_clean_uninstaller_pkg_output,
+    default_troubleshooting_tools_output,
     default_update_migrations,
     package_clean_plan,
     package_outputs,
@@ -48,7 +48,7 @@ def test_package_clean_plan_allows_managed_build_paths() -> None:
 
     assert settings.pkg_root.parent in plan.paths
     assert settings.app_bundle in plan.paths
-    assert default_clean_uninstaller_pkg_output(settings, release) in plan.paths
+    assert default_troubleshooting_tools_output(settings, release) in plan.paths
     assert all(path.resolve(strict=False).is_relative_to(root) for path in plan.paths)
 
 
@@ -69,7 +69,7 @@ def test_package_clean_plan_rejects_workspace_root() -> None:
         package_clean_plan(root=root, settings=settings, release=release)
 
 
-def test_default_clean_uninstaller_pkg_output_uses_release_label() -> None:
+def test_default_troubleshooting_tools_output_uses_release_label() -> None:
     root = repo_root()
     settings = load_macos_release_settings(root / "config/vm-build.toml", root)
     release = ReleaseManifest(
@@ -81,14 +81,14 @@ def test_default_clean_uninstaller_pkg_output_uses_release_label() -> None:
         target_platform="macos-arm64",
     )
 
-    output = default_clean_uninstaller_pkg_output(settings, release)
+    output = default_troubleshooting_tools_output(settings, release)
 
     assert output == (
-        settings.dist_dir / "VitalServerHelperResetForReinstall-1.2.3-dev.pkg"
+        settings.dist_dir / "VitalServerHelperTroubleshootingTools-1.2.3-dev"
     )
 
 
-def test_package_outputs_include_clean_uninstaller_pkg() -> None:
+def test_package_outputs_include_pkg_and_dmg_outputs() -> None:
     root = repo_root()
     settings = load_macos_release_settings(root / "config/vm-build.toml", root)
     release = ReleaseManifest(
@@ -108,9 +108,6 @@ def test_package_outputs_include_clean_uninstaller_pkg() -> None:
     )
 
     assert outputs.pkg_output == settings.dist_dir / "VitalServerHelper-1.2.3-dev.pkg"
-    assert outputs.clean_uninstaller_pkg_output == (
-        settings.dist_dir / "VitalServerHelperResetForReinstall-1.2.3-dev.pkg"
-    )
     assert outputs.dmg_output == settings.dist_dir / "VitalServerHelper-1.2.3-dev.dmg"
 
 
@@ -140,9 +137,6 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
         target_platform="macos-arm64",
     )
     pkg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.pkg"
-    reset_installer_pkg_output = (
-        tmp_path / "dist/VitalServerHelperResetForReinstall-1.2.3-dev.pkg"
-    )
     dmg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.dmg"
     pkg_output.parent.mkdir()
     pkg_output.write_text("installer", encoding="utf-8")
@@ -185,7 +179,6 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
         pkg_root=settings.pkg_root,
         pkg_scripts=tmp_path / "build/scripts",
         pkg_output=pkg_output,
-        clean_uninstaller_pkg_output=reset_installer_pkg_output,
         dmg_output=dmg_output,
         app_bundle=tmp_path / "app/VitalServer Helper.app",
         runtime_cli=tmp_path / "bin/vitalserver-vm",
@@ -393,7 +386,6 @@ def test_build_pkg_stages_rootfs_input_metadata_for_installed_bootstrap(
         pkg_root=settings.pkg_root,
         pkg_scripts=settings.pkg_scripts,
         pkg_output=tmp_path / "dist/VitalServerHelper-1.2.3-dev.pkg",
-        clean_uninstaller_pkg_output=tmp_path / "dist/reset.pkg",
         dmg_output=tmp_path / "dist/VitalServerHelper-1.2.3-dev.dmg",
         app_bundle=app_bundle,
         runtime_cli=runtime_cli,

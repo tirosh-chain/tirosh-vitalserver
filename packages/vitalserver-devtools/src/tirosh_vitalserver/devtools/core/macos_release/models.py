@@ -19,7 +19,6 @@ class PackageContext:
     pkg_root: Path
     pkg_scripts: Path
     pkg_output: Path
-    clean_uninstaller_pkg_output: Path
     dmg_output: Path
     app_bundle: Path
     runtime_cli: Path

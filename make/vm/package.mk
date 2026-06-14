@@ -1,7 +1,7 @@
 .PHONY: internal/vm/nginx/artifact internal/vm/nginx/bundle internal/vm/docker/images
 .PHONY: internal/vm/require-release-branch
 .PHONY: internal/vm/pkg internal/vm/pkg/dev internal/vm/pkg/dev/compile internal/vm/pkg/dev/runtime-smoke internal/vm/pkg/dev/verify internal/vm/pkg/release internal/vm/pkg/release/verify
-.PHONY: internal/vm/reset-installer internal/vm/reset-installer/dev internal/vm/reset-installer/release
+.PHONY: internal/vm/troubleshooting internal/vm/troubleshooting/dev internal/vm/troubleshooting/release
 .PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/dev internal/vm/dmg/dev/compile internal/vm/dmg/dev/runtime-smoke internal/vm/dmg/dev/verify internal/vm/dmg/release internal/vm/dmg/release/verify
 .PHONY: internal/vm/pkg/clean internal/vm/pkg/install internal/vm/pkg/uninstall/dev
 .PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release
@@ -360,21 +360,21 @@ internal/vm/dmg/release/verify:
 	$(MAKE) internal/vm/dmg/release
 	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_STABLE_RELEASE_FILE)"
 
-internal/vm/reset-installer:
-	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-reset-installer-pkg \
+internal/vm/troubleshooting:
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-troubleshooting-tools \
 		--release-file "$(VM_RELEASE_FILE)" \
 		--clang-module-cache "$(VM_CLANG_MODULE_CACHE)" \
 		--codesign-identity "$(VM_CODESIGN_IDENTITY)" \
 		--sdkroot "$(VM_SDKROOT)"
 
-internal/vm/reset-installer/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
-internal/vm/reset-installer/dev:
-	$(MAKE) internal/vm/reset-installer VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+internal/vm/troubleshooting/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+internal/vm/troubleshooting/dev:
+	$(MAKE) internal/vm/troubleshooting VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
-internal/vm/reset-installer/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
-internal/vm/reset-installer/release:
+internal/vm/troubleshooting/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
+internal/vm/troubleshooting/release:
 	$(MAKE) internal/vm/require-release-branch
-	$(MAKE) internal/vm/reset-installer VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+	$(MAKE) internal/vm/troubleshooting VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
 internal/vm/update: pwa/build
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle \

@@ -663,14 +663,14 @@ def main() -> int:
         ),
     )
 
-    release_reset_installer_pkg = subparsers.add_parser(
-        "release-reset-installer-pkg",
-        help="build a macOS Reset for Reinstall pkg from release.json",
+    release_troubleshooting_tools = subparsers.add_parser(
+        "release-troubleshooting-tools",
+        help="stage macOS Troubleshooting Tools from release.json",
     )
-    add_release_reset_installer_package_arguments(release_reset_installer_pkg)
-    release_reset_installer_pkg.set_defaults(
-        handler=lambda args: macos_package_usecases.build_reset_installer_pkg(
-            release_reset_installer_package_input(args)
+    add_release_troubleshooting_tools_arguments(release_troubleshooting_tools)
+    release_troubleshooting_tools.set_defaults(
+        handler=lambda args: macos_package_usecases.build_troubleshooting_tools(
+            release_troubleshooting_tools_input(args)
         )
     )
 
@@ -1008,10 +1008,10 @@ def release_package_input(
     )
 
 
-def release_reset_installer_package_input(
+def release_troubleshooting_tools_input(
     args: argparse.Namespace,
-) -> usecase_inputs.ReleaseResetInstallerPackageInput:
-    return usecase_inputs.ReleaseResetInstallerPackageInput(
+) -> usecase_inputs.ReleaseTroubleshootingToolsInput:
+    return usecase_inputs.ReleaseTroubleshootingToolsInput(
         config=args.config,
         release_file=args.release_file,
         output=args.output,
@@ -1037,7 +1037,7 @@ def add_release_package_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--docker-platform")
 
 
-def add_release_reset_installer_package_arguments(
+def add_release_troubleshooting_tools_arguments(
     parser: argparse.ArgumentParser,
 ) -> None:
     parser.add_argument("--release-file", type=Path, required=True)

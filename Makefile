@@ -49,7 +49,7 @@ include make/vm.mk
 	dist/dmg/release/verify dist/pkg/release/verify \
 	dist/update/dev dist/update/verify/dev \
 	dist/image-update/dev dist/image-update/verify/dev \
-	dist/reset-installer/dev dist/reset-installer/release \
+	dist/troubleshooting/dev dist/troubleshooting/release \
 	dist/install/dev dist/installed/health dist/uninstall/dev \
 	runtime/up runtime/up-bridged runtime/down runtime/status runtime/health \
 	runtime/prepare runtime/ip runtime/proxy/start runtime/clean \
@@ -83,8 +83,8 @@ dist/update/dev: internal/vm/update/dev
 dist/update/verify/dev: internal/vm/update/verify/dev
 dist/image-update/dev: internal/vm/image-update/dev
 dist/image-update/verify/dev: internal/vm/image-update/verify/dev
-dist/reset-installer/dev: internal/vm/reset-installer/dev
-dist/reset-installer/release: internal/vm/reset-installer/release
+dist/troubleshooting/dev: internal/vm/troubleshooting/dev
+dist/troubleshooting/release: internal/vm/troubleshooting/release
 dist/install/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 dist/install/dev: internal/vm/pkg/install
 dist/installed/health: internal/vm/installed/health
@@ -242,7 +242,7 @@ help/dist:
 	@printf "  make dist/{pkg|dmg}/dev/compile\n"
 	@printf "  make dist/{pkg|dmg}/dev/{runtime-smoke|verify}\n"
 	@printf "  make dist/{pkg|dmg}/release/verify\n"
-	@printf "  make dist/reset-installer/{dev|release}\n"
+	@printf "  make dist/troubleshooting/{dev|release}\n"
 	@printf "  make dist/{update|image-update}/verify/{dev|release}\n"
 	@printf "  make dist/{install|uninstall}/dev [VM_UNINSTALL_ARGS=--clean]\n"
 	@printf "  make dist/installed/health\n"
@@ -264,9 +264,9 @@ help/dist:
 	@printf "  dist/update/release           Build release product update bundle\n"
 	@printf "  dist/image-update/dev         Build development VM image/rootfs update bundle\n"
 	@printf "  dist/image-update/release     Build release VM image/rootfs update bundle\n"
-	@printf "  dist/reset-installer/dev      Build development Reset for Reinstall pkg\n"
-	@printf "  dist/reset-installer/release\n"
-	@printf "                                Build release Reset for Reinstall pkg\n"
+	@printf "  dist/troubleshooting/dev      Stage development Troubleshooting Tools commands\n"
+	@printf "  dist/troubleshooting/release\n"
+	@printf "                                Stage release Troubleshooting Tools commands\n"
 	@printf "\n"
 	@printf "VERIFY TARGETS\n"
 	@printf "  dist/update/verify/dev        Verify development product update bundle\n"

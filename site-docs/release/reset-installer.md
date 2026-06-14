@@ -192,13 +192,12 @@ pkgutil --pkgs | rg -i 'ai\.tirosh\.vitalserver\.helper'
 ## 7. 지원 담당자 참고
 
 DMG에 들어가는 reset command는 release DMG 생성 과정에서 `Troubleshooting Tools` 아래에
-자동으로 staging됩니다. 호환성 확인이나 standalone 산출물 검증이 필요할 때만 build machine에서
-legacy reset package target을 직접 만들 수 있습니다.
+자동으로 staging됩니다. 같은 command 묶음을 standalone 산출물로 확인해야 할 때는 build machine에서
+Troubleshooting Tools target을 실행합니다.
 
 ```sh
-make dist/reset-installer/dev
-make dist/reset-installer/release
+make dist/troubleshooting/dev
+make dist/troubleshooting/release
 ```
 
-이 standalone target은 DMG 안의 사용자-facing troubleshooting tool 계약이 아니라, 기존 package
-형태의 clean reset backend를 별도로 검증하기 위한 빌드 산출물입니다.
+이 target은 package를 만들지 않고 DMG와 같은 command 기반 `Troubleshooting Tools` 폴더를 staging합니다.
