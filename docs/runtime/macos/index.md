@@ -88,6 +88,6 @@ make runtime/down
 | 패키지 산출물과 설치/update 계약 | [Packaging and Update](packaging.md) |
 | update 적용과 rollback 계약 | [Update](update.md) |
 | VM runtime 동작과 네트워크 정책 | [Runtime](runtime.md) |
-| backup/restore 대상과 data compatibility | [VitalServer Backup](runtime-data-backup.md) |
+| backup/restore 대상과 restore compatibility | [VitalServer Backup](runtime-data-backup.md) |
 | golden rootfs compile RCA | [Golden Rootfs Compile RCA](golden-rootfs-compile-rca.md) |
 | 장애 증상과 조치 | [Troubleshooting](../../troubleshooting/index.md) |

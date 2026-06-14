@@ -505,14 +505,14 @@ public struct RuntimeDataBackupStore {
         if manifest.schemaVersion != 1 {
             errors.append("schemaVersion must be 1")
         }
-        if let dataCompatibilityVersion = manifest.dataCompatibilityVersion {
-            if dataCompatibilityVersion != RuntimeDataBackupCompatibility.currentDataCompatibilityVersion {
+        if let restoreCompatibilityVersion = manifest.restoreCompatibilityVersion {
+            if restoreCompatibilityVersion != RuntimeDataBackupCompatibility.currentRestoreCompatibilityVersion {
                 errors.append(
-                    "dataCompatibilityVersion must be \(RuntimeDataBackupCompatibility.currentDataCompatibilityVersion)"
+                    "restoreCompatibilityVersion must be \(RuntimeDataBackupCompatibility.currentRestoreCompatibilityVersion)"
                 )
             }
         } else {
-            errors.append("dataCompatibilityVersion is missing")
+            errors.append("restoreCompatibilityVersion is missing")
         }
         if manifest.backupKind != .runtimeData {
             errors.append("backupKind must be runtime-data")

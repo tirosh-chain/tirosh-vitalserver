@@ -29,16 +29,16 @@ VitalServer backup은 product-level restore unit 하나로 보이지만 내부�
 plist, start-on-boot state, status/events document, observability SQLite는 서로 다른 contract가
 소유합니다.
 
-`runtimeVersion`만 기록해서는 충분하지 않습니다. Product version과 backup data layout compatibility는
+`runtimeVersion`만 기록해서는 충분하지 않습니다. Product version과 backup restore compatibility는
 독립적으로 움직일 수 있습니다. Restore는 어떤 artifact도 쓰기 전에 backup manifest의 명시적인
-`dataCompatibilityVersion`을 확인해야 합니다.
+`restoreCompatibilityVersion`을 확인해야 합니다.
 
 ## Actions
 
-Backup manifest는 `dataCompatibilityVersion`을 포함해야 합니다. Restore는 아래 경우 file을 쓰기 전에
+Backup manifest는 `restoreCompatibilityVersion`을 포함해야 합니다. Restore는 아래 경우 file을 쓰기 전에
 backup을 거부해야 합니다.
 
-- `dataCompatibilityVersion`이 없음
+- `restoreCompatibilityVersion`이 없음
 - 선언된 compatibility version을 현재 Helper가 지원하지 않음
 - manifest schema, product, artifact identity validation 실패
 - required artifact size, checksum, state, relative path validation 실패
@@ -51,7 +51,7 @@ backup을 거부해야 합니다.
 
 - Backup compatibility를 UI copy나 product version text가 아니라 data layout contract로 취급합니다.
 - Old backup을 migration 없이 안전하게 restore할 수 없으면
-  `RuntimeDataBackupCompatibility.currentDataCompatibilityVersion`을 올립니다.
+  `RuntimeDataBackupCompatibility.currentRestoreCompatibilityVersion`을 올립니다.
 - Backup manifest schema나 restored artifact schema가 바뀌면 missing/unsupported compatibility
   version test를 추가합니다.
 - 모든 artifact의 schema owner를 `docs/runtime/macos/runtime-data-backup.md`에 기록합니다.

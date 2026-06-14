@@ -61,8 +61,8 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         XCTAssertEqual(manifest.createdAt, "2026-06-10T00:00:00Z")
         XCTAssertEqual(manifest.runtimeVersion, "0.1.13")
         XCTAssertEqual(
-            manifest.dataCompatibilityVersion,
-            RuntimeDataBackupCompatibility.currentDataCompatibilityVersion
+            manifest.restoreCompatibilityVersion,
+            RuntimeDataBackupCompatibility.currentRestoreCompatibilityVersion
         )
         XCTAssertEqual(manifest.artifacts.map(\.id), RuntimeDataBackupArtifactID.requiredForUIContinuity)
         XCTAssertEqual(manifest.artifacts.count { $0.id == .runtimeStatusDocument }, 1)
@@ -260,14 +260,14 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         ])
     }
 
-    func testRestoreBackupRejectsMissingDataCompatibilityVersion() throws {
+    func testRestoreBackupRejectsMissingRestoreCompatibilityVersion() throws {
         let paths = try makePaths()
         let store = makeStore(paths: paths)
         let backup = try makeBackup(paths: paths, store: store)
         try rewriteManifest(backup: backup) { manifest in
             RuntimeDataBackupManifest(
                 schemaVersion: manifest.schemaVersion,
-                dataCompatibilityVersion: nil,
+                restoreCompatibilityVersion: nil,
                 backupKind: manifest.backupKind,
                 product: manifest.product,
                 createdAt: manifest.createdAt,
@@ -283,20 +283,20 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
                 error as? RuntimeDataBackupStoreError,
                 .manifestInvalid(
                     path: backup.appendingPathComponent(RuntimeFileNames.backupManifest).path,
-                    errors: ["dataCompatibilityVersion is missing"]
+                    errors: ["restoreCompatibilityVersion is missing"]
                 )
             )
         }
     }
 
-    func testRestoreBackupRejectsUnsupportedDataCompatibilityVersion() throws {
+    func testRestoreBackupRejectsUnsupportedRestoreCompatibilityVersion() throws {
         let paths = try makePaths()
         let store = makeStore(paths: paths)
         let backup = try makeBackup(paths: paths, store: store)
         try rewriteManifest(backup: backup) { manifest in
             RuntimeDataBackupManifest(
                 schemaVersion: manifest.schemaVersion,
-                dataCompatibilityVersion: 999,
+                restoreCompatibilityVersion: 999,
                 backupKind: manifest.backupKind,
                 product: manifest.product,
                 createdAt: manifest.createdAt,
@@ -312,7 +312,7 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
                 error as? RuntimeDataBackupStoreError,
                 .manifestInvalid(
                     path: backup.appendingPathComponent(RuntimeFileNames.backupManifest).path,
-                    errors: ["dataCompatibilityVersion must be 1"]
+                    errors: ["restoreCompatibilityVersion must be 1"]
                 )
             )
         }

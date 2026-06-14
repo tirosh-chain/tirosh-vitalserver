@@ -37,12 +37,13 @@ Restore process는 `runtime-status-document`, `runtime-events-document`,
 ## Artifact Schema 소유권
 
 VitalServer backup은 하나의 restore unit이지만 artifact마다 data schema owner가 다릅니다.
-Backup manifest는 artifact identity, path, size, checksum, global `dataCompatibilityVersion`을
-기록합니다. Manifest가 모든 artifact를 하나의 file format으로 합치는 것은 아닙니다.
+Backup manifest는 artifact identity, path, size, checksum, backup-level
+`restoreCompatibilityVersion`을 기록합니다. Manifest가 모든 artifact를 하나의 file format으로
+합치거나 artifact별 compatibility version을 관리하는 것은 아닙니다.
 
 | Artifact | Data schema owner | Restore compatibility 기준 |
 |---|---|---|
-| `redis-data` | Guest VitalServer Redis schema | Guest Redis restore worker가 복원합니다. 현재 Guest runtime이 읽을 수 없는 Redis key/value layout 변경은 `dataCompatibilityVersion` bump 또는 명시 migration이 필요합니다. |
+| `redis-data` | Guest VitalServer Redis schema | Guest Redis restore worker가 복원합니다. 현재 Guest runtime이 읽을 수 없는 Redis key/value layout 변경은 backup-level `restoreCompatibilityVersion` bump 또는 명시 migration이 필요합니다. |
 | `runtime-vm-config` | Host VM runtime config contract | Host가 VM start 전후에 읽습니다. Breaking config change는 restore 전 compatibility bump 또는 config migration이 필요합니다. |
 | `guest-runtime-config` | Guest deploy/runtime config contract | Host가 배포하고 Guest bootstrap/service가 소비합니다. Breaking field change는 compatibility bump 또는 migration이 필요합니다. |
 | `guest-runtime-settings` | Runtime settings contract | Host UI와 Guest runtime이 함께 소비합니다. Settings schema 변경은 missing/invalid/default 의미를 명시적으로 보존해야 합니다. |
@@ -54,23 +55,23 @@ Backup manifest는 artifact identity, path, size, checksum, global `dataCompatib
 
 ## Compatibility 계약
 
-Runtime data backup restore는 `RuntimeDataBackupManifest.dataCompatibilityVersion`으로 gate합니다.
-현재 Helper는 backup 생성 시 `RuntimeDataBackupCompatibility.currentDataCompatibilityVersion`을
+Runtime data backup restore는 `RuntimeDataBackupManifest.restoreCompatibilityVersion`으로 gate합니다.
+현재 Helper는 backup 생성 시 `RuntimeDataBackupCompatibility.currentRestoreCompatibilityVersion`을
 씁니다. Restore는 아래 경우 backup을 거부합니다.
 
-- manifest에 `dataCompatibilityVersion`이 없음
+- manifest에 `restoreCompatibilityVersion`이 없음
 - manifest가 현재 Helper가 지원하지 않는 version을 선언함
 - manifest schema, product, required artifact set, artifact state, size, checksum,
   relative artifact path validation 실패
 
-Compatibility version은 data layout 계약이며 product version string이 아닙니다.
+Restore compatibility version은 backup unit 전체의 restore 계약이며 product version string이 아닙니다.
 `runtimeVersion`은 운영자 context를 위해 계속 기록하지만 restore compatibility의 유일한 판단 기준이
-되어서는 안 됩니다. Product version과 data compatibility version은 서로 다른 속도로 움직일 수 있습니다.
+되어서는 안 됩니다. Product version과 restore compatibility version은 서로 다른 속도로 움직일 수 있습니다.
 
-### `dataCompatibilityVersion`을 올리는 기준
+### `restoreCompatibilityVersion`을 올리는 기준
 
 이전 format으로 만든 backup을 현재 runtime이 명시 migration 없이 안전하게 restore할 수 없으면
-compatibility version을 올립니다. 예시는 아래와 같습니다.
+restore compatibility version을 올립니다. 예시는 아래와 같습니다.
 
 - 현재 VitalServer가 old data를 읽을 수 없을 정도로 Redis key/value layout이 변경됨
 - `runtime-vm-config`, `guest-runtime-config`, `guest-runtime-settings`에서 required field가 제거되거나

@@ -79,35 +79,35 @@ final class RuntimeDataBackupPolicyTests: XCTestCase {
         )
     }
 
-    func testMissingDataCompatibilityVersionInvalidatesManifest() {
+    func testMissingRestoreCompatibilityVersionInvalidatesManifest() {
         XCTAssertEqual(
             RuntimeDataBackupPolicy.validateCompletedBackup(
-                completeManifest(dataCompatibilityVersion: nil)
+                completeManifest(restoreCompatibilityVersion: nil)
             ),
             .invalid([
-                "runtime data backup dataCompatibilityVersion is missing",
+                "runtime data backup restoreCompatibilityVersion is missing",
             ])
         )
     }
 
-    func testUnsupportedDataCompatibilityVersionInvalidatesManifest() {
+    func testUnsupportedRestoreCompatibilityVersionInvalidatesManifest() {
         XCTAssertEqual(
             RuntimeDataBackupPolicy.validateCompletedBackup(
-                completeManifest(dataCompatibilityVersion: 999)
+                completeManifest(restoreCompatibilityVersion: 999)
             ),
             .invalid([
-                "runtime data backup dataCompatibilityVersion is unsupported: 999",
+                "runtime data backup restoreCompatibilityVersion is unsupported: 999",
             ])
         )
     }
 
     private func completeManifest(
         product: String = "ai.tirosh.vitalserver.helper",
-        dataCompatibilityVersion: Int? = RuntimeDataBackupCompatibility.currentDataCompatibilityVersion,
+        restoreCompatibilityVersion: Int? = RuntimeDataBackupCompatibility.currentRestoreCompatibilityVersion,
         artifacts: [RuntimeDataBackupArtifact]? = nil
     ) -> RuntimeDataBackupManifest {
         RuntimeDataBackupManifest(
-            dataCompatibilityVersion: dataCompatibilityVersion,
+            restoreCompatibilityVersion: restoreCompatibilityVersion,
             product: product,
             createdAt: "2026-06-10T00:00:00Z",
             reason: "manual",

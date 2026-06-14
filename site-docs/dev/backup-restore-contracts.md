@@ -2,7 +2,7 @@
 
 이 문서는 Vital Server Helper의 backup/restore 구현 계약을 정리합니다.
 Release `usage.md`는 운영자가 눌러야 하는 메뉴와 판단 순서를 다루고, 이 문서는
-artifact 구성, data schema owner, restore compatibility, migration tool의 구현 기준을 다룹니다.
+artifact 구성, data schema owner, backup-level restore compatibility, migration tool의 구현 기준을 다룹니다.
 
 ## 1. 제품 표면
 
@@ -39,15 +39,16 @@ required artifact만 복원합니다.
 ## 3. Compatibility Gate
 
 Restore는 runtime destination에 artifact를 쓰기 전에
-`RuntimeDataBackupManifest.dataCompatibilityVersion`을 확인해야 합니다.
+`RuntimeDataBackupManifest.restoreCompatibilityVersion`을 확인해야 합니다.
 
-Compatibility version은 data layout 계약입니다. 제품 `runtimeVersion`과 같은 의미가 아닙니다.
+Restore compatibility version은 backup unit 전체의 restore 계약입니다. 제품 `runtimeVersion`과
+같은 의미가 아니고, artifact마다 따로 관리하는 schema version도 아닙니다.
 Product version은 운영자 context를 위해 기록하지만, restore는 product version, filename,
 artifact 존재 여부, checksum 성공만으로 compatibility를 추정하면 안 됩니다.
 
 Restore는 아래 경우 backup을 거부합니다.
 
-- `dataCompatibilityVersion`이 없음
+- `restoreCompatibilityVersion`이 없음
 - 현재 Helper가 선언된 compatibility version을 지원하지 않음
 - manifest schema, product, artifact identity validation 실패
 - required artifact state, path, size, checksum validation 실패
@@ -59,7 +60,7 @@ Restore flow는 artifact 일부를 적용한 뒤 나중에 다른 artifact가 in
 ## 4. Compatibility Version을 올리는 기준
 
 이전 backup을 현재 runtime이 migration 없이 안전하게 restore할 수 없으면
-`RuntimeDataBackupCompatibility.currentDataCompatibilityVersion`을 올립니다.
+`RuntimeDataBackupCompatibility.currentRestoreCompatibilityVersion`을 올립니다.
 
 대표적인 bump 기준은 아래와 같습니다.
 
