@@ -264,7 +264,11 @@ def test_stage_reset_installer_command_renders_command_and_bundles_cli(
     assert os.access(command, os.X_OK)
     assert os.access(cli, os.X_OK)
     assert 'vm_bin="${script_dir}/bin/vitalserver-vm-reset-installer"' in command_text
-    assert 'exec /usr/bin/sudo "$0"' in command_text
+    assert 'exec /usr/bin/sudo "$0" "$@"' in command_text
+    assert (
+        'wrapper_log="${wrapper_log_dir%/}/tirosh-vitalserver-reset-for-reinstall.log"'
+        in command_text
+    )
     assert "runtime uninstall --force-clean-uninstaller" in command_text
 
 
@@ -300,6 +304,10 @@ def test_stage_troubleshooting_tools_stages_reset_and_redis_commands(
     assert os.access(redis_command, os.X_OK)
     assert os.access(cli, os.X_OK)
     assert 'archive_name="redis-upstream-import.tar.gz"' in redis_command_text
+    assert (
+        'log_file="${log_dir%/}/tirosh-vitalserver-upstream-redis-backup.log"'
+        in redis_command_text
+    )
     assert "dump.rdb" in redis_command_text
     assert 'COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 \\' in (
         redis_command_text

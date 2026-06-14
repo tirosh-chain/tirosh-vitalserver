@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-uninstall_log="${UNINSTALL_LOG}"
+log_dir="${TMPDIR:-/private/tmp}"
+log_file="${log_dir%/}/tirosh-vitalserver-upstream-redis-backup.log"
 archive_name="redis-upstream-import.tar.gz"
 
-mkdir -p "$(dirname "${uninstall_log}")"
-exec > >(tee -a "${uninstall_log}") 2>&1
+mkdir -p "${log_dir}"
+exec > >(tee -a "${log_file}") 2>&1
 
 log() {
   printf "[%s] %s\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*"
@@ -81,6 +82,7 @@ create_archive() {
 }
 
 log "upstream redis backup command started"
+log "upstream redis backup log=${log_file}"
 confirm_prerequisites
 source_dir="$(choose_folder "Choose the upstream Redis data directory that contains dump.rdb")"
 output_dir="$(choose_folder "Choose where to save ${archive_name}")"

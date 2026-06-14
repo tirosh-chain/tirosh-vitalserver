@@ -2,7 +2,6 @@
 set -Eeuo pipefail
 
 uninstall_log="${UNINSTALL_LOG}"
-exec > >(tee -a "${uninstall_log}") 2>&1
 
 vm_bin="${VM_BIN}"
 vm_home="${VM_HOME}"
@@ -24,10 +23,13 @@ on_error() {
 trap on_error ERR
 
 if [ "$(id -u)" -ne 0 ]; then
-  log "This uninstaller must run as root."
-  log "Run: sudo tirosh-vitalserver-uninstall [--clean]"
+  printf "[%s] This uninstaller must run as root.\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  printf "[%s] Run: sudo tirosh-vitalserver-uninstall [--clean]\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   exit 1
 fi
+
+mkdir -p "$(dirname "${uninstall_log}")"
+exec > >(tee -a "${uninstall_log}") 2>&1
 
 while [ "$#" -gt 0 ]; do
   case "$1" in

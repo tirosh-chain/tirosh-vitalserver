@@ -6,9 +6,8 @@ vm_home="${VM_HOME}"
 manager_app="${MANAGER_APP}"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 vm_bin="${script_dir}/bin/vitalserver-vm-reset-installer"
-
-mkdir -p "$(dirname "${uninstall_log}")"
-exec > >(tee -a "${uninstall_log}") 2>&1
+wrapper_log_dir="${TMPDIR:-/private/tmp}"
+wrapper_log="${wrapper_log_dir%/}/tirosh-vitalserver-reset-for-reinstall.log"
 
 log() {
   printf "[%s] %s\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*"
@@ -23,9 +22,16 @@ on_error() {
 trap on_error ERR
 
 if [ "$(id -u)" -ne 0 ]; then
+  mkdir -p "${wrapper_log_dir}"
+  exec > >(tee -a "${wrapper_log}") 2>&1
+  log "reset for reinstall command started wrapperLog=${wrapper_log}"
   printf "Reset VitalServer Helper for Reinstall requires administrator privileges.\n"
-  exec /usr/bin/sudo "$0"
+  exec /usr/bin/sudo "$0" "$@"
 fi
+
+mkdir -p "$(dirname "${uninstall_log}")"
+exec > >(tee -a "${uninstall_log}") 2>&1
+log "reset for reinstall root command started log=${uninstall_log}"
 
 find_helper_pids() {
   /usr/bin/pgrep -f -- "${manager_app}/Contents/MacOS/VitalServer Helper" || \

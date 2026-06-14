@@ -113,7 +113,8 @@ Upstream VitalServer에서 Helper로 1회 migration을 할 때는 DMG의 `Troubl
 data directory를 `redis-upstream-import.tar.gz`로 묶습니다. 실행 전 upstream Redis를 중지하거나
 `SAVE`/`BGSAVE`를 실행해 `dump.rdb`가 최신 상태인지 확인합니다. 생성한 archive는 Advanced ->
 Recovery operations -> Redis-only recovery의 `Import Backups`로 가져온 뒤 `Restore Redis-only Backup`
-으로 복원합니다.
+으로 복원합니다. 이 command의 로그는 현재 사용자 temp directory의
+`tirosh-vitalserver-upstream-redis-backup.log`에 기록됩니다.
 
 ## 3. Settings 적용
 
@@ -240,7 +241,7 @@ Helper app이 열리는 상태라면 아래 순서로 확인합니다.
 | Update 실패 | Update progress, 선택한 update bundle 이름, Logs 화면의 export zip, Observability event 시간대 |
 | runtime이 Critical | Status/Advanced 상태, failure reasons, Logs 화면의 export zip |
 | recorder/bed가 stale 또는 offline | Recorders/Beds 화면 상태, last seen, Observability anomaly, event 시간대 |
-| Reset command 실패 | `/private/tmp/tirosh-vitalserver-uninstall.log`, `/var/log/install.log` |
+| Reset command 실패 | 사용자 temp의 `tirosh-vitalserver-reset-for-reinstall.log`, `/private/tmp/tirosh-vitalserver-uninstall.log`, `/var/log/install.log` |
 | 상태 화면을 읽지 못함 | read issue 메시지, Logs 화면의 export zip, Observability store failure 여부 |
 
 ### 5-4. 직접 확인할 수 있는 로그
@@ -251,6 +252,10 @@ Helper app에서 export가 되지 않거나 설치/정리 단계에서 app을 �
 tail -n 300 /var/log/install.log
 tail -n 300 /private/tmp/tirosh-vitalserver-uninstall.log
 ```
+
+Troubleshooting Tools의 double-click command는 권한 상승 전 wrapper 로그를 현재 사용자 temp
+directory에 남깁니다. Reset command는 `tirosh-vitalserver-reset-for-reinstall.log`, upstream Redis
+backup command는 `tirosh-vitalserver-upstream-redis-backup.log`를 확인합니다.
 
 runtime이 설치된 뒤의 상세 로그는 기본적으로 아래 위치에 있습니다.
 

@@ -146,6 +146,10 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "client_body_temp_path temp/client_body;" in proxy_config_text
     assert "proxy_temp_path temp/proxy;" in proxy_config_text
     assert '"${vm_bin}" "runtime" "uninstall"' in uninstall_text
+    assert (
+        uninstall_text.index('if [ "$(id -u)" -ne 0 ]; then')
+        < uninstall_text.index('exec > >(tee -a "${uninstall_log}") 2>&1')
+    )
     assert 'command+=("--clean")' in uninstall_text
     assert 'command+=("--force-clean-uninstaller")' in uninstall_text
     assert (
@@ -164,7 +168,25 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         'vm_bin="${script_dir}/bin/vitalserver-vm-reset-installer"'
         in reset_for_reinstall_command_text
     )
-    assert 'exec /usr/bin/sudo "$0"' in reset_for_reinstall_command_text
+    assert 'exec /usr/bin/sudo "$0" "$@"' in reset_for_reinstall_command_text
+    assert (
+        'wrapper_log="${wrapper_log_dir%/}/tirosh-vitalserver-reset-for-reinstall.log"'
+        in reset_for_reinstall_command_text
+    )
+    assert (
+        'exec > >(tee -a "${wrapper_log}") 2>&1'
+        in reset_for_reinstall_command_text
+    )
+    assert (
+        'exec > >(tee -a "${uninstall_log}") 2>&1'
+        in reset_for_reinstall_command_text
+    )
+    assert (
+        reset_for_reinstall_command_text.index('if [ "$(id -u)" -ne 0 ]; then')
+        < reset_for_reinstall_command_text.index(
+            'exec > >(tee -a "${uninstall_log}") 2>&1'
+        )
+    )
     assert (
         "runtime uninstall --force-clean-uninstaller"
         in reset_for_reinstall_command_text
@@ -181,6 +203,11 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         'archive_name="redis-upstream-import.tar.gz"'
         in upstream_redis_backup_command_text
     )
+    assert (
+        'log_file="${log_dir%/}/tirosh-vitalserver-upstream-redis-backup.log"'
+        in upstream_redis_backup_command_text
+    )
+    assert "${UNINSTALL_LOG}" not in upstream_redis_backup_command_text
     assert (
         "choose folder with prompt"
         in upstream_redis_backup_command_text
