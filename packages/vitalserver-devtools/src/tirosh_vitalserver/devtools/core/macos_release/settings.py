@@ -24,7 +24,6 @@ class MacOSPackageOutputConfig:
     pkg_filename_template: str
     dmg_filename_template: str
     dmg_installer_pkg_name: str
-    dmg_clean_uninstaller_pkg_name: str
     dmg_staging_dir: Path
 
 

@@ -11,7 +11,7 @@ Delivery는 사용자가 받는 결과물을 준비하는 일입니다. Validati
 확인하는 일입니다.
 
 Vital Server Helper는 Mac app 하나만 배포하지 않습니다. macOS Helper package, Linux guest service,
-Docker image bundle, update bundle, Reset Installer package까지 함께 다룹니다. 병원이나 연구실처럼
+Docker image bundle, update bundle, reset command까지 함께 다룹니다. 병원이나 연구실처럼
 네트워크 접근이 제한될 수 있는 환경에서도 같은 절차로 확인할 수 있어야 합니다.
 
 ### 1-1. 기본 원칙
@@ -43,7 +43,7 @@ Release 전에 만드는 결과물은 목적이 다릅니다. 먼저 “어떤 �
 |---|---|
 | DMG | 신규 Mac에 Helper를 설치할 때 |
 | PKG | macOS installer가 실제로 설치하는 payload |
-| Reset Installer PKG | 재설치가 막힌 Mac에서 관련 데이터와 기능을 강제로 정리할 때 |
+| Reset command | 재설치가 막힌 Mac에서 관련 데이터와 기능을 강제로 정리할 때 |
 | Product Update bundle | Helper UI, runtime tools, proxy, service stack을 update할 때 |
 | VM Image update bundle | guest rootfs/base image class를 바꿀 때 |
 | Docker image bundle | 네트워크가 제한된 guest에서 service stack을 실행할 때 |
@@ -52,13 +52,13 @@ Release 전에 만드는 결과물은 목적이 다릅니다. 먼저 “어떤 �
 ### 2-2. 릴리스 작업용 명령어
 
 아래 명령어는 릴리스 담당자가 build machine에서 결과물을 만들고 검증할 때 사용합니다.
-현장 Mac에서는 이 `make` 명령어를 실행하지 않습니다. 현장에는 생성된 DMG, PKG, update bundle,
-Reset Installer PKG를 전달하고, installer 또는 Helper app UI에서 적용합니다.
+현장 Mac에서는 이 `make` 명령어를 실행하지 않습니다. 현장에는 생성된 DMG, PKG, update bundle을
+전달하고, reset command는 DMG의 `Troubleshooting Tools` 폴더에서 실행합니다.
 
 | 목적 | command |
 |---|---|
 | release DMG 생성 | `make dist/dmg/release` |
-| release Reset Installer 생성 | `make dist/reset-installer/release` |
+| legacy standalone reset package 생성 | `make dist/reset-installer/release` |
 | release Product Update bundle 생성 | `make dist/update/release` |
 | release Product Update bundle 검증 | `make dist/update/verify/release` |
 | VM Image update bundle 생성 | `make dist/image-update/release` |
@@ -446,7 +446,7 @@ release 결과물을 바꿨다면 build machine에서 결과물 검증까지 봅
 | Product Update bundle | `make dist/update/release`와 `make dist/update/verify/release` |
 | VM Image update bundle | `make dist/image-update/release`와 `make dist/image-update/verify/release` |
 | 신규 설치 DMG | `make dist/dmg/release` |
-| Reset Installer PKG | `make dist/reset-installer/release` |
+| legacy standalone reset package | `make dist/reset-installer/release` |
 
 ## 6. 변경 완료 기준
 

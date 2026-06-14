@@ -138,11 +138,6 @@ def load_macos_package_outputs(
             "dmg_installer_pkg_name",
             path="macos.package.outputs",
         ),
-        dmg_clean_uninstaller_pkg_name=required_string(
-            config,
-            "dmg_clean_uninstaller_pkg_name",
-            path="macos.package.outputs",
-        ),
         dmg_staging_dir=resolve_path(
             root,
             required_string(config, "dmg_staging_dir", path="macos.package.outputs"),

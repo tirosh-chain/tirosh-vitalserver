@@ -1,26 +1,26 @@
-# Clean Uninstall and Reset Installer
+# Clean Uninstall and Reset for Reinstall
 
-이 문서는 내부 clean uninstall 기능과 Reset Installer package의 차이를 설명합니다.
+이 문서는 내부 clean uninstall 기능과 Reset for Reinstall command의 차이를 설명합니다.
 
 두 기능은 같은 제거 backend를 공유하지만, 운영 목적이 다릅니다. Clean uninstall은 Helper가
-실행 중인 상태에서 요청하는 정상 제거 흐름이고, Reset Installer는 새 설치가 막힌 Mac을 다시
-설치 가능한 상태로 되돌리는 강제 복구 package입니다.
+실행 중인 상태에서 요청하는 정상 제거 흐름이고, reset command는 새 설치가 막힌 Mac을 다시
+설치 가능한 상태로 되돌리는 강제 복구 도구입니다.
 
 ## 1. 기능 차이
 
-| 구분 | Clean uninstall | Reset Installer |
+| 구분 | Clean uninstall | Reset for Reinstall command |
 |---|---|---|
 | 목적 | 설치된 Helper/runtime을 정상 제거 | fresh install preflight를 막는 잔존 상태 제거 |
-| 실행 위치 | Helper app, Runtime Control API, runtime CLI 내부 경로 | DMG의 `Troubleshooting Tools` package |
+| 실행 위치 | Helper app, Runtime Control API, runtime CLI 내부 경로 | DMG의 `Troubleshooting Tools` command |
 | 대표 command | `vitalserver-vm runtime uninstall --clean` | `vitalserver-vm runtime uninstall --force-clean-uninstaller` |
 | VM stop | 정상 stop과 service unload를 우선 | VM process force stop을 포함한 recovery 경로 사용 |
-| Helper app 처리 | 호출한 Helper app이 종료 예약을 함께 해야 함 | package가 Helper app 종료를 시도하고 필요하면 강제 종료 |
+| Helper app 처리 | 호출한 Helper app이 종료 예약을 함께 해야 함 | command가 Helper app 종료를 시도하고 필요하면 강제 종료 |
 | 삭제 범위 | Helper app, runtime home, runtime tools, LaunchDaemon plist, package receipt, clean 대상 user data | clean uninstall 범위에 더해 fresh install blocker 검증에 필요한 Host state까지 강하게 확인 |
 | 완료 기준 | uninstall workflow가 파일 제거, disabled override 정리, receipt 정리를 완료해야 함 | runtime artifact, launchd service, package receipt 중 fresh install blocker가 남지 않아야 함 |
 | 사용 시점 | 지원 담당자가 내부 제거 흐름을 검증하거나 운영 UI에서 제거 요청을 수행할 때 | 설치가 `fresh install preflight blocked`로 막혔을 때 |
 
 일반 현장 사용자는 재설치가 목적이면 Clean uninstall을 반복하지 않습니다. 설치가 막힌 상태에서는
-[Reset Installer](reset-installer.md)를 사용합니다.
+[Reset for Reinstall command](reset-installer.md)를 사용합니다.
 
 ## 2. Clean uninstall의 보존/삭제 정책
 
@@ -48,7 +48,7 @@ result document는 uninstall workflow 결과와 fresh install readiness를 분�
 | `freshInstallReadiness.blockers` | readiness가 검증된 경우의 blocker 목록. `not-checked`이면 비어 있어도 fresh install 가능을 뜻하지 않습니다. |
 
 따라서 `uninstallCompleted=true`는 Clean uninstall workflow 성공만 뜻합니다. 새 설치가 계속 막히면
-Reset Installer 또는 fresh install preflight 결과의 blocker를 별도로 봐야 합니다.
+Reset command 또는 fresh install preflight 결과의 blocker를 별도로 봐야 합니다.
 
 viewer가 `Uninstall result is unavailable`을 표시해도, 먼저
 `/private/tmp/tirosh-vitalserver-uninstall-progress.command.result.json`을 확인합니다. 해당 파일의
@@ -56,10 +56,10 @@ viewer가 `Uninstall result is unavailable`을 표시해도, 먼저
 것입니다. 이 경우는 worker 종료와 result/marker 관측 사이의 progress viewer race로 분류하고,
 cleanup 실패로 보지 않습니다.
 
-## 4. Reset Installer를 쓰는 상황
+## 4. Reset command를 쓰는 상황
 
-Reset Installer는 정상 제거 UX가 아니라 recovery tool입니다. 아래 blocker가 보이면 Reset
-Installer를 사용합니다.
+Reset command는 정상 제거 UX가 아니라 recovery tool입니다. 아래 blocker가 보이면 reset
+command를 사용합니다.
 
 ```text
 VitalServer Helper pkg install supports fresh installs only.
@@ -67,7 +67,7 @@ An existing VitalServer Helper install, launchd service, package receipt,
 or Host proxy port conflict blocks this install.
 ```
 
-Reset Installer가 성공하려면 다음 상태가 모두 정리되어야 합니다.
+Reset command가 성공하려면 다음 상태가 모두 정리되어야 합니다.
 
 | 상태 | 왜 확인하나 |
 |---|---|
@@ -87,7 +87,7 @@ Reset Installer가 성공하려면 다음 상태가 모두 정리되어야 합�
 | launchd disabled override 잔존 | 새 설치 중 `Service is disabled` | [TS-046](https://github.com/tirosh-chain/tirosh-vitalserver/blob/main/docs/troubleshooting/046_pkg-postinstall-launchd-disabled.md) |
 | PWA background command handoff 실패 | UI는 시작됐다고 보이지만 product root/receipt가 남음 | [TS-050](https://github.com/tirosh-chain/tirosh-vitalserver/blob/main/docs/troubleshooting/050_pwa-clean-uninstall-background-command.md) |
 | VM/launchd state 잔존 | `launchd-service-loaded` blocker | [TS-058](https://github.com/tirosh-chain/tirosh-vitalserver/blob/main/docs/troubleshooting/058_clean-uninstall-hung-vm-progress-marker.md) |
-| status writer가 product root를 재생성 | `install-artifact-present:path=/Library/Application Support/VitalServerHelper` | [Reset Installer](reset-installer.md) |
+| status writer가 product root를 재생성 | `install-artifact-present:path=/Library/Application Support/VitalServerHelper` | [Reset for Reinstall command](reset-installer.md) |
 | orphan host proxy nginx | port 80 occupied by nginx | [TS-051](https://github.com/tirosh-chain/tirosh-vitalserver/blob/main/docs/troubleshooting/051_install-blocked-by-orphan-host-proxy-nginx.md) |
 
 이 원인들은 파일 존재 여부만으로 판단하면 안 됩니다. launchd, process, package receipt, status
@@ -96,7 +96,7 @@ writer가 각각 명시적으로 관측되어야 합니다.
 ## 6. 운영 원칙
 
 - Clean uninstall 성공을 fresh install 가능 상태로 추정하지 않습니다.
-- Reset Installer 성공은 runtime artifact, launchd service, package receipt blocker가 없는지로 확인합니다.
+- Reset command 성공은 runtime artifact, launchd service, package receipt blocker가 없는지로 확인합니다.
 - Helper app이나 PWA가 background uninstaller 시작을 보고해도 uninstall 완료로 표시하지 않습니다.
 - Progress viewer는 현재 runID의 result document를 우선하고, log tail은 진단 정보로만 취급합니다.
 - 제거 후 runtime status writer가 product root를 다시 만들면 안 됩니다.

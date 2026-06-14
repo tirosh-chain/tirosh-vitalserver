@@ -40,6 +40,7 @@ from tirosh_vitalserver.devtools.core.release_manifest import ReleaseManifest
 ROOTFS_BASE_NAME = "rootfs-base.raw.gz"
 RESET_INSTALLER_IDENTIFIER_SUFFIX = ".reset-installer"
 RESET_INSTALLER_CLI_NAME = "vitalserver-vm-reset-installer"
+RESET_INSTALLER_COMMAND_NAME = "Reset VitalServer Helper for Reinstall.command"
 
 
 def build_pkg(context: PackageContext) -> None:
@@ -79,21 +80,15 @@ def build_dmg(context: PackageContext) -> None:
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
-    build_reset_installer_pkg(
+    stage_reset_installer_command(
         settings=context.settings,
-        release=context.release,
         runtime_dir=context.runtime_dir,
         runtime_cli=context.runtime_cli,
-        scripts_dir=context.pkg_root.parent / "reset-installer-scripts",
-        pkg_output=context.clean_uninstaller_pkg_output,
+        tools_dir=staging / "Troubleshooting Tools",
     )
     install_file(
         context.pkg_output,
         staging / package_output_value(context, "dmg_installer_pkg_name"),
-    )
-    install_file(
-        context.clean_uninstaller_pkg_output,
-        staging / package_output_value(context, "dmg_clean_uninstaller_pkg_name"),
     )
     context.dmg_output.parent.mkdir(parents=True, exist_ok=True)
     detach_unmounted_dmg_output_attachments(context.dmg_output)
@@ -249,6 +244,30 @@ def build_reset_installer_pkg(
             "COPY_EXTENDED_ATTRIBUTES_DISABLE": "1",
         },
     )
+
+
+def stage_reset_installer_command(
+    *,
+    settings: MacOSReleaseSettings,
+    runtime_dir: Path,
+    runtime_cli: Path,
+    tools_dir: Path,
+) -> None:
+    if tools_dir.exists():
+        shutil.rmtree(tools_dir)
+    tools_dir.mkdir(parents=True, exist_ok=True)
+    bin_dir = tools_dir / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    packaging_dir = runtime_dir / "Support/Packaging"
+    copy_executable(runtime_cli, bin_dir / RESET_INSTALLER_CLI_NAME)
+    render_packaging_executable(
+        settings,
+        packaging_dir / "reset-for-reinstall-command.template",
+        tools_dir / RESET_INSTALLER_COMMAND_NAME,
+    )
+    remove_apple_double_files(tools_dir)
+    subprocess.run(["xattr", "-c", "-r", str(tools_dir)], check=False)
 
 
 def stage_pkg_root(context: PackageContext) -> None:

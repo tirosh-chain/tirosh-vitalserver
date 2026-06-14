@@ -39,11 +39,11 @@ or Host proxy port conflict blocks this install.
 ```
 
 이 경우 installer를 반복 실행하지 않습니다.
-[Reset Installer](reset-installer.md)로 정리한 뒤 다시 설치합니다.
+[Reset for Reinstall command](reset-installer.md)로 정리한 뒤 다시 설치합니다.
 
-내부 Clean uninstall과 Reset Installer는 목적이 다릅니다. Clean uninstall은 정상 제거 흐름이고,
-Reset Installer는 재설치 blocker를 제거하는 recovery package입니다. 차이는
-[Clean Uninstall and Reset Installer](clean-uninstall.md)를 봅니다.
+내부 Clean uninstall과 reset command는 목적이 다릅니다. Clean uninstall은 정상 제거 흐름이고,
+reset command는 재설치 blocker를 제거하는 recovery tool입니다. 차이는
+[Clean Uninstall and Reset for Reinstall](clean-uninstall.md)를 봅니다.
 
 ## 2. Helper app에서 확인할 것
 
@@ -206,8 +206,8 @@ update 실패, recorder 관측 실패, service 실행 실패는 확인해야 하
 | 발생 시각 | `2026-06-08 14:30 KST` |
 | 사용한 화면 | Status, Update, Recorders, Beds, Observability, Logs |
 | 보이는 상태 | Healthy, Needs attention, Critical, Updating, Recovering 등 |
-| 직전에 한 작업 | install, update 적용, Reset Installer 실행, runtime start/stop |
-| 선택한 파일 | update bundle, Reset Installer package, installer package |
+| 직전에 한 작업 | install, update 적용, reset command 실행, runtime start/stop |
+| 선택한 파일 | update bundle, reset command, installer package |
 
 가능하면 화면 screenshot도 함께 보관합니다. 다만 환자 정보, 병원 내부 IP, 인증 정보, token이
 보이면 공개 issue에 올리지 않습니다.
@@ -233,7 +233,7 @@ Helper app이 열리는 상태라면 아래 순서로 확인합니다.
 | Update 실패 | Update progress, 선택한 update bundle 이름, Logs 화면의 export zip, Observability event 시간대 |
 | runtime이 Critical | Status/Advanced 상태, failure reasons, Logs 화면의 export zip |
 | recorder/bed가 stale 또는 offline | Recorders/Beds 화면 상태, last seen, Observability anomaly, event 시간대 |
-| Reset Installer 실패 | `/private/tmp/tirosh-vitalserver-uninstall.log`, `/var/log/install.log` |
+| Reset command 실패 | `/private/tmp/tirosh-vitalserver-uninstall.log`, `/var/log/install.log` |
 | 상태 화면을 읽지 못함 | read issue 메시지, Logs 화면의 export zip, Observability store failure 여부 |
 
 ### 5-4. 직접 확인할 수 있는 로그
@@ -305,7 +305,7 @@ runtime이 설치된 뒤의 상세 로그는 기본적으로 아래 위치에 �
 - `/usr/local/bin/tirosh-vitalserver-uninstall`
 
 재설치가 막혀 정리가 필요하면 파일을 수동으로 지우기보다
-[Reset Installer](reset-installer.md)를 사용합니다.
+[Reset for Reinstall command](reset-installer.md)를 사용합니다.
 
 ## 7. 지원 담당자 참고
 

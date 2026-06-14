@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+uninstall_log="${UNINSTALL_LOG}"
+vm_home="${VM_HOME}"
+manager_app="${MANAGER_APP}"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+vm_bin="${script_dir}/bin/vitalserver-vm-reset-installer"
+
+mkdir -p "$(dirname "${uninstall_log}")"
+exec > >(tee -a "${uninstall_log}") 2>&1
+
+log() {
+  printf "[%s] %s\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*"
+}
+
+on_error() {
+  local status="$?"
+  log "reset for reinstall failed status=${status} command=${BASH_COMMAND}"
+  exit "${status}"
+}
+
+trap on_error ERR
+
+if [ "$(id -u)" -ne 0 ]; then
+  printf "Reset VitalServer Helper for Reinstall requires administrator privileges.\n"
+  exec /usr/bin/sudo "$0"
+fi
+
+find_helper_pids() {
+  /usr/bin/pgrep -f -- "${manager_app}/Contents/MacOS/VitalServer Helper" || \
+    /usr/bin/pgrep -f -- "VitalServer Helper" || true
+}
+
+wait_for_helper_app_exit() {
+  local attempts=80
+  local index
+  local pids
+
+  for ((index = 0; index < attempts; index++)); do
+    pids="$(find_helper_pids)"
+    if [ -z "${pids}" ]; then
+      return 0
+    fi
+
+    if [ "${index}" -eq 0 ]; then
+      log "waiting for Helper app to exit before reset for reinstall"
+    fi
+    sleep 0.25
+  done
+
+  pids="$(find_helper_pids)"
+  if [ -z "${pids}" ]; then
+    return 0
+  fi
+
+  log "Helper app is still running; terminating process(es): ${pids}"
+  /usr/bin/pkill -f -- "VitalServer Helper" || true
+  sleep 1
+
+  pids="$(find_helper_pids)"
+  if [ -z "${pids}" ]; then
+    log "Helper app terminated after graceful stop"
+    return 0
+  fi
+
+  log "Helper app is still running; force killing process(es): ${pids}"
+  /usr/bin/pkill -9 -f -- "VitalServer Helper" || true
+  sleep 1
+
+  pids="$(find_helper_pids)"
+  if [ -z "${pids}" ]; then
+    log "Helper app force-killed before reset for reinstall"
+    return 0
+  fi
+
+  log "Helper app could not be terminated; aborting reset before file removal"
+  exit 3
+}
+
+if [ ! -x "${vm_bin}" ]; then
+  log "bundled reset runtime CLI is missing or not executable: ${vm_bin}"
+  exit 4
+fi
+
+wait_for_helper_app_exit
+
+log "reset for reinstall started"
+VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime uninstall --force-clean-uninstaller
+log "reset for reinstall completed log=${uninstall_log}"

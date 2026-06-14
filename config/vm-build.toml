@@ -32,7 +32,6 @@ preserve_tmp_template = "/private/tmp/tirosh-vitalserver-preserve.XXXXXX"
 pkg_filename_template = "VitalServerHelper-{releaseLabel}.pkg"
 dmg_filename_template = "VitalServerHelper-{releaseLabel}.dmg"
 dmg_installer_pkg_name = "Install VitalServer Helper.pkg"
-dmg_clean_uninstaller_pkg_name = "Troubleshooting Tools/Reset VitalServer Helper for Reinstall.pkg"
 dmg_staging_dir = ".tmp/vitalserver-vm-dmg"
 
 [macos.launchd.vm]

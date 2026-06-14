@@ -37,6 +37,7 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     proxy_run = tmp_path / "vitalserver-proxy-run"
     uninstall = tmp_path / "tirosh-vitalserver-uninstall"
     clean_uninstall_postinstall = tmp_path / "clean-uninstall-postinstall"
+    reset_for_reinstall_command = tmp_path / "reset-for-reinstall.command"
     components = tmp_path / "components.plist"
 
     render_packaging_executable(
@@ -59,6 +60,11 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         packaging / "clean-uninstall-postinstall.template",
         clean_uninstall_postinstall,
     )
+    render_packaging_executable(
+        settings,
+        packaging / "reset-for-reinstall-command.template",
+        reset_for_reinstall_command,
+    )
     render_packaging_template(
         settings,
         packaging / "components.plist.template",
@@ -77,12 +83,16 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
             proxy_run,
             uninstall,
             clean_uninstall_postinstall,
+            reset_for_reinstall_command,
             components,
         ]
     )
     preinstall_text = (packaging / "preinstall").read_text(encoding="utf-8")
     uninstall_text = uninstall.read_text(encoding="utf-8")
     clean_uninstall_postinstall_text = clean_uninstall_postinstall.read_text(
+        encoding="utf-8"
+    )
+    reset_for_reinstall_command_text = reset_for_reinstall_command.read_text(
         encoding="utf-8"
     )
     postinstall_text = postinstall.read_text(encoding="utf-8")
@@ -183,6 +193,23 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         'before file removal"'
         in clean_uninstall_postinstall_text
     )
+    assert (
+        'vm_bin="${script_dir}/bin/vitalserver-vm-reset-installer"'
+        in reset_for_reinstall_command_text
+    )
+    assert 'exec /usr/bin/sudo "$0"' in reset_for_reinstall_command_text
+    assert (
+        "runtime uninstall --force-clean-uninstaller"
+        in reset_for_reinstall_command_text
+    )
+    assert (
+        'vm_home="/Library/Application Support/VitalServerHelper/vm"'
+        in reset_for_reinstall_command_text
+    )
+    assert (
+        'manager_app="/Applications/VitalServer Helper.app"'
+        in reset_for_reinstall_command_text
+    )
     assert "Applications/VitalServer Helper.app" in components.read_text(
         encoding="utf-8"
     )
@@ -190,6 +217,7 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert os.access(proxy_run, os.X_OK)
     assert os.access(uninstall, os.X_OK)
     assert os.access(clean_uninstall_postinstall, os.X_OK)
+    assert os.access(reset_for_reinstall_command, os.X_OK)
 
 
 def test_proxy_run_does_not_report_started_when_proxy_readiness_fails(

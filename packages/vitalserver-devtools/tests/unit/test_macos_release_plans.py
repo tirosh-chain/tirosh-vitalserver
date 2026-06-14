@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import replace
 from pathlib import Path
@@ -113,7 +114,7 @@ def test_package_outputs_include_clean_uninstaller_pkg() -> None:
     assert outputs.dmg_output == settings.dist_dir / "VitalServerHelper-1.2.3-dev.dmg"
 
 
-def test_build_dmg_stages_installer_and_clean_uninstaller_pkg(
+def test_build_dmg_stages_installer_and_troubleshooting_command(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -128,10 +129,6 @@ def test_build_dmg_stages_installer_and_clean_uninstaller_pkg(
             settings.outputs,
             dmg_staging_dir=staging,
             dmg_installer_pkg_name="Install VitalServer Helper.pkg",
-            dmg_clean_uninstaller_pkg_name=(
-                "Troubleshooting Tools/"
-                "Reset VitalServer Helper for Reinstall.pkg"
-            ),
         ),
     )
     release = ReleaseManifest(
@@ -151,17 +148,28 @@ def test_build_dmg_stages_installer_and_clean_uninstaller_pkg(
     pkg_output.write_text("installer", encoding="utf-8")
     commands: list[list[str]] = []
 
-    def fake_build_reset_installer_pkg(**kwargs: object) -> None:
-        assert kwargs["pkg_output"] == reset_installer_pkg_output
-        reset_installer_pkg_output.write_text("reset-installer", encoding="utf-8")
+    def fake_stage_reset_installer_command(**kwargs: object) -> None:
+        assert kwargs["runtime_cli"] == tmp_path / "bin/vitalserver-vm"
+        tools_dir = kwargs["tools_dir"]
+        assert isinstance(tools_dir, Path)
+        tools_dir.mkdir(parents=True)
+        (tools_dir / "Reset VitalServer Helper for Reinstall.command").write_text(
+            "reset-command",
+            encoding="utf-8",
+        )
+        (tools_dir / "bin").mkdir()
+        (tools_dir / "bin/vitalserver-vm-reset-installer").write_text(
+            "reset-cli",
+            encoding="utf-8",
+        )
 
     def fake_run(command: list[str], **_: object) -> None:
         commands.append(command)
 
     monkeypatch.setattr(
         installer_package,
-        "build_reset_installer_pkg",
-        fake_build_reset_installer_pkg,
+        "stage_reset_installer_command",
+        fake_stage_reset_installer_command,
     )
     monkeypatch.setattr(installer_package, "attached_disk_images", lambda: [])
     monkeypatch.setattr(installer_package, "run", fake_run)
@@ -217,11 +225,47 @@ def test_build_dmg_stages_installer_and_clean_uninstaller_pkg(
     ) == "installer"
     assert (
         staging
-        / "Troubleshooting Tools/Reset VitalServer Helper for Reinstall.pkg"
-    ).read_text(encoding="utf-8") == "reset-installer"
+        / "Troubleshooting Tools/Reset VitalServer Helper for Reinstall.command"
+    ).read_text(encoding="utf-8") == "reset-command"
+    assert (
+        staging / "Troubleshooting Tools/bin/vitalserver-vm-reset-installer"
+    ).read_text(encoding="utf-8") == "reset-cli"
     assert commands[-1][:2] == ["hdiutil", "create"]
     assert str(staging) in commands[-1]
     assert str(dmg_output) in commands[-1]
+
+
+def test_stage_reset_installer_command_renders_command_and_bundles_cli(
+    tmp_path: Path,
+) -> None:
+    root = repo_root()
+    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
+    settings = replace(settings, pkg_root=tmp_path / "build/root")
+    runtime_dir = root / "apps/vitalserver-macos-runtime"
+    runtime_cli = tmp_path / "bin/vitalserver-vm"
+    runtime_cli.parent.mkdir(parents=True)
+    runtime_cli.write_text("#!/bin/sh\n", encoding="utf-8")
+    runtime_cli.chmod(0o755)
+    tools_dir = tmp_path / "Troubleshooting Tools"
+
+    installer_package.stage_reset_installer_command(
+        settings=settings,
+        runtime_dir=runtime_dir,
+        runtime_cli=runtime_cli,
+        tools_dir=tools_dir,
+    )
+
+    command = tools_dir / "Reset VitalServer Helper for Reinstall.command"
+    cli = tools_dir / "bin/vitalserver-vm-reset-installer"
+    command_text = command.read_text(encoding="utf-8")
+
+    assert command.is_file()
+    assert cli.is_file()
+    assert os.access(command, os.X_OK)
+    assert os.access(cli, os.X_OK)
+    assert 'vm_bin="${script_dir}/bin/vitalserver-vm-reset-installer"' in command_text
+    assert 'exec /usr/bin/sudo "$0"' in command_text
+    assert "runtime uninstall --force-clean-uninstaller" in command_text
 
 
 def test_build_pkg_stages_rootfs_input_metadata_for_installed_bootstrap(
