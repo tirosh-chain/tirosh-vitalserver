@@ -124,6 +124,16 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 recoveryInProgress: recoveryInProgress,
                 updateInProgress: updateInProgress
             ),
+            composeServiceItem(
+                vocabulary.vitalDBObserverLabel,
+                service: .vitalDBObserver,
+                observation: observation,
+                now: now,
+                installInProgress: installInProgress,
+                initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
+                updateInProgress: updateInProgress
+            ),
             vitalServerItem(
                 status: status,
                 vocabulary.vitalServerName,
@@ -139,16 +149,6 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 httpStatus: status.hostProxyHTTP,
                 uptimeText: uptimeText(for: .networkAccess, observation: observation, now: now),
                 action: .openVitalServer,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
-            ),
-            composeServiceItem(
-                vocabulary.vitalDBObserverLabel,
-                service: .vitalDBObserver,
-                observation: observation,
-                now: now,
                 installInProgress: installInProgress,
                 initializationInProgress: initializationInProgress,
                 recoveryInProgress: recoveryInProgress,

@@ -99,6 +99,10 @@ operation 중인지 함께 확인합니다. 단, `Read failed`와 `Permission de
 runtime service restart와 health wait를 소유하므로 apply-bundle recovery layer가 별도 service restart를
 추가로 수행하지 않습니다.
 
+Service liveness 표시 순서는 operation service와 guest observation service를 먼저 보여주고, 브라우저로 열 수
+있는 URL endpoint는 아래 묶음으로 모읍니다. URL endpoint 묶음은 `VitalServer`, `Network access`,
+`Redis UI`, `Swagger UI` 순서로 표시합니다.
+
 Guest container service 상태는 guest runtime-state의 `containerServices` 계약에서 옵니다. 컨테이너가
 restart 중일 때 `docker compose ps`가 빈 결과를 내보내면 empty success로 취급하지 않고 `read-failed`
 container observation으로 올립니다. Advanced 화면에서 service가 `Not reported`와 다른 상태를 반복해서

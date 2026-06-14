@@ -796,6 +796,17 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
         let items = policy.advancedServiceHealth(status: status, observation: observation)
 
+        XCTAssertEqual(items.map(\.label), [
+            AppConstants.Labels.proxyService,
+            AppConstants.Labels.guestLogSyncService,
+            AppConstants.Labels.sleepPreventionService,
+            AppConstants.Labels.watchdogService,
+            AppConstants.Labels.vitalDBObserver,
+            GeneratedRelease.vitalServerName,
+            GeneratedRelease.hostProxyName,
+            GeneratedRelease.redisUIName,
+            GeneratedRelease.swaggerUIName,
+        ])
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.action, .openVitalServer)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:01")
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.value.text, AppConstants.StatusText.unavailable)
