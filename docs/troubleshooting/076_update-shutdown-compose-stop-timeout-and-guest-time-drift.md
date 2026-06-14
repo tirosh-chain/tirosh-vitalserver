@@ -25,7 +25,7 @@ Guest shutdown preparation after Redis backup completed:
 ```text
 redis backup completed
 guest services stop started
-docker compose stop timed out while stopping app after 100s
+docker compose stop timed out while stopping app after 90s
 ```
 
 Older Guest shutdown used one whole-stack `docker compose stop` call. When one or two
@@ -42,8 +42,8 @@ or rollback that reuses the VM disk can keep the image/rootfs clock.
 - Stop Guest compose services in an explicit update shutdown order:
   `testkit`, `edge`, `swagger-ui`, `redis-ui`, `audit-proxy`, `vitaldb-observer`,
   `app`, then `redis`.
-- Use service-specific timeouts so `app` and `redis` can take longer than UI/proxy
-  services without hiding which service is blocking shutdown.
+- Use service-specific timeouts: default 30s, `app` 90s, `redis` 60s. These give
+  shutdown-heavy services more time without hiding which service is blocking shutdown.
 - On timeout, write typed failure details into `prepare-update-shutdown-result.json`:
   `failedService`, `remainingServices`, `serviceStates`, stop timeouts, and
   `failureSnapshotPath`.

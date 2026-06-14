@@ -124,7 +124,7 @@ VM runtime restart가 필요한 설정은 VM 실행 조건을 바꾸는 값입�
 
 Settings 화면은 restart requirement를 각 설정 row에 흩어진 badge로 표시하지 않고, `VM runtime restart`
 영역에 모아서 표시합니다. 저장된 설정이 아직 실행 중인 VM에 반영되지 않은 경우 이 영역에서
-`Restart VM Runtime`을 실행해 pending VM 설정을 적용합니다.
+`Requires VM restart` badge/action을 눌러 pending VM 설정 적용을 확인합니다.
 
 Settings 탭은 저장된 설정을 보여주고, Status/Info 탭은 현재 VM runtime에 적용된 설정을 보여줍니다.
 예를 들어 Vital files directory를 바꾸고 VM runtime restart를 하지 않았다면 Settings 탭에는 새 경로가
@@ -160,6 +160,15 @@ Product Update는 Helper app의 Update 탭에서 적용합니다. 현장 Mac에�
 - `Verify Bundle`이 실패하면 `Apply Bundle`을 진행하지 않습니다.
 - update 중에는 VitalServer service가 재시작될 수 있습니다.
 - 실패하면 같은 bundle을 반복 적용하기보다 Update progress, Logs, Observability event를 먼저 확인합니다.
+
+Update 중 rollback이 실행될 수 있습니다. Rollback health wait가 최종적으로 `hostProxyHTTP=200` 같은
+정상 health를 확인하면 runtime은 이전 backup으로 돌아온 것입니다. 이 상태는 “update 성공”이 아니라
+“update 실패 후 rollback 성공”입니다. Update progress와 Observability event에서 실패 단계,
+rollback 단계, rollback 결과를 함께 확인합니다.
+
+`prepare-update-shutdown` 단계에서 실패하면 Logs의 update shutdown result와 guest log를 확인합니다.
+Guest가 실패 service, 남은 service 목록, snapshot path를 남긴 경우 그 details가 1차 원인입니다.
+Host proxy 연결 실패나 container exited reason은 restart/rollback 중 나타나는 후속 증상일 수 있습니다.
 
 ### 4-3. 지원 담당자 CLI
 

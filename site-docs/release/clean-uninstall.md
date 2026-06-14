@@ -84,11 +84,11 @@ Reset Installer가 성공하려면 다음 상태가 모두 정리되어야 합�
 
 | 원인 | 증상 | 자세한 문서 |
 |---|---|---|
-| launchd disabled override 잔존 | 새 설치 중 `Service is disabled` | [TS-046](../../docs/troubleshooting/046_pkg-postinstall-launchd-disabled.md) |
-| PWA background command handoff 실패 | UI는 시작됐다고 보이지만 product root/receipt가 남음 | [TS-050](../../docs/troubleshooting/050_pwa-clean-uninstall-background-command.md) |
-| VM/launchd state 잔존 | `launchd-service-loaded` blocker | [TS-058](../../docs/troubleshooting/058_clean-uninstall-hung-vm-progress-marker.md) |
+| launchd disabled override 잔존 | 새 설치 중 `Service is disabled` | [TS-046](https://github.com/tirosh-chain/tirosh-vitalserver/blob/main/docs/troubleshooting/046_pkg-postinstall-launchd-disabled.md) |
+| PWA background command handoff 실패 | UI는 시작됐다고 보이지만 product root/receipt가 남음 | [TS-050](https://github.com/tirosh-chain/tirosh-vitalserver/blob/main/docs/troubleshooting/050_pwa-clean-uninstall-background-command.md) |
+| VM/launchd state 잔존 | `launchd-service-loaded` blocker | [TS-058](https://github.com/tirosh-chain/tirosh-vitalserver/blob/main/docs/troubleshooting/058_clean-uninstall-hung-vm-progress-marker.md) |
 | status writer가 product root를 재생성 | `install-artifact-present:path=/Library/Application Support/VitalServerHelper` | [Reset Installer](reset-installer.md) |
-| orphan host proxy nginx | port 80 occupied by nginx | [TS-051](../../docs/troubleshooting/051_install-blocked-by-orphan-host-proxy-nginx.md) |
+| orphan host proxy nginx | port 80 occupied by nginx | [TS-051](https://github.com/tirosh-chain/tirosh-vitalserver/blob/main/docs/troubleshooting/051_install-blocked-by-orphan-host-proxy-nginx.md) |
 
 이 원인들은 파일 존재 여부만으로 판단하면 안 됩니다. launchd, process, package receipt, status
 writer가 각각 명시적으로 관측되어야 합니다.

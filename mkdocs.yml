@@ -21,6 +21,7 @@ nav:
   - Release:
       - Overview: release/index.md
       - Usage: release/usage.md
+      - Clean Uninstall: release/clean-uninstall.md
       - Reset Installer: release/reset-installer.md
       - Support Scope: release/scope.md
       - Runtime Status: release/runtime-status.md

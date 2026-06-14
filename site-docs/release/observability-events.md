@@ -59,6 +59,10 @@ runtime command 흐름을 시간 순서로 볼 수 있습니다.
 | `watchdog-skipped` | watchdog이 실행 조건 미충족으로 건너뜀 |
 | `observability-store-failed` | event 또는 observability store 기록/읽기 실패 |
 
+Update 실패 후 rollback이 실행되면 update failure event와 rollback event가 모두 남아야 합니다. Rollback
+health wait가 성공했다고 해서 앞선 update failure event를 지우거나 성공으로 해석하지 않습니다. 같은
+시간대에 `prepare-update-shutdown`, `apply-bundle`, `rollback`, `health-observed` event를 함께 봅니다.
+
 ### 3-2. 관측 event
 
 아래 event는 runtime 주변 상태가 관측되었음을 나타냅니다.

@@ -56,7 +56,7 @@ Rootfs smoke와 Runtime boot proof가 다른 책임을 갖는데, 현재 golden 
 - feature capability flags are missing or false for installed functionality
 - Guest command request/result dispatch is not available for update, backup, restore, repair
 - Observability read model or event store is unavailable
-- Runtime data backup directory is missing but reported as an empty backup list
+- VitalServer backup directory is missing but reported as an empty backup list
 - TestKit service is expected in dev builds but not available after boot
 
 AGENTS.md 기준으로 Host는 Guest 내부 상태를 로그나 추측으로 만들면 안 됩니다. Guest가 명시 contract를
@@ -127,7 +127,7 @@ long-running workflow는 별도 scenario smoke로 분리합니다.
 | Settings read/apply | saved config와 applied VM config snapshot을 구분해서 읽을 수 있음 | restart-required setting apply, no-restart setting apply |
 | Update verify/apply | `prepareUpdateShutdown`과 `activateUpdate` capability가 true이고 command poller active | update shutdown, activation, rollback negative |
 | Redis backup/restore | `redisBackup`, `redisRestore` capability가 true이고 request/result/log path가 writable | create Redis backup, restore Redis backup |
-| Runtime data backup/restore | runtime data backup root가 missing/empty/error를 구분해서 읽힘 | create runtime data backup, restore runtime data backup |
+| VitalServer backup/restore | VitalServer backup root가 missing/empty/error를 구분해서 읽힘 | create VitalServer backup, restore VitalServer backup |
 | Repair runtime/datastore | repair capability와 command dispatch path가 available | datastore repair fault/recovery |
 | Observability / Events | event store, observability DB, recorder observation read model이 readable | event append/read, corrupt store negative |
 | Recorders / Beds | VitalDB observer endpoint responds and observation document is schema valid | testkit recorder observed/missing/stale scenarios |
@@ -323,7 +323,7 @@ Implemented command-level negative coverage:
 Still separate from this phase:
 
 - CI required checks must run an explicit package/runtime validation target before release handoff.
-- Runtime data backup/restore create and restore scenarios remain separate workflow smoke.
+- VitalServer backup/restore create and restore scenarios remain separate workflow smoke.
 - Redis backup/restore create and restore scenarios remain separate workflow smoke.
 - Settings apply restart/no-restart scenario remains separate workflow smoke.
 - Update activation/shutdown/rollback scenario remains separate workflow smoke.

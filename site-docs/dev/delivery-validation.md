@@ -93,6 +93,15 @@ Docker/container runtime처럼 base runtime을 바꾸는 upgrade가
 `rootfs-failure.json`, manifest stage, launcher log의 kernel panic/Oops/SIGILL을 모두
 확인해야 하며, `rootfs-base` 압축은 apt plan proof와 smoke proof가 모두 통과한 경우에만 허용됩니다.
 
+`runtime-smoke`는 compile 뒤의 별도 runtime boot proof입니다. 이 단계는 clean golden runtime으로 VM을
+부팅하고 `runtime-boot-smoke-manifest.json`의 `bootstrap-result`, `runtime-state`, `systemd-units`,
+`http`, `compose-services`, `disk-health`, `capabilities`, `command-dispatch`, `feature-readiness` stage가
+모두 passed인지 확인합니다. Devtools direct start 경로도 `data/deploy/host-time.json`을 써야 하며,
+Guest가 이 Host-owned time contract를 적용하지 못하면 smoke failure입니다.
+
+`verify`는 compile과 runtime-smoke를 묶은 설치 전 표준 gate입니다. `compile`이 통과했다는 사실만으로
+fresh install, installed runtime, update/rollback 동작이 검증된 것으로 보지 않습니다.
+
 ## 3. 무엇을 검증할까
 
 검증은 “켜진다”에서 끝나지 않습니다. 설치, update, rollback, health check, recorder 관측,

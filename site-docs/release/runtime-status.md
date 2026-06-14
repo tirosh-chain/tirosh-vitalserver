@@ -100,6 +100,21 @@ container observation으로 올립니다. Advanced 화면에서 service가 `Not 
 `composeServicesReadError`를 확인합니다. 이 값이 `read-failed`, `missing`, `stale`이면 UI 표시 문제가
 아니라 guest service 관측 계약이 명시적으로 실패하거나 아직 보고되지 않은 상태입니다.
 
+### 3-3. Service liveness uptime
+
+Service liveness의 시간 값은 Guest가 보고한 explicit service start time을 기준으로 합니다. Host/UI가
+process age, Mac boot time, log timestamp로 service uptime을 새로 만들지 않습니다.
+
+화면 표시만은 UX를 위해 현재 시각에 맞춰 계속 증가시킵니다. 즉 마지막으로 관측된 start time은 유지하고,
+화면은 그 start time부터 지금까지 지난 시간을 표시합니다. 새 관측 snapshot이 오면 start time이 바뀐
+경우에만 기준을 갱신합니다.
+
+| 표시 | 의미 |
+|---|---|
+| `00:05:14`처럼 증가 | 마지막 관측된 service start time 기준으로 현재까지 흐른 시간 |
+| 갑자기 작아짐 | 해당 service가 재시작됐거나 Guest가 새 start time을 보고함 |
+| 수백 일처럼 비정상적으로 큼 | Guest clock 또는 host-time sync contract를 먼저 확인 |
+
 ## 4. Recorder와 Bed
 
 Recorders/Beds 화면은 recorder observer와 audit proxy에서 만든 관측 결과를 표시합니다.
@@ -171,7 +186,8 @@ retention 변경은 VM runtime restart requirement를 만들지 않습니다.
 `Restart VM runtime when required`가 꺼져 있고 VM runtime restart가 필요한 설정을 저장하면 상태는
 `configure` operation의 degraded message로 "VM runtime restart required"를 표시할 수 있습니다.
 이 경우 설정 저장 실패가 아니라, 현재 실행 중인 VM에는 아직 반영되지 않았다는 뜻입니다.
-Settings의 `VM runtime restart` 영역에서 pending restart를 확인하고 `Restart VM Runtime`으로 적용합니다.
+Settings의 `VM runtime restart` 영역에서 pending restart를 확인하고 `Requires VM restart` badge/action으로
+restart 확인을 열어 적용합니다.
 Status의 data directory는 saved settings가 아니라 현재 VM runtime에 적용된 Vital files directory를
 기준으로 표시해야 합니다. Vital files directory를 저장한 직후 VM restart 전인데 Status 경로가 새
 경로로 바뀌면 saved settings와 applied runtime settings가 섞인 것입니다.

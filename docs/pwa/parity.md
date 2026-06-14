@@ -62,6 +62,10 @@ Recorder activity rolling window는 화면의 현재 시각을 오른쪽 경계�
 별도 metadata로 표시하고, rolling chart의 오른쪽 축을 마지막 data timestamp에 고정하지 않습니다. 데이터가 멈추면
 현재 시각까지의 bucket은 0으로 표시되어야 합니다. All/history 탐색은 예외적으로 data 범위를 기준으로 페이지를 나눕니다.
 
+Recorder activity summary는 운영자가 바로 판단할 수 있는 `Packets`, `Total packets`, `Data rate`만
+기본 표시합니다. `roomCount`는 observation/API contract에는 남지만, 고유 room 수나 현재 연결 room 수가
+아니므로 Swift/PWA 기본 UI에서 `Room entries`로 노출하지 않습니다.
+
 ## Host Affordance Gaps
 
 PWA에서 Swift UI와 다르게 처리해야 하는 대표 기능입니다.

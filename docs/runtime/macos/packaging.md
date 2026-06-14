@@ -85,6 +85,37 @@ runtime smoke가 소유합니다.
 확인에는 `verify` target을 사용합니다. Runtime smoke failure는 fallback으로 보정하지 않고 failing stage,
 runId, manifest, bootstrap log, launcher log를 통해 실패 상태를 드러내야 합니다.
 
+Runtime smoke는 Host가 제공한 explicit deploy contract도 검증합니다. Devtools가 VM을 직접 시작하는
+runtime-smoke 경로에서도 `data/deploy/host-time.json`을 써야 하며, Guest는 boot 초기에
+`tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-state,
+observability, compose service를 시작합니다. `host-time.json`이 missing/invalid이면 NTP나 현재 Guest
+clock으로 보정하지 않고 smoke failure로 처리합니다.
+
+`runtime-boot-smoke-manifest.json`은 아래 stage를 모두 통과해야 합니다.
+
+| stage | 검증 의미 |
+|---|---|
+| `bootstrap-result` | guest bootstrap이 completed result를 기록 |
+| `runtime-state` | guest runtime-state contract가 생성되고 decode 가능 |
+| `systemd-units` | 필수 guest systemd units가 설치/활성화됨 |
+| `http` | guest HTTP와 host proxy path가 응답 |
+| `compose-services` | expected compose services가 running/healthy contract를 보고 |
+| `disk-health` | guest disk/mount/runtime data shape가 명시 상태로 확인 |
+| `capabilities` | update shutdown, command dispatch 등 Guest capability가 보고 |
+| `command-dispatch` | request/result command dispatch 경로가 동작 |
+| `feature-readiness` | backup, observability, runtime control feature readiness가 명시 상태로 확인 |
+
+성공 로그는 `Golden disk runtime boot smoke passed`처럼 명시적인 최종 pass line을 남겨야 합니다.
+중간에 `No VM launcher process is running` 같은 cleanup line이 있어도 최종 pass line이 없으면 성공으로
+해석하지 않습니다.
+
+Release package와 DMG build는 expensive compile 전에 preflight를 통과해야 합니다. Preflight는 tool,
+package input, golden runtime `Image`/`initrd.img`, `rootfs-base`, output path, DMG attachment,
+Dockerfile, Docker image manifest/platform을 확인합니다. Docker registry rate limit처럼 external
+unavailable이 확인되면 Swift build, Docker pull/build, `pkgbuild`, `hdiutil create` 이후의 late failure가
+아니라 preflight failure입니다. 이미 local Docker image가 있는 경우에도 manifest/platform proof 없이
+성공으로 추정하지 않습니다.
+
 `VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
 `make devtools/build`는 이 값을 Swift `Bootstrap/Composition/GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make devtools/app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`, `make dist/image-update/dev`/`make dist/image-update/release`는 release manifest 값을 artifact name, package version, update bundle version, compatibility metadata에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. 특별한 검증이 아니라면 버전, 표시명, image, update compatibility, optional container service 포함 정책 변경은 이 파일 하나에서 관리합니다.

@@ -68,7 +68,44 @@ UI는 상태를 보여주는 곳입니다. UI가 “값이 없으니 정상일 �
 | `empty` | 정상적으로 읽었지만 현재 항목이 없음을 안내 |
 | `invalid` | Helper와 runtime contract version 또는 문서 손상을 확인하도록 안내 |
 
-## 3. Recorder와 Bed 상태
+## 3. Host와 Guest operation 계약
+
+Host는 runtime/process/filesystem state를 소유하고, Guest는 Host가 제공한 explicit contract만
+소비합니다. Guest 내부 상태를 Host가 로그나 파일 부재로 추정하지 않습니다.
+
+### 3-1. Host time
+
+Guest clock은 Host-owned `host-time.json` contract에서 동기화합니다. Guest는 boot 초기에
+`tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-state,
+observability, compose service를 시작합니다.
+
+| 상태 | 의미 |
+|---|---|
+| host time contract missing | Host가 Guest boot input을 제공하지 못함 |
+| host time contract invalid | Guest가 contract를 해석할 수 없음 |
+| host time sync failed | Guest가 명시 시각 적용에 실패함 |
+
+UI나 observer는 timestamp를 현재 시간으로 보정하지 않습니다. 시간이 틀리면 Host/Guest time contract
+문제로 보고 failure reason과 logs를 확인합니다.
+
+### 3-2. Guest shutdown result
+
+Update나 VM restart가 Guest shutdown preparation을 요구하면 Host는 request를 쓰고 Guest의 typed result를
+기다립니다. request가 남아 있거나 log가 없다는 사실만으로 pending/success를 추정하지 않습니다.
+
+| 상태 | 의미 |
+|---|---|
+| request missing | Host가 아직 operation을 요청하지 않았거나 cleanup이 끝남 |
+| result missing | Guest worker가 실행되지 않았거나 result를 쓰기 전에 실패함 |
+| result failed | Guest가 실패 reason과 details를 명시적으로 보고함 |
+| result stale | requestId 또는 updatedAt이 현재 operation과 맞지 않음 |
+| result ready | Guest가 shutdown preparation과 poweroff request를 완료함 |
+
+`prepare-update-shutdown-result.json`의 failure details에는 실패 service, 남은 service 목록,
+service state snapshot, snapshot path가 포함될 수 있습니다. Host와 UI는 이 details를 표시하거나
+전달하고, 로그를 해석해서 다른 상태로 바꾸지 않습니다.
+
+## 4. Recorder와 Bed 상태
 
 Recorder와 Bed 상태는 관측 결과를 기반으로 표시합니다. Host나 UI가 임의로 만들지 않습니다.
 
@@ -83,7 +120,7 @@ Recorder와 Bed 상태는 관측 결과를 기반으로 표시합니다. Host나
 Recorder/bed activity는 runtime status와 같은 줄에서 만들어지는 상태가 아닙니다. Observer와
 조회용 상태가 제공한 관측 결과를 Runtime Control API가 읽고 화면에 전달합니다.
 
-### 3-1. 예시
+### 4-1. 예시
 
 | 상황 | 표시해야 하는 상태 |
 |---|---|
@@ -96,7 +133,7 @@ Recorder/bed activity는 runtime status와 같은 줄에서 만들어지는 상�
 Recorder가 보이지 않는다고 해서 곧바로 missing으로 만들지 않습니다. 관측 자료를 정상적으로
 읽었는지 먼저 구분해야 합니다. 관측 자료 자체를 읽지 못했다면 missing이 아니라 read-failed입니다.
 
-## 4. `.vital` 파일 상태
+## 5. `.vital` 파일 상태
 
 `.vital` file sanity check는 지원 예정 기능입니다. 아래 상태는 향후 file check를 추가할 때
 현재 runtime model과 같은 실패 의미를 유지하기 위한 기준입니다.
@@ -114,7 +151,7 @@ Recorder가 보이지 않는다고 해서 곧바로 missing으로 만들지 않�
 파일 탐색 실패는 empty가 아닙니다. 권한 실패는 파일 없음이 아닙니다. decode 실패는
 invalid filename과 다릅니다.
 
-## 5. 누가 상태를 말하나
+## 6. 누가 상태를 말하나
 
 상태는 소유자가 말해야 합니다. 다른 layer는 그 상태를 읽고 전달하거나 표시합니다.
 
@@ -128,7 +165,7 @@ invalid filename과 다릅니다.
 
 화면 표시 layer는 상태를 생성하지 않습니다. 화면은 명시 상태를 포맷하고 표시합니다.
 
-### 5-1. 상태 소유권 예시
+### 6-1. 상태 소유권 예시
 
 | 질문 | 답해야 하는 쪽 |
 |---|---|
@@ -141,12 +178,12 @@ invalid filename과 다릅니다.
 화면은 마지막 질문만 답합니다. 앞의 상태 질문을 화면이 직접 판단하기 시작하면 같은 runtime을
 PWA와 Helper app에서 다르게 해석할 위험이 생깁니다.
 
-## 6. API가 맡는 일
+## 7. API가 맡는 일
 
 API는 상태를 추측하는 곳이 아니라, 상태를 전달하는 통로입니다. 각 API는 자신이 맡은 범위의
 request, response, failure state를 분명히 해야 합니다.
 
-### 6-1. Swagger UI로 확인하기
+### 7-1. Swagger UI로 확인하기
 
 API 문서는 OpenAPI 파일로 관리하고, 개발 중에는 Swagger UI로 확인할 수 있습니다.
 
@@ -160,7 +197,7 @@ Audit Proxy API spec을 선택해서 볼 수 있습니다.
 설치된 runtime에서는 Helper app의 Swagger UI 항목 또는 `http://127.0.0.1:<proxy-port>/swagger/`
 경로로 guest에서 제공하는 Swagger UI를 확인합니다.
 
-### 6-2. Runtime Control API
+### 7-2. Runtime Control API
 
 Runtime Control API는 UI와 Host runtime 사이의 기본 약속입니다.
 
@@ -171,7 +208,7 @@ PWA와 Helper app은 observer container나 Guest 내부를 직접 읽지 않습�
 |---|---|
 | `docs/runtime/macos/runtime-control.openapi.json` | PWA/Helper app과 Host runtime 사이의 API |
 
-### 6-3. Recorder Observer API
+### 7-3. Recorder Observer API
 
 Recorder Observer API는 Redis와 proxy/access log를 읽어 recorder observation snapshot을 만듭니다.
 이 API는 내부 collector API입니다. 최종 product-facing 상태는 runtime 조회용 상태와
@@ -181,7 +218,7 @@ Runtime Control API를 통해 전달합니다.
 |---|---|
 | `docs/api/vitaldb-observer.openapi.yaml` | observer container 내부 API |
 
-### 6-4. Audit Proxy API
+### 7-4. Audit Proxy API
 
 Audit Proxy API는 VRecorder command 흐름과 audit event를 관측하기 위한 sidecar API입니다.
 
@@ -189,7 +226,7 @@ Audit Proxy API는 VRecorder command 흐름과 audit event를 관측하기 위�
 |---|---|
 | `docs/api/audit-proxy.openapi.yaml` | command audit sidecar endpoint |
 
-### 6-5. Vital Server API
+### 7-5. Vital Server API
 
 Vital Server API 문서는 Vital Server integration surface를 기록하기 위한 reference입니다.
 
@@ -197,7 +234,7 @@ Vital Server API 문서는 Vital Server integration surface를 기록하기 위�
 |---|---|
 | `docs/api/vitalserver.openapi.yaml` | Vital Server integration surface reference |
 
-## 7. 작성 규칙
+## 8. 작성 규칙
 
 - API 문서에는 request, response, failure state를 구분해서 적습니다.
 - read failure를 empty success로 표현하지 않습니다.
