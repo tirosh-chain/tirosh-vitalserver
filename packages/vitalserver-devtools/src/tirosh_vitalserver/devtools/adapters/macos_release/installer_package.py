@@ -38,8 +38,9 @@ from tirosh_vitalserver.devtools.core.macos_release.settings import (
 
 ROOTFS_BASE_NAME = "rootfs-base.raw.gz"
 RESET_INSTALLER_CLI_NAME = "vitalserver-vm-reset-installer"
+RESET_TROUBLESHOOTING_CLI_NAME = "vitalserver-troubleshooting-reset-for-reinstall"
 RESET_INSTALLER_COMMAND_NAME = "Reset VitalServer Helper for Reinstall.command"
-UPSTREAM_REDIS_SAVE_CLI_NAME = "vitalserver-upstream-redis-save"
+UPSTREAM_REDIS_SAVE_CLI_NAME = "vitalserver-troubleshooting-upstream-redis-save"
 UPSTREAM_REDIS_BACKUP_COMMAND_NAME = "Create Upstream Redis Backup.command"
 
 
@@ -210,6 +211,10 @@ def stage_reset_installer_command(
 
     packaging_dir = runtime_dir / "Support/Packaging"
     copy_executable(runtime_cli, bin_dir / RESET_INSTALLER_CLI_NAME)
+    copy_executable(
+        runtime_cli.parent / RESET_TROUBLESHOOTING_CLI_NAME,
+        bin_dir / RESET_TROUBLESHOOTING_CLI_NAME,
+    )
     render_packaging_executable(
         settings,
         packaging_dir / "reset-for-reinstall-command.template",

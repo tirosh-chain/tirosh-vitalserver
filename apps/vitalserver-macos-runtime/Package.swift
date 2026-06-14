@@ -17,8 +17,12 @@ let package = Package(
             targets: ["MacControlPanelHost"]
         ),
         .executable(
-            name: "vitalserver-upstream-redis-save",
-            targets: ["UpstreamRedisSave"]
+            name: "vitalserver-troubleshooting-reset-for-reinstall",
+            targets: ["TroubleshootingResetForReinstall"]
+        ),
+        .executable(
+            name: "vitalserver-troubleshooting-upstream-redis-save",
+            targets: ["TroubleshootingUpstreamRedisSave"]
         )
     ],
     targets: [
@@ -96,8 +100,12 @@ let package = Package(
             path: "Sources/Hosts/MacControlPanel"
         ),
         .executableTarget(
-            name: "UpstreamRedisSave",
-            path: "Sources/Hosts/UpstreamRedisSave"
+            name: "TroubleshootingResetForReinstall",
+            path: "Sources/Hosts/Troubleshooting/ResetForReinstall"
+        ),
+        .executableTarget(
+            name: "TroubleshootingUpstreamRedisSave",
+            path: "Sources/Hosts/Troubleshooting/UpstreamRedisSave"
         ),
         .testTarget(
             name: "ErrorsTests",

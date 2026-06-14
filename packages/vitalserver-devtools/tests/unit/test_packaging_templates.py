@@ -165,7 +165,7 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     )
     assert 'VITALSERVER_VM_HOME="${vm_home}" "${command[@]}"' in uninstall_text
     assert (
-        'vm_bin="${script_dir}/bin/vitalserver-vm-reset-installer"'
+        'reset_bin="${script_dir}/bin/vitalserver-troubleshooting-reset-for-reinstall"'
         in reset_for_reinstall_command_text
     )
     assert 'exec /usr/bin/sudo "$0" "$@"' in reset_for_reinstall_command_text
@@ -188,7 +188,7 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         )
     )
     assert (
-        "runtime uninstall --force-clean-uninstaller"
+        'VITALSERVER_VM_HOME="${vm_home}" "${reset_bin}"'
         in reset_for_reinstall_command_text
     )
     assert (
@@ -206,7 +206,10 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "This tool can refresh dump.rdb by running Redis SAVE" in (
         upstream_redis_backup_command_text
     )
-    assert "vitalserver-upstream-redis-save" in upstream_redis_backup_command_text
+    assert (
+        "vitalserver-troubleshooting-upstream-redis-save"
+        in upstream_redis_backup_command_text
+    )
     assert '"${redis_save_bin}" "${target}"' in upstream_redis_backup_command_text
     assert "redis-cli" not in upstream_redis_backup_command_text
     assert "redis://127.0.0.1:6379" in upstream_redis_backup_command_text

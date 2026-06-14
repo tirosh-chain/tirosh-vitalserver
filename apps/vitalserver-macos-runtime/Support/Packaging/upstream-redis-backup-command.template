@@ -5,7 +5,7 @@ log_dir="${TMPDIR:-/private/tmp}"
 log_file="${log_dir%/}/tirosh-vitalserver-upstream-redis-backup.log"
 archive_name="redis-upstream-import.tar.gz"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-redis_save_bin="${script_dir}/bin/vitalserver-upstream-redis-save"
+redis_save_bin="${script_dir}/bin/vitalserver-troubleshooting-upstream-redis-save"
 
 mkdir -p "${log_dir}"
 exec > >(tee -a "${log_file}") 2>&1

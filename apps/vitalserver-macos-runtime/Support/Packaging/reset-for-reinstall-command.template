@@ -5,7 +5,7 @@ uninstall_log="${UNINSTALL_LOG}"
 vm_home="${VM_HOME}"
 manager_app="${MANAGER_APP}"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-vm_bin="${script_dir}/bin/vitalserver-vm-reset-installer"
+reset_bin="${script_dir}/bin/vitalserver-troubleshooting-reset-for-reinstall"
 wrapper_log_dir="${TMPDIR:-/private/tmp}"
 wrapper_log="${wrapper_log_dir%/}/tirosh-vitalserver-reset-for-reinstall.log"
 
@@ -84,13 +84,13 @@ wait_for_helper_app_exit() {
   exit 3
 }
 
-if [ ! -x "${vm_bin}" ]; then
-  log "bundled reset runtime CLI is missing or not executable: ${vm_bin}"
+if [ ! -x "${reset_bin}" ]; then
+  log "bundled reset troubleshooting CLI is missing or not executable: ${reset_bin}"
   exit 4
 fi
 
 wait_for_helper_app_exit
 
 log "reset for reinstall started"
-VITALSERVER_VM_HOME="${vm_home}" "${vm_bin}" runtime uninstall --force-clean-uninstaller
+VITALSERVER_VM_HOME="${vm_home}" "${reset_bin}"
 log "reset for reinstall completed log=${uninstall_log}"

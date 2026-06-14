@@ -421,7 +421,7 @@ make dist/troubleshooting/release
 ```
 
 이 target은 제품을 설치하거나 update하지 않습니다. DMG와 같은 command 기반
-`Troubleshooting Tools` 폴더를 staging하고, command들은 `/private/tmp/tirosh-vitalserver-uninstall.log`에
+`Troubleshooting Tools` 폴더를 staging하고, command들은 사용자 temp wrapper log와 작업별 root log에
 진행 상태와 실패 원인을 남깁니다. GUI를 열 수 없는 깨진 설치 상태를 다루기 위한 artifact이므로
 Helper app, Runtime Control API, 기존 설치된 uninstaller가 반드시 살아 있다고 가정하면 안 됩니다.
 
@@ -430,8 +430,10 @@ Helper app, Runtime Control API, 기존 설치된 uninstaller가 반드시 살�
 - package를 만들지 않고 `.command` 파일과 필요한 bundled CLI만 제공합니다.
 - 사용자가 보는 command 이름은 `Reset VitalServer Helper for Reinstall.command`로 두고,
   DMG 안에서는 `Troubleshooting Tools` 폴더 아래에 배치합니다.
-- reset command entrypoint는 `runtime uninstall --force-clean-uninstaller`이며 별도 설정이나 fallback
-  mode를 숨겨 두지 않습니다.
+- reset command entrypoint는 bundled `vitalserver-troubleshooting-reset-for-reinstall`이고,
+  이 wrapper가 sibling `vitalserver-vm-reset-installer`의
+  `runtime uninstall --force-clean-uninstaller`를 호출합니다. 별도 설정이나 fallback mode를 숨겨
+  두지 않습니다.
 - 제거 대상은 Vital Server Helper가 소유한 explicit path, LaunchDaemon label, package receipt,
   runtime process, host proxy listener로 제한합니다.
 - clean reset 대상에는 `productRoot` 전체가 포함됩니다. 따라서 product root 아래의 VM pid file,

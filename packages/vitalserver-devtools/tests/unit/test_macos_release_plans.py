@@ -156,7 +156,11 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
             "reset-cli",
             encoding="utf-8",
         )
-        (tools_dir / "bin/vitalserver-upstream-redis-save").write_text(
+        (tools_dir / "bin/vitalserver-troubleshooting-reset-for-reinstall").write_text(
+            "reset-troubleshooting-cli",
+            encoding="utf-8",
+        )
+        (tools_dir / "bin/vitalserver-troubleshooting-upstream-redis-save").write_text(
             "redis-save-cli",
             encoding="utf-8",
         )
@@ -231,9 +235,16 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
     assert (
         staging / "Troubleshooting Tools/bin/vitalserver-vm-reset-installer"
     ).read_text(encoding="utf-8") == "reset-cli"
-    assert (
-        staging / "Troubleshooting Tools/bin/vitalserver-upstream-redis-save"
-    ).read_text(encoding="utf-8") == "redis-save-cli"
+    reset_tool = (
+        staging
+        / "Troubleshooting Tools/bin/vitalserver-troubleshooting-reset-for-reinstall"
+    )
+    redis_save_tool = (
+        staging
+        / "Troubleshooting Tools/bin/vitalserver-troubleshooting-upstream-redis-save"
+    )
+    assert reset_tool.read_text(encoding="utf-8") == "reset-troubleshooting-cli"
+    assert redis_save_tool.read_text(encoding="utf-8") == "redis-save-cli"
     assert (
         staging / "Troubleshooting Tools/Create Upstream Redis Backup.command"
     ).read_text(encoding="utf-8") == "redis-backup-command"
@@ -253,7 +264,14 @@ def test_stage_reset_installer_command_renders_command_and_bundles_cli(
     runtime_cli.parent.mkdir(parents=True)
     runtime_cli.write_text("#!/bin/sh\n", encoding="utf-8")
     runtime_cli.chmod(0o755)
-    upstream_redis_save_cli = tmp_path / "bin/vitalserver-upstream-redis-save"
+    reset_troubleshooting_cli = (
+        tmp_path / "bin/vitalserver-troubleshooting-reset-for-reinstall"
+    )
+    reset_troubleshooting_cli.write_text("#!/bin/sh\n", encoding="utf-8")
+    reset_troubleshooting_cli.chmod(0o755)
+    upstream_redis_save_cli = (
+        tmp_path / "bin/vitalserver-troubleshooting-upstream-redis-save"
+    )
     upstream_redis_save_cli.write_text("#!/bin/sh\n", encoding="utf-8")
     upstream_redis_save_cli.chmod(0o755)
     tools_dir = tmp_path / "Troubleshooting Tools"
@@ -273,13 +291,16 @@ def test_stage_reset_installer_command_renders_command_and_bundles_cli(
     assert cli.is_file()
     assert os.access(command, os.X_OK)
     assert os.access(cli, os.X_OK)
-    assert 'vm_bin="${script_dir}/bin/vitalserver-vm-reset-installer"' in command_text
+    assert (
+        'reset_bin="${script_dir}/bin/vitalserver-troubleshooting-reset-for-reinstall"'
+        in command_text
+    )
     assert 'exec /usr/bin/sudo "$0" "$@"' in command_text
     assert (
         'wrapper_log="${wrapper_log_dir%/}/tirosh-vitalserver-reset-for-reinstall.log"'
         in command_text
     )
-    assert "runtime uninstall --force-clean-uninstaller" in command_text
+    assert 'VITALSERVER_VM_HOME="${vm_home}" "${reset_bin}"' in command_text
 
 
 def test_stage_troubleshooting_tools_stages_reset_and_redis_commands(
@@ -293,7 +314,14 @@ def test_stage_troubleshooting_tools_stages_reset_and_redis_commands(
     runtime_cli.parent.mkdir(parents=True)
     runtime_cli.write_text("#!/bin/sh\n", encoding="utf-8")
     runtime_cli.chmod(0o755)
-    upstream_redis_save_cli = tmp_path / "bin/vitalserver-upstream-redis-save"
+    reset_troubleshooting_cli = (
+        tmp_path / "bin/vitalserver-troubleshooting-reset-for-reinstall"
+    )
+    reset_troubleshooting_cli.write_text("#!/bin/sh\n", encoding="utf-8")
+    reset_troubleshooting_cli.chmod(0o755)
+    upstream_redis_save_cli = (
+        tmp_path / "bin/vitalserver-troubleshooting-upstream-redis-save"
+    )
     upstream_redis_save_cli.write_text("#!/bin/sh\n", encoding="utf-8")
     upstream_redis_save_cli.chmod(0o755)
     tools_dir = tmp_path / "Troubleshooting Tools"
@@ -308,18 +336,21 @@ def test_stage_troubleshooting_tools_stages_reset_and_redis_commands(
     reset_command = tools_dir / "Reset VitalServer Helper for Reinstall.command"
     redis_command = tools_dir / "Create Upstream Redis Backup.command"
     cli = tools_dir / "bin/vitalserver-vm-reset-installer"
-    redis_save_cli = tools_dir / "bin/vitalserver-upstream-redis-save"
+    reset_cli = tools_dir / "bin/vitalserver-troubleshooting-reset-for-reinstall"
+    redis_save_cli = tools_dir / "bin/vitalserver-troubleshooting-upstream-redis-save"
     redis_command_text = redis_command.read_text(encoding="utf-8")
 
     assert reset_command.is_file()
     assert redis_command.is_file()
     assert cli.is_file()
+    assert reset_cli.is_file()
     assert redis_save_cli.is_file()
     assert os.access(reset_command, os.X_OK)
     assert os.access(redis_command, os.X_OK)
     assert os.access(cli, os.X_OK)
+    assert os.access(reset_cli, os.X_OK)
     assert os.access(redis_save_cli, os.X_OK)
-    assert "vitalserver-upstream-redis-save" in redis_command_text
+    assert "vitalserver-troubleshooting-upstream-redis-save" in redis_command_text
     assert 'archive_name="redis-upstream-import.tar.gz"' in redis_command_text
     assert (
         'log_file="${log_dir%/}/tirosh-vitalserver-upstream-redis-backup.log"'
