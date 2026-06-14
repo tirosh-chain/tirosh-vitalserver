@@ -203,7 +203,13 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         'archive_name="redis-upstream-import.tar.gz"'
         in upstream_redis_backup_command_text
     )
-    assert "Press Enter to continue" in upstream_redis_backup_command_text
+    assert "This tool can refresh dump.rdb by running Redis SAVE" in (
+        upstream_redis_backup_command_text
+    )
+    assert "vitalserver-upstream-redis-save" in upstream_redis_backup_command_text
+    assert '"${redis_save_bin}" "${target}"' in upstream_redis_backup_command_text
+    assert "redis-cli" not in upstream_redis_backup_command_text
+    assert "redis://127.0.0.1:6379" in upstream_redis_backup_command_text
     assert "Type yes to continue" not in upstream_redis_backup_command_text
     assert (
         'log_file="${log_dir%/}/tirosh-vitalserver-upstream-redis-backup.log"'

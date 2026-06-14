@@ -15,6 +15,10 @@ let package = Package(
         .executable(
             name: "VitalServerHelper",
             targets: ["MacControlPanelHost"]
+        ),
+        .executable(
+            name: "vitalserver-upstream-redis-save",
+            targets: ["UpstreamRedisSave"]
         )
     ],
     targets: [
@@ -90,6 +94,10 @@ let package = Package(
             name: "MacControlPanelHost",
             dependencies: ["Contracts", "Errors", "RuntimeControl", "InboundAdapters", "OutboundAdapters"],
             path: "Sources/Hosts/MacControlPanel"
+        ),
+        .executableTarget(
+            name: "UpstreamRedisSave",
+            path: "Sources/Hosts/UpstreamRedisSave"
         ),
         .testTarget(
             name: "ErrorsTests",

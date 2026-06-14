@@ -39,6 +39,7 @@ from tirosh_vitalserver.devtools.core.macos_release.settings import (
 ROOTFS_BASE_NAME = "rootfs-base.raw.gz"
 RESET_INSTALLER_CLI_NAME = "vitalserver-vm-reset-installer"
 RESET_INSTALLER_COMMAND_NAME = "Reset VitalServer Helper for Reinstall.command"
+UPSTREAM_REDIS_SAVE_CLI_NAME = "vitalserver-upstream-redis-save"
 UPSTREAM_REDIS_BACKUP_COMMAND_NAME = "Create Upstream Redis Backup.command"
 
 
@@ -220,10 +221,14 @@ def stage_upstream_redis_backup_command(
     *,
     settings: MacOSReleaseSettings,
     runtime_dir: Path,
+    upstream_redis_save_cli: Path,
     tools_dir: Path,
 ) -> None:
     tools_dir.mkdir(parents=True, exist_ok=True)
+    bin_dir = tools_dir / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
     packaging_dir = runtime_dir / "Support/Packaging"
+    copy_executable(upstream_redis_save_cli, bin_dir / UPSTREAM_REDIS_SAVE_CLI_NAME)
     render_packaging_executable(
         settings,
         packaging_dir / "upstream-redis-backup-command.template",
@@ -250,6 +255,7 @@ def stage_troubleshooting_tools(
     stage_upstream_redis_backup_command(
         settings=settings,
         runtime_dir=runtime_dir,
+        upstream_redis_save_cli=runtime_cli.parent / UPSTREAM_REDIS_SAVE_CLI_NAME,
         tools_dir=tools_dir,
     )
     remove_apple_double_files(tools_dir)

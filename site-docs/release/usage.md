@@ -110,10 +110,12 @@ archive만 Redis backup 관리 폴더의 직접 자식으로 복사하며, 같�
 
 Upstream VitalServer에서 Helper로 1회 migration을 할 때는 DMG의 `Troubleshooting Tools` 폴더에 있는
 `Create Upstream Redis Backup.command`를 사용합니다. 이 command는 사용자가 선택한 upstream Redis
-data directory를 `redis-upstream-import.tar.gz`로 묶습니다. 실행 전 upstream Redis를 중지하거나
-`SAVE`/`BGSAVE`를 실행해 `dump.rdb`가 최신 상태인지 확인합니다. 생성한 archive는 Advanced ->
-Recovery operations -> Redis-only recovery의 `Import Backups`로 가져온 뒤 `Restore Redis-only Backup`
-으로 복원합니다. 이 command의 로그는 현재 사용자 temp directory의
+data directory를 `redis-upstream-import.tar.gz`로 묶습니다. command는 번들된 Redis SAVE helper로
+upstream Redis에 `SAVE`를 실행해 `dump.rdb`를 갱신한 뒤 archive를 만들 수 있습니다. `SAVE`는 Redis를
+중지하지 않지만 쓰는 동안 Redis가 잠깐 block될 수 있습니다. 자동 갱신을 건너뛴 경우에는 upstream
+Redis에서 `SAVE`/`BGSAVE`를 직접 실행하거나 Redis를 중지해 `dump.rdb`가 최신 상태인지 확인한 뒤
+진행합니다. 생성한 archive는 Advanced -> Recovery operations -> Redis-only recovery의 `Import Backups`
+로 가져온 뒤 `Restore Redis-only Backup`으로 복원합니다. 이 command의 로그는 현재 사용자 temp directory의
 `tirosh-vitalserver-upstream-redis-backup.log`에 기록됩니다.
 
 ## 3. Settings 적용
