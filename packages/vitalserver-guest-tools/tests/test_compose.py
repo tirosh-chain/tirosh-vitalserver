@@ -82,6 +82,57 @@ def test_stop_compose_action_records_absent_services_without_stopping(
     ]
 
 
+def test_compose_services_captures_command_output(monkeypatch: Any) -> None:
+    run_calls: list[dict[str, object]] = []
+
+    def run_stub(
+        arguments: list[str],
+        **kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        run_calls.append(kwargs)
+        return subprocess.CompletedProcess(arguments, 0, "app\nredis\n", "")
+
+    monkeypatch.setattr(compose, "run", run_stub)
+
+    assert compose.compose_services() == {"app", "redis"}
+    assert run_calls == [
+        {
+            "check": True,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "timeout_seconds": None,
+        }
+    ]
+
+
+def test_compose_services_reports_missing_stdout(monkeypatch: Any) -> None:
+    monkeypatch.setattr(
+        compose,
+        "compose",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, None, ""),
+    )
+
+    with pytest.raises(GuestDependencyError) as error:
+        compose.compose_services()
+
+    assert error.value.code == "guest-compose-services-output-missing"
+    assert "docker compose config --services did not provide stdout" in str(error.value)
+
+
+def test_compose_services_reports_empty_stdout(monkeypatch: Any) -> None:
+    monkeypatch.setattr(
+        compose,
+        "compose",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "\n", ""),
+    )
+
+    with pytest.raises(GuestDependencyError) as error:
+        compose.compose_services()
+
+    assert error.value.code == "guest-compose-services-output-empty"
+    assert "docker compose config --services produced empty stdout" in str(error.value)
+
+
 def test_stop_compose_action_reports_timeout_as_dependency_failure(
     monkeypatch: Any,
 ) -> None:

@@ -131,8 +131,15 @@ def compose(
     *,
     check: bool = True,
     timeout_seconds: float | None = None,
+    capture_output: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    return run(compose_command(arguments), check=check, timeout_seconds=timeout_seconds)
+    return run(
+        compose_command(arguments),
+        check=check,
+        stdout=subprocess.PIPE if capture_output else None,
+        stderr=subprocess.PIPE if capture_output else None,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def stop_services_in_order() -> None:
@@ -178,19 +185,55 @@ def stop_services_in_order() -> None:
 
 
 def compose_services() -> set[str]:
-    completed = compose(["config", "--services"])
+    completed = compose(["config", "--services"], capture_output=True)
+    stdout = required_compose_stdout(
+        completed,
+        command_description="docker compose config --services",
+        missing_code="guest-compose-services-output-missing",
+        empty_code="guest-compose-services-output-empty",
+    )
     return {
         line.strip()
-        for line in completed.stdout.splitlines()
+        for line in stdout.splitlines()
         if line.strip()
     }
 
 
 def inspect_compose_service_states(*, check: bool = True) -> list[ComposeServiceState]:
-    completed = compose(["ps", "--all", "--format", "json"], check=check)
+    completed = compose(
+        ["ps", "--all", "--format", "json"],
+        check=check,
+        capture_output=True,
+    )
     if completed.returncode != 0:
         return []
+    if completed.stdout is None:
+        raise GuestDependencyError(
+            "docker compose ps --all --format json did not provide stdout",
+            code="guest-compose-ps-output-missing",
+        )
     return parse_compose_ps_json(completed.stdout)
+
+
+def required_compose_stdout(
+    completed: subprocess.CompletedProcess[str],
+    *,
+    command_description: str,
+    missing_code: str,
+    empty_code: str,
+) -> str:
+    stdout = completed.stdout
+    if stdout is None:
+        raise GuestDependencyError(
+            f"{command_description} did not provide stdout",
+            code=missing_code,
+        )
+    if not stdout.strip():
+        raise GuestDependencyError(
+            f"{command_description} produced empty stdout",
+            code=empty_code,
+        )
+    return stdout
 
 
 def parse_compose_ps_json(stdout: str) -> list[ComposeServiceState]:
