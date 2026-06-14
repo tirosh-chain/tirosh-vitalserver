@@ -85,8 +85,10 @@ Helper import용 `redis-upstream-import.tar.gz`를 만듭니다.
 
 Command는 archive를 만들기 전에 bundled Redis tooling으로 `SAVE`를 실행할 수 있습니다. `SAVE`는
 Redis를 중지하지 않지만 `dump.rdb`를 쓰는 동안 Redis를 잠깐 block할 수 있습니다. 자동 refresh를
-건너뛰면 운영자는 data directory를 선택하기 전에 upstream Redis에서 `SAVE`/`BGSAVE`를 실행하거나
-Redis를 중지해 `dump.rdb`가 최신인지 확인해야 합니다.
+기다리되 무기한 대기하면 안 됩니다. Command는 기본 15초 timeout 안에 SAVE가 끝나지 않으면 실패로
+중단하고 helper process를 종료합니다. 자동 refresh를 건너뛰면 운영자는 data directory를 선택하기
+전에 upstream Redis에서 `SAVE`/`BGSAVE`를 실행하거나 Redis를 중지해 `dump.rdb`가 최신인지 확인해야
+합니다.
 
 생성된 upstream Redis archive는 Advanced -> Recovery operations -> Redis-only recovery ->
 Import Backups로 가져온 뒤 Restore Redis-only Backup으로 복원합니다.

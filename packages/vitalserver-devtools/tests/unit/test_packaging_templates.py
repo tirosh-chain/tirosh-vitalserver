@@ -210,7 +210,20 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         "vitalserver-troubleshooting-upstream-redis-save"
         in upstream_redis_backup_command_text
     )
-    assert '"${redis_save_bin}" "${target}"' in upstream_redis_backup_command_text
+    assert 'redis_save_timeout_seconds="${UPSTREAM_REDIS_SAVE_TIMEOUT_SECONDS:-15}"' in (
+        upstream_redis_backup_command_text
+    )
+    assert "run_with_timeout()" in upstream_redis_backup_command_text
+    assert (
+        'run_with_timeout "${redis_save_timeout_seconds}" "${redis_save_bin}" "${target}"'
+        in upstream_redis_backup_command_text
+    )
+    assert "upstream redis SAVE did not complete before timeout" in (
+        upstream_redis_backup_command_text
+    )
+    assert "SAVE is cancelled if Redis does not respond within" in (
+        upstream_redis_backup_command_text
+    )
     assert "redis-cli" not in upstream_redis_backup_command_text
     assert "redis://127.0.0.1:6379" in upstream_redis_backup_command_text
     assert "Type yes to continue" not in upstream_redis_backup_command_text

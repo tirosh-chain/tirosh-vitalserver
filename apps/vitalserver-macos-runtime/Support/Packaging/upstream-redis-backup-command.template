@@ -6,6 +6,7 @@ log_file="${log_dir%/}/tirosh-vitalserver-upstream-redis-backup.log"
 archive_name="redis-upstream-import.tar.gz"
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 redis_save_bin="${script_dir}/bin/vitalserver-troubleshooting-upstream-redis-save"
+redis_save_timeout_seconds="${UPSTREAM_REDIS_SAVE_TIMEOUT_SECONDS:-15}"
 
 mkdir -p "${log_dir}"
 exec > >(tee -a "${log_file}") 2>&1
@@ -27,6 +28,43 @@ choose_folder() {
   /usr/bin/osascript -e "POSIX path of (choose folder with prompt \"${prompt}\")"
 }
 
+run_with_timeout() {
+  local timeout_seconds="$1"
+  shift
+  local timeout_marker
+  timeout_marker="$(/usr/bin/mktemp "${TMPDIR:-/private/tmp}/tirosh-upstream-redis-save-timeout.XXXXXX")"
+  /bin/rm -f "${timeout_marker}"
+
+  "$@" &
+  local child_pid="$!"
+  (
+    /bin/sleep "${timeout_seconds}"
+    if /bin/kill -0 "${child_pid}" 2>/dev/null; then
+      : > "${timeout_marker}"
+      log "upstream redis SAVE timed out after ${timeout_seconds}s; terminating helper pid=${child_pid}"
+      /bin/kill "${child_pid}" 2>/dev/null || true
+      /bin/sleep 1
+      /bin/kill -9 "${child_pid}" 2>/dev/null || true
+    fi
+  ) &
+  local watchdog_pid="$!"
+
+  local status
+  set +e
+  wait "${child_pid}"
+  status="$?"
+  set -e
+  /bin/kill "${watchdog_pid}" 2>/dev/null || true
+  wait "${watchdog_pid}" 2>/dev/null || true
+
+  if [ -f "${timeout_marker}" ]; then
+    /bin/rm -f "${timeout_marker}"
+    return 124
+  fi
+  /bin/rm -f "${timeout_marker}"
+  return "${status}"
+}
+
 run_redis_save() {
   local target="$1"
 
@@ -39,8 +77,29 @@ run_redis_save() {
     exit 9
   fi
 
-  log "upstream redis SAVE started"
-  "${redis_save_bin}" "${target}"
+  case "${redis_save_timeout_seconds}" in
+    ''|*[!0-9]*)
+      log "invalid upstream redis SAVE timeout seconds: ${redis_save_timeout_seconds}"
+      exit 10
+      ;;
+    0)
+      log "invalid upstream redis SAVE timeout seconds: ${redis_save_timeout_seconds}"
+      exit 10
+      ;;
+  esac
+
+  log "upstream redis SAVE started timeoutSeconds=${redis_save_timeout_seconds}"
+  if run_with_timeout "${redis_save_timeout_seconds}" "${redis_save_bin}" "${target}"; then
+    :
+  else
+    local status="$?"
+    if [ "${status}" -eq 124 ]; then
+      log "upstream redis SAVE did not complete before timeout; rerun with skip or a reachable Redis URL"
+    else
+      log "upstream redis SAVE failed status=${status}"
+    fi
+    exit 10
+  fi
   log "upstream redis SAVE completed"
 }
 
@@ -49,6 +108,7 @@ prepare_dump() {
   printf "The selected folder must be the Redis data directory that contains dump.rdb.\n\n"
   printf "This tool can refresh dump.rdb by running Redis SAVE before archiving.\n"
   printf "SAVE does not stop Redis, but Redis may briefly block while writing dump.rdb.\n"
+  printf "SAVE is cancelled if Redis does not respond within ${redis_save_timeout_seconds}s.\n"
   printf "Redis URL [Enter: redis://127.0.0.1:6379, type skip to skip]: "
   local redis_target
   read -r redis_target
