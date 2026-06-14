@@ -462,7 +462,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let settings = reader.load()
 
-        XCTAssertEqual(settings.backupRetentionCount, 30)
+        XCTAssertEqual(settings.backupRetentionCount, 31)
         XCTAssertTrue(settings.readIssues.contains(RuntimeSettingsReadIssue(
             source: "guestRuntimeSettings.backupRetentionCount",
             message: "backupRetentionCount is out of range: 31"

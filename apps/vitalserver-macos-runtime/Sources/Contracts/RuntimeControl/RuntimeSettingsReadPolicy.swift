@@ -239,9 +239,8 @@ public enum RuntimeSettingsReadPolicy {
         next.publicPort = input.publicPort
         next.automaticBackupEnabled = input.automaticBackupEnabled
         next.backupScheduleTimes = input.backupScheduleTimes
-        let retentionCount = min(max(input.backupRetentionCount, 1), 30)
-        next.backupRetentionCount = retentionCount
-        if retentionCount != input.backupRetentionCount {
+        next.backupRetentionCount = input.backupRetentionCount
+        if !validBackupRetentionCount(input.backupRetentionCount) {
             next = appendReadIssue(
                 source: "guestRuntimeSettings.backupRetentionCount",
                 message: "backupRetentionCount is out of range: \(input.backupRetentionCount)",
@@ -249,6 +248,10 @@ public enum RuntimeSettingsReadPolicy {
             )
         }
         return next
+    }
+
+    private static func validBackupRetentionCount(_ count: Int) -> Bool {
+        (1...30).contains(count)
     }
 
     public static func applyDiskSizeGiB(_ diskGiB: Int, to settings: RuntimeSettings) -> RuntimeSettings {

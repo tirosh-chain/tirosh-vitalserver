@@ -106,7 +106,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         ])
     }
 
-    func testRuntimeSettingsReadPolicyClampsGuestRetentionAsExplicitReadIssue() {
+    func testRuntimeSettingsReadPolicyPreservesInvalidGuestRetentionAsExplicitReadIssue() {
         let settings = RuntimeSettingsReadPolicy.applyGuestRuntimeSettings(
             RuntimeGuestRuntimeSettingsReadInput(
                 vitalServerURL: "https://settings.example.test/",
@@ -124,7 +124,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(settings.remoteConsoleURL, "https://console.settings.example.test/")
         XCTAssertEqual(settings.publicHost, "settings.example.test")
         XCTAssertEqual(settings.publicPort, 8443)
-        XCTAssertEqual(settings.backupRetentionCount, 30)
+        XCTAssertEqual(settings.backupRetentionCount, 31)
         XCTAssertEqual(settings.readIssues, [
             RuntimeSettingsReadIssue(
                 source: "guestRuntimeSettings.backupRetentionCount",

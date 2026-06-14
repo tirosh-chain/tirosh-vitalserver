@@ -98,6 +98,104 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
         XCTAssertNil(fileStore.files[requestURL])
     }
 
+    func testAutomaticBackupCreatesHelperBackupAndPrunesOldestArchives() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let productRoot = temporaryProductRoot()
+        defer { try? FileManager.default.removeItem(at: productRoot) }
+        let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+        let requestURL = installedPaths.guestRunDirectory
+            .appendingPathComponent(Constants.Runtime.redisBackupRequestFile)
+        let resultURL = installedPaths.guestRunDirectory
+            .appendingPathComponent(Constants.Runtime.redisBackupResultFile)
+        let hostRedisArchive = installedPaths.redisBackupsDirectory
+            .appendingPathComponent("redis-20260610T094159Z.tar.gz")
+        let guestRedisArchive = "/mnt/tirosh/backups/redis/redis-20260610T094159Z.tar.gz"
+        let backupRoot = installedPaths.vitalServerHelperBackupsDirectory
+        let oldest = backupRoot.appendingPathComponent("20260608T031500Z-automatic")
+        let middle = backupRoot.appendingPathComponent("20260609T031500Z-automatic")
+        let newestExisting = backupRoot.appendingPathComponent("20260610T031500Z-automatic")
+
+        try writeRequiredRuntimeDataBackupSources(installedPaths, fileStore: fileStore)
+        try writeGuestRuntimeSettings(
+            installedPaths,
+            fileStore: fileStore,
+            automaticBackupEnabled: true,
+            retentionCount: 2
+        )
+        fileStore.files[hostRedisArchive] = Data("redis-archive".utf8)
+        fileStore.directories.formUnion([backupRoot, oldest, middle, newestExisting])
+
+        let sleeper = RuntimeDataBackupResultSleeper {
+            guard let requestData = fileStore.files[requestURL],
+                  let request = try? JSONDecoder().decode(RedisBackupRequestDocument.self, from: requestData) else {
+                return
+            }
+            fileStore.files[resultURL] = try? JSONEncoder().encode(RedisBackupResultDocument(
+                requestId: request.requestId,
+                status: .completed,
+                message: "Redis backup completed.",
+                archive: guestRedisArchive
+            ))
+        }
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installedPaths.runtimeHome,
+                installed: installedPaths,
+                config: installedPaths.vmConfig,
+                pidFile: installedPaths.pidFile
+            ),
+            clock: RuntimeDataBackupFixedClock(),
+            sleeper: sleeper,
+            commandRunner: RuntimeDataBackupCommandRunner(),
+            serviceManager: RuntimeDataBackupServiceManager(),
+            guestGateway: RuntimeDataBackupGuestGateway(),
+            fileStore: fileStore
+        )
+
+        let message = try lifecycle.runtimeDataBackupComposition().createAutomaticBackup()
+        let created = backupRoot.appendingPathComponent("20260610T094200Z-automatic")
+
+        XCTAssertEqual(message, "automatic backup completed: \(created.path)")
+        XCTAssertTrue(fileStore.directories.contains(created))
+        XCTAssertEqual(fileStore.removed, [oldest, middle])
+        XCTAssertFalse(fileStore.directories.contains(oldest))
+        XCTAssertFalse(fileStore.directories.contains(middle))
+        XCTAssertTrue(fileStore.directories.contains(newestExisting))
+    }
+
+    func testAutomaticBackupSkipsWhenDisabledWithoutGuestRedisRequest() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let productRoot = URL(fileURLWithPath: "/product")
+        let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+        let requestURL = installedPaths.guestRunDirectory
+            .appendingPathComponent(Constants.Runtime.redisBackupRequestFile)
+        try writeGuestRuntimeSettings(
+            installedPaths,
+            fileStore: fileStore,
+            automaticBackupEnabled: false,
+            retentionCount: 2
+        )
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installedPaths.runtimeHome,
+                installed: installedPaths,
+                config: installedPaths.vmConfig,
+                pidFile: installedPaths.pidFile
+            ),
+            clock: RuntimeDataBackupFixedClock(),
+            sleeper: RuntimeDataBackupResultSleeper {},
+            commandRunner: RuntimeDataBackupCommandRunner(),
+            serviceManager: RuntimeDataBackupServiceManager(),
+            guestGateway: RuntimeDataBackupGuestGateway(),
+            fileStore: fileStore
+        )
+
+        let message = try lifecycle.runtimeDataBackupComposition().createAutomaticBackup()
+
+        XCTAssertEqual(message, "automatic backup skipped: disabled")
+        XCTAssertNil(fileStore.files[requestURL])
+    }
+
     private func writeRequiredRuntimeDataBackupSources(
         _ paths: InstalledRuntimePaths,
         fileStore: RuntimeFileStoreSpy
@@ -113,6 +211,30 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
         fileStore.files[paths.guestRuntimeConfig] = Data("{}".utf8)
         fileStore.files[paths.guestRuntimeSettings] = Data("{}".utf8)
         fileStore.files[paths.proxyLaunchDaemon] = Data("plist".utf8)
+    }
+
+    private func writeGuestRuntimeSettings(
+        _ paths: InstalledRuntimePaths,
+        fileStore: RuntimeFileStoreSpy,
+        automaticBackupEnabled: Bool,
+        retentionCount: Int
+    ) throws {
+        fileStore.files[paths.guestRuntimeSettings] = try JSONEncoder().encode(
+            GuestRuntimeSettingsDocument(
+                vitalServerURL: "https://vitalserver.example",
+                remoteConsoleURL: "https://console.example",
+                publicHost: "vitalserver.example",
+                publicPort: 443,
+                automaticBackupEnabled: automaticBackupEnabled,
+                backupScheduleTimes: ["03:15"],
+                backupRetentionCount: retentionCount
+            )
+        )
+    }
+
+    private func temporaryProductRoot() -> URL {
+        URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("RuntimeDataBackupCompositionTests-\(UUID().uuidString)")
     }
 }
 

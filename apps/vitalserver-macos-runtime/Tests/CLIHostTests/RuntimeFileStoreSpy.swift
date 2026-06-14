@@ -175,7 +175,9 @@ final class RuntimeFileStoreSpy: RuntimeFileStore {
     }
 
     func contentsOfDirectory(at url: URL, skipsHiddenFiles: Bool) throws -> [URL] {
-        files.keys.filter { $0.deletingLastPathComponent() == url }
+        let childFiles = files.keys.filter { $0.deletingLastPathComponent().path == url.path }
+        let childDirectories = directories.filter { $0.deletingLastPathComponent().path == url.path }
+        return Array(childFiles) + Array(childDirectories)
     }
 
     func childDirectories(at url: URL, nameContains fragment: String, skipsHiddenFiles: Bool) throws -> [URL] {

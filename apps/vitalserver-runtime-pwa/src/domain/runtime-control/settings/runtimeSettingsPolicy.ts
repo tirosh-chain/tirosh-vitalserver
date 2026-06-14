@@ -62,7 +62,7 @@ export function validateRuntimeSettings(
   }
   if (
     settings.backupScheduleTimes.length === 0 ||
-    settings.backupScheduleTimes.some((value) => !/^\d{2}:\d{2}$/.test(value))
+    settings.backupScheduleTimes.some((value) => !validBackupTime(value))
   ) {
     errors.push("Backup times must use HH:mm format.");
   }
@@ -137,4 +137,14 @@ export function isProtectedVitalFilesDirectory(
 
 function validPort(value: number): boolean {
   return Number.isInteger(value) && value >= 1 && value <= 65_535;
+}
+
+function validBackupTime(value: string): boolean {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) {
+    return false;
+  }
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
 }

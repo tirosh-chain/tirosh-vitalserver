@@ -25,6 +25,15 @@ describe("runtime settings policy", () => {
     expect(result.valid).toBe(false);
     expect(result.errors).toHaveLength(7);
   });
+
+  it("rejects backup times outside HH:mm clock range", () => {
+    const result = validateRuntimeSettings(fullSettings({
+      backupScheduleTimes: ["24:00", "03:60"]
+    }));
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("Backup times must use HH:mm format.");
+  });
 });
 
 function fullSettings(overrides = {}) {
