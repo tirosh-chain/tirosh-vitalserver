@@ -10,10 +10,32 @@ public struct RuntimeBackupActionPlan: Equatable {
     }
 }
 
+public struct RuntimeBackupImportPlan: Equatable {
+    public let sourceURL: URL
+    public let destinationURL: URL
+
+    public init(sourceURL: URL, destinationURL: URL) {
+        self.sourceURL = sourceURL
+        self.destinationURL = destinationURL
+    }
+}
+
 public enum RuntimeBackupActionPlanFailure: Error, Equatable {
     case missingBackup
     case backupsRootNotReported
     case invalidBackup
+}
+
+public enum RuntimeBackupImportPlanFailure: Error, Equatable {
+    case missingBackup
+    case backupsRootNotReported
+    case sourceIsNotDirectory
+    case sourcePathInspectionFailed(String)
+    case sourcePathUnavailable(String)
+    case invalidBackup
+    case destinationAlreadyExists
+    case destinationPathInspectionFailed(String)
+    case destinationPathUnavailable(String)
 }
 
 public struct RuntimeBackupActionPlanner {
@@ -83,6 +105,53 @@ public struct RuntimeBackupActionPlanner {
         }
         return .success(RuntimeBackupActionPlan(backupURL: backupURL))
     }
+
+    public func importRuntimeDataBackupPlan(
+        sourceBackupURL: URL?,
+        runtimeDataBackupsRoot: URL?,
+        sourcePathState: RuntimePathState,
+        destinationPathState: RuntimePathState
+    ) -> Result<RuntimeBackupImportPlan, RuntimeBackupImportPlanFailure> {
+        guard let sourceBackupURL else {
+            return .failure(.missingBackup)
+        }
+        guard let runtimeDataBackupsRoot else {
+            return .failure(.backupsRootNotReported)
+        }
+        switch sourcePathState {
+        case .directory:
+            break
+        case .file, .other:
+            return .failure(.sourceIsNotDirectory)
+        case .missing, .unknown:
+            return .failure(.sourcePathUnavailable(sourcePathState.rawValue))
+        case .inspectFailed(let reason):
+            return .failure(.sourcePathInspectionFailed(reason))
+        }
+        let destinationURL = runtimeDataBackupsRoot.appendingPathComponent(
+            sourceBackupURL.lastPathComponent,
+            isDirectory: true
+        )
+        guard RuntimeManagedBackupPolicy.isRuntimeDataBackupURL(
+            destinationURL,
+            runtimeDataBackupsRoot: runtimeDataBackupsRoot
+        ) else {
+            return .failure(.invalidBackup)
+        }
+        switch destinationPathState {
+        case .missing:
+            return .success(RuntimeBackupImportPlan(
+                sourceURL: sourceBackupURL,
+                destinationURL: destinationURL
+            ))
+        case .inspectFailed(let reason):
+            return .failure(.destinationPathInspectionFailed(reason))
+        case .file, .directory, .other:
+            return .failure(.destinationAlreadyExists)
+        case .unknown:
+            return .failure(.destinationPathUnavailable(destinationPathState.rawValue))
+        }
+    }
 }
 
 extension RuntimeBackupActionPlanFailure {
@@ -94,6 +163,31 @@ extension RuntimeBackupActionPlanFailure {
             return AppConstants.StatusText.notReported
         case .invalidBackup:
             return AppConstants.StatusText.invalidBackup
+        }
+    }
+}
+
+extension RuntimeBackupImportPlanFailure {
+    var message: String {
+        switch self {
+        case .missingBackup:
+            return AppConstants.StatusText.runtimeDataBackupImportSourceInvalid
+        case .backupsRootNotReported:
+            return AppConstants.StatusText.notReported
+        case .sourceIsNotDirectory:
+            return AppConstants.StatusText.runtimeDataBackupImportSourceInvalid
+        case .sourcePathInspectionFailed(let reason):
+            return AppConstants.StatusText.runtimeDataBackupImportFailed(reason)
+        case .sourcePathUnavailable(let state):
+            return AppConstants.StatusText.runtimeDataBackupImportSourcePathInvalid(state)
+        case .invalidBackup:
+            return AppConstants.StatusText.invalidBackup
+        case .destinationAlreadyExists:
+            return AppConstants.StatusText.runtimeDataBackupImportDestinationExists
+        case .destinationPathInspectionFailed(let reason):
+            return AppConstants.StatusText.runtimeDataBackupImportFailed(reason)
+        case .destinationPathUnavailable(let state):
+            return AppConstants.StatusText.runtimeDataBackupImportPathInvalid(state)
         }
     }
 }

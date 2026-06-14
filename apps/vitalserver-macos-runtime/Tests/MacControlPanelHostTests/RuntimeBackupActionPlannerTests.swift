@@ -93,6 +93,60 @@ final class RuntimeBackupActionPlannerTests: XCTestCase {
             .backupsRootNotReported
         )
     }
+
+    func testImportRuntimeDataBackupPlanCopiesFolderIntoRuntimeDataBackupRoot() {
+        let plan = planner.importRuntimeDataBackupPlan(
+            sourceBackupURL: URL(fileURLWithPath: "/external/20260614T043455Z-manual", isDirectory: true),
+            runtimeDataBackupsRoot: URL(fileURLWithPath: "/runtime/backups/runtime-data", isDirectory: true),
+            sourcePathState: .directory,
+            destinationPathState: .missing
+        )
+
+        XCTAssertEqual(plan.success?.sourceURL.path, "/external/20260614T043455Z-manual")
+        XCTAssertEqual(plan.success?.destinationURL.path, "/runtime/backups/runtime-data/20260614T043455Z-manual")
+    }
+
+    func testImportRuntimeDataBackupPlanRejectsNonDirectorySourceAndExistingDestination() {
+        let source = URL(fileURLWithPath: "/external/20260614T043455Z-manual")
+        let root = URL(fileURLWithPath: "/runtime/backups/runtime-data", isDirectory: true)
+
+        XCTAssertEqual(
+            planner.importRuntimeDataBackupPlan(
+                sourceBackupURL: source,
+                runtimeDataBackupsRoot: root,
+                sourcePathState: .file,
+                destinationPathState: .missing
+            ).failure,
+            .sourceIsNotDirectory
+        )
+        XCTAssertEqual(
+            planner.importRuntimeDataBackupPlan(
+                sourceBackupURL: source,
+                runtimeDataBackupsRoot: root,
+                sourcePathState: .missing,
+                destinationPathState: .missing
+            ).failure,
+            .sourcePathUnavailable("missing")
+        )
+        XCTAssertEqual(
+            planner.importRuntimeDataBackupPlan(
+                sourceBackupURL: source,
+                runtimeDataBackupsRoot: root,
+                sourcePathState: .directory,
+                destinationPathState: .directory
+            ).failure,
+            .destinationAlreadyExists
+        )
+        XCTAssertEqual(
+            planner.importRuntimeDataBackupPlan(
+                sourceBackupURL: source,
+                runtimeDataBackupsRoot: root,
+                sourcePathState: .directory,
+                destinationPathState: .unknown("stale")
+            ).failure,
+            .destinationPathUnavailable("stale")
+        )
+    }
 }
 
 private extension Result {

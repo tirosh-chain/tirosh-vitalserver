@@ -99,6 +99,52 @@ extension RuntimeViewModel {
         }
     }
 
+    func importRuntimeDataBackup() async {
+        guard controlClient.capabilities.canOpenLocalFiles else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        guard let runtimeDataBackupsPath = installationInfo.runtimeDataBackupsPath else {
+            message = AppConstants.StatusText.notReported
+            return
+        }
+        guard let sourceURL = nativeShell.chooseDirectory(prompt: AppConstants.Actions.importBackups) else {
+            return
+        }
+
+        let runtimeDataBackupsRoot = URL(fileURLWithPath: runtimeDataBackupsPath, isDirectory: true)
+        if !ensureRuntimeDataBackupImportRootExists(runtimeDataBackupsRoot) {
+            return
+        }
+
+        let destinationURL = runtimeDataBackupsRoot.appendingPathComponent(
+            sourceURL.lastPathComponent,
+            isDirectory: true
+        )
+        let plan: RuntimeBackupImportPlan
+        switch RuntimeBackupActionPlanner().importRuntimeDataBackupPlan(
+            sourceBackupURL: sourceURL,
+            runtimeDataBackupsRoot: runtimeDataBackupsRoot,
+            sourcePathState: nativeShell.pathState(sourceURL),
+            destinationPathState: nativeShell.pathState(destinationURL)
+        ) {
+        case .success(let importPlan):
+            plan = importPlan
+        case .failure(let failure):
+            message = failure.message
+            return
+        }
+
+        do {
+            try nativeShell.copyDirectory(plan.sourceURL, to: plan.destinationURL)
+            selectedRuntimeDataBackupPath = plan.destinationURL.path
+            message = AppConstants.StatusText.runtimeDataBackupImported
+            await refresh()
+        } catch {
+            message = AppConstants.StatusText.runtimeDataBackupImportFailed(error.localizedDescription)
+        }
+    }
+
     func restoreRuntimeDataBackup() async {
         guard controlClient.capabilities.canControlRuntimeServices else {
             message = AppConstants.StatusText.actionUnavailable
@@ -202,6 +248,28 @@ extension RuntimeViewModel {
         if didDelete {
             self.selectedRuntimeDataBackupPath = nil
             await refresh()
+        }
+    }
+
+    private func ensureRuntimeDataBackupImportRootExists(_ root: URL) -> Bool {
+        let state = nativeShell.pathState(root)
+        switch state {
+        case .directory:
+            return true
+        case .missing:
+            do {
+                try nativeShell.createDirectory(root)
+                return true
+            } catch {
+                message = AppConstants.StatusText.folderCreateFailed(error.localizedDescription)
+                return false
+            }
+        case .file, .other, .unknown:
+            message = AppConstants.StatusText.runtimeDataBackupImportPathInvalid(state.rawValue)
+            return false
+        case .inspectFailed(let reason):
+            message = AppConstants.StatusText.runtimeDataBackupImportFailed(reason)
+            return false
         }
     }
 }

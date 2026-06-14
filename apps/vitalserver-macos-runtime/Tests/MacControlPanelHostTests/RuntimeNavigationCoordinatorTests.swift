@@ -173,6 +173,8 @@ private final class FakeNavigationNativeShell: RuntimeNativeShell {
         existingDirectories.insert(url.path)
     }
 
+    func copyDirectory(_ source: URL, to destination: URL) throws {}
+
     func openFileURL(_ url: URL) {
         openedFileURLs.append(url)
     }

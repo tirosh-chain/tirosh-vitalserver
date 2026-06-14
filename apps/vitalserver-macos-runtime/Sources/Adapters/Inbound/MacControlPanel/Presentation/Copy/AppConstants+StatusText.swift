@@ -122,6 +122,18 @@ public extension AppConstants {
         public static let runtimeDataBackupPreparing = "Preparing VitalServer backup..."
         public static let runtimeDataBackupRunning = "Creating VitalServer backup..."
         public static let runtimeDataBackupCompleted = "VitalServer backup completed."
+        public static let runtimeDataBackupImported = "VitalServer backup imported."
+        public static let runtimeDataBackupImportSourceInvalid = "Choose a VitalServer backup folder to import."
+        public static let runtimeDataBackupImportDestinationExists = "A VitalServer backup with this folder name already exists."
+        public static func runtimeDataBackupImportFailed(_ message: String) -> String {
+            "Could not import VitalServer backup: \(message)"
+        }
+        public static func runtimeDataBackupImportPathInvalid(_ state: String) -> String {
+            "Could not import VitalServer backup because the backup folder path state is \(state)."
+        }
+        public static func runtimeDataBackupImportSourcePathInvalid(_ state: String) -> String {
+            "Could not import VitalServer backup because the selected path state is \(state)."
+        }
         public static let runtimeDataRestorePreparing = "Preparing VitalServer restore..."
         public static let runtimeDataRestoreRunning = "Restoring VitalServer backup..."
         public static let runtimeDataRestoreCompleted = "VitalServer restore completed."

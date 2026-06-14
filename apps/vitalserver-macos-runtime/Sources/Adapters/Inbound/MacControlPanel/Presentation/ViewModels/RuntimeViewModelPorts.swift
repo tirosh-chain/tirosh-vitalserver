@@ -40,6 +40,7 @@ public protocol RuntimeNativeShell {
     func pathState(_ url: URL) -> RuntimePathState
     func confirmCreateDirectory(path: String) -> Bool
     func createDirectory(_ url: URL) throws
+    func copyDirectory(_ source: URL, to destination: URL) throws
     func openFileURL(_ url: URL)
     func openWebURL(_ url: URL)
     func relaunchHelper()
@@ -56,6 +57,13 @@ public struct NoopRuntimeNativeShell: RuntimeNativeShell {
     public func pathState(_ url: URL) -> RuntimePathState { .inspectFailed("native shell is not configured") }
     public func confirmCreateDirectory(path: String) -> Bool { false }
     public func createDirectory(_ url: URL) throws {}
+    public func copyDirectory(_ source: URL, to destination: URL) throws {
+        throw NSError(
+            domain: "NoopRuntimeNativeShell",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "native shell is not configured"]
+        )
+    }
     public func openFileURL(_ url: URL) {}
     public func openWebURL(_ url: URL) {}
     public func relaunchHelper() {}

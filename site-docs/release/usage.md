@@ -96,6 +96,11 @@ Backup 삭제는 Danger Zone에서 분리되어 있습니다. `Delete VitalServe
 VitalServer backup만 삭제하고, `Delete Update Backup`은 update/rollback용 backup만 삭제합니다.
 두 작업 모두 현재 runtime data를 직접 삭제하지 않습니다.
 
+삭제 전에 별도로 보관한 VitalServer backup을 다시 사용하려면 Finder로 임의 위치에 복사하지 말고
+Advanced -> Recovery operations의 `Import Backups`를 사용합니다. Import는 선택한 backup 폴더를
+Helper가 보고한 `backups/runtime-data` 관리 폴더의 직접 자식으로 복사하며, 같은 이름의 backup이
+이미 있으면 덮어쓰지 않습니다. `Open Backups`는 해당 VitalServer backup 관리 폴더를 엽니다.
+
 `Redis-only recovery`는 Repair 성격의 고급 조치입니다. VM disk repair, uninstall, 장애 분석처럼
 Redis data만 별도로 보존하거나 복원해야 하는 상황에서 지원 담당자가 사용합니다. 정상 운영에서
 전체 상태를 되돌릴 때는 Redis-only backup 대신 VitalServer backup을 선택합니다.

@@ -22,6 +22,7 @@ public extension AppConstants {
         public static let applyBundle = "Apply Bundle"
         public static let rollback = "Rollback"
         public static let createBackup = "Create VitalServer Backup"
+        public static let importBackups = "Import Backups"
         public static let restoreBackup = "Restore VitalServer Backup"
         public static let createRedisBackup = "Create Redis-only Backup"
         public static let restoreRedisBackup = "Restore Redis-only Backup"

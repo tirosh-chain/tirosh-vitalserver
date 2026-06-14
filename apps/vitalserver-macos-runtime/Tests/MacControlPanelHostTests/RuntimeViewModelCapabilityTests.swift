@@ -636,6 +636,61 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.exportLogDestinationURLs, [exportURL])
     }
 
+    func testImportRuntimeDataBackupCopiesSelectedFolderIntoManagedRuntimeDataBackupRoot() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        let sourceURL = URL(fileURLWithPath: "/external/20260614T043455Z-manual", isDirectory: true)
+        let destinationURL = URL(fileURLWithPath: "/runtime/data/backups/runtime-data/20260614T043455Z-manual", isDirectory: true)
+        nativeShell.directoryURL = sourceURL
+        nativeShell.pathStates = [
+            sourceURL.path: .directory,
+            "/runtime/data/backups/runtime-data": .directory,
+            destinationURL.path: .missing,
+        ]
+        client.runtimeDataBackupsToLoad = [
+            RuntimeBackup(path: destinationURL.path, sizeBytes: 1024),
+        ]
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        await viewModel.importRuntimeDataBackup()
+
+        XCTAssertEqual(nativeShell.chooseDirectoryPrompts, [AppConstants.Actions.importBackups])
+        XCTAssertEqual(nativeShell.copiedDirectories.map { [$0.source.path, $0.destination.path] }, [
+            [sourceURL.path, destinationURL.path],
+        ])
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.runtimeDataBackupImported)
+        XCTAssertEqual(viewModel.selectedRuntimeDataBackupPath, destinationURL.path)
+        XCTAssertEqual(client.loadBackupsCount, 1)
+    }
+
+    func testImportRuntimeDataBackupRejectsExistingManagedDestination() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        let sourceURL = URL(fileURLWithPath: "/external/20260614T043455Z-manual", isDirectory: true)
+        nativeShell.directoryURL = sourceURL
+        nativeShell.pathStates = [
+            sourceURL.path: .directory,
+            "/runtime/data/backups/runtime-data": .directory,
+            "/runtime/data/backups/runtime-data/20260614T043455Z-manual": .directory,
+        ]
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        await viewModel.importRuntimeDataBackup()
+
+        XCTAssertTrue(nativeShell.copiedDirectories.isEmpty)
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.runtimeDataBackupImportDestinationExists)
+    }
+
     func testExportLogsReportsCleanupIssueFromHostResult() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let nativeShell = FakeRuntimeNativeShell()
@@ -1788,9 +1843,12 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     var openedFileURLs: [URL] = []
     var openedWebURLs: [URL] = []
     var existingDirectories: Set<String>?
+    var pathStates: [String: RuntimePathState] = [:]
     var confirmCreateDirectoryResponses: [Bool] = []
     var confirmCreateDirectoryPaths: [String] = []
     var createdDirectoryURLs: [URL] = []
+    var copiedDirectories: [(source: URL, destination: URL)] = []
+    var copyDirectoryError: Error?
     var relaunchHelperCount = 0
     var terminateCount = 0
 
@@ -1826,6 +1884,9 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     }
 
     func pathState(_ url: URL) -> RuntimePathState {
+        if let pathState = pathStates[url.path] {
+            return pathState
+        }
         guard let existingDirectories else {
             return .directory
         }
@@ -1840,6 +1901,15 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     func createDirectory(_ url: URL) throws {
         createdDirectoryURLs.append(url)
         existingDirectories?.insert(url.path)
+        pathStates[url.path] = .directory
+    }
+
+    func copyDirectory(_ source: URL, to destination: URL) throws {
+        if let copyDirectoryError {
+            throw copyDirectoryError
+        }
+        copiedDirectories.append((source: source, destination: destination))
+        pathStates[destination.path] = .directory
     }
 
     func openFileURL(_ url: URL) {

@@ -199,7 +199,7 @@ struct RuntimeAdvancedPanel: View {
                         )
 
                         Button(AppConstants.Actions.openBackups) {
-                            viewModel.openRuntimeDataBackups()
+                            viewModel.openBackups()
                         }
                         .disabled(!viewModel.capabilities.canOpenLocalFiles)
                     }
@@ -255,6 +255,11 @@ struct RuntimeAdvancedPanel: View {
                             )
                         )
 
+                        Button(AppConstants.Actions.importBackups) {
+                            Task { await viewModel.importRuntimeDataBackup() }
+                        }
+                        .disabled(viewModel.isBusy || !viewModel.capabilities.canOpenLocalFiles)
+
                         Button(AppConstants.Actions.restoreBackup) {
                             showingRestoreRuntimeDataBackupConfirmation = true
                         }
@@ -268,7 +273,7 @@ struct RuntimeAdvancedPanel: View {
                         )
 
                         Button(AppConstants.Actions.openBackups) {
-                            viewModel.openBackups()
+                            viewModel.openRuntimeDataBackups()
                         }
                         .disabled(!viewModel.capabilities.canOpenLocalFiles)
                     }

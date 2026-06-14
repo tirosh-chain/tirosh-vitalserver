@@ -95,6 +95,14 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         }
     }
 
+    func copyDirectory(_ source: URL, to destination: URL) throws {
+        do {
+            try FileManager.default.copyItem(at: source, to: destination)
+        } catch {
+            try copyDirectoryWithAdministratorPrivileges(source, to: destination)
+        }
+    }
+
     func openFileURL(_ url: URL) {
         NSWorkspace.shared.open(url)
     }
@@ -121,6 +129,20 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         process.arguments = [
             "-e",
             "do shell script \(appleScriptString("/bin/mkdir -p -- \(shellQuoted(url.path))")) with administrator privileges",
+        ]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+    }
+
+    private func copyDirectoryWithAdministratorPrivileges(_ source: URL, to destination: URL) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = [
+            "-e",
+            "do shell script \(appleScriptString("/bin/cp -R \(shellQuoted(source.path)) \(shellQuoted(destination.path))")) with administrator privileges",
         ]
         try process.run()
         process.waitUntilExit()
