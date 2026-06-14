@@ -108,6 +108,13 @@ Redis-only backup을 외부에서 다시 가져올 때도 `Import Backups`를 �
 archive만 Redis backup 관리 폴더의 직접 자식으로 복사하며, 같은 이름의 archive가 있으면 덮어쓰지
 않습니다. `Restore Redis-only Backup`은 선택한 Redis archive만 복원합니다.
 
+Upstream VitalServer에서 Helper로 1회 migration을 할 때는 DMG의 `Troubleshooting Tools` 폴더에 있는
+`Create Upstream Redis Backup.command`를 사용합니다. 이 command는 사용자가 선택한 upstream Redis
+data directory를 `redis-upstream-import.tar.gz`로 묶습니다. 실행 전 upstream Redis를 중지하거나
+`SAVE`/`BGSAVE`를 실행해 `dump.rdb`가 최신 상태인지 확인합니다. 생성한 archive는 Advanced ->
+Recovery operations -> Redis-only recovery의 `Import Backups`로 가져온 뒤 `Restore Redis-only Backup`
+으로 복원합니다.
+
 ## 3. Settings 적용
 
 Settings 화면의 `Restart VM runtime when required`는 저장 후 항상 runtime service를 재시작한다는

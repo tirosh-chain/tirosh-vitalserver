@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+uninstall_log="${UNINSTALL_LOG}"
+archive_name="redis-upstream-import.tar.gz"
+
+mkdir -p "$(dirname "${uninstall_log}")"
+exec > >(tee -a "${uninstall_log}") 2>&1
+
+log() {
+  printf "[%s] %s\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*"
+}
+
+on_error() {
+  local status="$?"
+  log "upstream redis backup failed status=${status} command=${BASH_COMMAND}"
+  exit "${status}"
+}
+
+trap on_error ERR
+
+choose_folder() {
+  local prompt="$1"
+  /usr/bin/osascript -e "POSIX path of (choose folder with prompt \"${prompt}\")"
+}
+
+confirm_prerequisites() {
+  printf "\nThis tool creates a Redis-only archive for VitalServer Helper import.\n"
+  printf "Before continuing, stop upstream Redis or run SAVE/BGSAVE so dump.rdb is current.\n"
+  printf "The selected folder must be the Redis data directory that contains dump.rdb.\n\n"
+  printf "Type YES to continue: "
+  local answer
+  read -r answer
+  if [ "${answer}" != "YES" ]; then
+    log "upstream redis backup cancelled before source selection"
+    exit 2
+  fi
+}
+
+validate_source_dir() {
+  local source_dir="$1"
+  if [ ! -d "${source_dir}" ]; then
+    log "upstream redis data directory is missing: ${source_dir}"
+    exit 3
+  fi
+  if [ ! -f "${source_dir}/dump.rdb" ]; then
+    log "upstream redis data directory does not contain dump.rdb: ${source_dir}"
+    exit 4
+  fi
+  local first_link
+  first_link="$(/usr/bin/find "${source_dir}" -type l -print -quit)"
+  if [ -n "${first_link}" ]; then
+    log "upstream redis data directory contains unsupported symlink: ${first_link}"
+    exit 5
+  fi
+}
+
+create_archive() {
+  local source_dir="$1"
+  local output_dir="$2"
+  local archive="${output_dir%/}/${archive_name}"
+
+  if [ ! -d "${output_dir}" ]; then
+    log "output directory is missing: ${output_dir}"
+    exit 6
+  fi
+  if [ -e "${archive}" ]; then
+    log "refusing to overwrite existing archive: ${archive}"
+    exit 7
+  fi
+
+  log "upstream redis archive started source=${source_dir} archive=${archive}"
+  COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 \
+    /usr/bin/tar -czf "${archive}" -C "${source_dir}" .
+  if [ ! -s "${archive}" ]; then
+    log "upstream redis archive is empty: ${archive}"
+    exit 8
+  fi
+  /usr/bin/tar -tzf "${archive}" >/dev/null
+  log "upstream redis archive completed archive=${archive}"
+}
+
+log "upstream redis backup command started"
+confirm_prerequisites
+source_dir="$(choose_folder "Choose the upstream Redis data directory that contains dump.rdb")"
+output_dir="$(choose_folder "Choose where to save ${archive_name}")"
+validate_source_dir "${source_dir}"
+create_archive "${source_dir}" "${output_dir}"
+log "upstream redis backup command completed"

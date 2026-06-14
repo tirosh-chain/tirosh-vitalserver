@@ -41,6 +41,7 @@ ROOTFS_BASE_NAME = "rootfs-base.raw.gz"
 RESET_INSTALLER_IDENTIFIER_SUFFIX = ".reset-installer"
 RESET_INSTALLER_CLI_NAME = "vitalserver-vm-reset-installer"
 RESET_INSTALLER_COMMAND_NAME = "Reset VitalServer Helper for Reinstall.command"
+UPSTREAM_REDIS_BACKUP_COMMAND_NAME = "Create Upstream Redis Backup.command"
 
 
 def build_pkg(context: PackageContext) -> None:
@@ -80,7 +81,7 @@ def build_dmg(context: PackageContext) -> None:
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
-    stage_reset_installer_command(
+    stage_troubleshooting_tools(
         settings=context.settings,
         runtime_dir=context.runtime_dir,
         runtime_cli=context.runtime_cli,
@@ -253,8 +254,6 @@ def stage_reset_installer_command(
     runtime_cli: Path,
     tools_dir: Path,
 ) -> None:
-    if tools_dir.exists():
-        shutil.rmtree(tools_dir)
     tools_dir.mkdir(parents=True, exist_ok=True)
     bin_dir = tools_dir / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
@@ -265,6 +264,44 @@ def stage_reset_installer_command(
         settings,
         packaging_dir / "reset-for-reinstall-command.template",
         tools_dir / RESET_INSTALLER_COMMAND_NAME,
+    )
+
+
+def stage_upstream_redis_backup_command(
+    *,
+    settings: MacOSReleaseSettings,
+    runtime_dir: Path,
+    tools_dir: Path,
+) -> None:
+    tools_dir.mkdir(parents=True, exist_ok=True)
+    packaging_dir = runtime_dir / "Support/Packaging"
+    render_packaging_executable(
+        settings,
+        packaging_dir / "upstream-redis-backup-command.template",
+        tools_dir / UPSTREAM_REDIS_BACKUP_COMMAND_NAME,
+    )
+
+
+def stage_troubleshooting_tools(
+    *,
+    settings: MacOSReleaseSettings,
+    runtime_dir: Path,
+    runtime_cli: Path,
+    tools_dir: Path,
+) -> None:
+    if tools_dir.exists():
+        shutil.rmtree(tools_dir)
+    tools_dir.mkdir(parents=True, exist_ok=True)
+    stage_reset_installer_command(
+        settings=settings,
+        runtime_dir=runtime_dir,
+        runtime_cli=runtime_cli,
+        tools_dir=tools_dir,
+    )
+    stage_upstream_redis_backup_command(
+        settings=settings,
+        runtime_dir=runtime_dir,
+        tools_dir=tools_dir,
     )
     remove_apple_double_files(tools_dir)
     subprocess.run(["xattr", "-c", "-r", str(tools_dir)], check=False)

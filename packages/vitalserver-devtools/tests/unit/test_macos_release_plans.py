@@ -148,7 +148,7 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
     pkg_output.write_text("installer", encoding="utf-8")
     commands: list[list[str]] = []
 
-    def fake_stage_reset_installer_command(**kwargs: object) -> None:
+    def fake_stage_troubleshooting_tools(**kwargs: object) -> None:
         assert kwargs["runtime_cli"] == tmp_path / "bin/vitalserver-vm"
         tools_dir = kwargs["tools_dir"]
         assert isinstance(tools_dir, Path)
@@ -162,14 +162,18 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
             "reset-cli",
             encoding="utf-8",
         )
+        (tools_dir / "Create Upstream Redis Backup.command").write_text(
+            "redis-backup-command",
+            encoding="utf-8",
+        )
 
     def fake_run(command: list[str], **_: object) -> None:
         commands.append(command)
 
     monkeypatch.setattr(
         installer_package,
-        "stage_reset_installer_command",
-        fake_stage_reset_installer_command,
+        "stage_troubleshooting_tools",
+        fake_stage_troubleshooting_tools,
     )
     monkeypatch.setattr(installer_package, "attached_disk_images", lambda: [])
     monkeypatch.setattr(installer_package, "run", fake_run)
@@ -230,6 +234,9 @@ def test_build_dmg_stages_installer_and_troubleshooting_command(
     assert (
         staging / "Troubleshooting Tools/bin/vitalserver-vm-reset-installer"
     ).read_text(encoding="utf-8") == "reset-cli"
+    assert (
+        staging / "Troubleshooting Tools/Create Upstream Redis Backup.command"
+    ).read_text(encoding="utf-8") == "redis-backup-command"
     assert commands[-1][:2] == ["hdiutil", "create"]
     assert str(staging) in commands[-1]
     assert str(dmg_output) in commands[-1]
@@ -266,6 +273,47 @@ def test_stage_reset_installer_command_renders_command_and_bundles_cli(
     assert 'vm_bin="${script_dir}/bin/vitalserver-vm-reset-installer"' in command_text
     assert 'exec /usr/bin/sudo "$0"' in command_text
     assert "runtime uninstall --force-clean-uninstaller" in command_text
+
+
+def test_stage_troubleshooting_tools_stages_reset_and_redis_commands(
+    tmp_path: Path,
+) -> None:
+    root = repo_root()
+    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
+    settings = replace(settings, pkg_root=tmp_path / "build/root")
+    runtime_dir = root / "apps/vitalserver-macos-runtime"
+    runtime_cli = tmp_path / "bin/vitalserver-vm"
+    runtime_cli.parent.mkdir(parents=True)
+    runtime_cli.write_text("#!/bin/sh\n", encoding="utf-8")
+    runtime_cli.chmod(0o755)
+    tools_dir = tmp_path / "Troubleshooting Tools"
+
+    installer_package.stage_troubleshooting_tools(
+        settings=settings,
+        runtime_dir=runtime_dir,
+        runtime_cli=runtime_cli,
+        tools_dir=tools_dir,
+    )
+
+    reset_command = tools_dir / "Reset VitalServer Helper for Reinstall.command"
+    redis_command = tools_dir / "Create Upstream Redis Backup.command"
+    cli = tools_dir / "bin/vitalserver-vm-reset-installer"
+    redis_command_text = redis_command.read_text(encoding="utf-8")
+
+    assert reset_command.is_file()
+    assert redis_command.is_file()
+    assert cli.is_file()
+    assert os.access(reset_command, os.X_OK)
+    assert os.access(redis_command, os.X_OK)
+    assert os.access(cli, os.X_OK)
+    assert 'archive_name="redis-upstream-import.tar.gz"' in redis_command_text
+    assert "dump.rdb" in redis_command_text
+    assert 'COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 \\' in (
+        redis_command_text
+    )
+    assert '/usr/bin/tar -czf "${archive}" -C "${source_dir}" .' in (
+        redis_command_text
+    )
 
 
 def test_build_pkg_stages_rootfs_input_metadata_for_installed_bootstrap(

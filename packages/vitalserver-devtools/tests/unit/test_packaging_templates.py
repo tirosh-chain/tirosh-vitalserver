@@ -38,6 +38,7 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     uninstall = tmp_path / "tirosh-vitalserver-uninstall"
     clean_uninstall_postinstall = tmp_path / "clean-uninstall-postinstall"
     reset_for_reinstall_command = tmp_path / "reset-for-reinstall.command"
+    upstream_redis_backup_command = tmp_path / "upstream-redis-backup.command"
     components = tmp_path / "components.plist"
 
     render_packaging_executable(
@@ -65,6 +66,11 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         packaging / "reset-for-reinstall-command.template",
         reset_for_reinstall_command,
     )
+    render_packaging_executable(
+        settings,
+        packaging / "upstream-redis-backup-command.template",
+        upstream_redis_backup_command,
+    )
     render_packaging_template(
         settings,
         packaging / "components.plist.template",
@@ -84,6 +90,7 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
             uninstall,
             clean_uninstall_postinstall,
             reset_for_reinstall_command,
+            upstream_redis_backup_command,
             components,
         ]
     )
@@ -93,6 +100,9 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         encoding="utf-8"
     )
     reset_for_reinstall_command_text = reset_for_reinstall_command.read_text(
+        encoding="utf-8"
+    )
+    upstream_redis_backup_command_text = upstream_redis_backup_command.read_text(
         encoding="utf-8"
     )
     postinstall_text = postinstall.read_text(encoding="utf-8")
@@ -210,6 +220,34 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         'manager_app="/Applications/VitalServer Helper.app"'
         in reset_for_reinstall_command_text
     )
+    assert (
+        'archive_name="redis-upstream-import.tar.gz"'
+        in upstream_redis_backup_command_text
+    )
+    assert (
+        "choose folder with prompt"
+        in upstream_redis_backup_command_text
+    )
+    assert (
+        'if [ ! -f "${source_dir}/dump.rdb" ]; then'
+        in upstream_redis_backup_command_text
+    )
+    assert (
+        "/usr/bin/find \"${source_dir}\" -type l -print -quit"
+        in upstream_redis_backup_command_text
+    )
+    assert (
+        'refusing to overwrite existing archive: ${archive}'
+        in upstream_redis_backup_command_text
+    )
+    assert (
+        'COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 \\'
+        in upstream_redis_backup_command_text
+    )
+    assert (
+        '/usr/bin/tar -czf "${archive}" -C "${source_dir}" .'
+        in upstream_redis_backup_command_text
+    )
     assert "Applications/VitalServer Helper.app" in components.read_text(
         encoding="utf-8"
     )
@@ -218,6 +256,7 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert os.access(uninstall, os.X_OK)
     assert os.access(clean_uninstall_postinstall, os.X_OK)
     assert os.access(reset_for_reinstall_command, os.X_OK)
+    assert os.access(upstream_redis_backup_command, os.X_OK)
 
 
 def test_proxy_run_does_not_report_started_when_proxy_readiness_fails(
