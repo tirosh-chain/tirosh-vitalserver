@@ -130,6 +130,7 @@ class RequireGitBranchInput:
 class VerifyUpstreamVitalServerInput:
     mode: VerificationMode
     manifest: Path | None
+    require_remote_commit: bool = False
 
 
 @dataclass(frozen=True)
@@ -236,6 +237,12 @@ class InstalledHealthInput:
 
 
 @dataclass(frozen=True)
+class InstalledSmokeInput:
+    config: Path
+    proxy_port: str
+
+
+@dataclass(frozen=True)
 class ReleaseUpdateBundleInput:
     config: Path
     release_file: Path
@@ -257,6 +264,15 @@ class ReleaseUpdateBundleInput:
 
 @dataclass(frozen=True)
 class VerifyReleaseUpdateBundleInput:
+    config: Path
+    release_file: Path
+    bundle_name: str | None
+    bundle_kind: str
+    output_dir: Path | None
+
+
+@dataclass(frozen=True)
+class ApplySmokeReleaseUpdateBundleInput:
     config: Path
     release_file: Path
     bundle_name: str | None
@@ -300,6 +316,13 @@ class ReleaseDmgArtifactVerifyInput:
 
 
 @dataclass(frozen=True)
+class ReleaseTroubleshootingToolsVerifyInput:
+    config: Path
+    release_file: Path
+    output: Path | None
+
+
+@dataclass(frozen=True)
 class MacOSPackageCleanInput:
     config: Path
     release_file: Path
@@ -318,6 +341,7 @@ class VerifyUpdateBundleInput:
 
 
 __all__ = [
+    "ApplySmokeReleaseUpdateBundleInput",
     "BuildUpdateBundleInput",
     "CloudInitInput",
     "ComposeCommandInput",
@@ -327,6 +351,7 @@ __all__ = [
     "GuestDeploymentInput",
     "HostProxyInput",
     "InstalledHealthInput",
+    "InstalledSmokeInput",
     "InstalledStatusInput",
     "MacOSAppInput",
     "MacOSPackageCleanInput",
@@ -337,6 +362,7 @@ __all__ = [
     "ReleaseDmgArtifactVerifyInput",
     "ReleasePackageInput",
     "ReleaseTroubleshootingToolsInput",
+    "ReleaseTroubleshootingToolsVerifyInput",
     "ReleaseUpdateBundleInput",
     "RenderTemplateInput",
     "RequireBridgedIdentityInput",

@@ -41,6 +41,50 @@ def test_candidate_mode_allows_unapproved_compatible_commit() -> None:
     assert any("not in approvedCommits" in item.message for item in result.observations)
 
 
+def test_candidate_remote_provenance_accepts_remote_commit() -> None:
+    result = verify_upstream_vitalserver_contract(
+        manifest(),
+        state(
+            commit="9999999999999999999999999999999999999999",
+            remote_commit_present=True,
+        ),
+        "candidate",
+        require_remote_commit=True,
+    )
+
+    assert result.ok
+    assert any(item.stage == "remote-commit" for item in result.observations)
+
+
+def test_candidate_remote_provenance_rejects_local_only_commit() -> None:
+    result = verify_upstream_vitalserver_contract(
+        manifest(),
+        state(
+            commit="9999999999999999999999999999999999999999",
+            remote_commit_present=False,
+        ),
+        "candidate",
+        require_remote_commit=True,
+    )
+
+    assert any(issue.stage == "remote-commit" for issue in result.issues)
+
+
+def test_candidate_remote_provenance_reports_lookup_error() -> None:
+    result = verify_upstream_vitalserver_contract(
+        manifest(),
+        state(
+            commit="9999999999999999999999999999999999999999",
+            remote_commit_error="network unavailable",
+        ),
+        "candidate",
+        require_remote_commit=True,
+    )
+
+    assert result.issues[0].stage == "remote-commit"
+    assert result.issues[0].actual == "network unavailable"
+
+
 def test_approved_mode_rejects_unapproved_commit() -> None:
     result = verify_upstream_vitalserver_contract(
         manifest(),
@@ -192,6 +236,8 @@ def state(
     commit_error: str | None = None,
     dirty_status: str | None = "",
     dirty_status_error: str | None = None,
+    remote_commit_present: bool | None = None,
+    remote_commit_error: str | None = None,
     app_js: str = APP_JS,
 ) -> UpstreamVitalServerState:
     return UpstreamVitalServerState(
@@ -207,4 +253,6 @@ def state(
             "vitalserver-old/service/include/monitor.js": "module.exports = {};",
         },
         file_errors={},
+        remote_commit_present=remote_commit_present,
+        remote_commit_error=remote_commit_error,
     )

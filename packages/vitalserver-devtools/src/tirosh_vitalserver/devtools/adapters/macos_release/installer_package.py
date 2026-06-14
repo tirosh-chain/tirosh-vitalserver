@@ -152,7 +152,7 @@ def detach_attached_image_without_mount(
             "DMG output is attached without a mount point, but hdiutil did not "
             f"report a device entry to detach: {expected_path}"
         )
-    run(["hdiutil", "detach", device_entry])
+    detach_hdiutil_target(device_entry)
 
 
 def ensure_dmg_output_is_not_attached(dmg_output: Path) -> None:
@@ -217,10 +217,22 @@ def attach_dmg_readonly(dmg_output: Path) -> DmgAttachment:
 
 
 def detach_dmg_attachment(attachment: DmgAttachment) -> None:
-    target = str(attachment.mount_point)
-    if not attachment.mount_point.exists() and attachment.device_entry:
-        target = attachment.device_entry
-    run(["hdiutil", "detach", target])
+    target = attachment.device_entry or str(attachment.mount_point)
+    detach_hdiutil_target(target)
+
+
+def detach_hdiutil_target(target: str) -> None:
+    try:
+        run(["hdiutil", "detach", target])
+    except subprocess.CalledProcessError as first_error:
+        try:
+            run(["hdiutil", "detach", "-force", target])
+        except subprocess.CalledProcessError as force_error:
+            raise RuntimeError(
+                "failed to detach DMG attachment "
+                f"{target}: detach exited {first_error.returncode}; "
+                f"force detach exited {force_error.returncode}"
+            ) from force_error
 
 
 def attached_disk_images() -> list[dict[str, object]]:

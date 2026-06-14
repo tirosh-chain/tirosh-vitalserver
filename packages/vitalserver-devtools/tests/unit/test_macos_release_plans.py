@@ -11,8 +11,10 @@ import pytest
 from tirosh_vitalserver.devtools.adapters.macos_release import installer_package
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
 from tirosh_vitalserver.devtools.application.inputs import (
+    MacOSPackageInstallInput,
     ReleaseDmgArtifactVerifyInput,
     ReleasePackageInput,
+    ReleaseTroubleshootingToolsVerifyInput,
 )
 from tirosh_vitalserver.devtools.application.usecases import macos_package
 from tirosh_vitalserver.devtools.config.macos.release_settings import (
@@ -368,6 +370,83 @@ def test_stage_troubleshooting_tools_stages_reset_and_redis_commands(
     )
 
 
+def test_troubleshooting_tools_verify_accepts_staged_commands(
+    tmp_path: Path,
+) -> None:
+    root = repo_root()
+    tools_dir = stage_troubleshooting_tools_for_test(tmp_path)
+
+    report = macos_package.troubleshooting_tools_report(
+        ReleaseTroubleshootingToolsVerifyInput(
+            config=root / "config/vm-build.toml",
+            release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
+            output=tools_dir,
+        )
+    )
+
+    assert report.passed
+
+
+def test_troubleshooting_tools_verify_requires_wrapper_log_before_sudo(
+    tmp_path: Path,
+) -> None:
+    root = repo_root()
+    tools_dir = stage_troubleshooting_tools_for_test(tmp_path)
+    reset_command = tools_dir / "Reset VitalServer Helper for Reinstall.command"
+    reset_command.write_text(
+        reset_command.read_text(encoding="utf-8").replace(
+            'exec > >(tee -a "${wrapper_log}") 2>&1',
+            'exec > >(tee -a "${uninstall_log}") 2>&1',
+        ),
+        encoding="utf-8",
+    )
+
+    report = macos_package.troubleshooting_tools_report(
+        ReleaseTroubleshootingToolsVerifyInput(
+            config=root / "config/vm-build.toml",
+            release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
+            output=tools_dir,
+        )
+    )
+
+    user_log_check = next(
+        check
+        for check in report.checks
+        if check.name == "troubleshooting-reset-command-wrapper-log"
+    )
+    assert user_log_check.status == PreflightStatus.INVALID
+    assert user_log_check in report.blockers
+
+
+def stage_troubleshooting_tools_for_test(tmp_path: Path) -> Path:
+    root = repo_root()
+    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
+    settings = replace(settings, pkg_root=tmp_path / "build/root")
+    runtime_dir = root / "apps/vitalserver-macos-runtime"
+    runtime_cli = tmp_path / "bin/vitalserver-vm"
+    runtime_cli.parent.mkdir(parents=True)
+    runtime_cli.write_text("#!/bin/sh\n", encoding="utf-8")
+    runtime_cli.chmod(0o755)
+    reset_troubleshooting_cli = (
+        tmp_path / "bin/vitalserver-troubleshooting-reset-for-reinstall"
+    )
+    reset_troubleshooting_cli.write_text("#!/bin/sh\n", encoding="utf-8")
+    reset_troubleshooting_cli.chmod(0o755)
+    upstream_redis_save_cli = (
+        tmp_path / "bin/vitalserver-troubleshooting-upstream-redis-save"
+    )
+    upstream_redis_save_cli.write_text("#!/bin/sh\n", encoding="utf-8")
+    upstream_redis_save_cli.chmod(0o755)
+    tools_dir = tmp_path / "Troubleshooting Tools"
+    installer_package.stage_troubleshooting_tools(
+        settings=settings,
+        runtime_dir=runtime_dir,
+        runtime_cli=runtime_cli,
+        tools_dir=tools_dir,
+    )
+    return tools_dir
+
+
 def test_build_pkg_stages_rootfs_input_metadata_for_installed_bootstrap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -576,6 +655,87 @@ def test_build_dmg_detaches_output_dmg_when_attached_without_mount(
     assert commands == [["hdiutil", "detach", "/dev/disk5"]]
 
 
+def test_build_dmg_forces_detach_when_unmounted_attachment_is_busy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dmg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.dmg"
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        installer_package,
+        "attached_disk_images",
+        lambda: [
+            {
+                "image-path": str(dmg_output),
+                "system-entities": [{"dev-entry": "/dev/disk5"}],
+            }
+        ],
+    )
+
+    def run(command: list[str]) -> None:
+        commands.append(command)
+        if command == ["hdiutil", "detach", "/dev/disk5"]:
+            raise subprocess.CalledProcessError(16, command)
+
+    monkeypatch.setattr(installer_package, "run", run)
+
+    installer_package.detach_unmounted_dmg_output_attachments(dmg_output)
+
+    assert commands == [
+        ["hdiutil", "detach", "/dev/disk5"],
+        ["hdiutil", "detach", "-force", "/dev/disk5"],
+    ]
+
+
+def test_detach_dmg_attachment_prefers_device_entry_and_forces_after_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mount = tmp_path / "mount"
+    mount.mkdir()
+    commands: list[list[str]] = []
+
+    def run(command: list[str]) -> None:
+        commands.append(command)
+        if command == ["hdiutil", "detach", "/dev/disk9"]:
+            raise subprocess.CalledProcessError(16, command)
+
+    monkeypatch.setattr(installer_package, "run", run)
+
+    installer_package.detach_dmg_attachment(
+        installer_package.DmgAttachment(
+            mount_point=mount,
+            device_entry="/dev/disk9",
+        )
+    )
+
+    assert commands == [
+        ["hdiutil", "detach", "/dev/disk9"],
+        ["hdiutil", "detach", "-force", "/dev/disk9"],
+    ]
+
+
+def test_detach_dmg_attachment_reports_force_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mount = tmp_path / "mount"
+    mount.mkdir()
+
+    def run(command: list[str]) -> None:
+        raise subprocess.CalledProcessError(16, command)
+
+    monkeypatch.setattr(installer_package, "run", run)
+
+    with pytest.raises(RuntimeError, match="force detach exited 16"):
+        installer_package.detach_dmg_attachment(
+            installer_package.DmgAttachment(
+                mount_point=mount,
+                device_entry="/dev/disk9",
+            )
+        )
+
+
 def test_release_dmg_artifact_verify_accepts_expected_layout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -766,6 +926,52 @@ def test_release_dmg_artifact_verify_reports_detach_failure(
     detach = next(check for check in report.checks if check.name == "dmg-detach")
     assert detach.status == PreflightStatus.FAILED
     assert detach in report.blockers
+
+
+def test_install_pkg_reports_sudo_failure_without_traceback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = repo_root()
+    release_file = tmp_path / "release-dev.json"
+    release_file.write_text(
+        json.dumps(
+            {
+                "channel": "dev",
+                "helperVersion": "1.2.3",
+                "releaseLabel": "1.2.3-dev",
+                "minUpdaterVersion": "1.0.0",
+                "vitalServerVersion": "2.3.4",
+                "targetPlatform": "macos-arm64",
+            }
+        ),
+        encoding="utf-8",
+    )
+    pkg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.pkg"
+    pkg_output.parent.mkdir(exist_ok=True)
+    pkg_output.write_text("pkg", encoding="utf-8")
+    monkeypatch.setattr(
+        macos_package,
+        "default_pkg_output",
+        lambda settings, release: pkg_output,
+    )
+
+    def fail_run(command: list[str]) -> None:
+        raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(macos_package, "run", fail_run)
+
+    with pytest.raises(SystemExit) as error:
+        macos_package.install_pkg(
+            MacOSPackageInstallInput(
+                config=root / "config/vm-build.toml",
+                release_file=release_file,
+                install_settings=None,
+            )
+        )
+
+    assert "installer command failed exitCode=1" in str(error.value)
+    assert "interactive administrator shell" in str(error.value)
 
 
 def test_release_package_preflight_reports_missing_rootfs_before_build(

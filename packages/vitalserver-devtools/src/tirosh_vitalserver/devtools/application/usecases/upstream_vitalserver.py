@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 from tirosh_vitalserver.devtools.adapters.toolchain.upstream_vitalserver import (
+    read_remote_commit_presence,
     read_upstream_vitalserver_state,
 )
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
@@ -63,7 +65,23 @@ def verify_upstream_vitalserver(input: VerifyUpstreamVitalServerInput) -> int:
         return 1
 
     state = read_upstream_vitalserver_state(root, manifest)
-    result = verify_upstream_vitalserver_contract(manifest, state, input.mode)
+    if input.require_remote_commit and state.commit and not state.commit_error:
+        remote_commit_present, remote_commit_error = read_remote_commit_presence(
+            cwd=root / manifest.submodule_path,
+            remote=manifest.remote,
+            commit=state.commit,
+        )
+        state = replace(
+            state,
+            remote_commit_present=remote_commit_present,
+            remote_commit_error=remote_commit_error,
+        )
+    result = verify_upstream_vitalserver_contract(
+        manifest,
+        state,
+        input.mode,
+        require_remote_commit=input.require_remote_commit,
+    )
     _print_result(result)
     return 0 if result.ok else 1
 

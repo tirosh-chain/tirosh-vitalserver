@@ -224,11 +224,17 @@ def main() -> int:
         default="approved",
     )
     verify_upstream.add_argument("--manifest", type=Path)
+    verify_upstream.add_argument(
+        "--require-remote-commit",
+        action="store_true",
+        help="also verify the checked-out commit exists in the manifest remote",
+    )
     verify_upstream.set_defaults(
         handler=lambda args: upstream_vitalserver_usecases.verify_upstream_vitalserver(
             usecase_inputs.VerifyUpstreamVitalServerInput(
                 mode=upstream_vitalserver_usecases.parse_verification_mode(args.mode),
                 manifest=args.manifest,
+                require_remote_commit=args.require_remote_commit,
             )
         )
     )
@@ -273,6 +279,22 @@ def main() -> int:
         handler=(
             lambda args: installed_runtime_usecases.check_installed_runtime_health(
                 usecase_inputs.InstalledHealthInput(
+                    config=args.config,
+                    proxy_port=args.proxy_port,
+                )
+            )
+        )
+    )
+
+    installed_smoke = subparsers.add_parser(
+        "macos-installed-smoke",
+        help="run installed macOS runtime smoke checks",
+    )
+    installed_smoke.add_argument("--proxy-port", required=True)
+    installed_smoke.set_defaults(
+        handler=(
+            lambda args: installed_runtime_usecases.smoke_installed_runtime(
+                usecase_inputs.InstalledSmokeInput(
                     config=args.config,
                     proxy_port=args.proxy_port,
                 )
@@ -662,6 +684,34 @@ def main() -> int:
         ),
     )
 
+    release_update_bundle_apply_smoke = subparsers.add_parser(
+        "release-update-bundle-apply-smoke",
+        help="apply a release update bundle to the installed runtime",
+    )
+    release_update_bundle_apply_smoke.add_argument(
+        "--release-file",
+        type=Path,
+        required=True,
+    )
+    release_update_bundle_apply_smoke.add_argument("--bundle-name")
+    release_update_bundle_apply_smoke.add_argument(
+        "--bundle-kind",
+        choices=["product-update", "vm-image-update"],
+        default="product-update",
+    )
+    release_update_bundle_apply_smoke.add_argument("--output-dir", type=Path)
+    release_update_bundle_apply_smoke.set_defaults(
+        handler=lambda args: macos_update_bundle_usecases.apply_smoke_update_bundle(
+            usecase_inputs.ApplySmokeReleaseUpdateBundleInput(
+                config=args.config,
+                release_file=args.release_file,
+                bundle_name=args.bundle_name,
+                bundle_kind=args.bundle_kind,
+                output_dir=args.output_dir,
+            )
+        ),
+    )
+
     release_pkg = subparsers.add_parser(
         "release-pkg",
         help="build a macOS runtime pkg from release.json",
@@ -709,6 +759,26 @@ def main() -> int:
     release_troubleshooting_tools.set_defaults(
         handler=lambda args: macos_package_usecases.build_troubleshooting_tools(
             release_troubleshooting_tools_input(args)
+        )
+    )
+
+    release_troubleshooting_tools_verify = subparsers.add_parser(
+        "release-troubleshooting-tools-verify",
+        help="verify staged macOS Troubleshooting Tools from release.json",
+    )
+    release_troubleshooting_tools_verify.add_argument(
+        "--release-file",
+        type=Path,
+        required=True,
+    )
+    release_troubleshooting_tools_verify.add_argument("--output", type=Path)
+    release_troubleshooting_tools_verify.set_defaults(
+        handler=lambda args: macos_package_usecases.verify_troubleshooting_tools(
+            usecase_inputs.ReleaseTroubleshootingToolsVerifyInput(
+                config=args.config,
+                release_file=args.release_file,
+                output=args.output,
+            )
         )
     )
 

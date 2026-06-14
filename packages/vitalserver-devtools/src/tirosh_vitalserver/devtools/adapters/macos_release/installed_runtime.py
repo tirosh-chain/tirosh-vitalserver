@@ -12,6 +12,7 @@ from tirosh_vitalserver.devtools.adapters.macos_release.runtime_state import (
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
 from tirosh_vitalserver.devtools.application.inputs import (
     InstalledHealthInput,
+    InstalledSmokeInput,
     InstalledStatusInput,
 )
 from tirosh_vitalserver.devtools.config.macos.release_settings import (
@@ -25,6 +26,13 @@ def run_installed_status(input: InstalledStatusInput) -> int:
 
 
 def run_installed_health(input: InstalledHealthInput) -> int:
+    status = installed_status(input.config)
+    health = installed_health(input.config, input.proxy_port)
+    return status or health
+
+
+def run_installed_smoke(input: InstalledSmokeInput) -> int:
+    print("Installed runtime smoke")
     status = installed_status(input.config)
     health = installed_health(input.config, input.proxy_port)
     return status or health
@@ -53,7 +61,10 @@ def installed_status(config: Path) -> int:
     for label, service in [
         ("launchd vm", "system/ai.tirosh.vitalserver.helper.vm"),
         ("launchd proxy", "system/ai.tirosh.vitalserver.helper.proxy"),
-        ("launchd guest log sync", "system/ai.tirosh.vitalserver.helper.guest-log-sync"),
+        (
+            "launchd guest log sync",
+            "system/ai.tirosh.vitalserver.helper.guest-log-sync",
+        ),
         ("launchd watchdog", "system/ai.tirosh.vitalserver.helper.watchdog"),
     ]:
         if launchd_loaded(service):
@@ -63,7 +74,10 @@ def installed_status(config: Path) -> int:
             status = 1
 
     for label, service in [
-        ("launchd sleep prevention", "system/ai.tirosh.vitalserver.helper.sleep-prevention"),
+        (
+            "launchd sleep prevention",
+            "system/ai.tirosh.vitalserver.helper.sleep-prevention",
+        ),
     ]:
         if launchd_loaded(service):
             print(f"  {label}: loaded")

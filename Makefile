@@ -43,14 +43,14 @@ include make/vm.mk
 
 .PHONY: \
 	dist/dmg/release dist/pkg/release dist/update/release \
-	dist/update/verify/release dist/image-update/release \
-	dist/image-update/verify/release dist/dmg/dev dist/dmg/dev/artifact-verify dist/dmg/dev/compile dist/dmg/dev/review dist/dmg/dev/runtime-smoke dist/dmg/dev/verify \
-	dist/pkg/dev dist/pkg/dev/compile dist/pkg/dev/runtime-smoke dist/pkg/dev/verify dist/pkg/verify/dev \
-	dist/dmg/release/verify dist/pkg/release/verify \
-	dist/update/dev dist/update/verify/dev \
-	dist/image-update/dev dist/image-update/verify/dev \
-	dist/troubleshooting/dev dist/troubleshooting/release \
-	dist/install/dev dist/installed/health dist/uninstall/dev \
+	dist/update/verify/release dist/update/release/smoke dist/update/release/apply-smoke dist/image-update/release \
+	dist/image-update/verify/release dist/image-update/release/smoke dist/image-update/release/apply-smoke dist/dmg/dev dist/dmg/dev/artifact-verify dist/dmg/dev/compile dist/dmg/dev/review dist/dmg/dev/runtime-smoke dist/dmg/dev/verify \
+	dist/pkg/dev dist/pkg/dev/compile dist/pkg/dev/review dist/pkg/dev/runtime-smoke dist/pkg/dev/verify dist/pkg/verify/dev \
+	dist/dmg/release/review dist/dmg/release/verify dist/pkg/release/review dist/pkg/release/verify \
+	dist/update/dev dist/update/verify/dev dist/update/dev/smoke dist/update/dev/apply-smoke \
+	dist/image-update/dev dist/image-update/verify/dev dist/image-update/dev/smoke dist/image-update/dev/apply-smoke \
+	dist/troubleshooting/dev dist/troubleshooting/dev/verify dist/troubleshooting/release dist/troubleshooting/release/verify \
+	dist/install/dev dist/install/dev/verified dist/installed/health dist/installed/smoke dist/uninstall/dev \
 	runtime/up runtime/up-bridged runtime/down runtime/status runtime/health \
 	runtime/prepare runtime/ip runtime/proxy/start runtime/clean \
 	runtime/interfaces runtime/network/shared runtime/network/bridged runtime/e2e/smoke \
@@ -67,8 +67,12 @@ dist/dmg/release: internal/vm/dmg/release
 dist/pkg/release: internal/vm/pkg/release
 dist/update/release: internal/vm/update/release
 dist/update/verify/release: internal/vm/update/verify/release
+dist/update/release/smoke: internal/vm/update/smoke/release
+dist/update/release/apply-smoke: internal/vm/update/apply-smoke/release
 dist/image-update/release: internal/vm/image-update/release
 dist/image-update/verify/release: internal/vm/image-update/verify/release
+dist/image-update/release/smoke: internal/vm/image-update/smoke/release
+dist/image-update/release/apply-smoke: internal/vm/image-update/apply-smoke/release
 dist/dmg/dev: internal/vm/dmg/dev
 dist/dmg/dev/review: internal/vm/dmg/dev/review
 dist/dmg/dev/compile: internal/vm/dmg/dev/compile
@@ -77,20 +81,34 @@ dist/dmg/dev/runtime-smoke: internal/vm/dmg/dev/runtime-smoke
 dist/dmg/dev/verify: internal/vm/dmg/dev/verify
 dist/pkg/dev: internal/vm/pkg/dev
 dist/pkg/dev/compile: internal/vm/pkg/dev/compile
+dist/pkg/dev/review: internal/vm/pkg/dev/review
 dist/pkg/dev/runtime-smoke: internal/vm/pkg/dev/runtime-smoke
 dist/pkg/dev/verify: internal/vm/pkg/dev/verify
 dist/pkg/verify/dev: internal/vm/pkg/dev/verify
+dist/dmg/release/review: internal/vm/dmg/release/review
 dist/dmg/release/verify: internal/vm/dmg/release/verify
+dist/pkg/release/review: internal/vm/pkg/release/review
 dist/pkg/release/verify: internal/vm/pkg/release/verify
 dist/update/dev: internal/vm/update/dev
 dist/update/verify/dev: internal/vm/update/verify/dev
+dist/update/dev/smoke: internal/vm/update/smoke/dev
+dist/update/dev/apply-smoke: internal/vm/update/apply-smoke/dev
 dist/image-update/dev: internal/vm/image-update/dev
 dist/image-update/verify/dev: internal/vm/image-update/verify/dev
+dist/image-update/dev/smoke: internal/vm/image-update/smoke/dev
+dist/image-update/dev/apply-smoke: internal/vm/image-update/apply-smoke/dev
 dist/troubleshooting/dev: internal/vm/troubleshooting/dev
+dist/troubleshooting/dev/verify: internal/vm/troubleshooting/dev/verify
 dist/troubleshooting/release: internal/vm/troubleshooting/release
+dist/troubleshooting/release/verify: internal/vm/troubleshooting/release/verify
 dist/install/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 dist/install/dev: internal/vm/pkg/install
+dist/install/dev/verified:
+	$(MAKE) dist/pkg/dev/verify
+	$(MAKE) dist/install/dev
+	$(MAKE) dist/installed/health
 dist/installed/health: internal/vm/installed/health
+dist/installed/smoke: internal/vm/installed/smoke
 dist/uninstall/dev: internal/vm/pkg/uninstall/dev
 
 runtime/up: internal/vm/up
@@ -245,19 +263,23 @@ help/dist:
 	@printf "  make dist/{pkg|dmg}/dev/compile\n"
 	@printf "  make dist/{pkg|dmg}/dev/{runtime-smoke|verify}\n"
 	@printf "  make dist/{pkg|dmg}/release/verify\n"
-	@printf "  make dist/troubleshooting/{dev|release}\n"
+	@printf "  make dist/troubleshooting/{dev|release}/verify\n"
 	@printf "  make dist/{update|image-update}/verify/{dev|release}\n"
+	@printf "  make dist/{update|image-update}/{dev|release}/smoke\n"
 	@printf "  make dist/{install|uninstall}/dev [VM_UNINSTALL_ARGS=--clean]\n"
-	@printf "  make dist/installed/health\n"
+	@printf "  make dist/install/dev/verified\n"
+	@printf "  make dist/installed/{health|smoke}\n"
 	@printf "\n"
 	@printf "ARTIFACT TARGETS\n"
 	@printf "  dist/pkg/dev                  Build development pkg\n"
 	@printf "  dist/pkg/dev/compile          Build development pkg and recompile the VM golden rootfs\n"
+	@printf "  dist/pkg/dev/review           Run the shared development review gate\n"
 	@printf "  dist/pkg/dev/runtime-smoke    Validate golden runtime boot contract for dev pkg\n"
 	@printf "  dist/pkg/dev/verify           Run package/PWA review, build dev pkg from clean rootfs, and run runtime smoke\n"
 	@printf "  dist/pkg/verify/dev           Alias for dist/pkg/dev/verify\n"
 	@printf "  dist/pkg/release              Build release pkg from clean golden rootfs\n"
-	@printf "  dist/pkg/release/verify       Build release pkg and run runtime smoke\n"
+	@printf "  dist/pkg/release/review       Run the shared release review gate\n"
+	@printf "  dist/pkg/release/verify       Run review, build release pkg, and run runtime smoke\n"
 	@printf "  dist/dmg/dev                  Build development installer dmg\n"
 	@printf "  dist/dmg/dev/review           Run package/PWA/Swift/devtools review checks used by dev DMG verify\n"
 	@printf "  dist/dmg/dev/compile          Build development dmg from clean rootfs and verify the DMG artifact\n"
@@ -265,25 +287,42 @@ help/dist:
 	@printf "  dist/dmg/dev/runtime-smoke    Validate golden runtime boot contract for dev dmg\n"
 	@printf "  dist/dmg/dev/verify           Run review, compile/artifact verify, and runtime smoke\n"
 	@printf "  dist/dmg/release              Build release installer dmg from clean golden rootfs\n"
-	@printf "  dist/dmg/release/verify       Build release dmg and run runtime smoke\n"
+	@printf "  dist/dmg/release/review       Run the shared release review gate\n"
+	@printf "  dist/dmg/release/verify       Run review, build release dmg, and run runtime smoke\n"
 	@printf "  dist/update/dev               Build development product update bundle\n"
 	@printf "  dist/update/release           Build release product update bundle\n"
 	@printf "  dist/image-update/dev         Build development VM image/rootfs update bundle\n"
 	@printf "  dist/image-update/release     Build release VM image/rootfs update bundle\n"
 	@printf "  dist/troubleshooting/dev      Stage development Troubleshooting Tools commands\n"
+	@printf "  dist/troubleshooting/dev/verify\n"
+	@printf "                                Stage and verify development Troubleshooting Tools commands\n"
 	@printf "  dist/troubleshooting/release\n"
 	@printf "                                Stage release Troubleshooting Tools commands\n"
+	@printf "  dist/troubleshooting/release/verify\n"
+	@printf "                                Stage and verify release Troubleshooting Tools commands\n"
 	@printf "\n"
 	@printf "VERIFY TARGETS\n"
 	@printf "  dist/update/verify/dev        Verify development product update bundle\n"
 	@printf "  dist/update/verify/release    Verify release product update bundle\n"
+	@printf "  dist/update/dev/smoke         Static smoke for development product update bundle\n"
+	@printf "  dist/update/release/smoke     Static smoke for release product update bundle\n"
+	@printf "  dist/update/dev/apply-smoke   Guarded product update apply smoke interface\n"
+	@printf "  dist/update/release/apply-smoke\n"
+	@printf "                                Guarded release product update apply smoke interface\n"
 	@printf "  dist/image-update/verify/dev  Verify development VM image/rootfs update bundle\n"
 	@printf "  dist/image-update/verify/release\n"
 	@printf "                                Verify release VM image/rootfs update bundle\n"
+	@printf "  dist/image-update/dev/smoke   Static smoke for development VM image/rootfs update bundle\n"
+	@printf "  dist/image-update/release/smoke\n"
+	@printf "                                Static smoke for release VM image/rootfs update bundle\n"
+	@printf "  dist/image-update/dev/apply-smoke\n"
+	@printf "                                Guarded VM image update apply smoke interface\n"
 	@printf "\n"
 	@printf "INSTALL TARGETS\n"
 	@printf "  dist/install/dev              Install the selected pkg on this Mac with sudo\n"
+	@printf "  dist/install/dev/verified     Verify dev pkg, install it, then check installed health\n"
 	@printf "  dist/installed/health         Check installed runtime and host proxy\n"
+	@printf "  dist/installed/smoke          Run installed runtime smoke checks\n"
 	@printf "  dist/uninstall/dev            Remove development runtime install\n"
 	@printf "\n"
 	@printf "VARIABLES\n"
@@ -292,6 +331,8 @@ help/dist:
 	@printf "  VM_CODESIGN_IDENTITY=-        Codesign identity for local unsigned/dev artifacts\n"
 	@printf "  VM_NGINX_BIN=/path/nginx      Use a prepared nginx artifact instead of source binary\n"
 	@printf "  VM_UNINSTALL_ARGS=--clean     Run development uninstall in clean mode\n"
+	@printf "  VM_UPDATE_APPLY_SMOKE_CONFIRM=YES\n"
+	@printf "                                Required before guarded update apply smoke can run\n"
 	@printf "\n"
 	@printf "PROFILE TARGETS\n"
 	@printf "  Use dist/{pkg|dmg}/dev/compile for VM compile builds.\n"
@@ -402,6 +443,7 @@ help/dev:
 	@printf "SYNOPSIS\n"
 	@printf "  make dev/{doctor|bootstrap|lint|format|typecheck|test|build-testkit|check}\n"
 	@printf "  make repo/{init|update-submodule|verify-submodule|verify-submodule-candidate}\n"
+	@printf "  make repo/verify-submodule-candidate/remote\n"
 	@printf "  make {testkit/install-release|compose/build}\n"
 	@printf "\n"
 	@printf "DEVELOPMENT TARGETS\n"
@@ -421,6 +463,8 @@ help/dev:
 	@printf "  repo/verify-submodule         Verify approved upstream VitalServer submodule contract\n"
 	@printf "  repo/verify-submodule-candidate\n"
 	@printf "                                Check a candidate upstream VitalServer commit before approval\n"
+	@printf "  repo/verify-submodule-candidate/remote\n"
+	@printf "                                Check candidate commit provenance against upstream remote\n"
 	@printf "  compose/build                 Build all Compose images\n"
 	@printf "\n"
 	@printf "VARIABLES\n"

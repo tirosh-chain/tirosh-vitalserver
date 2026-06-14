@@ -51,6 +51,13 @@ If this is an intentional upstream update, use candidate verification first:
 make repo/verify-submodule-candidate
 ```
 
+For an upstream update candidate, also verify that the checked-out commit exists in the original
+upstream remote before approving it:
+
+```sh
+make repo/verify-submodule-candidate/remote
+```
+
 Then run the relevant runtime verification, such as:
 
 ```sh

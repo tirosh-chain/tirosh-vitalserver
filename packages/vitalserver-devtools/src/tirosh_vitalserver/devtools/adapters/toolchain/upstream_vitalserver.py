@@ -51,6 +51,31 @@ def read_upstream_vitalserver_state(
     )
 
 
+def read_remote_commit_presence(
+    *,
+    cwd: Path,
+    remote: str,
+    commit: str,
+) -> tuple[bool | None, str | None]:
+    try:
+        subprocess.check_output(
+            ["git", "fetch", "--dry-run", remote, commit],
+            cwd=cwd,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except FileNotFoundError:
+        return None, "git executable not found"
+    except subprocess.CalledProcessError as error:
+        output = (error.output or str(error)).strip()
+        if "couldn't find remote ref" in output:
+            return False, None
+        return None, output
+    except OSError as error:
+        return None, f"{type(error).__name__}: {error}"
+    return True, None
+
+
 def _read_submodule_url(
     gitmodules: Path,
     submodule_path: str,

@@ -45,6 +45,8 @@ class UpstreamVitalServerState:
     dirty_status_error: str | None
     files: dict[str, str]
     file_errors: dict[str, str]
+    remote_commit_present: bool | None = None
+    remote_commit_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +112,8 @@ def verify_upstream_vitalserver_contract(
     manifest: UpstreamVitalServerContractManifest,
     state: UpstreamVitalServerState,
     mode: VerificationMode,
+    *,
+    require_remote_commit: bool = False,
 ) -> VerificationResult:
     if mode not in ("approved", "candidate"):
         raise DomainError(f"unsupported upstream verification mode: {mode}")
@@ -119,6 +123,8 @@ def verify_upstream_vitalserver_contract(
 
     _verify_remote(manifest, state, issues, observations)
     _verify_commit(manifest, state, mode, issues, observations)
+    if require_remote_commit:
+        _verify_remote_commit(manifest, state, issues, observations)
     _verify_dirty_state(state, issues, observations)
     _verify_required_files(manifest, state, issues, observations)
     _verify_required_contracts(manifest, state, issues, observations)
@@ -233,6 +239,50 @@ def _verify_commit(
         observations.append(
             VerificationObservation(stage="commit", message=f"candidate: {message}")
         )
+
+
+def _verify_remote_commit(
+    manifest: UpstreamVitalServerContractManifest,
+    state: UpstreamVitalServerState,
+    issues: list[VerificationIssue],
+    observations: list[VerificationObservation],
+) -> None:
+    if state.commit_error or not state.commit:
+        return
+    if state.remote_commit_error:
+        issues.append(
+            VerificationIssue(
+                stage="remote-commit",
+                message="could not verify upstream commit against remote",
+                expected=f"{manifest.remote} contains {state.commit}",
+                actual=state.remote_commit_error,
+                fix=(
+                    "Retry with network access or verify the candidate commit "
+                    "exists in the original upstream remote before approval."
+                ),
+            )
+        )
+        return
+    if state.remote_commit_present is not True:
+        issues.append(
+            VerificationIssue(
+                stage="remote-commit",
+                message="upstream candidate commit is not present in remote",
+                expected=f"{manifest.remote} contains {state.commit}",
+                actual=str(state.remote_commit_present),
+                fix=(
+                    "Use a commit reachable from the original upstream remote, "
+                    "not a local-only or fork-only commit."
+                ),
+            )
+        )
+        return
+    observations.append(
+        VerificationObservation(
+            stage="remote-commit",
+            message=f"upstream remote contains commit {state.commit}",
+        )
+    )
 
 
 def _verify_dirty_state(

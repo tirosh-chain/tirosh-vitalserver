@@ -1,16 +1,17 @@
 .PHONY: internal/vm/nginx/artifact internal/vm/nginx/bundle internal/vm/docker/images
 .PHONY: internal/vm/require-release-branch
-.PHONY: internal/vm/pkg internal/vm/pkg/dev internal/vm/pkg/dev/compile internal/vm/pkg/dev/review internal/vm/pkg/dev/runtime-smoke internal/vm/pkg/dev/verify internal/vm/pkg/release internal/vm/pkg/release/verify
-.PHONY: internal/vm/troubleshooting internal/vm/troubleshooting/dev internal/vm/troubleshooting/release
-.PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/artifact-verify internal/vm/dmg/dev internal/vm/dmg/dev/artifact-verify internal/vm/dmg/dev/compile internal/vm/dmg/dev/review internal/vm/dmg/dev/runtime-smoke internal/vm/dmg/dev/verify internal/vm/dmg/release internal/vm/dmg/release/artifact-verify internal/vm/dmg/release/verify
+.PHONY: internal/vm/pkg internal/vm/pkg/review internal/vm/pkg/dev internal/vm/pkg/dev/compile internal/vm/pkg/dev/review internal/vm/pkg/dev/runtime-smoke internal/vm/pkg/dev/verify internal/vm/pkg/release internal/vm/pkg/release/review internal/vm/pkg/release/verify
+.PHONY: internal/vm/troubleshooting internal/vm/troubleshooting/verify internal/vm/troubleshooting/dev internal/vm/troubleshooting/dev/verify internal/vm/troubleshooting/release internal/vm/troubleshooting/release/verify
+.PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/artifact-verify internal/vm/dmg/dev internal/vm/dmg/dev/artifact-verify internal/vm/dmg/dev/compile internal/vm/dmg/dev/review internal/vm/dmg/dev/runtime-smoke internal/vm/dmg/dev/verify internal/vm/dmg/release internal/vm/dmg/release/artifact-verify internal/vm/dmg/release/review internal/vm/dmg/release/verify
 .PHONY: internal/vm/pkg/clean internal/vm/pkg/install internal/vm/pkg/uninstall/dev
-.PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release
+.PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release internal/vm/update/smoke internal/vm/update/smoke/dev internal/vm/update/smoke/release internal/vm/update/apply-smoke internal/vm/update/apply-smoke/dev internal/vm/update/apply-smoke/release
 .PHONY: internal/vm/image-update internal/vm/image-update/dev
 .PHONY: internal/vm/image-update/release
 .PHONY: internal/vm/update/verify internal/vm/update/verify/dev
 .PHONY: internal/vm/update/verify/release
 .PHONY: internal/vm/image-update/verify internal/vm/image-update/verify/dev
 .PHONY: internal/vm/image-update/verify/release
+.PHONY: internal/vm/image-update/smoke internal/vm/image-update/smoke/dev internal/vm/image-update/smoke/release internal/vm/image-update/apply-smoke internal/vm/image-update/apply-smoke/dev internal/vm/image-update/apply-smoke/release
 .PHONY: internal/vm/airgap-rootfs internal/vm/golden-rootfs internal/vm/golden-rootfs/compile internal/vm/golden-rootfs/negative internal/vm/golden-rootfs/runtime-smoke
 
 # Public update bundle knobs.
@@ -18,6 +19,7 @@ VM_UPDATE_REQUIRES_TWO_PHASE_UPDATE ?= false
 VM_UPDATE_BUNDLE_KIND ?= product-update
 VM_UPDATE_TARGET_PLATFORM ?=
 VM_UPDATE_ROOTFS_BASE ?=
+VM_UPDATE_STATIC_SMOKE_HINT ?= make dist/update/dev/smoke
 
 # Public package artifact knobs.
 VM_NGINX_SOURCE_BIN ?= /opt/homebrew/opt/nginx/bin/nginx
@@ -311,7 +313,7 @@ internal/vm/pkg/dev/compile:
 internal/vm/pkg/dev/runtime-smoke:
 	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_DEV_RELEASE_FILE)"
 
-internal/vm/pkg/dev/review: repo/verify-submodule pwa/check pwa/test
+internal/vm/pkg/review: repo/verify-submodule pwa/check pwa/test
 	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test \
 		--package-path "$(VM_SWIFT_PACKAGE_DIR)" \
 		--filter 'RuntimeLogArchiveRetention|RuntimeSettingsReadPolicy|RuntimeLogExporterTests|RuntimeLogCollectorTests|RuntimeSettingsValidatorTests|RuntimeLifecycleCommandTests|RuntimeConfigureRunnerTests'
@@ -320,10 +322,17 @@ internal/vm/pkg/dev/review: repo/verify-submodule pwa/check pwa/test
 		packages/vitalserver-devtools/tests/unit/test_packaging_templates.py \
 		packages/vitalserver-devtools/tests/unit/test_upstream_vitalserver_contract.py
 
+internal/vm/pkg/dev/review:
+	$(MAKE) internal/vm/pkg/review
+
 internal/vm/pkg/dev/verify:
 	$(MAKE) internal/vm/pkg/dev/review
 	$(MAKE) internal/vm/pkg/dev/compile
 	$(MAKE) internal/vm/pkg/dev/runtime-smoke
+
+internal/vm/pkg/release/review:
+	$(MAKE) internal/vm/require-release-branch
+	$(MAKE) internal/vm/pkg/review
 
 internal/vm/pkg/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
 internal/vm/pkg/release:
@@ -331,6 +340,7 @@ internal/vm/pkg/release:
 	$(MAKE) internal/vm/pkg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
 
 internal/vm/pkg/release/verify:
+	$(MAKE) internal/vm/pkg/release/review
 	$(MAKE) internal/vm/pkg/release
 	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_STABLE_RELEASE_FILE)"
 
@@ -384,7 +394,11 @@ internal/vm/dmg/release/artifact-verify: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_
 internal/vm/dmg/release/artifact-verify:
 	$(MAKE) internal/vm/dmg/artifact-verify VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
+internal/vm/dmg/release/review:
+	$(MAKE) internal/vm/pkg/release/review
+
 internal/vm/dmg/release/verify:
+	$(MAKE) internal/vm/dmg/release/review
 	$(MAKE) internal/vm/dmg/release
 	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_STABLE_RELEASE_FILE)"
 
@@ -395,14 +409,29 @@ internal/vm/troubleshooting:
 		--codesign-identity "$(VM_CODESIGN_IDENTITY)" \
 		--sdkroot "$(VM_SDKROOT)"
 
+internal/vm/troubleshooting/verify:
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-troubleshooting-tools-verify \
+		--release-file "$(VM_RELEASE_FILE)"
+
 internal/vm/troubleshooting/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/troubleshooting/dev:
 	$(MAKE) internal/vm/troubleshooting VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+
+internal/vm/troubleshooting/dev/verify: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+internal/vm/troubleshooting/dev/verify:
+	$(MAKE) internal/vm/troubleshooting/dev VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+	$(MAKE) internal/vm/troubleshooting/verify VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
 internal/vm/troubleshooting/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
 internal/vm/troubleshooting/release:
 	$(MAKE) internal/vm/require-release-branch
 	$(MAKE) internal/vm/troubleshooting VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+
+internal/vm/troubleshooting/release/verify: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
+internal/vm/troubleshooting/release/verify:
+	$(MAKE) internal/vm/require-release-branch
+	$(MAKE) internal/vm/troubleshooting/release VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+	$(MAKE) internal/vm/troubleshooting/verify VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
 internal/vm/update: pwa/build
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle \
@@ -453,12 +482,52 @@ internal/vm/update/verify:
 
 internal/vm/update/verify/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/update/verify/dev:
-	$(MAKE) internal/vm/update/verify VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+	$(MAKE) internal/vm/update/verify \
+		VM_RELEASE_FILE="$(VM_RELEASE_FILE)" \
+		VM_UPDATE_BUNDLE_KIND="$(VM_UPDATE_BUNDLE_KIND)"
 
 internal/vm/update/verify/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
 internal/vm/update/verify/release:
 	$(MAKE) internal/vm/require-release-branch
-	$(MAKE) internal/vm/update/verify VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+	$(MAKE) internal/vm/update/verify \
+		VM_RELEASE_FILE="$(VM_RELEASE_FILE)" \
+		VM_UPDATE_BUNDLE_KIND="$(VM_UPDATE_BUNDLE_KIND)"
+
+internal/vm/update/smoke: internal/vm/update/verify
+
+internal/vm/update/smoke/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+internal/vm/update/smoke/dev:
+	$(MAKE) internal/vm/update/verify/dev VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+
+internal/vm/update/smoke/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
+internal/vm/update/smoke/release:
+	$(MAKE) internal/vm/update/verify/release VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+
+internal/vm/update/apply-smoke:
+	@if [ "$(VM_UPDATE_APPLY_SMOKE_CONFIRM)" != "YES" ]; then \
+		printf "update apply smoke is destructive and requires VM_UPDATE_APPLY_SMOKE_CONFIRM=YES\n"; \
+		printf "build and static smoke first: $(VM_UPDATE_STATIC_SMOKE_HINT)\n"; \
+		exit 2; \
+	fi
+	$(MAKE) internal/vm/update/verify \
+		VM_RELEASE_FILE="$(VM_RELEASE_FILE)" \
+		VM_UPDATE_BUNDLE_KIND="$(VM_UPDATE_BUNDLE_KIND)"
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-update-bundle-apply-smoke \
+		--release-file "$(VM_RELEASE_FILE)" \
+		--bundle-kind "$(VM_UPDATE_BUNDLE_KIND)"
+
+internal/vm/update/apply-smoke/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+internal/vm/update/apply-smoke/dev:
+	$(MAKE) internal/vm/update/apply-smoke \
+		VM_RELEASE_FILE="$(VM_RELEASE_FILE)" \
+		VM_UPDATE_STATIC_SMOKE_HINT="make dist/update/dev/smoke"
+
+internal/vm/update/apply-smoke/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
+internal/vm/update/apply-smoke/release:
+	$(MAKE) internal/vm/require-release-branch
+	$(MAKE) internal/vm/update/apply-smoke \
+		VM_RELEASE_FILE="$(VM_RELEASE_FILE)" \
+		VM_UPDATE_STATIC_SMOKE_HINT="make dist/update/release/smoke"
 
 internal/vm/image-update/verify: VM_UPDATE_BUNDLE_KIND := vm-image-update
 internal/vm/image-update/verify: internal/vm/update/verify
@@ -471,6 +540,33 @@ internal/vm/image-update/verify/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_
 internal/vm/image-update/verify/release:
 	$(MAKE) internal/vm/require-release-branch
 	$(MAKE) internal/vm/image-update/verify VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+
+internal/vm/image-update/smoke: VM_UPDATE_BUNDLE_KIND := vm-image-update
+internal/vm/image-update/smoke: internal/vm/update/smoke
+
+internal/vm/image-update/smoke/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+internal/vm/image-update/smoke/dev:
+	$(MAKE) internal/vm/image-update/verify/dev VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+
+internal/vm/image-update/smoke/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
+internal/vm/image-update/smoke/release:
+	$(MAKE) internal/vm/image-update/verify/release VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+
+internal/vm/image-update/apply-smoke: VM_UPDATE_BUNDLE_KIND := vm-image-update
+internal/vm/image-update/apply-smoke: internal/vm/update/apply-smoke
+
+internal/vm/image-update/apply-smoke/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+internal/vm/image-update/apply-smoke/dev:
+	$(MAKE) internal/vm/image-update/apply-smoke \
+		VM_RELEASE_FILE="$(VM_RELEASE_FILE)" \
+		VM_UPDATE_STATIC_SMOKE_HINT="make dist/image-update/dev/smoke"
+
+internal/vm/image-update/apply-smoke/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
+internal/vm/image-update/apply-smoke/release:
+	$(MAKE) internal/vm/require-release-branch
+	$(MAKE) internal/vm/image-update/apply-smoke \
+		VM_RELEASE_FILE="$(VM_RELEASE_FILE)" \
+		VM_UPDATE_STATIC_SMOKE_HINT="make dist/image-update/release/smoke"
 
 internal/vm/pkg/clean:
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-package-clean \

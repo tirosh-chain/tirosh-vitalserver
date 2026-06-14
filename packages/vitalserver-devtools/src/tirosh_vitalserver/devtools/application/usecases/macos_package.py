@@ -45,6 +45,7 @@ from tirosh_vitalserver.devtools.application.inputs import (
     ReleaseDmgArtifactVerifyInput,
     ReleasePackageInput,
     ReleaseTroubleshootingToolsInput,
+    ReleaseTroubleshootingToolsVerifyInput,
 )
 from tirosh_vitalserver.devtools.application.usecases.host_proxy import (
     build_nginx as build_nginx_bundle,
@@ -102,6 +103,16 @@ def build_dmg(input: ReleasePackageInput) -> int:
 
 def verify_dmg_artifact(input: ReleaseDmgArtifactVerifyInput) -> int:
     report = release_dmg_artifact_report(input)
+    print_preflight_report(report)
+    if report.passed:
+        return 0
+    raise SystemExit(1)
+
+
+def verify_troubleshooting_tools(
+    input: ReleaseTroubleshootingToolsVerifyInput,
+) -> int:
+    report = troubleshooting_tools_report(input)
     print_preflight_report(report)
     if report.passed:
         return 0
@@ -193,6 +204,85 @@ def release_dmg_artifact_report(
         )
     )
     return PreflightReport(name="release-dmg-artifact", checks=tuple(checks))
+
+
+def troubleshooting_tools_report(
+    input: ReleaseTroubleshootingToolsVerifyInput,
+) -> PreflightReport:
+    root = repo_root()
+    settings = load_macos_release_settings(input.config, root)
+    release_file = resolve_path(root, input.release_file)
+    release = load_release_manifest(release_file)
+    tools_dir = (
+        resolve_path(root, input.output)
+        if input.output
+        else default_troubleshooting_tools_output(settings, release)
+    )
+    reset_command = tools_dir / "Reset VitalServer Helper for Reinstall.command"
+    redis_command = tools_dir / "Create Upstream Redis Backup.command"
+    checks: list[PreflightCheck] = [
+        check_required_dir(tools_dir, "troubleshooting-tools-dir"),
+        check_required_executable_file(
+            reset_command,
+            "troubleshooting-reset-command",
+        ),
+        check_required_executable_file(
+            redis_command,
+            "troubleshooting-upstream-redis-backup-command",
+        ),
+        check_required_executable_file(
+            tools_dir / "bin/vitalserver-troubleshooting-reset-for-reinstall",
+            "troubleshooting-reset-cli",
+        ),
+        check_required_executable_file(
+            tools_dir / "bin/vitalserver-troubleshooting-upstream-redis-save",
+            "troubleshooting-upstream-redis-save-cli",
+        ),
+        check_text_contains(
+            reset_command,
+            "troubleshooting-reset-command-cli-contract",
+            "vitalserver-troubleshooting-reset-for-reinstall",
+        ),
+        check_text_contains(
+            reset_command,
+            "troubleshooting-reset-command-user-log",
+            "tirosh-vitalserver-reset-for-reinstall.log",
+        ),
+        check_text_absent(
+            reset_command,
+            "troubleshooting-reset-command-no-user-uninstall-log",
+            (
+                'exec > >(tee -a "${uninstall_log}") 2>&1\n'
+                '  log "reset for reinstall command started'
+            ),
+        ),
+        check_text_contains(
+            reset_command,
+            "troubleshooting-reset-command-wrapper-log",
+            'exec > >(tee -a "${wrapper_log}") 2>&1',
+        ),
+        check_text_contains(
+            redis_command,
+            "troubleshooting-redis-command-cli-contract",
+            "vitalserver-troubleshooting-upstream-redis-save",
+        ),
+        check_text_contains(
+            redis_command,
+            "troubleshooting-redis-command-save-timeout",
+            'redis_save_timeout_seconds="${UPSTREAM_REDIS_SAVE_TIMEOUT_SECONDS:-15}"',
+        ),
+        check_text_contains(
+            redis_command,
+            "troubleshooting-redis-command-timeout-guard",
+            "run_with_timeout()",
+        ),
+        check_text_contains(
+            redis_command,
+            "troubleshooting-redis-command-timeout-message",
+            "upstream redis SAVE did not complete before timeout",
+        ),
+    ]
+    return PreflightReport(name="release-troubleshooting-tools", checks=tuple(checks))
 
 
 def check_hdiutil_verify(dmg_output: Path) -> PreflightCheck:
@@ -341,6 +431,46 @@ def check_required_executable(path: Path, name: str) -> PreflightCheck:
     )
 
 
+def check_required_dir(path: Path, name: str) -> PreflightCheck:
+    if path.is_dir():
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.PASSED,
+            message=f"required directory exists: {path}",
+        )
+    if path.exists():
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.INVALID,
+            message="required path is not a directory",
+            detail=str(path),
+        )
+    return PreflightCheck(
+        name=name,
+        status=PreflightStatus.MISSING,
+        message="required directory is missing",
+        detail=str(path),
+    )
+
+
+def check_required_executable_file(path: Path, name: str) -> PreflightCheck:
+    file_check = check_required_file(path, name)
+    if file_check.blocks:
+        return file_check
+    if path.stat().st_mode & 0o111:
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.PASSED,
+            message=f"required executable exists: {path}",
+        )
+    return PreflightCheck(
+        name=name,
+        status=PreflightStatus.INVALID,
+        message="required executable is not executable",
+        detail=str(path),
+    )
+
+
 def check_required_tool(name: str) -> PreflightCheck:
     if shutil.which(name):
         return PreflightCheck(
@@ -398,6 +528,63 @@ def check_output_path(path: Path, name: str) -> PreflightCheck:
         status=PreflightStatus.PASSED,
         message=f"package output path is usable: {path}",
     )
+
+
+def check_text_contains(path: Path, name: str, expected: str) -> PreflightCheck:
+    text, error = read_text_for_preflight(path)
+    if error:
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.UNAVAILABLE,
+            message="could not read text file",
+            detail=f"{path}: {error}",
+        )
+    if expected in text:
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.PASSED,
+            message="required text marker is present",
+            detail=str(path),
+        )
+    return PreflightCheck(
+        name=name,
+        status=PreflightStatus.INVALID,
+        message="required text marker is missing",
+        detail=f"{path}: {expected}",
+    )
+
+
+def check_text_absent(path: Path, name: str, forbidden: str) -> PreflightCheck:
+    text, error = read_text_for_preflight(path)
+    if error:
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.UNAVAILABLE,
+            message="could not read text file",
+            detail=f"{path}: {error}",
+        )
+    if forbidden not in text:
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.PASSED,
+            message="forbidden text marker is absent",
+            detail=str(path),
+        )
+    return PreflightCheck(
+        name=name,
+        status=PreflightStatus.INVALID,
+        message="forbidden text marker is present",
+        detail=f"{path}: {forbidden}",
+    )
+
+
+def read_text_for_preflight(path: Path) -> tuple[str, str | None]:
+    try:
+        return path.read_text(encoding="utf-8"), None
+    except FileNotFoundError:
+        return "", f"missing: {path}"
+    except (OSError, UnicodeDecodeError) as error:
+        return "", f"{type(error).__name__}: {error}"
 
 
 def check_dmg_output_state(dmg_output: Path) -> PreflightCheck:
@@ -686,25 +873,36 @@ def install_pkg(input: MacOSPackageInstallInput) -> int:
         raise SystemExit(
             f"missing {pkg_output}. Run: make vm-pkg-dev or make vm-pkg-release"
         )
-    if input.install_settings:
-        install_settings = resolve_path(
-            root,
-            input.install_settings,
-        )
-        if not install_settings.is_file():
-            raise SystemExit(f"missing {install_settings}")
-        run(
-            [
-                "sudo",
-                "install",
-                "-m",
-                "0600",
-                str(install_settings),
-                settings.install.install_settings_json,
-            ]
-        )
-        print(f"installed runtime settings: {settings.install.install_settings_json}")
-    run(["sudo", "installer", "-pkg", str(pkg_output), "-target", "/"])
+    try:
+        if input.install_settings:
+            install_settings = resolve_path(
+                root,
+                input.install_settings,
+            )
+            if not install_settings.is_file():
+                raise SystemExit(f"missing {install_settings}")
+            run(
+                [
+                    "sudo",
+                    "install",
+                    "-m",
+                    "0600",
+                    str(install_settings),
+                    settings.install.install_settings_json,
+                ]
+            )
+            print(
+                "installed runtime settings: "
+                f"{settings.install.install_settings_json}"
+            )
+        run(["sudo", "installer", "-pkg", str(pkg_output), "-target", "/"])
+    except subprocess.CalledProcessError as error:
+        command = " ".join(str(part) for part in error.cmd)
+        raise SystemExit(
+            f"installer command failed exitCode={error.returncode}: {command}. "
+            "Run from an interactive administrator shell or configure sudo "
+            "credentials before running dist/install/* targets."
+        ) from error
     return 0
 
 
