@@ -34,7 +34,7 @@ public struct RuntimeSettingsValidator {
             return .invalid("Advertised URLs must be absolute http/https URLs.")
         }
         if !redisBackupRetentionRange.contains(settings.redisBackupRetentionCount) {
-            return .invalid("Redis backups must be between 1 and 30 archives.")
+            return .invalid("VitalServer Helper backups must be between 1 and 30 archives.")
         }
         if let message = vitalFilesDirectoryPolicy.validationMessage(for: settings.vitalFilesDirectory) {
             return .invalid(message)

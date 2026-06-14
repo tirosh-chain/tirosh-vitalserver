@@ -58,7 +58,7 @@ export function validateRuntimeSettings(
     settings.redisBackupRetentionCount < 1 ||
     settings.redisBackupRetentionCount > 30
   ) {
-    errors.push("Redis backups must be between 1 and 30 archives.");
+    errors.push("VitalServer Helper backups must be between 1 and 30 archives.");
   }
   if (isProtectedVitalFilesDirectory(settings.vitalFilesDirectory)) {
     errors.push(

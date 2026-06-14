@@ -31,7 +31,7 @@ status가 `updating` 또는 operation `apply-bundle`처럼 보이면 설정 적�
 - Settings apply의 `restartAfterSave` 기본값은 `false`입니다.
 - `restartAfterSave`는 "저장 후 항상 restart"가 아니라, Configure 정책이 VM runtime restart를 요구할 때 즉시 restart할지에 대한 사용자 의도입니다.
 - VM runtime restart가 필요한 설정은 CPU, memory, disk increase, network mode, bridged interface, vital files directory 변경입니다.
-- URL, admin password, start on boot, auto recovery, sleep prevention, Redis backup retention 같은 설정은 VM runtime restart requirement를 만들지 않습니다.
+- URL, admin password, start on boot, auto recovery, sleep prevention, VitalServer Helper backup retention 같은 설정은 VM runtime restart requirement를 만들지 않습니다.
 - guest shutdown workflow는 progress status와 operation을 context로 받습니다.
 - update bundle shutdown은 기존처럼 `.updating / .applyBundle`을 기록합니다.
 - settings restart shutdown은 `.recovering / .configure`를 기록합니다.

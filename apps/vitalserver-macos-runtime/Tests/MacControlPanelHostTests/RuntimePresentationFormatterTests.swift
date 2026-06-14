@@ -43,7 +43,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertTrue(confirmation.contains("Network mode: shared"))
         XCTAssertTrue(confirmation.contains("Disk size: 128 GiB"))
         XCTAssertTrue(confirmation.contains("Vital files directory: /Users/test/Vital Files"))
-        XCTAssertTrue(confirmation.contains("Redis backup retention: 20 archives"))
+        XCTAssertTrue(confirmation.contains("VitalServer Helper backup retention: 20 archives"))
         XCTAssertTrue(confirmation.contains("Automatic recovery: false"))
         XCTAssertTrue(confirmation.contains("\(AppConstants.Labels.preventSystemSleep): false"))
         XCTAssertTrue(confirmation.contains("Restart VM runtime when required: true"))

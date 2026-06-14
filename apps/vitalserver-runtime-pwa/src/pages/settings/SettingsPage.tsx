@@ -311,7 +311,7 @@ export function SettingsPage() {
         )}
       </Panel>
 
-      <Panel title="Storage and Redis data">
+      <Panel title="Storage and VitalServer Helper backups">
         <div className="settings-grid">
           <label>
             Vital files directory
@@ -325,7 +325,7 @@ export function SettingsPage() {
             />
           </label>
           <label>
-            Redis backups
+            Backup archives
             <input
               type="number"
               min="1"
@@ -340,7 +340,8 @@ export function SettingsPage() {
         </div>
 
         <p className="muted">
-          Redis backup retention keeps up to 30 recoverable archives.
+          VitalServer Helper backup retention keeps up to 30 recoverable archives,
+          including Redis data.
         </p>
       </Panel>
 

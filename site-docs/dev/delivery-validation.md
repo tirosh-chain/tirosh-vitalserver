@@ -266,7 +266,7 @@ JSONL event append처럼 read-modify-write로 보이는 기록도 lock 대상입
 
 Settings apply는 update가 아닙니다. CPU, memory, disk increase, network mode, bridged interface,
 Vital files directory처럼 VM runtime 구성 자체가 바뀐 경우만 VM runtime restart requirement를 만듭니다.
-URL, admin password, start on boot, auto recovery, sleep prevention, Redis backup retention 변경은
+URL, admin password, start on boot, auto recovery, sleep prevention, VitalServer Helper backup retention 변경은
 restart requirement를 만들면 안 됩니다. Settings UI가 모든 configure field를 보내더라도 policy는
 제출된 field 이름이 아니라 Host가 제공한 명시적 현재 상태와 planned state의 차이를 비교해야 합니다.
 Settings UI는 draft 설정과 Host가 읽은 runtime 설정을 분리해서 표시해야 합니다. Status/Info 탭은

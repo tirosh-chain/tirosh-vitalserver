@@ -79,7 +79,7 @@ public struct RuntimePresentationFormatter {
             "Network mode: \(settings.networkMode.rawValue)",
             "Disk size: \(settings.diskGiB) GiB",
             "Vital files directory: \(settings.vitalFilesDirectory)",
-            "Redis backup retention: \(settings.redisBackupRetentionCount) archives",
+            "VitalServer Helper backup retention: \(settings.redisBackupRetentionCount) archives",
             "Automatic recovery: \(boolText(settings.autoRecoveryEnabled))",
             "\(vocabulary.preventSystemSleepLabel): \(boolText(settings.preventSystemSleep))",
             "Restart VM runtime when required: \(boolText(settings.restartAfterSave))",

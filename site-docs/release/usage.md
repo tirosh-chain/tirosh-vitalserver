@@ -133,10 +133,10 @@ VM runtime restart가 필요한 설정은 VM 실행 조건을 바꾸는 값입�
 | network mode, bridged interface | VM network device 재구성이 필요하므로 VM runtime restart 필요 |
 | Vital files directory | VM shared directory mount 재구성이 필요하므로 VM runtime restart 필요 |
 | VitalServer URL, Remote Console URL, public host/port | runtime config 문서 갱신, VM runtime restart requirement 없음 |
-| admin password, Redis backup retention | guest runtime settings 갱신, VM runtime restart requirement 없음 |
+| admin password, VitalServer Helper backup retention | guest runtime settings 갱신, VM runtime restart requirement 없음 |
 | start on boot, auto recovery, sleep prevention | Host launchd/config 정책 갱신, VM runtime restart requirement 없음 |
 
-따라서 URL이나 Redis backup retention 같은 설정만 바꿨는데 `Restart VM runtime when required`가
+따라서 URL이나 VitalServer Helper backup retention 같은 설정만 바꿨는데 `Restart VM runtime when required`가
 켜져 있어도 VM을 내리지 않습니다. 반대로 CPU, memory, disk 증가, network, Vital files directory를
 바꾸고 이 옵션을 끄면 설정은 저장되지만 현재 실행 중인 VM에는 다음 VM runtime restart 때 반영됩니다.
 

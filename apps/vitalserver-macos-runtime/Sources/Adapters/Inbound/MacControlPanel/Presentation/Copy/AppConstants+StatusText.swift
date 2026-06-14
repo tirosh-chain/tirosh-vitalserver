@@ -200,7 +200,7 @@ public extension AppConstants {
         public static let vitalFilesDirectoryProtected = "Vital files directory cannot be Desktop, Documents, Downloads, or iCloud Drive. Choose a non-protected local folder such as /Users/Shared/VitalServerHelper/vital-files."
         public static let invalidPort = "Port must be between 1 and 65535."
         public static let invalidAdvertisedURL = "Advertised URLs must be absolute http/https URLs."
-        public static let invalidRedisBackupRetention = "Redis backups must be between 1 and 30 archives."
+        public static let invalidRedisBackupRetention = "VitalServer Helper backups must be between 1 and 30 archives."
         public static let adminPasswordRequired = "Admin password reset value must not be empty."
         public static let adminPasswordNewline = "Admin password reset value must not contain newlines."
         public static func commandFailed(exitCode: Int32) -> String {
