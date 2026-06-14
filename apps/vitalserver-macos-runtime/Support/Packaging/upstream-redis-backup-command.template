@@ -29,13 +29,8 @@ confirm_prerequisites() {
   printf "\nThis tool creates a Redis-only archive for VitalServer Helper import.\n"
   printf "Before continuing, stop upstream Redis or run SAVE/BGSAVE so dump.rdb is current.\n"
   printf "The selected folder must be the Redis data directory that contains dump.rdb.\n\n"
-  printf "Type YES to continue: "
-  local answer
-  read -r answer
-  if [ "${answer}" != "YES" ]; then
-    log "upstream redis backup cancelled before source selection"
-    exit 2
-  fi
+  printf "Press Enter to continue, or close this window to cancel: "
+  read -r _
 }
 
 validate_source_dir() {
