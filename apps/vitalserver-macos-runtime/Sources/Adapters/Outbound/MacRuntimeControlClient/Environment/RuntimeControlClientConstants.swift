@@ -67,6 +67,8 @@ enum RuntimeControlClientConstants {
         static let optionAutomaticBackup = "--automatic-backup"
         static let optionBackupScheduleTimes = "--backup-schedule-times"
         static let optionBackupRetention = "--backup-retention"
+        static let optionLogArchiveRetentionDays = "--log-archive-retention-days"
+        static let optionLogArchiveMaximumGiB = "--log-archive-maximum-gib"
         static let optionBridgedInterface = "--bridged-interface"
         static let optionAdminPasswordFile = "--admin-password-file"
         static let optionRestart = "--restart"
@@ -89,6 +91,7 @@ enum RuntimeControlClientConstants {
         static let runtimeOperationLease = installed.runtimeOperationLease.path
         static let runtimeEvents = installed.runtimeEvents.path
         static let runtimeObservabilityDB = installed.runtimeObservabilityDB.path
+        static let runtimeControlSettings = installed.runtimeControlSettings.path
         static let appliedVMConfig = installed.appliedVMConfig.path
         static let vmLifecycle = installed.vmLifecycle.path
         static let managerApp = installed.managerApp.path

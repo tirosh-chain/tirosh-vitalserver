@@ -3612,6 +3612,8 @@
           "automaticBackupEnabled",
           "backupScheduleTimes",
           "backupRetentionCount",
+          "logArchiveRetentionDays",
+          "logArchiveMaximumGiB",
           "restartAfterSave"
         ],
         "properties": {
@@ -3695,6 +3697,12 @@
             }
           },
           "backupRetentionCount": {
+            "type": "integer"
+          },
+          "logArchiveRetentionDays": {
+            "type": "integer"
+          },
+          "logArchiveMaximumGiB": {
             "type": "integer"
           },
           "restartAfterSave": {

@@ -12,6 +12,8 @@ export type RuntimeSettingsDraft = {
   automaticBackupEnabled: boolean;
   backupScheduleTimes: string;
   backupRetentionCount: string;
+  logArchiveRetentionDays: string;
+  logArchiveMaximumGiB: string;
   startOnBoot: boolean;
   autoRecoveryEnabled: boolean;
   preventSystemSleep: boolean;
@@ -30,6 +32,8 @@ export const emptyRuntimeSettingsDraft: RuntimeSettingsDraft = {
   automaticBackupEnabled: false,
   backupScheduleTimes: "",
   backupRetentionCount: "",
+  logArchiveRetentionDays: "",
+  logArchiveMaximumGiB: "",
   startOnBoot: false,
   autoRecoveryEnabled: false,
   preventSystemSleep: false,
@@ -51,6 +55,8 @@ export function runtimeSettingsToDraft(
     automaticBackupEnabled: settings.automaticBackupEnabled,
     backupScheduleTimes: settings.backupScheduleTimes.join(", "),
     backupRetentionCount: formatNumber(settings.backupRetentionCount),
+    logArchiveRetentionDays: formatNumber(settings.logArchiveRetentionDays),
+    logArchiveMaximumGiB: formatNumber(settings.logArchiveMaximumGiB),
     startOnBoot: settings.startOnBoot,
     autoRecoveryEnabled: settings.autoRecoveryEnabled,
     preventSystemSleep: settings.preventSystemSleep,
@@ -85,6 +91,8 @@ export function draftToRuntimeSettings(
       .map((value) => value.trim())
       .filter(Boolean),
     backupRetentionCount: requiredNumber(draft.backupRetentionCount),
+    logArchiveRetentionDays: requiredNumber(draft.logArchiveRetentionDays),
+    logArchiveMaximumGiB: requiredNumber(draft.logArchiveMaximumGiB),
     startOnBoot: draft.startOnBoot,
     autoRecoveryEnabled: draft.autoRecoveryEnabled,
     preventSystemSleep: draft.preventSystemSleep,

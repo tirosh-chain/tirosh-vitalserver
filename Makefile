@@ -45,7 +45,7 @@ include make/vm.mk
 	dist/dmg/release dist/pkg/release dist/update/release \
 	dist/update/verify/release dist/image-update/release \
 	dist/image-update/verify/release dist/dmg/dev dist/dmg/dev/compile dist/dmg/dev/runtime-smoke dist/dmg/dev/verify \
-	dist/pkg/dev dist/pkg/dev/compile dist/pkg/dev/runtime-smoke dist/pkg/dev/verify \
+	dist/pkg/dev dist/pkg/dev/compile dist/pkg/dev/runtime-smoke dist/pkg/dev/verify dist/pkg/verify/dev \
 	dist/dmg/release/verify dist/pkg/release/verify \
 	dist/update/dev dist/update/verify/dev \
 	dist/image-update/dev dist/image-update/verify/dev \
@@ -77,6 +77,7 @@ dist/pkg/dev: internal/vm/pkg/dev
 dist/pkg/dev/compile: internal/vm/pkg/dev/compile
 dist/pkg/dev/runtime-smoke: internal/vm/pkg/dev/runtime-smoke
 dist/pkg/dev/verify: internal/vm/pkg/dev/verify
+dist/pkg/verify/dev: internal/vm/pkg/dev/verify
 dist/dmg/release/verify: internal/vm/dmg/release/verify
 dist/pkg/release/verify: internal/vm/pkg/release/verify
 dist/update/dev: internal/vm/update/dev
@@ -251,7 +252,8 @@ help/dist:
 	@printf "  dist/pkg/dev                  Build development pkg\n"
 	@printf "  dist/pkg/dev/compile          Build development pkg and recompile the VM golden rootfs\n"
 	@printf "  dist/pkg/dev/runtime-smoke    Validate golden runtime boot contract for dev pkg\n"
-	@printf "  dist/pkg/dev/verify           Build dev pkg from clean rootfs and run runtime smoke\n"
+	@printf "  dist/pkg/dev/verify           Run package/PWA review, build dev pkg from clean rootfs, and run runtime smoke\n"
+	@printf "  dist/pkg/verify/dev           Alias for dist/pkg/dev/verify\n"
 	@printf "  dist/pkg/release              Build release pkg from clean golden rootfs\n"
 	@printf "  dist/pkg/release/verify       Build release pkg and run runtime smoke\n"
 	@printf "  dist/dmg/dev                  Build development installer dmg\n"
@@ -423,11 +425,12 @@ help/pwa:
 	@printf "  tirosh-vitalserver-pwa - Runtime Control PWA targets\n"
 	@printf "\n"
 	@printf "SYNOPSIS\n"
-	@printf "  make pwa/{install|generate-api|check|test|coverage|build|dev|preview}\n"
+	@printf "  make pwa/{install|generate-api|verify-contract|check|test|coverage|build|dev|preview}\n"
 	@printf "\n"
 	@printf "PWA TARGETS\n"
 	@printf "  pwa/install                   Install PWA npm dependencies\n"
 	@printf "  pwa/generate-api              Generate OpenAPI TypeScript types\n"
+	@printf "  pwa/verify-contract           Verify generated OpenAPI TypeScript types are committed\n"
 	@printf "  pwa/check                     Typecheck Runtime Control PWA\n"
 	@printf "  pwa/test                      Run Runtime Control PWA tests\n"
 	@printf "  pwa/coverage                  Run Runtime Control PWA coverage report\n"

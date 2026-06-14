@@ -111,6 +111,24 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
         )
     }
 
+    func testRejectsLogArchiveSettingsOutsideRange() {
+        var settings = validSettings()
+        settings.logArchiveRetentionDays = 31
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid(AppConstants.StatusText.invalidLogArchiveRetention)
+        )
+
+        settings = validSettings()
+        settings.logArchiveMaximumGiB = 21
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid(AppConstants.StatusText.invalidLogArchiveMaximum)
+        )
+    }
+
     func testRejectsMissingOrRelativeVitalFilesDirectory() {
         var settings = validSettings()
         settings.vitalFilesDirectory = "   "

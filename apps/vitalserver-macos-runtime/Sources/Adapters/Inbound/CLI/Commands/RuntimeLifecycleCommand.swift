@@ -118,7 +118,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime health
       vitalserver-vm runtime guest-log-sync
       vitalserver-vm runtime watchdog
-      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--restart]
+      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--log-archive-retention-days <days>] [--log-archive-maximum-gib <gib>] [--restart]
       vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
@@ -288,6 +288,20 @@ extension RuntimeLifecycleCommand {
                 )
             }
             return .backupRetention(count)
+        case .logArchiveRetentionDays:
+            guard let days = Int(value) else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(
+                    "--log-archive-retention-days must be an integer"
+                )
+            }
+            return .logArchiveRetentionDays(days)
+        case .logArchiveMaximumGiB:
+            guard let gib = Int(value) else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(
+                    "--log-archive-maximum-gib must be an integer"
+                )
+            }
+            return .logArchiveMaximumGiB(gib)
         case .restart:
             throw RuntimeLifecycleCommandParseError.missingArgument("--restart does not accept a value")
         case .unknown(let key):

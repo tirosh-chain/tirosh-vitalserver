@@ -194,6 +194,21 @@ API fallback read, 파일 손상 영향 범위가 모두 커지므로 size 기�
 - SQLite read model은 조회용 index이므로 JSONL rotation이 있더라도 event SoT 역할을 대신하지 않습니다.
 - log export는 현재 JSONL, rotated JSONL, SQLite main DB, SQLite WAL/SHM sidecar를 함께 포함해야 합니다.
 
+### Runtime log archive retention
+
+Runtime Control log collector는 central log를 날짜별 archive directory로 이동합니다. 관리 대상은
+`/Library/Application Support/VitalServerHelper/logs/archive/YYYY-MM-DD` 형태의 직접 자식 directory입니다.
+날짜 형식이 아닌 directory는 운영자가 둔 파일일 수 있으므로 자동 삭제하지 않고 size cap 계산에서도 제외합니다.
+
+- 기본 보관 기간은 14일입니다.
+- 설정 가능한 보관 기간은 1일 이상 30일 이하입니다.
+- 관리 archive 총량 기본 cap은 1 GiB입니다.
+- Settings의 `logArchiveRetentionDays`와 `logArchiveMaximumGiB`로 기간과 용량을 변경합니다.
+  이 값은 Host-owned `runtime-control-settings.json`에 저장되며 Guest runtime settings가 아닙니다.
+- 기간 초과 archive를 먼저 삭제하고, 남은 관리 archive 총량이 cap을 넘으면 가장 오래된 날짜 directory부터 삭제합니다.
+- retention days가 범위를 벗어나거나 maximum bytes가 0이면 collector는 fallback/clamp 없이 실패합니다.
+- archive directory listing, managed archive size inspection, 삭제 실패는 명시 오류로 caller에 전달합니다.
+
 ## Target flow
 
 ```text

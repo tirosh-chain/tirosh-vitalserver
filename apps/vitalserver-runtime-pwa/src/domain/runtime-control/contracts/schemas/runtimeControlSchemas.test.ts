@@ -832,7 +832,9 @@ function fullSettings() {
     preventSystemSleep: true,
     automaticBackupEnabled: true,
     backupScheduleTimes: ["03:15"],
-        backupRetentionCount: 30,
+    backupRetentionCount: 30,
+    logArchiveRetentionDays: 14,
+    logArchiveMaximumGiB: 1,
     restartAfterSave: true
   };
 }

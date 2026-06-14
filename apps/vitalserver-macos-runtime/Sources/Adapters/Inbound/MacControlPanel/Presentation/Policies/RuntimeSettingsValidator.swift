@@ -42,6 +42,12 @@ public struct RuntimeSettingsValidator {
             || !settings.backupScheduleTimes.allSatisfy(RuntimeBackupSchedulePolicy.isValidTime) {
             return .invalid("Backup times must use HH:mm format.")
         }
+        if !RuntimeLogArchiveRetentionPolicy.isValidRetentionDays(settings.logArchiveRetentionDays) {
+            return .invalid(AppConstants.StatusText.invalidLogArchiveRetention)
+        }
+        if !RuntimeSettingsReadPolicy.validLogArchiveMaximumGiB(settings.logArchiveMaximumGiB) {
+            return .invalid(AppConstants.StatusText.invalidLogArchiveMaximum)
+        }
         if let message = vitalFilesDirectoryPolicy.validationMessage(for: settings.vitalFilesDirectory) {
             return .invalid(message)
         }

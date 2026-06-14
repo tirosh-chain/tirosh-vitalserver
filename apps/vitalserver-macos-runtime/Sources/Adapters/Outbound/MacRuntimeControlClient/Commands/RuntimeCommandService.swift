@@ -71,6 +71,10 @@ enum RuntimeCommandFactory {
             settings.backupScheduleTimes.joined(separator: ","),
             RuntimeControlClientConstants.RuntimeCommand.optionBackupRetention,
             String(settings.backupRetentionCount),
+            RuntimeControlClientConstants.RuntimeCommand.optionLogArchiveRetentionDays,
+            String(settings.logArchiveRetentionDays),
+            RuntimeControlClientConstants.RuntimeCommand.optionLogArchiveMaximumGiB,
+            String(settings.logArchiveMaximumGiB),
         ]
         if settings.startOnBootConfigurable {
             arguments += [

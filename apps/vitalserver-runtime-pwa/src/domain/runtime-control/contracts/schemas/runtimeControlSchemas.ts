@@ -142,6 +142,8 @@ export const runtimeSettingsSchema = z
     automaticBackupEnabled: z.boolean(),
     backupScheduleTimes: z.string().array(),
     backupRetentionCount: z.number(),
+    logArchiveRetentionDays: z.number(),
+    logArchiveMaximumGiB: z.number(),
     restartAfterSave: z.boolean()
   })
   .passthrough();

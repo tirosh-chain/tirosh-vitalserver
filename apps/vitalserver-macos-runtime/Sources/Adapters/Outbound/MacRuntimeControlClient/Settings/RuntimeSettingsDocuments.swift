@@ -97,6 +97,47 @@ struct GuestRuntimeSettings: Decodable {
     }
 }
 
+public struct RuntimeControlSettingsDocument: Codable, Equatable {
+    public let logArchiveRetentionDays: Int
+    public let logArchiveMaximumGiB: Int
+
+    public init(
+        logArchiveRetentionDays: Int = RuntimeSettingsInitialValues.logArchiveRetentionDays,
+        logArchiveMaximumGiB: Int = RuntimeSettingsInitialValues.logArchiveMaximumGiB
+    ) {
+        self.logArchiveRetentionDays = logArchiveRetentionDays
+        self.logArchiveMaximumGiB = logArchiveMaximumGiB
+    }
+
+    static func loadResult(
+        path: String,
+        fileStore: RuntimeFileReading
+    ) -> RuntimeSettingsReadResult<RuntimeLogArchiveSettingsReadInput> {
+        let url = URL(fileURLWithPath: path)
+        switch runtimeSettingsReadableFileState(url, fileStore: fileStore) {
+        case .loaded:
+            break
+        case .missing:
+            return .missing
+        case .failed(let message):
+            return .failed(message)
+        }
+        do {
+            let data = try fileStore.readData(url)
+            return try .loaded(JSONDecoder().decode(RuntimeControlSettingsDocument.self, from: data).runtimeSettingsReadInput)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    var runtimeSettingsReadInput: RuntimeLogArchiveSettingsReadInput {
+        RuntimeLogArchiveSettingsReadInput(
+            retentionDays: logArchiveRetentionDays,
+            maximumGiB: logArchiveMaximumGiB
+        )
+    }
+}
+
 func runtimeSettingsReadableFileState(
     _ url: URL,
     fileStore: RuntimeFileReading

@@ -1395,6 +1395,8 @@ export interface components {
             automaticBackupEnabled: boolean;
             backupScheduleTimes: string[];
             backupRetentionCount: number;
+            logArchiveRetentionDays: number;
+            logArchiveMaximumGiB: number;
             restartAfterSave: boolean;
         };
         RuntimeSettingsReadIssue: {

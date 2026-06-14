@@ -4,6 +4,52 @@ import XCTest
 import Errors
 
 final class RuntimeControlContractsTests: XCTestCase {
+    func testRuntimeLogArchiveRetentionPolicyPrunesByAgeAndManagedSize() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = try fixedDate(year: 2026, month: 6, day: 14, calendar: calendar)
+        let archives = [
+            RuntimeLogArchiveDay(
+                url: URL(fileURLWithPath: "/logs/archive/2026-05-30"),
+                day: try fixedDate(year: 2026, month: 5, day: 30, calendar: calendar),
+                sizeBytes: 1
+            ),
+            RuntimeLogArchiveDay(
+                url: URL(fileURLWithPath: "/logs/archive/2026-06-01"),
+                day: try fixedDate(year: 2026, month: 6, day: 1, calendar: calendar),
+                sizeBytes: 6
+            ),
+            RuntimeLogArchiveDay(
+                url: URL(fileURLWithPath: "/logs/archive/2026-06-02"),
+                day: try fixedDate(year: 2026, month: 6, day: 2, calendar: calendar),
+                sizeBytes: 6
+            ),
+            RuntimeLogArchiveDay(
+                url: URL(fileURLWithPath: "/logs/archive/2026-06-03"),
+                day: try fixedDate(year: 2026, month: 6, day: 3, calendar: calendar),
+                sizeBytes: 1
+            ),
+        ]
+
+        let pruned = RuntimeLogArchiveRetentionPolicy.pruneCandidates(
+            archives: archives,
+            configuration: RuntimeLogArchiveRetentionConfiguration(retentionDays: 14, maximumBytes: 7),
+            now: now,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(pruned.map(\.lastPathComponent), ["2026-05-30", "2026-06-01"])
+    }
+
+    func testRuntimeLogArchiveRetentionConfigurationRejectsInvalidValues() {
+        XCTAssertTrue(RuntimeLogArchiveRetentionPolicy.isValidRetentionDays(1))
+        XCTAssertTrue(RuntimeLogArchiveRetentionPolicy.isValidRetentionDays(30))
+        XCTAssertFalse(RuntimeLogArchiveRetentionPolicy.isValidRetentionDays(0))
+        XCTAssertFalse(RuntimeLogArchiveRetentionPolicy.isValidRetentionDays(31))
+        XCTAssertTrue(RuntimeLogArchiveRetentionPolicy.isValidMaximumBytes(1))
+        XCTAssertFalse(RuntimeLogArchiveRetentionPolicy.isValidMaximumBytes(0))
+    }
+
     func testRuntimeStatePreservesUnknownValues() throws {
         let state = RuntimeState(rawValue: "maintenance")
 
@@ -133,6 +179,37 @@ final class RuntimeControlContractsTests: XCTestCase {
         ])
     }
 
+    func testRuntimeSettingsReadPolicyAppliesLogArchiveSettings() {
+        let settings = RuntimeSettingsReadPolicy.applyLogArchiveSettings(
+            RuntimeLogArchiveSettingsReadInput(retentionDays: 10, maximumGiB: 3),
+            to: RuntimeSettings()
+        )
+
+        XCTAssertEqual(settings.logArchiveRetentionDays, 10)
+        XCTAssertEqual(settings.logArchiveMaximumGiB, 3)
+        XCTAssertEqual(settings.readIssues, [])
+    }
+
+    func testRuntimeSettingsReadPolicyPreservesInvalidLogArchiveSettingsAsReadIssues() {
+        let settings = RuntimeSettingsReadPolicy.applyLogArchiveSettings(
+            RuntimeLogArchiveSettingsReadInput(retentionDays: 31, maximumGiB: 21),
+            to: RuntimeSettings()
+        )
+
+        XCTAssertEqual(settings.logArchiveRetentionDays, 31)
+        XCTAssertEqual(settings.logArchiveMaximumGiB, 21)
+        XCTAssertEqual(settings.readIssues, [
+            RuntimeSettingsReadIssue(
+                source: "logArchiveSettings.logArchiveRetentionDays",
+                message: "logArchiveRetentionDays is out of range: 31"
+            ),
+            RuntimeSettingsReadIssue(
+                source: "logArchiveSettings.logArchiveMaximumGiB",
+                message: "logArchiveMaximumGiB is out of range: 21"
+            ),
+        ])
+    }
+
     func testRuntimeSettingsReadPolicyAssemblesSettingsFromExplicitSnapshot() {
         let settings = RuntimeSettingsReadPolicy.settings(from: RuntimeSettingsReadSnapshot(
             vmConfig: .loaded(RuntimeVMConfigSettingsReadInput(
@@ -154,6 +231,7 @@ final class RuntimeControlContractsTests: XCTestCase {
                 backupScheduleTimes: ["03:15", "15:15"],
                 backupRetentionCount: 12
             )),
+            logArchiveSettings: .loaded(RuntimeLogArchiveSettingsReadInput(retentionDays: 8, maximumGiB: 2)),
             proxyPort: .loaded(19090),
             startOnBoot: .loaded(false)
         ))
@@ -170,6 +248,8 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(settings.publicPort, 8443)
         XCTAssertEqual(settings.backupScheduleTimes, ["03:15", "15:15"])
         XCTAssertEqual(settings.backupRetentionCount, 12)
+        XCTAssertEqual(settings.logArchiveRetentionDays, 8)
+        XCTAssertEqual(settings.logArchiveMaximumGiB, 2)
         XCTAssertEqual(settings.proxyPort, 19090)
         XCTAssertFalse(settings.startOnBoot)
         XCTAssertTrue(settings.startOnBootConfigurable)
@@ -1556,6 +1636,21 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(summary.source, .unavailable)
         XCTAssertNil(summary.activeConnections)
         XCTAssertNil(summary.knownRecorders)
+    }
+
+    private func fixedDate(
+        year: Int,
+        month: Int,
+        day: Int,
+        calendar: Calendar
+    ) throws -> Date {
+        var components = DateComponents()
+        components.calendar = calendar
+        components.timeZone = calendar.timeZone
+        components.year = year
+        components.month = month
+        components.day = day
+        return try XCTUnwrap(calendar.date(from: components))
     }
 }
 

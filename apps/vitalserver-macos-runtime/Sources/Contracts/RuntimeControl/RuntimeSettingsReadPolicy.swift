@@ -54,6 +54,16 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
     }
 }
 
+public struct RuntimeLogArchiveSettingsReadInput: Equatable, Sendable {
+    public let retentionDays: Int
+    public let maximumGiB: Int
+
+    public init(retentionDays: Int, maximumGiB: Int) {
+        self.retentionDays = retentionDays
+        self.maximumGiB = maximumGiB
+    }
+}
+
 public enum RuntimeSettingsReadResult<Value: Sendable>: Sendable {
     case missing
     case loaded(Value)
@@ -67,6 +77,7 @@ public struct RuntimeSettingsReadSnapshot: Equatable, Sendable {
     public let appliedVMConfig: RuntimeSettingsReadResult<RuntimeVMConfigSettingsReadInput>
     public let diskGiB: RuntimeSettingsReadResult<Int>
     public let guestRuntimeSettings: RuntimeSettingsReadResult<RuntimeGuestRuntimeSettingsReadInput>
+    public let logArchiveSettings: RuntimeSettingsReadResult<RuntimeLogArchiveSettingsReadInput>
     public let proxyPort: RuntimeSettingsReadResult<Int>
     public let startOnBoot: RuntimeSettingsReadResult<Bool>
 
@@ -75,6 +86,7 @@ public struct RuntimeSettingsReadSnapshot: Equatable, Sendable {
         appliedVMConfig: RuntimeSettingsReadResult<RuntimeVMConfigSettingsReadInput> = .missing,
         diskGiB: RuntimeSettingsReadResult<Int>,
         guestRuntimeSettings: RuntimeSettingsReadResult<RuntimeGuestRuntimeSettingsReadInput>,
+        logArchiveSettings: RuntimeSettingsReadResult<RuntimeLogArchiveSettingsReadInput> = .missing,
         proxyPort: RuntimeSettingsReadResult<Int>,
         startOnBoot: RuntimeSettingsReadResult<Bool>
     ) {
@@ -82,6 +94,7 @@ public struct RuntimeSettingsReadSnapshot: Equatable, Sendable {
         self.appliedVMConfig = appliedVMConfig
         self.diskGiB = diskGiB
         self.guestRuntimeSettings = guestRuntimeSettings
+        self.logArchiveSettings = logArchiveSettings
         self.proxyPort = proxyPort
         self.startOnBoot = startOnBoot
     }
@@ -132,6 +145,15 @@ public enum RuntimeSettingsReadPolicy {
             )
         case .failed(let message):
             settings = appendReadIssue(source: "guestRuntimeSettings", message: message, to: settings)
+        }
+
+        switch snapshot.logArchiveSettings {
+        case .loaded(let logArchiveSettings):
+            settings = applyLogArchiveSettings(logArchiveSettings, to: settings)
+        case .missing:
+            break
+        case .failed(let message):
+            settings = appendReadIssue(source: "logArchiveSettings", message: message, to: settings)
         }
 
         switch snapshot.proxyPort {
@@ -248,6 +270,34 @@ public enum RuntimeSettingsReadPolicy {
             )
         }
         return next
+    }
+
+    public static func applyLogArchiveSettings(
+        _ input: RuntimeLogArchiveSettingsReadInput,
+        to settings: RuntimeSettings
+    ) -> RuntimeSettings {
+        var next = settings
+        next.logArchiveRetentionDays = input.retentionDays
+        next.logArchiveMaximumGiB = input.maximumGiB
+        if !RuntimeLogArchiveRetentionPolicy.isValidRetentionDays(input.retentionDays) {
+            next = appendReadIssue(
+                source: "logArchiveSettings.logArchiveRetentionDays",
+                message: "logArchiveRetentionDays is out of range: \(input.retentionDays)",
+                to: next
+            )
+        }
+        if !validLogArchiveMaximumGiB(input.maximumGiB) {
+            next = appendReadIssue(
+                source: "logArchiveSettings.logArchiveMaximumGiB",
+                message: "logArchiveMaximumGiB is out of range: \(input.maximumGiB)",
+                to: next
+            )
+        }
+        return next
+    }
+
+    public static func validLogArchiveMaximumGiB(_ gib: Int) -> Bool {
+        (1...20).contains(gib)
     }
 
     private static func validBackupRetentionCount(_ count: Int) -> Bool {

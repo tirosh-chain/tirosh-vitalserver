@@ -1132,6 +1132,8 @@ function settings() {
     automaticBackupEnabled: true,
     backupScheduleTimes: ["03:15"],
     backupRetentionCount: 7,
+    logArchiveRetentionDays: 14,
+    logArchiveMaximumGiB: 1,
     startOnBoot: true,
     startOnBootConfigurable: true,
     autoRecoveryEnabled: true,

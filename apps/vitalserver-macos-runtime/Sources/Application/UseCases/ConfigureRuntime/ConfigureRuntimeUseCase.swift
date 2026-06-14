@@ -108,6 +108,8 @@ public enum ConfigureRuntimeChange<NetworkMode: Equatable>: Equatable {
     case automaticBackup(Bool)
     case backupScheduleTimes([String])
     case backupRetention(Int)
+    case logArchiveRetentionDays(Int)
+    case logArchiveMaximumGiB(Int)
 }
 
 public struct ConfigureRuntimeSecretFileInput: Equatable, Sendable {
@@ -150,6 +152,8 @@ public enum ConfigureRuntimeEffect: Equatable, Sendable {
     case setStartOnBoot(Bool)
     case setSystemSleepPrevention(Bool)
     case setAutomaticBackupSchedule(enabled: Bool, scheduleTimes: [String])
+    case setLogArchiveRetentionDays(Int)
+    case setLogArchiveMaximumGiB(Int)
     case restartRuntimeServices
 }
 
@@ -220,6 +224,8 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                     return true
                 case .restrictSecretFile,
                      .setAutomaticBackupSchedule,
+                     .setLogArchiveRetentionDays,
+                     .setLogArchiveMaximumGiB,
                      .restartRuntimeServices:
                     return false
                 }
@@ -228,6 +234,8 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                 switch effect {
                 case .restrictSecretFile,
                      .setAutomaticBackupSchedule,
+                     .setLogArchiveRetentionDays,
+                     .setLogArchiveMaximumGiB,
                      .restartRuntimeServices:
                     return true
                 case .createDirectory,
@@ -460,6 +468,18 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                 )
             }
             guestRuntimeSettings.backupRetentionCount = count
+        case .logArchiveRetentionDays(let days):
+            guard (1...30).contains(days) else {
+                throw invalid(
+                    "--log-archive-retention-days must be between 1 and 30"
+                )
+            }
+            effects.append(.setLogArchiveRetentionDays(days))
+        case .logArchiveMaximumGiB(let gib):
+            guard (1...20).contains(gib) else {
+                throw invalid("--log-archive-maximum-gib must be between 1 and 20")
+            }
+            effects.append(.setLogArchiveMaximumGiB(gib))
         }
     }
 

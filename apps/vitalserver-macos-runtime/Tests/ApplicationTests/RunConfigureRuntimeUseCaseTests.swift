@@ -200,6 +200,10 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                     preWriteEffects.append("sleep:\(enabled)")
                 case .setAutomaticBackupSchedule(let enabled, let scheduleTimes):
                     preWriteEffects.append("automatic-backup:\(enabled):\(scheduleTimes.joined(separator: ","))")
+                case .setLogArchiveRetentionDays(let days):
+                    postWriteEffects.append("log-archive-retention-days:\(days)")
+                case .setLogArchiveMaximumGiB(let gib):
+                    postWriteEffects.append("log-archive-maximum-gib:\(gib)")
                 case .restartRuntimeServices:
                     postWriteEffects.append("restart")
                 }

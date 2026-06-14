@@ -70,6 +70,64 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(guestSettings.backupRetentionCount, 20)
     }
 
+    func testConfigureWritesLogArchiveSettingsWithoutRestartRequirement() throws {
+        let harness = try Harness()
+        harness.fileStore.files[harness.paths.runtimeControlSettings] = try JSONEncoder().encode(
+            RuntimeControlSettingsDocument(logArchiveRetentionDays: 9, logArchiveMaximumGiB: 2)
+        )
+
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [
+                .logArchiveRetentionDays(21),
+                .logArchiveMaximumGiB(4),
+            ],
+            restart: true
+        ))
+
+        XCTAssertFalse(result.restart)
+        XCTAssertEqual(result.restartRequirement, .none)
+        let data = try XCTUnwrap(harness.fileStore.files[harness.paths.runtimeControlSettings])
+        let settings = try JSONDecoder().decode(RuntimeControlSettingsDocument.self, from: data)
+        XCTAssertEqual(settings, RuntimeControlSettingsDocument(logArchiveRetentionDays: 21, logArchiveMaximumGiB: 4))
+    }
+
+    func testConfigureMergesSingleLogArchiveSettingChangeWithExistingDocument() throws {
+        let harness = try Harness()
+        harness.fileStore.files[harness.paths.runtimeControlSettings] = try JSONEncoder().encode(
+            RuntimeControlSettingsDocument(logArchiveRetentionDays: 9, logArchiveMaximumGiB: 2)
+        )
+
+        _ = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.logArchiveRetentionDays(12)]
+        ))
+
+        let data = try XCTUnwrap(harness.fileStore.files[harness.paths.runtimeControlSettings])
+        let settings = try JSONDecoder().decode(RuntimeControlSettingsDocument.self, from: data)
+        XCTAssertEqual(settings, RuntimeControlSettingsDocument(logArchiveRetentionDays: 12, logArchiveMaximumGiB: 2))
+    }
+
+    func testConfigureRejectsInvalidLogArchiveSettings() throws {
+        let harness = try Harness()
+
+        XCTAssertThrowsError(try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.logArchiveRetentionDays(31)]
+        ))) { error in
+            guard case LauncherError.missingArgument(let message) = error else {
+                return XCTFail("expected missingArgument, got \(error)")
+            }
+            XCTAssertEqual(message, "--log-archive-retention-days must be between 1 and 30")
+        }
+
+        XCTAssertThrowsError(try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.logArchiveMaximumGiB(21)]
+        ))) { error in
+            guard case LauncherError.missingArgument(let message) = error else {
+                return XCTFail("expected missingArgument, got \(error)")
+            }
+            XCTAssertEqual(message, "--log-archive-maximum-gib must be between 1 and 20")
+        }
+    }
+
     func testConfigureWithoutRestartDoesNotRestartServices() throws {
         let harness = try Harness()
 

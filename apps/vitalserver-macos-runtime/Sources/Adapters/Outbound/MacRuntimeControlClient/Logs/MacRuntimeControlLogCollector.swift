@@ -24,7 +24,10 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
     private let directoryCopies: [RuntimeLogDirectoryCopy]
     private let rotatedCopySets: [RuntimeRotatedLogCopySet]
     private let archiveDirectory: URL
+    private let archiveRetention: RuntimeLogArchiveRetentionConfiguration?
+    private let runtimeControlSettingsPath: URL
     private let maxCentralLogBytes: UInt64
+    private let calendar: Calendar
     private let now: () -> Date
     private let archiveCollisionID: () -> String
     private let setModificationDate: (URL, Date) throws -> Void
@@ -39,6 +42,8 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
         directoryCopies: [RuntimeLogDirectoryCopy] = RuntimeLogDirectoryCopy.defaultCopies(),
         rotatedCopySets: [RuntimeRotatedLogCopySet] = RuntimeRotatedLogCopySet.defaultSets(),
         archiveDirectory: URL = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.logArchive),
+        archiveRetention: RuntimeLogArchiveRetentionConfiguration? = nil,
+        runtimeControlSettingsPath: URL = URL(fileURLWithPath: RuntimeControlClientConstants.Paths.runtimeControlSettings),
         maxCentralLogBytes: UInt64 = 10 * 1024 * 1024,
         calendar: Calendar = .current,
         now: @escaping () -> Date = Date.init,
@@ -50,7 +55,10 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
         self.directoryCopies = directoryCopies
         self.rotatedCopySets = rotatedCopySets
         self.archiveDirectory = archiveDirectory
+        self.archiveRetention = archiveRetention
+        self.runtimeControlSettingsPath = runtimeControlSettingsPath
         self.maxCentralLogBytes = maxCentralLogBytes
+        self.calendar = calendar
         self.now = now
         self.archiveCollisionID = archiveCollisionID
         self.collectionRules = RuntimeLogCollectionDecisionRules(calendar: calendar)
@@ -77,6 +85,7 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
         for set in rotatedCopySets {
             try copyRotatedLogs(set)
         }
+        try pruneLogArchives()
     }
 
     func refreshLogCollection(sourceID: RuntimeLogSource) throws {
@@ -95,12 +104,43 @@ struct MacRuntimeControlLogCollector: RuntimeLogCollecting, @unchecked Sendable 
             for item in directoryCopies {
                 try copyDirectoryIntoCentralLogs(item)
             }
+            for set in rotatedCopySets {
+                try copyRotatedLogs(set)
+            }
         }
-        guard sourceID == .containers else {
-            return
+        try pruneLogArchives()
+    }
+
+    private func pruneLogArchives() throws {
+        try RuntimeLogArchivePruner(
+            archiveDirectory: archiveDirectory,
+            configuration: try effectiveArchiveRetention(),
+            fileStore: fileStore,
+            calendar: calendar,
+            now: now
+        ).prune()
+    }
+
+    private func effectiveArchiveRetention() throws -> RuntimeLogArchiveRetentionConfiguration {
+        if let archiveRetention {
+            return archiveRetention
         }
-        for set in rotatedCopySets {
-            try copyRotatedLogs(set)
+        switch RuntimeControlSettingsDocument.loadResult(
+            path: runtimeControlSettingsPath.path,
+            fileStore: fileStore
+        ) {
+        case .loaded(let input):
+            return RuntimeLogArchiveRetentionConfiguration(
+                retentionDays: input.retentionDays,
+                maximumBytes: UInt64(input.maximumGiB) * 1_073_741_824
+            )
+        case .missing:
+            return RuntimeLogArchiveRetentionConfiguration()
+        case .failed(let reason):
+            throw RuntimeControlLogCollectorError.archiveRetentionSettingsReadFailed(
+                path: runtimeControlSettingsPath.path,
+                reason: reason
+            )
         }
     }
 

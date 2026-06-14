@@ -101,6 +101,24 @@ struct RuntimeSettingsPanel: View {
                     }
                     settingHelp(AppConstants.Labels.backupRetentionHelp)
                 }
+                settingsSection(AppConstants.Labels.sectionLogs) {
+                    settingSlider(
+                        AppConstants.Labels.logArchiveRetention,
+                        value: $viewModel.settings.logArchiveRetentionDays,
+                        range: AppConstants.SettingsLimits.minimumLogArchiveRetentionDays...AppConstants.SettingsLimits.maximumLogArchiveRetentionDays,
+                        step: AppConstants.SettingsLimits.logArchiveRetentionStepDays,
+                        suffix: "days"
+                    )
+                    settingHelp(AppConstants.Labels.logArchiveRetentionHelp)
+                    settingSlider(
+                        AppConstants.Labels.logArchiveMaximum,
+                        value: $viewModel.settings.logArchiveMaximumGiB,
+                        range: AppConstants.SettingsLimits.minimumLogArchiveMaximumGiB...AppConstants.SettingsLimits.maximumLogArchiveMaximumGiB,
+                        step: AppConstants.SettingsLimits.logArchiveMaximumStepGiB,
+                        suffix: AppConstants.Labels.unitGiB
+                    )
+                    settingHelp(AppConstants.Labels.logArchiveMaximumHelp)
+                }
                 settingsSection(AppConstants.Labels.sectionOperations) {
                     settingToggle(AppConstants.Labels.startOnBoot, isOn: $viewModel.settings.startOnBoot)
                         .disabled(

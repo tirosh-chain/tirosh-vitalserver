@@ -253,12 +253,59 @@ public struct RuntimeConfigureRunner {
                 try actions.setSystemSleepPrevention(enabled)
             case .setAutomaticBackupSchedule(let enabled, let scheduleTimes):
                 try actions.setAutomaticBackupSchedule(enabled, scheduleTimes)
+            case .setLogArchiveRetentionDays(let days):
+                try updateRuntimeControlSettings { settings in
+                    settings = RuntimeControlSettingsDocument(
+                        logArchiveRetentionDays: days,
+                        logArchiveMaximumGiB: settings.logArchiveMaximumGiB
+                    )
+                }
+            case .setLogArchiveMaximumGiB(let gib):
+                try updateRuntimeControlSettings { settings in
+                    settings = RuntimeControlSettingsDocument(
+                        logArchiveRetentionDays: settings.logArchiveRetentionDays,
+                        logArchiveMaximumGiB: gib
+                    )
+                }
             case .restrictSecretFile(let url):
                 try actions.restrictSecretFile(url)
             case .restartRuntimeServices:
                 try actions.restartRuntimeServices()
             }
         }
+    }
+
+    private func updateRuntimeControlSettings(
+        _ update: (inout RuntimeControlSettingsDocument) throws -> Void
+    ) throws {
+        var settings = try loadRuntimeControlSettings()
+        try update(&settings)
+        let data = try prettyJSONEncoder().encode(settings)
+        try fileStore.createDirectory(
+            at: installedPaths.runtimeControlSettings.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try fileStore.writeData(data, to: installedPaths.runtimeControlSettings, options: .atomic)
+    }
+
+    private func loadRuntimeControlSettings() throws -> RuntimeControlSettingsDocument {
+        let url = installedPaths.runtimeControlSettings
+        switch fileStore.pathState(at: url) {
+        case .file:
+            break
+        case .missing:
+            return RuntimeControlSettingsDocument()
+        case .inspectFailed(let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "runtime control settings path inspection failed path=\(url.path) reason=\(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw LauncherError.runtimeOperationFailed(
+                "runtime control settings path state is unexpected path=\(url.path) state=\(fileStore.pathState(at: url).rawValue)"
+            )
+        }
+        let data = try fileStore.readData(url)
+        return try JSONDecoder().decode(RuntimeControlSettingsDocument.self, from: data)
     }
 
     private func loadVMDiskSizeGiB() throws -> Int {
@@ -393,6 +440,10 @@ private extension RuntimeConfigureChange {
             return .backupScheduleTimes(value)
         case .backupRetention(let value):
             return .backupRetention(value)
+        case .logArchiveRetentionDays(let value):
+            return .logArchiveRetentionDays(value)
+        case .logArchiveMaximumGiB(let value):
+            return .logArchiveMaximumGiB(value)
         }
     }
 }

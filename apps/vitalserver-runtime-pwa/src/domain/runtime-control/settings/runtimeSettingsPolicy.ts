@@ -66,6 +66,18 @@ export function validateRuntimeSettings(
   ) {
     errors.push("Backup times must use HH:mm format.");
   }
+  if (
+    settings.logArchiveRetentionDays < 1 ||
+    settings.logArchiveRetentionDays > 30
+  ) {
+    errors.push("Log archive retention must be between 1 and 30 days.");
+  }
+  if (
+    settings.logArchiveMaximumGiB < 1 ||
+    settings.logArchiveMaximumGiB > 20
+  ) {
+    errors.push("Log archive size limit must be between 1 and 20 GiB.");
+  }
   if (isProtectedVitalFilesDirectory(settings.vitalFilesDirectory)) {
     errors.push(
       "Vital files directory cannot be Desktop, Documents, Downloads, or iCloud Drive."

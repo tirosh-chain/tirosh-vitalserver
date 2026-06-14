@@ -97,6 +97,10 @@ restore하지 않습니다.
 `backups/vitalserver-helper` 아래의 VitalServer backup 개수이며 Redis-only archive 개수가 아닙니다.
 기본 보관 개수는 30개입니다.
 
+Settings의 `Logs`에서는 Host log archive 보관 기간과 용량 제한을 설정합니다. 기본값은 14일,
+1 GiB입니다. 이 설정은 `/Library/Application Support/VitalServerHelper/logs/archive/YYYY-MM-DD`
+관리 archive folder에만 적용되며, VitalServer Helper backup retention과 별도입니다.
+
 선택한 backup이 현재 Helper와 호환되지 않으면 restore는 파일을 덮어쓰기 전에 실패합니다.
 호환성 기준과 backup 내부 artifact 구성은 Dev 문서의
 [Backup/Restore 계약](../dev/backup-restore-contracts.md)을 봅니다.
@@ -138,10 +142,10 @@ VM runtime restart가 필요한 설정은 VM 실행 조건을 바꾸는 값입�
 | network mode, bridged interface | VM network device 재구성이 필요하므로 VM runtime restart 필요 |
 | Vital files directory | VM shared directory mount 재구성이 필요하므로 VM runtime restart 필요 |
 | VitalServer URL, Remote Console URL, public host/port | runtime config 문서 갱신, VM runtime restart requirement 없음 |
-| admin password, VitalServer Helper backup schedule/retention | guest runtime settings와 Host launchd backup scheduler 갱신, VM runtime restart requirement 없음 |
+| admin password, VitalServer Helper backup schedule/retention, log archive retention/size | guest runtime settings, Host launchd backup scheduler, Host runtime-control settings 갱신, VM runtime restart requirement 없음 |
 | start on boot, auto recovery, sleep prevention | Host launchd/config 정책 갱신, VM runtime restart requirement 없음 |
 
-따라서 URL이나 VitalServer Helper backup retention 같은 설정만 바꿨는데 `Restart VM runtime when required`가
+따라서 URL, VitalServer Helper backup retention, log archive retention 같은 설정만 바꿨는데 `Restart VM runtime when required`가
 켜져 있어도 VM을 내리지 않습니다. 반대로 CPU, memory, disk 증가, network, Vital files directory를
 바꾸고 이 옵션을 끄면 설정은 저장되지만 현재 실행 중인 VM에는 다음 VM runtime restart 때 반영됩니다.
 

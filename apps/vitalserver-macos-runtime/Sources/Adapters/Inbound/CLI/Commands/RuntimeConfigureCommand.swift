@@ -32,4 +32,6 @@ public enum RuntimeConfigureChange: Equatable, Sendable {
     case automaticBackup(Bool)
     case backupScheduleTimes([String])
     case backupRetention(Int)
+    case logArchiveRetentionDays(Int)
+    case logArchiveMaximumGiB(Int)
 }

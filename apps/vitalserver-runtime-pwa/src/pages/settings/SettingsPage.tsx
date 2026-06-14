@@ -367,6 +367,42 @@ export function SettingsPage() {
         </p>
       </Panel>
 
+      <Panel title="Logs">
+        <div className="settings-grid">
+          <label>
+            Log archive retention
+            <input
+              type="number"
+              min="1"
+              max="30"
+              value={draft.logArchiveRetentionDays}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("logArchiveRetentionDays", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            Log archive size limit
+            <input
+              type="number"
+              min="1"
+              max="20"
+              value={draft.logArchiveMaximumGiB}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("logArchiveMaximumGiB", event.target.value)
+              }
+            />
+          </label>
+        </div>
+
+        <p className="muted">
+          Managed YYYY-MM-DD log archive folders are pruned by age first, then by
+          total size. Non-date folders are not automatically removed.
+        </p>
+      </Panel>
+
       <Panel title="Operations">
         <div className="settings-toggles">
           <label className="checkbox-label">

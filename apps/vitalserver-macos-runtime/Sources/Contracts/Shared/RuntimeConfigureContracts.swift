@@ -18,6 +18,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
     case automaticBackup
     case backupScheduleTimes
     case backupRetention
+    case logArchiveRetentionDays
+    case logArchiveMaximumGiB
     case restart
     case unknown(String)
 
@@ -61,6 +63,10 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             self = .backupScheduleTimes
         case "--backup-retention":
             self = .backupRetention
+        case "--log-archive-retention-days":
+            self = .logArchiveRetentionDays
+        case "--log-archive-maximum-gib":
+            self = .logArchiveMaximumGiB
         case "--restart":
             self = .restart
         default:
@@ -108,6 +114,10 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             return "--backup-schedule-times"
         case .backupRetention:
             return "--backup-retention"
+        case .logArchiveRetentionDays:
+            return "--log-archive-retention-days"
+        case .logArchiveMaximumGiB:
+            return "--log-archive-maximum-gib"
         case .restart:
             return "--restart"
         case .unknown(let value):

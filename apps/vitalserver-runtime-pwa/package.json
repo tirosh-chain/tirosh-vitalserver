@@ -7,11 +7,12 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "npm run generate:api && tsc -b && vite build",
-    "check": "npm run generate:api && tsc -b --pretty false",
+    "check": "npm run verify:api && tsc -b --pretty false",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
-    "generate:api": "openapi-typescript ../../docs/runtime/macos/runtime-control.openapi.json -o src/domain/runtime-control/contracts/generated/runtime-control.ts"
+    "generate:api": "openapi-typescript ../../docs/runtime/macos/runtime-control.openapi.json -o src/domain/runtime-control/contracts/generated/runtime-control.ts",
+    "verify:api": "node scripts/verify-runtime-control-api.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.0.0",

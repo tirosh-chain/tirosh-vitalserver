@@ -18,12 +18,16 @@ describe("runtime settings policy", () => {
       runtimeControlPort: 70_000,
       publicPort: 0,
       automaticBackupEnabled: true,
-    backupScheduleTimes: ["03:15"],
-    backupRetentionCount: 31
+      backupScheduleTimes: ["03:15"],
+      backupRetentionCount: 31,
+      logArchiveRetentionDays: 31,
+      logArchiveMaximumGiB: 21
     }));
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toHaveLength(7);
+    expect(result.errors).toHaveLength(9);
+    expect(result.errors).toContain("Log archive retention must be between 1 and 30 days.");
+    expect(result.errors).toContain("Log archive size limit must be between 1 and 20 GiB.");
   });
 
   it("rejects backup times outside HH:mm clock range", () => {
@@ -60,7 +64,9 @@ function fullSettings(overrides = {}) {
     preventSystemSleep: true,
     automaticBackupEnabled: true,
     backupScheduleTimes: ["03:15"],
-        backupRetentionCount: 30,
+    backupRetentionCount: 30,
+    logArchiveRetentionDays: 14,
+    logArchiveMaximumGiB: 1,
     restartAfterSave: true,
     ...overrides
   };

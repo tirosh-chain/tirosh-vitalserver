@@ -31,5 +31,11 @@ extension AppConstants {
         static let minimumBackupRetentionCount = 1
         static let maximumBackupRetentionCount = 30
         static let backupRetentionStep = 1
+        static let minimumLogArchiveRetentionDays = 1
+        static let maximumLogArchiveRetentionDays = 30
+        static let logArchiveRetentionStepDays = 1
+        static let minimumLogArchiveMaximumGiB = 1
+        static let maximumLogArchiveMaximumGiB = 20
+        static let logArchiveMaximumStepGiB = 1
     }
 }

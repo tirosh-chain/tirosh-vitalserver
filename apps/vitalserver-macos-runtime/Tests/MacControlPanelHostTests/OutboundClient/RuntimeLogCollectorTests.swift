@@ -228,12 +228,14 @@ final class RuntimeLogCollectorTests: XCTestCase {
         let source = root.appendingPathComponent("source.log")
         let destination = root.appendingPathComponent("central/source.log")
         let archiveDirectory = root.appendingPathComponent("archive")
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
         try "new".write(to: source, atomically: true, encoding: .utf8)
         try FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         try "old-log".write(to: destination, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: destination.path)
 
         let collector = MacRuntimeControlLogCollector(
             fileStore: SystemRuntimeFileStore(),
@@ -242,7 +244,7 @@ final class RuntimeLogCollectorTests: XCTestCase {
             rotatedCopySets: [],
             archiveDirectory: archiveDirectory,
             maxCentralLogBytes: 1,
-            now: { Date(timeIntervalSince1970: 1_800_000_000) }
+            now: { now }
         )
 
         try collector.refreshLogCollection()
@@ -262,8 +264,9 @@ final class RuntimeLogCollectorTests: XCTestCase {
                 )
             }
         XCTAssertEqual(archivedFiles.count, 1)
-        XCTAssertTrue(archivedFiles[0].lastPathComponent.hasPrefix("source.log."))
-        XCTAssertEqual(try String(contentsOf: archivedFiles[0]), "old-log")
+        let archivedFile = try XCTUnwrap(archivedFiles.first)
+        XCTAssertTrue(archivedFile.lastPathComponent.hasPrefix("source.log."))
+        XCTAssertEqual(try String(contentsOf: archivedFile), "old-log")
     }
 
     func testRefreshArchivesExistingCentralLogWhenItIsOlderThanExplicitNowDay() throws {
@@ -308,7 +311,8 @@ final class RuntimeLogCollectorTests: XCTestCase {
                 )
             }
         XCTAssertEqual(archivedFiles.count, 1)
-        XCTAssertEqual(try String(contentsOf: archivedFiles[0]), "old-log")
+        let archivedFile = try XCTUnwrap(archivedFiles.first)
+        XCTAssertEqual(try String(contentsOf: archivedFile), "old-log")
     }
 
     func testRefreshUsesExplicitArchiveCollisionIDWhenTimestampCandidatesAreExhausted() throws {
@@ -584,6 +588,152 @@ final class RuntimeLogCollectorTests: XCTestCase {
         }
     }
 
+    func testRefreshPrunesArchiveDirectoriesOlderThanRetentionDays() throws {
+        let root = try temporaryDirectory()
+        let archiveDirectory = root.appendingPathComponent("archive", isDirectory: true)
+        let oldArchive = archiveDirectory.appendingPathComponent("2026-05-30", isDirectory: true)
+        let cutoffArchive = archiveDirectory.appendingPathComponent("2026-05-31", isDirectory: true)
+        let currentArchive = archiveDirectory.appendingPathComponent("2026-06-14", isDirectory: true)
+        let unmanagedArchive = archiveDirectory.appendingPathComponent("manual-notes", isDirectory: true)
+        try writeArchiveFile(in: oldArchive, name: "old.log", contents: "old")
+        try writeArchiveFile(in: cutoffArchive, name: "cutoff.log", contents: "cutoff")
+        try writeArchiveFile(in: currentArchive, name: "current.log", contents: "current")
+        try writeArchiveFile(in: unmanagedArchive, name: "note.log", contents: "manual")
+        let calendar = utcGregorianCalendar()
+        let now = try fixedDate(year: 2026, month: 6, day: 14, hour: 12, calendar: calendar)
+        let collector = MacRuntimeControlLogCollector(
+            fileStore: SystemRuntimeFileStore(),
+            copies: [],
+            directoryCopies: [],
+            rotatedCopySets: [],
+            archiveDirectory: archiveDirectory,
+            archiveRetention: RuntimeLogArchiveRetentionConfiguration(
+                retentionDays: 14,
+                maximumBytes: UInt64.max
+            ),
+            calendar: calendar,
+            now: { now }
+        )
+
+        try collector.refreshLogCollection()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldArchive.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cutoffArchive.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: currentArchive.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unmanagedArchive.path))
+    }
+
+    func testRefreshPrunesOldestArchiveDirectoriesWhenManagedArchiveSizeExceedsLimit() throws {
+        let root = try temporaryDirectory()
+        let archiveDirectory = root.appendingPathComponent("archive", isDirectory: true)
+        let firstArchive = archiveDirectory.appendingPathComponent("2026-06-01", isDirectory: true)
+        let secondArchive = archiveDirectory.appendingPathComponent("2026-06-02", isDirectory: true)
+        let thirdArchive = archiveDirectory.appendingPathComponent("2026-06-03", isDirectory: true)
+        try writeArchiveFile(in: firstArchive, name: "first.log", contents: "123456")
+        try writeArchiveFile(in: secondArchive, name: "second.log", contents: "abcdef")
+        try writeArchiveFile(in: thirdArchive, name: "third.log", contents: "z")
+        let calendar = utcGregorianCalendar()
+        let now = try fixedDate(year: 2026, month: 6, day: 14, hour: 12, calendar: calendar)
+        let collector = MacRuntimeControlLogCollector(
+            fileStore: SystemRuntimeFileStore(),
+            copies: [],
+            directoryCopies: [],
+            rotatedCopySets: [],
+            archiveDirectory: archiveDirectory,
+            archiveRetention: RuntimeLogArchiveRetentionConfiguration(
+                retentionDays: 30,
+                maximumBytes: 7
+            ),
+            calendar: calendar,
+            now: { now }
+        )
+
+        try collector.refreshLogCollection()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: firstArchive.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: secondArchive.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: thirdArchive.path))
+    }
+
+    func testRefreshUsesRuntimeControlSettingsDocumentForArchiveRetention() throws {
+        let root = try temporaryDirectory()
+        let archiveDirectory = root.appendingPathComponent("archive", isDirectory: true)
+        let settingsPath = root.appendingPathComponent("runtime-control-settings.json")
+        let oldArchive = archiveDirectory.appendingPathComponent("2026-06-10", isDirectory: true)
+        let currentArchive = archiveDirectory.appendingPathComponent("2026-06-14", isDirectory: true)
+        try writeArchiveFile(in: oldArchive, name: "old.log", contents: "old")
+        try writeArchiveFile(in: currentArchive, name: "current.log", contents: "current")
+        try JSONEncoder().encode(RuntimeControlSettingsDocument(
+            logArchiveRetentionDays: 3,
+            logArchiveMaximumGiB: 1
+        )).write(to: settingsPath)
+        let calendar = utcGregorianCalendar()
+        let now = try fixedDate(year: 2026, month: 6, day: 14, hour: 12, calendar: calendar)
+        let collector = MacRuntimeControlLogCollector(
+            fileStore: SystemRuntimeFileStore(),
+            copies: [],
+            directoryCopies: [],
+            rotatedCopySets: [],
+            archiveDirectory: archiveDirectory,
+            runtimeControlSettingsPath: settingsPath,
+            calendar: calendar,
+            now: { now }
+        )
+
+        try collector.refreshLogCollection()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldArchive.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: currentArchive.path))
+    }
+
+    func testRefreshDoesNotPruneUnmanagedArchiveDirectoryForManagedArchiveSizeLimit() throws {
+        let root = try temporaryDirectory()
+        let archiveDirectory = root.appendingPathComponent("archive", isDirectory: true)
+        let managedArchive = archiveDirectory.appendingPathComponent("2026-06-14", isDirectory: true)
+        let unmanagedArchive = archiveDirectory.appendingPathComponent("manual-notes", isDirectory: true)
+        try writeArchiveFile(in: managedArchive, name: "managed.log", contents: "1")
+        try writeArchiveFile(in: unmanagedArchive, name: "manual.log", contents: String(repeating: "x", count: 128))
+        let calendar = utcGregorianCalendar()
+        let now = try fixedDate(year: 2026, month: 6, day: 14, hour: 12, calendar: calendar)
+        let collector = MacRuntimeControlLogCollector(
+            fileStore: SystemRuntimeFileStore(),
+            copies: [],
+            directoryCopies: [],
+            rotatedCopySets: [],
+            archiveDirectory: archiveDirectory,
+            archiveRetention: RuntimeLogArchiveRetentionConfiguration(
+                retentionDays: 30,
+                maximumBytes: 1
+            ),
+            calendar: calendar,
+            now: { now }
+        )
+
+        try collector.refreshLogCollection()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: managedArchive.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unmanagedArchive.path))
+    }
+
+    func testRefreshFailsWhenArchiveRetentionDaysAreInvalid() throws {
+        let root = try temporaryDirectory()
+        let archiveDirectory = root.appendingPathComponent("archive", isDirectory: true)
+        try FileManager.default.createDirectory(at: archiveDirectory, withIntermediateDirectories: true)
+        let collector = MacRuntimeControlLogCollector(
+            fileStore: SystemRuntimeFileStore(),
+            copies: [],
+            directoryCopies: [],
+            rotatedCopySets: [],
+            archiveDirectory: archiveDirectory,
+            archiveRetention: RuntimeLogArchiveRetentionConfiguration(retentionDays: 31),
+            now: { Date(timeIntervalSince1970: 1_800_000_000) }
+        )
+
+        XCTAssertThrowsError(try collector.refreshLogCollection()) { error in
+            XCTAssertEqual(error as? RuntimeControlLogCollectorError, .invalidArchiveRetentionDays(31))
+        }
+    }
+
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("RuntimeLogCollectorTests-\(UUID().uuidString)")
@@ -606,6 +756,34 @@ final class RuntimeLogCollectorTests: XCTestCase {
         formatter.timeZone = .current
         formatter.dateFormat = format
         return formatter
+    }
+
+    private func writeArchiveFile(in directory: URL, name: String, contents: String) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try contents.write(to: directory.appendingPathComponent(name), atomically: true, encoding: .utf8)
+    }
+
+    private func utcGregorianCalendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    private func fixedDate(
+        year: Int,
+        month: Int,
+        day: Int,
+        hour: Int,
+        calendar: Calendar
+    ) throws -> Date {
+        var components = DateComponents()
+        components.calendar = calendar
+        components.timeZone = calendar.timeZone
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = hour
+        return try XCTUnwrap(calendar.date(from: components))
     }
 }
 

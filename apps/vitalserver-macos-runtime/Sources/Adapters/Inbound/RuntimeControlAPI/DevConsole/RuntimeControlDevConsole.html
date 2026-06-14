@@ -598,8 +598,8 @@
       $("settingsJson").value = JSON.stringify(settings || {}, null, 2);
       const values = [
         ["CPU", settings.cpuCount],
-        ["memory", `${settings.memoryGiB || "-"} GiB`],
-        ["disk", `${settings.diskGiB || "-"} GiB`],
+        ["memory", `${settings.memoryGiB ?? "-"} GiB`],
+        ["disk", `${settings.diskGiB ?? "-"} GiB`],
         ["network", settings.networkMode],
         ["proxy port", settings.proxyPort],
         ["public host", settings.publicHost],
@@ -608,7 +608,9 @@
         ["auto recovery", settings.autoRecoveryEnabled],
         ["prevent Mac sleep", settings.preventSystemSleep],
         ["Helper backup archives", settings.backupRetentionCount],
-        ["Helper backup times", (settings.backupScheduleTimes || []).join(", ")]
+        ["Helper backup times", (settings.backupScheduleTimes ?? []).join(", ")],
+        ["Log archive retention", `${settings.logArchiveRetentionDays ?? "-"} days`],
+        ["Log archive size limit", `${settings.logArchiveMaximumGiB ?? "-"} GiB`]
       ];
       $("settingsMetrics").innerHTML = metricsHTML(values);
     }

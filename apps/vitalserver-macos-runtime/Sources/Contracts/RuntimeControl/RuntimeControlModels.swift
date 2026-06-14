@@ -141,6 +141,8 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         case automaticBackupEnabled
         case backupScheduleTimes
         case backupRetentionCount
+        case logArchiveRetentionDays
+        case logArchiveMaximumGiB
         case restartAfterSave
         case appliedVMSettings
     }
@@ -168,6 +170,8 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var automaticBackupEnabled: Bool
     public var backupScheduleTimes: [String]
     public var backupRetentionCount: Int
+    public var logArchiveRetentionDays: Int
+    public var logArchiveMaximumGiB: Int
     public var restartAfterSave: Bool
     public var appliedVMSettings: RuntimeAppliedVMSettings?
 
@@ -195,6 +199,8 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         automaticBackupEnabled: Bool = RuntimeSettingsInitialValues.automaticBackupEnabled,
         backupScheduleTimes: [String] = RuntimeSettingsInitialValues.backupScheduleTimes,
         backupRetentionCount: Int = RuntimeSettingsInitialValues.backupRetentionCount,
+        logArchiveRetentionDays: Int = RuntimeSettingsInitialValues.logArchiveRetentionDays,
+        logArchiveMaximumGiB: Int = RuntimeSettingsInitialValues.logArchiveMaximumGiB,
         restartAfterSave: Bool = false,
         appliedVMSettings: RuntimeAppliedVMSettings? = nil
     ) {
@@ -221,6 +227,8 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.automaticBackupEnabled = automaticBackupEnabled
         self.backupScheduleTimes = backupScheduleTimes
         self.backupRetentionCount = backupRetentionCount
+        self.logArchiveRetentionDays = logArchiveRetentionDays
+        self.logArchiveMaximumGiB = logArchiveMaximumGiB
         self.restartAfterSave = restartAfterSave
         self.appliedVMSettings = appliedVMSettings
     }
@@ -267,6 +275,8 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
             automaticBackupEnabled: try container.decode(Bool.self, forKey: .automaticBackupEnabled),
             backupScheduleTimes: try container.decode([String].self, forKey: .backupScheduleTimes),
             backupRetentionCount: try container.decode(Int.self, forKey: .backupRetentionCount),
+            logArchiveRetentionDays: try container.decode(Int.self, forKey: .logArchiveRetentionDays),
+            logArchiveMaximumGiB: try container.decode(Int.self, forKey: .logArchiveMaximumGiB),
             restartAfterSave: try container.decode(Bool.self, forKey: .restartAfterSave),
             appliedVMSettings: try container.decodeIfPresent(RuntimeAppliedVMSettings.self, forKey: .appliedVMSettings)
         )
@@ -301,6 +311,8 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         try container.encode(automaticBackupEnabled, forKey: .automaticBackupEnabled)
         try container.encode(backupScheduleTimes, forKey: .backupScheduleTimes)
         try container.encode(backupRetentionCount, forKey: .backupRetentionCount)
+        try container.encode(logArchiveRetentionDays, forKey: .logArchiveRetentionDays)
+        try container.encode(logArchiveMaximumGiB, forKey: .logArchiveMaximumGiB)
         try container.encode(restartAfterSave, forKey: .restartAfterSave)
         try container.encodeIfPresent(appliedVMSettings, forKey: .appliedVMSettings)
     }
@@ -356,6 +368,8 @@ public enum RuntimeSettingsInitialValues {
     public static let automaticBackupEnabled = RuntimeSettingsInitialBackupDefaults.automaticBackupEnabled
     public static let backupScheduleTimes = RuntimeSettingsInitialBackupDefaults.backupScheduleTimes
     public static let backupRetentionCount = RuntimeSettingsInitialBackupDefaults.backupRetentionCount
+    public static let logArchiveRetentionDays = RuntimeLogArchiveRetentionConfiguration.defaultRetentionDays
+    public static let logArchiveMaximumGiB = Int(RuntimeLogArchiveRetentionConfiguration.defaultMaximumBytes / 1_073_741_824)
 
     public static func vitalServerURL(proxyPort: Int = proxyPort) -> String {
         "http://\(localhost):\(proxyPort)/"

@@ -81,6 +81,12 @@ Automatic VitalServer backup은 별도 HTTP command route가 아니라 Settings 
 command가 macOS launchd job `ai.tirosh.vitalserver.helper.automatic-backup`을 갱신합니다. Job은
 `runtime automatic-backup`을 실행하며, 생성 대상은 Redis-only archive가 아니라 VitalServer backup입니다.
 
+Runtime log archive retention도 Settings contract로 제어됩니다. `logArchiveRetentionDays`와
+`logArchiveMaximumGiB`는 Guest runtime settings가 아니라 Host-owned
+`/Library/Application Support/VitalServerHelper/runtime-control-settings.json`에 저장됩니다. 이 값은
+central log collector가 `/Library/Application Support/VitalServerHelper/logs/archive/YYYY-MM-DD`
+관리 archive directory를 prune할 때 사용하며, VM runtime restart requirement를 만들지 않습니다.
+
 ## Status Vocabulary
 
 Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `operation`, HTTP probe status처럼 도메인별 raw 값을 그대로 전달합니다. SwiftUI/PWA 표시 계층은 이 raw 값을 그대로 노출하지 않고 shared presentation vocabulary로 변환합니다.

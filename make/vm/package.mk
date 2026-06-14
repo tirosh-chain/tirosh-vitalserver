@@ -1,6 +1,6 @@
 .PHONY: internal/vm/nginx/artifact internal/vm/nginx/bundle internal/vm/docker/images
 .PHONY: internal/vm/require-release-branch
-.PHONY: internal/vm/pkg internal/vm/pkg/dev internal/vm/pkg/dev/compile internal/vm/pkg/dev/runtime-smoke internal/vm/pkg/dev/verify internal/vm/pkg/release internal/vm/pkg/release/verify
+.PHONY: internal/vm/pkg internal/vm/pkg/dev internal/vm/pkg/dev/compile internal/vm/pkg/dev/review internal/vm/pkg/dev/runtime-smoke internal/vm/pkg/dev/verify internal/vm/pkg/release internal/vm/pkg/release/verify
 .PHONY: internal/vm/troubleshooting internal/vm/troubleshooting/dev internal/vm/troubleshooting/release
 .PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/dev internal/vm/dmg/dev/compile internal/vm/dmg/dev/runtime-smoke internal/vm/dmg/dev/verify internal/vm/dmg/release internal/vm/dmg/release/verify
 .PHONY: internal/vm/pkg/clean internal/vm/pkg/install internal/vm/pkg/uninstall/dev
@@ -311,7 +311,16 @@ internal/vm/pkg/dev/compile:
 internal/vm/pkg/dev/runtime-smoke:
 	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_DEV_RELEASE_FILE)"
 
+internal/vm/pkg/dev/review: pwa/check pwa/test
+	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test \
+		--package-path "$(VM_SWIFT_PACKAGE_DIR)" \
+		--filter 'RuntimeLogArchiveRetention|RuntimeSettingsReadPolicy|RuntimeLogExporterTests|RuntimeLogCollectorTests|RuntimeSettingsValidatorTests|RuntimeLifecycleCommandTests|RuntimeConfigureRunnerTests'
+	$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- pytest \
+		packages/vitalserver-devtools/tests/unit/test_macos_release_plans.py \
+		packages/vitalserver-devtools/tests/unit/test_packaging_templates.py
+
 internal/vm/pkg/dev/verify:
+	$(MAKE) internal/vm/pkg/dev/review
 	$(MAKE) internal/vm/pkg/dev/compile
 	$(MAKE) internal/vm/pkg/dev/runtime-smoke
 

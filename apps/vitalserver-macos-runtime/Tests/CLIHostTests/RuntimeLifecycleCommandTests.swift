@@ -57,6 +57,10 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             "shared",
             "--start-on-boot",
             "false",
+            "--log-archive-retention-days",
+            "10",
+            "--log-archive-maximum-gib",
+            "3",
             "--restart",
         ])
 
@@ -65,6 +69,8 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
                 .cpu(8),
                 .network(.shared),
                 .startOnBoot(false),
+                .logArchiveRetentionDays(10),
+                .logArchiveMaximumGiB(3),
             ],
             restart: true
         )))

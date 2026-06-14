@@ -77,7 +77,7 @@ runtime smoke가 소유합니다.
 | `make dist/dmg/dev/runtime-smoke` | 현재 golden rootfs/disk로 VM을 부팅하고 guest bootstrap, `bootstrap-result.json`, `runtime-state.json`, systemd/docker/http/command-dispatch contract를 검증합니다. |
 | `make dist/pkg/dev/runtime-smoke` | dev PKG와 같은 golden runtime contract를 검증합니다. |
 | `make dist/dmg/dev/verify` | dev DMG compile 후 runtime smoke를 실행하는 설치 전 표준 gate입니다. |
-| `make dist/pkg/dev/verify` | dev PKG compile 후 runtime smoke를 실행하는 설치 전 표준 gate입니다. |
+| `make dist/pkg/dev/verify` / `make dist/pkg/verify/dev` | package plan/template review, PWA Runtime Control contract/check/test, log archive/retention tests, dev PKG compile, runtime smoke를 실행하는 설치 전 표준 gate입니다. |
 | `make dist/dmg/release/verify` | release DMG 생성 후 runtime smoke를 실행합니다. Release branch gate는 release build target이 소유합니다. |
 | `make dist/pkg/release/verify` | release PKG 생성 후 runtime smoke를 실행합니다. |
 

@@ -341,6 +341,12 @@ public enum RuntimeControlLogCollectorError: Error, CustomStringConvertible, Equ
     case pathInspectionFailed(path: String, reason: String)
     case unexpectedPathState(path: String, state: String)
     case metadataWriteUnsupported(path: String)
+    case directoryListingFailed(path: String, reason: String)
+    case archiveSizeInspectionFailed(path: String, reason: String)
+    case archiveRemovalFailed(path: String, reason: String)
+    case archiveRetentionSettingsReadFailed(path: String, reason: String)
+    case invalidArchiveRetentionDays(Int)
+    case invalidArchiveRetentionMaximumBytes(UInt64)
 
     public var description: String {
         switch self {
@@ -350,6 +356,18 @@ public enum RuntimeControlLogCollectorError: Error, CustomStringConvertible, Equ
             return "runtime control log collection path state is unexpected: \(path) state=\(state)"
         case .metadataWriteUnsupported(let path):
             return "runtime control log collection metadata write is unsupported: \(path)"
+        case .directoryListingFailed(let path, let reason):
+            return "runtime control log collection directory listing failed: \(path) reason=\(reason)"
+        case .archiveSizeInspectionFailed(let path, let reason):
+            return "runtime control log archive size inspection failed: \(path) reason=\(reason)"
+        case .archiveRemovalFailed(let path, let reason):
+            return "runtime control log archive removal failed: \(path) reason=\(reason)"
+        case .archiveRetentionSettingsReadFailed(let path, let reason):
+            return "runtime control log archive retention settings read failed: \(path) reason=\(reason)"
+        case .invalidArchiveRetentionDays(let days):
+            return "runtime control log archive retention days is invalid: \(days)"
+        case .invalidArchiveRetentionMaximumBytes(let bytes):
+            return "runtime control log archive retention maximum bytes is invalid: \(bytes)"
         }
     }
 }

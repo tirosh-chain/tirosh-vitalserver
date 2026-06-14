@@ -81,6 +81,8 @@ public struct RuntimePresentationFormatter {
             "Vital files directory: \(settings.vitalFilesDirectory)",
             "VitalServer Helper backup retention: \(settings.backupRetentionCount) archives",
             "VitalServer Helper backup times: \(settings.backupScheduleTimes.joined(separator: ", "))",
+            "Log archive retention: \(settings.logArchiveRetentionDays) days",
+            "Log archive size limit: \(settings.logArchiveMaximumGiB) GiB",
             "Automatic recovery: \(boolText(settings.autoRecoveryEnabled))",
             "\(vocabulary.preventSystemSleepLabel): \(boolText(settings.preventSystemSleep))",
             "Restart VM runtime when required: \(boolText(settings.restartAfterSave))",

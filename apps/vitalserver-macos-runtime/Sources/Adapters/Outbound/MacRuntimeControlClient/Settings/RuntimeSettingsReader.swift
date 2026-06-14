@@ -13,6 +13,7 @@ struct RuntimeSettingsPaths {
     var appliedVMConfig = RuntimeControlClientConstants.Paths.appliedVMConfig
     var vmDisk = RuntimeControlClientConstants.Paths.vmDisk
     var guestRuntimeSettings = RuntimeControlClientConstants.Paths.guestRuntimeSettings
+    var runtimeControlSettings = RuntimeControlClientConstants.Paths.runtimeControlSettings
     var proxyLaunchDaemon = RuntimeControlClientConstants.Paths.proxyLaunchDaemon
 
     init(
@@ -20,12 +21,14 @@ struct RuntimeSettingsPaths {
         appliedVMConfig: String = RuntimeControlClientConstants.Paths.appliedVMConfig,
         vmDisk: String = RuntimeControlClientConstants.Paths.vmDisk,
         guestRuntimeSettings: String = RuntimeControlClientConstants.Paths.guestRuntimeSettings,
+        runtimeControlSettings: String = RuntimeControlClientConstants.Paths.runtimeControlSettings,
         proxyLaunchDaemon: String = RuntimeControlClientConstants.Paths.proxyLaunchDaemon
     ) {
         self.vmConfig = vmConfig
         self.appliedVMConfig = appliedVMConfig
         self.vmDisk = vmDisk
         self.guestRuntimeSettings = guestRuntimeSettings
+        self.runtimeControlSettings = runtimeControlSettings
         self.proxyLaunchDaemon = proxyLaunchDaemon
     }
 }
@@ -56,6 +59,10 @@ struct SystemRuntimeSettingsReader: RuntimeSettingsReading, @unchecked Sendable 
             diskGiB: diskSizeGiB(path: paths.vmDisk),
             guestRuntimeSettings: GuestRuntimeSettings.loadResult(
                 path: paths.guestRuntimeSettings,
+                fileStore: fileStore
+            ),
+            logArchiveSettings: RuntimeControlSettingsDocument.loadResult(
+                path: paths.runtimeControlSettings,
                 fileStore: fileStore
             ),
             proxyPort: proxyPort(plistPath: paths.proxyLaunchDaemon),
