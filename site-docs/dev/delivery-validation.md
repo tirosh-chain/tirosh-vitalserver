@@ -75,6 +75,8 @@ Release 전에 만드는 결과물은 목적이 다릅니다. 먼저 “어떤 �
 |---|---|
 | 설치된 runtime health 확인 | `make dist/installed/health` |
 | dev DMG를 VM compile 포함해 생성 | `make dist/dmg/dev/compile` |
+| 생성된 dev DMG layout과 Troubleshooting Tools 검증 | `make dist/dmg/dev/artifact-verify` |
+| dev DMG test/review checks | `make dist/dmg/dev/review` |
 | dev DMG golden runtime boot 계약 검증 | `make dist/dmg/dev/runtime-smoke` |
 | dev DMG 설치 전 표준 검증 | `make dist/dmg/dev/verify` |
 | dev PKG를 VM compile 포함해 생성 | `make dist/pkg/dev/compile` |
@@ -101,7 +103,9 @@ Docker/container runtime처럼 base runtime을 바꾸는 upgrade가
 모두 passed인지 확인합니다. Devtools direct start 경로도 `data/deploy/host-time.json`을 써야 하며,
 Guest가 이 Host-owned time contract를 적용하지 못하면 smoke failure입니다.
 
-`verify`는 compile과 runtime-smoke를 묶은 설치 전 표준 gate입니다. `compile`이 통과했다는 사실만으로
+`verify`는 review/test, compile/artifact verify, runtime-smoke를 묶은 설치 전 표준 gate입니다.
+DMG compile은 clean rootfs로 산출물을 만들고 생성된 DMG를 read-only로 다시 열어 installer PKG와
+Troubleshooting Tools layout/executable contract를 확인합니다. 그래도 `compile`이 통과했다는 사실만으로
 fresh install, installed runtime, update/rollback 동작이 검증된 것으로 보지 않습니다.
 
 ## 3. 무엇을 검증할까

@@ -10,7 +10,10 @@ import pytest
 
 from tirosh_vitalserver.devtools.adapters.macos_release import installer_package
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
-from tirosh_vitalserver.devtools.application.inputs import ReleasePackageInput
+from tirosh_vitalserver.devtools.application.inputs import (
+    ReleaseDmgArtifactVerifyInput,
+    ReleasePackageInput,
+)
 from tirosh_vitalserver.devtools.application.usecases import macos_package
 from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
@@ -571,6 +574,198 @@ def test_build_dmg_detaches_output_dmg_when_attached_without_mount(
     installer_package.detach_unmounted_dmg_output_attachments(dmg_output)
 
     assert commands == [["hdiutil", "detach", "/dev/disk5"]]
+
+
+def test_release_dmg_artifact_verify_accepts_expected_layout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = repo_root()
+    dmg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.dmg"
+    dmg_output.parent.mkdir()
+    dmg_output.write_text("dmg", encoding="utf-8")
+    mount = tmp_path / "mount"
+    tools = mount / "Troubleshooting Tools"
+    (tools / "bin").mkdir(parents=True)
+    (mount / "Install VitalServer Helper.pkg").write_text(
+        "pkg",
+        encoding="utf-8",
+    )
+    for path in [
+        tools / "Reset VitalServer Helper for Reinstall.command",
+        tools / "Create Upstream Redis Backup.command",
+        tools / "bin/vitalserver-troubleshooting-reset-for-reinstall",
+        tools / "bin/vitalserver-troubleshooting-upstream-redis-save",
+    ]:
+        path.write_text("#!/bin/sh\n", encoding="utf-8")
+        path.chmod(0o755)
+    detached: list[installer_package.DmgAttachment] = []
+
+    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        macos_package,
+        "load_release_manifest",
+        lambda path: ReleaseManifest(
+            channel="dev",
+            helper_version="1.2.3",
+            release_label="1.2.3-dev",
+            minimum_updater_version="1.0.0",
+            vitalserver_version="2.3.4",
+            target_platform="macos-arm64",
+        ),
+    )
+    monkeypatch.setattr(macos_package, "hdiutil_verify_image", lambda path: None)
+    monkeypatch.setattr(
+        macos_package,
+        "attach_dmg_readonly",
+        lambda path: installer_package.DmgAttachment(
+            mount_point=mount,
+            device_entry="/dev/disk9",
+        ),
+    )
+    monkeypatch.setattr(macos_package, "detach_dmg_attachment", detached.append)
+
+    report = macos_package.release_dmg_artifact_report(
+        ReleaseDmgArtifactVerifyInput(
+            config=root / "config/vm-build.toml",
+            release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
+            output=dmg_output,
+        )
+    )
+
+    assert report.passed
+    assert detached == [
+        installer_package.DmgAttachment(mount_point=mount, device_entry="/dev/disk9")
+    ]
+
+
+def test_release_dmg_artifact_verify_reports_missing_troubleshooting_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = repo_root()
+    dmg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.dmg"
+    dmg_output.parent.mkdir()
+    dmg_output.write_text("dmg", encoding="utf-8")
+    mount = tmp_path / "mount"
+    tools = mount / "Troubleshooting Tools"
+    (tools / "bin").mkdir(parents=True)
+    (mount / "Install VitalServer Helper.pkg").write_text(
+        "pkg",
+        encoding="utf-8",
+    )
+    for path in [
+        tools / "Reset VitalServer Helper for Reinstall.command",
+        tools / "bin/vitalserver-troubleshooting-reset-for-reinstall",
+        tools / "bin/vitalserver-troubleshooting-upstream-redis-save",
+    ]:
+        path.write_text("#!/bin/sh\n", encoding="utf-8")
+        path.chmod(0o755)
+
+    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        macos_package,
+        "load_release_manifest",
+        lambda path: ReleaseManifest(
+            channel="dev",
+            helper_version="1.2.3",
+            release_label="1.2.3-dev",
+            minimum_updater_version="1.0.0",
+            vitalserver_version="2.3.4",
+            target_platform="macos-arm64",
+        ),
+    )
+    monkeypatch.setattr(macos_package, "hdiutil_verify_image", lambda path: None)
+    monkeypatch.setattr(
+        macos_package,
+        "attach_dmg_readonly",
+        lambda path: installer_package.DmgAttachment(
+            mount_point=mount,
+            device_entry="/dev/disk9",
+        ),
+    )
+    monkeypatch.setattr(macos_package, "detach_dmg_attachment", lambda _: None)
+
+    report = macos_package.release_dmg_artifact_report(
+        ReleaseDmgArtifactVerifyInput(
+            config=root / "config/vm-build.toml",
+            release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
+            output=dmg_output,
+        )
+    )
+
+    redis_command = next(
+        check
+        for check in report.checks
+        if check.name == "dmg-upstream-redis-backup-command"
+    )
+    assert redis_command.status == PreflightStatus.MISSING
+    assert redis_command in report.blockers
+
+
+def test_release_dmg_artifact_verify_reports_detach_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = repo_root()
+    dmg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.dmg"
+    dmg_output.parent.mkdir()
+    dmg_output.write_text("dmg", encoding="utf-8")
+    mount = tmp_path / "mount"
+    tools = mount / "Troubleshooting Tools"
+    (tools / "bin").mkdir(parents=True)
+    (mount / "Install VitalServer Helper.pkg").write_text(
+        "pkg",
+        encoding="utf-8",
+    )
+    for path in [
+        tools / "Reset VitalServer Helper for Reinstall.command",
+        tools / "Create Upstream Redis Backup.command",
+        tools / "bin/vitalserver-troubleshooting-reset-for-reinstall",
+        tools / "bin/vitalserver-troubleshooting-upstream-redis-save",
+    ]:
+        path.write_text("#!/bin/sh\n", encoding="utf-8")
+        path.chmod(0o755)
+
+    monkeypatch.setattr(macos_package.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        macos_package,
+        "load_release_manifest",
+        lambda path: ReleaseManifest(
+            channel="dev",
+            helper_version="1.2.3",
+            release_label="1.2.3-dev",
+            minimum_updater_version="1.0.0",
+            vitalserver_version="2.3.4",
+            target_platform="macos-arm64",
+        ),
+    )
+    monkeypatch.setattr(macos_package, "hdiutil_verify_image", lambda path: None)
+    monkeypatch.setattr(
+        macos_package,
+        "attach_dmg_readonly",
+        lambda path: installer_package.DmgAttachment(
+            mount_point=mount,
+            device_entry="/dev/disk9",
+        ),
+    )
+
+    def fail_detach(_: installer_package.DmgAttachment) -> None:
+        raise RuntimeError("detach failed")
+
+    monkeypatch.setattr(macos_package, "detach_dmg_attachment", fail_detach)
+
+    report = macos_package.release_dmg_artifact_report(
+        ReleaseDmgArtifactVerifyInput(
+            config=root / "config/vm-build.toml",
+            release_file=root / "apps/vitalserver-macos-runtime/release-dev.json",
+            output=dmg_output,
+        )
+    )
+
+    detach = next(check for check in report.checks if check.name == "dmg-detach")
+    assert detach.status == PreflightStatus.FAILED
+    assert detach in report.blockers
 
 
 def test_release_package_preflight_reports_missing_rootfs_before_build(

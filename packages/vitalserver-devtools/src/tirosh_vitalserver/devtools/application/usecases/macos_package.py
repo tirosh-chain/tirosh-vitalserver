@@ -14,8 +14,11 @@ from tirosh_vitalserver.devtools.adapters.macos_release.artifact_files import (
     remove_path,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
+    attach_dmg_readonly,
     attached_disk_images,
     attached_image_mount_points,
+    detach_dmg_attachment,
+    hdiutil_verify_image,
     stage_troubleshooting_tools,
 )
 from tirosh_vitalserver.devtools.adapters.macos_release.installer_package import (
@@ -39,6 +42,7 @@ from tirosh_vitalserver.devtools.application.inputs import (
     MacOSPackageCleanInput,
     MacOSPackageInstallInput,
     NginxBundleInput,
+    ReleaseDmgArtifactVerifyInput,
     ReleasePackageInput,
     ReleaseTroubleshootingToolsInput,
 )
@@ -96,6 +100,14 @@ def build_dmg(input: ReleasePackageInput) -> int:
     return 0
 
 
+def verify_dmg_artifact(input: ReleaseDmgArtifactVerifyInput) -> int:
+    report = release_dmg_artifact_report(input)
+    print_preflight_report(report)
+    if report.passed:
+        return 0
+    raise SystemExit(1)
+
+
 def preflight_release_package(
     input: ReleasePackageInput,
     *,
@@ -149,6 +161,184 @@ def release_package_preflight_report(
         )
     )
     return PreflightReport(name=f"release-{output_kind}", checks=tuple(checks))
+
+
+def release_dmg_artifact_report(
+    input: ReleaseDmgArtifactVerifyInput,
+) -> PreflightReport:
+    root = repo_root()
+    settings = load_macos_release_settings(input.config, root)
+    release_file = resolve_path(root, input.release_file)
+    release = load_release_manifest(release_file)
+    outputs = package_outputs(
+        settings=settings,
+        release=release,
+        requested_output=resolve_path(root, input.output) if input.output else None,
+        output_kind="dmg",
+    )
+    dmg_output = outputs.dmg_output
+    checks: list[PreflightCheck] = [
+        check_required_tool("hdiutil"),
+        check_required_file(dmg_output, "dmg-artifact"),
+    ]
+    if any(check.blocks for check in checks):
+        return PreflightReport(name="release-dmg-artifact", checks=tuple(checks))
+    checks.append(check_hdiutil_verify(dmg_output))
+    if checks[-1].blocks:
+        return PreflightReport(name="release-dmg-artifact", checks=tuple(checks))
+    checks.extend(
+        inspect_dmg_layout(
+            dmg_output=dmg_output,
+            installer_pkg_name=settings.outputs.dmg_installer_pkg_name,
+        )
+    )
+    return PreflightReport(name="release-dmg-artifact", checks=tuple(checks))
+
+
+def check_hdiutil_verify(dmg_output: Path) -> PreflightCheck:
+    try:
+        hdiutil_verify_image(dmg_output)
+    except RuntimeError as error:
+        return PreflightCheck(
+            name="dmg-hdiutil-verify",
+            status=PreflightStatus.FAILED,
+            message="hdiutil verify failed",
+            detail=f"{dmg_output}: {error}",
+        )
+    return PreflightCheck(
+        name="dmg-hdiutil-verify",
+        status=PreflightStatus.PASSED,
+        message=f"DMG image verified: {dmg_output}",
+    )
+
+
+def inspect_dmg_layout(
+    *,
+    dmg_output: Path,
+    installer_pkg_name: str,
+) -> list[PreflightCheck]:
+    checks: list[PreflightCheck] = []
+    attachment = None
+    try:
+        attachment = attach_dmg_readonly(dmg_output)
+    except RuntimeError as error:
+        return [
+            PreflightCheck(
+                name="dmg-attach",
+                status=PreflightStatus.FAILED,
+                message="failed to attach DMG read-only",
+                detail=f"{dmg_output}: {error}",
+            )
+        ]
+    try:
+        mount = attachment.mount_point
+        checks.append(
+            check_required_mounted_file(
+                mount / installer_pkg_name,
+                "dmg-installer-pkg",
+            )
+        )
+        tools_dir = mount / "Troubleshooting Tools"
+        checks.append(
+            check_required_mounted_dir(tools_dir, "dmg-troubleshooting-tools")
+        )
+        checks.extend(
+            [
+                check_required_executable(
+                    tools_dir / "Reset VitalServer Helper for Reinstall.command",
+                    "dmg-reset-command",
+                ),
+                check_required_executable(
+                    tools_dir / "Create Upstream Redis Backup.command",
+                    "dmg-upstream-redis-backup-command",
+                ),
+                check_required_executable(
+                    tools_dir
+                    / "bin/vitalserver-troubleshooting-reset-for-reinstall",
+                    "dmg-reset-cli",
+                ),
+                check_required_executable(
+                    tools_dir
+                    / "bin/vitalserver-troubleshooting-upstream-redis-save",
+                    "dmg-upstream-redis-save-cli",
+                ),
+            ]
+        )
+    finally:
+        try:
+            detach_dmg_attachment(attachment)
+        except RuntimeError as error:
+            checks.append(
+                PreflightCheck(
+                    name="dmg-detach",
+                    status=PreflightStatus.FAILED,
+                    message="failed to detach DMG after verification",
+                    detail=f"{dmg_output}: {error}",
+                )
+            )
+    return checks
+
+
+def check_required_mounted_file(path: Path, name: str) -> PreflightCheck:
+    if path.is_file():
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.PASSED,
+            message=f"required DMG file exists: {path}",
+        )
+    if path.exists():
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.INVALID,
+            message="required DMG path is not a file",
+            detail=str(path),
+        )
+    return PreflightCheck(
+        name=name,
+        status=PreflightStatus.MISSING,
+        message="required DMG file is missing",
+        detail=str(path),
+    )
+
+
+def check_required_mounted_dir(path: Path, name: str) -> PreflightCheck:
+    if path.is_dir():
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.PASSED,
+            message=f"required DMG directory exists: {path}",
+        )
+    if path.exists():
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.INVALID,
+            message="required DMG path is not a directory",
+            detail=str(path),
+        )
+    return PreflightCheck(
+        name=name,
+        status=PreflightStatus.MISSING,
+        message="required DMG directory is missing",
+        detail=str(path),
+    )
+
+
+def check_required_executable(path: Path, name: str) -> PreflightCheck:
+    file_check = check_required_mounted_file(path, name)
+    if file_check.blocks:
+        return file_check
+    if path.stat().st_mode & 0o111:
+        return PreflightCheck(
+            name=name,
+            status=PreflightStatus.PASSED,
+            message=f"required DMG executable exists: {path}",
+        )
+    return PreflightCheck(
+        name=name,
+        status=PreflightStatus.INVALID,
+        message="required DMG executable is not executable",
+        detail=str(path),
+    )
 
 
 def check_required_tool(name: str) -> PreflightCheck:

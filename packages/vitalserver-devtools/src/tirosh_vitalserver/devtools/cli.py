@@ -663,6 +663,22 @@ def main() -> int:
         ),
     )
 
+    release_dmg_verify = subparsers.add_parser(
+        "release-dmg-verify",
+        help="verify a generated macOS runtime dmg artifact from release.json",
+    )
+    release_dmg_verify.add_argument("--release-file", type=Path, required=True)
+    release_dmg_verify.add_argument("--output", type=Path)
+    release_dmg_verify.set_defaults(
+        handler=lambda args: macos_package_usecases.verify_dmg_artifact(
+            usecase_inputs.ReleaseDmgArtifactVerifyInput(
+                config=args.config,
+                release_file=args.release_file,
+                output=args.output,
+            )
+        )
+    )
+
     release_troubleshooting_tools = subparsers.add_parser(
         "release-troubleshooting-tools",
         help="stage macOS Troubleshooting Tools from release.json",

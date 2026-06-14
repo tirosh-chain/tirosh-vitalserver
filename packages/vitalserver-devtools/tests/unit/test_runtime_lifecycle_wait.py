@@ -280,7 +280,7 @@ def test_wait_for_runtime_boot_smoke_rejects_failed_stage(tmp_path):
         stage_statuses={"runtime-state": ("failed", "runtime state is invalid")},
     )
 
-    with pytest.raises(SystemExit, match="runtime boot smoke stage failed"):
+    with pytest.raises(SystemExit) as error:
         wait_for_runtime_boot_smoke(
             RuntimeWaitInput(
                 config=tmp_path / "config.toml",
@@ -289,6 +289,11 @@ def test_wait_for_runtime_boot_smoke_rejects_failed_stage(tmp_path):
                 expected_run_id="runtime-run-test",
             )
         )
+    message = str(error.value)
+    assert "runtime boot smoke stage failed" in message
+    assert "runId=runtime-run-test" in message
+    assert "runtime-boot-smoke-manifest.json" in message
+    assert "Check VM launcher log" in message
 
 
 def test_wait_for_runtime_boot_smoke_rejects_stale_run_id(tmp_path):

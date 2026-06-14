@@ -4,6 +4,7 @@ import os
 import plistlib
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
@@ -42,6 +43,12 @@ RESET_TROUBLESHOOTING_CLI_NAME = "vitalserver-troubleshooting-reset-for-reinstal
 RESET_INSTALLER_COMMAND_NAME = "Reset VitalServer Helper for Reinstall.command"
 UPSTREAM_REDIS_SAVE_CLI_NAME = "vitalserver-troubleshooting-upstream-redis-save"
 UPSTREAM_REDIS_BACKUP_COMMAND_NAME = "Create Upstream Redis Backup.command"
+
+
+@dataclass(frozen=True)
+class DmgAttachment:
+    mount_point: Path
+    device_entry: str | None
 
 
 def build_pkg(context: PackageContext) -> None:
@@ -150,6 +157,70 @@ def detach_attached_image_without_mount(
 
 def ensure_dmg_output_is_not_attached(dmg_output: Path) -> None:
     detach_unmounted_dmg_output_attachments(dmg_output)
+
+
+def hdiutil_verify_image(dmg_output: Path) -> None:
+    result = subprocess.run(
+        ["hdiutil", "verify", str(dmg_output)],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        return
+    detail = "\n".join(
+        line
+        for line in [result.stdout.strip(), result.stderr.strip()]
+        if line
+    )
+    raise RuntimeError(detail or f"hdiutil verify exited {result.returncode}")
+
+
+def attach_dmg_readonly(dmg_output: Path) -> DmgAttachment:
+    result = subprocess.run(
+        [
+            "hdiutil",
+            "attach",
+            "-plist",
+            "-readonly",
+            "-nobrowse",
+            str(dmg_output),
+        ],
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace").strip()
+        raise RuntimeError(stderr or f"hdiutil attach exited {result.returncode}")
+    document = plistlib.loads(result.stdout)
+    images = document.get("system-entities") if isinstance(document, dict) else None
+    if not isinstance(images, list):
+        raise RuntimeError("hdiutil attach did not return system-entities")
+    mount_point: Path | None = None
+    device_entry: str | None = None
+    for entity in images:
+        if not isinstance(entity, dict):
+            continue
+        if device_entry is None:
+            dev_entry = entity.get("dev-entry")
+            if isinstance(dev_entry, str) and dev_entry:
+                device_entry = dev_entry
+        raw_mount_point = entity.get("mount-point")
+        if isinstance(raw_mount_point, str) and raw_mount_point:
+            mount_point = Path(raw_mount_point)
+            break
+    if mount_point is None:
+        if device_entry:
+            run(["hdiutil", "detach", device_entry])
+        raise RuntimeError("hdiutil attach did not report a mount point")
+    return DmgAttachment(mount_point=mount_point, device_entry=device_entry)
+
+
+def detach_dmg_attachment(attachment: DmgAttachment) -> None:
+    target = str(attachment.mount_point)
+    if not attachment.mount_point.exists() and attachment.device_entry:
+        target = attachment.device_entry
+    run(["hdiutil", "detach", target])
 
 
 def attached_disk_images() -> list[dict[str, object]]:

@@ -284,6 +284,13 @@ class ReleaseTroubleshootingToolsInput:
 
 
 @dataclass(frozen=True)
+class ReleaseDmgArtifactVerifyInput:
+    config: Path
+    release_file: Path
+    output: Path | None
+
+
+@dataclass(frozen=True)
 class MacOSPackageCleanInput:
     config: Path
     release_file: Path
@@ -319,6 +326,7 @@ __all__ = [
     "OpenProductUrlInput",
     "PythonWorkspaceToolInput",
     "ReleasePackageInput",
+    "ReleaseDmgArtifactVerifyInput",
     "ReleaseTroubleshootingToolsInput",
     "ReleaseUpdateBundleInput",
     "RenderTemplateInput",

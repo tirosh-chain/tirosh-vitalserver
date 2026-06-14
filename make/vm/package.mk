@@ -2,7 +2,7 @@
 .PHONY: internal/vm/require-release-branch
 .PHONY: internal/vm/pkg internal/vm/pkg/dev internal/vm/pkg/dev/compile internal/vm/pkg/dev/review internal/vm/pkg/dev/runtime-smoke internal/vm/pkg/dev/verify internal/vm/pkg/release internal/vm/pkg/release/verify
 .PHONY: internal/vm/troubleshooting internal/vm/troubleshooting/dev internal/vm/troubleshooting/release
-.PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/dev internal/vm/dmg/dev/compile internal/vm/dmg/dev/runtime-smoke internal/vm/dmg/dev/verify internal/vm/dmg/release internal/vm/dmg/release/verify
+.PHONY: internal/vm/app internal/vm/dmg internal/vm/dmg/artifact-verify internal/vm/dmg/dev internal/vm/dmg/dev/artifact-verify internal/vm/dmg/dev/compile internal/vm/dmg/dev/review internal/vm/dmg/dev/runtime-smoke internal/vm/dmg/dev/verify internal/vm/dmg/release internal/vm/dmg/release/artifact-verify internal/vm/dmg/release/verify
 .PHONY: internal/vm/pkg/clean internal/vm/pkg/install internal/vm/pkg/uninstall/dev
 .PHONY: internal/vm/update internal/vm/update/dev internal/vm/update/release
 .PHONY: internal/vm/image-update internal/vm/image-update/dev
@@ -345,18 +345,31 @@ internal/vm/dmg: internal/vm/golden-rootfs pwa/build
 		--sdkroot "$(VM_SDKROOT)" \
 		--nginx-binary "$(VM_NGINX_BIN)"
 
+internal/vm/dmg/artifact-verify:
+	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" release-dmg-verify \
+		--release-file "$(VM_RELEASE_FILE)"
+
 internal/vm/dmg/dev: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/dmg/dev:
 	$(MAKE) internal/vm/dmg VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
+internal/vm/dmg/dev/review:
+	$(MAKE) internal/vm/pkg/dev/review
+
 internal/vm/dmg/dev/compile: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
 internal/vm/dmg/dev/compile:
 	$(MAKE) internal/vm/dmg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
+	$(MAKE) internal/vm/dmg/artifact-verify VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+
+internal/vm/dmg/dev/artifact-verify: VM_RELEASE_FILE := $(VM_DEV_RELEASE_FILE)
+internal/vm/dmg/dev/artifact-verify:
+	$(MAKE) internal/vm/dmg/artifact-verify VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
 internal/vm/dmg/dev/runtime-smoke:
 	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_DEV_RELEASE_FILE)"
 
 internal/vm/dmg/dev/verify:
+	$(MAKE) internal/vm/dmg/dev/review
 	$(MAKE) internal/vm/dmg/dev/compile
 	$(MAKE) internal/vm/dmg/dev/runtime-smoke
 
@@ -364,6 +377,11 @@ internal/vm/dmg/release: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
 internal/vm/dmg/release:
 	$(MAKE) internal/vm/require-release-branch
 	$(MAKE) internal/vm/dmg VM_RELEASE_FILE="$(VM_RELEASE_FILE)" VM_RECREATE_ROOTFS=true
+	$(MAKE) internal/vm/dmg/artifact-verify VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
+
+internal/vm/dmg/release/artifact-verify: VM_RELEASE_FILE := $(VM_STABLE_RELEASE_FILE)
+internal/vm/dmg/release/artifact-verify:
+	$(MAKE) internal/vm/dmg/artifact-verify VM_RELEASE_FILE="$(VM_RELEASE_FILE)"
 
 internal/vm/dmg/release/verify:
 	$(MAKE) internal/vm/dmg/release

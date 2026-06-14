@@ -883,7 +883,10 @@ def wait_for_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
             expected_run_id=expected_run_id,
         )
         if result["terminal"]:
-            raise SystemExit(str(result["message"]))
+            raise SystemExit(
+                f"{result['message']}\n"
+                f"Check VM launcher log: {launcher_log(input.vm_home)}"
+            )
         if result["ready"]:
             print("SUCCESS: runtime boot smoke passed")
             print(f"  runId={result['runId']}")
@@ -1484,6 +1487,7 @@ def inspect_runtime_boot_smoke_manifest(
                 "message": (
                     "error: runtime boot smoke stage failed while waiting: "
                     f"name={stage_name} status={stage_status} "
+                    f"runId={run_id} manifest={manifest} "
                     f"message={stage.get('message')}"
                 ),
             }
@@ -1506,7 +1510,10 @@ def inspect_runtime_boot_smoke_manifest(
         return {
             "ready": False,
             "terminal": True,
-            "message": f"error: runtime boot smoke failed: {manifest}",
+            "message": (
+                "error: runtime boot smoke failed: "
+                f"runId={run_id} manifest={manifest}"
+            ),
         }
     return {
         "ready": False,
