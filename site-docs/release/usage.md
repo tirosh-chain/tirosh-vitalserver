@@ -92,6 +92,12 @@ Advanced, Observability, Logs 화면으로 이동합니다.
 하나의 복구 단위로 묶습니다. 따라서 일반 사용자는 runtime data와 Redis를 따로 backup하거나 따로
 restore하지 않습니다.
 
+VitalServer backup은 manifest의 `dataCompatibilityVersion`으로 restore 호환성을 확인합니다.
+이 값은 제품 버전이 아니라 backup 내부 data layout 계약입니다. Redis data, VM config, guest runtime
+config/settings, launchd plist, start-on-boot state, status/events 문서, observability SQLite snapshot은
+각각 schema owner가 다릅니다. Helper가 지원하지 않는 compatibility version이거나 이 값이 없는 backup은
+파일을 덮어쓰기 전에 restore가 실패해야 합니다.
+
 Backup 삭제는 Danger Zone에서 분리되어 있습니다. `Delete VitalServer Backup`은 선택한
 VitalServer backup만 삭제하고, `Delete Update Backup`은 update/rollback용 backup만 삭제합니다.
 두 작업 모두 현재 runtime data를 직접 삭제하지 않습니다.
