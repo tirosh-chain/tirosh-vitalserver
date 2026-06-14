@@ -140,12 +140,26 @@ extension RuntimeViewModel {
         }
 
         do {
+            isBusy = true
+            isImportingRedisBackup = true
+            message = AppConstants.StatusText.redisBackupImportPreparing
+            operationDetail = AppConstants.StatusText.redisBackupImportPreparing
+            defer {
+                isBusy = false
+                isImportingRedisBackup = false
+                operationDetail = ""
+            }
+            await Task.yield()
+            message = AppConstants.StatusText.redisBackupImportRunning
+            operationDetail = AppConstants.StatusText.redisBackupImportRunning
             try nativeShell.copyFile(plan.sourceURL, to: plan.destinationURL)
             selectedRedisBackupPath = plan.destinationURL.path
             message = AppConstants.StatusText.redisBackupImported
+            operationDetail = AppConstants.StatusText.redisBackupImported
             await refresh()
         } catch {
             message = AppConstants.StatusText.redisBackupImportFailed(error.localizedDescription)
+            operationDetail = message
         }
     }
 
@@ -186,12 +200,26 @@ extension RuntimeViewModel {
         }
 
         do {
+            isBusy = true
+            isImportingRuntimeDataBackup = true
+            message = AppConstants.StatusText.runtimeDataBackupImportPreparing
+            operationDetail = AppConstants.StatusText.runtimeDataBackupImportPreparing
+            defer {
+                isBusy = false
+                isImportingRuntimeDataBackup = false
+                operationDetail = ""
+            }
+            await Task.yield()
+            message = AppConstants.StatusText.runtimeDataBackupImportRunning
+            operationDetail = AppConstants.StatusText.runtimeDataBackupImportRunning
             try nativeShell.copyDirectory(plan.sourceURL, to: plan.destinationURL)
             selectedRuntimeDataBackupPath = plan.destinationURL.path
             message = AppConstants.StatusText.runtimeDataBackupImported
+            operationDetail = AppConstants.StatusText.runtimeDataBackupImported
             await refresh()
         } catch {
             message = AppConstants.StatusText.runtimeDataBackupImportFailed(error.localizedDescription)
+            operationDetail = message
         }
     }
 
@@ -210,6 +238,10 @@ extension RuntimeViewModel {
         case .failure(let failure):
             message = failure.message
             return
+        }
+        isRestoringRedisBackup = true
+        defer {
+            isRestoringRedisBackup = false
         }
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.redisRestorePreparing,
@@ -235,6 +267,10 @@ extension RuntimeViewModel {
             message = failure.message
             return
         }
+        isRestoringRuntimeDataBackup = true
+        defer {
+            isRestoringRuntimeDataBackup = false
+        }
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.runtimeDataRestorePreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
@@ -258,6 +294,10 @@ extension RuntimeViewModel {
         case .failure(let failure):
             message = failure.message
             return
+        }
+        isRollingBackRuntime = true
+        defer {
+            isRollingBackRuntime = false
         }
         _ = await runClientAction(
             preparingMessage: AppConstants.StatusText.rollbackPreparing,

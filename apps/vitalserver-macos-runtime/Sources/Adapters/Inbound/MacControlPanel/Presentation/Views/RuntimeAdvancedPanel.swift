@@ -206,6 +206,9 @@ struct RuntimeAdvancedPanel: View {
                         }
                         .disabled(!viewModel.capabilities.canOpenLocalFiles)
                     }
+                    if viewModel.isRollingBackRuntime {
+                        recoveryProgressRow(viewModel.backupOperationProgressMessage)
+                    }
                 }
 
                 Divider()
@@ -280,16 +283,8 @@ struct RuntimeAdvancedPanel: View {
                         }
                         .disabled(!viewModel.capabilities.canOpenLocalFiles)
                     }
-                    if viewModel.isCreatingRuntimeDataBackup {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text(viewModel.operationDetail.isEmpty ? viewModel.message : viewModel.operationDetail)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                        }
+                    if viewModel.isRuntimeDataBackupOperationInProgress {
+                        recoveryProgressRow(viewModel.backupOperationProgressMessage)
                     }
                 }
 
@@ -421,16 +416,8 @@ struct RuntimeAdvancedPanel: View {
                                 }
                                 .disabled(!viewModel.capabilities.canOpenLocalFiles)
                             }
-                            if viewModel.isCreatingRedisBackup {
-                                HStack(spacing: 8) {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                    Text(viewModel.operationDetail.isEmpty ? viewModel.message : viewModel.operationDetail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                }
+                            if viewModel.isRedisBackupOperationInProgress {
+                                recoveryProgressRow(viewModel.backupOperationProgressMessage)
                             }
                         }
                     }
@@ -761,6 +748,18 @@ struct RuntimeAdvancedPanel: View {
             return .red
         case .neutral:
             return .gray
+        }
+    }
+
+    private func recoveryProgressRow(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
     }
 

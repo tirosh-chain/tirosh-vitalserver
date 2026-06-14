@@ -40,7 +40,12 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var isBusy = false
     @Published var isApplyingUpdateBundle = false
     @Published var isCreatingRedisBackup = false
+    @Published var isImportingRedisBackup = false
+    @Published var isRestoringRedisBackup = false
     @Published var isCreatingRuntimeDataBackup = false
+    @Published var isImportingRuntimeDataBackup = false
+    @Published var isRestoringRuntimeDataBackup = false
+    @Published var isRollingBackRuntime = false
     var isRefreshingLogs = false
     @Published var releaseInfo = RuntimeReleaseInfo.generated
     @Published var releaseInfoErrorMessage: String?
@@ -186,6 +191,22 @@ public final class RuntimeViewModel: ObservableObject {
             return operationDetail.isEmpty ? message : operationDetail
         }
         return presentationFormatter.updateOperationDisplayMessage(status) ?? message
+    }
+
+    var backupOperationProgressMessage: String {
+        operationDetail.isEmpty ? message : operationDetail
+    }
+
+    var isRuntimeDataBackupOperationInProgress: Bool {
+        isCreatingRuntimeDataBackup
+            || isImportingRuntimeDataBackup
+            || isRestoringRuntimeDataBackup
+    }
+
+    var isRedisBackupOperationInProgress: Bool {
+        isCreatingRedisBackup
+            || isImportingRedisBackup
+            || isRestoringRedisBackup
     }
 
     func refresh() async {
