@@ -189,6 +189,14 @@
     @apply font-medium text-app-muted;
   }
 
+  .settings-apply-state {
+    @apply mb-4 mt-0 rounded-control border border-app-border bg-app-control/35 px-3 py-2 text-sm font-extrabold text-app-muted;
+  }
+
+  .settings-apply-state.pending {
+    @apply border-app-warning/40 text-app-text;
+  }
+
   .warning-list {
     @apply mb-4 grid gap-1 text-sm font-bold text-app-danger;
   }

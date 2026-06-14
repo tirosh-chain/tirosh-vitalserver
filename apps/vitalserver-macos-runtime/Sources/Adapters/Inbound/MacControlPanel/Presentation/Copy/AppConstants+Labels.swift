@@ -178,6 +178,26 @@ public extension AppConstants {
         public static func backupTimezoneHelp(_ timezone: String) -> String {
             "Schedule timezone: \(timezone) (system local time)."
         }
+        public static let appliedSettingsPrefix = "Applied"
+        public static let pendingAppliedSettingsPrefix = "Not applied yet. Applied"
+        public static let automaticBackupsOn = "Automatic backups on"
+        public static let automaticBackupsOff = "Automatic backups off"
+        public static func appliedBackupSettingsSummary(
+            prefix: String,
+            automaticBackupText: String,
+            scheduleTimes: String,
+            timezone: String,
+            retentionCount: Int
+        ) -> String {
+            "\(prefix): \(automaticBackupText) · \(scheduleTimes) · \(timezone) · keep \(retentionCount) archives"
+        }
+        public static func appliedLogArchiveSettingsSummary(
+            prefix: String,
+            retentionDays: Int,
+            maximumGiB: Int
+        ) -> String {
+            "\(prefix): keep \(retentionDays) days · max \(maximumGiB) GiB"
+        }
         public static let sectionLogs = "Logs"
         public static let logArchiveRetention = "Log archive retention"
         public static let logArchiveRetentionHelp = "Number of days to keep managed YYYY-MM-DD log archive folders."

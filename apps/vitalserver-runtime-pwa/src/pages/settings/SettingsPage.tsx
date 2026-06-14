@@ -171,6 +171,18 @@ export function SettingsPage() {
     capabilityReadState,
     capabilities: capabilities.data
   });
+  const backupAppliedState = runtimeSettings
+    ? backupAppliedSettingsSummary(settings.data, runtimeSettings, systemTimeZone)
+    : "";
+  const logArchiveAppliedState = runtimeSettings
+    ? logArchiveAppliedSettingsSummary(settings.data, runtimeSettings)
+    : "";
+  const backupSettingsPending = runtimeSettings
+    ? backupSettingsChanged(settings.data, runtimeSettings)
+    : false;
+  const logArchiveSettingsPending = runtimeSettings
+    ? logArchiveSettingsChanged(settings.data, runtimeSettings)
+    : false;
 
   return (
     <div className="page-stack">
@@ -314,6 +326,9 @@ export function SettingsPage() {
       </Panel>
 
       <Panel title="Storage and VitalServer Helper backups">
+        <p className={settingsApplyStateClassName(backupSettingsPending)}>
+          {backupAppliedState}
+        </p>
         <div className="settings-grid">
           <label>
             Vital files directory
@@ -376,6 +391,9 @@ export function SettingsPage() {
       </Panel>
 
       <Panel title="Logs">
+        <p className={settingsApplyStateClassName(logArchiveSettingsPending)}>
+          {logArchiveAppliedState}
+        </p>
         <div className="settings-grid">
           <label>
             Log archive retention
@@ -512,3 +530,63 @@ function changedRuntimeControlPortValue(
 
   return runtimeControlPort;
 }
+
+function backupAppliedSettingsSummary(
+  applied: RuntimeSettingsDraftSource,
+  draft: RuntimeSettingsDraftSource,
+  systemTimeZone: string
+): string {
+  const prefix = backupSettingsChanged(applied, draft)
+    ? "Not applied yet. Applied"
+    : "Applied";
+  const automaticBackupText = applied.automaticBackupEnabled
+    ? "Automatic backups on"
+    : "Automatic backups off";
+  const scheduleTimes = applied.backupScheduleTimes.join(", ");
+
+  return `${prefix}: ${automaticBackupText} · ${scheduleTimes} · ${systemTimeZone} · keep ${applied.backupRetentionCount} archives`;
+}
+
+function logArchiveAppliedSettingsSummary(
+  applied: RuntimeSettingsDraftSource,
+  draft: RuntimeSettingsDraftSource
+): string {
+  const prefix = logArchiveSettingsChanged(applied, draft)
+    ? "Not applied yet. Applied"
+    : "Applied";
+
+  return `${prefix}: keep ${applied.logArchiveRetentionDays} days · max ${applied.logArchiveMaximumGiB} GiB`;
+}
+
+function backupSettingsChanged(
+  applied: RuntimeSettingsDraftSource,
+  draft: RuntimeSettingsDraftSource
+): boolean {
+  return (
+    applied.automaticBackupEnabled !== draft.automaticBackupEnabled ||
+    applied.backupRetentionCount !== draft.backupRetentionCount ||
+    applied.backupScheduleTimes.join("\n") !== draft.backupScheduleTimes.join("\n")
+  );
+}
+
+function logArchiveSettingsChanged(
+  applied: RuntimeSettingsDraftSource,
+  draft: RuntimeSettingsDraftSource
+): boolean {
+  return (
+    applied.logArchiveRetentionDays !== draft.logArchiveRetentionDays ||
+    applied.logArchiveMaximumGiB !== draft.logArchiveMaximumGiB
+  );
+}
+
+function settingsApplyStateClassName(pending: boolean): string {
+  return pending ? "settings-apply-state pending" : "settings-apply-state";
+}
+
+type RuntimeSettingsDraftSource = {
+  automaticBackupEnabled: boolean;
+  backupScheduleTimes: string[];
+  backupRetentionCount: number;
+  logArchiveRetentionDays: number;
+  logArchiveMaximumGiB: number;
+};

@@ -263,6 +263,10 @@ describe("runtime console pages", () => {
   it("uses provider-owned settings values without form fallbacks", () => {
     renderPage(<SettingsPage />);
 
+    expect(
+      screen.getByText(/Applied: Automatic backups on · 03:15 · .* · keep 7 archives/)
+    ).toBeInTheDocument();
+    expect(screen.getByText("Applied: keep 14 days · max 1 GiB")).toBeInTheDocument();
     expect(screen.getByLabelText("VM disk GiB")).toHaveAttribute("min", "20");
     expect(
       screen.getByText("VM disk can only be increased. Minimum for this install is 20 GiB.")
@@ -279,6 +283,24 @@ describe("runtime console pages", () => {
     });
     expect(
       screen.getByText("Default advertised URL: Proxy port is not available.")
+    ).toBeInTheDocument();
+  });
+
+  it("shows unapplied settings state for backup and log edits", () => {
+    renderPage(<SettingsPage />);
+
+    fireEvent.change(screen.getByLabelText("Backup times"), {
+      target: { value: "03:15, 15:15" }
+    });
+    fireEvent.change(screen.getByLabelText("Log archive retention"), {
+      target: { value: "10" }
+    });
+
+    expect(
+      screen.getByText(/Not applied yet\. Applied: Automatic backups on · 03:15 · .* · keep 7 archives/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Not applied yet. Applied: keep 14 days · max 1 GiB")
     ).toBeInTheDocument();
   });
 

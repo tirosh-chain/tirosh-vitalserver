@@ -61,6 +61,7 @@ struct RuntimeSettingsPanel: View {
                     )
                 }
                 settingsSection(AppConstants.Labels.sectionHelperBackups) {
+                    appliedSettingsStatus(backupAppliedSettingsSummary)
                     settingToggle(AppConstants.Labels.automaticBackups, isOn: $viewModel.settings.automaticBackupEnabled)
                     settingHelp(AppConstants.Labels.backupTimezoneHelp(TimeZone.current.identifier))
                     settingRow(AppConstants.Labels.backupTimes) {
@@ -102,6 +103,7 @@ struct RuntimeSettingsPanel: View {
                     settingHelp(AppConstants.Labels.backupRetentionHelp)
                 }
                 settingsSection(AppConstants.Labels.sectionLogs) {
+                    appliedSettingsStatus(logArchiveAppliedSettingsSummary)
                     settingSlider(
                         AppConstants.Labels.logArchiveRetention,
                         value: $viewModel.settings.logArchiveRetentionDays,
@@ -222,6 +224,41 @@ struct RuntimeSettingsPanel: View {
 
     private var restartNotice: RuntimeSettingsRestartNoticeDecision {
         restartNoticePolicy.decision(draft: viewModel.settings, runtime: viewModel.runtimeSettings)
+    }
+
+    private var backupAppliedSettingsSummary: String {
+        AppConstants.Labels.appliedBackupSettingsSummary(
+            prefix: backupSettingsChanged
+                ? AppConstants.Labels.pendingAppliedSettingsPrefix
+                : AppConstants.Labels.appliedSettingsPrefix,
+            automaticBackupText: viewModel.savedSettings.automaticBackupEnabled
+                ? AppConstants.Labels.automaticBackupsOn
+                : AppConstants.Labels.automaticBackupsOff,
+            scheduleTimes: viewModel.savedSettings.backupScheduleTimes.joined(separator: ", "),
+            timezone: TimeZone.current.identifier,
+            retentionCount: viewModel.savedSettings.backupRetentionCount
+        )
+    }
+
+    private var logArchiveAppliedSettingsSummary: String {
+        AppConstants.Labels.appliedLogArchiveSettingsSummary(
+            prefix: logArchiveSettingsChanged
+                ? AppConstants.Labels.pendingAppliedSettingsPrefix
+                : AppConstants.Labels.appliedSettingsPrefix,
+            retentionDays: viewModel.savedSettings.logArchiveRetentionDays,
+            maximumGiB: viewModel.savedSettings.logArchiveMaximumGiB
+        )
+    }
+
+    private var backupSettingsChanged: Bool {
+        viewModel.settings.automaticBackupEnabled != viewModel.savedSettings.automaticBackupEnabled
+            || viewModel.settings.backupScheduleTimes != viewModel.savedSettings.backupScheduleTimes
+            || viewModel.settings.backupRetentionCount != viewModel.savedSettings.backupRetentionCount
+    }
+
+    private var logArchiveSettingsChanged: Bool {
+        viewModel.settings.logArchiveRetentionDays != viewModel.savedSettings.logArchiveRetentionDays
+            || viewModel.settings.logArchiveMaximumGiB != viewModel.savedSettings.logArchiveMaximumGiB
     }
 
     private var restartRuntimeSection: some View {
@@ -467,6 +504,14 @@ struct RuntimeSettingsPanel: View {
             .font(.caption)
             .foregroundStyle(.red)
             .padding(.leading, 174)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func appliedSettingsStatus(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
 
