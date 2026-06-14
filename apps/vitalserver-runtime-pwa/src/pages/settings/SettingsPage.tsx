@@ -92,6 +92,8 @@ export function SettingsPage() {
   const canEditLocalFiles = capabilities.data?.canOpenLocalFiles === true;
   const canControlServices =
     capabilities.data?.canControlRuntimeServices === true;
+  const systemTimeZone =
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "system local time";
   const capabilityReadState: RuntimeCapabilityReadState = capabilities.isPending
     ? "loading"
     : capabilities.isError
@@ -335,12 +337,16 @@ export function SettingsPage() {
             />
             Automatic backups
           </label>
+          <p className="muted full-width">
+            Schedule timezone: {systemTimeZone} (system local time).
+          </p>
           <label>
             Backup times
             <input
               value={draft.backupScheduleTimes}
               disabled={!canControlServices}
               placeholder="03:15, 15:15"
+              pattern="^([01][0-9]|2[0-3]):[0-5][0-9](,\s*([01][0-9]|2[0-3]):[0-5][0-9])*$"
               onChange={(event) =>
                 updateField("backupScheduleTimes", event.target.value)
               }
@@ -362,6 +368,8 @@ export function SettingsPage() {
         </div>
 
         <p className="muted">
+          Backup times use 24-hour HH:mm format, such as 03:15 or 15:15, and
+          each time must be unique.{" "}
           VitalServer Helper backup retention keeps up to 30 recoverable archives,
           including Redis data.
         </p>

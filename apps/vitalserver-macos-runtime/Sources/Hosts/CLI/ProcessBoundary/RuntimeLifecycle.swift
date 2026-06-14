@@ -328,14 +328,33 @@ struct RuntimeLifecycle {
     }
 
     func restoreRuntimeDataBackup(_ backup: URL) throws {
+        let step = RuntimeWorkflowStep.restoreRuntimeDataBackup
+        publishRuntimeDataRestoreProgress(
+            step: step,
+            stepStatus: .started,
+            phase: .running,
+            message: "Restoring VitalServer backup: \(backup.path)"
+        )
         do {
             try runtimeDataBackupComposition().restoreBackup(backup)
+            publishRuntimeDataRestoreProgress(
+                step: step,
+                stepStatus: .completed,
+                phase: .completed,
+                message: "VitalServer restore completed: \(backup.path)"
+            )
             print("runtime data restore completed")
             print("backup: \(backup.path)")
         } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
+            publishRuntimeDataRestoreFailure(step: step, backup: backup, message: message)
             throw LauncherError.runtimeOperationFailed(message)
         } catch let error as RuntimeDataBackupStoreError {
+            publishRuntimeDataRestoreFailure(step: step, backup: backup, message: error.description)
             throw LauncherError.runtimeOperationFailed(error.description)
+        } catch {
+            let message = error.localizedDescription
+            publishRuntimeDataRestoreFailure(step: step, backup: backup, message: message)
+            throw error
         }
     }
 
@@ -386,6 +405,42 @@ struct RuntimeLifecycle {
 }
 
 private extension RuntimeLifecycle {
+    func publishRuntimeDataRestoreFailure(
+        step: RuntimeWorkflowStep,
+        backup: URL,
+        message: String
+    ) {
+        publishRuntimeDataRestoreProgress(
+            step: step,
+            stepStatus: .failed,
+            phase: .failed,
+            message: "VitalServer restore failed: \(message) backup=\(backup.path)",
+            reasonCodes: ["runtime-data-restore-failed"]
+        )
+    }
+
+    func publishRuntimeDataRestoreProgress(
+        step: RuntimeWorkflowStep,
+        stepStatus: RuntimeProgressStepStatus,
+        phase: RuntimeProgressPhase,
+        message: String,
+        reasonCodes: [String] = []
+    ) {
+        do {
+            try writeRuntimeProgress(
+                .recovering,
+                operation: .runtimeDataRestore,
+                step: step,
+                stepStatus: stepStatus,
+                phase: phase,
+                message: message,
+                reasonCodes: reasonCodes
+            )
+        } catch {
+            log("runtime data restore progress write failed error=\(error.localizedDescription) message=\(message)")
+        }
+    }
+
     func installedSSHAuthorizedKeys() throws -> [String] {
         let config = try VMRuntimeConfig.load(from: paths.config, fileStore: fileStore)
         return config.sshAuthorizedKeys ?? []

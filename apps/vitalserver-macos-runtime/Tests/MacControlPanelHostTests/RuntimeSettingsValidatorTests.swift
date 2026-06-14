@@ -111,6 +111,24 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
         )
     }
 
+    func testRejectsInvalidAndDuplicateBackupScheduleTimes() {
+        var settings = validSettings()
+        settings.backupScheduleTimes = ["26:15"]
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid(AppConstants.StatusText.invalidBackupScheduleTimes)
+        )
+
+        settings = validSettings()
+        settings.backupScheduleTimes = ["03:15", "03:15"]
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid(AppConstants.StatusText.duplicateBackupScheduleTimes)
+        )
+    }
+
     func testRejectsLogArchiveSettingsOutsideRange() {
         var settings = validSettings()
         settings.logArchiveRetentionDays = 31

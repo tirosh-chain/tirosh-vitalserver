@@ -87,6 +87,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-076 | Update shutdown 중 compose stop timeout 후 rollback됨 | Update / Guest containers | implemented | [Update shutdown compose stop timeout and guest time drift](076_update-shutdown-compose-stop-timeout-and-guest-time-drift.md) |
 | TS-077 | VitalServer backup restore가 data layout 호환성을 확인해야 함 | Data store / Runtime health | active | [Runtime Data Backup Compatibility Gate](077_runtime-data-backup-compatibility.md) |
 | TS-078 | Upstream Redis backup command가 Redis SAVE 응답을 무기한 기다림 | Packaging / Troubleshooting Tools / Redis migration | implemented | [Upstream Redis SAVE Timeout](078_upstream-redis-save-timeout.md) |
+| TS-079 | VitalServer Helper backup restore 실패가 UI progress/message에 표시되지 않음 | Data store / Runtime health | implemented | [Runtime Data Restore Silent Failure](079_runtime-data-restore-silent-failure.md) |
 
 ## Follow-up 규칙
 

@@ -214,6 +214,28 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
         }
     }
 
+    func testRejectsDuplicateBackupScheduleTimes() {
+        let harness = Harness()
+
+        XCTAssertThrowsError(try harness.useCase.plan(
+            ConfigureRuntimeRequest(
+                changes: [
+                    .backupScheduleTimes(["03:15", "03:15"]),
+                ]
+            ),
+            context: harness.context,
+            currentVMConfig: harness.vmConfig,
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
+        )) { error in
+            XCTAssertEqual(
+                error as? ConfigureRuntimeError,
+                .invalidArgument("--backup-schedule-times must be unique comma-separated HH:mm values")
+            )
+        }
+    }
+
     func testEffectExecutionPlanKeepsPreAndPostWriteOrderingOutOfWorkflow() {
         let harness = Harness()
         let effects: [ConfigureRuntimeEffect] = [

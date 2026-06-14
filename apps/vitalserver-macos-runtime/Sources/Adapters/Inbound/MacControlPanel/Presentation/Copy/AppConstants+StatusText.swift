@@ -201,6 +201,8 @@ public extension AppConstants {
         public static let invalidPort = "Port must be between 1 and 65535."
         public static let invalidAdvertisedURL = "Advertised URLs must be absolute http/https URLs."
         public static let invalidRedisBackupRetention = "VitalServer Helper backups must be between 1 and 30 archives."
+        public static let invalidBackupScheduleTimes = "Backup times must use 24-hour HH:mm format, such as 03:15 or 15:15, and must be between 00:00 and 23:59."
+        public static let duplicateBackupScheduleTimes = "Backup times must be unique."
         public static let invalidLogArchiveRetention = "Log archive retention must be between 1 and 30 days."
         public static let invalidLogArchiveMaximum = "Log archive size limit must be between 1 and 20 GiB."
         public static let adminPasswordRequired = "Admin password reset value must not be empty."

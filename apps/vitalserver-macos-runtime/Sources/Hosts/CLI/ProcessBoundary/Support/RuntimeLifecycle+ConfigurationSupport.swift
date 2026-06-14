@@ -102,6 +102,9 @@ extension RuntimeLifecycle {
         guard !scheduleTimes.isEmpty else {
             throw LauncherError.missingArgument("automatic backup schedule must include at least one HH:mm value")
         }
+        guard RuntimeBackupSchedulePolicy.hasUniqueTimes(scheduleTimes) else {
+            throw LauncherError.missingArgument("automatic backup schedule times must be unique")
+        }
         let calendarIntervals = try scheduleTimes.map { value -> [String: Int] in
             let parts = value.split(separator: ":", omittingEmptySubsequences: false)
             guard parts.count == 2,

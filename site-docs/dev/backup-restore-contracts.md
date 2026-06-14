@@ -19,7 +19,9 @@ artifact 구성, data schema owner, backup-level restore compatibility, migratio
 자동 backup도 Redis-only archive가 아니라 VitalServer backup을 생성합니다. Host launchd job
 `ai.tirosh.vitalserver.helper.automatic-backup`이 Settings의 `automaticBackupEnabled`,
 `backupScheduleTimes`, `backupRetentionCount`를 source of truth로 사용합니다. Schedule은 macOS
-local time `HH:mm` 값이며, Helper app process가 실행 중인지에 의존하지 않아야 합니다.
+local time `HH:mm` 값이며, Helper app process가 실행 중인지에 의존하지 않아야 합니다. Schedule
+time은 system timezone 기준으로 표시해야 하고, `03:15`, `15:15`처럼 24-hour `HH:mm` format만
+허용합니다. 유효 범위는 `00:00`부터 `23:59`까지이며, 같은 schedule time을 중복 저장하면 안 됩니다.
 
 Automatic backup command는 실행 시점에 runtime operation lease를 acquire합니다. 다른 mutating runtime
 operation이 active이면 실패 상태를 만들지 않고 해당 run을 skipped로 기록합니다. Backup 생성 성공 후
@@ -123,4 +125,5 @@ Backup/restore 동작이 바뀌면 아래 문서를 함께 갱신합니다.
 - 이 dev 계약 문서: schema owner, compatibility, migration 의미
 
 반복되는 restore failure는 symptom, cause, fix direction, prevention을 갖춘 troubleshooting 문서로
-승격합니다.
+승격합니다. Restore 실패가 UI progress/message에 표시되지 않는 failure pattern은
+[TS-079](../../docs/troubleshooting/079_runtime-data-restore-silent-failure.md)에 기록합니다.

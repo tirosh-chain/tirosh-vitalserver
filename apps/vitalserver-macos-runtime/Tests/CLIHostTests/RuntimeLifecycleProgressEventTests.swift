@@ -46,7 +46,12 @@ final class RuntimeLifecycleProgressEventTests: XCTestCase {
         defer {
             try? FileManager.default.removeItem(at: productRoot)
         }
+        try FileManager.default.createDirectory(at: productRoot, withIntermediateDirectories: true)
         let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+        try FileManager.default.createDirectory(
+            at: installedPaths.vitalServerHelperBackupsDirectory,
+            withIntermediateDirectories: true
+        )
         let lifecycle = RuntimeLifecycle(
             paths: LauncherPaths(
                 home: installedPaths.runtimeHome,
@@ -75,6 +80,64 @@ final class RuntimeLifecycleProgressEventTests: XCTestCase {
         XCTAssertEqual(eventRead.events.first?.operation, .applyBundle)
         XCTAssertEqual(eventRead.events.first?.progress?.step, .stopRuntimeServices)
         XCTAssertEqual(eventRead.events.first?.progress?.stepStatus, .started)
+    }
+
+    func testRuntimeDataRestoreFailureWritesFailedProgress() throws {
+        let fileStore = RuntimeFileStoreSpy()
+        let statusRepository = CapturingRuntimeStatusRepository()
+        let productRoot = URL(fileURLWithPath: "/runtime-data-restore-progress")
+        let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
+        fileStore.directories.formUnion([
+            installedPaths.backupsDirectory,
+            installedPaths.vitalServerHelperBackupsDirectory,
+        ])
+        let lifecycle = RuntimeLifecycle(
+            paths: LauncherPaths(
+                home: installedPaths.runtimeHome,
+                installed: installedPaths,
+                config: installedPaths.vmConfig,
+                pidFile: installedPaths.pidFile
+            ),
+            runtimeStatusRepository: statusRepository,
+            fileStore: fileStore
+        )
+        try lifecycle.writeRuntimeStatus(
+            .healthy,
+            operation: .status,
+            message: "runtime ready"
+        )
+
+        let missingBackup = installedPaths.vitalServerHelperBackupsDirectory
+            .appendingPathComponent("missing-backup")
+        fileStore.directories.insert(missingBackup)
+        XCTAssertThrowsError(try lifecycle.restoreRuntimeDataBackup(missingBackup))
+
+        guard let status = statusRepository.document else {
+            return XCTFail("expected runtime status document after restore failure")
+        }
+        XCTAssertEqual(status.status, .recovering)
+        XCTAssertEqual(status.operation, .runtimeDataRestore)
+        XCTAssertEqual(status.progress?.operation, .runtimeDataRestore)
+        XCTAssertEqual(status.progress?.step, .restoreRuntimeDataBackup)
+        XCTAssertEqual(status.progress?.stepStatus, .failed)
+        XCTAssertEqual(status.progress?.phase, .failed)
+        XCTAssertTrue(status.message.contains("VitalServer restore failed"))
+        XCTAssertTrue(status.progress?.message.contains("missing-backup") == true)
+    }
+}
+
+private final class CapturingRuntimeStatusRepository: RuntimeStatusRepository {
+    var document: RuntimeStatusDocument?
+
+    func loadResult() -> RuntimeStatusDocumentLoadResult {
+        if let document {
+            return .loaded(document)
+        }
+        return .missing
+    }
+
+    func save(_ document: RuntimeStatusDocument) throws {
+        self.document = document
     }
 }
 

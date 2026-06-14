@@ -36,7 +36,18 @@ describe("runtime settings policy", () => {
     }));
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain("Backup times must use HH:mm format.");
+    expect(result.errors).toContain(
+      "Backup times must use 24-hour HH:mm format, such as 03:15 or 15:15, and must be between 00:00 and 23:59."
+    );
+  });
+
+  it("rejects duplicate backup times", () => {
+    const result = validateRuntimeSettings(fullSettings({
+      backupScheduleTimes: ["03:15", "03:15"]
+    }));
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("Backup times must be unique.");
   });
 });
 

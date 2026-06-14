@@ -117,6 +117,20 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeOperation.runtimeDataBackup.rawValue, "runtime-data-backup")
         XCTAssertEqual(RuntimeOperation(rawValue: "automatic-backup"), .automaticBackup)
         XCTAssertEqual(RuntimeOperation.automaticBackup.rawValue, "automatic-backup")
+        XCTAssertEqual(RuntimeOperation(rawValue: "runtime-data-restore"), .runtimeDataRestore)
+        XCTAssertEqual(RuntimeOperation.runtimeDataRestore.rawValue, "runtime-data-restore")
+    }
+
+    func testRuntimeDataRestoreWorkflowStepRoundTrips() {
+        XCTAssertEqual(
+            RuntimeWorkflowStep(rawValue: "restore-runtime-data-backup"),
+            .restoreRuntimeDataBackup
+        )
+        XCTAssertEqual(
+            RuntimeWorkflowStep.restoreRuntimeDataBackup.rawValue,
+            "restore-runtime-data-backup"
+        )
+        XCTAssertEqual(RuntimeWorkflowStep.restoreRuntimeDataBackup.operation, .runtimeDataRestore)
     }
 
     func testManagedRuntimeBackupManifestFactoryPreservesRootfsBackupMeaning() {

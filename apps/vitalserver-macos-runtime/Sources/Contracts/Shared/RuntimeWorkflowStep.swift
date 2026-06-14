@@ -28,6 +28,7 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
     case rollbackRestoreUpdateArtifacts
     case rollbackStartRuntimeServices
     case rollbackWaitRuntimeHealth
+    case restoreRuntimeDataBackup
     case unknown(String)
 
     public init(rawValue: String) {
@@ -90,6 +91,8 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
             self = .rollbackStartRuntimeServices
         case "rollback-wait-runtime-health":
             self = .rollbackWaitRuntimeHealth
+        case "restore-runtime-data-backup":
+            self = .restoreRuntimeDataBackup
         default:
             self = .unknown(rawValue)
         }
@@ -155,6 +158,8 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
             return "rollback-start-runtime-services"
         case .rollbackWaitRuntimeHealth:
             return "rollback-wait-runtime-health"
+        case .restoreRuntimeDataBackup:
+            return "restore-runtime-data-backup"
         case .unknown(let value):
             return value
         }
@@ -194,6 +199,8 @@ public enum RuntimeWorkflowStep: Codable, Equatable, Sendable {
              .rollbackStartRuntimeServices,
              .rollbackWaitRuntimeHealth:
             return .rollback
+        case .restoreRuntimeDataBackup:
+            return .runtimeDataRestore
         case .unknown:
             return nil
         }

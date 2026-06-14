@@ -13,6 +13,14 @@ final class RuntimeBackupSchedulePolicyTests: XCTestCase {
         XCTAssertFalse(RuntimeBackupSchedulePolicy.isValidTime("03:15 "))
     }
 
+    func testValidatesScheduleRequiresUniqueStrictTimes() {
+        XCTAssertTrue(RuntimeBackupSchedulePolicy.isValidSchedule(["03:15", "15:15"]))
+
+        XCTAssertFalse(RuntimeBackupSchedulePolicy.isValidSchedule([]))
+        XCTAssertFalse(RuntimeBackupSchedulePolicy.isValidSchedule(["26:15"]))
+        XCTAssertFalse(RuntimeBackupSchedulePolicy.isValidSchedule(["03:15", "03:15"]))
+    }
+
     func testBuildsScheduledSlotIdentifierOnlyForConfiguredMinute() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

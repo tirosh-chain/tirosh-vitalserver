@@ -172,8 +172,12 @@ public extension AppConstants {
         public static let sectionHelperBackups = "VitalServer Helper backups"
         public static let automaticBackups = "Automatic backups"
         public static let backupTimes = "Backup times"
+        public static let backupTimesHelp = "Use 24-hour HH:mm format, such as 03:15 or 15:15. Valid times are 00:00 through 23:59."
         public static let backupRetention = "Keep latest"
         public static let backupRetentionHelp = "Number of VitalServer Helper backup archives to keep, up to 30. These archives include Redis data. Older archives are pruned after a new verified backup is created."
+        public static func backupTimezoneHelp(_ timezone: String) -> String {
+            "Schedule timezone: \(timezone) (system local time)."
+        }
         public static let sectionLogs = "Logs"
         public static let logArchiveRetention = "Log archive retention"
         public static let logArchiveRetentionHelp = "Number of days to keep managed YYYY-MM-DD log archive folders."

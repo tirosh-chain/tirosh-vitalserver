@@ -1,4 +1,5 @@
 import Foundation
+import Contracts
 import RuntimeControl
 import SwiftUI
 import Errors
@@ -61,30 +62,29 @@ struct RuntimeSettingsPanel: View {
                 }
                 settingsSection(AppConstants.Labels.sectionHelperBackups) {
                     settingToggle(AppConstants.Labels.automaticBackups, isOn: $viewModel.settings.automaticBackupEnabled)
+                    settingHelp(AppConstants.Labels.backupTimezoneHelp(TimeZone.current.identifier))
                     settingRow(AppConstants.Labels.backupTimes) {
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(viewModel.settings.backupScheduleTimes.indices, id: \.self) { index in
                                 HStack(spacing: 8) {
                                     TextField(
                                         "",
-                                        text: Binding(
-                                            get: { viewModel.settings.backupScheduleTimes[index] },
-                                            set: { viewModel.settings.backupScheduleTimes[index] = $0 }
-                                        )
+                                        text: backupScheduleTimeBinding(at: index)
                                     )
                                     .textFieldStyle(.roundedBorder)
                                     .frame(width: 84)
                                     Button("-") {
-                                        viewModel.settings.backupScheduleTimes.remove(at: index)
+                                        removeBackupScheduleTime(at: index)
                                     }
                                     .disabled(viewModel.settings.backupScheduleTimes.count <= 1)
                                 }
                             }
                             Button("+") {
-                                viewModel.settings.backupScheduleTimes.append(RuntimeSettingsInitialValues.backupScheduleTimes[0])
+                                viewModel.settings.backupScheduleTimes.append(nextBackupScheduleTime())
                             }
                         }
                     }
+                    settingHelp(AppConstants.Labels.backupTimesHelp)
                     settingRow(AppConstants.Labels.backupRetention) {
                         HStack(spacing: 12) {
                             settingSliderControl(
@@ -335,6 +335,113 @@ struct RuntimeSettingsPanel: View {
         if viewModel.settings.memoryGiB != clampedMemoryGiB {
             viewModel.settings.memoryGiB = clampedMemoryGiB
         }
+    }
+
+    private func backupScheduleTimeBinding(at index: Int) -> Binding<String> {
+        Binding(
+            get: {
+                guard viewModel.settings.backupScheduleTimes.indices.contains(index) else {
+                    return ""
+                }
+                return viewModel.settings.backupScheduleTimes[index]
+            },
+            set: { value in
+                guard viewModel.settings.backupScheduleTimes.indices.contains(index),
+                      let draft = validBackupTimeDraft(value, at: index)
+                else {
+                    return
+                }
+                viewModel.settings.backupScheduleTimes[index] = draft
+            }
+        )
+    }
+
+    private func removeBackupScheduleTime(at index: Int) {
+        guard viewModel.settings.backupScheduleTimes.count > 1,
+              viewModel.settings.backupScheduleTimes.indices.contains(index)
+        else {
+            return
+        }
+        viewModel.settings.backupScheduleTimes.remove(at: index)
+    }
+
+    private func nextBackupScheduleTime() -> String {
+        let existing = Set(viewModel.settings.backupScheduleTimes)
+        let preferredTimes = RuntimeSettingsInitialValues.backupScheduleTimes + ["15:15", "21:15", "09:15"]
+        if let next = preferredTimes.first(where: { !existing.contains($0) }) {
+            return next
+        }
+        for hour in 0...23 {
+            let candidate = String(format: "%02d:15", hour)
+            if !existing.contains(candidate) {
+                return candidate
+            }
+        }
+        for hour in 0...23 {
+            for minute in 0...59 {
+                let candidate = String(format: "%02d:%02d", hour, minute)
+                if !existing.contains(candidate) {
+                    return candidate
+                }
+            }
+        }
+        return RuntimeSettingsInitialValues.backupScheduleTimes[0]
+    }
+
+    private func validBackupTimeDraft(_ value: String, at index: Int) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count <= 5,
+              trimmed.allSatisfy({ character in
+                  character.isNumber || character == ":"
+              })
+        else {
+            return nil
+        }
+        if trimmed.isEmpty {
+            return trimmed
+        }
+
+        let parts = trimmed.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count <= 2 else {
+            return nil
+        }
+        guard !parts[0].isEmpty, parts[0].count <= 2 else {
+            return nil
+        }
+        if parts.count == 1 {
+            if parts[0].count == 2,
+               let hour = Int(parts[0]),
+               !(0...23).contains(hour) {
+                return nil
+            }
+            return trimmed
+        }
+
+        guard parts[1].count <= 2 else {
+            return nil
+        }
+        if parts[0].count == 2,
+           let hour = Int(parts[0]),
+           !(0...23).contains(hour) {
+            return nil
+        }
+        if parts[1].count == 2,
+           let minute = Int(parts[1]),
+           !(0...59).contains(minute) {
+            return nil
+        }
+        if trimmed.count == 5,
+           !RuntimeBackupSchedulePolicy.isValidTime(trimmed) {
+            return nil
+        }
+        if trimmed.count == 5,
+           RuntimeBackupSchedulePolicy.isValidTime(trimmed),
+           viewModel.settings.backupScheduleTimes.enumerated().contains(where: { pair in
+               pair.offset != index && pair.element == trimmed
+           }) {
+            return nil
+        }
+        return trimmed
     }
 
     private func settingsSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {

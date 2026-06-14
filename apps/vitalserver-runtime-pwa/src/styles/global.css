@@ -350,6 +350,10 @@
     @apply w-full;
   }
 
+  .settings-grid .full-width {
+    @apply lg:col-span-2;
+  }
+
   .settings-toggles {
     @apply mb-3.5 flex flex-wrap gap-[18px];
   }

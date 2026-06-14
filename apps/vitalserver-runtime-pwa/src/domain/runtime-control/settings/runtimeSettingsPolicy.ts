@@ -64,7 +64,12 @@ export function validateRuntimeSettings(
     settings.backupScheduleTimes.length === 0 ||
     settings.backupScheduleTimes.some((value) => !validBackupTime(value))
   ) {
-    errors.push("Backup times must use HH:mm format.");
+    errors.push(
+      "Backup times must use 24-hour HH:mm format, such as 03:15 or 15:15, and must be between 00:00 and 23:59."
+    );
+  }
+  if (new Set(settings.backupScheduleTimes).size !== settings.backupScheduleTimes.length) {
+    errors.push("Backup times must be unique.");
   }
   if (
     settings.logArchiveRetentionDays < 1 ||

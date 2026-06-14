@@ -455,9 +455,8 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         case .automaticBackup(let enabled):
             guestRuntimeSettings.automaticBackupEnabled = enabled
         case .backupScheduleTimes(let scheduleTimes):
-            guard !scheduleTimes.isEmpty,
-                  scheduleTimes.allSatisfy(RuntimeBackupSchedulePolicy.isValidTime) else {
-                throw invalid("--backup-schedule-times must be comma-separated HH:mm values")
+            guard RuntimeBackupSchedulePolicy.isValidSchedule(scheduleTimes) else {
+                throw invalid("--backup-schedule-times must be unique comma-separated HH:mm values")
             }
             guestRuntimeSettings.backupScheduleTimes = scheduleTimes
         case .backupRetention(let count):

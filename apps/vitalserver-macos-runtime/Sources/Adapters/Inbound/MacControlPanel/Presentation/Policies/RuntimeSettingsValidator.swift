@@ -40,7 +40,10 @@ public struct RuntimeSettingsValidator {
         }
         if settings.backupScheduleTimes.isEmpty
             || !settings.backupScheduleTimes.allSatisfy(RuntimeBackupSchedulePolicy.isValidTime) {
-            return .invalid("Backup times must use HH:mm format.")
+            return .invalid(AppConstants.StatusText.invalidBackupScheduleTimes)
+        }
+        if !RuntimeBackupSchedulePolicy.hasUniqueTimes(settings.backupScheduleTimes) {
+            return .invalid(AppConstants.StatusText.duplicateBackupScheduleTimes)
         }
         if !RuntimeLogArchiveRetentionPolicy.isValidRetentionDays(settings.logArchiveRetentionDays) {
             return .invalid(AppConstants.StatusText.invalidLogArchiveRetention)

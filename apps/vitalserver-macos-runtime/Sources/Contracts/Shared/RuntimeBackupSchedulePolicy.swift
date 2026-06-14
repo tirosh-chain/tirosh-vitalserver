@@ -16,6 +16,16 @@ public enum RuntimeBackupSchedulePolicy {
         return (0...23).contains(hour) && (0...59).contains(minute)
     }
 
+    public static func hasUniqueTimes(_ values: [String]) -> Bool {
+        Set(values).count == values.count
+    }
+
+    public static func isValidSchedule(_ values: [String]) -> Bool {
+        !values.isEmpty
+            && values.allSatisfy(isValidTime)
+            && hasUniqueTimes(values)
+    }
+
     public static func isValidRetentionCount(_ count: Int) -> Bool {
         (1...maximumRetentionCount).contains(count)
     }
