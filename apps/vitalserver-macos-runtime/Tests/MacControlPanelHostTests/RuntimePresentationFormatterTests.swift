@@ -241,7 +241,9 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertEqual(AppConstants.Actions.createBackup, "Create VitalServer Backup")
         XCTAssertEqual(AppConstants.Actions.restoreBackup, "Restore VitalServer Backup")
         XCTAssertEqual(AppConstants.Labels.sectionRedisDataRecovery, "Redis-only recovery")
+        XCTAssertEqual(AppConstants.Labels.redisBackup, "Redis-only backup")
         XCTAssertTrue(AppConstants.Labels.redisDataRecoveryHelp.contains("Advanced repair action"))
+        XCTAssertEqual(AppConstants.Actions.importBackups, "Import Backups")
         XCTAssertEqual(AppConstants.Actions.createRedisBackup, "Create Redis-only Backup")
         XCTAssertEqual(AppConstants.Actions.restoreRedisBackup, "Restore Redis-only Backup")
     }

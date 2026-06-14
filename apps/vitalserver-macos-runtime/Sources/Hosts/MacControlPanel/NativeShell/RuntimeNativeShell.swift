@@ -39,6 +39,23 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         return panel.url
     }
 
+    func chooseRedisBackupArchive(prompt: String) -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "tar.gz"),
+            UTType(filenameExtension: "tgz"),
+            .gzip,
+        ].compactMap { $0 }
+        panel.prompt = prompt
+        guard panel.runModal() == .OK else {
+            return nil
+        }
+        return panel.url
+    }
+
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {
         let panel = NSSavePanel()
         let delegate = LogExportSavePanelDelegate()
@@ -95,6 +112,14 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         }
     }
 
+    func copyFile(_ source: URL, to destination: URL) throws {
+        do {
+            try FileManager.default.copyItem(at: source, to: destination)
+        } catch {
+            try copyFileWithAdministratorPrivileges(source, to: destination)
+        }
+    }
+
     func copyDirectory(_ source: URL, to destination: URL) throws {
         do {
             try FileManager.default.copyItem(at: source, to: destination)
@@ -129,6 +154,20 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         process.arguments = [
             "-e",
             "do shell script \(appleScriptString("/bin/mkdir -p -- \(shellQuoted(url.path))")) with administrator privileges",
+        ]
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+    }
+
+    private func copyFileWithAdministratorPrivileges(_ source: URL, to destination: URL) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = [
+            "-e",
+            "do shell script \(appleScriptString("/bin/cp \(shellQuoted(source.path)) \(shellQuoted(destination.path))")) with administrator privileges",
         ]
         try process.run()
         process.waitUntilExit()

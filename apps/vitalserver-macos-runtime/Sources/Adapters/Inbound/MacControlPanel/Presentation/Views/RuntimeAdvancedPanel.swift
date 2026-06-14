@@ -6,6 +6,7 @@ struct RuntimeAdvancedPanel: View {
     @Binding var showingApplySettingsConfirmation: Bool
     @Binding var showingRollbackConfirmation: Bool
     @Binding var showingRestoreRuntimeDataBackupConfirmation: Bool
+    @Binding var showingRestoreRedisBackupConfirmation: Bool
     @Binding var showingRepairProxyConfirmation: Bool
     @Binding var showingRepairDatastoreConfirmation: Bool
     @Binding var showingRepairVMDiskConfirmation: Bool
@@ -28,6 +29,7 @@ struct RuntimeAdvancedPanel: View {
         showingApplySettingsConfirmation: Binding<Bool>,
         showingRollbackConfirmation: Binding<Bool>,
         showingRestoreRuntimeDataBackupConfirmation: Binding<Bool>,
+        showingRestoreRedisBackupConfirmation: Binding<Bool>,
         showingRepairProxyConfirmation: Binding<Bool>,
         showingRepairDatastoreConfirmation: Binding<Bool>,
         showingRepairVMDiskConfirmation: Binding<Bool>,
@@ -46,6 +48,7 @@ struct RuntimeAdvancedPanel: View {
         self._showingApplySettingsConfirmation = showingApplySettingsConfirmation
         self._showingRollbackConfirmation = showingRollbackConfirmation
         self._showingRestoreRuntimeDataBackupConfirmation = showingRestoreRuntimeDataBackupConfirmation
+        self._showingRestoreRedisBackupConfirmation = showingRestoreRedisBackupConfirmation
         self._showingRepairProxyConfirmation = showingRepairProxyConfirmation
         self._showingRepairDatastoreConfirmation = showingRepairDatastoreConfirmation
         self._showingRepairVMDiskConfirmation = showingRepairVMDiskConfirmation
@@ -355,6 +358,37 @@ struct RuntimeAdvancedPanel: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
+                            if let redisBackupListErrorMessage = viewModel.redisBackupListErrorMessage {
+                                Text(redisBackupListErrorMessage)
+                                    .foregroundStyle(.red)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } else if !viewModel.redisBackups.isEmpty {
+                                Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
+                                    settingRow(AppConstants.Labels.redisBackup) {
+                                        Picker("", selection: $viewModel.selectedRedisBackupPath) {
+                                            ForEach(viewModel.redisBackups) { backup in
+                                                Text("\(backup.name) (\(viewModel.presentationFormatter.backupSizeText(backup)))")
+                                                    .tag(Optional(backup.path))
+                                            }
+                                        }
+                                        .labelsHidden()
+                                        .frame(maxWidth: 520)
+                                    }
+                                    if let selectedBackup = viewModel.selectedRedisBackup {
+                                        statusRow(AppConstants.Labels.selectedBackup) {
+                                            Text(selectedBackup.path)
+                                                .font(.system(.body, design: .monospaced))
+                                                .lineLimit(2)
+                                                .truncationMode(.middle)
+                                                .textSelection(.enabled)
+                                        }
+                                        statusRow(
+                                            AppConstants.Labels.backupSize,
+                                            viewModel.presentationFormatter.backupSizeText(selectedBackup)
+                                        )
+                                    }
+                                }
+                            }
                             HStack(spacing: 10) {
                                 Button(AppConstants.Actions.createRedisBackup) {
                                     Task { await viewModel.createRedisBackup() }
@@ -366,15 +400,26 @@ struct RuntimeAdvancedPanel: View {
                                         isBusy: viewModel.isBusy
                                     )
                                 )
-                                Button(AppConstants.Actions.restoreRedisBackup) {}
-                                    .disabled(true)
+                                Button(AppConstants.Actions.importBackups) {
+                                    Task { await viewModel.importRedisBackup() }
+                                }
+                                .disabled(viewModel.isBusy || !viewModel.capabilities.canOpenLocalFiles)
+
+                                Button(AppConstants.Actions.restoreRedisBackup) {
+                                    showingRestoreRedisBackupConfirmation = true
+                                }
+                                .disabled(
+                                    !actionAvailabilityPolicy.canManageRedisBackup(
+                                        status: viewModel.status,
+                                        capabilities: viewModel.capabilities,
+                                        isBusy: viewModel.isBusy
+                                    )
+                                        || !viewModel.hasSelectedRedisBackup
+                                )
                                 Button(AppConstants.Actions.openBackups) {
                                     viewModel.openRedisBackups()
                                 }
                                 .disabled(!viewModel.capabilities.canOpenLocalFiles)
-                                Text(AppConstants.StatusText.planned)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
                             if viewModel.isCreatingRedisBackup {
                                 HStack(spacing: 8) {

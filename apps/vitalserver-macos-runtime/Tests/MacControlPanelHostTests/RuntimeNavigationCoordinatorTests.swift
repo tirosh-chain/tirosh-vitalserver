@@ -148,6 +148,10 @@ private final class FakeNavigationNativeShell: RuntimeNativeShell {
         nil
     }
 
+    func chooseRedisBackupArchive(prompt: String) -> URL? {
+        nil
+    }
+
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {
         nil
     }
@@ -172,6 +176,8 @@ private final class FakeNavigationNativeShell: RuntimeNativeShell {
         createdDirectoryURLs.append(url)
         existingDirectories.insert(url.path)
     }
+
+    func copyFile(_ source: URL, to destination: URL) throws {}
 
     func copyDirectory(_ source: URL, to destination: URL) throws {}
 

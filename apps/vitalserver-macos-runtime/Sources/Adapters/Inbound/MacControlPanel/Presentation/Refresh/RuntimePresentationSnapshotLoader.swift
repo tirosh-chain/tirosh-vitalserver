@@ -90,6 +90,13 @@ struct RuntimePresentationSnapshotLoader {
         return try hostClient.loadRuntimeDataBackups()
     }
 
+    func loadRedisBackups() async throws -> [RuntimeBackup] {
+        if let snapshotReader {
+            return try await snapshotReader.loadRedisBackups()
+        }
+        return try hostClient.loadRedisBackups()
+    }
+
     func loadReleaseInfoIfAvailable() async -> RuntimeReleaseInfoLoadResult {
         guard controlClient.capabilities.canViewReleaseMetadata else {
             return .unavailable

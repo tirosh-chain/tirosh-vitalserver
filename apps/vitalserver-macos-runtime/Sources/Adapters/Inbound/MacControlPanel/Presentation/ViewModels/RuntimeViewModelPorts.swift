@@ -14,6 +14,7 @@ public protocol RuntimeViewModelSnapshotReading: Sendable {
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) async -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRelationships() async -> RuntimeVitalRelationshipHistory
     func loadBackups(latestBackupPath: String?) async throws -> [RuntimeBackup]
+    func loadRedisBackups() async throws -> [RuntimeBackup]
     func loadRuntimeDataBackups() async throws -> [RuntimeBackup]
 }
 
@@ -35,11 +36,13 @@ public protocol RuntimeControlLocalAPISettingsApplying: AnyObject {
 public protocol RuntimeNativeShell {
     func chooseDirectory(prompt: String) -> URL?
     func chooseUpdateBundle(prompt: String) -> URL?
+    func chooseRedisBackupArchive(prompt: String) -> URL?
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL?
     func logExportDestinationValidationMessage(for url: URL) -> String?
     func pathState(_ url: URL) -> RuntimePathState
     func confirmCreateDirectory(path: String) -> Bool
     func createDirectory(_ url: URL) throws
+    func copyFile(_ source: URL, to destination: URL) throws
     func copyDirectory(_ source: URL, to destination: URL) throws
     func openFileURL(_ url: URL)
     func openWebURL(_ url: URL)
@@ -52,11 +55,19 @@ public struct NoopRuntimeNativeShell: RuntimeNativeShell {
     public init() {}
     public func chooseDirectory(prompt: String) -> URL? { nil }
     public func chooseUpdateBundle(prompt: String) -> URL? { nil }
+    public func chooseRedisBackupArchive(prompt: String) -> URL? { nil }
     public func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? { nil }
     public func logExportDestinationValidationMessage(for url: URL) -> String? { nil }
     public func pathState(_ url: URL) -> RuntimePathState { .inspectFailed("native shell is not configured") }
     public func confirmCreateDirectory(path: String) -> Bool { false }
     public func createDirectory(_ url: URL) throws {}
+    public func copyFile(_ source: URL, to destination: URL) throws {
+        throw NSError(
+            domain: "NoopRuntimeNativeShell",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "native shell is not configured"]
+        )
+    }
     public func copyDirectory(_ source: URL, to destination: URL) throws {
         throw NSError(
             domain: "NoopRuntimeNativeShell",

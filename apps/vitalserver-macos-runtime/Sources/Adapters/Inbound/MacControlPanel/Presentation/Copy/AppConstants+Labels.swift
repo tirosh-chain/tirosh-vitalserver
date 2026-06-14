@@ -118,6 +118,7 @@ public extension AppConstants {
         public static let sectionRedisDataRecovery = "Redis-only recovery"
         public static let updateBackup = "Update backup"
         public static let vitalServerBackup = "VitalServer backup"
+        public static let redisBackup = "Redis-only backup"
         public static let statusReadIssues = "Status read issues"
         public static let adminOperationsHelp = "Use these actions only when administering the installed runtime. Password changes are applied with the same runtime configuration flow as Settings."
         public static let runtimeServiceControlHelp = "Starts or stops the VM, host proxy, and watchdog together. Use Stop for planned maintenance, then Start to bring VitalServer back online."

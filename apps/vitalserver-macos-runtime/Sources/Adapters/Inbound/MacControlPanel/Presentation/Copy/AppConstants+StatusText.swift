@@ -119,6 +119,21 @@ public extension AppConstants {
         public static let redisBackupPreparing = "Preparing Redis-only backup..."
         public static let redisBackupRunning = "Creating Redis-only backup..."
         public static let redisBackupCompleted = "Redis-only backup completed."
+        public static let redisBackupImported = "Redis-only backup imported."
+        public static let redisBackupImportSourceInvalid = "Choose a Redis-only backup archive to import."
+        public static let redisBackupImportDestinationExists = "A Redis-only backup with this file name already exists."
+        public static func redisBackupImportFailed(_ message: String) -> String {
+            "Could not import Redis-only backup: \(message)"
+        }
+        public static func redisBackupImportPathInvalid(_ state: String) -> String {
+            "Could not import Redis-only backup because the backup path state is \(state)."
+        }
+        public static func redisBackupImportSourcePathInvalid(_ state: String) -> String {
+            "Could not import Redis-only backup because the selected path state is \(state)."
+        }
+        public static let redisRestorePreparing = "Preparing Redis-only restore..."
+        public static let redisRestoreRunning = "Restoring Redis-only backup..."
+        public static let redisRestoreCompleted = "Redis-only restore completed."
         public static let runtimeDataBackupPreparing = "Preparing VitalServer backup..."
         public static let runtimeDataBackupRunning = "Creating VitalServer backup..."
         public static let runtimeDataBackupCompleted = "VitalServer backup completed."
@@ -174,6 +189,7 @@ public extension AppConstants {
         public static let deleteBackupConfirmation = "Delete the selected update backup? This cannot be undone. VitalServer backups are not deleted."
         public static let deleteRuntimeDataBackupConfirmation = "Delete the selected VitalServer backup? This cannot be undone. Update rollback backups and current runtime data are not deleted."
         public static let restoreRuntimeDataBackupConfirmation = "Restore the selected VitalServer backup? This replaces current runtime data, settings, observability history, and Redis data, and may restart runtime services."
+        public static let restoreRedisBackupConfirmation = "Restore the selected Redis-only backup? This replaces current Redis data and may restart runtime services."
         public static let bridgedModeUnavailable = "Bridged mode is not available in this build."
         public static let diskDecreaseUnavailable = "Disk size can only be increased."
         public static let vitalFilesDirectoryRequired = "Vital files directory must be an absolute path."

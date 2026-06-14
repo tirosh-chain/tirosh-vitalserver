@@ -70,6 +70,13 @@ extension RuntimeViewModel {
         return backups.first { $0.path == selectedBackupPath }
     }
 
+    var selectedRedisBackup: RuntimeBackup? {
+        guard let selectedRedisBackupPath else {
+            return nil
+        }
+        return redisBackups.first { $0.path == selectedRedisBackupPath }
+    }
+
     var selectedRuntimeDataBackup: RuntimeBackup? {
         guard let selectedRuntimeDataBackupPath else {
             return nil
@@ -96,6 +103,49 @@ extension RuntimeViewModel {
         if didCreateBackup {
             await refresh()
             await refreshHealthStatus()
+        }
+    }
+
+    func importRedisBackup() async {
+        guard controlClient.capabilities.canOpenLocalFiles else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        guard let redisBackupsPath = installationInfo.redisBackupsPath else {
+            message = AppConstants.StatusText.notReported
+            return
+        }
+        guard let sourceURL = nativeShell.chooseRedisBackupArchive(prompt: AppConstants.Actions.importBackups) else {
+            return
+        }
+
+        let redisBackupsRoot = URL(fileURLWithPath: redisBackupsPath, isDirectory: true)
+        if !ensureRedisBackupImportRootExists(redisBackupsRoot) {
+            return
+        }
+
+        let destinationURL = redisBackupsRoot.appendingPathComponent(sourceURL.lastPathComponent)
+        let plan: RuntimeBackupImportPlan
+        switch RuntimeBackupActionPlanner().importRedisBackupPlan(
+            sourceBackupURL: sourceURL,
+            redisBackupsRoot: redisBackupsRoot,
+            sourcePathState: nativeShell.pathState(sourceURL),
+            destinationPathState: nativeShell.pathState(destinationURL)
+        ) {
+        case .success(let importPlan):
+            plan = importPlan
+        case .failure(let failure):
+            message = failure.message
+            return
+        }
+
+        do {
+            try nativeShell.copyFile(plan.sourceURL, to: plan.destinationURL)
+            selectedRedisBackupPath = plan.destinationURL.path
+            message = AppConstants.StatusText.redisBackupImported
+            await refresh()
+        } catch {
+            message = AppConstants.StatusText.redisBackupImportFailed(error.localizedDescription)
         }
     }
 
@@ -143,6 +193,33 @@ extension RuntimeViewModel {
         } catch {
             message = AppConstants.StatusText.runtimeDataBackupImportFailed(error.localizedDescription)
         }
+    }
+
+    func restoreRedisBackup() async {
+        guard controlClient.capabilities.canControlRuntimeServices else {
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+        let plan: RuntimeBackupActionPlan
+        switch RuntimeBackupActionPlanner().restoreRedisBackupPlan(
+            selectedBackupPath: selectedRedisBackupPath,
+            redisBackupsPath: installationInfo.redisBackupsPath
+        ) {
+        case .success(let actionPlan):
+            plan = actionPlan
+        case .failure(let failure):
+            message = failure.message
+            return
+        }
+        _ = await runClientAction(
+            preparingMessage: AppConstants.StatusText.redisRestorePreparing,
+            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
+            runningMessage: AppConstants.StatusText.redisRestoreRunning,
+            successMessage: AppConstants.StatusText.redisRestoreCompleted,
+            action: { try await self.hostClient.restoreRedisBackup(backupURL: plan.backupURL) }
+        )
+        await refresh()
+        await refreshHealthStatus()
     }
 
     func restoreRuntimeDataBackup() async {
@@ -269,6 +346,28 @@ extension RuntimeViewModel {
             return false
         case .inspectFailed(let reason):
             message = AppConstants.StatusText.runtimeDataBackupImportFailed(reason)
+            return false
+        }
+    }
+
+    private func ensureRedisBackupImportRootExists(_ root: URL) -> Bool {
+        let state = nativeShell.pathState(root)
+        switch state {
+        case .directory:
+            return true
+        case .missing:
+            do {
+                try nativeShell.createDirectory(root)
+                return true
+            } catch {
+                message = AppConstants.StatusText.folderCreateFailed(error.localizedDescription)
+                return false
+            }
+        case .file, .other, .unknown:
+            message = AppConstants.StatusText.redisBackupImportPathInvalid(state.rawValue)
+            return false
+        case .inspectFailed(let reason):
+            message = AppConstants.StatusText.redisBackupImportFailed(reason)
             return false
         }
     }

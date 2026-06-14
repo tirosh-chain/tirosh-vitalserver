@@ -37,6 +37,18 @@ public struct RuntimeControlActionAvailabilityPolicy {
         capabilities: RuntimeControlCapabilities,
         isBusy: Bool
     ) -> Bool {
+        canManageRedisBackup(
+            status: status,
+            capabilities: capabilities,
+            isBusy: isBusy
+        )
+    }
+
+    public func canManageRedisBackup(
+        status: RuntimeStatus,
+        capabilities: RuntimeControlCapabilities,
+        isBusy: Bool
+    ) -> Bool {
         !isBusy
             && capabilities.canControlRuntimeServices
             && isRuntimeExecutable(status)

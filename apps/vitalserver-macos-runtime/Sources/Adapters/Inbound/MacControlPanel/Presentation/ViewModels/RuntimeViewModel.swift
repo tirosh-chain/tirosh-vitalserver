@@ -16,6 +16,9 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var backups: [RuntimeBackup] = []
     @Published var selectedBackupPath: String?
     @Published var backupListErrorMessage: String?
+    @Published var redisBackups: [RuntimeBackup] = []
+    @Published var selectedRedisBackupPath: String?
+    @Published var redisBackupListErrorMessage: String?
     @Published var runtimeDataBackups: [RuntimeBackup] = []
     @Published var selectedRuntimeDataBackupPath: String?
     @Published var runtimeDataBackupListErrorMessage: String?
@@ -160,6 +163,10 @@ public final class RuntimeViewModel: ObservableObject {
 
     var hasSelectedBackup: Bool {
         selectedBackupPath != nil
+    }
+
+    var hasSelectedRedisBackup: Bool {
+        selectedRedisBackupPath != nil
     }
 
     var hasSelectedRuntimeDataBackup: Bool {
@@ -516,6 +523,12 @@ public final class RuntimeViewModel: ObservableObject {
             backupListErrorMessage = AppConstants.StatusText.backupListLoadFailed(error.localizedDescription)
         }
         do {
+            redisBackups = try await snapshots.loadRedisBackups()
+            redisBackupListErrorMessage = nil
+        } catch {
+            redisBackupListErrorMessage = AppConstants.StatusText.backupListLoadFailed(error.localizedDescription)
+        }
+        do {
             runtimeDataBackups = try await snapshots.loadRuntimeDataBackups()
             runtimeDataBackupListErrorMessage = nil
         } catch {
@@ -528,6 +541,10 @@ public final class RuntimeViewModel: ObservableObject {
         selectedRuntimeDataBackupPath = backupSelectionPolicy.selectedBackupPath(
             from: runtimeDataBackups,
             currentSelection: selectedRuntimeDataBackupPath
+        )
+        selectedRedisBackupPath = backupSelectionPolicy.selectedBackupPath(
+            from: redisBackups,
+            currentSelection: selectedRedisBackupPath
         )
     }
 

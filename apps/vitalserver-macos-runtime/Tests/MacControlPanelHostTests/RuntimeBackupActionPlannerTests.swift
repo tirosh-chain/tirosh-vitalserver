@@ -94,6 +94,25 @@ final class RuntimeBackupActionPlannerTests: XCTestCase {
         )
     }
 
+    func testRestoreRedisBackupPlanRequiresRedisArchiveInsideReportedRoot() {
+        let invalidOutsideRoot = planner.restoreRedisBackupPlan(
+            selectedBackupPath: "/other/redis-20260614T000000Z.tar.gz",
+            redisBackupsPath: "/runtime/backups/redis"
+        )
+        let invalidName = planner.restoreRedisBackupPlan(
+            selectedBackupPath: "/runtime/backups/redis/manual.tar.gz",
+            redisBackupsPath: "/runtime/backups/redis"
+        )
+        let valid = planner.restoreRedisBackupPlan(
+            selectedBackupPath: "/runtime/backups/redis/redis-20260614T000000Z.tar.gz",
+            redisBackupsPath: "/runtime/backups/redis"
+        )
+
+        XCTAssertEqual(invalidOutsideRoot.failure, .invalidBackup)
+        XCTAssertEqual(invalidName.failure, .invalidBackup)
+        XCTAssertEqual(valid.success?.backupURL, URL(fileURLWithPath: "/runtime/backups/redis/redis-20260614T000000Z.tar.gz"))
+    }
+
     func testImportRuntimeDataBackupPlanCopiesFolderIntoRuntimeDataBackupRoot() {
         let plan = planner.importRuntimeDataBackupPlan(
             sourceBackupURL: URL(fileURLWithPath: "/external/20260614T043455Z-manual", isDirectory: true),
@@ -145,6 +164,51 @@ final class RuntimeBackupActionPlannerTests: XCTestCase {
                 destinationPathState: .unknown("stale")
             ).failure,
             .destinationPathUnavailable("stale")
+        )
+    }
+
+    func testImportRedisBackupPlanCopiesArchiveIntoRedisBackupRoot() {
+        let plan = planner.importRedisBackupPlan(
+            sourceBackupURL: URL(fileURLWithPath: "/external/redis-20260614T043455Z.tar.gz"),
+            redisBackupsRoot: URL(fileURLWithPath: "/runtime/backups/redis", isDirectory: true),
+            sourcePathState: .file,
+            destinationPathState: .missing
+        )
+
+        XCTAssertEqual(plan.success?.sourceURL.path, "/external/redis-20260614T043455Z.tar.gz")
+        XCTAssertEqual(plan.success?.destinationURL.path, "/runtime/backups/redis/redis-20260614T043455Z.tar.gz")
+    }
+
+    func testImportRedisBackupPlanRejectsInvalidArchiveInputs() {
+        let source = URL(fileURLWithPath: "/external/manual.tar.gz")
+        let root = URL(fileURLWithPath: "/runtime/backups/redis", isDirectory: true)
+
+        XCTAssertEqual(
+            planner.importRedisBackupPlan(
+                sourceBackupURL: source,
+                redisBackupsRoot: root,
+                sourcePathState: .file,
+                destinationPathState: .missing
+            ).failure,
+            .invalidBackup
+        )
+        XCTAssertEqual(
+            planner.importRedisBackupPlan(
+                sourceBackupURL: URL(fileURLWithPath: "/external/redis-20260614T043455Z.tar.gz"),
+                redisBackupsRoot: root,
+                sourcePathState: .directory,
+                destinationPathState: .missing
+            ).failure,
+            .sourceIsNotFile
+        )
+        XCTAssertEqual(
+            planner.importRedisBackupPlan(
+                sourceBackupURL: URL(fileURLWithPath: "/external/redis-20260614T043455Z.tar.gz"),
+                redisBackupsRoot: root,
+                sourcePathState: .file,
+                destinationPathState: .file
+            ).failure,
+            .destinationAlreadyExists
         )
     }
 }

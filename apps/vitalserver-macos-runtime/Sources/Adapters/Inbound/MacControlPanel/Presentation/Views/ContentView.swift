@@ -10,6 +10,7 @@ public struct ContentView: View {
     @State private var showingUpdateConfirmation = false
     @State private var showingRollbackConfirmation = false
     @State private var showingRestoreRuntimeDataBackupConfirmation = false
+    @State private var showingRestoreRedisBackupConfirmation = false
     @State private var showingDeleteBackupConfirmation = false
     @State private var showingDeleteRuntimeDataBackupConfirmation = false
     @State private var showingRepairProxyConfirmation = false
@@ -73,6 +74,17 @@ public struct ContentView: View {
             Text([
                 AppConstants.StatusText.restoreRuntimeDataBackupConfirmation,
                 viewModel.selectedRuntimeDataBackupPath,
+            ].compactMap { $0 }.joined(separator: "\n\n"))
+        }
+        .alert(AppConstants.Actions.restoreRedisBackup, isPresented: $showingRestoreRedisBackupConfirmation) {
+            Button(AppConstants.Actions.cancel, role: .cancel) {}
+            Button(AppConstants.Actions.restoreRedisBackup, role: .destructive) {
+                Task { await viewModel.restoreRedisBackup() }
+            }
+        } message: {
+            Text([
+                AppConstants.StatusText.restoreRedisBackupConfirmation,
+                viewModel.selectedRedisBackupPath,
             ].compactMap { $0 }.joined(separator: "\n\n"))
         }
         .alert(AppConstants.Actions.deleteUpdateBackup, isPresented: $showingDeleteBackupConfirmation) {
@@ -320,6 +332,7 @@ public struct ContentView: View {
                 showingApplySettingsConfirmation: $showingApplySettingsConfirmation,
                 showingRollbackConfirmation: $showingRollbackConfirmation,
                 showingRestoreRuntimeDataBackupConfirmation: $showingRestoreRuntimeDataBackupConfirmation,
+                showingRestoreRedisBackupConfirmation: $showingRestoreRedisBackupConfirmation,
                 showingRepairProxyConfirmation: $showingRepairProxyConfirmation,
                 showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
                 showingRepairVMDiskConfirmation: $showingRepairVMDiskConfirmation,

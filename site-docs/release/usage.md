@@ -104,6 +104,9 @@ Helper가 보고한 `backups/runtime-data` 관리 폴더의 직접 자식으로 
 `Redis-only recovery`는 Repair 성격의 고급 조치입니다. VM disk repair, uninstall, 장애 분석처럼
 Redis data만 별도로 보존하거나 복원해야 하는 상황에서 지원 담당자가 사용합니다. 정상 운영에서
 전체 상태를 되돌릴 때는 Redis-only backup 대신 VitalServer backup을 선택합니다.
+Redis-only backup을 외부에서 다시 가져올 때도 `Import Backups`를 사용합니다. Import는 `redis-*.tar.gz`
+archive만 Redis backup 관리 폴더의 직접 자식으로 복사하며, 같은 이름의 archive가 있으면 덮어쓰지
+않습니다. `Restore Redis-only Backup`은 선택한 Redis archive만 복원합니다.
 
 ## 3. Settings 적용
 

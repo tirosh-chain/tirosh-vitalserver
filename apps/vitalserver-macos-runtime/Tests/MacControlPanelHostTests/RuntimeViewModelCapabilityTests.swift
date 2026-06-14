@@ -122,6 +122,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.repairVMDisk()
         await viewModel.repairRuntimeServices()
         await viewModel.createRedisBackup()
+        await viewModel.importRedisBackup()
+        await viewModel.restoreRedisBackup()
         await viewModel.createRuntimeDataBackup()
         await viewModel.restoreRuntimeDataBackup()
         await viewModel.deleteSelectedRuntimeDataBackup()
@@ -144,6 +146,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.repairVMDiskCount, 0)
         XCTAssertEqual(client.repairRuntimeServicesCount, 0)
         XCTAssertEqual(client.createRedisBackupCount, 0)
+        XCTAssertEqual(client.restoreRedisBackupCount, 0)
         XCTAssertEqual(client.createRuntimeDataBackupCount, 0)
         XCTAssertEqual(client.restoreRuntimeDataBackupCount, 0)
         XCTAssertEqual(client.startRuntimeServicesCount, 0)
@@ -153,6 +156,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(nativeShell.createdDirectoryURLs, [])
         XCTAssertEqual(nativeShell.chooseDirectoryCount, 0)
         XCTAssertEqual(nativeShell.chooseUpdateBundleCount, 0)
+        XCTAssertEqual(nativeShell.chooseRedisBackupArchiveCount, 0)
         XCTAssertEqual(nativeShell.chooseLogExportDestinationCount, 0)
         XCTAssertEqual(nativeShell.openedFileURLs, [])
         XCTAssertEqual(viewModel.message, AppConstants.StatusText.actionUnavailable)
@@ -666,6 +670,78 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.message, AppConstants.StatusText.runtimeDataBackupImported)
         XCTAssertEqual(viewModel.selectedRuntimeDataBackupPath, destinationURL.path)
         XCTAssertEqual(client.loadBackupsCount, 1)
+    }
+
+    func testImportRedisBackupCopiesSelectedArchiveIntoManagedRedisBackupRoot() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        let sourceURL = URL(fileURLWithPath: "/external/redis-20260614T043455Z.tar.gz")
+        let destinationURL = URL(fileURLWithPath: "/runtime/data/backups/redis/redis-20260614T043455Z.tar.gz")
+        nativeShell.redisBackupArchiveURL = sourceURL
+        nativeShell.pathStates = [
+            sourceURL.path: .file,
+            "/runtime/data/backups/redis": .directory,
+            destinationURL.path: .missing,
+        ]
+        client.redisBackupsToLoad = [
+            RuntimeBackup(path: destinationURL.path, sizeBytes: 1024),
+        ]
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        await viewModel.importRedisBackup()
+
+        XCTAssertEqual(nativeShell.chooseRedisBackupArchivePrompts, [AppConstants.Actions.importBackups])
+        XCTAssertEqual(nativeShell.copiedFiles.map { [$0.source.path, $0.destination.path] }, [
+            [sourceURL.path, destinationURL.path],
+        ])
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.redisBackupImported)
+        XCTAssertEqual(viewModel.selectedRedisBackupPath, destinationURL.path)
+        XCTAssertEqual(client.loadBackupsCount, 1)
+    }
+
+    func testImportRedisBackupRejectsExistingManagedDestination() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let nativeShell = FakeRuntimeNativeShell()
+        let sourceURL = URL(fileURLWithPath: "/external/redis-20260614T043455Z.tar.gz")
+        nativeShell.redisBackupArchiveURL = sourceURL
+        nativeShell.pathStates = [
+            sourceURL.path: .file,
+            "/runtime/data/backups/redis": .directory,
+            "/runtime/data/backups/redis/redis-20260614T043455Z.tar.gz": .file,
+        ]
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        await viewModel.importRedisBackup()
+
+        XCTAssertTrue(nativeShell.copiedFiles.isEmpty)
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.redisBackupImportDestinationExists)
+    }
+
+    func testRestoreRedisBackupUsesSelectedManagedRedisArchive() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let selectedURL = URL(fileURLWithPath: "/runtime/data/backups/redis/redis-20260614T043455Z.tar.gz")
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: FakeRuntimeNativeShell()
+        )
+        viewModel.selectedRedisBackupPath = selectedURL.path
+
+        await viewModel.restoreRedisBackup()
+
+        XCTAssertEqual(client.restoredRedisBackupURLs, [selectedURL])
+        XCTAssertEqual(viewModel.message, AppConstants.StatusText.redisRestoreCompleted)
     }
 
     func testImportRuntimeDataBackupRejectsExistingManagedDestination() async {
@@ -1212,6 +1288,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             showingApplySettingsConfirmation: .constant(false),
             showingRollbackConfirmation: .constant(false),
             showingRestoreRuntimeDataBackupConfirmation: .constant(false),
+            showingRestoreRedisBackupConfirmation: .constant(false),
             showingRepairProxyConfirmation: .constant(false),
             showingRepairDatastoreConfirmation: .constant(false),
             showingRepairVMDiskConfirmation: .constant(false),
@@ -1589,6 +1666,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var loadReleaseInfoCount = 0
     var preferredLogsPathCount = 0
     var verifiedBundleURLs: [URL] = []
+    var restoredRedisBackupURLs: [URL] = []
     var restoredRuntimeDataBackupURLs: [URL] = []
     var exportLogDestinationURLs: [URL] = []
     var deletedBackupURLs: [URL] = []
@@ -1596,6 +1674,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var releaseInfoLoadError: Error?
     var backupLoadError: Error?
     var backupsToLoad: [RuntimeBackup] = []
+    var redisBackupsToLoad: [RuntimeBackup] = []
     var runtimeDataBackupsToLoad: [RuntimeBackup] = []
     var lastLoadStatusSettings: RuntimeSettings?
     var lastLoadHealthStatusSettings: RuntimeSettings?
@@ -1660,7 +1739,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     }
 
     func loadRedisBackups() throws -> [RuntimeBackup] {
-        []
+        redisBackupsToLoad
     }
 
     func loadRuntimeDataBackups() throws -> [RuntimeBackup] {
@@ -1716,6 +1795,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func restoreRedisBackup(backupURL: URL) async throws -> RuntimeCommandResult {
         restoreRedisBackupCount += 1
+        restoredRedisBackupURLs.append(backupURL)
         return success()
     }
 
@@ -1835,10 +1915,12 @@ private final class FakeLocalAPISettings: RuntimeControlLocalAPISettingsApplying
 private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     var directoryURL: URL?
     var updateBundleURL: URL?
+    var redisBackupArchiveURL: URL?
     var logExportDestinationURL: URL?
     var logExportDestinationValidationMessages: [String: String] = [:]
     var chooseDirectoryPrompts: [String] = []
     var chooseUpdateBundlePrompts: [String] = []
+    var chooseRedisBackupArchivePrompts: [String] = []
     var chooseLogExportDestinationPrompts: [String] = []
     var openedFileURLs: [URL] = []
     var openedWebURLs: [URL] = []
@@ -1848,6 +1930,8 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     var confirmCreateDirectoryPaths: [String] = []
     var createdDirectoryURLs: [URL] = []
     var copiedDirectories: [(source: URL, destination: URL)] = []
+    var copiedFiles: [(source: URL, destination: URL)] = []
+    var copyFileError: Error?
     var copyDirectoryError: Error?
     var relaunchHelperCount = 0
     var terminateCount = 0
@@ -1858,6 +1942,10 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
 
     var chooseUpdateBundleCount: Int {
         chooseUpdateBundlePrompts.count
+    }
+
+    var chooseRedisBackupArchiveCount: Int {
+        chooseRedisBackupArchivePrompts.count
     }
 
     var chooseLogExportDestinationCount: Int {
@@ -1872,6 +1960,11 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     func chooseUpdateBundle(prompt: String) -> URL? {
         chooseUpdateBundlePrompts.append(prompt)
         return updateBundleURL
+    }
+
+    func chooseRedisBackupArchive(prompt: String) -> URL? {
+        chooseRedisBackupArchivePrompts.append(prompt)
+        return redisBackupArchiveURL
     }
 
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {
@@ -1902,6 +1995,14 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
         createdDirectoryURLs.append(url)
         existingDirectories?.insert(url.path)
         pathStates[url.path] = .directory
+    }
+
+    func copyFile(_ source: URL, to destination: URL) throws {
+        if let copyFileError {
+            throw copyFileError
+        }
+        copiedFiles.append((source: source, destination: destination))
+        pathStates[destination.path] = .file
     }
 
     func copyDirectory(_ source: URL, to destination: URL) throws {

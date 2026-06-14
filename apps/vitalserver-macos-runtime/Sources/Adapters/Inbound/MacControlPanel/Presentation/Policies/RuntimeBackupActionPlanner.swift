@@ -38,6 +38,18 @@ public enum RuntimeBackupImportPlanFailure: Error, Equatable {
     case destinationPathUnavailable(String)
 }
 
+public enum RuntimeRedisBackupImportPlanFailure: Error, Equatable {
+    case missingBackup
+    case backupsRootNotReported
+    case sourceIsNotFile
+    case sourcePathInspectionFailed(String)
+    case sourcePathUnavailable(String)
+    case invalidBackup
+    case destinationAlreadyExists
+    case destinationPathInspectionFailed(String)
+    case destinationPathUnavailable(String)
+}
+
 public struct RuntimeBackupActionPlanner {
     public var backupSelectionPolicy: RuntimeBackupSelectionPolicy
 
@@ -106,6 +118,26 @@ public struct RuntimeBackupActionPlanner {
         return .success(RuntimeBackupActionPlan(backupURL: backupURL))
     }
 
+    public func restoreRedisBackupPlan(
+        selectedBackupPath: String?,
+        redisBackupsPath: String?
+    ) -> Result<RuntimeBackupActionPlan, RuntimeBackupActionPlanFailure> {
+        guard let selectedBackupPath else {
+            return .failure(.missingBackup)
+        }
+        guard let redisBackupsPath else {
+            return .failure(.backupsRootNotReported)
+        }
+        let backupURL = URL(fileURLWithPath: selectedBackupPath)
+        guard isRedisBackupURL(
+            backupURL,
+            redisBackupsRoot: URL(fileURLWithPath: redisBackupsPath)
+        ) else {
+            return .failure(.invalidBackup)
+        }
+        return .success(RuntimeBackupActionPlan(backupURL: backupURL))
+    }
+
     public func importRuntimeDataBackupPlan(
         sourceBackupURL: URL?,
         runtimeDataBackupsRoot: URL?,
@@ -152,6 +184,60 @@ public struct RuntimeBackupActionPlanner {
             return .failure(.destinationPathUnavailable(destinationPathState.rawValue))
         }
     }
+
+    public func importRedisBackupPlan(
+        sourceBackupURL: URL?,
+        redisBackupsRoot: URL?,
+        sourcePathState: RuntimePathState,
+        destinationPathState: RuntimePathState
+    ) -> Result<RuntimeBackupImportPlan, RuntimeRedisBackupImportPlanFailure> {
+        guard let sourceBackupURL else {
+            return .failure(.missingBackup)
+        }
+        guard let redisBackupsRoot else {
+            return .failure(.backupsRootNotReported)
+        }
+        switch sourcePathState {
+        case .file:
+            break
+        case .directory, .other:
+            return .failure(.sourceIsNotFile)
+        case .missing, .unknown:
+            return .failure(.sourcePathUnavailable(sourcePathState.rawValue))
+        case .inspectFailed(let reason):
+            return .failure(.sourcePathInspectionFailed(reason))
+        }
+        let destinationURL = redisBackupsRoot.appendingPathComponent(sourceBackupURL.lastPathComponent)
+        guard isRedisBackupURL(destinationURL, redisBackupsRoot: redisBackupsRoot) else {
+            return .failure(.invalidBackup)
+        }
+        switch destinationPathState {
+        case .missing:
+            return .success(RuntimeBackupImportPlan(
+                sourceURL: sourceBackupURL,
+                destinationURL: destinationURL
+            ))
+        case .inspectFailed(let reason):
+            return .failure(.destinationPathInspectionFailed(reason))
+        case .file, .directory, .other:
+            return .failure(.destinationAlreadyExists)
+        case .unknown:
+            return .failure(.destinationPathUnavailable(destinationPathState.rawValue))
+        }
+    }
+
+    private func isRedisBackupURL(_ url: URL, redisBackupsRoot: URL) -> Bool {
+        let backupURL = url.standardizedFileURL
+        let backupsRootURL = redisBackupsRoot.standardizedFileURL
+        guard backupURL.deletingLastPathComponent().path == backupsRootURL.path else {
+            return false
+        }
+        let name = backupURL.lastPathComponent
+        guard name.hasPrefix("redis-"), name.hasSuffix(".tar.gz") else {
+            return false
+        }
+        return backupURL.path.hasPrefix(backupsRootURL.path + "/")
+    }
 }
 
 extension RuntimeBackupActionPlanFailure {
@@ -188,6 +274,31 @@ extension RuntimeBackupImportPlanFailure {
             return AppConstants.StatusText.runtimeDataBackupImportFailed(reason)
         case .destinationPathUnavailable(let state):
             return AppConstants.StatusText.runtimeDataBackupImportPathInvalid(state)
+        }
+    }
+}
+
+extension RuntimeRedisBackupImportPlanFailure {
+    var message: String {
+        switch self {
+        case .missingBackup:
+            return AppConstants.StatusText.redisBackupImportSourceInvalid
+        case .backupsRootNotReported:
+            return AppConstants.StatusText.notReported
+        case .sourceIsNotFile:
+            return AppConstants.StatusText.redisBackupImportSourceInvalid
+        case .sourcePathInspectionFailed(let reason):
+            return AppConstants.StatusText.redisBackupImportFailed(reason)
+        case .sourcePathUnavailable(let state):
+            return AppConstants.StatusText.redisBackupImportSourcePathInvalid(state)
+        case .invalidBackup:
+            return AppConstants.StatusText.invalidBackup
+        case .destinationAlreadyExists:
+            return AppConstants.StatusText.redisBackupImportDestinationExists
+        case .destinationPathInspectionFailed(let reason):
+            return AppConstants.StatusText.redisBackupImportFailed(reason)
+        case .destinationPathUnavailable(let state):
+            return AppConstants.StatusText.redisBackupImportPathInvalid(state)
         }
     }
 }
