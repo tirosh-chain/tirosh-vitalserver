@@ -9,12 +9,22 @@ public enum RuntimeDataBackupPolicy {
     public static func validateCompletedBackup(
         _ manifest: RuntimeDataBackupManifest,
         expectedProduct: String? = nil,
+        supportedDataCompatibilityVersions: Set<Int> = [RuntimeDataBackupCompatibility.currentDataCompatibilityVersion],
         requiredArtifacts: [RuntimeDataBackupArtifactID] = RuntimeDataBackupArtifactID.requiredForRecovery
     ) -> RuntimeDataBackupManifestValidation {
         var errors: [String] = []
 
         if manifest.schemaVersion != 1 {
             errors.append("runtime data backup schemaVersion is unsupported: \(manifest.schemaVersion)")
+        }
+        if let dataCompatibilityVersion = manifest.dataCompatibilityVersion {
+            if !supportedDataCompatibilityVersions.contains(dataCompatibilityVersion) {
+                errors.append(
+                    "runtime data backup dataCompatibilityVersion is unsupported: \(dataCompatibilityVersion)"
+                )
+            }
+        } else {
+            errors.append("runtime data backup dataCompatibilityVersion is missing")
         }
         if manifest.backupKind != .runtimeData {
             errors.append("runtime data backup kind is unsupported: \(manifest.backupKind.rawValue)")

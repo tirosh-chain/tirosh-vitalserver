@@ -60,6 +60,10 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         XCTAssertEqual(manifest.product, "ai.tirosh.vitalserver.helper")
         XCTAssertEqual(manifest.createdAt, "2026-06-10T00:00:00Z")
         XCTAssertEqual(manifest.runtimeVersion, "0.1.13")
+        XCTAssertEqual(
+            manifest.dataCompatibilityVersion,
+            RuntimeDataBackupCompatibility.currentDataCompatibilityVersion
+        )
         XCTAssertEqual(manifest.artifacts.map(\.id), RuntimeDataBackupArtifactID.requiredForUIContinuity)
         XCTAssertEqual(manifest.artifacts.count { $0.id == .runtimeStatusDocument }, 1)
         XCTAssertEqual(manifest.artifacts.count { $0.id == .runtimeEventsDocument }, 1)
@@ -256,6 +260,64 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
         ])
     }
 
+    func testRestoreBackupRejectsMissingDataCompatibilityVersion() throws {
+        let paths = try makePaths()
+        let store = makeStore(paths: paths)
+        let backup = try makeBackup(paths: paths, store: store)
+        try rewriteManifest(backup: backup) { manifest in
+            RuntimeDataBackupManifest(
+                schemaVersion: manifest.schemaVersion,
+                dataCompatibilityVersion: nil,
+                backupKind: manifest.backupKind,
+                product: manifest.product,
+                createdAt: manifest.createdAt,
+                reason: manifest.reason,
+                runtimeVersion: manifest.runtimeVersion,
+                sourceRuntimeHome: manifest.sourceRuntimeHome,
+                artifacts: manifest.artifacts
+            )
+        }
+
+        XCTAssertThrowsError(try store.restoreBackup(backup)) { error in
+            XCTAssertEqual(
+                error as? RuntimeDataBackupStoreError,
+                .manifestInvalid(
+                    path: backup.appendingPathComponent(RuntimeFileNames.backupManifest).path,
+                    errors: ["dataCompatibilityVersion is missing"]
+                )
+            )
+        }
+    }
+
+    func testRestoreBackupRejectsUnsupportedDataCompatibilityVersion() throws {
+        let paths = try makePaths()
+        let store = makeStore(paths: paths)
+        let backup = try makeBackup(paths: paths, store: store)
+        try rewriteManifest(backup: backup) { manifest in
+            RuntimeDataBackupManifest(
+                schemaVersion: manifest.schemaVersion,
+                dataCompatibilityVersion: 999,
+                backupKind: manifest.backupKind,
+                product: manifest.product,
+                createdAt: manifest.createdAt,
+                reason: manifest.reason,
+                runtimeVersion: manifest.runtimeVersion,
+                sourceRuntimeHome: manifest.sourceRuntimeHome,
+                artifacts: manifest.artifacts
+            )
+        }
+
+        XCTAssertThrowsError(try store.restoreBackup(backup)) { error in
+            XCTAssertEqual(
+                error as? RuntimeDataBackupStoreError,
+                .manifestInvalid(
+                    path: backup.appendingPathComponent(RuntimeFileNames.backupManifest).path,
+                    errors: ["dataCompatibilityVersion must be 1"]
+                )
+            )
+        }
+    }
+
     func testSQLiteSnapshotterCreatesReadableSnapshotFile() throws {
         let source = temporaryRoot.appendingPathComponent("source.sqlite")
         let destination = temporaryRoot.appendingPathComponent("snapshot.sqlite")
@@ -288,6 +350,52 @@ final class RuntimeDataBackupStoreTests: XCTestCase {
             runtimeEvents: status.appendingPathComponent(RuntimeFileNames.runtimeEvents),
             runtimeObservabilityDatabase: status.appendingPathComponent(RuntimeFileNames.runtimeObservabilityDB)
         )
+    }
+
+    private func makeStore(paths: RuntimeDataBackupStorePaths) -> RuntimeDataBackupStore {
+        RuntimeDataBackupStore(
+            paths: paths,
+            metadata: RuntimeDataBackupStoreMetadata(
+                productIdentifier: "ai.tirosh.vitalserver.helper",
+                manifestName: RuntimeFileNames.backupManifest,
+                redisVolumeName: "vitalserver_redis-data"
+            ),
+            timestamp: { "20260610T000000Z" },
+            isoTimestamp: { "2026-06-10T00:00:00Z" },
+            fileStore: fileStore,
+            snapshotSQLiteDatabase: { source, destination in
+                try self.fileStore.copyItem(at: source, to: destination)
+            }
+        )
+    }
+
+    private func makeBackup(
+        paths: RuntimeDataBackupStorePaths,
+        store: RuntimeDataBackupStore
+    ) throws -> URL {
+        let redisArchive = temporaryRoot.appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("tar.gz")
+        try Data("redis".utf8).write(to: redisArchive)
+        try writeRequiredSources(paths)
+        return try store.createBackup(
+            reason: "manual",
+            redisArchive: redisArchive,
+            startOnBootState: startOnBootStateData()
+        )
+    }
+
+    private func rewriteManifest(
+        backup: URL,
+        transform: (RuntimeDataBackupManifest) -> RuntimeDataBackupManifest
+    ) throws {
+        let manifestURL = backup.appendingPathComponent(RuntimeFileNames.backupManifest)
+        let manifest = try JSONDecoder().decode(
+            RuntimeDataBackupManifest.self,
+            from: Data(contentsOf: manifestURL)
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(transform(manifest)).write(to: manifestURL)
     }
 
     private func writeRequiredSources(_ paths: RuntimeDataBackupStorePaths) throws {

@@ -4,6 +4,10 @@ public enum RuntimeDataBackupKind: String, Codable, Equatable, Sendable {
     case runtimeData = "runtime-data"
 }
 
+public enum RuntimeDataBackupCompatibility {
+    public static let currentDataCompatibilityVersion = 1
+}
+
 public enum RuntimeDataBackupArtifactID: String, Codable, CaseIterable, Equatable, Sendable {
     case redisData = "redis-data"
     case runtimeVMConfig = "runtime-vm-config"
@@ -133,6 +137,7 @@ public struct RuntimeDataBackupArtifact: Codable, Equatable, Sendable {
 
 public struct RuntimeDataBackupManifest: Codable, Equatable, Sendable {
     public let schemaVersion: Int
+    public let dataCompatibilityVersion: Int?
     public let backupKind: RuntimeDataBackupKind
     public let product: String
     public let createdAt: String
@@ -143,6 +148,7 @@ public struct RuntimeDataBackupManifest: Codable, Equatable, Sendable {
 
     public init(
         schemaVersion: Int = 1,
+        dataCompatibilityVersion: Int? = RuntimeDataBackupCompatibility.currentDataCompatibilityVersion,
         backupKind: RuntimeDataBackupKind = .runtimeData,
         product: String,
         createdAt: String,
@@ -152,6 +158,7 @@ public struct RuntimeDataBackupManifest: Codable, Equatable, Sendable {
         artifacts: [RuntimeDataBackupArtifact]
     ) {
         self.schemaVersion = schemaVersion
+        self.dataCompatibilityVersion = dataCompatibilityVersion
         self.backupKind = backupKind
         self.product = product
         self.createdAt = createdAt
