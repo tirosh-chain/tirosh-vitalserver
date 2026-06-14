@@ -2395,6 +2395,87 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeVitalRecorderActivityPoint"
             }
+          },
+          "redisIPSync": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeRecorderRedisIPSyncObservation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recorder-specific Redis ip_<vrcode> synchronization state reported by the audit proxy."
+          }
+        }
+      },
+      "RuntimeRecorderRedisIPSyncStatus": {
+        "type": "string",
+        "enum": [
+          "unknown",
+          "unavailable",
+          "disabled",
+          "pending",
+          "written",
+          "correcting",
+          "corrected",
+          "verified",
+          "mismatch",
+          "write_failed",
+          "verify_failed"
+        ]
+      },
+      "RuntimeRecorderRedisIPSyncObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/RuntimeRecorderRedisIPSyncStatus"
+          },
+          "redisKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selectedIp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ipSource": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "redisValue": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastWriteAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastVerifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastFailure": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -3413,7 +3494,9 @@
           "auditWriteFailures",
           "auditFileWriteFailures",
           "auditStdoutWriteFailures",
-          "redisIpWriteFailures"
+          "redisIpWriteFailures",
+          "redisIpVerifyFailures",
+          "redisIpVerifyMismatches"
         ],
         "properties": {
           "startedAt": {
@@ -3470,6 +3553,14 @@
           "redisIpWriteFailures": {
             "type": "integer",
             "minimum": 0
+          },
+          "redisIpVerifyFailures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "redisIpVerifyMismatches": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
@@ -3494,10 +3585,26 @@
               "null"
             ]
           },
+          "ipSource": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "lastSeenAt": {
             "type": [
               "string",
               "null"
+            ]
+          },
+          "redisIpSync": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeRecorderRedisIPSyncObservation"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }

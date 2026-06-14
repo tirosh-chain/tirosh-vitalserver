@@ -327,6 +327,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
     public let latestAnomalyObservedAt: String?
     public let presentInLatestObservation: Bool
     public let activityTimeline: [RuntimeVitalRecorderActivityPoint]?
+    public let redisIPSync: RuntimeRecorderRedisIPSyncObservation?
 
     public init(
         vrcode: String,
@@ -345,7 +346,8 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         latestAnomalySeverity: VitalDBAnomalySeverity?,
         latestAnomalyMessage: String? = nil,
         latestAnomalyObservedAt: String? = nil,
-        presentInLatestObservation: Bool = true
+        presentInLatestObservation: Bool = true,
+        redisIPSync: RuntimeRecorderRedisIPSyncObservation? = nil
     ) {
         self.init(
             vrcode: vrcode,
@@ -365,7 +367,8 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
             latestAnomalyMessage: latestAnomalyMessage,
             latestAnomalyObservedAt: latestAnomalyObservedAt,
             presentInLatestObservation: presentInLatestObservation,
-            activityTimeline: nil
+            activityTimeline: nil,
+            redisIPSync: redisIPSync
         )
     }
 
@@ -387,7 +390,8 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         latestAnomalyMessage: String?,
         latestAnomalyObservedAt: String?,
         presentInLatestObservation: Bool,
-        activityTimeline: [RuntimeVitalRecorderActivityPoint]?
+        activityTimeline: [RuntimeVitalRecorderActivityPoint]?,
+        redisIPSync: RuntimeRecorderRedisIPSyncObservation? = nil
     ) {
         self.vrcode = vrcode
         self.status = status
@@ -407,6 +411,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         self.latestAnomalyObservedAt = latestAnomalyObservedAt
         self.presentInLatestObservation = presentInLatestObservation
         self.activityTimeline = activityTimeline
+        self.redisIPSync = redisIPSync
     }
 }
 
@@ -567,15 +572,28 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
 
     public init(
         observations: [VitalDBObservationDocument],
+        containerObservation: RuntimeContainerObservation?
+    ) {
+        self.init(
+            observations: observations,
+            projectedActivityBuckets: nil,
+            containerObservation: containerObservation
+        )
+    }
+
+    public init(
+        observations: [VitalDBObservationDocument],
         activityBuckets: [VitalDBRecorderActivityBucketRecord],
         activityHistory: RuntimeVitalRecorderActivityHistory? = nil,
-        readError: String? = nil
+        readError: String? = nil,
+        containerObservation: RuntimeContainerObservation? = nil
     ) {
         self.init(
             observations: observations,
             projectedActivityBuckets: activityBuckets,
             activityHistory: activityHistory,
-            readError: readError
+            readError: readError,
+            containerObservation: containerObservation
         )
     }
 
@@ -583,7 +601,8 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         observations: [VitalDBObservationDocument],
         projectedActivityBuckets activityBuckets: [VitalDBRecorderActivityBucketRecord]?,
         activityHistory: RuntimeVitalRecorderActivityHistory? = nil,
-        readError: String? = nil
+        readError: String? = nil,
+        containerObservation: RuntimeContainerObservation? = nil
     ) {
         let ordered = observations.sorted { $0.observedAt < $1.observedAt }
         guard let latestObservation = ordered.last else {
@@ -638,6 +657,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         )
         let latestAnomaliesBySubject = Dictionary(grouping: latestObservation.anomalies, by: \.subject)
         let projectedActivityByVrcode = activityBuckets.map(projectedActivityTimelineByVrcode)
+        let redisIPSyncByVrcode = recorderRedisIPSyncByVrcode(containerObservation)
 
         let unsortedRecords: [RuntimeVitalRecorderRecord] = builders.values.map { builder in
             let latestRecorder = latestRecorders[builder.vrcode]
@@ -648,7 +668,11 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
                 latestBed: latestBed,
                 currentAnomalies: anomalies,
                 duplicateObservationCount: recorderDuplicateObservationCounts[builder.vrcode, default: 0],
-                activityTimeline: projectedActivityByVrcode?[builder.vrcode]
+                activityTimeline: projectedActivityByVrcode?[builder.vrcode],
+                redisIPSync: redisIPSyncByVrcode[builder.vrcode] ?? defaultRecorderRedisIPSync(
+                    vrcode: builder.vrcode,
+                    containerObservation: containerObservation
+                )
             )
         }
 
@@ -1154,6 +1178,44 @@ private func projectedActivityTimelineByVrcode(
     }
 }
 
+private func recorderRedisIPSyncByVrcode(
+    _ containerObservation: RuntimeContainerObservation?
+) -> [String: RuntimeRecorderRedisIPSyncObservation] {
+    guard let proxyRecorders = containerObservation?.auditProxyStatus?.recorders else {
+        return [:]
+    }
+    return Dictionary(
+        proxyRecorders.compactMap { recorder in
+            guard let sync = recorder.redisIpSync else {
+                return nil
+            }
+            return (recorder.vrcode, sync)
+        },
+        uniquingKeysWith: { _, latest in latest }
+    )
+}
+
+private func defaultRecorderRedisIPSync(
+    vrcode: String,
+    containerObservation: RuntimeContainerObservation?
+) -> RuntimeRecorderRedisIPSyncObservation? {
+    guard let containerObservation else {
+        return nil
+    }
+    guard containerObservation.auditProxyStatusReadState == .loaded else {
+        return RuntimeRecorderRedisIPSyncObservation(
+            status: .unavailable,
+            redisKey: "ip_\(vrcode)",
+            lastFailure: containerObservation.auditProxyStatusReadError
+                ?? "audit proxy status \(containerObservation.auditProxyStatusReadState.rawValue)"
+        )
+    }
+    return RuntimeRecorderRedisIPSyncObservation(
+        status: .unknown,
+        redisKey: "ip_\(vrcode)"
+    )
+}
+
 private struct RecorderBuilder {
     let vrcode: String
     var lastIP: String?
@@ -1187,7 +1249,8 @@ private struct RecorderBuilder {
         latestBed: VitalDBBedObservation?,
         currentAnomalies: [VitalDBAnomalyObservation],
         duplicateObservationCount: Int,
-        activityTimeline projectedActivityTimeline: [RuntimeVitalRecorderActivityPoint]? = nil
+        activityTimeline projectedActivityTimeline: [RuntimeVitalRecorderActivityPoint]? = nil,
+        redisIPSync: RuntimeRecorderRedisIPSyncObservation? = nil
     ) -> RuntimeVitalRecorderRecord {
         let presentInLatestObservation = latestRecorder != nil
         let latestAnomaly = latestAnomaly(in: currentAnomalies)
@@ -1209,7 +1272,8 @@ private struct RecorderBuilder {
             latestAnomalyMessage: latestAnomaly?.message,
             latestAnomalyObservedAt: latestAnomaly?.observedAt,
             presentInLatestObservation: presentInLatestObservation,
-            activityTimeline: projectedActivityTimeline
+            activityTimeline: projectedActivityTimeline,
+            redisIPSync: redisIPSync
         )
     }
 

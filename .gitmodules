@@ -1,4 +1,4 @@
 [submodule "vendor/vitalserver"]
 	path = vendor/vitalserver
-	url = https://github.com/tirosh-chain/vitalserver.git
+	url = https://github.com/vitaldb/vitalserver.git
 	branch = main

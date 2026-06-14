@@ -1261,6 +1261,95 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.summary.staleRecorders, 1)
     }
 
+    func testVitalRecorderHistoryMergesRecorderRedisIPSyncFromAuditProxyStatus() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:12:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_A",
+                    ip: "192.168.64.20",
+                    lastSeenAt: "2026-05-26T00:12:00Z",
+                    online: true
+                ),
+                VitalDBRecorderObservation(
+                    vrcode: "VR_B",
+                    ip: "192.168.64.21",
+                    lastSeenAt: "2026-05-26T00:12:00Z",
+                    online: true
+                ),
+            ]
+        )
+        let containerObservation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: RuntimeAuditProxyStatusDocument(
+                recorders: [
+                    RuntimeRecorderConnectionObservation(
+                        vrcode: "VR_A",
+                        activeConnections: 1,
+                        selectedIp: "192.168.64.20",
+                        ipSource: "x-forwarded-for",
+                        lastSeenAt: "2026-05-26T00:12:00Z",
+                        redisIpSync: RuntimeRecorderRedisIPSyncObservation(
+                            status: .verified,
+                            redisKey: "ip_VR_A",
+                            selectedIp: "192.168.64.20",
+                            ipSource: "x-forwarded-for",
+                            redisValue: "192.168.64.20",
+                            lastVerifiedAt: "2026-05-26T00:12:01Z"
+                        )
+                    ),
+                ]
+            ),
+            containerLogsPresent: false,
+            containerLogsBytes: nil
+        )
+
+        let history = RuntimeVitalRecorderHistory(
+            observations: [observation],
+            containerObservation: containerObservation
+        )
+
+        XCTAssertEqual(history.recorders.first { $0.vrcode == "VR_A" }?.redisIPSync?.status, .verified)
+        XCTAssertEqual(history.recorders.first { $0.vrcode == "VR_A" }?.redisIPSync?.redisKey, "ip_VR_A")
+        XCTAssertEqual(history.recorders.first { $0.vrcode == "VR_A" }?.redisIPSync?.ipSource, "x-forwarded-for")
+        XCTAssertEqual(history.recorders.first { $0.vrcode == "VR_B" }?.redisIPSync?.status, .unknown)
+        XCTAssertEqual(history.recorders.first { $0.vrcode == "VR_B" }?.redisIPSync?.redisKey, "ip_VR_B")
+    }
+
+    func testVitalRecorderHistoryKeepsAuditProxyStatusUnavailableDistinctFromUnknown() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:12:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_A",
+                    ip: "192.168.64.20",
+                    lastSeenAt: "2026-05-26T00:12:00Z",
+                    online: true
+                ),
+            ]
+        )
+        let containerObservation = RuntimeContainerObservation(
+            auditProxyHTTP: RuntimeHTTPStatusText.failed,
+            auditProxyStatus: nil,
+            auditProxyStatusReadState: .commandFailed,
+            auditProxyStatusReadError: "curl failed",
+            containerLogsPresent: false,
+            containerLogsBytes: nil
+        )
+
+        let history = RuntimeVitalRecorderHistory(
+            observations: [observation],
+            containerObservation: containerObservation
+        )
+
+        XCTAssertEqual(history.recorders.first?.redisIPSync?.status, .unavailable)
+        XCTAssertEqual(history.recorders.first?.redisIPSync?.lastFailure, "curl failed")
+    }
+
     func testVitalRecorderHistoryReportsCollapsedDuplicateSourceObservations() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:02:00Z",

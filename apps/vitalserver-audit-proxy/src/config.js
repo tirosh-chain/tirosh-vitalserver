@@ -32,7 +32,10 @@ function loadConfig(env) {
       trustProxy: /^(1|true|yes)$/i.test(env.VITALSERVER_TRUST_PROXY || "1"),
     },
     vitalServer: {
-      ipWriteDelayMs: numberEnv(env, "AUDIT_PROXY_IP_WRITE_DELAY_MS", 250),
+      ipRewrite: {
+        enabled: env.AUDIT_PROXY_VR_IP_REWRITE_ENABLED !== "0",
+        verifyDelaysMs: numberListEnv(env, "AUDIT_PROXY_VR_IP_VERIFY_DELAYS_MS", [250, 1000]),
+      },
     },
   };
 }
@@ -44,6 +47,15 @@ function numberEnv(env, name, fallback) {
 
 function logFormatEnv(env, name, fallback) {
   return env[name] === "logfmt" ? "logfmt" : fallback;
+}
+
+function numberListEnv(env, name, fallback) {
+  const raw = env[name];
+  if (!raw) return fallback;
+  const values = raw
+    .split(",")
+    .map((item) => Number.parseInt(item.trim(), 10));
+  return values.every(Number.isFinite) ? values : fallback;
 }
 
 module.exports = { loadConfig };

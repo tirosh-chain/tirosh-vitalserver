@@ -5,10 +5,13 @@ const test = require("node:test");
 const zlib = require("zlib");
 const { createAuditRecorder } = require("../src/application/audit-recorder");
 const { createSocketIoAuditService } = require("../src/application/socketio-audit-service");
+const { loadConfig } = require("../src/config");
 const { auditEventTypes } = require("../src/domain/audit-event-contracts");
 const { formatAuditLogLine } = require("../src/infrastructure/file/audit-log-format");
 const { createClientIpSelector } = require("../src/infrastructure/http/client-ip");
 const { createAuditStdoutWriter } = require("../src/infrastructure/process/audit-stdout-writer");
+const { parseRespReply } = require("../src/infrastructure/redis/client");
+const { createVrIdentityStore } = require("../src/infrastructure/redis/vr-identity-store");
 const {
   createMetrics,
   metricsSnapshot,
@@ -44,7 +47,7 @@ test("socket.io auditor records join_vr and rewrites redis ip", async () => {
     audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
     vrIdentityStore: { setRecorderIp: (vrcode, selectedIp) => commands.push(["SET", `ip_${vrcode}`, selectedIp]) },
     metrics: metricState,
-    config: { vitalServer: { ipWriteDelayMs: 0 } },
+    config: { vitalServer: { ipRewrite: { enabled: true, verifyDelaysMs: [] } } },
   });
   const context = contextFor("VR_A");
 
@@ -56,7 +59,10 @@ test("socket.io auditor records join_vr and rewrites redis ip", async () => {
   assert.strictEqual(records[0].fields.vrcode, "VR_A");
   assert.deepStrictEqual(commands[0], ["SET", "ip_VR_A", "172.31.0.152"]);
   assert.strictEqual(metricsSnapshot(metricState).activeRecorderConnections, 1);
-  assert.strictEqual(metricsSnapshot(metricState).recorders[0].vrcode, "VR_A");
+  const recorder = metricsSnapshot(metricState).recorders[0];
+  assert.strictEqual(recorder.vrcode, "VR_A");
+  assert.strictEqual(recorder.selectedIp, "172.31.0.152");
+  assert.strictEqual(recorder.ipSource, "x-forwarded-for");
 });
 
 test("recorder metrics track active joins and disconnects", () => {
@@ -66,7 +72,7 @@ test("recorder metrics track active joins and disconnects", () => {
     audit: { record: () => {} },
     vrIdentityStore: { setRecorderIp: () => {} },
     metrics: metricState,
-    config: { vitalServer: { ipWriteDelayMs: 0 } },
+    config: { vitalServer: { ipRewrite: { enabled: true, verifyDelaysMs: [] } } },
   });
 
   auditor.inspect('42["join_vr","VR_A"]', "client", context);
@@ -85,7 +91,7 @@ test("socket.io auditor summarizes send_data payload", () => {
     audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
     vrIdentityStore: { setRecorderIp: () => {} },
     metrics: metrics(),
-    config: { vitalServer: { ipWriteDelayMs: 0 } },
+    config: { vitalServer: { ipRewrite: { enabled: true, verifyDelaysMs: [] } } },
   });
   const context = contextFor("VR_A");
   context.joined_vrcode = "VR_A";
@@ -113,7 +119,7 @@ test("socket.io auditor summarizes binary send_data attachments", () => {
     audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
     vrIdentityStore: { setRecorderIp: () => {} },
     metrics: metrics(),
-    config: { vitalServer: { ipWriteDelayMs: 0 } },
+    config: { vitalServer: { ipRewrite: { enabled: true, verifyDelaysMs: [] } } },
   });
   const context = contextFor("VR_A");
   context.joined_vrcode = "VR_A";
@@ -142,7 +148,7 @@ test("socket.io auditor removes engine.io message prefix from binary send_data a
     audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
     vrIdentityStore: { setRecorderIp: () => {} },
     metrics: metrics(),
-    config: { vitalServer: { ipWriteDelayMs: 0 } },
+    config: { vitalServer: { ipRewrite: { enabled: true, verifyDelaysMs: [] } } },
   });
   const context = contextFor("VR_A");
   context.joined_vrcode = "VR_A";
@@ -172,7 +178,7 @@ test("socket.io auditor preserves non-engine.io binary send_data decode failures
     audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
     vrIdentityStore: { setRecorderIp: () => {} },
     metrics: metrics(),
-    config: { vitalServer: { ipWriteDelayMs: 0 } },
+    config: { vitalServer: { ipRewrite: { enabled: true, verifyDelaysMs: [] } } },
   });
   const context = contextFor("VR_A");
   context.joined_vrcode = "VR_A";
@@ -195,7 +201,7 @@ test("socket.io auditor correlates req_cmd and dispatch", () => {
     audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
     vrIdentityStore: { setRecorderIp: () => {} },
     metrics: metrics(),
-    config: { vitalServer: { ipWriteDelayMs: 0 } },
+    config: { vitalServer: { ipRewrite: { enabled: true, verifyDelaysMs: [] } } },
   });
   const context = contextFor("VR_A");
   context.joined_vrcode = "VR_A";
@@ -208,6 +214,125 @@ test("socket.io auditor correlates req_cmd and dispatch", () => {
   assert.strictEqual(records[1].eventType, auditEventTypes.COMMAND_DISPATCH);
   assert.strictEqual(records[1].fields.command_job, "restart_vr");
   assert.strictEqual(records[1].fields.target_vrcode, "VR_A");
+});
+
+test("redis parser returns bulk string values for verification", () => {
+  assert.deepStrictEqual(parseRespReply("+OK\r\n"), { complete: true, value: "OK" });
+  assert.deepStrictEqual(parseRespReply("$12\r\n172.31.0.152\r\n"), {
+    complete: true,
+    value: "172.31.0.152",
+  });
+  assert.deepStrictEqual(parseRespReply("$-1\r\n"), { complete: true, value: null });
+  assert.deepStrictEqual(parseRespReply("$12\r\n172.31"), { complete: false });
+});
+
+test("config loads explicit redis ip rewrite policy", () => {
+  assert.deepStrictEqual(loadConfig({
+    AUDIT_PROXY_VR_IP_REWRITE_ENABLED: "0",
+    AUDIT_PROXY_VR_IP_VERIFY_DELAYS_MS: "10,250",
+  }).vitalServer.ipRewrite, {
+    enabled: false,
+    verifyDelaysMs: [10, 250],
+  });
+});
+
+test("vr identity store records disabled policy without writing redis", () => {
+  const metricState = metrics();
+  const calls = [];
+  const redis = {
+    command(args) {
+      calls.push(args);
+    },
+  };
+  const store = createVrIdentityStore(redis, metricState);
+
+  store.setRecorderIp("VR_A", "172.31.0.152", { enabled: false, verifyDelaysMs: [0] });
+
+  assert.deepStrictEqual(calls, []);
+  const sync = metricsSnapshot(metricState).recorders[0].redisIpSync;
+  assert.strictEqual(sync.status, "disabled");
+  assert.strictEqual(sync.redisKey, "ip_VR_A");
+  assert.strictEqual(sync.selectedIp, "172.31.0.152");
+});
+
+test("vr identity store verifies redis ip after writing", async () => {
+  const metricState = metrics();
+  const calls = [];
+  const redis = {
+    command(args, callback) {
+      calls.push(args);
+      if (args[0] === "GET") {
+        callback(null, "172.31.0.152");
+        return;
+      }
+      callback(null, "OK");
+    },
+  };
+  const store = createVrIdentityStore(redis, metricState);
+
+  store.setRecorderIp("VR_A", "172.31.0.152", { enabled: true, verifyDelaysMs: [0] });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  assert.deepStrictEqual(calls, [
+    ["SET", "ip_VR_A", "172.31.0.152"],
+    ["GET", "ip_VR_A"],
+  ]);
+  const sync = metricsSnapshot(metricState).recorders[0].redisIpSync;
+  assert.strictEqual(sync.status, "verified");
+  assert.strictEqual(sync.redisValue, "172.31.0.152");
+});
+
+test("vr identity store preserves verify failure state", async () => {
+  const metricState = metrics();
+  const redis = {
+    command(args, callback) {
+      if (args[0] === "GET") {
+        callback(new Error("redis read failed"));
+        return;
+      }
+      callback(null, "OK");
+    },
+  };
+  const store = createVrIdentityStore(redis, metricState);
+
+  store.setRecorderIp("VR_A", "172.31.0.152", { enabled: true, verifyDelaysMs: [0] });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  const snapshot = metricsSnapshot(metricState);
+  assert.strictEqual(snapshot.redisIpVerifyFailures, 1);
+  assert.strictEqual(snapshot.recorders[0].redisIpSync.status, "verify_failed");
+  assert.strictEqual(snapshot.recorders[0].redisIpSync.lastFailure, "redis read failed");
+});
+
+test("vr identity store rewrites mismatch and records bounded failure", async () => {
+  const metricState = metrics();
+  const calls = [];
+  const redis = {
+    command(args, callback) {
+      calls.push(args);
+      if (args[0] === "GET") {
+        callback(null, "172.18.0.4");
+        return;
+      }
+      callback(null, "OK");
+    },
+  };
+  const store = createVrIdentityStore(redis, metricState);
+
+  store.setRecorderIp("VR_A", "172.31.0.152", { enabled: true, verifyDelaysMs: [0, 1] });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.deepStrictEqual(calls, [
+    ["SET", "ip_VR_A", "172.31.0.152"],
+    ["GET", "ip_VR_A"],
+    ["SET", "ip_VR_A", "172.31.0.152"],
+    ["GET", "ip_VR_A"],
+    ["SET", "ip_VR_A", "172.31.0.152"],
+  ]);
+  const snapshot = metricsSnapshot(metricState);
+  assert.strictEqual(snapshot.redisIpVerifyMismatches, 2);
+  assert.strictEqual(snapshot.recorders[0].redisIpSync.status, "mismatch");
+  assert.strictEqual(snapshot.recorders[0].redisIpSync.redisValue, "172.18.0.4");
 });
 
 test("audit recorder fans out masked event envelopes to sinks", () => {

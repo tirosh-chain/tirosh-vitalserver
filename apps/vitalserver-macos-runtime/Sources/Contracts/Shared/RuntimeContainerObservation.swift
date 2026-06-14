@@ -13,6 +13,8 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
     public let auditFileWriteFailures: Int
     public let auditStdoutWriteFailures: Int
     public let redisIpWriteFailures: Int
+    public let redisIpVerifyFailures: Int
+    public let redisIpVerifyMismatches: Int
 
     public init(
         startedAt: String? = nil,
@@ -26,7 +28,9 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
         auditWriteFailures: Int = 0,
         auditFileWriteFailures: Int = 0,
         auditStdoutWriteFailures: Int = 0,
-        redisIpWriteFailures: Int = 0
+        redisIpWriteFailures: Int = 0,
+        redisIpVerifyFailures: Int = 0,
+        redisIpVerifyMismatches: Int = 0
     ) {
         self.startedAt = startedAt
         self.uptimeSeconds = uptimeSeconds
@@ -40,6 +44,8 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
         self.auditFileWriteFailures = auditFileWriteFailures
         self.auditStdoutWriteFailures = auditStdoutWriteFailures
         self.redisIpWriteFailures = redisIpWriteFailures
+        self.redisIpVerifyFailures = redisIpVerifyFailures
+        self.redisIpVerifyMismatches = redisIpVerifyMismatches
     }
 
     enum CodingKeys: String, CodingKey {
@@ -55,6 +61,8 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
         case auditFileWriteFailures
         case auditStdoutWriteFailures
         case redisIpWriteFailures
+        case redisIpVerifyFailures
+        case redisIpVerifyMismatches
     }
 
     public init(from decoder: Decoder) throws {
@@ -71,6 +79,8 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
         self.auditFileWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditFileWriteFailures) ?? 0
         self.auditStdoutWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditStdoutWriteFailures) ?? 0
         self.redisIpWriteFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpWriteFailures) ?? 0
+        self.redisIpVerifyFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpVerifyFailures) ?? 0
+        self.redisIpVerifyMismatches = try container.decodeIfPresent(Int.self, forKey: .redisIpVerifyMismatches) ?? 0
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -87,6 +97,53 @@ public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
         try container.encode(auditFileWriteFailures, forKey: .auditFileWriteFailures)
         try container.encode(auditStdoutWriteFailures, forKey: .auditStdoutWriteFailures)
         try container.encode(redisIpWriteFailures, forKey: .redisIpWriteFailures)
+        try container.encode(redisIpVerifyFailures, forKey: .redisIpVerifyFailures)
+        try container.encode(redisIpVerifyMismatches, forKey: .redisIpVerifyMismatches)
+    }
+}
+
+public enum RuntimeRecorderRedisIPSyncStatus: String, Codable, Equatable, Sendable {
+    case unknown
+    case unavailable
+    case disabled
+    case pending
+    case written
+    case correcting
+    case corrected
+    case verified
+    case mismatch
+    case writeFailed = "write_failed"
+    case verifyFailed = "verify_failed"
+}
+
+public struct RuntimeRecorderRedisIPSyncObservation: Codable, Equatable, Sendable {
+    public let status: RuntimeRecorderRedisIPSyncStatus
+    public let redisKey: String?
+    public let selectedIp: String?
+    public let ipSource: String?
+    public let redisValue: String?
+    public let lastWriteAt: String?
+    public let lastVerifiedAt: String?
+    public let lastFailure: String?
+
+    public init(
+        status: RuntimeRecorderRedisIPSyncStatus,
+        redisKey: String? = nil,
+        selectedIp: String? = nil,
+        ipSource: String? = nil,
+        redisValue: String? = nil,
+        lastWriteAt: String? = nil,
+        lastVerifiedAt: String? = nil,
+        lastFailure: String? = nil
+    ) {
+        self.status = status
+        self.redisKey = redisKey
+        self.selectedIp = selectedIp
+        self.ipSource = ipSource
+        self.redisValue = redisValue
+        self.lastWriteAt = lastWriteAt
+        self.lastVerifiedAt = lastVerifiedAt
+        self.lastFailure = lastFailure
     }
 }
 
@@ -94,18 +151,24 @@ public struct RuntimeRecorderConnectionObservation: Codable, Equatable, Sendable
     public let vrcode: String
     public let activeConnections: Int
     public let selectedIp: String?
+    public let ipSource: String?
     public let lastSeenAt: String?
+    public let redisIpSync: RuntimeRecorderRedisIPSyncObservation?
 
     public init(
         vrcode: String,
         activeConnections: Int,
         selectedIp: String? = nil,
-        lastSeenAt: String? = nil
+        ipSource: String? = nil,
+        lastSeenAt: String? = nil,
+        redisIpSync: RuntimeRecorderRedisIPSyncObservation? = nil
     ) {
         self.vrcode = vrcode
         self.activeConnections = activeConnections
         self.selectedIp = selectedIp
+        self.ipSource = ipSource
         self.lastSeenAt = lastSeenAt
+        self.redisIpSync = redisIpSync
     }
 }
 

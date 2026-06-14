@@ -140,6 +140,10 @@ Recorders/Beds 화면은 recorder observer와 audit proxy에서 만든 관측 �
 | Unknown | 계약에 없는 recorder 상태가 들어옴 |
 
 Recorders 화면에서는 `VRecorder`, `Status`, `IP`, `Bed`, `Last seen`, `Anomaly`를 함께 봅니다.
+`IP` column에는 VRecorder 관측 IP와 Redis `ip_<vrcode>` sync 요약이 함께 표시될 수 있습니다.
+Recorder를 선택하면 Details의 `Network access`에서 connection IP, Redis value, Redis key, 마지막
+verify 시각, 마지막 failure를 확인합니다. 이 정보는 audit proxy가 명시적으로 제공한 recorder별
+상태이며, Service liveness에는 recorder별 상세 상태를 표시하지 않습니다.
 `History` 토글을 켜면 최신 관측에 없는 과거 recorder도 볼 수 있습니다.
 `Data updated`는 recorder/bed 상태 snapshot이 갱신된 시각이고, `Last seen`은 해당 VRecorder가
 마지막으로 보낸 activity 시각입니다. 둘은 다릅니다. Data updated가 오래되면 화면 전체가 stale일 수

@@ -149,7 +149,14 @@ export function RecordersPage() {
               {
                 key: "ip",
                 header: "IP",
-                render: (recorder) => recorder.lastIP ?? NOT_REPORTED
+                render: (recorder) => (
+                  <div>
+                    <div>{recorder.lastIP ?? NOT_REPORTED}</div>
+                    <span className="muted">
+                      {formatRedisIPSyncSummary(recorder.redisIPSync)}
+                    </span>
+                  </div>
+                )
               },
               {
                 key: "bed",
@@ -216,6 +223,10 @@ function RecorderDetails({
       <KeyValueRows
         rows={[
           { label: "IP", value: recorder.lastIP ?? NOT_REPORTED },
+          {
+            label: "Redis IP sync",
+            value: formatRedisIPSyncSummary(recorder.redisIPSync)
+          },
           { label: "Version", value: recorder.version ?? NOT_REPORTED },
           {
             label: "Bed",
@@ -233,6 +244,43 @@ function RecorderDetails({
           }
         ]}
       />
+
+      <div className="subsection">
+        <h3>Network access</h3>
+        <KeyValueRows
+          rows={[
+            { label: "Connection IP", value: recorder.lastIP ?? NOT_REPORTED },
+            {
+              label: "Redis IP sync",
+              value: formatRedisIPSyncDetail(recorder.redisIPSync)
+            },
+            {
+              label: "Selected IP",
+              value: recorder.redisIPSync?.selectedIp ?? NOT_REPORTED
+            },
+            {
+              label: "IP source",
+              value: recorder.redisIPSync?.ipSource ?? NOT_REPORTED
+            },
+            {
+              label: "Redis value",
+              value: recorder.redisIPSync?.redisValue ?? NOT_REPORTED
+            },
+            {
+              label: "Redis key",
+              value: recorder.redisIPSync?.redisKey ?? NOT_REPORTED
+            },
+            {
+              label: "Last verified",
+              value: formatLocalDateTime(recorder.redisIPSync?.lastVerifiedAt)
+            },
+            {
+              label: "Last failure",
+              value: recorder.redisIPSync?.lastFailure ?? "-"
+            }
+          ]}
+        />
+      </div>
 
       <div className="subsection">
         <h3>Activity</h3>
@@ -255,6 +303,47 @@ function RecorderDetails({
       />
     </Panel>
   );
+}
+
+function formatRedisIPSyncSummary(
+  sync: VitalDBRecorderRecord["redisIPSync"] | null | undefined
+): string {
+  switch (sync?.status) {
+    case "verified":
+      return "Redis verified";
+    case "corrected":
+      return "Redis corrected";
+    case "correcting":
+      return "Redis correcting";
+    case "mismatch":
+      return "Redis mismatch";
+    case "write_failed":
+      return "Redis write failed";
+    case "verify_failed":
+      return "Redis verify failed";
+    case "pending":
+    case "written":
+      return "Redis pending";
+    case "disabled":
+      return "Redis sync disabled";
+    case "unknown":
+      return "Redis sync unknown";
+    case "unavailable":
+      return "Redis sync unavailable";
+    default:
+      return "Redis sync not reported";
+  }
+}
+
+function formatRedisIPSyncDetail(
+  sync: VitalDBRecorderRecord["redisIPSync"] | null | undefined
+): string {
+  const summary = formatRedisIPSyncSummary(sync);
+  const timestamp = sync?.lastVerifiedAt ?? sync?.lastWriteAt;
+  if (!timestamp) {
+    return summary;
+  }
+  return `${summary} at ${formatLocalDateTime(timestamp)}`;
 }
 
 function formatAnomalySummary(

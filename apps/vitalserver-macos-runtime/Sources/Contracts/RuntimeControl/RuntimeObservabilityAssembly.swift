@@ -142,7 +142,8 @@ public enum RuntimeVitalDBObservationSnapshotAssembler {
 
 public enum RuntimeVitalDBRecorderHistoryAssembler {
     public static func makeHistory(
-        reads: RuntimeVitalDBRecorderProjectionReads
+        reads: RuntimeVitalDBRecorderProjectionReads,
+        containerObservation: RuntimeContainerObservation? = nil
     ) -> RuntimeVitalRecorderHistory {
         var readErrors: [String] = []
         var observations: [VitalDBObservationDocument]
@@ -189,7 +190,8 @@ public enum RuntimeVitalDBRecorderHistoryAssembler {
             observations: observations,
             activityBuckets: activityBuckets,
             activityHistory: activityHistory,
-            readError: RuntimeObservabilityReadError.joined(readErrors)
+            readError: RuntimeObservabilityReadError.joined(readErrors),
+            containerObservation: containerObservation
         )
     }
 }

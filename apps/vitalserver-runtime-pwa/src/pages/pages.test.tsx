@@ -360,6 +360,10 @@ describe("runtime console pages", () => {
 
     expect(screen.getByText("Known recorders")).toBeInTheDocument();
     expect(screen.getAllByText("VR_A").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Redis verified").length).toBeGreaterThan(0);
+    expect(screen.getByText("Network access")).toBeInTheDocument();
+    expect(screen.getAllByText("ip_VR_A").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("x-forwarded-for").length).toBeGreaterThan(0);
     expect(screen.getByRole("img", { name: /Packet activity/ })).toBeInTheDocument();
     expect(screen.getByText("0 B/s")).toBeInTheDocument();
     expect(screen.queryByText("Room entries")).not.toBeInTheDocument();
@@ -1192,6 +1196,16 @@ function recorders() {
         latestAnomalyMessage: "Recorder activity is stale.",
         latestAnomalyObservedAt: "2026-05-31T01:00:00Z",
         presentInLatestObservation: true,
+        redisIPSync: {
+          status: "verified",
+          redisKey: "ip_VR_A",
+          selectedIp: "192.168.64.20",
+          ipSource: "x-forwarded-for",
+          redisValue: "192.168.64.20",
+          lastWriteAt: "2026-05-31T01:00:01Z",
+          lastVerifiedAt: "2026-05-31T01:00:02Z",
+          lastFailure: null
+        },
         activityTimeline: [
           {
             observedAt: "2026-05-31T00:59:00Z",

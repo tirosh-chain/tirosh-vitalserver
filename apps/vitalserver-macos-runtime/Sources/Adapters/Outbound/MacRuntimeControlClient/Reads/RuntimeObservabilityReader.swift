@@ -89,13 +89,15 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
 
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
         return RuntimeVitalDBRecorderHistoryAssembler.makeHistory(
-            reads: vitalDBProjectionReadCollector().recorderProjectionReads()
+            reads: vitalDBProjectionReadCollector().recorderProjectionReads(),
+            containerObservation: loadContainerObservation()
         )
     }
 
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
         return RuntimeVitalDBRecorderHistoryAssembler.makeHistory(
-            reads: vitalDBProjectionReadCollector().recorderProjectionReads(includeActivityBuckets: false)
+            reads: vitalDBProjectionReadCollector().recorderProjectionReads(includeActivityBuckets: false),
+            containerObservation: loadContainerObservation()
         )
     }
 
@@ -156,6 +158,18 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             repository: makeVitalDBProjectionRepository(URL(fileURLWithPath: paths.runtimeObservabilityDB)),
             currentObservationProvider: currentObservationProvider
         )
+    }
+
+    private func loadContainerObservation() -> RuntimeContainerObservation? {
+        switch JSONFileRuntimeStatusRepository(
+            url: URL(fileURLWithPath: paths.runtimeStatus),
+            fileStore: fileStore
+        ).loadResult() {
+        case .loaded(let document):
+            return document.containerObservation
+        case .missing, .failed:
+            return nil
+        }
     }
 
 }

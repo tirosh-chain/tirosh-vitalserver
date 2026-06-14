@@ -1112,6 +1112,20 @@ export interface components {
             presentInLatestObservation: boolean;
             /** @description Chronological activity samples for the VRecorder, derived from VitalDB observer snapshots. */
             activityTimeline?: components["schemas"]["RuntimeVitalRecorderActivityPoint"][];
+            /** @description Recorder-specific Redis ip_<vrcode> synchronization state reported by the audit proxy. */
+            redisIPSync?: components["schemas"]["RuntimeRecorderRedisIPSyncObservation"] | null;
+        };
+        /** @enum {string} */
+        RuntimeRecorderRedisIPSyncStatus: "unknown" | "unavailable" | "disabled" | "pending" | "written" | "correcting" | "corrected" | "verified" | "mismatch" | "write_failed" | "verify_failed";
+        RuntimeRecorderRedisIPSyncObservation: {
+            status: components["schemas"]["RuntimeRecorderRedisIPSyncStatus"];
+            redisKey?: string | null;
+            selectedIp?: string | null;
+            ipSource?: string | null;
+            redisValue?: string | null;
+            lastWriteAt?: string | null;
+            lastVerifiedAt?: string | null;
+            lastFailure?: string | null;
         };
         /** @description One recorder activity bucket from the VitalDB observer. */
         RuntimeVitalRecorderActivityBucket: {
@@ -1344,12 +1358,16 @@ export interface components {
             auditFileWriteFailures: number;
             auditStdoutWriteFailures: number;
             redisIpWriteFailures: number;
+            redisIpVerifyFailures: number;
+            redisIpVerifyMismatches: number;
         };
         RuntimeRecorderConnectionObservation: {
             vrcode: string;
             activeConnections: number;
             selectedIp?: string | null;
+            ipSource?: string | null;
             lastSeenAt?: string | null;
+            redisIpSync?: components["schemas"]["RuntimeRecorderRedisIPSyncObservation"] | null;
         };
         RuntimeContainerServiceObservation: {
             service: string;

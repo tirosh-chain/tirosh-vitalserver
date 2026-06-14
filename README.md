@@ -1,9 +1,9 @@
 # tirosh-vitalserver
 
 VitalDB VitalServer를 제품 운영 환경에서 사용할 수 있도록 감싸는 monorepo입니다.
-upstream VitalServer application 자체는 `vendor/vitalserver` submodule의 Tirosh fork에서
-관리하고, 이 저장소는 실행 wrapper, macOS runtime, Remote Console PWA, 관측 sidecar,
-검증 도구, 배포 산출물, 문서를 관리합니다.
+upstream VitalServer application 자체는 원본 `vitaldb/vitalserver`의 `vendor/vitalserver`
+submodule snapshot으로 관리하고, 이 저장소는 실행 wrapper, macOS runtime, Remote Console PWA,
+관측 sidecar, 검증 도구, 배포 산출물, 문서를 관리합니다.
 
 핵심 원칙은 단순하고 명시적인 상태 계약입니다. Host는 runtime/process/filesystem state를
 소유하고 명시적인 계약으로 제공하며, Guest와 UI는 그 계약을 소비합니다. 실패, 누락,

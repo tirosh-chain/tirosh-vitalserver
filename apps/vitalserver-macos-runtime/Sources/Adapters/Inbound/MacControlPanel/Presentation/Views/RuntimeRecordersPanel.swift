@@ -85,6 +85,7 @@ struct RuntimeRecordersPanel: View {
                 .font(.headline)
             if let recorder = selectedRecorder {
                 selectedRecorderSummary(recorder)
+                recorderNetworkAccess(recorder)
                 recorderActivity(recorder)
                 recorderMetadata(recorder)
                 recorderRelationshipHistory(recorder)
@@ -196,7 +197,7 @@ struct RuntimeRecordersPanel: View {
         HStack(spacing: 12) {
             tableHeader("VRecorder", minWidth: 120)
             tableHeader(AppConstants.Labels.recorderStatus, minWidth: 80)
-            tableHeader("IP", minWidth: 120)
+            tableHeader("IP", minWidth: 150)
             tableHeader(AppConstants.Labels.bed, minWidth: 120)
             tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 220)
             tableHeader(AppConstants.Labels.anomaly, minWidth: 130)
@@ -215,7 +216,7 @@ struct RuntimeRecordersPanel: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(statusColor(recorder.status))
                     .frame(minWidth: 80, alignment: .leading)
-                tableValue(reportedText(recorder.lastIP, missing: "IP not reported"), minWidth: 120)
+                tableIPValue(recorder, minWidth: 150)
                 tableValue(reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"), minWidth: 120)
                 tableValue(viewModel.presentationFormatter.systemTimeTextWithAge(recorder.lastSeenAt), minWidth: 220)
                 tableValue(recorderAnomalyText(recorder), minWidth: 130)
@@ -255,6 +256,23 @@ struct RuntimeRecordersPanel: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func recorderNetworkAccess(_ recorder: RuntimeVitalRecorderRecord) -> some View {
+        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
+            detailRow("Connection IP", reportedText(recorder.lastIP, missing: "IP not reported"))
+            detailRow("Redis IP sync", recorderRedisIPSyncDetailText(recorder.redisIPSync))
+            detailRow("Selected IP", reportedText(recorder.redisIPSync?.selectedIp, missing: "Selected IP not reported"))
+            detailRow("IP source", reportedText(recorder.redisIPSync?.ipSource, missing: "IP source not reported"))
+            detailRow("Redis value", reportedText(recorder.redisIPSync?.redisValue, missing: "Redis value not reported"))
+            detailRow("Redis key", reportedText(recorder.redisIPSync?.redisKey, missing: "Redis key not reported"))
+            detailRow("Last verified", viewModel.presentationFormatter.systemTimeText(recorder.redisIPSync?.lastVerifiedAt))
+            detailRow("Last failure", reportedText(recorder.redisIPSync?.lastFailure, missing: "-"))
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -512,6 +530,7 @@ struct RuntimeRecordersPanel: View {
     private func recorderMetadata(_ recorder: RuntimeVitalRecorderRecord) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
             detailRow("IP", reportedText(recorder.lastIP, missing: "IP not reported"))
+            detailRow("Redis IP sync", recorderRedisIPSyncSummaryText(recorder.redisIPSync))
             detailRow(AppConstants.Labels.recorderVersion, reportedText(recorder.version, missing: "Version not reported"))
             detailRow(AppConstants.Labels.bed, reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"))
             detailRow("Bed ID", reportedText(linkedBed(for: recorder)?.bedID ?? recorder.bedID, missing: "Bed ID not reported"))
@@ -646,6 +665,22 @@ struct RuntimeRecordersPanel: View {
             .frame(minWidth: minWidth, alignment: .leading)
     }
 
+    private func tableIPValue(_ recorder: RuntimeVitalRecorderRecord, minWidth: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(reportedText(recorder.lastIP, missing: "IP not reported"))
+                .font(.caption)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            Text(recorderRedisIPSyncSummaryText(recorder.redisIPSync))
+                .font(.caption2)
+                .foregroundStyle(recorderRedisIPSyncColor(recorder.redisIPSync))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .frame(minWidth: minWidth, alignment: .leading)
+    }
+
     private func count(_ status: RuntimeVitalRecorderStatus) -> Int {
         currentRecorders.filter { $0.status == status }.count
     }
@@ -676,6 +711,61 @@ struct RuntimeRecordersPanel: View {
 
     private func statusLabel(_ status: RuntimeVitalRecorderStatus) -> String {
         displayPolicy.statusText(status)
+    }
+
+    private func recorderRedisIPSyncSummaryText(_ sync: RuntimeRecorderRedisIPSyncObservation?) -> String {
+        guard let status = sync?.status else {
+            return "Redis sync not reported"
+        }
+        switch status {
+        case .verified:
+            return "Redis verified"
+        case .corrected:
+            return "Redis corrected"
+        case .correcting:
+            return "Redis correcting"
+        case .mismatch:
+            return "Redis mismatch"
+        case .writeFailed:
+            return "Redis write failed"
+        case .verifyFailed:
+            return "Redis verify failed"
+        case .pending, .written:
+            return "Redis pending"
+        case .disabled:
+            return "Redis sync disabled"
+        case .unknown:
+            return "Redis sync unknown"
+        case .unavailable:
+            return "Redis sync unavailable"
+        }
+    }
+
+    private func recorderRedisIPSyncDetailText(_ sync: RuntimeRecorderRedisIPSyncObservation?) -> String {
+        guard let sync else {
+            return "Not reported"
+        }
+        let base = recorderRedisIPSyncSummaryText(sync)
+        if let lastVerifiedAt = sync.lastVerifiedAt {
+            return "\(base) at \(viewModel.presentationFormatter.systemTimeText(lastVerifiedAt))"
+        }
+        if let lastWriteAt = sync.lastWriteAt {
+            return "\(base) at \(viewModel.presentationFormatter.systemTimeText(lastWriteAt))"
+        }
+        return base
+    }
+
+    private func recorderRedisIPSyncColor(_ sync: RuntimeRecorderRedisIPSyncObservation?) -> Color {
+        switch sync?.status {
+        case .verified, .corrected:
+            return .green
+        case .correcting, .pending, .written:
+            return .orange
+        case .mismatch, .writeFailed, .verifyFailed:
+            return .red
+        case .disabled, .unknown, .unavailable, nil:
+            return .secondary
+        }
     }
 
     private func linkedBed(for recorder: RuntimeVitalRecorderRecord) -> RuntimeVitalBedRecord? {
