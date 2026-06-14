@@ -290,6 +290,7 @@ private struct AppRuntimeStatusHealthDetailsVocabulary: RuntimeStatusHealthDetai
     var installingText: String { AppConstants.StatusText.installing }
     var initializingText: String { AppConstants.StatusText.initializing }
     var updatingText: String { AppConstants.StatusText.updating }
+    var recoveringText: String { AppConstants.StatusText.recovering }
     var notReportedText: String { AppConstants.StatusText.notReported }
     var reachableText: String { AppConstants.StatusText.reachable }
     var unavailableText: String { AppConstants.StatusText.unavailable }
@@ -336,6 +337,7 @@ private struct AppRuntimeStatusAdvancedVMHealthVocabulary: RuntimeStatusAdvanced
     var installingText: String { AppConstants.StatusText.installing }
     var initializingText: String { AppConstants.StatusText.initializing }
     var updatingText: String { AppConstants.StatusText.updating }
+    var recoveringText: String { AppConstants.StatusText.recovering }
     var notReportedText: String { AppConstants.StatusText.notReported }
     var reachableText: String { AppConstants.StatusText.reachable }
     var unavailableText: String { AppConstants.StatusText.unavailable }
@@ -363,6 +365,7 @@ private struct AppRuntimeStatusVitalServerAvailabilityVocabulary: RuntimeStatusV
     var installingText: String { AppConstants.StatusText.installing }
     var initializingText: String { AppConstants.StatusText.initializing }
     var updatingText: String { AppConstants.StatusText.updating }
+    var recoveringText: String { AppConstants.StatusText.recovering }
     var notReportedText: String { AppConstants.StatusText.notReported }
     var reachableText: String { AppConstants.StatusText.reachable }
     var unavailableText: String { AppConstants.StatusText.unavailable }
@@ -385,6 +388,7 @@ private struct AppRuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusAdv
     var installingText: String { AppConstants.StatusText.installing }
     var initializingText: String { AppConstants.StatusText.initializing }
     var updatingText: String { AppConstants.StatusText.updating }
+    var recoveringText: String { AppConstants.StatusText.recovering }
     var notReportedText: String { AppConstants.StatusText.notReported }
     var reachableText: String { AppConstants.StatusText.reachable }
     var unavailableText: String { AppConstants.StatusText.unavailable }

@@ -86,12 +86,18 @@ Runtime service 상태는 Advanced 화면에서 봅니다. 이 값은 macOS laun
 | Installing | 설치 중이라 service 상태보다 operation 상태를 우선 표시 |
 | Initializing | 초기 기동 중이라 service 상태보다 operation 상태를 우선 표시 |
 | Updating | update 중이라 service 상태보다 operation 상태를 우선 표시 |
+| Recovering | rollback, restore, repair 같은 recovery 중이라 service 상태보다 operation 상태를 우선 표시 |
 | Unavailable | 표시할 명시 값이 없음 |
 | Unknown | 계약에 없는 service 상태가 들어옴 |
 
-service가 `Stopped`라도 항상 장애는 아닙니다. install, initialization, update, repair, stop/start 같은
+service가 `Stopped`라도 항상 장애는 아닙니다. install, initialization, update, recovery, stop/start 같은
 operation 중인지 함께 확인합니다. 단, `Read failed`와 `Permission denied`는 설치 중에도 별도 실패로 남겨
 표시합니다.
+
+`Updating`과 `Recovering`은 서로 다른 operation 우선순위입니다. update apply가 실패해 rollback으로
+전환되면 Service liveness는 `Updating`을 계속 표시하지 않고 `Recovering`을 표시합니다. rollback workflow가
+runtime service restart와 health wait를 소유하므로 apply-bundle recovery layer가 별도 service restart를
+추가로 수행하지 않습니다.
 
 Guest container service 상태는 guest runtime-state의 `containerServices` 계약에서 옵니다. 컨테이너가
 restart 중일 때 `docker compose ps`가 빈 결과를 내보내면 empty success로 취급하지 않고 `read-failed`

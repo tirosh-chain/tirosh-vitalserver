@@ -3,6 +3,7 @@ public protocol RuntimeStatusHTTPValueVocabulary: RuntimeStatusReachabilityLabel
     var installingText: String { get }
     var initializingText: String { get }
     var updatingText: String { get }
+    var recoveringText: String { get }
 }
 
 public struct RuntimeStatusHTTPValue: Equatable, Sendable {
@@ -36,6 +37,7 @@ public struct RuntimeStatusHTTPValuePolicy {
         uptimeText: String?,
         installInProgress: Bool = false,
         initializationInProgress: Bool = false,
+        recoveryInProgress: Bool = false,
         updateInProgress: Bool = false
     ) -> RuntimeStatusHTTPValue {
         if installInProgress {
@@ -43,6 +45,9 @@ public struct RuntimeStatusHTTPValuePolicy {
         }
         if initializationInProgress {
             return initializingValue(uptimeText: uptimeText)
+        }
+        if recoveryInProgress {
+            return recoveringValue(uptimeText: uptimeText)
         }
         if updateInProgress {
             return updatingValue(uptimeText: uptimeText)
@@ -77,6 +82,14 @@ public struct RuntimeStatusHTTPValuePolicy {
     public func updatingValue(uptimeText: String?) -> RuntimeStatusHTTPValue {
         RuntimeStatusHTTPValue(
             text: vocabulary.updatingText,
+            severity: .warning,
+            uptimeText: uptimeText
+        )
+    }
+
+    public func recoveringValue(uptimeText: String?) -> RuntimeStatusHTTPValue {
+        RuntimeStatusHTTPValue(
+            text: vocabulary.recoveringText,
             severity: .warning,
             uptimeText: uptimeText
         )

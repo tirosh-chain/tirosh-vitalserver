@@ -5,6 +5,7 @@ public protocol RuntimeStatusServiceValueVocabulary {
     var installingText: String { get }
     var initializingText: String { get }
     var updatingText: String { get }
+    var recoveringText: String { get }
     var unavailableText: String { get }
 
     func launchdStateText(_ state: RuntimeServiceState) -> String
@@ -38,6 +39,7 @@ public struct RuntimeStatusServiceValuePolicy {
         state: RuntimeServiceState?,
         installInProgress: Bool = false,
         initializationInProgress: Bool = false,
+        recoveryInProgress: Bool = false,
         updateInProgress: Bool = false
     ) -> RuntimeStatusServiceValue {
         if installInProgress, serviceStatePolicy.shouldDisplayOperationStateInsteadOfServiceState(state) {
@@ -45,6 +47,9 @@ public struct RuntimeStatusServiceValuePolicy {
         }
         if initializationInProgress, serviceStatePolicy.shouldDisplayOperationStateInsteadOfServiceState(state) {
             return value(vocabulary.initializingText, .warning)
+        }
+        if recoveryInProgress, serviceStatePolicy.shouldDisplayOperationStateInsteadOfServiceState(state) {
+            return value(vocabulary.recoveringText, .warning)
         }
         if updateInProgress, serviceStatePolicy.shouldDisplayOperationStateInsteadOfServiceState(state) {
             return value(vocabulary.updatingText, .warning)

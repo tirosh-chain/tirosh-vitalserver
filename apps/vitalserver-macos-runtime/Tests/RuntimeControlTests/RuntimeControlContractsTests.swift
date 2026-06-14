@@ -585,12 +585,15 @@ final class RuntimeControlContractsTests: XCTestCase {
 
     func testActiveOperationPolicyFallsBackToRuntimeStateForLegacyStatusWithoutProgress() {
         let updating = RuntimeStatus(runtimeState: .updating, operation: .applyBundle)
-        let recovered = RuntimeStatus(runtimeState: .recovering, operation: .activateGuestUpdate)
+        let recoveringUpdate = RuntimeStatus(runtimeState: .recovering, operation: .activateGuestUpdate)
+        let recoveringRollback = RuntimeStatus(runtimeState: .recovering, operation: .rollback)
         let healthy = RuntimeStatus(runtimeState: .healthy, operation: .applyBundle)
         let nonUpdate = RuntimeStatus(runtimeState: .updating, operation: .repairVMDisk)
 
         XCTAssertTrue(RuntimeActiveOperationPolicy.isUpdateInProgress(updating))
-        XCTAssertTrue(RuntimeActiveOperationPolicy.isUpdateInProgress(recovered))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(recoveringUpdate))
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isRecoveryInProgress(recoveringUpdate))
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isRecoveryInProgress(recoveringRollback))
         XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(healthy))
         XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(nonUpdate))
     }

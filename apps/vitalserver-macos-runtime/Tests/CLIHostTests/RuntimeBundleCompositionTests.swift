@@ -108,7 +108,6 @@ final class RuntimeBundleCompositionTests: XCTestCase {
         XCTAssertEqual(events, [
             "shutdown-stop",
             "rollback",
-            "start",
             "release-lease",
         ])
     }

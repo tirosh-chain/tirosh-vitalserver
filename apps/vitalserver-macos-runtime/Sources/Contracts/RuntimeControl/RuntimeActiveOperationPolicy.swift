@@ -28,7 +28,7 @@ public enum RuntimeActiveOperationPolicy {
         guard isUpdateOperation(status.operation) else {
             return false
         }
-        return status.runtimeState == .updating || status.runtimeState == .recovering
+        return status.runtimeState == .updating
     }
 
     public static func isRecoveryOperation(_ operation: RuntimeOperation?) -> Bool {
@@ -51,7 +51,7 @@ public enum RuntimeActiveOperationPolicy {
            isRecoveryOperation(progress.operation) {
             return !isTerminal(progress.phase)
         }
-        guard isRecoveryOperation(status.operation) else {
+        guard isRecoveryOperation(status.operation) || isUpdateOperation(status.operation) else {
             return false
         }
         return status.runtimeState == .recovering

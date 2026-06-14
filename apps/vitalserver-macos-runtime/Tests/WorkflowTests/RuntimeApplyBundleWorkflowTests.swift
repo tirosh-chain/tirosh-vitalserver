@@ -40,7 +40,7 @@ final class RuntimeApplyBundleWorkflowTests: XCTestCase {
         XCTAssertThrowsError(try harness.run())
 
         XCTAssertEqual(harness.rollbackBackup, harness.preflight.backup)
-        XCTAssertEqual(harness.restartedPolicy, harness.preflight.restartPolicy)
+        XCTAssertNil(harness.restartedPolicy)
         XCTAssertEqual(harness.statuses.last?.level, .degraded)
         XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
         XCTAssertTrue(harness.statuses.last?.message.contains("rollback completed") == true)
@@ -64,7 +64,7 @@ final class RuntimeApplyBundleWorkflowTests: XCTestCase {
 
         XCTAssertEqual(harness.guestPoweroffStopVersions, ["0.1.4"])
         XCTAssertEqual(harness.rollbackBackup, harness.preflight.backup)
-        XCTAssertEqual(harness.restartedPolicy, harness.preflight.restartPolicy)
+        XCTAssertNil(harness.restartedPolicy)
         XCTAssertEqual(harness.statuses.last?.level, .degraded)
         XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
         XCTAssertTrue(harness.statuses.last?.message.contains("rollback completed") == true)
@@ -79,7 +79,7 @@ final class RuntimeApplyBundleWorkflowTests: XCTestCase {
 
         XCTAssertEqual(harness.guestPoweroffStopVersions, ["0.1.4"])
         XCTAssertEqual(harness.rollbackBackup, harness.preflight.backup)
-        XCTAssertEqual(harness.restartedPolicy, harness.preflight.restartPolicy)
+        XCTAssertNil(harness.restartedPolicy)
         XCTAssertEqual(harness.statuses.last?.level, .degraded)
         XCTAssertEqual(harness.statuses.last?.operation, .applyBundle)
         XCTAssertTrue(harness.statuses.last?.message.contains("rollback completed") == true)

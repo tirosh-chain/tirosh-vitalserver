@@ -198,7 +198,6 @@ public struct RuntimeApplyBundleWorkflow {
         )
         do {
             try operations.rollback(plan.backup)
-            try operations.startRuntimeServices(plan.restartPolicy)
             operations.writeBestEffortStatus(
                 plan.rollbackCompletedPlan.status,
                 plan.rollbackCompletedPlan.operation,

@@ -7,6 +7,7 @@ public protocol RuntimeStatusVitalServerAvailabilityVocabulary: RuntimeStatusRea
     var installingText: String { get }
     var initializingText: String { get }
     var updatingText: String { get }
+    var recoveringText: String { get }
 }
 
 public struct RuntimeStatusVitalServerAvailabilityValue: Equatable, Sendable {
@@ -50,6 +51,8 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
             text = vocabulary.installingText
         } else if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
             text = vocabulary.initializingText
+        } else if RuntimeActiveOperationPolicy.isRecoveryInProgress(status) {
+            text = vocabulary.recoveringText
         } else if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
             text = vocabulary.updatingText
         } else if !status.effectiveRuntimeInstallationState.isExecutable {
@@ -71,6 +74,7 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
     private func availabilitySeverity(_ status: RuntimeStatus) -> RuntimeStatusReachabilityPolicy.Severity {
         if RuntimeActiveOperationPolicy.isInstallInProgress(status) ||
             RuntimeActiveOperationPolicy.isInitializationInProgress(status) ||
+            RuntimeActiveOperationPolicy.isRecoveryInProgress(status) ||
             RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
             return .warning
         }

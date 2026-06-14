@@ -89,6 +89,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     ) -> [RuntimeStatusAdvancedServiceHealthItem] {
         let installInProgress = RuntimeActiveOperationPolicy.isInstallInProgress(status)
         let initializationInProgress = RuntimeActiveOperationPolicy.isInitializationInProgress(status)
+        let recoveryInProgress = RuntimeActiveOperationPolicy.isRecoveryInProgress(status)
         let updateInProgress = RuntimeActiveOperationPolicy.isUpdateInProgress(status)
         return [
             serviceStateItem(
@@ -96,6 +97,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 state: status.proxyServiceState,
                 installInProgress: installInProgress,
                 initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
                 updateInProgress: updateInProgress
             ),
             serviceStateItem(
@@ -103,6 +105,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 state: status.guestLogSyncServiceState,
                 installInProgress: installInProgress,
                 initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
                 updateInProgress: updateInProgress
             ),
             serviceStateItem(
@@ -110,6 +113,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 state: status.sleepPreventionServiceState,
                 installInProgress: installInProgress,
                 initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
                 updateInProgress: updateInProgress
             ),
             serviceStateItem(
@@ -117,6 +121,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 state: status.watchdogServiceState,
                 installInProgress: installInProgress,
                 initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
                 updateInProgress: updateInProgress
             ),
             vitalServerItem(
@@ -126,6 +131,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 action: .openVitalServer,
                 installInProgress: installInProgress,
                 initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
                 updateInProgress: updateInProgress
             ),
             httpServiceItem(
@@ -135,6 +141,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 action: .openVitalServer,
                 installInProgress: installInProgress,
                 initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
                 updateInProgress: updateInProgress
             ),
             composeServiceItem(
@@ -144,6 +151,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 now: now,
                 installInProgress: installInProgress,
                 initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
                 updateInProgress: updateInProgress
             ),
             httpServiceItem(
@@ -153,6 +161,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 action: .openRedisUI,
                 installInProgress: installInProgress,
                 initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
                 updateInProgress: updateInProgress
             ),
             httpServiceItem(
@@ -162,6 +171,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 action: .openSwagger,
                 installInProgress: installInProgress,
                 initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
                 updateInProgress: updateInProgress
             ),
         ]
@@ -184,6 +194,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         state: RuntimeServiceState?,
         installInProgress: Bool,
         initializationInProgress: Bool,
+        recoveryInProgress: Bool,
         updateInProgress: Bool
     ) -> RuntimeStatusAdvancedServiceHealthItem {
         RuntimeStatusAdvancedServiceHealthItem(
@@ -192,6 +203,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 state: state,
                 installInProgress: installInProgress,
                 initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
                 updateInProgress: updateInProgress
             )),
             httpStatus: nil,
@@ -206,6 +218,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         action: RuntimeStatusServiceActionID,
         installInProgress: Bool,
         initializationInProgress: Bool,
+        recoveryInProgress: Bool,
         updateInProgress: Bool
     ) -> RuntimeStatusAdvancedServiceHealthItem {
         RuntimeStatusAdvancedServiceHealthItem(
@@ -215,6 +228,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 uptimeText: uptimeText,
                 installInProgress: installInProgress,
                 initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
                 updateInProgress: updateInProgress
             )),
             httpStatus: httpStatus,
@@ -229,6 +243,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         action: RuntimeStatusServiceActionID,
         installInProgress: Bool,
         initializationInProgress: Bool,
+        recoveryInProgress: Bool,
         updateInProgress: Bool
     ) -> RuntimeStatusAdvancedServiceHealthItem {
         let computedValue = httpValuePolicy.serviceValue(
@@ -236,6 +251,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             uptimeText: uptimeText,
             installInProgress: installInProgress,
             initializationInProgress: initializationInProgress,
+            recoveryInProgress: recoveryInProgress,
             updateInProgress: updateInProgress
         )
         return RuntimeStatusAdvancedServiceHealthItem(
@@ -258,11 +274,13 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         now: Date,
         installInProgress: Bool,
         initializationInProgress: Bool,
+        recoveryInProgress: Bool,
         updateInProgress: Bool
     ) -> RuntimeStatusAdvancedServiceHealthItem {
         let serviceValue = operationValue(
             installInProgress: installInProgress,
             initializationInProgress: initializationInProgress,
+            recoveryInProgress: recoveryInProgress,
             updateInProgress: updateInProgress
         ) ?? value(composeServiceValuePolicy.serviceValue(
             service: service.rawValue,
@@ -312,6 +330,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     private func operationValue(
         installInProgress: Bool,
         initializationInProgress: Bool,
+        recoveryInProgress: Bool,
         updateInProgress: Bool
     ) -> RuntimeStatusAdvancedServiceHealthValue? {
         if installInProgress {
@@ -319,6 +338,9 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         }
         if initializationInProgress {
             return value(httpValuePolicy.initializingValue(uptimeText: nil))
+        }
+        if recoveryInProgress {
+            return value(httpValuePolicy.recoveringValue(uptimeText: nil))
         }
         if updateInProgress {
             return value(httpValuePolicy.updatingValue(uptimeText: nil))

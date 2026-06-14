@@ -223,6 +223,40 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(GeneratedRelease.redisUIName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
     }
 
+    func testServiceHealthShowsRecoveringForApplyBundleRecovery() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: false,
+            proxyServiceLoaded: false,
+            guestLogSyncServiceLoaded: false,
+            sleepPreventionServiceLoaded: false,
+            watchdogServiceLoaded: true,
+            vmServiceState: .notLoaded,
+            proxyServiceState: .notLoaded,
+            guestLogSyncServiceState: .notLoaded,
+            sleepPreventionServiceState: .notLoaded,
+            watchdogServiceState: .loaded,
+            runtimeState: .recovering,
+            operation: .applyBundle,
+            guestHTTP: "000failed",
+            hostProxyHTTP: nil,
+            redisUIHTTP: "503",
+            swaggerUIHTTP: nil
+        )
+
+        let overall = policy.overallHealth(status: status, observation: nil)
+        let vitalServer = policy.vitalServerAvailability(status: status, observation: nil)
+        let serviceHealth = policy.advancedServiceHealth(status: status, observation: nil)
+
+        XCTAssertEqual(overall.text, AppConstants.StatusText.recovering)
+        XCTAssertEqual(vitalServer.text, AppConstants.StatusText.recovering)
+        XCTAssertEqual(item(AppConstants.Labels.proxyService, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
+        XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
+        XCTAssertEqual(item(AppConstants.Labels.vitalDBObserver, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
+        XCTAssertEqual(item(GeneratedRelease.redisUIName, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
+    }
+
     func testAdvancedServiceHealthShowsInstallingForInitialServiceChangesDuringInstall() {
         let status = RuntimeStatus(
             runtimeInstalled: true,
