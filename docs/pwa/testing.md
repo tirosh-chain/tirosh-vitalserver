@@ -18,6 +18,7 @@ PWA 변경은 최소 아래 명령을 통과해야 합니다.
 npm --prefix apps/vitalserver-runtime-pwa run check
 npm --prefix apps/vitalserver-runtime-pwa test
 npm --prefix apps/vitalserver-runtime-pwa run build
+make pwa/verify-contract
 make e2e/smoke
 ```
 
@@ -51,6 +52,8 @@ E2E_LOOP_COUNT=5 E2E_LOOP_INTERVAL=10 make e2e/local/loop
 Runtime Control API contract는 OpenAPI와 Zod schema 양쪽을 확인합니다.
 
 - `generate:api`로 OpenAPI generated type을 갱신합니다.
+- `make pwa/verify-contract`는 OpenAPI generated type을 임시 생성본과 비교하고, committed generated
+  client가 최신이 아니면 실패합니다.
 - API response는 domain schema에서 검증합니다.
 - feature/page는 raw JSON에 직접 의존하지 않습니다.
 

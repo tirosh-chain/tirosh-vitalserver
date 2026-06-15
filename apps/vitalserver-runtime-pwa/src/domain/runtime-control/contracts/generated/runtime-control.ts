@@ -322,10 +322,30 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create Redis backup
-         * @description Requests a recoverable Redis backup from the runtime guest and returns the command result.
+         * Create Redis-only repair backup
+         * @description Requests a recoverable Redis-only backup from the runtime guest and returns the command result.
          */
         post: operations["createRedisBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/data/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create VitalServer backup
+         * @description Creates a recoverable VitalServer backup, including Redis data, runtime settings, Host runtime state documents, and runtime observability SQLite.
+         */
+        post: operations["createRuntimeDataBackup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -360,8 +380,31 @@ export interface paths {
         get: operations["listHostBackups"];
         put?: never;
         post?: never;
-        /** Delete selected local backup */
+        /**
+         * Delete selected local backup
+         * @description Compatibility deletion endpoint. Browser clients should prefer Delete Update Backup or Delete VitalServer Backup endpoints so the target backup type stays explicit.
+         */
         delete: operations["deleteHostBackup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/host/backups/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete selected update backup
+         * @description Deletes a managed update/rollback backup. This does not delete VitalServer backups or current runtime data.
+         */
+        delete: operations["deleteUpdateBackup"];
         options?: never;
         head?: never;
         patch?: never;
@@ -374,7 +417,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List local Redis backups */
+        /** List local Redis-only repair backups */
         get: operations["listRedisBackups"];
         put?: never;
         post?: never;
@@ -393,8 +436,49 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Restore selected Redis backup */
+        /** Restore selected Redis-only repair backup */
         post: operations["restoreRedisBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/host/backups/vitalserver-helper": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List local VitalServer backups */
+        get: operations["listRuntimeDataBackups"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete selected VitalServer backup
+         * @description Deletes a selected VitalServer backup. This does not delete update rollback backups or current runtime data.
+         */
+        delete: operations["deleteRuntimeDataBackup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/host/backups/vitalserver-helper/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore selected VitalServer backup
+         * @description Restores Redis data, runtime settings, Host runtime state documents, start-on-boot state, and runtime observability SQLite from a verified VitalServer backup.
+         */
+        post: operations["restoreRuntimeDataBackup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -589,6 +673,26 @@ export interface paths {
         };
         /** Read one Vital Recorder by vrcode */
         get: operations["getVitalDBRecorder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vitaldb/recorders/{vrcode}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one Vital Recorder activity chart window
+         * @description Lazy chart window for one VRecorder. The server reads only the selected activity window from the runtime observability SQLite projection.
+         */
+        get: operations["getVitalDBRecorderActivity"];
         put?: never;
         post?: never;
         delete?: never;
@@ -948,6 +1052,37 @@ export interface components {
         };
         /** @enum {string} */
         RuntimeVitalRecorderActivityHistorySource: "sqliteProjection" | "unavailable" | "notProvided";
+        /** @enum {string} */
+        RuntimeVitalRecorderActivityWindowState: "loaded" | "empty" | "invalidRequest" | "readFailed";
+        /**
+         * @default lastHour
+         * @enum {string}
+         */
+        RuntimeVitalRecorderActivityWindowPeriod: "lastHour" | "last4Hours" | "last8Hours" | "last12Hours" | "all";
+        RuntimeVitalRecorderActivityWindowQuery: {
+            vrcode: string;
+            /** @enum {integer} */
+            bucketSeconds: 60 | 300;
+            period: components["schemas"]["RuntimeVitalRecorderActivityWindowPeriod"];
+            pageIndex?: number | null;
+        };
+        RuntimeVitalRecorderActivityWindowPage: {
+            index: number;
+            count: number;
+            windowSeconds: number;
+            windowStartedAt?: string | null;
+            windowEndedAt?: string | null;
+            firstBucketStartedAt?: string | null;
+            latestBucketStartedAt?: string | null;
+        };
+        RuntimeVitalRecorderActivityWindow: {
+            state: components["schemas"]["RuntimeVitalRecorderActivityWindowState"];
+            query: components["schemas"]["RuntimeVitalRecorderActivityWindowQuery"];
+            page: components["schemas"]["RuntimeVitalRecorderActivityWindowPage"];
+            buckets: components["schemas"]["RuntimeVitalRecorderActivityBucket"][];
+            latestSampleAt?: string | null;
+            readError?: string | null;
+        };
         RuntimeVitalRecorderRecord: {
             vrcode: string;
             status: components["schemas"]["RuntimeVitalRecorderStatus"];
@@ -958,15 +1093,39 @@ export interface components {
             patientConnected?: boolean | null;
             firstSeenAt?: string | null;
             lastSeenAt?: string | null;
+            /** @description Number of stored VitalDB observation snapshots that included this VRecorder identity after same-snapshot duplicates were collapsed. */
             observationCount: number;
-            /** @description Number of extra source recorder observations collapsed because they shared this VRecorder identity. */
+            /** @description Number of extra source recorder records collapsed because they shared this VRecorder identity in a snapshot. */
             duplicateObservationCount: number;
             currentAnomalyCount: number;
+            /**
+             * @description Kind of the latest current anomaly for this VRecorder, or null when no current anomaly exists.
+             * @enum {string|null}
+             */
+            latestAnomalyKind?: "offline" | "duplicate-ip" | "backend-unavailable" | "stale-recorder" | "observer-unhealthy" | null;
             latestAnomalySeverity?: components["schemas"]["VitalDBAnomalySeverity"] | null;
+            /** @description Message from the latest current anomaly for this VRecorder, or null when no current anomaly exists. */
+            latestAnomalyMessage?: string | null;
+            /** @description Timestamp of the latest current anomaly for this VRecorder, or null when no current anomaly exists. */
+            latestAnomalyObservedAt?: string | null;
             /** @description True when this recorder is present in the latest VitalDB observation snapshot; false means it is historical. */
             presentInLatestObservation: boolean;
             /** @description Chronological activity samples for the VRecorder, derived from VitalDB observer snapshots. */
             activityTimeline?: components["schemas"]["RuntimeVitalRecorderActivityPoint"][];
+            /** @description Recorder-specific Redis ip_<vrcode> synchronization state reported by the audit proxy. */
+            redisIPSync?: components["schemas"]["RuntimeRecorderRedisIPSyncObservation"] | null;
+        };
+        /** @enum {string} */
+        RuntimeRecorderRedisIPSyncStatus: "unknown" | "unavailable" | "disabled" | "pending" | "written" | "correcting" | "corrected" | "verified" | "mismatch" | "write_failed" | "verify_failed";
+        RuntimeRecorderRedisIPSyncObservation: {
+            status: components["schemas"]["RuntimeRecorderRedisIPSyncStatus"];
+            redisKey?: string | null;
+            selectedIp?: string | null;
+            ipSource?: string | null;
+            redisValue?: string | null;
+            lastWriteAt?: string | null;
+            lastVerifiedAt?: string | null;
+            lastFailure?: string | null;
         };
         /** @description One recorder activity bucket from the VitalDB observer. */
         RuntimeVitalRecorderActivityBucket: {
@@ -995,49 +1154,68 @@ export interface components {
             bedID: string;
             name?: string | null;
             vrcode?: string | null;
+            /** @description Explicit status of the VRecorder linked to this bed, or null when no linked recorder record is available. */
+            linkedRecorderStatus?: components["schemas"]["RuntimeVitalRecorderStatus"] | null;
+            /** @description IP address reported by the VRecorder linked to this bed, or null when no linked recorder record is available. */
+            linkedRecorderIP?: string | null;
+            /** @description Last seen timestamp reported by the VRecorder linked to this bed, or null when no linked recorder record is available. */
+            linkedRecorderLastSeenAt?: string | null;
             status: components["schemas"]["RuntimeVitalBedStatus"];
             patientConnected?: boolean | null;
             firstSeenAt?: string | null;
             lastSeenAt?: string | null;
+            /** @description Number of stored VitalDB observation snapshots that included this bed identity after same-snapshot duplicates were collapsed. */
             observationCount: number;
-            /** @description Number of extra source bed observations collapsed because they shared this bed identity. */
+            /** @description Number of extra source bed records collapsed because they shared this bed identity in a snapshot. */
             duplicateObservationCount: number;
             currentAnomalyCount: number;
+            /**
+             * @description Kind of the latest current anomaly for this bed, or null when no current anomaly exists.
+             * @enum {string|null}
+             */
+            latestAnomalyKind?: "offline" | "duplicate-ip" | "backend-unavailable" | "stale-recorder" | "observer-unhealthy" | null;
             latestAnomalySeverity?: components["schemas"]["VitalDBAnomalySeverity"] | null;
+            /** @description Message from the latest current anomaly for this bed, or null when no current anomaly exists. */
+            latestAnomalyMessage?: string | null;
+            /** @description Timestamp of the latest current anomaly for this bed, or null when no current anomaly exists. */
+            latestAnomalyObservedAt?: string | null;
         };
         /** @enum {string} */
         RuntimeVitalBedStatus: "online" | "stale" | "offline" | "notObserved" | "unknown";
         /** @description Derived assignment and relationship event history between VitalDB beds and VRecorders. */
         RuntimeVitalRelationshipHistory: {
-            assignments?: components["schemas"]["RuntimeVitalBedAssignmentRecord"][];
-            events?: components["schemas"]["RuntimeVitalRelationshipEventRecord"][];
+            state: components["schemas"]["RuntimeVitalRelationshipHistoryState"];
+            assignments: components["schemas"]["RuntimeVitalBedAssignmentRecord"][];
+            events: components["schemas"]["RuntimeVitalRelationshipEventRecord"][];
             /** @description Relationship projection read issue. Present when assignments or relationship events could not be read completely. */
-            readError?: string | null;
+            readError: string | null;
         };
+        /** @enum {string} */
+        RuntimeVitalRelationshipHistoryState: "loaded" | "partiallyLoaded" | "readFailed";
         RuntimeVitalBedAssignmentRecord: {
-            assignmentID?: string;
-            bedID?: string;
-            bedName?: string | null;
-            vrcode?: string;
-            startedAt?: string;
-            endedAt?: string | null;
-            lastSeenAt?: string | null;
-            lastObservedAt?: string;
-            status?: components["schemas"]["RuntimeVitalBedStatus"];
-            patientConnected?: boolean | null;
-            observationCount?: number;
+            assignmentID: string;
+            bedID: string;
+            bedName: string | null;
+            vrcode: string;
+            startedAt: string;
+            endedAt: string | null;
+            lastSeenAt: string | null;
+            lastObservedAt: string;
+            status: components["schemas"]["RuntimeVitalBedStatus"];
+            patientConnected: boolean | null;
+            observationCount: number;
         };
         RuntimeVitalRelationshipEventRecord: {
-            eventID?: string;
-            observedAt?: string;
-            eventType?: components["schemas"]["RuntimeVitalRelationshipEventType"];
-            severity?: components["schemas"]["RuntimeVitalRelationshipSeverity"];
-            bedID?: string | null;
-            bedName?: string | null;
-            vrcode?: string | null;
-            previousVrcode?: string | null;
-            previousBedID?: string | null;
-            message?: string;
+            eventID: string;
+            observedAt: string;
+            eventType: components["schemas"]["RuntimeVitalRelationshipEventType"];
+            severity: components["schemas"]["RuntimeVitalRelationshipSeverity"];
+            bedID: string | null;
+            bedName: string | null;
+            vrcode: string | null;
+            previousVrcode: string | null;
+            previousBedID: string | null;
+            message: string;
         };
         /** @enum {string} */
         RuntimeVitalRelationshipEventType: "handoff" | "duplicateAssignment" | "unlinkedBed" | "unlinkedRecorder" | "staleLink";
@@ -1180,12 +1358,16 @@ export interface components {
             auditFileWriteFailures: number;
             auditStdoutWriteFailures: number;
             redisIpWriteFailures: number;
+            redisIpVerifyFailures: number;
+            redisIpVerifyMismatches: number;
         };
         RuntimeRecorderConnectionObservation: {
             vrcode: string;
             activeConnections: number;
             selectedIp?: string | null;
+            ipSource?: string | null;
             lastSeenAt?: string | null;
+            redisIpSync?: components["schemas"]["RuntimeRecorderRedisIPSyncObservation"] | null;
         };
         RuntimeContainerServiceObservation: {
             service: string;
@@ -1197,7 +1379,7 @@ export interface components {
             uptimeSeconds?: number | null;
         };
         /** @enum {string} */
-        RuntimeState: "installing" | "updating" | "recovering" | "healthy" | "degraded" | "critical";
+        RuntimeState: "installing" | "initializing" | "updating" | "recovering" | "healthy" | "degraded" | "critical";
         ResourceUsage: {
             [key: string]: unknown;
         } | null;
@@ -1214,7 +1396,7 @@ export interface components {
             minimumDiskGiB: number;
             /** @enum {string} */
             networkMode: "shared" | "bridged";
-            bridgedInterface: string;
+            bridgedInterface: string | null;
             proxyPort: number;
             runtimeControlPort: number;
             vitalFilesDirectory: string;
@@ -1228,7 +1410,11 @@ export interface components {
             startOnBootConfigurable: boolean;
             autoRecoveryEnabled: boolean;
             preventSystemSleep: boolean;
-            redisBackupRetentionCount: number;
+            automaticBackupEnabled: boolean;
+            backupScheduleTimes: string[];
+            backupRetentionCount: number;
+            logArchiveRetentionDays: number;
+            logArchiveMaximumGiB: number;
             restartAfterSave: boolean;
         };
         RuntimeSettingsReadIssue: {
@@ -1252,6 +1438,7 @@ export interface components {
             runtimeHomePath?: string;
             backupsPath?: string;
             redisBackupsPath?: string;
+            runtimeDataBackupsPath?: string;
         };
         RuntimeControlCommandResponse: {
             result?: components["schemas"]["RuntimeCommandResult"];
@@ -1894,6 +2081,19 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    createRuntimeDataBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CommandResult"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     uninstallRuntime: {
         parameters: {
             query?: never;
@@ -1949,6 +2149,23 @@ export interface operations {
             501: components["responses"]["NotImplemented"];
         };
     };
+    deleteUpdateBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeBackupRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["CommandResult"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
     listRedisBackups: {
         parameters: {
             query?: never;
@@ -1958,7 +2175,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Local Redis backup list */
+            /** @description Local Redis-only repair backup list */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1971,6 +2188,61 @@ export interface operations {
         };
     };
     restoreRedisBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeBackupRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["CommandResult"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    listRuntimeDataBackups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Local VitalServer backup list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeBackup"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    deleteRuntimeDataBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeBackupRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["CommandResult"];
+            501: components["responses"]["NotImplemented"];
+        };
+    };
+    restoreRuntimeDataBackup: {
         parameters: {
             query?: never;
             header?: never;
@@ -2220,6 +2492,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuntimeVitalRecorderRecord"] | null;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getVitalDBRecorderActivity: {
+        parameters: {
+            query?: {
+                bucketSeconds?: 60 | 300;
+                period?: components["schemas"]["RuntimeVitalRecorderActivityWindowPeriod"];
+                pageIndex?: number;
+            };
+            header?: never;
+            path: {
+                vrcode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Vital Recorder activity window */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeVitalRecorderActivityWindow"];
                 };
             };
             401: components["responses"]["Unauthorized"];

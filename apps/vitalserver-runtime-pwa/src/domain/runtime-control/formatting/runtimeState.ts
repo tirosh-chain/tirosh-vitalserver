@@ -1,5 +1,6 @@
 const runtimeStateLabels: Record<string, string> = {
   installing: "Installing",
+  initializing: "Initializing",
   updating: "Updating",
   recovering: "Recovering",
   healthy: "Healthy",
@@ -21,6 +22,7 @@ export function runtimeStateTone(
     case "healthy":
       return "success";
     case "installing":
+    case "initializing":
     case "updating":
     case "recovering":
     case "degraded":

@@ -118,7 +118,7 @@ function recordJoinVr(payload, context, options, { audit, vrIdentityStore, metri
     truncated: Boolean(options.truncated),
     ...context.ip,
   });
-  vrIdentityStore.setRecorderIp(vrcode, context.ip && context.ip.selected_ip, config.vitalServer.ipWriteDelayMs);
+  vrIdentityStore.setRecorderIp(vrcode, context.ip && context.ip.selected_ip, config.vitalServer.ipRewrite);
 }
 
 module.exports = { createSocketIoAuditService, socketIoBinaryAttachmentPayload };

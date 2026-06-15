@@ -1,0 +1,8 @@
+[Unit]
+Description=VitalServer Redis Restore
+After=tirosh-vitalserver-compose.service
+Requires=tirosh-vitalserver-compose.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/tirosh-vitalserver-redis-restore

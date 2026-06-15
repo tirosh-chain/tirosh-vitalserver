@@ -61,3 +61,25 @@ def test_guest_operation_result_reports_explicit_shutdown_phase() -> None:
     document = result.as_json()
 
     assert document["shutdownPhase"] == ShutdownPhase.POWEROFF_REQUESTED.value
+
+
+def test_guest_operation_result_reports_optional_details() -> None:
+    result = GuestOperationResult(
+        operation=OperationName.PREPARE_UPDATE_SHUTDOWN,
+        request_id="req-4",
+        schema_version=2,
+        status=OperationStatus.FAILED,
+        message="failed",
+        updated_at="2026-06-01T00:00:00Z",
+        details={
+            "failedService": "app",
+            "remainingServices": ["app", "redis"],
+        },
+    )
+
+    document = result.as_json()
+
+    assert document["details"] == {
+        "failedService": "app",
+        "remainingServices": ["app", "redis"],
+    }

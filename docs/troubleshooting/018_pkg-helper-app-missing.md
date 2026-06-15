@@ -26,7 +26,7 @@ payload에는 app bundle이 있어도 macOS Installer가 bundle을 relocatable c
 
 조치:
 
-`make vm-pkg`는 `Support/Packaging/components.plist.template`을 `vm-build.toml` 값으로 렌더링한 뒤 `pkgbuild --component-plist`에 넘깁니다. 여기서 `BundleIsRelocatable=false`를 명시합니다.
+`make dist/pkg/dev`는 `Support/Packaging/components.plist.template`을 `vm-build.toml` 값으로 렌더링한 뒤 `pkgbuild --component-plist`에 넘깁니다. 여기서 `BundleIsRelocatable=false`를 명시합니다.
 
 ```text
 Applications/VitalServer Helper.app

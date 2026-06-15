@@ -9,6 +9,7 @@
     "prepareUpdateShutdown": true,
     "activateUpdate": true,
     "redisBackup": true,
+    "redisRestore": true,
     "repairDatastore": true
   },
   "cpuUsagePercent": 12.5,

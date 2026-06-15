@@ -14,14 +14,14 @@
 
 ## 목표
 
-이 저장소의 목표는 VitalServer fork를 제품 기준으로 고정하고, 외곽 레이어를 쌓아 운영
-가능한 제품 구성요소로 만드는 것입니다. Compose, 문서, 검증 도구는 이 저장소에서 관리하고,
-VitalServer 애플리케이션 자체 수정은 fork repository에서 관리합니다.
+이 저장소의 목표는 원본 VitalServer를 명시 upstream snapshot으로 고정하고, 외곽 레이어를 쌓아
+운영 가능한 제품 구성요소로 만드는 것입니다. Compose, 문서, 검증 도구는 이 저장소에서 관리하고,
+VitalServer 애플리케이션 자체 수정은 기본 제품 경로로 삼지 않습니다.
 
 우리가 관리하는 영역:
 
 - Docker Compose 기반 실행 환경
-- fork된 VitalServer를 감싸는 wrapper app과 runtime shim
+- 원본 VitalServer를 감싸는 wrapper app과 runtime shim
 - API와 Socket.IO 동작 문서화
 - Redis 데이터 구조 분석과 relay 설계
 - 실시간 수집, `.vital` upload, 장시간 운영 검증 도구
@@ -47,7 +47,7 @@ VitalServer 애플리케이션 자체 수정은 fork repository에서 관리합�
 ├── docs/                       # 문서 지도, 제품화 문서, OpenAPI, Redis 구조
 ├── packages/vitalserver-testkit/
 │   └── src/                    # 운영 검증용 Python CLI/package
-└── vendor/vitalserver/         # tirosh-chain/vitalserver fork submodule
+└── vendor/vitalserver/         # original vitaldb/vitalserver submodule
 ```
 
 기본 로컬 endpoint:
@@ -61,11 +61,11 @@ OpenAPI 문서에는 이 proxy server만 노출해서, Swagger의 `Try it out`�
 걸리지 않도록 합니다.
 
 ```sh
-make app/up            # proxy와 기본 stack 실행
-make open          # VitalServer 브라우저 열기
-make app/restart       # proxy와 기본 stack 재시작
-make app/down          # proxy와 전체 Compose stack 중지, Docker volume 유지
-make app/clean/volumes # proxy와 전체 Compose stack 중지, Docker volume 삭제
+make compose/up            # proxy와 기본 Compose sandbox 실행
+make compose/open          # VitalServer 브라우저 열기
+make compose/restart       # proxy와 기본 stack 재시작
+make compose/down          # proxy와 전체 Compose stack 중지, Docker volume 유지
+make compose/clean/volumes # proxy와 전체 Compose stack 중지, Docker volume 삭제
 
 make swagger/up       # 기본 stack은 건드리지 않고 Swagger UI만 시작
 make swagger/down     # 기본 stack은 유지하고 Swagger UI만 중지
@@ -94,12 +94,10 @@ Web Monitoring의 `Network Settings`는 Socket.IO `join_vr` 처리 시 저장된
 forwarding을 직접 거치면 container 내부에서는 실제 VR IP 대신 Docker gateway IP가 보일 수
 있습니다.
 
-fork된 VitalServer는 `VITALSERVER_TRUST_PROXY=1`일 때만 `X-Forwarded-For`,
-`Forwarded: for=...`, `X-Real-IP`, `X-Client-IP` header를 우선 사용합니다. 기본값은 기존처럼
-socket remote address를 사용합니다. 따라서 macOS 운영 환경에서는 VR 접속이 host-level
-proxy나 ingress를 지나면서 실제 client IP header를 전달하도록 구성하고,
-`VITALSERVER_TRUST_PROXY=1`을 명시적으로 켭니다. Docker container 내부에서만 network 정보를
-읽어서는 NAT 이전의 VR IP를 복원할 수 없습니다.
+원본 VitalServer는 proxy forwarding header를 신뢰하지 않고 socket remote address를 사용합니다.
+따라서 macOS 운영 환경에서는 VR 접속이 host-level proxy와 audit proxy를 지나면서 selected client
+IP를 audit proxy가 계산하고, 같은 Redis `ip_<vrcode>` key를 bounded verify/rewrite로 보정합니다.
+Docker container 내부에서만 network 정보를 읽어서는 NAT 이전의 VR IP를 복원할 수 없습니다.
 
 macOS 운영 서버에서는 Docker published port를 외부에 직접 노출하지 않고, host nginx가
 외부 접속을 받은 뒤 Docker backend로 proxy합니다.
@@ -145,16 +143,16 @@ make proxy/config
 forwarding header를 신뢰하지 않고 host nginx의 `$remote_addr`로 덮어써서 VitalServer에
 전달합니다.
 
-로컬 PoC에서는 Homebrew nginx를 설치한 뒤 `make app/up`으로 proxy와 Docker backend를 함께 실행합니다.
+로컬 PoC에서는 Homebrew nginx를 설치한 뒤 `make compose/up`으로 proxy와 Docker backend를 함께 실행합니다.
 기본 proxy port는 80이므로 nginx 실행 시 관리자 권한이 필요할 수 있습니다.
 
 ```sh
-make app/up
+make compose/up
 make proxy/status
-make app/down
+make compose/down
 ```
 
-`make app/up`은 Docker backend를 loopback으로 올리고, `.tmp/macos-nginx/vitalserver.conf`를 생성한 뒤
+`make compose/up`은 Docker backend를 loopback으로 올리고, `.tmp/macos-nginx/vitalserver.conf`를 생성한 뒤
 해당 config로 nginx를 실행합니다. Homebrew service를 등록하거나 launchd를 수정하지 않습니다.
 
 설치형 배포에서는 nginx binary와 config를 macOS host에 설치하고 launchd로 관리합니다.
@@ -203,10 +201,15 @@ Redis에 저장되는 핵심 key는 아래입니다.
 
 ### 실행
 
-- `make app/up`으로 깨끗한 환경에서 재현 가능하게 실행됩니다.
+- `make compose/up`으로 깨끗한 환경에서 재현 가능하게 실행됩니다.
 - 제품 VM의 포트, 관리자 비밀번호, Swagger 포트는 deploy `runtime-config.json`으로 조정합니다.
-- 일회성 override는 `VITALSERVER_PROXY_PORT=8080 make app/up`처럼 Make 변수로 넘깁니다.
-- VitalServer fork submodule은 명시적으로 고정하고, 변경 시 submodule commit을 리뷰합니다.
+- 일회성 override는 `VITALSERVER_PROXY_PORT=8080 make compose/up`처럼 Make 변수로 넘깁니다.
+- VitalServer upstream submodule은 원본 `vitaldb/vitalserver` commit으로 명시적으로 고정합니다.
+- `repo/verify-submodule`은 release review gate에서 approved upstream commit과 compatibility
+  contract를 compile 전에 검증합니다.
+- 새 upstream commit을 검토할 때는 `repo/verify-submodule-candidate`로 compatibility를 먼저
+  확인하고, runtime smoke까지 통과한 뒤 `config/upstream-vitalserver-contract.json`의
+  `approvedCommits`에 추가합니다.
 
 ### API
 

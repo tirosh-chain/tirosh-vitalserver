@@ -41,6 +41,9 @@ from tirosh_vitalserver.devtools.application.usecases import (
     update_bundle as update_bundle_usecases,
 )
 from tirosh_vitalserver.devtools.application.usecases import (
+    upstream_vitalserver as upstream_vitalserver_usecases,
+)
+from tirosh_vitalserver.devtools.application.usecases import (
     workspace as workspace_usecases,
 )
 from tirosh_vitalserver.devtools.config.build_toml import (
@@ -123,6 +126,7 @@ def main() -> int:
                 output=args.output,
                 force=args.force,
                 compression_threads=args.compression_threads,
+                expected_run_id=args.expected_run_id,
             )
         )
     )
@@ -185,6 +189,7 @@ def main() -> int:
     guest_deploy.add_argument("--runtime-dir", type=Path, required=True)
     guest_deploy.add_argument("--deploy-dir", type=Path)
     guest_deploy.add_argument("--docker-bundle", type=Path)
+    guest_deploy.add_argument("--rootfs-run-id")
     guest_deploy.set_defaults(
         handler=lambda args: guest_services_usecases.stage_guest_deployment(
             usecase_inputs.GuestDeploymentInput(
@@ -193,6 +198,7 @@ def main() -> int:
                 runtime_dir=args.runtime_dir,
                 deploy_dir=args.deploy_dir,
                 docker_bundle=args.docker_bundle,
+                rootfs_run_id=args.rootfs_run_id,
             )
         )
     )
@@ -205,6 +211,31 @@ def main() -> int:
     require_branch.set_defaults(
         handler=lambda args: toolchain_usecases.require_git_branch(
             usecase_inputs.RequireGitBranchInput(branch=args.branch)
+        )
+    )
+
+    verify_upstream = subparsers.add_parser(
+        "verify-upstream-vitalserver",
+        help="verify the pinned upstream VitalServer submodule contract",
+    )
+    verify_upstream.add_argument(
+        "--mode",
+        choices=("approved", "candidate"),
+        default="approved",
+    )
+    verify_upstream.add_argument("--manifest", type=Path)
+    verify_upstream.add_argument(
+        "--require-remote-commit",
+        action="store_true",
+        help="also verify the checked-out commit exists in the manifest remote",
+    )
+    verify_upstream.set_defaults(
+        handler=lambda args: upstream_vitalserver_usecases.verify_upstream_vitalserver(
+            usecase_inputs.VerifyUpstreamVitalServerInput(
+                mode=upstream_vitalserver_usecases.parse_verification_mode(args.mode),
+                manifest=args.manifest,
+                require_remote_commit=args.require_remote_commit,
+            )
         )
     )
 
@@ -248,6 +279,22 @@ def main() -> int:
         handler=(
             lambda args: installed_runtime_usecases.check_installed_runtime_health(
                 usecase_inputs.InstalledHealthInput(
+                    config=args.config,
+                    proxy_port=args.proxy_port,
+                )
+            )
+        )
+    )
+
+    installed_smoke = subparsers.add_parser(
+        "macos-installed-smoke",
+        help="run installed macOS runtime smoke checks",
+    )
+    installed_smoke.add_argument("--proxy-port", required=True)
+    installed_smoke.set_defaults(
+        handler=(
+            lambda args: installed_runtime_usecases.smoke_installed_runtime(
+                usecase_inputs.InstalledSmokeInput(
                     config=args.config,
                     proxy_port=args.proxy_port,
                 )
@@ -344,6 +391,97 @@ def main() -> int:
         ),
     )
 
+    runtime_require_no_running = subparsers.add_parser(
+        "macos-runtime-require-no-running",
+        help="fail if a VM launcher process already uses the VM home",
+    )
+    runtime_require_no_running.add_argument("--vm-home", type=Path, required=True)
+    runtime_require_no_running.set_defaults(
+        handler=lambda args: macos_runtime_usecases.require_no_running(
+            usecase_inputs.RuntimeVmHomeInput(
+                config=args.config,
+                vm_home=args.vm_home,
+            )
+        ),
+    )
+
+    runtime_force_stop = subparsers.add_parser(
+        "macos-runtime-force-stop",
+        help="force stop VM launcher processes that explicitly use the VM home",
+    )
+    runtime_force_stop.add_argument("--vm-home", type=Path, required=True)
+    runtime_force_stop.add_argument("--timeout", type=int, required=True)
+    runtime_force_stop.set_defaults(
+        handler=lambda args: macos_runtime_usecases.force_stop(
+            runtime_wait_input(args)
+        ),
+    )
+
+    runtime_rootfs_begin = subparsers.add_parser(
+        "macos-runtime-rootfs-begin",
+        help="start a new golden rootfs proof run and invalidate stale proof files",
+    )
+    runtime_rootfs_begin.add_argument("--vm-home", type=Path, required=True)
+    runtime_rootfs_begin.add_argument("--run-id", required=True)
+    runtime_rootfs_begin.set_defaults(
+        handler=lambda args: macos_runtime_usecases.begin_rootfs_run(
+            usecase_inputs.RootfsRunInput(
+                config=args.config,
+                vm_home=args.vm_home,
+                run_id=args.run_id,
+            )
+        ),
+    )
+
+    runtime_rootfs_preflight = subparsers.add_parser(
+        "macos-runtime-preflight-golden-rootfs",
+        help=(
+            "fail fast when golden rootfs inputs or external dependencies "
+            "block VM preparation"
+        ),
+    )
+    runtime_rootfs_preflight.add_argument("--vm-home", type=Path, required=True)
+    runtime_rootfs_preflight.add_argument("--expected-run-id", required=True)
+    runtime_rootfs_preflight.set_defaults(
+        handler=lambda args: macos_runtime_usecases.preflight_golden_rootfs(
+            usecase_inputs.GoldenRootfsPreflightInput(
+                config=args.config,
+                vm_home=args.vm_home,
+                expected_run_id=args.expected_run_id,
+            )
+        ),
+    )
+
+    runtime_boot_smoke_begin = subparsers.add_parser(
+        "macos-runtime-boot-smoke-begin",
+        help="start a new runtime boot smoke run and invalidate stale proof files",
+    )
+    runtime_boot_smoke_begin.add_argument("--vm-home", type=Path, required=True)
+    runtime_boot_smoke_begin.add_argument("--run-id", required=True)
+    runtime_boot_smoke_begin.set_defaults(
+        handler=lambda args: macos_runtime_usecases.begin_runtime_boot_smoke(
+            usecase_inputs.RuntimeBootSmokeRunInput(
+                config=args.config,
+                vm_home=args.vm_home,
+                run_id=args.run_id,
+            )
+        ),
+    )
+
+    runtime_data_disk = subparsers.add_parser(
+        "macos-runtime-prepare-runtime-data-disk",
+        help="prepare an ephemeral runtime data disk and record it in VM config",
+    )
+    runtime_data_disk.add_argument("--vm-home", type=Path, required=True)
+    runtime_data_disk.set_defaults(
+        handler=lambda args: macos_runtime_usecases.prepare_runtime_data(
+            usecase_inputs.RuntimeVmHomeInput(
+                config=args.config,
+                vm_home=args.vm_home,
+            )
+        ),
+    )
+
     runtime_ip = subparsers.add_parser(
         "macos-runtime-ip",
         help="print the guest VM IP recorded by the runtime",
@@ -388,8 +526,22 @@ def main() -> int:
     )
     runtime_wait_rootfs.add_argument("--vm-home", type=Path, required=True)
     runtime_wait_rootfs.add_argument("--timeout", type=int, required=True)
+    runtime_wait_rootfs.add_argument("--expected-run-id")
     runtime_wait_rootfs.set_defaults(
         handler=lambda args: macos_runtime_usecases.wait_rootfs_ready(
+            runtime_wait_input(args)
+        ),
+    )
+
+    runtime_wait_boot_smoke = subparsers.add_parser(
+        "macos-runtime-wait-runtime-boot-smoke",
+        help="wait until runtime boot smoke manifest reports passed",
+    )
+    runtime_wait_boot_smoke.add_argument("--vm-home", type=Path, required=True)
+    runtime_wait_boot_smoke.add_argument("--timeout", type=int, required=True)
+    runtime_wait_boot_smoke.add_argument("--expected-run-id")
+    runtime_wait_boot_smoke.set_defaults(
+        handler=lambda args: macos_runtime_usecases.wait_runtime_boot_smoke(
             runtime_wait_input(args)
         ),
     )
@@ -532,6 +684,34 @@ def main() -> int:
         ),
     )
 
+    release_update_bundle_apply_smoke = subparsers.add_parser(
+        "release-update-bundle-apply-smoke",
+        help="apply a release update bundle to the installed runtime",
+    )
+    release_update_bundle_apply_smoke.add_argument(
+        "--release-file",
+        type=Path,
+        required=True,
+    )
+    release_update_bundle_apply_smoke.add_argument("--bundle-name")
+    release_update_bundle_apply_smoke.add_argument(
+        "--bundle-kind",
+        choices=["product-update", "vm-image-update"],
+        default="product-update",
+    )
+    release_update_bundle_apply_smoke.add_argument("--output-dir", type=Path)
+    release_update_bundle_apply_smoke.set_defaults(
+        handler=lambda args: macos_update_bundle_usecases.apply_smoke_update_bundle(
+            usecase_inputs.ApplySmokeReleaseUpdateBundleInput(
+                config=args.config,
+                release_file=args.release_file,
+                bundle_name=args.bundle_name,
+                bundle_kind=args.bundle_kind,
+                output_dir=args.output_dir,
+            )
+        ),
+    )
+
     release_pkg = subparsers.add_parser(
         "release-pkg",
         help="build a macOS runtime pkg from release.json",
@@ -553,6 +733,53 @@ def main() -> int:
         handler=lambda args: macos_package_usecases.build_dmg(
             release_package_input(args)
         ),
+    )
+
+    release_dmg_verify = subparsers.add_parser(
+        "release-dmg-verify",
+        help="verify a generated macOS runtime dmg artifact from release.json",
+    )
+    release_dmg_verify.add_argument("--release-file", type=Path, required=True)
+    release_dmg_verify.add_argument("--output", type=Path)
+    release_dmg_verify.set_defaults(
+        handler=lambda args: macos_package_usecases.verify_dmg_artifact(
+            usecase_inputs.ReleaseDmgArtifactVerifyInput(
+                config=args.config,
+                release_file=args.release_file,
+                output=args.output,
+            )
+        )
+    )
+
+    release_troubleshooting_tools = subparsers.add_parser(
+        "release-troubleshooting-tools",
+        help="stage macOS Troubleshooting Tools from release.json",
+    )
+    add_release_troubleshooting_tools_arguments(release_troubleshooting_tools)
+    release_troubleshooting_tools.set_defaults(
+        handler=lambda args: macos_package_usecases.build_troubleshooting_tools(
+            release_troubleshooting_tools_input(args)
+        )
+    )
+
+    release_troubleshooting_tools_verify = subparsers.add_parser(
+        "release-troubleshooting-tools-verify",
+        help="verify staged macOS Troubleshooting Tools from release.json",
+    )
+    release_troubleshooting_tools_verify.add_argument(
+        "--release-file",
+        type=Path,
+        required=True,
+    )
+    release_troubleshooting_tools_verify.add_argument("--output", type=Path)
+    release_troubleshooting_tools_verify.set_defaults(
+        handler=lambda args: macos_package_usecases.verify_troubleshooting_tools(
+            usecase_inputs.ReleaseTroubleshootingToolsVerifyInput(
+                config=args.config,
+                release_file=args.release_file,
+                output=args.output,
+            )
+        )
     )
 
     macos_package_clean = subparsers.add_parser(
@@ -805,6 +1032,7 @@ def runtime_wait_input(
         config=args.config,
         vm_home=args.vm_home,
         timeout=args.timeout,
+        expected_run_id=getattr(args, "expected_run_id", None),
     )
 
 
@@ -888,6 +1116,19 @@ def release_package_input(
     )
 
 
+def release_troubleshooting_tools_input(
+    args: argparse.Namespace,
+) -> usecase_inputs.ReleaseTroubleshootingToolsInput:
+    return usecase_inputs.ReleaseTroubleshootingToolsInput(
+        config=args.config,
+        release_file=args.release_file,
+        output=args.output,
+        sdkroot=args.sdkroot,
+        clang_module_cache=args.clang_module_cache,
+        codesign_identity=args.codesign_identity,
+    )
+
+
 def add_release_package_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--release-file", type=Path, required=True)
     parser.add_argument("--output", type=Path)
@@ -904,11 +1145,22 @@ def add_release_package_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--docker-platform")
 
 
+def add_release_troubleshooting_tools_arguments(
+    parser: argparse.ArgumentParser,
+) -> None:
+    parser.add_argument("--release-file", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--sdkroot")
+    parser.add_argument("--clang-module-cache")
+    parser.add_argument("--codesign-identity", default="-")
+
+
 def add_rootfs_base_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--force", type=parse_bool, default=False)
     parser.add_argument("--compression-threads", type=int)
+    parser.add_argument("--expected-run-id")
 
 
 def add_proxy_arguments(parser: argparse.ArgumentParser) -> None:

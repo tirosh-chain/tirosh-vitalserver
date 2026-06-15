@@ -1,12 +1,12 @@
 # VitalServer wrapper app
 
-이 디렉터리는 `vendor/vitalserver`에 고정한 VitalServer fork를 제품 실행 단위로 감싸는
+이 디렉터리는 `vendor/vitalserver`에 고정한 원본 VitalServer snapshot을 제품 실행 단위로 감싸는
 app입니다.
 
 VitalServer 코드는 이 디렉터리에 복사해 두지 않습니다. 각 배포 target은 root build context의
 `vendor/vitalserver/vitalserver-old`를 가져오고, 이 app에서 관리하는 runtime shim만
-추가합니다. 현재는 Docker target만 둡니다. VitalServer 애플리케이션 자체 수정은
-`tirosh-chain/vitalserver` fork에서 처리합니다.
+추가합니다. 현재는 Docker target만 둡니다. VitalServer 애플리케이션 자체 수정은 기본 제품 경로로
+삼지 않고, wrapper/runtime sidecar에서 필요한 운영 보정을 수행합니다.
 
 ## 구성
 
@@ -33,10 +33,9 @@ upstream VitalServer는 Redis client를 `0.0.0.0:6379`로 생성합니다. wrapp
 값을 `VITALSERVER_REDIS_HOST`, `VITALSERVER_REDIS_PORT`로 보정해 Compose 내부 Redis service에
 연결합니다. 그래서 app container가 redis container의 network namespace를 공유하지 않아도 됩니다.
 
-VR 접속이 신뢰할 수 있는 host-level proxy나 ingress를 지날 때는 `.env`에서
-`VITALSERVER_TRUST_PROXY=1`을 켜면 fork된 VitalServer가 `X-Forwarded-For`,
-`Forwarded: for=...`, `X-Real-IP`, `X-Client-IP` header를 실제 VR IP 후보로 사용합니다.
-기본값은 `0`이며 기존처럼 socket remote address를 사용합니다.
+VR 접속이 신뢰할 수 있는 host-level proxy나 ingress를 지날 때 실제 VR IP 선택과 Redis
+`ip_<vrcode>` 보정은 `vitalserver-audit-proxy`가 담당합니다. 원본 VitalServer에는 proxy-header
+IP patch를 넣지 않습니다.
 
 macOS Docker Desktop에서는 Docker published port를 VR 장비에 직접 노출하지 말고, host
 nginx 같은 proxy가 외부 접속을 받은 뒤 Docker backend로 전달해야 실제 VR IP를 header로
@@ -48,7 +47,6 @@ VITALSERVER_BIND_HOST=127.0.0.1
 VITALSERVER_HTTP_PORT=18080
 VITALSERVER_REDIS_HOST=redis
 VITALSERVER_REDIS_PORT=6379
-VITALSERVER_TRUST_PROXY=1
 ```
 
 외부 장비와 브라우저는 macOS host nginx의 public port로 접속합니다.

@@ -1,0 +1,320 @@
+import Application
+import Contracts
+import Domain
+import Foundation
+import Errors
+
+public struct RollbackRuntimeExecutionContext: Equatable, Sendable {
+    public let rootfsBase: URL
+    public let runtimeVersion: URL
+    public let vmDisk: URL
+    public let managerAppPath: URL
+    public let nginxDirectory: URL
+    public let deployDirectory: URL
+
+    public init(
+        rootfsBase: URL,
+        runtimeVersion: URL,
+        vmDisk: URL,
+        managerAppPath: URL,
+        nginxDirectory: URL,
+        deployDirectory: URL
+    ) {
+        self.rootfsBase = rootfsBase
+        self.runtimeVersion = runtimeVersion
+        self.vmDisk = vmDisk
+        self.managerAppPath = managerAppPath
+        self.nginxDirectory = nginxDirectory
+        self.deployDirectory = deployDirectory
+    }
+}
+
+public struct RollbackRuntimeStepExecutionContext: Equatable, Sendable {
+    public let rootfsBase: URL
+    public let runtimeVersion: URL
+    public let managerAppPath: URL
+    public let nginxDirectory: URL
+    public let deployDirectory: URL
+
+    public init(
+        rootfsBase: URL,
+        runtimeVersion: URL,
+        managerAppPath: URL,
+        nginxDirectory: URL,
+        deployDirectory: URL
+    ) {
+        self.rootfsBase = rootfsBase
+        self.runtimeVersion = runtimeVersion
+        self.managerAppPath = managerAppPath
+        self.nginxDirectory = nginxDirectory
+        self.deployDirectory = deployDirectory
+    }
+}
+
+public struct RollbackRuntimeOperations {
+    public let resolveBackupSelection: (RollbackRuntimeBackupSelection) throws -> URL
+    public let observeBackupDirectory: (URL) -> RollbackRuntimeBackupDirectoryObservation
+    public let loadBackupManifest: (URL) throws -> BackupManifest
+    public let observeBackupRootfs: (RollbackRuntimeBackupPlan) -> RollbackRuntimeBackupRootfsObservation
+    public let serviceRestartPolicy: () -> RuntimeServiceRestartPolicy
+    public let observeStepRequiredInput: (
+        RuntimeWorkflowStep,
+        RollbackPreflightContext,
+        RollbackRuntimeStepRequiredInput
+    ) -> RollbackRuntimeStepRequiredInputObservation
+    public let stopRuntimeServices: () throws -> Void
+    public let replaceFile: (URL, URL) throws -> Void
+    public let writeRuntimeVersion: (String, URL) throws -> Void
+    public let restoreBackupPathIfExists: (URL, URL) throws -> Void
+    public let restoreRuntimeToolsIfExists: (URL) throws -> Void
+    public let startRuntimeServices: (RuntimeServiceRestartPolicy) throws -> Void
+    public let waitForHealth: (RuntimeServiceRestartPolicy) throws -> Void
+    public let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
+    public let writeProgress: (RuntimeStepExecutionEvent) throws -> Void
+    public let describeError: (Error) -> String
+    public let log: (String) -> Void
+
+    public init(
+        resolveBackupSelection: @escaping (RollbackRuntimeBackupSelection) throws -> URL,
+        observeBackupDirectory: @escaping (URL) -> RollbackRuntimeBackupDirectoryObservation,
+        loadBackupManifest: @escaping (URL) throws -> BackupManifest,
+        observeBackupRootfs: @escaping (RollbackRuntimeBackupPlan) -> RollbackRuntimeBackupRootfsObservation,
+        serviceRestartPolicy: @escaping () -> RuntimeServiceRestartPolicy,
+        observeStepRequiredInput: @escaping (
+            RuntimeWorkflowStep,
+            RollbackPreflightContext,
+            RollbackRuntimeStepRequiredInput
+        ) -> RollbackRuntimeStepRequiredInputObservation,
+        stopRuntimeServices: @escaping () throws -> Void,
+        replaceFile: @escaping (URL, URL) throws -> Void,
+        writeRuntimeVersion: @escaping (String, URL) throws -> Void,
+        restoreBackupPathIfExists: @escaping (URL, URL) throws -> Void,
+        restoreRuntimeToolsIfExists: @escaping (URL) throws -> Void,
+        startRuntimeServices: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        waitForHealth: @escaping (RuntimeServiceRestartPolicy) throws -> Void,
+        writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
+        writeProgress: @escaping (RuntimeStepExecutionEvent) throws -> Void,
+        describeError: @escaping (Error) -> String,
+        log: @escaping (String) -> Void
+    ) {
+        self.resolveBackupSelection = resolveBackupSelection
+        self.observeBackupDirectory = observeBackupDirectory
+        self.loadBackupManifest = loadBackupManifest
+        self.observeBackupRootfs = observeBackupRootfs
+        self.serviceRestartPolicy = serviceRestartPolicy
+        self.observeStepRequiredInput = observeStepRequiredInput
+        self.stopRuntimeServices = stopRuntimeServices
+        self.replaceFile = replaceFile
+        self.writeRuntimeVersion = writeRuntimeVersion
+        self.restoreBackupPathIfExists = restoreBackupPathIfExists
+        self.restoreRuntimeToolsIfExists = restoreRuntimeToolsIfExists
+        self.startRuntimeServices = startRuntimeServices
+        self.waitForHealth = waitForHealth
+        self.writeStatus = writeStatus
+        self.writeProgress = writeProgress
+        self.describeError = describeError
+        self.log = log
+    }
+}
+
+public struct RollbackRuntimeWorkflow {
+    public init() {}
+
+    public func run(
+        _ command: RuntimeRollbackCommand,
+        context: RollbackRuntimeExecutionContext,
+        operations: RollbackRuntimeOperations
+    ) throws {
+        let useCase = RollbackRuntimeUseCase()
+        let preflight = try preparePreflight(command, operations: operations, useCase: useCase)
+        let startedPlan = useCase.rollbackStartedPlan(backupPath: preflight.backup.path)
+        operations.log(startedPlan.logMessage)
+        try operations.writeStatus(startedPlan.status, startedPlan.operation, startedPlan.statusMessage)
+
+        let plan = useCase.planRollback(for: preflight)
+        try RuntimeOperationPlanRunner.run(
+            plan: plan.operationPlan,
+            status: .recovering,
+            execute: { step in
+                try executeStep(
+                    step,
+                    preflight: preflight,
+                    context: context.stepContext,
+                    operations: operations,
+                    useCase: useCase
+                )
+            },
+            publish: { event in
+                operations.log(useCase.rollbackProgressLogMessage(event: event))
+                writeProgressBestEffort(event, operations: operations)
+            }
+        )
+
+        let completedPlan = useCase.rollbackCompletedPlan(
+            backupPath: preflight.backup.path,
+            vmDiskPath: context.vmDisk.path
+        )
+        try operations.writeStatus(
+            completedPlan.statusPlan.status,
+            completedPlan.statusPlan.operation,
+            completedPlan.statusPlan.message
+        )
+        operations.log(completedPlan.restoredBackupLogMessage)
+        operations.log(completedPlan.preservedVMDiskLogMessage)
+    }
+
+    public func preparePreflight(
+        _ command: RuntimeRollbackCommand,
+        operations: RollbackRuntimeOperations
+    ) throws -> RollbackPreflightContext {
+        try preparePreflight(command, operations: operations, useCase: RollbackRuntimeUseCase())
+    }
+
+    public func executeStep(
+        _ step: RuntimeWorkflowStep,
+        preflight: RollbackPreflightContext,
+        context: RollbackRuntimeStepExecutionContext,
+        operations: RollbackRuntimeOperations
+    ) throws {
+        try executeStep(step, preflight: preflight, context: context, operations: operations, useCase: RollbackRuntimeUseCase())
+    }
+
+    private func preparePreflight(
+        _ command: RuntimeRollbackCommand,
+        operations: RollbackRuntimeOperations,
+        useCase: RollbackRuntimeUseCase
+    ) throws -> RollbackPreflightContext {
+        let backup = try operations.resolveBackupSelection(useCase.rollbackBackupSelection(command: command))
+        let manifestBackup = try executeBackupDirectoryDecision(
+            useCase.rollbackBackupDirectoryDecision(observation: operations.observeBackupDirectory(backup))
+        )
+        let manifest = try operations.loadBackupManifest(manifestBackup)
+        let backupPlan = useCase.rollbackBackupPlan(backup: backup, manifest: manifest)
+        let resolvedBackupPlan = try executeBackupRootfsDecision(
+            useCase.rollbackBackupRootfsDecision(observation: operations.observeBackupRootfs(backupPlan))
+        )
+
+        let restartPolicy = operations.serviceRestartPolicy()
+        let preflightPlan = useCase.rollbackPreflightPlan(backup: backup, restartPolicy: restartPolicy)
+        operations.log(preflightPlan.serviceRestartLogMessage)
+
+        return RollbackPreflightContext(
+            backup: resolvedBackupPlan.backup,
+            backupRootfs: resolvedBackupPlan.backupRootfs,
+            backupVersion: resolvedBackupPlan.backupVersion,
+            restoresRootfsBase: resolvedBackupPlan.restoresRootfsBase,
+            restartPolicy: restartPolicy
+        )
+    }
+
+    private func executeStep(
+        _ step: RuntimeWorkflowStep,
+        preflight: RollbackPreflightContext,
+        context: RollbackRuntimeStepExecutionContext,
+        operations: RollbackRuntimeOperations,
+        useCase: RollbackRuntimeUseCase
+    ) throws {
+        let requiredInput = useCase.rollbackStepRequiredInput(step: step, preflight: preflight)
+        let executionPlan = useCase.rollbackStepExecutionPlan(
+            step: step,
+            preflight: preflight,
+            rootfsBase: context.rootfsBase,
+            runtimeVersion: context.runtimeVersion,
+            managerAppPath: context.managerAppPath,
+            nginxDirectory: context.nginxDirectory,
+            deployDirectory: context.deployDirectory,
+            observation: operations.observeStepRequiredInput(step, preflight, requiredInput)
+        )
+        try executeRollbackStepPlan(executionPlan, operations: operations)
+    }
+
+    private func executeBackupDirectoryDecision(
+        _ decision: RollbackRuntimeBackupDirectoryDecision
+    ) throws -> URL {
+        switch decision {
+        case .loadManifest(let backup):
+            return backup
+        case .failed(let message):
+            throw RollbackRuntimeUseCaseError.operationFailed(message)
+        }
+    }
+
+    private func executeBackupRootfsDecision(
+        _ decision: RollbackRuntimeBackupRootfsDecision
+    ) throws -> RollbackRuntimeBackupPlan {
+        switch decision {
+        case .proceed(let plan):
+            return plan
+        case .failed(let message):
+            throw RollbackRuntimeUseCaseError.operationFailed(message)
+        }
+    }
+
+    private func writeProgressBestEffort(
+        _ event: RuntimeStepExecutionEvent,
+        operations: RollbackRuntimeOperations
+    ) {
+        do {
+            try operations.writeProgress(event)
+        } catch {
+            operations.log(RuntimeOperationReportingUseCase().progressWriteFailedLogMessage(
+                event: event,
+                reason: operations.describeError(error)
+            ))
+        }
+    }
+
+    private func executeRollbackStepPlan(
+        _ plan: RollbackRuntimeStepExecutionPlan,
+        operations: RollbackRuntimeOperations
+    ) throws {
+        switch plan {
+        case .stopRuntimeServices:
+            try operations.stopRuntimeServices()
+        case .restoreRootfsBase(let source, let destination):
+            try operations.replaceFile(source, destination)
+        case .restoreRuntimeVersion(let decision):
+            try executeRollbackVersionRestoreDecision(decision, operations: operations)
+        case .restoreUpdateArtifacts(let restorePlan):
+            for artifact in restorePlan.directoryRestores {
+                try operations.restoreBackupPathIfExists(
+                    artifact.backupPath,
+                    artifact.restoreDestination
+                )
+            }
+            try operations.restoreRuntimeToolsIfExists(restorePlan.runtimeToolsBackup)
+        case .startRuntimeServices(let restartPolicy):
+            try operations.startRuntimeServices(restartPolicy)
+        case .waitRuntimeHealth(let restartPolicy):
+            try operations.waitForHealth(restartPolicy)
+        case .failed(let failureMessage), .unsupported(let failureMessage):
+            throw RollbackRuntimeUseCaseError.operationFailed(failureMessage)
+        }
+    }
+
+    private func executeRollbackVersionRestoreDecision(
+        _ decision: RollbackRuntimeVersionRestoreDecision,
+        operations: RollbackRuntimeOperations
+    ) throws {
+        switch decision {
+        case .restoreBackupVersion(let source, let destination):
+            try operations.replaceFile(source, destination)
+        case .writeExplicitRollbackMarker(let version, let destinationDirectory):
+            try operations.writeRuntimeVersion(version, destinationDirectory)
+        case .failed(let message):
+            throw RollbackRuntimeUseCaseError.operationFailed(message)
+        }
+    }
+}
+
+private extension RollbackRuntimeExecutionContext {
+    var stepContext: RollbackRuntimeStepExecutionContext {
+        RollbackRuntimeStepExecutionContext(
+            rootfsBase: rootfsBase,
+            runtimeVersion: runtimeVersion,
+            managerAppPath: managerAppPath,
+            nginxDirectory: nginxDirectory,
+            deployDirectory: deployDirectory
+        )
+    }
+}

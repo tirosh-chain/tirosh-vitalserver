@@ -2,20 +2,22 @@
 VM_MACOS_RUNTIME_DIR := apps/vitalserver-macos-runtime
 VM_HOME ?= $(HOME)/.tirosh/vitalserver-vm
 
-# Release channel selection.
+# Public build knobs: release channel selection.
 VM_DEV_RELEASE_FILE ?= $(VM_MACOS_RUNTIME_DIR)/release-dev.json
 VM_STABLE_RELEASE_FILE ?= $(VM_MACOS_RUNTIME_DIR)/release.json
+
+# Internal orchestration: public targets set this to the selected release file.
 VM_RELEASE_FILE ?= $(VM_STABLE_RELEASE_FILE)
 
-# Release guard.
+# Public build knobs: release guard.
 VM_RELEASE_BRANCH ?= main
 
-# Build options.
+# Public build knobs: artifact build options.
 VM_COMPRESSION_THREADS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 VM_CODESIGN_IDENTITY ?= -
 VM_BRIDGED_CODESIGN_IDENTITY ?= $(VM_CODESIGN_IDENTITY)
 
-# Host toolchain.
+# Host toolchain knobs.
 VM_SDKROOT ?= $(firstword $(wildcard /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk) $(shell xcrun --sdk macosx --show-sdk-path 2>/dev/null))
 VM_BUILD_RUNNER := $(DEVTOOLS_RUNNER)
 VM_LLVM_COV ?= xcrun llvm-cov

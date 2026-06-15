@@ -1,5 +1,6 @@
 import Contracts
 import XCTest
+import Errors
 
 final class RuntimeHostStateContractTests: XCTestCase {
     func testRuntimeServiceStateKeepsReadFailureDistinctFromNotLoaded() throws {
@@ -12,6 +13,60 @@ final class RuntimeHostStateContractTests: XCTestCase {
         XCTAssertFalse(decoded.isLoaded)
         XCTAssertTrue(decoded.isReadFailure)
         XCTAssertNotEqual(decoded, .notLoaded)
+    }
+
+    func testRuntimeFileStateKeepsInspectFailureDistinctFromMissing() throws {
+        let state = RuntimeFileState.inspectFailed("permission denied")
+
+        let encoded = try JSONEncoder().encode(state)
+        let decoded = try JSONDecoder().decode(RuntimeFileState.self, from: encoded)
+
+        XCTAssertEqual(decoded, state)
+        XCTAssertNotEqual(decoded, .missing)
+        XCTAssertFalse(decoded.isExecutable)
+    }
+
+    func testRuntimePathStateKeepsPathKindsAndInspectionFailuresDistinct() throws {
+        let states: [RuntimePathState] = [
+            .file,
+            .directory,
+            .other("symbolicLink"),
+            .missing,
+            .inspectFailed("permission denied"),
+        ]
+
+        let encoded = try JSONEncoder().encode(states)
+        let decoded = try JSONDecoder().decode([RuntimePathState].self, from: encoded)
+
+        XCTAssertEqual(decoded, states)
+        XCTAssertTrue(decoded[0].isPresent)
+        XCTAssertTrue(decoded[1].isPresent)
+        XCTAssertTrue(decoded[2].isPresent)
+        XCTAssertFalse(decoded[3].isPresent)
+        XCTAssertFalse(decoded[4].isPresent)
+        XCTAssertNotEqual(decoded[4], .missing)
+    }
+
+    func testRuntimeProxyPortReadStateKeepsFailureMeaningsDistinctFromLoadedPort() throws {
+        let states: [RuntimeProxyPortReadState] = [
+            .loaded(80),
+            .missing("entry does not exist"),
+            .empty,
+            .invalid("not-a-port"),
+            .outOfRange(70000),
+            .commandFailed(exitCode: 2, reason: "permission denied"),
+        ]
+
+        let encoded = try JSONEncoder().encode(states)
+        let decoded = try JSONDecoder().decode([RuntimeProxyPortReadState].self, from: encoded)
+
+        XCTAssertEqual(decoded, states)
+        XCTAssertEqual(decoded[0].port, 80)
+        for state in decoded.dropFirst() {
+            XCTAssertNil(state.port)
+            XCTAssertTrue(state.failureReasons.contains(.hostProxyConfigInvalid))
+            XCTAssertNotEqual(state, .loaded(80))
+        }
     }
 
     func testRuntimeVMProcessStateEncodesBlockingState() throws {
@@ -35,6 +90,40 @@ final class RuntimeHostStateContractTests: XCTestCase {
         XCTAssertNotEqual(decoded, RuntimeVMProcessState.stopped)
     }
 
+    func testRuntimeVMProcessStopStatePolicyKeepsBlockingStatesExplicit() {
+        XCTAssertNil(RuntimeVMProcessStopStatePolicy.blockingFailureMessage(for: .stopped))
+        XCTAssertNil(RuntimeVMProcessStopStatePolicy.blockingFailureMessage(for: .stalePid(pid: 123)))
+
+        XCTAssertEqual(
+            RuntimeVMProcessStopStatePolicy.blockingFailureMessage(for: .pidFileMissing),
+            "VM process pid file is missing; process stop state is not proven"
+        )
+        XCTAssertEqual(
+            RuntimeVMProcessStopStatePolicy.blockingFailureMessage(
+                for: .signalFailed(pid: 123, signal: 15, errnoCode: 1)
+            ),
+            "failed to send signal to VM process pid=123 signal=15 errno=1"
+        )
+        XCTAssertEqual(
+            RuntimeVMProcessStopStatePolicy.blockingFailureMessage(
+                for: .stopTimedOut(pid: 123, timeoutSeconds: 30)
+            ),
+            "VM process did not stop within 30s pid=123 pidFile state=stop-timed-out: pid=123 timeout-seconds=30"
+        )
+    }
+
+    func testRuntimeVMProcessStopStatePolicyAllowsMissingPidFileOnlyWhenExplicitlyRequested() {
+        XCTAssertFalse(RuntimeVMProcessStopStatePolicy.isSuccessfulStopState(.pidFileMissing))
+        XCTAssertTrue(RuntimeVMProcessStopStatePolicy.isSuccessfulStopState(
+            .pidFileMissing,
+            allowMissingPidFile: true
+        ))
+        XCTAssertNil(RuntimeVMProcessStopStatePolicy.blockingFailureMessage(
+            for: .pidFileMissing,
+            allowMissingPidFile: true
+        ))
+    }
+
     func testRuntimePackageReceiptStateKeepsPresentAndReadFailureDistinctFromAbsent() throws {
         let states: [RuntimePackageReceiptState] = [
             .present(identifier: "ai.tirosh.vitalserver.helper"),
@@ -55,6 +144,8 @@ final class RuntimeHostStateContractTests: XCTestCase {
 
     func testRuntimeFreshInstallStatesKeepFailedAndBlockingStatesDistinct() throws {
         let settingsStates: [RuntimeInstallSettingsState] = [
+            .missing(path: "/private/tmp/tirosh-vitalserver-install.json"),
+            .proxyPortMissing(path: "/private/tmp/tirosh-vitalserver-install.json"),
             .defaulted(path: "/private/tmp/tirosh-vitalserver-install.json", proxyPort: 80),
             .loaded(path: "/private/tmp/tirosh-vitalserver-install.json", proxyPort: 8080),
             .readFailed(path: "/private/tmp/tirosh-vitalserver-install.json", reason: "permission denied"),
@@ -85,10 +176,12 @@ final class RuntimeHostStateContractTests: XCTestCase {
         )
 
         XCTAssertEqual(settingsDecoded, settingsStates)
-        XCTAssertFalse(settingsDecoded[0].blocksFreshInstall)
-        XCTAssertFalse(settingsDecoded[1].blocksFreshInstall)
-        XCTAssertTrue(settingsDecoded[2].blocksFreshInstall)
-        XCTAssertTrue(settingsDecoded[3].blocksFreshInstall)
+        XCTAssertTrue(settingsDecoded[0].blocksFreshInstall)
+        XCTAssertTrue(settingsDecoded[1].blocksFreshInstall)
+        XCTAssertFalse(settingsDecoded[2].blocksFreshInstall)
+        XCTAssertFalse(settingsDecoded[3].blocksFreshInstall)
+        XCTAssertTrue(settingsDecoded[4].blocksFreshInstall)
+        XCTAssertTrue(settingsDecoded[5].blocksFreshInstall)
         XCTAssertEqual(artifactDecoded, artifactStates)
         XCTAssertFalse(artifactDecoded[0].blocksFreshInstall)
         XCTAssertTrue(artifactDecoded[1].blocksFreshInstall)

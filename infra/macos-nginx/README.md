@@ -33,7 +33,7 @@ VITALSERVER_PUBLIC_PORT=
 VM shared/NAT mode에서는 backend upstream을 VM endpoint로 바꿉니다.
 
 ```sh
-VM_PROXY_UPSTREAM=<vm-ip>:80 make vm-proxy-start
+VM_PROXY_UPSTREAM=<vm-ip>:80 make runtime/proxy/start
 ```
 
 ## nginx config 렌더링

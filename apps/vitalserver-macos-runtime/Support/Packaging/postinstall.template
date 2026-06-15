@@ -98,6 +98,7 @@ remove_package_owned_artifacts() {
     "ai.tirosh.vitalserver.helper.proxy"
     "ai.tirosh.vitalserver.helper.vm"
     "ai.tirosh.vitalserver.helper.sleep-prevention"
+    "ai.tirosh.vitalserver.helper.automatic-backup"
   )
   local label plist
 

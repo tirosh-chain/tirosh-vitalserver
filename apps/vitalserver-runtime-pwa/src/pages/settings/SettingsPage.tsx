@@ -18,6 +18,7 @@ import {
   validateRuntimeSettings,
   type RuntimeCapabilityReadState
 } from "@/domain/runtime-control/settings/runtimeSettingsPolicy";
+import { sameHostRuntimeURL } from "@/domain/runtime-control/formatting/http";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { ErrorState } from "@/components/ErrorState";
 import { Panel } from "@/components/Panel";
@@ -91,6 +92,8 @@ export function SettingsPage() {
   const canEditLocalFiles = capabilities.data?.canOpenLocalFiles === true;
   const canControlServices =
     capabilities.data?.canControlRuntimeServices === true;
+  const systemTimeZone =
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "system local time";
   const capabilityReadState: RuntimeCapabilityReadState = capabilities.isPending
     ? "loading"
     : capabilities.isError
@@ -138,14 +141,23 @@ export function SettingsPage() {
 
   const proxyPort = parseOptionalNumber(draft.proxyPort);
   const runtimeControlPort = parseOptionalNumber(draft.runtimeControlPort);
+  const browserHostname = currentBrowserHostname();
+  const sameHostVitalServerURL = sameHostRuntimeURL({
+    hostname: browserHostname,
+    port: proxyPort
+  });
+  const sameHostRemoteConsoleURL = sameHostRuntimeURL({
+    hostname: browserHostname,
+    port: runtimeControlPort
+  });
   const runtimeControlURLPreview =
     runtimeControlPort === undefined
       ? "Remote Console port is not available."
-      : `Port ${runtimeControlPort}`;
+      : sameHostRemoteConsoleURL ?? "Browser host is not available.";
   const defaultAdvertisedURLPreview =
     proxyPort === undefined
       ? "Proxy port is not available."
-      : `http://(same host):${proxyPort}/`;
+      : sameHostVitalServerURL ?? "Browser host is not available.";
   const advertisedPort = parseOptionalNumber(draft.publicPort);
   const customAdvertisedURLPreview =
     draft.publicHost.trim() && advertisedPort !== undefined
@@ -159,6 +171,18 @@ export function SettingsPage() {
     capabilityReadState,
     capabilities: capabilities.data
   });
+  const backupAppliedState = runtimeSettings
+    ? backupAppliedSettingsSummary(settings.data, runtimeSettings, systemTimeZone)
+    : "";
+  const logArchiveAppliedState = runtimeSettings
+    ? logArchiveAppliedSettingsSummary(settings.data, runtimeSettings)
+    : "";
+  const backupSettingsPending = runtimeSettings
+    ? backupSettingsChanged(settings.data, runtimeSettings)
+    : false;
+  const logArchiveSettingsPending = runtimeSettings
+    ? logArchiveSettingsChanged(settings.data, runtimeSettings)
+    : false;
 
   return (
     <div className="page-stack">
@@ -301,7 +325,10 @@ export function SettingsPage() {
         )}
       </Panel>
 
-      <Panel title="Storage and Redis data">
+      <Panel title="Storage and VitalServer Helper backups">
+        <p className={settingsApplyStateClassName(backupSettingsPending)}>
+          {backupAppliedState}
+        </p>
         <div className="settings-grid">
           <label>
             Vital files directory
@@ -314,23 +341,91 @@ export function SettingsPage() {
               }
             />
           </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={draft.automaticBackupEnabled}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("automaticBackupEnabled", event.target.checked)
+              }
+            />
+            Automatic backups
+          </label>
+          <p className="muted full-width">
+            Schedule timezone: {systemTimeZone} (system local time).
+          </p>
           <label>
-            Redis backups
+            Backup times
+            <input
+              value={draft.backupScheduleTimes}
+              disabled={!canControlServices}
+              placeholder="03:15, 15:15"
+              pattern="^([01][0-9]|2[0-3]):[0-5][0-9](,\s*([01][0-9]|2[0-3]):[0-5][0-9])*$"
+              onChange={(event) =>
+                updateField("backupScheduleTimes", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            Backup archives
             <input
               type="number"
               min="1"
               max="30"
-              value={draft.redisBackupRetentionCount}
+              value={draft.backupRetentionCount}
               disabled={!canControlServices}
               onChange={(event) =>
-                updateField("redisBackupRetentionCount", event.target.value)
+                updateField("backupRetentionCount", event.target.value)
               }
             />
           </label>
         </div>
 
         <p className="muted">
-          Redis backup retention keeps up to 30 recoverable archives.
+          Backup times use 24-hour HH:mm format, such as 03:15 or 15:15, and
+          each time must be unique.{" "}
+          VitalServer Helper backup retention keeps up to 30 recoverable archives,
+          including Redis data.
+        </p>
+      </Panel>
+
+      <Panel title="Logs">
+        <p className={settingsApplyStateClassName(logArchiveSettingsPending)}>
+          {logArchiveAppliedState}
+        </p>
+        <div className="settings-grid">
+          <label>
+            Log archive retention
+            <input
+              type="number"
+              min="1"
+              max="30"
+              value={draft.logArchiveRetentionDays}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("logArchiveRetentionDays", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            Log archive size limit
+            <input
+              type="number"
+              min="1"
+              max="20"
+              value={draft.logArchiveMaximumGiB}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("logArchiveMaximumGiB", event.target.value)
+              }
+            />
+          </label>
+        </div>
+
+        <p className="muted">
+          Managed YYYY-MM-DD log archive folders are pruned by age first, then by
+          total size. Non-date folders are not automatically removed.
         </p>
       </Panel>
 
@@ -418,6 +513,10 @@ export function SettingsPage() {
   );
 }
 
+function currentBrowserHostname(): string | undefined {
+  return globalThis.location?.hostname;
+}
+
 function changedRuntimeControlPortValue(
   runtimeControlPort: number | undefined
 ): number | null {
@@ -431,3 +530,63 @@ function changedRuntimeControlPortValue(
 
   return runtimeControlPort;
 }
+
+function backupAppliedSettingsSummary(
+  applied: RuntimeSettingsDraftSource,
+  draft: RuntimeSettingsDraftSource,
+  systemTimeZone: string
+): string {
+  const prefix = backupSettingsChanged(applied, draft)
+    ? "Not applied yet. Applied"
+    : "Applied";
+  const automaticBackupText = applied.automaticBackupEnabled
+    ? "Automatic backups on"
+    : "Automatic backups off";
+  const scheduleTimes = applied.backupScheduleTimes.join(", ");
+
+  return `${prefix}: ${automaticBackupText} · ${scheduleTimes} · ${systemTimeZone} · keep ${applied.backupRetentionCount} archives`;
+}
+
+function logArchiveAppliedSettingsSummary(
+  applied: RuntimeSettingsDraftSource,
+  draft: RuntimeSettingsDraftSource
+): string {
+  const prefix = logArchiveSettingsChanged(applied, draft)
+    ? "Not applied yet. Applied"
+    : "Applied";
+
+  return `${prefix}: keep ${applied.logArchiveRetentionDays} days · max ${applied.logArchiveMaximumGiB} GiB`;
+}
+
+function backupSettingsChanged(
+  applied: RuntimeSettingsDraftSource,
+  draft: RuntimeSettingsDraftSource
+): boolean {
+  return (
+    applied.automaticBackupEnabled !== draft.automaticBackupEnabled ||
+    applied.backupRetentionCount !== draft.backupRetentionCount ||
+    applied.backupScheduleTimes.join("\n") !== draft.backupScheduleTimes.join("\n")
+  );
+}
+
+function logArchiveSettingsChanged(
+  applied: RuntimeSettingsDraftSource,
+  draft: RuntimeSettingsDraftSource
+): boolean {
+  return (
+    applied.logArchiveRetentionDays !== draft.logArchiveRetentionDays ||
+    applied.logArchiveMaximumGiB !== draft.logArchiveMaximumGiB
+  );
+}
+
+function settingsApplyStateClassName(pending: boolean): string {
+  return pending ? "settings-apply-state pending" : "settings-apply-state";
+}
+
+type RuntimeSettingsDraftSource = {
+  automaticBackupEnabled: boolean;
+  backupScheduleTimes: string[];
+  backupRetentionCount: number;
+  logArchiveRetentionDays: number;
+  logArchiveMaximumGiB: number;
+};

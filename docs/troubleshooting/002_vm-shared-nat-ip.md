@@ -34,10 +34,10 @@ host nginx를 경유하면 VRecorder 원 IP 보존이 가능합니다.
 VM이 병원 LAN IP를 직접 받는 구조를 검증하려면 bridged mode를 사용합니다.
 
 ```sh
-make vm-interfaces
+make runtime/interfaces
 VM_BRIDGED_CODESIGN_IDENTITY="Developer ID Application: ..." \
 VM_BRIDGED_INTERFACE=en0 \
-make vm-up-bridged
+make runtime/up-bridged
 ```
 
 ## Follow-up

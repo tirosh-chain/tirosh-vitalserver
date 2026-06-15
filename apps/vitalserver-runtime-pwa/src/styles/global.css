@@ -189,6 +189,14 @@
     @apply font-medium text-app-muted;
   }
 
+  .settings-apply-state {
+    @apply mb-4 mt-0 rounded-control border border-app-border bg-app-control/35 px-3 py-2 text-sm font-extrabold text-app-muted;
+  }
+
+  .settings-apply-state.pending {
+    @apply border-app-warning/40 text-app-text;
+  }
+
   .warning-list {
     @apply mb-4 grid gap-1 text-sm font-bold text-app-danger;
   }
@@ -350,6 +358,10 @@
     @apply w-full;
   }
 
+  .settings-grid .full-width {
+    @apply lg:col-span-2;
+  }
+
   .settings-toggles {
     @apply mb-3.5 flex flex-wrap gap-[18px];
   }
@@ -509,6 +521,37 @@
     @apply mb-4 mt-0 text-lg font-extrabold;
   }
 
+  .form-error {
+    @apply my-2 font-bold text-app-danger;
+    overflow-wrap: anywhere;
+  }
+
+  .relationship-list {
+    @apply mt-4 grid gap-2;
+  }
+
+  .relationship-list h4 {
+    @apply m-0 text-sm font-extrabold text-app-muted;
+  }
+
+  .relationship-rows {
+    @apply grid gap-2;
+  }
+
+  .relationship-row {
+    @apply grid items-baseline gap-2 text-sm;
+    grid-template-columns: minmax(120px, 0.7fr) minmax(180px, 1.6fr) minmax(120px, 0.7fr);
+  }
+
+  .relationship-row span {
+    @apply text-app-muted;
+    overflow-wrap: anywhere;
+  }
+
+  .relationship-row span:last-child {
+    @apply text-right;
+  }
+
   .recorder-activity {
     @apply grid gap-4;
   }
@@ -519,6 +562,18 @@
 
   .chart-toolbar select {
     @apply min-w-[120px];
+  }
+
+  .activity-window-control {
+    @apply flex flex-wrap items-center gap-3.5;
+  }
+
+  .activity-window-control label {
+    @apply inline-flex min-w-[260px] flex-1 items-center gap-3 font-bold text-app-muted;
+  }
+
+  .activity-window-control input[type="range"] {
+    @apply min-w-[180px] flex-1 accent-app-accent;
   }
 
   .chart-meta {
@@ -631,6 +686,14 @@
 
     .activity-chart {
       min-height: 220px;
+    }
+
+    .relationship-row {
+      grid-template-columns: 1fr;
+    }
+
+    .relationship-row span:last-child {
+      @apply text-left;
     }
   }
 

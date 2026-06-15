@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -25,6 +28,7 @@ from tirosh_vitalserver.devtools.application.guest_service_plans import (
     docker_image_bundle_build_plan,
 )
 from tirosh_vitalserver.devtools.application.inputs import (
+    ApplySmokeReleaseUpdateBundleInput,
     NginxBundleInput,
     ReleaseUpdateBundleInput,
     VerifyReleaseUpdateBundleInput,
@@ -167,25 +171,81 @@ def build_update_bundle(input: ReleaseUpdateBundleInput) -> int:
 
 
 def verify_update_bundle(input: VerifyReleaseUpdateBundleInput) -> int:
-    root = repo_root()
-    settings = load_macos_release_settings(input.config, root)
-    release_file = resolve_path(root, input.release_file)
-    release = load_release_manifest(release_file)
-    bundle_name = release_update_bundle_name(
-        channel=release.channel,
+    bundle_path = release_update_bundle_path(
+        config=input.config,
+        release_file=input.release_file,
+        bundle_name=input.bundle_name,
         bundle_kind=input.bundle_kind,
-        release_label=release.release_label,
-        explicit_name=input.bundle_name,
+        output_dir=input.output_dir,
     )
-    output_dir = (
-        resolve_path(root, input.output_dir)
-        if input.output_dir
-        else settings.dist_dir / "update-bundles"
-    )
-    bundle_path = output_dir / f"{bundle_name}.tar.gz"
     verify_bundle(bundle_path)
     print(f"update bundle verified: {bundle_path}")
     return 0
+
+
+def apply_smoke_update_bundle(input: ApplySmokeReleaseUpdateBundleInput) -> int:
+    root = repo_root()
+    settings = load_macos_release_settings(input.config, root)
+    bundle_path = release_update_bundle_path(
+        config=input.config,
+        release_file=input.release_file,
+        bundle_name=input.bundle_name,
+        bundle_kind=input.bundle_kind,
+        output_dir=input.output_dir,
+    )
+    vm_cli = Path(settings.install.vm_cli)
+    if not bundle_path.is_file():
+        raise SystemExit(f"missing update bundle for apply smoke: {bundle_path}")
+    if not vm_cli.is_file() or not os.access(vm_cli, os.X_OK):
+        raise SystemExit(
+            f"installed runtime CLI is missing or not executable: {vm_cli}"
+        )
+    print(f"update apply smoke started bundle={bundle_path} cli={vm_cli}", flush=True)
+    result = subprocess.run(
+        ["sudo", str(vm_cli), "runtime", "apply-bundle", str(bundle_path)],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode != 0:
+        raise SystemExit(
+            f"update apply smoke failed exitCode={result.returncode}: "
+            f"sudo {vm_cli} runtime apply-bundle {bundle_path}. "
+            "Run from an interactive administrator shell or configure sudo "
+            "credentials before running dist/*/apply-smoke targets."
+        )
+    print(f"update apply smoke completed bundle={bundle_path}")
+    return 0
+
+
+def release_update_bundle_path(
+    *,
+    config: Path,
+    release_file: Path,
+    bundle_name: str | None,
+    bundle_kind: str,
+    output_dir: Path | None,
+) -> Path:
+    root = repo_root()
+    settings = load_macos_release_settings(config, root)
+    resolved_release_file = resolve_path(root, release_file)
+    release = load_release_manifest(resolved_release_file)
+    bundle_name = release_update_bundle_name(
+        channel=release.channel,
+        bundle_kind=bundle_kind,
+        release_label=release.release_label,
+        explicit_name=bundle_name,
+    )
+    output_dir = (
+        resolve_path(root, output_dir)
+        if output_dir
+        else settings.dist_dir / "update-bundles"
+    )
+    return output_dir / f"{bundle_name}.tar.gz"
 
 
 def build_docker_image_bundles_from_config(

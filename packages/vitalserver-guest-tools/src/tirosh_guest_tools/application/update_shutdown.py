@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import time
+from typing import Any
 
+from tirosh_guest_tools.adapters.outbound.observability.collectors import (
+    OBSERVABILITY_DIR,
+)
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.contexts import PrepareUpdateShutdownContext
 from tirosh_guest_tools.application.observability import (
@@ -25,6 +30,7 @@ from tirosh_guest_tools.infrastructure.common import (
     mount_runtime_share,
     request_id_from,
     request_version_from,
+    run,
     systemctl,
     utc_now,
     write_json,
@@ -33,6 +39,11 @@ from tirosh_guest_tools.infrastructure.common import (
 REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.value
 RESULT_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_RESULT.value
 LOG_FILE = RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_LOG.value
+SIDECAR_STOP_TIMEOUT_SECONDS = 30.0
+SIDECAR_STOP_POLL_SECONDS = 0.5
+REDIS_BACKUP_ACTIVE_WAIT_TIMEOUT_SECONDS = 300.0
+FINAL_SYNC_TIMEOUT_SECONDS = 60.0
+POWEROFF_REQUEST_TIMEOUT_SECONDS = 15.0
 logger = logging.getLogger(__name__)
 
 
@@ -50,12 +61,15 @@ def run_prepare_update_shutdown() -> None:
         run_prepare(context)
     except Exception as error:
         logger.exception("guest update shutdown preparation failed")
-        collect_guest_observability(ObservationPhase.SHUTDOWN_FAILURE)
+        snapshot_path = collect_guest_observability(ObservationPhase.SHUTDOWN_FAILURE)
         if context is not None:
+            details = failure_details(error)
+            if snapshot_path is not None:
+                details["failureSnapshotPath"] = snapshot_path
             write_result(
                 context,
                 OperationStatus.FAILED,
-                f"Guest update shutdown failed at: {error}",
+                shutdown_failure_message(error),
                 step=OperationStatus.FAILED.value,
                 reason_codes=(ReasonCode.GUEST_UPDATE_SHUTDOWN_FAILED.value,),
                 shutdown_phase=(
@@ -63,9 +77,29 @@ def run_prepare_update_shutdown() -> None:
                     if isinstance(error, GuestPoweroffRequestError)
                     else None
                 ),
+                details=details,
             )
         REQUEST_FILE.unlink(missing_ok=True)
         raise
+
+
+def write_dispatch_failure_result(
+    *,
+    message: str,
+    reason_code: ReasonCode,
+) -> None:
+    request_id = request_id_from(REQUEST_FILE)
+    context = PrepareUpdateShutdownContext(
+        request_id=request_id,
+        version=request_version_from(REQUEST_FILE),
+    )
+    write_result(
+        context,
+        OperationStatus.FAILED,
+        message,
+        step="dispatch",
+        reason_codes=(reason_code.value,),
+    )
 
 
 def prepare_context() -> PrepareUpdateShutdownContext | None:
@@ -86,11 +120,13 @@ def prepare_context() -> PrepareUpdateShutdownContext | None:
         "Guest update shutdown preparation started.",
         step="starting",
     )
+    REQUEST_FILE.unlink(missing_ok=True)
     return context
 
 
 def run_prepare(context: PrepareUpdateShutdownContext) -> None:
     collect_guest_observability(ObservationPhase.SHUTDOWN_PRE_STOP)
+    quiesce_shutdown_sidecars()
     backup_redis(context)
     write_result(
         context,
@@ -98,39 +134,68 @@ def run_prepare(context: PrepareUpdateShutdownContext) -> None:
         "Redis backup completed. Stopping guest services.",
         step=OperationName.REDIS_BACKUP.value,
     )
+    write_result(
+        context,
+        OperationStatus.RUNNING,
+        "Stopping guest services.",
+        step="guest-services-stop",
+    )
     stop_runtime_services()
-    logger.info("sync started", extra={"fields": {"step": "sync"}})
-    subprocess.run(["sync"], check=True)
-    logger.info("sync completed", extra={"fields": {"step": "sync"}})
     collect_guest_observability(ObservationPhase.SHUTDOWN_POST_SYNC)
     write_result(
         context,
         OperationStatus.RUNNING,
-        "Guest services are stopped and filesystems are synced.",
+        "Guest services are stopped. Preparing final filesystem sync.",
         step=ShutdownPhase.PREPARED.value,
         shutdown_phase=ShutdownPhase.PREPARED,
     )
-    collect_guest_observability(ObservationPhase.SHUTDOWN_POWEROFF_REQUESTED)
+    logger.info("final sync started before guest poweroff")
+    run(["sync"], timeout_seconds=FINAL_SYNC_TIMEOUT_SECONDS)
     write_result(
         context,
         OperationStatus.READY,
-        "Guest poweroff requested after services stopped and filesystems synced.",
-        step=ShutdownPhase.POWEROFF_REQUESTED.value,
-        shutdown_phase=ShutdownPhase.POWEROFF_REQUESTED,
+        "Guest services are stopped and filesystems synced. Guest poweroff request is being issued.",
+        step=ShutdownPhase.POWEROFF_READY.value,
+        shutdown_phase=ShutdownPhase.POWEROFF_READY,
     )
-    REQUEST_FILE.unlink(missing_ok=True)
-    logger.info("guest poweroff requested")
+    logger.info("guest poweroff ready result recorded")
     request_guest_poweroff()
+    collect_guest_observability(ObservationPhase.SHUTDOWN_POWEROFF_REQUESTED)
+    REQUEST_FILE.unlink(missing_ok=True)
 
 
-def collect_guest_observability(phase: ObservationPhase) -> None:
+def collect_guest_observability(phase: ObservationPhase) -> str | None:
     try:
         write_guest_observability_snapshot(phase)
+        return str(OBSERVABILITY_DIR / f"{phase.value}.latest.json")
     except Exception as error:
         logger.warning(
             "guest observability snapshot failed",
             extra={"fields": {"phase": phase.value, "error": str(error)}},
         )
+        return None
+
+
+def failure_details(error: Exception) -> dict[str, Any]:
+    details = getattr(error, "details", None)
+    if isinstance(details, dict):
+        return dict(details)
+    return {}
+
+
+def shutdown_failure_message(error: Exception) -> str:
+    details = failure_details(error)
+    failed_service = details.get("failedService")
+    remaining = details.get("remainingServices")
+    if isinstance(failed_service, str) and isinstance(remaining, list):
+        remaining_text = ", ".join(str(service) for service in remaining)
+        if remaining_text:
+            return (
+                "Guest update shutdown failed at guest-services-stop: "
+                f"service {failed_service} did not stop; "
+                f"remaining services: {remaining_text}"
+            )
+    return f"Guest update shutdown failed at: {error}"
 
 
 def backup_redis(
@@ -158,8 +223,6 @@ def stop_runtime_services() -> None:
         "guest services stop started",
         extra={"fields": {"step": "guest-services-stop"}},
     )
-    systemctl("stop", RuntimeService.CONTAINER_LOGS.value, check=False)
-    systemctl("stop", RuntimeService.RUNTIME_STATE.value, check=False)
     run_compose_action(ComposeAction.STOP)
     logger.info(
         "guest services stop completed",
@@ -167,8 +230,89 @@ def stop_runtime_services() -> None:
     )
 
 
+def quiesce_shutdown_sidecars() -> None:
+    logger.info(
+        "guest shutdown sidecar quiesce started",
+        extra={"fields": {"step": "guest-sidecar-quiesce"}},
+    )
+    stop_sidecar_service(RuntimeService.COMMAND_POLLER)
+    stop_sidecar_service(RuntimeService.RUNTIME_STATE)
+    stop_sidecar_service(RuntimeService.CONTAINER_LOGS)
+    wait_for_unit_inactive(
+        RuntimeService.REDIS_BACKUP,
+        timeout_seconds=REDIS_BACKUP_ACTIVE_WAIT_TIMEOUT_SECONDS,
+    )
+    logger.info(
+        "guest shutdown sidecar quiesce completed",
+        extra={"fields": {"step": "guest-sidecar-quiesce"}},
+    )
+
+
+def stop_sidecar_service(service: RuntimeService) -> None:
+    result = systemctl("stop", service.value, check=False)
+    if result.returncode != 0:
+        raise GuestDependencyError(
+            f"failed to stop guest sidecar service: {service.value}",
+            code="guest-sidecar-service-stop-failed",
+        )
+    wait_for_unit_inactive(service, timeout_seconds=SIDECAR_STOP_TIMEOUT_SECONDS)
+
+
+def wait_for_unit_inactive(
+    service: RuntimeService,
+    *,
+    timeout_seconds: float,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        active_state = read_service_active_state(service)
+        if active_state in {"inactive", "failed"}:
+            return
+        if time.monotonic() >= deadline:
+            raise GuestDependencyError(
+                "guest systemd unit did not become inactive: "
+                f"{service.value} activeState={active_state}",
+                code="guest-sidecar-service-stop-timeout",
+            )
+        time.sleep(SIDECAR_STOP_POLL_SECONDS)
+
+
+def read_service_active_state(service: RuntimeService) -> str:
+    result = subprocess.run(
+        [
+            "systemctl",
+            "show",
+            "--property=ActiveState",
+            "--value",
+            service.value,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        raise GuestDependencyError(
+            "failed to read guest systemd unit state: "
+            f"{service.value} error={stderr or result.returncode}",
+            code="guest-sidecar-service-state-read-failed",
+        )
+    active_state = (result.stdout or "").strip()
+    if not active_state:
+        raise GuestDependencyError(
+            f"guest systemd unit active state is empty: {service.value}",
+            code="guest-sidecar-service-state-empty",
+        )
+    return active_state
+
+
 def request_guest_poweroff() -> None:
-    result = systemctl("poweroff", check=False)
+    result = systemctl(
+        "--no-block",
+        "poweroff",
+        check=False,
+        timeout_seconds=POWEROFF_REQUEST_TIMEOUT_SECONDS,
+    )
     if result.returncode == 0:
         return
     stderr = (result.stderr or "").strip()
@@ -186,6 +330,7 @@ def write_result(
     step: str = "",
     reason_codes: tuple[str, ...] = (),
     shutdown_phase: ShutdownPhase | None = None,
+    details: dict[str, Any] | None = None,
 ) -> None:
     write_json(
         RESULT_FILE,
@@ -200,5 +345,6 @@ def write_result(
             reason_codes=reason_codes,
             redis_backup_path=context.redis_backup_path,
             shutdown_phase=shutdown_phase,
+            details=details,
         ).as_json(),
     )

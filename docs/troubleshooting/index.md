@@ -12,7 +12,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 
 | ID | 증상 | Category | Status | 먼저 볼 문서 |
 |---|---|---|---|---|
-| TS-001 | boot asset이 없다고 실패 | Local development | archived | [`make vm-start`가 boot asset 없음으로 실패](001_boot-asset-missing.md) |
+| TS-001 | boot asset이 없다고 실패 | Local development | archived | [`make devtools/start`가 boot asset 없음으로 실패](001_boot-asset-missing.md) |
 | TS-002 | VM IP가 `192.168.64.x` | Network | active | [VM IP가 `192.168.64.x`로 보임](002_vm-shared-nat-ip.md) |
 | TS-003 | bridged mode가 `Killed: 9` | Network | archived | [bridged mode가 `Killed: 9`로 종료됨](003_bridged-mode-killed-9.md) |
 | TS-004 | Docker 설치 중 disk full | Guest bootstrap | resolved | [`docker.io` 설치 중 `No space left on device`](004_docker-install-disk-full.md) |
@@ -34,7 +34,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-020 | app container health가 오래 starting | Guest containers | active | [app container가 오래 `health: starting` 상태](020_app-container-health-starting.md) |
 | TS-021 | Ubuntu arm64 `flash-kernel` 실패 | Guest bootstrap | resolved | [Ubuntu arm64 cloud image에서 `flash-kernel`이 실패](021_ubuntu-flash-kernel-failure.md) |
 | TS-022 | 설치된 runtime binary에 virtualization entitlement가 없음 | Packaging | resolved | [설치된 runtime binary에 virtualization entitlement가 없음](022_missing-virtualization-entitlement.md) |
-| TS-023 | stale pid file | Local development | archived | [`make vm-status`가 stale pid file을 표시](023_stale-pid-file.md) |
+| TS-023 | stale pid file | Local development | archived | [`make runtime/status`가 stale pid file을 표시](023_stale-pid-file.md) |
 | TS-024 | pkg 설치가 `Running package scripts...`에서 실패 | Packaging | active | [pkg 설치가 `Running package scripts...`에서 실패함](024_pkg-postinstall-timeout.md) |
 | TS-025 | update 후 VM disk attachment invalid | Update | active | [update 후 VM disk attachment가 invalid로 실패](025_update-vm-disk-attachment-race.md) |
 | TS-026 | PWA가 Runtime Control API unreachable 표시 | Runtime Control PWA | active | [PWA가 Runtime Control API unreachable을 표시](026_pwa-runtime-control-api-unreachable.md) |
@@ -61,6 +61,37 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-047 | Guest log sync service만 Stopped로 남음 | Runtime health | active | [Guest log sync service remains stopped after runtime restart](047_guest-log-sync-stopped-after-restart.md) |
 | TS-048 | HostCLI runtime workflow 변경 영향이 과도하게 넓음 | Architecture / Runtime workflow / macOS runtime | active | [HostCLI runtime workflow boundary fragmentation](048_hostcli-runtime-workflow-boundary-fragmentation.md) |
 | TS-049 | Update VM stop이 launchd 재시작 PID를 따라감 | Update / VM lifecycle | resolved | [Update VM stop follows launchd-restarted pid](049_update-vm-pid-restart-race.md) |
+| TS-053 | Update와 watchdog이 runtime status를 두고 경합함 | Update / Runtime health | active | [Update와 watchdog이 runtime status를 두고 경합함](053_update-watchdog-operation-lease-race.md) |
+| TS-054 | Fresh install 후 Helper message에 과거 update/uninstall 이력이 보임 | Runtime Control PWA / Packaging | active | [Helper message log shows stale session history after fresh install](054_helper-message-log-stale-session-history.md) |
+| TS-055 | Helper app에서 Recorder activity `All` 선택 시 앱이 종료됨 | macOS Helper / Observability | resolved | [Recorder Activity All Window Materializes Full History](055_recorder-activity-all-window-materialization.md) |
+| TS-056 | PWA Status가 `settings.bridgedinterface` contract mismatch를 표시 | Runtime Control PWA / Network | resolved | [PWA Runtime Overview Bridged Interface Contract Mismatch](056_pwa-runtime-overview-bridged-interface-contract.md) |
+| TS-057 | watchdog이 stale guest runtime-state를 missing artifacts로 보고 복구하지 않음 | Runtime health / Watchdog recovery | resolved | [Watchdog Treats Stale Guest Runtime State As Unrecoverable](057_watchdog_stale_guest_runtime_state_unrecoverable.md) |
+| TS-058 | Reset Installer 이후 VM launchd state가 남아 설치를 막음 | Uninstall / VM lifecycle | resolved | [Reset Installer Leaves VM Launchd State Behind](058_clean-uninstall-hung-vm-progress-marker.md) |
+| TS-059 | Helper app에서 Recorder activity `All` 선택 시 Slider 생성 중 앱이 종료됨 | macOS Helper / Observability | active | [Recorder Activity All Single-Page Slider Crash](059_recorder-activity-all-single-page-slider-crash.md) |
+| TS-060 | Helper update activation이 compose/testkit systemd 경합으로 실패 | Update | active | [Update Activation Compose/Systemd Race](060_update-activation-compose-systemd-race.md) |
+| TS-061 | Update shutdown service failed without result | Update | resolved | [Update Shutdown Service Failed Without Result](061_update-shutdown-service-failed-without-result.md) |
+| TS-062 | Helper clean uninstall이 `nohup` detach 실패로 시작되지 않음 | Uninstall | resolved | [Helper Clean Uninstall Nohup Detach Failure](062_helper-clean-uninstall-nohup-detach-failure.md) |
+| TS-063 | Helper clean uninstall progress log permission denied | Uninstall | resolved | [Helper Clean Uninstall Progress Log Permission Failure](063_helper-clean-uninstall-progress-log-permission.md) |
+| TS-064 | dev DMG rebuild가 unmounted stale attachment 때문에 실패함 | Packaging / Local development | resolved | [Dev DMG Rebuild Stale Unmounted Attachment](064_dev-dmg-rebuild-stale-unmounted-attachment.md) |
+| TS-065 | Clean uninstall과 Reset Installer 경계가 혼동됨 | Uninstall / Packaging | active | [Clean Uninstall and Reset Installer Boundary](065_clean-uninstall-reset-installer-boundary.md) |
+| TS-066 | Clean uninstall 성공 후 progress viewer만 실패를 표시함 | Uninstall | active | [Clean Uninstall Progress Viewer Shows Failed After Successful Uninstall](066_clean-uninstall-progress-viewer-stale-run.md) |
+| TS-067 | 초기 설치 직후 VM bootstrap 중 Degraded가 표시됨 | Runtime health / Packaging | resolved | [Initial Install Shows Degraded During VM Bootstrap](067_initial-install-watchdog-degraded.md) |
+| TS-068 | Settings Apply가 update처럼 VM shutdown을 표시함 | Runtime health / Runtime Control PWA | resolved | [Settings Apply Enters Update-Like Shutdown](068_settings-apply-update-shutdown-confusion.md) |
+| TS-069 | Golden rootfs build가 stale marker/manifest를 proof로 믿을 수 있음 | Packaging / Local development / Guest bootstrap | implemented | [Golden Rootfs Build Trusts Stale Proof After Failed VM Preparation](069_golden-rootfs-stale-proof-negative-validation.md) |
+| TS-070 | Golden disk가 실제 Runtime boot proof를 제공하지 않음 | Packaging / Local development / Runtime health / Guest bootstrap | active | [Golden Disk Runtime Boot Proof Gap](070_golden-disk-runtime-boot-proof-gap.md) |
+| TS-071 | Golden rootfs apt snapshot unavailable을 VM start 후에야 감지함 | Packaging / Local development / Guest bootstrap | implemented | [Golden Rootfs Apt Snapshot Fast-Fail](071_golden-rootfs-apt-snapshot-fast-fail.md) |
+| TS-072 | Release package build input failure를 비싼 build 후에야 감지함 | Packaging / Local development | implemented | [Release Package Build Late Failure Before Preflight](072_release-package-preflight-late-failure.md) |
+| TS-073 | Installed bootstrap이 rootfs input metadata 누락으로 Critical이 됨 | Packaging / Install / Guest bootstrap | implemented | [Installed Bootstrap Missing Rootfs Input Metadata](073_installed-bootstrap-missing-rootfs-input-metadata.md) |
+| TS-074 | Installed bootstrap이 빈 `lsblk PARTNUM` 출력으로 실패함 | Packaging / Install / Guest bootstrap | implemented | [Installed bootstrap fails when lsblk PARTNUM is empty](074_installed-bootstrap-lsblk-partnum-empty.md) |
+| TS-075 | Service liveness uptime이 수백 일로 표시됨 | Runtime health / Runtime Control PWA | implemented | [Service liveness uptime shows hundreds of days](075_service-liveness-uptime-clock-skew.md) |
+| TS-076 | Update shutdown 중 compose stop timeout 후 rollback됨 | Update / Guest containers | implemented | [Update shutdown compose stop timeout and guest time drift](076_update-shutdown-compose-stop-timeout-and-guest-time-drift.md) |
+| TS-077 | VitalServer backup restore가 data layout 호환성을 확인해야 함 | Data store / Runtime health | active | [Runtime Data Backup Compatibility Gate](077_runtime-data-backup-compatibility.md) |
+| TS-078 | Upstream Redis backup command가 Redis SAVE 응답을 무기한 기다림 | Packaging / Troubleshooting Tools / Redis migration | implemented | [Upstream Redis SAVE Timeout](078_upstream-redis-save-timeout.md) |
+| TS-079 | VitalServer Helper backup restore 실패가 UI progress/message에 표시되지 않음 | Data store / Runtime health | implemented | [Runtime Data Restore Silent Failure](079_runtime-data-restore-silent-failure.md) |
+| TS-080 | Update shutdown이 Compose service 목록 stdout 누락으로 실패함 | Update / Guest containers | implemented | [Update Shutdown Compose Services Stdout Missing](080_update-shutdown-compose-services-stdout-missing.md) |
+| TS-081 | Upstream VitalServer contract verification이 release compile 전에 실패함 | Packaging / Upstream integration | active | [Upstream VitalServer Contract Verification Failure](081_upstream-vitalserver-contract-verification.md) |
+| TS-082 | 배포 target이 phase별 검증 완료를 명확히 증명하지 못함 | Packaging / Release verification | active | [Distribution Verification Phase Gaps](082_distribution-verification-phase-gaps.md) |
+| TS-083 | 자동 VitalServer Helper backup이 Recovery operations 목록에 표시되지 않음 | Runtime health / Data store / macOS Helper UI | implemented | [Automatic Backup Not Visible in Recovery Operations](083_automatic-backup-not-visible-in-recovery.md) |
 
 ## Follow-up 규칙
 

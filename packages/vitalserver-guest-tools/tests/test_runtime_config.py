@@ -14,7 +14,6 @@ def valid_runtime_config() -> dict[str, object]:
         "adminPassword": "admin",
         "publicHost": "",
         "publicPort": 80,
-        "redisBackupRetentionCount": 30,
         "redisHost": "redis",
         "redisPort": 6379,
         "testkitEnabled": True,
@@ -56,5 +55,4 @@ def test_load_config_returns_explicit_contract_values(tmp_path: Path) -> None:
     config = load_config(config_path)
 
     assert config.redis_host == "redis"
-    assert config.redis_backup_retention_count == 30
     assert config.testkit_enabled is True

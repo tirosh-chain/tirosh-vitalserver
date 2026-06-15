@@ -40,6 +40,7 @@ class MacOSLaunchdConfig:
     guest_log_sync: MacOSLaunchdTemplateConfig
     sleep_prevention: MacOSLaunchdTemplateConfig
     watchdog: MacOSLaunchdTemplateConfig
+    automatic_backup: MacOSLaunchdTemplateConfig
 
 
 @dataclass(frozen=True)

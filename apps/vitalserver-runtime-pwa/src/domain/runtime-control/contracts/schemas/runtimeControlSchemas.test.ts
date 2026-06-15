@@ -10,7 +10,8 @@ import {
   runtimeSettingsSchema,
   runtimeUpdateBundleSummaryResponseSchema,
   vitalDBObservationSchema,
-  vitalDBRecordersSchema
+  vitalDBRecordersSchema,
+  vitalDBRelationshipsSchema
 } from "./runtimeControlSchemas";
 
 describe("runtime control contract schemas", () => {
@@ -32,16 +33,16 @@ describe("runtime control contract schemas", () => {
     });
   });
 
-  it("rejects invalid runtime state values in overview responses", () => {
-    expect(() =>
+  it("accepts unknown runtime state values in overview responses", () => {
+    expect(
       runtimeOverviewSchema.parse(
         fullRuntimeOverview({
           status: {
-            runtimeState: "surprising"
+            runtimeState: "surprising-from-helper"
           }
         })
-      )
-    ).toThrow();
+      ).status.runtimeState
+    ).toBe("surprising-from-helper");
   });
 
   it("accepts Remote Console status fields in overview responses", () => {
@@ -81,6 +82,18 @@ describe("runtime control contract schemas", () => {
       containerLogsPresent: true,
       containerLogsMetadataError: "size-read-failed,mtime-read-failed"
     });
+  });
+
+  it("accepts unknown VM states in overview responses", () => {
+    expect(
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          status: {
+            vmState: "hibernating"
+          }
+        })
+      ).status.vmState
+    ).toBe("hibernating");
   });
 
   it("preserves VitalDB observation snapshot read-state semantics", () => {
@@ -426,6 +439,23 @@ describe("runtime control contract schemas", () => {
     ).toBe("recovery-deferred");
   });
 
+  it("accepts unknown runtime event types from the Helper", () => {
+    expect(
+      runtimeEventHistorySchema.parse({
+        events: [
+          fullRuntimeEvent({
+            eventType: "runtime-checkpoint-progressed",
+            timestamp: "2026-06-01T01:43:20Z",
+            status: "critical",
+            message: "future event introduced"
+          })
+        ],
+        nextCursor: null,
+        matchingCount: 1
+      }).events?.[0]?.eventType
+    ).toBe("runtime-checkpoint-progressed");
+  });
+
   it("requires runtime event identity and diagnostic owner fields", () => {
     expect(() =>
       runtimeEventHistorySchema.parse({
@@ -656,6 +686,20 @@ describe("runtime control contract schemas", () => {
     );
   });
 
+  it("requires VitalDB relationship history lists", () => {
+    expect(() =>
+      vitalDBRelationshipsSchema.parse({
+        state: "loaded",
+        assignments: [],
+        readError: null
+      })
+    ).toThrow();
+
+    expect(vitalDBRelationshipsSchema.parse(fullRelationships())).toEqual(
+      fullRelationships()
+    );
+  });
+
   it("requires log text response text", () => {
     expect(() => runtimeLogTextResponseSchema.parse({})).toThrow();
     expect(runtimeLogTextResponseSchema.parse({ text: "" })).toEqual({ text: "" });
@@ -690,15 +734,30 @@ describe("runtime control contract schemas", () => {
   });
 
   it("requires the complete runtime settings contract", () => {
+    const missingBridgedInterface: Record<string, unknown> = { ...fullSettings() };
+    delete missingBridgedInterface.bridgedInterface;
+
     expect(() =>
       runtimeSettingsSchema.parse({
         proxyPort: 80
       })
     ).toThrow();
+    expect(() =>
+      runtimeSettingsSchema.parse(missingBridgedInterface)
+    ).toThrow();
 
     expect(
       runtimeSettingsSchema.parse(fullSettings())
     ).toEqual(fullSettings());
+    expect(
+      runtimeSettingsSchema.parse({
+        ...fullSettings(),
+        bridgedInterface: null
+      })
+    ).toEqual({
+      ...fullSettings(),
+      bridgedInterface: null
+    });
   });
 });
 
@@ -771,7 +830,11 @@ function fullSettings() {
     startOnBootConfigurable: true,
     autoRecoveryEnabled: true,
     preventSystemSleep: true,
-    redisBackupRetentionCount: 30,
+    automaticBackupEnabled: true,
+    backupScheduleTimes: ["03:15"],
+    backupRetentionCount: 30,
+    logArchiveRetentionDays: 14,
+    logArchiveMaximumGiB: 1,
     restartAfterSave: true
   };
 }
@@ -867,6 +930,43 @@ function fullVitalRecorderHistorySummary(overrides: Record<string, unknown> = {}
     staleBeds: 0,
     bedAssignments: 0,
     bedAnomalies: 0,
+    ...overrides
+  };
+}
+
+function fullRelationships(overrides: Record<string, unknown> = {}) {
+  return {
+    state: "loaded",
+    assignments: [
+      {
+        assignmentID: "assignment-1",
+        bedID: "bed-1",
+        bedName: "OR-1",
+        vrcode: "VR_A",
+        startedAt: "2026-05-31T00:00:00Z",
+        endedAt: null,
+        lastSeenAt: "2026-05-31T01:00:00Z",
+        lastObservedAt: "2026-05-31T01:00:00Z",
+        status: "online",
+        patientConnected: true,
+        observationCount: 1
+      }
+    ],
+    events: [
+      {
+        eventID: "relationship-event-1",
+        observedAt: "2026-05-31T01:00:00Z",
+        eventType: "unlinkedBed",
+        severity: "warning",
+        bedID: "bed-1",
+        bedName: "OR-1",
+        vrcode: "VR_A",
+        previousVrcode: null,
+        previousBedID: null,
+        message: "Bed has no linked VRecorder."
+      }
+    ],
+    readError: null,
     ...overrides
   };
 }

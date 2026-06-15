@@ -1,0 +1,47 @@
+{
+  "contractVersion": 1,
+  "remote": "https://github.com/vitaldb/vitalserver.git",
+  "submodulePath": "vendor/vitalserver",
+  "approvedCommits": [
+    {
+      "sha": "2059cc543467c1306482589dbcc77a575f79efe9",
+      "label": "initial upstream app snapshot",
+      "verifiedAt": "2026-06-15",
+      "notes": "Baseline with join_vr Redis ip_<vrcode> contract"
+    }
+  ],
+  "requiredFiles": [
+    "vitalserver-old/service/app.js",
+    "vitalserver-old/service/include/db.js",
+    "vitalserver-old/service/include/monitor.js"
+  ],
+  "requiredContracts": [
+    {
+      "id": "socketio.join_vr",
+      "file": "vitalserver-old/service/app.js",
+      "patterns": ["join_vr"]
+    },
+    {
+      "id": "socketio.send_data",
+      "file": "vitalserver-old/service/app.js",
+      "patterns": ["send_data"]
+    },
+    {
+      "id": "redis.vrcode_ip.write",
+      "file": "vitalserver-old/service/app.js",
+      "patterns": ["client.set", "ip_"]
+    },
+    {
+      "id": "redis.vrcode_ip.read_and_emit",
+      "file": "vitalserver-old/service/app.js",
+      "patterns": ["join_bed", "client.get", "recv_vr_ipaddr"]
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "id": "upstream.proxy_header_ip_patch",
+      "file": "vitalserver-old/service/app.js",
+      "patterns": ["x-forwarded-for", "VITALSERVER_TRUST_PROXY", "get_vr_client_ip"]
+    }
+  ]
+}

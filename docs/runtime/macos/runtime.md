@@ -12,6 +12,7 @@ VM이 실제로 어떻게 준비되고 실행되는지 정리합니다. boot ass
 | guest 초기화는 누가 하나? | cloud-init이 `Support/Guest/bootstrap.sh` 실행 |
 | `.vital` 파일은 어디에 두나? | macOS shared directory |
 | VM IP `192.168.64.x`는 정상인가? | shared/NAT mode에서는 정상 |
+| 최소 macOS는? | macOS 14.0 이상. 쓰기 가능한 root disk는 Apple Virtualization NVMe controller로 붙입니다. |
 
 runtime 단계의 source of truth는 Swift CLI인 `vitalserver-vm`입니다. Shell script는 launchd나 installer가 호출하기 쉬운 wrapper로만 남기고, 설치 후 상태 전이와 복구 정책은 Swift HostCLI layer에 둡니다. `RuntimeLifecycle`은 CLI command를 typed workflow/runner로 연결하는 facade이고, 실제 install/update/rollback/guest activation/repair 단계는 `Runtime*Workflow`와 focused runner가 담당합니다.
 
@@ -63,7 +64,7 @@ VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make devtools/init
   "diskPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/vm-disk.img",
   "initialRamdiskPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/initrd.img",
   "cloudInitPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/seed.iso",
-  "kernelCommandLine": "console=hvc0 root=/dev/vda1 rw",
+  "kernelCommandLine": "console=hvc0 root=LABEL=cloudimg-rootfs rw seccomp=0",
   "kernelPath": "/Users/<user>/.tirosh/vitalserver-vm/runtime/Image",
   "memoryMiB": 8192,
   "network": {
@@ -85,7 +86,7 @@ VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make devtools/init
 PoC에서는 Git에 Linux image를 넣지 않습니다.
 
 ```sh
-make runtime/download
+make devtools/download
 ```
 
 설정 파일:
@@ -94,7 +95,7 @@ make runtime/download
 config/vm-build.toml
 ```
 
-`make runtime/download`는 build-machine 전용 Python package인
+`make devtools/download`는 build-machine 전용 Python package인
 `packages/vitalserver-devtools`의 `vitalserver-devtools ubuntu` CLI를 호출합니다.
 
 | 항목 | 기본값 |
@@ -103,17 +104,18 @@ config/vm-build.toml
 | architecture | macOS host architecture 기준 자동 선택 |
 | 다운로드 경로 | `~/.tirosh/vitalserver-vm/runtime/downloads/` |
 | 실행 경로 | `~/.tirosh/vitalserver-vm/runtime/` |
-| root disk target size | `4G` (4 GiB) |
+| root disk target size | `8G` (8 GiB) |
+| runtime data disk size | `16G` (16 GiB) |
 
 root disk 크기를 바꾸려면:
 
 ```sh
-VM_ROOTFS_SIZE=32G make runtime/download
+VM_ROOTFS_SIZE=32G make devtools/download
 ```
 
 `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. 예를 들어 `32G`는 32 GiB root disk target size입니다.
 
-`4G`는 packaging 효율을 위한 golden rootfs base 크기입니다. 설치 wizard에서 사용자가 고르는 runtime disk 크기와 다릅니다. 설치 시에는 `rootfs-base.raw.gz`를 `vm-disk.img`로 풀고, 기본 32 GiB 또는 사용자가 고른 크기로 sparse disk를 확장합니다. 설치 후 disk 크기는 증가만 허용합니다.
+`8G`는 packaging 효율과 air-gapped runtime package 설치 여유를 함께 고려한 golden rootfs base 크기입니다. 설치 wizard에서 사용자가 고르는 rootfs runtime disk 크기와 다릅니다. 설치 시에는 `rootfs-base.raw.gz`를 `vm-disk.img`로 풀고, 기본 32 GiB 또는 사용자가 고른 크기로 sparse disk를 확장합니다. Docker/containerd runtime state는 별도 `runtime-data.img`를 `/mnt/runtime`에 mount해서 사용합니다. 설치 후 rootfs disk 크기는 증가만 허용하고, runtime data disk는 rootfs update로 덮어쓰지 않습니다.
 
 ## Cloud-Init
 
@@ -163,7 +165,7 @@ make devtools/stage
 | `bootstrap.sh` | Linux guest 초기 entrypoint. mount/package 확인 후 `bin/`, `systemd/`, Compose stack 연결 |
 | `python-wheels/*` | Guest tools package. runtime env/state, Compose, health, update, repair, Redis backup, observability 명령 |
 | `guest-tools.toml` | Guest tools 운영 설정. interval/path/compose project 같은 package 설정을 명시 |
-| `systemd/*` | runtime state writer, Compose stack, Redis backup timer, observability daemon unit |
+| `systemd/*` | runtime state writer, Compose stack, Guest command workers, observability daemon unit |
 | `compose.yaml` | VM 내부 VitalServer/Redis/UI/edge nginx Compose stack |
 | `nginx/vitalserver.conf` | Compose edge nginx container 설정 |
 | `runtime-config.json` | Host-owned VitalServer container/runtime 계약. Guest는 누락/타입 오류를 default로 보정하지 않고 실패로 드러냄 |
@@ -194,11 +196,13 @@ Guest tools는 `guest-tools.toml`에만 package 운영 default를 둡니다. 로
 `runtime-config.json`은 Host가 제공하는 실행 계약이므로 `adminPassword`,
 `redisHost`, `redisPort`, `vitalServerURL`, `remoteConsoleURL`,
 `publicHost`, `publicPort`, `trustProxy`, `vitalFilesDirectory`,
-`redisBackupRetentionCount`, `testkitEnabled`가 모두 명시돼야 합니다.
+`testkitEnabled`가 모두 명시돼야 합니다.
 Guest는 이 값을 추론하거나 보정하지 않습니다.
 `vitalServerURL`과 `remoteConsoleURL`은 운영자가 등록한 외부 접속 URL을 그대로
 표시하기 위한 Host-owned advertised URL입니다. `publicHost/publicPort`는 guest
 호환을 위해 유지하며, `vitalServerURL`이 있으면 Host가 host/port를 파생합니다.
+초기 install settings에 advertised URL이 없으면 Host는 문서화된 localhost 기본값
+`http://127.0.0.1:<proxyPort>/`와 `http://127.0.0.1:18321/`을 명시 runtime config로 씁니다.
 초기 install settings가 별도 admin password를 제공하지 않으면 Host install
 settings의 문서화된 기본값인 `admin`을 명시 runtime config로 씁니다.
 
@@ -381,6 +385,20 @@ Golden image는 여러 병원과 여러 Mac mini/Mac Studio에 복제될 수 있
 공통으로 배포해도 되는 값은 OS, kernel, initrd, base rootfs, container image, compose/nginx template입니다.
 
 Redis data, Vital 파일, bed/VR mapping 같은 runtime state는 image에 넣지 않고 운영 volume에만 저장합니다.
+
+## Runtime Data Disk
+
+제품 runtime은 rootfs disk와 runtime data disk를 분리합니다.
+
+| Disk | 파일 | Guest mount | 역할 |
+|---|---|---|---|
+| rootfs | `runtime/vm-disk.img` | `/` | OS, guest tools, bootstrap, product baseline |
+| runtime data | `runtime/runtime-data.img` | `/mnt/runtime` | Docker data-root, containerd root, service runtime state |
+| shared data | VirtioFS share | `/mnt/tirosh` | deploy bundle, run documents, Host/Guest exchange |
+
+Fresh install은 `runtime-data.img`가 없으면 16 GiB sparse disk를 생성합니다. Guest bootstrap은 Docker를 시작하기 전에 `tirosh-vitalserver-runtime-data-prepare`를 실행해 `LABEL=vital-runtime` filesystem을 mount하고, Docker `data-root`를 `/mnt/runtime/docker`로 설정합니다. Runtime boot smoke는 `/mnt/runtime` mount와 `docker info`의 `DockerRootDir`이 이 contract와 일치하지 않으면 실패합니다.
+
+The runtime data filesystem label must stay within the ext filesystem label limit, currently 16 bytes. A longer label is rejected at build config planning time because ext tooling truncates it and makes mount proof ambiguous.
 
 ## Signing
 

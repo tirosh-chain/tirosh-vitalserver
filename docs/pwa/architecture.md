@@ -13,7 +13,7 @@ PWA owns browser runtime control presentation. Runtime Control API owns runtime 
 | Logs | `/host/logs/read`, `/host/logs/stream` | source/line/live controls, text rendering |
 | Settings | `GET/PUT /runtime/settings` | validation, capability gating, apply confirmation |
 | Operations | Runtime command routes | command availability, confirmation, result 표시 |
-| VRecorder | `/vitaldb/recorders`, `/vitaldb/relationships` | recorder list/detail/activity chart 표시 |
+| VRecorder | `/vitaldb/recorders`, `/vitaldb/recorders/{vrcode}/activity`, `/vitaldb/relationships` | recorder list/detail/activity chart 표시 |
 | Bed | `/vitaldb/beds`, `/vitaldb/relationships` | bed list/detail/relation 표시 |
 | TestKit | `/dev/testkit/*` | test-enabled build에서만 virtual recorder controls 표시 |
 | Capability | `GET /runtime/capabilities` | route visibility와 command availability 결정 |
@@ -45,6 +45,10 @@ src/
 - OpenAPI generated type은 compile-time contract이고, Zod schema는 runtime contract gate입니다.
 - `app`은 concrete `RuntimeControlApiClient`를 만들고 `RuntimeControlGatewayProvider`로 주입하는 composition root입니다.
 - `pages`와 `components`는 HTTP client를 직접 import하지 않습니다.
+- Recorder activity chart는 `/vitaldb/recorders`의 embedded `activityTimeline`을 materialize하지 않고
+  `/vitaldb/recorders/{vrcode}/activity` window response를 React Query key
+  `(vrcode, bucketSeconds, period, pageIndex)`로 조회합니다. Slider drag 중에는 page label만 바꾸고,
+  commit/debounce 후 window를 fetch합니다.
 
 ## Runtime Control Gateway
 

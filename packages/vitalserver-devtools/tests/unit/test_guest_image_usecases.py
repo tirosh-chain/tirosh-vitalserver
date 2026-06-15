@@ -1,14 +1,32 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
+import pytest
 from pytest import MonkeyPatch
 
 from tirosh_vitalserver.devtools.application.inputs import UbuntuBootAssetsInput
 from tirosh_vitalserver.devtools.application.usecases import (
     guest_image as guest_image_usecases,
 )
-from tirosh_vitalserver.devtools.core.guest_image import UbuntuBootAssetPlan
+from tirosh_vitalserver.devtools.application.usecases.guest_services import (
+    stage_rootfs_input_metadata,
+)
+from tirosh_vitalserver.devtools.config.build_toml import load_build_toml
+from tirosh_vitalserver.devtools.config.guest_image import (
+    load_guest_runtime_config,
+    load_ubuntu_image_config,
+)
+from tirosh_vitalserver.devtools.core.errors import DomainError
+from tirosh_vitalserver.devtools.core.guest_image import (
+    RuntimeDataDiskConfig,
+    UbuntuBootAssetPlan,
+    GuestRuntimeConfig,
+    runtime_data_disk_plan,
+    ubuntu_boot_asset_plan,
+    ubuntu_download_cache_key,
+)
 
 
 def test_prepare_ubuntu_boot_assets_builds_plan_from_config(
@@ -23,6 +41,7 @@ def test_prepare_ubuntu_boot_assets_builds_plan_from_config(
                 "ubuntu": {
                     "version": "24.04",
                     "base_url": "https://example.invalid/noble",
+                    "apt_snapshot": "20250313T000000Z",
                     "arch": "auto",
                     "kernel_suffix": "vmlinuz-generic",
                     "initrd_suffix": "initrd-generic",
@@ -31,6 +50,14 @@ def test_prepare_ubuntu_boot_assets_builds_plan_from_config(
                     "runtime_dir": "runtime",
                     "rootfs_size": "8G",
                     "disk_image_name": "disk.img",
+                },
+                "runtime_data": {
+                    "disk_image_name": "runtime-data.img",
+                    "disk_size": "16G",
+                    "filesystem_label": "vital-runtime",
+                    "mount_path": "/mnt/runtime",
+                    "docker_data_root": "/mnt/runtime/docker",
+                    "containerd_root": "/mnt/runtime/containerd",
                 },
             },
         }
@@ -63,5 +90,214 @@ def test_prepare_ubuntu_boot_assets_builds_plan_from_config(
     assert plan is not None
     assert plan.arch == "arm64"
     assert plan.runtime_dir == Path("runtime")
+    assert (
+        plan.download_dir
+        == Path("runtime")
+        / "downloads"
+        / ubuntu_download_cache_key("https://example.invalid/noble")
+    )
     assert plan.rootfs_size == "8G"
     assert plan.disk_image_name == "disk.img"
+
+
+def test_guest_runtime_config_loads_explicit_runtime_data_disk_contract() -> None:
+    runtime_config = load_guest_runtime_config(
+        {
+            "guest": {
+                "runtime": {
+                    "runtime_dir": "runtime",
+                    "rootfs_size": "8G",
+                    "disk_image_name": "vm-disk.img",
+                },
+                "runtime_data": {
+                    "disk_image_name": "runtime-data.img",
+                    "disk_size": "16G",
+                    "filesystem_label": "vital-runtime",
+                    "mount_path": "/mnt/runtime",
+                    "docker_data_root": "/mnt/runtime/docker",
+                    "containerd_root": "/mnt/runtime/containerd",
+                },
+            },
+        }
+    )
+
+    assert runtime_config.runtime_dir == Path("runtime")
+    assert runtime_config.runtime_data_disk_image == Path("runtime/runtime-data.img")
+    assert runtime_config.runtime_data_disk.disk_size == "16G"
+    assert runtime_config.runtime_data_disk.filesystem_label == "vital-runtime"
+    assert runtime_config.runtime_data_disk.mount_path == "/mnt/runtime"
+    assert runtime_config.runtime_data_disk.docker_data_root == "/mnt/runtime/docker"
+    assert runtime_config.runtime_data_disk.containerd_root == "/mnt/runtime/containerd"
+
+
+def test_guest_runtime_config_requires_runtime_data_disk_contract() -> None:
+    with pytest.raises(SystemExit, match=r"missing \[guest.runtime_data\]"):
+        load_guest_runtime_config(
+            {
+                "guest": {
+                    "runtime": {
+                        "runtime_dir": "runtime",
+                        "rootfs_size": "8G",
+                        "disk_image_name": "vm-disk.img",
+                    },
+                },
+            }
+        )
+
+
+def test_runtime_data_disk_plan_rejects_ext_label_too_long(tmp_path: Path) -> None:
+    runtime_config = GuestRuntimeConfig(
+        runtime_dir=tmp_path / "runtime",
+        rootfs_size="8G",
+        recreate_rootfs=False,
+        disk_image_name="vm-disk.img",
+        runtime_data_disk=RuntimeDataDiskConfig(
+            disk_image_name="runtime-data.img",
+            disk_size="16G",
+            filesystem_label="vital-runtime-data",
+            mount_path="/mnt/runtime",
+            docker_data_root="/mnt/runtime/docker",
+            containerd_root="/mnt/runtime/containerd",
+        ),
+    )
+
+    with pytest.raises(DomainError, match="too long for ext filesystem label"):
+        runtime_data_disk_plan(
+            config_path=tmp_path / "vm-build.toml",
+            vm_home=tmp_path / "vm-home",
+            runtime_config=runtime_config,
+        )
+
+
+def test_default_ubuntu_image_config_uses_pinned_noble_release_source() -> None:
+    repo_root = Path(__file__).resolve().parents[4]
+    ubuntu_config = load_ubuntu_image_config(
+        load_build_toml(repo_root / "config/vm-build.toml")
+    )
+
+    assert ubuntu_config.version == "24.04"
+    assert ubuntu_config.base_url == (
+        "https://cloud-images.ubuntu.com/releases/noble/release-20250516"
+    )
+    assert ubuntu_config.apt_snapshot == "20250515T000000Z"
+    assert not ubuntu_config.base_url.endswith("/release")
+
+
+def test_ubuntu_image_config_rejects_invalid_apt_snapshot() -> None:
+    with pytest.raises(DomainError, match="unsupported guest.ubuntu.apt_snapshot"):
+        load_ubuntu_image_config(
+            {
+                "guest": {
+                    "ubuntu": {
+                        "version": "24.04",
+                        "base_url": "https://example.invalid/noble",
+                        "apt_snapshot": "2025-03-13",
+                    },
+                },
+            }
+        )
+
+
+def test_ubuntu_boot_asset_plan_rejects_rootfs_smaller_than_airgap_minimum() -> None:
+    with pytest.raises(DomainError, match="rootfs_size is too small"):
+        ubuntu_boot_asset_plan(
+            config_path=Path("config/vm-build.toml"),
+            runtime_dir=Path("runtime"),
+            rootfs_size="4G",
+            recreate_rootfs=True,
+            disk_image_name="vm-disk.img",
+            ubuntu_version="24.04",
+            base_url="https://example.invalid/noble",
+            requested_arch="arm64",
+            host_machine="arm64",
+            kernel_suffix="vmlinuz-generic",
+            initrd_suffix="initrd-generic",
+        )
+
+
+def test_ubuntu_download_cache_key_preserves_release_source_identity() -> None:
+    old_release = ubuntu_download_cache_key(
+        "https://cloud-images.ubuntu.com/releases/noble/release-20250313"
+    )
+    new_release = ubuntu_download_cache_key(
+        "https://cloud-images.ubuntu.com/releases/noble/release-20250516"
+    )
+
+    assert old_release.startswith("release-20250313-")
+    assert new_release.startswith("release-20250516-")
+    assert old_release != new_release
+
+
+def test_stage_rootfs_input_metadata_preserves_ubuntu_source_identity(
+    tmp_path: Path,
+) -> None:
+    base_url = "https://cloud-images.ubuntu.com/releases/noble/release-20250313"
+
+    stage_rootfs_input_metadata(
+        deploy_dir=tmp_path,
+        base_url=base_url,
+        apt_snapshot="20250313T000000Z",
+        runtime_data=runtime_data_disk_config(),
+        docker_platform="linux/arm64",
+    )
+
+    metadata = load_json(tmp_path / "build-metadata/rootfs-input.json")
+    assert metadata["schemaVersion"] == 1
+    assert isinstance(metadata["guestClockUtc"], str)
+    assert re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
+        metadata["guestClockUtc"],
+    )
+    assert metadata["runtimeBootSmoke"] == {"enabled": False}
+    assert metadata["dockerImages"] == {"platform": "linux/arm64"}
+    assert metadata["runtimeData"] == {
+        "diskImageName": "runtime-data.img",
+        "diskSize": "16G",
+        "filesystemLabel": "vital-runtime",
+        "mountPath": "/mnt/runtime",
+        "dockerDataRoot": "/mnt/runtime/docker",
+        "containerdRoot": "/mnt/runtime/containerd",
+    }
+    assert metadata["ubuntu"] == {
+        "aptSnapshot": "20250313T000000Z",
+        "baseUrl": base_url,
+        "cacheKey": ubuntu_download_cache_key(base_url),
+    }
+
+
+def test_stage_rootfs_input_metadata_preserves_run_identity(
+    tmp_path: Path,
+) -> None:
+    base_url = "https://cloud-images.ubuntu.com/releases/noble/release-20250313"
+
+    stage_rootfs_input_metadata(
+        deploy_dir=tmp_path,
+        base_url=base_url,
+        apt_snapshot="20250313T000000Z",
+        runtime_data=runtime_data_disk_config(),
+        docker_platform="linux/arm64",
+        run_id="run-test",
+    )
+
+    metadata = load_json(tmp_path / "build-metadata/rootfs-input.json")
+    assert metadata["runId"] == "run-test"
+
+
+def load_json(path: Path) -> dict[str, object]:
+    import json
+
+    with path.open(encoding="utf-8") as handle:
+        document = json.load(handle)
+    assert isinstance(document, dict)
+    return document
+
+
+def runtime_data_disk_config() -> RuntimeDataDiskConfig:
+    return RuntimeDataDiskConfig(
+        disk_image_name="runtime-data.img",
+        disk_size="16G",
+        filesystem_label="vital-runtime",
+        mount_path="/mnt/runtime",
+        docker_data_root="/mnt/runtime/docker",
+        containerd_root="/mnt/runtime/containerd",
+    )

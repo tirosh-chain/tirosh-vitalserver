@@ -57,6 +57,7 @@ PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/
 | `GET` | `/vitaldb/observations/stream` |
 | `GET` | `/vitaldb/recorders` |
 | `GET` | `/vitaldb/recorders/{vrcode}` |
+| `GET` | `/vitaldb/recorders/{vrcode}/activity` |
 | `GET` | `/vitaldb/beds` |
 | `GET` | `/vitaldb/beds/{bedID}` |
 | `GET` | `/vitaldb/relationships` |
@@ -65,12 +66,26 @@ PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/
 | `GET` | `/runtime/release` |
 | `GET` | `/runtime/install` |
 | `POST` | `/runtime/redis/backups` |
+| `POST` | `/runtime/data/backups` |
 | `GET` | `/host/backups` |
 | `GET` | `/host/backups/redis` |
+| `GET` | `/host/backups/vitalserver-helper` |
+| `POST` | `/host/backups/vitalserver-helper/restore` |
 | `POST` | `/host/logs/read` |
 | `GET` | `/host/logs/stream` |
 
 TestKit route와 browser 확인용 dev console은 test-enabled build에서만 노출됩니다.
+
+Automatic VitalServer backup은 별도 HTTP command route가 아니라 Settings contract로 제어됩니다.
+`automaticBackupEnabled`, `backupScheduleTimes`, `backupRetentionCount`를 저장하면 Host configure
+command가 macOS launchd job `ai.tirosh.vitalserver.helper.automatic-backup`을 갱신합니다. Job은
+`runtime automatic-backup`을 실행하며, 생성 대상은 Redis-only archive가 아니라 VitalServer backup입니다.
+
+Runtime log archive retention도 Settings contract로 제어됩니다. `logArchiveRetentionDays`와
+`logArchiveMaximumGiB`는 Guest runtime settings가 아니라 Host-owned
+`/Library/Application Support/VitalServerHelper/runtime-control-settings.json`에 저장됩니다. 이 값은
+central log collector가 `/Library/Application Support/VitalServerHelper/logs/archive/YYYY-MM-DD`
+관리 archive directory를 prune할 때 사용하며, VM runtime restart requirement를 만들지 않습니다.
 
 ## Status Vocabulary
 
@@ -79,7 +94,7 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 | UI label | Source of truth | Display vocabulary |
 |---|---|---|
 | Runtime installation | `RuntimeStatus.runtimeInstalled` | `Installed`, `Not Installed` |
-| Runtime state | `RuntimeStatus.runtimeState` | `Installing`, `Updating`, `Recovering`, `Healthy`, `Degraded`, `Critical`, `Unknown` |
+| Runtime state | `RuntimeStatus.runtimeState` | `Installing`, `Initializing`, `Updating`, `Recovering`, `Healthy`, `Degraded`, `Critical`, `Unknown` |
 | VM/proxy/watchdog/guest log sync/sleep prevention service | launchd loaded flags | `Running`, `Stopped` |
 | VitalServer/Network access/Redis UI/Swagger UI | HTTP probe fields | `Reachable`, `Unreachable`, `Waiting` |
 | Redis container health | guest compose observation | `Healthy`, `Unhealthy`, `Starting`, `Running`, `Stopped` |
@@ -91,7 +106,13 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 
 `RuntimeVitalRecorderStatus.notObserved` and `RuntimeVitalBedStatus.notObserved` mean the recorder or bed is known from history but is absent from the latest VitalDB observation. It is distinct from `offline`, which requires the current owner observation to report the subject as present and not online.
 
-`RuntimeVitalRecorderRecord.duplicateObservationCount` and `RuntimeVitalBedRecord.duplicateObservationCount` report the number of extra source observations that were collapsed because they shared the same VRecorder or bed identity. `0` means the source observation did not contain duplicates for that identity.
+`RuntimeVitalRecorderRecord.observationCount` and `RuntimeVitalBedRecord.observationCount` are support/debug metadata, not primary operator UI fields. They count how many stored VitalDB observation snapshots included the VRecorder or bed identity after same-snapshot duplicates were collapsed. `RuntimeVitalRecorderRecord.duplicateObservationCount` and `RuntimeVitalBedRecord.duplicateObservationCount` report the number of extra source records collapsed because they shared the same VRecorder or bed identity in a snapshot. `0` means no duplicate source records were collapsed for that identity.
+
+`RuntimeVitalRecorderHistory.updatedAt` is displayed as `Data updated`. It is the latest VitalDB observation snapshot timestamp used to assemble the recorder/bed history response. It is distinct from each record's `lastSeenAt`, which comes from the recorder or bed activity source.
+
+`RuntimeVitalRecorderRecord.latestAnomalyKind`, `latestAnomalySeverity`, `latestAnomalyMessage`, and `latestAnomalyObservedAt` describe the latest current anomaly for that VRecorder. The matching `RuntimeVitalBedRecord` fields describe the latest current anomaly for that bed. These fields remain null when there is no current anomaly.
+
+`RuntimeVitalBedRecord.linkedRecorderStatus`, `linkedRecorderIP`, and `linkedRecorderLastSeenAt` are copied from the explicit VRecorder read model record linked by `vrcode`. They remain null when no linked VRecorder record is available; clients must not infer them from bed status.
 
 `RuntimeStatus.sleepPreventionServiceLoaded` reports the optional host launchd service that keeps the Mac awake while VitalServer is running. It prevents idle system sleep so the host proxy, VM, and VRecorder TCP streams remain online, but it cannot prevent manual Sleep, lid close, shutdown, or managed power-policy sleep.
 
@@ -180,7 +201,8 @@ SQLite projection을 source로 유지합니다.
 IP는 마지막 관측 주소일 뿐 identity로 쓰지 않습니다. 이 read model은 접속했었던 VRecorder 목록, last IP,
 version, bed, first/last seen, latest status, current anomaly count, `activityTimeline`을 PWA/SwiftUI가
 바로 표시할 수 있게 정리한 결과입니다. `activityTimeline`은 snapshot history에서 vrcode별
-`recorders[].activity`를 시간순으로 모은 chart-friendly sample list입니다.
+`recorders[].activity`를 시간순으로 모은 recorder activity point list입니다. 각 point는 해당 시각의
+message count, byte count, room count를 담아 활동 차트를 그리기 위한 값입니다.
 `activityHistory.source`는 `sqliteProjection`, `unavailable`, `notProvided` 중 하나입니다.
 `sqliteProjection`의 empty timeline은 activity bucket projection을 읽었지만 해당 recorder activity가
 없었다는 뜻이고, `notProvided`는 caller가 activity projection을 제공하지 않은 construction path입니다.
@@ -189,6 +211,20 @@ version, bed, first/last seen, latest status, current anomaly count, `activityTi
 
 `GET /vitaldb/recorders/{vrcode}`는 같은 history read model에서 특정 `vrcode`의 recorder record 하나를
 반환합니다. 관측 이력이 없으면 `null`을 반환합니다.
+
+`GET /vitaldb/recorders/{vrcode}/activity`는 recorder activity chart용 lazy window read model입니다.
+Query는 `bucketSeconds=60|300`, `period=last15Minutes|lastHour|last6Hours|last12Hours|all`,
+`pageIndex=<non-negative integer>`를 지원합니다. `period=all`일 때 page 하나는 12시간이며,
+`pageIndex`가 없으면 최신 page를 반환합니다. 서버는 SQLite에서 해당 `vrcode`의 first/latest bucket
+boundary를 먼저 읽고, 선택된 window의 `since/until` 범위만 조회합니다. UI는 응답의 `page.count`,
+`page.index`, `page.windowStartedAt`, `page.windowEndedAt`, `buckets`만 표시하고 전체 history gap을
+브라우저나 SwiftUI 메모리에서 materialize하면 안 됩니다.
+
+`RuntimeVitalRecorderActivityWindow.state`는 `loaded`, `empty`, `invalidRequest`, `readFailed` 중
+하나입니다. `empty`는 read가 성공했지만 해당 recorder/window에 activity bucket이 없다는 뜻이며,
+`readFailed`와 구분해야 합니다. `invalidRequest`는 query contract 위반입니다. Missing bucket은 선택된
+window 안에서만 zero-count display bucket으로 채울 수 있고, window 밖의 missing history를 activity state로
+추정하지 않습니다.
 
 `GET /vitaldb/beds`는 runtime observability SQLite에 저장된 VitalDB observation snapshot들을 `bedID`
 기준으로 집계한 `RuntimeVitalBedRecord` 배열을 반환합니다. Bed 탭/PWA는 recorder history payload에
@@ -228,6 +264,7 @@ Stable build는 local API server는 유지하되 이 dev console route는 제공
 | `GET` | `/vitaldb/observations/stream` | SSE VitalDB observation snapshot subscription |
 | `GET` | `/vitaldb/recorders` | VRecorder history aggregated by vrcode |
 | `GET` | `/vitaldb/recorders/{vrcode}` | one VRecorder history record by vrcode |
+| `GET` | `/vitaldb/recorders/{vrcode}/activity` | lazy VRecorder activity chart window |
 | `GET` | `/vitaldb/beds` | bed history aggregated by bedID |
 | `GET` | `/vitaldb/beds/{bedID}` | one bed history record by bedID |
 | `GET` | `/vitaldb/relationships` | VRecorder-bed assignment and relationship event history |
@@ -242,7 +279,8 @@ Stable build는 local API server는 유지하되 이 dev console route는 제공
 | `POST` | `/runtime/services/repair-proxy` | repair host proxy |
 | `POST` | `/runtime/services/repair-datastore` | repair datastore |
 | `POST` | `/runtime/services/repair-vm-disk` | archive and recreate the mutable VM disk from the installed base image |
-| `POST` | `/runtime/redis/backups` | create recoverable Redis backup |
+| `POST` | `/runtime/redis/backups` | create advanced Redis-only repair backup |
+| `POST` | `/runtime/data/backups` | create user-facing VitalServer backup containing Host runtime state and Redis data |
 | `POST` | `/runtime/uninstall` | uninstall runtime |
 
 ## Host Affordance Routes
@@ -250,8 +288,10 @@ Stable build는 local API server는 유지하되 이 dev console route는 제공
 | Method | Path | 계약 |
 |---|---|---|
 | `GET` | `/host/backups` | list local backups |
-| `GET` | `/host/backups/redis` | list local Redis backups |
-| `POST` | `/host/backups/redis/restore` | restore selected Redis backup, planned |
+| `GET` | `/host/backups/redis` | list local Redis-only repair backups |
+| `POST` | `/host/backups/redis/restore` | restore selected Redis-only repair backup |
+| `GET` | `/host/backups/vitalserver-helper` | list local VitalServer backups |
+| `POST` | `/host/backups/vitalserver-helper/restore` | restore selected VitalServer backup |
 | `POST` | `/host/logs/read` | read selected log text |
 | `GET` | `/host/logs/stream` | SSE host log text snapshot subscription |
 | `POST` | `/host/logs/export` | export local logs |

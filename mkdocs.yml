@@ -6,7 +6,8 @@ docs_dir: site-docs
 site_dir: site
 
 theme:
-  name: mkdocs
+  name: readthedocs
+  navigation_depth: 3
 
 markdown_extensions:
   - admonition
@@ -19,21 +20,16 @@ nav:
   - Home: index.md
   - Release:
       - Overview: release/index.md
-      - Research Background: release/background.md
-      - Why Mac Hardware: release/mac-hardware-appliance.md
-      - Vital Server Helper Health Check: release/health-check-service.md
-      - Deployment Modes: release/deployment-modes.md
-      - Installation: release/installation.md
-      - Operation: release/operation.md
-      - Troubleshooting: release/troubleshooting.md
-      - Release Notes: release/release-notes.md
+      - Usage: release/usage.md
+      - Clean Uninstall: release/clean-uninstall.md
+      - Reset Installer: release/reset-installer.md
+      - Support Scope: release/scope.md
+      - Runtime Status: release/runtime-status.md
+      - Observability Events: release/observability-events.md
   - Dev:
       - Overview: dev/index.md
-      - Service Catalog: dev/service-catalog.md
-      - Package Map: dev/package-map.md
       - Architecture: dev/architecture.md
-      - Health Check Contract: dev/health-check-contract.md
-      - API Contracts: dev/api-contracts.md
-      - Build and Release: dev/build-and-release.md
-      - Testing: dev/testing.md
-      - Troubleshooting: dev/troubleshooting.md
+      - Runtime Contracts: dev/runtime-contracts.md
+      - Backup/Restore 계약: dev/backup-restore-contracts.md
+      - Repository Map: dev/repository-map.md
+      - Delivery & Validation: dev/delivery-validation.md

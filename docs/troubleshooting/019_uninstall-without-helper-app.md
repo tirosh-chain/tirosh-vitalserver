@@ -34,7 +34,7 @@ sudo tirosh-vitalserver-uninstall --clean
 개발 repo에서 반복 설치/삭제 중이면 같은 제거 스크립트를 감싼 target을 사용할 수 있습니다.
 
 ```sh
-make vm-pkg-uninstall-dev
+make dist/uninstall/dev
 ```
 
 제거 후에는 아래 항목들이 사라졌는지 확인합니다.

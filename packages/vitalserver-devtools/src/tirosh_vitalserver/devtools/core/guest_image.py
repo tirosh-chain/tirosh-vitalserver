@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
+from urllib.parse import urlparse
 
 from tirosh_vitalserver.devtools.core.errors import DomainError
+
+MINIMUM_AIRGAP_ROOTFS_SIZE = "8G"
 
 
 @dataclass(frozen=True)
@@ -15,17 +20,47 @@ class UbuntuAssetNames:
 
 
 @dataclass(frozen=True)
+class RuntimeDataDiskConfig:
+    disk_image_name: str
+    disk_size: str
+    filesystem_label: str
+    mount_path: str
+    docker_data_root: str
+    containerd_root: str
+
+
+@dataclass(frozen=True)
+class RuntimeDataDiskPlan:
+    config_path: Path
+    vm_home: Path
+    runtime_dir: Path
+    disk_image: Path
+    disk_image_name: str
+    disk_size: str
+    filesystem_label: str
+    mount_path: str
+    docker_data_root: str
+    containerd_root: str
+
+
+@dataclass(frozen=True)
 class GuestRuntimeConfig:
     runtime_dir: Path
     rootfs_size: str
     recreate_rootfs: bool
     disk_image_name: str
+    runtime_data_disk: RuntimeDataDiskConfig
+
+    @property
+    def runtime_data_disk_image(self) -> Path:
+        return self.runtime_dir / self.runtime_data_disk.disk_image_name
 
 
 @dataclass(frozen=True)
 class UbuntuImageConfig:
     version: str
     base_url: str
+    apt_snapshot: str
     arch: str
     kernel_suffix: str
     initrd_suffix: str
@@ -115,6 +150,7 @@ def ubuntu_boot_asset_plan(
     initrd_suffix: str,
 ) -> UbuntuBootAssetPlan:
     arch = resolve_ubuntu_arch(requested_arch, host_machine)
+    require_minimum_rootfs_size(rootfs_size)
     assets = ubuntu_asset_names(
         version=ubuntu_version,
         arch=arch,
@@ -124,7 +160,7 @@ def ubuntu_boot_asset_plan(
     return UbuntuBootAssetPlan(
         config_path=config_path,
         runtime_dir=runtime_dir,
-        download_dir=runtime_dir / "downloads",
+        download_dir=runtime_dir / "downloads" / ubuntu_download_cache_key(base_url),
         disk_image=runtime_dir / disk_image_name,
         disk_image_name=disk_image_name,
         rootfs_size=rootfs_size,
@@ -133,6 +169,70 @@ def ubuntu_boot_asset_plan(
         arch=arch,
         assets=assets,
     )
+
+
+def runtime_data_disk_plan(
+    *,
+    config_path: Path,
+    vm_home: Path,
+    runtime_config: GuestRuntimeConfig,
+) -> RuntimeDataDiskPlan:
+    runtime_dir = vm_home / "runtime"
+    disk = runtime_config.runtime_data_disk
+    require_ext_filesystem_label(disk.filesystem_label, "guest.runtime_data.filesystem_label")
+    return RuntimeDataDiskPlan(
+        config_path=config_path,
+        vm_home=vm_home,
+        runtime_dir=runtime_dir,
+        disk_image=runtime_dir / disk.disk_image_name,
+        disk_image_name=disk.disk_image_name,
+        disk_size=disk.disk_size,
+        filesystem_label=disk.filesystem_label,
+        mount_path=disk.mount_path,
+        docker_data_root=disk.docker_data_root,
+        containerd_root=disk.containerd_root,
+    )
+
+
+def require_ext_filesystem_label(value: str, field_name: str) -> None:
+    if not value:
+        raise DomainError(f"error: {field_name} must not be empty")
+    if len(value.encode("utf-8")) > 16:
+        raise DomainError(
+            f"error: {field_name} is too long for ext filesystem label: "
+            f"value={value} maxBytes=16"
+        )
+
+
+def require_ubuntu_snapshot_id(value: str) -> str:
+    if re.fullmatch(r"\d{8}T\d{6}Z", value):
+        return value
+    raise DomainError(
+        "error: unsupported guest.ubuntu.apt_snapshot; expected "
+        f"YYYYMMDDTHHMMSSZ: {value}"
+    )
+
+
+def ubuntu_download_cache_key(base_url: str) -> str:
+    normalized = base_url.rstrip("/")
+    label = urlparse(normalized).path.rstrip("/").split("/")[-1] or "ubuntu"
+    safe_label = "".join(
+        character if character.isalnum() or character in ".-_" else "-"
+        for character in label
+    )
+    digest = sha256(normalized.encode("utf-8")).hexdigest()[:12]
+    return f"{safe_label}-{digest}"
+
+
+def require_minimum_rootfs_size(value: str) -> None:
+    minimum_bytes = size_to_bytes(MINIMUM_AIRGAP_ROOTFS_SIZE)
+    actual_bytes = size_to_bytes(value)
+    if actual_bytes < minimum_bytes:
+        raise DomainError(
+            "error: guest rootfs_size is too small for air-gapped runtime "
+            f"package preparation: rootfs_size={value} "
+            f"minimum={MINIMUM_AIRGAP_ROOTFS_SIZE}"
+        )
 
 
 def size_to_bytes(value: str) -> int:

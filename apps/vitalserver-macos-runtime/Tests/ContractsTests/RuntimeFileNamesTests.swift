@@ -1,5 +1,6 @@
 import Contracts
 import XCTest
+import Errors
 
 final class RuntimeFileNamesTests: XCTestCase {
     func testRuntimeFileNamesRemainStableForHostAndGuestContracts() {
@@ -10,6 +11,7 @@ final class RuntimeFileNamesTests: XCTestCase {
         XCTAssertEqual(RuntimeFileNames.runtimeUninstallState, "tirosh-vitalserver-uninstall-state.json")
         XCTAssertEqual(RuntimeFileNames.vmIP, "vm-ip")
         XCTAssertEqual(RuntimeFileNames.vmLifecycle, "vm-lifecycle.json")
+        XCTAssertEqual(RuntimeFileNames.appliedVMConfig, "applied-vm-config.json")
         XCTAssertEqual(RuntimeFileNames.runtimeState, "runtime-state.json")
         XCTAssertEqual(RuntimeFileNames.bootstrapLog, "bootstrap.log")
         XCTAssertEqual(RuntimeFileNames.bootstrapResult, "bootstrap-result.json")
@@ -19,12 +21,16 @@ final class RuntimeFileNamesTests: XCTestCase {
         XCTAssertEqual(RuntimeFileNames.redisBackupRequest, "redis-backup.request")
         XCTAssertEqual(RuntimeFileNames.redisBackupResult, "redis-backup-result.json")
         XCTAssertEqual(RuntimeFileNames.redisBackupLog, "redis-backup.log")
+        XCTAssertEqual(RuntimeFileNames.redisRestoreRequest, "redis-restore.request")
+        XCTAssertEqual(RuntimeFileNames.redisRestoreResult, "redis-restore-result.json")
+        XCTAssertEqual(RuntimeFileNames.redisRestoreLog, "redis-restore.log")
         XCTAssertEqual(RuntimeFileNames.updateActivationRequest, "activate-update.request")
         XCTAssertEqual(RuntimeFileNames.updateActivationResult, "activate-update-result.json")
         XCTAssertEqual(RuntimeFileNames.updateActivationLog, "activate-update.log")
         XCTAssertEqual(RuntimeFileNames.updateShutdownRequest, "prepare-update-shutdown.request")
         XCTAssertEqual(RuntimeFileNames.updateShutdownResult, "prepare-update-shutdown-result.json")
         XCTAssertEqual(RuntimeFileNames.updateShutdownLog, "prepare-update-shutdown.log")
+        XCTAssertEqual(RuntimeFileNames.containerLogs, "container-logs.log")
         XCTAssertEqual(RuntimeFileNames.managerCommandLog, "tirosh-vitalserver-manager-command.log")
         XCTAssertEqual(RuntimeFileNames.managerHelperMessageLog, "tirosh-vitalserver-helper-message.log")
     }

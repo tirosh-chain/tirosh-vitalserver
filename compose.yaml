@@ -154,10 +154,10 @@ services:
     environment:
       URLS: >-
         [
-          {"name":"VitalServer","url":"/docs/openapi.yaml"},
-          {"name":"Runtime Control API","url":"/docs/macos-runtime/runtime-control.openapi.json"},
-          {"name":"Audit Proxy","url":"/docs/openapi/audit-proxy.openapi.yaml"},
-          {"name":"VitalDB Observer","url":"/docs/openapi/vitaldb-observer.openapi.yaml"}
+          {"name":"VitalServer","url":"/docs/api/vitalserver.openapi.yaml"},
+          {"name":"Runtime Control API","url":"/docs/runtime/macos/runtime-control.openapi.json"},
+          {"name":"Audit Proxy","url":"/docs/api/audit-proxy.openapi.yaml"},
+          {"name":"VitalDB Observer","url":"/docs/api/vitaldb-observer.openapi.yaml"}
         ]
       URLS_PRIMARY_NAME: "VitalServer"
     ports:
