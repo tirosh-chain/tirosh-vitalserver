@@ -163,7 +163,7 @@ public struct RuntimeServiceController {
     }
 
     private func unloadAndWaitIfLoaded(_ service: RuntimeManagedService) throws -> Bool {
-        guard try serviceOperator.stopIfLoaded(service) else {
+        guard try serviceOperator.unloadIfLoaded(service) else {
             return false
         }
         try waitForStoppedService(service)
