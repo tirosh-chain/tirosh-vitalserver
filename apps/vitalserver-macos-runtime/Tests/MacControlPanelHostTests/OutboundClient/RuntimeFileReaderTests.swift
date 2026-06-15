@@ -423,6 +423,28 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertEqual(backups, [])
     }
 
+    func testRuntimeDataBackupListIncludesAutomaticBackupDirectories() throws {
+        let directory = RuntimeControlClientConstants.Paths.runtimeDataBackups
+        let automatic = URL(fileURLWithPath: directory)
+            .appendingPathComponent("20260614T181517Z-automatic")
+        let manual = URL(fileURLWithPath: directory)
+            .appendingPathComponent("20260614T140508Z-manual")
+        let fileStore = PathStateRuntimeFileStore(
+            pathStates: [
+                directory: .directory,
+                automatic.path: .directory,
+                manual.path: .directory,
+            ],
+            directoryContents: [
+                directory: [manual, automatic],
+            ]
+        )
+
+        let backups = try RuntimeBackup.loadRuntimeDataBackups(fileStore: fileStore)
+
+        XCTAssertEqual(backups.map(\.path), [automatic.path, manual.path])
+    }
+
     func testRuntimeDataBackupListReportsManagedDirectoryInspectionFailure() {
         let fileStore = PathStateRuntimeFileStore(pathStates: [
             RuntimeControlClientConstants.Paths.runtimeDataBackups: .inspectFailed("permission denied"),

@@ -59,6 +59,13 @@ final class RuntimeSectionTests: XCTestCase {
         XCTAssertFalse(RuntimeSection.sectionIsInOverflow(.advanced, testEnabled: false))
     }
 
+    func testRecoverySectionsRefreshBackupListsWhileSelected() {
+        XCTAssertTrue(RuntimeSection.advanced.refreshesBackupListsWhileSelected)
+        XCTAssertTrue(RuntimeSection.dangerZone.refreshesBackupListsWhileSelected)
+        XCTAssertFalse(RuntimeSection.status.refreshesBackupListsWhileSelected)
+        XCTAssertFalse(RuntimeSection.update.refreshesBackupListsWhileSelected)
+    }
+
     @MainActor
     func testRuntimeControlDevConsoleURLUsesLocalAPI() {
         XCTAssertEqual(

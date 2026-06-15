@@ -443,6 +443,9 @@ public struct ContentView: View {
         default:
             break
         }
+        if selectedSection.refreshesBackupListsWhileSelected {
+            await viewModel.refreshBackupList()
+        }
     }
 }
 

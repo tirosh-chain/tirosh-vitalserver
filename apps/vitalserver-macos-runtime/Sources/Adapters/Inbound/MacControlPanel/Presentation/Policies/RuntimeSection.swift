@@ -40,6 +40,15 @@ public enum RuntimeSection: CaseIterable, Equatable, Identifiable {
     public static func sectionIsInOverflow(_ section: RuntimeSection, testEnabled: Bool) -> Bool {
         overflowSections(testEnabled: testEnabled).contains(section)
     }
+
+    public var refreshesBackupListsWhileSelected: Bool {
+        switch self {
+        case .advanced, .dangerZone:
+            return true
+        case .status, .recorders, .beds, .observability, .log, .settings, .update, .info, .test:
+            return false
+        }
+    }
 }
 
 extension RuntimeSection {
