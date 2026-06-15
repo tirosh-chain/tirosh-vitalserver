@@ -94,6 +94,7 @@ make help/compose       # Compose sandbox, Swagger, testkit
 make help/runtime       # local macOS VM runtime lifecycle
 make help/pwa           # Runtime Control PWA
 make help/dist          # package, install, update bundle
+make help/docs          # MkDocs 문서 site
 make help/devtools      # 저수준 build/debug/troubleshooting
 
 make dev/doctor         # 로컬 개발 도구와 repository setup 확인
@@ -131,47 +132,68 @@ make runtime/chaos      # deterministic runtime chaos scenario
 
 make dist/pkg/dev       # development pkg build
 make dist/dmg/dev       # development installer dmg build
-make dist/reset-installer/dev  # Reset Installer pkg build
 make dist/update/dev    # development product update bundle build
 make dist/install/dev/verified  # dev pkg verify, install, installed health check
 make dist/installed/health      # repo-driven dev install runtime health check
+make dist/installed/smoke       # repo-driven dev install runtime smoke check
 ```
 
 Make는 `.env`를 자동으로 읽습니다. 포트를 바꾸려면 `.env`를 수정하거나 일회성으로
 `VITALSERVER_PROXY_PORT=8080 make compose/up`처럼 Make 변수로 넘깁니다.
 Swagger UI 포트는 `SWAGGER_UI_PORT`로 조정합니다.
 
+`dist/installed/{health|smoke}`는 이 repository에서 개발용 package를 설치한 뒤 검증하는
+repo-driven dev install check입니다. 현장에 전달된 package 설치물은 repository checkout과
+분리되어 있으므로, 설치 후 상태 확인은 Helper app의 Status/Recorders 탭이나
+`/usr/local/bin/vitalserver-vm runtime health`를 기준으로 합니다.
+
 ## 구조
 
 ```text
 .
+├── .github/
+│   └── workflows/                # package/testkit release, CI workflow
+├── AGENTS.md                     # repository-wide agent/development rules
 ├── compose.yaml
 ├── Makefile
 ├── apps/
 │   ├── vitalserver/               # upstream VitalServer를 감싼 제품 실행 app
-│   ├── vitalserver-audit-proxy/   # VRecorder command audit sidecar
-│   ├── vitaldb-observer/          # Redis/proxy 기반 VitalDB 관측 sidecar
-│   ├── vitalserver-guest-observability/
+│   ├── vitalserver-audit-proxy/   # VRecorder command/IP/activity audit sidecar
+│   ├── vitaldb-observer/          # VitalDB recorder/bed/proxy/anomaly observation collector
+│   ├── vitalserver-guest-observability/ # guest-local runtime/status collection helpers
 │   ├── vitalserver-macos-runtime/ # macOS Helper, HostCLI, Runtime Control API
 │   ├── vitalserver-runtime-pwa/   # Remote Console PWA
-│   └── vitalserver-vm-launcher/
+│   └── vitalserver-vm-launcher/   # Swift VM launcher experiments/support code
 ├── config/
 │   ├── testkit.toml
 │   └── vm-build.toml
-├── docs/                          # 개발/운영 결정, API, runtime, troubleshooting 문서
-├── site-docs/                     # 공개 release/dev 문서
+├── docs/
+│   ├── adr/                       # architecture decisions
+│   ├── api/                       # OpenAPI specs for upstream/sidecar/runtime APIs
+│   ├── product/                   # productization strategy
+│   ├── pwa/                       # Remote Console PWA architecture/design/testing docs
+│   ├── recorder/                  # VRecorder flow, command audit, data model docs
+│   ├── repository/                # branch/tag/repository operation docs
+│   ├── runtime/                   # macOS runtime architecture, packaging, observability
+│   ├── testkit/                   # testkit usage docs
+│   └── troubleshooting/           # repeated failure patterns and prevention
+├── site-docs/                     # public release/dev docs rendered by MkDocs
 ├── infra/
 │   ├── macos-nginx/               # macOS host proxy 설정과 launchd template
 │   └── swagger-ui/                # Swagger UI reverse proxy 설정
-├── make/                          # Make target group
+├── make/
+│   └── vm/                        # VM/package/update Make target groups
 ├── packages/
 │   ├── vitalserver-devtools/      # local build/proxy/runtime/package Python 도구
 │   ├── vitalserver-guest-tools/   # guest observability/diagnostics 도구
 │   └── vitalserver-testkit/       # 운영 검증과 데이터 전송 검증용 Python 도구
-├── scripts/
+├── scripts/                       # small repository automation and verification scripts
 └── vendor/
     └── vitalserver/               # git submodule: tirosh-chain/vitalserver
 ```
+
+`dist/`, `site/`, `.tmp/`, `.artifacts/`, `tmp/`, `.venv/` 같은 build output와 local cache는
+source tree 설명에서 제외합니다.
 
 release manifest의 source of truth는 아래 파일입니다.
 
@@ -197,6 +219,16 @@ release manifest의 source of truth는 아래 파일입니다.
 model로 정규화합니다. `vitaldb-observer`는 Redis와 proxy/access log를 읽어 snapshot을
 생산하는 stateless collector입니다. 자세한 책임 경계는
 [Runtime observability model](docs/runtime/macos/observability.md)을 봅니다.
+
+Runtime Control UI와 Remote Console PWA는 같은 Runtime Control API 계약을 소비합니다.
+Recorders 화면은 VRecorder 상태, bed assignment, anomaly, 네트워크 접근 상태를 사용자-facing
+용어로 표시하며, 내부 저장소 구현 이름을 운영자가 알아야 하는 상태로 노출하지 않습니다.
+IP 보정 결과는 `IP verification`으로 모으고, 세부 진단은 Network access 영역에서 확인합니다.
+
+Recorder activity range는 근무 단위 탐색에 맞춰 `Last hour`, `Last 4 hours`, `Last 8 hours`,
+`Last 12 hours`, `Last 24 hours`, `All`을 사용합니다. `All`은 12시간 window를 보여주며,
+기본 window slide는 4시간입니다. PWA에서는 이 slide 간격을 1-12시간 사이에서 조절할 수
+있습니다. activity read 실패, 미제공, 빈 결과는 서로 다른 상태로 표시합니다.
 
 ## 검증 도구
 
