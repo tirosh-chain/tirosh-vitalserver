@@ -35,7 +35,7 @@ cat "/Library/Application Support/TiroshVitalServer/vm/logs/launcher.err.log"
 
 조치:
 
-`make vm-pkg`는 package root에 binary를 복사하기 직전에 다시 signing하고 entitlement를 검증합니다. 기존에 설치된 잘못된 package는 다시 빌드한 package로 재설치해야 합니다.
+`make dist/pkg/dev`는 package root에 binary를 복사하기 직전에 다시 signing하고 entitlement를 검증합니다. 기존에 설치된 잘못된 package는 다시 빌드한 package로 재설치해야 합니다.
 
 ## Follow-up
 

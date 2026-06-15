@@ -28,6 +28,13 @@ EXT4-fs (vda1): Remounting filesystem read-only
 systemd[1]: ... Failed to spawn executor: Input/output error
 ```
 
+Update 중에는 같은 guest kernel panic 계열이 다른 증상으로 보일 수 있습니다. Guest shutdown
+worker가 Redis backup, service stop, `sync`, `systemctl poweroff` 요청까지 완료했는데도 Host
+apply-bundle이 `stop-runtime-services`에서 900초 동안 VM process exit을 기다리다 실패합니다.
+이 경우 `runtime-events.jsonl`에는 `VM process did not stop within 900s`가 남고,
+`launchd.out.log`에는 `Reached target poweroff.target - System Power Off.` 직후 kernel panic이
+보일 수 있습니다.
+
 ## Impact
 
 - VM이 부팅, guest service start, watchdog restart, launchd respawn을 반복하면서 CPU와 IO 부하가 커집니다.
@@ -49,6 +56,13 @@ systemd[1]: ... Failed to spawn executor: Input/output error
 7. 이후 disk attachment invalid, ext4 journal abort, read-only remount, systemd executor IO error가 반복됐습니다.
 
 이 패턴에서 guest kernel panic과 VM disk read-only 상태가 직접적인 장애입니다. watchdog restart loop는 2차 증폭 요인입니다.
+
+2026-06-09 update 실패 로그에서는 guest가 systemd `poweroff.target`에 도달한 뒤
+`Kernel panic - not syncing: stack-protector: Kernel stack is corrupted in: __schedule...`를
+출력했습니다. 해당 로그만으로 특정 Ubuntu kernel defect를 확정할 수는 없지만, userland
+update worker는 poweroff 요청까지 완료했고 Host는 VM process exit이라는 Host-owned 상태를
+기다리다 timeout으로 실패했습니다. 이 변형은 update bundle artifact 자체보다 guest
+kernel/rootfs build, Apple Virtualization/virtio, ext4 shutdown 경로 조합을 먼저 의심해야 합니다.
 
 AGENTS.md 기준으로 보면 watchdog은 guest 내부 상태를 로그에서 추정하면 안 됩니다. 하지만 현재 구조에서는 guest가 `kernel-panic`, `filesystem-read-only`, `disk-io-error` 같은 terminal storage 상태를 명시 contract로 제공하지 못하면, host는 `missing vmIP`, `stale runtime-state`, `HTTP failed`만 보고 일반 restart 대상으로 취급합니다.
 
@@ -91,6 +105,9 @@ launchctl print system/com.tirosh.vitalserver-vm | grep "exit timeout"
 확인할 증거:
 
 - `Kernel panic - not syncing`이 있으면 guest kernel panic이 1차 원인입니다.
+- update 중이면 `prepare-update-shutdown-result.json`이 `poweroff-ready` 또는 `poweroff-requested`까지 완료됐는지
+  확인합니다. 완료됐다면 Host가 Guest shutdown 상태를 추정하지 않고 VM process exit 상태를
+  별도 실패로 봐야 합니다.
 - `jbd2/vda1-8`, `EXT4-fs error`, `Aborting journal`, `Remounting filesystem read-only`는 VM disk/journal 손상을 의미합니다.
 - `Failed to spawn executor: Input/output error`가 반복되면 guest root filesystem이 정상적으로 실행 파일을 읽지 못하는 상태입니다.
 - watchdog log에 `launchd restart label=com.tirosh.vitalserver-vm`가 반복되면 recovery loop입니다.
@@ -143,6 +160,10 @@ sudo /usr/local/bin/vitalserver-vm runtime repair-vm-disk
 6. loaded launchd job timeout drift를 운영 상태로 노출합니다.
    - plist `ExitTimeOut`과 loaded job `exit timeout` mismatch를 settings/status issue로 표시합니다.
    - mismatch가 있으면 repair/migration이 launchd job reload를 명시 수행합니다.
+7. Rootfs/kernel provenance를 고정합니다.
+   - packaging config는 `.../releases/noble/release`처럼 moving target URL을 사용하지 않습니다.
+   - 검증된 `release-YYYYMMDD` cloud image serial을 source of truth로 둡니다.
+   - 새 serial이나 Ubuntu series 후보는 update shutdown soak test를 통과한 뒤에만 stable config로 승격합니다.
 
 ## Applied Fix
 
@@ -158,6 +179,7 @@ sudo /usr/local/bin/vitalserver-vm runtime repair-vm-disk
 3. Recovery planner와 watchdog policy가 booting state를 restart로 해석하지 않습니다.
    - lifecycle이 `starting` 또는 `bootstrapping`이고 deadline 안이면 `missing vmIP`와 `guest HTTP missing`은 VM restart가 아니라 recovery deferred로 처리합니다.
    - deadline이 지난 boot lifecycle은 stale로 보고 일반 recovery 판단으로 넘어갑니다.
+   - deadline이 지난 boot lifecycle에서 `missing vmIP`가 VM restart를 요구하면, host proxy readiness/liveness probe read failure는 VM recovery를 막지 않습니다. 이 failure는 성공으로 바꾸지 않고 proxy restart reason으로 보존합니다.
 4. Watchdog VM restart action을 safe workflow로 바꿨습니다.
    - watchdog은 VM restart가 필요할 때 `launchctl kickstart -k`를 직접 dispatch하지 않습니다.
    - guest-log-sync를 멈추고, VM graceful stop/wait path를 통과한 뒤 VM과 guest-log-sync를 다시 시작합니다.
@@ -194,6 +216,8 @@ AGENTS.md에 맞춘 구현 순서는 아래가 안전합니다.
    - terminal storage failure에서 watchdog recovery가 suppress되는 test를 추가합니다.
    - watchdog VM restart가 safe shutdown workflow를 호출하는 test를 추가합니다.
    - stale old bootstrap result가 fresh lifecycle state를 덮어쓰지 못하는 test를 추가합니다.
+   - update shutdown soak test에서 guest가 `poweroff-ready` 또는 `poweroff-requested`를 쓴 뒤 Host가 observed VM pid exit을
+     확인하는지 반복 검증합니다.
 
 ## Implementation Cautions
 
@@ -237,6 +261,26 @@ AGENTS.md 원칙을 이 TS에 적용할 때 특히 조심할 점:
 - VM restart는 항상 guest shutdown과 disk flush가 보장되는 단일 workflow를 사용합니다.
 - launchd plist 변경은 loaded job에도 적용됐는지 검증합니다.
 - CPU spike만 보고 테스트를 반복하지 않고, 먼저 VM boot loop와 disk health 로그를 확인합니다.
+
+## Follow-up
+
+- 2026-06-09: Python guest-tools 전환 이후 update shutdown 경로에서 kernel panic 빈도가
+  높아졌다는 운영 단서를 확인했습니다. Python 자체를 원인으로 단정하지 않고, 전환 과정에서
+  늘어난 Redis backup, Docker compose stop, observability snapshot, result JSON write, request
+  cleanup, `sync` 순서를 우선 의심합니다. 성공 경로는 heavy write와 Host-visible result write를
+  끝낸 뒤 final `sync`를 수행하고, final `sync` 이후에는 `systemctl poweroff` 외 작업을 남기지
+  않는 방향으로 정리했습니다. poweroff 요청 실패는 shutdown 성공 경로가 아니므로 failure
+  result를 별도로 기록할 수 있습니다.
+- 2026-06-09: update shutdown 중 `container-logs`와 `runtime-state` sidecar stop을
+  `check=False` fire-and-forget으로 처리하던 경로를 명시 확인으로 바꿨습니다. Guest shutdown은
+  sidecar stop command 결과와 systemd `ActiveState`를 확인하고, sidecar가 계속 active이면 Docker
+  compose stop이나 poweroff로 진행하지 않습니다. 이 실패는 empty success가 아니라
+  `guest-sidecar-service-*` dependency failure로 남겨야 합니다.
+- 2026-06-09: update shutdown 중 백업 직전 단계에서 `command-poller`와 `redis-backup.timer`를
+  함께 quiesce하고, 이미 시작된 `redis-backup.service`가 종료될 때까지 bounded wait를 둔 뒤에
+  prepare-update-shutdown 백업/compose-stop/poweroff로 진행하도록 확장했습니다. `redis-backup`
+ 가 유휴 상태로 내려오지 않으면 Guest 업데이트는 실패로 남기고 진행을 멈춰 중첩 백업이
+  guest의 쓰기 폭증/디스크 손상으로 가지 않게 합니다.
 
 ## Related
 

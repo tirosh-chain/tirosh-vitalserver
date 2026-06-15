@@ -17,3 +17,20 @@ export function runtimeURL(target: {
   }
   return `http://${host}:${target.port}/`;
 }
+
+export function sameHostRuntimeURL(target: {
+  hostname: string | undefined;
+  port: number | undefined;
+}): string | null {
+  if (target.port === undefined || !Number.isInteger(target.port)) {
+    return null;
+  }
+  const hostname = target.hostname?.trim();
+  if (!hostname) {
+    return null;
+  }
+  const host = hostname.includes(":") && !hostname.startsWith("[")
+    ? `[${hostname}]`
+    : hostname;
+  return `http://${host}:${target.port}/`;
+}

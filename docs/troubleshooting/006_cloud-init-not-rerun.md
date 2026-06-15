@@ -15,7 +15,7 @@ cloud-init은 `instance-id`를 기준으로 이미 처리한 instance인지 판�
 
 조치:
 
-`make vm-cloud-init`은 기본적으로 새 instance-id를 생성합니다. 수동으로 지정하려면:
+`make devtools/cloud-init`은 기본적으로 새 instance-id를 생성합니다. 수동으로 지정하려면:
 
 ```sh
 uv run --project packages/vitalserver-devtools vitalserver-devtools \

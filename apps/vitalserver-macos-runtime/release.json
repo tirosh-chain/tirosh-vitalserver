@@ -1,8 +1,8 @@
 {
   "channel": "stable",
-  "helperVersion": "0.1.11",
-  "releaseLabel": "0.1.11",
-  "minUpdaterVersion": "0.1.11",
+  "helperVersion": "0.1.15",
+  "releaseLabel": "0.1.15",
+  "minUpdaterVersion": "0.1.15",
   "targetPlatform": "macos-arm64",
   "distribution": {
     "profile": "stable",
@@ -55,8 +55,8 @@
     },
     "hostProxy": {
       "displayName": "Network access",
-      "image": "nginx/1.31.0",
-      "version": "1.31.0"
+      "image": "nginx/1.31.1",
+      "version": "1.31.1"
     }
   }
 }

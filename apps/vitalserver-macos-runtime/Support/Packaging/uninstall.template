@@ -2,13 +2,13 @@
 set -Eeuo pipefail
 
 uninstall_log="${UNINSTALL_LOG}"
-exec > >(tee -a "${uninstall_log}") 2>&1
 
 vm_bin="${VM_BIN}"
 vm_home="${VM_HOME}"
 uninstall="${UNINSTALL}"
 manager_app="${MANAGER_APP}"
 clean=false
+force_clean=false
 
 log() {
   printf "[%s] %s\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*"
@@ -23,19 +23,26 @@ on_error() {
 trap on_error ERR
 
 if [ "$(id -u)" -ne 0 ]; then
-  log "This uninstaller must run as root."
-  log "Run: sudo tirosh-vitalserver-uninstall [--clean]"
+  printf "[%s] This uninstaller must run as root.\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  printf "[%s] Run: sudo tirosh-vitalserver-uninstall [--clean]\n" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   exit 1
 fi
+
+mkdir -p "$(dirname "${uninstall_log}")"
+exec > >(tee -a "${uninstall_log}") 2>&1
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --clean)
       clean=true
       ;;
+    --force-clean|--force-clean-uninstaller)
+      clean=true
+      force_clean=true
+      ;;
     *)
       log "Unknown option: $1"
-      log "Usage: sudo tirosh-vitalserver-uninstall [--clean]"
+      log "Usage: sudo tirosh-vitalserver-uninstall [--clean|--force-clean-uninstaller]"
       exit 2
       ;;
   esac
@@ -68,11 +75,13 @@ wait_for_helper_app_exit() {
 wait_for_helper_app_exit
 
 command=("${vm_bin}" "runtime" "uninstall")
-if [ "${clean}" = true ]; then
+if [ "${force_clean}" = true ]; then
+  command+=("--force-clean-uninstaller")
+elif [ "${clean}" = true ]; then
   command+=("--clean")
 fi
 
-log "delegating uninstall to HostCLI clean=${clean}"
+log "delegating uninstall to CLIHost clean=${clean} forceClean=${force_clean}"
 VITALSERVER_VM_HOME="${vm_home}" "${command[@]}"
 
 log "step=remove-uninstaller status=started"

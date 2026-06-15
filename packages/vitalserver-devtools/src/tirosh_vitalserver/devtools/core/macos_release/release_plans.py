@@ -16,7 +16,6 @@ DEFAULT_UPDATE_MIGRATIONS = (
     "002-migrate-runtime-logs",
     "003-install-host-launchd-services",
     "004-refresh-vm-shutdown-timeouts",
-    "005-write-guest-runtime-settings-read-model",
 )
 
 
@@ -103,6 +102,14 @@ def default_dmg_output(
     )
 
 
+def default_troubleshooting_tools_output(
+    settings: MacOSReleaseSettings,
+    release: ReleaseManifest,
+) -> Path:
+    filename = f"VitalServerHelperTroubleshootingTools-{release.release_label}"
+    return settings.dist_dir / filename
+
+
 def package_outputs(
     *,
     settings: MacOSReleaseSettings,
@@ -122,7 +129,10 @@ def package_outputs(
         pkg_output = default_pkg_output(settings, release)
     else:
         dmg_output = default_dmg_output(settings, release)
-    return PackageOutputs(pkg_output=pkg_output, dmg_output=dmg_output)
+    return PackageOutputs(
+        pkg_output=pkg_output,
+        dmg_output=dmg_output,
+    )
 
 
 def package_clean_plan(
@@ -134,6 +144,7 @@ def package_clean_plan(
     paths = [
         settings.pkg_root.parent,
         default_pkg_output(settings, release),
+        default_troubleshooting_tools_output(settings, release),
         settings.app_bundle,
         default_dmg_output(settings, release),
     ]

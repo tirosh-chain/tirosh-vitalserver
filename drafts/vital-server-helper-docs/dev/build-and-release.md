@@ -6,11 +6,11 @@
 
 | 목적 | command |
 |---|---|
-| release DMG 생성 | `make vm-dmg-release` |
-| release Product Update bundle 생성 | `make vm-update-bundle-release` |
-| release Product Update bundle 검증 | `make vm-update-bundle-verify-release` |
-| VM Image update bundle 생성 | `make vm-rootfs-update-bundle-release` |
-| installed runtime health 확인 | `make vm-installed-health` |
+| release DMG 생성 | `make dist/dmg/release` |
+| release Product Update bundle 생성 | `make dist/update/release` |
+| release Product Update bundle 검증 | `make dist/update/verify/release` |
+| VM Image update bundle 생성 | `make dist/image-update/release` |
+| installed runtime health 확인 | `make dist/installed/health` |
 | testkit release wheel 설치 | `make install-testkit-release TESTKIT_VERSION=<version>` |
 
 ## Artifact

@@ -1,13 +1,18 @@
 import type { components, paths } from "./generated/runtime-control";
+import {
+  runtimeEventHistorySchema,
+  runtimeOverviewSchema,
+  runtimeStatusSchema,
+  vitalDBRelationshipsSchema
+} from "./schemas/runtimeControlSchemas";
+import type { z } from "zod";
 
-export type RuntimeControlOverview =
-  paths["/runtime/overview"]["get"]["responses"]["200"]["content"]["application/json"];
+export type RuntimeControlOverview = z.infer<typeof runtimeOverviewSchema>;
 
 export type RuntimeControlCapabilities =
   paths["/runtime/capabilities"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type RuntimeStatus =
-  paths["/runtime/status"]["get"]["responses"]["200"]["content"]["application/json"];
+export type RuntimeStatus = z.infer<typeof runtimeStatusSchema>;
 
 export type RuntimeSettings =
   paths["/runtime/settings"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -33,8 +38,7 @@ export type RuntimeBackup =
 export type RuntimeBackupRequest =
   paths["/host/backups/rollback"]["post"]["requestBody"]["content"]["application/json"];
 
-export type RuntimeEventHistory =
-  paths["/runtime/events"]["get"]["responses"]["200"]["content"]["application/json"];
+export type RuntimeEventHistory = z.infer<typeof runtimeEventHistorySchema>;
 
 export type RuntimeEventDocument = NonNullable<
   RuntimeEventHistory["events"]
@@ -100,3 +104,13 @@ export type VitalDBBeds =
   paths["/vitaldb/beds"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type VitalDBBedRecord = VitalDBBeds[number];
+
+export type VitalDBRelationships = z.infer<typeof vitalDBRelationshipsSchema>;
+
+export type VitalDBRelationshipAssignment = NonNullable<
+  VitalDBRelationships["assignments"]
+>[number];
+
+export type VitalDBRelationshipEvent = NonNullable<
+  VitalDBRelationships["events"]
+>[number];

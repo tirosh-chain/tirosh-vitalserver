@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.core.update_bundle_models import BuildUpdateBundleInput
+from tirosh_vitalserver.devtools.core.upstream_vitalserver_contract import (
+    VerificationMode,
+)
 
 
 @dataclass(frozen=True)
@@ -97,6 +100,7 @@ class RootfsBaseInput:
     output: Path
     force: bool
     compression_threads: int | None
+    expected_run_id: str | None
 
 
 @dataclass(frozen=True)
@@ -114,11 +118,19 @@ class GuestDeploymentInput:
     runtime_dir: Path
     deploy_dir: Path | None
     docker_bundle: Path | None
+    rootfs_run_id: str | None
 
 
 @dataclass(frozen=True)
 class RequireGitBranchInput:
     branch: str
+
+
+@dataclass(frozen=True)
+class VerifyUpstreamVitalServerInput:
+    mode: VerificationMode
+    manifest: Path | None
+    require_remote_commit: bool = False
 
 
 @dataclass(frozen=True)
@@ -172,6 +184,28 @@ class RuntimeWaitInput:
     config: Path
     vm_home: Path
     timeout: int
+    expected_run_id: str | None = None
+
+
+@dataclass(frozen=True)
+class RootfsRunInput:
+    config: Path
+    vm_home: Path
+    run_id: str
+
+
+@dataclass(frozen=True)
+class GoldenRootfsPreflightInput:
+    config: Path
+    vm_home: Path
+    expected_run_id: str
+
+
+@dataclass(frozen=True)
+class RuntimeBootSmokeRunInput:
+    config: Path
+    vm_home: Path
+    run_id: str
 
 
 @dataclass(frozen=True)
@@ -198,6 +232,12 @@ class InstalledStatusInput:
 
 @dataclass(frozen=True)
 class InstalledHealthInput:
+    config: Path
+    proxy_port: str
+
+
+@dataclass(frozen=True)
+class InstalledSmokeInput:
     config: Path
     proxy_port: str
 
@@ -232,6 +272,15 @@ class VerifyReleaseUpdateBundleInput:
 
 
 @dataclass(frozen=True)
+class ApplySmokeReleaseUpdateBundleInput:
+    config: Path
+    release_file: Path
+    bundle_name: str | None
+    bundle_kind: str
+    output_dir: Path | None
+
+
+@dataclass(frozen=True)
 class ReleasePackageInput:
     config: Path
     release_file: Path
@@ -247,6 +296,30 @@ class ReleasePackageInput:
     nginx_binary: str | None
     nginx_expected_version: str | None
     docker_platform: str | None
+
+
+@dataclass(frozen=True)
+class ReleaseTroubleshootingToolsInput:
+    config: Path
+    release_file: Path
+    output: Path | None
+    sdkroot: str | None
+    clang_module_cache: str | None
+    codesign_identity: str
+
+
+@dataclass(frozen=True)
+class ReleaseDmgArtifactVerifyInput:
+    config: Path
+    release_file: Path
+    output: Path | None
+
+
+@dataclass(frozen=True)
+class ReleaseTroubleshootingToolsVerifyInput:
+    config: Path
+    release_file: Path
+    output: Path | None
 
 
 @dataclass(frozen=True)
@@ -268,6 +341,7 @@ class VerifyUpdateBundleInput:
 
 
 __all__ = [
+    "ApplySmokeReleaseUpdateBundleInput",
     "BuildUpdateBundleInput",
     "CloudInitInput",
     "ComposeCommandInput",
@@ -277,6 +351,7 @@ __all__ = [
     "GuestDeploymentInput",
     "HostProxyInput",
     "InstalledHealthInput",
+    "InstalledSmokeInput",
     "InstalledStatusInput",
     "MacOSAppInput",
     "MacOSPackageCleanInput",
@@ -284,7 +359,10 @@ __all__ = [
     "NginxBundleInput",
     "OpenProductUrlInput",
     "PythonWorkspaceToolInput",
+    "ReleaseDmgArtifactVerifyInput",
     "ReleasePackageInput",
+    "ReleaseTroubleshootingToolsInput",
+    "ReleaseTroubleshootingToolsVerifyInput",
     "ReleaseUpdateBundleInput",
     "RenderTemplateInput",
     "RequireBridgedIdentityInput",

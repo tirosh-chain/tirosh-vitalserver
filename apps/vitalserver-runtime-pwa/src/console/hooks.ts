@@ -96,6 +96,15 @@ export function useVitalDBBeds() {
   });
 }
 
+export function useVitalDBRelationships() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.relationships,
+    queryFn: () => runtimeControlGateway.getRelationships(),
+    refetchInterval: 5_000
+  });
+}
+
 export function useHostLogs(request: {
   source: RuntimeLogSource;
   lineLimit: number;
@@ -169,6 +178,15 @@ export function useRedisBackups() {
   });
 }
 
+export function useRuntimeDataBackups() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.runtimeDataBackups,
+    queryFn: () => runtimeControlGateway.listRuntimeDataBackups(),
+    refetchInterval: 10_000
+  });
+}
+
 export function useRollbackBackup() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useBackupMutation("host", (path) =>
@@ -183,15 +201,43 @@ export function useDeleteHostBackup() {
   );
 }
 
+export function useDeleteUpdateBackup() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useBackupMutation("host", (path) =>
+    runtimeControlGateway.deleteUpdateBackup(backupRequest(path))
+  );
+}
+
+export function useDeleteRuntimeDataBackup() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useBackupMutation("runtime-data", (path) =>
+    runtimeControlGateway.deleteRuntimeDataBackup(backupRequest(path))
+  );
+}
+
 export function useCreateRedisBackup() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useBackupMutation("redis", () => runtimeControlGateway.createRedisBackup());
+}
+
+export function useCreateRuntimeDataBackup() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useBackupMutation("runtime-data", () =>
+    runtimeControlGateway.createRuntimeDataBackup()
+  );
 }
 
 export function useRestoreRedisBackup() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useBackupMutation("redis", (path) =>
     runtimeControlGateway.restoreRedisBackup(backupRequest(path))
+  );
+}
+
+export function useRestoreRuntimeDataBackup() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useBackupMutation("runtime-data", (path) =>
+    runtimeControlGateway.restoreRuntimeDataBackup(backupRequest(path))
   );
 }
 
@@ -338,7 +384,7 @@ export function useDeleteTestKitOrphanVRecorder() {
 }
 
 function useBackupMutation(
-  scope: "host" | "redis",
+  scope: "host" | "redis" | "runtime-data",
   mutationFn: (path: string) => Promise<RuntimeCommandResponse>
 ) {
   const queryClient = useQueryClient();
@@ -353,6 +399,11 @@ function useBackupMutation(
       queryClient.invalidateQueries({
         queryKey: consoleQueryKeys.redisBackups
       });
+      if (scope === "runtime-data") {
+        queryClient.invalidateQueries({
+          queryKey: consoleQueryKeys.runtimeDataBackups
+        });
+      }
     }
   });
 }

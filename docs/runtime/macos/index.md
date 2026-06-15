@@ -14,9 +14,11 @@
 | [ADR 0002](../../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md) | Web/PWA Helper UI, macOS native shell, local/remote RuntimeControlClient boundary 확인 |
 | [ADR 0003](../../adr/0003-helper-layer-and-component-version-model.md) | Helper layer와 component version model 확인 |
 | [ADR 0004](../../adr/0004-product-update-and-vm-image-update-contract.md) | Product Update, VM Image Update, two-phase Product Update 계약 확인 |
-| [Packaging and Update](packaging.md) | `make vm-pkg`, `make vm-dmg`, PKG 설치 흐름, install settings, update bundle 계약 확인 |
+| [Packaging and Update](packaging.md) | `make dist/pkg/dev`, `make dist/dmg/dev`, PKG 설치 흐름, install settings, update bundle 계약 확인 |
 | [Update](update.md) | update bundle 적용 과정, 보존/변경 범위, guest-side activation, rollback 계약 확인 |
 | [Runtime](runtime.md) | VM boot asset, cloud-init, guest bootstrap, data sharing, network mode, identity/signing 정책 확인 |
+| [VitalServer Backup](runtime-data-backup.md) | VitalServer backup 대상, artifact schema owner, restore compatibility 계약 확인 |
+| [Golden Rootfs Compile RCA](golden-rootfs-compile-rca.md) | golden rootfs compile 장기 실패의 원인, 증거, 해결책, 예방 규칙 확인 |
 | [Troubleshooting](../../troubleshooting/index.md) | 502, cloud-init 재실행, disk full, update 실패, bridged entitlement, stale pid 같은 문제 확인 |
 
 ## 핵심 구조
@@ -42,38 +44,38 @@ bridged mode는 Apple `com.apple.vm.networking` restricted entitlement 승인이
 설치 파일을 만들 때:
 
 ```sh
-make vm-dmg
+make dist/dmg/dev
 ```
 
 이미 설치된 현장에 Product Update bundle을 제공할 때:
 
 ```sh
-make vm-update-bundle
-make vm-update-bundle-verify
+make dist/update/dev
+make dist/update/verify/dev
 ```
 
 VM Image/rootfs 자체를 교체하는 특수 bundle이 필요할 때:
 
 ```sh
-make vm-rootfs-update-bundle
-make vm-rootfs-update-bundle-verify
+make dist/image-update/dev
+make dist/image-update/verify/dev
 ```
 
 개발용 설치 테스트:
 
 ```sh
-make vm-pkg
-make vm-pkg-install
-make vm-installed-health
-make vm-pkg-uninstall-dev
+make dist/pkg/dev
+make dist/install/dev
+make dist/installed/health
+make dist/uninstall/dev
 ```
 
 개발용 VM을 직접 띄워 확인할 때는 아래를 사용합니다.
 
 ```sh
-make vm-up
-make vm-health
-make vm-down
+make runtime/up
+make runtime/health
+make runtime/down
 ```
 
 ## Source of Truth
@@ -86,4 +88,6 @@ make vm-down
 | 패키지 산출물과 설치/update 계약 | [Packaging and Update](packaging.md) |
 | update 적용과 rollback 계약 | [Update](update.md) |
 | VM runtime 동작과 네트워크 정책 | [Runtime](runtime.md) |
+| backup/restore 대상과 restore compatibility | [VitalServer Backup](runtime-data-backup.md) |
+| golden rootfs compile RCA | [Golden Rootfs Compile RCA](golden-rootfs-compile-rca.md) |
 | 장애 증상과 조치 | [Troubleshooting](../../troubleshooting/index.md) |

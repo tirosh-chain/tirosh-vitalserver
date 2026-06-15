@@ -1,7 +1,21 @@
 import Contracts
 import XCTest
+import Errors
 
 final class UpdateBundleContractsTests: XCTestCase {
+    func testVitalServerHelperArtifactArchiveLayoutDefinesReplacementPayloadRoots() {
+        let layout = UpdateBundleArtifactArchiveLayouts.vitalServerHelper
+
+        XCTAssertEqual(layout.appBundleRoot, "VitalServer Helper.app")
+        XCTAssertEqual(layout.nginxBundleRoot, "nginx")
+        XCTAssertEqual(layout.guestDeployRoot, "deploy")
+        XCTAssertEqual(layout.runtimeToolsAllowedRootEntries, [
+            "vitalserver-vm",
+            "vitalserver-proxy-run",
+            "tirosh-vitalserver-uninstall",
+        ])
+    }
+
     func testDecodesKnownArtifactTypesAsEnumValues() throws {
         let manifest = try JSONDecoder().decode(UpdateBundleManifest.self, from: Data("""
         {

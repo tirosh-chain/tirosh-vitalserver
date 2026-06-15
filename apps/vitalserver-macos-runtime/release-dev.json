@@ -1,15 +1,17 @@
 {
   "channel": "dev",
-  "helperVersion": "0.1.11",
-  "releaseLabel": "0.1.11-dev",
-  "minUpdaterVersion": "0.1.7",
+  "helperVersion": "0.1.15",
+  "releaseLabel": "0.1.15-dev",
+  "minUpdaterVersion": "0.1.15",
   "targetPlatform": "macos-arm64",
   "distribution": {
     "profile": "dev",
     "audience": "internal"
   },
   "bundle": {
-    "optionalContainerServices": ["testkit"]
+    "optionalContainerServices": [
+      "testkit"
+    ]
   },
   "vitalServerVersion": "2.3.4",
   "services": {

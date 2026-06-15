@@ -1,5 +1,6 @@
 import Contracts
 import XCTest
+import Errors
 
 final class RuntimeConfigureContractsTests: XCTestCase {
     func testConfigureOptionsMapStableCLIFlags() {
@@ -19,7 +20,9 @@ final class RuntimeConfigureContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--start-on-boot"), .startOnBoot)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--auto-recovery"), .autoRecovery)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--prevent-system-sleep"), .preventSystemSleep)
-        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--redis-backup-retention"), .redisBackupRetention)
+        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--automatic-backup"), .automaticBackup)
+        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--backup-schedule-times"), .backupScheduleTimes)
+        XCTAssertEqual(RuntimeConfigureOption(rawValue: "--backup-retention"), .backupRetention)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--restart"), .restart)
         XCTAssertEqual(RuntimeConfigureOption(rawValue: "--future"), .unknown("--future"))
     }
@@ -38,6 +41,14 @@ final class RuntimeConfigureContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeBooleanParser.parse("NO"), false)
         XCTAssertEqual(RuntimeBooleanParser.parse("0"), false)
         XCTAssertNil(RuntimeBooleanParser.parse("maybe"))
+    }
+
+    func testRuntimeNetworkModePreservesSharedAndBridgedValues() {
+        XCTAssertEqual(RuntimeNetworkMode(rawValue: "shared"), .shared)
+        XCTAssertEqual(RuntimeNetworkMode(rawValue: "bridged"), .bridged)
+        XCTAssertNil(RuntimeNetworkMode(rawValue: "host"))
+        XCTAssertEqual(RuntimeNetworkMode.shared.rawValue, "shared")
+        XCTAssertEqual(RuntimeNetworkMode.bridged.rawValue, "bridged")
     }
 
     func testTextValidatorRejectsNewlines() {

@@ -44,7 +44,7 @@ Browser / VRecorder
 | air-gapped 현장 업데이트 bundle을 만들고 싶다 | `make dist/update/release` |
 | 만든 update bundle을 검증하고 싶다 | `make dist/update/verify/release` |
 | 개발용 package를 현재 Mac에 설치해 보고 싶다 | `make dist/install/dev` |
-| 설치된 runtime 상태를 확인하고 싶다 | `make dist/installed/health` |
+| repo 기반 개발 설치 runtime 상태를 확인하고 싶다 | `make dist/installed/health` |
 | 권한/update/observability 실패 주입 시나리오를 빠르게 확인하고 싶다 | `make runtime/chaos` |
 | 권한/update/observability 실패 주입 시나리오를 반복 확인하고 싶다 | `make runtime/chaos/loop` |
 | 개발용 설치물을 지우고 싶다 | `make dist/uninstall/dev` |
@@ -96,7 +96,7 @@ Install VitalServer Helper.pkg
 
 이 package는 Helper app, Swift runtime CLI, host proxy, Linux VM runtime asset, golden rootfs, Docker image bundle, LaunchDaemon을 설치합니다. target Mac은 설치 시점에 인터넷이 없어도 됩니다.
 
-package에 들어가는 golden rootfs base는 설치 파일 효율을 위해 기본 4 GiB로 만듭니다. 실제 설치된 VM disk는 wizard 기본값 32 GiB로 확장되며, 설치 후에는 증가만 허용합니다.
+package에 들어가는 golden rootfs base는 설치 파일 효율과 air-gapped package 준비 여유를 함께 고려해 기본 8 GiB로 만듭니다. 실제 설치된 VM disk는 wizard 기본값 32 GiB로 확장되며, 설치 후에는 증가만 허용합니다.
 
 반복 개발 중에는 cache를 재사용합니다. release 검증처럼 clean golden rootfs부터 다시 만들려면:
 
@@ -233,7 +233,7 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 | `make dist/update/verify/dev` | dev product update bundle checksum/manifest 검증 |
 | `make dist/update/verify/release` | release product update bundle checksum/manifest 검증 |
 | `make dist/install/dev` | 현재 Mac에 개발용 package 설치 |
-| `make dist/installed/health` | 설치된 launchd VM/proxy 상태 확인 |
+| `make dist/installed/health` | repo 기반 개발 설치의 launchd VM/proxy 상태 확인 |
 | `make dist/uninstall/dev` | 개발용 설치물 제거 |
 | `make runtime/up` | 개발 VM start + host proxy 연결 |
 | `make runtime/health` | 개발 VM health 확인 |
@@ -259,17 +259,19 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 | `apps/vitalserver-macos-runtime` | macOS runtime distribution. Helper app, runtime CLI, packaging, guest asset을 같은 release 단위로 묶음 |
 | Make | target orchestration, artifact path, developer wrapper |
 | Python `packages/vitalserver-devtools` | Ubuntu asset, golden rootfs, nginx bundle, Docker image bundle, update bundle 생성/검증 |
-| Swift `HostCLI` | VM lifecycle, runtime install/configure/health/watchdog/update/rollback |
+| Swift `CLIHost` | runtime CLI process boundary |
+| Swift `InboundAdapters/CLI` | CLI command parsing and presentation |
 | Swift `RuntimeControl` | Helper UI가 보는 runtime usecase 입출력 계약. remote-capable `RuntimeControlClient`와 전환기 local affordance용 `RuntimeHostClient`를 분리 |
 | Swift `RuntimeControlAPI` | PWA/API server/client가 공유할 HTTP route/DTO/router/local loopback server. `/runtime/*`와 `/host/*` 경계를 분리 |
 | Swift `Contracts` | PWA/API/server/host runtime이 공유할 status/progress/update/guest JSON 계약 |
-| Swift `MacHostRuntimeAdapter` | `RuntimeControl`의 macOS local file/process/CLI 구현 |
-| Swift `MacRuntimeControlApp` | Helper app UI, presentation, native shell, composition |
+| Swift `OutboundAdapters/MacRuntimeControlClient` | `RuntimeControl`의 macOS local file/process/CLI 구현 |
+| Swift `MacControlPanel` | Helper app UI/presentation inbound adapter |
+| Swift `MacControlPanelHost` | macOS app process shell, native shell, composition |
 | `vitaldb-observer` | Redis/proxy source를 읽어 VitalDB recorder/bed/proxy/anomaly snapshot을 생산하는 stateless guest sidecar |
 | Packaging shell | `postinstall`, `proxy-run`, uninstall entrypoint |
 | Guest support | cloud-init 이후 Docker Compose bootstrap, guest state 기록, diagnostics |
 
-네이밍은 platform 종속성과 재사용 가능성을 기준으로 둡니다. `MacHost*`는 macOS host adapter, `MacRuntimeControlApp`은 SwiftUI/native shell transition app, `System*`은 Foundation/FileManager/Process 기반의 일반 system adapter, `Contracts`/`RuntimeControl`/`RuntimeControlAPI`는 PWA/API/server/host runtime이 공유할 계약을 뜻합니다.
+네이밍은 role boundary와 재사용 가능성을 기준으로 둡니다. `Errors`는 실패 의미, `Contracts`는 공유 상태/이벤트/명령/문서 계약, `InboundAdapters`는 CLI/API/UI 입력 변환, `OutboundAdapters`는 filesystem/process/network/VM effect 구현, `MacControlPanel`은 Helper app UI/presentation inbound adapter, `MacControlPanelHost`는 SwiftUI app process shell과 native shell composition, `Contracts`/`RuntimeControl`/`RuntimeControlAPI`는 PWA/API/server/host runtime이 공유할 계약을 뜻합니다.
 
 ## 문서
 

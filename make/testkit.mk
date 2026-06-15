@@ -7,16 +7,16 @@ require-testkit-runtime:
 testkit/health: require-testkit-runtime
 	$(TESTKIT) health
 
-testkit/verify: require-testkit-runtime app/up
+testkit/verify: require-testkit-runtime compose/up
 	$(TESTKIT) verify
 
-testkit/smoke: require-testkit-runtime app/up
+testkit/smoke: require-testkit-runtime compose/up
 	$(TESTKIT) smoke
 
-testkit/load: require-testkit-runtime app/up
+testkit/load: require-testkit-runtime compose/up
 	$(TESTKIT) load
 
-testkit/stream: require-testkit-runtime app/up
+testkit/stream: require-testkit-runtime compose/up
 	@status=0; \
 	$(TESTKIT) stream || status=$$?; \
 	if [ "$$status" = "130" ]; then \

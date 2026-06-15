@@ -8,7 +8,7 @@ describe("runtime settings policy", () => {
     expect(isProtectedVitalFilesDirectory("/Users/Shared/TiroshVitalServer/vital")).toBe(false);
   });
 
-  it("validates VM, port, disk, and Redis backup limits", () => {
+  it("validates VM, port, disk, and backup limits", () => {
     const result = validateRuntimeSettings(fullSettings({
       cpuCount: 0,
       memoryGiB: 0,
@@ -17,11 +17,37 @@ describe("runtime settings policy", () => {
       proxyPort: 70_000,
       runtimeControlPort: 70_000,
       publicPort: 0,
-      redisBackupRetentionCount: 31
+      automaticBackupEnabled: true,
+      backupScheduleTimes: ["03:15"],
+      backupRetentionCount: 31,
+      logArchiveRetentionDays: 31,
+      logArchiveMaximumGiB: 21
     }));
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toHaveLength(7);
+    expect(result.errors).toHaveLength(9);
+    expect(result.errors).toContain("Log archive retention must be between 1 and 30 days.");
+    expect(result.errors).toContain("Log archive size limit must be between 1 and 20 GiB.");
+  });
+
+  it("rejects backup times outside HH:mm clock range", () => {
+    const result = validateRuntimeSettings(fullSettings({
+      backupScheduleTimes: ["24:00", "03:60"]
+    }));
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain(
+      "Backup times must use 24-hour HH:mm format, such as 03:15 or 15:15, and must be between 00:00 and 23:59."
+    );
+  });
+
+  it("rejects duplicate backup times", () => {
+    const result = validateRuntimeSettings(fullSettings({
+      backupScheduleTimes: ["03:15", "03:15"]
+    }));
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("Backup times must be unique.");
   });
 });
 
@@ -47,7 +73,11 @@ function fullSettings(overrides = {}) {
     startOnBootConfigurable: true,
     autoRecoveryEnabled: true,
     preventSystemSleep: true,
-    redisBackupRetentionCount: 30,
+    automaticBackupEnabled: true,
+    backupScheduleTimes: ["03:15"],
+    backupRetentionCount: 30,
+    logArchiveRetentionDays: 14,
+    logArchiveMaximumGiB: 1,
     restartAfterSave: true,
     ...overrides
   };

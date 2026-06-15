@@ -1,21 +1,33 @@
 from __future__ import annotations
 
 from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
+    begin_golden_rootfs_run,
+    begin_runtime_boot_smoke_run,
     build_runtime,
     check_runtime_health,
     control_runtime,
+    force_stop_runtime,
+    prepare_runtime_data_disk,
     print_runtime_ip,
     require_bridged_codesign_identity,
+    require_no_running_runtime,
     sign_runtime,
     start_runtime_detached,
     sync_runtime_release_sources,
     wait_for_rootfs_ready,
+    wait_for_runtime_boot_smoke,
     wait_for_runtime_http,
     wait_for_runtime_ip,
     wait_for_runtime_stopped,
 )
+from tirosh_vitalserver.devtools.adapters.macos_release.runtime_lifecycle import (
+    preflight_golden_rootfs as run_preflight_golden_rootfs,
+)
 from tirosh_vitalserver.devtools.application.inputs import (
+    GoldenRootfsPreflightInput,
     RequireBridgedIdentityInput,
+    RootfsRunInput,
+    RuntimeBootSmokeRunInput,
     RuntimeBuildInput,
     RuntimeControlInput,
     RuntimeHealthInput,
@@ -54,6 +66,30 @@ def start_detached(input: RuntimeVmHomeInput) -> int:
     return start_runtime_detached(input)
 
 
+def require_no_running(input: RuntimeVmHomeInput) -> int:
+    return require_no_running_runtime(input)
+
+
+def force_stop(input: RuntimeWaitInput) -> int:
+    return force_stop_runtime(input)
+
+
+def begin_rootfs_run(input: RootfsRunInput) -> int:
+    return begin_golden_rootfs_run(input)
+
+
+def preflight_golden_rootfs(input: GoldenRootfsPreflightInput) -> int:
+    return run_preflight_golden_rootfs(input)
+
+
+def begin_runtime_boot_smoke(input: RuntimeBootSmokeRunInput) -> int:
+    return begin_runtime_boot_smoke_run(input)
+
+
+def prepare_runtime_data(input: RuntimeVmHomeInput) -> int:
+    return prepare_runtime_data_disk(input)
+
+
 def print_ip(input: RuntimeVmHomeInput) -> int:
     return print_runtime_ip(input)
 
@@ -68,6 +104,10 @@ def wait_http(input: RuntimeWaitInput) -> int:
 
 def wait_rootfs_ready(input: RuntimeWaitInput) -> int:
     return wait_for_rootfs_ready(input)
+
+
+def wait_runtime_boot_smoke(input: RuntimeWaitInput) -> int:
+    return wait_for_runtime_boot_smoke(input)
 
 
 def wait_stopped(input: RuntimeWaitInput) -> int:

@@ -510,8 +510,26 @@
     "/runtime/redis/backups": {
       "post": {
         "operationId": "createRedisBackup",
-        "summary": "Create Redis backup",
-        "description": "Requests a recoverable Redis backup from the runtime guest and returns the command result.",
+        "summary": "Create Redis-only repair backup",
+        "description": "Requests a recoverable Redis-only backup from the runtime guest and returns the command result.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/data/backups": {
+      "post": {
+        "operationId": "createRuntimeDataBackup",
+        "summary": "Create VitalServer backup",
+        "description": "Creates a recoverable VitalServer backup, including Redis data, runtime settings, Host runtime state documents, and runtime observability SQLite.",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
@@ -581,6 +599,35 @@
       "delete": {
         "operationId": "deleteHostBackup",
         "summary": "Delete selected local backup",
+        "description": "Compatibility deletion endpoint. Browser clients should prefer Delete Update Backup or Delete VitalServer Backup endpoints so the target backup type stays explicit.",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeBackupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/backups/update": {
+      "delete": {
+        "operationId": "deleteUpdateBackup",
+        "summary": "Delete selected update backup",
+        "description": "Deletes a managed update/rollback backup. This does not delete VitalServer backups or current runtime data.",
         "x-runtime-control-scope": "hostAffordance",
         "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
@@ -607,13 +654,13 @@
     "/host/backups/redis": {
       "get": {
         "operationId": "listRedisBackups",
-        "summary": "List local Redis backups",
+        "summary": "List local Redis-only repair backups",
         "x-runtime-control-scope": "hostAffordance",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "localServerMediated",
         "responses": {
           "200": {
-            "description": "Local Redis backup list",
+            "description": "Local Redis-only repair backup list",
             "content": {
               "application/json": {
                 "schema": {
@@ -634,9 +681,90 @@
     "/host/backups/redis/restore": {
       "post": {
         "operationId": "restoreRedisBackup",
-        "summary": "Restore selected Redis backup",
+        "summary": "Restore selected Redis-only repair backup",
         "x-runtime-control-scope": "hostAffordance",
-        "x-runtime-control-implementation": "planned",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeBackupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/backups/vitalserver-helper": {
+      "get": {
+        "operationId": "listRuntimeDataBackups",
+        "summary": "List local VitalServer backups",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Local VitalServer backup list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RuntimeBackup"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteRuntimeDataBackup",
+        "summary": "Delete selected VitalServer backup",
+        "description": "Deletes a selected VitalServer backup. This does not delete update rollback backups or current runtime data.",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeBackupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "501": {
+            "$ref": "#/components/responses/NotImplemented"
+          }
+        }
+      }
+    },
+    "/host/backups/vitalserver-helper/restore": {
+      "post": {
+        "operationId": "restoreRuntimeDataBackup",
+        "summary": "Restore selected VitalServer backup",
+        "description": "Restores Redis data, runtime settings, Host runtime state documents, start-on-boot state, and runtime observability SQLite from a verified VitalServer backup.",
+        "x-runtime-control-scope": "hostAffordance",
+        "x-runtime-control-implementation": "localCommand",
         "x-runtime-control-access": "localServerMediated",
         "requestBody": {
           "required": true,
@@ -1011,6 +1139,71 @@
                       "type": "null"
                     }
                   ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vitaldb/recorders/{vrcode}/activity": {
+      "get": {
+        "operationId": "getVitalDBRecorderActivity",
+        "summary": "Read one Vital Recorder activity chart window",
+        "description": "Lazy chart window for one VRecorder. The server reads only the selected activity window from the runtime observability SQLite projection.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {
+            "name": "vrcode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bucketSeconds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                60,
+                300
+              ],
+              "default": 60
+            }
+          },
+          {
+            "name": "period",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/RuntimeVitalRecorderActivityWindowPeriod"
+            }
+          },
+          {
+            "name": "pageIndex",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vital Recorder activity window",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVitalRecorderActivityWindow"
                 }
               }
             }
@@ -1942,6 +2135,143 @@
           "notProvided"
         ]
       },
+      "RuntimeVitalRecorderActivityWindowState": {
+        "type": "string",
+        "enum": [
+          "loaded",
+          "empty",
+          "invalidRequest",
+          "readFailed"
+        ]
+      },
+      "RuntimeVitalRecorderActivityWindowPeriod": {
+        "type": "string",
+        "enum": [
+          "lastHour",
+          "last4Hours",
+          "last8Hours",
+          "last12Hours",
+          "all"
+        ],
+        "default": "lastHour"
+      },
+      "RuntimeVitalRecorderActivityWindowQuery": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vrcode",
+          "bucketSeconds",
+          "period"
+        ],
+        "properties": {
+          "vrcode": {
+            "type": "string"
+          },
+          "bucketSeconds": {
+            "type": "integer",
+            "enum": [
+              60,
+              300
+            ]
+          },
+          "period": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityWindowPeriod"
+          },
+          "pageIndex": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          }
+        }
+      },
+      "RuntimeVitalRecorderActivityWindowPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "index",
+          "count",
+          "windowSeconds"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "windowSeconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "windowStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "windowEndedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "firstBucketStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latestBucketStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeVitalRecorderActivityWindow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "query",
+          "page",
+          "buckets"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityWindowState"
+          },
+          "query": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityWindowQuery"
+          },
+          "page": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderActivityWindowPage"
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalRecorderActivityBucket"
+            }
+          },
+          "latestSampleAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "RuntimeVitalRecorderRecord": {
         "type": "object",
         "additionalProperties": false,
@@ -2004,16 +2334,32 @@
           },
           "observationCount": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Number of stored VitalDB observation snapshots that included this VRecorder identity after same-snapshot duplicates were collapsed."
           },
           "duplicateObservationCount": {
             "type": "integer",
             "minimum": 0,
-            "description": "Number of extra source recorder observations collapsed because they shared this VRecorder identity."
+            "description": "Number of extra source recorder records collapsed because they shared this VRecorder identity in a snapshot."
           },
           "currentAnomalyCount": {
             "type": "integer",
             "minimum": 0
+          },
+          "latestAnomalyKind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "offline",
+              "duplicate-ip",
+              "backend-unavailable",
+              "stale-recorder",
+              "observer-unhealthy",
+              null
+            ],
+            "description": "Kind of the latest current anomaly for this VRecorder, or null when no current anomaly exists."
           },
           "latestAnomalySeverity": {
             "oneOf": [
@@ -2025,6 +2371,20 @@
               }
             ]
           },
+          "latestAnomalyMessage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Message from the latest current anomaly for this VRecorder, or null when no current anomaly exists."
+          },
+          "latestAnomalyObservedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Timestamp of the latest current anomaly for this VRecorder, or null when no current anomaly exists."
+          },
           "presentInLatestObservation": {
             "type": "boolean",
             "description": "True when this recorder is present in the latest VitalDB observation snapshot; false means it is historical."
@@ -2035,6 +2395,87 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeVitalRecorderActivityPoint"
             }
+          },
+          "redisIPSync": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeRecorderRedisIPSyncObservation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recorder-specific Redis ip_<vrcode> synchronization state reported by the audit proxy."
+          }
+        }
+      },
+      "RuntimeRecorderRedisIPSyncStatus": {
+        "type": "string",
+        "enum": [
+          "unknown",
+          "unavailable",
+          "disabled",
+          "pending",
+          "written",
+          "correcting",
+          "corrected",
+          "verified",
+          "mismatch",
+          "write_failed",
+          "verify_failed"
+        ]
+      },
+      "RuntimeRecorderRedisIPSyncObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/RuntimeRecorderRedisIPSyncStatus"
+          },
+          "redisKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selectedIp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ipSource": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "redisValue": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastWriteAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastVerifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastFailure": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -2159,6 +2600,31 @@
               "null"
             ]
           },
+          "linkedRecorderStatus": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeVitalRecorderStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Explicit status of the VRecorder linked to this bed, or null when no linked recorder record is available."
+          },
+          "linkedRecorderIP": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "IP address reported by the VRecorder linked to this bed, or null when no linked recorder record is available."
+          },
+          "linkedRecorderLastSeenAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last seen timestamp reported by the VRecorder linked to this bed, or null when no linked recorder record is available."
+          },
           "status": {
             "$ref": "#/components/schemas/RuntimeVitalBedStatus"
           },
@@ -2182,16 +2648,32 @@
           },
           "observationCount": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Number of stored VitalDB observation snapshots that included this bed identity after same-snapshot duplicates were collapsed."
           },
           "duplicateObservationCount": {
             "type": "integer",
             "minimum": 0,
-            "description": "Number of extra source bed observations collapsed because they shared this bed identity."
+            "description": "Number of extra source bed records collapsed because they shared this bed identity in a snapshot."
           },
           "currentAnomalyCount": {
             "type": "integer",
             "minimum": 0
+          },
+          "latestAnomalyKind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "offline",
+              "duplicate-ip",
+              "backend-unavailable",
+              "stale-recorder",
+              "observer-unhealthy",
+              null
+            ],
+            "description": "Kind of the latest current anomaly for this bed, or null when no current anomaly exists."
           },
           "latestAnomalySeverity": {
             "oneOf": [
@@ -2202,6 +2684,20 @@
                 "type": "null"
               }
             ]
+          },
+          "latestAnomalyMessage": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Message from the latest current anomaly for this bed, or null when no current anomaly exists."
+          },
+          "latestAnomalyObservedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Timestamp of the latest current anomaly for this bed, or null when no current anomaly exists."
           }
         }
       },
@@ -2219,7 +2715,16 @@
         "type": "object",
         "additionalProperties": false,
         "description": "Derived assignment and relationship event history between VitalDB beds and VRecorders.",
+        "required": [
+          "state",
+          "assignments",
+          "events",
+          "readError"
+        ],
         "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeVitalRelationshipHistoryState"
+          },
           "assignments": {
             "type": "array",
             "items": {
@@ -2241,9 +2746,30 @@
           }
         }
       },
+      "RuntimeVitalRelationshipHistoryState": {
+        "type": "string",
+        "enum": [
+          "loaded",
+          "partiallyLoaded",
+          "readFailed"
+        ]
+      },
       "RuntimeVitalBedAssignmentRecord": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "assignmentID",
+          "bedID",
+          "bedName",
+          "vrcode",
+          "startedAt",
+          "endedAt",
+          "lastSeenAt",
+          "lastObservedAt",
+          "status",
+          "patientConnected",
+          "observationCount"
+        ],
         "properties": {
           "assignmentID": {
             "type": "string"
@@ -2296,6 +2822,18 @@
       "RuntimeVitalRelationshipEventRecord": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "eventID",
+          "observedAt",
+          "eventType",
+          "severity",
+          "bedID",
+          "bedName",
+          "vrcode",
+          "previousVrcode",
+          "previousBedID",
+          "message"
+        ],
         "properties": {
           "eventID": {
             "type": "string"
@@ -2956,7 +3494,9 @@
           "auditWriteFailures",
           "auditFileWriteFailures",
           "auditStdoutWriteFailures",
-          "redisIpWriteFailures"
+          "redisIpWriteFailures",
+          "redisIpVerifyFailures",
+          "redisIpVerifyMismatches"
         ],
         "properties": {
           "startedAt": {
@@ -3013,6 +3553,14 @@
           "redisIpWriteFailures": {
             "type": "integer",
             "minimum": 0
+          },
+          "redisIpVerifyFailures": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "redisIpVerifyMismatches": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
@@ -3037,10 +3585,26 @@
               "null"
             ]
           },
+          "ipSource": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "lastSeenAt": {
             "type": [
               "string",
               "null"
+            ]
+          },
+          "redisIpSync": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeRecorderRedisIPSyncObservation"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }
@@ -3098,6 +3662,7 @@
         "type": "string",
         "enum": [
           "installing",
+          "initializing",
           "updating",
           "recovering",
           "healthy",
@@ -3151,7 +3716,11 @@
           "startOnBootConfigurable",
           "autoRecoveryEnabled",
           "preventSystemSleep",
-          "redisBackupRetentionCount",
+          "automaticBackupEnabled",
+          "backupScheduleTimes",
+          "backupRetentionCount",
+          "logArchiveRetentionDays",
+          "logArchiveMaximumGiB",
           "restartAfterSave"
         ],
         "properties": {
@@ -3181,7 +3750,10 @@
             ]
           },
           "bridgedInterface": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "proxyPort": {
             "type": "integer"
@@ -3222,7 +3794,22 @@
           "preventSystemSleep": {
             "type": "boolean"
           },
-          "redisBackupRetentionCount": {
+          "automaticBackupEnabled": {
+            "type": "boolean"
+          },
+          "backupScheduleTimes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "backupRetentionCount": {
+            "type": "integer"
+          },
+          "logArchiveRetentionDays": {
+            "type": "integer"
+          },
+          "logArchiveMaximumGiB": {
             "type": "integer"
           },
           "restartAfterSave": {
@@ -3299,6 +3886,9 @@
             "type": "string"
           },
           "redisBackupsPath": {
+            "type": "string"
+          },
+          "runtimeDataBackupsPath": {
             "type": "string"
           }
         }

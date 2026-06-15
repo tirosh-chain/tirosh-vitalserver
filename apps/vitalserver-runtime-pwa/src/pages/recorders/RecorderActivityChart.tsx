@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { VitalDBRecorderRecord } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { formatBytes } from "@/domain/runtime-control/formatting/bytes";
@@ -15,11 +15,17 @@ const bucketOptions = [
 ];
 
 const rangeOptions = [
-  { label: "Last 15 min", seconds: 15 * 60 },
-  { label: "Last 1 hour", seconds: 60 * 60 },
-  { label: "Last 6 hours", seconds: 6 * 60 * 60 },
-  { label: "All samples", seconds: null }
+  { label: "Last hour", seconds: 60 * 60 },
+  { label: "Last 4 hours", seconds: 4 * 60 * 60 },
+  { label: "Last 8 hours", seconds: 8 * 60 * 60 },
+  { label: "Last 12 hours", seconds: 12 * 60 * 60 },
+  { label: "All", seconds: null }
 ];
+
+const allSamplesWindowSeconds = 12 * 60 * 60;
+const defaultAllSamplesPageStepHours = 4;
+const allSamplesMinPageStepHours = 1;
+const allSamplesMaxPageStepHours = 12;
 
 const chart = {
   width: 900,
@@ -37,17 +43,57 @@ export function RecorderActivityChart({
 }) {
   const [bucketSeconds, setBucketSeconds] = useState(60);
   const [rangeSeconds, setRangeSeconds] = useState<number | null>(60 * 60);
+  const [allSamplesPageIndex, setAllSamplesPageIndex] = useState<number | null>(null);
+  const [allSamplesPageStepHours, setAllSamplesPageStepHours] = useState(
+    defaultAllSamplesPageStepHours
+  );
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const activityTimeline = recorder.activityTimeline;
+  const allSamplesMode = rangeSeconds === null;
+  const allSamplesPageStepSeconds = allSamplesPageStepHours * 60 * 60;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const activityRead = useMemo(
     () =>
       readRecorderActivityBuckets(activityTimeline, {
         bucketSeconds,
-        rangeSeconds
+        rangeSeconds,
+        currentTimeMs: allSamplesMode ? undefined : nowMs,
+        activityStartedAt: recorder.firstSeenAt,
+        activityEndedAt: recorder.lastSeenAt
       }),
-    [activityTimeline, bucketSeconds, rangeSeconds]
+    [
+      activityTimeline,
+      allSamplesMode,
+      bucketSeconds,
+      nowMs,
+      rangeSeconds,
+      recorder.firstSeenAt,
+      recorder.lastSeenAt
+    ]
   );
-  const buckets = activityRead.buckets;
+  const pagedActivity = useMemo(
+    () => allSamplesMode
+      ? pagedAllSamples(
+          activityRead.buckets,
+          bucketSeconds,
+          allSamplesPageStepSeconds,
+          allSamplesPageIndex
+        )
+      : null,
+    [
+      activityRead.buckets,
+      allSamplesMode,
+      bucketSeconds,
+      allSamplesPageStepSeconds,
+      allSamplesPageIndex
+    ]
+  );
+  const buckets = pagedActivity?.buckets ?? activityRead.buckets;
   const latestActivity = latestRecorderActivityPoint(activityTimeline);
 
   const maxPackets = Math.max(
@@ -55,7 +101,6 @@ export function RecorderActivityChart({
     ...buckets.map((bucket) => bucket.messageCount)
   );
   const latestBucket =
-    [...buckets].reverse().find((bucket) => bucket.messageCount > 0) ??
     buckets.at(-1);
   const totalPackets = buckets.reduce(
     (total, bucket) => total + bucket.messageCount,
@@ -66,7 +111,6 @@ export function RecorderActivityChart({
     ? (latestBucket.byteCount / Math.max(latestBucket.endMs - latestBucket.startMs, 1)) * 1_000
     : 0;
   const packetCount = latestBucket?.messageCount ?? 0;
-  const roomCount = latestBucket?.roomCount ?? 0;
   const activityReported = activityTimeline !== undefined;
 
   return (
@@ -77,7 +121,11 @@ export function RecorderActivityChart({
             Bucket
             <select
               value={bucketSeconds}
-              onChange={(event) => setBucketSeconds(Number(event.target.value))}
+              onChange={(event) => {
+                const nextBucketSeconds = Number(event.target.value);
+                setBucketSeconds(nextBucketSeconds);
+                setAllSamplesPageIndex(null);
+              }}
             >
               {bucketOptions.map((option) => (
                 <option key={option.seconds} value={option.seconds}>
@@ -90,14 +138,18 @@ export function RecorderActivityChart({
             Period
             <select
               value={rangeSeconds ?? "all"}
-              onChange={(event) =>
+              onChange={(event) => {
                 setRangeSeconds(
                   event.target.value === "all" ? null : Number(event.target.value)
-                )
-              }
+                );
+                setAllSamplesPageIndex(null);
+              }}
             >
               {rangeOptions.map((option) => (
-                <option key={option.label} value={option.seconds ?? "all"}>
+                <option
+                  key={option.label}
+                  value={option.seconds ?? "all"}
+                >
                   {option.label}
                 </option>
               ))}
@@ -105,9 +157,61 @@ export function RecorderActivityChart({
           </label>
           {latestActivity ? (
             <span className="chart-meta">
-              Last sample {formatTime(latestActivity.observedAt)}
+              Last activity {formatTime(latestActivity.observedAt)}
             </span>
           ) : null}
+          {allSamplesMode ? (
+            <label>
+              Window slide
+              <input
+                type="range"
+                aria-label="Window slide"
+                min={allSamplesMinPageStepHours}
+                max={allSamplesMaxPageStepHours}
+                value={allSamplesPageStepHours}
+                onChange={(event) => {
+                  const nextStepHours = Number(event.target.value);
+                  setAllSamplesPageStepHours(nextStepHours);
+                  setAllSamplesPageIndex(null);
+                }}
+                title={`Window slides by ${formatDurationHours(
+                  allSamplesPageStepHours
+                )} each move`}
+              />
+              <span className="chart-meta">
+                {formatDurationHours(allSamplesPageStepHours)}
+              </span>
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+
+      {activityReported && pagedActivity ? (
+        <div className="activity-window-control">
+          <label>
+            Window
+            <input
+              type="range"
+              min={0}
+              max={Math.max(pagedActivity.pageCount - 1, 0)}
+              value={pagedActivity.pageIndex}
+              onChange={(event) => setAllSamplesPageIndex(Number(event.target.value))}
+              disabled={pagedActivity.pageCount <= 1}
+            />
+          </label>
+          <span
+            className="chart-meta"
+            title={`Window slides by ${formatDurationSeconds(
+              allSamplesPageStepSeconds
+            )} each move`}
+          >
+            {formatWindow(
+              pagedActivity.windowStartMs,
+              pagedActivity.windowEndMs,
+              allSamplesPageStepSeconds,
+              allSamplesMode
+            )}
+          </span>
         </div>
       ) : null}
 
@@ -142,13 +246,59 @@ export function RecorderActivityChart({
             { label: "Packets", value: packetCount },
             { label: "Total packets", value: totalPackets },
             { label: "Total data", value: formatBytes(totalBytes) },
-            { label: "Data rate", value: `${formatBytes(latestRate)}/s` },
-            { label: "Room entries", value: roomCount }
+            { label: "Data rate", value: `${formatBytes(latestRate)}/s` }
           ]}
         />
       ) : null}
     </div>
   );
+}
+
+function pagedAllSamples(
+  buckets: ReturnType<typeof readRecorderActivityBuckets>["buckets"],
+  bucketSeconds: number,
+  pageStepSeconds: number,
+  requestedPageIndex: number | null
+) {
+  const bucketCountPerWindow = Math.max(
+    1,
+    Math.floor(allSamplesWindowSeconds / bucketSeconds)
+  );
+  const bucketStepPerWindow = Math.max(
+    1,
+    Math.floor(pageStepSeconds / bucketSeconds)
+  );
+  const startIndexMax = Math.max(0, buckets.length - bucketCountPerWindow);
+  const steppedPageCount = Math.max(
+    1,
+    Math.ceil(startIndexMax / bucketStepPerWindow) + 1
+  );
+  const pageCount = steppedPageCount;
+  const latestPageIndex = pageCount - 1;
+  const pageIndex = clamp(
+    requestedPageIndex ?? latestPageIndex,
+    0,
+    latestPageIndex
+  );
+  const start = Math.min(pageIndex * bucketStepPerWindow, startIndexMax);
+  const pageBuckets = buckets.slice(
+    start,
+    Math.min(start + bucketCountPerWindow, buckets.length)
+  );
+  const firstBucket = pageBuckets.at(0);
+  const lastBucket = pageBuckets.at(-1);
+
+  return {
+    buckets: pageBuckets,
+    pageCount,
+    pageIndex,
+    windowStartMs: firstBucket?.startMs ?? null,
+    windowEndMs: lastBucket?.endMs ?? null
+  };
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
 }
 
 function Axis({
@@ -297,4 +447,37 @@ function formatTime(value: string | number | null | undefined): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
+}
+
+function formatWindow(
+  startMs: number | null,
+  endMs: number | null,
+  pageStepSeconds: number,
+  allSamplesMode: boolean
+) {
+  if (startMs === null || endMs === null) {
+    return "No activity window";
+  }
+
+  const stepText = allSamplesMode
+    ? ` • slide ${formatDurationSeconds(pageStepSeconds)}`
+    : "";
+
+  return `${formatTime(startMs)} - ${formatTime(endMs)}${stepText}`;
+}
+
+function formatDurationHours(hours: number) {
+  return `${hours}h`;
+}
+
+function formatDurationSeconds(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
+  const remainingSeconds = seconds % 3600;
+  const minutes = Math.floor(remainingSeconds / 60);
+
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h ${minutes}m`;
 }

@@ -1,0 +1,48 @@
+import Foundation
+
+public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable, Sendable {
+    case capabilities
+    case overview
+    case overviewStream
+    case status
+    case statusStream
+    case events
+    case eventStream
+    case vitalDBObservation
+    case vitalDBObservationStream
+    case vitalDBRecorders
+    case vitalDBRecorder
+    case vitalDBRecorderActivity
+    case vitalDBBeds
+    case vitalDBBed
+    case vitalDBRelationships
+    case health
+    case settings
+    case applySettings
+    case release
+    case installInfo
+    case startServices
+    case stopServices
+    case repairRuntimeServices
+    case repairProxy
+    case repairDatastore
+    case repairVMDisk
+    case createRedisBackup
+    case createRuntimeDataBackup
+    case uninstall
+    case backups
+    case redisBackups
+    case runtimeDataBackups
+    case restoreRedisBackup
+    case restoreRuntimeDataBackup
+    case logText
+    case logStream
+    case updateBundleSummary
+    case verifyUpdateBundle
+    case applyUpdateBundle
+    case rollbackBackup
+    case deleteBackup
+    case deleteUpdateBackup
+    case deleteRuntimeDataBackup
+    case exportLogs
+}
