@@ -46,6 +46,30 @@ def gzip_file(source: Path, output: Path, *, threads: int) -> None:
     temporary.replace(output)
 
 
+def validate_gzip_file(output: Path, *, expected_uncompressed_size: int) -> None:
+    if not output.is_file() or output.stat().st_size == 0:
+        raise SystemExit(
+            f"rootfs base gzip validation failed: missing output: {output}"
+        )
+
+    actual_uncompressed_size = 0
+    try:
+        with gzip.open(output, "rb") as input_file:
+            for chunk in iter(lambda: input_file.read(1024 * 1024), b""):
+                actual_uncompressed_size += len(chunk)
+    except (OSError, EOFError, gzip.BadGzipFile) as error:
+        raise SystemExit(
+            f"rootfs base gzip validation failed: unreadable gzip: {output}: {error}"
+        ) from error
+
+    if actual_uncompressed_size != expected_uncompressed_size:
+        raise SystemExit(
+            "rootfs base gzip validation failed: uncompressed size mismatch: "
+            f"{output}: expected={expected_uncompressed_size} "
+            f"actual={actual_uncompressed_size}"
+        )
+
+
 def gzip_command(command: Sequence[str], output: Path, *, threads: int) -> None:
     temporary = output.with_name(output.name + ".tmp")
     temporary.unlink(missing_ok=True)

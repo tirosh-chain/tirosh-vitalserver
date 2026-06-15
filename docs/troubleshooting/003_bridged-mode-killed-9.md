@@ -30,10 +30,10 @@ codesign -d --entitlements - apps/vitalserver-macos-runtime/.build/release/vital
 ```sh
 VM_BRIDGED_CODESIGN_IDENTITY="Developer ID Application: ..." \
 VM_BRIDGED_INTERFACE=en0 \
-make vm-up-bridged
+make runtime/up-bridged
 ```
 
-`make vm-bridged-preflight`는 이 조건을 먼저 확인합니다. codesign identity가 없는 환경에서는 `Killed: 9` 대신 설명 가능한 오류로 중단합니다.
+`make devtools/bridged/preflight`는 이 조건을 먼저 확인합니다. codesign identity가 없는 환경에서는 `Killed: 9` 대신 설명 가능한 오류로 중단합니다.
 
 ## Follow-up
 

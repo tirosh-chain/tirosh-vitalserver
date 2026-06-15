@@ -3,7 +3,7 @@
 > ID: TS-046  
 > Category: Packaging  
 > Owner: macOS runtime  
-> Status: active
+> Status: implemented
 
 ## Symptoms
 
@@ -32,8 +32,8 @@ This is Host-owned launchd state. It must be handled as explicit launchd state, 
 ```sh
 tail -n 300 /var/log/install.log | rg -i 'VitalServer|postinstall|sleep-prevention|failed|error'
 log show --predicate 'process == "launchd" OR eventMessage CONTAINS[c] "sleep-prevention"' --last 30m --style compact
-launchctl print-disabled system | rg -i 'vitalserver|tirosh'
-pkgutil --pkgs | rg -i 'vitalserver|tirosh'
+launchctl print-disabled system | rg '\"ai\.tirosh\.vitalserver\.helper\.'
+pkgutil --pkgs | rg -i 'ai\.tirosh\.vitalserver\.helper'
 find /Library/LaunchDaemons -maxdepth 1 -iname '*vitalserver*' -o -iname '*tirosh*'
 ```
 
@@ -53,8 +53,16 @@ sudo launchctl enable system/ai.tirosh.vitalserver.helper.sleep-prevention
 ## Prevention
 
 - Runtime service start now enables the target launchd label before bootstrap.
+- Clean uninstall clears VitalServer launchd disabled overrides before reporting completion.
 - Enable failure remains explicit and blocks the operation before bootstrap, with launchctl stderr recorded in the command log.
 - Do not treat plist absence or package receipt absence as proof that launchd disabled state is clear.
+
+## Applied Fix
+
+- Uninstall keeps the existing stop-time disable step so launchd does not respawn services during cleanup.
+- Before completion, uninstall calls `launchctl enable system/<label>` for every VitalServer managed service to clear host-owned disabled overrides.
+- If disabled override cleanup fails, uninstall must not report `completed`.
+- Helper-launched uninstall now opens a Terminal progress viewer that follows `/private/tmp/tirosh-vitalserver-uninstall.log`; the privileged uninstaller still runs through the existing administrator-approved path.
 
 ## Operational Notes
 

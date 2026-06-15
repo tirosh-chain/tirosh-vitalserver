@@ -1,10 +1,27 @@
-.PHONY: internal/vm/up internal/vm/up-bridged internal/vm/down internal/vm/prepare internal/vm/start internal/vm/start/detached internal/vm/start/bridged internal/vm/stop internal/vm/status internal/vm/clean internal/vm/ip internal/vm/wait/ip internal/vm/wait/http internal/vm/wait/rootfs-ready internal/vm/wait/stopped internal/vm/proxy/start internal/vm/health internal/vm/e2e/smoke internal/vm/coverage
+.PHONY: internal/vm/up internal/vm/up-bridged internal/vm/down internal/vm/prepare internal/vm/start internal/vm/start/detached internal/vm/start/bridged internal/vm/stop internal/vm/status internal/vm/clean internal/vm/ip internal/vm/wait/ip internal/vm/wait/http internal/vm/wait/rootfs-ready internal/vm/wait/runtime-boot-smoke internal/vm/wait/stopped internal/vm/proxy/start internal/vm/health internal/vm/e2e/smoke internal/vm/coverage
 .PHONY: internal/vm/version-source internal/vm/build internal/vm/sign internal/vm/sign/bridged internal/vm/bridged/preflight internal/vm/init internal/vm/download internal/vm/cloud-init internal/vm/stage internal/vm/interfaces internal/vm/network/shared internal/vm/network/bridged
 
-VM_ROOTFS_SIZE ?= 4G
+# Public runtime/devtools knobs.
+VM_ROOTFS_SIZE ?= 8G
+
+# Internal orchestration: package targets pass this from the golden rootfs compile policy.
 VM_RECREATE_ROOTFS ?= false
+
+# Diagnostic/CI wait knobs.
 VM_WAIT_TIMEOUT ?= 300
 VM_HTTP_WAIT_TIMEOUT ?= 600
+VM_ROOTFS_READY_TIMEOUT ?= 420
+
+# Internal orchestration: generated per golden rootfs compile run.
+VM_ROOTFS_RUN_ID ?=
+
+# Diagnostic/CI fault injection knobs.
+VM_ROOTFS_SMOKE_FAIL_STAGE ?=
+VM_ROOTFS_SMOKE_FAIL_CLEANUP ?= false
+
+# Diagnostic/CI runtime boot smoke knobs.
+VM_RUNTIME_BOOT_SMOKE ?= false
+VM_RUNTIME_BOOT_SMOKE_RUN_ID ?=
 
 VM_RUNTIME_DIR := $(VM_HOME)/runtime
 
@@ -58,9 +75,19 @@ internal/vm/up-bridged: internal/vm/bridged/preflight internal/vm/prepare intern
 internal/vm/down: internal/vm/stop
 
 internal/vm/stage: internal/vm/init
+	@set -e; \
+	rootfs_run_args=""; \
+	if [ -n "$(VM_ROOTFS_RUN_ID)" ]; then \
+		rootfs_run_args="--rootfs-run-id $(VM_ROOTFS_RUN_ID)"; \
+	fi; \
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" guest-deploy \
 		--vm-home "$(VM_HOME)" \
-		--runtime-dir "$(VM_MACOS_RUNTIME_DIR)"
+		--runtime-dir "$(VM_MACOS_RUNTIME_DIR)" \
+		--docker-bundle "$(call VM_TOML_VALUE,guest.docker_images.bundle_path)" \
+		$$rootfs_run_args; \
+	if [ "$(VM_RUNTIME_BOOT_SMOKE)" = "true" ]; then \
+		python3 -c 'import json, sys; from pathlib import Path; path = Path(sys.argv[1]); document = json.loads(path.read_text(encoding="utf-8")); document["runtimeBootSmoke"] = {"enabled": True, "runId": sys.argv[2]}; path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")' "$(VM_HOME)/data/deploy/build-metadata/rootfs-input.json" "$(VM_RUNTIME_BOOT_SMOKE_RUN_ID)"; \
+	fi
 
 internal/vm/start: internal/vm/sign
 	$(VM_BUILD_RUNNER) --config "$(VM_BUILD_CONFIG)" macos-runtime-control \
@@ -101,9 +128,26 @@ internal/vm/wait/http:
 		--timeout "$(VM_HTTP_WAIT_TIMEOUT)"
 
 internal/vm/wait/rootfs-ready:
+	@set -e; \
+	run_args=""; \
+	if [ -n "$(VM_ROOTFS_RUN_ID)" ]; then \
+		run_args="--expected-run-id $(VM_ROOTFS_RUN_ID)"; \
+	fi; \
 	$(VM_BUILD_RUNNER) macos-runtime-wait-rootfs-ready \
 		--vm-home "$(VM_HOME)" \
-		--timeout "$(VM_HTTP_WAIT_TIMEOUT)"
+		--timeout "$(VM_ROOTFS_READY_TIMEOUT)" \
+		$$run_args
+
+internal/vm/wait/runtime-boot-smoke:
+	@set -e; \
+	run_args=""; \
+	if [ -n "$(VM_RUNTIME_BOOT_SMOKE_RUN_ID)" ]; then \
+		run_args="--expected-run-id $(VM_RUNTIME_BOOT_SMOKE_RUN_ID)"; \
+	fi; \
+	$(VM_BUILD_RUNNER) macos-runtime-wait-runtime-boot-smoke \
+		--vm-home "$(VM_HOME)" \
+		--timeout "$(VM_HTTP_WAIT_TIMEOUT)" \
+		$$run_args
 
 internal/vm/wait/stopped:
 	$(VM_BUILD_RUNNER) macos-runtime-wait-stopped \

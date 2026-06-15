@@ -98,12 +98,13 @@ VitalServer는 수신 후 `roomname`으로 bed id를 만들고, Redis에 아래 
 끊긴 Wi-Fi 아이콘은 `/static/img/discon.svg`입니다. 상단 toolbar의 Wi-Fi 이미지는 상태 표시가
 아니라 online/offline 필터 버튼입니다.
 
-#### Patient 및 Recording 상태
+#### Patient status 및 Recording 상태
 
 | 상태 | 판단 기준 | 표시 | 의미 |
 | --- | --- | --- | --- |
-| Patient connected | `ptcon` truthy | 사람 아이콘 | 환자 연결 상태 |
-| Patient disconnected | `ptcon` falsy | 사람 아이콘 없음 | 환자 미연결 또는 정보 없음 |
+| Patient present | `ptcon` truthy | 사람 아이콘 | VitalServer가 patient present 상태를 보고함 |
+| Patient not present | `ptcon` falsy | 사람 아이콘 없음 | VitalServer가 patient not present 상태를 보고함 |
+| Patient not reported | `ptcon` 없음 또는 해석 불가 | 사람 아이콘 없음 | patient 상태를 판단하지 않음 |
 | Recording on | `recording` truthy | case 시간 빨간색 | 기록 중 |
 | Recording off | `recording` falsy | case 시간 흰색 | 기록 중 아님 |
 | Standby | numeric track 없음 | `Waiting for next patient ...` | 데이터는 들어오지만 numeric vital sign 없음 |
@@ -163,7 +164,7 @@ testkit이 실제 VRecorder처럼 보이려면 아래를 만족해야 합니다.
 | IP 검증 | `ip_<vrcode>`가 VM 또는 장비의 실제 LAN IP로 저장되는지 확인 |
 | Online 표시 | 같은 연결에서 주기적으로 `send_data` 전송 |
 | Device 표시 | `devs`에 `status` 값을 명시해 파란/빨간 사각형을 의도적으로 재현 |
-| Patient 표시 | `ptcon` 값을 조정해 patient icon 재현 |
+| Patient status 표시 | `ptcon` 값을 조정해 patient icon 재현 |
 | Command 수신 | `update`, `restart`, `reboot`, `del_bed`, `add_event`, `edit_bed`, `edit_conf` 수신 |
 | Network Settings | testkit VM에서 HTTP 상태 페이지를 제공해 `http://<vr_ipaddr>` 접속 검증 |
 

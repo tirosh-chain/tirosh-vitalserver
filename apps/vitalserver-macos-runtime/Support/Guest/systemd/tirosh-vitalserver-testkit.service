@@ -2,7 +2,7 @@
 Description=Tirosh VitalServer optional TestKit service
 After=docker.service network-online.target tirosh-vitalserver-compose.service
 Requires=docker.service
-Wants=network-online.target tirosh-vitalserver-compose.service
+Wants=network-online.target
 
 [Service]
 Type=oneshot

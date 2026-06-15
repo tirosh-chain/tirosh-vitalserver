@@ -53,7 +53,8 @@ read/parse 문제가 있었음을 나타냅니다. 관련 `readIssues`가 있는
 반복되는 audit event parse 실패는 실패 원인과 event count를 보존한 bounded summary로 보고하여, 같은 결함이
 observation payload와 UI 메시지를 무한히 키우지 않게 합니다.
 Recorder activity의 `roomCount`는 해당 버킷에서 받은 `send_data` payload들의 room entry 합계입니다.
-이는 고유 room 수나 현재 연결된 room 수가 아니므로 UI에서는 `Room entries`로 표시합니다.
+이는 고유 room 수나 현재 연결된 room 수가 아니므로 기본 UI 판단 지표로 노출하지 않습니다.
+필요할 때 API/diagnostics contract에서만 확인합니다.
 
 각 app은 제품 전체 상태를 판단하지 않습니다.
 
@@ -193,6 +194,21 @@ API fallback read, 파일 손상 영향 범위가 모두 커지므로 size 기�
 - SQLite read model은 조회용 index이므로 JSONL rotation이 있더라도 event SoT 역할을 대신하지 않습니다.
 - log export는 현재 JSONL, rotated JSONL, SQLite main DB, SQLite WAL/SHM sidecar를 함께 포함해야 합니다.
 
+### Runtime log archive retention
+
+Runtime Control log collector는 central log를 날짜별 archive directory로 이동합니다. 관리 대상은
+`/Library/Application Support/VitalServerHelper/logs/archive/YYYY-MM-DD` 형태의 직접 자식 directory입니다.
+날짜 형식이 아닌 directory는 운영자가 둔 파일일 수 있으므로 자동 삭제하지 않고 size cap 계산에서도 제외합니다.
+
+- 기본 보관 기간은 14일입니다.
+- 설정 가능한 보관 기간은 1일 이상 30일 이하입니다.
+- 관리 archive 총량 기본 cap은 1 GiB입니다.
+- Settings의 `logArchiveRetentionDays`와 `logArchiveMaximumGiB`로 기간과 용량을 변경합니다.
+  이 값은 Host-owned `runtime-control-settings.json`에 저장되며 Guest runtime settings가 아닙니다.
+- 기간 초과 archive를 먼저 삭제하고, 남은 관리 archive 총량이 cap을 넘으면 가장 오래된 날짜 directory부터 삭제합니다.
+- retention days가 범위를 벗어나거나 maximum bytes가 0이면 collector는 fallback/clamp 없이 실패합니다.
+- archive directory listing, managed archive size inspection, 삭제 실패는 명시 오류로 caller에 전달합니다.
+
 ## Target flow
 
 ```text
@@ -273,12 +289,17 @@ Runtime Control API
 | 범주 | Source | 수집 정보 | Output |
 |---|---|---|---|
 | Recorder | Redis `ip_*`, `utime_*`, `vrver_*`, `info_*`, `vrconf_*` | IP, last seen, version, info, config, online/stale | observation snapshot |
-| Recorder activity | Redis List `vitalserver:audit_events` | recent `send_data` message count, bytes, room entries, first/last activity, rates | observation snapshot |
+| Recorder activity | Redis List `vitalserver:audit_events` | recent `send_data` message count, bytes, room-count diagnostic, first/last activity, rates | observation snapshot |
 | Bed | Redis `beds`, `beds:*`, `utime_<bed>`, `ptcon_<bed>` | bed name, vrcode, last seen, patient connected | observation snapshot |
 | Device/filter | Redis `devs_*`, `filts_*` | raw device/filter value | observation snapshot |
 | Proxy connection | optional access JSONL | remote address, URI, status, websocket handshake | observation snapshot |
 | Anomaly | derived | stale recorder, duplicate IP, backend unavailable | observation snapshot |
 | Diagnostics | collector process | collection count/duration/failure | stdout JSONL |
+
+Recorder `online` and `stale` are explicit observer states. Consumers must not infer recorder state
+from activity graphs, anomaly text, last-seen age, or audit proxy connection counts. If a recorder is
+reported as both `online` and `stale`, the read model presents it as `stale` because stale means the
+last known online state is no longer current enough for operator trust.
 
 ### Runtime/watchdog 수집 정보
 

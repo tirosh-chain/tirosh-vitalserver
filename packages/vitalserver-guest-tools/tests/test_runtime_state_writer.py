@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 from pytest import MonkeyPatch
 
 from tirosh_guest_tools.adapters.outbound.runtime import collector, state_writer
+from tirosh_guest_tools.contracts import RuntimeFileName
 from tirosh_guest_tools.domain.runtime_state import ProbeError, RuntimeResourceUsage
 
 
@@ -70,4 +72,63 @@ def test_http_probe_failure_remains_explicit(
     }
     assert probe_errors == [
         ProbeError(source="guestHTTP", message="connection refused")
+    ]
+
+
+def test_compose_services_reads_stopped_containers_with_all(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / RuntimeFileName.COMPOSE.value).write_text("services: {}\n")
+    monkeypatch.setattr(collector, "DEPLOY_DIR", tmp_path)
+    commands: list[list[str]] = []
+
+    def check_output(command: list[str], **kwargs: object) -> str:
+        commands.append(command)
+        if command[:2] == ["docker", "inspect"]:
+            return "2026-06-11T00:00:00Z\n"
+        return (
+            '{"Service":"app","Name":"vitalserver-app-1",'
+            '"State":"exited","Health":"","ExitCode":0,"ID":"container-1"}'
+        )
+
+    monkeypatch.setattr(collector.subprocess, "check_output", check_output)
+
+    services = collector.compose_services([])
+
+    assert commands[0] == [
+        "docker",
+        "compose",
+        "--project-name",
+        collector.PROJECT_NAME,
+        "-f",
+        str(tmp_path / RuntimeFileName.COMPOSE.value),
+        "ps",
+        "--all",
+        "--format",
+        "json",
+    ]
+    assert services is not None
+    assert services[0].service == "app"
+    assert services[0].state == "exited"
+
+
+def test_compose_services_empty_output_is_probe_failure(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / RuntimeFileName.COMPOSE.value).write_text("services: {}\n")
+    monkeypatch.setattr(collector, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(
+        collector.subprocess,
+        "check_output",
+        lambda *args, **kwargs: "",
+    )
+    probe_errors: list[ProbeError] = []
+
+    services = collector.compose_services(probe_errors)
+
+    assert services is None
+    assert probe_errors == [
+        ProbeError(source="docker compose ps", message="no service documents reported")
     ]

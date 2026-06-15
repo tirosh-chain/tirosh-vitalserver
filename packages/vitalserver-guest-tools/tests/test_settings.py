@@ -83,6 +83,7 @@ def test_load_settings_uses_packaged_defaults_when_file_is_missing(
     assert settings.shares.runtime_mount == Path("/mnt/tirosh")
     assert settings.paths.deploy_dir == Path("/mnt/tirosh/deploy")
     assert settings.compose.project_name == "vitalserver"
+    assert settings.compose.stop_timeout_seconds == 120
     assert settings.intervals.command_poll_seconds == 3
     assert settings.logging.format == "json"
     assert settings.logging.file_enabled is True

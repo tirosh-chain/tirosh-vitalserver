@@ -20,6 +20,7 @@ from tirosh_guest_tools.adapters.outbound.runtime.health import check_runtime_he
 from tirosh_guest_tools.adapters.outbound.runtime.state_writer import (
     write_runtime_state,
 )
+from tirosh_guest_tools.application.bootstrap import run_guest_bootstrap
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.observability import (
     write_guest_observability_snapshot,
@@ -36,6 +37,15 @@ from tirosh_guest_tools.application.redis_repair import (
 from tirosh_guest_tools.application.redis_repair import (
     run_repair_datastore,
 )
+from tirosh_guest_tools.application.redis_restore import (
+    LOG_FILE as REDIS_RESTORE_LOG_FILE,
+)
+from tirosh_guest_tools.application.redis_restore import (
+    run_redis_restore,
+)
+from tirosh_guest_tools.application.rootfs_smoke import run_rootfs_smoke
+from tirosh_guest_tools.application.runtime_boot_smoke import run_runtime_boot_smoke
+from tirosh_guest_tools.application.runtime_data_prepare import prepare_runtime_data
 from tirosh_guest_tools.application.runtime_state import run_runtime_state_action
 from tirosh_guest_tools.application.update_activation import (
     LOG_FILE as ACTIVATE_UPDATE_LOG_FILE,
@@ -53,6 +63,11 @@ from tirosh_guest_tools.domain.operations import (
     ComposeAction,
     ContainerLogAction,
     RuntimeStateAction,
+)
+from tirosh_guest_tools.infrastructure.bootstrap_operations import (
+    default_bootstrap_context,
+    default_bootstrap_operations,
+    sync_host_time,
 )
 from tirosh_guest_tools.infrastructure.logging import configure_logging
 from tirosh_guest_tools.infrastructure.settings import SETTINGS
@@ -176,6 +191,55 @@ def vitalserver_compose() -> int:
     return 0
 
 
+def vitalserver_sync_host_time() -> int:
+    parser = argparse.ArgumentParser(
+        description="Synchronize guest clock from the explicit host time contract."
+    )
+    parser.parse_args()
+    sync_host_time()
+    return 0
+
+
+def vitalserver_bootstrap() -> int:
+    parser = argparse.ArgumentParser(description="Run guest bootstrap workflow.")
+    parser.parse_args()
+    configure_logging(SETTINGS.logging)
+    run_guest_bootstrap(
+        context=default_bootstrap_context(),
+        operations=default_bootstrap_operations(),
+    )
+    return 0
+
+
+def vitalserver_rootfs_smoke() -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate golden rootfs Docker and Compose runtime behavior."
+    )
+    parser.parse_args()
+    configure_logging(SETTINGS.logging)
+    run_rootfs_smoke()
+    return 0
+
+
+def vitalserver_runtime_boot_smoke() -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate runtime boot contracts after guest bootstrap."
+    )
+    parser.parse_args()
+    configure_logging(SETTINGS.logging)
+    run_runtime_boot_smoke()
+    return 0
+
+
+def vitalserver_runtime_data_prepare() -> int:
+    parser = argparse.ArgumentParser(
+        description="Prepare the guest runtime data disk contract."
+    )
+    parser.parse_args()
+    prepare_runtime_data()
+    return 0
+
+
 def vitalserver_command_poller() -> int:
     parser = argparse.ArgumentParser(description="Dispatch guest command requests.")
     parser.parse_args()
@@ -188,6 +252,14 @@ def vitalserver_redis_backup() -> int:
     parser.parse_args()
     configure_logging(SETTINGS.logging, log_file=REDIS_BACKUP_LOG_FILE)
     run_redis_backup()
+    return 0
+
+
+def vitalserver_redis_restore() -> int:
+    parser = argparse.ArgumentParser(description="Restore the Redis Docker volume.")
+    parser.parse_args()
+    configure_logging(SETTINGS.logging, log_file=REDIS_RESTORE_LOG_FILE)
+    run_redis_restore()
     return 0
 
 

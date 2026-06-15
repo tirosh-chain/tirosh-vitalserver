@@ -10,7 +10,7 @@ RemainAfterExit=yes
 ExecStart=/usr/local/bin/tirosh-vitalserver-compose up
 ExecStop=/usr/local/bin/tirosh-vitalserver-compose stop
 TimeoutStartSec=900
-TimeoutStopSec=300
+TimeoutStopSec=150
 
 [Install]
 WantedBy=multi-user.target

@@ -5,99 +5,182 @@ import PackageDescription
 let package = Package(
     name: "VitalServerHelper",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     products: [
         .executable(
             name: "vitalserver-vm",
-            targets: ["HostCLI"]
+            targets: ["CLIHost"]
         ),
         .executable(
             name: "VitalServerHelper",
-            targets: ["MacRuntimeControlApp"]
+            targets: ["MacControlPanelHost"]
+        ),
+        .executable(
+            name: "vitalserver-troubleshooting-reset-for-reinstall",
+            targets: ["TroubleshootingResetForReinstall"]
+        ),
+        .executable(
+            name: "vitalserver-troubleshooting-upstream-redis-save",
+            targets: ["TroubleshootingUpstreamRedisSave"]
         )
     ],
     targets: [
         .target(
-            name: "Contracts"
+            name: "Contracts",
+            path: "Sources/Contracts/Shared"
         ),
         .target(
-            name: "Core",
+            name: "Errors",
+            dependencies: ["Contracts"],
+            path: "Sources/Errors"
+        ),
+        .target(
+            name: "Domain",
             dependencies: ["Contracts"]
         ),
         .target(
             name: "Application",
-            dependencies: ["Contracts", "Core"]
+            dependencies: ["Contracts", "Errors", "Domain"]
         ),
         .target(
-            name: "RuntimeWorkflow",
-            dependencies: ["Contracts", "Core", "Application"]
+            name: "Workflow",
+            dependencies: ["Contracts", "Errors", "Domain", "Application"]
         ),
         .target(
-            name: "RuntimeControl",
-            dependencies: ["Contracts"]
+            name: "InboundAdapters",
+            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl"],
+            path: "Sources/Adapters/Inbound",
+            resources: [
+                .process("RuntimeControlAPI/DevConsole/RuntimeControlDevConsole.html")
+            ]
         ),
         .target(
-            name: "RuntimeControlAPI",
-            dependencies: ["RuntimeControl"]
-        ),
-        .target(
-            name: "HostInfrastructure",
-            dependencies: ["Contracts", "Core"],
+            name: "OutboundAdapters",
+            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl"],
+            path: "Sources/Adapters/Outbound",
             linkerSettings: [
                 .linkedLibrary("sqlite3")
             ]
         ),
         .target(
-            name: "MacHostRuntimeAdapter",
-            dependencies: ["Contracts", "RuntimeControl", "Core", "HostInfrastructure"]
+            name: "Bootstrap",
+            dependencies: [
+                "Contracts",
+                "Errors",
+                "Domain",
+                "Application",
+                "Workflow",
+                "InboundAdapters",
+                "OutboundAdapters",
+            ]
+        ),
+        .target(
+            name: "RuntimeControl",
+            dependencies: ["Contracts", "Errors"],
+            path: "Sources/Contracts/RuntimeControl"
         ),
         .executableTarget(
-            name: "HostCLI",
-            dependencies: ["Contracts", "Core", "Application", "RuntimeWorkflow", "HostInfrastructure"]
+            name: "CLIHost",
+            dependencies: [
+                "Contracts",
+                "Errors",
+                "Domain",
+                "Application",
+                "Workflow",
+                "InboundAdapters",
+                "OutboundAdapters",
+                "Bootstrap",
+            ],
+            path: "Sources/Hosts/CLI"
         ),
         .executableTarget(
-            name: "MacRuntimeControlApp",
-            dependencies: ["Contracts", "RuntimeControl", "RuntimeControlAPI", "MacHostRuntimeAdapter"]
+            name: "MacControlPanelHost",
+            dependencies: ["Contracts", "Errors", "RuntimeControl", "InboundAdapters", "OutboundAdapters"],
+            path: "Sources/Hosts/MacControlPanel"
+        ),
+        .executableTarget(
+            name: "TroubleshootingResetForReinstall",
+            path: "Sources/Hosts/Troubleshooting/ResetForReinstall"
+        ),
+        .executableTarget(
+            name: "TroubleshootingUpstreamRedisSave",
+            path: "Sources/Hosts/Troubleshooting/UpstreamRedisSave"
+        ),
+        .testTarget(
+            name: "ErrorsTests",
+            dependencies: ["Contracts", "Errors"]
         ),
         .testTarget(
             name: "ContractsTests",
-            dependencies: ["Contracts"],
+            dependencies: ["Contracts", "Errors"],
             resources: [
                 .process("Fixtures")
             ]
         ),
         .testTarget(
-            name: "CoreTests",
-            dependencies: ["Contracts", "Core"]
+            name: "DomainTests",
+            dependencies: ["Contracts", "Errors", "Domain", "Application"]
         ),
         .testTarget(
             name: "ApplicationTests",
-            dependencies: ["Contracts", "Core", "Application"]
+            dependencies: ["Contracts", "Errors", "Domain", "Application"]
         ),
         .testTarget(
-            name: "RuntimeWorkflowTests",
-            dependencies: ["Contracts", "Core", "Application", "RuntimeWorkflow"]
+            name: "WorkflowTests",
+            dependencies: [
+                "Contracts",
+                "Errors",
+                "Domain",
+                "Application",
+                "Workflow",
+                "InboundAdapters",
+                "OutboundAdapters",
+                "Bootstrap",
+            ]
+        ),
+        .testTarget(
+            name: "ArchitectureBoundaryTests",
+            dependencies: [
+                "Contracts",
+                "Errors",
+                "Domain",
+                "Application",
+                "Workflow",
+                "InboundAdapters",
+                "OutboundAdapters",
+                "Bootstrap",
+            ]
         ),
         .testTarget(
             name: "RuntimeControlTests",
-            dependencies: ["Contracts", "RuntimeControl"]
+            dependencies: ["Contracts", "Errors", "RuntimeControl"]
         ),
         .testTarget(
-            name: "RuntimeControlAPITests",
-            dependencies: ["Contracts", "RuntimeControl", "RuntimeControlAPI"]
+            name: "InboundAdaptersTests",
+            dependencies: ["Contracts", "Errors", "Application", "RuntimeControl", "InboundAdapters"]
         ),
         .testTarget(
-            name: "HostInfrastructureTests",
-            dependencies: ["Contracts", "Core", "HostInfrastructure"]
+            name: "OutboundAdaptersTests",
+            dependencies: ["Contracts", "Errors", "Domain", "Application", "RuntimeControl", "OutboundAdapters"]
         ),
         .testTarget(
-            name: "HostCLITests",
-            dependencies: ["Contracts", "Core", "RuntimeWorkflow", "HostCLI"]
+            name: "CLIHostTests",
+            dependencies: [
+                "Contracts",
+                "Errors",
+                "Domain",
+                "Application",
+                "Workflow",
+                "InboundAdapters",
+                "OutboundAdapters",
+                "Bootstrap",
+                "CLIHost",
+            ]
         ),
         .testTarget(
-            name: "MacRuntimeControlAppTests",
-            dependencies: ["Contracts", "RuntimeControl", "MacHostRuntimeAdapter", "MacRuntimeControlApp"]
+            name: "MacControlPanelHostTests",
+            dependencies: ["Contracts", "Errors", "RuntimeControl", "InboundAdapters", "OutboundAdapters", "MacControlPanelHost"]
         )
     ]
 )

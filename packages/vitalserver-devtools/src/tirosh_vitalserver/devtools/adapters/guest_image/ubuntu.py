@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import platform
 import shutil
+import subprocess
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.toolchain.shell_commands import (
@@ -41,6 +42,10 @@ def run_ubuntu(plan: UbuntuBootAssetPlan) -> int:
         f"{plan.base_url}/{plan.assets.image_name}",
         plan.download_dir / plan.assets.image_name,
     )
+    validate_qcow2_image(
+        plan.download_dir / plan.assets.image_name,
+        label="Ubuntu cloud image",
+    )
 
     with (
         gzip.open(plan.download_dir / plan.assets.kernel_name, "rb") as source,
@@ -75,6 +80,10 @@ def run_ubuntu(plan: UbuntuBootAssetPlan) -> int:
         )
 
     resize_rootfs_if_needed(plan.disk_image, plan.disk_image_name, plan.rootfs_size)
+    validate_raw_disk_image(
+        plan.disk_image,
+        min_virtual_size=size_to_bytes(plan.rootfs_size),
+    )
 
     print("Linux boot assets are ready:")
     print(f"  {plan.runtime_dir / 'Image'}")
@@ -104,13 +113,60 @@ def download_once(url: str, output: Path) -> None:
     partial.replace(output)
 
 
+def validate_qcow2_image(path: Path, *, label: str) -> None:
+    info = qemu_image_info(path, label=label)
+    image_format = info.get("format")
+    virtual_size = info.get("virtual-size")
+    if image_format != "qcow2":
+        raise SystemExit(
+            f"error: invalid {label}: {path}: expected qcow2 image, got {image_format!r}"
+        )
+    if not isinstance(virtual_size, int) or virtual_size <= 0:
+        raise SystemExit(
+            f"error: invalid {label}: {path}: missing positive virtual-size"
+        )
+    try:
+        run(["qemu-img", "check", str(path)])
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(
+            f"error: invalid {label}: qemu-img check failed for {path}: {error}"
+        ) from error
+
+
+def validate_raw_disk_image(path: Path, *, min_virtual_size: int) -> None:
+    info = qemu_image_info(path, label="raw rootfs disk")
+    image_format = info.get("format")
+    virtual_size = info.get("virtual-size")
+    if image_format != "raw":
+        raise SystemExit(
+            f"error: invalid raw rootfs disk: {path}: expected raw image, got {image_format!r}"
+        )
+    if not isinstance(virtual_size, int) or virtual_size < min_virtual_size:
+        raise SystemExit(
+            "error: invalid raw rootfs disk: "
+            f"{path}: virtual-size={virtual_size!r} expected>={min_virtual_size}"
+        )
+
+
+def qemu_image_info(path: Path, *, label: str) -> dict[str, object]:
+    try:
+        info = capture_json(["qemu-img", "info", "--output=json", str(path)])
+    except (OSError, subprocess.CalledProcessError, ValueError) as error:
+        raise SystemExit(
+            f"error: invalid {label}: qemu-img info failed for {path}: {error}"
+        ) from error
+    if not isinstance(info, dict):
+        raise SystemExit(f"error: invalid {label}: qemu-img info is not an object: {path}")
+    return info
+
+
 def resize_rootfs_if_needed(
     disk_image: Path,
     disk_image_name: str,
     rootfs_size: str,
 ) -> None:
-    info = capture_json(["qemu-img", "info", "--output=json", str(disk_image)])
-    if not isinstance(info, dict) or not isinstance(info.get("virtual-size"), int):
+    info = qemu_image_info(disk_image, label="raw rootfs disk")
+    if not isinstance(info.get("virtual-size"), int):
         raise SystemExit(f"error: unable to read virtual size for {disk_image}")
     current_size = info["virtual-size"]
     desired_size = size_to_bytes(rootfs_size)

@@ -34,7 +34,8 @@ import type {
   RuntimeUpdateBundleRequest,
   RuntimeUpdateBundleSummaryResponse,
   VitalDBBeds,
-  VitalDBRecorders
+  VitalDBRecorders,
+  VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
   runtimeBackupSchema,
@@ -53,7 +54,8 @@ import {
   runtimeTestKitStatusSchema,
   runtimeUpdateBundleSummaryResponseSchema,
   vitalDBBedsSchema,
-  vitalDBRecordersSchema
+  vitalDBRecordersSchema,
+  vitalDBRelationshipsSchema
 } from "@/domain/runtime-control/contracts/schemas/runtimeControlSchemas";
 import { DEFAULT_APP_SETTINGS } from "@/config/appSettings";
 import type { ZodType } from "zod";
@@ -144,6 +146,10 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
   getBeds(): Promise<VitalDBBeds> {
     return this.get("/vitaldb/beds", vitalDBBedsSchema);
+  }
+
+  getRelationships(): Promise<VitalDBRelationships> {
+    return this.get("/vitaldb/relationships", vitalDBRelationshipsSchema);
   }
 
   getTestKitStatus(): Promise<RuntimeTestKitStatus> {
@@ -304,6 +310,10 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.get("/host/backups/redis", runtimeBackupSchema.array());
   }
 
+  listRuntimeDataBackups(): Promise<RuntimeBackup[]> {
+    return this.get("/host/backups/vitalserver-helper", runtimeBackupSchema.array());
+  }
+
   rollbackBackup(request: RuntimeBackupRequest): Promise<RuntimeCommandResponse> {
     return this.post(
       "/host/backups/rollback",
@@ -318,6 +328,26 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.delete("/host/backups", request, runtimeCommandResponseSchema);
   }
 
+  deleteUpdateBackup(
+    request: RuntimeBackupRequest
+  ): Promise<RuntimeCommandResponse> {
+    return this.delete(
+      "/host/backups/update",
+      request,
+      runtimeCommandResponseSchema
+    );
+  }
+
+  deleteRuntimeDataBackup(
+    request: RuntimeBackupRequest
+  ): Promise<RuntimeCommandResponse> {
+    return this.delete(
+      "/host/backups/vitalserver-helper",
+      request,
+      runtimeCommandResponseSchema
+    );
+  }
+
   restoreRedisBackup(
     request: RuntimeBackupRequest
   ): Promise<RuntimeCommandResponse> {
@@ -328,9 +358,27 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     );
   }
 
+  restoreRuntimeDataBackup(
+    request: RuntimeBackupRequest
+  ): Promise<RuntimeCommandResponse> {
+    return this.post(
+      "/host/backups/vitalserver-helper/restore",
+      request,
+      runtimeCommandResponseSchema
+    );
+  }
+
   createRedisBackup(): Promise<RuntimeCommandResponse> {
     return this.post(
       "/runtime/redis/backups",
+      undefined,
+      runtimeCommandResponseSchema
+    );
+  }
+
+  createRuntimeDataBackup(): Promise<RuntimeCommandResponse> {
+    return this.post(
+      "/runtime/data/backups",
       undefined,
       runtimeCommandResponseSchema
     );

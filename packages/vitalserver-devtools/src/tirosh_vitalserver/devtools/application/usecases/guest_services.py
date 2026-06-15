@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 from tirosh_vitalserver.devtools.adapters.build_config import load_config
 from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
     ensure_vm_data_dirs,
     stage_guest_deploy,
+)
+from tirosh_vitalserver.devtools.adapters.guest_services.deploy_bundle import (
+    stage_rootfs_input_metadata as write_rootfs_input_metadata,
 )
 from tirosh_vitalserver.devtools.adapters.guest_services.docker_images import (
     build_docker_image_bundle as run_docker_image_bundle,
@@ -22,8 +26,14 @@ from tirosh_vitalserver.devtools.config.docker_images import load_docker_images_
 from tirosh_vitalserver.devtools.config.guest_deploy import (
     load_guest_deploy_config,
 )
+from tirosh_vitalserver.devtools.config.guest_image import (
+    load_guest_runtime_config,
+    load_ubuntu_image_config,
+)
 from tirosh_vitalserver.devtools.config.paths import resolve_path
+from tirosh_vitalserver.devtools.core.guest_image import RuntimeDataDiskConfig
 from tirosh_vitalserver.devtools.core.guest_services import (
+    RootfsInputMetadataPlan,
     guest_deploy_plan,
 )
 
@@ -101,6 +111,37 @@ def stage_guest_deployment(
         optional_docker_bundle=optional_docker_bundle,
     )
     stage_guest_deploy(plan)
+    ubuntu_config = load_ubuntu_image_config(config)
+    runtime_config = load_guest_runtime_config(config)
+    stage_rootfs_input_metadata(
+        deploy_dir=deploy_dir,
+        base_url=ubuntu_config.base_url,
+        apt_snapshot=ubuntu_config.apt_snapshot,
+        runtime_data=runtime_config.runtime_data_disk,
+        docker_platform=docker_config.platform,
+        run_id=input.rootfs_run_id,
+    )
     ensure_vm_data_dirs(plan)
     print(f"guest deployment bundle is ready: {deploy_dir}")
     return 0
+
+
+def stage_rootfs_input_metadata(
+    *,
+    deploy_dir: Path,
+    base_url: str,
+    apt_snapshot: str,
+    runtime_data: RuntimeDataDiskConfig,
+    docker_platform: str,
+    run_id: str | None = None,
+) -> None:
+    write_rootfs_input_metadata(
+        RootfsInputMetadataPlan(
+            deploy_dir=deploy_dir,
+            base_url=base_url,
+            apt_snapshot=apt_snapshot,
+            runtime_data=runtime_data,
+            docker_platform=docker_platform,
+            run_id=run_id,
+        )
+    )

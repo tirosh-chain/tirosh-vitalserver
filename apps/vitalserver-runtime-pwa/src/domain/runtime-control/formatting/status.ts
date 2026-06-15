@@ -37,3 +37,13 @@ export function formatBoolean(value: boolean | null | undefined): string {
   }
   return "Unknown";
 }
+
+export function formatPatientStatus(value: boolean | null | undefined): string {
+  if (value === true) {
+    return "Present";
+  }
+  if (value === false) {
+    return "Not present";
+  }
+  return "Not reported";
+}

@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import { formatBytes } from "./bytes";
 import {
   formatHTTPStatus,
-  runtimeURL
+  runtimeURL,
+  sameHostRuntimeURL
 } from "./http";
 import { formatRuntimeState } from "./runtimeState";
+import { formatPatientStatus } from "./status";
 import { formatUptimeSince } from "./time";
 
 describe("runtime presentation formatting", () => {
@@ -21,9 +23,17 @@ describe("runtime presentation formatting", () => {
   });
 
   it("maps runtime state values to display labels", () => {
+    expect(formatRuntimeState("initializing")).toBe("Initializing");
     expect(formatRuntimeState("healthy")).toBe("Healthy");
     expect(formatRuntimeState("critical")).toBe("Critical");
     expect(formatRuntimeState(undefined)).toBe("Unknown");
+  });
+
+  it("formats patient status without converting missing state to absence", () => {
+    expect(formatPatientStatus(true)).toBe("Present");
+    expect(formatPatientStatus(false)).toBe("Not present");
+    expect(formatPatientStatus(undefined)).toBe("Not reported");
+    expect(formatPatientStatus(null)).toBe("Not reported");
   });
 
   it("formats uptime from a startedAt timestamp", () => {
@@ -43,5 +53,18 @@ describe("runtime presentation formatting", () => {
       "http://vital.local:18080/"
     );
     expect(runtimeURL({ host: "", port: 18080 })).toBeNull();
+  });
+
+  it("builds same-host runtime URLs from the browser host and explicit port", () => {
+    expect(sameHostRuntimeURL({ hostname: "mac.local", port: 18080 })).toBe(
+      "http://mac.local:18080/"
+    );
+    expect(sameHostRuntimeURL({ hostname: "::1", port: 18321 })).toBe(
+      "http://[::1]:18321/"
+    );
+    expect(sameHostRuntimeURL({ hostname: "", port: 18080 })).toBeNull();
+    expect(
+      sameHostRuntimeURL({ hostname: "mac.local", port: undefined })
+    ).toBeNull();
   });
 });

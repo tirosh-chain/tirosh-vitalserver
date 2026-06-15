@@ -69,3 +69,4 @@ make proxy-stop-orphans
 
 - 관련 issue/PR, 재현 로그, 수정 버전, 운영 판단이 생기면 이 섹션에 추가합니다.
 - `TS-028`: host nginx runtime directory가 Homebrew 기본 경로에 의존하던 문제를 별도 케이스로 분리했습니다.
+- 2026-06-07: dev product update rollback 중 host proxy runner가 `started proxy`를 기록했지만 곧바로 `/ready` probe가 실패해 nginx를 내리는 false-start 흐름을 확인했습니다. `vitalserver-proxy-run`은 이제 nginx start/reload 후 host proxy readiness가 성공한 경우에만 `started/reloaded proxy`를 기록하고, readiness 실패 시 nginx를 중지한 뒤 retry 상태로 남깁니다.

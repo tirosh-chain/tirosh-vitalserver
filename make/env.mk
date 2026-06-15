@@ -4,12 +4,12 @@ ENV_ARGS = \
 	--uv "$(UV)" \
 	--compose "$(COMPOSE)"
 
-.PHONY: bootstrap doctor testkit/install-release require-uv
+.PHONY: dev/bootstrap dev/doctor testkit/install-release require-uv
 
-bootstrap: repo/init
+dev/bootstrap: repo/init
 	$(DEVTOOLS_RUNNER) env-bootstrap $(ENV_ARGS)
 
-doctor:
+dev/doctor:
 	$(DEVTOOLS_RUNNER) env-doctor $(ENV_ARGS)
 
 testkit/install-release:

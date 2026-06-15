@@ -54,6 +54,10 @@ installed_plist = "ai.tirosh.vitalserver.helper.sleep-prevention.plist"
 template_file = "ai.tirosh.vitalserver.helper.watchdog.plist.template"
 installed_plist = "ai.tirosh.vitalserver.helper.watchdog.plist"
 
+[macos.launchd.automatic_backup]
+template_file = "ai.tirosh.vitalserver.helper.automatic-backup.plist.template"
+installed_plist = "ai.tirosh.vitalserver.helper.automatic-backup.plist"
+
 [macos.host_proxy.nginx]
 binary_path = ".artifacts/nginx/macos/bin/nginx"
 source_binary_path = "/opt/homebrew/opt/nginx/bin/nginx"
@@ -62,15 +66,24 @@ non_system_dylib_prefixes = ["/opt/", "/usr/local/"]
 [guest.ubuntu]
 release = "noble"
 version = "24.04"
-base_url = "https://cloud-images.ubuntu.com/releases/noble/release"
+base_url = "https://cloud-images.ubuntu.com/releases/noble/release-20250516"
+apt_snapshot = "20250515T000000Z"
 arch = "auto"
 kernel_suffix = "vmlinuz-generic"
 initrd_suffix = "initrd-generic"
 
 [guest.runtime]
 disk_image_name = "vm-disk.img"
-rootfs_size = "4G"
+rootfs_size = "8G"
 runtime_dir = "~/.tirosh/vitalserver-vm/runtime"
+
+[guest.runtime_data]
+disk_image_name = "runtime-data.img"
+disk_size = "16G"
+filesystem_label = "vital-runtime"
+mount_path = "/mnt/runtime"
+docker_data_root = "/mnt/runtime/docker"
+containerd_root = "/mnt/runtime/containerd"
 
 [guest.cloud_init]
 seed_directory_name = "cloud-init-seed"

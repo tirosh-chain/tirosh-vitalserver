@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.core.errors import DomainError
 from tirosh_vitalserver.devtools.core.guest_deploy import GuestDeployConfig
+from tirosh_vitalserver.devtools.core.guest_image import (
+    RuntimeDataDiskConfig,
+    ubuntu_download_cache_key,
+)
 
 VM_DATA_DIRS = ("data/deploy", "data/vital-files", "data/vr-release", "data/run")
 IGNORED_NAMES = (".DS_Store", "._*", "__pycache__")
@@ -33,6 +38,16 @@ class GuestDeployPlan:
     optional_docker_bundle_source: Path | None
     optional_docker_bundle_destination: Path | None
     vm_data_dirs: list[Path]
+
+
+@dataclass(frozen=True)
+class RootfsInputMetadataPlan:
+    deploy_dir: Path
+    base_url: str
+    apt_snapshot: str
+    runtime_data: RuntimeDataDiskConfig
+    docker_platform: str
+    run_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +125,37 @@ def guest_deploy_plan(
         optional_docker_bundle_destination=optional_docker_destination,
         vm_data_dirs=[vm_home / relative for relative in VM_DATA_DIRS],
     )
+
+
+def rootfs_input_metadata_document(plan: RootfsInputMetadataPlan) -> dict[str, object]:
+    document: dict[str, object] = {
+        "schemaVersion": 1,
+        "guestClockUtc": datetime.now(UTC).replace(microsecond=0).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+        "runtimeBootSmoke": {
+            "enabled": False,
+        },
+        "dockerImages": {
+            "platform": plan.docker_platform,
+        },
+        "runtimeData": {
+            "diskImageName": plan.runtime_data.disk_image_name,
+            "diskSize": plan.runtime_data.disk_size,
+            "filesystemLabel": plan.runtime_data.filesystem_label,
+            "mountPath": plan.runtime_data.mount_path,
+            "dockerDataRoot": plan.runtime_data.docker_data_root,
+            "containerdRoot": plan.runtime_data.containerd_root,
+        },
+        "ubuntu": {
+            "aptSnapshot": plan.apt_snapshot,
+            "baseUrl": plan.base_url,
+            "cacheKey": ubuntu_download_cache_key(plan.base_url),
+        },
+    }
+    if plan.run_id:
+        document["runId"] = plan.run_id
+    return document
 
 
 def docker_image_plan(

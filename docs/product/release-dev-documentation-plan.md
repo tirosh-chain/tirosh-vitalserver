@@ -165,7 +165,7 @@ file found/invalid/decode-failed/permission-failed, empty와 missing 구분을
 `dev/api-contracts.md`는 Runtime Control API, VitalDB Observer API, Audit Proxy API,
 OpenAPI source 위치를 설명합니다.
 
-`dev/build-and-release.md`는 `make vm-dmg-release`, `make vm-update-bundle-release`,
+`dev/build-and-release.md`는 `make dist/dmg/release`, `make dist/update/release`,
 `make install-testkit-release`, artifact 위치를 설명합니다.
 
 `dev/testing.md`는 unit/integration test, testkit smoke/load, runtime chaos,

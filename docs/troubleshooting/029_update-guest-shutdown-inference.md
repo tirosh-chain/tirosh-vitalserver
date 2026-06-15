@@ -74,9 +74,9 @@ Host-side 추정과 fallback을 제거합니다.
 
 1. Host가 guest에 명시적 request를 작성합니다.
 2. Guest가 Redis backup, container/service stop, `sync`를 수행합니다.
-3. Guest가 `shutdownPhase=prepared`로 service stop과 filesystem sync 완료를 기록합니다.
-4. Guest가 `systemctl poweroff`를 요청하기 직전에 `shutdownPhase=poweroff-requested`를 현재 requestId result에 기록합니다.
-5. Host는 `status=ready`만으로 진행하지 않고, 현재 requestId의 `shutdownPhase=poweroff-requested`만 인정합니다.
+3. Guest가 `shutdownPhase=prepared`로 service stop 완료와 final sync 준비를 기록합니다.
+4. Guest가 final sync를 끝내면 `systemctl poweroff` 요청 전에 `shutdownPhase=poweroff-ready`를 현재 requestId result에 기록합니다.
+5. Host는 `status=ready`만으로 진행하지 않고, 현재 requestId의 `shutdownPhase=poweroff-ready` 또는 기존 `poweroff-requested`만 인정합니다.
 6. Host는 update stop 경로에서 VM process에 직접 stop signal을 보내지 않고, guest poweroff 요청 이후 VM process 자연 종료를 기다린 뒤 launchd job을 정리합니다.
 7. VM stop timeout이면 실패로 처리합니다. Host가 log marker나 stale result를 근거로 force kill하지 않습니다.
 8. Guest shutdown finalization이 오래 걸릴 수 있으므로 VM stop timeout은 systemd shutdown 지연을 포함할 수 있을 만큼 길게 둡니다. 2026-06-01 기준 Host CLI와 VM launchd timeout은 900초입니다.
@@ -95,7 +95,8 @@ Guest shutdown result는 현재 requestId와 일치해야 합니다. 이전 resu
 
 ```text
 preparing          guest shutdown preparation started
-prepared           services stopped and filesystems synced
+prepared           services stopped and final sync is ready to run
+poweroff-ready     services stopped and filesystems synced; guest is issuing OS poweroff
 poweroff-requested guest requested OS poweroff
 poweroff-failed    guest failed to request OS poweroff
 ```
@@ -133,3 +134,4 @@ VM process가 graceful stop timeout으로 실패하면 update를 성공시키기
 
 - 2026-05-29: update 중 host-side guest shutdown 추정, disk-safe log marker fallback, stale result wait를 제거했습니다. 명시적 guest shutdown request/result contract만 사용하도록 단순화했습니다.
 - 2026-06-02: `ready` result를 disk-safe 신호로 쓰지 않도록 `shutdownPhase` contract를 추가했습니다. Host는 `poweroff-requested`를 확인한 뒤 VM process 자연 종료를 기다리고, update stop 경로에서는 VM에 직접 stop signal을 보내지 않습니다.
+- 2026-06-15: Guest가 OS poweroff 요청 뒤 종료되면서 result를 못 남기는 실패를 막기 위해 final sync 직후 `poweroff-ready` result를 먼저 durable write하고, 그 다음 poweroff 요청을 시도합니다. Host는 `poweroff-ready`와 `poweroff-requested`를 모두 VM process exit wait로 진행 가능한 shutdown handoff로 봅니다.

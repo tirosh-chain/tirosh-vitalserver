@@ -22,7 +22,7 @@ WebSocket upgrade routing을 단계적으로 이전해야 합니다.
 
 - `join_vr` event audit
 - `join_vr` 시점의 selected IP/source 계산
-- Redis `ip_<vrcode>` best-effort 보정 저장
+- Redis `ip_<vrcode>` 보정 저장과 bounded verify/rewrite
 - `send_data` event audit
 - `req_cmd` event audit
 - server -> VRecorder command dispatch event audit
@@ -49,7 +49,8 @@ Audit 실패는 VitalServer 기능 실패로 전파하지 않습니다.
 | `VITALSERVER_AUDIT_LOG_FORMAT` | `json` | `json` 또는 `logfmt` |
 | `VITALSERVER_AUDIT_STDOUT_ENABLED` | `1` | `0`이면 container log collector용 stdout audit log 비활성화 |
 | `VITALSERVER_AUDIT_STDOUT_FORMAT` | `VITALSERVER_AUDIT_LOG_FORMAT` | stdout audit log format. `json` 또는 `logfmt` |
-| `AUDIT_PROXY_IP_WRITE_DELAY_MS` | `250` | upstream `join_vr` 처리 뒤 `ip_<vrcode>` 보정 write 지연 |
+| `AUDIT_PROXY_VR_IP_REWRITE_ENABLED` | `1` | `0`이면 Redis `ip_<vrcode>` 보정 비활성화 |
+| `AUDIT_PROXY_VR_IP_VERIFY_DELAYS_MS` | `250,1000` | Redis write 뒤 `GET ip_<vrcode>` 검증을 수행할 millisecond 지연 목록 |
 | `AUDIT_PROXY_UPSTREAM_TIMEOUT_MS` | `30000` | upstream VitalServer 응답 대기 timeout |
 
 Audit event는 기본적으로 파일 로그와 Redis List에 함께 기록합니다. 파일 로그는 Docker named volume
@@ -84,6 +85,36 @@ Audit proxy 코드는 작은 DDD 경계로 구성합니다.
 
 ### `join_vr`
 
+Upstream VitalServer는 VRecorder가 Socket.IO `join_vr` event를 보낼 때 room join callback 안에서
+`SET ip_<vrcode> <socket-address>`를 실행합니다. Browser/bed 쪽은 이후 `join_bed` 흐름에서
+`GET ip_<vrcode>` 값을 읽어 `recv_vr_ipaddr`로 받습니다.
+
+원본 upstream은 proxy forwarding header를 신뢰하지 않으므로 container network에서는 이 값이
+VRecorder LAN IP가 아니라 runtime/proxy 내부 주소가 될 수 있습니다. Helper runtime에서는 upstream
+VitalServer를 수정하지 않고 audit proxy가 같은 `ip_<vrcode>` key만 보정합니다. 추가 Redis key는
+만들지 않습니다.
+
+이 책임 경계는 `config/upstream-vitalserver-contract.json`과 `repo/verify-submodule`로 검증합니다.
+Release verify에서는 approved upstream commit이어야 하고, `join_vr`, `join_bed`, `send_data`,
+`recv_vr_ipaddr`, Redis `ip_<vrcode>` read/write contract가 유지되어야 합니다. `x-forwarded-for`,
+`VITALSERVER_TRUST_PROXY`, `get_vr_client_ip` 같은 upstream proxy-header IP patch marker는 실패로
+처리합니다. 새 upstream 후보는 `repo/verify-submodule-candidate`로 compatibility를 먼저 확인한 뒤
+승인 manifest에 추가합니다.
+
+보정은 단순 delay write가 아니라 다음 순서로 수행합니다.
+
+```text
+join_vr observed
+-> SET ip_<vrcode> <selected_vr_ip>
+-> configured delay after write: GET ip_<vrcode>
+-> mismatch: bounded rewrite using the same key
+-> final mismatch/write/verify failure: proxy status에 recorder별 failure state 기록
+```
+
+Recorder별 보정 상태는 audit proxy `/audit-proxy/status`의 `recorders[].redisIpSync`에 노출되고,
+Runtime Control read model을 거쳐 Recorders 화면의 IP column과 Recorder Details > Network access에
+표시됩니다. Service liveness에는 recorder별 상세 상태를 표시하지 않습니다.
+
 ```json
 {
   "event_type": "join_vr",
@@ -94,6 +125,20 @@ Audit proxy 코드는 작은 DDD 경계로 구성합니다.
   "trust_proxy": true
 }
 ```
+
+`recorders[].redisIpSync.status` 값:
+
+| 상태 | 의미 |
+|---|---|
+| `unknown` | audit proxy status는 loaded지만 해당 `vrcode`의 `join_vr` 보정 상태가 아직 없음 |
+| `unavailable` | audit proxy status를 읽지 못해 recorder별 Redis sync 상태를 확인할 수 없음 |
+| `disabled` | Redis IP rewrite가 명시적으로 비활성화됨 |
+| `pending` / `written` | write 또는 verify가 진행 중 |
+| `verified` | Redis 값이 selected VRecorder IP와 일치함 |
+| `correcting` / `corrected` | mismatch를 감지했고 같은 key로 rewrite를 수행함 |
+| `mismatch` | bounded verify 이후에도 Redis 값이 selected IP와 달랐음 |
+| `write_failed` | Redis `SET ip_<vrcode>` 실패 |
+| `verify_failed` | Redis `GET ip_<vrcode>` 검증 실패 |
 
 ### `send_data`
 

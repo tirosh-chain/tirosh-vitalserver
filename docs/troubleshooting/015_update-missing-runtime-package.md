@@ -21,7 +21,7 @@ Failing command: /opt/tirosh/guest-tools/venv/bin/python3
 
 원인:
 
-Product Update bundle은 `rootfs-base.raw.gz`를 포함하거나 교체하지 않고, 이미 설치되어 실행 중인 mutable disk인 `vm-disk.img`도 보존합니다. 따라서 기존 `vm-disk.img` 안에 Docker/Compose/Avahi/growpart 같은 runtime package가 빠져 있으면, guest deploy나 cloud-init seed만 갱신해도 bootstrap이 성공할 수 없습니다. VM Image/rootfs를 바꿔야 할 때는 Product Update가 아니라 `make vm-rootfs-update-bundle`로 별도 `vm-image-update` bundle을 만들지만, 이 역시 기존 `vm-disk.img`를 자동 교체하지는 않습니다.
+Product Update bundle은 `rootfs-base.raw.gz`를 포함하거나 교체하지 않고, 이미 설치되어 실행 중인 mutable disk인 `vm-disk.img`도 보존합니다. 따라서 기존 `vm-disk.img` 안에 Docker/Compose/Avahi/growpart 같은 runtime package가 빠져 있으면, guest deploy나 cloud-init seed만 갱신해도 bootstrap이 성공할 수 없습니다. VM Image/rootfs를 바꿔야 할 때는 Product Update가 아니라 `make dist/image-update/release`로 별도 `vm-image-update` bundle을 만들지만, 이 역시 기존 `vm-disk.img`를 자동 교체하지는 않습니다.
 
 `python3 -m venv --help`가 성공해도 실제 venv 생성에 필요한 `ensurepip`가 빠져 있을 수 있습니다. Guest bootstrap prerequisite check는 command/help 존재가 아니라 실제 임시 venv 생성 가능 여부를 확인해야 합니다.
 

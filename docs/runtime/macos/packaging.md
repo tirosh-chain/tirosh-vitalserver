@@ -26,7 +26,7 @@
 | VM Image Update | `dist/update-bundles/update-bundle-<channel>-vm-image-update-<releaseLabel>.tar.gz` | `make dist/image-update/release` | rootfs-base 교체가 필요한 경우에만 사용 |
 | Product Update bundle 검증 | product update tarball | `make dist/update/verify/release` | 전달 전 manifest/checksum 검증 |
 | VM Image Update bundle 검증 | VM image update tarball | `make dist/image-update/verify/release` | 전달 전 manifest/checksum 검증 |
-| 개발 설치 테스트 | installed runtime | `make dist/install/dev` | 현재 Mac에 설치 후 `make dist/installed/health` |
+| 개발 설치 테스트 | installed runtime | `make dist/install/dev` | 현재 repo가 있는 개발 Mac에 설치 후 `make dist/installed/health` |
 
 사용자에게 “bundle”로 제공하는 대상은 두 가지입니다. 신규 설치는 `.dmg`/`.pkg`이고, 이미 설치된 현장 업데이트는 `update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz` tarball입니다. air-gapped 환경에서는 이 파일을 USB나 폐쇄망 파일 서버로 전달합니다. 적용 과정과 보존/변경 범위는 [Update](update.md)에 따로 정리합니다.
 
@@ -64,9 +64,64 @@ Runtime Control PWA는 package/update bundle에 static asset으로 포함됩니�
 빌드 머신에서는 packaging 전에 한 번 `make pwa/install`을 실행해야 하며, 현장 Mac에는 npm/Vite나
 registry 접근이 필요하지 않습니다.
 
+## Build and Runtime Validation Contracts
+
+Packaging workflow 이름은 각 단계가 보장하는 상태를 뜻합니다. `compile`은 artifact 생성 계약이고,
+installed runtime 상태를 추정하지 않습니다. Guest bootstrap 완료와 runtime contract는 별도
+runtime smoke가 소유합니다.
+
+| Target | Contract |
+|---|---|
+| `make dist/dmg/dev/review` | package/PWA/Swift/devtools review checks를 실행합니다. |
+| `make dist/dmg/dev/compile` | dev DMG를 clean golden rootfs에서 생성하고, 생성된 DMG를 read-only로 다시 열어 installer PKG와 Troubleshooting Tools layout/executable contract를 검증합니다. Rootfs 준비 proof와 package input은 검증하지만 installed runtime success를 뜻하지 않습니다. |
+| `make dist/dmg/dev/artifact-verify` | 이미 생성된 dev DMG를 `hdiutil verify`와 read-only attach로 검증합니다. |
+| `make dist/pkg/dev/compile` | dev PKG를 clean golden rootfs에서 생성합니다. |
+| `make dist/dmg/dev/runtime-smoke` | 현재 golden rootfs/disk로 VM을 부팅하고 guest bootstrap, `bootstrap-result.json`, `runtime-state.json`, systemd/docker/http/command-dispatch contract를 검증합니다. |
+| `make dist/pkg/dev/runtime-smoke` | dev PKG와 같은 golden runtime contract를 검증합니다. |
+| `make dist/dmg/dev/verify` | review checks, clean-rootfs DMG compile/artifact verify, runtime smoke를 실행하는 설치 전 표준 gate입니다. |
+| `make dist/pkg/dev/verify` / `make dist/pkg/verify/dev` | package plan/template review, PWA Runtime Control contract/check/test, log archive/retention tests, dev PKG compile, runtime smoke를 실행하는 설치 전 표준 gate입니다. |
+| `make dist/dmg/release/verify` | release DMG 생성 후 runtime smoke를 실행합니다. Release branch gate는 release build target이 소유합니다. |
+| `make dist/pkg/release/verify` | release PKG 생성 후 runtime smoke를 실행합니다. |
+
+`compile passed`는 `installed runtime passed`와 다릅니다. DMG compile은 산출물 readback까지 검증하지만
+macOS에 실제 설치된 runtime success를 뜻하지 않습니다. 설치 전 검증, 수동 QA 전달, release candidate
+확인에는 `verify` target을 사용합니다. Runtime smoke failure는 fallback으로 보정하지 않고 failing stage,
+runId, manifest, bootstrap log, launcher log를 통해 실패 상태를 드러내야 합니다.
+
+Runtime smoke는 Host가 제공한 explicit deploy contract도 검증합니다. Devtools가 VM을 직접 시작하는
+runtime-smoke 경로에서도 `data/deploy/host-time.json`을 써야 하며, Guest는 boot 초기에
+`tirosh-vitalserver-sync-host-time.service`로 이 값을 적용한 뒤 Docker, runtime-state,
+observability, compose service를 시작합니다. `host-time.json`이 missing/invalid이면 NTP나 현재 Guest
+clock으로 보정하지 않고 smoke failure로 처리합니다.
+
+`runtime-boot-smoke-manifest.json`은 아래 stage를 모두 통과해야 합니다.
+
+| stage | 검증 의미 |
+|---|---|
+| `bootstrap-result` | guest bootstrap이 completed result를 기록 |
+| `runtime-state` | guest runtime-state contract가 생성되고 decode 가능 |
+| `systemd-units` | 필수 guest systemd units가 설치/활성화됨 |
+| `http` | guest HTTP와 host proxy path가 응답 |
+| `compose-services` | expected compose services가 running/healthy contract를 보고 |
+| `disk-health` | guest disk/mount/runtime data shape가 명시 상태로 확인 |
+| `capabilities` | update shutdown, command dispatch 등 Guest capability가 보고 |
+| `command-dispatch` | request/result command dispatch 경로가 동작 |
+| `feature-readiness` | backup, observability, runtime control feature readiness가 명시 상태로 확인 |
+
+성공 로그는 `Golden disk runtime boot smoke passed`처럼 명시적인 최종 pass line을 남겨야 합니다.
+중간에 `No VM launcher process is running` 같은 cleanup line이 있어도 최종 pass line이 없으면 성공으로
+해석하지 않습니다.
+
+Release package와 DMG build는 expensive compile 전에 preflight를 통과해야 합니다. Preflight는 tool,
+package input, golden runtime `Image`/`initrd.img`, `rootfs-base`, output path, DMG attachment,
+Dockerfile, Docker image manifest/platform을 확인합니다. Docker registry rate limit처럼 external
+unavailable이 확인되면 Swift build, Docker pull/build, `pkgbuild`, `hdiutil create` 이후의 late failure가
+아니라 preflight failure입니다. 이미 local Docker image가 있는 경우에도 manifest/platform proof 없이
+성공으로 추정하지 않습니다.
+
 `VitalServer Helper`는 최상위 product release입니다. platform별 build는 같은 Helper release 아래의 variant이며, 세부 변경 범위는 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
-`make devtools/build`는 이 값을 Swift `GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make devtools/app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`, `make dist/image-update/dev`/`make dist/image-update/release`는 release manifest 값을 artifact name, package version, update bundle version, compatibility metadata에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. 특별한 검증이 아니라면 버전, 표시명, image, update compatibility, optional container service 포함 정책 변경은 이 파일 하나에서 관리합니다.
+`make devtools/build`는 이 값을 Swift `Bootstrap/Composition/GeneratedVersion.swift`와 Helper app의 `GeneratedRelease.swift`에 반영하고, `make devtools/app`은 app bundle `Info.plist`의 `CFBundleShortVersionString`에 같은 helper version을 씁니다. `make dist/pkg/dev`/`make dist/pkg/release`, `make dist/update/dev`/`make dist/update/release`, `make dist/image-update/dev`/`make dist/image-update/release`는 release manifest 값을 artifact name, package version, update bundle version, compatibility metadata에 반영합니다. `services.*.displayName`은 Helper UI의 service 표시명 source of truth입니다. 특별한 검증이 아니라면 버전, 표시명, image, update compatibility, optional container service 포함 정책 변경은 이 파일 하나에서 관리합니다.
 
 Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `releaseLabel`, `targetPlatform`, `minUpdaterVersion`, `components`를 기준으로 작성합니다. `components`에는 `helperUI`, `updater`, `supervisor`, `vmDriver`, `serviceStack`, `vmImage`, `vitalServer`처럼 실제 변경 범위를 드러내는 version을 넣습니다. platform-specific artifact는 `targetPlatform`과 component version suffix로 제한하고, 공통 Service Stack이나 VM Image는 같은 Helper release 아래에서 platform 간 공유할 수 있습니다.
 
@@ -182,7 +237,9 @@ dist/VitalServerHelper-<version>.dmg
       Image
       initrd.img
       rootfs-base.raw.gz  # immutable package payload
-      vm-disk.img         # install 시 생성되는 mutable runtime disk
+      rootfs-base.raw.gz.manifest.json # rootfs artifact proof sidecar
+      vm-disk.img         # install 시 생성되는 mutable rootfs runtime disk
+      runtime-data.img    # install 시 생성/보존되는 Docker/containerd runtime data disk
       vm-config.json      # install 시 생성/수정
       seed.iso            # install 시 생성
       runtime-version.json
@@ -349,6 +406,52 @@ Fallback:
   sudo /usr/local/bin/tirosh-vitalserver-uninstall --clean
 ```
 
+### Troubleshooting Tools recovery artifact
+
+Fresh install이 기존 Host state 때문에 막힌 현장에는 일반 installer와 별도로 reset cleanup만
+수행하는 복구 artifact를 전달합니다. 이 artifact는 package가 아니라 DMG와 같은 command 기반
+`Troubleshooting Tools` 폴더입니다.
+
+```text
+VitalServerHelperTroubleshootingTools-<version>/
+```
+
+빌드 target:
+
+```sh
+make dist/troubleshooting/dev
+make dist/troubleshooting/release
+```
+
+이 target은 제품을 설치하거나 update하지 않습니다. DMG와 같은 command 기반
+`Troubleshooting Tools` 폴더를 staging하고, command들은 사용자 temp wrapper log와 작업별 root log에
+진행 상태와 실패 원인을 남깁니다. GUI를 열 수 없는 깨진 설치 상태를 다루기 위한 artifact이므로
+Helper app, Runtime Control API, 기존 설치된 uninstaller가 반드시 살아 있다고 가정하면 안 됩니다.
+
+작성 원칙:
+
+- package를 만들지 않고 `.command` 파일과 필요한 bundled CLI만 제공합니다.
+- 사용자가 보는 command 이름은 `Reset VitalServer Helper for Reinstall.command`로 두고,
+  DMG 안에서는 `Troubleshooting Tools` 폴더 아래에 배치합니다.
+- reset command entrypoint는 bundled `vitalserver-troubleshooting-reset-for-reinstall`이고,
+  이 wrapper가 sibling `vitalserver-vm-reset-installer`의
+  `runtime uninstall --force-clean-uninstaller`를 호출합니다. 별도 설정이나 fallback mode를 숨겨
+  두지 않습니다.
+- 제거 대상은 Vital Server Helper가 소유한 explicit path, LaunchDaemon label, package receipt,
+  runtime process, host proxy listener로 제한합니다.
+- clean reset 대상에는 `productRoot` 전체가 포함됩니다. 따라서 product root 아래의 VM pid file,
+  run marker, status documents, runtime state, VM disk, cloud-init seed, logs, rollback backups,
+  Redis backups도 함께 제거됩니다.
+- VM pid file이 missing이면 cleanup success로 추정하지 않습니다. force clean recovery는 explicit
+  launchd state를 읽고 VM/sleep-prevention service unload를 계속 시도해야 합니다.
+- 외부 nginx, Homebrew, Docker, 사용자 문서, 병원 데이터 경로는 product-owned state로 명시되지
+  않은 한 제거하지 않습니다.
+- 기존 `/usr/local/bin/tirosh-vitalserver-uninstall`이 있으면 같은 uninstall 계약을 사용할 수
+  있지만, 없거나 실행 불가능한 상태도 명시 failure로 보고해야 합니다.
+- fresh install preflight와 reset command 제거 대상은 같은 state contract를 공유해야 합니다.
+- 완료 후에도 preflight blocker가 남으면 새 installer가 계속 실패해야 하며, recovery command가
+  그 blocker를 empty success로 바꾸면 안 됩니다.
+
 ## 인터페이스 계약
 
 현재 제품화 흐름은 여러 실행 환경을 건너므로, 각 경계의 입력과 출력 계약을 분리해서 관리합니다.
@@ -356,7 +459,7 @@ Fallback:
 | 경계 | 호출자 | 피호출자 | 입력 계약 | 출력/부작용 |
 |---|---|---|---|---|
 | build orchestration | `make/vm.mk` | `vitalserver-devtools` | `vm-build.toml`, source tree, optional Make overrides | `.tmp/vitalserver-vm-pkg/*`, `dist/*` |
-| Ubuntu/rootfs build | `make devtools/golden-rootfs` | Python `ubuntu`, `cloud-init`, Swift launcher | Ubuntu cloud image, deploy bundle, bootstrap script | clean `vm-disk.img`, compressed `rootfs-base.raw.gz` |
+| Ubuntu/rootfs build | `make devtools/golden-rootfs` | Python `ubuntu`, `cloud-init`, Swift launcher | Ubuntu cloud image URL, apt snapshot, deploy bundle, Docker image bundle, bootstrap script | clean `vm-disk.img`, compressed `rootfs-base.raw.gz` |
 | nginx bundle | `make devtools/nginx/bundle` | Python `nginx-bundle` | pinned macOS nginx binary, expected version | self-contained `nginx/sbin`, `nginx/lib` bundle |
 | Docker image bundle | `make devtools/docker/images` | Python `docker-images` | Dockerfile, image list, build platform | `vitalserver-images.tar.gz` |
 | PKG/DMG staging | `vitalserver-devtools release-pkg` / `release-dmg` | Python build CLI, Swift, macOS packaging tools | release manifest, app source, rootfs base, nginx binary, Docker image list, templates | package root under `.tmp/vitalserver-vm-pkg/root`, `dist/*` |
@@ -370,6 +473,13 @@ Fallback:
 | update apply | operator/Helper | `vitalserver-vm runtime apply-bundle` | verified bundle tarball | staged bundle, backup, artifact replacement, migrations, health check |
 
 이 표가 현재 source of truth입니다. Shell은 installer/launchd wrapper로 제한하고, manifest parsing, checksum 검증, backup, rollback 정책은 Swift runtime lifecycle command가 담당합니다.
+
+Ubuntu/rootfs build는 floating `.../releases/<series>/release` URL을 사용하지 않습니다. 기본
+Noble source는 검증한 cloud image serial인 `release-20260518`처럼 고정된 release directory를
+가리켜야 합니다. 새 serial이나 Ubuntu series로 바꿀 때는 `boot -> healthy -> prepare update
+shutdown -> guest poweroff handoff -> VM process exit` 흐름을 반복 검증한 뒤 config를
+업데이트합니다. 이 규칙은 rootfs/kernel provenance가 빌드 시점마다 바뀌어 update shutdown
+failure의 원인을 숨기지 않도록 하기 위한 packaging contract입니다.
 
 ### 설치 설정 계약
 
@@ -464,7 +574,7 @@ install settings JSON
 
 | artifact type | 생성 여부 | Swift verify | Swift apply |
 |---|---:|---:|---:|
-| `rootfs-base` | `vm-rootfs-update-bundle-release`에서만 포함 | 예 | `rootfs-base.raw.gz` 교체 |
+| `rootfs-base` | `make dist/image-update/release`에서만 포함 | 예 | `rootfs-base.raw.gz` 교체 |
 | `app-bundle` | 기본 포함 | 예 | `/Applications/VitalServer Helper.app` 교체 |
 | `runtime-tools` | 기본 포함 | 예 | `/usr/local/bin` Updater/Supervisor/VM Driver tools 교체 |
 | `nginx-bundle` | 기본 포함 | 예 | host nginx bundle 교체 |
@@ -506,7 +616,7 @@ update에서 rootfs base를 교체해도 기존 `vm-disk.img` 내부 OS와 appli
 | `/Library/Application Support/VitalServerHelper/logs/install.log` | installer provisioning log, 10 MiB 기준 rotation |
 | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` | Helper/watchdog용 runtime 상태 |
 
-설치 후 `make dist/installed/health`로 launchd load 상태, VM IP, guest HTTP, host proxy HTTP를 확인합니다.
+repo에서 개발 설치를 검증할 때는 설치 후 `make dist/installed/health`로 launchd load 상태, VM IP, guest HTTP, host proxy HTTP를 확인합니다. pkg만 전달받은 설치 환경에서는 Helper app Status 탭이나 설치된 `vitalserver-vm` CLI를 사용합니다.
 
 개발 중 설치/제거를 반복할 때는 `make dist/uninstall/dev`를 사용합니다. 이 target은 `/Library/Application Support/VitalServerHelper`, 관련 LaunchDaemon plist, `/usr/local/bin/vitalserver-*`를 제거하므로 운영 환경에서는 사용하지 않습니다.
 
@@ -570,6 +680,11 @@ nginx:1.24-alpine
 
 Docker image bundle은 guest VM architecture에 맞춰 `linux/arm64`로 생성합니다. Apple Virtualization Framework 기반 guest가 arm64 Ubuntu로 부팅되므로, amd64 image를 넣으면 guest에서 `exec format error`가 발생합니다. Redis Commander는 Docker Hub의 `latest`가 아니라 GHCR의 pinned multi-arch image를 사용합니다.
 
+Golden rootfs compile은 Docker image bundle을 먼저 만들고 guest deploy bundle에 포함한 뒤,
+rootfs smoke의 `docker-service` stage에서 Docker daemon을 명시 시작하고 `docker-image-load` stage에서
+`docker load`로 검증합니다. Compose smoke가 registry
+pull에 성공해서 통과하는 것은 air-gapped proof가 아니므로 rootfs artifact proof로 인정하지 않습니다.
+
 생성/설치 경로는 아래와 같습니다.
 
 ```text
@@ -578,26 +693,36 @@ Docker image bundle은 guest VM architecture에 맞춰 `linux/arm64`로 생성�
 ```
 
 Docker image만으로는 충분하지 않습니다. Guest VM이 처음 부팅될 때 `docker.io`, Docker Compose 같은 runtime package를 apt로 설치해야 한다면 air-gapped 환경에서 실패합니다. 그래서 제품용 package는 개발용 VM disk가 아니라 별도 golden VM home에서 만든 clean rootfs base를 사용합니다. VM 내부 edge nginx는 OS package가 아니라 `nginx:1.24-alpine` container로 실행합니다.
+Golden rootfs의 Ubuntu cloud image URL과 apt snapshot은 `config/vm-build.toml`의
+`guest.ubuntu.base_url`, `guest.ubuntu.apt_snapshot`이 함께 소유합니다.
 
 ```sh
 make devtools/golden-rootfs
 make dist/pkg/dev
 ```
 
-기본 package용 rootfs는 `4G`(4 GiB)입니다. `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. `make devtools/golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker를 기록한 뒤 종료됩니다. Container는 시작하지 않기 때문에 운영 데이터나 Redis volume을 golden rootfs에 섞지 않습니다.
+기본 package용 rootfs는 `8G`(8 GiB)입니다. `VM_ROOTFS_SIZE`의 `G` suffix는 build tool 입력 형식이며 GiB 기준으로 해석합니다. `make devtools/golden-rootfs`는 `.tmp/vitalserver-vm-golden` 아래에서 VM을 임시로 띄우고 `prepare-airgap-rootfs.sh`만 실행한 뒤 `.tmp/vitalserver-vm-pkg/rootfs-base.raw.gz`를 생성합니다. 이 스크립트는 OS package를 설치하고 `/mnt/tirosh/run/rootfs-ready` marker와 `/mnt/tirosh/run/rootfs-runtime-manifest.json` manifest를 기록한 뒤 종료됩니다. Manifest의 apt plan runId/snapshot proof, Docker service start, runtime version, Docker image load, Docker smoke, disk-space, compose build/up, edge-ready, cleanup stage가 모두 통과하지 않으면 rootfs 압축 단계는 실패해야 합니다. 이 smoke는 disposable container start와 실제 deploy Compose stack readiness를 검증하며 운영 Redis volume을 golden rootfs에 섞지 않습니다.
 
-반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. cache가 없으면 `make dist/pkg/dev`가 자동으로 한 번 생성합니다. release 검증처럼 clean rootfs를 반드시 다시 만들려면:
+Kernel panic, ext4 read-only remount, `docker-image-load` timeout은 resource를 낮춰 우회하지 않고
+terminal compile failure proof로 기록합니다.
+
+Fresh install bootstrap도 Docker image bundle을 로드한 직후 `redis:3.2.12-alpine` smoke container를 `--network none`으로 실행합니다. 이 단계가 실패하면 `bootstrap-result.json`은 `guest-bootstrap-docker-runtime-failed` reason code를 기록하고 compose up으로 진행하지 않습니다. Docker version 출력이나 compose binary 존재만으로는 rootfs가 준비됐다고 보지 않습니다.
+
+반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. cache가 없으면 `make dist/pkg/dev`가 자동으로 한 번 생성합니다. VM build를 제품 compile로 보고 clean golden rootfs부터 다시 만들려면 profile target을 사용합니다.
+
+```sh
+make dist/pkg/dev/compile
+make dist/dmg/dev/compile
+```
+
+release 검증처럼 clean rootfs와 release branch guard를 함께 적용하려면:
 
 ```sh
 make dist/pkg/release
 make dist/dmg/release
 ```
 
-동일한 동작을 변수로 직접 지정할 수도 있습니다.
-
-```sh
-VM_RECREATE_GOLDEN_ROOTFS=true make dist/pkg/dev
-```
+VM compile 여부는 profile target이 소유합니다. 동일 의미의 긴 `VAR=value` 호환 명령은 유지하지 않습니다.
 
 ## Update Bundle
 
@@ -632,7 +757,7 @@ update bundle도 압축이 필요합니다. 다만 압축 대상은 update artif
 | Service Stack / guest deploy bundle | `guest-deploy.tar.gz` | 기본 포함 | VM shared deploy script/config, compose, container image bundle 교체 |
 | migration | executable files | 기본 포함 | cloud-init seed refresh 등 설치된 VM/runtime 상태 변경 |
 | Docker images | `vitalserver-images.tar.gz` | 필요 시 포함 | container image 갱신이 있을 때만 무겁게 포함 |
-| VM Image / rootfs base | `rootfs-base.raw.gz` | `vm-rootfs-update-bundle-release`에서만 포함 | 신규 설치 또는 base OS/package 변경용. 기존 `vm-disk.img`를 자동 교체하지 않음 |
+| VM Image / rootfs base | `rootfs-base.raw.gz` | `make dist/image-update/release`에서만 포함 | 신규 설치 또는 base OS/package 변경용. 기존 `vm-disk.img`를 자동 교체하지 않음 |
 
 따라서 “bundle을 만든다”는 것은 보통 작은 product artifact를 압축해 묶는다는 뜻입니다. rootfs나 Docker image 갱신이 없는 Product Update bundle은 package build보다 훨씬 가벼워야 합니다.
 

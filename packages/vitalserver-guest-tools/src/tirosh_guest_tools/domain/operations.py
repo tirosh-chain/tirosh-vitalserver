@@ -17,6 +17,7 @@ class OperationName(StrEnum):
     ACTIVATE_UPDATE = "activate-update"
     PREPARE_UPDATE_SHUTDOWN = "prepare-update-shutdown"
     REDIS_BACKUP = "redis-backup"
+    REDIS_RESTORE = "redis-restore"
     REPAIR_DATASTORE = "repair-datastore"
 
 
@@ -53,12 +54,16 @@ class ObservationPhase(StrEnum):
 class ShutdownPhase(StrEnum):
     PREPARING = "preparing"
     PREPARED = "prepared"
+    POWEROFF_READY = "poweroff-ready"
     POWEROFF_REQUESTED = "poweroff-requested"
     POWEROFF_FAILED = "poweroff-failed"
 
 
 class ReasonCode(StrEnum):
     GUEST_UPDATE_SHUTDOWN_FAILED = "guest-update-shutdown-failed"
+    GUEST_COMMAND_DISPATCH_FAILED = "guest-command-dispatch-failed"
+    GUEST_COMMAND_UNIT_FAILED = "guest-command-unit-failed"
+    GUEST_BOOTSTRAP_DOCKER_RUNTIME_FAILED = "guest-bootstrap-docker-runtime-failed"
 
 
 @dataclass(frozen=True)
@@ -78,8 +83,10 @@ class GuestOperationResult:
     step: str = ""
     reason_codes: tuple[str, ...] = ()
     archive: str = ""
+    restored_archive: str = ""
     redis_backup_path: str = ""
     shutdown_phase: ShutdownPhase | None = None
+    details: dict[str, Any] | None = None
 
     def as_json(self) -> dict[str, Any]:
         document: dict[str, Any] = {
@@ -96,8 +103,12 @@ class GuestOperationResult:
             document["reasonCodes"] = list(self.reason_codes)
         if self.archive:
             document["archive"] = self.archive
+        if self.restored_archive:
+            document["restoredArchive"] = self.restored_archive
         if self.redis_backup_path:
             document["redisBackupPath"] = self.redis_backup_path
         if self.shutdown_phase is not None:
             document["shutdownPhase"] = self.shutdown_phase.value
+        if self.details is not None:
+            document["details"] = self.details
         return document

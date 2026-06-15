@@ -21,7 +21,7 @@ VitalServer Helper 또는 Remote Console에서 아래 증상이 함께 나타납
 
 Runtime 자체가 곧바로 중단되는 증상은 아닐 수 있습니다. 다만 운영자가 runtime 상태를 확인하거나 support bundle을 만들 수 없고, 실제 event가 있음에도 Remote Console이 비어 보이므로 장애 원인 판단이 어려워집니다.
 
-Settings의 read issue는 network exposure, Redis backup retention 같은 일부 값이 UI에서 stale/default처럼 보일 수 있습니다. Export logs 실패는 현장 로그 수집을 막습니다. Observability event 0건 표시는 runtime event persistence 실패와 runtime event read 실패를 구분하지 못하게 만듭니다.
+Settings의 read issue는 network exposure, VitalServer Helper backup retention 같은 일부 값이 UI에서 stale/default처럼 보일 수 있습니다. Export logs 실패는 현장 로그 수집을 막습니다. Observability event 0건 표시는 runtime event persistence 실패와 runtime event read 실패를 구분하지 못하게 만듭니다.
 
 ## Cause
 

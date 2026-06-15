@@ -10,6 +10,7 @@ from typing import Any, TextIO
 from tirosh_guest_tools.contracts import RuntimeFileName
 from tirosh_guest_tools.domain.errors import (
     GuestContractError,
+    GuestDependencyError,
     GuestOperationRequestError,
 )
 from tirosh_guest_tools.infrastructure.settings import SETTINGS
@@ -64,6 +65,7 @@ def run(
     check: bool = True,
     stdout: int | TextIO | None = None,
     stderr: int | TextIO | None = None,
+    timeout_seconds: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         arguments,
@@ -71,6 +73,7 @@ def run(
         text=True,
         stdout=stdout,
         stderr=stderr,
+        timeout=timeout_seconds,
     )
 
 
@@ -98,11 +101,16 @@ def read_json(path: Path) -> dict[str, Any]:
 def write_json(path: Path, document: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps(document, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    with temporary.open("w", encoding="utf-8") as handle:
+        handle.write(json.dumps(document, indent=2, sort_keys=True) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
     os.replace(temporary, path)
+    directory_fd = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
 
 
 def request_id_from(path: Path) -> str:
@@ -128,8 +136,12 @@ def request_version_from(path: Path) -> str:
     return version
 
 
-def systemctl(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return run(["systemctl", *arguments], check=check)
+def systemctl(
+    *arguments: str,
+    check: bool = True,
+    timeout_seconds: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return run(["systemctl", *arguments], check=check, timeout_seconds=timeout_seconds)
 
 
 def service_is_running(service: str) -> bool:
@@ -140,3 +152,26 @@ def service_is_running(service: str) -> bool:
         text=True,
     )
     return completed.stdout.strip() in {"active", "activating"}
+
+
+def service_active_state(service: str) -> str:
+    completed = subprocess.run(
+        ["systemctl", "show", "--property=ActiveState", "--value", service],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        stderr = (completed.stderr or "").strip()
+        raise GuestDependencyError(
+            f"failed to read systemd service state: {service} "
+            f"error={stderr or completed.returncode}",
+            code="guest-systemd-service-state-read-failed",
+        )
+    active_state = (completed.stdout or "").strip()
+    if not active_state:
+        raise GuestDependencyError(
+            f"systemd service active state is empty: {service}",
+            code="guest-systemd-service-state-empty",
+        )
+    return active_state

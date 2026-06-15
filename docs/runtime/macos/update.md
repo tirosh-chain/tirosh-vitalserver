@@ -10,7 +10,7 @@ VitalServer Helper의 update bundle이 무엇을 바꾸고, 무엇을 보존하�
 | 현장 적용 UI는? | Product Update는 Helper app의 Update 탭, VM Image Update는 Danger Zone |
 | CLI backend는? | `/usr/local/bin/vitalserver-vm runtime apply-bundle` |
 | 검증 기준은? | `manifest.json`, `checksums.txt`, artifact sha256/size |
-| Product Update bundle에 rootfs가 들어가나? | 아니다. `make runtime/update-bundle`은 rootfs를 제외한다 |
+| Product Update bundle에 rootfs가 들어가나? | 아니다. `make dist/update/release`는 rootfs를 제외한다 |
 | rootfs 포함 bundle은 언제 쓰나? | VM Image/rootfs 자체를 교체해야 할 때 `make dist/image-update/release`를 사용한다 |
 | mutable VM disk는 교체하나? | 기본적으로 교체하지 않는다 |
 | Redis/Vital files 데이터는 보존하나? | 보존 대상이다 |
@@ -76,6 +76,8 @@ Manifest에서는 최상위 product version과 component version을 분리합니
 | `checksums.txt` | build tool | host verifier | artifact path와 sha256/size 검증 기준 |
 | `activate-update.request` | host Updater | guest activation script | `requestId`, `requestedAt`, `operation`, `version`은 baseline 필수 |
 | `activate-update-result.json` | guest activation script | host Updater/Helper UI | `requestId`, `status`, `message`, `updatedAt`은 항상 기록 |
+| `prepare-update-shutdown.request` | host VM state control | guest shutdown worker | `requestId`, `operation`, `version`, `requestedAt`은 baseline 필수. request는 single-shot trigger |
+| `prepare-update-shutdown-result.json` | guest shutdown worker | host VM state control/Updater | `requestId`, `status`, `message`, `updatedAt`, failure `details`를 보존 |
 | `runtime-status.json` | host Updater/Supervisor | Helper UI | operation/step/status는 enum 계약으로 유지 |
 | `runtime-version.json` | installer/Updater | Helper UI/Updater | 현재 installed component version 표시와 rollback 판단 기준 |
 
@@ -265,6 +267,52 @@ activation result writer:
   - updatedAt always written
 ```
 
+### Guest Update Shutdown Baseline
+
+Product Update가 guest deploy, container image, runtime tool, proxy artifact를 바꿀 때는 VM을 그냥
+내리지 않습니다. Host는 먼저 `prepare-update-shutdown.request`를 쓰고, Guest가 명시 result를 남길
+때까지 기다린 뒤 VM stop/restart 경로로 진행합니다.
+
+이 shutdown request는 update-specific operation입니다. Settings restart, watchdog recovery, service
+repair가 같은 request를 재사용하거나 stale request를 다시 실행하면 안 됩니다.
+
+필수 동작:
+
+| 단계 | 기준 |
+|---|---|
+| capability preflight | Host는 Guest가 `prepare-update-shutdown` capability를 보고한 경우에만 request를 쓴다 |
+| request consume | Guest worker는 request를 읽고 `running` result를 기록한 직후 request file을 소비한다 |
+| Redis backup | update 전 Redis data backup을 만들고 실패하면 typed failure로 중단한다 |
+| compose stop | service별 명시 순서와 timeout으로 container를 중지한다 |
+| final sync | filesystem sync가 끝난 뒤에만 poweroff request를 진행한다 |
+| poweroff handoff | final sync 직후 `ready`/`poweroff-ready` result를 먼저 durable write하고, 그 다음 `systemctl --no-block poweroff`를 요청한다 |
+| host wait | Host는 result와 VM lifecycle/poweroff wait를 분리해서 관측한다 |
+
+Compose stop은 whole-stack fallback이 아니라 아래 순서의 명시 operation입니다.
+
+```text
+testkit -> edge -> swagger-ui -> redis-ui -> audit-proxy -> vitaldb-observer -> app -> redis
+```
+
+기본 stop timeout은 30초입니다. `app`은 90초, `redis`는 60초로 둡니다. timeout이나 dependency
+failure가 발생하면 Guest는 `prepare-update-shutdown-result.json`에 아래 정보를 남깁니다.
+
+| field | 의미 |
+|---|---|
+| `details.failedService` | stop 실패가 발생한 service |
+| `details.remainingServices` | 실패 시점에 아직 stop 대상인 service 목록 |
+| `details.serviceStates` | failure snapshot의 compose service state |
+| `details.failureSnapshotPath` | diagnostics/snapshot artifact 경로 |
+
+Host는 이 result를 update failure로 소비해야 합니다. 로그 tail, missing marker, VM process 종료 여부로
+Guest shutdown success를 추정하지 않습니다.
+
+Rollback 중 health wait에서 `host-proxy-http-*`, `audit-proxy-http-failed`,
+`container-service-*-state-exited` 같은 transient reason이 먼저 보일 수 있습니다. 최종적으로
+`hostProxyHTTP=200`과 runtime health가 확인되면 rollback health wait는 성공입니다. 다만 rollback
+성공은 update 성공이 아니며, command log와 runtime event에는 update failure와 rollback success가
+둘 다 남아야 합니다.
+
 ### Release Gate
 
 update bundle을 배포 후보로 보려면 아래를 통과해야 합니다.
@@ -275,9 +323,10 @@ update bundle을 배포 후보로 보려면 아래를 통과해야 합니다.
 | same-version apply | 같은 version bundle을 적용해도 깨지지 않음 |
 | previous-version apply | 직전 버전 설치본에서 최신 bundle 적용 성공 |
 | invalid request apply | `requestId` 없는 activation request는 명확한 실패 result를 남김 |
+| update shutdown | `prepare-update-shutdown` capability, request consume, ordered compose stop, poweroff request result 검증 |
 | guest activation | Docker image load와 compose recreate가 수행됨 |
 | health wait | VitalServer, Redis, network access가 ready |
-| rollback | 의도적 실패 bundle에서 managed backup rollback 성공 |
+| rollback | 의도적 실패 bundle에서 update failure와 rollback success가 모두 기록되고 managed backup rollback 성공 |
 | logs | Update 탭/Logs 탭에서 현재 단계와 실패 이유를 확인 가능 |
 
 Release gate를 통과하지 못한 bundle은 현장 전달 대상이 아닙니다. 특히 update system 자체가 바뀌는 release는 이전 설치본에서 직접 적용하는 테스트를 반드시 포함합니다.

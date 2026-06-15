@@ -12,13 +12,17 @@ from tirosh_vitalserver.devtools.config.build_toml import (
 from tirosh_vitalserver.devtools.core.guest_image import (
     CloudInitConfig,
     GuestRuntimeConfig,
+    RuntimeDataDiskConfig,
     UbuntuImageConfig,
+    require_ubuntu_snapshot_id,
 )
 
 
 def load_guest_runtime_config(config: TomlTable) -> GuestRuntimeConfig:
     path = "guest.runtime"
     runtime = nested_section(config, path)
+    runtime_data_path = "guest.runtime_data"
+    runtime_data = nested_section(config, runtime_data_path)
     return GuestRuntimeConfig(
         runtime_dir=Path(
             required_string(runtime, "runtime_dir", path=path)
@@ -31,6 +35,38 @@ def load_guest_runtime_config(config: TomlTable) -> GuestRuntimeConfig:
             "vm-disk.img",
             path=path,
         ),
+        runtime_data_disk=RuntimeDataDiskConfig(
+            disk_image_name=required_string(
+                runtime_data,
+                "disk_image_name",
+                path=runtime_data_path,
+            ),
+            disk_size=required_string(
+                runtime_data,
+                "disk_size",
+                path=runtime_data_path,
+            ),
+            filesystem_label=required_string(
+                runtime_data,
+                "filesystem_label",
+                path=runtime_data_path,
+            ),
+            mount_path=required_string(
+                runtime_data,
+                "mount_path",
+                path=runtime_data_path,
+            ),
+            docker_data_root=required_string(
+                runtime_data,
+                "docker_data_root",
+                path=runtime_data_path,
+            ),
+            containerd_root=required_string(
+                runtime_data,
+                "containerd_root",
+                path=runtime_data_path,
+            ),
+        ),
     )
 
 
@@ -40,6 +76,9 @@ def load_ubuntu_image_config(config: TomlTable) -> UbuntuImageConfig:
     return UbuntuImageConfig(
         version=required_string(ubuntu, "version", path=path),
         base_url=required_string(ubuntu, "base_url", path=path),
+        apt_snapshot=require_ubuntu_snapshot_id(
+            required_string(ubuntu, "apt_snapshot", path=path)
+        ),
         arch=optional_string(ubuntu, "arch", "auto", path=path),
         kernel_suffix=optional_string(
             ubuntu,

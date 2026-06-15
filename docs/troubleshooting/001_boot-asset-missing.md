@@ -1,4 +1,4 @@
-# 001 `make vm-start`가 boot asset 없음으로 실패
+# 001 `make devtools/start`가 boot asset 없음으로 실패
 
 > ID: TS-001  
 > Category: Local development  
@@ -18,14 +18,14 @@ error: missing file: .../runtime/Image
 조치:
 
 ```sh
-make vm-prepare
-make vm-start
+make runtime/prepare
+make devtools/start
 ```
 
 또는 한 번에:
 
 ```sh
-make vm-up
+make runtime/up
 ```
 
 ## Follow-up

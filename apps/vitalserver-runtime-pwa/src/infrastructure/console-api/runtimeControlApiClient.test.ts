@@ -41,18 +41,23 @@ describe("RuntimeControlApiClient", () => {
       "/runtime/settings": commandResponse(),
       "/runtime/uninstall": commandResponse(),
       "/runtime/services/repair-proxy": commandResponse(),
-      "/host/backups": commandResponse()
+      "DELETE /host/backups/update": commandResponse(),
+      "DELETE /host/backups/vitalserver-helper": commandResponse()
     });
 
     await client.applySettings({ settings: fullSettings({ proxyPort: 18080 }) });
     await client.uninstallRuntime({ clean: true });
     await client.repairProxy(18080);
-    await client.deleteHostBackup({ backup: { kind: "localPath", value: "/tmp/b" } });
+    await client.deleteUpdateBackup({ backup: { kind: "localPath", value: "/tmp/update" } });
+    await client.deleteRuntimeDataBackup({
+      backup: { kind: "localPath", value: "/tmp/runtime-data" }
+    });
 
     expect(requests.map((request) => request.init.method)).toEqual([
       "PUT",
       "POST",
       "POST",
+      "DELETE",
       "DELETE"
     ]);
     expect(JSON.parse(String(requests[0]?.init.body))).toEqual({
@@ -107,6 +112,12 @@ describe("RuntimeControlApiClient", () => {
       "/runtime/settings": fullSettings({ proxyPort: 80 }),
       "/vitaldb/recorders": fullVitalRecorderHistory(),
       "/vitaldb/beds": [],
+      "/vitaldb/relationships": {
+        state: "loaded",
+        assignments: [],
+        events: [],
+        readError: null
+      },
       "/dev/testkit/status": testKitStatus(),
       "/dev/testkit/beds/create": [{ roomName: "OR-A", bedId: "bed-a" }],
       "/dev/testkit/beds/delete": [{ roomName: "OR-A", bedId: "bed-a" }],
@@ -131,9 +142,14 @@ describe("RuntimeControlApiClient", () => {
       "/host/update-bundles/apply": commandResponse(),
       "/host/backups": [{ path: "/tmp/backup", sizeBytes: 1 }],
       "/host/backups/redis": [{ path: "/tmp/redis", sizeBytes: null }],
+      "/host/backups/vitalserver-helper": [{ path: "/tmp/runtime-data", sizeBytes: 10 }],
       "/host/backups/rollback": commandResponse(),
+      "DELETE /host/backups/update": commandResponse(),
+      "DELETE /host/backups/vitalserver-helper": commandResponse(),
       "/host/backups/redis/restore": commandResponse(),
+      "/host/backups/vitalserver-helper/restore": commandResponse(),
       "/runtime/redis/backups": commandResponse(),
+      "/runtime/data/backups": commandResponse(),
       "/runtime/services/start": commandResponse(),
       "/runtime/services/stop": commandResponse(),
       "/runtime/services/repair-runtime": commandResponse(),
@@ -147,6 +163,7 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.getSettings()).resolves.toMatchObject({ proxyPort: 80 });
     await expect(client.getRecorders()).resolves.toMatchObject({ recorders: [] });
     await expect(client.getBeds()).resolves.toEqual([]);
+    await expect(client.getRelationships()).resolves.toMatchObject({ assignments: [] });
     await expect(client.getTestKitStatus()).resolves.toMatchObject({ enabled: true });
     await expect(client.createTestKitBeds({ count: 1, roomNames: [], prefix: "OR", adminUserId: "admin" })).resolves.toHaveLength(1);
     await expect(client.deleteTestKitBeds({ roomNames: ["OR-A"] })).resolves.toHaveLength(1);
@@ -166,14 +183,34 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.applyUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual(commandResponse());
     await expect(client.listHostBackups()).resolves.toHaveLength(1);
     await expect(client.listRedisBackups()).resolves.toHaveLength(1);
+    await expect(client.listRuntimeDataBackups()).resolves.toHaveLength(1);
     await expect(client.rollbackBackup({ backup: { kind: "localPath", value: "/tmp/backup" } })).resolves.toEqual(commandResponse());
+    await expect(client.deleteUpdateBackup({ backup: { kind: "localPath", value: "/tmp/backup" } })).resolves.toEqual(commandResponse());
+    await expect(client.deleteRuntimeDataBackup({ backup: { kind: "localPath", value: "/tmp/runtime-data" } })).resolves.toEqual(commandResponse());
     await expect(client.restoreRedisBackup({ backup: { kind: "localPath", value: "/tmp/redis" } })).resolves.toEqual(commandResponse());
+    await expect(client.restoreRuntimeDataBackup({ backup: { kind: "localPath", value: "/tmp/runtime-data" } })).resolves.toEqual(commandResponse());
     await expect(client.createRedisBackup()).resolves.toEqual(commandResponse());
+    await expect(client.createRuntimeDataBackup()).resolves.toEqual(commandResponse());
     await expect(client.startRuntimeServices()).resolves.toEqual(commandResponse());
     await expect(client.stopRuntimeServices()).resolves.toEqual(commandResponse());
     await expect(client.repairRuntime()).resolves.toEqual(commandResponse());
     await expect(client.repairDatastore()).resolves.toEqual(commandResponse());
     await expect(client.repairVMDisk()).resolves.toEqual(commandResponse());
+  });
+
+  it("accepts explicit null bridged interface in runtime overview settings", async () => {
+    const { client } = clientWithResponses({
+      "/runtime/overview": {
+        ...fullRuntimeOverview(),
+        settings: fullSettings({ bridgedInterface: null })
+      }
+    });
+
+    await expect(client.getOverview()).resolves.toMatchObject({
+      settings: {
+        bridgedInterface: null
+      }
+    });
   });
 
   it("throws API, contract, and network errors", async () => {
@@ -257,8 +294,9 @@ function clientWithResponses(
   const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const path = new URL(url).pathname;
+    const method = init?.method ?? "GET";
     requests.push({ url, init: init ?? {} });
-    return new Response(JSON.stringify(responses[path] ?? commandResponse()), {
+    return new Response(JSON.stringify(responses[`${method} ${path}`] ?? responses[path] ?? commandResponse()), {
       status,
       headers: { "Content-Type": "application/json" }
     });
@@ -307,7 +345,7 @@ function fullSettingsShape() {
     diskGiB: 32,
     minimumDiskGiB: 4,
     networkMode: "shared" as const,
-    bridgedInterface: "",
+    bridgedInterface: "" as string | null,
     proxyPort: 80,
     runtimeControlPort: 18321,
     vitalFilesDirectory: "/Users/shared/vital",
@@ -321,7 +359,11 @@ function fullSettingsShape() {
     startOnBootConfigurable: true,
     autoRecoveryEnabled: true,
     preventSystemSleep: true,
-    redisBackupRetentionCount: 30,
+    automaticBackupEnabled: true,
+    backupScheduleTimes: ["03:15"],
+    backupRetentionCount: 30,
+    logArchiveRetentionDays: 14,
+    logArchiveMaximumGiB: 1,
     restartAfterSave: true
   };
 }

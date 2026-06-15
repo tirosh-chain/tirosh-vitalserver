@@ -1,95 +1,170 @@
 import Application
 import Contracts
-import Core
+import Domain
 import XCTest
+import Errors
 
 final class ControlRuntimeServicesUseCaseTests: XCTestCase {
     func testPlanOwnsServiceControlOperationIntentAndCompletionServices() {
-        let harness = ControlRuntimeServicesUseCaseHarness()
+        let useCase = ControlRuntimeServicesUseCase()
 
-        let repair = harness.useCase.plan(.repairAll)
-        let start = harness.useCase.plan(.startAll)
-        let stop = harness.useCase.plan(.stopAll)
+        let repair = useCase.plan(.repairAll)
+        let repairProxy = useCase.plan(.repairProxy)
+        let start = useCase.plan(.startAll)
+        let stop = useCase.plan(.stopAll)
 
         XCTAssertEqual(repair.operation, .repairServices)
         XCTAssertEqual(repair.startPolicy, RuntimeRequiredServicePolicy.allRuntimeServices)
         XCTAssertEqual(repair.stopServices, RuntimeManagedService.stopOrder)
         XCTAssertEqual(repair.requiredStartedServices, [.vm, .guestLogSync, .proxy, .watchdog])
         XCTAssertEqual(repair.requiredStoppedServices, RuntimeManagedService.stopOrder)
+        XCTAssertEqual(repair.requestedLogMessage, "runtime services repair requested")
+        XCTAssertEqual(
+            repair.requestedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "runtime services repair requested",
+                status: .recovering,
+                operation: .repairServices,
+                statusMessage: "runtime services repair requested"
+            )
+        )
+        XCTAssertEqual(
+            repair.completedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "runtime services repaired",
+                status: .healthy,
+                operation: .repairServices,
+                statusMessage: "runtime services repaired"
+            )
+        )
+
+        XCTAssertEqual(repairProxy.operation, .repairProxy)
+        XCTAssertEqual(
+            repairProxy.startPolicy,
+            RuntimeServiceRestartPolicy(
+                restartVM: false,
+                restartGuestLogSync: false,
+                restartProxy: true,
+                restartWatchdog: false
+            )
+        )
+        XCTAssertEqual(repairProxy.stopServices, [.proxy])
+        XCTAssertEqual(repairProxy.requiredStartedServices, [.proxy])
+        XCTAssertEqual(repairProxy.requiredStoppedServices, [.proxy])
+        XCTAssertEqual(repairProxy.requestedLogMessage, "host proxy repair requested")
+        XCTAssertEqual(
+            repairProxy.requestedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "host proxy repair requested",
+                status: .recovering,
+                operation: .repairProxy,
+                statusMessage: "host proxy repair requested"
+            )
+        )
+        XCTAssertEqual(
+            repairProxy.completedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "host proxy repaired",
+                status: .healthy,
+                operation: .repairProxy,
+                statusMessage: "host proxy repaired"
+            )
+        )
 
         XCTAssertEqual(start.operation, .startServices)
         XCTAssertEqual(start.startPolicy, RuntimeRequiredServicePolicy.allRuntimeServices)
         XCTAssertEqual(start.stopServices, [])
         XCTAssertEqual(start.requiredStartedServices, [.vm, .guestLogSync, .proxy, .watchdog])
         XCTAssertEqual(start.requiredStoppedServices, [])
+        XCTAssertEqual(start.requestedLogMessage, "runtime services start requested")
+        XCTAssertEqual(
+            start.requestedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "runtime services start requested",
+                status: .recovering,
+                operation: .startServices,
+                statusMessage: "runtime services start requested"
+            )
+        )
+        XCTAssertEqual(
+            start.completedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "runtime services started",
+                status: .healthy,
+                operation: .startServices,
+                statusMessage: "runtime services started"
+            )
+        )
 
         XCTAssertEqual(stop.operation, .stopServices)
         XCTAssertNil(stop.startPolicy)
         XCTAssertEqual(stop.stopServices, RuntimeManagedService.stopOrder)
         XCTAssertEqual(stop.requiredStartedServices, [])
         XCTAssertEqual(stop.requiredStoppedServices, RuntimeManagedService.stopOrder)
-    }
-
-    func testStartRequiredServicesExecutesPortAndReturnsExplicitObservation() throws {
-        let harness = ControlRuntimeServicesUseCaseHarness()
-        let policy = RuntimeServiceRestartPolicy(
-            restartVM: true,
-            restartGuestLogSync: true,
-            restartProxy: false,
-            restartWatchdog: false
-        )
-
-        let observation = try harness.useCase.startRequiredServices(policy)
-
-        XCTAssertEqual(harness.events, [
-            "start:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync",
-            "observe:ai.tirosh.vitalserver.helper.vm,ai.tirosh.vitalserver.helper.guest-log-sync",
-        ])
-        XCTAssertEqual(observation.states[.vm], .loaded)
-        XCTAssertEqual(observation.states[.guestLogSync], .loaded)
-    }
-
-    func testStopRuntimeServicesReturnsExplicitObservationForRequestedServices() throws {
-        let harness = ControlRuntimeServicesUseCaseHarness()
-
-        let observation = try harness.useCase.stopRuntimeServices(observing: [.proxy, .watchdog])
-
-        XCTAssertEqual(harness.events, [
-            "stop",
-            "observe:ai.tirosh.vitalserver.helper.proxy,ai.tirosh.vitalserver.helper.watchdog",
-        ])
-        XCTAssertEqual(observation.states[.proxy], .notLoaded)
-        XCTAssertEqual(observation.states[.watchdog], .notLoaded)
-    }
-}
-
-private final class ControlRuntimeServicesUseCaseHarness {
-    var events: [String] = []
-    var states: [RuntimeManagedService: RuntimeServiceState] = [:]
-
-    var useCase: ControlRuntimeServicesUseCase {
-        ControlRuntimeServicesUseCase(
-            ports: RuntimeServiceControlPorts(
-                startRuntimeServices: { policy in
-                    let services = RuntimeRequiredServicePolicy.requiredServices(for: policy)
-                    self.events.append("start:\(services.map(\.label).joined(separator: ","))")
-                    for service in services {
-                        self.states[service] = .loaded
-                    }
-                },
-                stopRuntimeServices: {
-                    self.events.append("stop")
-                    for service in RuntimeManagedService.stopOrder {
-                        self.states[service] = .notLoaded
-                    }
-                },
-                serviceStates: { services in
-                    self.events.append("observe:\(services.map(\.label).joined(separator: ","))")
-                    return Dictionary(uniqueKeysWithValues: services.map { service in
-                        (service, self.states[service] ?? .notLoaded)
-                    })
-                }
+        XCTAssertEqual(stop.requestedLogMessage, "runtime services stop requested")
+        XCTAssertNil(stop.requestedStatusPlan)
+        XCTAssertEqual(
+            stop.completedStatusPlan,
+            RuntimeServiceControlStatusPlan(
+                logMessage: "runtime services stopped",
+                status: .degraded,
+                operation: .stopServices,
+                statusMessage: "runtime services stopped"
             )
         )
+    }
+
+    func testRequireServicesLoadedFailsWhenRequiredServiceIsNotLoaded() {
+        let useCase = ControlRuntimeServicesUseCase()
+        let observation = useCase.observation(states: [
+            .vm: .loaded,
+            .guestLogSync: .loaded,
+            .proxy: .notLoaded,
+            .watchdog: .loaded,
+        ])
+
+        XCTAssertThrowsError(try useCase.requireServicesLoaded(
+            [.vm, .guestLogSync, .proxy, .watchdog],
+            observation: observation
+        )) { error in
+            XCTAssertEqual(
+                error as? RuntimeServiceControlError,
+                .operationFailed(
+                    "launchd-service-not-loaded:label=\(RuntimeManagedService.proxy.label) state=not loaded"
+                )
+            )
+        }
+    }
+
+    func testRequireServicesStoppedFailsWhenRequiredServiceIsStillLoaded() {
+        let useCase = ControlRuntimeServicesUseCase()
+        let observation = useCase.observation(states: [
+            .proxy: .loaded,
+            .watchdog: .notLoaded,
+        ])
+
+        XCTAssertThrowsError(try useCase.requireServicesStopped(
+            [.proxy, .watchdog],
+            observation: observation
+        )) { error in
+            XCTAssertEqual(
+                error as? RuntimeServiceControlError,
+                .operationFailed(
+                    "launchd-service-not-stopped:label=\(RuntimeManagedService.proxy.label) state=loaded"
+                )
+            )
+        }
+    }
+
+    func testRequireStartPolicyFailsExplicitlyWhenPlanHasNoStartPolicy() {
+        let useCase = ControlRuntimeServicesUseCase()
+        let plan = useCase.plan(.stopAll)
+
+        XCTAssertThrowsError(try useCase.requireStartPolicy(in: plan, operationName: "stop")) { error in
+            XCTAssertEqual(
+                error as? RuntimeServiceControlError,
+                .operationFailed("runtime service stop plan missing start policy")
+            )
+        }
     }
 }

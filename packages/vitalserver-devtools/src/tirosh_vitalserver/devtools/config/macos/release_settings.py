@@ -167,6 +167,10 @@ def load_macos_launchd(config: TomlTable) -> MacOSLaunchdConfig:
             nested_section(config, "watchdog", parent_path="macos.launchd"),
             path="macos.launchd.watchdog",
         ),
+        automatic_backup=load_macos_launchd_template(
+            nested_section(config, "automatic_backup", parent_path="macos.launchd"),
+            path="macos.launchd.automatic_backup",
+        ),
     )
 
 

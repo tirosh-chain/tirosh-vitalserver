@@ -67,7 +67,10 @@ PWA는 특정 제품명보다 viewport width를 기준으로 설계합니다.
 
 ### Advanced / Danger Zone
 
-- Recovery, backup, repair, uninstall은 section을 분리합니다.
+- Advanced는 Swift UI 순서와 의미를 따른 diagnostics, VM health, service health, recovery operations, advanced network, admin operations를 담당합니다.
+- Runtime service controls는 Advanced의 Admin operations 안에 둡니다.
+- Recovery operations는 update recovery, VitalServer backup, runtime repair, advanced repair tools, Redis-only recovery 순서를 유지합니다.
+- Danger Zone은 update backup 삭제, VitalServer backup 삭제, destructive operations처럼 삭제/제거 성격의 command를 담당합니다.
 - Capability가 없는 command는 숨기기보다 비활성화와 이유 표시를 우선합니다.
 - Dangerous command는 confirmation 없이 실행하지 않습니다.
 

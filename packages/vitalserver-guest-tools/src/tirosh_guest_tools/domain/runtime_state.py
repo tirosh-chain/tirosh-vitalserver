@@ -19,6 +19,7 @@ class RuntimeCapabilities:
     activate_update: bool = True
     prepare_update_shutdown: bool = True
     redis_backup: bool = True
+    redis_restore: bool = True
     repair_datastore: bool = True
 
     def as_json(self) -> dict[str, bool]:
@@ -26,6 +27,7 @@ class RuntimeCapabilities:
             "activateUpdate": self.activate_update,
             "prepareUpdateShutdown": self.prepare_update_shutdown,
             "redisBackup": self.redis_backup,
+            "redisRestore": self.redis_restore,
             "repairDatastore": self.repair_datastore,
         }
 

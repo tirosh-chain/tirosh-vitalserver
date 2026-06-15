@@ -31,8 +31,8 @@ runtime health wait는 의도적으로 길게 잡혀 있습니다. VM 부팅, Do
 
 ```sh
 tail -f /private/tmp/tirosh-vitalserver-manager-command.log
-cat "/Library/Application Support/TiroshVitalServer/status/runtime-status.json"
-tail -n 200 "/Library/Application Support/TiroshVitalServer/vm/data/run/container-logs.log"
+cat "/Library/Application Support/VitalServerHelper/status/runtime-status.json"
+tail -n 200 "/Library/Application Support/VitalServerHelper/vm/data/run/container-logs.log"
 ```
 
 최신 Helper app은 command log를 Logs 탭에서 실시간 갱신하고, runtime health wait 중에도 `waiting for runtime health reasons=...` 형태의 진행 로그를 남깁니다. 이전 버전에서 시작한 update/rollback 작업에는 이 개선이 적용되지 않습니다.
@@ -43,10 +43,11 @@ Update 탭에서는 적용 중인 현재 step과 Command log tail을 함께 표�
 
 먼저 command log와 container log에서 실제 실패 원인을 확인합니다. update가 이미 rollback 단계에 들어간 경우에는 중간에 강제 종료하면 runtime이 반쯤 교체된 상태로 남을 수 있으므로, 가능한 한 rollback timeout이 끝날 때까지 기다립니다. 반복적으로 health가 회복되지 않으면 새 bundle 또는 재설치로 복구합니다.
 
-Helper app의 Advanced > Recovery operations에는 `Repair Data Store`가 있습니다. 이 작업은 VM 내부에 복구 요청 파일을 만들고, guest systemd path unit이 Redis AOF 검사/복구와 container 재시작을 수행하게 합니다. update 실패 후 Redis 또는 VitalServer health가 회복되지 않을 때 먼저 시도합니다.
+Helper app의 Advanced > Recovery operations > Advanced repair tools에는 `Repair Redis Datastore`가 있습니다. 이 작업은 VM 내부에 복구 요청 파일을 만들고, guest systemd path unit이 Redis AOF 검사/복구와 container 재시작을 수행하게 합니다. Redis AOF corruption이 명확할 때 사용하고, 원인이 불명확한 update 실패 후에는 먼저 `Repair Runtime`을 시도합니다.
 
 Update 과정의 전체 계약, 보존/변경 범위, 0.1.3 실패 분석은 [Update](../runtime/macos/update.md)를 봅니다.
 
 ## Follow-up
 
 - 관련 issue/PR, 재현 로그, 수정 버전, 운영 판단이 생기면 이 섹션에 추가합니다.
+- 2026-06-08: apply 실패 후 rollback이 `rollback-start-runtime-services`는 완료했지만 `rollback-wait-runtime-health`에서 실패하는 사례를 확인했습니다. 원인은 rollback service restart policy가 실패 직후의 launchd loaded 관찰값을 desired state처럼 사용해 proxy/watchdog을 재시작하지 않은 것입니다. rollback은 현재 loaded 상태를 복원하지 않고 설치 runtime의 VM, guest log sync, proxy, watchdog을 명시적으로 복구 대상으로 삼아야 합니다.

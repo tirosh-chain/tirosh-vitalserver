@@ -7,16 +7,16 @@ const nullableNumber = z.number().nullable().optional();
 const nullableBoolean = z.boolean().nullable().optional();
 const unknownRecord = z.record(z.string(), z.unknown());
 const resourceUsageSchema = unknownRecord.nullable();
-const runtimeStateSchema = z.enum([
+const knownRuntimeStateSchema = z.enum([
   "installing",
+  "initializing",
   "updating",
   "recovering",
   "healthy",
   "degraded",
   "critical"
 ]);
-const vmStateSchema = z
-  .enum([
+const knownVMStateSchema = z.enum([
     "not-installed",
     "stopped",
     "starting",
@@ -24,9 +24,10 @@ const vmStateSchema = z
     "stale",
     "unreachable",
     "failed"
-  ])
-  .nullable();
-const runtimeEventTypeSchema = z.enum(runtimeEventTypeValues);
+  ]);
+const runtimeStateSchema = z.union([knownRuntimeStateSchema, z.string()]);
+const vmStateSchema = z.union([knownVMStateSchema, z.string()]).nullable();
+const runtimeEventTypeSchema = z.union([z.enum(runtimeEventTypeValues), z.string()]);
 const recorderStatusSchema = z.enum([
   "online",
   "stale",
@@ -41,6 +42,14 @@ const bedStatusSchema = z.enum([
   "notObserved",
   "unknown"
 ]);
+const relationshipEventTypeSchema = z.enum([
+  "handoff",
+  "duplicateAssignment",
+  "unlinkedBed",
+  "unlinkedRecorder",
+  "staleLink"
+]);
+const relationshipSeveritySchema = z.enum(["info", "warning", "critical"]);
 const anomalySeveritySchema = z.enum(["info", "warning", "critical"]);
 const vitalDBAnomalyKindSchema = z.enum([
   "offline",
@@ -116,7 +125,7 @@ export const runtimeSettingsSchema = z
     diskGiB: z.number(),
     minimumDiskGiB: z.number(),
     networkMode: networkModeSchema,
-    bridgedInterface: z.string(),
+    bridgedInterface: z.string().nullable(),
     proxyPort: z.number(),
     runtimeControlPort: z.number(),
     vitalFilesDirectory: z.string(),
@@ -130,7 +139,11 @@ export const runtimeSettingsSchema = z
     startOnBootConfigurable: z.boolean(),
     autoRecoveryEnabled: z.boolean(),
     preventSystemSleep: z.boolean(),
-    redisBackupRetentionCount: z.number(),
+    automaticBackupEnabled: z.boolean(),
+    backupScheduleTimes: z.string().array(),
+    backupRetentionCount: z.number(),
+    logArchiveRetentionDays: z.number(),
+    logArchiveMaximumGiB: z.number(),
     restartAfterSave: z.boolean()
   })
   .passthrough();
@@ -522,7 +535,10 @@ const vitalDBRecorderRecordSchema = z
     observationCount: z.number(),
     duplicateObservationCount: z.number(),
     currentAnomalyCount: z.number(),
+    latestAnomalyKind: vitalDBAnomalyKindSchema.nullable().optional(),
     latestAnomalySeverity: anomalySeveritySchema.nullable().optional(),
+    latestAnomalyMessage: nullableString.optional(),
+    latestAnomalyObservedAt: nullableString.optional(),
     presentInLatestObservation: z.boolean(),
     activityTimeline: z.array(recorderActivityPointSchema).optional()
   })
@@ -533,6 +549,9 @@ const vitalDBBedRecordSchema = z
     bedID: z.string(),
     name: nullableString,
     vrcode: nullableString,
+    linkedRecorderStatus: recorderStatusSchema.nullable().optional(),
+    linkedRecorderIP: nullableString.optional(),
+    linkedRecorderLastSeenAt: nullableString.optional(),
     status: bedStatusSchema,
     patientConnected: nullableBoolean,
     firstSeenAt: nullableString,
@@ -540,7 +559,10 @@ const vitalDBBedRecordSchema = z
     observationCount: z.number(),
     duplicateObservationCount: z.number(),
     currentAnomalyCount: z.number(),
-    latestAnomalySeverity: anomalySeveritySchema.nullable().optional()
+    latestAnomalyKind: vitalDBAnomalyKindSchema.nullable().optional(),
+    latestAnomalySeverity: anomalySeveritySchema.nullable().optional(),
+    latestAnomalyMessage: nullableString.optional(),
+    latestAnomalyObservedAt: nullableString.optional()
   })
   .passthrough();
 
@@ -587,6 +609,46 @@ export const vitalDBRecordersSchema = z
   .passthrough();
 
 export const vitalDBBedsSchema = z.array(vitalDBBedRecordSchema);
+
+const vitalDBRelationshipAssignmentSchema = z
+  .object({
+    assignmentID: z.string(),
+    bedID: z.string(),
+    bedName: nullableString,
+    vrcode: z.string(),
+    startedAt: z.string(),
+    endedAt: nullableString,
+    lastSeenAt: nullableString,
+    lastObservedAt: z.string(),
+    status: bedStatusSchema,
+    patientConnected: nullableBoolean,
+    observationCount: z.number()
+  })
+  .passthrough();
+
+const vitalDBRelationshipEventSchema = z
+  .object({
+    eventID: z.string(),
+    observedAt: z.string(),
+    eventType: relationshipEventTypeSchema,
+    severity: relationshipSeveritySchema,
+    bedID: nullableString,
+    bedName: nullableString,
+    vrcode: nullableString,
+    previousVrcode: nullableString,
+    previousBedID: nullableString,
+    message: z.string()
+  })
+  .passthrough();
+
+export const vitalDBRelationshipsSchema = z
+  .object({
+    state: z.enum(["loaded", "partiallyLoaded", "readFailed"]),
+    assignments: z.array(vitalDBRelationshipAssignmentSchema),
+    events: z.array(vitalDBRelationshipEventSchema),
+    readError: nullableString
+  })
+  .passthrough();
 
 export const runtimeLogTextResponseSchema = z
   .object({

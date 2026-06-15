@@ -6,7 +6,7 @@ server {
     index index.html;
 
     location = /openapi.yaml {
-        alias /usr/share/nginx/html/docs/openapi.yaml;
+        alias /usr/share/nginx/html/docs/api/vitalserver.openapi.yaml;
         default_type text/yaml;
         add_header Cache-Control "no-cache";
     }
@@ -17,7 +17,7 @@ server {
     }
 
     location /vitalserver/ {
-        proxy_pass http://redis/;
+        proxy_pass http://audit-proxy:8080/;
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;

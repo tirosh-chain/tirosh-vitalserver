@@ -1,6 +1,8 @@
 services:
   redis:
     image: redis:3.2.12-alpine
+    security_opt:
+      - seccomp=unconfined
     command:
       - sh
       - -c
@@ -28,6 +30,8 @@ services:
       context: .
       dockerfile: apps/vitalserver/docker/Dockerfile
     image: vitalserver:2.3.4
+    security_opt:
+      - seccomp=unconfined
     depends_on:
       redis:
         condition: service_healthy
@@ -97,6 +101,8 @@ services:
       context: .
       dockerfile: apps/vitalserver-audit-proxy/Dockerfile
     image: vitalserver-audit-proxy:0.1.0
+    security_opt:
+      - seccomp=unconfined
     depends_on:
       app:
         condition: service_healthy
@@ -138,6 +144,8 @@ services:
       context: .
       dockerfile: apps/vitaldb-observer/Dockerfile
     image: vitaldb-observer:0.1.0
+    security_opt:
+      - seccomp=unconfined
     depends_on:
       redis:
         condition: service_healthy
@@ -171,6 +179,8 @@ services:
       context: .
       dockerfile: packages/vitalserver-testkit/Dockerfile
     image: vitalserver-testkit:0.1.1
+    security_opt:
+      - seccomp=unconfined
     depends_on:
       edge:
         condition: service_healthy
@@ -201,6 +211,8 @@ services:
 
   redis-ui:
     image: ghcr.io/joeferner/redis-commander:0.9.0
+    security_opt:
+      - seccomp=unconfined
     depends_on:
       redis:
         condition: service_healthy
@@ -220,6 +232,8 @@ services:
 
   swagger-ui:
     image: swaggerapi/swagger-ui:v5.17.14
+    security_opt:
+      - seccomp=unconfined
     expose:
       - "8080"
     environment:
@@ -250,6 +264,8 @@ services:
 
   edge:
     image: nginx:1.24-alpine
+    security_opt:
+      - seccomp=unconfined
     depends_on:
       audit-proxy:
         condition: service_healthy
