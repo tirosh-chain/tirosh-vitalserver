@@ -24,8 +24,9 @@
 
 ## 2. Clean uninstall의 보존/삭제 정책
 
-표준 uninstall은 clean이 아닐 때 Redis backup을 먼저 만들고 logs, backups, Redis backups,
-기본 Vital files directory를 임시 위치에 보존한 뒤 product root를 제거하고 복원합니다.
+표준 uninstall은 clean이 아닐 때 data-only repair backup을 먼저 만들고 logs, backups,
+data-only repair backups, 기본 Vital files directory를 임시 위치에 보존한 뒤 product root를
+제거하고 복원합니다.
 
 Clean uninstall은 user data 보존을 하지 않습니다. 설정된 external Vital files directory가 있으면
 clean 대상에 포함됩니다. 다만 configured path를 읽지 못하면 external directory cleanup을 추정하지

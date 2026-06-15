@@ -44,7 +44,7 @@ Release 전에 만드는 결과물은 목적이 다릅니다. 먼저 “어떤 �
 | DMG | 신규 Mac에 Helper를 설치할 때 |
 | PKG | macOS installer가 실제로 설치하는 payload |
 | Reset command | 재설치가 막힌 Mac에서 관련 데이터와 기능을 강제로 정리할 때 |
-| Upstream Redis backup command | upstream VitalServer Redis data directory를 Helper import용 archive로 만들 때 |
+| Existing VitalServer data import command | 기존 VitalServer data directory를 Helper import용 archive로 만들 때 |
 | Product Update bundle | Helper UI, runtime tools, proxy, service stack을 update할 때 |
 | VM Image update bundle | guest rootfs/base image class를 바꿀 때 |
 | Docker image bundle | 네트워크가 제한된 guest에서 service stack을 실행할 때 |
@@ -54,8 +54,7 @@ Release 전에 만드는 결과물은 목적이 다릅니다. 먼저 “어떤 �
 
 아래 명령어는 릴리스 담당자가 build machine에서 결과물을 만들고 검증할 때 사용합니다.
 현장 Mac에서는 이 `make` 명령어를 실행하지 않습니다. 현장에는 생성된 DMG, PKG, update bundle을
-전달하고, reset command와 upstream Redis backup command는 DMG의 `Troubleshooting Tools` 폴더에서
-실행합니다.
+전달하고, reset command와 existing VitalServer data import command는 DMG의 `Troubleshooting Tools` 폴더에서 실행합니다.
 
 | 목적 | command |
 |---|---|

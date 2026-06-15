@@ -5,8 +5,7 @@ build machine에서 결과물을 만드는 절차는 사용자 흐름이 아니�
 
 ## 1. 설치 흐름
 
-Helper package는 fresh install을 기준으로 합니다. 기존 설치물, launchd service, package receipt,
-또는 Host proxy port 충돌이 있으면 설치 전 검사가 설치를 막습니다.
+Helper package는 fresh install을 기준으로 합니다. 기존 설치물, launchd service, package receipt, 또는 Host proxy port 충돌이 있으면 설치 전 검사가 설치를 막습니다.
 
 ### 1-1. 새 설치
 
@@ -16,17 +15,13 @@ Mac 사용자에게는 서명 및 공증된 Helper installer를 전달합니다.
 VitalServerHelper-<version>.dmg
 ```
 
-DMG 안에는 `Install VitalServer Helper.pkg`와 문제 해결용 `Troubleshooting Tools` 폴더가 함께
-들어 있습니다. 새 설치는 `Install VitalServer Helper.pkg`를 실행합니다.
+DMG 안에는 `Install VitalServer Helper.pkg`와 문제 해결용 `Troubleshooting Tools` 폴더가 함께 들어 있습니다. 새 설치는 `Install VitalServer Helper.pkg`를 실행합니다.
 
 설치 후 Helper app을 열고 Status 화면에서 runtime 상태를 확인합니다.
 
-처음 설치한 직후에는 VM과 runtime service가 순서대로 준비되기 때문에 완료까지 보통 4~5분 정도
-걸릴 수 있습니다. 이 동안 Status나 Advanced 화면에 `Installing` 또는 `Initializing`이 보이면
-정상적인 설치/초기 기동 진행 상태로 보고 기다립니다.
+처음 설치한 직후에는 VM과 runtime service가 순서대로 준비되기 때문에 완료까지 보통 4~5분 정도 걸릴 수 있습니다. 이 동안 Status나 Advanced 화면에 `Installing` 또는 `Initializing`이 보이면 정상적인 설치/초기 기동 진행 상태로 보고 기다립니다.
 
-`Installing` 또는 `Initializing`이 오래 유지되거나 `Critical`로 바뀌면 installer 화면 메시지,
-Status의 failure reason, Logs 화면을 함께 확인합니다.
+`Installing` 또는 `Initializing`이 오래 유지되거나 `Critical`로 바뀌면 installer 화면 메시지, Status의 failure reason, Logs 화면을 함께 확인합니다.
 
 ### 1-2. 설치가 막히는 경우
 
@@ -41,19 +36,16 @@ or Host proxy port conflict blocks this install.
 이 경우 installer를 반복 실행하지 않습니다.
 [Reset for Reinstall command](reset-installer.md)로 정리한 뒤 다시 설치합니다.
 
-내부 Clean uninstall과 reset command는 목적이 다릅니다. Clean uninstall은 정상 제거 흐름이고,
-reset command는 재설치 blocker를 제거하는 recovery tool입니다. 차이는
+내부 Clean uninstall과 reset command는 목적이 다릅니다. Clean uninstall은 정상 제거 흐름이고, reset command는 재설치 blocker를 제거하는 recovery tool입니다. 차이는
 [Clean Uninstall and Reset for Reinstall](clean-uninstall.md)를 봅니다.
 
 ## 2. Helper app에서 확인할 것
 
-설치 후에는 Helper app을 열고 Status 화면부터 확인합니다. Status는 전체 요약이고, 세부 원인은
-다른 화면에서 나눠 봅니다.
+설치 후에는 Helper app을 열고 Status 화면부터 확인합니다. Status는 전체 요약이고, 세부 원인은 다른 화면에서 나눠 봅니다.
 
 ### 2-1. 화면별 확인 포인트
 
-처음에는 Status 화면에서 전체 상태를 보고, 문제가 보이는 영역에 따라 Recorders, Beds,
-Advanced, Observability, Logs 화면으로 이동합니다.
+처음에는 Status 화면에서 전체 상태를 보고, 문제가 보이는 영역에 따라 Recorders, Beds, Advanced, Observability, Logs 화면으로 이동합니다.
 
 | 화면 | 언제 보는가 | 확인할 것 |
 |---|---|---|
@@ -64,16 +56,11 @@ Advanced, Observability, Logs 화면으로 이동합니다.
 | Observability | 상태 변화의 시간 순서를 볼 때 | event timeline, recorder anomaly, relationship history |
 | Logs | 지원 자료를 모으거나 상세 로그를 볼 때 | command, update activation, VM, container, watchdog logs |
 
-설치 직후 Advanced에서 일부 service나 HTTP endpoint가 아직 준비되지 않아도, active operation이
-`Installing`이면 설치 작업 중으로, `Initializing`이면 runtime service와 guest가 사용 가능 상태로
-올라오는 중으로 봅니다. 설치와 초기 기동이 끝난 뒤에도 `Stopped`, `Unavailable`, `Read failed`가
-남아 있을 때 세부 점검을 시작합니다.
+설치 직후 Advanced에서 일부 service나 HTTP endpoint가 아직 준비되지 않아도, active operation이 `Installing`이면 설치 작업 중으로, `Initializing`이면 runtime service와 guest가 사용 가능 상태로 올라오는 중으로 봅니다. 설치와 초기 기동이 끝난 뒤에도 `Stopped`, `Unavailable`, `Read failed`가 남아 있을 때 세부 점검을 시작합니다.
 
 ### 2-2. 상태를 읽을 때 주의할 점
 
-상태는 임의로 판단하지 않습니다. 예를 들어 recorder가 화면에 없다고 해서 항상 “장비가 없다”는
-뜻은 아닙니다. 관측 자료를 읽지 못했거나, 관측 자료가 오래되었거나, 실제로 최신 관측에 없는
-상황이 서로 다를 수 있습니다.
+상태는 임의로 판단하지 않습니다. 예를 들어 recorder가 화면에 없다고 해서 항상 “장비가 없다”는 뜻은 아닙니다. 관측 자료를 읽지 못했거나, 관측 자료가 오래되었거나, 실제로 최신 관측에 없는 상황이 서로 다를 수 있습니다.
 
 | 보이는 상태 | 먼저 확인할 곳 |
 |---|---|
@@ -88,50 +75,27 @@ Advanced, Observability, Logs 화면으로 이동합니다.
 ### 2-3. Backup과 restore
 
 일반 backup/restore는 Advanced -> Recovery operations의 `VitalServer backup`을 사용합니다.
-이 backup은 Helper가 관리하는 runtime 설정, Host runtime 상태, observability history, Redis data를
-하나의 복구 단위로 묶습니다. 따라서 일반 사용자는 runtime data와 Redis를 따로 backup하거나 따로
-restore하지 않습니다.
+이 backup은 Helper가 관리하는 runtime 설정, Host runtime 상태, observability history, service data를 하나의 복구 단위로 묶습니다. 따라서 일반 사용자는 runtime data와 service data를 따로 backup하거나
+따로 restore하지 않습니다.
 
-자동 backup도 같은 VitalServer backup을 만듭니다. Settings의 `VitalServer Helper backups`에서
-자동 backup 사용 여부, 하루 실행 시간들, 보관할 archive 개수를 설정합니다. 보관 개수는
-`backups/vitalserver-helper` 아래의 VitalServer backup 개수이며 Redis-only archive 개수가 아닙니다.
-기본 보관 개수는 30개입니다.
+자동 backup도 같은 VitalServer backup을 만듭니다. Settings의 `VitalServer Helper backups`에서 자동 backup 사용 여부, 하루 실행 시간들, 보관할 archive 개수를 설정합니다. 보관 개수는 `backups/vitalserver-helper` 아래의 VitalServer backup 개수이며 data-only repair archive 개수가 아닙니다. 기본 보관 개수는 30개입니다.
 
-Settings의 `Logs`에서는 Host log archive 보관 기간과 용량 제한을 설정합니다. 기본값은 14일,
-1 GiB입니다. 이 설정은 `/Library/Application Support/VitalServerHelper/logs/archive/YYYY-MM-DD`
-관리 archive folder에만 적용되며, VitalServer Helper backup retention과 별도입니다.
+Settings의 `Logs`에서는 Host log archive 보관 기간과 용량 제한을 설정합니다. 기본값은 14일, 1 GiB입니다. 이 설정은 `/Library/Application Support/VitalServerHelper/logs/archive/YYYY-MM-DD` 관리 archive folder에만 적용되며, VitalServer Helper backup retention과 별도입니다.
 
 선택한 backup이 현재 Helper와 호환되지 않으면 restore는 파일을 덮어쓰기 전에 실패합니다.
-호환성 기준과 backup 내부 artifact 구성은 Dev 문서의
-[Backup/Restore 계약](../dev/backup-restore-contracts.md)을 봅니다.
+호환성 기준과 backup 내부 artifact 구성은 Dev 문서의 [Backup/Restore 계약](../dev/backup-restore-contracts.md)을 봅니다.
 
-Backup 삭제는 Danger Zone에서 분리되어 있습니다. `Delete VitalServer Backup`은 선택한
-VitalServer backup만 삭제하고, `Delete Update Backup`은 update/rollback용 backup만 삭제합니다.
-두 작업 모두 현재 runtime data를 직접 삭제하지 않습니다.
+Backup 삭제는 Danger Zone에서 분리되어 있습니다. `Delete VitalServer Backup`은 선택한 VitalServer backup만 삭제하고, `Delete Update Backup`은 update/rollback용 backup만 삭제합니다. 두 작업 모두 현재 runtime data를 직접 삭제하지 않습니다.
 
-삭제 전에 별도로 보관한 VitalServer backup을 다시 사용하려면 Finder로 임의 위치에 복사하지 말고
-Advanced -> Recovery operations의 `Import Backups`를 사용합니다. Import는 선택한 backup 폴더를
-Helper가 보고한 `backups/vitalserver-helper` 관리 폴더의 직접 자식으로 복사하며, 같은 이름의 backup이
-이미 있으면 덮어쓰지 않습니다. `Open Backups`는 해당 VitalServer backup 관리 폴더를 엽니다.
+삭제 전에 별도로 보관한 VitalServer backup을 다시 사용하려면 Finder로 임의 위치에 복사하지 말고 Advanced -> Recovery operations의 `Import Backups`를 사용합니다. Import는 선택한 backup 폴더를 Helper가 보고한 `backups/vitalserver-helper` 관리 폴더의 직접 자식으로 복사하며, 같은 이름의 backup이 이미 있으면 덮어쓰지 않습니다. `Open Backups`는 해당 VitalServer backup 관리 폴더를 엽니다.
 
-`Redis-only recovery`는 Repair 성격의 고급 조치입니다. VM disk repair, uninstall, 장애 분석처럼
-Redis data만 별도로 보존하거나 복원해야 하는 상황에서 지원 담당자가 사용합니다. 정상 운영에서
-전체 상태를 되돌릴 때는 Redis-only backup 대신 VitalServer backup을 선택합니다.
-Redis-only backup을 외부에서 다시 가져올 때도 `Import Backups`를 사용합니다. Import는 `redis-*.tar.gz`
-archive만 Redis backup 관리 폴더의 직접 자식으로 복사하며, 같은 이름의 archive가 있으면 덮어쓰지
-않습니다. `Restore Redis-only Backup`은 선택한 Redis archive만 복원합니다.
+`Redis-only recovery`는 Repair 성격의 고급 조치입니다. VM disk repair, uninstall, 장애 분석처럼 service data만 별도로 보존하거나 복원해야 하는 상황에서 지원 담당자가 사용합니다. 정상 운영에서 전체 상태를 되돌릴 때는 data-only repair backup 대신 VitalServer backup을 선택합니다.
 
-Upstream VitalServer에서 Helper로 1회 migration을 할 때는 DMG의 `Troubleshooting Tools` 폴더에 있는
-`Create Upstream Redis Backup.command`를 사용합니다. 생성한 archive는 Advanced -> Recovery operations
--> Redis-only recovery의 `Import Backups`로 가져온 뒤 `Restore Redis-only Backup`으로 복원합니다.
-upstream Redis archive 생성 방식과 command log 위치는 Dev 문서의
-[Backup/Restore 계약](../dev/backup-restore-contracts.md)을 봅니다.
+기존 VitalServer data를 Helper로 1회 import할 때는 DMG의 `Troubleshooting Tools` 폴더에 있는 data import command를 사용합니다. 생성한 archive는 Advanced -> Recovery operations -> Redis-only recovery의 `Import Backups`로 가져온 뒤 `Restore Redis-only Backup`으로 복원합니다. archive 생성 방식과 command log 위치는 Dev 문서의 [Backup/Restore 계약](../dev/backup-restore-contracts.md)을 봅니다.
 
 ## 3. Settings 적용
 
-Settings 화면의 `Restart VM runtime when required`는 저장 후 항상 runtime service를 재시작한다는
-뜻이 아닙니다. 변경된 설정이 VM runtime restart를 요구할 때, 그 restart를 즉시 수행할지 선택하는
-옵션입니다.
+Settings 화면의 `Restart VM runtime when required`는 저장 후 항상 runtime service를 재시작한다는 뜻이 아닙니다. 변경된 설정이 VM runtime restart를 요구할 때, 그 restart를 즉시 수행할지 선택하는 옵션입니다.
 
 VM runtime restart가 필요한 설정은 VM 실행 조건을 바꾸는 값입니다.
 
@@ -145,13 +109,9 @@ VM runtime restart가 필요한 설정은 VM 실행 조건을 바꾸는 값입�
 | admin password, VitalServer Helper backup schedule/retention, log archive retention/size | guest runtime settings, Host launchd backup scheduler, Host runtime-control settings 갱신, VM runtime restart requirement 없음 |
 | start on boot, auto recovery, sleep prevention | Host launchd/config 정책 갱신, VM runtime restart requirement 없음 |
 
-따라서 URL, VitalServer Helper backup retention, log archive retention 같은 설정만 바꿨는데 `Restart VM runtime when required`가
-켜져 있어도 VM을 내리지 않습니다. 반대로 CPU, memory, disk 증가, network, Vital files directory를
-바꾸고 이 옵션을 끄면 설정은 저장되지만 현재 실행 중인 VM에는 다음 VM runtime restart 때 반영됩니다.
+따라서 URL, VitalServer Helper backup retention, log archive retention 같은 설정만 바꿨는데 `Restart VM runtime when required`가 켜져 있어도 VM을 내리지 않습니다. 반대로 CPU, memory, disk 증가, network, Vital files directory를 바꾸고 이 옵션을 끄면 설정은 저장되지만 현재 실행 중인 VM에는 다음 VM runtime restart 때 반영됩니다.
 
-Settings 화면은 restart requirement를 각 설정 row에 흩어진 badge로 표시하지 않고, `VM runtime restart`
-영역에 모아서 표시합니다. 저장된 설정이 아직 실행 중인 VM에 반영되지 않은 경우 이 영역에서
-`Requires VM restart` badge/action을 눌러 pending VM 설정 적용을 확인합니다.
+Settings 화면은 restart requirement를 각 설정 row에 흩어진 badge로 표시하지 않고, `VM runtime restart` 영역에 모아서 표시합니다. 저장된 설정이 아직 실행 중인 VM에 반영되지 않은 경우 이 영역에서 `Requires VM restart` badge/action을 눌러 pending VM 설정 적용을 확인합니다.
 
 Settings 탭은 저장된 설정을 보여주고, Status/Info 탭은 현재 VM runtime에 적용된 설정을 보여줍니다.
 예를 들어 Vital files directory를 바꾸고 VM runtime restart를 하지 않았다면 Settings 탭에는 새 경로가
@@ -188,9 +148,7 @@ Product Update는 Helper app의 Update 탭에서 적용합니다. 현장 Mac에�
 - update 중에는 VitalServer service가 재시작될 수 있습니다.
 - 실패하면 같은 bundle을 반복 적용하기보다 Update progress, Logs, Observability event를 먼저 확인합니다.
 
-Update 중 rollback이 실행될 수 있습니다. Rollback health wait가 최종적으로 `hostProxyHTTP=200` 같은
-정상 health를 확인하면 runtime은 이전 backup으로 돌아온 것입니다. 이 상태는 “update 성공”이 아니라
-“update 실패 후 rollback 성공”입니다. Update progress와 Observability event에서 실패 단계,
+Update 중 rollback이 실행될 수 있습니다. Rollback health wait가 최종적으로 `hostProxyHTTP=200` 같은 정상 health를 확인하면 runtime은 이전 backup으로 돌아온 것입니다. 이 상태는 “update 성공”이 아니라 “update 실패 후 rollback 성공”입니다. Update progress와 Observability event에서 실패 단계,
 rollback 단계, rollback 결과를 함께 확인합니다.
 
 `prepare-update-shutdown` 단계에서 실패하면 Logs의 update shutdown result와 guest log를 확인합니다.
@@ -206,8 +164,7 @@ Host proxy 연결 실패나 container exited reason은 restart/rollback 중 나�
 sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle.tar.gz
 ```
 
-CLI와 Helper app의 Update 탭은 같은 update backend를 사용합니다. 일반 사용자 절차는 Update 탭을
-기준으로 합니다.
+CLI와 Helper app의 Update 탭은 같은 update backend를 사용합니다. 일반 사용자 절차는 Update 탭을 기준으로 합니다.
 
 ## 5. 로그와 지원 자료
 
@@ -228,8 +185,7 @@ update 실패, recorder 관측 실패, service 실행 실패는 확인해야 하
 | 직전에 한 작업 | install, update 적용, reset command 실행, runtime start/stop |
 | 선택한 파일 | update bundle, reset command, installer package |
 
-가능하면 화면 screenshot도 함께 보관합니다. 다만 환자 정보, 병원 내부 IP, 인증 정보, token이
-보이면 공개 issue에 올리지 않습니다.
+가능하면 화면 screenshot도 함께 보관합니다. 다만 환자 정보, 병원 내부 IP, 인증 정보, token이 보이면 공개 issue에 올리지 않습니다.
 
 ### 5-2. Helper app에서 모을 자료
 
@@ -241,8 +197,7 @@ Helper app이 열리는 상태라면 아래 순서로 확인합니다.
 4. Observability 화면에서 문제가 발생한 시간대와 event filter를 확인합니다.
 5. Logs 화면에서 `Export Logs`를 실행해 log zip을 만듭니다.
 
-`Open Logs`는 Mac 안의 로그 폴더를 여는 기능이고, `Export Logs`는 지원 담당자에게 전달할 수
-있는 zip 파일을 만드는 기능입니다.
+`Open Logs`는 Mac 안의 로그 폴더를 여는 기능이고, `Export Logs`는 지원 담당자에게 전달할 수 있는 zip 파일을 만드는 기능입니다.
 
 ### 5-3. 상황별로 필요한 자료
 
@@ -265,8 +220,7 @@ tail -n 300 /private/tmp/tirosh-vitalserver-uninstall.log
 ```
 
 Troubleshooting Tools의 double-click command는 권한 상승 전 wrapper 로그를 현재 사용자 temp
-directory에 남깁니다. Reset command는 `tirosh-vitalserver-reset-for-reinstall.log`, upstream Redis
-backup command는 `tirosh-vitalserver-upstream-redis-backup.log`를 확인합니다.
+directory에 남깁니다. Reset command는 `tirosh-vitalserver-reset-for-reinstall.log`, 기존 VitalServer data import command는 `tirosh-vitalserver-upstream-redis-backup.log`를 확인합니다.
 
 runtime이 설치된 뒤의 상세 로그는 기본적으로 아래 위치에 있습니다.
 

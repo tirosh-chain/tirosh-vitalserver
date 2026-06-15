@@ -26,7 +26,7 @@ Pipeline 영역은 관측 데이터가 들어오고 있는지 보여줍니다.
 
 | 항목 | 의미 |
 |---|---|
-| Recorder observer | Redis/proxy 기반 recorder observation snapshot 생성 상태 |
+| Recorder observer | service/proxy 기반 recorder observation snapshot 생성 상태 |
 | Guest log sync service | guest/runtime log 동기화 service 상태 |
 | Recorder observation | 최신 recorder observation이 기록된 시각 |
 | Known recorders | 관측 read model이 알고 있는 VRecorder 수 |
