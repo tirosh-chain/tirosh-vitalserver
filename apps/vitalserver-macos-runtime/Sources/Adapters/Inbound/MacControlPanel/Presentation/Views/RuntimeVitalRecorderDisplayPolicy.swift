@@ -75,9 +75,9 @@ public struct RuntimeVitalRecorderDisplayPolicy {
 
     public func patientText(_ connected: Bool?) -> String {
         guard let connected else {
-            return "Patient connection not reported"
+            return "Not reported"
         }
-        return connected ? "Connected" : "Not connected"
+        return connected ? "Present" : "Not present"
     }
 
     public func reportedText(_ value: String?, missing: String) -> String {

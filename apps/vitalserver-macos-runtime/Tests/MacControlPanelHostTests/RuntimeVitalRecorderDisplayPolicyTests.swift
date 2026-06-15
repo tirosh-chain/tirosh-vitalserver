@@ -37,9 +37,9 @@ final class RuntimeVitalRecorderDisplayPolicyTests: XCTestCase {
     }
 
     func testPatientAndReportedTextDoNotConvertMissingStateToEmptySuccess() {
-        XCTAssertEqual(policy.patientText(true), "Connected")
-        XCTAssertEqual(policy.patientText(false), "Not connected")
-        XCTAssertEqual(policy.patientText(nil), "Patient connection not reported")
+        XCTAssertEqual(policy.patientText(true), "Present")
+        XCTAssertEqual(policy.patientText(false), "Not present")
+        XCTAssertEqual(policy.patientText(nil), "Not reported")
 
         XCTAssertEqual(policy.reportedText("  ", missing: "IP not reported"), "IP not reported")
         XCTAssertEqual(policy.reportedText(nil, missing: "IP not reported"), "IP not reported")

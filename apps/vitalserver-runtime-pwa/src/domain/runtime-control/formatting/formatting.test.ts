@@ -7,6 +7,7 @@ import {
   sameHostRuntimeURL
 } from "./http";
 import { formatRuntimeState } from "./runtimeState";
+import { formatPatientStatus } from "./status";
 import { formatUptimeSince } from "./time";
 
 describe("runtime presentation formatting", () => {
@@ -26,6 +27,13 @@ describe("runtime presentation formatting", () => {
     expect(formatRuntimeState("healthy")).toBe("Healthy");
     expect(formatRuntimeState("critical")).toBe("Critical");
     expect(formatRuntimeState(undefined)).toBe("Unknown");
+  });
+
+  it("formats patient status without converting missing state to absence", () => {
+    expect(formatPatientStatus(true)).toBe("Present");
+    expect(formatPatientStatus(false)).toBe("Not present");
+    expect(formatPatientStatus(undefined)).toBe("Not reported");
+    expect(formatPatientStatus(null)).toBe("Not reported");
   });
 
   it("formats uptime from a startedAt timestamp", () => {

@@ -6,7 +6,7 @@ import type {
   VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
-  formatBoolean,
+  formatPatientStatus,
   formatRecorderStatus,
   recorderStatusTone
 } from "@/domain/runtime-control/formatting/status";
@@ -200,7 +200,10 @@ function BedDetails({
             label: "VRecorder last seen",
             value: formatLocalDateTimeWithAge(bed.linkedRecorderLastSeenAt)
           },
-          { label: "Patient", value: formatBoolean(bed.patientConnected) },
+          {
+            label: "Patient status",
+            value: formatPatientStatus(bed.patientConnected)
+          },
           { label: "First seen", value: formatLocalDateTime(bed.firstSeenAt) },
           { label: "Last seen", value: formatLocalDateTimeWithAge(bed.lastSeenAt) },
           { label: "Latest anomaly", value: formatAnomalySummary(bed) }

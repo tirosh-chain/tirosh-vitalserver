@@ -66,7 +66,7 @@ public extension AppConstants {
         public static let recorderVersion = "Version"
         public static let recorderLastSeen = "Last seen"
         public static let bed = "Bed"
-        public static let patient = "Patient"
+        public static let patient = "Patient status"
         public static let anomaly = "Anomaly"
         public static let operation = "Operation"
         public static let runtimeVersion = "Runtime version"

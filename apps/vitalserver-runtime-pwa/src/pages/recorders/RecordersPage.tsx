@@ -7,7 +7,7 @@ import type {
   VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import {
-  formatBoolean,
+  formatPatientStatus,
   formatRecorderStatus,
   recorderStatusTone
 } from "@/domain/runtime-control/formatting/status";
@@ -227,7 +227,10 @@ function RecorderDetails({
             label: "Bed",
             value: recorder.bedName ?? recorder.bedID ?? NOT_REPORTED
           },
-          { label: "Patient", value: formatBoolean(recorder.patientConnected) },
+          {
+            label: "Patient status",
+            value: formatPatientStatus(recorder.patientConnected)
+          },
           { label: "First seen", value: formatLocalDateTime(recorder.firstSeenAt) },
           {
             label: "Last seen",
