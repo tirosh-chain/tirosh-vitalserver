@@ -77,16 +77,13 @@ final class RuntimeRecorderActivityChartDataBuilderTests: XCTestCase {
         let displayed = builder.displayActivityBuckets(
             buckets,
             interval: .fiveMinutes,
-            period: .last15Minutes
+            period: .lastHour
         )
 
-        XCTAssertEqual(displayed.map(\.bucketStartedAt), [
-            "2026-05-29T23:55:00Z",
-            "2026-05-30T00:00:00Z",
-            "2026-05-30T00:05:00Z",
-            "2026-05-30T00:10:00Z",
-        ])
-        XCTAssertEqual(displayed.map(\.messageCount), [0, 3, 0, 7])
+        XCTAssertEqual(displayed.first?.bucketStartedAt, "2026-05-29T23:10:00Z")
+        XCTAssertEqual(displayed.last?.bucketStartedAt, "2026-05-30T00:10:00Z")
+        XCTAssertEqual(displayed.count, 13)
+        XCTAssertEqual(displayed.map(\.messageCount).filter { $0 > 0 }, [3, 7])
     }
 
     func testActivityDisplayUsesLatestTimestampAndOwnsSummaryMetrics() throws {

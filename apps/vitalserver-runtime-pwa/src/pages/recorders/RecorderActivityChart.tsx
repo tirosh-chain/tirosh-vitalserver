@@ -15,15 +15,16 @@ const bucketOptions = [
 ];
 
 const rangeOptions = [
-  { label: "Last 15 min", seconds: 15 * 60 },
-  { label: "Last 1 hour", seconds: 60 * 60 },
-  { label: "Last 6 hours", seconds: 6 * 60 * 60 },
+  { label: "Last hour", seconds: 60 * 60 },
+  { label: "Last 4 hours", seconds: 4 * 60 * 60 },
+  { label: "Last 8 hours", seconds: 8 * 60 * 60 },
   { label: "Last 12 hours", seconds: 12 * 60 * 60 },
-  { label: "All (12h windows)", seconds: null }
+  { label: "Last 24 hours", seconds: 24 * 60 * 60 },
+  { label: "All", seconds: null }
 ];
 
 const allSamplesWindowSeconds = 12 * 60 * 60;
-const defaultAllSamplesPageStepHours = 3;
+const defaultAllSamplesPageStepHours = 4;
 const allSamplesMinPageStepHours = 1;
 const allSamplesMaxPageStepHours = 12;
 
@@ -155,6 +156,11 @@ export function RecorderActivityChart({
               ))}
             </select>
           </label>
+          {latestActivity ? (
+            <span className="chart-meta">
+              Last activity {formatTime(latestActivity.observedAt)}
+            </span>
+          ) : null}
           {allSamplesMode ? (
             <label>
               Window slide
@@ -177,11 +183,6 @@ export function RecorderActivityChart({
                 {formatDurationHours(allSamplesPageStepHours)}
               </span>
             </label>
-          ) : null}
-          {latestActivity ? (
-            <span className="chart-meta">
-              Last activity {formatTime(latestActivity.observedAt)}
-            </span>
           ) : null}
         </div>
       ) : null}
@@ -271,7 +272,7 @@ function pagedAllSamples(
   const startIndexMax = Math.max(0, buckets.length - bucketCountPerWindow);
   const steppedPageCount = Math.max(
     1,
-    Math.floor(startIndexMax / bucketStepPerWindow) + 1
+    Math.ceil(startIndexMax / bucketStepPerWindow) + 1
   );
   const pageCount = steppedPageCount;
   const latestPageIndex = pageCount - 1;

@@ -852,22 +852,25 @@ public enum RuntimeVitalRecorderActivityWindowState: String, Codable, Equatable,
 }
 
 public enum RuntimeVitalRecorderActivityWindowPeriod: String, Codable, CaseIterable, Equatable, Sendable {
-    case last15Minutes
     case lastHour
-    case last6Hours
+    case last4Hours
+    case last8Hours
     case last12Hours
+    case last24Hours
     case all
 
     public var intervalSeconds: Int? {
         switch self {
-        case .last15Minutes:
-            return 15 * 60
         case .lastHour:
             return 60 * 60
-        case .last6Hours:
-            return 6 * 60 * 60
+        case .last4Hours:
+            return 4 * 60 * 60
+        case .last8Hours:
+            return 8 * 60 * 60
         case .last12Hours:
             return 12 * 60 * 60
+        case .last24Hours:
+            return 24 * 60 * 60
         case .all:
             return nil
         }
@@ -878,6 +881,7 @@ public struct RuntimeVitalRecorderActivityWindowQuery: Codable, Equatable, Senda
     public static let oneMinuteBucketSeconds = 60
     public static let fiveMinuteBucketSeconds = 300
     public static let allWindowSeconds = 12 * 60 * 60
+    public static let allWindowStepSeconds = 4 * 60 * 60
 
     public let vrcode: String
     public let bucketSeconds: Int

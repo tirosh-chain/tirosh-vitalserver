@@ -486,24 +486,27 @@ public enum RecorderActivityBucketInterval: Int, CaseIterable, Identifiable {
 }
 
 public enum RecorderActivityPeriod: String, CaseIterable, Identifiable {
-    case last15Minutes = "last-15-minutes"
     case lastHour = "last-hour"
-    case last6Hours = "last-6-hours"
+    case last4Hours = "last-4-hours"
+    case last8Hours = "last-8-hours"
     case last12Hours = "last-12-hours"
+    case last24Hours = "last-24-hours"
     case all
 
     public var id: String { rawValue }
 
     public var interval: TimeInterval? {
         switch self {
-        case .last15Minutes:
-            return 15 * 60
         case .lastHour:
             return 60 * 60
-        case .last6Hours:
-            return 6 * 60 * 60
+        case .last4Hours:
+            return 4 * 60 * 60
+        case .last8Hours:
+            return 8 * 60 * 60
         case .last12Hours:
             return 12 * 60 * 60
+        case .last24Hours:
+            return 24 * 60 * 60
         case .all:
             return nil
         }
@@ -624,14 +627,16 @@ extension RecorderActivityPeriod {
 
     var windowPeriod: RuntimeVitalRecorderActivityWindowPeriod {
         switch self {
-        case .last15Minutes:
-            return .last15Minutes
         case .lastHour:
             return .lastHour
-        case .last6Hours:
-            return .last6Hours
+        case .last4Hours:
+            return .last4Hours
+        case .last8Hours:
+            return .last8Hours
         case .last12Hours:
             return .last12Hours
+        case .last24Hours:
+            return .last24Hours
         case .all:
             return .all
         }
@@ -639,14 +644,16 @@ extension RecorderActivityPeriod {
 
     var title: String {
         switch self {
-        case .last15Minutes:
-            return "Last 15 min"
         case .lastHour:
             return "Last hour"
-        case .last6Hours:
-            return "Last 6 hours"
+        case .last4Hours:
+            return "Last 4 hours"
+        case .last8Hours:
+            return "Last 8 hours"
         case .last12Hours:
             return "Last 12 hours"
+        case .last24Hours:
+            return "Last 24 hours"
         case .all:
             return "All"
         }

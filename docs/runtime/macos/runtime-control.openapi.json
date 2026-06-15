@@ -2147,10 +2147,11 @@
       "RuntimeVitalRecorderActivityWindowPeriod": {
         "type": "string",
         "enum": [
-          "last15Minutes",
           "lastHour",
-          "last6Hours",
+          "last4Hours",
+          "last8Hours",
           "last12Hours",
+          "last24Hours",
           "all"
         ],
         "default": "lastHour"

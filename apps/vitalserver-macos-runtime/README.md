@@ -44,7 +44,7 @@ Browser / VRecorder
 | air-gapped 현장 업데이트 bundle을 만들고 싶다 | `make dist/update/release` |
 | 만든 update bundle을 검증하고 싶다 | `make dist/update/verify/release` |
 | 개발용 package를 현재 Mac에 설치해 보고 싶다 | `make dist/install/dev` |
-| 설치된 runtime 상태를 확인하고 싶다 | `make dist/installed/health` |
+| repo 기반 개발 설치 runtime 상태를 확인하고 싶다 | `make dist/installed/health` |
 | 권한/update/observability 실패 주입 시나리오를 빠르게 확인하고 싶다 | `make runtime/chaos` |
 | 권한/update/observability 실패 주입 시나리오를 반복 확인하고 싶다 | `make runtime/chaos/loop` |
 | 개발용 설치물을 지우고 싶다 | `make dist/uninstall/dev` |
@@ -233,7 +233,7 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 | `make dist/update/verify/dev` | dev product update bundle checksum/manifest 검증 |
 | `make dist/update/verify/release` | release product update bundle checksum/manifest 검증 |
 | `make dist/install/dev` | 현재 Mac에 개발용 package 설치 |
-| `make dist/installed/health` | 설치된 launchd VM/proxy 상태 확인 |
+| `make dist/installed/health` | repo 기반 개발 설치의 launchd VM/proxy 상태 확인 |
 | `make dist/uninstall/dev` | 개발용 설치물 제거 |
 | `make runtime/up` | 개발 VM start + host proxy 연결 |
 | `make runtime/health` | 개발 VM health 확인 |

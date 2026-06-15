@@ -55,7 +55,7 @@ v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docke
 | 폐쇄망 Product Update | offline product update bundle tarball | `make dist/update/release`, Helper app Update 탭 | [Packaging and Update](packaging.md) |
 | VM Image Update | offline VM image update bundle tarball | `make dist/image-update/release`, Danger Zone | [Packaging and Update](packaging.md), [Update](update.md) |
 | 온라인 업데이트 | 같은 update bundle 계약, download source만 온라인 | release hardening 대상 | [Packaging and Update](packaging.md) |
-| 설치 후 상태 확인 | `/Applications/VitalServer Helper.app` Status 탭 | `make dist/installed/health`, `vitalserver-vm runtime health` | [Runtime](runtime.md), [Troubleshooting](../../troubleshooting/index.md) |
+| 설치 후 상태 확인 | `/Applications/VitalServer Helper.app` Status 탭 | `vitalserver-vm runtime health`; repo가 있는 개발 Mac에서는 `make dist/installed/health` | [Runtime](runtime.md), [Troubleshooting](../../troubleshooting/index.md) |
 | 운영 설정 변경 | Helper app Settings/Advanced 탭 | `vitalserver-vm runtime configure ... --restart` | [Runtime](runtime.md) |
 | 장애 대응 | Helper app Status/Logs/Advanced/Danger Zone, uninstaller | watchdog log, runtime status, troubleshooting guide | [Troubleshooting](../../troubleshooting/index.md) |
 | 개발 VM PoC | package 없이 VM/proxy 직접 실행 | `make runtime/up`, `make runtime/health`, `make runtime/down` | [Runtime](runtime.md) |

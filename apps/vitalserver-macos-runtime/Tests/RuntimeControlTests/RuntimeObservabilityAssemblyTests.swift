@@ -85,7 +85,7 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
             vrcode: "VR_A",
             bucketSeconds: 60,
             period: .all,
-            pageIndex: 1
+            pageIndex: 4
         )
         let bounds = VitalDBRecorderActivityBucketBounds(
             vrcode: "VR_A",
@@ -95,13 +95,13 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
         let records = [
             VitalDBRecorderActivityBucketRecord(
                 vrcode: "VR_A",
-                bucketStartedAt: "2026-01-01T23:59:00Z",
+                bucketStartedAt: "2026-01-02T00:00:00Z",
                 bucketSeconds: 60,
                 messageCount: 5,
                 byteCount: 50,
                 roomCount: 1,
-                firstObservedAt: "2026-01-01T23:59:01Z",
-                lastObservedAt: "2026-01-01T23:59:02Z"
+                firstObservedAt: "2026-01-02T00:00:01Z",
+                lastObservedAt: "2026-01-02T00:00:02Z"
             ),
         ]
 
@@ -112,10 +112,10 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
         )
 
         XCTAssertEqual(window.state, .loaded)
-        XCTAssertEqual(window.page.index, 1)
-        XCTAssertEqual(window.page.count, 3)
-        XCTAssertEqual(window.page.windowStartedAt, "2026-01-01T12:00:00Z")
-        XCTAssertEqual(window.page.windowEndedAt, "2026-01-02T00:00:00Z")
+        XCTAssertEqual(window.page.index, 4)
+        XCTAssertEqual(window.page.count, 5)
+        XCTAssertEqual(window.page.windowStartedAt, "2026-01-01T12:01:00Z")
+        XCTAssertEqual(window.page.windowEndedAt, "2026-01-02T00:01:00Z")
         XCTAssertEqual(window.buckets.count, 720)
         XCTAssertEqual(window.buckets.last?.messageCount, 5)
     }
@@ -125,7 +125,7 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
             vrcode: "VR_A",
             bucketSeconds: 300,
             period: .all,
-            pageIndex: 1
+            pageIndex: 4
         )
         let bounds = VitalDBRecorderActivityBucketBounds(
             vrcode: "VR_A",
@@ -139,8 +139,8 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
         ))
 
         XCTAssertEqual(readQuery.vrcode, "VR_A")
-        XCTAssertEqual(readQuery.since, "2026-01-01T12:00:00Z")
-        XCTAssertEqual(readQuery.until, "2026-01-02T00:00:00Z")
+        XCTAssertEqual(readQuery.since, "2026-01-01T12:05:00Z")
+        XCTAssertEqual(readQuery.until, "2026-01-02T00:05:00Z")
         XCTAssertEqual(readQuery.limit, 2000)
     }
 

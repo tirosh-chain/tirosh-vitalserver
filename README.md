@@ -89,39 +89,42 @@ make testkit/install-release TESTKIT_VERSION=0.1.1
 
 ```sh
 make help               # 시작 메뉴
+make help/dev           # repository setup, Python 개발 검사
 make help/compose       # Compose sandbox, Swagger, testkit
 make help/runtime       # local macOS VM runtime lifecycle
-make help/dist          # package, install, update bundle
 make help/pwa           # Runtime Control PWA
-make help/dev           # repository setup, Python 개발 검사
+make help/dist          # package, install, update bundle
 make help/devtools      # 저수준 build/debug/troubleshooting
 
 make dev/doctor         # 로컬 개발 도구와 repository setup 확인
 make dev/bootstrap      # .env, submodule, proxy config, 선택적 Python workspace 준비
 
 make compose/up             # macOS host proxy와 Compose sandbox 실행
+make compose/open           # VitalServer 브라우저 열기
+make testkit/smoke          # bounded productization smoke scenario
 make compose/down           # proxy와 Compose stack 중지, Docker volume 유지
 make compose/logs           # container log 확인
 make compose/ps             # container 상태 확인
 make compose/rebuild        # app image rebuild 후 app container만 재생성
 make compose/clean/volumes  # proxy와 Compose stack 중지, Docker volume 삭제
 make compose/clean          # proxy runtime, container, volume, orphan, local image 정리
-make compose/open           # VitalServer 브라우저 열기
 
 make swagger/up         # Swagger UI만 시작
 make swagger/down       # Swagger UI만 중지
 
-make testkit/smoke      # bounded productization smoke scenario
 make testkit/verify     # sample data 전송 후 UI-visible state 검증
+make testkit/health     # VitalServer health 확인
 make testkit/load       # finite load scenario
 make testkit/stream     # Ctrl+C 전까지 sample data stream
 
 make pwa/install        # Runtime Control PWA npm dependency 설치
+make pwa/verify-contract # OpenAPI 생성 type commit 상태 검증
 make pwa/check          # PWA typecheck
 make pwa/test           # PWA test
 make pwa/build          # PWA static asset build
 
 make runtime/up         # local macOS VM runtime과 host proxy 실행
+make runtime/status     # local runtime process status 확인
 make runtime/health     # local runtime health 확인
 make runtime/down       # local runtime 중지
 make runtime/chaos      # deterministic runtime chaos scenario
@@ -130,7 +133,8 @@ make dist/pkg/dev       # development pkg build
 make dist/dmg/dev       # development installer dmg build
 make dist/reset-installer/dev  # Reset Installer pkg build
 make dist/update/dev    # development product update bundle build
-make dist/installed/health
+make dist/install/dev/verified  # dev pkg verify, install, installed health check
+make dist/installed/health      # repo-driven dev install runtime health check
 ```
 
 Make는 `.env`를 자동으로 읽습니다. 포트를 바꾸려면 `.env`를 수정하거나 일회성으로

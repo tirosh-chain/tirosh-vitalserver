@@ -360,10 +360,11 @@ describe("runtime console pages", () => {
 
     expect(screen.getByText("Known recorders")).toBeInTheDocument();
     expect(screen.getAllByText("VR_A").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Redis verified").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("IP verified").length).toBeGreaterThan(0);
     expect(screen.getByText("Network access")).toBeInTheDocument();
-    expect(screen.getAllByText("ip_VR_A").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("x-forwarded-for").length).toBeGreaterThan(0);
+    expect(screen.getByText("Active IP")).toBeInTheDocument();
+    expect(screen.queryByText("Redis key")).not.toBeInTheDocument();
+    expect(screen.queryByText("x-forwarded-for")).not.toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Packet activity/ })).toBeInTheDocument();
     expect(screen.getByText("0 B/s")).toBeInTheDocument();
     expect(screen.queryByText("Room entries")).not.toBeInTheDocument();
@@ -390,7 +391,7 @@ describe("runtime console pages", () => {
     expect(screen.getByLabelText("Bucket")).toHaveValue("60");
     expect(
       within(screen.getByLabelText("Period")).getByRole("option", {
-        name: "Last 12 hours"
+        name: "Last 24 hours"
       })
     ).toBeInTheDocument();
 
@@ -399,14 +400,16 @@ describe("runtime console pages", () => {
     });
 
     const windowSlider = screen.getByLabelText("Window") as HTMLInputElement;
+    expect(windowSlider.max).toBe("1");
+    expect(windowSlider.value).toBe("1");
     const slideSlider = screen.getByLabelText("Window slide") as HTMLInputElement;
-    expect(windowSlider.max).toBe("0");
-    expect(windowSlider.value).toBe("0");
-    expect(slideSlider).toBeInTheDocument();
-    expect(slideSlider.value).toBe("3");
+    expect(slideSlider.value).toBe("4");
     expect(slideSlider.max).toBe("12");
-    expect(slideSlider).toHaveAttribute("title", "Window slides by 3h each move");
-    expect(screen.getByText(/slide 3h/)).toBeInTheDocument();
+    expect(slideSlider).toHaveAttribute(
+      "title",
+      "Window slides by 4h each move"
+    );
+    expect(screen.getByText(/slide 4h/)).toBeInTheDocument();
 
     fireEvent.change(windowSlider, { target: { value: "0" } });
     expect(windowSlider.value).toBe("0");

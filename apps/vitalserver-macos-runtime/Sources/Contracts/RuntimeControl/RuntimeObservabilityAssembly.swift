@@ -358,10 +358,17 @@ public enum RuntimeVitalRecorderActivityWindowAssembler {
         let endTimestamp: TimeInterval
 
         if query.period == .all {
-            pageCount = max(Int(ceil(Double(bucketCount) / Double(bucketsPerWindow))), 1)
+            let bucketsPerPageStep = max(
+                RuntimeVitalRecorderActivityWindowQuery.allWindowStepSeconds / query.bucketSeconds,
+                1
+            )
+            let maxStartBucketIndex = max(bucketCount - bucketsPerWindow, 0)
+            pageCount = max(Int(ceil(Double(maxStartBucketIndex) / Double(bucketsPerPageStep))) + 1, 1)
             let latestPageIndex = pageCount - 1
             pageIndex = min(max(query.pageIndex ?? latestPageIndex, 0), latestPageIndex)
-            startTimestamp = firstTimestamp + Double(pageIndex * bucketsPerWindow * query.bucketSeconds)
+            startTimestamp = firstTimestamp + Double(
+                min(pageIndex * bucketsPerPageStep, maxStartBucketIndex) * query.bucketSeconds
+            )
             endTimestamp = min(
                 startTimestamp + Double((bucketsPerWindow - 1) * query.bucketSeconds),
                 latestTimestamp

@@ -266,13 +266,10 @@ struct RuntimeRecordersPanel: View {
     private func recorderNetworkAccess(_ recorder: RuntimeVitalRecorderRecord) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
             detailRow("Connection IP", reportedText(recorder.lastIP, missing: "IP not reported"))
-            detailRow("Redis IP sync", recorderRedisIPSyncDetailText(recorder.redisIPSync))
-            detailRow("Selected IP", reportedText(recorder.redisIPSync?.selectedIp, missing: "Selected IP not reported"))
-            detailRow("IP source", reportedText(recorder.redisIPSync?.ipSource, missing: "IP source not reported"))
-            detailRow("Redis value", reportedText(recorder.redisIPSync?.redisValue, missing: "Redis value not reported"))
-            detailRow("Redis key", reportedText(recorder.redisIPSync?.redisKey, missing: "Redis key not reported"))
-            detailRow("Last verified", viewModel.presentationFormatter.systemTimeText(recorder.redisIPSync?.lastVerifiedAt))
-            detailRow("Last failure", reportedText(recorder.redisIPSync?.lastFailure, missing: "-"))
+            detailRow("IP verification", recorderIPVerificationDetailText(recorder.redisIPSync))
+            detailRow("Active IP", reportedText(recorder.redisIPSync?.selectedIp, missing: "Active IP not reported"))
+            detailRow("Last checked", recorderIPVerificationCheckedAtText(recorder.redisIPSync))
+            detailRow("Last issue", reportedText(recorder.redisIPSync?.lastFailure, missing: "-"))
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -478,7 +475,7 @@ struct RuntimeRecordersPanel: View {
                 activityBucketInterval = interval
                 activityAllSamplesPageIndex = nil
                 if !activityPeriod.isEnabled(for: interval) {
-                    activityPeriod = .last6Hours
+                    activityPeriod = .last8Hours
                 }
             }
         )
@@ -529,8 +526,6 @@ struct RuntimeRecordersPanel: View {
 
     private func recorderMetadata(_ recorder: RuntimeVitalRecorderRecord) -> some View {
         Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 9) {
-            detailRow("IP", reportedText(recorder.lastIP, missing: "IP not reported"))
-            detailRow("Redis IP sync", recorderRedisIPSyncSummaryText(recorder.redisIPSync))
             detailRow(AppConstants.Labels.recorderVersion, reportedText(recorder.version, missing: "Version not reported"))
             detailRow(AppConstants.Labels.bed, reportedText(recorder.bedName ?? recorder.bedID, missing: "Bed not reported"))
             detailRow("Bed ID", reportedText(linkedBed(for: recorder)?.bedID ?? recorder.bedID, missing: "Bed ID not reported"))
@@ -672,9 +667,9 @@ struct RuntimeRecordersPanel: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .textSelection(.enabled)
-            Text(recorderRedisIPSyncSummaryText(recorder.redisIPSync))
+            Text(recorderIPVerificationSummaryText(recorder.redisIPSync))
                 .font(.caption2)
-                .foregroundStyle(recorderRedisIPSyncColor(recorder.redisIPSync))
+                .foregroundStyle(recorderIPVerificationColor(recorder.redisIPSync))
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -713,39 +708,39 @@ struct RuntimeRecordersPanel: View {
         displayPolicy.statusText(status)
     }
 
-    private func recorderRedisIPSyncSummaryText(_ sync: RuntimeRecorderRedisIPSyncObservation?) -> String {
+    private func recorderIPVerificationSummaryText(_ sync: RuntimeRecorderRedisIPSyncObservation?) -> String {
         guard let status = sync?.status else {
-            return "Redis sync not reported"
+            return "IP status not reported"
         }
         switch status {
         case .verified:
-            return "Redis verified"
+            return "IP verified"
         case .corrected:
-            return "Redis corrected"
+            return "IP updated"
         case .correcting:
-            return "Redis correcting"
+            return "Updating IP"
         case .mismatch:
-            return "Redis mismatch"
+            return "IP mismatch"
         case .writeFailed:
-            return "Redis write failed"
+            return "IP update failed"
         case .verifyFailed:
-            return "Redis verify failed"
+            return "IP check failed"
         case .pending, .written:
-            return "Redis pending"
+            return "IP check pending"
         case .disabled:
-            return "Redis sync disabled"
+            return "IP tracking disabled"
         case .unknown:
-            return "Redis sync unknown"
+            return "IP status unknown"
         case .unavailable:
-            return "Redis sync unavailable"
+            return "IP status unavailable"
         }
     }
 
-    private func recorderRedisIPSyncDetailText(_ sync: RuntimeRecorderRedisIPSyncObservation?) -> String {
+    private func recorderIPVerificationDetailText(_ sync: RuntimeRecorderRedisIPSyncObservation?) -> String {
         guard let sync else {
             return "Not reported"
         }
-        let base = recorderRedisIPSyncSummaryText(sync)
+        let base = recorderIPVerificationSummaryText(sync)
         if let lastVerifiedAt = sync.lastVerifiedAt {
             return "\(base) at \(viewModel.presentationFormatter.systemTimeText(lastVerifiedAt))"
         }
@@ -755,7 +750,11 @@ struct RuntimeRecordersPanel: View {
         return base
     }
 
-    private func recorderRedisIPSyncColor(_ sync: RuntimeRecorderRedisIPSyncObservation?) -> Color {
+    private func recorderIPVerificationCheckedAtText(_ sync: RuntimeRecorderRedisIPSyncObservation?) -> String {
+        viewModel.presentationFormatter.systemTimeText(sync?.lastVerifiedAt ?? sync?.lastWriteAt)
+    }
+
+    private func recorderIPVerificationColor(_ sync: RuntimeRecorderRedisIPSyncObservation?) -> Color {
         switch sync?.status {
         case .verified, .corrected:
             return .green
