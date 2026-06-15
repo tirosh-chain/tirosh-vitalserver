@@ -76,7 +76,8 @@ VM disk repair 절차 중 데이터 보존 요구에 맞는 쪽을 선택합니�
 
 - guest poller는 `systemctl start --no-block` 성공을 operation 성공으로 취급하지 않습니다.
 - unit이 `failed`이면 request를 반복 schedule하지 않고 explicit failed result를 기록합니다.
-- update shutdown result JSON은 temp replace 후 file/directory fsync로 poweroff 직전 내구성을 높입니다.
+- update shutdown result JSON은 temp replace 후 file/directory fsync로 내구성을 높입니다.
+- final sync가 끝나면 Guest는 poweroff request 전에 `ready`/`poweroff-ready` result를 먼저 기록해야 합니다.
 - update VM shutdown 실패는 `RuntimeVMStateControlUseCase`가 회수 책임을 갖고 force-stop fallback을 실행합니다.
 - apply-bundle operation lease는 `expiresAt`을 가져야 하며, stale operation이 watchdog recovery를 영구 차단하지 않습니다.
 

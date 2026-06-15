@@ -54,6 +54,7 @@ class ObservationPhase(StrEnum):
 class ShutdownPhase(StrEnum):
     PREPARING = "preparing"
     PREPARED = "prepared"
+    POWEROFF_READY = "poweroff-ready"
     POWEROFF_REQUESTED = "poweroff-requested"
     POWEROFF_FAILED = "poweroff-failed"
 

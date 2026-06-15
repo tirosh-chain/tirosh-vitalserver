@@ -30,6 +30,18 @@ final class GuestShutdownEvaluatorTests: XCTestCase {
             .ready(message: "safe")
         )
         XCTAssertEqual(
+            GuestShutdownEvaluator.evaluate(
+                result(
+                    status: .ready,
+                    requestId: "request-1",
+                    message: "ready for host handoff",
+                    shutdownPhase: .poweroffReady
+                ),
+                expectedRequestId: "request-1"
+            ),
+            .ready(message: "ready for host handoff")
+        )
+        XCTAssertEqual(
             GuestShutdownEvaluator.evaluate(result(status: .failed, requestId: "request-1", message: "backup failed"), expectedRequestId: "request-1"),
             .failed(message: "backup failed")
         )

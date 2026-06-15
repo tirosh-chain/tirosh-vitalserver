@@ -226,7 +226,7 @@ Recorders 화면은 VRecorder 상태, bed assignment, anomaly, 네트워크 접�
 IP 보정 결과는 `IP verification`으로 모으고, 세부 진단은 Network access 영역에서 확인합니다.
 
 Recorder activity range는 근무 단위 탐색에 맞춰 `Last hour`, `Last 4 hours`, `Last 8 hours`,
-`Last 12 hours`, `Last 24 hours`, `All`을 사용합니다. `All`은 12시간 window를 보여주며,
+`Last 12 hours`, `All`을 사용합니다. `All`은 12시간 window를 보여주며,
 기본 window slide는 4시간입니다. PWA에서는 이 slide 간격을 1-12시간 사이에서 조절할 수
 있습니다. activity read 실패, 미제공, 빈 결과는 서로 다른 상태로 표시합니다.
 

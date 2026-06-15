@@ -151,15 +151,16 @@ def run_prepare(context: PrepareUpdateShutdownContext) -> None:
     )
     logger.info("final sync started before guest poweroff")
     run(["sync"], timeout_seconds=FINAL_SYNC_TIMEOUT_SECONDS)
-    request_guest_poweroff()
-    collect_guest_observability(ObservationPhase.SHUTDOWN_POWEROFF_REQUESTED)
     write_result(
         context,
         OperationStatus.READY,
-        "Guest poweroff requested after services stopped and filesystems synced.",
-        step=ShutdownPhase.POWEROFF_REQUESTED.value,
-        shutdown_phase=ShutdownPhase.POWEROFF_REQUESTED,
+        "Guest services are stopped and filesystems synced. Guest poweroff request is being issued.",
+        step=ShutdownPhase.POWEROFF_READY.value,
+        shutdown_phase=ShutdownPhase.POWEROFF_READY,
     )
+    logger.info("guest poweroff ready result recorded")
+    request_guest_poweroff()
+    collect_guest_observability(ObservationPhase.SHUTDOWN_POWEROFF_REQUESTED)
     REQUEST_FILE.unlink(missing_ok=True)
 
 

@@ -2151,7 +2151,6 @@
           "last4Hours",
           "last8Hours",
           "last12Hours",
-          "last24Hours",
           "all"
         ],
         "default": "lastHour"

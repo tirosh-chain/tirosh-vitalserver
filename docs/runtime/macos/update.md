@@ -285,7 +285,7 @@ repair가 같은 request를 재사용하거나 stale request를 다시 실행하
 | Redis backup | update 전 Redis data backup을 만들고 실패하면 typed failure로 중단한다 |
 | compose stop | service별 명시 순서와 timeout으로 container를 중지한다 |
 | final sync | filesystem sync가 끝난 뒤에만 poweroff request를 진행한다 |
-| poweroff request | `systemctl --no-block poweroff` 요청 성공 후 `ready`/`poweroff-requested` result를 기록한다 |
+| poweroff handoff | final sync 직후 `ready`/`poweroff-ready` result를 먼저 durable write하고, 그 다음 `systemctl --no-block poweroff`를 요청한다 |
 | host wait | Host는 result와 VM lifecycle/poweroff wait를 분리해서 관측한다 |
 
 Compose stop은 whole-stack fallback이 아니라 아래 순서의 명시 operation입니다.

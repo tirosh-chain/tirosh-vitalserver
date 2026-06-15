@@ -477,7 +477,7 @@ Helper app, Runtime Control API, 기존 설치된 uninstaller가 반드시 살�
 Ubuntu/rootfs build는 floating `.../releases/<series>/release` URL을 사용하지 않습니다. 기본
 Noble source는 검증한 cloud image serial인 `release-20260518`처럼 고정된 release directory를
 가리켜야 합니다. 새 serial이나 Ubuntu series로 바꿀 때는 `boot -> healthy -> prepare update
-shutdown -> guest poweroff requested -> VM process exit` 흐름을 반복 검증한 뒤 config를
+shutdown -> guest poweroff handoff -> VM process exit` 흐름을 반복 검증한 뒤 config를
 업데이트합니다. 이 규칙은 rootfs/kernel provenance가 빌드 시점마다 바뀌어 update shutdown
 failure의 원인을 숨기지 않도록 하기 위한 packaging contract입니다.
 

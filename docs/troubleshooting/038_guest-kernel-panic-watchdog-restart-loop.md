@@ -105,7 +105,7 @@ launchctl print system/com.tirosh.vitalserver-vm | grep "exit timeout"
 확인할 증거:
 
 - `Kernel panic - not syncing`이 있으면 guest kernel panic이 1차 원인입니다.
-- update 중이면 `prepare-update-shutdown.log`에서 `guest poweroff requested`까지 완료됐는지
+- update 중이면 `prepare-update-shutdown-result.json`이 `poweroff-ready` 또는 `poweroff-requested`까지 완료됐는지
   확인합니다. 완료됐다면 Host가 Guest shutdown 상태를 추정하지 않고 VM process exit 상태를
   별도 실패로 봐야 합니다.
 - `jbd2/vda1-8`, `EXT4-fs error`, `Aborting journal`, `Remounting filesystem read-only`는 VM disk/journal 손상을 의미합니다.
@@ -216,7 +216,7 @@ AGENTS.md에 맞춘 구현 순서는 아래가 안전합니다.
    - terminal storage failure에서 watchdog recovery가 suppress되는 test를 추가합니다.
    - watchdog VM restart가 safe shutdown workflow를 호출하는 test를 추가합니다.
    - stale old bootstrap result가 fresh lifecycle state를 덮어쓰지 못하는 test를 추가합니다.
-   - update shutdown soak test에서 guest가 `poweroff-requested`를 쓴 뒤 Host가 observed VM pid exit을
+   - update shutdown soak test에서 guest가 `poweroff-ready` 또는 `poweroff-requested`를 쓴 뒤 Host가 observed VM pid exit을
      확인하는지 반복 검증합니다.
 
 ## Implementation Cautions

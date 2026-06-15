@@ -33,7 +33,7 @@ Runtime may later recover and pass health, but the bundle apply itself failed an
 
 Host waited on the pid currently stored in `vitalserver-vm.pid`.
 
-During update, guest correctly reported `shutdownPhase=poweroff-requested`. The VM process then exited, but launchd `keepalive | runatload` started a replacement VM and rewrote the pid file. Host then followed the replacement pid instead of the VM process that was active when the guest shutdown request was issued.
+During update, guest correctly reported `shutdownPhase=poweroff-requested`. In newer bundles the equivalent handoff may be `shutdownPhase=poweroff-ready`, written immediately after final sync and before requesting OS poweroff. The VM process then exited, but launchd `keepalive | runatload` started a replacement VM and rewrote the pid file. Host then followed the replacement pid instead of the VM process that was active when the guest shutdown request was issued.
 
 The same issue existed in direct stop paths: `requestStopAndWait` signaled one pid, then `waitUntilStopped` could re-read the pid file and follow a newly written pid.
 

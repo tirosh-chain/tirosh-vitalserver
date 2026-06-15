@@ -144,6 +144,53 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
         XCTAssertEqual(readQuery.limit, 2000)
     }
 
+    func testRecorderActivityWindowUsesCurrentTimeForRecentPeriods() throws {
+        let query = RuntimeVitalRecorderActivityWindowQuery(
+            vrcode: "VR_A",
+            bucketSeconds: 60,
+            period: .lastHour
+        )
+        let bounds = VitalDBRecorderActivityBucketBounds(
+            vrcode: "VR_A",
+            firstBucketStartedAt: "2026-01-01T00:00:00Z",
+            latestBucketStartedAt: "2026-01-01T00:40:00Z"
+        )
+        let currentTime = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-01-01T01:00:10Z"))
+
+        let readQuery = try XCTUnwrap(RuntimeVitalRecorderActivityWindowAssembler.windowReadQuery(
+            query: query,
+            bounds: bounds,
+            currentTime: currentTime
+        ))
+        let window = RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
+            query: query,
+            bounds: bounds,
+            records: [
+                VitalDBRecorderActivityBucketRecord(
+                    vrcode: "VR_A",
+                    bucketStartedAt: "2026-01-01T00:40:00Z",
+                    bucketSeconds: 60,
+                    messageCount: 5,
+                    byteCount: 50,
+                    roomCount: 1,
+                    firstObservedAt: "2026-01-01T00:40:01Z",
+                    lastObservedAt: "2026-01-01T00:40:02Z"
+                ),
+            ],
+            currentTime: currentTime
+        )
+
+        XCTAssertEqual(readQuery.since, "2026-01-01T00:01:00Z")
+        XCTAssertEqual(readQuery.until, "2026-01-01T01:01:00Z")
+        XCTAssertEqual(window.page.windowStartedAt, "2026-01-01T00:01:00Z")
+        XCTAssertEqual(window.page.windowEndedAt, "2026-01-01T01:01:00Z")
+        XCTAssertEqual(window.buckets.count, 60)
+        XCTAssertEqual(window.buckets.first?.messageCount, 0)
+        XCTAssertEqual(window.buckets.first(where: { $0.bucketStartedAt == "2026-01-01T00:40:00Z" })?.messageCount, 5)
+        XCTAssertEqual(window.buckets.last?.bucketStartedAt, "2026-01-01T01:00:00Z")
+        XCTAssertEqual(window.buckets.last?.messageCount, 0)
+    }
+
     func testRecorderActivityWindowAssemblerFillsZerosFromInitialConnectionBound() {
         let query = RuntimeVitalRecorderActivityWindowQuery(
             vrcode: "VR_A",

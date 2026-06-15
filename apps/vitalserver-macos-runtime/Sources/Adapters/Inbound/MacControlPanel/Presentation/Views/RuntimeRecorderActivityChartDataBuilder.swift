@@ -490,7 +490,6 @@ public enum RecorderActivityPeriod: String, CaseIterable, Identifiable {
     case last4Hours = "last-4-hours"
     case last8Hours = "last-8-hours"
     case last12Hours = "last-12-hours"
-    case last24Hours = "last-24-hours"
     case all
 
     public var id: String { rawValue }
@@ -505,8 +504,6 @@ public enum RecorderActivityPeriod: String, CaseIterable, Identifiable {
             return 8 * 60 * 60
         case .last12Hours:
             return 12 * 60 * 60
-        case .last24Hours:
-            return 24 * 60 * 60
         case .all:
             return nil
         }
@@ -635,8 +632,6 @@ extension RecorderActivityPeriod {
             return .last8Hours
         case .last12Hours:
             return .last12Hours
-        case .last24Hours:
-            return .last24Hours
         case .all:
             return .all
         }
@@ -652,8 +647,6 @@ extension RecorderActivityPeriod {
             return "Last 8 hours"
         case .last12Hours:
             return "Last 12 hours"
-        case .last24Hours:
-            return "Last 24 hours"
         case .all:
             return "All"
         }

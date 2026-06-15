@@ -249,6 +249,7 @@ public enum RuntimeVitalRecorderActivityWindowAssembler {
         query: RuntimeVitalRecorderActivityWindowQuery,
         bounds: VitalDBRecorderActivityBucketBounds?,
         records: [VitalDBRecorderActivityBucketRecord],
+        currentTime: Date = Date(),
         readError: String? = nil
     ) -> RuntimeVitalRecorderActivityWindow {
         if let validationError = query.validationError {
@@ -294,7 +295,12 @@ public enum RuntimeVitalRecorderActivityWindowAssembler {
 
         let firstTimestamp = normalizedTimestamp(firstDate, bucketSeconds: query.bucketSeconds)
         let latestTimestamp = normalizedTimestamp(latestDate, bucketSeconds: query.bucketSeconds)
-        let page = pageMetadata(query: query, firstTimestamp: firstTimestamp, latestTimestamp: latestTimestamp)
+        let page = pageMetadata(
+            query: query,
+            firstTimestamp: firstTimestamp,
+            latestTimestamp: latestTimestamp,
+            currentTimestamp: currentTime.timeIntervalSince1970
+        )
         let buckets = filledWindowBuckets(
             records: records,
             start: page.windowStartedAt,
@@ -312,7 +318,8 @@ public enum RuntimeVitalRecorderActivityWindowAssembler {
 
     public static func windowReadQuery(
         query: RuntimeVitalRecorderActivityWindowQuery,
-        bounds: VitalDBRecorderActivityBucketBounds
+        bounds: VitalDBRecorderActivityBucketBounds,
+        currentTime: Date = Date()
     ) -> VitalDBRecorderActivityBucketQuery? {
         guard query.validationError == nil,
               let firstDate = activityDate(from: bounds.firstBucketStartedAt),
@@ -321,7 +328,12 @@ public enum RuntimeVitalRecorderActivityWindowAssembler {
         }
         let firstTimestamp = normalizedTimestamp(firstDate, bucketSeconds: query.bucketSeconds)
         let latestTimestamp = normalizedTimestamp(latestDate, bucketSeconds: query.bucketSeconds)
-        let page = pageMetadata(query: query, firstTimestamp: firstTimestamp, latestTimestamp: latestTimestamp)
+        let page = pageMetadata(
+            query: query,
+            firstTimestamp: firstTimestamp,
+            latestTimestamp: latestTimestamp,
+            currentTimestamp: currentTime.timeIntervalSince1970
+        )
         return VitalDBRecorderActivityBucketQuery(
             vrcode: query.vrcode,
             since: page.windowStartedAt,
@@ -347,11 +359,17 @@ public enum RuntimeVitalRecorderActivityWindowAssembler {
     private static func pageMetadata(
         query: RuntimeVitalRecorderActivityWindowQuery,
         firstTimestamp: TimeInterval,
-        latestTimestamp: TimeInterval
+        latestTimestamp: TimeInterval,
+        currentTimestamp: TimeInterval
     ) -> RuntimeVitalRecorderActivityWindowPage {
         let windowSeconds = query.period.intervalSeconds ?? RuntimeVitalRecorderActivityWindowQuery.allWindowSeconds
         let bucketsPerWindow = max(windowSeconds / query.bucketSeconds, 1)
-        let bucketCount = Int(max(0, (latestTimestamp - firstTimestamp) / Double(query.bucketSeconds))) + 1
+        let normalizedCurrentTimestamp = max(
+            latestTimestamp,
+            floor(currentTimestamp / Double(query.bucketSeconds)) * Double(query.bucketSeconds)
+        )
+        let timelineEndTimestamp = query.period == .all ? latestTimestamp : normalizedCurrentTimestamp
+        let bucketCount = Int(max(0, (timelineEndTimestamp - firstTimestamp) / Double(query.bucketSeconds))) + 1
         let pageCount: Int
         let pageIndex: Int
         let startTimestamp: TimeInterval
@@ -376,10 +394,10 @@ public enum RuntimeVitalRecorderActivityWindowAssembler {
         } else {
             pageCount = 1
             pageIndex = 0
-            endTimestamp = latestTimestamp
+            endTimestamp = normalizedCurrentTimestamp
             startTimestamp = max(
                 firstTimestamp,
-                latestTimestamp - Double((bucketsPerWindow - 1) * query.bucketSeconds)
+                normalizedCurrentTimestamp - Double((bucketsPerWindow - 1) * query.bucketSeconds)
             )
         }
 

@@ -113,6 +113,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             )
         }
         let repository = makeVitalDBProjectionRepository(URL(fileURLWithPath: paths.runtimeObservabilityDB))
+        let currentTime = Date()
         do {
             guard let bounds = try repository.loadRecorderActivityBucketBounds(vrcode: query.vrcode) else {
                 return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
@@ -123,7 +124,8 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             }
             guard let recordQuery = RuntimeVitalRecorderActivityWindowAssembler.windowReadQuery(
                 query: query,
-                bounds: bounds
+                bounds: bounds,
+                currentTime: currentTime
             ) else {
                 return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
                     query: query,
@@ -135,7 +137,8 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(
                 query: query,
                 bounds: bounds,
-                records: try repository.loadRecorderActivityBuckets(query: recordQuery)
+                records: try repository.loadRecorderActivityBuckets(query: recordQuery),
+                currentTime: currentTime
             )
         } catch {
             return RuntimeVitalRecorderActivityWindowAssembler.makeWindow(

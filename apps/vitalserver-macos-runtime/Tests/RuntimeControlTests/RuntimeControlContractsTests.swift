@@ -1261,6 +1261,29 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.summary.staleRecorders, 1)
     }
 
+    func testVitalRecorderHistoryTreatsOutdatedOnlineRecorderAsStale() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:12:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_STALE_BY_AGE",
+                    ip: "192.168.64.21",
+                    lastSeenAt: "2026-05-26T00:10:30Z",
+                    online: true,
+                    stale: false
+                ),
+            ]
+        )
+
+        let history = RuntimeVitalRecorderHistory(observations: [observation])
+
+        XCTAssertEqual(history.recorders.map(\.status), [.stale])
+        XCTAssertEqual(history.summary.onlineRecorders, 0)
+        XCTAssertEqual(history.summary.staleRecorders, 1)
+    }
+
     func testVitalRecorderHistoryMergesRecorderRedisIPSyncFromAuditProxyStatus() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:12:00Z",

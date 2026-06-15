@@ -69,6 +69,8 @@ public enum GuestShutdownEvaluator {
         switch phase {
         case .preparing, .prepared:
             return .wait(message: result.message ?? "waiting for guest poweroff request")
+        case .poweroffReady:
+            return .ready(message: result.message ?? "guest poweroff ready")
         case .poweroffRequested:
             return .ready(message: result.message ?? "guest poweroff requested")
         case .poweroffFailed:

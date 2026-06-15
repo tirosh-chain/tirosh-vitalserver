@@ -19,7 +19,6 @@ const rangeOptions = [
   { label: "Last 4 hours", seconds: 4 * 60 * 60 },
   { label: "Last 8 hours", seconds: 8 * 60 * 60 },
   { label: "Last 12 hours", seconds: 12 * 60 * 60 },
-  { label: "Last 24 hours", seconds: 24 * 60 * 60 },
   { label: "All", seconds: null }
 ];
 

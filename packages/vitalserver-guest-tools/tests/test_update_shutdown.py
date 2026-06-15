@@ -14,7 +14,7 @@ from tirosh_guest_tools.domain.errors import GuestDependencyError
 from tirosh_guest_tools.domain.operations import ComposeAction, ShutdownPhase
 
 
-def test_prepare_update_shutdown_writes_poweroff_requested_phase(
+def test_prepare_update_shutdown_writes_poweroff_ready_phase_before_request(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
@@ -82,7 +82,7 @@ def test_prepare_update_shutdown_writes_poweroff_requested_phase(
     document = json.loads(result_file.read_text(encoding="utf-8"))
     assert document["schemaVersion"] == 2
     assert document["status"] == "ready"
-    assert document["shutdownPhase"] == ShutdownPhase.POWEROFF_REQUESTED.value
+    assert document["shutdownPhase"] == ShutdownPhase.POWEROFF_READY.value
     assert document["redisBackupPath"] == "/tmp/redis.tar.gz"
     assert not request_file.exists()
     assert events == [
@@ -96,13 +96,13 @@ def test_prepare_update_shutdown_writes_poweroff_requested_phase(
         "observe:shutdown-post-sync",
         "write:running:prepared",
         "sync",
+        "write:ready:poweroff-ready",
         "poweroff",
         "observe:shutdown-poweroff-requested",
-        "write:ready:poweroff-requested",
     ]
 
 
-def test_prepare_update_shutdown_reports_poweroff_request_failure_before_ready(
+def test_prepare_update_shutdown_reports_poweroff_request_failure_after_ready_handoff(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
@@ -172,7 +172,7 @@ def test_prepare_update_shutdown_reports_poweroff_request_failure_before_ready(
     assert document["status"] == "failed"
     assert document["shutdownPhase"] == ShutdownPhase.POWEROFF_FAILED.value
     assert "systemctl poweroff failed" in document["message"]
-    assert "write:ready:poweroff-requested" not in events
+    assert "write:ready:poweroff-ready" in events
     assert not request_file.exists()
 
 

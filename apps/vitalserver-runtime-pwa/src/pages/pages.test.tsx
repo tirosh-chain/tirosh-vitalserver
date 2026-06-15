@@ -391,9 +391,14 @@ describe("runtime console pages", () => {
     expect(screen.getByLabelText("Bucket")).toHaveValue("60");
     expect(
       within(screen.getByLabelText("Period")).getByRole("option", {
-        name: "Last 24 hours"
+        name: "Last 12 hours"
       })
     ).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText("Period")).queryByRole("option", {
+        name: "Last 24 hours"
+      })
+    ).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Period"), {
       target: { value: "all" }

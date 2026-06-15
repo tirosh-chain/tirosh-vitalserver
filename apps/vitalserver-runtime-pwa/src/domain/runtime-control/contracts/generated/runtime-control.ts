@@ -1058,7 +1058,7 @@ export interface components {
          * @default lastHour
          * @enum {string}
          */
-        RuntimeVitalRecorderActivityWindowPeriod: "lastHour" | "last4Hours" | "last8Hours" | "last12Hours" | "last24Hours" | "all";
+        RuntimeVitalRecorderActivityWindowPeriod: "lastHour" | "last4Hours" | "last8Hours" | "last12Hours" | "all";
         RuntimeVitalRecorderActivityWindowQuery: {
             vrcode: string;
             /** @enum {integer} */

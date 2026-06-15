@@ -97,7 +97,7 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
               "requestId": "shutdown-1",
               "operation": "prepare-update-shutdown",
               "status": "ready",
-              "shutdownPhase": "poweroff-requested",
+              "shutdownPhase": "poweroff-ready",
               "message": "ready",
               "redisBackupPath": "/mnt/tirosh/backups/redis/redis.tar.gz",
               "details": {
@@ -133,7 +133,7 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         XCTAssertEqual(result.requestId, "shutdown-1")
         XCTAssertEqual(result.operation, .prepareUpdateShutdown)
         XCTAssertEqual(result.status, .ready)
-        XCTAssertEqual(result.shutdownPhase, .poweroffRequested)
+        XCTAssertEqual(result.shutdownPhase, .poweroffReady)
         XCTAssertEqual(result.redisBackupPath, "/mnt/tirosh/backups/redis/redis.tar.gz")
         XCTAssertEqual(result.details?.stopAction, "ordered-compose-stop")
         XCTAssertEqual(result.details?.failedService, "app")

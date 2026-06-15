@@ -51,6 +51,7 @@ public enum GuestShutdownStatus: Codable, Equatable, Sendable {
 public enum GuestShutdownPhase: Codable, Equatable, Sendable {
     case preparing
     case prepared
+    case poweroffReady
     case poweroffRequested
     case poweroffFailed
     case unknown(String)
@@ -61,6 +62,8 @@ public enum GuestShutdownPhase: Codable, Equatable, Sendable {
             self = .preparing
         case "prepared":
             self = .prepared
+        case "poweroff-ready":
+            self = .poweroffReady
         case "poweroff-requested":
             self = .poweroffRequested
         case "poweroff-failed":
@@ -76,6 +79,8 @@ public enum GuestShutdownPhase: Codable, Equatable, Sendable {
             return "preparing"
         case .prepared:
             return "prepared"
+        case .poweroffReady:
+            return "poweroff-ready"
         case .poweroffRequested:
             return "poweroff-requested"
         case .poweroffFailed:

@@ -666,6 +666,8 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             return builder.record(
                 latestRecorder: latestRecorder,
                 latestBed: latestBed,
+                latestObservationObservedAt: latestObservation.observedAt,
+                recorderOnlineThresholdSeconds: latestObservation.recorderOnlineThresholdSeconds,
                 currentAnomalies: anomalies,
                 duplicateObservationCount: recorderDuplicateObservationCounts[builder.vrcode, default: 0],
                 activityTimeline: projectedActivityByVrcode?[builder.vrcode],
@@ -856,7 +858,6 @@ public enum RuntimeVitalRecorderActivityWindowPeriod: String, Codable, CaseItera
     case last4Hours
     case last8Hours
     case last12Hours
-    case last24Hours
     case all
 
     public var intervalSeconds: Int? {
@@ -869,8 +870,6 @@ public enum RuntimeVitalRecorderActivityWindowPeriod: String, Codable, CaseItera
             return 8 * 60 * 60
         case .last12Hours:
             return 12 * 60 * 60
-        case .last24Hours:
-            return 24 * 60 * 60
         case .all:
             return nil
         }
@@ -1251,6 +1250,8 @@ private struct RecorderBuilder {
     func record(
         latestRecorder: VitalDBRecorderObservation?,
         latestBed: VitalDBBedObservation?,
+        latestObservationObservedAt: String,
+        recorderOnlineThresholdSeconds: Int,
         currentAnomalies: [VitalDBAnomalyObservation],
         duplicateObservationCount: Int,
         activityTimeline projectedActivityTimeline: [RuntimeVitalRecorderActivityPoint]? = nil,
@@ -1260,7 +1261,11 @@ private struct RecorderBuilder {
         let latestAnomaly = latestAnomaly(in: currentAnomalies)
         return RuntimeVitalRecorderRecord(
             vrcode: vrcode,
-            status: status(latestRecorder),
+            status: status(
+                latestRecorder,
+                observedAt: latestObservationObservedAt,
+                onlineThresholdSeconds: recorderOnlineThresholdSeconds
+            ),
             lastIP: presentInLatestObservation ? latestRecorder?.ip : lastIP,
             version: presentInLatestObservation ? latestRecorder?.version : version,
             bedID: presentInLatestObservation ? latestBed?.bedID : bedID,
@@ -1281,17 +1286,28 @@ private struct RecorderBuilder {
         )
     }
 
-    private func status(_ recorder: VitalDBRecorderObservation?) -> RuntimeVitalRecorderStatus {
+    private func status(
+        _ recorder: VitalDBRecorderObservation?,
+        observedAt: String,
+        onlineThresholdSeconds: Int
+    ) -> RuntimeVitalRecorderStatus {
         guard let recorder else {
             return .notObserved
         }
         if recorder.stale {
             return .stale
         }
-        if recorder.online {
+        guard recorder.online else {
+            return .offline
+        }
+        guard let lastSeenAt = recorder.lastSeenAt,
+              let lastSeenDate = iso8601Date(lastSeenAt),
+              let observedDate = iso8601Date(observedAt) else {
             return .online
         }
-        return .offline
+        return observedDate.timeIntervalSince(lastSeenDate) > Double(max(onlineThresholdSeconds, 0))
+            ? .stale
+            : .online
     }
 
     private func minTimestamp(_ current: String?, _ next: String) -> String {
@@ -1307,6 +1323,16 @@ private struct RecorderBuilder {
         }
         return Swift.max(current, next)
     }
+}
+
+private func iso8601Date(_ timestamp: String) -> Date? {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = formatter.date(from: timestamp) {
+        return date
+    }
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter.date(from: timestamp)
 }
 
 private struct BedBuilder {
