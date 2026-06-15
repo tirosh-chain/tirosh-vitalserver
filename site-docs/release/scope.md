@@ -4,8 +4,7 @@
 
 ## 1. 지원 대상
 
-Vital Server Helper는 VitalServer 운영을 보조하는 별도 계층입니다. VitalServer 원 프로젝트와
-공식 배포물을 대체하지 않습니다.
+Vital Server Helper는 VitalServer 운영을 보조하는 별도 계층입니다. VitalServer 공식 배포와 별도로 제공되는 Helper project입니다.
 
 | 대상 | Helper에서의 관계 |
 |---|---|
@@ -30,7 +29,7 @@ VitalServer, Vital Recorder, VRecorder 관련 이름과 권리는 각 원 소유
 | 장애 조사 자료를 모을 수 있는가? | status, event, logs, support 자료 |
 | update 입력을 검증할 수 있는가? | Product Update bundle verify/apply 흐름 |
 | 재설치가 막힌 Mac을 정리할 수 있는가? | Reset for Reinstall command |
-| upstream Redis migration archive를 만들 수 있는가? | Troubleshooting Tools의 upstream Redis backup command |
+| 기존 VitalServer data import archive를 만들 수 있는가? | Troubleshooting Tools의 data import command |
 
 ## 3. 포함 구성 요소
 
@@ -66,6 +65,6 @@ VitalServer, Vital Recorder, VRecorder 관련 이름과 권리는 각 원 소유
 |---|---|
 | 현장 검증 문서 | 현재 설치, 상태 확인, 강제 정리, event 해석 흐름 정리 |
 | Release artifact | installer, checksum, 지원 OS, 알려진 제한 사항 고정 |
-| External VitalServer mode | 기존 VitalServer와 Redis endpoint에 연결하고 Helper proxy/observer stack으로 관측 |
+| External VitalServer mode | 기존 VitalServer deployment에 연결하고 Helper proxy/observer stack으로 관측 |
 | Field validation | 병원별 네트워크, 저장 위치, 권한, 운영 절차 확인 |
 | Operation docs | 실제 artifact와 일치하는 설치, 운영, rollback 문서 작성 |

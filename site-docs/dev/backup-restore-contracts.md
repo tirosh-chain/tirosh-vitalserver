@@ -11,7 +11,7 @@ artifact 구성, data schema owner, backup-level restore compatibility, migratio
 | VitalServer backup | `runtime-data-backup` | Helper가 관리하는 runtime state와 Guest Redis data를 하나의 복구 단위로 backup/restore |
 | Automatic VitalServer backup | Host launchd `automatic-backup` | Settings schedule에 따라 VitalServer backup을 자동 생성하고 보관 개수를 적용 |
 | Redis-only recovery | Redis backup/restore request | VM disk repair, uninstall, migration, 장애 분석처럼 Redis data만 분리해야 하는 고급 조치 |
-| Upstream Redis backup command | Troubleshooting Tools command | 기존 upstream VitalServer Redis data directory를 Helper Redis-only import archive로 변환 |
+| Existing VitalServer data import command | Troubleshooting Tools command | 기존 VitalServer data directory를 Helper Redis-only import archive로 변환 |
 
 일반 운영자는 VitalServer backup을 사용합니다. Redis-only recovery는 전체 runtime 상태를 되돌리는
 기능이 아니라 Redis data만 바꾸는 repair 기능입니다.
@@ -90,24 +90,21 @@ kind/path/manifest를 추정해서 읽는 fallback을 추가하지 않습니다.
 명시적인 missing-state 처리로 복원 가능한 additive optional field 때문에 compatibility version을
 올리면 안 됩니다. Missing, invalid, failed, stale, zero, empty는 서로 다른 의미로 유지해야 합니다.
 
-## 5. Redis-only와 Upstream Migration
+## 5. Redis-only와 Existing Data Import
 
 Redis-only backup/restore는 Guest-owned 작업입니다. Host는 archive를 staging하거나 선택하고,
 typed request를 쓰고, typed result를 기다린 뒤 capability/read failure를 명시적으로 보고합니다.
 Host는 filename, log, Docker volume path로 Redis 내부 상태를 추정하지 않습니다.
 
-DMG Troubleshooting Tools의 `Create Upstream Redis Backup.command`는 기존 upstream VitalServer Redis
-data를 migration하기 위한 helper입니다. 이 command는 upstream Redis data directory를 입력받아
-Helper import용 `redis-upstream-import.tar.gz`를 만듭니다.
+DMG Troubleshooting Tools의 existing VitalServer data import command는 기존 VitalServer Redis data를 migration하기 위한 helper입니다. 이 command는 기존 VitalServer data directory를 입력받아 Helper import용 `redis-upstream-import.tar.gz`를 만듭니다.
 
 Command는 archive를 만들기 전에 bundled Redis tooling으로 `SAVE`를 실행할 수 있습니다. `SAVE`는
 Redis를 중지하지 않지만 `dump.rdb`를 쓰는 동안 Redis를 잠깐 block할 수 있습니다. 자동 refresh를
 기다리되 무기한 대기하면 안 됩니다. Command는 기본 15초 timeout 안에 SAVE가 끝나지 않으면 실패로
 중단하고 helper process를 종료합니다. 자동 refresh를 건너뛰면 운영자는 data directory를 선택하기
-전에 upstream Redis에서 `SAVE`/`BGSAVE`를 실행하거나 Redis를 중지해 `dump.rdb`가 최신인지 확인해야
-합니다.
+전에 기존 VitalServer Redis에서 `SAVE`/`BGSAVE`를 실행하거나 Redis를 중지해 `dump.rdb`가 최신인지 확인해야 합니다.
 
-생성된 upstream Redis archive는 Advanced -> Recovery operations -> Redis-only recovery ->
+생성된 data import archive는 Advanced -> Recovery operations -> Redis-only recovery ->
 Import Backups로 가져온 뒤 Restore Redis-only Backup으로 복원합니다.
 
 Troubleshooting Tools command log는 현재 사용자 temp directory에 남깁니다.
@@ -115,7 +112,7 @@ Troubleshooting Tools command log는 현재 사용자 temp directory에 남깁�
 | Command | Log |
 |---|---|
 | Reset for Reinstall | `tirosh-vitalserver-reset-for-reinstall.log` |
-| Create Upstream Redis Backup | `tirosh-vitalserver-upstream-redis-backup.log` |
+| Existing VitalServer data import | `tirosh-vitalserver-upstream-redis-backup.log` |
 
 ## 6. 문서화 규칙
 

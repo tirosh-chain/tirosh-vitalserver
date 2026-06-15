@@ -158,7 +158,7 @@ guest 안의 service 묶음은 최대한 같은 방식으로 유지합니다.
 
 ### 3-2. VitalServer 연결 입력
 
-Vital Server Helper는 VitalServer가 제공하는 연구와 데이터 수집 기능을 전제로 합니다.
+Vital Server Helper는 VitalServer가 제공하는 데이터 수집 기능을 전제로 합니다.
 Helper는 그 주변 운영에 필요한 입력을 명시적으로 연결합니다.
 
 | 입력 | 의미 |

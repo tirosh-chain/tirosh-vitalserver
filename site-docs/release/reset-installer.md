@@ -148,7 +148,7 @@ Reset command는 Vital Server Helper가 소유한 항목을 제거합니다.
 | Vital files directory | Helper 설정에 저장된 외부 vital-files 경로 |
 | LaunchDaemons | `/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.*.plist` |
 | Package receipt | `ai.tirosh.vitalserver.helper` |
-| Logs and backups | runtime logs, rollback backups, Redis backups |
+| Logs and backups | runtime logs, rollback backups, data-only repair backups |
 
 `Runtime home` 안에 있는 Host-owned runtime state도 함께 제거됩니다.
 
@@ -158,7 +158,7 @@ Reset command는 Vital Server Helper가 소유한 항목을 제거합니다.
 | Status documents | `runtime-status.json`, uninstall/install state, operation lease |
 | Runtime data | VM disk, cloud-init seed, deploy inputs, generated runtime config |
 | Runtime logs | launcher, VM, proxy, guest log sync, watchdog, uninstall 관련 log |
-| Backup data | rollback backups, Redis backups, clean reset 대상 backup directory |
+| Backup data | rollback backups, data-only repair backups, clean reset 대상 backup directory |
 
 Reset command는 먼저 runtime service와 VM process를 멈춘 뒤 이 파일들을 제거합니다. VM pid
 file이 이미 없으면 그 자체를 성공으로 추정하지 않고, 남아 있는 launchd service 상태를 읽어
