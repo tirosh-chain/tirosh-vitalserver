@@ -126,4 +126,4 @@ Backup/restore 동작이 바뀌면 아래 문서를 함께 갱신합니다.
 
 반복되는 restore failure는 symptom, cause, fix direction, prevention을 갖춘 troubleshooting 문서로
 승격합니다. Restore 실패가 UI progress/message에 표시되지 않는 failure pattern은
-[TS-079](../../docs/troubleshooting/079_runtime-data-restore-silent-failure.md)에 기록합니다.
+[TS-079](https://github.com/tirosh-chain/tirosh-vitalserver/blob/main/docs/troubleshooting/079_runtime-data-restore-silent-failure.md)에 기록합니다.
