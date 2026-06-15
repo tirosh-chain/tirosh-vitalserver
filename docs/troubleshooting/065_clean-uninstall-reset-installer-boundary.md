@@ -19,6 +19,18 @@ fresh install preflight blocked blockers=host-proxy-port-occupied:port=80 listen
 또는 PWA에서 clean uninstall을 눌렀지만 product root, LaunchDaemon plist, package receipt가
 그대로 남습니다.
 
+Clean Uninstall 또는 Reset Installer가 실패한 뒤 다음 fresh install preflight에서 product root,
+runtime tools, package receipt가 동시에 blocker로 남을 수도 있습니다.
+
+```text
+runtime stop state blocked blockers=stop-runtime-services-failed:reason=failed to read configured Host proxy port
+fresh install preflight blocked blockers=install-artifact-present:path=/Library/Application Support/VitalServerHelper,
+install-artifact-present:path=/usr/local/bin/vitalserver-vm,
+install-artifact-present:path=/usr/local/bin/vitalserver-proxy-run,
+install-artifact-present:path=/usr/local/bin/tirosh-vitalserver-uninstall,
+package-receipt-present:identifier=ai.tirosh.vitalserver.helper
+```
+
 ## Cause
 
 Clean uninstall과 Reset Installer의 목적이 다릅니다.
@@ -37,6 +49,13 @@ Clean uninstall과 Reset Installer의 목적이 다릅니다.
 | VM/launchd loaded state 잔존 | pid file 부재를 stop 성공으로 추정하면 loaded/running job이 남음 | TS-058 |
 | status writer가 product root 재생성 | clean uninstall 후 `status/runtime-status.json` 기록이 runtime home을 다시 만듦 | TS-042 |
 | orphan host proxy nginx | launchd unload 후 nginx child process가 port 80을 계속 점유 | TS-051 |
+| proxy 설정 부재를 reset stop failure로 처리 | proxy plist/vm-config/nginx bundle은 이미 없는데 `/usr/local/bin` runtime tools가 남았다는 이유로 proxy port cleanup을 요구함 | this case |
+
+`vitalserver-vm`, `vitalserver-proxy-run`, uninstaller binary, package receipt는 uninstall workflow의
+뒤 단계에서 제거해야 하는 install artifacts입니다. 이들이 남아 있다는 사실만으로 Host proxy port
+설정이 존재한다고 추정하면 안 됩니다. Clean uninstall/reset에서 proxy plist, vm-config,
+nginx bundle이 명시적으로 없으면 proxy port cleanup skip을 로그로 남기고 파일/receipt 제거
+단계로 진행합니다.
 
 ## Checks
 

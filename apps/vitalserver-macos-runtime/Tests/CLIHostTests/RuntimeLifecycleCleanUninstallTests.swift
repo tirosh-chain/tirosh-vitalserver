@@ -87,6 +87,19 @@ final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
         XCTAssertFalse(harness.commandRunner.commands.contains { $0.executable == Constants.Commands.kill })
     }
 
+    func testCleanUninstallSkipsMissingProxyPortCleanupWhenOnlyRuntimeToolsRemain() throws {
+        let harness = Harness()
+        harness.fileStore.directories.insert(harness.installedPaths.productRoot)
+        harness.fileStore.directories.insert(harness.installedPaths.statusDirectory)
+        harness.fileStore.files[harness.installedPaths.launcher] = Data()
+        harness.fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
+
+        try harness.lifecycle.cleanupHostProxyPortAfterStopForUninstall(clean: true)
+
+        XCTAssertFalse(harness.commandRunner.commands.contains { $0.executable == Constants.Commands.lsof })
+        XCTAssertFalse(harness.commandRunner.commands.contains { $0.executable == Constants.Commands.kill })
+    }
+
     func testCleanUninstallStillFailsMissingProxyPortWhenRuntimeArtifactsRemain() {
         let harness = Harness()
         harness.fileStore.directories.insert(harness.installedPaths.nginxDirectory)

@@ -361,7 +361,7 @@ extension RuntimeLifecycle {
         {
             log(
                 "proxy port cleanup after stop skipped during clean uninstall recovery; "
-                    + "proxy configuration and runtime artifacts are already absent"
+                    + "proxy configuration and proxy runtime artifacts are already absent"
             )
             return
         }
@@ -374,8 +374,6 @@ extension RuntimeLifecycle {
             installedPaths.proxyLaunchDaemon,
             installedPaths.vmConfig,
             installedPaths.nginxDirectory,
-            URL(fileURLWithPath: Constants.InstallPaths.proxyRun),
-            installedPaths.launcher,
         ]
         return requiredMissingArtifacts.allSatisfy { fileStore.pathState(at: $0) == .missing }
     }
