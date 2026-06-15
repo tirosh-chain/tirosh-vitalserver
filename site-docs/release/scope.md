@@ -37,11 +37,14 @@ VitalServer, Vital Recorder, VRecorder 관련 이름과 권리는 각 원 소유
 |---|---|
 | macOS Helper app | `apps/vitalserver-macos-runtime` |
 | runtime CLI | `apps/vitalserver-macos-runtime`의 `vitalserver-vm` target |
-| Runtime Control PWA | `apps/vitalserver-runtime-pwa` |
+| Remote Console (PWA) | `apps/vitalserver-runtime-pwa` |
 | Recorder observer | `apps/vitaldb-observer` |
 | Audit proxy | `apps/vitalserver-audit-proxy` |
 | Testkit | recorder simulation과 검증 도구 package |
 | Docs | `site-docs/` MkDocs 문서 |
+
+Remote Console (PWA)는 같은 runtime 상태와 운영 화면을 브라우저에서 확인하기 위한 UI입니다.
+현장 검증 문서에서는 macOS Helper app 화면과 구분해 예시 이미지를 제공합니다.
 
 ## 4. 아직 제공하지 않는 것
 
