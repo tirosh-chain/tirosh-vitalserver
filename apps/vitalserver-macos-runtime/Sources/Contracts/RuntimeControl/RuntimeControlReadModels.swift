@@ -566,18 +566,27 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         return recorders.isEmpty && beds.isEmpty ? .readFailed : .partiallyLoaded
     }
 
-    public init(observations: [VitalDBObservationDocument]) {
-        self.init(observations: observations, projectedActivityBuckets: nil)
-    }
-
     public init(
         observations: [VitalDBObservationDocument],
-        containerObservation: RuntimeContainerObservation?
+        statusEvaluationTime: String? = nil
     ) {
         self.init(
             observations: observations,
             projectedActivityBuckets: nil,
-            containerObservation: containerObservation
+            statusEvaluationTime: statusEvaluationTime
+        )
+    }
+
+    public init(
+        observations: [VitalDBObservationDocument],
+        containerObservation: RuntimeContainerObservation?,
+        statusEvaluationTime: String? = nil
+    ) {
+        self.init(
+            observations: observations,
+            projectedActivityBuckets: nil,
+            containerObservation: containerObservation,
+            statusEvaluationTime: statusEvaluationTime
         )
     }
 
@@ -586,14 +595,16 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         activityBuckets: [VitalDBRecorderActivityBucketRecord],
         activityHistory: RuntimeVitalRecorderActivityHistory? = nil,
         readError: String? = nil,
-        containerObservation: RuntimeContainerObservation? = nil
+        containerObservation: RuntimeContainerObservation? = nil,
+        statusEvaluationTime: String? = nil
     ) {
         self.init(
             observations: observations,
             projectedActivityBuckets: activityBuckets,
             activityHistory: activityHistory,
             readError: readError,
-            containerObservation: containerObservation
+            containerObservation: containerObservation,
+            statusEvaluationTime: statusEvaluationTime
         )
     }
 
@@ -602,13 +613,15 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         projectedActivityBuckets activityBuckets: [VitalDBRecorderActivityBucketRecord]?,
         activityHistory: RuntimeVitalRecorderActivityHistory? = nil,
         readError: String? = nil,
-        containerObservation: RuntimeContainerObservation? = nil
+        containerObservation: RuntimeContainerObservation? = nil,
+        statusEvaluationTime: String? = nil
     ) {
         let ordered = observations.sorted { $0.observedAt < $1.observedAt }
         guard let latestObservation = ordered.last else {
             self.init(activityHistory: activityHistory ?? .notProvided(readError: readError), readError: readError)
             return
         }
+        let recorderStatusEvaluationTime = statusEvaluationTime ?? latestObservation.observedAt
 
         var builders: [String: RecorderBuilder] = [:]
         var bedBuilders: [String: BedBuilder] = [:]
@@ -666,7 +679,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             return builder.record(
                 latestRecorder: latestRecorder,
                 latestBed: latestBed,
-                latestObservationObservedAt: latestObservation.observedAt,
+                latestObservationObservedAt: recorderStatusEvaluationTime,
                 recorderOnlineThresholdSeconds: latestObservation.recorderOnlineThresholdSeconds,
                 currentAnomalies: anomalies,
                 duplicateObservationCount: recorderDuplicateObservationCounts[builder.vrcode, default: 0],
@@ -999,38 +1012,47 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
         self.latestRecorder = latestRecorder
     }
 
-    public init(status: RuntimeStatus, vitalDBObservation: VitalDBObservationDocument? = nil) {
+    public init(
+        status: RuntimeStatus,
+        vitalDBObservation: VitalDBObservationDocument? = nil,
+        statusEvaluationTime: String? = nil
+    ) {
         self.init(
             containerObservation: status.containerObservation,
-            vitalDBObservation: vitalDBObservation
+            vitalDBObservation: vitalDBObservation,
+            statusEvaluationTime: statusEvaluationTime
         )
     }
 
     public init(
         containerObservation: RuntimeContainerObservation?,
-        vitalDBObservation: VitalDBObservationDocument?
+        vitalDBObservation: VitalDBObservationDocument?,
+        statusEvaluationTime: String? = nil
     ) {
         let observation = vitalDBObservation
         let activeConnections = containerObservation?.auditProxyStatus?.activeRecorderConnections
 
         if let observation {
-            let recorders = uniqueRecordersByVrcode(observation.recorders)
-            let latest = recorders
+            let history = RuntimeVitalRecorderHistory(
+                observations: [observation],
+                statusEvaluationTime: statusEvaluationTime
+            )
+            let latest = history.recorders
                 .sorted { compareReportedTimestamp($0.lastSeenAt, $1.lastSeenAt) == .orderedDescending }
                 .first
             self.init(
                 source: .vitalDBObservation,
                 activeConnections: activeConnections,
-                knownRecorders: recorders.count,
-                onlineRecorders: recorders.filter(\.online).count,
-                staleRecorders: recorders.filter(\.stale).count,
+                knownRecorders: history.summary.knownRecorders,
+                onlineRecorders: history.summary.onlineRecorders,
+                staleRecorders: history.summary.staleRecorders,
                 knownBeds: observation.beds.count,
                 recorderAnomalies: observation.anomalies.count,
                 observedAt: observation.observedAt,
                 latestRecorder: latest.map {
                     RuntimeVitalRecorderReference(
                         vrcode: $0.vrcode,
-                        ip: $0.ip,
+                        ip: $0.lastIP,
                         lastSeenAt: $0.lastSeenAt,
                         source: .vitalDBObservation
                     )
@@ -1477,7 +1499,8 @@ public struct RuntimeControlOverview: Codable, Equatable, Sendable {
         release: RuntimeReleaseInfo,
         install: RuntimeInstallInfo,
         vitalDBObservation: VitalDBObservationDocument? = nil,
-        vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot? = nil
+        vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot? = nil,
+        statusEvaluationTime: String? = nil
     ) {
         var statusWithoutLegacyVitalDBObservation = status
         statusWithoutLegacyVitalDBObservation.vitalDBObservation = nil
@@ -1489,7 +1512,8 @@ public struct RuntimeControlOverview: Codable, Equatable, Sendable {
         self.vitalDBObservationSnapshot = vitalDBObservationSnapshot ?? .fromOptional(vitalDBObservation)
         self.vitalRecorder = RuntimeVitalRecorderSummary(
             containerObservation: status.containerObservation,
-            vitalDBObservation: vitalDBObservation
+            vitalDBObservation: vitalDBObservation,
+            statusEvaluationTime: statusEvaluationTime
         )
     }
 }

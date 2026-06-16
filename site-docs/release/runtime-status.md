@@ -134,6 +134,13 @@ verify 시각, 마지막 failure를 확인합니다. 이 정보는 audit proxy�
 있고, Last seen만 오래되면 특정 VRecorder activity 문제일 수 있습니다.
 Anomaly는 개수만으로 원인을 확정하지 않고, 가장 최근 anomaly 종류와 메시지를 먼저 확인합니다.
 
+Troubleshooting: `Data updated`가 오래됐는데 VRecorder가 `Online`으로 표시되면 관측 문서 시각과
+현재 표시 시각이 섞인 상태 판정 문제일 수 있습니다. 원인은 recorder status를 observation의
+`observedAt` 기준으로만 계산하고, UI가 현재 시각 기준 age를 함께 표시하는 것입니다. 수정 방향은
+read model에 명시적인 status evaluation time을 전달해 `Last seen`이 threshold를 지난 recorder를
+`Stale`로 계산하는 것입니다. 예방 원칙은 presentation이 시간 상태를 추측하지 않고, status 계산
+시각을 adapter/read boundary에서 명시적으로 공급하는 것입니다.
+
 ### 4-2. Bed 상태
 
 | 표시 | 의미 |

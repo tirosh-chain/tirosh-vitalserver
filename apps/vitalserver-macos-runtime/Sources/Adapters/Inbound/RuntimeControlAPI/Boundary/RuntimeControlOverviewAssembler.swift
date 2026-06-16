@@ -1,6 +1,7 @@
 import Contracts
 import RuntimeControl
 import Errors
+import Foundation
 
 @MainActor
 struct RuntimeControlOverviewAssembler {
@@ -16,7 +17,8 @@ struct RuntimeControlOverviewAssembler {
             release: handler.loadReleaseInfo(),
             install: handler.loadInstallInfo(),
             vitalDBObservation: vitalDBObservation,
-            vitalDBObservationSnapshot: vitalDBObservationSnapshot
+            vitalDBObservationSnapshot: vitalDBObservationSnapshot,
+            statusEvaluationTime: ISO8601DateFormatter().string(from: Date())
         )
     }
 }

@@ -1284,6 +1284,32 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.summary.staleRecorders, 1)
     }
 
+    func testVitalRecorderHistoryUsesExplicitStatusEvaluationTimeForStaleObservation() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:12:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_STALE_OBSERVATION",
+                    ip: "192.168.64.21",
+                    lastSeenAt: "2026-05-26T00:11:59Z",
+                    online: true,
+                    stale: false
+                ),
+            ]
+        )
+
+        let history = RuntimeVitalRecorderHistory(
+            observations: [observation],
+            statusEvaluationTime: "2026-05-26T00:31:00Z"
+        )
+
+        XCTAssertEqual(history.recorders.map(\.status), [.stale])
+        XCTAssertEqual(history.summary.onlineRecorders, 0)
+        XCTAssertEqual(history.summary.staleRecorders, 1)
+    }
+
     func testVitalRecorderHistoryMergesRecorderRedisIPSyncFromAuditProxyStatus() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:12:00Z",
@@ -1648,6 +1674,32 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(summary.staleRecorders, 1)
         XCTAssertEqual(summary.latestRecorder?.vrcode, "VR_A")
         XCTAssertEqual(summary.latestRecorder?.ip, "192.168.64.10")
+    }
+
+    func testVitalRecorderSummaryUsesExplicitStatusEvaluationTime() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:01:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                .init(
+                    vrcode: "VR_STALE_SUMMARY",
+                    ip: "192.168.64.10",
+                    lastSeenAt: "2026-05-26T00:01:00Z",
+                    online: true
+                ),
+            ]
+        )
+
+        let summary = RuntimeVitalRecorderSummary(
+            status: RuntimeStatus(),
+            vitalDBObservation: observation,
+            statusEvaluationTime: "2026-05-26T00:20:00Z"
+        )
+
+        XCTAssertEqual(summary.knownRecorders, 1)
+        XCTAssertEqual(summary.onlineRecorders, 0)
+        XCTAssertEqual(summary.staleRecorders, 1)
     }
 
     func testRuntimeControlOverviewDoesNotFallbackToStatusVitalDBObservation() {

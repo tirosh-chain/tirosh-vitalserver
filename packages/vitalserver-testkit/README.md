@@ -128,6 +128,22 @@ room name을 다시 선택하거나 session의 target URL과 vrcode를 기준으
 요청할 수 있습니다. 실행 중이던 streaming thread 자체는 복구하지 않고, 재시작 이후에는
 남은 VitalServer recorder 등록을 정리하는 registry로 사용합니다.
 
+Persisted state files are versioned contracts. `sessions.json` writes
+`schema_version: 2`; `bed-registry.json` writes `schema_version: 1`. Missing
+`schema_version` is treated as a legacy v1 document only at the store boundary.
+After a legacy session is loaded and saved again, the store writes the current
+schema and materializes `.vital` state explicitly. Newer schema versions,
+invalid schema values, corrupt JSON, and missing fields in the current schema
+must fail visibly rather than becoming an empty registry or default success.
+
+Troubleshooting: update 직후 `testkit` container가 반복 재시작하고 로그에
+`session_store.load_record.failed`와 `KeyError: 'vital_state'`가 보이면, 이전 버전의
+`sessions.json`이 `.vital` export 상태 필드가 추가되기 전 schema로 남아 있는 것입니다.
+수정 방향은 저장소 로더에서 `vital_state`가 없는 legacy session document만 명시적으로 migrate해
+`not-requested` 상태를 채우는 것입니다. `vital_state: null`이나 다른 필수 session/recorder 필드
+누락은 invalid contract로 실패해야 합니다. 예방 원칙은 optional migration을 필드 단위로 한정하고,
+missing, invalid, failed state를 같은 empty/default success로 합치지 않는 것입니다.
+
 ## Simulated Signal Scenario
 
 testkit은 simulated recorder data를 만들 때 시나리오 이름을 `RecorderSignalScenario`로

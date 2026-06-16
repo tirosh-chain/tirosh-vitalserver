@@ -23,6 +23,9 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
 )
 from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 
+SESSION_STORE_SCHEMA_VERSION = 2
+LEGACY_SESSION_STORE_SCHEMA_VERSION = 1
+
 
 class VirtualRecorderSessionStorePort(Protocol):
     """Persistent registry for virtual VRecorder session snapshots."""
@@ -57,6 +60,8 @@ def session_snapshot_to_record(
 
 def session_snapshot_from_record(
     data: dict[str, Any],
+    *,
+    schema_version: int = SESSION_STORE_SCHEMA_VERSION,
 ) -> VirtualRecorderSessionSnapshot:
     """Convert a persistent JSON record into a session snapshot."""
 
@@ -68,10 +73,18 @@ def session_snapshot_from_record(
         str(request_data["default_scenario"])
     )
 
+    request = VirtualRecorderSessionRequest(**request_data)
+    if "vital_state" in data:
+        vital_state = vital_state_from_record(data["vital_state"])
+    elif schema_version == LEGACY_SESSION_STORE_SCHEMA_VERSION:
+        vital_state = VirtualRecorderSessionVitalState.for_request(request)
+    else:
+        raise KeyError("vital_state")
+
     return VirtualRecorderSessionSnapshot(
         session_id=str(data["session_id"]),
         state=VirtualRecorderSessionState(str(data["state"])),
-        request=VirtualRecorderSessionRequest(**request_data),
+        request=request,
         created_at=float(data["created_at"]),
         started_at=optional_float(data["started_at"]),
         stopped_at=optional_float(data["stopped_at"]),
@@ -90,7 +103,7 @@ def session_snapshot_from_record(
             )
             for error in data["cleanup_errors"]
         ),
-        vital_state=vital_state_from_record(data["vital_state"]),
+        vital_state=vital_state,
     )
 
 

@@ -12,6 +12,8 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderSessionSnapshot,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.store import (
+    LEGACY_SESSION_STORE_SCHEMA_VERSION,
+    SESSION_STORE_SCHEMA_VERSION,
     session_snapshot_from_record,
     session_snapshot_to_record,
 )
@@ -31,12 +33,18 @@ class JsonFileVirtualRecorderSessionStore:
         with self._lock:
             payload = self._read_payload()
 
+        schema_version = session_store_schema_version(payload)
         sessions = []
         for record in payload["sessions"]:
             if not isinstance(record, dict):
                 raise ValueError("session record must be an object")
             try:
-                sessions.append(session_snapshot_from_record(record))
+                sessions.append(
+                    session_snapshot_from_record(
+                        record,
+                        schema_version=schema_version,
+                    )
+                )
             except Exception as exc:
                 emit_testkit_event(
                     "session_store.load_record.failed",
@@ -60,7 +68,10 @@ class JsonFileVirtualRecorderSessionStore:
                 if record.get("session_id") != snapshot.session_id
             ]
             sessions.append(session_snapshot_to_record(snapshot))
-            self._write_payload({"sessions": sessions})
+            self._write_payload({
+                "schema_version": SESSION_STORE_SCHEMA_VERSION,
+                "sessions": sessions,
+            })
 
     def delete_session(self, session_id: str) -> None:
         """Remove one persisted session snapshot."""
@@ -72,17 +83,26 @@ class JsonFileVirtualRecorderSessionStore:
                 for record in session_records(payload)
                 if record.get("session_id") != session_id
             ]
-            self._write_payload({"sessions": sessions})
+            self._write_payload({
+                "schema_version": SESSION_STORE_SCHEMA_VERSION,
+                "sessions": sessions,
+            })
 
     def delete_all_sessions(self) -> None:
         """Remove every persisted session snapshot."""
 
         with self._lock:
-            self._write_payload({"sessions": []})
+            self._write_payload({
+                "schema_version": SESSION_STORE_SCHEMA_VERSION,
+                "sessions": [],
+            })
 
     def _read_payload(self) -> dict[str, Any]:
         if not self._path.exists():
-            return {"sessions": []}
+            return {
+                "schema_version": SESSION_STORE_SCHEMA_VERSION,
+                "sessions": [],
+            }
 
         try:
             with self._path.open("r", encoding="utf-8") as file:
@@ -98,6 +118,7 @@ class JsonFileVirtualRecorderSessionStore:
 
         if not isinstance(payload, dict):
             raise ValueError("session store payload must be an object")
+        session_store_schema_version(payload)
         if not isinstance(payload.get("sessions"), list):
             raise ValueError("session store sessions must be an array")
         return payload
@@ -116,3 +137,18 @@ def session_records(payload: dict[str, Any]) -> list[dict[str, Any]]:
     if not all(isinstance(record, dict) for record in records):
         raise ValueError("session record must be an object")
     return cast(list[dict[str, Any]], records)
+
+
+def session_store_schema_version(payload: dict[str, Any]) -> int:
+    """Return the explicit session store schema version."""
+
+    value = payload.get("schema_version")
+    if value is None:
+        return LEGACY_SESSION_STORE_SCHEMA_VERSION
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError("session store schema_version must be an integer")
+    if value < LEGACY_SESSION_STORE_SCHEMA_VERSION:
+        raise ValueError("session store schema_version is unsupported")
+    if value > SESSION_STORE_SCHEMA_VERSION:
+        raise ValueError("session store schema_version is newer than supported")
+    return value

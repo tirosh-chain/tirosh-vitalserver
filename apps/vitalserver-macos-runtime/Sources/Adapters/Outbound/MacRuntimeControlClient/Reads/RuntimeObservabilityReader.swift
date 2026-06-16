@@ -90,14 +90,16 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory {
         return RuntimeVitalDBRecorderHistoryAssembler.makeHistory(
             reads: vitalDBProjectionReadCollector().recorderProjectionReads(),
-            containerObservation: loadContainerObservation()
+            containerObservation: loadContainerObservation(),
+            statusEvaluationTime: currentTimestamp()
         )
     }
 
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
         return RuntimeVitalDBRecorderHistoryAssembler.makeHistory(
             reads: vitalDBProjectionReadCollector().recorderProjectionReads(includeActivityBuckets: false),
-            containerObservation: loadContainerObservation()
+            containerObservation: loadContainerObservation(),
+            statusEvaluationTime: currentTimestamp()
         )
     }
 
@@ -175,4 +177,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         }
     }
 
+    private func currentTimestamp() -> String {
+        ISO8601DateFormatter().string(from: Date())
+    }
 }

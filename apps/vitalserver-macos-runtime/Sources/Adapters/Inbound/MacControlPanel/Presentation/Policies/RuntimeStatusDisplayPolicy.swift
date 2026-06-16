@@ -107,11 +107,13 @@ struct RuntimeStatusDisplayPolicy {
 
     func recorderSummary(
         observation: RuntimeContainerObservation?,
-        vitalDBObservation: VitalDBObservationDocument?
+        vitalDBObservation: VitalDBObservationDocument?,
+        now: Date = Date()
     ) -> RecorderSummary {
         recorderSummaryPolicy.recorderSummary(
             observation: observation,
-            vitalDBObservation: vitalDBObservation
+            vitalDBObservation: vitalDBObservation,
+            now: now
         )
     }
 

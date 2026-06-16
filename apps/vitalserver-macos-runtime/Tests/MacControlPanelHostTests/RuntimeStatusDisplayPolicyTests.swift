@@ -3,6 +3,7 @@ import RuntimeControl
 @testable import MacControlPanelHost
 import XCTest
 import Errors
+import Foundation
 @testable import InboundAdapters
 
 final class RuntimeStatusDisplayPolicyTests: XCTestCase {
@@ -1075,7 +1076,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
         let summary = policy.recorderSummary(
             observation: observation,
-            vitalDBObservation: vitalDBObservation
+            vitalDBObservation: vitalDBObservation,
+            now: ISO8601DateFormatter().date(from: "2026-05-24T02:00:00Z")!
         )
 
         XCTAssertEqual(summary.activeConnections, "2")
@@ -1109,6 +1111,31 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
 
         XCTAssertEqual(summary.latestRecorder, "VR_NO_IP \(AppConstants.StatusText.notReported)")
+    }
+
+    func testRecorderSummaryUsesCurrentTimeForOnlineCounts() {
+        let vitalDBObservation = VitalDBObservationDocument(
+            observedAt: "2026-05-24T02:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_AGED",
+                    ip: "192.168.64.20",
+                    lastSeenAt: "2026-05-24T01:59:59Z",
+                    online: true
+                ),
+            ]
+        )
+
+        let summary = policy.recorderSummary(
+            observation: nil,
+            vitalDBObservation: vitalDBObservation,
+            now: ISO8601DateFormatter().date(from: "2026-05-24T02:10:00Z")!
+        )
+
+        XCTAssertEqual(summary.onlineRecorders, "0")
+        XCTAssertEqual(summary.staleRecorders, "1")
     }
 
     func testVitalServerUptimeDoesNotFallBackToStatusStartedAt() {
