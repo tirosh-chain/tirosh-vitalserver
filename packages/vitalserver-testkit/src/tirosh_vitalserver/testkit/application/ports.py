@@ -90,3 +90,26 @@ class RecorderManagementPort(Protocol):
         bed_name: str,
         timeout: float = 5.0,
     ) -> None: ...
+
+
+class SessionVitalFileExporterPort(Protocol):
+    """Session artifact writer for VitalDB `.vital` files."""
+
+    def export_session_vital_file(
+        self,
+        snapshot: Any,
+        playback: Any,
+    ) -> Any: ...
+
+
+class SessionVitalFileUploaderPort(Protocol):
+    """Uploader for generated session `.vital` artifacts."""
+
+    def upload_session_vital_file(
+        self,
+        *,
+        target_url: str,
+        artifact_path: str | Path,
+        vrcode: str | None,
+        endpoint: str,
+    ) -> Any: ...

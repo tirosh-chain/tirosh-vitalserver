@@ -15,6 +15,11 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderSessionScenario,
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
+    VirtualRecorderSessionVitalState,
+    VirtualRecorderVitalArtifact,
+    VirtualRecorderVitalExportStatus,
+    VirtualRecorderVitalUploadResult,
+    VirtualRecorderVitalUploadStatus,
 )
 from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 
@@ -40,6 +45,8 @@ def session_snapshot_to_record(
     data["state"] = snapshot.state.value
     data["request"]["scenario"] = snapshot.request.scenario.value
     data["request"]["default_scenario"] = snapshot.request.default_scenario.value
+    data["vital_state"]["export_status"] = snapshot.vital_state.export_status.value
+    data["vital_state"]["upload_status"] = snapshot.vital_state.upload_status.value
     data["recorders"] = [
         recorder_snapshot_to_record(recorder)
         for recorder in snapshot.recorders
@@ -83,6 +90,45 @@ def session_snapshot_from_record(
             )
             for error in data["cleanup_errors"]
         ),
+        vital_state=vital_state_from_record(data["vital_state"]),
+    )
+
+
+def vital_state_from_record(data: dict[str, Any]) -> VirtualRecorderSessionVitalState:
+    """Convert a persisted vital state record into the application contract."""
+
+    artifact_data = data["artifact"]
+    upload_result_data = data["upload_result"]
+
+    artifact = None
+    if artifact_data is not None:
+        artifact = VirtualRecorderVitalArtifact(
+            path=str(artifact_data["path"]),
+            filename=str(artifact_data["filename"]),
+            size_bytes=int(artifact_data["size_bytes"]),
+            created_at=float(artifact_data["created_at"]),
+            format=str(artifact_data["format"]),
+            retention_policy=str(artifact_data["retention_policy"]),
+        )
+
+    upload_result = None
+    if upload_result_data is not None:
+        upload_result = VirtualRecorderVitalUploadResult(
+            status_code=int(upload_result_data["status_code"]),
+            ok=bool(upload_result_data["ok"]),
+            elapsed_seconds=float(upload_result_data["elapsed_seconds"]),
+            uploaded_at=float(upload_result_data["uploaded_at"]),
+            response_text=str(upload_result_data["response_text"]),
+            error=upload_result_data["error"],
+        )
+
+    return VirtualRecorderSessionVitalState(
+        export_status=VirtualRecorderVitalExportStatus(str(data["export_status"])),
+        upload_status=VirtualRecorderVitalUploadStatus(str(data["upload_status"])),
+        artifact=artifact,
+        export_error=data["export_error"],
+        upload_error=data["upload_error"],
+        upload_result=upload_result,
     )
 
 

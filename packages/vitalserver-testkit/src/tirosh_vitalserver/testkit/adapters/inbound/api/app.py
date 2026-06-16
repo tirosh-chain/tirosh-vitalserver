@@ -14,6 +14,10 @@ from tirosh_vitalserver.testkit.application.bed_registry import BedRegistry
 from tirosh_vitalserver.testkit.application.bed_registry.store import (
     BedRegistryStorePort,
 )
+from tirosh_vitalserver.testkit.application.ports import (
+    SessionVitalFileExporterPort,
+    SessionVitalFileUploaderPort,
+)
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionManager,
     deletion_result_to_document,
@@ -42,6 +46,8 @@ def create_testkit_app(
     session_store: VirtualRecorderSessionStorePort | None = None,
     bed_registry: BedRegistry | None = None,
     bed_registry_store: BedRegistryStorePort | None = None,
+    vital_file_exporter: SessionVitalFileExporterPort | None = None,
+    vital_file_uploader: SessionVitalFileUploaderPort | None = None,
 ) -> FastAPI:
     """Build the TestKit FastAPI application."""
 
@@ -53,6 +59,8 @@ def create_testkit_app(
         connector=connect_socketio,
         recorder_management=SocketIoRecorderManagementClient(),
         session_store=session_store,
+        vital_file_exporter=vital_file_exporter,
+        vital_file_uploader=vital_file_uploader,
     )
     beds = bed_registry or BedRegistry(store=bed_registry_store)
 
@@ -374,6 +382,31 @@ def create_testkit_app(
 
         emit_testkit_event(
             "api.session.stop.accepted",
+            session_id=snapshot.session_id,
+            state=snapshot.state.value,
+        )
+        return session_snapshot_to_document(snapshot)
+
+    @app.post("/sessions/{session_id}/upload-vital")
+    def retry_vital_upload(
+        session_id: str,
+        manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
+    ) -> dict[str, Any]:
+        emit_testkit_event(
+            "api.session.vital_upload_retry.requested",
+            session_id=session_id,
+        )
+        snapshot = manager.retry_vital_upload(session_id)
+        if snapshot is None:
+            emit_testkit_event(
+                "api.session.vital_upload_retry.missing",
+                level=logging.WARNING,
+                session_id=session_id,
+            )
+            raise HTTPException(status_code=404, detail="session not found")
+
+        emit_testkit_event(
+            "api.session.vital_upload_retry.accepted",
             session_id=snapshot.session_id,
             state=snapshot.state.value,
         )

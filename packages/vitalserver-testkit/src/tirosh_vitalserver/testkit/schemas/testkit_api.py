@@ -65,6 +65,9 @@ class StartVirtualRecordersRequest(ExternalSchema):
         default=RecorderSignalScenario.NORMAL,
         alias="defaultScenario",
     )
+    export_vital: bool = Field(default=False, alias="exportVital")
+    upload_vital: bool = Field(default=False, alias="uploadVital")
+    vital_upload_endpoint: str = Field(default="/upload", alias="vitalUploadEndpoint")
 
     def to_session_request(self) -> VirtualRecorderSessionRequest:
         """Convert API input into the application request contract."""
@@ -82,6 +85,9 @@ class StartVirtualRecordersRequest(ExternalSchema):
             generate_frames=self.generate_frames,
             scenario=self.scenario,
             default_scenario=self.default_scenario,
+            export_vital=self.export_vital,
+            upload_vital=self.upload_vital,
+            vital_upload_endpoint=self.vital_upload_endpoint,
         )
 
 

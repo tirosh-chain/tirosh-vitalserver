@@ -51,10 +51,48 @@ def session_snapshot_to_document(
             }
             for error in snapshot.cleanup_errors
         ],
+        "vital": vital_state_to_document(snapshot),
         "recorders": [
             recorder_snapshot_to_document(recorder)
             for recorder in snapshot.recorders
         ],
+    }
+
+
+def vital_state_to_document(
+    snapshot: VirtualRecorderSessionSnapshot,
+) -> dict[str, Any]:
+    """Convert explicit `.vital` export/upload state to API JSON."""
+
+    vital_state = snapshot.vital_state
+    artifact = vital_state.artifact
+    upload_result = vital_state.upload_result
+
+    return {
+        "exportStatus": vital_state.export_status.value,
+        "uploadStatus": vital_state.upload_status.value,
+        "exportError": vital_state.export_error,
+        "uploadError": vital_state.upload_error,
+        "artifact": None
+        if artifact is None
+        else {
+            "path": artifact.path,
+            "filename": artifact.filename,
+            "sizeBytes": artifact.size_bytes,
+            "createdAt": artifact.created_at,
+            "format": artifact.format,
+            "retentionPolicy": artifact.retention_policy,
+        },
+        "uploadResult": None
+        if upload_result is None
+        else {
+            "statusCode": upload_result.status_code,
+            "ok": upload_result.ok,
+            "elapsedSeconds": upload_result.elapsed_seconds,
+            "uploadedAt": upload_result.uploaded_at,
+            "responseText": upload_result.response_text,
+            "error": upload_result.error,
+        },
     }
 
 
