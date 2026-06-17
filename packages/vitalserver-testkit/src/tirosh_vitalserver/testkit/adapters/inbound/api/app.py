@@ -110,12 +110,18 @@ def create_testkit_app(
             count=request.count,
             room_names=len(request.room_names),
             prefix=request.prefix,
+            append_random_suffix=request.append_random_suffix,
             admin_user_id=request.admin_user_id,
         )
         try:
+            count = request.count
+            room_names = request.room_names
+            if count is not None and not request.append_random_suffix:
+                count = None
+                room_names = (request.prefix,)
             registered_beds = registry.create_beds(
-                count=request.count,
-                room_names=request.room_names,
+                count=count,
+                room_names=room_names,
                 prefix=request.prefix,
                 admin_user_id=request.admin_user_id,
             )

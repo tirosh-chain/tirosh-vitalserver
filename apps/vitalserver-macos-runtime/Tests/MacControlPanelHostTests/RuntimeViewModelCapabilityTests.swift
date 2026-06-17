@@ -1159,6 +1159,28 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.testKitActionMessageTone, .neutral)
     }
 
+    func testCreateTestKitBedsCanUseExactBedNameWithoutRandomSuffix() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        viewModel.testKitBedPrefix = "MORC03"
+        viewModel.testKitBedCount = 4
+        viewModel.testKitAppendRandomBedSuffix = false
+
+        await viewModel.createTestKitBeds()
+
+        XCTAssertEqual(viewModel.testKitStatus.beds.map(\.roomName), ["MORC03"])
+        XCTAssertEqual(testKit.createdRequests.last?.count, 1)
+        XCTAssertEqual(testKit.createdRequests.last?.prefix, "MORC03")
+        XCTAssertEqual(testKit.createdRequests.last?.appendRandomSuffix, false)
+    }
+
     func testTestKitActionsReportUnavailableOrInvalidInputs() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let viewModel = RuntimeViewModel(
@@ -1523,16 +1545,27 @@ private final class FakeTestKitController: RuntimeTestKitControlling {
     var restartedSessionIDs: [String?] = []
     var deletedSessionIDs: [String?] = []
     var deletedRecorderVRCodes: [String] = []
+    var createdRequests: [RuntimeTestKitCreateBedsRequest] = []
 
     func loadTestKitStatus() async -> RuntimeTestKitStatus {
         status
     }
 
     func createTestKitBeds(_ request: RuntimeTestKitCreateBedsRequest) async throws -> [RuntimeTestKitBed] {
-        let count = request.count ?? request.roomNames.count
-        let prefix = request.prefix
-        let beds = (0..<count).map { index in
-            RuntimeTestKitBed(roomName: "\(prefix)-\(index + 1)", bedID: "bed-\(index + 1)")
+        createdRequests.append(request)
+        let beds: [RuntimeTestKitBed]
+        if !request.roomNames.isEmpty {
+            beds = request.roomNames.enumerated().map { index, roomName in
+                RuntimeTestKitBed(roomName: roomName, bedID: "bed-\(index + 1)")
+            }
+        } else if request.appendRandomSuffix {
+            let count = request.count ?? 0
+            let prefix = request.prefix
+            beds = (0..<count).map { index in
+                RuntimeTestKitBed(roomName: "\(prefix)-\(index + 1)", bedID: "bed-\(index + 1)")
+            }
+        } else {
+            beds = [RuntimeTestKitBed(roomName: request.prefix, bedID: "bed-1")]
         }
         status.beds = beds
         return beds

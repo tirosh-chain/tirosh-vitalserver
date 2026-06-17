@@ -259,6 +259,7 @@ public extension AppConstants {
         public static let beds = "Beds"
         public static let bedCount = "Beds"
         public static let bedPrefix = "Bed prefix"
+        public static let randomBedSuffix = "Random suffix"
         public static let selectedBeds = "Selected beds"
         public static let virtualVRecorderSession = "Virtual VRecorder session"
         public static let trafficProfile = "Traffic profile"

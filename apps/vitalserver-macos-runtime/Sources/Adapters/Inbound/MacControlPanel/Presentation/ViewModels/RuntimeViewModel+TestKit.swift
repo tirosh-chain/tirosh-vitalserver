@@ -99,7 +99,8 @@ extension RuntimeViewModel {
             let existingRoomNames = Set(testKitStatus.beds.map(\.roomName))
             let beds = try await testKitController.createTestKitBeds(RuntimeTestKitCreateBedsRequest(
                 count: normalizedTestKitBedCount,
-                prefix: normalizedTestKitBedPrefix
+                prefix: normalizedTestKitBedPrefix,
+                appendRandomSuffix: testKitAppendRandomBedSuffix
             ))
             applyTestKitStatus(await testKitController.loadTestKitStatus())
             selectNewlyCreatedBeds(beds, existingRoomNames: existingRoomNames)
@@ -473,7 +474,10 @@ extension RuntimeViewModel {
     }
 
     private var normalizedTestKitBedCount: Int {
-        testKitPresentationPolicy.normalizedBedCount(testKitBedCount)
+        guard testKitAppendRandomBedSuffix else {
+            return 1
+        }
+        return testKitPresentationPolicy.normalizedBedCount(testKitBedCount)
     }
 
     private var normalizedTestKitBedPrefix: String {

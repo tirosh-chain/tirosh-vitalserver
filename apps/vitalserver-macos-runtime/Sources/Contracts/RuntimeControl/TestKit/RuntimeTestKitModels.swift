@@ -128,17 +128,20 @@ public struct RuntimeTestKitCreateBedsRequest: Codable, Equatable, Sendable {
     public var count: Int?
     public var roomNames: [String]
     public var prefix: String
+    public var appendRandomSuffix: Bool
     public var adminUserID: String
 
     public init(
         count: Int? = nil,
         roomNames: [String] = [],
         prefix: String = "testkit-bed",
+        appendRandomSuffix: Bool = true,
         adminUserID: String = "admin"
     ) {
         self.count = count
         self.roomNames = roomNames
         self.prefix = prefix
+        self.appendRandomSuffix = appendRandomSuffix
         self.adminUserID = adminUserID
     }
 
@@ -146,6 +149,7 @@ public struct RuntimeTestKitCreateBedsRequest: Codable, Equatable, Sendable {
         case count
         case roomNames
         case prefix
+        case appendRandomSuffix
         case adminUserID = "adminUserId"
     }
 }

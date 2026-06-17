@@ -237,10 +237,17 @@ struct RuntimeTestPanel: View {
                 AppConstants.Labels.bedCount,
                 value: $viewModel.testKitBedCount,
                 range: 1...200,
-                displayValue: String(viewModel.testKitBedCount)
+                displayValue: viewModel.testKitAppendRandomBedSuffix
+                    ? String(viewModel.testKitBedCount)
+                    : "1"
             )
+            .disabled(!viewModel.testKitAppendRandomBedSuffix)
             TextField(AppConstants.Labels.bedPrefix, text: $viewModel.testKitBedPrefix)
                 .textFieldStyle(.roundedBorder)
+            Toggle(
+                AppConstants.Labels.randomBedSuffix,
+                isOn: $viewModel.testKitAppendRandomBedSuffix
+            )
         }
         .disabled(!viewModel.testKitStatus.enabled || viewModel.isRunningTestKitAction)
     }

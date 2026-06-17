@@ -22,6 +22,7 @@ class CreateBedsRequest(ExternalSchema):
     count: int | None = Field(default=None, ge=1)
     room_names: tuple[str, ...] = Field(default=(), alias="roomNames")
     prefix: str = "testkit-bed"
+    append_random_suffix: bool = Field(default=True, alias="appendRandomSuffix")
     admin_user_id: str = Field(default="admin", alias="adminUserId")
 
     @model_validator(mode="after")
@@ -32,6 +33,12 @@ class CreateBedsRequest(ExternalSchema):
             raise ValueError("count or roomNames is required")
         if self.count is not None and self.room_names:
             raise ValueError("count and roomNames cannot be used together")
+        if (
+            self.count is not None
+            and not self.append_random_suffix
+            and self.count != 1
+        ):
+            raise ValueError("appendRandomSuffix=false requires count to be 1")
 
         return self
 
