@@ -1418,6 +1418,14 @@ function testKitSession(state: string) {
     bytesSent: 2048,
     lastError: null,
     cleanupErrors: [],
+    vital: {
+      exportStatus: "not-requested",
+      uploadStatus: "not-requested",
+      exportError: null,
+      uploadError: null,
+      artifact: null,
+      uploadResult: null
+    },
     recorders: []
   };
 }

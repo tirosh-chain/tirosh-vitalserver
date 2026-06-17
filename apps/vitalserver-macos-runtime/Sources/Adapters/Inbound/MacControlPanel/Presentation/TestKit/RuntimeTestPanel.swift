@@ -421,7 +421,7 @@ struct RuntimeTestPanel: View {
                 Text(sessionDetail(session))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(3)
             }
             Spacer(minLength: 12)
             sessionControls(session)
@@ -550,11 +550,36 @@ struct RuntimeTestPanel: View {
             "\(AppConstants.Labels.recorders): \(session.recorders.count)/\(session.recordersRequested)",
             "\(AppConstants.Labels.beds): \(session.bedRoomNames.count)",
             "\(AppConstants.Labels.interval): \(secondsText(session.intervalSeconds))",
+            vitalDetail(session.vital),
             session.cleanupErrors.isEmpty ? nil : "Cleanup errors: \(session.cleanupErrors.count)",
             session.lastError.map { "\(AppConstants.Labels.lastError): \($0)" }
         ]
         .compactMap { $0 }
         .joined(separator: " · ")
+    }
+
+    private func vitalDetail(_ vital: RuntimeTestKitSessionVitalState?) -> String? {
+        guard let vital else {
+            return nil
+        }
+        var parts = [
+            "export \(displayName(vital.exportStatus))",
+            "upload \(displayName(vital.uploadStatus))",
+        ]
+        if let artifact = vital.artifact {
+            parts.append("\(artifact.filename) \(byteText(artifact.sizeBytes))")
+        }
+        if let exportError = vital.exportError, !exportError.isEmpty {
+            parts.append("export error: \(exportError)")
+        }
+        if let uploadError = vital.uploadError, !uploadError.isEmpty {
+            parts.append("upload error: \(uploadError)")
+        }
+        return "Vital: \(parts.joined(separator: ", "))"
+    }
+
+    private func byteText(_ bytes: Int) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
     private func restartHelpText(_ session: RuntimeTestKitSession) -> String {

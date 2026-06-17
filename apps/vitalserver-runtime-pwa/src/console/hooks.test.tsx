@@ -407,7 +407,10 @@ function testKitStart() {
     durationSeconds: null,
     maxMessages: null,
     shiftTime: true,
-    generateFrames: true
+    generateFrames: true,
+    exportVital: true,
+    uploadVital: true,
+    vitalUploadEndpoint: "/upload"
   };
 }
 
@@ -435,6 +438,14 @@ function testKitSession() {
     bytesSent: 0,
     lastError: null,
     cleanupErrors: [],
+    vital: {
+      exportStatus: "not-requested",
+      uploadStatus: "not-requested",
+      exportError: null,
+      uploadError: null,
+      artifact: null,
+      uploadResult: null
+    },
     recorders: []
   };
 }

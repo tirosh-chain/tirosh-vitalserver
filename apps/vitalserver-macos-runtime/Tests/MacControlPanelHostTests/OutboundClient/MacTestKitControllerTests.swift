@@ -304,7 +304,13 @@ final class MacTestKitControllerTests: XCTestCase {
         XCTAssertTrue(recorderDeletion.deleted)
         XCTAssertEqual(resetStatus.state, .running)
 
-        XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "POST" && $0.path == "/sessions" })
+        let startRequest = try XCTUnwrap(TestKitURLProtocol.requests.first {
+            $0.method == "POST" && $0.path == "/sessions"
+        })
+        let startBody = try JSONSerialization.jsonObject(with: startRequest.body) as? [String: Any]
+        XCTAssertEqual(startBody?["exportVital"] as? Bool, true)
+        XCTAssertEqual(startBody?["uploadVital"] as? Bool, true)
+        XCTAssertEqual(startBody?["vitalUploadEndpoint"] as? String, "/upload")
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "DELETE" && $0.path == "/beds" })
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "POST" && $0.path == "/recorders/delete" })
     }
@@ -444,7 +450,10 @@ final class MacTestKitControllerTests: XCTestCase {
             durationSeconds: nil,
             maxMessages: nil,
             shiftTime: true,
-            generateFrames: true
+            generateFrames: true,
+            exportVital: true,
+            uploadVital: true,
+            vitalUploadEndpoint: "/upload"
         )
     }
 
@@ -492,8 +501,9 @@ private final class FakeMacTestKitHTTPClient: MacTestKitHTTPClient, @unchecked S
         let path = request.url?.path ?? "/"
         let key = "\(method) \(path)"
         let response = lock.withLock { handlers[key] } ?? Response(statusCode: 404, data: Data("missing mock".utf8))
+        let body = requestBodyData(request)
         lock.withLock {
-            protectedRequests.append(TestKitRequestRecord(method: method, path: path, body: request.httpBody ?? Data()))
+            protectedRequests.append(TestKitRequestRecord(method: method, path: path, body: body))
         }
         let httpResponse = HTTPURLResponse(
             url: request.url!,
@@ -552,7 +562,7 @@ private final class TestKitURLProtocol: URLProtocol {
     override func startLoading() {
         let method = request.httpMethod ?? "GET"
         let path = request.url?.path ?? "/"
-        let body = request.httpBody ?? Data()
+        let body = requestBodyData(request)
         let key = "\(method) \(path)"
         let handler = Self.lock.withLock { Self.handlers[key] }
         Self.lock.withLock {
@@ -576,6 +586,27 @@ private final class TestKitURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+private func requestBodyData(_ request: URLRequest) -> Data {
+    if let body = request.httpBody {
+        return body
+    }
+    guard let stream = request.httpBodyStream else {
+        return Data()
+    }
+    stream.open()
+    defer { stream.close() }
+    var data = Data()
+    var buffer = [UInt8](repeating: 0, count: 4096)
+    while stream.hasBytesAvailable {
+        let count = stream.read(&buffer, maxLength: buffer.count)
+        if count <= 0 {
+            break
+        }
+        data.append(buffer, count: count)
+    }
+    return data
 }
 
 private func testKitSession(

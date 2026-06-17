@@ -1611,6 +1611,9 @@ export interface components {
             maxMessages?: number | null;
             shiftTime: boolean;
             generateFrames: boolean;
+            exportVital: boolean;
+            uploadVital: boolean;
+            vitalUploadEndpoint: string;
         };
         RuntimeTestKitSessionSelectionRequest: {
             sessionID: string;
@@ -1645,7 +1648,32 @@ export interface components {
             bytesSent: number;
             lastError?: string | null;
             cleanupErrors: components["schemas"]["RuntimeTestKitCleanupError"][];
+            vital: components["schemas"]["RuntimeTestKitSessionVitalState"];
             recorders: components["schemas"]["RuntimeTestKitRecorder"][];
+        };
+        RuntimeTestKitSessionVitalState: {
+            exportStatus: string;
+            uploadStatus: string;
+            exportError?: string | null;
+            uploadError?: string | null;
+            artifact?: components["schemas"]["RuntimeTestKitSessionVitalArtifact"] | null;
+            uploadResult?: components["schemas"]["RuntimeTestKitSessionVitalUploadResult"] | null;
+        };
+        RuntimeTestKitSessionVitalArtifact: {
+            path: string;
+            filename: string;
+            sizeBytes: number;
+            createdAt: number;
+            format: string;
+            retentionPolicy: string;
+        };
+        RuntimeTestKitSessionVitalUploadResult: {
+            statusCode: number;
+            ok: boolean;
+            elapsedSeconds: number;
+            uploadedAt: number;
+            responseText: string;
+            error?: string | null;
         };
         RuntimeTestKitCleanupError: {
             vrcode: string;

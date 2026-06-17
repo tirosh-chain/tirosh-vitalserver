@@ -523,12 +523,19 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("PAUSED"))
         XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("starting"))
         XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("stopping"))
+        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("finalizing-vital"))
+        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("uploading"))
         XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isActive("stopped"))
+        XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isActive("uploaded"))
         XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isActive("failed"))
 
         XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isTerminal(" stopped "))
         XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isTerminal("FAILED"))
+        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isTerminal("vital-ready"))
+        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isTerminal("uploaded"))
+        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isTerminal("upload-failed"))
         XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isTerminal("running"))
+        XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isTerminal("uploading"))
 
         let sessions = [
             runtimeTestKitSession(id: "done", state: "stopped"),

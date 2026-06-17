@@ -141,7 +141,7 @@ public struct RuntimeTestKitPresentationPolicy {
             return .running
         case "paused":
             return .paused
-        case "stopped", "failed":
+        case "stopped", "failed", "vital-ready", "uploaded", "upload-failed":
             return .terminal
         default:
             return .unavailable
@@ -214,7 +214,10 @@ public struct RuntimeTestKitPresentationPolicy {
             durationSeconds: normalizedDurationSeconds(input.durationSeconds),
             maxMessages: normalizedMaxMessages(input.maxMessages),
             shiftTime: input.shiftTime,
-            generateFrames: input.generateFrames
+            generateFrames: input.generateFrames,
+            exportVital: true,
+            uploadVital: true,
+            vitalUploadEndpoint: "/upload"
         )
     }
 

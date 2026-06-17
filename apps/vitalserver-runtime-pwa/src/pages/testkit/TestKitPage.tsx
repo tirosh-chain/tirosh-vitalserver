@@ -104,7 +104,10 @@ export function TestKitPage() {
         durationSeconds: null,
         maxMessages: null,
         shiftTime: true,
-        generateFrames: true
+        generateFrames: true,
+        exportVital: true,
+        uploadVital: true,
+        vitalUploadEndpoint: "/upload"
       },
       {
         onSuccess: () => setVrcode(generateVrcode())

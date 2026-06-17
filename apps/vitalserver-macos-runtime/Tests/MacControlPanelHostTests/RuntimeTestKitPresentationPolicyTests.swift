@@ -99,6 +99,9 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
         XCTAssertEqual(request.maxMessages, 1_000_000)
         XCTAssertFalse(request.shiftTime)
         XCTAssertFalse(request.generateFrames)
+        XCTAssertTrue(request.exportVital)
+        XCTAssertTrue(request.uploadVital)
+        XCTAssertEqual(request.vitalUploadEndpoint, "/upload")
     }
 
     func testSelectionStateKeepsValidSessionAndPrunesUnavailableBeds() {
