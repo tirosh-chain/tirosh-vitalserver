@@ -4,6 +4,7 @@ WORKDIR /opt/vitalserver
 
 COPY vendor/vitalserver/vitalserver-old/ ./
 COPY apps/vitalserver/runtime/node-preload.js /opt/vitalserver/runtime/node-preload.js
+COPY apps/vitalserver/runtime/public-paths.js /opt/vitalserver/runtime/public-paths.js
 
 RUN mkdir -p vital_files service/tmp_files service/vr_release logs \
   && ln -sfn vital_files "Z:"

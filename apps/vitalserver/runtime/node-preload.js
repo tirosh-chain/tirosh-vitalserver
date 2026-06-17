@@ -3,6 +3,7 @@
 const os = require("os");
 const moduleLoader = require("module");
 const redis = require("redis");
+const { vitalFileWebPath } = require("./public-paths");
 
 const realCpus = os.cpus.bind(os);
 const minCpus = Number.parseInt(process.env.VITALSERVER_MIN_CPUS || "8", 10);
@@ -168,6 +169,36 @@ function patchRedisModule(redisModule) {
 
 patchRedisModule(redis);
 
+function patchExpressModule(expressModule) {
+  if (
+    !expressModule ||
+    !expressModule.response ||
+    typeof expressModule.response.render !== "function" ||
+    expressModule.response.__tiroshRenderPatched
+  ) {
+    return expressModule;
+  }
+
+  const realRender = expressModule.response.render;
+  expressModule.response.render = function patchedRender(view, options, callback) {
+    let nextOptions = options;
+    if (view === "webview" && options && typeof options === "object") {
+      const webPath = vitalFileWebPath(options.filename);
+      if (webPath) {
+        nextOptions = { ...options, path: webPath };
+      }
+    }
+
+    return realRender.call(this, view, nextOptions, callback);
+  };
+  Object.defineProperty(expressModule.response, "__tiroshRenderPatched", {
+    value: true,
+    enumerable: false,
+  });
+
+  return expressModule;
+}
+
 function withConfiguredAdminPassword(user) {
   if (user && user.id === "admin") {
     user.password = adminPassword;
@@ -241,6 +272,10 @@ moduleLoader._load = function patchedModuleLoad(request, parent, isMain) {
 
   if (request === "redis") {
     return patchRedisModule(exported);
+  }
+
+  if (request === "express") {
+    return patchExpressModule(exported);
   }
 
   if (request === "./include/db.js" && exported && exported.get_websocket_host) {
