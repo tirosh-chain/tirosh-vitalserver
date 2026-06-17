@@ -5,11 +5,13 @@ import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from .collector import VitalDBCollector
 from .config import ObserverSettings, load_settings
 from .diagnostics import write_diagnostic_event
 from .redis_client import RedisClient, RedisEndpoint
+from .snapshot_export import RedisSnapshotExporter
 from .time import utc_now_iso
 
 
@@ -29,20 +31,33 @@ class ObserverServer(ThreadingHTTPServer):
             ),
             settings=settings,
         )
+        self.snapshot_exporter = RedisSnapshotExporter(
+            RedisClient(
+                RedisEndpoint(
+                    host=settings.redis_host,
+                    port=settings.redis_port,
+                    timeout_seconds=settings.redis_timeout_seconds,
+                )
+            )
+        )
 
 
 class ObserverRequestHandler(BaseHTTPRequestHandler):
     server: ObserverServer
 
     def do_GET(self) -> None:
-        if self.path == "/health":
+        parsed = urlparse(self.path)
+        if parsed.path == "/health":
             self._json({"status": "ok", "observedAt": utc_now_iso()})
             return
-        if self.path == "/ready":
+        if parsed.path == "/ready":
             self._ready()
             return
-        if self.path == "/api/v1/observations":
+        if parsed.path == "/api/v1/observations":
             self._observations()
+            return
+        if parsed.path == "/api/v1/redis/snapshots":
+            self._redis_snapshots(parse_qs(parsed.query))
             return
         self._json({"error": "not_found"}, status=HTTPStatus.NOT_FOUND)
 
@@ -127,6 +142,85 @@ class ObserverRequestHandler(BaseHTTPRequestHandler):
         )
         self._json(document)
 
+    def _redis_snapshots(self, query: dict[str, list[str]]) -> None:
+        settings = self.server.settings
+        if not settings.redis_snapshot_export_enabled:
+            self._json(
+                {
+                    "error": "redis_snapshot_export_disabled",
+                    "observedAt": utc_now_iso(),
+                },
+                status=HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+            return
+        if not settings.redis_snapshot_export_token:
+            self._json(
+                {
+                    "error": "redis_snapshot_export_token_not_configured",
+                    "observedAt": utc_now_iso(),
+                },
+                status=HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+            return
+        expected = f"Bearer {settings.redis_snapshot_export_token}"
+        if self.headers.get("Authorization") != expected:
+            self._json(
+                {"error": "unauthorized", "observedAt": utc_now_iso()},
+                status=HTTPStatus.UNAUTHORIZED,
+            )
+            return
+
+        try:
+            cursor = _query_value(query, "cursor", "0")
+            scan_count = _query_int(
+                query,
+                "count",
+                default=1000,
+                minimum=1,
+                maximum=10000,
+            )
+            limit = _query_int(query, "limit", default=250, minimum=1, maximum=1000)
+        except ValueError as error:
+            self._json(
+                {"error": "invalid_query", "message": str(error)},
+                status=HTTPStatus.BAD_REQUEST,
+            )
+            return
+
+        started_at = time.monotonic()
+        try:
+            document = self.server.snapshot_exporter.page(
+                cursor=cursor,
+                scan_count=scan_count,
+                limit=limit,
+            ).as_json()
+        except Exception as error:
+            duration_ms = int((time.monotonic() - started_at) * 1000)
+            write_diagnostic_event(
+                "redis_snapshot_export_failed",
+                status=HTTPStatus.SERVICE_UNAVAILABLE.value,
+                durationMs=duration_ms,
+                error=str(error),
+            )
+            self._json(
+                {"error": "redis_snapshot_export_failed", "message": str(error)},
+                status=HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+            return
+
+        duration_ms = int((time.monotonic() - started_at) * 1000)
+        write_diagnostic_event(
+            "redis_snapshot_exported",
+            status=HTTPStatus.OK.value,
+            durationMs=duration_ms,
+            cursor=document["cursor"],
+            nextCursor=document["nextCursor"],
+            scanned=document["scanned"],
+            copied=document["copied"],
+            skipped=document["skipped"],
+        )
+        self._json(document)
+
     def _json(
         self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK
     ) -> None:
@@ -151,6 +245,32 @@ def _recorder_counts(document: dict[str, Any]) -> dict[str, int]:
         if recorder.get("stale") is True:
             counts["stale"] += 1
     return counts
+
+
+def _query_value(query: dict[str, list[str]], name: str, default: str) -> str:
+    values = query.get(name)
+    if not values:
+        return default
+    value = values[-1].strip()
+    return value if value else default
+
+
+def _query_int(
+    query: dict[str, list[str]],
+    name: str,
+    *,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    raw_value = _query_value(query, name, str(default))
+    try:
+        value = int(raw_value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be an integer") from error
+    if value < minimum or value > maximum:
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
+    return value
 
 
 def main() -> None:
