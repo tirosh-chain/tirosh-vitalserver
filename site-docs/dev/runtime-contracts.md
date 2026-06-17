@@ -218,6 +218,12 @@ Runtime Control API를 통해 전달합니다.
 |---|---|
 | `docs/api/vitaldb-observer.openapi.yaml` | observer container 내부 API |
 
+외부 PC 또는 Kubernetes에서 실행되는 `tirosh-redis-hub`는 VitalServer의 raw Redis port에 직접
+접속하지 않습니다. Redis relay가 필요하면 `vitaldb-observer`의
+`GET /api/v1/redis/snapshots`를 사용합니다. 이 endpoint는 기본 disabled이며 bearer token이 필요하고,
+allowlisted VitalDB waveform/trend key의 `TYPE`, `PTTL`, `DUMP` snapshot만 page 단위로 제공합니다.
+consumer는 `nextCursor`를 따라 읽고 target Redis에 restore합니다.
+
 ### 7-4. Audit Proxy API
 
 Audit Proxy API는 VRecorder command 흐름과 audit event를 관측하기 위한 sidecar API입니다.

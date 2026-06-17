@@ -157,3 +157,16 @@ upstream Redis 설정을 건드리지 않아도 되고, 놓친 frame을 `dts_<be
 - target Redis가 다른 VitalServer에서 직접 읽힐 예정이면 key 이름을 그대로 유지합니다.
 - target Redis를 분석/저장용으로만 쓴다면 namespace prefix를 둘 수 있지만, VitalServer 호환성은
   떨어집니다.
+
+## off-host relay 계약
+
+`tirosh-redis-hub`가 VitalServer host와 같은 Docker network에 없고 다른 PC 또는 Kubernetes에서
+실행될 때는 source Redis를 직접 외부에 노출하지 않습니다. 이 경우 `vitaldb-observer`의
+`GET /api/v1/redis/snapshots` endpoint를 source adapter로 사용합니다.
+
+이 endpoint는 Redis 명령 proxy가 아닙니다. Observer가 allowlist로 제한한 VitalDB waveform/trend key에
+대해서만 Redis `TYPE`, `PTTL`, `DUMP` 결과를 page 단위로 반환합니다. Relay는 응답의 `dumpBase64`를
+target Redis에 `RESTORE`하고, `nextCursor`를 따라 `complete=true`가 될 때까지 순회합니다.
+
+이 계약의 목적은 외부 relay에 필요한 binary-safe snapshot만 제공하면서, raw Redis port와 운영/인증
+key를 VM 밖으로 노출하지 않는 것입니다.
