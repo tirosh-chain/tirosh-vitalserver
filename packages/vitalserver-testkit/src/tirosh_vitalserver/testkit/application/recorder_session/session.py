@@ -7,7 +7,6 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from dataclasses import replace
 
 from tirosh_vitalserver.testkit.application.ports import (
     SessionVitalFileExporterPort,
@@ -22,8 +21,19 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
     VirtualRecorderSessionVitalState,
-    VirtualRecorderVitalExportStatus,
-    VirtualRecorderVitalUploadStatus,
+)
+from tirosh_vitalserver.testkit.application.recorder_session.policy import (
+    session_can_pause,
+    session_can_resume,
+    session_can_stop,
+    vital_state_after_stream_error,
+    vital_state_export_failed,
+    vital_state_export_ready,
+    vital_state_finalizing,
+    vital_state_upload_blocked,
+    vital_state_upload_failed,
+    vital_state_upload_succeeded,
+    vital_state_uploading,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.recording import (
     SessionPlaybackEvent,
@@ -119,13 +129,7 @@ class VirtualRecorderSession:
         """Request graceful session shutdown."""
 
         with self._lock:
-            if self._state in (
-                VirtualRecorderSessionState.STOPPED,
-                VirtualRecorderSessionState.FAILED,
-                VirtualRecorderSessionState.VITAL_READY,
-                VirtualRecorderSessionState.UPLOADED,
-                VirtualRecorderSessionState.UPLOAD_FAILED,
-            ):
+            if not session_can_stop(self._state):
                 return
             self._state = VirtualRecorderSessionState.STOPPING
             self._stop_event.set()
@@ -142,7 +146,7 @@ class VirtualRecorderSession:
         """Pause data transmission while keeping the recorder connection alive."""
 
         with self._lock:
-            if self._state != VirtualRecorderSessionState.RUNNING:
+            if not session_can_pause(self._state):
                 return self.snapshot()
             self._state = VirtualRecorderSessionState.PAUSED
             self._pause_event.set()
@@ -164,7 +168,7 @@ class VirtualRecorderSession:
         """Resume data transmission for a paused recorder connection."""
 
         with self._lock:
-            if self._state != VirtualRecorderSessionState.PAUSED:
+            if not session_can_resume(self._state):
                 return self.snapshot()
             self._state = VirtualRecorderSessionState.RUNNING
             self._pause_event.clear()
@@ -258,7 +262,7 @@ class VirtualRecorderSession:
                 )
                 if error:
                     self._state = VirtualRecorderSessionState.FAILED
-                    self._vital_state = blocked_vital_state_after_stream_error(
+                    self._vital_state = vital_state_after_stream_error(
                         self._vital_state,
                         error,
                     )
@@ -289,7 +293,7 @@ class VirtualRecorderSession:
                     SessionPlaybackEventType.STOPPED,
                     self._stopped_at,
                 )
-                self._vital_state = blocked_vital_state_after_stream_error(
+                self._vital_state = vital_state_after_stream_error(
                     self._vital_state,
                     str(exc),
                 )
@@ -350,10 +354,7 @@ class VirtualRecorderSession:
 
         with self._lock:
             self._state = VirtualRecorderSessionState.FINALIZING_VITAL
-            self._vital_state = replace(
-                self._vital_state,
-                export_status=VirtualRecorderVitalExportStatus.FINALIZING,
-            )
+            self._vital_state = vital_state_finalizing(self._vital_state)
             snapshot = self.snapshot()
         self._publish_snapshot(snapshot)
 
@@ -369,11 +370,9 @@ class VirtualRecorderSession:
 
         with self._lock:
             self._state = VirtualRecorderSessionState.VITAL_READY
-            self._vital_state = replace(
+            self._vital_state = vital_state_export_ready(
                 self._vital_state,
-                export_status=VirtualRecorderVitalExportStatus.READY,
-                artifact=artifact,
-                export_error=None,
+                artifact,
             )
             snapshot = self.snapshot()
         emit_testkit_event(
@@ -394,21 +393,16 @@ class VirtualRecorderSession:
             artifact = self._vital_state.artifact
             if artifact is None:
                 self._state = VirtualRecorderSessionState.UPLOAD_FAILED
-                self._vital_state = replace(
+                self._vital_state = vital_state_upload_blocked(
                     self._vital_state,
-                    upload_status=VirtualRecorderVitalUploadStatus.BLOCKED,
-                    upload_error="vital artifact is not ready",
+                    "vital artifact is not ready",
                 )
                 snapshot = self.snapshot()
                 self._publish_snapshot(snapshot)
                 return snapshot
 
             self._state = VirtualRecorderSessionState.UPLOADING
-            self._vital_state = replace(
-                self._vital_state,
-                upload_status=VirtualRecorderVitalUploadStatus.UPLOADING,
-                upload_error=None,
-            )
+            self._vital_state = vital_state_uploading(self._vital_state)
             snapshot = self.snapshot()
         self._publish_snapshot(snapshot)
 
@@ -430,19 +424,16 @@ class VirtualRecorderSession:
         with self._lock:
             if result.ok:
                 self._state = VirtualRecorderSessionState.UPLOADED
-                self._vital_state = replace(
+                self._vital_state = vital_state_upload_succeeded(
                     self._vital_state,
-                    upload_status=VirtualRecorderVitalUploadStatus.UPLOADED,
-                    upload_result=result,
-                    upload_error=None,
+                    result,
                 )
             else:
                 self._state = VirtualRecorderSessionState.UPLOAD_FAILED
-                self._vital_state = replace(
+                self._vital_state = vital_state_upload_failed(
                     self._vital_state,
-                    upload_status=VirtualRecorderVitalUploadStatus.FAILED,
-                    upload_result=result,
-                    upload_error=result.error or "vital upload failed",
+                    error=result.error or "vital upload failed",
+                    result=result,
                 )
             snapshot = self.snapshot()
         self._publish_snapshot(snapshot)
@@ -455,15 +446,10 @@ class VirtualRecorderSession:
         with self._lock:
             self._state = VirtualRecorderSessionState.FAILED
             self._error = error
-            self._vital_state = replace(
+            self._vital_state = vital_state_export_failed(
                 self._vital_state,
-                export_status=VirtualRecorderVitalExportStatus.FAILED,
-                upload_status=(
-                    VirtualRecorderVitalUploadStatus.BLOCKED
-                    if self._request.upload_vital
-                    else self._vital_state.upload_status
-                ),
-                export_error=error,
+                error=error,
+                upload_requested=self._request.upload_vital,
             )
             snapshot = self.snapshot()
         emit_testkit_event(
@@ -480,10 +466,9 @@ class VirtualRecorderSession:
     ) -> VirtualRecorderSessionSnapshot:
         with self._lock:
             self._state = VirtualRecorderSessionState.UPLOAD_FAILED
-            self._vital_state = replace(
+            self._vital_state = vital_state_upload_failed(
                 self._vital_state,
-                upload_status=VirtualRecorderVitalUploadStatus.FAILED,
-                upload_error=error,
+                error=error,
             )
             snapshot = self.snapshot()
         emit_testkit_event(
@@ -560,25 +545,3 @@ def request_beds(request: VirtualRecorderSessionRequest) -> tuple[Bed, ...]:
     """Return explicitly selected beds for a recorder session."""
 
     return beds_for_room_names(request.bed_room_names)
-
-
-def blocked_vital_state_after_stream_error(
-    vital_state: VirtualRecorderSessionVitalState,
-    error: str,
-) -> VirtualRecorderSessionVitalState:
-    """Return vital state when streaming failed before export/upload."""
-
-    if vital_state.export_status == VirtualRecorderVitalExportStatus.NOT_REQUESTED:
-        return vital_state
-
-    return replace(
-        vital_state,
-        export_status=VirtualRecorderVitalExportStatus.BLOCKED,
-        upload_status=(
-            VirtualRecorderVitalUploadStatus.BLOCKED
-            if vital_state.upload_status
-            != VirtualRecorderVitalUploadStatus.NOT_REQUESTED
-            else vital_state.upload_status
-        ),
-        export_error=error,
-    )
