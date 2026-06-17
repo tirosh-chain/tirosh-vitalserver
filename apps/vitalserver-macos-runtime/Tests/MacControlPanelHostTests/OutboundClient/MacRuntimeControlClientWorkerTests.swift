@@ -110,7 +110,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertEqual(loadedReleaseInfo, releaseInfo)
         XCTAssertFalse(client.loadInstallInfo().appBundlePath?.isEmpty ?? true)
 
-        _ = try await client.uninstallRuntime(clean: true)
+        _ = try await client.uninstallRuntime(mode: .clean)
         var settings = RuntimeSettings()
         settings.changeAdminPassword = true
         settings.adminPassword = "secret"
@@ -130,7 +130,8 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
 
         XCTAssertEqual(environment.removedPasswordFiles.map(\.path), ["/tmp/admin-password"])
         XCTAssertEqual(runner.shellCommands.count, 12)
-        XCTAssertTrue(runner.shellCommands.contains { $0.contains("--force-clean-uninstaller") })
+        XCTAssertTrue(runner.shellCommands.contains { $0.contains("--clean") })
+        XCTAssertFalse(runner.shellCommands.contains { $0.contains("--force-clean-uninstaller") })
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--admin-password-file") })
     }
 
@@ -173,7 +174,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
             XCTAssertEqual((error as? RuntimeClientError)?.errorDescription, RuntimeControlClientConstants.StatusText.missingLauncher)
         }
         do {
-            _ = try await worker.uninstallRuntime(clean: false)
+            _ = try await worker.uninstallRuntime(mode: .standard)
             XCTFail("Expected missing uninstaller")
         } catch {
             XCTAssertEqual((error as? RuntimeClientError)?.errorDescription, RuntimeControlClientConstants.StatusText.missingUninstaller)
@@ -198,7 +199,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
             XCTAssertTrue((error as? RuntimeClientError)?.errorDescription?.contains("permission denied") == true)
         }
         do {
-            _ = try await worker.uninstallRuntime(clean: false)
+            _ = try await worker.uninstallRuntime(mode: .standard)
             XCTFail("Expected uninstaller not executable")
         } catch {
             XCTAssertTrue((error as? RuntimeClientError)?.errorDescription?.contains("not executable") == true)

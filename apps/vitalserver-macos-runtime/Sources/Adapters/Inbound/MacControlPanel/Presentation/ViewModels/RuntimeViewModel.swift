@@ -287,7 +287,7 @@ public final class RuntimeViewModel: ObservableObject {
         ].joined(separator: "|")
     }
 
-    func uninstallRuntime(clean: Bool = false) async {
+    func uninstallRuntime(mode: RuntimeUninstallMode = .standard) async {
         guard controlClient.capabilities.canUninstallRuntime else {
             message = AppConstants.StatusText.actionUnavailable
             return
@@ -296,10 +296,10 @@ public final class RuntimeViewModel: ObservableObject {
             preparingMessage: AppConstants.StatusText.uninstallPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.uninstallRunning,
-            successMessage: clean
+            successMessage: mode.clean
                 ? AppConstants.StatusText.cleanUninstallCompleted
                 : AppConstants.StatusText.uninstallCompleted,
-            action: { try await self.controlClient.uninstallRuntime(clean: clean) }
+            action: { try await self.controlClient.uninstallRuntime(mode: mode) }
         )
         if uninstallResult.isSuccess {
             await quitAfterSuccessfulUninstall()

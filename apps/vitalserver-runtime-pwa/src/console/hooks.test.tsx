@@ -154,7 +154,7 @@ describe("console hooks", () => {
     await mutateHook(() => useStopRuntimeServices(), undefined, wrapper);
     await mutateHook(() => useUninstallRuntime(), true, wrapper);
     expect(gateway.repairProxy).toHaveBeenCalledWith(18444);
-    expect(gateway.uninstallRuntime).toHaveBeenCalledWith({ clean: true });
+    expect(gateway.uninstallRuntime).toHaveBeenCalledWith({ mode: "clean" });
   });
 
   it("runs TestKit mutations with decoded request payloads", async () => {

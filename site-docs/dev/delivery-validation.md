@@ -168,7 +168,7 @@ VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 �
 | workflow 역할 | update/repair/uninstall workflow는 VM 상태를 추측하지 않고 owner가 제공한 결과만 소비하는가 |
 | operation state 보존 | install/uninstall state document는 runtime status message에 덮어 쓰지 않고 별도 read model로 보존되는가 |
 | status 기록 범위 | runtime status writer가 clean uninstall로 제거된 product root를 다시 만들지 않는가 |
-| recovery 구분 | clean uninstall recovery처럼 망가진 상태 정리는 일반 graceful stop이 아니라 명시적 force-clean contract를 쓰는가 |
+| recovery 구분 | clean uninstall과 fresh-install recovery가 `--clean`/`--force-clean-uninstaller` 계약으로 분리되어 있는가 |
 | progress 분리 | progress viewer marker, UI 메시지, shared log line을 runtime cleanup 성공/실패의 source of truth로 쓰지 않는가 |
 
 특히 아래 변경은 직접 VM 제어 호출을 추가하지 말고 owner entrypoint를 먼저 찾아야 합니다.
@@ -180,7 +180,8 @@ VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 �
 | rollback/service-control | service start/stop wrapper가 VM owner를 통과 |
 | watchdog recovery | watchdog 전용 restart intent로 VM owner를 통과 |
 | repair/VM disk replacement | repair intent 또는 best-effort result를 통해 실패 의미를 보존 |
-| Helper UI clean uninstall | `--force-clean-uninstaller`로 force-clean recovery contract 사용 |
+| Helper UI clean uninstall | `--clean` 사용. graceful stop 실패 시 cleanup 진행을 위해 force stop으로 전환하되 fresh install readiness를 성공으로 추정하지 않음 |
+| Reset for Reinstall | `--force-clean-uninstaller` 사용. fresh install blocker 제거와 readiness 검증을 recovery contract로 수행 |
 
 검증할 때는 성공 case만 보지 않습니다. `guest-runtime-state-stale`, VM stop timeout, pid file
 missing, launchd loaded/running mismatch, progress `missing-marker`처럼 서로 다른 상태가 서로

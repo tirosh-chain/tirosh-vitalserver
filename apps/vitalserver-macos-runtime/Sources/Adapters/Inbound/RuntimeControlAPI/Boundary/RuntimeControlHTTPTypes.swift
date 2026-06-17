@@ -116,7 +116,7 @@ public protocol RuntimeControlAPIReadHandler {
     func restoreRuntimeDataBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func deleteBackup(_ backup: RuntimeControlFileReference) async throws -> RuntimeControlCommandResponse
     func exportLogs(destination: RuntimeControlFileReference) async throws -> RuntimeLogExportResult
-    func uninstallRuntime(clean: Bool) async throws -> RuntimeControlCommandResponse
+    func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeControlCommandResponse
 }
 
 public extension RuntimeControlAPIReadHandler {

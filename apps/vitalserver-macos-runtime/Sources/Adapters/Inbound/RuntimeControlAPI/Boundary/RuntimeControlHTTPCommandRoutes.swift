@@ -65,7 +65,7 @@ struct RuntimeControlHTTPCommandRoutes {
         case .uninstall:
             let uninstallRequest = try request.decodedBody(RuntimeUninstallRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(
-                handler.uninstallRuntime(clean: uninstallRequest.clean)
+                handler.uninstallRuntime(mode: uninstallRequest.mode)
             )
         case .capabilities,
              .overview,

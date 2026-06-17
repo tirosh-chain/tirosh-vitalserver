@@ -208,7 +208,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         )
 
         do {
-            _ = try await worker.uninstallRuntime(clean: true)
+            _ = try await worker.uninstallRuntime(mode: .clean)
             XCTFail("Expected missing uninstaller")
         } catch {
             XCTAssertEqual((error as? RuntimeClientError)?.errorDescription, RuntimeControlClientConstants.StatusText.missingUninstaller)

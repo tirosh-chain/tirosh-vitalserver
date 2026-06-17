@@ -28,6 +28,17 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertEqual(command, "'/bin/rm' '-rf' '--' '/tmp/backup before'")
     }
 
+    func testCleanUninstallCommandUsesCleanArgumentWithoutForceCleanRecoveryArgument() {
+        let command = RuntimeCommandFactory.uninstallCommand(
+            uninstaller: "/usr/local/bin/tirosh-vitalserver-uninstall",
+            clean: true,
+            forceClean: false
+        )
+
+        XCTAssertTrue(command.contains("'--clean'"))
+        XCTAssertFalse(command.contains("--force-clean-uninstaller"))
+    }
+
     func testUninstallCommandStartsBackgroundUninstaller() {
         let command = RuntimeCommandFactory.uninstallCommand(
             uninstaller: "/usr/local/bin/tirosh-vitalserver-uninstall",

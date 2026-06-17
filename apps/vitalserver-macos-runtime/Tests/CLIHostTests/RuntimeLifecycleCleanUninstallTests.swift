@@ -8,6 +8,66 @@ import Workflow
 import XCTest
 
 final class RuntimeLifecycleCleanUninstallTests: XCTestCase {
+    func testCleanUninstallForcesRuntimeServiceCleanupWhenGracefulStopFails() throws {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/clean-uninstall-product"))
+        let fileStore = RuntimeFileStoreSpy()
+        var events: [String] = []
+        let runner = RuntimeUninstallComposition.make(
+            context: RuntimeUninstallCompositionContext(
+                installedPaths: installedPaths,
+                pidFile: installedPaths.pidFile
+            ),
+            operations: RuntimeUninstallCompositionOperations(
+                fileStore: fileStore,
+                configuredExternalVitalFilesDirectory: {
+                    RuntimeConfiguredExternalVitalFilesDirectoryRead(externalDirectory: nil, failure: nil)
+                },
+                serviceState: { _ in .notLoaded },
+                createRedisBackup: {
+                    events.append("backup")
+                },
+                disableAutomaticBackupScheduler: {
+                    events.append("disable-automatic-backup")
+                },
+                disableRuntimeServicesForUninstall: {
+                    events.append("disable")
+                },
+                stopRuntimeServices: {
+                    events.append("stop")
+                    throw NSError(domain: "test", code: 1)
+                },
+                forceStopRuntimeServicesForUninstall: {
+                    events.append("force-stop")
+                },
+                clearLaunchdDisabledOverridesAfterUninstall: {
+                    events.append("clear-disabled-overrides")
+                },
+                cleanupHostProxyPortAfterStop: { clean in
+                    events.append("cleanup:clean=\(clean)")
+                },
+                packageReceiptStates: { [] },
+                openFilesInDirectory: { _ in RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "") },
+                forgetPackageReceipt: { identifier in
+                    events.append("forget:\(identifier)")
+                    return RuntimeProcessResult(exitCode: 0, stdout: "", stderr: "")
+                },
+                now: { Date(timeIntervalSince1970: 0) },
+                log: { events.append("log:\($0)") }
+            )
+        )
+
+        try runner.run(RuntimeUninstallCommand(clean: true))
+
+        XCTAssertTrue(events.contains("disable"))
+        XCTAssertTrue(events.contains("stop"))
+        XCTAssertTrue(events.contains {
+            $0.hasPrefix("log:clean uninstall graceful stop failed; forcing runtime service cleanup reason=")
+        })
+        XCTAssertTrue(events.contains("force-stop"))
+        XCTAssertTrue(events.contains("cleanup:clean=true"))
+        XCTAssertFalse(events.contains("backup"))
+    }
+
     func testForceCleanUninstallUsesForceStopRuntimeServicesHook() throws {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/clean-uninstall-product"))
         let fileStore = RuntimeFileStoreSpy()

@@ -1466,7 +1466,8 @@ export interface components {
             proxyPort: number;
         };
         RuntimeUninstallRequest: {
-            clean: boolean;
+            /** @enum {string} */
+            mode: "standard" | "clean" | "forceCleanUninstaller";
         };
         RuntimeBackup: {
             path?: string;

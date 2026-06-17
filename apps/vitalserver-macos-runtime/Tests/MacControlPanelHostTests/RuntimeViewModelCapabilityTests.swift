@@ -1773,7 +1773,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return success()
     }
 
-    func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
+    func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult {
         success()
     }
 

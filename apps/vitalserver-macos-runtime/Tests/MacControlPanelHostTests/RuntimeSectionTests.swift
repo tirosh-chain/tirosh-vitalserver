@@ -175,7 +175,7 @@ private final class HostFakeRuntimeControlClient: RuntimeControlClient, RuntimeH
     }
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory { RuntimeVitalRecorderHistory(observations: []) }
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory { RuntimeVitalRelationshipHistory() }
-    func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
+    func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "uninstall", stderr: "")
     }
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult { applySettingsResult }

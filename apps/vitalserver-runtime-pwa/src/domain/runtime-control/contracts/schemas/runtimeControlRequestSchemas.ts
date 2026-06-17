@@ -34,7 +34,7 @@ export const runtimeApplySettingsRequestSchema = z.object({
 }) satisfies z.ZodType<RuntimeApplySettingsRequest>;
 
 export const runtimeUninstallRequestSchema = z.object({
-  clean: z.boolean()
+  mode: z.enum(["standard", "clean", "forceCleanUninstaller"])
 }) satisfies z.ZodType<RuntimeUninstallRequest>;
 
 export const runtimeBackupRequestSchema = z.object({

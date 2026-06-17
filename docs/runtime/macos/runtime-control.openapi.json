@@ -3982,11 +3982,16 @@
       "RuntimeUninstallRequest": {
         "type": "object",
         "required": [
-          "clean"
+          "mode"
         ],
         "properties": {
-          "clean": {
-            "type": "boolean"
+          "mode": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "clean",
+              "forceCleanUninstaller"
+            ]
           }
         }
       },

@@ -33,12 +33,12 @@ public actor MacRuntimeControlCommandWorker {
         return await actionEnvironment.verifyBundle(launcher: RuntimeControlClientConstants.Paths.launcher, bundleURL: url)
     }
 
-    public func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
+    public func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult {
         try ensureExecutable(.uninstaller)
         return await runPrivileged(RuntimeCommandFactory.uninstallCommand(
             uninstaller: RuntimeControlClientConstants.Paths.uninstaller,
-            clean: clean,
-            forceClean: clean
+            clean: mode.clean,
+            forceClean: mode.forceClean
         ))
     }
 

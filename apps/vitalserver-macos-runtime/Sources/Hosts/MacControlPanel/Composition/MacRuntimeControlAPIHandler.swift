@@ -202,8 +202,8 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         try await hostClient.exportLogs(to: try localFileURL(destination))
     }
 
-    func uninstallRuntime(clean: Bool) async throws -> RuntimeControlCommandResponse {
-        let response = RuntimeControlCommandResponse(result: try await commandClient.uninstallRuntime(clean: clean))
+    func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeControlCommandResponse {
+        let response = RuntimeControlCommandResponse(result: try await commandClient.uninstallRuntime(mode: mode))
         if response.result.exitCode == 0 {
             scheduleHelperTermination()
         }

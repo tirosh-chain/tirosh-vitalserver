@@ -46,7 +46,7 @@ describe("RuntimeControlApiClient", () => {
     });
 
     await client.applySettings({ settings: fullSettings({ proxyPort: 18080 }) });
-    await client.uninstallRuntime({ clean: true });
+    await client.uninstallRuntime({ mode: "clean" });
     await client.repairProxy(18080);
     await client.deleteUpdateBackup({ backup: { kind: "localPath", value: "/tmp/update" } });
     await client.deleteRuntimeDataBackup({
