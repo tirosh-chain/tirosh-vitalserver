@@ -101,6 +101,10 @@ signal scenario)를 기준으로 `.vital` artifact를 생성하고 VitalServer�
 `{"exportVital":true,"uploadVital":true}`를 명시한다. streaming frame 전체를 memory에
 누적하지 않으며, `uploadVital`은 `exportVital` 없이는 유효하지 않다.
 
+Generated bed는 같은 prefix를 반복해도 구분되도록 짧은 random suffix를 붙인다. 기본 prefix
+`testkit-bed`와 suffix `5f83`은 `testkit-bed5f83`으로 생성되며, 이 이름이 TestKit status,
+recorder payload `roomname`, Web Monitoring title, `.vital` filename prefix에 동일하게 사용된다.
+
 `.vital` export/upload session은 아래 상태를 API 계약으로 제공한다.
 
 ```text

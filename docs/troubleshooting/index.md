@@ -94,6 +94,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-083 | 자동 VitalServer Helper backup이 Recovery operations 목록에 표시되지 않음 | Runtime health / Data store / macOS Helper UI | implemented | [Automatic Backup Not Visible in Recovery Operations](083_automatic-backup-not-visible-in-recovery.md) |
 | TS-084 | TestKit vital upload가 My Files에 표시되지 않음 | TestKit / Upstream integration | active | [TestKit vital upload가 My Files에 표시되지 않음](084_testkit-vital-upload-not-visible-in-my-files.md) |
 | TS-085 | TestKit vital upload가 413 Request Entity Too Large로 실패함 | Host proxy / Guest containers / TestKit | active | [TestKit vital upload가 413 Request Entity Too Large로 실패함](085_vital-upload-413-request-entity-too-large.md) |
+| TS-086 | TestKit bed suffix가 Web Monitoring에서 보이지 않음 | TestKit / Upstream integration | active | [TestKit bed suffix가 Web Monitoring에서 보이지 않음](086_testkit-bed-suffix-hidden-in-web-monitoring.md) |
 
 ## Follow-up 규칙
 

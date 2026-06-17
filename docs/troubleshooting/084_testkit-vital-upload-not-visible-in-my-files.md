@@ -78,7 +78,7 @@ uv run pytest \
 1. TestKit session uploader는 `POST /upload` 응답이 HTTP 2xx이고 body가 정확히 `success`일 때만 `uploaded`로 표시합니다.
 2. 그 외 body는 `upload-failed` 상태와 `uploadError`로 보존합니다.
 3. TestKit session `.vital` artifact filename은 synthetic session label이 아니라 실제 VRecorder playback `roomname` prefix를 사용합니다.
-4. 자동 생성 bed room name은 같은 prefix를 여러 번 써도 충돌하지 않도록 `prefix-xxxx` 형식의 짧은 random suffix를 붙입니다.
+4. 자동 생성 bed room name은 같은 prefix를 여러 번 써도 충돌하지 않도록 `prefixxxxx` 형식의 짧은 random suffix를 붙입니다.
 5. TestKit exporter는 Python `vitaldb`가 쓴 VITA v3 header를 vendored VitalServer legacy parser가 packet offset을 맞출 수 있는 header로 재작성합니다.
 6. integration test는 virtual recorder session의 stop 이후 `.vital` 생성, multipart upload, VitalServer식 `success` body, live VitalServer filelist의 non-zero `dtstart/dtend` 확인까지 포함해야 합니다.
 
@@ -105,6 +105,6 @@ TestKit UI/API는 이 의미들을 섞지 않고, 실패 body와 artifact filena
 - 2026-06-17: Helper Test 탭이 `uploaded`를 표시하지만 My Files가 비어 있는 증상을 등록했습니다.
 - 2026-06-17: upstream `/upload`가 HTTP 200 body text로 parser/store 결과를 반환하며, 정상 성공 body는 `success`임을 확인했습니다.
 - 2026-06-17: My Files가 filename-derived bed name을 로그인 사용자의 bed 목록과 비교해 필터링함을 확인했습니다.
-- 2026-06-17: TestKit `.vital` artifact filename을 실제 playback `roomname` 기반으로 만들고, 자동 bed 생성은 `prefix-xxxx` 형식의 충돌 방지 suffix를 사용하도록 수정했습니다.
+- 2026-06-17: TestKit `.vital` artifact filename을 실제 playback `roomname` 기반으로 만들고, 자동 bed 생성은 `prefixxxxx` 형식의 충돌 방지 suffix를 사용하도록 수정했습니다.
 - 2026-06-17: storage folder에는 파일이 존재하지만 VitalServer filelist index의 `dtstart/dtend`가 `0`인 경우 My Files 기본 날짜 조회에 표시되지 않음을 확인했습니다.
 - 2026-06-17: Python `vitaldb` VITA v3 header와 vendored VitalServer JS legacy parser의 packet offset mismatch를 확인하고, TestKit exporter가 legacy-compatible header로 재작성하도록 수정했습니다.

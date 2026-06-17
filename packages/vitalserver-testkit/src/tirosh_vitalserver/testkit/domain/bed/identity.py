@@ -130,7 +130,7 @@ def generated_bed_room_name(
         (suffix_factory or random_bed_room_suffix)()
     )
 
-    return f"{resolved_prefix}-{suffix}"
+    return f"{resolved_prefix}{suffix}"
 
 
 def random_bed_room_suffix() -> str:
