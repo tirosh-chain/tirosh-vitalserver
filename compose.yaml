@@ -120,8 +120,6 @@ services:
       VITALDB_OBSERVER_REDIS_HOST: "${VITALDB_OBSERVER_REDIS_HOST:-redis}"
       VITALDB_OBSERVER_REDIS_PORT: "${VITALDB_OBSERVER_REDIS_PORT:-6379}"
       VITALDB_OBSERVER_RECORDER_ONLINE_THRESHOLD_SECONDS: "${VITALDB_OBSERVER_RECORDER_ONLINE_THRESHOLD_SECONDS:-120}"
-      VITALDB_OBSERVER_REDIS_SNAPSHOT_EXPORT_ENABLED: "${VITALDB_OBSERVER_REDIS_SNAPSHOT_EXPORT_ENABLED:-0}"
-      VITALDB_OBSERVER_REDIS_SNAPSHOT_EXPORT_TOKEN: "${VITALDB_OBSERVER_REDIS_SNAPSHOT_EXPORT_TOKEN:-}"
     healthcheck:
       test:
         - CMD-SHELL
@@ -130,6 +128,32 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+    restart: unless-stopped
+
+  redis-relay:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: apps/vitalserver-redis-relay/Dockerfile
+    image: vitalserver-redis-relay:0.1.0
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_RELAY_CONFIG_PATH: "${REDIS_RELAY_CONFIG_PATH:-/run/tirosh/config/redis-relay.toml}"
+      REDIS_RELAY_STATUS_PATH: "${REDIS_RELAY_STATUS_PATH:-/run/tirosh/status/redis-relay-status.json}"
+    volumes:
+      - type: volume
+        source: redis-relay-config
+        target: /run/tirosh/config
+        read_only: true
+      - type: volume
+        source: redis-relay-secrets
+        target: /run/tirosh/secrets
+        read_only: true
+      - type: volume
+        source: redis-relay-status
+        target: /run/tirosh/status
     restart: unless-stopped
 
   redis-ui:
@@ -181,3 +205,6 @@ volumes:
   vital-vr-release:
   vital-tmp-files:
   audit-logs:
+  redis-relay-config:
+  redis-relay-secrets:
+  redis-relay-status:

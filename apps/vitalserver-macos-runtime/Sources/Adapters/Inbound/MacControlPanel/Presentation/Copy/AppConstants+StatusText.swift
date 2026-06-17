@@ -207,6 +207,7 @@ public extension AppConstants {
         public static let invalidLogArchiveMaximum = "Log archive size limit must be between 1 and 20 GiB."
         public static let adminPasswordRequired = "Admin password reset value must not be empty."
         public static let adminPasswordNewline = "Admin password reset value must not contain newlines."
+        public static let invalidRedisRelayTarget = "Redis relay target settings are invalid."
         public static func commandFailed(exitCode: Int32) -> String {
             "Command failed with exit code \(exitCode)"
         }

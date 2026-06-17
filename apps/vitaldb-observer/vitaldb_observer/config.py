@@ -18,8 +18,6 @@ class ObserverSettings:
     audit_event_limit: int
     access_log_path: str
     access_log_limit: int
-    redis_snapshot_export_enabled: bool
-    redis_snapshot_export_token: str
 
 
 def load_settings(environ: Mapping[str, str] | None = None) -> ObserverSettings:
@@ -49,15 +47,6 @@ def load_settings(environ: Mapping[str, str] | None = None) -> ObserverSettings:
         audit_event_limit=_int_env(env, "VITALDB_OBSERVER_AUDIT_EVENT_LIMIT", 1000),
         access_log_path=env.get("VITALDB_OBSERVER_ACCESS_LOG_PATH", ""),
         access_log_limit=_int_env(env, "VITALDB_OBSERVER_ACCESS_LOG_LIMIT", 200),
-        redis_snapshot_export_enabled=_bool_env(
-            env,
-            "VITALDB_OBSERVER_REDIS_SNAPSHOT_EXPORT_ENABLED",
-            False,
-        ),
-        redis_snapshot_export_token=env.get(
-            "VITALDB_OBSERVER_REDIS_SNAPSHOT_EXPORT_TOKEN",
-            "",
-        ),
     )
 
 
@@ -73,10 +62,3 @@ def _float_env(env: Mapping[str, str], key: str, default: float) -> float:
     if raw_value is None or raw_value == "":
         return default
     return float(raw_value)
-
-
-def _bool_env(env: Mapping[str, str], key: str, default: bool) -> bool:
-    raw_value = env.get(key)
-    if raw_value is None or raw_value == "":
-        return default
-    return raw_value.strip().lower() in {"1", "true", "yes", "on"}

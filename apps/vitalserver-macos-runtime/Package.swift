@@ -88,6 +88,7 @@ let package = Package(
                 "Domain",
                 "Application",
                 "Workflow",
+                "RuntimeControl",
                 "InboundAdapters",
                 "OutboundAdapters",
                 "Bootstrap",

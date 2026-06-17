@@ -218,12 +218,22 @@ Runtime Control API를 통해 전달합니다.
 |---|---|
 | `docs/api/vitaldb-observer.openapi.yaml` | observer container 내부 API |
 
-외부 PC 또는 Kubernetes에서 실행되는 data relay/collector는 VitalServer의 raw Redis port에 직접
-접속하지 않습니다. Redis에 수신된 numeric/trend 및 waveform 데이터를 외부에서 가져가야 하면
-`vitaldb-observer`의 `GET /api/v1/redis/snapshots`를 사용합니다. 이 endpoint는 기본 disabled이며
-bearer token이 필요하고, allowlisted VitalDB 데이터 key의 `TYPE`, `PTTL`, `DUMP` snapshot만 page 단위로
-제공합니다. consumer는 `nextCursor`를 따라 읽고 target Redis에 restore하거나 별도 저장소에
-binary-safe하게 저장합니다.
+외부 PC 또는 Kubernetes로 numeric/trend 및 waveform 데이터를 relay할 때도 VitalServer raw Redis port는
+외부에 직접 노출하지 않습니다. 실시간/대용량 relay는 observer API가 아니라 별도 Redis relay container가
+source Redis 3.2를 내부 network에서 읽고, Helper Advanced 설정의 target Redis 8.x endpoint로 publish합니다.
+Observer API는 recorder observation snapshot만 제공하며 Redis data export API를 제공하지 않습니다.
+
+Helper Advanced Redis relay 설정은 UI checkbox/preset 값을 runtime file contract로 변환합니다.
+Regex allowlist는 UI가 만들지 않고 relay code의 policy가 소유합니다. Helper가 생성하는 파일은 다음과
+같습니다.
+
+| Host/guest shared path | Container path | 내용 |
+|---|---|---|
+| `/mnt/tirosh/deploy/redis-relay-config/redis-relay.toml` | `/run/tirosh/config/redis-relay.toml` | relay enable, target endpoint, preset |
+| `/mnt/tirosh/deploy/redis-relay-secrets/redis-relay-target-password` | `/run/tirosh/secrets/redis-relay-target-password` | target Redis password |
+
+Password 원문은 Runtime Control settings/read model과 TOML에 저장하지 않습니다. Helper read model은
+저장 여부만 `passwordConfigured`로 노출합니다.
 
 ### 7-4. Audit Proxy API
 

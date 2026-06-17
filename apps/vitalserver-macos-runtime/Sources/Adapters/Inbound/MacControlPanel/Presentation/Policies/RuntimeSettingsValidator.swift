@@ -60,6 +60,28 @@ public struct RuntimeSettingsValidator {
         if settings.changeAdminPassword, !isLineSafe(settings.adminPassword) {
             return .invalid("Admin password reset value must not contain newlines.")
         }
+        if settings.redisRelay.enabled {
+            let target = settings.redisRelay.target
+            if target.host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || target.host != target.host.trimmingCharacters(in: .whitespacesAndNewlines)
+                || !isLineSafe(target.host) {
+                return .invalid(AppConstants.StatusText.invalidRedisRelayTarget)
+            }
+            if !(1...65_535).contains(target.port) {
+                return .invalid(AppConstants.StatusText.invalidRedisRelayTarget)
+            }
+            if target.database < 0 {
+                return .invalid(AppConstants.StatusText.invalidRedisRelayTarget)
+            }
+            if !isLineSafe(target.username)
+                || !isLineSafe(target.password) {
+                return .invalid(AppConstants.StatusText.invalidRedisRelayTarget)
+            }
+            if settings.redisRelay.intervalSeconds < 0.1
+                || settings.redisRelay.scanCount < 1 {
+                return .invalid(AppConstants.StatusText.invalidRedisRelayTarget)
+            }
+        }
         return .valid
     }
 

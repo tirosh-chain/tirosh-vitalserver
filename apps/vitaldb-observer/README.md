@@ -7,8 +7,6 @@ database.
 ## Responsibility
 
 - Read VitalServer Redis keys in read-only mode.
-- Export allowlisted Redis key snapshots for off-host relay consumers without
-  publishing raw Redis.
 - Parse optional proxy/access JSONL logs as diagnostic evidence.
 - Build recorder, bed, device, filter, proxy, and anomaly snapshots.
 - Serve stateless JSON APIs for the guest runtime-state collector.
@@ -52,25 +50,6 @@ Diagnostic events:
 | `GET` | `/health` | process liveness |
 | `GET` | `/ready` | Redis readiness |
 | `GET` | `/api/v1/observations` | latest computed VitalDB observation snapshot |
-| `GET` | `/api/v1/redis/snapshots` | bearer-token protected, allowlisted Redis snapshot page for external relay |
-
-`/api/v1/redis/snapshots` is disabled by default. It is intended for deployments
-where external consumers run on another host or Kubernetes cluster and cannot
-join the VitalServer Docker network. The endpoint does not expose arbitrary Redis
-commands. It scans source Redis and returns only allowlisted numeric/trend and
-waveform keys with `TYPE`, `PTTL`, and Redis `DUMP` payload encoded as base64.
-
-Example:
-
-```sh
-curl \
-  -H "Authorization: Bearer ${VITALDB_OBSERVER_REDIS_SNAPSHOT_EXPORT_TOKEN}" \
-  "http://127.0.0.1:18083/api/v1/redis/snapshots?cursor=0&count=1000&limit=250"
-```
-
-The response includes `nextCursor`; clients continue requesting pages until
-`complete` is `true`. Downstream relays must restore `dumpBase64` into their
-target Redis namespace and must not write to VitalServer source Redis.
 
 The public runtime-facing API is not this container API. Runtime clients should
 use Runtime Control API:
@@ -99,8 +78,6 @@ maintained separately at `docs/macos-runtime/runtime-control.openapi.json`.
 | `VITALDB_OBSERVER_AUDIT_EVENT_LIMIT` | `1000` |
 | `VITALDB_OBSERVER_ACCESS_LOG_PATH` | empty |
 | `VITALDB_OBSERVER_ACCESS_LOG_LIMIT` | `200` |
-| `VITALDB_OBSERVER_REDIS_SNAPSHOT_EXPORT_ENABLED` | `false` |
-| `VITALDB_OBSERVER_REDIS_SNAPSHOT_EXPORT_TOKEN` | empty |
 
 ## Local checks
 

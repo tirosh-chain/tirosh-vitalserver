@@ -702,8 +702,6 @@ def _settings(
         audit_event_limit=audit_event_limit,
         access_log_path=str(access_log) if access_log else "",
         access_log_limit=20,
-        redis_snapshot_export_enabled=False,
-        redis_snapshot_export_token="",
     )
 
 

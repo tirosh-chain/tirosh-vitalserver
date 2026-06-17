@@ -158,16 +158,16 @@ upstream Redis 설정을 건드리지 않아도 되고, 놓친 frame을 `dts_<be
 - target Redis를 분석/저장용으로만 쓴다면 namespace prefix를 둘 수 있지만, VitalServer 호환성은
   떨어집니다.
 
-## 외부 데이터 반출 계약
+## 외부 Redis relay 계약
 
-외부 consumer가 VitalServer host와 같은 Docker network에 없고 다른 PC 또는 Kubernetes에서 실행될 때는
-source Redis를 직접 외부에 노출하지 않습니다. 이 경우 `vitaldb-observer`의
-`GET /api/v1/redis/snapshots` endpoint를 읽기 전용 반출 계약으로 사용합니다.
+외부 consumer가 VitalServer host와 같은 Docker network에 없고 다른 PC 또는 Kubernetes에서 실행될 때도
+source Redis를 직접 외부에 노출하지 않습니다. 대신 VitalServer compose 내부의 relay container가
+source Redis 3.2에 Redis protocol로 직접 접근하고, 설정된 target Redis 8.x endpoint로 publish합니다.
 
-이 endpoint는 Redis 명령 proxy가 아닙니다. Observer가 allowlist로 제한한 VitalDB numeric/trend key와
-waveform key에 대해서만 Redis `TYPE`, `PTTL`, `DUMP` 결과를 page 단위로 반환합니다.
-외부 consumer는 응답의 `dumpBase64`를 target Redis에 `RESTORE`하거나, 별도 저장소에 binary-safe하게
-저장합니다. Page 조회는 `nextCursor`를 따라 `complete=true`가 될 때까지 순회합니다.
+relay는 source Redis에는 write하지 않습니다. Source에서는 `SCAN`, `TYPE`, `PTTL`, `DUMP`를 사용하고,
+target Redis에는 `RESTORE`로 binary-safe하게 복제합니다. HTTP/base64 export는 실시간/대용량 waveform
+relay 경로로 사용하지 않습니다.
 
-이 계약의 목적은 Redis에 수신된 numeric/trend 데이터와 waveform frame 데이터를 외부에서 가져갈 수 있게
-하면서, raw Redis port와 운영/인증 key를 VM 밖으로 노출하지 않는 것입니다.
+`.vital`과 비슷한 수준의 복원을 목표로 할 때 relay scope는 credential/session/auth key를 제외하고
+waveform/trend payload와 bed/recorder/device context key를 포함해야 합니다. Helper app은 regex를
+노출하지 않고, `waveform_trend_only` 또는 `vital_reconstruction` 같은 preset만 설정합니다.

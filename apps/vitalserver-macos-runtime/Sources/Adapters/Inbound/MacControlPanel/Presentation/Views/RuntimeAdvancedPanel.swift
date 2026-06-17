@@ -1,4 +1,5 @@
 import SwiftUI
+import RuntimeControl
 import Errors
 
 struct RuntimeAdvancedPanel: View {
@@ -20,6 +21,7 @@ struct RuntimeAdvancedPanel: View {
     @State private var showingRecoveryOperations = false
     @State private var showingAdvancedRepairTools = false
     @State private var showingNetworkOverrides = false
+    @State private var showingRedisRelay = false
     @State private var showingAdminOperations = false
     private let displayPolicy = RuntimeStatusDisplayPolicy()
     private let actionAvailabilityPolicy = RuntimeControlActionAvailabilityPolicy()
@@ -42,6 +44,7 @@ struct RuntimeAdvancedPanel: View {
         showingRecoveryOperations: Bool = false,
         showingAdvancedRepairTools: Bool = false,
         showingNetworkOverrides: Bool = false,
+        showingRedisRelay: Bool = false,
         showingAdminOperations: Bool = false
     ) {
         self.viewModel = viewModel
@@ -61,6 +64,7 @@ struct RuntimeAdvancedPanel: View {
         self._showingRecoveryOperations = State(initialValue: showingRecoveryOperations)
         self._showingAdvancedRepairTools = State(initialValue: showingAdvancedRepairTools)
         self._showingNetworkOverrides = State(initialValue: showingNetworkOverrides)
+        self._showingRedisRelay = State(initialValue: showingRedisRelay)
         self._showingAdminOperations = State(initialValue: showingAdminOperations)
     }
 
@@ -79,6 +83,7 @@ struct RuntimeAdvancedPanel: View {
                 serviceHealthCard
                 recoveryOperationsCard
                 networkOverridesCard
+                redisRelayCard
                 adminOperationsCard
             }
             .frame(maxWidth: 900, alignment: .leading)
@@ -502,6 +507,72 @@ struct RuntimeAdvancedPanel: View {
         }
     }
 
+    private var redisRelayCard: some View {
+        advancedDisclosureCard(AppConstants.Labels.sectionRedisRelay, isExpanded: $showingRedisRelay) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(AppConstants.Labels.redisRelayHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                settingToggle(
+                    AppConstants.Labels.redisRelayEnabled,
+                    isOn: $viewModel.settings.redisRelay.enabled
+                )
+
+                settingTextField(
+                    AppConstants.Labels.redisRelayTargetHost,
+                    text: $viewModel.settings.redisRelay.target.host
+                )
+                settingPortField(
+                    AppConstants.Labels.redisRelayTargetPort,
+                    value: $viewModel.settings.redisRelay.target.port
+                )
+                settingIntegerField(
+                    AppConstants.Labels.redisRelayDatabase,
+                    value: $viewModel.settings.redisRelay.target.database
+                )
+                settingTextField(
+                    AppConstants.Labels.redisRelayUsername,
+                    text: $viewModel.settings.redisRelay.target.username
+                )
+                settingRow(AppConstants.Labels.redisRelayPassword) {
+                    SecureField("", text: $viewModel.settings.redisRelay.target.password)
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 360)
+                }
+                if viewModel.settings.redisRelay.target.passwordConfigured {
+                    settingHelp(AppConstants.Labels.redisRelayPasswordConfigured)
+                    settingToggle(
+                        AppConstants.Labels.redisRelayClearPassword,
+                        isOn: $viewModel.settings.redisRelay.target.clearPassword
+                    )
+                }
+                settingToggle(
+                    AppConstants.Labels.redisRelayTLS,
+                    isOn: $viewModel.settings.redisRelay.target.tls
+                )
+                settingRow(AppConstants.Labels.redisRelayScope) {
+                    Picker("", selection: $viewModel.settings.redisRelay.scope) {
+                        Text(AppConstants.Labels.redisRelayWaveformTrendOnly)
+                            .tag(RuntimeRedisRelayScope.waveformTrendOnly)
+                        Text(AppConstants.Labels.redisRelayVitalReconstruction)
+                            .tag(RuntimeRedisRelayScope.vitalReconstruction)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 360)
+                }
+                settingToggle(
+                    AppConstants.Labels.redisRelayRecorderNetworkContext,
+                    isOn: $viewModel.settings.redisRelay.includeRecorderNetworkContext
+                )
+                applyActionRow
+            }
+        }
+    }
+
     private var advertisedServiceURLFields: some View {
         VStack(alignment: .leading, spacing: 10) {
             settingTextField(AppConstants.Labels.vitalServerAdvertisedURL, text: $viewModel.settings.vitalServerURL)
@@ -799,6 +870,15 @@ struct RuntimeAdvancedPanel: View {
         }
     }
 
+    private func settingIntegerField(_ label: String, value: Binding<Int>) -> some View {
+        settingRow(label) {
+            TextField("", value: value, formatter: integerFormatter)
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 120)
+        }
+    }
+
     private func settingToggle(_ label: String, isOn: Binding<Bool>) -> some View {
         settingRow(label) {
             Toggle("", isOn: isOn)
@@ -811,6 +891,14 @@ struct RuntimeAdvancedPanel: View {
         formatter.numberStyle = .none
         formatter.minimum = 1
         formatter.maximum = 65_535
+        formatter.allowsFloats = false
+        return formatter
+    }
+
+    private var integerFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.minimum = 0
         formatter.allowsFloats = false
         return formatter
     }

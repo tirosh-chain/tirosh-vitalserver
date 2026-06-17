@@ -143,6 +143,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         case backupRetentionCount
         case logArchiveRetentionDays
         case logArchiveMaximumGiB
+        case redisRelay
         case restartAfterSave
         case appliedVMSettings
     }
@@ -172,6 +173,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var backupRetentionCount: Int
     public var logArchiveRetentionDays: Int
     public var logArchiveMaximumGiB: Int
+    public var redisRelay: RuntimeRedisRelaySettings
     public var restartAfterSave: Bool
     public var appliedVMSettings: RuntimeAppliedVMSettings?
 
@@ -201,6 +203,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         backupRetentionCount: Int = RuntimeSettingsInitialValues.backupRetentionCount,
         logArchiveRetentionDays: Int = RuntimeSettingsInitialValues.logArchiveRetentionDays,
         logArchiveMaximumGiB: Int = RuntimeSettingsInitialValues.logArchiveMaximumGiB,
+        redisRelay: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings(),
         restartAfterSave: Bool = false,
         appliedVMSettings: RuntimeAppliedVMSettings? = nil
     ) {
@@ -229,6 +232,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.backupRetentionCount = backupRetentionCount
         self.logArchiveRetentionDays = logArchiveRetentionDays
         self.logArchiveMaximumGiB = logArchiveMaximumGiB
+        self.redisRelay = redisRelay
         self.restartAfterSave = restartAfterSave
         self.appliedVMSettings = appliedVMSettings
     }
@@ -277,6 +281,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
             backupRetentionCount: try container.decode(Int.self, forKey: .backupRetentionCount),
             logArchiveRetentionDays: try container.decode(Int.self, forKey: .logArchiveRetentionDays),
             logArchiveMaximumGiB: try container.decode(Int.self, forKey: .logArchiveMaximumGiB),
+            redisRelay: try container.decodeIfPresent(RuntimeRedisRelaySettings.self, forKey: .redisRelay) ?? RuntimeRedisRelaySettings(),
             restartAfterSave: try container.decode(Bool.self, forKey: .restartAfterSave),
             appliedVMSettings: try container.decodeIfPresent(RuntimeAppliedVMSettings.self, forKey: .appliedVMSettings)
         )
@@ -313,8 +318,70 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         try container.encode(backupRetentionCount, forKey: .backupRetentionCount)
         try container.encode(logArchiveRetentionDays, forKey: .logArchiveRetentionDays)
         try container.encode(logArchiveMaximumGiB, forKey: .logArchiveMaximumGiB)
+        try container.encode(redisRelay, forKey: .redisRelay)
         try container.encode(restartAfterSave, forKey: .restartAfterSave)
         try container.encodeIfPresent(appliedVMSettings, forKey: .appliedVMSettings)
+    }
+}
+
+public enum RuntimeRedisRelayScope: String, Codable, CaseIterable, Sendable {
+    case waveformTrendOnly = "waveform_trend_only"
+    case vitalReconstruction = "vital_reconstruction"
+}
+
+public struct RuntimeRedisRelayTarget: Codable, Equatable, Sendable {
+    public var host: String
+    public var port: Int
+    public var database: Int
+    public var username: String
+    public var password: String
+    public var clearPassword: Bool
+    public var passwordConfigured: Bool
+    public var tls: Bool
+
+    public init(
+        host: String = "",
+        port: Int = 6379,
+        database: Int = 0,
+        username: String = "",
+        password: String = "",
+        clearPassword: Bool = false,
+        passwordConfigured: Bool = false,
+        tls: Bool = false
+    ) {
+        self.host = host
+        self.port = port
+        self.database = database
+        self.username = username
+        self.password = password
+        self.clearPassword = clearPassword
+        self.passwordConfigured = passwordConfigured
+        self.tls = tls
+    }
+}
+
+public struct RuntimeRedisRelaySettings: Codable, Equatable, Sendable {
+    public var enabled: Bool
+    public var target: RuntimeRedisRelayTarget
+    public var scope: RuntimeRedisRelayScope
+    public var includeRecorderNetworkContext: Bool
+    public var intervalSeconds: Double
+    public var scanCount: Int
+
+    public init(
+        enabled: Bool = false,
+        target: RuntimeRedisRelayTarget = RuntimeRedisRelayTarget(),
+        scope: RuntimeRedisRelayScope = .vitalReconstruction,
+        includeRecorderNetworkContext: Bool = false,
+        intervalSeconds: Double = 1.0,
+        scanCount: Int = 1000
+    ) {
+        self.enabled = enabled
+        self.target = target
+        self.scope = scope
+        self.includeRecorderNetworkContext = includeRecorderNetworkContext
+        self.intervalSeconds = intervalSeconds
+        self.scanCount = scanCount
     }
 }
 

@@ -110,6 +110,68 @@ public enum ConfigureRuntimeChange<NetworkMode: Equatable>: Equatable {
     case backupRetention(Int)
     case logArchiveRetentionDays(Int)
     case logArchiveMaximumGiB(Int)
+    case redisRelay(ConfigureRuntimeRedisRelaySettings)
+}
+
+public enum ConfigureRuntimeRedisRelayScope: String, Equatable, Sendable {
+    case waveformTrendOnly = "waveform_trend_only"
+    case vitalReconstruction = "vital_reconstruction"
+}
+
+public struct ConfigureRuntimeRedisRelayTarget: Equatable, Sendable {
+    public var host: String
+    public var port: Int
+    public var database: Int
+    public var username: String
+    public var password: String
+    public var clearPassword: Bool
+    public var passwordConfigured: Bool
+    public var tls: Bool
+
+    public init(
+        host: String = "",
+        port: Int = 6379,
+        database: Int = 0,
+        username: String = "",
+        password: String = "",
+        clearPassword: Bool = false,
+        passwordConfigured: Bool = false,
+        tls: Bool = false
+    ) {
+        self.host = host
+        self.port = port
+        self.database = database
+        self.username = username
+        self.password = password
+        self.clearPassword = clearPassword
+        self.passwordConfigured = passwordConfigured
+        self.tls = tls
+    }
+}
+
+public struct ConfigureRuntimeRedisRelaySettings: Equatable, Sendable {
+    public var enabled: Bool
+    public var target: ConfigureRuntimeRedisRelayTarget
+    public var scope: ConfigureRuntimeRedisRelayScope
+    public var includeRecorderNetworkContext: Bool
+    public var intervalSeconds: Double
+    public var scanCount: Int
+
+    public init(
+        enabled: Bool = false,
+        target: ConfigureRuntimeRedisRelayTarget = ConfigureRuntimeRedisRelayTarget(),
+        scope: ConfigureRuntimeRedisRelayScope = .vitalReconstruction,
+        includeRecorderNetworkContext: Bool = false,
+        intervalSeconds: Double = 1.0,
+        scanCount: Int = 1000
+    ) {
+        self.enabled = enabled
+        self.target = target
+        self.scope = scope
+        self.includeRecorderNetworkContext = includeRecorderNetworkContext
+        self.intervalSeconds = intervalSeconds
+        self.scanCount = scanCount
+    }
 }
 
 public struct ConfigureRuntimeSecretFileInput: Equatable, Sendable {
@@ -154,6 +216,7 @@ public enum ConfigureRuntimeEffect: Equatable, Sendable {
     case setAutomaticBackupSchedule(enabled: Bool, scheduleTimes: [String])
     case setLogArchiveRetentionDays(Int)
     case setLogArchiveMaximumGiB(Int)
+    case writeRedisRelayConfiguration(ConfigureRuntimeRedisRelaySettings)
     case restartRuntimeServices
 }
 
@@ -226,6 +289,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                      .setAutomaticBackupSchedule,
                      .setLogArchiveRetentionDays,
                      .setLogArchiveMaximumGiB,
+                     .writeRedisRelayConfiguration,
                      .restartRuntimeServices:
                     return false
                 }
@@ -236,6 +300,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                      .setAutomaticBackupSchedule,
                      .setLogArchiveRetentionDays,
                      .setLogArchiveMaximumGiB,
+                     .writeRedisRelayConfiguration,
                      .restartRuntimeServices:
                     return true
                 case .createDirectory,
@@ -283,6 +348,9 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                 enabled: guestRuntimeSettings.automaticBackupEnabled,
                 scheduleTimes: guestRuntimeSettings.backupScheduleTimes
             ))
+        }
+        if let redisRelay = redisRelaySettings(in: request) {
+            effects.append(.writeRedisRelayConfiguration(redisRelay))
         }
         effects.append(.restrictSecretFile(context.guestRuntimeConfigURL))
         let restartRequirement = restartRequirement(
@@ -343,6 +411,19 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                 return diskGiB
             default:
                 return requestedDiskGiB
+            }
+        }
+    }
+
+    private func redisRelaySettings(
+        in request: ConfigureRuntimeRequest<VMConfig.ConfigureNetworkMode>
+    ) -> ConfigureRuntimeRedisRelaySettings? {
+        request.changes.reduce(nil) { settings, change in
+            switch change {
+            case .redisRelay(let redisRelay):
+                return redisRelay
+            default:
+                return settings
             }
         }
     }
@@ -479,6 +560,37 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                 throw invalid("--log-archive-maximum-gib must be between 1 and 20")
             }
             effects.append(.setLogArchiveMaximumGiB(gib))
+        case .redisRelay(let settings):
+            try validate(redisRelay: settings)
+        }
+    }
+
+    private func validate(redisRelay settings: ConfigureRuntimeRedisRelaySettings) throws {
+        guard settings.intervalSeconds >= 0.1 else {
+            throw invalid("--redis-relay-settings-file intervalSeconds must be greater than or equal to 0.1")
+        }
+        guard settings.scanCount >= 1 else {
+            throw invalid("--redis-relay-settings-file scanCount must be greater than or equal to 1")
+        }
+        guard !settings.target.host.contains("\n"),
+              !settings.target.host.contains("\r"),
+              !settings.target.username.contains("\n"),
+              !settings.target.username.contains("\r"),
+              !settings.target.password.contains("\n"),
+              !settings.target.password.contains("\r") else {
+            throw invalid("--redis-relay-settings-file target values must not contain newlines")
+        }
+        guard (1...65_535).contains(settings.target.port) else {
+            throw invalid("--redis-relay-settings-file target port must be between 1 and 65535")
+        }
+        guard settings.target.database >= 0 else {
+            throw invalid("--redis-relay-settings-file target database must be greater than or equal to 0")
+        }
+        if settings.enabled {
+            let host = settings.target.host.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !host.isEmpty, host == settings.target.host else {
+                throw invalid("--redis-relay-settings-file target host is required when relay is enabled")
+            }
         }
     }
 

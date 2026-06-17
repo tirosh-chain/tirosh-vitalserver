@@ -48,24 +48,36 @@ public actor MacRuntimeControlCommandWorker {
         if settings.changeAdminPassword {
             adminPasswordFile = try actionEnvironment.writeAdminPasswordFile(settings.adminPassword)
         }
+        let redisRelaySettingsFile = try actionEnvironment.writeRedisRelaySettingsFile(settings.redisRelay)
         let result = await runPrivileged(RuntimeCommandFactory.shellCommand(
             executable: RuntimeControlClientConstants.Paths.launcher,
             arguments: RuntimeCommandFactory.configureRuntimeArguments(
                 settings: settings,
-                adminPasswordFile: adminPasswordFile?.path
+                adminPasswordFile: adminPasswordFile?.path,
+                redisRelaySettingsFile: redisRelaySettingsFile.path
             )
         ))
-        guard let adminPasswordFile else {
-            return result
-        }
+        var cleanupIssues: [RuntimeCommandOutputIssue] = []
         do {
-            try actionEnvironment.removeItem(at: adminPasswordFile)
-            return result
+            try actionEnvironment.removeItem(at: redisRelaySettingsFile)
         } catch {
-            return result.appendingOutputIssue(RuntimeCommandOutputIssue(
+            cleanupIssues.append(RuntimeCommandOutputIssue(
                 stream: .stderr,
-                message: "admin password file cleanup failed path=\(adminPasswordFile.path) reason=\(error.localizedDescription)"
+                message: "Redis relay settings file cleanup failed path=\(redisRelaySettingsFile.path) reason=\(error.localizedDescription)"
             ))
+        }
+        if let adminPasswordFile {
+            do {
+                try actionEnvironment.removeItem(at: adminPasswordFile)
+            } catch {
+                cleanupIssues.append(RuntimeCommandOutputIssue(
+                    stream: .stderr,
+                    message: "admin password file cleanup failed path=\(adminPasswordFile.path) reason=\(error.localizedDescription)"
+                ))
+            }
+        }
+        return cleanupIssues.reduce(result) { partialResult, issue in
+            partialResult.appendingOutputIssue(issue)
         }
     }
 

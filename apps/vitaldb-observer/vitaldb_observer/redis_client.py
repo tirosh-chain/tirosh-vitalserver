@@ -100,31 +100,8 @@ class RedisClient:
             keys.append(item)
         return str(next_cursor), sorted(keys)
 
-    def key_type(self, key: str) -> str:
-        value = self.command("TYPE", key)
-        if isinstance(value, str):
-            return value
-        raise RedisProtocolError(f"unexpected TYPE response for {key}: {value!r}")
-
-    def pttl(self, key: str) -> int:
-        value = self.command("PTTL", key)
-        if isinstance(value, int):
-            return value
-        raise RedisProtocolError(f"unexpected PTTL response for {key}: {value!r}")
-
-    def dump(self, key: str) -> bytes | None:
-        value = self.raw_command("DUMP", key)
-        if value is None:
-            return None
-        if isinstance(value, bytes):
-            return value
-        raise RedisProtocolError(f"unexpected DUMP response for {key}: {value!r}")
-
     def command(self, *parts: str) -> Any:
         return self._command(parts, decode_bulk_strings=True)
-
-    def raw_command(self, *parts: str) -> Any:
-        return self._command(parts, decode_bulk_strings=False)
 
     def _command(self, parts: tuple[str, ...], *, decode_bulk_strings: bool) -> Any:
         with socket.create_connection(

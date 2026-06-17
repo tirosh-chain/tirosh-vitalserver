@@ -174,6 +174,33 @@ services:
       retries: 30
     restart: unless-stopped
 
+  redis-relay:
+    build:
+      context: .
+      dockerfile: apps/vitalserver-redis-relay/Dockerfile
+    image: vitalserver-redis-relay:0.1.0
+    security_opt:
+      - seccomp=unconfined
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_RELAY_CONFIG_PATH: "${REDIS_RELAY_CONFIG_PATH:-/run/tirosh/config/redis-relay.toml}"
+      REDIS_RELAY_STATUS_PATH: "${REDIS_RELAY_STATUS_PATH:-/run/tirosh/status/redis-relay-status.json}"
+    volumes:
+      - type: bind
+        source: /mnt/tirosh/deploy/redis-relay-config
+        target: /run/tirosh/config
+        read_only: true
+      - type: bind
+        source: /mnt/tirosh/deploy/redis-relay-secrets
+        target: /run/tirosh/secrets
+        read_only: true
+      - type: bind
+        source: /mnt/tirosh/run/redis-relay-status
+        target: /run/tirosh/status
+    restart: unless-stopped
+
   testkit:
     build:
       context: .

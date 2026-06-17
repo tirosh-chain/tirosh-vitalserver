@@ -4,6 +4,7 @@ import Contracts
 import Foundation
 import OutboundAdapters
 import InboundAdapters
+import RuntimeControl
 import Errors
 
 public struct RuntimeConfigureActions {
@@ -162,7 +163,7 @@ public struct RuntimeConfigureRunner {
     public func configure(_ command: RuntimeConfigureCommand) throws -> RuntimeConfigureResult {
         do {
             let result = try RunConfigureRuntimeUseCase<VMRuntimeConfig>().configure(
-                command.configureRuntimeRequest,
+                configureRuntimeRequest(from: command),
                 context: configureRuntimeContext(),
                 operations: configureRuntimeOperations()
             )
@@ -221,8 +222,8 @@ public struct RuntimeConfigureRunner {
     }
 
     private func resolveSecretFileChanges(
-        in request: ConfigureRuntimeRequest<RuntimeNetworkMode>
-    ) throws -> ConfigureRuntimeRequest<RuntimeNetworkMode> {
+        in request: ConfigureRuntimeRequest<Contracts.RuntimeNetworkMode>
+    ) throws -> ConfigureRuntimeRequest<Contracts.RuntimeNetworkMode> {
         let useCase = ConfigureRuntimeUseCase<VMRuntimeConfig>()
         let changes = try request.changes.map { change in
             switch change {
@@ -257,16 +258,20 @@ public struct RuntimeConfigureRunner {
                 try updateRuntimeControlSettings { settings in
                     settings = RuntimeControlSettingsDocument(
                         logArchiveRetentionDays: days,
-                        logArchiveMaximumGiB: settings.logArchiveMaximumGiB
+                        logArchiveMaximumGiB: settings.logArchiveMaximumGiB,
+                        redisRelay: settings.redisRelay
                     )
                 }
             case .setLogArchiveMaximumGiB(let gib):
                 try updateRuntimeControlSettings { settings in
                     settings = RuntimeControlSettingsDocument(
                         logArchiveRetentionDays: settings.logArchiveRetentionDays,
-                        logArchiveMaximumGiB: gib
+                        logArchiveMaximumGiB: gib,
+                        redisRelay: settings.redisRelay
                     )
                 }
+            case .writeRedisRelayConfiguration(let redisRelay):
+                try writeRedisRelayConfiguration(redisRelay)
             case .restrictSecretFile(let url):
                 try actions.restrictSecretFile(url)
             case .restartRuntimeServices:
@@ -286,6 +291,146 @@ public struct RuntimeConfigureRunner {
             withIntermediateDirectories: true
         )
         try fileStore.writeData(data, to: installedPaths.runtimeControlSettings, options: .atomic)
+    }
+
+    private func writeRedisRelayConfiguration(
+        _ settings: ConfigureRuntimeRedisRelaySettings
+    ) throws {
+        try fileStore.createDirectory(
+            at: installedPaths.redisRelayConfigDirectory,
+            withIntermediateDirectories: true
+        )
+        try fileStore.createDirectory(
+            at: installedPaths.redisRelaySecretsDirectory,
+            withIntermediateDirectories: true
+        )
+        try fileStore.createDirectory(
+            at: installedPaths.redisRelayStatusDirectory,
+            withIntermediateDirectories: true
+        )
+
+        let passwordConfigured = try writeRedisRelayTargetPassword(settings.target)
+        let runtimeSettings = runtimeRedisRelaySettings(settings, passwordConfigured: passwordConfigured)
+        try updateRuntimeControlSettings { document in
+            document = RuntimeControlSettingsDocument(
+                logArchiveRetentionDays: document.logArchiveRetentionDays,
+                logArchiveMaximumGiB: document.logArchiveMaximumGiB,
+                redisRelay: runtimeSettings
+            )
+        }
+        try fileStore.writeData(
+            Data(redisRelayTOML(settings, passwordConfigured: passwordConfigured).utf8),
+            to: installedPaths.redisRelayConfig,
+            options: .atomic
+        )
+    }
+
+    private func writeRedisRelayTargetPassword(
+        _ target: ConfigureRuntimeRedisRelayTarget
+    ) throws -> Bool {
+        if target.clearPassword {
+            try removeRedisRelayPasswordIfPresent()
+            return false
+        }
+        if !target.password.isEmpty {
+            try fileStore.writeData(
+                Data(target.password.utf8),
+                to: installedPaths.redisRelayTargetPassword,
+                options: .atomic,
+                posixPermissions: 0o600
+            )
+            return true
+        }
+        switch fileStore.pathState(at: installedPaths.redisRelayTargetPassword) {
+        case .file:
+            return target.passwordConfigured
+        case .missing:
+            return false
+        case .inspectFailed(let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "Redis relay password path inspection failed path=\(installedPaths.redisRelayTargetPassword.path) reason=\(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw LauncherError.runtimeOperationFailed(
+                "Redis relay password path state is unexpected path=\(installedPaths.redisRelayTargetPassword.path) state=\(fileStore.pathState(at: installedPaths.redisRelayTargetPassword).rawValue)"
+            )
+        }
+    }
+
+    private func removeRedisRelayPasswordIfPresent() throws {
+        switch fileStore.pathState(at: installedPaths.redisRelayTargetPassword) {
+        case .file:
+            try fileStore.removeItem(at: installedPaths.redisRelayTargetPassword)
+        case .missing:
+            return
+        case .inspectFailed(let reason):
+            throw LauncherError.runtimeOperationFailed(
+                "Redis relay password path inspection failed path=\(installedPaths.redisRelayTargetPassword.path) reason=\(reason)"
+            )
+        case .directory, .other, .unknown:
+            throw LauncherError.runtimeOperationFailed(
+                "Redis relay password path state is unexpected path=\(installedPaths.redisRelayTargetPassword.path) state=\(fileStore.pathState(at: installedPaths.redisRelayTargetPassword).rawValue)"
+            )
+        }
+    }
+
+    private func runtimeRedisRelaySettings(
+        _ settings: ConfigureRuntimeRedisRelaySettings,
+        passwordConfigured: Bool
+    ) -> RuntimeRedisRelaySettings {
+        RuntimeRedisRelaySettings(
+            enabled: settings.enabled,
+            target: RuntimeRedisRelayTarget(
+                host: settings.target.host,
+                port: settings.target.port,
+                database: settings.target.database,
+                username: settings.target.username,
+                password: "",
+                clearPassword: false,
+                passwordConfigured: passwordConfigured,
+                tls: settings.target.tls
+            ),
+            scope: RuntimeRedisRelayScope(rawValue: settings.scope.rawValue) ?? .vitalReconstruction,
+            includeRecorderNetworkContext: settings.includeRecorderNetworkContext,
+            intervalSeconds: settings.intervalSeconds,
+            scanCount: settings.scanCount
+        )
+    }
+
+    private func redisRelayTOML(
+        _ settings: ConfigureRuntimeRedisRelaySettings,
+        passwordConfigured: Bool
+    ) -> String {
+        var lines = [
+            "[redis_relay]",
+            "enabled = \(settings.enabled)",
+            "scope = \"\(settings.scope.rawValue)\"",
+            "include_recorder_network_context = \(settings.includeRecorderNetworkContext)",
+            "interval_seconds = \(settings.intervalSeconds)",
+            "scan_count = \(settings.scanCount)",
+            "",
+            "[source]",
+            "host = \"redis\"",
+            "port = 6379",
+            "database = 0",
+            "",
+            "[target]",
+            "host = \"\(tomlEscaped(settings.target.host))\"",
+            "port = \(settings.target.port)",
+            "database = \(settings.target.database)",
+            "username = \"\(tomlEscaped(settings.target.username))\"",
+            "tls = \(settings.target.tls)",
+        ]
+        if passwordConfigured {
+            lines.append("password_file = \"/run/tirosh/secrets/redis-relay-target-password\"")
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    private func tomlEscaped(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
     private func loadRuntimeControlSettings() throws -> RuntimeControlSettingsDocument {
@@ -328,7 +473,7 @@ public struct RuntimeConfigureRunner {
         return max(Int((try fileStore.fileSize(url) + bytesPerGiB - 1) / bytesPerGiB), 1)
     }
 
-    private func configureRuntimeContext() -> ConfigureRuntimeContext<RuntimeNetworkMode> {
+    private func configureRuntimeContext() -> ConfigureRuntimeContext<Contracts.RuntimeNetworkMode> {
         ConfigureRuntimeContext(
             vmConfigURL: configURL,
             guestRuntimeConfigURL: installedPaths.guestRuntimeConfig,
@@ -388,20 +533,20 @@ public struct RuntimeConfigureRunner {
     private func prettyJSONEncoder() -> JSONEncoder {
         VMRuntimeConfigComposition.prettyJSONEncoder()
     }
-}
 
-private extension RuntimeConfigureCommand {
-    var configureRuntimeRequest: ConfigureRuntimeRequest<RuntimeNetworkMode> {
+    private func configureRuntimeRequest(
+        from command: RuntimeConfigureCommand
+    ) throws -> ConfigureRuntimeRequest<Contracts.RuntimeNetworkMode> {
         ConfigureRuntimeRequest(
-            changes: changes.map(\.configureRuntimeChange),
-            restart: restart
+            changes: try command.changes.map { try configureRuntimeChange($0) },
+            restart: command.restart
         )
     }
-}
 
-private extension RuntimeConfigureChange {
-    var configureRuntimeChange: ConfigureRuntimeChange<RuntimeNetworkMode> {
-        switch self {
+    private func configureRuntimeChange(
+        _ change: RuntimeConfigureChange
+    ) throws -> ConfigureRuntimeChange<Contracts.RuntimeNetworkMode> {
+        switch change {
         case .cpu(let value):
             return .cpu(value)
         case .memoryGiB(let value):
@@ -444,6 +589,30 @@ private extension RuntimeConfigureChange {
             return .logArchiveRetentionDays(value)
         case .logArchiveMaximumGiB(let value):
             return .logArchiveMaximumGiB(value)
+        case .redisRelaySettingsFile(let value):
+            return .redisRelay(try redisRelaySettings(from: value))
         }
+    }
+
+    private func redisRelaySettings(from url: URL) throws -> ConfigureRuntimeRedisRelaySettings {
+        let data = try actions.readSecretFile(url).data(using: .utf8) ?? Data()
+        let settings = try JSONDecoder().decode(RuntimeRedisRelaySettings.self, from: data)
+        return ConfigureRuntimeRedisRelaySettings(
+            enabled: settings.enabled,
+            target: ConfigureRuntimeRedisRelayTarget(
+                host: settings.target.host,
+                port: settings.target.port,
+                database: settings.target.database,
+                username: settings.target.username,
+                password: settings.target.password,
+                clearPassword: settings.target.clearPassword,
+                passwordConfigured: settings.target.passwordConfigured,
+                tls: settings.target.tls
+            ),
+            scope: ConfigureRuntimeRedisRelayScope(rawValue: settings.scope.rawValue) ?? .vitalReconstruction,
+            includeRecorderNetworkContext: settings.includeRecorderNetworkContext,
+            intervalSeconds: settings.intervalSeconds,
+            scanCount: settings.scanCount
+        )
     }
 }

@@ -128,7 +128,10 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         _ = try await client.startRuntimeServices()
         _ = try await client.stopRuntimeServices()
 
-        XCTAssertEqual(environment.removedPasswordFiles.map(\.path), ["/tmp/admin-password"])
+        XCTAssertEqual(environment.removedPasswordFiles.map(\.path), [
+            "/tmp/redis-relay-settings.json",
+            "/tmp/admin-password",
+        ])
         XCTAssertEqual(runner.shellCommands.count, 12)
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--clean") })
         XCTAssertFalse(runner.shellCommands.contains { $0.contains("--force-clean-uninstaller") })
@@ -138,6 +141,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
     func testApplySettingsReportsAdminPasswordCleanupFailureAsOutputIssue() async throws {
         let environment = AdapterFakeActionEnvironment()
         environment.removeError = CocoaError(.fileWriteNoPermission)
+        environment.removeErrorPaths = ["/tmp/admin-password"]
         let worker = MacRuntimeControlCommandWorker(
             privilegedCommandRunner: AdapterFakePrivilegedCommandRunner(),
             actionEnvironment: environment,
@@ -150,7 +154,10 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let result = try await worker.applySettings(settings)
 
         XCTAssertEqual(result.exitCode, 0)
-        XCTAssertEqual(environment.removedPasswordFiles.map(\.path), ["/tmp/admin-password"])
+        XCTAssertEqual(environment.removedPasswordFiles.map(\.path), [
+            "/tmp/redis-relay-settings.json",
+            "/tmp/admin-password",
+        ])
         XCTAssertEqual(result.outputIssues.count, 1)
         XCTAssertEqual(result.outputIssues.first?.stream, .stderr)
         XCTAssertTrue(result.outputIssues.first?.message.contains("admin password file cleanup failed") == true)
@@ -411,8 +418,10 @@ private final class AdapterFakePrivilegedCommandRunner: PrivilegedCommandRunning
 private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unchecked Sendable {
     let executableStates: [String: RuntimeFileState]
     var removeError: Error?
+    var removeErrorPaths: Set<String>?
     private let lock = NSLock()
     private var protectedRemovedPasswordFiles: [URL] = []
+    private var protectedWrittenRedisRelaySettings: [RuntimeRedisRelaySettings] = []
 
     init(executableStates: [String: RuntimeFileState] = [
         RuntimeControlClientConstants.Paths.launcher: .executable,
@@ -425,6 +434,10 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
         lock.withLock { protectedRemovedPasswordFiles }
     }
 
+    var writtenRedisRelaySettings: [RuntimeRedisRelaySettings] {
+        lock.withLock { protectedWrittenRedisRelaySettings }
+    }
+
     func executableState(atPath path: String) -> RuntimeFileState {
         executableStates[path] ?? .missing
     }
@@ -433,11 +446,18 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
         URL(fileURLWithPath: "/tmp/admin-password")
     }
 
+    func writeRedisRelaySettingsFile(_ settings: RuntimeRedisRelaySettings) throws -> URL {
+        lock.withLock {
+            protectedWrittenRedisRelaySettings.append(settings)
+        }
+        return URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
+    }
+
     func removeItem(at url: URL) throws {
         lock.withLock {
             protectedRemovedPasswordFiles.append(url)
         }
-        if let removeError {
+        if let removeError, removeErrorPaths?.contains(url.path) ?? true {
             throw removeError
         }
     }

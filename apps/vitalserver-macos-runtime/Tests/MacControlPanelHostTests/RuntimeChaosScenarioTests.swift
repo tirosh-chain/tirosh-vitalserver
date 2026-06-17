@@ -397,6 +397,10 @@ private struct ChaosActionEnvironment: RuntimeActionEnvironment {
         URL(fileURLWithPath: "/tmp/admin-password")
     }
 
+    func writeRedisRelaySettingsFile(_ settings: RuntimeRedisRelaySettings) throws -> URL {
+        URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
+    }
+
     func removeItem(at url: URL) throws {}
 
     func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult {

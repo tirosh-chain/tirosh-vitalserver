@@ -106,6 +106,57 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(settings, RuntimeControlSettingsDocument(logArchiveRetentionDays: 12, logArchiveMaximumGiB: 2))
     }
 
+    func testConfigureWritesRedisRelayConfigAndSecretWithoutExposingPasswordInReadSettings() throws {
+        let harness = try Harness()
+        let relaySettingsFile = URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
+        harness.fileStore.files[relaySettingsFile] = Data("""
+        {
+          "enabled": true,
+          "target": {
+            "host": "redis-hub.internal",
+            "port": 6380,
+            "database": 2,
+            "username": "relay",
+            "password": "secret-password",
+            "clearPassword": false,
+            "passwordConfigured": false,
+            "tls": true
+          },
+          "scope": "vital_reconstruction",
+          "includeRecorderNetworkContext": true,
+          "intervalSeconds": 0.5,
+          "scanCount": 500
+        }
+        """.utf8)
+
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.redisRelaySettingsFile(relaySettingsFile)]
+        ))
+
+        XCTAssertFalse(result.restart)
+        XCTAssertTrue(harness.fileStore.directories.contains(harness.paths.redisRelayConfigDirectory))
+        XCTAssertTrue(harness.fileStore.directories.contains(harness.paths.redisRelaySecretsDirectory))
+        XCTAssertTrue(harness.fileStore.directories.contains(harness.paths.redisRelayStatusDirectory))
+        XCTAssertEqual(
+            String(data: try XCTUnwrap(harness.fileStore.files[harness.paths.redisRelayTargetPassword]), encoding: .utf8),
+            "secret-password"
+        )
+        let toml = String(
+            data: try XCTUnwrap(harness.fileStore.files[harness.paths.redisRelayConfig]),
+            encoding: .utf8
+        )
+        XCTAssertTrue(toml?.contains("enabled = true") == true)
+        XCTAssertTrue(toml?.contains("host = \"redis-hub.internal\"") == true)
+        XCTAssertTrue(toml?.contains("password_file = \"/run/tirosh/secrets/redis-relay-target-password\"") == true)
+
+        let data = try XCTUnwrap(harness.fileStore.files[harness.paths.runtimeControlSettings])
+        let settings = try JSONDecoder().decode(RuntimeControlSettingsDocument.self, from: data)
+        XCTAssertTrue(settings.redisRelay.enabled)
+        XCTAssertEqual(settings.redisRelay.target.host, "redis-hub.internal")
+        XCTAssertTrue(settings.redisRelay.target.passwordConfigured)
+        XCTAssertEqual(settings.redisRelay.target.password, "")
+    }
+
     func testConfigureRejectsInvalidLogArchiveSettings() throws {
         let harness = try Harness()
 
