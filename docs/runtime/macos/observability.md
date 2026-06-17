@@ -529,24 +529,25 @@ Observer stdout JSONL은 `server_started`, `readiness_failed`, `observation_coll
 `observation_failed` 같은 진단 이벤트만 남깁니다. 이 로그는 raw history이고, Runtime Control API가
 보는 canonical observation history는 아닙니다.
 
-### Off-host Redis snapshot export
+### External numeric/waveform data export
 
-`tirosh-redis-hub`가 VitalServer host 밖의 다른 PC나 Kubernetes cluster에서 실행되는 배포에서는
-Docker network의 `redis:6379`에 직접 붙을 수 없습니다. 이 경우 raw Redis port를 VM 밖으로 열지 않고,
-`vitaldb-observer`의 read-only snapshot export를 source 계약으로 사용합니다.
+외부 consumer가 VitalServer host 밖의 다른 PC나 Kubernetes cluster에서 실행되는 배포에서는 Docker
+network의 `redis:6379`에 직접 붙을 수 없습니다. 이 경우 raw Redis port를 VM 밖으로 열지 않고,
+`vitaldb-observer`의 read-only snapshot export를 numeric/trend 및 waveform 데이터 반출 계약으로
+사용합니다.
 
 | 항목 | 계약 |
 |---|---|
 | Endpoint | `GET /api/v1/redis/snapshots` |
 | Owner | `vitaldb-observer` |
-| Consumer | off-host `tirosh-redis-hub` relay |
+| Consumer | off-host external data relay/collector |
 | Enable flag | `VITALDB_OBSERVER_REDIS_SNAPSHOT_EXPORT_ENABLED=1` |
 | Auth | `Authorization: Bearer <VITALDB_OBSERVER_REDIS_SNAPSHOT_EXPORT_TOKEN>` |
-| Payload | allowlisted Redis key의 `TYPE`, `PTTL`, `DUMP` base64 |
+| Payload | allowlisted numeric/trend 및 waveform Redis key의 `TYPE`, `PTTL`, `DUMP` base64 |
 
-이 endpoint는 observer observation SoT가 아닙니다. 외부 relay가 source Redis의 waveform/trend key를
-target Redis로 복제하기 위한 읽기 전용 transport 계약입니다. Observer는 allowlist에 맞는 VitalDB
-waveform/trend key만 export하고, user/session/token 같은 운영/인증 key는 export 대상에서 제외합니다.
+이 endpoint는 observer observation SoT가 아닙니다. Redis에 수신된 numeric/trend 데이터와 waveform
+frame 데이터를 외부 consumer가 가져가기 위한 읽기 전용 transport 계약입니다. Observer는 allowlist에
+맞는 VitalDB 데이터 key만 export하고, user/session/token 같은 운영/인증 key는 export 대상에서 제외합니다.
 응답은 `nextCursor`와 `complete`를 포함하므로 consumer는 page를 순회해 catch-up합니다.
 
 운영 원칙:
@@ -554,7 +555,8 @@ waveform/trend key만 export하고, user/session/token 같은 운영/인증 key�
 - Raw Redis port를 외부 network에 publish하지 않습니다.
 - Export endpoint는 기본 disabled 상태로 둡니다.
 - 외부 접근은 token, TLS/VPN/ingress/reverse proxy 같은 network 경계를 통해 제한합니다.
-- `tirosh-redis-hub`는 source Redis에 write하지 않고, `dumpBase64`를 target Redis namespace에 restore합니다.
+- 외부 consumer는 source Redis에 write하지 않고, `dumpBase64`를 target Redis namespace에 restore하거나
+  별도 저장소에 binary-safe하게 저장합니다.
 - Endpoint disabled, token missing, unauthorized, query invalid, Redis read failure는 서로 다른 실패로 보고합니다.
 
 ## 정리 단계

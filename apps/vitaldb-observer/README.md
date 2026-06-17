@@ -55,10 +55,10 @@ Diagnostic events:
 | `GET` | `/api/v1/redis/snapshots` | bearer-token protected, allowlisted Redis snapshot page for external relay |
 
 `/api/v1/redis/snapshots` is disabled by default. It is intended for deployments
-where `tirosh-redis-hub` runs on another host or Kubernetes cluster and cannot
+where external consumers run on another host or Kubernetes cluster and cannot
 join the VitalServer Docker network. The endpoint does not expose arbitrary Redis
-commands. It scans source Redis and returns only allowlisted waveform/trend keys
-with `TYPE`, `PTTL`, and Redis `DUMP` payload encoded as base64.
+commands. It scans source Redis and returns only allowlisted numeric/trend and
+waveform keys with `TYPE`, `PTTL`, and Redis `DUMP` payload encoded as base64.
 
 Example:
 
