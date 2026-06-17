@@ -92,6 +92,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-081 | Upstream VitalServer contract verification이 release compile 전에 실패함 | Packaging / Upstream integration | active | [Upstream VitalServer Contract Verification Failure](081_upstream-vitalserver-contract-verification.md) |
 | TS-082 | 배포 target이 phase별 검증 완료를 명확히 증명하지 못함 | Packaging / Release verification | active | [Distribution Verification Phase Gaps](082_distribution-verification-phase-gaps.md) |
 | TS-083 | 자동 VitalServer Helper backup이 Recovery operations 목록에 표시되지 않음 | Runtime health / Data store / macOS Helper UI | implemented | [Automatic Backup Not Visible in Recovery Operations](083_automatic-backup-not-visible-in-recovery.md) |
+| TS-084 | TestKit vital upload가 My Files에 표시되지 않음 | TestKit / Upstream integration | active | [TestKit vital upload가 My Files에 표시되지 않음](084_testkit-vital-upload-not-visible-in-my-files.md) |
 
 ## Follow-up 규칙
 
@@ -131,6 +132,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | Packaging | pkg/dmg, signing, entitlement, app bundle 설치 문제 |
 | Uninstall | 제거/clean 정책과 잔여 파일 문제 |
 | Local development | 개발용 make/VM 상태 파일 문제 |
+| TestKit | testkit recorder/session/artifact 검증과 upstream VitalServer 연동 문제 |
 
 ## Reference
 

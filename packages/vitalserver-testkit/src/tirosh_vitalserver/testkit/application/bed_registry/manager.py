@@ -66,7 +66,7 @@ class BedRegistry:
         beds = (
             beds_for_room_names(room_names, admin_user_id=admin_user_id)
             if room_names
-            else create_beds(
+            else self._create_generated_beds(
                 count=count or 0,
                 prefix=prefix,
                 admin_user_id=admin_user_id,
@@ -79,6 +79,23 @@ class BedRegistry:
             registered_beds = tuple(self._beds_by_room_name.values())
             self._save(registered_beds)
             return beds
+
+    def _create_generated_beds(
+        self,
+        *,
+        count: int,
+        prefix: str,
+        admin_user_id: str,
+    ) -> tuple[Bed, ...]:
+        with self._lock:
+            reserved_room_names = tuple(self._beds_by_room_name)
+
+        return create_beds(
+            count=count,
+            prefix=prefix,
+            admin_user_id=admin_user_id,
+            reserved_room_names=reserved_room_names,
+        )
 
     def reset_beds(self) -> tuple[Bed, ...]:
         """Delete all registered bed identities."""

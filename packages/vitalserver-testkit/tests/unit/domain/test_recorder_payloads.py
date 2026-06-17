@@ -146,6 +146,19 @@ def test_beds_are_created_before_recorder_payloads() -> None:
     assert set(payload) == {bed.room_name for bed in beds}
 
 
+def test_generated_beds_use_short_unique_room_suffixes() -> None:
+    suffixes = iter(("a1b2", "a1b2", "c3d4", "e5f6"))
+
+    beds = create_beds(
+        count=2,
+        prefix="OR",
+        reserved_room_names=("OR-a1b2",),
+        suffix_factory=lambda: next(suffixes),
+    )
+
+    assert [bed.room_name for bed in beds] == ["OR-c3d4", "OR-e5f6"]
+
+
 def test_simulated_recorder_payload_rejects_duplicate_bed_room_names() -> None:
     try:
         build_simulated_recorder_payload(room_names=("OR-A", " OR-A "))

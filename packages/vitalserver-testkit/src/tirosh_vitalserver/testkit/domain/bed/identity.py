@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from uuid import uuid4
 
 from tirosh_vitalserver.testkit.domain.bed.models import Bed
@@ -27,13 +28,14 @@ def create_bed(
     room_name: str | None = None,
     prefix: str = "testkit-bed",
     admin_user_id: str = "admin",
+    suffix_factory: Callable[[], str] | None = None,
 ) -> Bed:
     """Create one fresh test bed identity."""
 
     resolved_room_name = (
         normalize_bed_room_name(room_name)
         if room_name is not None
-        else f"{normalize_bed_room_name(prefix)}-{uuid4().hex}"
+        else generated_bed_room_name(prefix, suffix_factory=suffix_factory)
     )
 
     return Bed(
@@ -47,16 +49,32 @@ def create_beds(
     count: int,
     prefix: str = "testkit-bed",
     admin_user_id: str = "admin",
+    reserved_room_names: tuple[str, ...] = (),
+    suffix_factory: Callable[[], str] | None = None,
 ) -> tuple[Bed, ...]:
     """Create fresh test bed identities."""
 
     if count < 1:
         raise BedCountInvalidError()
 
-    return tuple(
-        create_bed(prefix=prefix, admin_user_id=admin_user_id)
-        for _ in range(count)
+    reserved = (
+        set(normalize_bed_room_names(reserved_room_names))
+        if reserved_room_names
+        else set()
     )
+    created: list[Bed] = []
+    while len(created) < count:
+        bed = create_bed(
+            prefix=prefix,
+            admin_user_id=admin_user_id,
+            suffix_factory=suffix_factory,
+        )
+        if bed.room_name in reserved:
+            continue
+        reserved.add(bed.room_name)
+        created.append(bed)
+
+    return tuple(created)
 
 
 def beds_for_room_names(
@@ -98,3 +116,24 @@ def normalize_bed_room_name(room_name: str) -> str:
         raise BedRoomNameEmptyError()
 
     return resolved_room_name
+
+
+def generated_bed_room_name(
+    prefix: str,
+    *,
+    suffix_factory: Callable[[], str] | None = None,
+) -> str:
+    """Return one generated room name with a short collision-resistant suffix."""
+
+    resolved_prefix = normalize_bed_room_name(prefix)
+    suffix = normalize_bed_room_name(
+        (suffix_factory or random_bed_room_suffix)()
+    )
+
+    return f"{resolved_prefix}-{suffix}"
+
+
+def random_bed_room_suffix() -> str:
+    """Return the default four-character generated bed suffix."""
+
+    return uuid4().hex[:4]
