@@ -6,6 +6,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from tirosh_vitalserver.testkit.domain.recorder.montypes import RecorderTrackMontype
 from tirosh_vitalserver.testkit.domain.recorder.simulator.frames import (
     generate_simulated_recorder_payload,
 )
@@ -31,6 +32,7 @@ class VitalTrack:
     unit: str
     mindisp: float
     maxdisp: float
+    montype: int
 
 
 @dataclass(frozen=True)
@@ -81,7 +83,7 @@ def vital_tracks_from_recorder_playback(
     """Return `.vital` tracks regenerated from an explicit play window."""
 
     track_records: dict[str, list[VitalTrackRecord]] = {}
-    track_configs: dict[str, tuple[float, str, float, float]] = {}
+    track_configs: dict[str, tuple[float, str, float, float, int]] = {}
 
     for _vrcode, payload, messages_sent in playback:
         for sequence in range(messages_sent):
@@ -108,6 +110,7 @@ def vital_tracks_from_recorder_playback(
             unit=track_configs[dtname][1],
             mindisp=track_configs[dtname][2],
             maxdisp=track_configs[dtname][3],
+            montype=track_configs[dtname][4],
         )
         for dtname, records in sorted(track_records.items())
         if records
@@ -198,7 +201,7 @@ def collect_frame_tracks(
     payload: Mapping[str, JsonValue],
     *,
     track_records: dict[str, list[VitalTrackRecord]],
-    track_configs: dict[str, tuple[float, str, float, float]],
+    track_configs: dict[str, tuple[float, str, float, float, int]],
 ) -> None:
     """Collect exportable track records from one recorder frame."""
 
@@ -220,7 +223,11 @@ def collect_frame_tracks(
             unit = string_value(track.get("unit"))
             mindisp = float_value(track.get("mindisp"))
             maxdisp = float_value(track.get("maxdisp"))
-            track_configs.setdefault(dtname, (srate, unit, mindisp, maxdisp))
+            montype = vital_monitor_type_id(track.get("montype"))
+            track_configs.setdefault(
+                dtname,
+                (srate, unit, mindisp, maxdisp, montype),
+            )
             records = track.get("recs")
             if not isinstance(records, list):
                 continue
@@ -247,6 +254,7 @@ def metadata_track(metadata: VitalSessionMetadata) -> VitalTrack:
         unit="",
         mindisp=0.0,
         maxdisp=0.0,
+        montype=0,
     )
 
 
@@ -278,6 +286,16 @@ def safe_name(value: str) -> str:
     return cleaned or "unknown"
 
 
+def vital_monitor_type_id(value: JsonValue) -> int:
+    """Return the legacy VitalServer monitor type id for a recorder montype."""
+
+    montype = RecorderTrackMontype.parse(value)
+    if montype is None:
+        return 0
+
+    return VITALSERVER_MONITOR_TYPE_IDS[montype]
+
+
 def string_value(value: JsonValue) -> str:
     """Return a string JSON value or an empty string."""
 
@@ -298,3 +316,18 @@ def float_value(value: JsonValue) -> float:
     if isinstance(value, int | float):
         return float(value)
     return 0.0
+
+
+VITALSERVER_MONITOR_TYPE_IDS = {
+    RecorderTrackMontype.ECG_WAVE: 1,
+    RecorderTrackMontype.ECG_HEART_RATE: 2,
+    RecorderTrackMontype.ARTERIAL_PRESSURE_WAVE: 4,
+    RecorderTrackMontype.ARTERIAL_SYSTOLIC_BP: 5,
+    RecorderTrackMontype.ARTERIAL_DIASTOLIC_BP: 6,
+    RecorderTrackMontype.ARTERIAL_MEAN_BP: 7,
+    RecorderTrackMontype.PLETH_WAVE: 8,
+    RecorderTrackMontype.PLETH_SPO2: 10,
+    RecorderTrackMontype.CO2_WAVE: 13,
+    RecorderTrackMontype.CO2_RESPIRATORY_RATE: 14,
+    RecorderTrackMontype.CO2_CONCENTRATION: 15,
+}

@@ -7,6 +7,7 @@ import struct
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
@@ -75,6 +76,29 @@ def test_session_vital_export_writes_vitaldb_readable_file(tmp_path: Path) -> No
     )
     assert legacy_dtstart > 0
     assert legacy_dtend >= legacy_dtstart
+
+    webview_dtstart, webview_dtend, webview_tracks = (
+        legacy_vitalserver_webview_preview(Path(exported.vital_state.artifact.path))
+    )
+    assert webview_dtstart > 0
+    assert webview_dtend >= webview_dtstart
+    assert any(
+        track.dname == "OR-A_Demo" and track.records > 0
+        for track in webview_tracks
+    )
+
+    montypes = {track.tname: track.montype for track in webview_tracks}
+    assert montypes["ECG"] == 1
+    assert montypes["HR"] == 2
+    assert montypes["ART"] == 4
+    assert montypes["ART_SBP"] == 5
+    assert montypes["ART_DBP"] == 6
+    assert montypes["ART_MBP"] == 7
+    assert montypes["PLETH"] == 8
+    assert montypes["PLETH_SPO2"] == 10
+    assert montypes["CO2"] == 13
+    assert montypes["RR"] == 14
+    assert montypes["ETCO2"] == 15
 
 
 def test_session_vital_export_uploads_to_vitalserver_success_response(
@@ -266,6 +290,14 @@ class VitalUploadHttpHandler(BaseHTTPRequestHandler):
         return
 
 
+@dataclass(frozen=True)
+class LegacyWebviewTrack:
+    dname: str
+    tname: str
+    montype: int
+    records: int
+
+
 @contextmanager
 def vital_upload_http_server(
     *,
@@ -352,3 +384,117 @@ def legacy_vitalserver_dt_range(path: Path) -> tuple[float, float]:
         offset += 5 + packet_len
 
     return dtstart, dtend
+
+
+def legacy_vitalserver_webview_preview(
+    path: Path,
+) -> tuple[float, float, tuple[LegacyWebviewTrack, ...]]:
+    """Return tracks as parsed by bundled VitalServer's webview reader."""
+
+    payload = gzip.decompress(path.read_bytes())
+    assert payload[:4] == b"VITA"
+    assert int.from_bytes(payload[8:10], byteorder="little") == 10
+
+    devs: dict[int, str] = {}
+    tracks: dict[int, tuple[int, str, int]] = {}
+    tid_to_did: dict[int, int] = {}
+    offset = 20
+    while offset + 5 <= len(payload):
+        packet_type = payload[offset]
+        packet_len = int.from_bytes(
+            payload[offset + 1 : offset + 5],
+            byteorder="little",
+        )
+        packet = payload[offset + 5 : offset + 5 + packet_len]
+        assert len(packet) == packet_len
+
+        if packet_type == 9:
+            did, dname = legacy_vitalserver_device(packet)
+            devs[did] = dname
+        elif packet_type == 0:
+            tid, did, tname, montype = legacy_vitalserver_track(packet)
+            tracks[tid] = (did, tname, montype)
+            tid_to_did[tid] = did
+
+        offset += 5 + packet_len
+
+    dtstart = 0.0
+    dtend = 0.0
+    records_by_tid: dict[int, int] = {}
+    offset = 20
+    while offset + 5 <= len(payload):
+        packet_type = payload[offset]
+        packet_len = int.from_bytes(
+            payload[offset + 1 : offset + 5],
+            byteorder="little",
+        )
+        packet = payload[offset + 5 : offset + 5 + packet_len]
+
+        if packet_type == 1:
+            assert len(packet) >= 12
+            dt = struct.unpack_from("<d", packet, 2)[0]
+            tid = struct.unpack_from("<h", packet, 10)[0]
+            if tid in tid_to_did and dt > 0:
+                records_by_tid[tid] = records_by_tid.get(tid, 0) + 1
+                if dtstart == 0.0 or dt < dtstart:
+                    dtstart = dt
+                if dt > dtend:
+                    dtend = dt
+
+        offset += 5 + packet_len
+
+    webview_tracks = tuple(
+        LegacyWebviewTrack(
+            dname=devs[did],
+            tname=tname,
+            montype=montype,
+            records=records_by_tid.get(tid, 0),
+        )
+        for tid, (did, tname, montype) in sorted(tracks.items())
+        if devs.get(did)
+    )
+
+    return dtstart, dtend, webview_tracks
+
+
+def legacy_vitalserver_device(packet: bytes) -> tuple[int, str]:
+    offset = 0
+    did = struct.unpack_from("<i", packet, offset)[0]
+    offset += 4
+
+    dtype_len = struct.unpack_from("<i", packet, offset)[0]
+    offset += 4 + dtype_len
+
+    dname_len = struct.unpack_from("<i", packet, offset)[0]
+    offset += 4
+    dname = packet[offset : offset + dname_len].decode("ascii")
+
+    return did, dname
+
+
+def legacy_vitalserver_track(packet: bytes) -> tuple[int, int, str, int]:
+    offset = 0
+    tid = struct.unpack_from("<h", packet, offset)[0]
+    offset += 2
+    offset += 1
+    offset += 1
+
+    tname_len = struct.unpack_from("<i", packet, offset)[0]
+    offset += 4
+    tname = packet[offset : offset + tname_len].decode("ascii")
+    offset += tname_len
+
+    unit_len = struct.unpack_from("<i", packet, offset)[0]
+    offset += 4 + unit_len
+    offset += 4
+    offset += 4
+    offset += 4
+    offset += 4
+    offset += 8
+    offset += 8
+
+    montype = packet[offset]
+    offset += 1
+    did = struct.unpack_from("<i", packet, offset)[0]
+
+    return tid, did, tname, montype

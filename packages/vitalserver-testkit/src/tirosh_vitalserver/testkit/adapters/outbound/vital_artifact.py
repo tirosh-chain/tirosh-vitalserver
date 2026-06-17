@@ -93,7 +93,7 @@ class VitalDbSessionVitalFileExporter:
         )
 
         for track in (*tracks, metadata_track(metadata)):
-            vital_file.add_track(
+            vitaldb_track = vital_file.add_track(
                 track.dtname,
                 vital_recs_for_track(track, np=np),
                 srate=track.srate,
@@ -101,6 +101,9 @@ class VitalDbSessionVitalFileExporter:
                 mindisp=track.mindisp,
                 maxdisp=track.maxdisp,
             )
+            if vitaldb_track is None:
+                raise RuntimeError(f"vitaldb failed to add track {track.dtname}")
+            vitaldb_track.montype = track.montype
 
         result = vital_file.to_vital(str(artifact_path))
         if result is not True:
