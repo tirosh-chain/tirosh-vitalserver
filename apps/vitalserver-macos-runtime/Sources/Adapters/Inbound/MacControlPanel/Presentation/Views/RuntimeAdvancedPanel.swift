@@ -143,7 +143,12 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var serviceHealthItems: [RuntimeStatusDisplayPolicy.ServiceHealthItem] {
-        displayPolicy.advancedServiceHealth(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
+        displayPolicy.advancedServiceHealth(
+            status: viewModel.status,
+            observation: viewModel.containerObservation,
+            redisRelaySettings: viewModel.runtimeSettings.redisRelay,
+            now: uptimeNow
+        )
     }
 
     private var recoveryOperationsCard: some View {

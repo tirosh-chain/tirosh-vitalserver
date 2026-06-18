@@ -27,6 +27,7 @@ public extension AppConstants {
         public static let critical = "Critical"
         public static let running = "Running"
         public static let stopped = "Stopped"
+        public static let disabled = "Disabled"
         public static let reachable = "Reachable"
         public static let unreachable = "Unreachable"
         public static let installed = "Installed"
