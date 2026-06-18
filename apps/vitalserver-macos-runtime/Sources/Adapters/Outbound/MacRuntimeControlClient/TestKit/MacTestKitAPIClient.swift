@@ -25,6 +25,22 @@ struct MacTestKitAPIClient: Sendable {
 
     func decode<T: Decodable>(_ type: T.Type, from request: URLRequest) async throws -> T {
         let (data, response) = try await httpClient.data(for: request)
+        return try decoded(type, data: data, response: response)
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await httpClient.upload(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw MacTestKitControllerError.invalidResponse
+        }
+        return (data, httpResponse)
+    }
+
+    private func decoded<T: Decodable>(
+        _ type: T.Type,
+        data: Data,
+        response: URLResponse
+    ) throws -> T {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw MacTestKitControllerError.invalidResponse
         }
@@ -55,7 +71,7 @@ struct MacTestKitAPIClient: Sendable {
         path: String,
         queryItems: [URLQueryItem] = []
     ) throws -> URL {
-        guard var components = URLComponents(string: "\(apiBaseURL)\(path)") else {
+        guard var components = URLComponents(string: joinedURL(apiBaseURL: apiBaseURL, path: path)) else {
             throw MacTestKitControllerError.invalidRequestURL(
                 "TestKit API request URL is invalid baseURL=\(apiBaseURL) path=\(path)"
             )
@@ -69,6 +85,12 @@ struct MacTestKitAPIClient: Sendable {
             )
         }
         return url
+    }
+
+    private func joinedURL(apiBaseURL: String, path: String) -> String {
+        apiBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            + "/"
+            + path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
     private func defaultHealthCheck(apiBaseURL: String) async -> MacTestKitAPIHealthRead {

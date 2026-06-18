@@ -315,6 +315,52 @@ final class MacTestKitControllerTests: XCTestCase {
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "POST" && $0.path == "/recorders/delete" })
     }
 
+    func testManualVitalUploadRegistersBedsFromFilenamesAndPostsFilesToUploadEndpoint() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let first = directory.appendingPathComponent("MORC03_260617_120000.vital")
+        let second = directory.appendingPathComponent("MORC04_260617_120100.vital")
+        try Data([1, 2, 3]).write(to: first)
+        try Data([4, 5]).write(to: second)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let client = FakeMacTestKitHTTPClient()
+        client.register(
+            method: "POST",
+            path: "/beds",
+            data: try JSONEncoder().encode(TestKitBedsPayload(beds: [
+                RuntimeTestKitBed(roomName: "MORC03", bedID: "bed-1"),
+                RuntimeTestKitBed(roomName: "MORC04", bedID: "bed-2"),
+            ]))
+        )
+        client.register(method: "POST", path: "/upload", data: Data("OK".utf8))
+        let controller = MacTestKitController(
+            configuration: MacTestKitControllerConfiguration(
+                enabled: true,
+                apiEndpoint: .explicit(baseURL: "http://testkit.local")
+            ),
+            statusProvider: { RuntimeStatus(vmIP: nil) },
+            httpClient: client,
+            apiHealthCheck: { _ in true }
+        )
+
+        let summary = try await controller.uploadVitalFiles(RuntimeTestKitVitalFileUploadRequest(
+            filePaths: [first.path, second.path],
+            vitalServerBaseURL: "http://127.0.0.1:18080/",
+            endpoint: "/upload"
+        ))
+
+        XCTAssertEqual(summary.bedRoomNames, ["MORC03", "MORC04"])
+        XCTAssertEqual(summary.uploadedCount, 2)
+        XCTAssertEqual(summary.failedCount, 0)
+        XCTAssertEqual(client.requests.map { "\($0.method) \($0.path)" }, [
+            "POST /beds",
+            "POST /upload",
+            "POST /upload",
+        ])
+    }
+
     func testMutationReportsInvalidAPIEndpointAsTypedError() async throws {
         let controller = MacTestKitController(
             configuration: MacTestKitControllerConfiguration(
@@ -497,6 +543,14 @@ private final class FakeMacTestKitHTTPClient: MacTestKitHTTPClient, @unchecked S
     }
 
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try await response(for: request)
+    }
+
+    func upload(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try await response(for: request)
+    }
+
+    private func response(for request: URLRequest) async throws -> (Data, URLResponse) {
         let method = request.httpMethod ?? "GET"
         let path = request.url?.path ?? "/"
         let key = "\(method) \(path)"

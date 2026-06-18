@@ -530,3 +530,74 @@ public struct RuntimeTestKitRecorder: Codable, Equatable, Sendable {
         case bytesSent
     }
 }
+
+public struct RuntimeTestKitVitalFileUploadRequest: Equatable, Sendable {
+    public var filePaths: [String]
+    public var vitalServerBaseURL: String
+    public var endpoint: String
+    public var registerBeds: Bool
+
+    public init(
+        filePaths: [String],
+        vitalServerBaseURL: String,
+        endpoint: String = "/upload",
+        registerBeds: Bool = true
+    ) {
+        self.filePaths = filePaths
+        self.vitalServerBaseURL = vitalServerBaseURL
+        self.endpoint = endpoint
+        self.registerBeds = registerBeds
+    }
+}
+
+public struct RuntimeTestKitVitalFileUploadSummary: Equatable, Sendable {
+    public var files: [RuntimeTestKitVitalFileUploadFileResult]
+    public var bedRoomNames: [String]
+
+    public init(
+        files: [RuntimeTestKitVitalFileUploadFileResult],
+        bedRoomNames: [String]
+    ) {
+        self.files = files
+        self.bedRoomNames = bedRoomNames
+    }
+
+    public var uploadedCount: Int {
+        files.filter(\.ok).count
+    }
+
+    public var failedCount: Int {
+        files.filter { !$0.ok }.count
+    }
+}
+
+public struct RuntimeTestKitVitalFileUploadFileResult: Equatable, Sendable {
+    public var path: String
+    public var filename: String
+    public var bedRoomName: String
+    public var sizeBytes: Int64
+    public var statusCode: Int
+    public var ok: Bool
+    public var elapsedSeconds: Double
+    public var error: String?
+
+    public init(
+        path: String,
+        filename: String,
+        bedRoomName: String,
+        sizeBytes: Int64,
+        statusCode: Int,
+        ok: Bool,
+        elapsedSeconds: Double,
+        error: String? = nil
+    ) {
+        self.path = path
+        self.filename = filename
+        self.bedRoomName = bedRoomName
+        self.sizeBytes = sizeBytes
+        self.statusCode = statusCode
+        self.ok = ok
+        self.elapsedSeconds = elapsedSeconds
+        self.error = error
+    }
+}

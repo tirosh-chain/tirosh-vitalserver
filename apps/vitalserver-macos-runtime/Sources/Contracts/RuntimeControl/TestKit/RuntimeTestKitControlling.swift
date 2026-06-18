@@ -16,3 +16,10 @@ public protocol RuntimeTestKitControlling {
     func deleteVirtualRecorder(vrcode: String) async throws -> RuntimeTestKitRecorderDeletion
     func resetVirtualRecorders() async throws -> RuntimeTestKitStatus
 }
+
+@MainActor
+public protocol RuntimeTestKitVitalFileUploading {
+    func uploadVitalFiles(
+        _ request: RuntimeTestKitVitalFileUploadRequest
+    ) async throws -> RuntimeTestKitVitalFileUploadSummary
+}

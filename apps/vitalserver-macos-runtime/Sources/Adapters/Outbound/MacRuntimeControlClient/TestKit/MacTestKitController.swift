@@ -4,7 +4,7 @@ import RuntimeControl
 import Errors
 
 @MainActor
-public final class MacTestKitController: RuntimeTestKitControlling {
+public final class MacTestKitController: RuntimeTestKitControlling, RuntimeTestKitVitalFileUploading {
     private let configuration: MacTestKitControllerConfiguration
     private let statusProvider: () async -> RuntimeStatus
     private let apiService: MacTestKitAPIService
@@ -216,6 +216,45 @@ public final class MacTestKitController: RuntimeTestKitControlling {
         try await apiService.resetSessions(apiBaseURL: apiBaseURL)
 
         return await loadTestKitStatus()
+    }
+
+    public func uploadVitalFiles(
+        _ request: RuntimeTestKitVitalFileUploadRequest
+    ) async throws -> RuntimeTestKitVitalFileUploadSummary {
+        guard !request.filePaths.isEmpty else {
+            throw RuntimeTestKitVitalFileUploadError.noFilesSelected
+        }
+
+        let bedRoomNames = try RuntimeTestKitVitalFileUploadPolicy.uniqueBedRoomNames(
+            filePaths: request.filePaths
+        )
+        if request.registerBeds {
+            _ = try await createTestKitBeds(RuntimeTestKitCreateBedsRequest(
+                roomNames: bedRoomNames,
+                prefix: "",
+                appendRandomSuffix: false
+            ))
+        }
+
+        var results: [RuntimeTestKitVitalFileUploadFileResult] = []
+        for path in request.filePaths {
+            let fileURL = URL(fileURLWithPath: path)
+            let filename = fileURL.lastPathComponent
+            guard let bedRoomName = RuntimeTestKitVitalFileUploadPolicy.bedRoomName(filename: filename) else {
+                throw RuntimeTestKitVitalFileUploadError.invalidFilename(filename)
+            }
+            results.append(try await apiService.uploadVitalFile(
+                fileURL: fileURL,
+                bedRoomName: bedRoomName,
+                vitalServerBaseURL: request.vitalServerBaseURL,
+                endpoint: request.endpoint
+            ))
+        }
+
+        return RuntimeTestKitVitalFileUploadSummary(
+            files: results,
+            bedRoomNames: bedRoomNames
+        )
     }
 
     private func ensureAPIAvailable(apiBaseURL: String) async throws {

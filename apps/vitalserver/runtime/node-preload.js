@@ -1,9 +1,12 @@
 "use strict";
 
 const os = require("os");
+const fs = require("fs");
+const path = require("path");
 const moduleLoader = require("module");
 const redis = require("redis");
 const { vitalFileWebPath } = require("./public-paths");
+const { patchMyFilesScript } = require("./static-patches");
 
 const realCpus = os.cpus.bind(os);
 const minCpus = Number.parseInt(process.env.VITALSERVER_MIN_CPUS || "8", 10);
@@ -196,7 +199,58 @@ function patchExpressModule(expressModule) {
     enumerable: false,
   });
 
+  patchExpressStatic(expressModule);
+
   return expressModule;
+}
+
+function patchExpressStatic(expressModule) {
+  if (
+    !expressModule ||
+    typeof expressModule.static !== "function" ||
+    expressModule.__tiroshStaticPatched
+  ) {
+    return;
+  }
+
+  const realStatic = expressModule.static.bind(expressModule);
+  expressModule.static = function patchedStatic(root, options) {
+    const middleware = realStatic(root, options);
+    if (typeof root !== "string" || path.basename(root) !== "static") {
+      return middleware;
+    }
+
+    const myFilesScriptPath = path.join(root, "js", "my-files.js");
+    return function patchedStaticMiddleware(request, response, next) {
+      const requestPath = ((request && (request.path || request.url)) || "").split("?")[0];
+      if (requestPath !== "/js/my-files.js" && requestPath !== "js/my-files.js") {
+        return middleware(request, response, next);
+      }
+
+      fs.readFile(myFilesScriptPath, "utf8", (error, source) => {
+        if (error) {
+          next(error);
+          return;
+        }
+
+        const patched = patchMyFilesScript(source);
+        if (!patched.applied) {
+          response
+            .status(500)
+            .type("text/plain")
+            .send(`[tirosh] failed to patch my-files.js: ${patched.reason}`);
+          return;
+        }
+
+        response.type("application/javascript").send(patched.source);
+      });
+    };
+  };
+
+  Object.defineProperty(expressModule, "__tiroshStaticPatched", {
+    value: true,
+    enumerable: false,
+  });
 }
 
 function withConfiguredAdminPassword(user) {

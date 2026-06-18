@@ -41,8 +41,8 @@ services:
       VITALSERVER_REDIS_PORT: "${VITALSERVER_REDIS_PORT:-6379}"
       VITALSERVER_TRUST_PROXY: "${VITALSERVER_TRUST_PROXY:-0}"
     volumes:
-      - type: volume
-        source: vital-files
+      - type: bind
+        source: ${VITALSERVER_VITAL_FILES_DIR:-./data/vital-files}
         target: /opt/vitalserver/vital_files
       - type: volume
         source: vital-vr-release
@@ -201,7 +201,6 @@ services:
 
 volumes:
   redis-data:
-  vital-files:
   vital-vr-release:
   vital-tmp-files:
   audit-logs:

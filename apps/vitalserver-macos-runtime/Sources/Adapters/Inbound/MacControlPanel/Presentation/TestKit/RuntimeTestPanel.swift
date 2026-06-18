@@ -111,6 +111,10 @@ struct RuntimeTestPanel: View {
 
                 Divider()
 
+                manualVitalUpload
+
+                Divider()
+
                 sessionList
 
                 Divider()
@@ -431,6 +435,22 @@ struct RuntimeTestPanel: View {
                     sessionRow(session)
                 }
             }
+        }
+    }
+
+    private var manualVitalUpload: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(AppConstants.Labels.sectionVitalFileUpload)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            Text(RuntimeTestPanelText.manualVitalUploadDescription)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(AppConstants.Actions.uploadVitalFiles) {
+                Task { await viewModel.uploadVitalFilesFromTestTab() }
+            }
+            .disabled(!viewModel.testKitStatus.enabled || viewModel.isRunningTestKitAction)
         }
     }
 

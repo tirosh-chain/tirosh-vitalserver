@@ -453,6 +453,51 @@ extension RuntimeViewModel {
         }
     }
 
+    func uploadVitalFilesFromTestTab() async {
+        guard let testKitController else {
+            message = RuntimeTestPanelText.testKitUnavailable
+            recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
+            return
+        }
+        guard let uploader = testKitController as? any RuntimeTestKitVitalFileUploading else {
+            let errorMessage = RuntimeTestKitVitalFileUploadError.uploadNotAvailable.localizedDescription
+            recordTestKitActionMessage(errorMessage, tone: .failure)
+            message = errorMessage
+            return
+        }
+        guard let proxyPort = status.proxyPort else {
+            let errorMessage = RuntimeTestKitVitalFileUploadError.missingProxyPort.localizedDescription
+            recordTestKitActionMessage(errorMessage, tone: .failure)
+            message = errorMessage
+            return
+        }
+
+        let selectedFiles = nativeShell.chooseVitalFiles(prompt: RuntimeTestPanelText.choosingVitalFiles)
+        guard !selectedFiles.isEmpty else {
+            return
+        }
+
+        isRunningTestKitAction = true
+        defer { isRunningTestKitAction = false }
+
+        recordTestKitActionMessage(RuntimeTestPanelText.uploadingVitalFiles)
+        message = RuntimeTestPanelText.uploadingVitalFiles
+        do {
+            let summary = try await uploader.uploadVitalFiles(RuntimeTestKitVitalFileUploadRequest(
+                filePaths: selectedFiles.map(\.path),
+                vitalServerBaseURL: AppConstants.Product.vitalServerURL(proxyPort: proxyPort),
+                endpoint: "/upload",
+                registerBeds: true
+            ))
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let summaryMessage = RuntimeTestPanelText.uploadedVitalFiles(summary)
+            recordTestKitActionMessage(summaryMessage, tone: summary.failedCount > 0 ? .failure : .neutral)
+            message = summaryMessage
+        } catch {
+            await applyTestKitActionFailure(error, controller: testKitController)
+        }
+    }
+
     private func testKitStartRequest() -> RuntimeTestKitVirtualRecorderStartRequest {
         testKitPresentationPolicy.startRequest(RuntimeTestKitStartInput(
             status: testKitStatus,

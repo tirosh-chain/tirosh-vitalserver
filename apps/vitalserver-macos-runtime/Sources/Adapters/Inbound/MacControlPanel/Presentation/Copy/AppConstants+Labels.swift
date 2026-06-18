@@ -110,6 +110,7 @@ public extension AppConstants {
         public static let sectionServiceHealth = "Service liveness"
         public static let sectionNetworkOverrides = "Advanced network"
         public static let sectionRedisRelay = "Redis relay"
+        public static let sectionVitalFileUpload = "Manual .vital upload"
         public static let sectionAdminOperations = "Admin operations"
         public static let sectionRecoveryOperations = "Recovery operations"
         public static let sectionRuntimeRepair = "Runtime repair"

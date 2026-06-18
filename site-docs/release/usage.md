@@ -121,6 +121,11 @@ restart 안내가 아직 반영되지 않은 VM runtime 변경을 표시합니�
 저장한 뒤 아직 VM runtime에 적용되지 않은 변경이 있으면 badge를 눌러 VM runtime restart 확인을 열 수
 있습니다.
 
+`.vital` 파일 저장 위치는 이 `Vital files directory` 하나가 SoT입니다. My Files 목록은 같은 파일
+저장소를 읽되, 조회 대상은 VitalServer upload endpoint가 Redis에 생성한 filelist index를 기준으로
+결정됩니다. 운영자가 `.vital` 파일을 My Files에서 보이게 하려면 storage directory에 직접 복사하지 말고
+Helper Test 탭의 `Manual .vital upload` 또는 VitalServer `/upload` 경로를 사용해야 합니다.
+
 Settings apply는 update bundle 적용이 아닙니다. 진행 상태가 보이면 operation은 `configure`로
 해석하고, update bundle 검증/적용 상태와 섞어 판단하지 않습니다.
 
