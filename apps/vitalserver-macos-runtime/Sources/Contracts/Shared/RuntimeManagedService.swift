@@ -5,7 +5,7 @@ public enum RuntimeManagedService: CaseIterable, Equatable, Sendable {
     case sleepPrevention
     case watchdog
 
-    public static let startOrder: [RuntimeManagedService] = [.vm, .proxy, .guestLogSync, .watchdog]
+    public static let startOrder: [RuntimeManagedService] = [.vm, .guestLogSync, .watchdog, .proxy]
     public static let stopOrder: [RuntimeManagedService] = [.watchdog, .guestLogSync, .proxy, .vm, .sleepPrevention]
 
     public var label: String {

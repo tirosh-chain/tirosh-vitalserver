@@ -101,11 +101,11 @@ public struct RuntimeServiceController {
         if restartGuestLogSync {
             try startLaunchdService(.guestLogSync)
         }
-        if restartProxy {
-            try startLaunchdService(.proxy)
-        }
         if restartWatchdog {
             try startLaunchdService(.watchdog)
+        }
+        if restartProxy {
+            try startLaunchdService(.proxy)
         }
     }
 
