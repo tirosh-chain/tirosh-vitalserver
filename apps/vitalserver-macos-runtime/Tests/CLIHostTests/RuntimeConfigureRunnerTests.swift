@@ -113,9 +113,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         {
           "enabled": true,
           "target": {
-            "host": "redis-hub.internal",
-            "port": 6380,
-            "database": 2,
+            "url": "redis://redis-hub.internal:6380/2",
             "username": "relay",
             "password": "secret-password",
             "clearPassword": false,
@@ -146,13 +144,15 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
             encoding: .utf8
         )
         XCTAssertTrue(toml?.contains("enabled = true") == true)
-        XCTAssertTrue(toml?.contains("host = \"redis-hub.internal\"") == true)
+        XCTAssertTrue(toml?.contains("url = \"rediss://relay@redis-hub.internal:6380/2\"") == true)
         XCTAssertTrue(toml?.contains("password_file = \"/run/tirosh/secrets/redis-relay-target-password\"") == true)
 
         let data = try XCTUnwrap(harness.fileStore.files[harness.paths.runtimeControlSettings])
         let settings = try JSONDecoder().decode(RuntimeControlSettingsDocument.self, from: data)
         XCTAssertTrue(settings.redisRelay.enabled)
-        XCTAssertEqual(settings.redisRelay.target.host, "redis-hub.internal")
+        XCTAssertEqual(settings.redisRelay.target.url, "redis://redis-hub.internal:6380/2")
+        XCTAssertEqual(settings.redisRelay.target.username, "relay")
+        XCTAssertTrue(settings.redisRelay.target.tls)
         XCTAssertTrue(settings.redisRelay.target.passwordConfigured)
         XCTAssertEqual(settings.redisRelay.target.password, "")
     }

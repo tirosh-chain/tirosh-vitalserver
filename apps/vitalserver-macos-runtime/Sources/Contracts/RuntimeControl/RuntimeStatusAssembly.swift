@@ -48,6 +48,22 @@ public struct RuntimeInstallStateRead {
     }
 }
 
+public struct RuntimeRedisRelayStatusRead {
+    public let document: RuntimeRedisRelayStatus?
+    public let error: String?
+    public let issue: RuntimeStatusReadIssue?
+
+    public init(
+        document: RuntimeRedisRelayStatus?,
+        error: String?,
+        issue: RuntimeStatusReadIssue?
+    ) {
+        self.document = document
+        self.error = error
+        self.issue = issue
+    }
+}
+
 public struct RuntimeHTTPStatusRead: Equatable, Sendable {
     public let status: String?
     public let issue: RuntimeStatusReadIssue?
@@ -393,6 +409,11 @@ public enum RuntimeControlStatusAssembler {
         statusRead: RuntimeStatusDocumentRead,
         guestStateRead: GuestRuntimeStateRead,
         installStateRead: RuntimeInstallStateRead = RuntimeInstallStateRead(document: nil, error: nil, issue: nil),
+        redisRelayStatusRead: RuntimeRedisRelayStatusRead = RuntimeRedisRelayStatusRead(
+            document: nil,
+            error: nil,
+            issue: nil
+        ),
         liveDiagnostics: RuntimeLiveDiagnostics
     ) -> RuntimeStatus {
         let document = statusRead.document
@@ -409,7 +430,8 @@ public enum RuntimeControlStatusAssembler {
         }
         let readIssues = liveDiagnostics.readIssues
             + [liveDiagnostics.runtimeInstallationIssue].compactMap { $0 }
-            + [statusRead.issue, guestStateRead.issue, installStateRead.issue].compactMap { $0 }
+            + [statusRead.issue, guestStateRead.issue, installStateRead.issue, redisRelayStatusRead.issue]
+                .compactMap { $0 }
             + [proxyPortIssue].compactMap { $0 }
         let vmService = liveDiagnostics.vmService
         let proxyService = liveDiagnostics.proxyService
@@ -463,7 +485,8 @@ public enum RuntimeControlStatusAssembler {
             failureReasons: document?.failureReasons ?? [],
             progress: document?.progress,
             containerObservation: containerObservation,
-            vitalDBObservation: document?.vitalDBObservation
+            vitalDBObservation: document?.vitalDBObservation,
+            redisRelayStatus: redisRelayStatusRead.document
         )
     }
 }

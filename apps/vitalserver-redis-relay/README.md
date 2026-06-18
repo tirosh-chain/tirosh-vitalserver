@@ -31,18 +31,32 @@ port = 6379
 database = 0
 
 [target]
-host = "10.0.0.12"
-port = 6379
-database = 0
-username = "default"
+url = "redis://default@10.0.0.12:6379/0"
 password_file = "/run/tirosh/secrets/redis-relay-target-password"
-tls = false
 ```
 
 If the config file is missing or `enabled = false`, the container stays alive
 and writes a disabled status document.
 
+VitalServer Helper stores the target as separate UI inputs: Target URL, TLS,
+Username, and Password. The runtime configure command combines Target URL, TLS,
+and Username into the TOML `target.url`; Password remains outside the URL and is
+provided through `password_file`.
+
+Helper Target URL examples:
+
+- `redis://127.0.0.1:16381/0`
+- `redis://redis.example:6379/0`
+- `redis://redis.example:6380/2`
+
+Generated TOML URL examples:
+
+- `redis://127.0.0.1:16381/0`
+- `redis://default@redis.example:6379/0`
+- `rediss://default@redis.example:6380/2`
+
 ## Status
 
 The relay writes JSON status to `/run/tirosh/status/redis-relay-status.json`.
-The status never includes the target password.
+The status never includes the target password. `batches` and `totals` show
+whether the relay loop is running, and `lastBatch` shows the most recent scan.

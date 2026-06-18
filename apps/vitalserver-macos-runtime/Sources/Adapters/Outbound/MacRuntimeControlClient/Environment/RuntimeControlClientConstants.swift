@@ -129,6 +129,9 @@ enum RuntimeControlClientConstants {
         static let guestRuntimeSettings = installed.guestRuntimeSettings.path
         static let redisRelayConfig = installed.redisRelayConfig.path
         static let redisRelayTargetPassword = installed.redisRelayTargetPassword.path
+        static let redisRelayStatus = installed.redisRelayStatusDirectory
+            .appendingPathComponent("redis-relay-status.json")
+            .path
         static let runtimeVersion = installed.runtimeDirectory.appendingPathComponent("runtime-version.json").path
         static let proxyNginxPid = installed.proxyNginxPID.path
         static let proxyNginxConfig = installed.nginxDirectory.appendingPathComponent("vitalserver.conf").path

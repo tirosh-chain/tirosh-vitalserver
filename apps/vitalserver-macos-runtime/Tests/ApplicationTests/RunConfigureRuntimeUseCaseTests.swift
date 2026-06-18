@@ -205,7 +205,7 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                 case .setLogArchiveMaximumGiB(let gib):
                     postWriteEffects.append("log-archive-maximum-gib:\(gib)")
                 case .writeRedisRelayConfiguration(let settings):
-                    postWriteEffects.append("redis-relay:\(settings.enabled):\(settings.target.host)")
+                    postWriteEffects.append("redis-relay:\(settings.enabled):\(settings.target.url)")
                 case .restartRuntimeServices:
                     postWriteEffects.append("restart")
                 }

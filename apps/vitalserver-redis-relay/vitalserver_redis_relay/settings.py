@@ -4,6 +4,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 from .key_filter import RelayScope
 
@@ -86,9 +87,9 @@ def parse_settings(data: dict[str, Any], *, base_dir: Path) -> RelaySettings:
 
 
 def _target_endpoint(data: dict[str, Any], *, base_dir: Path) -> RedisEndpoint:
-    endpoint = _endpoint(data, defaults=("", 6379, 0))
+    endpoint = _endpoint_from_url_or_table(data, defaults=("", 6379, 0))
     if not endpoint.host:
-        raise RelaySettingsError("target.host is required when redis relay is enabled")
+        raise RelaySettingsError("target.url is required when redis relay is enabled")
     password_file = _optional_str(data, "password_file")
     password = _read_password_file(password_file, base_dir=base_dir)
     return RedisEndpoint(
@@ -96,7 +97,7 @@ def _target_endpoint(data: dict[str, Any], *, base_dir: Path) -> RedisEndpoint:
         port=endpoint.port,
         database=endpoint.database,
         username=endpoint.username,
-        password=password,
+        password=password if password_file else endpoint.password,
         tls=endpoint.tls,
     )
 
@@ -109,6 +110,48 @@ def _endpoint(data: dict[str, Any], *, defaults: tuple[str, int, int]) -> RedisE
         database=_int(data, "database", default=database, minimum=0),
         username=_optional_str(data, "username"),
         tls=_bool(data, "tls", default=False),
+    )
+
+
+def _endpoint_from_url_or_table(
+    data: dict[str, Any],
+    *,
+    defaults: tuple[str, int, int],
+) -> RedisEndpoint:
+    url = _optional_str(data, "url")
+    if url:
+        return _endpoint_from_url(url)
+    return _endpoint(data, defaults=defaults)
+
+
+def _endpoint_from_url(url: str) -> RedisEndpoint:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"redis", "rediss"}:
+        raise RelaySettingsError("target.url scheme must be redis or rediss")
+    if not parsed.hostname:
+        raise RelaySettingsError("target.url host is required")
+    database = 0
+    if parsed.path and parsed.path != "/":
+        raw_database = parsed.path.removeprefix("/")
+        if "/" in raw_database:
+            raise RelaySettingsError("target.url database path must be /<number>")
+        try:
+            database = int(raw_database)
+        except ValueError as error:
+            raise RelaySettingsError("target.url database must be an integer") from error
+        if database < 0:
+            raise RelaySettingsError("target.url database must be >= 0")
+    try:
+        port = parsed.port or 6379
+    except ValueError as error:
+        raise RelaySettingsError("target.url port is invalid") from error
+    return RedisEndpoint(
+        host=parsed.hostname,
+        port=port,
+        database=database,
+        username=unquote(parsed.username) if parsed.username else None,
+        password=unquote(parsed.password) if parsed.password else None,
+        tls=parsed.scheme == "rediss",
     )
 
 

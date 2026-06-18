@@ -34,5 +34,9 @@ def test_status_masks_password(tmp_path: Path) -> None:
     )
 
     document = json.loads(status_path.read_text())
+    assert document["targetUrl"] == "redis://default@target:6379/0"
     assert document["targetPasswordConfigured"] is True
+    assert document["batches"] == 0
+    assert document["totals"]["copied"] == 0
+    assert document["lastBatch"]["copied"] == 1
     assert "secret" not in status_path.read_text()

@@ -205,7 +205,7 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
     func testRejectsInvalidRedisRelayTargetWhenRelayIsEnabled() {
         var settings = validSettings()
         settings.redisRelay.enabled = true
-        settings.redisRelay.target.host = ""
+        settings.redisRelay.target.url = ""
 
         XCTAssertEqual(
             validator.validate(settings, installedSettings: installedSettings()),
@@ -214,8 +214,7 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
 
         settings = validSettings()
         settings.redisRelay.enabled = true
-        settings.redisRelay.target.host = "10.0.0.12"
-        settings.redisRelay.target.port = 0
+        settings.redisRelay.target.url = "redis://10.0.0.12:0/0"
 
         XCTAssertEqual(
             validator.validate(settings, installedSettings: installedSettings()),
@@ -224,7 +223,7 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
 
         settings = validSettings()
         settings.redisRelay.enabled = true
-        settings.redisRelay.target.host = "10.0.0.12"
+        settings.redisRelay.target.url = "redis://10.0.0.12:6379/0"
         settings.redisRelay.target.password = "abc\n123"
 
         XCTAssertEqual(
@@ -236,9 +235,7 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
     func testAcceptsValidRedisRelayTargetWhenRelayIsEnabled() {
         var settings = validSettings()
         settings.redisRelay.enabled = true
-        settings.redisRelay.target.host = "10.0.0.12"
-        settings.redisRelay.target.port = 6379
-        settings.redisRelay.target.database = 0
+        settings.redisRelay.target.url = "redis://10.0.0.12:6379/0"
         settings.redisRelay.target.username = "default"
         settings.redisRelay.target.password = "secret"
 

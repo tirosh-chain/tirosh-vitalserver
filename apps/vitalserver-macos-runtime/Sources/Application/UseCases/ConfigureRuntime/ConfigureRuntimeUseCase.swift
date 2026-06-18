@@ -119,9 +119,9 @@ public enum ConfigureRuntimeRedisRelayScope: String, Equatable, Sendable {
 }
 
 public struct ConfigureRuntimeRedisRelayTarget: Equatable, Sendable {
-    public var host: String
-    public var port: Int
-    public var database: Int
+    public static let defaultURL = "redis://127.0.0.1:16381/0"
+
+    public var url: String
     public var username: String
     public var password: String
     public var clearPassword: Bool
@@ -129,18 +129,14 @@ public struct ConfigureRuntimeRedisRelayTarget: Equatable, Sendable {
     public var tls: Bool
 
     public init(
-        host: String = "",
-        port: Int = 6379,
-        database: Int = 0,
+        url: String = ConfigureRuntimeRedisRelayTarget.defaultURL,
         username: String = "",
         password: String = "",
         clearPassword: Bool = false,
         passwordConfigured: Bool = false,
         tls: Bool = false
     ) {
-        self.host = host
-        self.port = port
-        self.database = database
+        self.url = url
         self.username = username
         self.password = password
         self.clearPassword = clearPassword
@@ -572,24 +568,38 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         guard settings.scanCount >= 1 else {
             throw invalid("--redis-relay-settings-file scanCount must be greater than or equal to 1")
         }
-        guard !settings.target.host.contains("\n"),
-              !settings.target.host.contains("\r"),
+        guard !settings.target.url.contains("\n"),
+              !settings.target.url.contains("\r"),
               !settings.target.username.contains("\n"),
               !settings.target.username.contains("\r"),
               !settings.target.password.contains("\n"),
               !settings.target.password.contains("\r") else {
             throw invalid("--redis-relay-settings-file target values must not contain newlines")
         }
-        guard (1...65_535).contains(settings.target.port) else {
-            throw invalid("--redis-relay-settings-file target port must be between 1 and 65535")
-        }
-        guard settings.target.database >= 0 else {
-            throw invalid("--redis-relay-settings-file target database must be greater than or equal to 0")
-        }
         if settings.enabled {
-            let host = settings.target.host.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !host.isEmpty, host == settings.target.host else {
-                throw invalid("--redis-relay-settings-file target host is required when relay is enabled")
+            try validateRedisRelayTargetURL(settings.target.url)
+        }
+    }
+
+    private func validateRedisRelayTargetURL(_ value: String) throws {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed == value else {
+            throw invalid("--redis-relay-settings-file target url is required when relay is enabled")
+        }
+        guard let components = URLComponents(string: value),
+              let scheme = components.scheme,
+              ["redis", "rediss"].contains(scheme),
+              components.host?.isEmpty == false else {
+            throw invalid("--redis-relay-settings-file target url must be redis:// or rediss://")
+        }
+        if let port = components.port, !(1...65_535).contains(port) {
+            throw invalid("--redis-relay-settings-file target url port must be between 1 and 65535")
+        }
+        let path = components.path
+        if !path.isEmpty, path != "/" {
+            let rawDatabase = String(path.dropFirst())
+            guard !rawDatabase.contains("/"), let database = Int(rawDatabase), database >= 0 else {
+                throw invalid("--redis-relay-settings-file target url database path must be /<number>")
             }
         }
     }

@@ -381,9 +381,7 @@ public struct RuntimeConfigureRunner {
         RuntimeRedisRelaySettings(
             enabled: settings.enabled,
             target: RuntimeRedisRelayTarget(
-                host: settings.target.host,
-                port: settings.target.port,
-                database: settings.target.database,
+                url: settings.target.url,
                 username: settings.target.username,
                 password: "",
                 clearPassword: false,
@@ -415,11 +413,7 @@ public struct RuntimeConfigureRunner {
             "database = 0",
             "",
             "[target]",
-            "host = \"\(tomlEscaped(settings.target.host))\"",
-            "port = \(settings.target.port)",
-            "database = \(settings.target.database)",
-            "username = \"\(tomlEscaped(settings.target.username))\"",
-            "tls = \(settings.target.tls)",
+            "url = \"\(tomlEscaped(redisRelayTargetURL(settings.target)))\"",
         ]
         if passwordConfigured {
             lines.append("password_file = \"/run/tirosh/secrets/redis-relay-target-password\"")
@@ -431,6 +425,16 @@ public struct RuntimeConfigureRunner {
         value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private func redisRelayTargetURL(_ target: ConfigureRuntimeRedisRelayTarget) -> String {
+        guard var components = URLComponents(string: target.url) else {
+            return target.url
+        }
+        components.scheme = target.tls ? "rediss" : "redis"
+        components.user = target.username.isEmpty ? nil : target.username
+        components.password = nil
+        return components.string ?? target.url
     }
 
     private func loadRuntimeControlSettings() throws -> RuntimeControlSettingsDocument {
@@ -600,9 +604,7 @@ public struct RuntimeConfigureRunner {
         return ConfigureRuntimeRedisRelaySettings(
             enabled: settings.enabled,
             target: ConfigureRuntimeRedisRelayTarget(
-                host: settings.target.host,
-                port: settings.target.port,
-                database: settings.target.database,
+                url: settings.target.url,
                 username: settings.target.username,
                 password: settings.target.password,
                 clearPassword: settings.target.clearPassword,

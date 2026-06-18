@@ -520,18 +520,17 @@ struct RuntimeAdvancedPanel: View {
                     isOn: $viewModel.settings.redisRelay.enabled
                 )
 
+                settingRow(AppConstants.Labels.redisRelayFinalURL) {
+                    Text(redisRelayDraftURL)
+                        .fontWeight(.medium)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 settingTextField(
-                    AppConstants.Labels.redisRelayTargetHost,
-                    text: $viewModel.settings.redisRelay.target.host
+                    AppConstants.Labels.redisRelayTargetURL,
+                    text: $viewModel.settings.redisRelay.target.url
                 )
-                settingPortField(
-                    AppConstants.Labels.redisRelayTargetPort,
-                    value: $viewModel.settings.redisRelay.target.port
-                )
-                settingIntegerField(
-                    AppConstants.Labels.redisRelayDatabase,
-                    value: $viewModel.settings.redisRelay.target.database
-                )
+                settingHelp(AppConstants.Labels.redisRelayTargetURLHelp)
                 settingTextField(
                     AppConstants.Labels.redisRelayUsername,
                     text: $viewModel.settings.redisRelay.target.username
@@ -568,9 +567,64 @@ struct RuntimeAdvancedPanel: View {
                     AppConstants.Labels.redisRelayRecorderNetworkContext,
                     isOn: $viewModel.settings.redisRelay.includeRecorderNetworkContext
                 )
+                redisRelayStatusSummary
                 applyActionRow
             }
         }
+    }
+
+    @ViewBuilder
+    private var redisRelayStatusSummary: some View {
+        if let status = viewModel.status.redisRelayStatus {
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 8) {
+                statusRow(AppConstants.Labels.redisRelayStatus, status.state)
+                statusRow(AppConstants.Labels.updatedAt, viewModel.presentationFormatter.systemTimeText(status.observedAt))
+                statusRow(AppConstants.Labels.redisRelayTarget, status.targetUrl ?? AppConstants.StatusText.unknown)
+                statusRow(AppConstants.Labels.redisRelayBatches, "\(status.batches)")
+                statusRow(AppConstants.Labels.redisRelayTotals, redisRelayBatchText(status.totals))
+                if let lastBatch = status.lastBatch {
+                    statusRow(AppConstants.Labels.redisRelayLastBatch, redisRelayBatchText(lastBatch))
+                }
+                if let lastError = status.lastError, !lastError.isEmpty {
+                    statusRow(AppConstants.Labels.lastError) {
+                        Text(lastError)
+                            .fontWeight(.medium)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private func redisRelayBatchText(_ batch: RuntimeRedisRelayBatch) -> String {
+        [
+            "scanned \(batch.scanned)",
+            "copied \(batch.copied)",
+            "unchanged \(batch.unchanged)",
+            "skipped \(batch.skipped)",
+            "errors \(batch.errors)",
+        ].joined(separator: " · ")
+    }
+
+    private var redisRelayDraftURL: String {
+        redisRelayFinalURL(
+            url: viewModel.settings.redisRelay.target.url.isEmpty
+            ? RuntimeRedisRelayTarget.defaultURL
+            : viewModel.settings.redisRelay.target.url,
+            username: viewModel.settings.redisRelay.target.username,
+            tls: viewModel.settings.redisRelay.target.tls
+        )
+    }
+
+    private func redisRelayFinalURL(url: String, username: String, tls: Bool) -> String {
+        guard var components = URLComponents(string: url) else {
+            return url
+        }
+        components.scheme = tls ? "rediss" : "redis"
+        components.user = username.isEmpty ? nil : username
+        components.password = nil
+        return components.string ?? url
     }
 
     private var advertisedServiceURLFields: some View {

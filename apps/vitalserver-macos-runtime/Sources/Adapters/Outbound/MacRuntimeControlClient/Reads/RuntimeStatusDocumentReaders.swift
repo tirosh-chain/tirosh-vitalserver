@@ -71,6 +71,47 @@ struct RuntimeInstallStateDocumentReader {
     }
 }
 
+struct RuntimeRedisRelayStatusReader {
+    let path: String
+    let fileStore: RuntimeFileStore
+
+    func load() -> RuntimeRedisRelayStatusRead {
+        let url = URL(fileURLWithPath: path)
+        let pathState = fileStore.pathState(at: url)
+        switch pathState {
+        case .file:
+            break
+        case .missing:
+            return RuntimeRedisRelayStatusRead(document: nil, error: nil, issue: nil)
+        case .inspectFailed(let reason):
+            let message = "redis relay status path inspection failed path=\(url.path) reason=\(reason)"
+            return RuntimeRedisRelayStatusRead(
+                document: nil,
+                error: message,
+                issue: RuntimeStatusReadIssue(source: "redisRelayStatus", message: message)
+            )
+        case .directory, .other, .unknown:
+            let message = "redis relay status path state is unexpected path=\(url.path) state=\(pathState.rawValue)"
+            return RuntimeRedisRelayStatusRead(
+                document: nil,
+                error: message,
+                issue: RuntimeStatusReadIssue(source: "redisRelayStatus", message: message)
+            )
+        }
+        do {
+            let data = try fileStore.readData(url)
+            let document = try JSONDecoder().decode(RuntimeRedisRelayStatus.self, from: data)
+            return RuntimeRedisRelayStatusRead(document: document, error: nil, issue: nil)
+        } catch {
+            return RuntimeRedisRelayStatusRead(
+                document: nil,
+                error: error.localizedDescription,
+                issue: RuntimeStatusReadIssue(source: "redisRelayStatus", message: error.localizedDescription)
+            )
+        }
+    }
+}
+
 struct GuestRuntimeStateDocumentReader {
     let path: String
     let fileStore: RuntimeFileStore
