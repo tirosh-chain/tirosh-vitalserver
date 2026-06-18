@@ -145,6 +145,8 @@ struct MacTestKitAPIService {
         let header = multipartHeader(boundary: boundary, filename: filename)
         let footer = "\r\n--\(boundary)--\r\n".data(using: .utf8) ?? Data()
         let contentLength = Int64(header.count) + fileSize + Int64(footer.count)
+        let bodyFileURL = try multipartBodyFile(header: header, fileURL: fileURL, footer: footer)
+        defer { try? FileManager.default.removeItem(at: bodyFileURL) }
         var request = try apiClient.request(
             apiBaseURL: vitalServerBaseURL,
             path: endpoint.hasPrefix("/") ? endpoint : "/\(endpoint)"
@@ -152,11 +154,10 @@ struct MacTestKitAPIService {
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.setValue(String(contentLength), forHTTPHeaderField: "Content-Length")
-        request.httpBodyStream = try MultipartFileBodyStream(header: header, fileURL: fileURL, footer: footer)
 
         let startedAt = Date()
         do {
-            let (data, response) = try await apiClient.send(request)
+            let (data, response) = try await apiClient.send(request, bodyFileURL: bodyFileURL)
             let elapsed = Date().timeIntervalSince(startedAt)
             let ok = (200..<300).contains(response.statusCode)
             return RuntimeTestKitVitalFileUploadFileResult(
@@ -193,6 +194,32 @@ struct MacTestKitAPIService {
             "",
         ].joined(separator: "\r\n")
         return value.data(using: .utf8) ?? Data()
+    }
+
+    private func multipartBodyFile(header: Data, fileURL: URL, footer: Data) throws -> URL {
+        let bodyFileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tirosh-vital-upload-\(UUID().uuidString).multipart")
+        FileManager.default.createFile(atPath: bodyFileURL.path, contents: nil)
+        do {
+            let output = try FileHandle(forWritingTo: bodyFileURL)
+            defer { try? output.close() }
+            let input = try FileHandle(forReadingFrom: fileURL)
+            defer { try? input.close() }
+
+            try output.write(contentsOf: header)
+            while true {
+                let chunk = try input.read(upToCount: 1024 * 1024) ?? Data()
+                if chunk.isEmpty {
+                    break
+                }
+                try output.write(contentsOf: chunk)
+            }
+            try output.write(contentsOf: footer)
+            return bodyFileURL
+        } catch {
+            try? FileManager.default.removeItem(at: bodyFileURL)
+            throw error
+        }
     }
 
     private func fileSizeBytes(_ fileURL: URL) throws -> Int64 {

@@ -546,18 +546,17 @@ private final class FakeMacTestKitHTTPClient: MacTestKitHTTPClient, @unchecked S
         try await response(for: request)
     }
 
-    func upload(for request: URLRequest) async throws -> (Data, URLResponse) {
-        try await response(for: request)
+    func upload(for request: URLRequest, fromFile fileURL: URL) async throws -> (Data, URLResponse) {
+        try await response(for: request, body: Data(contentsOf: fileURL))
     }
 
-    private func response(for request: URLRequest) async throws -> (Data, URLResponse) {
+    private func response(for request: URLRequest, body: Data? = nil) async throws -> (Data, URLResponse) {
         let method = request.httpMethod ?? "GET"
         let path = request.url?.path ?? "/"
         let key = "\(method) \(path)"
         let response = lock.withLock { handlers[key] } ?? Response(statusCode: 404, data: Data("missing mock".utf8))
-        let body = requestBodyData(request)
         lock.withLock {
-            protectedRequests.append(TestKitRequestRecord(method: method, path: path, body: body))
+            protectedRequests.append(TestKitRequestRecord(method: method, path: path, body: body ?? requestBodyData(request)))
         }
         let httpResponse = HTTPURLResponse(
             url: request.url!,

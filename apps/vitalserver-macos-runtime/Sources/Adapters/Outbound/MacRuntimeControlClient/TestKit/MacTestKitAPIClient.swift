@@ -28,8 +28,8 @@ struct MacTestKitAPIClient: Sendable {
         return try decoded(type, data: data, response: response)
     }
 
-    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await httpClient.upload(for: request)
+    func send(_ request: URLRequest, bodyFileURL: URL) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await httpClient.upload(for: request, fromFile: bodyFileURL)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw MacTestKitControllerError.invalidResponse
         }
