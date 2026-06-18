@@ -934,7 +934,7 @@ describe("runtime console pages", () => {
 
     expect(createBeds.mutate).toHaveBeenCalledWith({
       count: 1,
-      prefix: "testkit-bed"
+      prefix: "testbed"
     });
     expect(deleteBeds.mutate).toHaveBeenCalledWith(["OR-1"]);
     expect(resetBeds.mutate).toHaveBeenCalledWith(undefined);

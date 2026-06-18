@@ -26,7 +26,7 @@ def bed_id_for_room(room_name: str, *, admin_user_id: str = "admin") -> str:
 def create_bed(
     *,
     room_name: str | None = None,
-    prefix: str = "testkit-bed",
+    prefix: str = "testbed",
     admin_user_id: str = "admin",
     suffix_factory: Callable[[], str] | None = None,
 ) -> Bed:
@@ -47,7 +47,7 @@ def create_bed(
 def create_beds(
     *,
     count: int,
-    prefix: str = "testkit-bed",
+    prefix: str = "testbed",
     admin_user_id: str = "admin",
     reserved_room_names: tuple[str, ...] = (),
     suffix_factory: Callable[[], str] | None = None,

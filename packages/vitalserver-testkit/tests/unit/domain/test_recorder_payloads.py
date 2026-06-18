@@ -161,9 +161,9 @@ def test_generated_beds_use_short_unique_room_suffixes() -> None:
 
 
 def test_generated_testkit_bed_suffix_stays_visible_in_web_monitoring() -> None:
-    bed = create_bed(prefix="testkit-bed", suffix_factory=lambda: "5f83")
+    bed = create_bed(prefix="testbed", suffix_factory=lambda: "5f83")
 
-    assert bed.room_name == "testkit-bed5f83"
+    assert bed.room_name == "testbed5f83"
 
 
 def test_simulated_recorder_payload_rejects_duplicate_bed_room_names() -> None:

@@ -206,33 +206,18 @@ struct RuntimeTestPanel: View {
             if viewModel.testKitStatus.beds.isEmpty {
                 Text(RuntimeTestPanelText.noBeds)
                     .foregroundStyle(.secondary)
+                    .padding(.top, 2)
             } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(AppConstants.Labels.bedSelection)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                    Text(RuntimeTestPanelText.chooseBeds)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(RuntimeTestPanelText.selectedBeds(
-                        viewModel.selectedTestKitBedCount,
-                        viewModel.testKitRecorderCount,
-                        viewModel.availableTestKitBedCount
-                    ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
+                Divider()
+                    .padding(.vertical, 4)
 
-                ForEach(viewModel.testKitStatus.beds) { bed in
-                    bedSelectionRow(bed)
-                }
+                bedSelectionSection
             }
         }
     }
 
     private var bedCreationControls: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             testKitIntegerStepper(
                 AppConstants.Labels.bedCount,
                 value: $viewModel.testKitBedCount,
@@ -242,14 +227,45 @@ struct RuntimeTestPanel: View {
                     : "1"
             )
             .disabled(!viewModel.testKitAppendRandomBedSuffix)
-            TextField(AppConstants.Labels.bedPrefix, text: $viewModel.testKitBedPrefix)
-                .textFieldStyle(.roundedBorder)
-            Toggle(
-                AppConstants.Labels.randomBedSuffix,
-                isOn: $viewModel.testKitAppendRandomBedSuffix
-            )
+
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(AppConstants.Labels.bedPrefix)
+                    .foregroundStyle(.secondary)
+                TextField(AppConstants.Labels.bedPrefix, text: $viewModel.testKitBedPrefix)
+                    .textFieldStyle(.roundedBorder)
+                Toggle(
+                    AppConstants.Labels.randomBedSuffix,
+                    isOn: $viewModel.testKitAppendRandomBedSuffix
+                )
+                .fixedSize()
+            }
         }
         .disabled(!viewModel.testKitStatus.enabled || viewModel.isRunningTestKitAction)
+    }
+
+    private var bedSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(AppConstants.Labels.bedSelection)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text(RuntimeTestPanelText.chooseBeds)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(RuntimeTestPanelText.selectedBeds(
+                    viewModel.selectedTestKitBedCount,
+                    viewModel.testKitRecorderCount,
+                    viewModel.availableTestKitBedCount
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            ForEach(viewModel.testKitStatus.beds) { bed in
+                bedSelectionRow(bed)
+            }
+        }
     }
 
     private func bedSelectionRow(_ bed: RuntimeTestKitBed) -> some View {

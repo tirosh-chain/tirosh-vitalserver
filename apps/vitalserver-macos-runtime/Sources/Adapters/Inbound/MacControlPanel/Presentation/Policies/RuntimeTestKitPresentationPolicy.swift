@@ -231,7 +231,7 @@ public struct RuntimeTestKitPresentationPolicy {
 
     public func normalizedBedPrefix(_ prefix: String) -> String {
         let trimmed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "testkit-bed" : trimmed
+        return trimmed.isEmpty ? "testbed" : trimmed
     }
 
     public func normalizedIntervalSeconds(_ seconds: Double) -> Double {

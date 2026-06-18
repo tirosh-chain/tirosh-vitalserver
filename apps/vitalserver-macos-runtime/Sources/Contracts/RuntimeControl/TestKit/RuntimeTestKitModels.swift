@@ -134,7 +134,7 @@ public struct RuntimeTestKitCreateBedsRequest: Codable, Equatable, Sendable {
     public init(
         count: Int? = nil,
         roomNames: [String] = [],
-        prefix: String = "testkit-bed",
+        prefix: String = "testbed",
         appendRandomSuffix: Bool = true,
         adminUserID: String = "admin"
     ) {

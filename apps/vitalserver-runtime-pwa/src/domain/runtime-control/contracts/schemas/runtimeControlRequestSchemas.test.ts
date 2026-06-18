@@ -50,7 +50,7 @@ describe("runtime control request schemas", () => {
     expect(() =>
       runtimeTestKitCreateBedsRequestSchema.parse({
         count: 1,
-        prefix: "testkit-bed"
+        prefix: "testbed"
       })
     ).toThrow();
   });
@@ -60,7 +60,7 @@ describe("runtime control request schemas", () => {
       runtimeTestKitCreateBedsRequestSchema.parse({
         count: null,
         roomNames: [],
-        prefix: "testkit-bed",
+        prefix: "testbed",
         adminUserId: "admin"
       })
     ).toThrow();

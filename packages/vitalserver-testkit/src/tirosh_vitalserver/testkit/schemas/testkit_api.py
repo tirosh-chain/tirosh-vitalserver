@@ -21,7 +21,7 @@ class CreateBedsRequest(ExternalSchema):
 
     count: int | None = Field(default=None, ge=1)
     room_names: tuple[str, ...] = Field(default=(), alias="roomNames")
-    prefix: str = "testkit-bed"
+    prefix: str = "testbed"
     append_random_suffix: bool = Field(default=True, alias="appendRandomSuffix")
     admin_user_id: str = Field(default="admin", alias="adminUserId")
 

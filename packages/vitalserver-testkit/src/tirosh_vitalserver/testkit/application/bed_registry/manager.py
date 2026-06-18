@@ -58,7 +58,7 @@ class BedRegistry:
         *,
         count: int | None = None,
         room_names: tuple[str, ...] = (),
-        prefix: str = "testkit-bed",
+        prefix: str = "testbed",
         admin_user_id: str = "admin",
     ) -> tuple[Bed, ...]:
         """Create or register explicit bed identities."""

@@ -209,7 +209,7 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
         XCTAssertEqual(policy.normalizedRecorderCount(300), 200)
         XCTAssertEqual(policy.normalizedBedCount(0), 1)
         XCTAssertEqual(policy.normalizedBedCount(300), 200)
-        XCTAssertEqual(policy.normalizedBedPrefix("  "), "testkit-bed")
+        XCTAssertEqual(policy.normalizedBedPrefix("  "), "testbed")
         XCTAssertEqual(policy.normalizedBedPrefix("  icu  "), "icu")
         XCTAssertNil(policy.normalizedVrcode("  "))
         XCTAssertEqual(policy.normalizedRequiredVrcode("  VR_X  "), "VR_X")

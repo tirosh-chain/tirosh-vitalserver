@@ -33,7 +33,7 @@ export function TestKitPage() {
   const deleteSession = useSessionTestKitAction("delete");
 
   const [bedCount, setBedCount] = useState(1);
-  const [bedPrefix, setBedPrefix] = useState("testkit-bed");
+  const [bedPrefix, setBedPrefix] = useState("testbed");
   const [selectedBeds, setSelectedBeds] = useState<string[]>([]);
   const [recorders, setRecorders] = useState(1);
   const [scenario, setScenario] = useState<TestKitScenario>("normal");
