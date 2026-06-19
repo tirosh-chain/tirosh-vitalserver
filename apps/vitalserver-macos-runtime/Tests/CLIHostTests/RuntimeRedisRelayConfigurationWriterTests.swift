@@ -27,7 +27,7 @@ final class RuntimeRedisRelayConfigurationWriterTests: XCTestCase {
         )
         XCTAssertTrue(toml?.contains("enabled = false") == true)
         XCTAssertTrue(toml?.contains("scope = \"vital_reconstruction\"") == true)
-        XCTAssertTrue(toml?.contains("url = \"redis://127.0.0.1:16381/0\"") == true)
+        XCTAssertTrue(toml?.contains("url = \"redis://redis.example:6379/0\"") == true)
         XCTAssertTrue(toml?.contains("[publish]") == true)
         XCTAssertTrue(toml?.contains("target_key_prefix = \"vitalserver:\"") == true)
         XCTAssertTrue(toml?.contains("event_stream_key = \"vitalserver:relay:events\"") == true)

@@ -183,9 +183,7 @@ Consumer는 happy path만 처리하면 안 됩니다.
 | duplicate event | `dedupe_key` 또는 downstream idempotency key로 중복 처리 방지 |
 | downstream write 실패 | ack하지 않고 retry하거나 DLQ로 이동 |
 
-### 6-3. Compatibility note
+### 6-3. Event name policy
 
-이전 실험 구현은 `key_copied` event name을 사용했습니다. Protocol v1의 정식 event name은
-`key_published`입니다. Consumer migration 기간에는 `key_copied`를 legacy alias로 읽을 수 있지만,
-새 구현은 `key_published`를 기준으로 작성합니다.
-
+Protocol v1의 event name은 `key_published` 하나입니다. Consumer는 다른 event name을 호환 alias로
+처리하지 않습니다. 새 event name이 필요하면 protocol version 또는 event contract를 명시적으로 변경합니다.

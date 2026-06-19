@@ -119,7 +119,7 @@ public enum ConfigureRuntimeRedisRelayScope: String, Equatable, Sendable {
 }
 
 public struct ConfigureRuntimeRedisRelayTarget: Equatable, Sendable {
-    public static let defaultURL = "redis://127.0.0.1:16381/0"
+    public static let defaultURL = "redis://redis.example:6379/0"
 
     public var url: String
     public var username: String

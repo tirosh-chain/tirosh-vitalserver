@@ -135,7 +135,7 @@ public extension AppConstants {
         public static let redisRelayEnabled = "Enable relay"
         public static let redisRelayFinalURL = "Final URL"
         public static let redisRelayTargetURL = "Target URL"
-        public static let redisRelayTargetURLHelp = "Examples: redis://127.0.0.1:16381/0, redis://redis.example:6379/0. TLS and username are applied from the fields below."
+        public static let redisRelayTargetURLHelp = "Example: redis://redis.example:6379/0. For a host or VM target, use its reachable IP address, such as redis://192.168.64.1:16381/0. TLS and username are applied from the fields below."
         public static let redisRelayUsername = "Username"
         public static let redisRelayPassword = "Password"
         public static let redisRelayClearPassword = "Clear saved password"

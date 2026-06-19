@@ -267,7 +267,7 @@ def default_redis_relay_toml() -> str:
             "database = 0",
             "",
             "[target]",
-            'url = "redis://127.0.0.1:16381/0"',
+            'url = "redis://redis.example:6379/0"',
             "",
         ]
     )
