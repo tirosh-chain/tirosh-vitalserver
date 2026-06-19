@@ -146,6 +146,8 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertTrue(toml?.contains("enabled = true") == true)
         XCTAssertTrue(toml?.contains("url = \"rediss://relay@redis-hub.internal:6380/2\"") == true)
         XCTAssertTrue(toml?.contains("password_file = \"/run/tirosh/secrets/redis-relay-target-password\"") == true)
+        XCTAssertTrue(toml?.contains("[publish]") == true)
+        XCTAssertTrue(toml?.contains("event_stream_key = \"vitalserver:relay:events\"") == true)
 
         let data = try XCTUnwrap(harness.fileStore.files[harness.paths.runtimeControlSettings])
         let settings = try JSONDecoder().decode(RuntimeControlSettingsDocument.self, from: data)

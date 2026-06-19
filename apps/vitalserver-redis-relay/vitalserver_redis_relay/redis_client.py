@@ -3,10 +3,112 @@ from __future__ import annotations
 import socket
 import ssl
 from collections.abc import Iterable
+from datetime import UTC, datetime
+from types import TracebackType
 from typing import Any
 
-from .replication import KeyType, RedisKeySnapshot, TargetRestoreResult, fingerprint
-from .settings import RedisEndpoint
+from .replication import (
+    KeyType,
+    RedisKeySnapshot,
+    TargetPublishResult,
+    TargetPublishStatus,
+    fingerprint,
+)
+from .settings import (
+    RedisEndpoint,
+    RelayPublishContract,
+    default_publish_contract,
+)
+
+PUBLISH_SNAPSHOT_SCRIPT = """
+local target_key = KEYS[1]
+local event_stream_key = KEYS[2]
+local fingerprint_hash_key = KEYS[3]
+local publish_dedupe_hash_key = KEYS[4]
+
+local source_key = ARGV[1]
+local key_type = ARGV[2]
+local ttl_ms = ARGV[3]
+local payload = ARGV[4]
+local source_fingerprint = ARGV[5]
+local dedupe_key = ARGV[6]
+local published_at = ARGV[7]
+local publisher_id = ARGV[8]
+local maxlen = ARGV[9]
+
+local current_fingerprint = redis.call('HGET', fingerprint_hash_key, target_key)
+local target_exists = redis.call('EXISTS', target_key)
+if current_fingerprint == source_fingerprint and target_exists == 1 then
+  return {'unchanged', target_key, ''}
+end
+
+local existing_event_id = redis.call('HGET', publish_dedupe_hash_key, dedupe_key)
+if existing_event_id then
+  return {'duplicate', target_key, existing_event_id}
+end
+
+redis.call('RESTORE', target_key, ttl_ms, payload, 'REPLACE')
+local event_id
+if maxlen ~= '' then
+  event_id = redis.call(
+    'XADD',
+    event_stream_key,
+    'MAXLEN',
+    '~',
+    maxlen,
+    '*',
+    'schema_version',
+    '1',
+    'event',
+    'key_published',
+    'source_key',
+    source_key,
+    'target_key',
+    target_key,
+    'key_type',
+    key_type,
+    'ttl_ms',
+    ttl_ms,
+    'source_fingerprint',
+    source_fingerprint,
+    'dedupe_key',
+    dedupe_key,
+    'published_at',
+    published_at,
+    'publisher',
+    publisher_id
+  )
+else
+  event_id = redis.call(
+    'XADD',
+    event_stream_key,
+    '*',
+    'schema_version',
+    '1',
+    'event',
+    'key_published',
+    'source_key',
+    source_key,
+    'target_key',
+    target_key,
+    'key_type',
+    key_type,
+    'ttl_ms',
+    ttl_ms,
+    'source_fingerprint',
+    source_fingerprint,
+    'dedupe_key',
+    dedupe_key,
+    'published_at',
+    published_at,
+    'publisher',
+    publisher_id
+  )
+end
+redis.call('HSET', fingerprint_hash_key, target_key, source_fingerprint)
+redis.call('HSET', publish_dedupe_hash_key, dedupe_key, event_id)
+return {'published', target_key, event_id}
+""".strip()
 
 
 class RedisProtocolError(RuntimeError):
@@ -18,10 +120,74 @@ class RedisClient:
         self,
         endpoint: RedisEndpoint,
         *,
+        publish_contract: RelayPublishContract | None = None,
         timeout_seconds: float = 2.0,
     ) -> None:
         self._endpoint = endpoint
+        self._publish_contract = publish_contract or default_publish_contract()
         self._timeout_seconds = timeout_seconds
+
+    def scan_keys(self, *, count: int) -> list[str]:
+        with self.session() as session:
+            return session.scan_keys(count=count)
+
+    def dump_key(self, key: str) -> RedisKeySnapshot | None:
+        with self.session() as session:
+            return session.dump_key(key)
+
+    def publish_snapshot_if_changed(
+        self,
+        snapshot: RedisKeySnapshot,
+    ) -> TargetPublishResult:
+        with self.session() as session:
+            return session.publish_snapshot_if_changed(snapshot)
+
+    def command(self, *parts: str) -> Any:
+        with self.session() as session:
+            return session.command(*parts)
+
+    def raw_command(self, *parts: str) -> Any:
+        with self.session() as session:
+            return session.raw_command(*parts)
+
+    def command_bytes(self, parts: Iterable[str | bytes]) -> Any:
+        with self.session() as session:
+            return session.command_bytes(parts)
+
+    def session(self) -> RedisClientSession:
+        return RedisClientSession(
+            self._endpoint,
+            publish_contract=self._publish_contract,
+            timeout_seconds=self._timeout_seconds,
+        )
+
+
+class RedisClientSession:
+    def __init__(
+        self,
+        endpoint: RedisEndpoint,
+        *,
+        publish_contract: RelayPublishContract,
+        timeout_seconds: float,
+    ) -> None:
+        self._endpoint = endpoint
+        self._publish_contract = publish_contract
+        self._timeout_seconds = timeout_seconds
+        self._connection: socket.socket | ssl.SSLSocket | None = None
+
+    def __enter__(self) -> RedisClientSession:
+        self._connection = self._connect()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
 
     def scan_keys(self, *, count: int) -> list[str]:
         cursor = "0"
@@ -61,39 +227,57 @@ class RedisClient:
             serialized_payload=payload,
         )
 
-    def restore_key(
+    def publish_snapshot_if_changed(
         self,
         snapshot: RedisKeySnapshot,
-        *,
-        replace: bool,
-        target_key_prefix: str = "vitalserver:",
-        fingerprint_key: str = "tirosh:relay:fingerprints",
-    ) -> TargetRestoreResult:
-        target_key = f"{target_key_prefix}{snapshot.key}"
-        current = self.raw_command("HGET", fingerprint_key, target_key)
-        expected = fingerprint(snapshot.serialized_payload).encode("ascii")
-        exists = self.command("EXISTS", target_key)
-        if current == expected and exists == 1:
-            return TargetRestoreResult(
-                source_key=snapshot.key,
-                target_key=target_key,
-                changed=False,
-            )
+    ) -> TargetPublishResult:
+        contract = self._publish_contract
+        target_key = f"{contract.target_key_prefix}{snapshot.key}"
         ttl_ms = str(snapshot.ttl_ms if snapshot.ttl_ms > 0 else 0)
-        parts: list[str | bytes] = [
-            "RESTORE",
-            target_key,
-            ttl_ms,
-            snapshot.serialized_payload,
-        ]
-        if replace:
-            parts.append("REPLACE")
-        self.command_bytes(parts)
-        self.command_bytes(["HSET", fingerprint_key, target_key, expected])
-        return TargetRestoreResult(
+        source_fingerprint = fingerprint(snapshot.serialized_payload)
+        dedupe_key = fingerprint(
+            "\0".join(
+                (
+                    "vitalserver-redis-relay-v1",
+                    snapshot.key,
+                    target_key,
+                    source_fingerprint,
+                )
+            ).encode("utf-8")
+        )
+        maxlen = (
+            str(contract.event_stream_maxlen)
+            if contract.event_stream_maxlen is not None
+            else ""
+        )
+        response = self.command_bytes(
+            [
+                "EVAL",
+                PUBLISH_SNAPSHOT_SCRIPT,
+                "4",
+                target_key,
+                contract.event_stream_key,
+                contract.fingerprint_hash_key,
+                contract.publish_dedupe_hash_key,
+                snapshot.key,
+                snapshot.key_type.value,
+                ttl_ms,
+                snapshot.serialized_payload,
+                source_fingerprint,
+                dedupe_key,
+                _utc_timestamp(),
+                contract.publisher_id,
+                maxlen,
+            ]
+        )
+        if not isinstance(response, list) or len(response) != 3:
+            raise RedisProtocolError(f"unexpected publish response: {response!r}")
+        status = _publish_status(response[0])
+        return TargetPublishResult(
             source_key=snapshot.key,
-            target_key=target_key,
-            changed=True,
+            target_key=_decode_text(response[1]),
+            status=status,
+            event_id=_event_id(response[2]),
         )
 
     def command(self, *parts: str) -> Any:
@@ -111,32 +295,38 @@ class RedisClient:
         *,
         decode_bulk_strings: bool,
     ) -> Any:
-        with socket.create_connection(
+        connection = self._active_connection()
+        connection.sendall(_encode_command(parts))
+        return _RESPReader(
+            connection,
+            decode_bulk_strings=decode_bulk_strings,
+        ).read()
+
+    def _connect(self) -> socket.socket | ssl.SSLSocket:
+        raw = socket.create_connection(
             (self._endpoint.host, self._endpoint.port),
             timeout=self._timeout_seconds,
-        ) as raw:
-            raw.settimeout(self._timeout_seconds)
-            connection: socket.socket | ssl.SSLSocket = raw
-            if self._endpoint.tls:
-                context = ssl.create_default_context()
-                connection = context.wrap_socket(
-                    raw,
-                    server_hostname=self._endpoint.host,
-                )
-            try:
-                self._authenticate(connection)
-                if self._endpoint.database:
-                    connection.sendall(
-                        _encode_command(("SELECT", str(self._endpoint.database)))
-                    )
-                    _RESPReader(connection, decode_bulk_strings=True).read()
-                connection.sendall(_encode_command(parts))
-                return _RESPReader(
-                    connection,
-                    decode_bulk_strings=decode_bulk_strings,
-                ).read()
-            finally:
-                connection.close()
+        )
+        raw.settimeout(self._timeout_seconds)
+        connection: socket.socket | ssl.SSLSocket = raw
+        if self._endpoint.tls:
+            context = ssl.create_default_context()
+            connection = context.wrap_socket(
+                raw,
+                server_hostname=self._endpoint.host,
+            )
+        self._authenticate(connection)
+        if self._endpoint.database:
+            connection.sendall(
+                _encode_command(("SELECT", str(self._endpoint.database)))
+            )
+            _RESPReader(connection, decode_bulk_strings=True).read()
+        return connection
+
+    def _active_connection(self) -> socket.socket | ssl.SSLSocket:
+        if self._connection is None:
+            raise RedisProtocolError("Redis session is not open")
+        return self._connection
 
     def _authenticate(self, connection: socket.socket | ssl.SSLSocket) -> None:
         if not self._endpoint.password:
@@ -226,3 +416,20 @@ def _key_type(value: Any) -> KeyType:
         return KeyType(raw)
     except ValueError:
         return KeyType.UNKNOWN
+
+
+def _publish_status(value: Any) -> TargetPublishStatus:
+    raw = _decode_text(value)
+    try:
+        return TargetPublishStatus(raw)
+    except ValueError as error:
+        raise RedisProtocolError(f"unexpected publish status: {raw!r}") from error
+
+
+def _event_id(value: Any) -> str | None:
+    raw = _decode_text(value)
+    return raw or None
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")

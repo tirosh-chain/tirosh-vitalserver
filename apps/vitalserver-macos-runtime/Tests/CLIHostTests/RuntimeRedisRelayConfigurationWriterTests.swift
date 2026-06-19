@@ -28,6 +28,13 @@ final class RuntimeRedisRelayConfigurationWriterTests: XCTestCase {
         XCTAssertTrue(toml?.contains("enabled = false") == true)
         XCTAssertTrue(toml?.contains("scope = \"vital_reconstruction\"") == true)
         XCTAssertTrue(toml?.contains("url = \"redis://127.0.0.1:16381/0\"") == true)
+        XCTAssertTrue(toml?.contains("[publish]") == true)
+        XCTAssertTrue(toml?.contains("target_key_prefix = \"vitalserver:\"") == true)
+        XCTAssertTrue(toml?.contains("event_stream_key = \"vitalserver:relay:events\"") == true)
+        XCTAssertTrue(toml?.contains("fingerprint_hash_key = \"vitalserver:relay:fingerprints\"") == true)
+        XCTAssertTrue(toml?.contains("publish_dedupe_hash_key = \"vitalserver:relay:published\"") == true)
+        XCTAssertTrue(toml?.contains("event_stream_maxlen = 100000") == true)
+        XCTAssertTrue(toml?.contains("publisher_id = \"vitalserver-helper-relay\"") == true)
 
         let settingsData = try XCTUnwrap(fileStore.files[paths.runtimeControlSettings])
         let settings = try JSONDecoder().decode(RuntimeControlSettingsDocument.self, from: settingsData)
@@ -72,6 +79,7 @@ final class RuntimeRedisRelayConfigurationWriterTests: XCTestCase {
         XCTAssertTrue(toml?.contains("scan_count = 500") == true)
         XCTAssertTrue(toml?.contains("url = \"rediss://relay@redis-hub.internal:6380/2\"") == true)
         XCTAssertTrue(toml?.contains("password_file = \"/run/tirosh/secrets/redis-relay-target-password\"") == true)
+        XCTAssertTrue(toml?.contains("event_stream_key = \"vitalserver:relay:events\"") == true)
     }
 
     func testEnsureInstallConfigurationFailsWhenStoredRelayPasswordSecretIsMissing() throws {

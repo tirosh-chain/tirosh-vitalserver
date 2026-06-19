@@ -19,6 +19,11 @@ class KeyType(StrEnum):
     UNKNOWN = "unknown"
 
 
+class RelayErrorCode(StrEnum):
+    SOURCE_DUMP_FAILED = "source_dump_failed"
+    TARGET_PUBLISH_FAILED = "target_publish_failed"
+
+
 @dataclass(frozen=True)
 class RedisKeySnapshot:
     key: str
@@ -27,11 +32,21 @@ class RedisKeySnapshot:
     serialized_payload: bytes
 
 
+class TargetPublishStatus(StrEnum):
+    PUBLISHED = "published"
+    UNCHANGED = "unchanged"
+    DUPLICATE = "duplicate"
+
+
 @dataclass(frozen=True)
-class TargetRestoreResult:
+class TargetPublishResult:
     source_key: str
     target_key: str
-    changed: bool
+    status: TargetPublishStatus
+    event_id: str | None = None
+
+    def changed(self) -> bool:
+        return self.status == TargetPublishStatus.PUBLISHED
 
 
 @dataclass(frozen=True)
@@ -41,14 +56,26 @@ class RelayBatchRequest:
 
 
 @dataclass(frozen=True)
+class RelayErrorSample:
+    key: str
+    stage: str
+    code: RelayErrorCode
+    error_type: str
+    message: str
+
+
+@dataclass(frozen=True)
 class RelayBatchResult:
     scanned: int = 0
     copied: int = 0
+    published: int = 0
     unchanged: int = 0
+    duplicates: int = 0
     skipped: int = 0
     denied: int = 0
     missing: int = 0
     errors: int = 0
+    error_samples: tuple[RelayErrorSample, ...] = ()
 
 
 class SourceRedisPort(Protocol):
@@ -57,12 +84,10 @@ class SourceRedisPort(Protocol):
 
 
 class TargetRedisPort(Protocol):
-    def restore_key(
+    def publish_snapshot_if_changed(
         self,
         snapshot: RedisKeySnapshot,
-        *,
-        replace: bool,
-    ) -> TargetRestoreResult: ...
+    ) -> TargetPublishResult: ...
 
 
 def replicate_allowed_keys_once(
@@ -86,17 +111,49 @@ def replicate_allowed_keys_once(
             continue
         try:
             snapshot = source.dump_key(key)
-            if snapshot is None:
-                result = _replace(result, missing=result.missing + 1)
-                continue
-            restore_result = target.restore_key(snapshot, replace=True)
-        except Exception:
-            result = _replace(result, errors=result.errors + 1)
+        except Exception as error:
+            result = _with_error_sample(
+                _replace(result, errors=result.errors + 1),
+                key=key,
+                stage="source_dump",
+                code=RelayErrorCode.SOURCE_DUMP_FAILED,
+                error=error,
+            )
             continue
-        if restore_result.changed:
-            result = _replace(result, copied=result.copied + 1)
-        else:
+        if snapshot is None:
+            result = _replace(result, missing=result.missing + 1)
+            continue
+        try:
+            publish_result = target.publish_snapshot_if_changed(snapshot)
+        except Exception as error:
+            result = _with_error_sample(
+                _replace(result, errors=result.errors + 1),
+                key=key,
+                stage="target_publish",
+                code=RelayErrorCode.TARGET_PUBLISH_FAILED,
+                error=error,
+            )
+            continue
+        if publish_result.status == TargetPublishStatus.PUBLISHED:
+            result = _replace(
+                result,
+                copied=result.copied + 1,
+                published=result.published + 1,
+            )
+        elif publish_result.status == TargetPublishStatus.DUPLICATE:
+            result = _replace(result, duplicates=result.duplicates + 1)
+        elif publish_result.status == TargetPublishStatus.UNCHANGED:
             result = _replace(result, unchanged=result.unchanged + 1)
+        else:
+            result = _with_error_sample(
+                _replace(result, errors=result.errors + 1),
+                key=key,
+                stage="target_publish",
+                code=RelayErrorCode.TARGET_PUBLISH_FAILED,
+                error=ValueError(
+                    f"unsupported publish status: {publish_result.status}"
+                ),
+            )
     return result
 
 
@@ -104,15 +161,53 @@ def fingerprint(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _replace(result: RelayBatchResult, **changes: int) -> RelayBatchResult:
+def _replace(result: RelayBatchResult, **changes: object) -> RelayBatchResult:
     values = {
         "scanned": result.scanned,
         "copied": result.copied,
+        "published": result.published,
         "unchanged": result.unchanged,
+        "duplicates": result.duplicates,
         "skipped": result.skipped,
         "denied": result.denied,
         "missing": result.missing,
         "errors": result.errors,
+        "error_samples": result.error_samples,
     }
     values.update(changes)
     return RelayBatchResult(**values)
+
+
+def _with_error_sample(
+    result: RelayBatchResult,
+    *,
+    key: str,
+    stage: str,
+    code: RelayErrorCode,
+    error: Exception,
+    limit: int = 10,
+) -> RelayBatchResult:
+    if len(result.error_samples) >= limit:
+        return result
+    error_type = type(error).__name__
+    return RelayBatchResult(
+        scanned=result.scanned,
+        copied=result.copied,
+        published=result.published,
+        unchanged=result.unchanged,
+        duplicates=result.duplicates,
+        skipped=result.skipped,
+        denied=result.denied,
+        missing=result.missing,
+        errors=result.errors,
+        error_samples=(
+            *result.error_samples,
+            RelayErrorSample(
+                key=key,
+                stage=stage,
+                code=code,
+                error_type=error_type,
+                message=str(error),
+            ),
+        ),
+    )

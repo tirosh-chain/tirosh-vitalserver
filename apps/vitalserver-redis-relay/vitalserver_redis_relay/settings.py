@@ -24,10 +24,21 @@ class RedisEndpoint:
 
 
 @dataclass(frozen=True)
+class RelayPublishContract:
+    target_key_prefix: str
+    event_stream_key: str
+    fingerprint_hash_key: str
+    publish_dedupe_hash_key: str
+    event_stream_maxlen: int | None
+    publisher_id: str
+
+
+@dataclass(frozen=True)
 class RelaySettings:
     enabled: bool
     source: RedisEndpoint
     target: RedisEndpoint | None
+    publish_contract: RelayPublishContract
     scope: RelayScope
     include_recorder_network_context: bool
     interval_seconds: float
@@ -50,6 +61,7 @@ def disabled_settings() -> RelaySettings:
         enabled=False,
         source=RedisEndpoint(host="redis", port=6379, database=0),
         target=None,
+        publish_contract=default_publish_contract(),
         scope=RelayScope.VITAL_RECONSTRUCTION,
         include_recorder_network_context=False,
         interval_seconds=1.0,
@@ -64,11 +76,13 @@ def parse_settings(data: dict[str, Any], *, base_dir: Path) -> RelaySettings:
     source = _endpoint(_table(data, "source", default={}), defaults=("redis", 6379, 0))
     target_data = _table(data, "target", default={})
     target = _target_endpoint(target_data, base_dir=base_dir) if enabled else None
+    publish_contract = _publish_contract(_table(data, "publish", default={}))
 
     return RelaySettings(
         enabled=enabled,
         source=source,
         target=target,
+        publish_contract=publish_contract,
         scope=RelayScope(_str(relay, "scope", default=RelayScope.VITAL_RECONSTRUCTION)),
         include_recorder_network_context=_bool(
             relay,
@@ -82,6 +96,55 @@ def parse_settings(data: dict[str, Any], *, base_dir: Path) -> RelaySettings:
             "status_interval_seconds",
             default=5.0,
             minimum=0.5,
+        ),
+    )
+
+
+def default_publish_contract() -> RelayPublishContract:
+    return RelayPublishContract(
+        target_key_prefix="vitalserver:",
+        event_stream_key="vitalserver:relay:events",
+        fingerprint_hash_key="vitalserver:relay:fingerprints",
+        publish_dedupe_hash_key="vitalserver:relay:published",
+        event_stream_maxlen=100_000,
+        publisher_id="vitalserver-helper-relay",
+    )
+
+
+def _publish_contract(data: dict[str, Any]) -> RelayPublishContract:
+    defaults = default_publish_contract()
+    event_stream_maxlen = _optional_int(
+        data,
+        "event_stream_maxlen",
+        default=defaults.event_stream_maxlen,
+        minimum=1,
+    )
+    return RelayPublishContract(
+        target_key_prefix=_str(
+            data,
+            "target_key_prefix",
+            default=defaults.target_key_prefix,
+        ),
+        event_stream_key=_required_non_empty_str(
+            data,
+            "event_stream_key",
+            default=defaults.event_stream_key,
+        ),
+        fingerprint_hash_key=_required_non_empty_str(
+            data,
+            "fingerprint_hash_key",
+            default=defaults.fingerprint_hash_key,
+        ),
+        publish_dedupe_hash_key=_required_non_empty_str(
+            data,
+            "publish_dedupe_hash_key",
+            default=defaults.publish_dedupe_hash_key,
+        ),
+        event_stream_maxlen=event_stream_maxlen,
+        publisher_id=_required_non_empty_str(
+            data,
+            "publisher_id",
+            default=defaults.publisher_id,
         ),
     )
 
@@ -138,7 +201,9 @@ def _endpoint_from_url(url: str) -> RedisEndpoint:
         try:
             database = int(raw_database)
         except ValueError as error:
-            raise RelaySettingsError("target.url database must be an integer") from error
+            raise RelaySettingsError(
+                "target.url database must be an integer"
+            ) from error
         if database < 0:
             raise RelaySettingsError("target.url database must be >= 0")
     try:
@@ -192,12 +257,41 @@ def _str(data: dict[str, Any], name: str, *, default: str | RelayScope) -> str:
     return value.strip()
 
 
+def _required_non_empty_str(
+    data: dict[str, Any],
+    name: str,
+    *,
+    default: str,
+) -> str:
+    value = _str(data, name, default=default)
+    if not value:
+        raise RelaySettingsError(f"{name} must not be empty")
+    return value
+
+
 def _optional_str(data: dict[str, Any], name: str) -> str | None:
     value = data.get(name)
     if value is None or value == "":
         return None
     if not isinstance(value, str):
         raise RelaySettingsError(f"{name} must be a string")
+    return value
+
+
+def _optional_int(
+    data: dict[str, Any],
+    name: str,
+    *,
+    default: int | None,
+    minimum: int,
+) -> int | None:
+    value = data.get(name, default)
+    if value is None:
+        return None
+    if not isinstance(value, int):
+        raise RelaySettingsError(f"{name} must be an integer")
+    if value < minimum:
+        raise RelaySettingsError(f"{name} must be >= {minimum}")
     return value
 
 

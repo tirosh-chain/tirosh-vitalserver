@@ -95,6 +95,8 @@ Backup 삭제는 Danger Zone에서 분리되어 있습니다. `Delete VitalServe
 
 ## 3. Settings 적용
 
+### 3-1. VM runtime restart requirement
+
 Settings 화면의 `Restart VM runtime when required`는 저장 후 항상 runtime service를 재시작한다는 뜻이 아닙니다. 변경된 설정이 VM runtime restart를 요구할 때, 그 restart를 즉시 수행할지 선택하는 옵션입니다.
 
 VM runtime restart가 필요한 설정은 VM 실행 조건을 바꾸는 값입니다.
@@ -125,6 +127,31 @@ restart 안내가 아직 반영되지 않은 VM runtime 변경을 표시합니�
 저장소를 읽되, 조회 대상은 VitalServer upload endpoint가 Redis에 생성한 filelist index를 기준으로
 결정됩니다. 운영자가 `.vital` 파일을 My Files에서 보이게 하려면 storage directory에 직접 복사하지 말고
 Helper Test 탭의 `Manual .vital upload` 또는 VitalServer `/upload` 경로를 사용해야 합니다.
+
+### 3-2. Redis relay 설정
+
+외부 PC나 Kubernetes service가 VitalServer 실시간 Redis data를 받아야 할 때는 Settings의
+`Redis relay` 섹션을 사용합니다. VitalServer raw Redis port를 직접 외부에 열지 않습니다.
+
+운영자가 입력하는 target URL은 Helper app이 실행되는 macOS process 기준이 아니라 VM 안의 relay
+container 기준 주소입니다. Mac host에서 target Redis를 열었다면 shared NAT runtime에서는 보통 아래와
+같은 주소를 사용합니다.
+
+```text
+redis://192.168.64.1:<port>/<db>
+```
+
+Relay password는 settings/read model/TOML에 원문으로 저장하지 않고 secret file로 전달됩니다. Relay를
+켠 뒤 상태는 Advanced의 Service liveness와 Redis relay status summary에서 확인합니다. `running`은 마지막
+batch가 성공했다는 뜻이고, `running_with_errors`는 relay process는 살아 있지만 일부 key publish가 실패한
+상태입니다.
+
+Target Redis를 소비하는 service는 `vitalserver:relay:events` stream의 `key_published` event를 읽고,
+event의 `target_key`를 다시 target Redis에서 fetch해야 합니다. Consumer group pending recovery, DLQ,
+decode, downstream idempotency는 target consumer가 소유합니다. 세부 contract는 Dev 문서의
+[Redis Relay](../dev/redis-relay.md)를 봅니다.
+
+### 3-3. Settings apply와 update 구분
 
 Settings apply는 update bundle 적용이 아닙니다. 진행 상태가 보이면 operation은 `configure`로
 해석하고, update bundle 검증/적용 상태와 섞어 판단하지 않습니다.

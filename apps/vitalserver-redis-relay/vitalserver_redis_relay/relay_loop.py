@@ -5,7 +5,11 @@ from pathlib import Path
 
 from .key_filter import relay_key_filter_policy
 from .redis_client import RedisClient
-from .replication import RelayBatchRequest, RelayBatchResult, replicate_allowed_keys_once
+from .replication import (
+    RelayBatchRequest,
+    RelayBatchResult,
+    replicate_allowed_keys_once,
+)
 from .settings import RelaySettingsError, load_settings
 from .status import status_timestamp, write_status, write_unavailable_status
 
@@ -61,12 +65,18 @@ def run_forever(*, config_path: Path, status_path: Path) -> None:
             ),
         )
         try:
-            result = replicate_allowed_keys_once(
-                request=RelayBatchRequest(scan_count=settings.scan_count),
-                policy=policy,
-                source=RedisClient(settings.source),
-                target=RedisClient(settings.target),
+            source_client = RedisClient(settings.source)
+            target_client = RedisClient(
+                settings.target,
+                publish_contract=settings.publish_contract,
             )
+            with source_client.session() as source, target_client.session() as target:
+                result = replicate_allowed_keys_once(
+                    request=RelayBatchRequest(scan_count=settings.scan_count),
+                    policy=policy,
+                    source=source,
+                    target=target,
+                )
         except Exception as error:
             last_error_at = status_timestamp()
             write_status(
@@ -90,7 +100,7 @@ def run_forever(*, config_path: Path, status_path: Path) -> None:
             last_success_at = status_timestamp()
         else:
             last_error_at = status_timestamp()
-            error_message = "relay batch completed with errors"
+            error_message = _batch_error_message(result)
         write_status(
             status_path,
             settings=settings,
@@ -109,9 +119,21 @@ def _add(left: RelayBatchResult, right: RelayBatchResult) -> RelayBatchResult:
     return RelayBatchResult(
         scanned=left.scanned + right.scanned,
         copied=left.copied + right.copied,
+        published=left.published + right.published,
         unchanged=left.unchanged + right.unchanged,
+        duplicates=left.duplicates + right.duplicates,
         skipped=left.skipped + right.skipped,
         denied=left.denied + right.denied,
         missing=left.missing + right.missing,
         errors=left.errors + right.errors,
+    )
+
+
+def _batch_error_message(result: RelayBatchResult) -> str:
+    first = result.error_samples[0] if result.error_samples else None
+    if first is None:
+        return f"relay batch completed with {result.errors} errors"
+    return (
+        f"relay batch completed with {result.errors} errors "
+        f"firstCode={first.code.value}"
     )

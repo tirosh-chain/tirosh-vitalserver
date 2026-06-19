@@ -47,6 +47,33 @@ def test_parse_enabled_settings_reads_password_file(tmp_path: Path) -> None:
     assert settings.target.username == "default"
     assert settings.target.password == "secret"
     assert settings.target.tls is True
+    assert settings.publish_contract.event_stream_key == "vitalserver:relay:events"
+    assert settings.publish_contract.target_key_prefix == "vitalserver:"
+
+
+def test_parse_enabled_settings_reads_publish_contract(tmp_path: Path) -> None:
+    settings = parse_settings(
+        {
+            "redis_relay": {"enabled": True},
+            "target": {"url": "redis://10.0.0.12:6379/0"},
+            "publish": {
+                "target_key_prefix": "mirror:",
+                "event_stream_key": "mirror:events",
+                "fingerprint_hash_key": "mirror:fingerprints",
+                "publish_dedupe_hash_key": "mirror:published",
+                "event_stream_maxlen": 5000,
+                "publisher_id": "helper-a",
+            },
+        },
+        base_dir=tmp_path,
+    )
+
+    assert settings.publish_contract.target_key_prefix == "mirror:"
+    assert settings.publish_contract.event_stream_key == "mirror:events"
+    assert settings.publish_contract.fingerprint_hash_key == "mirror:fingerprints"
+    assert settings.publish_contract.publish_dedupe_hash_key == "mirror:published"
+    assert settings.publish_contract.event_stream_maxlen == 5000
+    assert settings.publish_contract.publisher_id == "helper-a"
 
 
 def test_enabled_settings_require_target_url(tmp_path: Path) -> None:
@@ -77,6 +104,18 @@ def test_password_file_failure_is_explicit(tmp_path: Path) -> None:
                     "url": "redis://10.0.0.12:6379/0",
                     "password_file": str(tmp_path / "missing"),
                 },
+            },
+            base_dir=tmp_path,
+        )
+
+
+def test_publish_contract_rejects_empty_event_stream_key(tmp_path: Path) -> None:
+    with pytest.raises(RelaySettingsError, match="event_stream_key must not be empty"):
+        parse_settings(
+            {
+                "redis_relay": {"enabled": True},
+                "target": {"url": "redis://10.0.0.12:6379/0"},
+                "publish": {"event_stream_key": ""},
             },
             base_dir=tmp_path,
         )

@@ -43,8 +43,8 @@ source인지 명확하지 않다는 점입니다.
 
 - `vitalserver-audit-proxy`는 command audit event를 생성합니다.
 - `vitaldb-observer`는 Redis와 proxy/access log를 읽어 VitalDB observation snapshot을 계산합니다.
-- `vitalserver-redis-relay`는 source Redis 3.2의 allowlisted key를 외부 target Redis로 복제하고,
-  복제 진행과 target 오류를 status payload로 기록합니다.
+- `vitalserver-redis-relay`는 source Redis 3.2의 allowlisted key를 외부 target Redis로 publish하고,
+  publish 진행과 target 오류를 status payload로 기록합니다.
 - guest `tirosh-runtime-state`는 guest HTTP/resource snapshot을 생성합니다.
 - guest `tirosh-guest-observed`는 Linux guest OS의 진단 snapshot을 생성합니다.
 - compose service와 container는 stdout/stderr에 raw log를 남깁니다.
@@ -62,10 +62,22 @@ Recorder activity의 `roomCount`는 해당 버킷에서 받은 `send_data` paylo
 각 app은 제품 전체 상태를 판단하지 않습니다.
 
 Redis Relay의 Docker health는 relay process와 status writer가 살아 있는지를 나타냅니다. Target Redis 인증,
-네트워크, `RESTORE` 실패는 container liveness로 숨기지 않고 `redis-relay-status.json`의 `state`,
+네트워크, atomic publish 실패는 container liveness로 숨기지 않고 `redis-relay-status.json`의 `state`,
 `lastErrorAt`, `lastError`, `lastSuccessAt`, `batches`, `totals`로 드러냅니다. `settingsFingerprint`는 password를
 포함하지 않는 설정 계약 hash이며, Helper UI가 표시하는 target/scope 설정과 guest relay process가 실제로 읽은
 설정이 같은지 확인하는 단서입니다.
+
+| Redis Relay state | 의미 |
+|---|---|
+| `disabled` | 설정에서 relay가 꺼져 있음. 장애가 아님 |
+| `running` | 마지막 batch가 error 없이 완료됨 |
+| `running_with_errors` | process는 살아 있고 일부 key publish가 실패함. `lastErrorSamples` 확인 |
+| `relay_failed` | batch 실행 전후 target/source connection 같은 relay operation이 실패함 |
+| `config_invalid` | relay TOML을 읽었지만 필수 설정이 없거나 값이 invalid |
+
+`running_with_errors`는 VitalServer traffic path 장애로 해석하지 않습니다. Relay target으로 보내는 외부
+data path의 degraded 상태입니다. Target Redis consumer가 event를 처리하지 못하는 문제도 Helper가
+추측하지 않고 consumer 쪽 pending/DLQ/decoder 상태에서 확인합니다.
 
 ### 2-2. Guest collectors
 
@@ -560,15 +572,20 @@ Helper Advanced 설정에 명시된 target Redis 8.x endpoint로 publish합니�
 | Payload | allowlisted Redis key의 binary `DUMP` payload |
 | Write direction | source read-only, target write-only |
 
-Relay는 source Redis에서 `SCAN`, `TYPE`, `PTTL`, `DUMP`를 사용하고 target Redis에 `RESTORE`합니다.
-Credential/session/auth 계열 key는 항상 denylist로 제외합니다. `.vital`과 비슷한 수준의 복원이 필요하면
+Relay는 source Redis에서 `SCAN`, `TYPE`, `PTTL`, `DUMP`를 사용합니다. Target Redis에는 VitalServer Redis
+Relay Protocol v1로 key restore, fingerprint update, publish dedupe, `key_published` stream event를
+한 Lua script 안에서 atomic하게 기록합니다. Credential/session/auth 계열 key는 항상 denylist로 제외합니다.
+`.vital`과 비슷한 수준의 복원이 필요하면
 `vital_reconstruction` preset을 사용해 waveform/trend payload와 bed/recorder/device context key를 함께
-복제합니다.
+publish합니다.
 
 운영 원칙:
 
 - Raw Redis port를 외부 network에 publish하지 않습니다.
 - Helper Advanced에서 target Redis 설정이 없으면 relay는 disabled 상태입니다.
+- target URL은 macOS Helper process 기준이 아니라 relay container/guest runtime 기준 주소입니다.
+  Mac host에서 publish한 Redis를 shared NAT guest에서 바라볼 때는 보통
+  `redis://192.168.64.1:<port>/<db>` 형태를 사용합니다.
 - Helper는 `/mnt/tirosh/deploy/redis-relay-config/redis-relay.toml`과
   `/mnt/tirosh/deploy/redis-relay-secrets/redis-relay-target-password`를 생성합니다.
 - relay container는 위 파일을 각각 `/run/tirosh/config/redis-relay.toml`,
@@ -576,6 +593,14 @@ Credential/session/auth 계열 key는 항상 denylist로 제외합니다. `.vita
 - target password는 settings/read model/TOML에 원문으로 저장하지 않고 secret file로 전달합니다.
 - Runtime Control settings/read model에는 password 원문 대신 `passwordConfigured`만 노출합니다.
 - relay 장애는 VitalServer traffic path 장애로 승격하지 않고 relay degraded/status로 보고합니다.
+- relay container는 publisher입니다. Target Redis consumer group pending recovery, DLQ, decode idempotency,
+  downstream 재처리는 target 쪽 consumer가 소유합니다.
+- target Redis 수신 계약과 consumer 권장 흐름은 site dev 문서의 `Redis Relay`를 기준으로 봅니다.
+- `running_with_errors`는 부분 성공 상태입니다. 현재 batch의 실패 원인은 status JSON의
+  `lastErrorSamples`에서 key/stage/code/errorType/message로 확인합니다.
+- relay publish error code는 machine-readable 계약입니다. `source_dump_failed`는 source key metadata 또는
+  `DUMP` 실패, `target_publish_failed`는 target Redis의 atomic restore/fingerprint/dedupe/event publish
+  실패를 의미합니다.
 - relay preset은 코드의 domain policy가 소유하며 UI는 regex를 만들지 않습니다.
 
 ## 10. 정리 단계

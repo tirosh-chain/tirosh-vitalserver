@@ -242,6 +242,8 @@ Runtime Control API를 통해 전달합니다.
 외부에 직접 노출하지 않습니다. 실시간/대용량 relay는 observer API가 아니라 별도 Redis relay container가
 source Redis 3.2를 내부 network에서 읽고, Helper Advanced 설정의 target Redis 8.x endpoint로 publish합니다.
 Observer API는 recorder observation snapshot만 제공하며 Redis data export API를 제공하지 않습니다.
+외부 Redis consumer가 target Redis에서 무엇을 읽어야 하는지, `key_published` event를 어떻게 처리해야
+하는지, publisher와 consumer 책임을 어디서 나누는지는 [Redis Relay](redis-relay.md)를 기준으로 봅니다.
 
 Helper Advanced Redis relay 설정은 UI checkbox/preset 값을 runtime file contract로 변환합니다.
 Regex allowlist는 UI가 만들지 않고 relay code의 policy가 소유합니다. Helper가 생성하는 파일은 다음과
@@ -249,11 +251,13 @@ Regex allowlist는 UI가 만들지 않고 relay code의 policy가 소유합니�
 
 | Host/guest shared path | Container path | 내용 |
 |---|---|---|
-| `/mnt/tirosh/deploy/redis-relay-config/redis-relay.toml` | `/run/tirosh/config/redis-relay.toml` | relay enable, target endpoint, preset |
+| `/mnt/tirosh/deploy/redis-relay-config/redis-relay.toml` | `/run/tirosh/config/redis-relay.toml` | relay enable, target endpoint, preset, publish contract |
 | `/mnt/tirosh/deploy/redis-relay-secrets/redis-relay-target-password` | `/run/tirosh/secrets/redis-relay-target-password` | target Redis password |
 
 Password 원문은 Runtime Control settings/read model과 TOML에 저장하지 않습니다. Helper read model은
 저장 여부만 `passwordConfigured`로 노출합니다.
+TOML의 `[publish]` 섹션은 VitalServer Redis Relay Protocol v1의 target key prefix, event stream,
+fingerprint hash, dedupe hash, stream maxlen, publisher id를 명시합니다.
 
 ### 7-4. Audit Proxy API
 

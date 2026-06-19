@@ -240,6 +240,16 @@ struct RuntimeRedisRelayConfigurationWriter {
         if settings.target.passwordConfigured {
             lines.append("password_file = \"/run/tirosh/secrets/redis-relay-target-password\"")
         }
+        lines.append(contentsOf: [
+            "",
+            "[publish]",
+            "target_key_prefix = \"vitalserver:\"",
+            "event_stream_key = \"vitalserver:relay:events\"",
+            "fingerprint_hash_key = \"vitalserver:relay:fingerprints\"",
+            "publish_dedupe_hash_key = \"vitalserver:relay:published\"",
+            "event_stream_maxlen = 100000",
+            "publisher_id = \"vitalserver-helper-relay\"",
+        ])
         return lines.joined(separator: "\n") + "\n"
     }
 

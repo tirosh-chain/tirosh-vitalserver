@@ -2,8 +2,16 @@ import json
 from pathlib import Path
 
 from vitalserver_redis_relay.key_filter import RelayScope
-from vitalserver_redis_relay.replication import RelayBatchResult
-from vitalserver_redis_relay.settings import RedisEndpoint, RelaySettings
+from vitalserver_redis_relay.replication import (
+    RelayBatchResult,
+    RelayErrorCode,
+    RelayErrorSample,
+)
+from vitalserver_redis_relay.settings import (
+    RedisEndpoint,
+    RelaySettings,
+    default_publish_contract,
+)
 from vitalserver_redis_relay.status import write_status, write_unavailable_status
 
 
@@ -19,6 +27,7 @@ def test_status_masks_password(tmp_path: Path) -> None:
             username="default",
             password="secret",
         ),
+        publish_contract=default_publish_contract(),
         scope=RelayScope.VITAL_RECONSTRUCTION,
         include_recorder_network_context=True,
         interval_seconds=1.0,
@@ -30,7 +39,7 @@ def test_status_masks_password(tmp_path: Path) -> None:
         status_path,
         settings=settings,
         state="running",
-        batch=RelayBatchResult(copied=1),
+        batch=RelayBatchResult(copied=1, published=1),
         last_success_at="2026-06-18T00:00:01Z",
     )
 
@@ -40,9 +49,12 @@ def test_status_masks_password(tmp_path: Path) -> None:
     assert document["batches"] == 0
     assert document["totals"]["copied"] == 0
     assert document["lastBatch"]["copied"] == 1
+    assert document["lastBatch"]["published"] == 1
+    assert document["publishEventStreamKey"] == "vitalserver:relay:events"
     assert len(document["settingsFingerprint"]) == 64
     assert document["lastSuccessAt"] == "2026-06-18T00:00:01Z"
     assert document["lastErrorAt"] is None
+    assert document["lastErrorSamples"] == []
     assert "secret" not in status_path.read_text()
 
 
@@ -55,6 +67,7 @@ def test_status_fingerprint_changes_when_connection_contract_changes(
         enabled=True,
         source=RedisEndpoint(host="redis", port=6379, database=0),
         target=RedisEndpoint(host="target", port=6379, database=0),
+        publish_contract=default_publish_contract(),
         scope=RelayScope.VITAL_RECONSTRUCTION,
         include_recorder_network_context=True,
         interval_seconds=1.0,
@@ -65,6 +78,7 @@ def test_status_fingerprint_changes_when_connection_contract_changes(
         enabled=True,
         source=RedisEndpoint(host="redis", port=6379, database=0),
         target=RedisEndpoint(host="target", port=6380, database=0),
+        publish_contract=default_publish_contract(),
         scope=RelayScope.VITAL_RECONSTRUCTION,
         include_recorder_network_context=True,
         interval_seconds=1.0,
@@ -96,3 +110,52 @@ def test_unavailable_status_reports_explicit_error_observation(tmp_path: Path) -
     assert document["lastSuccessAt"] is None
     assert document["lastErrorAt"] == document["observedAt"]
     assert document["lastError"] == "config file missing"
+    assert document["lastErrorSamples"] == []
+
+
+def test_status_reports_last_batch_error_samples(tmp_path: Path) -> None:
+    status_path = tmp_path / "status.json"
+    settings = RelaySettings(
+        enabled=True,
+        source=RedisEndpoint(host="redis", port=6379, database=0),
+        target=RedisEndpoint(host="target", port=6379, database=0),
+        publish_contract=default_publish_contract(),
+        scope=RelayScope.VITAL_RECONSTRUCTION,
+        include_recorder_network_context=True,
+        interval_seconds=1.0,
+        scan_count=1000,
+        status_interval_seconds=5.0,
+    )
+
+    write_status(
+        status_path,
+        settings=settings,
+        state="running_with_errors",
+        batch=RelayBatchResult(
+            errors=1,
+            error_samples=(
+                RelayErrorSample(
+                    key="beds",
+                    stage="target_publish",
+                    code=RelayErrorCode.TARGET_PUBLISH_FAILED,
+                    error_type="TimeoutError",
+                    message="timed out",
+                ),
+            ),
+        ),
+        error="relay batch completed with errors",
+        last_error_at="2026-06-18T00:00:02Z",
+    )
+
+    document = json.loads(status_path.read_text())
+    assert "error_samples" not in document["lastBatch"]
+    assert "error_samples" not in document["totals"]
+    assert document["lastErrorSamples"] == [
+        {
+            "key": "beds",
+            "stage": "target_publish",
+            "code": "target_publish_failed",
+            "errorType": "TimeoutError",
+            "message": "timed out",
+        },
+    ]
