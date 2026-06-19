@@ -20,7 +20,7 @@ public enum RuntimeObservationHealthPolicy {
         return reasons
     }
 
-    public static func requiresVMRestart(
+    public static func requiresGuestComposeReconcile(
         containerObservation: RuntimeObservationInput<RuntimeContainerObservation>
     ) -> Bool {
         guard case .loaded(let observation) = containerObservation else {

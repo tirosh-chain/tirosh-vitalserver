@@ -105,6 +105,26 @@ Update나 VM restart가 Guest shutdown preparation을 요구하면 Host는 reque
 service state snapshot, snapshot path가 포함될 수 있습니다. Host와 UI는 이 details를 표시하거나
 전달하고, 로그를 해석해서 다른 상태로 바꾸지 않습니다.
 
+### 3-3. Guest compose reconcile result
+
+Settings apply나 watchdog recovery가 VM 자체를 재시작할 필요 없이 Guest compose service 묶음만
+다시 맞추면 되는 경우 Host는 `reconcile-compose.request`를 쓰고 Guest의 typed result를 기다립니다.
+이 계약은 VM restart의 대체 경로이지, VM boundary 실패를 숨기는 fallback이 아닙니다.
+
+| 상태 | 의미 |
+|---|---|
+| capability missing | Guest가 compose reconcile contract를 제공하지 않음 |
+| request missing | Host가 아직 reconcile을 요청하지 않았거나 cleanup이 끝남 |
+| result missing | Guest worker가 실행되지 않았거나 result를 쓰기 전에 실패함 |
+| result failed | Guest가 compose reconcile 실패 reason을 명시적으로 보고함 |
+| result stale | requestId 또는 updatedAt이 현재 operation과 맞지 않음 |
+| result completed | Guest compose reconcile이 완료됨 |
+
+Watchdog은 Guest HTTP unhealthy 또는 critical container service unhealthy처럼 VM process/IP boundary가
+유지된 문제에서 compose reconcile을 먼저 선택합니다. VM IP missing, VM service not loaded, expired
+bootstrapping처럼 Host/VM boundary가 깨진 문제는 VM runtime restart로 승격합니다. HTTP probe read
+failure는 어떤 경로로도 성공을 추정하지 않고 blocker로 남깁니다.
+
 ## 4. Recorder와 Bed 상태
 
 Recorder와 Bed 상태는 관측 결과를 기반으로 표시합니다. Host나 UI가 임의로 만들지 않습니다.

@@ -178,7 +178,7 @@ VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 �
 | Settings apply 후 restart | Configure restart policy가 VM runtime restart requirement를 판단한 뒤, 필요할 때만 Guest shutdown 준비 후 poweroff 관측을 거쳐 restart |
 | Product update stop plan | update shutdown-stop port를 통해 VM owner가 stop 순서를 실행 |
 | rollback/service-control | service start/stop wrapper가 VM owner를 통과 |
-| watchdog recovery | watchdog 전용 restart intent로 VM owner를 통과 |
+| watchdog recovery | Guest compose 문제는 reconcile request/result contract를 먼저 사용하고, VM boundary 문제만 watchdog 전용 restart intent로 VM owner를 통과 |
 | repair/VM disk replacement | repair intent 또는 best-effort result를 통해 실패 의미를 보존 |
 | Helper UI clean uninstall | `--clean` 사용. graceful stop 실패 시 cleanup 진행을 위해 force stop으로 전환하되 fresh install readiness를 성공으로 추정하지 않음 |
 | Reset for Reinstall | `--force-clean-uninstaller` 사용. fresh install blocker 제거와 readiness 검증을 recovery contract로 수행 |
@@ -571,10 +571,15 @@ Pull request는 변경 목적과 검증 근거가 함께 보여야 합니다. �
   reconcile로 표시해야 합니다.
 - VM stop/restart/poweroff 변경은 단일 VM state control 경로를 통하게 합니다. Settings, update,
   repair, watchdog이 guest shutdown 준비 contract를 우회해 개별적으로 VM service를 멈추지 않습니다.
-  Settings restart, update shutdown-stop, rollback/update service start-stop, watchdog VM recovery,
+  Settings restart, update shutdown-stop, rollback/update service start-stop, VM restart가 필요한 watchdog recovery,
   service-control, repair/guest-operation VM start/restart는 VM state control owner entrypoint를 통해
   Host side effect를 실행합니다. Update/rollback workflow는 operation plan 의미를 보존하되, Host service
   start/stop sequencing을 직접 소유하지 않습니다.
+- Watchdog recovery는 failure boundary에 맞는 가장 낮은 activation을 먼저 선택합니다. Guest HTTP
+  unhealthy 또는 critical container service unhealthy처럼 VM process/IP boundary가 유지된 문제는
+  Guest compose reconcile request/result contract로 복구합니다. VM IP missing, VM service not loaded,
+  expired bootstrapping처럼 Host/VM boundary가 깨진 경우만 VM runtime restart로 승격합니다. HTTP probe
+  read failure는 compose reconcile이나 VM restart로 추정하지 말고 typed blocker로 남깁니다.
 - Guest filesystem 또는 disk I/O 장애는 proxy/HTTP failure보다 상위의 guest storage 상태로 남깁니다.
   root filesystem read-only, filesystem error, disk I/O error가 명시되면 `guest-filesystem-read-only`,
   `guest-filesystem-error`, `guest-disk-io-error` reason으로 기록하고, `unknown(vm-...)`이나 단순

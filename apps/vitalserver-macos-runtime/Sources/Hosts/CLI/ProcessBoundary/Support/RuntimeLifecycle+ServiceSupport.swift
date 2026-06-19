@@ -128,7 +128,7 @@ extension RuntimeLifecycle {
         )
     }
 
-    func reconcileGuestComposeServicesAfterSettingsApply() throws {
+    func reconcileGuestComposeServices() throws {
         try requireGuestCapability(.reconcileCompose)
         try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
         try guestGateway.removeGuestComposeReconcileResult()
