@@ -25,6 +25,7 @@ Expose each distribution phase as an explicit target:
 
 ```sh
 make dist/pkg/dev/verify
+make dist/dmg/dev/all
 make dist/dmg/dev/verify
 make dist/troubleshooting/dev/verify
 make dist/update/dev/smoke

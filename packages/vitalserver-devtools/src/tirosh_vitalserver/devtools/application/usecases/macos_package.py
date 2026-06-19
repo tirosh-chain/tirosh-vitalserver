@@ -61,8 +61,10 @@ from tirosh_vitalserver.devtools.config.macos.release_settings import (
 from tirosh_vitalserver.devtools.config.paths import resolve_path
 from tirosh_vitalserver.devtools.config.release_manifest import load_release_manifest
 from tirosh_vitalserver.devtools.core.guest_services import (
+    ComposeServiceImageReference,
     DockerImagePlan,
     RootfsInputMetadataPlan,
+    compose_service_image_references,
     guest_deploy_plan,
 )
 from tirosh_vitalserver.devtools.core.macos_release.install_paths import (
@@ -169,6 +171,10 @@ def release_package_preflight_report(
             platform=input.docker_platform,
             compression_threads=input.compression_threads,
             include_optional="testkit" in release.optional_container_services,
+            compose_path=settings.runtime_dir / "Support/Guest/compose.yaml",
+            deploy_include_sources=[
+                include.source for include in settings.guest_deploy.includes
+            ],
         )
     )
     return PreflightReport(name=f"release-{output_kind}", checks=tuple(checks))
@@ -633,6 +639,8 @@ def docker_image_bundle_preflight_checks(
     platform: str | None,
     compression_threads: int | None,
     include_optional: bool,
+    compose_path: Path,
+    deploy_include_sources: list[Path],
 ) -> list[PreflightCheck]:
     build_config = load_config(config)
     docker_config = load_docker_images_config(build_config, root)
@@ -644,6 +652,15 @@ def docker_image_bundle_preflight_checks(
         compression_threads=compression_threads,
     )
     checks = docker_image_plan_preflight_checks(plan.image_plan)
+    checks.extend(
+        guest_compose_contract_preflight_checks(
+            root=root,
+            compose_path=compose_path,
+            plan=plan.image_plan,
+            known_images=set(docker_config.images) | set(docker_config.optional_images),
+            deploy_include_sources=deploy_include_sources,
+        )
+    )
     if (
         include_optional
         and docker_config.optional_images
@@ -659,6 +676,156 @@ def docker_image_bundle_preflight_checks(
         )
         checks.extend(docker_image_plan_preflight_checks(optional_plan.image_plan))
     return checks
+
+
+def guest_compose_contract_preflight_checks(
+    *,
+    root: Path,
+    compose_path: Path,
+    plan: DockerImagePlan,
+    known_images: set[str],
+    deploy_include_sources: list[Path],
+) -> list[PreflightCheck]:
+    compose_text, error = read_text_for_preflight(compose_path)
+    if error:
+        return [
+            PreflightCheck(
+                name="guest-compose-contract",
+                status=PreflightStatus.UNAVAILABLE,
+                message="could not read guest compose file",
+                detail=f"{compose_path}: {error}",
+            )
+        ]
+    references = compose_service_image_references(compose_text)
+    if not references:
+        return [
+            PreflightCheck(
+                name="guest-compose-contract",
+                status=PreflightStatus.INVALID,
+                message="guest compose did not declare any service images",
+                detail=str(compose_path),
+            )
+        ]
+
+    checks: list[PreflightCheck] = []
+    dockerfiles_by_image = dockerfile_contracts_by_image(plan)
+    for reference in references:
+        checks.append(
+            check_compose_image_is_bundled(
+                reference=reference,
+                known_images=known_images,
+            )
+        )
+        if reference.dockerfile is None:
+            continue
+        checks.append(
+            check_compose_dockerfile_is_configured(
+                root=root,
+                reference=reference,
+                dockerfiles_by_image=dockerfiles_by_image,
+            )
+        )
+        checks.append(
+            check_compose_dockerfile_is_deployed(
+                reference=reference,
+                deploy_include_sources=deploy_include_sources,
+            )
+        )
+    return checks
+
+
+def dockerfile_contracts_by_image(plan: DockerImagePlan) -> dict[str, Path]:
+    return {
+        plan.app_image: plan.app_dockerfile,
+        plan.audit_proxy_image: plan.audit_proxy_dockerfile,
+        plan.vitaldb_observer_image: plan.vitaldb_observer_dockerfile,
+        plan.redis_relay_image: plan.redis_relay_dockerfile,
+        plan.testkit_image: plan.testkit_dockerfile,
+    }
+
+
+def check_compose_image_is_bundled(
+    *,
+    reference: ComposeServiceImageReference,
+    known_images: set[str],
+) -> PreflightCheck:
+    if reference.image in known_images:
+        return PreflightCheck(
+            name=f"guest-compose-image:{reference.service}",
+            status=PreflightStatus.PASSED,
+            message="guest compose image is declared in VM docker image config",
+            detail=reference.image,
+        )
+    return PreflightCheck(
+        name=f"guest-compose-image:{reference.service}",
+        status=PreflightStatus.INVALID,
+        message="guest compose image is not declared in VM docker image config",
+        detail=f"service={reference.service} image={reference.image}",
+    )
+
+
+def check_compose_dockerfile_is_configured(
+    *,
+    root: Path,
+    reference: ComposeServiceImageReference,
+    dockerfiles_by_image: dict[str, Path],
+) -> PreflightCheck:
+    configured = dockerfiles_by_image.get(reference.image)
+    if configured is None:
+        return PreflightCheck(
+            name=f"guest-compose-dockerfile:{reference.service}",
+            status=PreflightStatus.INVALID,
+            message="guest compose build image has no configured dockerfile",
+            detail=f"service={reference.service} image={reference.image}",
+        )
+    configured_relative = configured.relative_to(root)
+    if reference.dockerfile == configured_relative:
+        return PreflightCheck(
+            name=f"guest-compose-dockerfile:{reference.service}",
+            status=PreflightStatus.PASSED,
+            message="guest compose dockerfile matches VM docker image config",
+            detail=str(reference.dockerfile),
+        )
+    return PreflightCheck(
+        name=f"guest-compose-dockerfile:{reference.service}",
+        status=PreflightStatus.INVALID,
+        message="guest compose dockerfile does not match VM docker image config",
+        detail=(
+            f"service={reference.service} compose={reference.dockerfile} "
+            f"config={configured_relative}"
+        ),
+    )
+
+
+def check_compose_dockerfile_is_deployed(
+    *,
+    reference: ComposeServiceImageReference,
+    deploy_include_sources: list[Path],
+) -> PreflightCheck:
+    dockerfile = reference.dockerfile
+    if dockerfile is not None and path_is_covered_by_include(
+        dockerfile,
+        deploy_include_sources,
+    ):
+        return PreflightCheck(
+            name=f"guest-compose-deploy:{reference.service}",
+            status=PreflightStatus.PASSED,
+            message="guest compose dockerfile is covered by guest deploy includes",
+            detail=str(dockerfile),
+        )
+    return PreflightCheck(
+        name=f"guest-compose-deploy:{reference.service}",
+        status=PreflightStatus.INVALID,
+        message="guest compose dockerfile is not covered by guest deploy includes",
+        detail=f"service={reference.service} dockerfile={dockerfile}",
+    )
+
+
+def path_is_covered_by_include(path: Path, include_sources: list[Path]) -> bool:
+    for source in include_sources:
+        if path == source or path.is_relative_to(source):
+            return True
+    return False
 
 
 def docker_image_plan_preflight_checks(plan: DockerImagePlan) -> list[PreflightCheck]:
@@ -677,6 +844,13 @@ def docker_image_plan_preflight_checks(plan: DockerImagePlan) -> list[PreflightC
             check_required_file(
                 plan.vitaldb_observer_dockerfile,
                 "dockerfile:vitaldb-observer",
+            )
+        )
+    if plan.redis_relay_image in plan.images:
+        checks.append(
+            check_required_file(
+                plan.redis_relay_dockerfile,
+                "dockerfile:redis-relay",
             )
         )
     if plan.testkit_image in plan.images:

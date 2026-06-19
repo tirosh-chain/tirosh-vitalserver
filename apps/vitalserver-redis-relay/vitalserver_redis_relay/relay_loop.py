@@ -7,12 +7,14 @@ from .key_filter import relay_key_filter_policy
 from .redis_client import RedisClient
 from .replication import RelayBatchRequest, RelayBatchResult, replicate_allowed_keys_once
 from .settings import RelaySettingsError, load_settings
-from .status import write_status, write_unavailable_status
+from .status import status_timestamp, write_status, write_unavailable_status
 
 
 def run_forever(*, config_path: Path, status_path: Path) -> None:
     batches = 0
     totals = RelayBatchResult()
+    last_success_at: str | None = None
+    last_error_at: str | None = None
     while True:
         delay = 5.0
         try:
@@ -38,6 +40,7 @@ def run_forever(*, config_path: Path, status_path: Path) -> None:
             time.sleep(settings.status_interval_seconds)
             continue
         if settings.target is None:
+            last_error_at = status_timestamp()
             write_status(
                 status_path,
                 settings=settings,
@@ -45,6 +48,8 @@ def run_forever(*, config_path: Path, status_path: Path) -> None:
                 batches=batches,
                 totals=totals,
                 error="target is required when relay is enabled",
+                last_success_at=last_success_at,
+                last_error_at=last_error_at,
             )
             time.sleep(delay)
             continue
@@ -63,6 +68,7 @@ def run_forever(*, config_path: Path, status_path: Path) -> None:
                 target=RedisClient(settings.target),
             )
         except Exception as error:
+            last_error_at = status_timestamp()
             write_status(
                 status_path,
                 settings=settings,
@@ -70,6 +76,8 @@ def run_forever(*, config_path: Path, status_path: Path) -> None:
                 batches=batches,
                 totals=totals,
                 error=str(error),
+                last_success_at=last_success_at,
+                last_error_at=last_error_at,
             )
             time.sleep(delay)
             continue
@@ -77,6 +85,12 @@ def run_forever(*, config_path: Path, status_path: Path) -> None:
         batches += 1
         totals = _add(totals, result)
         state = "running" if result.errors == 0 else "running_with_errors"
+        error_message = None
+        if result.errors == 0:
+            last_success_at = status_timestamp()
+        else:
+            last_error_at = status_timestamp()
+            error_message = "relay batch completed with errors"
         write_status(
             status_path,
             settings=settings,
@@ -84,6 +98,9 @@ def run_forever(*, config_path: Path, status_path: Path) -> None:
             batch=result,
             batches=batches,
             totals=totals,
+            error=error_message,
+            last_success_at=last_success_at,
+            last_error_at=last_error_at,
         )
         time.sleep(delay)
 

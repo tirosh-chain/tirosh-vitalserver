@@ -30,6 +30,7 @@ Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
 | `/audit-proxy/status` | `vitalserver-audit-proxy` | watchdog 후보, operator | audit proxy runtime counters |
 | `/api/v1/observations` | `vitaldb-observer` | guest `tirosh-runtime-state`, watchdog | VitalDB recorder/bed/anomaly snapshot |
 | vitaldb-observer stdout JSONL | `vitaldb-observer` | container log collector, operator diagnostics | observer collection/readiness diagnostic history |
+| `/run/tirosh/status/redis-relay-status.json` | `vitalserver-redis-relay` | Helper status, operator diagnostics | relay process/progress/error snapshot |
 
 파편화의 핵심은 container 쪽 raw log/event가 여러 sink에 흩어져 있고, 어떤 자료가 제품 API의 canonical
 source인지 명확하지 않다는 점입니다.
@@ -42,6 +43,8 @@ source인지 명확하지 않다는 점입니다.
 
 - `vitalserver-audit-proxy`는 command audit event를 생성합니다.
 - `vitaldb-observer`는 Redis와 proxy/access log를 읽어 VitalDB observation snapshot을 계산합니다.
+- `vitalserver-redis-relay`는 source Redis 3.2의 allowlisted key를 외부 target Redis로 복제하고,
+  복제 진행과 target 오류를 status payload로 기록합니다.
 - guest `tirosh-runtime-state`는 guest HTTP/resource snapshot을 생성합니다.
 - guest `tirosh-guest-observed`는 Linux guest OS의 진단 snapshot을 생성합니다.
 - compose service와 container는 stdout/stderr에 raw log를 남깁니다.
@@ -57,6 +60,12 @@ Recorder activity의 `roomCount`는 해당 버킷에서 받은 `send_data` paylo
 필요할 때 API/diagnostics contract에서만 확인합니다.
 
 각 app은 제품 전체 상태를 판단하지 않습니다.
+
+Redis Relay의 Docker health는 relay process와 status writer가 살아 있는지를 나타냅니다. Target Redis 인증,
+네트워크, `RESTORE` 실패는 container liveness로 숨기지 않고 `redis-relay-status.json`의 `state`,
+`lastErrorAt`, `lastError`, `lastSuccessAt`, `batches`, `totals`로 드러냅니다. `settingsFingerprint`는 password를
+포함하지 않는 설정 계약 hash이며, Helper UI가 표시하는 target/scope 설정과 guest relay process가 실제로 읽은
+설정이 같은지 확인하는 단서입니다.
 
 ### 2-2. Guest collectors
 

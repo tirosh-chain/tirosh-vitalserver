@@ -51,6 +51,7 @@ Rootfs smoke와 Runtime boot proof가 다른 책임을 갖는데, 현재 golden 
 - `runtime-state.json.containerServices` missing or empty
 - required systemd unit inactive/failed/activating timeout
 - compose service exited/restarting/unhealthy
+- compose service가 fresh runtime-state에 아직 나타나지 않았지만 readiness window 안에 나타날 수 있는 상태
 - guest HTTP probe failed
 - disk health reports read-only rootfs or kernel disk errors
 - feature capability flags are missing or false for installed functionality
@@ -58,6 +59,8 @@ Rootfs smoke와 Runtime boot proof가 다른 책임을 갖는데, 현재 golden 
 - Observability read model or event store is unavailable
 - VitalServer backup directory is missing but reported as an empty backup list
 - TestKit service is expected in dev builds but not available after boot
+- Runtime boot smoke가 `runtime state is missing compose services: ['testkit']`로 실패했지만
+  최신 `runtime-state.json`에는 testkit이 뒤늦게 나타나는 경우
 
 AGENTS.md 기준으로 Host는 Guest 내부 상태를 로그나 추측으로 만들면 안 됩니다. Guest가 명시 contract를
 제공하고, golden disk pipeline은 그 contract가 실제 Runtime boot에서 제공되는지 검증해야 합니다.
@@ -96,6 +99,9 @@ tirosh-runtime-state once
 3. `runtime-state.json`이 없거나 invalid면 runtime-state writer/service 문제로 분리합니다.
 4. systemd service가 inactive/failed이면 edge HTTP 결과만으로 정상 boot로 보지 않습니다.
 5. launcher log의 kernel panic/Oops/RCU stall은 TS-069와 같은 terminal guest failure로 처리합니다.
+6. dev build에서 `testkit`만 누락된 runtime boot smoke 실패가 나오면 같은 run의 manifest timestamp와
+   최신 `runtime-state.json`을 비교합니다. testkit이 몇 초 뒤 등장했다면 late-ready service를
+   readiness window 동안 재조회해야 하는 검증 race입니다.
 
 ## Prevention
 
@@ -161,6 +167,7 @@ Runtime boot smoke는 최소 아래를 통과해야 합니다.
 | HTTP | `/ready` and `/health` return 2xx |
 | systemd | docker, runtime-state, compose, observability, command-poller active |
 | compose services | expected service set reported; no exited/restarting required service |
+| late-ready compose services | expected service가 runtime-state에 아직 없으면 readiness window 동안 재조회 |
 | disk health | root filesystem not read-only; no kernel disk error lines |
 | capabilities | `prepareUpdateShutdown`, `activateUpdate`, `redisBackup`, `redisRestore`, `repairDatastore` are explicit booleans |
 | command dispatch | command poller service active; request/result directory writable; no stale request files |
@@ -332,15 +339,18 @@ Still separate from this phase:
 
 2026-06-13 follow-up added explicit package validation workflows:
 
-- `make dist/dmg/dev/runtime-smoke`
 - `make dist/pkg/dev/runtime-smoke`
+- `make dist/dmg/dev/all`
 - `make dist/dmg/dev/verify`
 - `make dist/pkg/dev/verify`
 - `make dist/dmg/release/verify`
 - `make dist/pkg/release/verify`
 
 `compile` remains the artifact creation contract. `runtime-smoke` owns golden runtime boot proof.
-`verify` is the installation/release handoff gate that runs both.
+`dist/dmg/dev/all` is the combined dev DMG gate; `dist/dmg/dev/verify` checks an existing
+DMG artifact and golden runtime smoke without compiling.
+Package and release verify targets may still be combined handoff gates when their target contract
+states that explicitly.
 
 ## Operational Notes
 

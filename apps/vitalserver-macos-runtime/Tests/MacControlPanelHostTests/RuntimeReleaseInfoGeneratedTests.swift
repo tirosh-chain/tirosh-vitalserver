@@ -12,6 +12,7 @@ final class RuntimeReleaseInfoGeneratedTests: XCTestCase {
             GeneratedRelease.vitalServerName,
             GeneratedRelease.auditProxyName,
             GeneratedRelease.vitalDBObserverName,
+            GeneratedRelease.redisRelayName,
             GeneratedRelease.redisName,
             GeneratedRelease.redisUIName,
             GeneratedRelease.swaggerUIName,

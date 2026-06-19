@@ -228,7 +228,9 @@ describe("runtime console pages", () => {
     fireEvent.click(screen.getByLabelText("Start on boot"));
     fireEvent.click(screen.getByLabelText("Auto recovery"));
     fireEvent.click(screen.getByLabelText("Prevent system sleep"));
-    fireEvent.click(screen.getByLabelText("Restart services after save"));
+    fireEvent.click(
+      screen.getByLabelText("Activate required runtime changes after save")
+    );
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
 
     expect(apply.mutate).toHaveBeenCalledWith(
@@ -271,6 +273,10 @@ describe("runtime console pages", () => {
     expect(
       screen.getByText("VM disk can only be increased. Minimum for this install is 20 GiB.")
     ).toBeInTheDocument();
+    expect(screen.getByText("Change activation")).toBeInTheDocument();
+    expect(
+      screen.getByText("No runtime activation required for these changes.")
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("Custom advertised URL"));
     const hostname = globalThis.location.hostname;
@@ -283,6 +289,26 @@ describe("runtime console pages", () => {
     });
     expect(
       screen.getByText("Default advertised URL: Proxy port is not available.")
+    ).toBeInTheDocument();
+  });
+
+  it("shows VM restart activation when vital files directory changes", () => {
+    renderPage(<SettingsPage />);
+
+    fireEvent.change(screen.getByLabelText("Vital files directory"), {
+      target: { value: "/Users/shared/new-vital" }
+    });
+    fireEvent.click(
+      screen.getByLabelText("Activate required runtime changes after save")
+    );
+
+    expect(
+      screen.getByText(
+        "Saved changes will not become active until the VM runtime restarts. Required by: Vital files directory."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Requires VM restart. Required by: Vital files directory.")
     ).toBeInTheDocument();
   });
 

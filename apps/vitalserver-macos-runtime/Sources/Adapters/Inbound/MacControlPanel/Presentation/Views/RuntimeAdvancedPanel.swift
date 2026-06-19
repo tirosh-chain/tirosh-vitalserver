@@ -590,6 +590,27 @@ struct RuntimeAdvancedPanel: View {
                 if let lastBatch = status.lastBatch {
                     statusRow(AppConstants.Labels.redisRelayLastBatch, redisRelayBatchText(lastBatch))
                 }
+                if let lastSuccessAt = status.lastSuccessAt, !lastSuccessAt.isEmpty {
+                    statusRow(
+                        AppConstants.Labels.redisRelayLastSuccess,
+                        viewModel.presentationFormatter.systemTimeText(lastSuccessAt)
+                    )
+                }
+                if let lastErrorAt = status.lastErrorAt, !lastErrorAt.isEmpty {
+                    statusRow(
+                        AppConstants.Labels.redisRelayLastError,
+                        viewModel.presentationFormatter.systemTimeText(lastErrorAt)
+                    )
+                }
+                if let fingerprint = status.settingsFingerprint, !fingerprint.isEmpty {
+                    statusRow(AppConstants.Labels.redisRelaySettingsFingerprint) {
+                        Text(fingerprint)
+                            .font(.system(.body, design: .monospaced))
+                            .fontWeight(.medium)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
                 if let lastError = status.lastError, !lastError.isEmpty {
                     statusRow(AppConstants.Labels.lastError) {
                         Text(lastError)

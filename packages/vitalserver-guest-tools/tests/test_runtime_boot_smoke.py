@@ -276,6 +276,84 @@ def test_runtime_boot_smoke_waits_for_compose_service_to_become_healthy(
     assert stage_status(manifest, "compose-services") == "passed"
 
 
+def test_runtime_boot_smoke_waits_for_missing_compose_service_to_appear(
+    tmp_path: Path,
+) -> None:
+    context = runtime_boot_context(
+        tmp_path,
+        compose_ready_timeout_seconds=10,
+        dev_build=True,
+    )
+    write_valid_runtime_documents(context)
+    state_path = context.runtime_dir / "runtime-state.json"
+
+    def add_testkit(seconds: float) -> None:
+        refreshed = read_json(state_path)
+        refreshed["containerServices"].append(
+            {
+                "service": "testkit",
+                "exitCode": 0,
+                "health": "healthy",
+                "name": "testkit-1",
+                "startedAt": timestamp(NOW),
+                "state": "running",
+                "uptimeSeconds": 1,
+            }
+        )
+        write_json(state_path, refreshed)
+
+    run_runtime_boot_smoke(
+        context=context,
+        operations=fake_operations(sleep=add_testkit),
+    )
+
+    manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["status"] == "passed"
+    assert stage_status(manifest, "compose-services") == "passed"
+
+
+def test_runtime_boot_smoke_uses_fresh_runtime_state_after_compose_wait(
+    tmp_path: Path,
+) -> None:
+    context = runtime_boot_context(tmp_path, compose_ready_timeout_seconds=10)
+    write_valid_runtime_documents(context)
+    state_path = context.runtime_dir / "runtime-state.json"
+    document = read_json(state_path)
+    document["containerServices"][0]["health"] = "starting"
+    write_json(state_path, document)
+
+    def mark_healthy_and_remove_capability(seconds: float) -> None:
+        refreshed = read_json(state_path)
+        refreshed["containerServices"][0]["health"] = "healthy"
+        refreshed["capabilities"].pop("redisBackup")
+        write_json(state_path, refreshed)
+
+    with pytest.raises(SystemExit):
+        run_runtime_boot_smoke(
+            context=context,
+            operations=fake_operations(sleep=mark_healthy_and_remove_capability),
+        )
+
+    manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert stage_status(manifest, "compose-services") == "passed"
+    assert stage_status(manifest, "capabilities") == "failed"
+    assert "runtime capability is not available" in failed_stage_message(manifest)
+
+
+def test_runtime_boot_smoke_rejects_missing_compose_service_after_timeout(
+    tmp_path: Path,
+) -> None:
+    context = runtime_boot_context(tmp_path, dev_build=True)
+    write_valid_runtime_documents(context)
+
+    with pytest.raises(SystemExit):
+        run_runtime_boot_smoke(context=context, operations=fake_operations())
+
+    manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
+    assert "runtime state is missing compose services" in failed_stage_message(manifest)
+    assert "testkit" in failed_stage_message(manifest)
+
+
 def test_runtime_boot_smoke_cli_is_registered() -> None:
     pyproject = Path(__file__).parents[1] / "pyproject.toml"
     assert "tirosh-vitalserver-runtime-boot-smoke" in pyproject.read_text(

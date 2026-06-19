@@ -67,6 +67,10 @@ extension RuntimeLifecycle {
 
     func configureDeployEnvironment(_ settings: RuntimeInstallSettings) throws {
         try runtimeGuestConfigWriter().write(runtimeConfig: guestRuntimeConfigDocument(settings))
+        try RuntimeRedisRelayConfigurationWriter(
+            installedPaths: installedPaths,
+            fileStore: fileStore
+        ).ensureInstallConfiguration()
     }
 
     func guestRuntimeConfigDocument(_ settings: RuntimeInstallSettings) throws -> GuestRuntimeConfigDocument {

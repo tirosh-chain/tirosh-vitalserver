@@ -461,9 +461,12 @@ public struct RuntimeRedisRelayStatus: Codable, Equatable, Sendable {
     public var targetUrl: String?
     public var targetUsernameConfigured: Bool
     public var targetPasswordConfigured: Bool
+    public var settingsFingerprint: String?
     public var batches: Int
     public var totals: RuntimeRedisRelayBatch
     public var lastBatch: RuntimeRedisRelayBatch?
+    public var lastSuccessAt: String?
+    public var lastErrorAt: String?
     public var lastError: String?
 
     public init(
@@ -474,9 +477,12 @@ public struct RuntimeRedisRelayStatus: Codable, Equatable, Sendable {
         targetUrl: String? = nil,
         targetUsernameConfigured: Bool = false,
         targetPasswordConfigured: Bool = false,
+        settingsFingerprint: String? = nil,
         batches: Int = 0,
         totals: RuntimeRedisRelayBatch = RuntimeRedisRelayBatch(),
         lastBatch: RuntimeRedisRelayBatch? = nil,
+        lastSuccessAt: String? = nil,
+        lastErrorAt: String? = nil,
         lastError: String? = nil
     ) {
         self.observedAt = observedAt
@@ -486,9 +492,12 @@ public struct RuntimeRedisRelayStatus: Codable, Equatable, Sendable {
         self.targetUrl = targetUrl
         self.targetUsernameConfigured = targetUsernameConfigured
         self.targetPasswordConfigured = targetPasswordConfigured
+        self.settingsFingerprint = settingsFingerprint
         self.batches = batches
         self.totals = totals
         self.lastBatch = lastBatch
+        self.lastSuccessAt = lastSuccessAt
+        self.lastErrorAt = lastErrorAt
         self.lastError = lastError
     }
 
@@ -500,9 +509,12 @@ public struct RuntimeRedisRelayStatus: Codable, Equatable, Sendable {
         case targetUrl
         case targetUsernameConfigured
         case targetPasswordConfigured
+        case settingsFingerprint
         case batches
         case totals
         case lastBatch
+        case lastSuccessAt
+        case lastErrorAt
         case lastError
     }
 
@@ -522,10 +534,16 @@ public struct RuntimeRedisRelayStatus: Codable, Equatable, Sendable {
                 Bool.self,
                 forKey: .targetPasswordConfigured
             ) ?? false,
+            settingsFingerprint: try container.decodeIfPresent(
+                String.self,
+                forKey: .settingsFingerprint
+            ),
             batches: try container.decodeIfPresent(Int.self, forKey: .batches) ?? 0,
             totals: try container.decodeIfPresent(RuntimeRedisRelayBatch.self, forKey: .totals)
                 ?? RuntimeRedisRelayBatch(),
             lastBatch: try container.decodeIfPresent(RuntimeRedisRelayBatch.self, forKey: .lastBatch),
+            lastSuccessAt: try container.decodeIfPresent(String.self, forKey: .lastSuccessAt),
+            lastErrorAt: try container.decodeIfPresent(String.self, forKey: .lastErrorAt),
             lastError: try container.decodeIfPresent(String.self, forKey: .lastError)
         )
     }

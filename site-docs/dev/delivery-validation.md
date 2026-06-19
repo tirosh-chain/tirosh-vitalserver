@@ -73,11 +73,10 @@ Release 전에 만드는 결과물은 목적이 다릅니다. 먼저 “어떤 �
 | 목적 | command |
 |---|---|
 | 설치된 runtime health 확인 | `make dist/installed/health` |
+| dev DMG 빠른 패키징 | `make dist/dmg/dev` |
 | dev DMG를 VM compile 포함해 생성 | `make dist/dmg/dev/compile` |
-| 생성된 dev DMG layout과 Troubleshooting Tools 검증 | `make dist/dmg/dev/artifact-verify` |
-| dev DMG test/review checks | `make dist/dmg/dev/review` |
-| dev DMG golden runtime boot 계약 검증 | `make dist/dmg/dev/runtime-smoke` |
-| dev DMG 설치 전 표준 검증 | `make dist/dmg/dev/verify` |
+| 생성된 dev DMG와 golden runtime 검증 | `make dist/dmg/dev/verify` |
+| dev DMG 설치 전 전체 gate | `make dist/dmg/dev/all` |
 | dev PKG를 VM compile 포함해 생성 | `make dist/pkg/dev/compile` |
 | dev PKG golden runtime boot 계약 검증 | `make dist/pkg/dev/runtime-smoke` |
 | dev PKG 설치 전 표준 검증 | `make dist/pkg/dev/verify` 또는 `make dist/pkg/verify/dev` |
@@ -102,10 +101,21 @@ Docker/container runtime처럼 base runtime을 바꾸는 upgrade가
 모두 passed인지 확인합니다. Devtools direct start 경로도 `data/deploy/host-time.json`을 써야 하며,
 Guest가 이 Host-owned time contract를 적용하지 못하면 smoke failure입니다.
 
-`verify`는 review/test, compile/artifact verify, runtime-smoke를 묶은 설치 전 표준 gate입니다.
-DMG compile은 clean rootfs로 산출물을 만들고 생성된 DMG를 read-only로 다시 열어 installer PKG와
-Troubleshooting Tools layout/executable contract를 확인합니다. 그래도 `compile`이 통과했다는 사실만으로
-fresh install, installed runtime, update/rollback 동작이 검증된 것으로 보지 않습니다.
+DMG dev target은 역할을 분리합니다. `dist/dmg/dev`는 기존 golden rootfs cache를 재사용할 수 있는
+빠른 패키징 target입니다. `dist/dmg/dev/compile`은 clean rootfs로 산출물을 만드는 compile target이고,
+`dist/dmg/dev/verify`는 이미 생성된 DMG artifact와 golden runtime boot contract를 검증합니다.
+`dist/dmg/dev/all`은 review, clean compile, artifact verify, runtime smoke를 한 번에 실행하는 설치 전
+표준 gate입니다. review, artifact verify, runtime smoke는 `internal/vm/dmg/dev/*` 단계로 존재하지만
+public workflow는 위 네 target만 노출합니다. 그래도 `all`이 통과했다는 사실만으로 fresh install,
+installed runtime, update/rollback 동작이 검증된 것으로 보지 않습니다.
+`dist/dmg/dev`는 설치 provisioning side effect를 실행하지 않으므로, fresh install에서 만들어야 하는
+Host-owned config directory 누락은 잡지 못합니다. Guest compose bind source, runtime smoke, installed
+health까지 확인해야 하는 변경은 `dist/dmg/dev/verify`, `dist/dmg/dev/all`, 또는 설치 후
+`dist/installed/health`로 확인합니다.
+`compile`의 clean 의미는 변수로 끄지 않습니다. 같은 target 이름이 cached compile과 clean compile을
+오가면 검증 결과를 해석할 때 외부 실행 변수를 다시 추적해야 합니다. 캐시를 재사용하는 개발 산출물이
+필요하면 `make dist/dmg/dev`를 사용하고, clean compile proof가 필요하면 `make dist/dmg/dev/compile`
+또는 `make dist/dmg/dev/all`을 사용합니다.
 
 ## 3. 무엇을 검증할까
 
@@ -226,6 +236,13 @@ Release package와 DMG build도 expensive compile 단계에 들어가기 전에 
 전에 필수 tool, golden runtime `Image`/`initrd.img`, `rootfs-base`, Dockerfile 경로, Docker pull image
 manifest와 platform, DMG output attachment 상태를 확인합니다. 이 값들은 build input이므로 누락,
 무효, unavailable, mounted/attached blocked 상태를 빈 값이나 late build failure로 바꾸면 안 됩니다.
+Guest compose service 계약도 같은 compile input입니다. `Support/Guest/compose.yaml`에 선언된 image는
+`guest.docker_images.images` 또는 `optional_images`에 있어야 하고, build `dockerfile`은
+`guest.docker_images.*_dockerfile`과 일치해야 하며, 해당 path는 `guest.deploy.include`로 설치 payload에
+포함되어야 합니다. Redis Relay처럼 UI 설정에서 disabled가 가능한 service도 compose에 항상 존재한다면
+package bundle 관점에서는 필수 image/source 계약입니다. 이 검사는 `make dist/dmg/dev/compile`에서
+Docker build 전에 실패해야 하고, `make dist/dmg/dev/all`은 compile을 포함하므로 같은 누락을 설치 전
+gate에서 막아야 합니다.
 Installed package deploy도 golden rootfs deploy와 같은 bootstrap contracts를 포함해야 합니다.
 `deploy/build-metadata/rootfs-input.json`은 Guest runtime data disk 준비가 읽는 Host-owned contract이며,
 package staging이 Ubuntu source, apt snapshot, runtime data disk, Docker platform 값을 명시적으로 써야
@@ -308,8 +325,11 @@ VM build는 제품 compile로 취급합니다. `make dist/dmg/dev/compile`, `mak
 `make devtools/golden-rootfs/compile`은 golden rootfs proof를 새로 요구하며, kernel panic,
 guest boot failure, rootfs proof failure를 우회하지 않습니다. 다만 compile passed는 installed
 runtime passed를 뜻하지 않습니다. Guest bootstrap 완료, `runtime-state.json` 생성, systemd/docker/http
-계약은 `make dist/dmg/dev/runtime-smoke` 또는 `make dist/pkg/dev/runtime-smoke`가 소유합니다.
-설치/배포 전 표준 게이트는 `make dist/dmg/dev/verify` 또는 `make dist/pkg/dev/verify`처럼 compile과
+계약은 DMG dev에서는 `make dist/dmg/dev/verify` 또는 `make dist/dmg/dev/all`의 runtime smoke phase가
+소유하고, PKG dev에서는 `make dist/pkg/dev/runtime-smoke`가 소유합니다.
+DMG dev fast packaging은 `make dist/dmg/dev`가 소유하고, clean compile은 `make dist/dmg/dev/compile`이
+소유합니다. `compile` target의 cache policy는 실행 변수로 바꾸지 않습니다.
+설치/배포 전 표준 게이트는 `make dist/dmg/dev/all` 또는 `make dist/pkg/dev/verify`처럼 compile과
 runtime smoke를 묶은 명시 workflow입니다. PKG dev verify는 compile 전에 package plan/template unit
 review, PWA Runtime Control contract/check/test, log export archive/rotation/retention test를 실행합니다.
 실패는 runId, failing stage, failure reason 또는 matched pattern, artifact/log path와 함께 드러나야 합니다.

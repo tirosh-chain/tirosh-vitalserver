@@ -6,6 +6,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -101,6 +102,12 @@ BASE_REQUIRED_COMPOSE_SERVICES = (
 )
 
 
+@dataclass(frozen=True)
+class ComposeServiceRequirement:
+    name: str
+    require_healthy: bool = True
+
+
 class RuntimeBootSmokeStageFailed(RuntimeError):
     pass
 
@@ -167,7 +174,7 @@ def run_runtime_boot_smoke(
             "bootstrap-result",
             lambda active_run: validate_bootstrap_result(active_run),
         )
-        runtime_state = execute_stage(
+        execute_stage(
             run,
             "runtime-state",
             lambda active_run: validate_runtime_state(active_run, bootstrap_result),
@@ -190,17 +197,20 @@ def run_runtime_boot_smoke(
         execute_stage(
             run,
             "compose-services",
-            lambda active_run: validate_compose_services(active_run, runtime_state),
+            lambda active_run: validate_compose_services(
+                active_run,
+                bootstrap_result,
+            ),
         )
         execute_stage(
             run,
             "disk-health",
-            lambda active_run: validate_disk_health(active_run, runtime_state),
+            lambda active_run: validate_disk_health(active_run, bootstrap_result),
         )
         execute_stage(
             run,
             "capabilities",
-            lambda active_run: validate_capabilities(active_run, runtime_state),
+            lambda active_run: validate_capabilities(active_run, bootstrap_result),
         )
         execute_stage(
             run,
@@ -210,7 +220,7 @@ def run_runtime_boot_smoke(
         execute_stage(
             run,
             "feature-readiness",
-            lambda active_run: validate_feature_readiness(active_run, runtime_state),
+            lambda active_run: validate_feature_readiness(active_run, bootstrap_result),
         )
     except RuntimeBootSmokeStageFailed:
         run.write_manifest()
@@ -459,16 +469,22 @@ def validate_runtime_data(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]
 
 def validate_compose_services(
     run: RuntimeBootSmokeRun,
-    runtime_state: dict[str, Any],
+    bootstrap_result: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
-    expected = expected_compose_services(run.context.dev_build)
+    expected = expected_compose_service_requirements(run.context.dev_build)
     deadline = time.monotonic() + run.context.compose_ready_timeout_seconds
-    document = runtime_state_document(runtime_state)
+    document = read_current_runtime_state_document(run, bootstrap_result)
     while True:
         observed = observed_compose_services(document)
-        missing = sorted(expected - set(observed))
+        missing = missing_compose_services(expected, observed)
         if missing:
-            raise RuntimeError(f"runtime state is missing compose services: {missing}")
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"runtime state is missing compose services: {missing}"
+                )
+            run.operations.sleep(COMPOSE_READY_POLL_SECONDS)
+            document = read_current_runtime_state_document(run, bootstrap_result)
+            continue
         unhealthy = unhealthy_compose_services(expected, observed)
         if not unhealthy:
             invalid_uptime = invalid_compose_service_uptime(expected, observed)
@@ -481,14 +497,14 @@ def validate_compose_services(
         if time.monotonic() >= deadline:
             raise RuntimeError(f"compose services are not ready: {unhealthy}")
         run.operations.sleep(COMPOSE_READY_POLL_SECONDS)
-        document = read_runtime_state_document(run)
+        document = read_current_runtime_state_document(run, bootstrap_result)
 
 
 def validate_disk_health(
     run: RuntimeBootSmokeRun,
-    runtime_state: dict[str, Any],
+    bootstrap_result: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
-    document = runtime_state_document(runtime_state)
+    document = read_current_runtime_state_document(run, bootstrap_result)
     disk_health = document.get("diskHealth")
     if not isinstance(disk_health, dict):
         raise RuntimeError("runtime state diskHealth is missing")
@@ -505,9 +521,9 @@ def validate_disk_health(
 
 def validate_capabilities(
     run: RuntimeBootSmokeRun,
-    runtime_state: dict[str, Any],
+    bootstrap_result: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
-    document = runtime_state_document(runtime_state)
+    document = read_current_runtime_state_document(run, bootstrap_result)
     capabilities = document.get("capabilities")
     if not isinstance(capabilities, dict):
         raise RuntimeError("runtime state capabilities is missing")
@@ -554,9 +570,9 @@ def validate_command_dispatch(
 
 def validate_feature_readiness(
     run: RuntimeBootSmokeRun,
-    runtime_state: dict[str, Any],
+    bootstrap_result: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
-    document = runtime_state_document(runtime_state)
+    document = read_current_runtime_state_document(run, bootstrap_result)
     runtime_config = run.operations.read_json(
         run.context.deploy_dir / RuntimeFileName.RUNTIME_CONFIG.value
     )
@@ -636,22 +652,25 @@ def runtime_state_document(runtime_state: dict[str, Any]) -> dict[str, Any]:
     return document
 
 
-def read_runtime_state_document(run: RuntimeBootSmokeRun) -> dict[str, Any]:
-    path = run.context.runtime_dir / RuntimeFileName.RUNTIME_STATE.value
-    document = run.operations.read_json(path)
-    require_equal(
-        document.get("schemaVersion"),
-        RUNTIME_STATE_SCHEMA_VERSION,
-        f"runtime state schema mismatch: {path}",
+def read_current_runtime_state_document(
+    run: RuntimeBootSmokeRun,
+    bootstrap_result: dict[str, Any],
+) -> dict[str, Any]:
+    return runtime_state_document(
+        validate_runtime_state(run, bootstrap_result)[1],
     )
-    return document
 
 
-def expected_compose_services(dev_build: bool) -> set[str]:
-    expected = set(BASE_REQUIRED_COMPOSE_SERVICES)
+def expected_compose_service_requirements(
+    dev_build: bool,
+) -> tuple[ComposeServiceRequirement, ...]:
+    expected = [
+        ComposeServiceRequirement(name=name)
+        for name in BASE_REQUIRED_COMPOSE_SERVICES
+    ]
     if dev_build:
-        expected.add(ComposeService.TESTKIT.value)
-    return expected
+        expected.append(ComposeServiceRequirement(name=ComposeService.TESTKIT.value))
+    return tuple(expected)
 
 
 def observed_compose_services(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -669,38 +688,63 @@ def observed_compose_services(document: dict[str, Any]) -> dict[str, dict[str, A
 
 
 def unhealthy_compose_services(
-    expected: set[str],
+    expected: tuple[ComposeServiceRequirement, ...],
     observed: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    return [
-        {
-            "service": name,
-            "state": observed[name].get("state"),
-            "health": observed[name].get("health"),
-            "exitCode": observed[name].get("exitCode"),
-        }
-        for name in sorted(expected)
-        if not service_is_ready(observed[name])
-    ]
+    unhealthy = []
+    for requirement in sorted(expected, key=lambda item: item.name):
+        service = observed[requirement.name]
+        if service_is_ready(service, requirement=requirement):
+            continue
+        unhealthy.append(
+            {
+                "service": requirement.name,
+                "state": service.get("state"),
+                "health": service.get("health"),
+                "exitCode": service.get("exitCode"),
+            }
+        )
+    return unhealthy
+
+
+def missing_compose_services(
+    expected: tuple[ComposeServiceRequirement, ...],
+    observed: dict[str, dict[str, Any]],
+) -> list[str]:
+    observed_names = set(observed)
+    return sorted(
+        requirement.name
+        for requirement in expected
+        if requirement.name not in observed_names
+    )
 
 
 def invalid_compose_service_uptime(
-    expected: set[str],
+    expected: tuple[ComposeServiceRequirement, ...],
     observed: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     invalid: list[dict[str, Any]] = []
-    for name in sorted(expected):
-        uptime_seconds = observed[name].get("uptimeSeconds")
+    for requirement in sorted(expected, key=lambda item: item.name):
+        uptime_seconds = observed[requirement.name].get("uptimeSeconds")
         if (
             not isinstance(uptime_seconds, int)
             or uptime_seconds < 0
             or uptime_seconds > MAX_RUNTIME_SMOKE_SERVICE_UPTIME_SECONDS
         ):
-            invalid.append({"service": name, "uptimeSeconds": uptime_seconds})
+            invalid.append(
+                {
+                    "service": requirement.name,
+                    "uptimeSeconds": uptime_seconds,
+                }
+            )
     return invalid
 
 
-def service_is_ready(service: dict[str, Any]) -> bool:
+def service_is_ready(
+    service: dict[str, Any],
+    *,
+    requirement: ComposeServiceRequirement,
+) -> bool:
     state = service.get("state")
     health = service.get("health")
     exit_code = service.get("exitCode")
@@ -708,7 +752,9 @@ def service_is_ready(service: dict[str, Any]) -> bool:
         return False
     if exit_code not in (None, 0, "0", ""):
         return False
-    return health == "healthy"
+    if requirement.require_healthy:
+        return health == "healthy"
+    return True
 
 
 def run_command(

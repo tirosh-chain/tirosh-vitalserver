@@ -58,5 +58,14 @@ Generated TOML URL examples:
 ## Status
 
 The relay writes JSON status to `/run/tirosh/status/redis-relay-status.json`.
-The status never includes the target password. `batches` and `totals` show
-whether the relay loop is running, and `lastBatch` shows the most recent scan.
+The status never includes the target password.
+
+- `enabled` and `state` describe the relay process contract.
+- `settingsFingerprint` changes when the password-free connection/scope contract changes.
+- `batches`, `totals`, and `lastBatch` show scan/copy progress.
+- `lastSuccessAt` is updated after a batch completes with zero copy errors.
+- `lastErrorAt` and `lastError` are updated when config or copy work fails.
+
+Docker health checks use this status file to report relay process liveness.
+Target Redis authentication, network, or RESTORE failures are reported in the
+status payload instead of making the container disappear from service liveness.
