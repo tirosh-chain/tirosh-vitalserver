@@ -203,6 +203,9 @@ extension RuntimeLifecycle {
                 setAutomaticBackupSchedule: { enabled, scheduleTimes in
                     try setAutomaticBackupSchedule(enabled: enabled, scheduleTimes: scheduleTimes)
                 },
+                reconcileGuestComposeServices: {
+                    try reconcileGuestComposeServicesAfterSettingsApply()
+                },
                 restartRuntimeServices: {
                     try restartRuntimeAfterSettingsApply()
                 },

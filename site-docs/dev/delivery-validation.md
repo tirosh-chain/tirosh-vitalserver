@@ -279,6 +279,15 @@ restart 없이 저장할 때의 pending 상태를 Apply 전에 사용자에게 �
 Settings apply command가 실패하면 Control Panel host composition은 response를 그대로 반환하고
 presentation-local state를 mutate하지 않아야 합니다. Local API port처럼 helper UI가 소유한 값도
 command success가 확인되기 전에는 failed draft를 현재 상태로 승격하면 안 됩니다.
+
+Settings apply의 activation은 한 종류가 아닙니다. CPU, memory, disk, network, Vital files directory처럼
+VM boundary가 바뀌는 설정은 VM runtime restart를 요구합니다. Redis Relay처럼 guest compose service
+묶음만 바뀌는 설정은 VM을 재시작하지 않고 Guest compose reconcile request/result contract로 적용해야
+합니다. Host는 `reconcile-compose.request`를 쓰고 Guest가 `reconcile-compose-result.json`으로 완료
+또는 실패를 보고할 때까지 bounded wait합니다. Guest capability가 없거나 result가 missing/failed이면
+성공으로 추정하지 않습니다. Settings UI는 이 차이를 `Change activation`으로 표시하고, container
+reconcile을 VM restart처럼 설명하면 안 됩니다.
+
 Host는 VM runtime start가 성공했을 때 실제 start에 사용한 VM config를 applied VM config snapshot으로
 기록하고, Settings read contract는 saved config와 applied config를 함께 제공해야 합니다. Vital files
 directory처럼 VM restart 전에는 적용되지 않는 값은 Status/Info에서 applied snapshot을 기준으로
@@ -554,11 +563,12 @@ Pull request는 변경 목적과 검증 근거가 함께 보여야 합니다. �
 - Settings apply 실패 response를 받은 composition/presentation 계층은 local coordinator state를
   성공처럼 mutate하지 않습니다. 실패 case test는 response와 local state를 함께 검증합니다.
 - Settings apply의 `restartAfterSave`는 저장 후 항상 restart가 아니라, Configure policy가 VM runtime
-  restart requirement를 반환했을 때 즉시 restart할지에 대한 intent입니다. policy 없이 UI나 CLI가
-  restart 여부를 추정하면 안 됩니다.
+  restart 또는 container service reconcile requirement를 반환했을 때 저장 후 activation할지에 대한
+  intent입니다. policy 없이 UI나 CLI가 activation 종류를 추정하면 안 됩니다.
 - Settings UI의 restart 안내는 실행 정책이 아니라 표시 정책입니다. 실제 restart requirement의 source of
   truth는 Configure policy이고, UI는 현재 runtime 설정과 draft 설정의 차이를 사용자에게 설명하는 데
-  그쳐야 합니다.
+  그쳐야 합니다. Redis Relay 같은 guest compose service 변경은 VM restart가 아니라 container service
+  reconcile로 표시해야 합니다.
 - VM stop/restart/poweroff 변경은 단일 VM state control 경로를 통하게 합니다. Settings, update,
   repair, watchdog이 guest shutdown 준비 contract를 우회해 개별적으로 VM service를 멈추지 않습니다.
   Settings restart, update shutdown-stop, rollback/update service start-stop, watchdog VM recovery,

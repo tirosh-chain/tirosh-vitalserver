@@ -20,6 +20,16 @@ public struct RuntimeDatastoreRepairRequest: Equatable, Sendable {
     }
 }
 
+public struct RuntimeGuestComposeReconcileRequest: Equatable, Sendable {
+    public let id: String
+    public let requestedAt: String
+
+    public init(id: String, requestedAt: String) {
+        self.id = id
+        self.requestedAt = requestedAt
+    }
+}
+
 public struct RuntimeGuestShutdownRequest: Equatable, Sendable {
     public let id: String
     public let requestedAt: String

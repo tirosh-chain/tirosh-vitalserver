@@ -128,6 +128,48 @@ extension RuntimeLifecycle {
         )
     }
 
+    func reconcileGuestComposeServicesAfterSettingsApply() throws {
+        try requireGuestCapability(.reconcileCompose)
+        try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
+        try guestGateway.removeGuestComposeReconcileResult()
+        let request = RuntimeGuestComposeReconcileRequest(
+            id: requestIDAction()(),
+            requestedAt: isoTimestamp()
+        )
+        try guestGateway.writeGuestComposeReconcileRequest(request)
+        log("guest compose reconcile requested requestId=\(request.id)")
+        let deadline = clock.now.addingTimeInterval(300)
+        while clock.now < deadline {
+            switch guestGateway.loadGuestComposeReconcileResultDocument() {
+            case .loaded(let result):
+                if let resultRequestId = result.requestId, resultRequestId != request.id {
+                    throw LauncherError.runtimeOperationFailed(
+                        "guest compose reconcile result request mismatch expected=\(request.id) actual=\(resultRequestId)"
+                    )
+                }
+                if result.completed {
+                    log("guest compose reconcile completed requestId=\(request.id)")
+                    return
+                }
+                if result.failed {
+                    throw LauncherError.runtimeOperationFailed(
+                        result.message ?? "guest compose reconcile failed"
+                    )
+                }
+            case .missing:
+                break
+            case .failed(let reason):
+                throw LauncherError.runtimeOperationFailed(
+                    "guest compose reconcile result read failed: \(reason)"
+                )
+            }
+            sleeper.sleep(forTimeInterval: 3)
+        }
+        throw LauncherError.runtimeOperationFailed(
+            "guest compose reconcile timed out requestId=\(request.id)"
+        )
+    }
+
     func restartVMRuntimeForWatchdogRecovery() throws {
         try RuntimeVMStateControlUseCase().restartVMRuntime(
             intent: .restartForWatchdogRecovery,

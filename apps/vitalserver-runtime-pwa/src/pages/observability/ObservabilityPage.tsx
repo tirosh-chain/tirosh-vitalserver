@@ -169,7 +169,7 @@ export function ObservabilityPage() {
             </select>
           </label>
           <label>
-            Type
+            Filter
             <select
               value={eventType}
               onChange={(event) => setEventType(event.target.value)}
@@ -277,15 +277,10 @@ function RuntimeEventItem({ event }: { event: RuntimeEventDocument }) {
         <span>{formatLocalDateTime(event.timestamp)}</span>
         <strong>{event.eventType}</strong>
         <span>{formatRuntimeState(event.status)}</span>
-        {event.operation ? <span>operation: {event.operation}</span> : null}
-        {event.source ? (
-          <span className="event-source">source: {event.source}</span>
-        ) : null}
-        {!event.operation && !event.source ? (
-          <span className="event-source">source not reported</span>
-        ) : null}
+        <span className="event-operation">{event.operation ?? "Unknown"}</span>
       </div>
       <h3>{event.message || "Message not reported"}</h3>
+      <p>{event.source ? `source: ${event.source}` : "source not reported"}</p>
       {event.failureReasons?.length ? (
         <p>{event.failureReasons.join(", ")}</p>
       ) : null}
@@ -442,10 +437,11 @@ type RuntimeEventsRead =
   | {
       state: "loaded";
       events: RuntimeEventDocument[];
+      matchingCount: number | null;
     };
 
 function runtimeEventsRead(query: {
-  data?: { events?: RuntimeEventDocument[] };
+  data?: { events?: RuntimeEventDocument[]; matchingCount?: number | null };
   error: unknown;
   isError: boolean;
   isPending: boolean;
@@ -459,12 +455,20 @@ function runtimeEventsRead(query: {
   if (!query.data || !Array.isArray(query.data.events)) {
     return { state: "missing" };
   }
-  return { state: "loaded", events: query.data.events };
+  return {
+    state: "loaded",
+    events: query.data.events,
+    matchingCount:
+      typeof query.data.matchingCount === "number" ? query.data.matchingCount : null
+  };
 }
 
 function formatRuntimeEventCount(read: RuntimeEventsRead): string {
   switch (read.state) {
     case "loaded":
+      if (read.matchingCount !== null && read.matchingCount !== read.events.length) {
+        return `${read.events.length} shown · ${read.matchingCount} matching`;
+      }
       return `${read.events.length} events`;
     case "loading":
       return "Loading...";

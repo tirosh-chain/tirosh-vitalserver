@@ -127,6 +127,37 @@ def test_dispatch_request_writes_prepare_shutdown_failure_when_start_fails(
     assert "dependency failed" in result["message"]
 
 
+def test_request_poller_dispatches_reconcile_compose_request(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    request_file = tmp_path / "reconcile-compose.request"
+    request_file.write_text(
+        json.dumps({"requestId": "req-3"}),
+        encoding="utf-8",
+    )
+    starts: list[str] = []
+
+    monkeypatch.setattr(
+        request_file_poller,
+        "service_active_state",
+        lambda service: "inactive",
+    )
+    monkeypatch.setattr(
+        request_file_poller,
+        "systemctl",
+        lambda *args, **kwargs: _record_systemctl(starts, *args),
+    )
+
+    request_file_poller.dispatch_request(
+        request_file,
+        RuntimeService.RECONCILE_COMPOSE.value,
+        "reconcile-compose",
+    )
+
+    assert starts == [f"start:--no-block:{RuntimeService.RECONCILE_COMPOSE.value}"]
+
+
 def _record_systemctl(
     calls: list[str],
     *args: str,

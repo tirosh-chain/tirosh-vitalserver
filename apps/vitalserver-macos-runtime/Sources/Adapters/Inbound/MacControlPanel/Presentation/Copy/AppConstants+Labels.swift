@@ -237,6 +237,7 @@ public extension AppConstants {
         public static let staticVMAddressHelp = "Not available in shared/NAT mode. For bridged deployments, prefer DHCP reservation by fixed VM MAC address."
         public static let vitalFilesDirectory = "Vital files directory"
         public static let requiresVMRestart = "Requires VM restart"
+        public static let requiresContainerReconcile = "Requires container reconcile"
         public static func diskIncreaseOnlyHelp(_ minimumGiB: Int) -> String {
             "Disk size can only be increased after installation. Current minimum is \(minimumGiB) GiB."
         }
@@ -246,7 +247,8 @@ public extension AppConstants {
         public static let preventSystemSleep = "Keep Mac awake for VRecorder traffic"
         public static let preventSystemSleepHelp = "Prevents idle system sleep while VitalServer services run so the host proxy, VM, and VRecorder TCP streams stay online. The screen can still lock. Manual Sleep, lid close, shutdown, or managed power policy can still disconnect the network."
         public static let vmRuntimeRestart = "VM runtime restart"
-        public static let restartServicesAfterSave = "Restart VM runtime when required"
+        public static let changeActivation = "Change activation"
+        public static let restartServicesAfterSave = "Activate required runtime changes after save"
         public static let resetAdminPassword = "Reset admin password"
         public static let newAdminPassword = "New admin password"
         public static let rollbackBackup = "Rollback backup"

@@ -157,6 +157,33 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(settings.redisRelay.target.password, "")
     }
 
+    func testConfigureReconcilesGuestComposeForRedisRelayChangeWhenRestartIsRequested() throws {
+        let harness = try Harness()
+        let relaySettingsFile = URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
+        harness.fileStore.files[relaySettingsFile] = Data("""
+        {
+          "enabled": true,
+          "target": {
+            "url": "redis://redis-hub.internal:6380/2"
+          },
+          "scope": "vital_reconstruction",
+          "includeRecorderNetworkContext": false,
+          "intervalSeconds": 1.0,
+          "scanCount": 1000
+        }
+        """.utf8)
+
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.redisRelaySettingsFile(relaySettingsFile)],
+            restart: true
+        ))
+
+        XCTAssertTrue(result.restart)
+        XCTAssertEqual(result.restartRequirement, .containerServices)
+        XCTAssertEqual(harness.reconcileComposeCount, 1)
+        XCTAssertEqual(harness.restartCount, 0)
+    }
+
     func testConfigureRejectsInvalidLogArchiveSettings() throws {
         let harness = try Harness()
 
@@ -271,6 +298,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         var startOnBootValues: [Bool] = []
         var systemSleepPreventionValues: [Bool] = []
         var automaticBackupSchedules: [(enabled: Bool, scheduleTimes: [String])] = []
+        var reconcileComposeCount = 0
         var restartCount = 0
         var runner: RuntimeConfigureRunner!
 
@@ -326,6 +354,9 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                     },
                     setAutomaticBackupSchedule: { [weak self] enabled, scheduleTimes in
                         self?.automaticBackupSchedules.append((enabled: enabled, scheduleTimes: scheduleTimes))
+                    },
+                    reconcileGuestComposeServices: { [weak self] in
+                        self?.reconcileComposeCount += 1
                     },
                     restartRuntimeServices: { [weak self] in
                         self?.restartCount += 1

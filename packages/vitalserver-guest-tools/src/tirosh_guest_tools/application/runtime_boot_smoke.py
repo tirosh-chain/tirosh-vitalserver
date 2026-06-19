@@ -58,6 +58,7 @@ REQUIRED_CAPABILITIES = (
     "activateUpdate",
     "redisBackup",
     "redisRestore",
+    "reconcileCompose",
     "repairDatastore",
 )
 
@@ -79,6 +80,10 @@ REQUIRED_REQUEST_RESULT_PAIRS = (
         RuntimeFileName.REDIS_RESTORE_RESULT.value,
     ),
     (
+        RuntimeFileName.RECONCILE_COMPOSE_REQUEST.value,
+        RuntimeFileName.RECONCILE_COMPOSE_RESULT.value,
+    ),
+    (
         RuntimeFileName.REPAIR_DATASTORE_REQUEST.value,
         RuntimeFileName.REPAIR_DATASTORE_RESULT.value,
     ),
@@ -89,6 +94,7 @@ BASE_REQUIRED_COMPOSE_SERVICES = (
     ComposeService.APP.value,
     ComposeService.AUDIT_PROXY.value,
     ComposeService.VITALDB_OBSERVER.value,
+    ComposeService.REDIS_RELAY.value,
     ComposeService.REDIS_UI.value,
     ComposeService.SWAGGER_UI.value,
     ComposeService.EDGE.value,

@@ -15,6 +15,7 @@ public struct RuntimeConfigureActions {
     public var setStartOnBoot: (Bool) throws -> Void
     public var setSystemSleepPrevention: (Bool) throws -> Void
     public var setAutomaticBackupSchedule: (Bool, [String]) throws -> Void
+    public var reconcileGuestComposeServices: () throws -> Void
     public var restartRuntimeServices: () throws -> Void
 
     public init(
@@ -25,6 +26,7 @@ public struct RuntimeConfigureActions {
         setStartOnBoot: @escaping (Bool) throws -> Void,
         setSystemSleepPrevention: @escaping (Bool) throws -> Void,
         setAutomaticBackupSchedule: @escaping (Bool, [String]) throws -> Void,
+        reconcileGuestComposeServices: @escaping () throws -> Void,
         restartRuntimeServices: @escaping () throws -> Void
     ) {
         self.resizeVMDiskIfNeeded = resizeVMDiskIfNeeded
@@ -34,6 +36,7 @@ public struct RuntimeConfigureActions {
         self.setStartOnBoot = setStartOnBoot
         self.setSystemSleepPrevention = setSystemSleepPrevention
         self.setAutomaticBackupSchedule = setAutomaticBackupSchedule
+        self.reconcileGuestComposeServices = reconcileGuestComposeServices
         self.restartRuntimeServices = restartRuntimeServices
     }
 }
@@ -79,6 +82,7 @@ public struct RuntimeConfigureCompositionOperations {
     let setStartOnBoot: (Bool) throws -> Void
     let setSystemSleepPrevention: (Bool) throws -> Void
     let setAutomaticBackupSchedule: (Bool, [String]) throws -> Void
+    let reconcileGuestComposeServices: () throws -> Void
     let restartRuntimeServices: () throws -> Void
     let log: (String) -> Void
 
@@ -91,6 +95,7 @@ public struct RuntimeConfigureCompositionOperations {
         setStartOnBoot: @escaping (Bool) throws -> Void,
         setSystemSleepPrevention: @escaping (Bool) throws -> Void,
         setAutomaticBackupSchedule: @escaping (Bool, [String]) throws -> Void,
+        reconcileGuestComposeServices: @escaping () throws -> Void,
         restartRuntimeServices: @escaping () throws -> Void,
         log: @escaping (String) -> Void
     ) {
@@ -102,6 +107,7 @@ public struct RuntimeConfigureCompositionOperations {
         self.setStartOnBoot = setStartOnBoot
         self.setSystemSleepPrevention = setSystemSleepPrevention
         self.setAutomaticBackupSchedule = setAutomaticBackupSchedule
+        self.reconcileGuestComposeServices = reconcileGuestComposeServices
         self.restartRuntimeServices = restartRuntimeServices
         self.log = log
     }
@@ -124,6 +130,7 @@ public enum RuntimeConfigureComposition {
                 setStartOnBoot: operations.setStartOnBoot,
                 setSystemSleepPrevention: operations.setSystemSleepPrevention,
                 setAutomaticBackupSchedule: operations.setAutomaticBackupSchedule,
+                reconcileGuestComposeServices: operations.reconcileGuestComposeServices,
                 restartRuntimeServices: operations.restartRuntimeServices
             ),
             maximumAllowedCPUCount: context.maximumAllowedCPUCount,
@@ -272,6 +279,8 @@ public struct RuntimeConfigureRunner {
                 }
             case .writeRedisRelayConfiguration(let redisRelay):
                 try writeRedisRelayConfiguration(redisRelay)
+            case .reconcileGuestComposeServices:
+                try actions.reconcileGuestComposeServices()
             case .restrictSecretFile(let url):
                 try actions.restrictSecretFile(url)
             case .restartRuntimeServices:

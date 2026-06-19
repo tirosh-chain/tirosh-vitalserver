@@ -82,18 +82,42 @@ public struct GuestRuntimeCapabilities: Codable, Equatable, Sendable {
     public let redisBackup: Bool
     public let redisRestore: Bool
     public let repairDatastore: Bool
+    public let reconcileCompose: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case prepareUpdateShutdown
+        case activateUpdate
+        case redisBackup
+        case redisRestore
+        case repairDatastore
+        case reconcileCompose
+    }
 
     public init(
         prepareUpdateShutdown: Bool,
         activateUpdate: Bool,
         redisBackup: Bool,
         redisRestore: Bool,
-        repairDatastore: Bool
+        repairDatastore: Bool,
+        reconcileCompose: Bool = false
     ) {
         self.prepareUpdateShutdown = prepareUpdateShutdown
         self.activateUpdate = activateUpdate
         self.redisBackup = redisBackup
         self.redisRestore = redisRestore
         self.repairDatastore = repairDatastore
+        self.reconcileCompose = reconcileCompose
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            prepareUpdateShutdown: try container.decode(Bool.self, forKey: .prepareUpdateShutdown),
+            activateUpdate: try container.decode(Bool.self, forKey: .activateUpdate),
+            redisBackup: try container.decode(Bool.self, forKey: .redisBackup),
+            redisRestore: try container.decode(Bool.self, forKey: .redisRestore),
+            repairDatastore: try container.decode(Bool.self, forKey: .repairDatastore),
+            reconcileCompose: try container.decodeIfPresent(Bool.self, forKey: .reconcileCompose) ?? false
+        )
     }
 }

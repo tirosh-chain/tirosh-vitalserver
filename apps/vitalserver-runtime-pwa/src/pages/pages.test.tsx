@@ -515,7 +515,7 @@ describe("runtime console pages", () => {
     ).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Period"), { target: { value: "7d" } });
-    fireEvent.change(screen.getByLabelText("Type"), {
+    fireEvent.change(screen.getByLabelText("Filter"), {
       target: { value: "recovery-deferred" }
     });
     fireEvent.change(screen.getByLabelText("Limit"), { target: { value: "100" } });

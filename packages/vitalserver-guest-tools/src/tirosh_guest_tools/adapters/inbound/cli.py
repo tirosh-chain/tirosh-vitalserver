@@ -31,6 +31,12 @@ from tirosh_guest_tools.application.redis_backup import (
 from tirosh_guest_tools.application.redis_backup import (
     run_redis_backup,
 )
+from tirosh_guest_tools.application.reconcile_compose import (
+    LOG_FILE as RECONCILE_COMPOSE_LOG_FILE,
+)
+from tirosh_guest_tools.application.reconcile_compose import (
+    run_reconcile_compose,
+)
 from tirosh_guest_tools.application.redis_repair import (
     LOG_FILE as REDIS_REPAIR_LOG_FILE,
 )
@@ -260,6 +266,14 @@ def vitalserver_redis_restore() -> int:
     parser.parse_args()
     configure_logging(SETTINGS.logging, log_file=REDIS_RESTORE_LOG_FILE)
     run_redis_restore()
+    return 0
+
+
+def vitalserver_reconcile_compose() -> int:
+    parser = argparse.ArgumentParser(description="Reconcile VitalServer compose services.")
+    parser.parse_args()
+    configure_logging(SETTINGS.logging, log_file=RECONCILE_COMPOSE_LOG_FILE)
+    run_reconcile_compose()
     return 0
 
 

@@ -16,6 +16,8 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(poller.contains("RuntimeService.REPAIR_DATASTORE"))
         XCTAssertTrue(poller.contains("RuntimeFileName.REDIS_BACKUP_REQUEST"))
         XCTAssertTrue(poller.contains("RuntimeService.REDIS_BACKUP"))
+        XCTAssertTrue(poller.contains("RuntimeFileName.RECONCILE_COMPOSE_REQUEST"))
+        XCTAssertTrue(poller.contains("RuntimeService.RECONCILE_COMPOSE"))
         XCTAssertTrue(poller.contains("\"start\", \"--no-block\""))
         XCTAssertFalse(poller.contains("PathExists="))
     }
@@ -118,7 +120,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
         XCTAssertEqual(
             compose.components(separatedBy: "seccomp=unconfined").count - 1,
-            8
+            9
         )
     }
 
@@ -264,6 +266,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_RUNTIME_BOOT_SMOKE"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_RUNTIME_DATA_PREPARE"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_ACTIVATE_UPDATE"))
+        XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_RECONCILE_COMPOSE"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_BOOTSTRAP"))
         let activationUseCase = try readGuestToolsFile("application/update_activation.py")
         let shutdownUseCase = try readGuestToolsFile("application/update_shutdown.py")

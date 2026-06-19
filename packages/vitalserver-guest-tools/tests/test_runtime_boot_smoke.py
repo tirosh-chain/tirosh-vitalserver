@@ -430,6 +430,7 @@ def write_valid_runtime_documents(
             "app",
             "audit-proxy",
             "vitaldb-observer",
+            "redis-relay",
             "redis-ui",
             "swagger-ui",
             "edge",
@@ -454,6 +455,7 @@ def write_valid_runtime_documents(
                 "activateUpdate": True,
                 "redisBackup": True,
                 "redisRestore": True,
+                "reconcileCompose": True,
                 "repairDatastore": True,
             },
             "httpProbes": {

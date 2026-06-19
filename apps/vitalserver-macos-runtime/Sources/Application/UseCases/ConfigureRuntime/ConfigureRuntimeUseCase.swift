@@ -195,6 +195,7 @@ public struct ConfigureRuntimeResult: Equatable, Sendable {
 
 public enum ConfigureRuntimeRestartRequirement: String, Equatable, Sendable {
     case none
+    case containerServices
     case vmRuntime
 
     public var requiresRestart: Bool {
@@ -213,6 +214,7 @@ public enum ConfigureRuntimeEffect: Equatable, Sendable {
     case setLogArchiveRetentionDays(Int)
     case setLogArchiveMaximumGiB(Int)
     case writeRedisRelayConfiguration(ConfigureRuntimeRedisRelaySettings)
+    case reconcileGuestComposeServices
     case restartRuntimeServices
 }
 
@@ -286,6 +288,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                      .setLogArchiveRetentionDays,
                      .setLogArchiveMaximumGiB,
                      .writeRedisRelayConfiguration,
+                     .reconcileGuestComposeServices,
                      .restartRuntimeServices:
                     return false
                 }
@@ -297,6 +300,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                      .setLogArchiveRetentionDays,
                      .setLogArchiveMaximumGiB,
                      .writeRedisRelayConfiguration,
+                     .reconcileGuestComposeServices,
                      .restartRuntimeServices:
                     return true
                 case .createDirectory,
@@ -353,11 +357,12 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
             current: currentVMConfig,
             planned: vmConfig,
             currentVMDiskSizeGiB: currentVMDiskSizeGiB,
-            requestedDiskGiB: requestedDiskGiB
+            requestedDiskGiB: requestedDiskGiB,
+            changes: request.changes
         )
         let restart = request.restart && restartRequirement.requiresRestart
-        if restart {
-            effects.append(.restartRuntimeServices)
+        if restart, let activationEffect = activationEffect(for: restartRequirement) {
+            effects.append(activationEffect)
         }
 
         return ConfigureRuntimePlan(
@@ -375,7 +380,8 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         current: VMConfig,
         planned: VMConfig,
         currentVMDiskSizeGiB: Int,
-        requestedDiskGiB: Int?
+        requestedDiskGiB: Int?,
+        changes: [ConfigureRuntimeChange<VMConfig.ConfigureNetworkMode>] = []
     ) -> ConfigureRuntimeRestartRequirement {
         if let requestedDiskGiB, requestedDiskGiB > currentVMDiskSizeGiB {
             return .vmRuntime
@@ -395,7 +401,23 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         if current.configureVitalFilesDirectoryHostPath != planned.configureVitalFilesDirectoryHostPath {
             return .vmRuntime
         }
+        if changes.contains(where: \.changesRedisRelay) {
+            return .containerServices
+        }
         return .none
+    }
+
+    private func activationEffect(
+        for requirement: ConfigureRuntimeRestartRequirement
+    ) -> ConfigureRuntimeEffect? {
+        switch requirement {
+        case .none:
+            return nil
+        case .containerServices:
+            return .reconcileGuestComposeServices
+        case .vmRuntime:
+            return .restartRuntimeServices
+        }
     }
 
     private func requestedDiskGiB(
@@ -638,6 +660,15 @@ private extension ConfigureRuntimeChange {
     var changesAutomaticBackupSchedule: Bool {
         switch self {
         case .automaticBackup, .backupScheduleTimes:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var changesRedisRelay: Bool {
+        switch self {
+        case .redisRelay:
             return true
         default:
             return false
