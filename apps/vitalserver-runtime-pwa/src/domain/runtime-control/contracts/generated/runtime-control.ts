@@ -1371,10 +1371,16 @@ export interface components {
         };
         RuntimeContainerServiceObservation: {
             service: string;
+            containerID?: string | null;
             name?: string | null;
             state?: string | null;
             health?: string | null;
             exitCode?: number | null;
+            error?: string | null;
+            finishedAt?: string | null;
+            memoryLimitBytes?: number | null;
+            oomKilled?: boolean | null;
+            restartCount?: number | null;
             startedAt?: string | null;
             uptimeSeconds?: number | null;
         };
