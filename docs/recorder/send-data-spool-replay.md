@@ -52,6 +52,11 @@ Recorder ingress는 `send_data`에 대해 아래 상태를 명시적으로 소�
 Replay 성공은 "upstream으로 `send_data` 전달을 완료했다"는 뜻입니다. VitalServer가 내부 Redis key를
 어떤 domain 상태로 만들었는지는 upstream의 책임입니다.
 
+현재 replay adapter는 upstream VitalServer와 같은 Socket.IO v2 계열 client로 upstream app에 연결한 뒤
+`send_data` event를 emit합니다. Ack를 요구하지 않는 upstream handler이므로, ingress의 replay 성공은
+Socket.IO 연결과 emit 완료를 뜻합니다. upstream 내부 `monitor.send_data` 처리 결과를 ingress domain
+state로 추정하지 않습니다.
+
 ## 3. Ingress mode
 
 `sendDataIngressModes`는 `apps/vitalserver-recorder-ingress/src/domain/send-data-ingress-contracts.ts`가
@@ -66,6 +71,10 @@ Replay 성공은 "upstream으로 `send_data` 전달을 완료했다"는 뜻입�
 
 Mode는 설정으로 명시되어야 합니다. 설정 누락, decode 실패, 저장소 연결 실패를 `passthrough` 성공으로
 처리하지 않습니다.
+
+`spool_and_replay`에서는 replay worker가 pending list에서 item을 claim해 in-flight list로 옮깁니다.
+성공하면 replayed list, retry 한도 초과 또는 invalid payload는 dead-letter list로 이동합니다. 일시적인
+upstream 실패는 `retryable_failed` 상태로 pending list에 다시 기록합니다.
 
 ## 4. 수신 결과
 
@@ -190,8 +199,8 @@ Phase 3/4에서 구현된 뒤 runtime contract와 health policy의 required read
 - audit 실패와 spool 실패가 다른 counter로 남음
 
 Phase 3의 `mirror_spool`은 upstream WebSocket pipe를 아직 끊지 않습니다. 따라서 `rejected`는 네트워크
-수신 거부가 아니라 spool 기록 거부 evidence입니다. 실제 upstream 유입 차단과 replay 전환은 Phase 4의
-frame-level cutover에서 수행합니다.
+수신 거부가 아니라 spool 기록 거부 evidence입니다. 실제 upstream 유입 차단은 별도 frame-level cutover
+proof에서 검증해야 합니다.
 
 ### Phase 4 proof
 
@@ -200,6 +209,10 @@ frame-level cutover에서 수행합니다.
 - payload invalid는 retry하지 않고 `dead_lettered`가 됨
 - replay rate limit이 적용됨
 - replay lag가 status에 드러남
+
+Phase 4의 current implementation proof는 replay worker와 storage transition 단위에서 검증합니다.
+WebSocket frame-level direct relay suppression은 `spool_only`/`spool_and_replay` 운영 전환의 별도
+cutover proof로 남깁니다.
 
 ### Phase 5 proof
 

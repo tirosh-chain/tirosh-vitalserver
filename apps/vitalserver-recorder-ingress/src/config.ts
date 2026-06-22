@@ -36,9 +36,24 @@ function loadConfig(env) {
       mode: sendDataMode,
       storage: "redis_list",
       listKey: env.RECORDER_INGRESS_SEND_DATA_REDIS_LIST || "vitalserver:recorder_ingress:send_data:pending",
+      inFlightListKey: env.RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST || "vitalserver:recorder_ingress:send_data:in_flight",
+      replayedListKey: env.RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST || "vitalserver:recorder_ingress:send_data:replayed",
+      deadLetterListKey: env.RECORDER_INGRESS_SEND_DATA_DEAD_LETTER_REDIS_LIST || "vitalserver:recorder_ingress:send_data:dead_letter",
       maxPendingItems: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS", 10000),
       maxPendingBytes: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES", 512 * 1024 * 1024),
       maxPayloadBytes: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES", 10 * 1024 * 1024),
+      replay: {
+        enabled: booleanEnv(
+          env,
+          "RECORDER_INGRESS_SEND_DATA_REPLAY_ENABLED",
+          sendDataMode === sendDataIngressModes.SPOOL_AND_REPLAY
+        ),
+        intervalMs: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS", 1000),
+        batchSize: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", 1),
+        maxAttempts: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS", 3),
+        rateLimitPerSecond: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND", 1),
+        targetTimeoutMs: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS", 5000),
+      },
     },
     clientIp: {
       trustProxy: /^(1|true|yes)$/i.test(env.VITALSERVER_TRUST_PROXY || "1"),
@@ -55,6 +70,12 @@ function loadConfig(env) {
 function numberEnv(env, name, fallback) {
   const value = Number.parseInt(env[name] || "", 10);
   return Number.isFinite(value) ? value : fallback;
+}
+
+function booleanEnv(env, name, fallback) {
+  if (!Object.prototype.hasOwnProperty.call(env, name)) return fallback;
+  if (env[name] === "") return fallback;
+  return /^(1|true|yes)$/i.test(env[name] || "");
 }
 
 function logFormatEnv(env, name, fallback) {

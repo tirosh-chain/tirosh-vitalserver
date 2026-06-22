@@ -117,13 +117,26 @@ Redis는 현재 `3.2.12`로 pin되어 있으므로 Redis Stream 대신 Redis Lis
 |---|---|---|
 | `RECORDER_INGRESS_SEND_DATA_MODE` | `mirror_spool` | `passthrough`, `mirror_spool`, `spool_only`, `spool_and_replay` 중 하나 |
 | `RECORDER_INGRESS_SEND_DATA_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:pending` | durable `send_data` spool Redis List key |
+| `RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:in_flight` | replay worker가 claim한 item의 in-flight Redis List key |
+| `RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:replayed` | replay 완료 item Redis List key |
+| `RECORDER_INGRESS_SEND_DATA_DEAD_LETTER_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:dead_letter` | retry하지 않는 dead-letter item Redis List key |
 | `RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS` | `10000` | mirror spool pending item limit |
 | `RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES` | `536870912` | mirror spool pending byte limit |
 | `RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES` | `10485760` | 단일 `send_data` payload spool limit |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_ENABLED` | mode 기반 | 빈 값이면 `spool_and_replay`에서 활성화, 그 외 mode에서 비활성화 |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS` | `1000` | replay worker tick interval |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE` | `1` | worker tick마다 처리할 최대 item 수 |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS` | `3` | retry 후 dead-letter로 전환할 최대 replay 시도 수 |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND` | `1` | worker tick에서 적용하는 replay rate limit |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS` | `5000` | upstream Socket.IO replay 연결 timeout |
 
 `mirror_spool`은 Phase 3의 안전한 중간 모드입니다. upstream relay는 유지하면서 durable spool evidence를
 기록합니다. 이 모드에서 limit 초과는 spool status의 `rejected`/`spool_full` evidence로 남지만, 아직
 VRecorder의 upstream 전송을 차단하지 않습니다.
+
+`spool_and_replay`는 Phase 4의 replay worker를 활성화합니다. worker는 pending list에서 item을 claim해
+in-flight list로 옮긴 뒤 upstream Socket.IO `send_data` event로 재전송합니다. 성공 item은 replayed list,
+retry 한도 초과 또는 invalid payload는 dead-letter list로 이동합니다.
 
 ### 4-4. VRecorder IP rewrite 설정
 

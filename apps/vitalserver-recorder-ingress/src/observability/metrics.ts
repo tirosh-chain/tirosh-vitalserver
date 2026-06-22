@@ -19,6 +19,7 @@ function createMetrics() {
     redisIpVerifyFailures: 0,
     redisIpVerifyMismatches: 0,
     sendDataSpool: defaultSpoolStatus(),
+    sendDataReplay: defaultReplayStatus(),
   };
 }
 
@@ -40,6 +41,7 @@ function metricsSnapshot(metrics) {
         lastSendDataObservedAt: recorder.lastSendDataObservedAt || null,
         redisIpSync: recorder.redisIpSync || null,
         spool: recorderSpoolSnapshot(recorder.spool || defaultRecorderSpoolStatus()),
+        replay: recorderReplaySnapshot(recorder.replay || defaultRecorderReplayStatus()),
       }))
       .sort((left, right) => left.vrcode.localeCompare(right.vrcode)),
     httpRequests: metrics.httpRequests,
@@ -55,6 +57,7 @@ function metricsSnapshot(metrics) {
     redisIpVerifyFailures: metrics.redisIpVerifyFailures,
     redisIpVerifyMismatches: metrics.redisIpVerifyMismatches,
     spool: spoolSnapshot(metrics.sendDataSpool),
+    replay: replaySnapshot(metrics.sendDataReplay),
   };
 }
 
@@ -68,6 +71,8 @@ function configureSendDataSpool(metrics, config) {
   metrics.sendDataSpool.mode = config.mode;
   metrics.sendDataSpool.storage = config.storage || "redis_list";
   metrics.sendDataSpool.status = config.enabled ? "ready" : "disabled";
+  metrics.sendDataReplay.status = config.replay && config.replay.enabled ? "idle" : "disabled";
+  metrics.sendDataReplay.rateLimitPerSecond = config.replay ? config.replay.rateLimitPerSecond : 0;
 }
 
 function sendDataSpoolState(metrics) {
@@ -161,12 +166,18 @@ function recordSendDataSpoolSpooled(metrics, vrcode, payloadBytes, depth) {
     spool.oldestPendingAt = spool.oldestPendingAt || observedAt;
     spool.lastSpooledAt = observedAt;
   });
+  updateReplay(metrics.sendDataReplay, (replay) => {
+    if (replay.status !== "disabled") replay.pendingItems += 1;
+  });
   updateRecorderSpool(metrics, vrcode, (spool) => {
     spool.spooledEvents += 1;
     spool.pendingItems += 1;
     spool.pendingBytes += bytes;
     spool.oldestPendingAt = spool.oldestPendingAt || observedAt;
     spool.lastSpooledAt = observedAt;
+  });
+  updateRecorderReplay(metrics, vrcode, (replay) => {
+    if (metrics.sendDataReplay.status !== "disabled") replay.pendingItems += 1;
   });
 }
 
@@ -196,6 +207,77 @@ function recordSendDataSpoolWriteFailed(metrics, vrcode, reason, message) {
   });
 }
 
+function recordSendDataReplayClaimFailed(metrics, reason, message) {
+  const failure = failureRecord(reason, message);
+  updateReplay(metrics.sendDataReplay, (replay) => {
+    replay.status = "failed";
+    replay.lastFailure = failure;
+  });
+}
+
+function recordSendDataReplayStarted(metrics, vrcode, item) {
+  updateReplay(metrics.sendDataReplay, (replay) => {
+    replay.status = "replaying";
+    replay.inFlightItems += 1;
+    replay.pendingItems = Math.max(0, replay.pendingItems - 1);
+  });
+  updateRecorderReplay(metrics, vrcode, (replay) => {
+    replay.inFlightItems += 1;
+    replay.pendingItems = Math.max(0, replay.pendingItems - 1);
+  });
+}
+
+function recordSendDataReplaySucceeded(metrics, vrcode, item) {
+  const replayedAt = new Date().toISOString();
+  updateReplay(metrics.sendDataReplay, (replay) => {
+    replay.status = "idle";
+    replay.inFlightItems = Math.max(0, replay.inFlightItems - 1);
+    replay.replayedEvents += 1;
+    replay.lastReplayAt = replayedAt;
+    replay.replayLagSeconds = replayLagSeconds(item && item.receivedAt, replayedAt);
+  });
+  updateRecorderReplay(metrics, vrcode, (replay) => {
+    replay.inFlightItems = Math.max(0, replay.inFlightItems - 1);
+    replay.replayedEvents += 1;
+    replay.lastReplayAt = replayedAt;
+    replay.replayLagSeconds = replayLagSeconds(item && item.receivedAt, replayedAt);
+  });
+}
+
+function recordSendDataReplayRetryableFailed(metrics, vrcode, item, failure) {
+  updateReplay(metrics.sendDataReplay, (replay) => {
+    replay.status = "degraded";
+    replay.inFlightItems = Math.max(0, replay.inFlightItems - 1);
+    replay.pendingItems += 1;
+    replay.retryableFailures += 1;
+    replay.lastFailure = failure;
+    replay.replayLagSeconds = replayLagSeconds(item && item.receivedAt);
+  });
+  updateRecorderReplay(metrics, vrcode, (replay) => {
+    replay.inFlightItems = Math.max(0, replay.inFlightItems - 1);
+    replay.pendingItems += 1;
+    replay.retryableFailures += 1;
+    replay.lastFailure = failure;
+    replay.replayLagSeconds = replayLagSeconds(item && item.receivedAt);
+  });
+}
+
+function recordSendDataReplayDeadLettered(metrics, vrcode, item, failure) {
+  updateReplay(metrics.sendDataReplay, (replay) => {
+    replay.status = "degraded";
+    replay.inFlightItems = Math.max(0, replay.inFlightItems - 1);
+    replay.deadLetteredEvents += 1;
+    replay.lastFailure = failure;
+    replay.replayLagSeconds = replayLagSeconds(item && item.receivedAt);
+  });
+  updateRecorderReplay(metrics, vrcode, (replay) => {
+    replay.inFlightItems = Math.max(0, replay.inFlightItems - 1);
+    replay.deadLetteredEvents += 1;
+    replay.lastFailure = failure;
+    replay.replayLagSeconds = replayLagSeconds(item && item.receivedAt);
+  });
+}
+
 function recordRecorderDisconnect(metrics, context) {
   const vrcode = context.metrics_vrcode;
   if (!vrcode) return;
@@ -221,6 +303,19 @@ function updateRecorderSpool(metrics, vrcode, apply) {
 
 function updateSpool(spool, apply) {
   apply(spool);
+}
+
+function updateRecorderReplay(metrics, vrcode, apply) {
+  if (!vrcode) return;
+  const recorder = metrics.recorders.get(vrcode) || defaultRecorderStatus();
+  recorder.replay = recorder.replay || defaultRecorderReplayStatus();
+  updateReplay(recorder.replay, apply);
+  recorder.lastSeenAt = new Date().toISOString();
+  metrics.recorders.set(vrcode, recorder);
+}
+
+function updateReplay(replay, apply) {
+  apply(replay);
 }
 
 function spoolSnapshot(spool) {
@@ -256,11 +351,47 @@ function recorderSpoolSnapshot(spool) {
   };
 }
 
+function replaySnapshot(replay) {
+  return {
+    status: replay.status,
+    pendingItems: replay.pendingItems,
+    inFlightItems: replay.inFlightItems,
+    replayedEvents: replay.replayedEvents,
+    retryableFailures: replay.retryableFailures,
+    deadLetteredEvents: replay.deadLetteredEvents,
+    replayLagSeconds: replay.replayLagSeconds,
+    rateLimitPerSecond: replay.rateLimitPerSecond,
+    lastReplayAt: replay.lastReplayAt,
+    lastFailure: replay.lastFailure,
+  };
+}
+
+function recorderReplaySnapshot(replay) {
+  return {
+    pendingItems: replay.pendingItems,
+    inFlightItems: replay.inFlightItems,
+    replayedEvents: replay.replayedEvents,
+    retryableFailures: replay.retryableFailures,
+    deadLetteredEvents: replay.deadLetteredEvents,
+    replayLagSeconds: replay.replayLagSeconds,
+    lastReplayAt: replay.lastReplayAt,
+    lastFailure: replay.lastFailure,
+  };
+}
+
 function oldestPendingAgeSeconds(oldestPendingAt) {
   if (!oldestPendingAt) return null;
   const oldest = Date.parse(oldestPendingAt);
   if (!Number.isFinite(oldest)) return null;
   return Math.max(0, Math.floor((Date.now() - oldest) / 1000));
+}
+
+function replayLagSeconds(receivedAt, replayedAt = new Date().toISOString()) {
+  if (!receivedAt) return null;
+  const received = Date.parse(receivedAt);
+  const replayed = Date.parse(replayedAt);
+  if (!Number.isFinite(received) || !Number.isFinite(replayed)) return null;
+  return Math.max(0, Math.floor((replayed - received) / 1000));
 }
 
 function failureRecord(reason, message) {
@@ -282,6 +413,7 @@ function defaultRecorderStatus() {
     lastSendDataObservedAt: null,
     redisIpSync: null,
     spool: defaultRecorderSpoolStatus(),
+    replay: defaultRecorderReplayStatus(),
   };
 }
 
@@ -303,6 +435,21 @@ function defaultSpoolStatus() {
   };
 }
 
+function defaultReplayStatus() {
+  return {
+    status: "disabled",
+    pendingItems: 0,
+    inFlightItems: 0,
+    replayedEvents: 0,
+    retryableFailures: 0,
+    deadLetteredEvents: 0,
+    replayLagSeconds: null,
+    rateLimitPerSecond: 0,
+    lastReplayAt: null,
+    lastFailure: null,
+  };
+}
+
 function defaultRecorderSpoolStatus() {
   return {
     acceptedEvents: 0,
@@ -318,6 +465,19 @@ function defaultRecorderSpoolStatus() {
   };
 }
 
+function defaultRecorderReplayStatus() {
+  return {
+    pendingItems: 0,
+    inFlightItems: 0,
+    replayedEvents: 0,
+    retryableFailures: 0,
+    deadLetteredEvents: 0,
+    replayLagSeconds: null,
+    lastReplayAt: null,
+    lastFailure: null,
+  };
+}
+
 module.exports = {
   configureSendDataSpool,
   createMetrics,
@@ -326,6 +486,11 @@ module.exports = {
   recordSendDataSpoolRejected,
   recordSendDataSpoolSpooled,
   recordSendDataSpoolWriteFailed,
+  recordSendDataReplayClaimFailed,
+  recordSendDataReplayDeadLettered,
+  recordSendDataReplayRetryableFailed,
+  recordSendDataReplayStarted,
+  recordSendDataReplaySucceeded,
   recordRecorderJoin,
   recordRecorderIpSync,
   recordSendDataObserved,
