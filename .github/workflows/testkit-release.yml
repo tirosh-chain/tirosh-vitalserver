@@ -106,7 +106,7 @@ jobs:
         run: uv run ruff check packages/vitalserver-testkit/src packages/vitalserver-testkit/tests scripts
 
       - name: Typecheck
-        run: uv run mypy
+        run: uv run mypy packages/vitalserver-testkit scripts
 
       - name: Test
         run: uv run pytest packages/vitalserver-testkit/tests
