@@ -1,4 +1,4 @@
-.PHONY: testkit/health testkit/smoke testkit/verify testkit/load testkit/stream
+.PHONY: testkit/health testkit/smoke testkit/verify testkit/load testkit/stream testkit/recorder-ingress/replay
 .PHONY: require-testkit-runtime
 
 require-testkit-runtime:
@@ -24,3 +24,13 @@ testkit/stream: require-testkit-runtime compose/up
 	else \
 		exit "$$status"; \
 	fi
+
+testkit/recorder-ingress/replay: require-testkit-runtime
+	RECORDER_INGRESS_SEND_DATA_MODE=spool_and_replay \
+	RECORDER_INGRESS_SEND_DATA_REPLAY_ENABLED=1 \
+	RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS=250 \
+	RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND=20 \
+	$(PYTHON) scripts/recorder_ingress_compose_e2e.py \
+		--compose "$(DOCKER_COMPOSE)" \
+		--bind-host "$(VITALSERVER_BIND_HOST)" \
+		--http-port "$(VITALSERVER_HTTP_PORT)"

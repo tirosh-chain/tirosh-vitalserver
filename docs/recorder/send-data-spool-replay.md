@@ -219,6 +219,18 @@ Phase 3의 `mirror_spool`은 upstream WebSocket pipe를 끊지 않습니다. 따
 Phase 4의 implementation proof는 replay worker/storage transition 단위 테스트와 local fake upstream을
 사용한 recorder ingress WebSocket relay integration test로 검증합니다.
 
+Compose 환경 proof는 Swift/macOS runtime build 전에 실행합니다. 이 proof는 실제 Compose의
+`recorder-ingress`, upstream `app`, `redis`, testkit Socket.IO client를 함께 사용해 `spool_and_replay`
+경로를 확인합니다.
+
+```sh
+make testkit/recorder-ingress/replay
+```
+
+성공 조건은 testkit stream이 보낸 `send_data` 수만큼 recorder ingress status의 `spooledEvents`와
+`replayedEvents`가 증가하고, Redis `dead_letter` list가 비어 있는 것입니다. Swift `dist/dmg/*` build는
+이 compose proof 이후 guest packaging과 VM compile 경로를 검증하는 단계로 둡니다.
+
 ### Phase 5 proof
 
 - runtime이 recorder ingress status read failure, invalid response, spool failure, replay lag를 구분함
