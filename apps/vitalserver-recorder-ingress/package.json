@@ -7,7 +7,9 @@
   "main": "proxy.js",
   "scripts": {
     "start": "node proxy.js",
-    "test": "node --test tests/*.test.js",
+    "test": "find tests -name '*.test.js' -print | sort | xargs node --test",
+    "test:unit": "find tests/unit -name '*.test.js' -print | sort | xargs node --test",
+    "test:integration": "find tests/integration -name '*.test.js' -print | sort | xargs node --test",
     "check": "find . -name '*.js' -print -exec node --check {} \\;"
   },
   "engines": {

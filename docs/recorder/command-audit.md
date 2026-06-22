@@ -216,6 +216,11 @@ Runtime Control read model을 거쳐 Recorders 화면의 IP column과 Recorder D
 전달하면서 audit용 mirror buffer만 별도로 보관합니다. 가능한 경우 payload를 inflate해서 `vrcode`,
 `version`, `rooms_count`를 기록하고, decode에 실패하면 size와 decode error만 기록합니다.
 
+현재 이 절은 audit 관측 계약입니다. Issue #68의 본 해결에서는 recorder ingress가 `send_data`를
+upstream으로 바로 흘려보내는 대신 durable spool에 기록하고 replay worker가 통제된 속도로 upstream에
+재생해야 합니다. 그 상태, 실패 reason, backpressure 계약은
+[Recorder ingress send_data spool/replay contract](send-data-spool-replay.md)를 기준으로 합니다.
+
 ```json
 {
   "event_type": "send_data",

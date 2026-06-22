@@ -13,6 +13,7 @@
 | Vital Server Helper release/dev 문서 작성 기준 보기 | [Vital Server Helper Release/Dev Documentation Plan](product/release-dev-documentation-plan.md) |
 | VRecorder가 VitalServer에 어떻게 붙는지 보기 | [Vital Recorder](recorder/vrecorder.md) |
 | command audit event 계약 확인하기 | [VitalServer command audit](recorder/command-audit.md) |
+| recorder `send_data` spool/replay 계약 확인하기 | [Recorder ingress send_data spool/replay contract](recorder/send-data-spool-replay.md) |
 | testkit으로 검증 실행하기 | [Testkit 사용법](testkit/usage.md) |
 | Redis key와 relay 근거 보기 | [Redis 데이터 구조](recorder/redis-data-model.md) |
 | Mac mini VM runtime/package 이해하기 | [VitalServer macOS Runtime](runtime/macos/index.md) |
@@ -42,6 +43,7 @@
 |---|---|
 | [Vital Recorder](recorder/vrecorder.md) | Socket.IO 접속 흐름, VRecorder 식별 기준, Web Monitoring 상태 표시 기준 |
 | [VitalServer command audit](recorder/command-audit.md) | recorder ingress 기반 `join_vr`, `send_data`, `req_cmd`, dispatch event 계약 |
+| [Recorder ingress send_data spool/replay contract](recorder/send-data-spool-replay.md) | upstream 수정 없이 `send_data`를 수신, 저장, 재생하기 위한 상태/실패/backpressure 계약 |
 | [Redis 데이터 구조](recorder/redis-data-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 메모 |
 | [OpenAPI 문서](api/vitalserver.openapi.yaml) | upstream VitalServer route에서 추출한 Swagger/OpenAPI spec |
 | [Recorder Ingress OpenAPI](api/recorder-ingress.openapi.yaml) | recorder ingress sidecar 운영 endpoint spec |

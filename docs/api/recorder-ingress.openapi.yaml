@@ -18,7 +18,7 @@ paths:
     get:
       operationId: getRecorderIngressStatus
       summary: Read recorder ingress counters
-      description: Returns in-memory counters for proxy traffic, Socket.IO parsing, and audit sink failures.
+      description: Returns in-memory counters for proxy traffic, Socket.IO parsing, audit sink failures, and planned send_data spool/replay status fields.
       responses:
         "200":
           description: Recorder ingress status counters.
@@ -105,6 +105,14 @@ components:
         redisIpVerifyMismatches:
           type: integer
           minimum: 0
+        spool:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/RecorderIngressSpoolStatus"
+        replay:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/RecorderIngressReplayStatus"
     RecorderConnection:
       type: object
       additionalProperties: false
@@ -139,6 +147,14 @@ components:
           nullable: true
           allOf:
             - $ref: "#/components/schemas/RecorderRedisIPSync"
+        spool:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/RecorderSpoolStatus"
+        replay:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/RecorderReplayStatus"
     RecorderRedisIPSync:
       type: object
       additionalProperties: false
@@ -161,5 +177,236 @@ components:
           type: string
           nullable: true
         lastFailure:
+          type: string
+          nullable: true
+    RecorderIngressSpoolStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - status
+        - storage
+        - acceptedEvents
+        - spooledEvents
+        - rejectedEvents
+        - writeFailures
+        - pendingItems
+        - pendingBytes
+        - oldestPendingAgeSeconds
+        - lastAcceptedAt
+        - lastSpooledAt
+        - lastFailure
+      properties:
+        mode:
+          $ref: "#/components/schemas/SendDataIngressMode"
+        status:
+          $ref: "#/components/schemas/RecorderIngressSpoolStatusValue"
+        storage:
+          type: string
+          enum:
+            - redis_list
+        acceptedEvents:
+          type: integer
+          minimum: 0
+        spooledEvents:
+          type: integer
+          minimum: 0
+        rejectedEvents:
+          type: integer
+          minimum: 0
+        writeFailures:
+          type: integer
+          minimum: 0
+        pendingItems:
+          type: integer
+          minimum: 0
+        pendingBytes:
+          type: integer
+          minimum: 0
+        oldestPendingAgeSeconds:
+          type: integer
+          minimum: 0
+          nullable: true
+        lastAcceptedAt:
+          type: string
+          nullable: true
+        lastSpooledAt:
+          type: string
+          nullable: true
+        lastFailure:
+          $ref: "#/components/schemas/RecorderIngressFailure"
+    RecorderIngressReplayStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - pendingItems
+        - inFlightItems
+        - replayedEvents
+        - retryableFailures
+        - deadLetteredEvents
+        - replayLagSeconds
+        - rateLimitPerSecond
+        - lastReplayAt
+        - lastFailure
+      properties:
+        status:
+          $ref: "#/components/schemas/RecorderIngressReplayStatusValue"
+        pendingItems:
+          type: integer
+          minimum: 0
+        inFlightItems:
+          type: integer
+          minimum: 0
+        replayedEvents:
+          type: integer
+          minimum: 0
+        retryableFailures:
+          type: integer
+          minimum: 0
+        deadLetteredEvents:
+          type: integer
+          minimum: 0
+        replayLagSeconds:
+          type: integer
+          minimum: 0
+          nullable: true
+        rateLimitPerSecond:
+          type: integer
+          minimum: 0
+          nullable: true
+        lastReplayAt:
+          type: string
+          nullable: true
+        lastFailure:
+          $ref: "#/components/schemas/RecorderIngressFailure"
+    RecorderSpoolStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - acceptedEvents
+        - spooledEvents
+        - rejectedEvents
+        - writeFailures
+        - pendingItems
+        - pendingBytes
+        - oldestPendingAgeSeconds
+        - lastAcceptedAt
+        - lastSpooledAt
+        - lastFailure
+      properties:
+        acceptedEvents:
+          type: integer
+          minimum: 0
+        spooledEvents:
+          type: integer
+          minimum: 0
+        rejectedEvents:
+          type: integer
+          minimum: 0
+        writeFailures:
+          type: integer
+          minimum: 0
+        pendingItems:
+          type: integer
+          minimum: 0
+        pendingBytes:
+          type: integer
+          minimum: 0
+        oldestPendingAgeSeconds:
+          type: integer
+          minimum: 0
+          nullable: true
+        lastAcceptedAt:
+          type: string
+          nullable: true
+        lastSpooledAt:
+          type: string
+          nullable: true
+        lastFailure:
+          $ref: "#/components/schemas/RecorderIngressFailure"
+    RecorderReplayStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - pendingItems
+        - inFlightItems
+        - replayedEvents
+        - retryableFailures
+        - deadLetteredEvents
+        - replayLagSeconds
+        - lastReplayAt
+        - lastFailure
+      properties:
+        pendingItems:
+          type: integer
+          minimum: 0
+        inFlightItems:
+          type: integer
+          minimum: 0
+        replayedEvents:
+          type: integer
+          minimum: 0
+        retryableFailures:
+          type: integer
+          minimum: 0
+        deadLetteredEvents:
+          type: integer
+          minimum: 0
+        replayLagSeconds:
+          type: integer
+          minimum: 0
+          nullable: true
+        lastReplayAt:
+          type: string
+          nullable: true
+        lastFailure:
+          $ref: "#/components/schemas/RecorderIngressFailure"
+    SendDataIngressMode:
+      type: string
+      enum:
+        - passthrough
+        - spool_only
+        - spool_and_replay
+    RecorderIngressSpoolStatusValue:
+      type: string
+      enum:
+        - unavailable
+        - disabled
+        - ready
+        - degraded
+        - failed
+    RecorderIngressReplayStatusValue:
+      type: string
+      enum:
+        - unavailable
+        - disabled
+        - idle
+        - replaying
+        - degraded
+        - failed
+    RecorderIngressFailure:
+      type: object
+      nullable: true
+      additionalProperties: false
+      required:
+        - reason
+        - message
+        - occurredAt
+      properties:
+        reason:
+          type: string
+          enum:
+            - invalid_payload
+            - spool_unavailable
+            - spool_full
+            - spool_write_failed
+            - upstream_unavailable
+            - upstream_timeout
+            - upstream_rejected
+            - replay_session_unavailable
+        message:
+          type: string
+        occurredAt:
           type: string
           nullable: true
