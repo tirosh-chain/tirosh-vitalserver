@@ -31,20 +31,20 @@ class KeyFilterPolicy:
     deny_globs: tuple[str, ...]
 
     def decide(self, key: str) -> KeyDecision:
-        for pattern in self.deny_globs:
-            if fnmatchcase(key, pattern):
+        for glob in self.deny_globs:
+            if fnmatchcase(key, glob):
                 return KeyDecision(
                     should_copy=False,
                     reason=DecisionReason.DENIED,
-                    matched_rule=pattern,
+                    matched_rule=glob,
                 )
 
-        for pattern in self.allow_regexes:
-            if pattern.fullmatch(key):
+        for regex in self.allow_regexes:
+            if regex.fullmatch(key):
                 return KeyDecision(
                     should_copy=True,
                     reason=DecisionReason.ALLOWED,
-                    matched_rule=pattern.pattern,
+                    matched_rule=regex.pattern,
                 )
 
         return KeyDecision(should_copy=False, reason=DecisionReason.NO_ALLOW_MATCH)

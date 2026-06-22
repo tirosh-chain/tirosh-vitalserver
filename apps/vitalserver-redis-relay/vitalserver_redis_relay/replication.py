@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Protocol
+from typing import Any, Protocol
 
 from .key_filter import DecisionReason, KeyFilterPolicy
 
@@ -161,21 +161,8 @@ def fingerprint(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _replace(result: RelayBatchResult, **changes: object) -> RelayBatchResult:
-    values = {
-        "scanned": result.scanned,
-        "copied": result.copied,
-        "published": result.published,
-        "unchanged": result.unchanged,
-        "duplicates": result.duplicates,
-        "skipped": result.skipped,
-        "denied": result.denied,
-        "missing": result.missing,
-        "errors": result.errors,
-        "error_samples": result.error_samples,
-    }
-    values.update(changes)
-    return RelayBatchResult(**values)
+def _replace(result: RelayBatchResult, **changes: Any) -> RelayBatchResult:
+    return replace(result, **changes)
 
 
 def _with_error_sample(

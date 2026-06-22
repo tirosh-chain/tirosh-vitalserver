@@ -3,10 +3,10 @@ from __future__ import annotations
 import socket
 import ssl
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from types import TracebackType
-from typing import Any, Callable
+from typing import Any
 
 from .replication import (
     KeyType,
@@ -403,6 +403,7 @@ class RedisClientSession:
     def _authenticate(self, connection: socket.socket | ssl.SSLSocket) -> None:
         if not self._endpoint.password:
             return
+        parts: tuple[str, ...]
         if self._endpoint.username:
             parts = ("AUTH", self._endpoint.username, self._endpoint.password)
         else:
