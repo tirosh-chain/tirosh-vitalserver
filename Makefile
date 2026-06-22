@@ -417,7 +417,7 @@ help/devtools:
 	@printf "\n"
 	@printf "VARIABLES\n"
 	@printf "  VM_COMPRESSION_THREADS=N      Use pigz with N compression threads when available\n"
-	@printf "  VM_ROOTFS_READY_TIMEOUT=300   Diagnostic wait timeout for rootfs compile proof\n"
+	@printf "  VM_ROOTFS_READY_TIMEOUT=600   Diagnostic wait timeout for rootfs compile proof\n"
 	@printf "  VM_ROOTFS_SMOKE_FAIL_STAGE=x  Diagnostic fault injection for golden rootfs negative tests\n"
 
 help/proxy:

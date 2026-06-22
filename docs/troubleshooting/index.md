@@ -99,6 +99,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-088 | Fresh install 후 Redis Relay image/source 누락으로 bootstrap 실패 | Packaging / Guest bootstrap | implemented | [Redis Relay Missing From Package Bundle](088_redis-relay-missing-from-package-bundle.md) |
 | TS-089 | macOS host watchdog timeout으로 재부팅됨 | Runtime health / Host resources / VM lifecycle | active | [Host macOS Watchdog Timeout Under VM Memory Pressure](089_host-macos-watchdog-timeout-under-vm-memory-pressure.md) |
 | TS-090 | VitalServer app OOM을 app boundary와 명시 증거로 분리해야 함 | Runtime health / Recorder streaming | implemented | [VitalServer App OOM Boundary And Evidence](090_vitalserver-app-oom-boundary-and-evidence.md) |
+| TS-091 | Golden rootfs smoke가 edge-ready 통과 후 cleanup wait 예산에 걸림 | Packaging / Local development / Guest bootstrap | implemented | [Golden Rootfs Cleanup Wait Timeout](091_golden-rootfs-cleanup-timeout.md) |
 
 ## Follow-up 규칙
 
