@@ -76,6 +76,10 @@ Mode는 설정으로 명시되어야 합니다. 설정 누락, decode 실패, �
 성공하면 replayed list, retry 한도 초과 또는 invalid payload는 dead-letter list로 이동합니다. 일시적인
 upstream 실패는 `retryable_failed` 상태로 pending list에 다시 기록합니다.
 
+`spool_only`와 `spool_and_replay`에서는 recorder ingress가 client WebSocket frame을 frame-level로 relay합니다.
+Socket.IO `send_data` text event와 binary attachment는 upstream direct relay에서 제거하고, `join_vr`,
+`req_cmd`, control frame 등 다른 frame은 계속 전달합니다.
+
 ## 4. 수신 결과
 
 `sendDataIngressOutcomes`는 recorder ingress가 각 `send_data` 수신에 대해 기록해야 하는 결과입니다.
@@ -198,9 +202,9 @@ Phase 3/4에서 구현된 뒤 runtime contract와 health policy의 required read
 - mirror spool limit 초과가 `rejected`와 `spool_full` evidence로 남음
 - audit 실패와 spool 실패가 다른 counter로 남음
 
-Phase 3의 `mirror_spool`은 upstream WebSocket pipe를 아직 끊지 않습니다. 따라서 `rejected`는 네트워크
-수신 거부가 아니라 spool 기록 거부 evidence입니다. 실제 upstream 유입 차단은 별도 frame-level cutover
-proof에서 검증해야 합니다.
+Phase 3의 `mirror_spool`은 upstream WebSocket pipe를 끊지 않습니다. 따라서 `rejected`는 네트워크
+수신 거부가 아니라 spool 기록 거부 evidence입니다. upstream direct `send_data` 유입 차단은 Phase 4의
+`spool_only`/`spool_and_replay` frame-level relay에서 수행합니다.
 
 ### Phase 4 proof
 
@@ -209,10 +213,11 @@ proof에서 검증해야 합니다.
 - payload invalid는 retry하지 않고 `dead_lettered`가 됨
 - replay rate limit이 적용됨
 - replay lag가 status에 드러남
+- `spool_only`에서 client `send_data` frame이 upstream으로 direct relay되지 않음
+- `mirror_spool`에서 client `send_data` frame이 기존처럼 upstream으로 direct relay됨
 
-Phase 4의 current implementation proof는 replay worker와 storage transition 단위에서 검증합니다.
-WebSocket frame-level direct relay suppression은 `spool_only`/`spool_and_replay` 운영 전환의 별도
-cutover proof로 남깁니다.
+Phase 4의 implementation proof는 replay worker/storage transition 단위 테스트와 local fake upstream을
+사용한 recorder ingress WebSocket relay integration test로 검증합니다.
 
 ### Phase 5 proof
 

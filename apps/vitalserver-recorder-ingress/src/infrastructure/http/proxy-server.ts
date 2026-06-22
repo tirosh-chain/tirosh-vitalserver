@@ -23,6 +23,7 @@ const { createVrIdentityStore } = require("../redis/vr-identity-store");
 const { createSocketIoSendDataReplayTarget } = require("../socketio/send-data-replay-target");
 const { createBodyMirror } = require("./body-mirror");
 const { createClientIpSelector } = require("./client-ip");
+const { createClientWebSocketRelay, shouldSuppressSendDataRelay } = require("./websocket-client-relay");
 const { createWebSocketParser } = require("./websocket-parser");
 
 function createRecorderIngressServer(config) {
@@ -134,23 +135,37 @@ function createUpstreamRequest(req, res, context, responseMirror, { audit, confi
 
 function proxyUpgrade(req, socket, head, dependencies) {
   const context = createRequestContext(req, dependencies.clientIp);
+  const suppressSendDataRelay = shouldSuppressSendDataRelay(dependencies.config.spool.mode);
   const upstream = net.createConnection(
     { host: dependencies.config.upstream.host, port: dependencies.config.upstream.port },
     () => {
-      upstream.write(upgradeRequestBytes(req));
-      if (head && head.length > 0) upstream.write(head);
       dependencies.metrics.activeWebSockets += 1;
-      socket.pipe(upstream);
+      if (!suppressSendDataRelay) {
+        socket.pipe(upstream);
+      }
       upstream.pipe(socket);
+      upstream.write(upgradeRequestBytes(req));
+      if (head && head.length > 0) {
+        if (suppressSendDataRelay) {
+          for (const chunk of clientRelay.push(head)) upstream.write(chunk);
+        } else {
+          upstream.write(head);
+        }
+      }
     }
   );
 
-  const clientParser = createWebSocketParser((payload, opcode) => {
+  const inspectClientFrame = (payload, opcode) => {
     if (opcode === 1) {
       dependencies.socketIoAudit.inspect(payload.toString("utf8"), "client", context);
     } else if (opcode === 2) {
       dependencies.socketIoAudit.inspectBinary(payload, "client", context);
     }
+  };
+  const clientParser = createWebSocketParser(inspectClientFrame);
+  const clientRelay = createClientWebSocketRelay({
+    mode: dependencies.config.spool.mode,
+    onFrame: inspectClientFrame,
   });
   const serverParser = createWebSocketParser((payload, opcode) => {
     if (opcode === 1) {
@@ -159,9 +174,17 @@ function proxyUpgrade(req, socket, head, dependencies) {
       dependencies.socketIoAudit.inspectBinary(payload, "server", context);
     }
   });
-  if (head && head.length > 0) clientParser.push(head);
+  if (head && head.length > 0 && !suppressSendDataRelay) {
+    clientParser.push(head);
+  }
   observeServerFramesAfterHandshake(upstream, serverParser);
-  socket.on("data", (chunk) => clientParser.push(chunk));
+  if (suppressSendDataRelay) {
+    socket.on("data", (chunk) => {
+      for (const relayed of clientRelay.push(chunk)) upstream.write(relayed);
+    });
+  } else {
+    socket.on("data", (chunk) => clientParser.push(chunk));
+  }
   closeSocketsTogether(socket, upstream, dependencies.metrics, context);
 }
 

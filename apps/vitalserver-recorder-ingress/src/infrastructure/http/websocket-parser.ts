@@ -48,7 +48,49 @@ function readFrame(buffer) {
     payload = Buffer.from(payload.map((byte, index) => byte ^ maskKey[index % 4]));
   }
 
-  return { opcode, payload, nextOffset: offset + len };
+  return {
+    opcode,
+    payload,
+    rawFrame: buffer.slice(0, offset + len),
+    nextOffset: offset + len,
+  };
 }
 
-module.exports = { createWebSocketParser };
+function encodeWebSocketFrame(payload, opcode, options: any = {}) {
+  const buffer = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload), "utf8");
+  const mask = Boolean(options.mask);
+  const length = buffer.length;
+  const lengthBytes = length < 126 ? 0 : length <= 0xffff ? 2 : 8;
+  const headerLength = 2 + lengthBytes + (mask ? 4 : 0);
+  const frame = Buffer.alloc(headerLength + length);
+  frame[0] = 0x80 | (opcode & 0x0f);
+
+  let offset = 2;
+  if (length < 126) {
+    frame[1] = length | (mask ? 0x80 : 0);
+  } else if (length <= 0xffff) {
+    frame[1] = 126 | (mask ? 0x80 : 0);
+    frame.writeUInt16BE(length, offset);
+    offset += 2;
+  } else {
+    frame[1] = 127 | (mask ? 0x80 : 0);
+    frame.writeUInt32BE(Math.floor(length / 2 ** 32), offset);
+    frame.writeUInt32BE(length >>> 0, offset + 4);
+    offset += 8;
+  }
+
+  if (mask) {
+    const maskKey = options.maskKey || Buffer.from([0x12, 0x34, 0x56, 0x78]);
+    maskKey.copy(frame, offset);
+    offset += 4;
+    for (let index = 0; index < length; index += 1) {
+      frame[offset + index] = buffer[index] ^ maskKey[index % 4];
+    }
+  } else {
+    buffer.copy(frame, offset);
+  }
+
+  return frame;
+}
+
+module.exports = { createWebSocketParser, encodeWebSocketFrame, readFrame };
