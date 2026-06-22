@@ -37,7 +37,9 @@ export function backupRequest(path: string): RuntimeBackupRequest {
 }
 
 export function uninstallRequest(clean: boolean): RuntimeUninstallRequest {
-  return parseConsoleRequest(runtimeUninstallRequestSchema, { clean });
+  return parseConsoleRequest(runtimeUninstallRequestSchema, {
+    mode: clean ? "clean" : "standard"
+  });
 }
 
 export function testKitCreateBedsRequest(

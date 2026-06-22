@@ -30,10 +30,10 @@ final class RuntimeInstallServiceStarterTests: XCTestCase {
         XCTAssertEqual(events.values, [
             "start:\(RuntimeManagedService.sleepPrevention.label)",
             "start:\(RuntimeManagedService.vm.label)",
-            "cleanup-proxy-port",
-            "start:\(RuntimeManagedService.proxy.label)",
             "start:\(RuntimeManagedService.guestLogSync.label)",
             "start:\(RuntimeManagedService.watchdog.label)",
+            "cleanup-proxy-port",
+            "start:\(RuntimeManagedService.proxy.label)",
         ])
     }
 

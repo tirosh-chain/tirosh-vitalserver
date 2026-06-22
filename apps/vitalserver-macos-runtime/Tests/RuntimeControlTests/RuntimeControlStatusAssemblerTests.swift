@@ -278,6 +278,36 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         XCTAssertEqual(failed.dataDirectoryStatsError, "permission denied")
     }
 
+    func testMakeStatusIncludesRedisRelayStatusRead() {
+        let redisRelayStatus = RuntimeRedisRelayStatus(
+            observedAt: "2026-06-18T05:00:00Z",
+            enabled: true,
+            state: "running",
+            scope: "vital_reconstruction",
+            targetUrl: "redis://127.0.0.1:16381/0",
+            batches: 3,
+            totals: RuntimeRedisRelayBatch(scanned: 30, copied: 4, unchanged: 20),
+            lastBatch: RuntimeRedisRelayBatch(scanned: 10, copied: 0, unchanged: 10)
+        )
+
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            statusRead: RuntimeStatusDocumentRead(
+                document: statusDocument(proxyPort: 80),
+                error: nil,
+                issue: nil
+            ),
+            guestStateRead: GuestRuntimeStateRead(document: nil, error: nil, issue: nil),
+            redisRelayStatusRead: RuntimeRedisRelayStatusRead(
+                document: redisRelayStatus,
+                error: nil,
+                issue: nil
+            ),
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.redisRelayStatus, redisRelayStatus)
+    }
+
     private func statusDocument(proxyPort: Int?) -> RuntimeStatusDocument {
         RuntimeStatusDocument(
             product: "VitalServerHelper",

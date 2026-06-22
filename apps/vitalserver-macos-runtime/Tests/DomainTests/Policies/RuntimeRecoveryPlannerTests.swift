@@ -13,7 +13,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertFalse(plan.restartProxy)
     }
 
-    func testGuestReadinessFailureRestartsVMAndProxyAfterWakeTransitions() {
+    func testGuestReadinessFailureReconcilesGuestComposeAfterWakeTransitions() {
         let plan = RuntimeRecoveryPlanner.plan(input(
             vmLifecycle: runningLifecycle(),
             guestHTTP: "503",
@@ -22,25 +22,29 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         ))
 
         XCTAssertTrue(plan.canRecover)
-        XCTAssertTrue(plan.restartVM)
-        XCTAssertTrue(plan.restartProxy)
-        XCTAssertEqual(plan.restartReasons, [
+        XCTAssertFalse(plan.restartVM)
+        XCTAssertFalse(plan.restartProxy)
+        XCTAssertTrue(plan.reconcileGuestCompose)
+        XCTAssertEqual(plan.actionReasons, [
             .guestHTTPUnhealthy("503"),
-            .vmRestartRequiresProxyRestart,
         ])
     }
 
-    func testGuestReadinessFailureWithoutVMLifecycleBlocksRecovery() {
+    func testGuestReadinessFailureWithoutVMLifecycleCanReconcileGuestCompose() {
         let plan = RuntimeRecoveryPlanner.plan(input(
             guestHTTP: "503",
             hostProxyReadinessHTTP: "502",
             hostProxyLivenessHTTP: "204"
         ))
 
-        XCTAssertFalse(plan.canRecover)
+        XCTAssertTrue(plan.canRecover)
         XCTAssertFalse(plan.restartVM)
         XCTAssertFalse(plan.restartProxy)
-        XCTAssertEqual(plan.blockers, ["recovery-blocked-missing-vm-lifecycle-for-vm-restart"])
+        XCTAssertTrue(plan.reconcileGuestCompose)
+        XCTAssertEqual(plan.blockers, [])
+        XCTAssertEqual(plan.actionReasons, [
+            .guestHTTPUnhealthy("503"),
+        ])
     }
 
     func testProxyLivenessFailureRestartsProxy() {
@@ -52,7 +56,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertTrue(plan.canRecover)
         XCTAssertFalse(plan.restartVM)
         XCTAssertTrue(plan.restartProxy)
-        XCTAssertEqual(plan.restartReasons, [
+        XCTAssertEqual(plan.actionReasons, [
             .hostProxyLivenessUnhealthy("503"),
             .hostProxyReadinessUnhealthy("502"),
         ])
@@ -68,7 +72,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertTrue(plan.canRecover)
         XCTAssertFalse(plan.restartVM)
         XCTAssertTrue(plan.restartProxy)
-        XCTAssertEqual(plan.restartReasons, [
+        XCTAssertEqual(plan.actionReasons, [
             .hostProxyReadinessUnhealthy("502"),
         ])
     }
@@ -79,7 +83,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertTrue(plan.canRecover)
         XCTAssertTrue(plan.restartVM)
         XCTAssertTrue(plan.restartProxy)
-        XCTAssertEqual(plan.restartReasons, [
+        XCTAssertEqual(plan.actionReasons, [
             .missingVMIP,
             .vmRestartRequiresProxyRestart,
         ])
@@ -104,7 +108,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertTrue(plan.restartVM)
         XCTAssertTrue(plan.restartProxy)
         XCTAssertEqual(plan.blockers, [])
-        XCTAssertEqual(plan.restartReasons, [
+        XCTAssertEqual(plan.actionReasons, [
             .missingVMIP,
             .guestHTTPUnhealthy(RuntimeHTTPStatusText.missingVMIP),
             .vmRestartRequiresProxyRestart,
@@ -153,10 +157,10 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertTrue(plan.canRecover)
         XCTAssertFalse(plan.restartVM)
         XCTAssertFalse(plan.restartProxy)
-        XCTAssertEqual(plan.restartReasons, [])
+        XCTAssertEqual(plan.actionReasons, [])
     }
 
-    func testCriticalContainerServiceFailureRestartsVM() {
+    func testCriticalContainerServiceFailureReconcilesGuestCompose() {
         let plan = RuntimeRecoveryPlanner.plan(input(
             vmLifecycle: runningLifecycle(),
             containerObservation: RuntimeContainerObservation(
@@ -175,11 +179,11 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         ))
 
         XCTAssertTrue(plan.canRecover)
-        XCTAssertTrue(plan.restartVM)
-        XCTAssertTrue(plan.restartProxy)
-        XCTAssertEqual(plan.restartReasons, [
-            .containerFailureRequiresVMRestart,
-            .vmRestartRequiresProxyRestart,
+        XCTAssertFalse(plan.restartVM)
+        XCTAssertFalse(plan.restartProxy)
+        XCTAssertTrue(plan.reconcileGuestCompose)
+        XCTAssertEqual(plan.actionReasons, [
+            .containerFailureRequiresComposeReconcile,
         ])
     }
 
@@ -192,7 +196,7 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertTrue(plan.canRecover)
         XCTAssertFalse(plan.restartVM)
         XCTAssertFalse(plan.restartProxy)
-        XCTAssertEqual(plan.restartReasons, [])
+        XCTAssertEqual(plan.actionReasons, [])
     }
 
     func testServiceReadFailureBlocksRecoveryInsteadOfRestartingServices() {
@@ -219,12 +223,12 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         XCTAssertTrue(plan.canRecover)
         XCTAssertTrue(plan.restartVM)
         XCTAssertTrue(plan.restartProxy)
-        XCTAssertEqual(plan.restartReasons, [
+        XCTAssertEqual(plan.actionReasons, [
             .vmServiceNotLoaded("not loaded"),
             .vmRestartRequiresProxyRestart,
             .proxyServiceNotLoaded("not loaded"),
         ])
-        XCTAssertEqual(plan.restartReasonCodes, [
+        XCTAssertEqual(plan.actionReasonCodes, [
             "vm-service-not-loaded-not_loaded",
             "vm-restart-requires-proxy-restart",
             "proxy-service-not-loaded-not_loaded",

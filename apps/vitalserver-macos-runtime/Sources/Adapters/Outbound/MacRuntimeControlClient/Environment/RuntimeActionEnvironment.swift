@@ -7,6 +7,7 @@ import Errors
 protocol RuntimeActionEnvironment: Sendable {
     func executableState(atPath path: String) -> RuntimeFileState
     func writeAdminPasswordFile(_ password: String) throws -> URL
+    func writeRedisRelaySettingsFile(_ settings: RuntimeRedisRelaySettings) throws -> URL
     func removeItem(at url: URL) throws
     func verifyBundle(launcher: String, bundleURL: URL) async -> RuntimeCommandResult
 }
@@ -15,15 +16,18 @@ struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment, @unchecked Send
     private let fileStore: RuntimeFileStore
     private let temporaryDirectory: URL
     private let adminPasswordFileID: @Sendable () -> String
+    private let redisRelaySettingsFileID: @Sendable () -> String
 
     init(
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
         temporaryDirectory: URL = URL(fileURLWithPath: "/private/tmp", isDirectory: true),
-        adminPasswordFileID: @escaping @Sendable () -> String = { UUID().uuidString }
+        adminPasswordFileID: @escaping @Sendable () -> String = { UUID().uuidString },
+        redisRelaySettingsFileID: @escaping @Sendable () -> String = { UUID().uuidString }
     ) {
         self.fileStore = fileStore
         self.temporaryDirectory = temporaryDirectory
         self.adminPasswordFileID = adminPasswordFileID
+        self.redisRelaySettingsFileID = redisRelaySettingsFileID
     }
 
     func executableState(atPath path: String) -> RuntimeFileState {
@@ -33,18 +37,39 @@ struct SystemRuntimeActionEnvironment: RuntimeActionEnvironment, @unchecked Send
     func writeAdminPasswordFile(_ password: String) throws -> URL {
         let url = temporaryDirectory
             .appendingPathComponent("tirosh-vitalserver-admin-password-\(adminPasswordFileID())")
+        try writeSecretText(password, to: url, failure: RuntimeActionEnvironmentError.adminPasswordFileCreateFailed)
+        return url
+    }
+
+    func writeRedisRelaySettingsFile(_ settings: RuntimeRedisRelaySettings) throws -> URL {
+        let url = temporaryDirectory
+            .appendingPathComponent("tirosh-vitalserver-redis-relay-settings-\(redisRelaySettingsFileID()).json")
+        do {
+            let data = try JSONEncoder().encode(settings)
+            try fileStore.writeData(data, to: url, options: [], posixPermissions: 0o600)
+        } catch {
+            throw RuntimeActionEnvironmentError.redisRelaySettingsFileCreateFailed(
+                path: url.path,
+                reason: error.localizedDescription
+            )
+        }
+        return url
+    }
+
+    private func writeSecretText(
+        _ text: String,
+        to url: URL,
+        failure: (String, String) -> RuntimeActionEnvironmentError
+    ) throws {
+        let password = text
         guard let data = password.data(using: .utf8) else {
             throw RuntimeActionEnvironmentError.invalidAdminPassword
         }
         do {
             try fileStore.writeData(data, to: url, options: [], posixPermissions: 0o600)
         } catch {
-            throw RuntimeActionEnvironmentError.adminPasswordFileCreateFailed(
-                path: url.path,
-                reason: error.localizedDescription
-            )
+            throw failure(url.path, error.localizedDescription)
         }
-        return url
     }
 
     func removeItem(at url: URL) throws {

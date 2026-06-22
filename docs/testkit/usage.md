@@ -292,6 +292,15 @@ TestKit API의 SoT는 “시뮬레이터가 무엇을 실행 중인지”이다.
 
 파일 업로드 경로를 확인할 때 사용합니다. upstream 코드 기준 upload endpoint는
 `/upload` 또는 `/upload_vital.php`입니다. testkit 기본값은 `/upload`입니다.
+`.vital` 파일 저장 위치는 VitalServer Helper Settings의 `Vital files directory`가 SoT입니다.
+My Files 표시 여부는 별도 Redis 조회 index에 의해 결정되며, 이 index는 upload endpoint가 파일 저장과
+함께 생성합니다. 따라서 파일을 storage directory에 직접 복사하는 것만으로는 My Files에 표시되지 않을
+수 있습니다.
+
+Helper Test 탭의 `Manual .vital upload`는 로컬 `.vital` 파일 여러 개를 선택하고, 파일명
+`bedname_yymmdd_hhmmss.vital`에서 bed room name을 추출해 TestKit bed registry에 등록한 뒤,
+각 파일을 VitalServer `/upload`로 multipart streaming upload합니다. 이 경로는 파일 저장 위치와
+My Files 조회 index를 같은 VitalServer upload 계약으로 갱신하기 위한 기능입니다.
 
 ```sh
 uv run vitalserver-testkit upload-vital path/to/vital-files \

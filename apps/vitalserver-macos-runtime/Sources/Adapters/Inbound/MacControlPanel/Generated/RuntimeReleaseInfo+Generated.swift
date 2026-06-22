@@ -21,6 +21,11 @@ public extension RuntimeReleaseInfo {
                 version: GeneratedRelease.vitalDBObserverVersion
             ),
             RuntimeBundledServiceInfo(
+                name: GeneratedRelease.redisRelayName,
+                image: GeneratedRelease.redisRelayImage,
+                version: GeneratedRelease.redisRelayVersion
+            ),
+            RuntimeBundledServiceInfo(
                 name: GeneratedRelease.redisName,
                 image: GeneratedRelease.redisImage,
                 version: GeneratedRelease.redisVersion

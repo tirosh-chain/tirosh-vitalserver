@@ -128,17 +128,20 @@ public struct RuntimeTestKitCreateBedsRequest: Codable, Equatable, Sendable {
     public var count: Int?
     public var roomNames: [String]
     public var prefix: String
+    public var appendRandomSuffix: Bool
     public var adminUserID: String
 
     public init(
         count: Int? = nil,
         roomNames: [String] = [],
-        prefix: String = "testkit-bed",
+        prefix: String = "testbed",
+        appendRandomSuffix: Bool = true,
         adminUserID: String = "admin"
     ) {
         self.count = count
         self.roomNames = roomNames
         self.prefix = prefix
+        self.appendRandomSuffix = appendRandomSuffix
         self.adminUserID = adminUserID
     }
 
@@ -146,6 +149,7 @@ public struct RuntimeTestKitCreateBedsRequest: Codable, Equatable, Sendable {
         case count
         case roomNames
         case prefix
+        case appendRandomSuffix
         case adminUserID = "adminUserId"
     }
 }
@@ -170,6 +174,9 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
     public var maxMessages: Int?
     public var shiftTime: Bool
     public var generateFrames: Bool
+    public var exportVital: Bool
+    public var uploadVital: Bool
+    public var vitalUploadEndpoint: String
 
     public init(
         scenario: RuntimeTestKitScenario = .normal,
@@ -182,7 +189,10 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         durationSeconds: Double? = nil,
         maxMessages: Int? = nil,
         shiftTime: Bool = true,
-        generateFrames: Bool = true
+        generateFrames: Bool = true,
+        exportVital: Bool = false,
+        uploadVital: Bool = false,
+        vitalUploadEndpoint: String = "/upload"
     ) {
         self.scenario = scenario
         self.signalProfile = signalProfile
@@ -195,6 +205,9 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         self.maxMessages = maxMessages
         self.shiftTime = shiftTime
         self.generateFrames = generateFrames
+        self.exportVital = exportVital
+        self.uploadVital = uploadVital
+        self.vitalUploadEndpoint = vitalUploadEndpoint
     }
 
     enum CodingKeys: String, CodingKey {
@@ -209,6 +222,84 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         case maxMessages
         case shiftTime
         case generateFrames
+        case exportVital
+        case uploadVital
+        case vitalUploadEndpoint
+    }
+}
+
+public struct RuntimeTestKitSessionVitalArtifact: Codable, Equatable, Sendable {
+    public var path: String
+    public var filename: String
+    public var sizeBytes: Int
+    public var createdAt: Double
+    public var format: String
+    public var retentionPolicy: String
+
+    public init(
+        path: String,
+        filename: String,
+        sizeBytes: Int,
+        createdAt: Double,
+        format: String,
+        retentionPolicy: String
+    ) {
+        self.path = path
+        self.filename = filename
+        self.sizeBytes = sizeBytes
+        self.createdAt = createdAt
+        self.format = format
+        self.retentionPolicy = retentionPolicy
+    }
+}
+
+public struct RuntimeTestKitSessionVitalUploadResult: Codable, Equatable, Sendable {
+    public var statusCode: Int
+    public var ok: Bool
+    public var elapsedSeconds: Double
+    public var uploadedAt: Double
+    public var responseText: String
+    public var error: String?
+
+    public init(
+        statusCode: Int,
+        ok: Bool,
+        elapsedSeconds: Double,
+        uploadedAt: Double,
+        responseText: String,
+        error: String?
+    ) {
+        self.statusCode = statusCode
+        self.ok = ok
+        self.elapsedSeconds = elapsedSeconds
+        self.uploadedAt = uploadedAt
+        self.responseText = responseText
+        self.error = error
+    }
+}
+
+public struct RuntimeTestKitSessionVitalState: Codable, Equatable, Sendable {
+    public var exportStatus: String
+    public var uploadStatus: String
+    public var exportError: String?
+    public var uploadError: String?
+    public var artifact: RuntimeTestKitSessionVitalArtifact?
+    public var uploadResult: RuntimeTestKitSessionVitalUploadResult?
+
+    public init(
+        exportStatus: String,
+        uploadStatus: String,
+        exportError: String? = nil,
+        uploadError: String? = nil,
+        artifact: RuntimeTestKitSessionVitalArtifact? = nil,
+        uploadResult: RuntimeTestKitSessionVitalUploadResult? = nil
+    ) {
+        self.exportStatus = exportStatus
+        self.uploadStatus = uploadStatus
+        self.exportError = exportError
+        self.uploadError = uploadError
+        self.artifact = artifact
+        self.uploadResult = uploadResult
     }
 }
 
@@ -235,6 +326,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
     public var bytesSent: Int
     public var lastError: String?
     public var cleanupErrors: [RuntimeTestKitCleanupError]
+    public var vital: RuntimeTestKitSessionVitalState?
     public var recorders: [RuntimeTestKitRecorder]
 
     public init(
@@ -260,6 +352,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         bytesSent: Int,
         lastError: String?,
         cleanupErrors: [RuntimeTestKitCleanupError] = [],
+        vital: RuntimeTestKitSessionVitalState? = nil,
         recorders: [RuntimeTestKitRecorder]
     ) {
         self.id = id
@@ -284,6 +377,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         self.bytesSent = bytesSent
         self.lastError = lastError
         self.cleanupErrors = cleanupErrors
+        self.vital = vital
         self.recorders = recorders
     }
 
@@ -311,6 +405,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         bytesSent = try container.decode(Int.self, forKey: .bytesSent)
         lastError = try container.decodeIfPresent(String.self, forKey: .lastError)
         cleanupErrors = try container.decodeIfPresent([RuntimeTestKitCleanupError].self, forKey: .cleanupErrors) ?? []
+        vital = try container.decodeIfPresent(RuntimeTestKitSessionVitalState.self, forKey: .vital)
         recorders = try container.decode([RuntimeTestKitRecorder].self, forKey: .recorders)
     }
 
@@ -337,6 +432,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         case bytesSent
         case lastError
         case cleanupErrors
+        case vital
         case recorders
     }
 }
@@ -432,5 +528,76 @@ public struct RuntimeTestKitRecorder: Codable, Equatable, Sendable {
         case lastSendDataAt
         case messagesSent
         case bytesSent
+    }
+}
+
+public struct RuntimeTestKitVitalFileUploadRequest: Equatable, Sendable {
+    public var filePaths: [String]
+    public var vitalServerBaseURL: String
+    public var endpoint: String
+    public var registerBeds: Bool
+
+    public init(
+        filePaths: [String],
+        vitalServerBaseURL: String,
+        endpoint: String = "/upload",
+        registerBeds: Bool = true
+    ) {
+        self.filePaths = filePaths
+        self.vitalServerBaseURL = vitalServerBaseURL
+        self.endpoint = endpoint
+        self.registerBeds = registerBeds
+    }
+}
+
+public struct RuntimeTestKitVitalFileUploadSummary: Equatable, Sendable {
+    public var files: [RuntimeTestKitVitalFileUploadFileResult]
+    public var bedRoomNames: [String]
+
+    public init(
+        files: [RuntimeTestKitVitalFileUploadFileResult],
+        bedRoomNames: [String]
+    ) {
+        self.files = files
+        self.bedRoomNames = bedRoomNames
+    }
+
+    public var uploadedCount: Int {
+        files.filter(\.ok).count
+    }
+
+    public var failedCount: Int {
+        files.filter { !$0.ok }.count
+    }
+}
+
+public struct RuntimeTestKitVitalFileUploadFileResult: Equatable, Sendable {
+    public var path: String
+    public var filename: String
+    public var bedRoomName: String
+    public var sizeBytes: Int64
+    public var statusCode: Int
+    public var ok: Bool
+    public var elapsedSeconds: Double
+    public var error: String?
+
+    public init(
+        path: String,
+        filename: String,
+        bedRoomName: String,
+        sizeBytes: Int64,
+        statusCode: Int,
+        ok: Bool,
+        elapsedSeconds: Double,
+        error: String? = nil
+    ) {
+        self.path = path
+        self.filename = filename
+        self.bedRoomName = bedRoomName
+        self.sizeBytes = sizeBytes
+        self.statusCode = statusCode
+        self.ok = ok
+        self.elapsedSeconds = elapsedSeconds
+        self.error = error
     }
 }

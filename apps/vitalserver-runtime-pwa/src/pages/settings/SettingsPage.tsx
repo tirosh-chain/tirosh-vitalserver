@@ -14,6 +14,7 @@ import {
   usesCustomAdvertisedURL
 } from "@/pages/settings/runtimeSettingsForm";
 import {
+  runtimeSettingsActivationDecision,
   startOnBootControlState,
   validateRuntimeSettings,
   type RuntimeCapabilityReadState
@@ -109,7 +110,7 @@ export function SettingsPage() {
           title="VM resources"
           actions={
             <ConfirmButton
-              confirmMessage="Apply runtime settings? This may rewrite runtime configuration and restart runtime services when restart after save is enabled."
+              confirmMessage="Apply runtime settings? This may update launchd services, rewrite runtime configuration, and restart the VM runtime only when a changed setting requires it and activation after save is enabled."
               onClick={apply}
               disabled
             >
@@ -183,6 +184,9 @@ export function SettingsPage() {
   const logArchiveSettingsPending = runtimeSettings
     ? logArchiveSettingsChanged(settings.data, runtimeSettings)
     : false;
+  const activationDecision = runtimeSettings
+    ? runtimeSettingsActivationDecision(runtimeSettings, settings.data)
+    : null;
 
   return (
     <div className="page-stack">
@@ -190,7 +194,7 @@ export function SettingsPage() {
         title="VM resources"
         actions={
           <ConfirmButton
-            confirmMessage="Apply runtime settings? This may rewrite runtime configuration and restart runtime services when restart after save is enabled."
+            confirmMessage="Apply runtime settings? This may update launchd services, rewrite runtime configuration, and restart the VM runtime only when a changed setting requires it and activation after save is enabled."
             onClick={apply}
             disabled={!canApply}
           >
@@ -473,7 +477,7 @@ export function SettingsPage() {
                 updateField("restartAfterSave", event.target.checked)
               }
             />
-            Restart services after save
+            Activate required runtime changes after save
           </label>
         </div>
         {!startOnBootControl.enabled ? (
@@ -508,6 +512,34 @@ export function SettingsPage() {
             is available on the new port.
           </p>
         ) : null}
+      </Panel>
+
+      <Panel title="Change activation">
+        {activationDecision ? (
+          <>
+            <p
+              className={settingsApplyStateClassName(
+                activationDecision.requiresActivation
+              )}
+            >
+              {activationDecision.message}
+            </p>
+            {activationDecision.requiresVMRestart ? (
+              <p className="muted">
+                Requires VM restart. Required by:{" "}
+                {activationDecision.vmRestartChanges.join(", ")}.
+              </p>
+            ) : null}
+            {activationDecision.requiresContainerServicesReconcile ? (
+              <p className="muted">
+                Requires container reconcile. Required by:{" "}
+                {activationDecision.containerServiceChanges.join(", ")}.
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <p className="muted">Runtime activation state is not available.</p>
+        )}
       </Panel>
     </div>
   );

@@ -19,8 +19,10 @@ public protocol RuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusHTTPV
     var vitalServerName: String { get }
     var hostProxyName: String { get }
     var vitalDBObserverLabel: String { get }
+    var redisRelayLabel: String { get }
     var redisUIName: String { get }
     var swaggerUIName: String { get }
+    var disabledText: String { get }
     var waitingText: String { get }
     var guestStateStaleText: String { get }
 }
@@ -65,6 +67,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         case vitalServer = "app"
         case networkAccess = "edge"
         case vitalDBObserver = "vitaldb-observer"
+        case redisRelay = "redis-relay"
         case redisUI = "redis-ui"
         case swaggerUI = "swagger-ui"
     }
@@ -85,6 +88,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     public func serviceHealth(
         status: RuntimeStatus,
         observation: RuntimeContainerObservation?,
+        redisRelaySettings: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings(),
         now: Date
     ) -> [RuntimeStatusAdvancedServiceHealthItem] {
         let installInProgress = RuntimeActiveOperationPolicy.isInstallInProgress(status)
@@ -127,6 +131,16 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             composeServiceItem(
                 vocabulary.vitalDBObserverLabel,
                 service: .vitalDBObserver,
+                observation: observation,
+                now: now,
+                installInProgress: installInProgress,
+                initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
+                updateInProgress: updateInProgress
+            ),
+            redisRelayItem(
+                status: status,
+                settings: redisRelaySettings,
                 observation: observation,
                 now: now,
                 installInProgress: installInProgress,
@@ -267,6 +281,82 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         )
     }
 
+    private func redisRelayItem(
+        status: RuntimeStatus,
+        settings: RuntimeRedisRelaySettings,
+        observation: RuntimeContainerObservation?,
+        now: Date,
+        installInProgress: Bool,
+        initializationInProgress: Bool,
+        recoveryInProgress: Bool,
+        updateInProgress: Bool
+    ) -> RuntimeStatusAdvancedServiceHealthItem {
+        guard settings.enabled else {
+            return RuntimeStatusAdvancedServiceHealthItem(
+                label: vocabulary.redisRelayLabel,
+                value: RuntimeStatusAdvancedServiceHealthValue(
+                    text: vocabulary.disabledText,
+                    severity: .neutral,
+                    uptimeText: nil
+                ),
+                httpStatus: nil,
+                action: nil
+            )
+        }
+
+        let serviceValue = operationValue(
+            installInProgress: installInProgress,
+            initializationInProgress: initializationInProgress,
+            recoveryInProgress: recoveryInProgress,
+            updateInProgress: updateInProgress
+        ) ?? redisRelayValue(status: status, observation: observation, now: now)
+
+        return RuntimeStatusAdvancedServiceHealthItem(
+            label: vocabulary.redisRelayLabel,
+            value: serviceValue,
+            httpStatus: status.redisRelayStatus?.lastError,
+            action: nil
+        )
+    }
+
+    private func redisRelayValue(
+        status: RuntimeStatus,
+        observation: RuntimeContainerObservation?,
+        now: Date
+    ) -> RuntimeStatusAdvancedServiceHealthValue {
+        if let relayStatus = status.redisRelayStatus,
+           isRedisRelayFailureState(relayStatus.state) || relayStatus.lastError != nil {
+            return RuntimeStatusAdvancedServiceHealthValue(
+                text: vocabulary.failedText,
+                severity: .warning,
+                uptimeText: uptimeText(for: .redisRelay, observation: observation, now: now)
+            )
+        }
+
+        let composeValue = composeServiceValuePolicy.serviceValue(
+            service: ComposeService.redisRelay.rawValue,
+            observation: observation,
+            now: now
+        )
+        if composeValue.text != vocabulary.notReportedText {
+            return value(composeValue)
+        }
+
+        if let relayStatus = status.redisRelayStatus, !relayStatus.state.isEmpty {
+            return RuntimeStatusAdvancedServiceHealthValue(
+                text: vocabulary.containerStateText(relayStatus.state),
+                severity: redisRelaySeverity(state: relayStatus.state),
+                uptimeText: uptimeText(for: .redisRelay, observation: observation, now: now)
+            )
+        }
+
+        return RuntimeStatusAdvancedServiceHealthValue(
+            text: vocabulary.notReportedText,
+            severity: .warning,
+            uptimeText: nil
+        )
+    }
+
     private func composeServiceItem(
         _ label: String,
         service: ComposeService,
@@ -346,5 +436,21 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             return value(httpValuePolicy.updatingValue(uptimeText: nil))
         }
         return nil
+    }
+
+    private func isRedisRelayFailureState(_ state: String) -> Bool {
+        let normalized = state.lowercased()
+        return normalized == "failed" || normalized == "error"
+    }
+
+    private func redisRelaySeverity(state: String) -> RuntimeStatusReachabilityPolicy.Severity {
+        switch state.lowercased() {
+        case "running", "healthy":
+            return .healthy
+        case "disabled", "stopped":
+            return .neutral
+        default:
+            return .warning
+        }
     }
 }

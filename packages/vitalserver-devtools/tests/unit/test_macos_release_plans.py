@@ -8,8 +8,12 @@ from pathlib import Path
 
 import pytest
 
+from tirosh_vitalserver.devtools.adapters.build_config import load_config
 from tirosh_vitalserver.devtools.adapters.macos_release import installer_package
 from tirosh_vitalserver.devtools.adapters.toolchain.workspace_paths import repo_root
+from tirosh_vitalserver.devtools.application.guest_service_plans import (
+    docker_image_bundle_build_plan,
+)
 from tirosh_vitalserver.devtools.application.inputs import (
     MacOSPackageInstallInput,
     ReleaseDmgArtifactVerifyInput,
@@ -17,6 +21,7 @@ from tirosh_vitalserver.devtools.application.inputs import (
     ReleaseTroubleshootingToolsVerifyInput,
 )
 from tirosh_vitalserver.devtools.application.usecases import macos_package
+from tirosh_vitalserver.devtools.config.docker_images import load_docker_images_config
 from tirosh_vitalserver.devtools.config.macos.release_settings import (
     load_macos_release_settings,
 )
@@ -72,6 +77,65 @@ def test_package_clean_plan_rejects_workspace_root() -> None:
 
     with pytest.raises(DomainError, match="unsafe path"):
         package_clean_plan(root=root, settings=settings, release=release)
+
+
+def test_guest_compose_contract_accepts_release_declared_services() -> None:
+    root = repo_root()
+    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
+    build_config = load_config(root / "config/vm-build.toml")
+    docker_config = load_docker_images_config(build_config, root)
+    plan = docker_image_bundle_build_plan(
+        root=root,
+        docker_config=docker_config,
+        bundle_path=settings.docker_bundle,
+        platform=None,
+        compression_threads=None,
+    )
+
+    checks = macos_package.guest_compose_contract_preflight_checks(
+        root=root,
+        compose_path=settings.runtime_dir / "Support/Guest/compose.yaml",
+        plan=plan.image_plan,
+        known_images=set(docker_config.images) | set(docker_config.optional_images),
+        deploy_include_sources=[
+            include.source for include in settings.guest_deploy.includes
+        ],
+    )
+
+    assert not [check for check in checks if check.blocks]
+    assert any(check.name == "guest-compose-image:redis-relay" for check in checks)
+    assert any(check.name == "guest-compose-deploy:redis-relay" for check in checks)
+
+
+def test_guest_compose_contract_rejects_missing_redis_relay_deploy_include() -> None:
+    root = repo_root()
+    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
+    build_config = load_config(root / "config/vm-build.toml")
+    docker_config = load_docker_images_config(build_config, root)
+    plan = docker_image_bundle_build_plan(
+        root=root,
+        docker_config=docker_config,
+        bundle_path=settings.docker_bundle,
+        platform=None,
+        compression_threads=None,
+    )
+
+    checks = macos_package.guest_compose_contract_preflight_checks(
+        root=root,
+        compose_path=settings.runtime_dir / "Support/Guest/compose.yaml",
+        plan=plan.image_plan,
+        known_images=set(docker_config.images) | set(docker_config.optional_images),
+        deploy_include_sources=[
+            include.source
+            for include in settings.guest_deploy.includes
+            if include.source != Path("apps/vitalserver-redis-relay")
+        ],
+    )
+
+    redis_relay_deploy = next(
+        check for check in checks if check.name == "guest-compose-deploy:redis-relay"
+    )
+    assert redis_relay_deploy.status == PreflightStatus.INVALID
 
 
 def test_default_troubleshooting_tools_output_uses_release_label() -> None:

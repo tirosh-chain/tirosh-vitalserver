@@ -55,9 +55,12 @@ make dist/pkg/dev/verify
 For focused runtime validation:
 
 ```sh
-make dist/dmg/dev/runtime-smoke
+make dist/dmg/dev/verify
 make dist/pkg/dev/runtime-smoke
 ```
+
+DMG dev runtime smoke is an internal phase of `dist/dmg/dev/verify`; it is not exposed as a
+separate public workflow target.
 
 The runtime smoke must fail explicitly when bootstrap result, runtime state, systemd units,
 Docker/Compose health, HTTP readiness, disk health, capabilities, or command dispatch contracts do

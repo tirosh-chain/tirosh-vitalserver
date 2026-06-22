@@ -144,8 +144,8 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.verifyUpdateBundle(url: url)
     }
 
-    public func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
-        try await commandWorker.uninstallRuntime(clean: clean)
+    public func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult {
+        try await commandWorker.uninstallRuntime(mode: mode)
     }
 
     public func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult {

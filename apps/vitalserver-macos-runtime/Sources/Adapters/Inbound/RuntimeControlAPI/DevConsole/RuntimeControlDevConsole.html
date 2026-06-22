@@ -840,7 +840,7 @@
     async function startTestKit() {
       const beds = await postJSON("/dev/testkit/beds/create", {
         count: 1,
-        prefix: "testkit-bed"
+        prefix: "testbed"
       });
       const bedRoomNames = (beds || []).map((bed) => bed.roomName).slice(0, 1);
       const session = await postJSON("/dev/testkit/virtual-recorders/start", {

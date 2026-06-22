@@ -287,6 +287,26 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         deployDirectory.appendingPathComponent("runtime-settings.json")
     }
 
+    public var redisRelayConfigDirectory: URL {
+        deployDirectory.appendingPathComponent("redis-relay-config")
+    }
+
+    public var redisRelayConfig: URL {
+        redisRelayConfigDirectory.appendingPathComponent("redis-relay.toml")
+    }
+
+    public var redisRelaySecretsDirectory: URL {
+        deployDirectory.appendingPathComponent("redis-relay-secrets")
+    }
+
+    public var redisRelayTargetPassword: URL {
+        redisRelaySecretsDirectory.appendingPathComponent("redis-relay-target-password")
+    }
+
+    public var redisRelayStatusDirectory: URL {
+        guestRunDirectory.appendingPathComponent("redis-relay-status")
+    }
+
     public var hostTime: URL {
         deployDirectory.appendingPathComponent(RuntimeFileNames.hostTime)
     }

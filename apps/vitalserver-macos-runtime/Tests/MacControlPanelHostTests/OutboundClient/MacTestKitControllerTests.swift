@@ -304,9 +304,61 @@ final class MacTestKitControllerTests: XCTestCase {
         XCTAssertTrue(recorderDeletion.deleted)
         XCTAssertEqual(resetStatus.state, .running)
 
-        XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "POST" && $0.path == "/sessions" })
+        let startRequest = try XCTUnwrap(TestKitURLProtocol.requests.first {
+            $0.method == "POST" && $0.path == "/sessions"
+        })
+        let startBody = try JSONSerialization.jsonObject(with: startRequest.body) as? [String: Any]
+        XCTAssertEqual(startBody?["exportVital"] as? Bool, true)
+        XCTAssertEqual(startBody?["uploadVital"] as? Bool, true)
+        XCTAssertEqual(startBody?["vitalUploadEndpoint"] as? String, "/upload")
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "DELETE" && $0.path == "/beds" })
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "POST" && $0.path == "/recorders/delete" })
+    }
+
+    func testManualVitalUploadRegistersBedsFromFilenamesAndPostsFilesToUploadEndpoint() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let first = directory.appendingPathComponent("MORC03_260617_120000.vital")
+        let second = directory.appendingPathComponent("MORC04_260617_120100.vital")
+        try Data([1, 2, 3]).write(to: first)
+        try Data([4, 5]).write(to: second)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let client = FakeMacTestKitHTTPClient()
+        client.register(
+            method: "POST",
+            path: "/beds",
+            data: try JSONEncoder().encode(TestKitBedsPayload(beds: [
+                RuntimeTestKitBed(roomName: "MORC03", bedID: "bed-1"),
+                RuntimeTestKitBed(roomName: "MORC04", bedID: "bed-2"),
+            ]))
+        )
+        client.register(method: "POST", path: "/upload", data: Data("OK".utf8))
+        let controller = MacTestKitController(
+            configuration: MacTestKitControllerConfiguration(
+                enabled: true,
+                apiEndpoint: .explicit(baseURL: "http://testkit.local")
+            ),
+            statusProvider: { RuntimeStatus(vmIP: nil) },
+            httpClient: client,
+            apiHealthCheck: { _ in true }
+        )
+
+        let summary = try await controller.uploadVitalFiles(RuntimeTestKitVitalFileUploadRequest(
+            filePaths: [first.path, second.path],
+            vitalServerBaseURL: "http://127.0.0.1:18080/",
+            endpoint: "/upload"
+        ))
+
+        XCTAssertEqual(summary.bedRoomNames, ["MORC03", "MORC04"])
+        XCTAssertEqual(summary.uploadedCount, 2)
+        XCTAssertEqual(summary.failedCount, 0)
+        XCTAssertEqual(client.requests.map { "\($0.method) \($0.path)" }, [
+            "POST /beds",
+            "POST /upload",
+            "POST /upload",
+        ])
     }
 
     func testMutationReportsInvalidAPIEndpointAsTypedError() async throws {
@@ -444,7 +496,10 @@ final class MacTestKitControllerTests: XCTestCase {
             durationSeconds: nil,
             maxMessages: nil,
             shiftTime: true,
-            generateFrames: true
+            generateFrames: true,
+            exportVital: true,
+            uploadVital: true,
+            vitalUploadEndpoint: "/upload"
         )
     }
 
@@ -488,12 +543,20 @@ private final class FakeMacTestKitHTTPClient: MacTestKitHTTPClient, @unchecked S
     }
 
     func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        try await response(for: request)
+    }
+
+    func upload(for request: URLRequest, fromFile fileURL: URL) async throws -> (Data, URLResponse) {
+        try await response(for: request, body: Data(contentsOf: fileURL))
+    }
+
+    private func response(for request: URLRequest, body: Data? = nil) async throws -> (Data, URLResponse) {
         let method = request.httpMethod ?? "GET"
         let path = request.url?.path ?? "/"
         let key = "\(method) \(path)"
         let response = lock.withLock { handlers[key] } ?? Response(statusCode: 404, data: Data("missing mock".utf8))
         lock.withLock {
-            protectedRequests.append(TestKitRequestRecord(method: method, path: path, body: request.httpBody ?? Data()))
+            protectedRequests.append(TestKitRequestRecord(method: method, path: path, body: body ?? requestBodyData(request)))
         }
         let httpResponse = HTTPURLResponse(
             url: request.url!,
@@ -552,7 +615,7 @@ private final class TestKitURLProtocol: URLProtocol {
     override func startLoading() {
         let method = request.httpMethod ?? "GET"
         let path = request.url?.path ?? "/"
-        let body = request.httpBody ?? Data()
+        let body = requestBodyData(request)
         let key = "\(method) \(path)"
         let handler = Self.lock.withLock { Self.handlers[key] }
         Self.lock.withLock {
@@ -576,6 +639,27 @@ private final class TestKitURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
+}
+
+private func requestBodyData(_ request: URLRequest) -> Data {
+    if let body = request.httpBody {
+        return body
+    }
+    guard let stream = request.httpBodyStream else {
+        return Data()
+    }
+    stream.open()
+    defer { stream.close() }
+    var data = Data()
+    var buffer = [UInt8](repeating: 0, count: 4096)
+    while stream.hasBytesAvailable {
+        let count = stream.read(&buffer, maxLength: buffer.count)
+        if count <= 0 {
+            break
+        }
+        data.append(buffer, count: count)
+    }
+    return data
 }
 
 private func testKitSession(

@@ -608,27 +608,31 @@
   }
 
   .event-list {
-    @apply grid gap-[22px];
+    @apply grid max-h-[360px] gap-3 overflow-y-auto pr-2;
   }
 
   .event-item {
-    @apply border-b border-app-border pb-5 last:border-b-0 last:pb-0;
+    @apply grid gap-1.5 rounded-panel bg-app-bg px-3 py-2.5;
+    min-width: 0;
   }
 
   .event-meta {
-    @apply flex flex-wrap gap-3 text-sm font-bold text-app-muted;
+    @apply flex flex-wrap gap-x-3 gap-y-1 text-sm font-bold text-app-muted;
+    min-width: 0;
   }
 
-  .event-source {
+  .event-operation {
     @apply ml-auto;
   }
 
   .event-item h3 {
-    @apply mb-1.5 mt-2 text-lg font-extrabold;
+    @apply m-0 text-base font-extrabold leading-normal;
+    overflow-wrap: anywhere;
   }
 
   .event-item p {
     @apply m-0 leading-snug text-app-muted;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -658,7 +662,7 @@
     }
 
     .toolbar-count,
-    .event-source,
+    .event-operation,
     .chart-meta {
       margin-left: 0;
     }

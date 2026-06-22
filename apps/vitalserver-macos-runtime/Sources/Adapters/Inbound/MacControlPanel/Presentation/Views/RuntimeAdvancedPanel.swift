@@ -1,4 +1,5 @@
 import SwiftUI
+import RuntimeControl
 import Errors
 
 struct RuntimeAdvancedPanel: View {
@@ -20,6 +21,7 @@ struct RuntimeAdvancedPanel: View {
     @State private var showingRecoveryOperations = false
     @State private var showingAdvancedRepairTools = false
     @State private var showingNetworkOverrides = false
+    @State private var showingRedisRelay = false
     @State private var showingAdminOperations = false
     private let displayPolicy = RuntimeStatusDisplayPolicy()
     private let actionAvailabilityPolicy = RuntimeControlActionAvailabilityPolicy()
@@ -42,6 +44,7 @@ struct RuntimeAdvancedPanel: View {
         showingRecoveryOperations: Bool = false,
         showingAdvancedRepairTools: Bool = false,
         showingNetworkOverrides: Bool = false,
+        showingRedisRelay: Bool = false,
         showingAdminOperations: Bool = false
     ) {
         self.viewModel = viewModel
@@ -61,6 +64,7 @@ struct RuntimeAdvancedPanel: View {
         self._showingRecoveryOperations = State(initialValue: showingRecoveryOperations)
         self._showingAdvancedRepairTools = State(initialValue: showingAdvancedRepairTools)
         self._showingNetworkOverrides = State(initialValue: showingNetworkOverrides)
+        self._showingRedisRelay = State(initialValue: showingRedisRelay)
         self._showingAdminOperations = State(initialValue: showingAdminOperations)
     }
 
@@ -79,6 +83,7 @@ struct RuntimeAdvancedPanel: View {
                 serviceHealthCard
                 recoveryOperationsCard
                 networkOverridesCard
+                redisRelayCard
                 adminOperationsCard
             }
             .frame(maxWidth: 900, alignment: .leading)
@@ -138,7 +143,12 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var serviceHealthItems: [RuntimeStatusDisplayPolicy.ServiceHealthItem] {
-        displayPolicy.advancedServiceHealth(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
+        displayPolicy.advancedServiceHealth(
+            status: viewModel.status,
+            observation: viewModel.containerObservation,
+            redisRelaySettings: viewModel.runtimeSettings.redisRelay,
+            now: uptimeNow
+        )
     }
 
     private var recoveryOperationsCard: some View {
@@ -502,6 +512,147 @@ struct RuntimeAdvancedPanel: View {
         }
     }
 
+    private var redisRelayCard: some View {
+        advancedDisclosureCard(AppConstants.Labels.sectionRedisRelay, isExpanded: $showingRedisRelay) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(AppConstants.Labels.redisRelayHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                settingToggle(
+                    AppConstants.Labels.redisRelayEnabled,
+                    isOn: $viewModel.settings.redisRelay.enabled
+                )
+
+                settingRow(AppConstants.Labels.redisRelayFinalURL) {
+                    Text(redisRelayDraftURL)
+                        .fontWeight(.medium)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                settingTextField(
+                    AppConstants.Labels.redisRelayTargetURL,
+                    text: $viewModel.settings.redisRelay.target.url
+                )
+                settingHelp(AppConstants.Labels.redisRelayTargetURLHelp)
+                settingTextField(
+                    AppConstants.Labels.redisRelayUsername,
+                    text: $viewModel.settings.redisRelay.target.username
+                )
+                settingRow(AppConstants.Labels.redisRelayPassword) {
+                    SecureField("", text: $viewModel.settings.redisRelay.target.password)
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 360)
+                }
+                if viewModel.settings.redisRelay.target.passwordConfigured {
+                    settingHelp(AppConstants.Labels.redisRelayPasswordConfigured)
+                    settingToggle(
+                        AppConstants.Labels.redisRelayClearPassword,
+                        isOn: $viewModel.settings.redisRelay.target.clearPassword
+                    )
+                }
+                settingToggle(
+                    AppConstants.Labels.redisRelayTLS,
+                    isOn: $viewModel.settings.redisRelay.target.tls
+                )
+                settingRow(AppConstants.Labels.redisRelayScope) {
+                    Picker("", selection: $viewModel.settings.redisRelay.scope) {
+                        Text(AppConstants.Labels.redisRelayWaveformTrendOnly)
+                            .tag(RuntimeRedisRelayScope.waveformTrendOnly)
+                        Text(AppConstants.Labels.redisRelayVitalReconstruction)
+                            .tag(RuntimeRedisRelayScope.vitalReconstruction)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 360)
+                }
+                settingToggle(
+                    AppConstants.Labels.redisRelayRecorderNetworkContext,
+                    isOn: $viewModel.settings.redisRelay.includeRecorderNetworkContext
+                )
+                redisRelayStatusSummary
+                applyActionRow
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var redisRelayStatusSummary: some View {
+        if let status = viewModel.status.redisRelayStatus {
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 8) {
+                statusRow(AppConstants.Labels.redisRelayStatus, status.state)
+                statusRow(AppConstants.Labels.updatedAt, viewModel.presentationFormatter.systemTimeText(status.observedAt))
+                statusRow(AppConstants.Labels.redisRelayTarget, status.targetUrl ?? AppConstants.StatusText.unknown)
+                statusRow(AppConstants.Labels.redisRelayBatches, "\(status.batches)")
+                statusRow(AppConstants.Labels.redisRelayTotals, redisRelayBatchText(status.totals))
+                if let lastBatch = status.lastBatch {
+                    statusRow(AppConstants.Labels.redisRelayLastBatch, redisRelayBatchText(lastBatch))
+                }
+                if let lastSuccessAt = status.lastSuccessAt, !lastSuccessAt.isEmpty {
+                    statusRow(
+                        AppConstants.Labels.redisRelayLastSuccess,
+                        viewModel.presentationFormatter.systemTimeText(lastSuccessAt)
+                    )
+                }
+                if let lastErrorAt = status.lastErrorAt, !lastErrorAt.isEmpty {
+                    statusRow(
+                        AppConstants.Labels.redisRelayLastError,
+                        viewModel.presentationFormatter.systemTimeText(lastErrorAt)
+                    )
+                }
+                if let fingerprint = status.settingsFingerprint, !fingerprint.isEmpty {
+                    statusRow(AppConstants.Labels.redisRelaySettingsFingerprint) {
+                        Text(fingerprint)
+                            .font(.system(.body, design: .monospaced))
+                            .fontWeight(.medium)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                if let lastError = status.lastError, !lastError.isEmpty {
+                    statusRow(AppConstants.Labels.lastError) {
+                        Text(lastError)
+                            .fontWeight(.medium)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private func redisRelayBatchText(_ batch: RuntimeRedisRelayBatch) -> String {
+        [
+            "scanned \(batch.scanned)",
+            "copied \(batch.copied)",
+            "unchanged \(batch.unchanged)",
+            "skipped \(batch.skipped)",
+            "errors \(batch.errors)",
+        ].joined(separator: " · ")
+    }
+
+    private var redisRelayDraftURL: String {
+        redisRelayFinalURL(
+            url: viewModel.settings.redisRelay.target.url.isEmpty
+            ? RuntimeRedisRelayTarget.defaultURL
+            : viewModel.settings.redisRelay.target.url,
+            username: viewModel.settings.redisRelay.target.username,
+            tls: viewModel.settings.redisRelay.target.tls
+        )
+    }
+
+    private func redisRelayFinalURL(url: String, username: String, tls: Bool) -> String {
+        guard var components = URLComponents(string: url) else {
+            return url
+        }
+        components.scheme = tls ? "rediss" : "redis"
+        components.user = username.isEmpty ? nil : username
+        components.password = nil
+        return components.string ?? url
+    }
+
     private var advertisedServiceURLFields: some View {
         VStack(alignment: .leading, spacing: 10) {
             settingTextField(AppConstants.Labels.vitalServerAdvertisedURL, text: $viewModel.settings.vitalServerURL)
@@ -799,6 +950,15 @@ struct RuntimeAdvancedPanel: View {
         }
     }
 
+    private func settingIntegerField(_ label: String, value: Binding<Int>) -> some View {
+        settingRow(label) {
+            TextField("", value: value, formatter: integerFormatter)
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 120)
+        }
+    }
+
     private func settingToggle(_ label: String, isOn: Binding<Bool>) -> some View {
         settingRow(label) {
             Toggle("", isOn: isOn)
@@ -811,6 +971,14 @@ struct RuntimeAdvancedPanel: View {
         formatter.numberStyle = .none
         formatter.minimum = 1
         formatter.maximum = 65_535
+        formatter.allowsFloats = false
+        return formatter
+    }
+
+    private var integerFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.minimum = 0
         formatter.allowsFloats = false
         return formatter
     }

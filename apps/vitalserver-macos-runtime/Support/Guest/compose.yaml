@@ -124,7 +124,7 @@ services:
       VITALSERVER_AUDIT_LOG_FORMAT: "${VITALSERVER_AUDIT_LOG_FORMAT:-json}"
       VITALSERVER_AUDIT_STDOUT_ENABLED: "${VITALSERVER_AUDIT_STDOUT_ENABLED:-1}"
       VITALSERVER_AUDIT_STDOUT_FORMAT: "${VITALSERVER_AUDIT_STDOUT_FORMAT:-json}"
-      AUDIT_PROXY_UPSTREAM_TIMEOUT_MS: "${AUDIT_PROXY_UPSTREAM_TIMEOUT_MS:-30000}"
+      AUDIT_PROXY_UPSTREAM_TIMEOUT_MS: "${AUDIT_PROXY_UPSTREAM_TIMEOUT_MS:-3600000}"
     volumes:
       - type: volume
         source: audit-logs
@@ -169,6 +169,41 @@ services:
         - CMD-SHELL
         - >-
           python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  redis-relay:
+    build:
+      context: .
+      dockerfile: apps/vitalserver-redis-relay/Dockerfile
+    image: vitalserver-redis-relay:0.1.0
+    security_opt:
+      - seccomp=unconfined
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_RELAY_CONFIG_PATH: "${REDIS_RELAY_CONFIG_PATH:-/run/tirosh/config/redis-relay.toml}"
+      REDIS_RELAY_STATUS_PATH: "${REDIS_RELAY_STATUS_PATH:-/run/tirosh/status/redis-relay-status.json}"
+    volumes:
+      - type: bind
+        source: /mnt/tirosh/deploy/redis-relay-config
+        target: /run/tirosh/config
+        read_only: true
+      - type: bind
+        source: /mnt/tirosh/deploy/redis-relay-secrets
+        target: /run/tirosh/secrets
+        read_only: true
+      - type: bind
+        source: /mnt/tirosh/run/redis-relay-status
+        target: /run/tirosh/status
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import json,os,sys; path=os.environ.get('REDIS_RELAY_STATUS_PATH','/run/tirosh/status/redis-relay-status.json'); data=json.load(open(path)); state=data.get('state'); sys.exit(0 if data.get('schemaVersion') == 1 and state in {'disabled','running','running_with_errors','relay_failed','config_invalid'} else 1)"
       interval: 10s
       timeout: 5s
       retries: 30

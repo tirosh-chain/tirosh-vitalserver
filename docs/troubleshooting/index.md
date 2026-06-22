@@ -92,6 +92,12 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-081 | Upstream VitalServer contract verification이 release compile 전에 실패함 | Packaging / Upstream integration | active | [Upstream VitalServer Contract Verification Failure](081_upstream-vitalserver-contract-verification.md) |
 | TS-082 | 배포 target이 phase별 검증 완료를 명확히 증명하지 못함 | Packaging / Release verification | active | [Distribution Verification Phase Gaps](082_distribution-verification-phase-gaps.md) |
 | TS-083 | 자동 VitalServer Helper backup이 Recovery operations 목록에 표시되지 않음 | Runtime health / Data store / macOS Helper UI | implemented | [Automatic Backup Not Visible in Recovery Operations](083_automatic-backup-not-visible-in-recovery.md) |
+| TS-084 | TestKit vital upload가 My Files에 표시되지 않음 | TestKit / Upstream integration | active | [TestKit vital upload가 My Files에 표시되지 않음](084_testkit-vital-upload-not-visible-in-my-files.md) |
+| TS-085 | TestKit vital upload가 413 Request Entity Too Large로 실패함 | Host proxy / Guest containers / TestKit | active | [TestKit vital upload가 413 Request Entity Too Large로 실패함](085_vital-upload-413-request-entity-too-large.md) |
+| TS-086 | TestKit bed suffix가 Web Monitoring에서 보이지 않음 | TestKit / Upstream integration | active | [TestKit bed suffix가 Web Monitoring에서 보이지 않음](086_testkit-bed-suffix-hidden-in-web-monitoring.md) |
+| TS-087 | OOM recovery 이후 watchdog service가 빠져 status가 recovering에 머묾 | Runtime health / Launchd recovery | implemented | [Watchdog Not Loaded After OOM Recovery](087_watchdog-not-loaded-after-oom-recovery.md) |
+| TS-088 | Fresh install 후 Redis Relay image/source 누락으로 bootstrap 실패 | Packaging / Guest bootstrap | implemented | [Redis Relay Missing From Package Bundle](088_redis-relay-missing-from-package-bundle.md) |
+| TS-089 | macOS host watchdog timeout으로 재부팅됨 | Runtime health / Host resources / VM lifecycle | active | [Host macOS Watchdog Timeout Under VM Memory Pressure](089_host-macos-watchdog-timeout-under-vm-memory-pressure.md) |
 
 ## Follow-up 규칙
 
@@ -131,6 +137,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | Packaging | pkg/dmg, signing, entitlement, app bundle 설치 문제 |
 | Uninstall | 제거/clean 정책과 잔여 파일 문제 |
 | Local development | 개발용 make/VM 상태 파일 문제 |
+| TestKit | testkit recorder/session/artifact 검증과 upstream VitalServer 연동 문제 |
 
 ## Reference
 

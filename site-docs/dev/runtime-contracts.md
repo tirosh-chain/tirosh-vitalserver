@@ -93,6 +93,26 @@ Update나 VM restart가 Guest shutdown preparation을 요구하면 Host는 reque
 
 `prepare-update-shutdown-result.json`의 failure details에는 실패 service, 남은 service 목록, service state snapshot, snapshot path가 포함될 수 있습니다. Host와 UI는 이 details를 표시하거나 전달하고, 로그를 해석해서 다른 상태로 바꾸지 않습니다.
 
+### 3-3. Guest compose reconcile result
+
+Settings apply나 watchdog recovery가 VM 자체를 재시작할 필요 없이 Guest compose service 묶음만
+다시 맞추면 되는 경우 Host는 `reconcile-compose.request`를 쓰고 Guest의 typed result를 기다립니다.
+이 계약은 VM restart의 대체 경로이지, VM boundary 실패를 숨기는 fallback이 아닙니다.
+
+| 상태 | 의미 |
+|---|---|
+| capability missing | Guest가 compose reconcile contract를 제공하지 않음 |
+| request missing | Host가 아직 reconcile을 요청하지 않았거나 cleanup이 끝남 |
+| result missing | Guest worker가 실행되지 않았거나 result를 쓰기 전에 실패함 |
+| result failed | Guest가 compose reconcile 실패 reason을 명시적으로 보고함 |
+| result stale | requestId 또는 updatedAt이 현재 operation과 맞지 않음 |
+| result completed | Guest compose reconcile이 완료됨 |
+
+Watchdog은 Guest HTTP unhealthy 또는 critical container service unhealthy처럼 VM process/IP boundary가
+유지된 문제에서 compose reconcile을 먼저 선택합니다. VM IP missing, VM service not loaded, expired
+bootstrapping처럼 Host/VM boundary가 깨진 문제는 VM runtime restart로 승격합니다. HTTP probe read
+failure는 어떤 경로로도 성공을 추정하지 않고 blocker로 남깁니다.
+
 ## 4. Recorder와 Bed 상태
 
 Recorder와 Bed 상태는 관측 결과를 기반으로 표시합니다. Host나 UI가 임의로 만들지 않습니다.
@@ -196,6 +216,27 @@ Recorder Observer API는 Redis와 proxy/access log를 읽어 recorder observatio
 | 문서 파일                                | 역할                        |
 | ---------------------------------------- | --------------------------- |
 | `docs/api/vitaldb-observer.openapi.yaml` | observer container 내부 API |
+
+외부 PC 또는 Kubernetes로 numeric/trend 및 waveform 데이터를 relay할 때도 VitalServer raw Redis port는
+외부에 직접 노출하지 않습니다. 실시간/대용량 relay는 observer API가 아니라 별도 Redis relay container가
+source Redis 3.2를 내부 network에서 읽고, Helper Advanced 설정의 target Redis 8.x endpoint로 publish합니다.
+Observer API는 recorder observation snapshot만 제공하며 Redis data export API를 제공하지 않습니다.
+외부 Redis consumer가 target Redis에서 무엇을 읽어야 하는지, `key_published` event를 어떻게 처리해야
+하는지, publisher와 consumer 책임을 어디서 나누는지는 [Redis Relay](redis-relay.md)를 기준으로 봅니다.
+
+Helper Advanced Redis relay 설정은 UI checkbox/preset 값을 runtime file contract로 변환합니다.
+Regex allowlist는 UI가 만들지 않고 relay code의 policy가 소유합니다. Helper가 생성하는 파일은 다음과
+같습니다.
+
+| Host/guest shared path | Container path | 내용 |
+|---|---|---|
+| `/mnt/tirosh/deploy/redis-relay-config/redis-relay.toml` | `/run/tirosh/config/redis-relay.toml` | relay enable, target endpoint, preset, publish contract |
+| `/mnt/tirosh/deploy/redis-relay-secrets/redis-relay-target-password` | `/run/tirosh/secrets/redis-relay-target-password` | target Redis password |
+
+Password 원문은 Runtime Control settings/read model과 TOML에 저장하지 않습니다. Helper read model은
+저장 여부만 `passwordConfigured`로 노출합니다.
+TOML의 `[publish]` 섹션은 VitalServer Redis Relay Protocol v1의 target key prefix, event stream,
+fingerprint hash, dedupe hash, stream maxlen, publisher id를 명시합니다.
 
 ### 7-4. Audit Proxy API
 

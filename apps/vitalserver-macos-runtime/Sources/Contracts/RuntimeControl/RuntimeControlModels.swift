@@ -143,6 +143,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         case backupRetentionCount
         case logArchiveRetentionDays
         case logArchiveMaximumGiB
+        case redisRelay
         case restartAfterSave
         case appliedVMSettings
     }
@@ -172,6 +173,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var backupRetentionCount: Int
     public var logArchiveRetentionDays: Int
     public var logArchiveMaximumGiB: Int
+    public var redisRelay: RuntimeRedisRelaySettings
     public var restartAfterSave: Bool
     public var appliedVMSettings: RuntimeAppliedVMSettings?
 
@@ -201,6 +203,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         backupRetentionCount: Int = RuntimeSettingsInitialValues.backupRetentionCount,
         logArchiveRetentionDays: Int = RuntimeSettingsInitialValues.logArchiveRetentionDays,
         logArchiveMaximumGiB: Int = RuntimeSettingsInitialValues.logArchiveMaximumGiB,
+        redisRelay: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings(),
         restartAfterSave: Bool = false,
         appliedVMSettings: RuntimeAppliedVMSettings? = nil
     ) {
@@ -229,6 +232,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.backupRetentionCount = backupRetentionCount
         self.logArchiveRetentionDays = logArchiveRetentionDays
         self.logArchiveMaximumGiB = logArchiveMaximumGiB
+        self.redisRelay = redisRelay
         self.restartAfterSave = restartAfterSave
         self.appliedVMSettings = appliedVMSettings
     }
@@ -277,6 +281,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
             backupRetentionCount: try container.decode(Int.self, forKey: .backupRetentionCount),
             logArchiveRetentionDays: try container.decode(Int.self, forKey: .logArchiveRetentionDays),
             logArchiveMaximumGiB: try container.decode(Int.self, forKey: .logArchiveMaximumGiB),
+            redisRelay: try container.decodeIfPresent(RuntimeRedisRelaySettings.self, forKey: .redisRelay) ?? RuntimeRedisRelaySettings(),
             restartAfterSave: try container.decode(Bool.self, forKey: .restartAfterSave),
             appliedVMSettings: try container.decodeIfPresent(RuntimeAppliedVMSettings.self, forKey: .appliedVMSettings)
         )
@@ -313,8 +318,234 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         try container.encode(backupRetentionCount, forKey: .backupRetentionCount)
         try container.encode(logArchiveRetentionDays, forKey: .logArchiveRetentionDays)
         try container.encode(logArchiveMaximumGiB, forKey: .logArchiveMaximumGiB)
+        try container.encode(redisRelay, forKey: .redisRelay)
         try container.encode(restartAfterSave, forKey: .restartAfterSave)
         try container.encodeIfPresent(appliedVMSettings, forKey: .appliedVMSettings)
+    }
+}
+
+public enum RuntimeRedisRelayScope: String, Codable, CaseIterable, Sendable {
+    case waveformTrendOnly = "waveform_trend_only"
+    case vitalReconstruction = "vital_reconstruction"
+}
+
+public struct RuntimeRedisRelayTarget: Codable, Equatable, Sendable {
+    public static let defaultURL = "redis://redis.example:6379/0"
+
+    public var url: String
+    public var username: String
+    public var password: String
+    public var clearPassword: Bool
+    public var passwordConfigured: Bool
+    public var tls: Bool
+
+    public init(
+        url: String = RuntimeRedisRelayTarget.defaultURL,
+        username: String = "",
+        password: String = "",
+        clearPassword: Bool = false,
+        passwordConfigured: Bool = false,
+        tls: Bool = false
+    ) {
+        self.url = url
+        self.username = username
+        self.password = password
+        self.clearPassword = clearPassword
+        self.passwordConfigured = passwordConfigured
+        self.tls = tls
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case url
+        case username
+        case password
+        case clearPassword
+        case passwordConfigured
+        case tls
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            url: try container.decodeIfPresent(String.self, forKey: .url) ?? Self.defaultURL,
+            username: try container.decodeIfPresent(String.self, forKey: .username) ?? "",
+            password: try container.decodeIfPresent(String.self, forKey: .password) ?? "",
+            clearPassword: try container.decodeIfPresent(Bool.self, forKey: .clearPassword) ?? false,
+            passwordConfigured: try container.decodeIfPresent(Bool.self, forKey: .passwordConfigured) ?? false,
+            tls: try container.decodeIfPresent(Bool.self, forKey: .tls) ?? false
+        )
+    }
+}
+
+public struct RuntimeRedisRelaySettings: Codable, Equatable, Sendable {
+    public var enabled: Bool
+    public var target: RuntimeRedisRelayTarget
+    public var scope: RuntimeRedisRelayScope
+    public var includeRecorderNetworkContext: Bool
+    public var intervalSeconds: Double
+    public var scanCount: Int
+
+    public init(
+        enabled: Bool = false,
+        target: RuntimeRedisRelayTarget = RuntimeRedisRelayTarget(),
+        scope: RuntimeRedisRelayScope = .vitalReconstruction,
+        includeRecorderNetworkContext: Bool = false,
+        intervalSeconds: Double = 1.0,
+        scanCount: Int = 1000
+    ) {
+        self.enabled = enabled
+        self.target = target
+        self.scope = scope
+        self.includeRecorderNetworkContext = includeRecorderNetworkContext
+        self.intervalSeconds = intervalSeconds
+        self.scanCount = scanCount
+    }
+}
+
+public struct RuntimeRedisRelayBatch: Codable, Equatable, Sendable {
+    public var scanned: Int
+    public var copied: Int
+    public var unchanged: Int
+    public var skipped: Int
+    public var denied: Int
+    public var missing: Int
+    public var errors: Int
+
+    public init(
+        scanned: Int = 0,
+        copied: Int = 0,
+        unchanged: Int = 0,
+        skipped: Int = 0,
+        denied: Int = 0,
+        missing: Int = 0,
+        errors: Int = 0
+    ) {
+        self.scanned = scanned
+        self.copied = copied
+        self.unchanged = unchanged
+        self.skipped = skipped
+        self.denied = denied
+        self.missing = missing
+        self.errors = errors
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case scanned
+        case copied
+        case unchanged
+        case skipped
+        case denied
+        case missing
+        case errors
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            scanned: try container.decodeIfPresent(Int.self, forKey: .scanned) ?? 0,
+            copied: try container.decodeIfPresent(Int.self, forKey: .copied) ?? 0,
+            unchanged: try container.decodeIfPresent(Int.self, forKey: .unchanged) ?? 0,
+            skipped: try container.decodeIfPresent(Int.self, forKey: .skipped) ?? 0,
+            denied: try container.decodeIfPresent(Int.self, forKey: .denied) ?? 0,
+            missing: try container.decodeIfPresent(Int.self, forKey: .missing) ?? 0,
+            errors: try container.decodeIfPresent(Int.self, forKey: .errors) ?? 0
+        )
+    }
+}
+
+public struct RuntimeRedisRelayStatus: Codable, Equatable, Sendable {
+    public var observedAt: String
+    public var enabled: Bool
+    public var state: String
+    public var scope: String
+    public var targetUrl: String?
+    public var targetUsernameConfigured: Bool
+    public var targetPasswordConfigured: Bool
+    public var settingsFingerprint: String?
+    public var batches: Int
+    public var totals: RuntimeRedisRelayBatch
+    public var lastBatch: RuntimeRedisRelayBatch?
+    public var lastSuccessAt: String?
+    public var lastErrorAt: String?
+    public var lastError: String?
+
+    public init(
+        observedAt: String,
+        enabled: Bool,
+        state: String,
+        scope: String,
+        targetUrl: String? = nil,
+        targetUsernameConfigured: Bool = false,
+        targetPasswordConfigured: Bool = false,
+        settingsFingerprint: String? = nil,
+        batches: Int = 0,
+        totals: RuntimeRedisRelayBatch = RuntimeRedisRelayBatch(),
+        lastBatch: RuntimeRedisRelayBatch? = nil,
+        lastSuccessAt: String? = nil,
+        lastErrorAt: String? = nil,
+        lastError: String? = nil
+    ) {
+        self.observedAt = observedAt
+        self.enabled = enabled
+        self.state = state
+        self.scope = scope
+        self.targetUrl = targetUrl
+        self.targetUsernameConfigured = targetUsernameConfigured
+        self.targetPasswordConfigured = targetPasswordConfigured
+        self.settingsFingerprint = settingsFingerprint
+        self.batches = batches
+        self.totals = totals
+        self.lastBatch = lastBatch
+        self.lastSuccessAt = lastSuccessAt
+        self.lastErrorAt = lastErrorAt
+        self.lastError = lastError
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case observedAt
+        case enabled
+        case state
+        case scope
+        case targetUrl
+        case targetUsernameConfigured
+        case targetPasswordConfigured
+        case settingsFingerprint
+        case batches
+        case totals
+        case lastBatch
+        case lastSuccessAt
+        case lastErrorAt
+        case lastError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            observedAt: try container.decodeIfPresent(String.self, forKey: .observedAt) ?? "",
+            enabled: try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false,
+            state: try container.decodeIfPresent(String.self, forKey: .state) ?? "unknown",
+            scope: try container.decodeIfPresent(String.self, forKey: .scope) ?? "unknown",
+            targetUrl: try container.decodeIfPresent(String.self, forKey: .targetUrl),
+            targetUsernameConfigured: try container.decodeIfPresent(
+                Bool.self,
+                forKey: .targetUsernameConfigured
+            ) ?? false,
+            targetPasswordConfigured: try container.decodeIfPresent(
+                Bool.self,
+                forKey: .targetPasswordConfigured
+            ) ?? false,
+            settingsFingerprint: try container.decodeIfPresent(
+                String.self,
+                forKey: .settingsFingerprint
+            ),
+            batches: try container.decodeIfPresent(Int.self, forKey: .batches) ?? 0,
+            totals: try container.decodeIfPresent(RuntimeRedisRelayBatch.self, forKey: .totals)
+                ?? RuntimeRedisRelayBatch(),
+            lastBatch: try container.decodeIfPresent(RuntimeRedisRelayBatch.self, forKey: .lastBatch),
+            lastSuccessAt: try container.decodeIfPresent(String.self, forKey: .lastSuccessAt),
+            lastErrorAt: try container.decodeIfPresent(String.self, forKey: .lastErrorAt),
+            lastError: try container.decodeIfPresent(String.self, forKey: .lastError)
+        )
     }
 }
 
@@ -488,6 +719,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var progress: RuntimeProgressDocument?
     public var containerObservation: RuntimeContainerObservation?
     public var vitalDBObservation: VitalDBObservationDocument?
+    public var redisRelayStatus: RuntimeRedisRelayStatus?
 
     public init(
         runtimeInstalled: Bool = false,
@@ -540,7 +772,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         failureReasons: [RuntimeFailureReason] = [],
         progress: RuntimeProgressDocument? = nil,
         containerObservation: RuntimeContainerObservation? = nil,
-        vitalDBObservation: VitalDBObservationDocument? = nil
+        vitalDBObservation: VitalDBObservationDocument? = nil,
+        redisRelayStatus: RuntimeRedisRelayStatus? = nil
     ) {
         self.runtimeInstalled = runtimeInstalled
         self.runtimeInstallationState = runtimeInstallationState
@@ -593,6 +826,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.progress = progress
         self.containerObservation = containerObservation
         self.vitalDBObservation = vitalDBObservation
+        self.redisRelayStatus = redisRelayStatus
     }
 
     public var effectiveRuntimeInstallationState: RuntimeFileState {

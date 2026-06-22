@@ -4,6 +4,7 @@ import Contracts
 import Foundation
 import OutboundAdapters
 import InboundAdapters
+import RuntimeControl
 import Errors
 
 public struct RuntimeConfigureActions {
@@ -14,6 +15,7 @@ public struct RuntimeConfigureActions {
     public var setStartOnBoot: (Bool) throws -> Void
     public var setSystemSleepPrevention: (Bool) throws -> Void
     public var setAutomaticBackupSchedule: (Bool, [String]) throws -> Void
+    public var reconcileGuestComposeServices: () throws -> Void
     public var restartRuntimeServices: () throws -> Void
 
     public init(
@@ -24,6 +26,7 @@ public struct RuntimeConfigureActions {
         setStartOnBoot: @escaping (Bool) throws -> Void,
         setSystemSleepPrevention: @escaping (Bool) throws -> Void,
         setAutomaticBackupSchedule: @escaping (Bool, [String]) throws -> Void,
+        reconcileGuestComposeServices: @escaping () throws -> Void,
         restartRuntimeServices: @escaping () throws -> Void
     ) {
         self.resizeVMDiskIfNeeded = resizeVMDiskIfNeeded
@@ -33,6 +36,7 @@ public struct RuntimeConfigureActions {
         self.setStartOnBoot = setStartOnBoot
         self.setSystemSleepPrevention = setSystemSleepPrevention
         self.setAutomaticBackupSchedule = setAutomaticBackupSchedule
+        self.reconcileGuestComposeServices = reconcileGuestComposeServices
         self.restartRuntimeServices = restartRuntimeServices
     }
 }
@@ -78,6 +82,7 @@ public struct RuntimeConfigureCompositionOperations {
     let setStartOnBoot: (Bool) throws -> Void
     let setSystemSleepPrevention: (Bool) throws -> Void
     let setAutomaticBackupSchedule: (Bool, [String]) throws -> Void
+    let reconcileGuestComposeServices: () throws -> Void
     let restartRuntimeServices: () throws -> Void
     let log: (String) -> Void
 
@@ -90,6 +95,7 @@ public struct RuntimeConfigureCompositionOperations {
         setStartOnBoot: @escaping (Bool) throws -> Void,
         setSystemSleepPrevention: @escaping (Bool) throws -> Void,
         setAutomaticBackupSchedule: @escaping (Bool, [String]) throws -> Void,
+        reconcileGuestComposeServices: @escaping () throws -> Void,
         restartRuntimeServices: @escaping () throws -> Void,
         log: @escaping (String) -> Void
     ) {
@@ -101,6 +107,7 @@ public struct RuntimeConfigureCompositionOperations {
         self.setStartOnBoot = setStartOnBoot
         self.setSystemSleepPrevention = setSystemSleepPrevention
         self.setAutomaticBackupSchedule = setAutomaticBackupSchedule
+        self.reconcileGuestComposeServices = reconcileGuestComposeServices
         self.restartRuntimeServices = restartRuntimeServices
         self.log = log
     }
@@ -123,6 +130,7 @@ public enum RuntimeConfigureComposition {
                 setStartOnBoot: operations.setStartOnBoot,
                 setSystemSleepPrevention: operations.setSystemSleepPrevention,
                 setAutomaticBackupSchedule: operations.setAutomaticBackupSchedule,
+                reconcileGuestComposeServices: operations.reconcileGuestComposeServices,
                 restartRuntimeServices: operations.restartRuntimeServices
             ),
             maximumAllowedCPUCount: context.maximumAllowedCPUCount,
@@ -162,7 +170,7 @@ public struct RuntimeConfigureRunner {
     public func configure(_ command: RuntimeConfigureCommand) throws -> RuntimeConfigureResult {
         do {
             let result = try RunConfigureRuntimeUseCase<VMRuntimeConfig>().configure(
-                command.configureRuntimeRequest,
+                configureRuntimeRequest(from: command),
                 context: configureRuntimeContext(),
                 operations: configureRuntimeOperations()
             )
@@ -221,8 +229,8 @@ public struct RuntimeConfigureRunner {
     }
 
     private func resolveSecretFileChanges(
-        in request: ConfigureRuntimeRequest<RuntimeNetworkMode>
-    ) throws -> ConfigureRuntimeRequest<RuntimeNetworkMode> {
+        in request: ConfigureRuntimeRequest<Contracts.RuntimeNetworkMode>
+    ) throws -> ConfigureRuntimeRequest<Contracts.RuntimeNetworkMode> {
         let useCase = ConfigureRuntimeUseCase<VMRuntimeConfig>()
         let changes = try request.changes.map { change in
             switch change {
@@ -257,16 +265,22 @@ public struct RuntimeConfigureRunner {
                 try updateRuntimeControlSettings { settings in
                     settings = RuntimeControlSettingsDocument(
                         logArchiveRetentionDays: days,
-                        logArchiveMaximumGiB: settings.logArchiveMaximumGiB
+                        logArchiveMaximumGiB: settings.logArchiveMaximumGiB,
+                        redisRelay: settings.redisRelay
                     )
                 }
             case .setLogArchiveMaximumGiB(let gib):
                 try updateRuntimeControlSettings { settings in
                     settings = RuntimeControlSettingsDocument(
                         logArchiveRetentionDays: settings.logArchiveRetentionDays,
-                        logArchiveMaximumGiB: gib
+                        logArchiveMaximumGiB: gib,
+                        redisRelay: settings.redisRelay
                     )
                 }
+            case .writeRedisRelayConfiguration(let redisRelay):
+                try writeRedisRelayConfiguration(redisRelay)
+            case .reconcileGuestComposeServices:
+                try actions.reconcileGuestComposeServices()
             case .restrictSecretFile(let url):
                 try actions.restrictSecretFile(url)
             case .restartRuntimeServices:
@@ -286,6 +300,15 @@ public struct RuntimeConfigureRunner {
             withIntermediateDirectories: true
         )
         try fileStore.writeData(data, to: installedPaths.runtimeControlSettings, options: .atomic)
+    }
+
+    private func writeRedisRelayConfiguration(
+        _ settings: ConfigureRuntimeRedisRelaySettings
+    ) throws {
+        try RuntimeRedisRelayConfigurationWriter(
+            installedPaths: installedPaths,
+            fileStore: fileStore
+        ).writeConfigured(settings)
     }
 
     private func loadRuntimeControlSettings() throws -> RuntimeControlSettingsDocument {
@@ -328,7 +351,7 @@ public struct RuntimeConfigureRunner {
         return max(Int((try fileStore.fileSize(url) + bytesPerGiB - 1) / bytesPerGiB), 1)
     }
 
-    private func configureRuntimeContext() -> ConfigureRuntimeContext<RuntimeNetworkMode> {
+    private func configureRuntimeContext() -> ConfigureRuntimeContext<Contracts.RuntimeNetworkMode> {
         ConfigureRuntimeContext(
             vmConfigURL: configURL,
             guestRuntimeConfigURL: installedPaths.guestRuntimeConfig,
@@ -388,20 +411,20 @@ public struct RuntimeConfigureRunner {
     private func prettyJSONEncoder() -> JSONEncoder {
         VMRuntimeConfigComposition.prettyJSONEncoder()
     }
-}
 
-private extension RuntimeConfigureCommand {
-    var configureRuntimeRequest: ConfigureRuntimeRequest<RuntimeNetworkMode> {
+    private func configureRuntimeRequest(
+        from command: RuntimeConfigureCommand
+    ) throws -> ConfigureRuntimeRequest<Contracts.RuntimeNetworkMode> {
         ConfigureRuntimeRequest(
-            changes: changes.map(\.configureRuntimeChange),
-            restart: restart
+            changes: try command.changes.map { try configureRuntimeChange($0) },
+            restart: command.restart
         )
     }
-}
 
-private extension RuntimeConfigureChange {
-    var configureRuntimeChange: ConfigureRuntimeChange<RuntimeNetworkMode> {
-        switch self {
+    private func configureRuntimeChange(
+        _ change: RuntimeConfigureChange
+    ) throws -> ConfigureRuntimeChange<Contracts.RuntimeNetworkMode> {
+        switch change {
         case .cpu(let value):
             return .cpu(value)
         case .memoryGiB(let value):
@@ -444,6 +467,28 @@ private extension RuntimeConfigureChange {
             return .logArchiveRetentionDays(value)
         case .logArchiveMaximumGiB(let value):
             return .logArchiveMaximumGiB(value)
+        case .redisRelaySettingsFile(let value):
+            return .redisRelay(try redisRelaySettings(from: value))
         }
+    }
+
+    private func redisRelaySettings(from url: URL) throws -> ConfigureRuntimeRedisRelaySettings {
+        let data = try actions.readSecretFile(url).data(using: .utf8) ?? Data()
+        let settings = try JSONDecoder().decode(RuntimeRedisRelaySettings.self, from: data)
+        return ConfigureRuntimeRedisRelaySettings(
+            enabled: settings.enabled,
+            target: ConfigureRuntimeRedisRelayTarget(
+                url: settings.target.url,
+                username: settings.target.username,
+                password: settings.target.password,
+                clearPassword: settings.target.clearPassword,
+                passwordConfigured: settings.target.passwordConfigured,
+                tls: settings.target.tls
+            ),
+            scope: ConfigureRuntimeRedisRelayScope(rawValue: settings.scope.rawValue) ?? .vitalReconstruction,
+            includeRecorderNetworkContext: settings.includeRecorderNetworkContext,
+            intervalSeconds: settings.intervalSeconds,
+            scanCount: settings.scanCount
+        )
     }
 }

@@ -46,7 +46,7 @@ describe("RuntimeControlApiClient", () => {
     });
 
     await client.applySettings({ settings: fullSettings({ proxyPort: 18080 }) });
-    await client.uninstallRuntime({ clean: true });
+    await client.uninstallRuntime({ mode: "clean" });
     await client.repairProxy(18080);
     await client.deleteUpdateBackup({ backup: { kind: "localPath", value: "/tmp/update" } });
     await client.deleteRuntimeDataBackup({
@@ -434,7 +434,10 @@ function testKitStartRequest() {
     durationSeconds: null,
     maxMessages: null,
     shiftTime: true,
-    generateFrames: true
+    generateFrames: true,
+    exportVital: true,
+    uploadVital: true,
+    vitalUploadEndpoint: "/upload"
   };
 }
 
@@ -477,6 +480,14 @@ function testKitSession() {
     bytesSent: 0,
     lastError: null,
     cleanupErrors: [],
+    vital: {
+      exportStatus: "not-requested",
+      uploadStatus: "not-requested",
+      exportError: null,
+      uploadError: null,
+      artifact: null,
+      uploadResult: null
+    },
     recorders: []
   };
 }

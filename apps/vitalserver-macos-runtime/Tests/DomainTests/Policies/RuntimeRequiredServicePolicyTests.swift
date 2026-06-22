@@ -5,6 +5,18 @@ import XCTest
 import Errors
 
 final class RuntimeRequiredServicePolicyTests: XCTestCase {
+    func testRuntimeManagedServiceStartOrderStartsWatchdogBeforeProxy() {
+        XCTAssertEqual(
+            RuntimeManagedService.startOrder,
+            [
+                .vm,
+                .guestLogSync,
+                .watchdog,
+                .proxy,
+            ]
+        )
+    }
+
     func testAllRuntimeServicesPolicyIncludesGuestLogSync() {
         let policy = RuntimeRequiredServicePolicy.allRuntimeServices
 

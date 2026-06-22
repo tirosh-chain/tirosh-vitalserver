@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import time
+from pathlib import Path
+
 import pytest
 
-from tests.support import fake_socketio_connector
+from tests.support import FakeSocketIoClient, fake_socketio_connector
 from tirosh_vitalserver.testkit.application.recorder_session import (
+    SessionVitalPlayback,
     VirtualRecorderSessionManager,
     VirtualRecorderSessionRequest,
     VirtualRecorderSessionScenario,
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
+    VirtualRecorderVitalArtifact,
+    VirtualRecorderVitalUploadResult,
     session_snapshot_to_document,
 )
 from tirosh_vitalserver.testkit.domain.bed import beds_for_room_names
@@ -73,6 +79,146 @@ def test_virtual_recorder_session_can_stop() -> None:
 
     assert stopped is not None
     assert stopped.state == VirtualRecorderSessionState.STOPPED
+
+
+def test_virtual_recorder_session_exports_and_uploads_playback_window() -> None:
+    exporter = FakeVitalExporter()
+    uploader = FakeVitalUploader()
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        vital_file_exporter=exporter,
+        vital_file_uploader=uploader,
+    )
+    snapshot = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            vrcode="VR_VITAL",
+            bed_room_names=("OR-A",),
+            interval_seconds=0.1,
+            max_messages=2,
+            shift_time=False,
+            export_vital=True,
+            upload_vital=True,
+        )
+    )
+
+    assert manager.wait_session(snapshot.session_id, timeout=5)
+    uploaded = manager.get_session(snapshot.session_id)
+
+    assert uploaded is not None
+    assert uploaded.state == VirtualRecorderSessionState.UPLOADED
+    assert uploaded.vital_state.export_status == "ready"
+    assert uploaded.vital_state.upload_status == "uploaded"
+    assert uploaded.vital_state.artifact is not None
+    assert exporter.playback_message_counts == [(2,)]
+    assert uploader.uploads == [
+        (
+            "http://example.test",
+            "/tmp/VR_VITAL.vital",
+            "VR_VITAL",
+            "/upload",
+        )
+    ]
+
+    document = session_snapshot_to_document(uploaded)
+    assert document["state"] == "uploaded"
+    assert document["vital"]["artifact"]["retentionPolicy"] == "preserve-on-delete"
+    assert document["vital"]["uploadResult"]["ok"] is True
+
+
+def test_virtual_recorder_session_records_pause_resume_playback_events() -> None:
+    exporter = FakeVitalExporter()
+    manager = VirtualRecorderSessionManager(
+        connector=slow_socketio_connector,
+        vital_file_exporter=exporter,
+    )
+    snapshot = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            vrcode="VR_PAUSE",
+            bed_room_names=("OR-A",),
+            interval_seconds=0.05,
+            max_messages=50,
+            shift_time=False,
+            export_vital=True,
+        )
+    )
+
+    time.sleep(0.03)
+    manager.pause_session(snapshot.session_id)
+    time.sleep(0.03)
+    manager.resume_session(snapshot.session_id)
+    time.sleep(0.03)
+    manager.stop_session(snapshot.session_id)
+
+    assert manager.wait_session(snapshot.session_id, timeout=5)
+
+    exported = manager.get_session(snapshot.session_id)
+
+    assert exported is not None
+    assert exported.state == VirtualRecorderSessionState.VITAL_READY
+    assert exporter.event_types == [
+        ("started", "paused", "resumed", "stopped"),
+    ]
+    assert exporter.event_times[0] == tuple(sorted(exporter.event_times[0]))
+
+
+def test_virtual_recorder_upload_failure_preserves_artifact_for_retry() -> None:
+    exporter = FakeVitalExporter()
+    uploader = FakeVitalUploader(failures=1)
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        vital_file_exporter=exporter,
+        vital_file_uploader=uploader,
+    )
+    snapshot = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            vrcode="VR_RETRY",
+            bed_room_names=("OR-A",),
+            interval_seconds=0.1,
+            max_messages=1,
+            shift_time=False,
+            export_vital=True,
+            upload_vital=True,
+        )
+    )
+    assert manager.wait_session(snapshot.session_id, timeout=5)
+
+    failed = manager.get_session(snapshot.session_id)
+
+    assert failed is not None
+    assert failed.state == VirtualRecorderSessionState.UPLOAD_FAILED
+    assert failed.vital_state.artifact is not None
+    assert failed.vital_state.upload_error == "upload failed"
+
+    retried = manager.retry_vital_upload(snapshot.session_id)
+
+    assert retried is not None
+    assert retried.state == VirtualRecorderSessionState.UPLOADED
+    assert retried.vital_state.artifact == failed.vital_state.artifact
+    assert len(uploader.uploads) == 2
+
+
+def test_virtual_recorder_export_request_reports_missing_exporter() -> None:
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    snapshot = manager.start_session(
+        VirtualRecorderSessionRequest(
+            target_url="http://example.test",
+            bed_room_names=("OR-A",),
+            interval_seconds=0.1,
+            max_messages=1,
+            shift_time=False,
+            export_vital=True,
+        )
+    )
+
+    assert manager.wait_session(snapshot.session_id, timeout=5)
+    failed = manager.get_session(snapshot.session_id)
+
+    assert failed is not None
+    assert failed.state == VirtualRecorderSessionState.FAILED
+    assert failed.vital_state.export_error == "vital file exporter is not configured"
 
 
 def test_virtual_recorder_session_can_pause_and_resume() -> None:
@@ -566,6 +712,64 @@ class FakeRecorderManagement:
         self.deleted_beds.append((base_url, bed_id, bed_name))
 
 
+class FakeVitalExporter:
+    def __init__(self) -> None:
+        self.playback_message_counts: list[tuple[int, ...]] = []
+        self.event_types: list[tuple[str, ...]] = []
+        self.event_times: list[tuple[float, ...]] = []
+
+    def export_session_vital_file(
+        self,
+        snapshot: VirtualRecorderSessionSnapshot,
+        playback: SessionVitalPlayback,
+    ) -> VirtualRecorderVitalArtifact:
+        self.playback_message_counts.append(
+            tuple(recorder.messages_sent for recorder in playback.recorders)
+        )
+        self.event_types.append(tuple(event.type.value for event in playback.events))
+        self.event_times.append(tuple(event.at for event in playback.events))
+        return VirtualRecorderVitalArtifact(
+            path=f"/tmp/{snapshot.request.vrcode or snapshot.session_id}.vital",
+            filename=f"{snapshot.request.vrcode or snapshot.session_id}.vital",
+            size_bytes=128,
+            created_at=1.0,
+            format="vitaldb-vital",
+        )
+
+
+class FakeVitalUploader:
+    def __init__(self, *, failures: int = 0) -> None:
+        self.failures = failures
+        self.uploads: list[tuple[str, str, str | None, str]] = []
+
+    def upload_session_vital_file(
+        self,
+        *,
+        target_url: str,
+        artifact_path: str | Path,
+        vrcode: str | None,
+        endpoint: str,
+    ) -> VirtualRecorderVitalUploadResult:
+        self.uploads.append((target_url, str(artifact_path), vrcode, endpoint))
+        if len(self.uploads) <= self.failures:
+            return VirtualRecorderVitalUploadResult(
+                status_code=500,
+                ok=False,
+                elapsed_seconds=0.1,
+                uploaded_at=2.0,
+                response_text="upload failed",
+                error="upload failed",
+            )
+
+        return VirtualRecorderVitalUploadResult(
+            status_code=200,
+            ok=True,
+            elapsed_seconds=0.1,
+            uploaded_at=2.0,
+            response_text="ok",
+        )
+
+
 class InMemorySessionStore:
     def __init__(self) -> None:
         self.sessions: dict[str, VirtualRecorderSessionSnapshot] = {}
@@ -603,3 +807,16 @@ class FailingSessionStore(InMemorySessionStore):
         if self.delete_error is not None:
             raise self.delete_error
         super().delete_session(session_id)
+
+
+class SlowFakeSocketIoClient(FakeSocketIoClient):
+    def sleep(self, seconds: float) -> None:
+        time.sleep(min(seconds, 0.01))
+
+
+def slow_socketio_connector(
+    base_url: str,
+    *,
+    timeout: float = 30.0,
+) -> SlowFakeSocketIoClient:
+    return SlowFakeSocketIoClient()

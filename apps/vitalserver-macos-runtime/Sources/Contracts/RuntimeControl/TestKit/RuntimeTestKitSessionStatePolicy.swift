@@ -7,7 +7,7 @@ public enum RuntimeTestKitSessionStatePolicy {
 
     public static func isActive(_ state: String) -> Bool {
         switch normalizedState(state) {
-        case "running", "paused", "starting", "stopping":
+        case "running", "paused", "starting", "stopping", "finalizing-vital", "uploading":
             return true
         default:
             return false
@@ -16,7 +16,7 @@ public enum RuntimeTestKitSessionStatePolicy {
 
     public static func isTerminal(_ state: String) -> Bool {
         switch normalizedState(state) {
-        case "stopped", "failed":
+        case "stopped", "failed", "vital-ready", "uploaded", "upload-failed":
             return true
         default:
             return false

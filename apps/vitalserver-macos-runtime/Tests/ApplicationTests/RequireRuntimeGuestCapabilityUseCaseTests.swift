@@ -8,6 +8,10 @@ final class RequireRuntimeGuestCapabilityUseCaseTests: XCTestCase {
             .prepareUpdateShutdown,
             operations: operations(result: .loaded(supportedState()))
         )
+        try RequireRuntimeGuestCapabilityUseCase().require(
+            .reconcileCompose,
+            operations: operations(result: .loaded(supportedState()))
+        )
     }
 
     func testRequireFailsWhenCapabilityIsMissingFromState() {
@@ -52,7 +56,8 @@ private func supportedState() -> GuestRuntimeStateDocument {
             activateUpdate: true,
             redisBackup: true,
             redisRestore: true,
-            repairDatastore: true
+            repairDatastore: true,
+            reconcileCompose: true
         ),
         vmIP: "192.168.64.2",
         guestHTTP: nil,

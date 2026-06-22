@@ -21,7 +21,8 @@ class CreateBedsRequest(ExternalSchema):
 
     count: int | None = Field(default=None, ge=1)
     room_names: tuple[str, ...] = Field(default=(), alias="roomNames")
-    prefix: str = "testkit-bed"
+    prefix: str = "testbed"
+    append_random_suffix: bool = Field(default=True, alias="appendRandomSuffix")
     admin_user_id: str = Field(default="admin", alias="adminUserId")
 
     @model_validator(mode="after")
@@ -32,6 +33,12 @@ class CreateBedsRequest(ExternalSchema):
             raise ValueError("count or roomNames is required")
         if self.count is not None and self.room_names:
             raise ValueError("count and roomNames cannot be used together")
+        if (
+            self.count is not None
+            and not self.append_random_suffix
+            and self.count != 1
+        ):
+            raise ValueError("appendRandomSuffix=false requires count to be 1")
 
         return self
 
@@ -65,6 +72,9 @@ class StartVirtualRecordersRequest(ExternalSchema):
         default=RecorderSignalScenario.NORMAL,
         alias="defaultScenario",
     )
+    export_vital: bool = Field(default=False, alias="exportVital")
+    upload_vital: bool = Field(default=False, alias="uploadVital")
+    vital_upload_endpoint: str = Field(default="/upload", alias="vitalUploadEndpoint")
 
     def to_session_request(self) -> VirtualRecorderSessionRequest:
         """Convert API input into the application request contract."""
@@ -82,6 +92,9 @@ class StartVirtualRecordersRequest(ExternalSchema):
             generate_frames=self.generate_frames,
             scenario=self.scenario,
             default_scenario=self.default_scenario,
+            export_vital=self.export_vital,
+            upload_vital=self.upload_vital,
+            vital_upload_endpoint=self.vital_upload_endpoint,
         )
 
 

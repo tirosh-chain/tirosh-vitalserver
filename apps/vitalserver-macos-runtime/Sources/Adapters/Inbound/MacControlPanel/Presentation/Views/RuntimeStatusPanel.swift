@@ -141,7 +141,8 @@ struct RuntimeStatusPanel: View {
     private var recorderSummary: RuntimeStatusDisplayPolicy.RecorderSummary {
         displayPolicy.recorderSummary(
             observation: viewModel.containerObservation,
-            vitalDBObservation: viewModel.vitalDBObservationSnapshot.observation
+            vitalDBObservation: viewModel.vitalDBObservationSnapshot.observation,
+            now: uptimeNow
         )
     }
 

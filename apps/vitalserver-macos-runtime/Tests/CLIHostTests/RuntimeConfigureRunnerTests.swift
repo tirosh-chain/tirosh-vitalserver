@@ -106,6 +106,86 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(settings, RuntimeControlSettingsDocument(logArchiveRetentionDays: 12, logArchiveMaximumGiB: 2))
     }
 
+    func testConfigureWritesRedisRelayConfigAndSecretWithoutExposingPasswordInReadSettings() throws {
+        let harness = try Harness()
+        let relaySettingsFile = URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
+        harness.fileStore.files[relaySettingsFile] = Data("""
+        {
+          "enabled": true,
+          "target": {
+            "url": "redis://redis-hub.internal:6380/2",
+            "username": "relay",
+            "password": "secret-password",
+            "clearPassword": false,
+            "passwordConfigured": false,
+            "tls": true
+          },
+          "scope": "vital_reconstruction",
+          "includeRecorderNetworkContext": true,
+          "intervalSeconds": 0.5,
+          "scanCount": 500
+        }
+        """.utf8)
+
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.redisRelaySettingsFile(relaySettingsFile)]
+        ))
+
+        XCTAssertFalse(result.restart)
+        XCTAssertTrue(harness.fileStore.directories.contains(harness.paths.redisRelayConfigDirectory))
+        XCTAssertTrue(harness.fileStore.directories.contains(harness.paths.redisRelaySecretsDirectory))
+        XCTAssertTrue(harness.fileStore.directories.contains(harness.paths.redisRelayStatusDirectory))
+        XCTAssertEqual(
+            String(data: try XCTUnwrap(harness.fileStore.files[harness.paths.redisRelayTargetPassword]), encoding: .utf8),
+            "secret-password"
+        )
+        let toml = String(
+            data: try XCTUnwrap(harness.fileStore.files[harness.paths.redisRelayConfig]),
+            encoding: .utf8
+        )
+        XCTAssertTrue(toml?.contains("enabled = true") == true)
+        XCTAssertTrue(toml?.contains("url = \"rediss://relay@redis-hub.internal:6380/2\"") == true)
+        XCTAssertTrue(toml?.contains("password_file = \"/run/tirosh/secrets/redis-relay-target-password\"") == true)
+        XCTAssertTrue(toml?.contains("[publish]") == true)
+        XCTAssertTrue(toml?.contains("event_stream_key = \"vitalserver:relay:events\"") == true)
+
+        let data = try XCTUnwrap(harness.fileStore.files[harness.paths.runtimeControlSettings])
+        let settings = try JSONDecoder().decode(RuntimeControlSettingsDocument.self, from: data)
+        XCTAssertTrue(settings.redisRelay.enabled)
+        XCTAssertEqual(settings.redisRelay.target.url, "redis://redis-hub.internal:6380/2")
+        XCTAssertEqual(settings.redisRelay.target.username, "relay")
+        XCTAssertTrue(settings.redisRelay.target.tls)
+        XCTAssertTrue(settings.redisRelay.target.passwordConfigured)
+        XCTAssertEqual(settings.redisRelay.target.password, "")
+    }
+
+    func testConfigureReconcilesGuestComposeForRedisRelayChangeWhenRestartIsRequested() throws {
+        let harness = try Harness()
+        let relaySettingsFile = URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
+        harness.fileStore.files[relaySettingsFile] = Data("""
+        {
+          "enabled": true,
+          "target": {
+            "url": "redis://redis-hub.internal:6380/2"
+          },
+          "scope": "vital_reconstruction",
+          "includeRecorderNetworkContext": false,
+          "intervalSeconds": 1.0,
+          "scanCount": 1000
+        }
+        """.utf8)
+
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.redisRelaySettingsFile(relaySettingsFile)],
+            restart: true
+        ))
+
+        XCTAssertTrue(result.restart)
+        XCTAssertEqual(result.restartRequirement, .containerServices)
+        XCTAssertEqual(harness.reconcileComposeCount, 1)
+        XCTAssertEqual(harness.restartCount, 0)
+    }
+
     func testConfigureRejectsInvalidLogArchiveSettings() throws {
         let harness = try Harness()
 
@@ -220,6 +300,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         var startOnBootValues: [Bool] = []
         var systemSleepPreventionValues: [Bool] = []
         var automaticBackupSchedules: [(enabled: Bool, scheduleTimes: [String])] = []
+        var reconcileComposeCount = 0
         var restartCount = 0
         var runner: RuntimeConfigureRunner!
 
@@ -275,6 +356,9 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                     },
                     setAutomaticBackupSchedule: { [weak self] enabled, scheduleTimes in
                         self?.automaticBackupSchedules.append((enabled: enabled, scheduleTimes: scheduleTimes))
+                    },
+                    reconcileGuestComposeServices: { [weak self] in
+                        self?.reconcileComposeCount += 1
                     },
                     restartRuntimeServices: { [weak self] in
                         self?.restartCount += 1

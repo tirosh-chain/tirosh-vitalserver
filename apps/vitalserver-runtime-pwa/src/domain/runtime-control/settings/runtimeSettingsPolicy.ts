@@ -8,6 +8,15 @@ export type RuntimeSettingsValidationResult = {
   errors: string[];
 };
 
+export type RuntimeSettingsActivationDecision = {
+  vmRestartChanges: string[];
+  containerServiceChanges: string[];
+  message: string;
+  requiresVMRestart: boolean;
+  requiresContainerServicesReconcile: boolean;
+  requiresActivation: boolean;
+};
+
 export type RuntimeCapabilityReadState =
   | "available"
   | "loading"
@@ -30,6 +39,38 @@ const protectedDirectoryNames = new Set([
   "Downloads",
   "iCloud Drive"
 ]);
+
+const restartRequiredSettings: Array<{
+  label: string;
+  changed: (draft: RuntimeSettings, runtime: RuntimeSettings) => boolean;
+}> = [
+  {
+    label: "CPU",
+    changed: (draft, runtime) => draft.cpuCount !== runtime.cpuCount
+  },
+  {
+    label: "Memory allocation",
+    changed: (draft, runtime) => draft.memoryGiB !== runtime.memoryGiB
+  },
+  {
+    label: "Disk",
+    changed: (draft, runtime) => draft.diskGiB !== runtime.diskGiB
+  },
+  {
+    label: "Network mode",
+    changed: (draft, runtime) => draft.networkMode !== runtime.networkMode
+  },
+  {
+    label: "Bridged interface",
+    changed: (draft, runtime) =>
+      draft.bridgedInterface !== runtime.bridgedInterface
+  },
+  {
+    label: "Vital files directory",
+    changed: (draft, runtime) =>
+      draft.vitalFilesDirectory !== runtime.vitalFilesDirectory
+  }
+];
 
 export function validateRuntimeSettings(
   settings: RuntimeSettings
@@ -90,6 +131,33 @@ export function validateRuntimeSettings(
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+export function runtimeSettingsActivationDecision(
+  draft: RuntimeSettings,
+  runtime: RuntimeSettings
+): RuntimeSettingsActivationDecision {
+  const vmRestartChanges = restartRequiredSettings
+    .filter((setting) => setting.changed(draft, runtime))
+    .map((setting) => setting.label);
+  const containerServiceChanges: string[] = [];
+  const requiresVMRestart = vmRestartChanges.length > 0;
+  const requiresContainerServicesReconcile = containerServiceChanges.length > 0;
+  const requiresActivation =
+    requiresVMRestart || requiresContainerServicesReconcile;
+
+  return {
+    vmRestartChanges,
+    containerServiceChanges,
+    requiresVMRestart,
+    requiresContainerServicesReconcile,
+    requiresActivation,
+    message: activationMessage({
+      vmRestartChanges,
+      containerServiceChanges,
+      restartAfterSave: draft.restartAfterSave
+    })
+  };
 }
 
 export function startOnBootControlState(input: {
@@ -164,4 +232,31 @@ function validBackupTime(value: string): boolean {
   const hour = Number(match[1]);
   const minute = Number(match[2]);
   return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+}
+
+function activationMessage(input: {
+  vmRestartChanges: string[];
+  containerServiceChanges: string[];
+  restartAfterSave: boolean;
+}): string {
+  const { vmRestartChanges, containerServiceChanges, restartAfterSave } = input;
+  if (!vmRestartChanges.length && !containerServiceChanges.length) {
+    return "No runtime activation required for these changes.";
+  }
+
+  if (!vmRestartChanges.length) {
+    const requiredBy = containerServiceChanges.join(", ");
+    if (restartAfterSave) {
+      return `Container services will be reconciled after save. Required by: ${requiredBy}.`;
+    }
+    return `Saved changes will not become active until container services are reconciled. Required by: ${requiredBy}.`;
+  }
+
+  const requiredBy = [...vmRestartChanges, ...containerServiceChanges].join(
+    ", "
+  );
+  if (restartAfterSave) {
+    return `The VM runtime will restart after save. Required by: ${requiredBy}.`;
+  }
+  return `Saved changes will not become active until the VM runtime restarts. Required by: ${requiredBy}.`;
 }

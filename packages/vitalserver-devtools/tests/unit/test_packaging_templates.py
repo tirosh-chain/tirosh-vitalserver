@@ -27,6 +27,14 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     )
     packaging = root / "apps/vitalserver-macos-runtime/Support/Packaging"
     proxy_config_template = root / "infra/macos-nginx/vitalserver.conf.template"
+    proxy_config_template_text = proxy_config_template.read_text(encoding="utf-8")
+    guest_edge_config_text = (
+        root / "apps/vitalserver-macos-runtime/Support/Guest/nginx/vitalserver.conf"
+    ).read_text(encoding="utf-8")
+    root_compose_text = (root / "compose.yaml").read_text(encoding="utf-8")
+    guest_compose_text = (
+        root / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    ).read_text(encoding="utf-8")
     installer_package_source = (
         root
         / "packages/vitalserver-devtools/src/tirosh_vitalserver/devtools"
@@ -111,6 +119,10 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "lsof -nP" not in preinstall_text
     assert "plutil -extract" not in preinstall_text
     assert "/Library/Application Support/VitalServerHelper" in rendered
+    assert_upload_proxy_streaming(proxy_config_template_text)
+    assert_upload_proxy_streaming(guest_edge_config_text)
+    assert_audit_proxy_upload_timeout(root_compose_text)
+    assert_audit_proxy_upload_timeout(guest_compose_text)
     assert '"${vm_bin}" runtime install-provision' in postinstall_text
     assert "postinstall_timeout_seconds" not in postinstall_text
     assert "runtime install timed out timeoutSeconds=" not in postinstall_text
@@ -210,14 +222,16 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
         "vitalserver-troubleshooting-upstream-redis-save"
         in upstream_redis_backup_command_text
     )
-    assert 'redis_save_timeout_seconds="${UPSTREAM_REDIS_SAVE_TIMEOUT_SECONDS:-15}"' in (
-        upstream_redis_backup_command_text
+    redis_save_timeout_default = (
+        'redis_save_timeout_seconds="${UPSTREAM_REDIS_SAVE_TIMEOUT_SECONDS:-15}"'
     )
+    assert redis_save_timeout_default in upstream_redis_backup_command_text
     assert "run_with_timeout()" in upstream_redis_backup_command_text
-    assert (
-        'run_with_timeout "${redis_save_timeout_seconds}" "${redis_save_bin}" "${target}"'
-        in upstream_redis_backup_command_text
+    redis_save_timeout_command = (
+        'run_with_timeout "${redis_save_timeout_seconds}" '
+        '"${redis_save_bin}" "${target}"'
     )
+    assert redis_save_timeout_command in upstream_redis_backup_command_text
     assert "upstream redis SAVE did not complete before timeout" in (
         upstream_redis_backup_command_text
     )
@@ -386,3 +400,24 @@ esac
 
     assert "started proxy:" not in stdout
     assert "host proxy readiness failed after nginx configuration" in stderr
+
+
+def assert_upload_proxy_streaming(config_text: str) -> None:
+    """Assert only VitalServer upload endpoints opt into large streaming bodies."""
+
+    assert "location = /upload {" in config_text
+    assert "location = /upload_vital.php {" in config_text
+    assert config_text.count("client_max_body_size 0;") == 2
+    assert config_text.count("proxy_request_buffering off;") == 2
+    assert config_text.count("client_body_timeout 1h;") == 2
+    assert config_text.count("proxy_send_timeout 1h;") == 2
+    assert config_text.count("proxy_read_timeout 1h;") == 2
+
+
+def assert_audit_proxy_upload_timeout(compose_text: str) -> None:
+    """Assert audit proxy keeps long uploads and parser waits open."""
+
+    assert (
+        'AUDIT_PROXY_UPSTREAM_TIMEOUT_MS: "${AUDIT_PROXY_UPSTREAM_TIMEOUT_MS:-3600000}"'
+        in compose_text
+    )

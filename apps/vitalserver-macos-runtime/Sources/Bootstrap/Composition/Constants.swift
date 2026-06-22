@@ -139,6 +139,8 @@ public enum Constants {
         public static let redisBackupResultFile = RuntimeFileNames.redisBackupResult
         public static let redisRestoreRequestFile = RuntimeFileNames.redisRestoreRequest
         public static let redisRestoreResultFile = RuntimeFileNames.redisRestoreResult
+        public static let guestComposeReconcileRequestFile = RuntimeFileNames.guestComposeReconcileRequest
+        public static let guestComposeReconcileResultFile = RuntimeFileNames.guestComposeReconcileResult
         public static let updateActivationRequestFile = RuntimeFileNames.updateActivationRequest
         public static let updateActivationResultFile = RuntimeFileNames.updateActivationResult
         public static let updateActivationLogFile = RuntimeFileNames.updateActivationLog

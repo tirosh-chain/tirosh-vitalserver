@@ -157,6 +157,16 @@ public enum RuntimeUninstallComposition {
                     try operations.disableRuntimeServicesForUninstall()
                     if forceClean {
                         try operations.forceStopRuntimeServicesForUninstall()
+                    } else if clean {
+                        do {
+                            try operations.stopRuntimeServices()
+                        } catch {
+                            let reason = RuntimeErrorDescription.describe(error)
+                            operations.log(
+                                "clean uninstall graceful stop failed; forcing runtime service cleanup reason=\(reason)"
+                            )
+                            try operations.forceStopRuntimeServicesForUninstall()
+                        }
                     } else {
                         try operations.stopRuntimeServices()
                     }

@@ -56,6 +56,21 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         return panel.url
     }
 
+    func chooseVitalFiles(prompt: String) -> [URL] {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "vital"),
+        ].compactMap { $0 }
+        panel.prompt = prompt
+        guard panel.runModal() == .OK else {
+            return []
+        }
+        return panel.urls
+    }
+
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {
         let panel = NSSavePanel()
         let delegate = LogExportSavePanelDelegate()

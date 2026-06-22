@@ -3,6 +3,7 @@ import RuntimeControl
 @testable import MacControlPanelHost
 import XCTest
 import Errors
+import Foundation
 @testable import InboundAdapters
 
 final class RuntimeStatusDisplayPolicyTests: XCTestCase {
@@ -802,6 +803,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             AppConstants.Labels.sleepPreventionService,
             AppConstants.Labels.watchdogService,
             AppConstants.Labels.vitalDBObserver,
+            AppConstants.Labels.redisRelay,
             GeneratedRelease.vitalServerName,
             GeneratedRelease.hostProxyName,
             GeneratedRelease.redisUIName,
@@ -813,8 +815,106 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.httpStatus, "503")
         XCTAssertEqual(item(AppConstants.Labels.guestLogSyncService, in: items)?.value.text, AppConstants.StatusText.running)
         XCTAssertEqual(item(AppConstants.Labels.sleepPreventionService, in: items)?.value.text, AppConstants.StatusText.running)
+        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.text, AppConstants.StatusText.disabled)
+        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.severity, .neutral)
         XCTAssertEqual(item(GeneratedRelease.redisUIName, in: items)?.action, .openRedisUI)
         XCTAssertEqual(item(GeneratedRelease.swaggerUIName, in: items)?.action, .openSwagger)
+    }
+
+    func testAdvancedServiceHealthShowsRedisRelayHealthyWhenEnabledAndHealthy() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            redisRelayStatus: RuntimeRedisRelayStatus(
+                observedAt: "2026-06-18T00:00:00Z",
+                enabled: true,
+                state: "running",
+                scope: "vital_reconstruction"
+            )
+        )
+        let settings = RuntimeRedisRelaySettings(enabled: true)
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: true,
+            containerLogsBytes: 1,
+            composeServices: [
+                RuntimeContainerServiceObservation(
+                    service: "redis-relay",
+                    state: "running",
+                    health: "healthy",
+                    uptimeSeconds: 65
+                ),
+            ]
+        )
+
+        let items = policy.advancedServiceHealth(
+            status: status,
+            observation: observation,
+            redisRelaySettings: settings
+        )
+
+        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.text, AppConstants.StatusText.healthy)
+        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.severity, .healthy)
+        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.uptimeText, "00:01:05")
+    }
+
+    func testAdvancedServiceHealthShowsRedisRelayDisabledFromSettingsBeforeStaleStatus() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            redisRelayStatus: RuntimeRedisRelayStatus(
+                observedAt: "2026-06-18T00:00:00Z",
+                enabled: true,
+                state: "running",
+                scope: "vital_reconstruction"
+            )
+        )
+
+        let items = policy.advancedServiceHealth(
+            status: status,
+            observation: nil,
+            redisRelaySettings: RuntimeRedisRelaySettings(enabled: false)
+        )
+
+        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.text, AppConstants.StatusText.disabled)
+        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.severity, .neutral)
+    }
+
+    func testAdvancedServiceHealthShowsRedisRelayFailureWhenEnabledStatusReportsError() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            redisRelayStatus: RuntimeRedisRelayStatus(
+                observedAt: "2026-06-18T00:00:00Z",
+                enabled: true,
+                state: "failed",
+                scope: "vital_reconstruction",
+                lastError: "target redis auth failed"
+            )
+        )
+        let settings = RuntimeRedisRelaySettings(enabled: true)
+        let observation = RuntimeContainerObservation(
+            auditProxyHTTP: "200",
+            auditProxyStatus: nil,
+            containerLogsPresent: true,
+            containerLogsBytes: 1,
+            composeServices: [
+                RuntimeContainerServiceObservation(
+                    service: "redis-relay",
+                    state: "running",
+                    health: "healthy",
+                    uptimeSeconds: 65
+                ),
+            ]
+        )
+
+        let items = policy.advancedServiceHealth(
+            status: status,
+            observation: observation,
+            redisRelaySettings: settings
+        )
+
+        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.text, AppConstants.StatusText.failed)
+        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.severity, .warning)
+        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.httpStatus, "target redis auth failed")
     }
 
     func testAdvancedServiceHealthUsesTypedServiceStateBeforeLegacyLoadedBool() {
@@ -1075,7 +1175,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
         let summary = policy.recorderSummary(
             observation: observation,
-            vitalDBObservation: vitalDBObservation
+            vitalDBObservation: vitalDBObservation,
+            now: ISO8601DateFormatter().date(from: "2026-05-24T02:00:00Z")!
         )
 
         XCTAssertEqual(summary.activeConnections, "2")
@@ -1109,6 +1210,31 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
 
         XCTAssertEqual(summary.latestRecorder, "VR_NO_IP \(AppConstants.StatusText.notReported)")
+    }
+
+    func testRecorderSummaryUsesCurrentTimeForOnlineCounts() {
+        let vitalDBObservation = VitalDBObservationDocument(
+            observedAt: "2026-05-24T02:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 120,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_AGED",
+                    ip: "192.168.64.20",
+                    lastSeenAt: "2026-05-24T01:59:59Z",
+                    online: true
+                ),
+            ]
+        )
+
+        let summary = policy.recorderSummary(
+            observation: nil,
+            vitalDBObservation: vitalDBObservation,
+            now: ISO8601DateFormatter().date(from: "2026-05-24T02:10:00Z")!
+        )
+
+        XCTAssertEqual(summary.onlineRecorders, "0")
+        XCTAssertEqual(summary.staleRecorders, "1")
     }
 
     func testVitalServerUptimeDoesNotFallBackToStatusStartedAt() {

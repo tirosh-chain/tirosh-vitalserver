@@ -2,7 +2,7 @@
 
 VM이 실제로 어떻게 준비되고 실행되는지 정리합니다. boot asset, cloud-init, guest bootstrap, network mode, host proxy, identity 정책을 다룹니다.
 
-## 이 문서에서 바로 알아야 할 것
+## 1. 이 문서에서 바로 알아야 할 것
 
 | 질문 | 답 |
 |---|---|
@@ -28,7 +28,7 @@ runtime 단계의 source of truth는 Swift CLI인 `vitalserver-vm`입니다. She
 
 반대로 Ubuntu image 다운로드, cloud-init ISO 생성, Docker image bundle, nginx bundle 같은 build-machine 작업은 runtime 책임이 아니며 Python `packages/vitalserver-devtools`가 담당합니다.
 
-## Runtime Directory
+## 2. Runtime Directory
 
 PoC 기본 runtime directory는 아래입니다.
 
@@ -54,7 +54,7 @@ repo 안에서만 테스트하려면:
 VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make devtools/init
 ```
 
-## VM Config
+## 3. VM Config
 
 기본 config 예시:
 
@@ -81,7 +81,7 @@ VITALSERVER_VM_HOME="$PWD/.tmp/vitalserver-vm" make devtools/init
 }
 ```
 
-## Linux Boot Assets
+## 4. Linux Boot Assets
 
 PoC에서는 Git에 Linux image를 넣지 않습니다.
 
@@ -117,7 +117,7 @@ VM_ROOTFS_SIZE=32G make devtools/download
 
 `8G`는 packaging 효율과 air-gapped runtime package 설치 여유를 함께 고려한 golden rootfs base 크기입니다. 설치 wizard에서 사용자가 고르는 rootfs runtime disk 크기와 다릅니다. 설치 시에는 `rootfs-base.raw.gz`를 `vm-disk.img`로 풀고, 기본 32 GiB 또는 사용자가 고른 크기로 sparse disk를 확장합니다. Docker/containerd runtime state는 별도 `runtime-data.img`를 `/mnt/runtime`에 mount해서 사용합니다. 설치 후 rootfs disk 크기는 증가만 허용하고, runtime data disk는 rootfs update로 덮어쓰지 않습니다.
 
-## Cloud-Init
+## 5. Cloud-Init
 
 NoCloud seed image를 생성합니다.
 
@@ -152,7 +152,7 @@ uv run --project packages/vitalserver-devtools vitalserver-devtools \
 
 기본 password는 build-time seed 편의값입니다. 제품 설치에서는 Helper app wizard 또는 install settings JSON이 설치 대상별 admin password를 runtime config에 전달해야 하며, Host install writer는 누락된 admin password를 기본값으로 보정하지 않습니다.
 
-## Guest Bootstrap
+## 6. Guest Bootstrap
 
 `make devtools/stage`는 VM에서 실행할 deployment bundle을 공유 디렉터리에 복사합니다.
 
@@ -224,7 +224,7 @@ tirosh_guest_tools/*            # console entrypoint와 Linux integration wrappe
 CLI 외의 호출자도 `application` usecase를 직접 호출할 수 있어야 합니다. 따라서 package 내부에서는
 다른 CLI `main()`을 `sys.argv` 변경으로 재호출하지 않습니다.
 
-## macOS Data Sharing
+## 7. macOS Data Sharing
 
 Redis data는 VM 내부 Docker volume에 둡니다. VitalServer가 저장하는 `.vital` 파일은 macOS에서도 확인/백업할 수 있어야 하므로 host shared directory로 분리합니다.
 
@@ -247,7 +247,7 @@ Linux guest:
 | VR release 파일 | macOS shared directory |
 | tmp upload 파일 | VM 내부 Docker volume |
 
-## Network Mode
+## 8. Network Mode
 
 | 모드 | IP를 주는 곳 | 장점 | 한계 |
 |---|---|---|---|
@@ -290,7 +290,7 @@ v1 운영에서는 사용자가 VM IP로 접속하지 않습니다. 사용자는
 
 bridged mode가 활성화되면 VM은 병원 LAN DHCP에서 `172.x`, `10.x`, `192.168.x` 대역의 IP를 직접 받을 수 있습니다.
 
-## Host Proxy
+## 9. Host Proxy
 
 v1에서는 host nginx가 제품의 public edge입니다. VM은 shared/NAT 뒤에 있고, host nginx가 VM endpoint로 proxy합니다.
 
@@ -328,7 +328,9 @@ make runtime/proxy/start
 
 host nginx는 trust boundary입니다. client가 보낸 forwarding header를 신뢰하지 않고, `$remote_addr`를 기준으로 `X-Forwarded-For`, `X-Real-IP`, `X-Client-IP`, `Forwarded`를 다시 설정합니다.
 
-## Health Endpoints
+## 10. Health Endpoints
+
+### 10-1. Liveness and Readiness
 
 runtime health는 사용자 화면, watchdog, update wait가 같이 사용하는 계약입니다. 제품 runtime은 liveness와 readiness를 분리합니다.
 
@@ -339,6 +341,8 @@ runtime health는 사용자 화면, watchdog, update wait가 같이 사용하는
 
 단일 Mac runtime이라 Kubernetes처럼 traffic routing이나 scale-out을 하지는 않지만, `/health`와 `/ready`를 분리해야 장애 판단이 안정적입니다.
 
+### 10-2. Watchdog Recovery Escalation
+
 ```text
 /health failure
   -> 해당 process가 죽었거나 listen하지 않음
@@ -348,13 +352,15 @@ runtime health는 사용자 화면, watchdog, update wait가 같이 사용하는
   -> process는 살아 있지만 upstream/app/guest가 아직 준비되지 않음
   -> update 중이면 대기
   -> 일반 운영 중이면 watchdog recovery 대상
+  -> VM process/IP boundary가 살아 있으면 Guest compose reconcile 우선
+  -> VM IP missing, VM service not loaded, expired bootstrapping이면 VM runtime restart로 승격
 ```
 
 guest runtime state writer도 VitalServer 상태를 `/ready` 기준으로 기록합니다. `/`는 VitalServer app이 정상이어도 login 또는 UI route로 `302` redirect를 반환할 수 있으므로 readiness source가 아닙니다.
 
-watchdog auto-recovery는 update/rollback과 동시에 실행되면 안 됩니다. `runtime-status.json`이 `apply-bundle`, `activate-guest-update`, `rollback` 진행 중임을 나타내면 watchdog은 recovery를 건너뜁니다. 상태가 오래 갱신되지 않아 stale로 판단되면 watchdog은 다시 일반 recovery 정책으로 돌아갑니다.
+watchdog auto-recovery는 update/rollback과 동시에 실행되면 안 됩니다. `runtime-status.json`이 `apply-bundle`, `activate-guest-update`, `rollback` 진행 중임을 나타내면 watchdog은 recovery를 건너뜁니다. 상태가 오래 갱신되지 않아 stale로 판단되면 watchdog은 다시 일반 recovery 정책으로 돌아갑니다. 일반 recovery에서도 HTTP probe read failure는 compose reconcile이나 VM restart로 추정하지 않고 typed blocker로 남깁니다.
 
-## DHCP Reservation
+## 11. DHCP Reservation
 
 static IP를 기본값으로 두지 않습니다. 병원/회사망은 subnet이 제각각이고, 임의 static IP는 충돌을 만들 수 있습니다.
 
@@ -368,7 +374,7 @@ VM MAC address
 
 `make devtools/init`은 `runtime/vm-config.json`에 VM MAC address를 생성해 저장합니다. 이 값은 제품 설치 후 유지되어야 합니다.
 
-## VM Identity
+## 12. VM Identity
 
 Golden image는 여러 병원과 여러 Mac mini/Mac Studio에 복제될 수 있으므로, 장비마다 달라야 하는 값은 image에 고정해서 넣지 않습니다.
 
@@ -386,7 +392,7 @@ Golden image는 여러 병원과 여러 Mac mini/Mac Studio에 복제될 수 있
 
 Redis data, Vital 파일, bed/VR mapping 같은 runtime state는 image에 넣지 않고 운영 volume에만 저장합니다.
 
-## Runtime Data Disk
+## 13. Runtime Data Disk
 
 제품 runtime은 rootfs disk와 runtime data disk를 분리합니다.
 
@@ -400,7 +406,7 @@ Fresh install은 `runtime-data.img`가 없으면 16 GiB sparse disk를 생성합
 
 The runtime data filesystem label must stay within the ext filesystem label limit, currently 16 bytes. A longer label is rejected at build config planning time because ext tooling truncates it and makes mount proof ambiguous.
 
-## Signing
+## 14. Signing
 
 v1 기본 구조인 `shared/NAT VM + host nginx`는 bridged networking entitlement 없이 진행합니다.
 
@@ -416,7 +422,7 @@ bridged network 테스트는 별도 승인 이후에만 진행합니다.
 make devtools/sign/bridged
 ```
 
-### Apple 승인 필요 항목
+### 14-1. Apple 승인 필요 항목
 
 | 항목 | 용도 | v1 필수 여부 |
 |---|---|---:|
@@ -430,7 +436,7 @@ make devtools/sign/bridged
 
 이 승인이 없으면 bridged mode는 제품 기능으로 제공하지 않습니다. v1은 host nginx로 VRecorder 원 IP를 보존하므로 bridged entitlement 승인을 기다리지 않고 패키징을 진행할 수 있습니다.
 
-## PoC Checklist
+## 15. PoC Checklist
 
 - shared mode에서 VM이 boot된다.
 - cloud-init이 seed를 인식한다.

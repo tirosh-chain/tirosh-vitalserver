@@ -62,6 +62,8 @@ class DockerImagePlan:
     audit_proxy_dockerfile: Path
     vitaldb_observer_image: str
     vitaldb_observer_dockerfile: Path
+    redis_relay_image: str
+    redis_relay_dockerfile: Path
     testkit_image: str
     testkit_dockerfile: Path
 
@@ -78,8 +80,17 @@ class DockerImagesConfig:
     audit_proxy_dockerfile: str
     vitaldb_observer_image: str
     vitaldb_observer_dockerfile: str
+    redis_relay_image: str
+    redis_relay_dockerfile: str
     testkit_image: str
     testkit_dockerfile: str
+
+
+@dataclass(frozen=True)
+class ComposeServiceImageReference:
+    service: str
+    image: str
+    dockerfile: Path | None
 
 
 def guest_deploy_plan(
@@ -168,13 +179,20 @@ def docker_image_plan(
     audit_proxy_dockerfile: str,
     vitaldb_observer_image: str,
     vitaldb_observer_dockerfile: str,
+    redis_relay_image: str,
+    redis_relay_dockerfile: str,
     testkit_image: str,
     testkit_dockerfile: str,
 ) -> DockerImagePlan:
     if not images:
         raise DomainError("error: guest.docker_images.images must not be empty")
     app_image = images[0]
-    local_build_images = {audit_proxy_image, vitaldb_observer_image, testkit_image}
+    local_build_images = {
+        audit_proxy_image,
+        vitaldb_observer_image,
+        redis_relay_image,
+        testkit_image,
+    }
     return DockerImagePlan(
         build_context=root,
         platform=platform,
@@ -186,6 +204,76 @@ def docker_image_plan(
         audit_proxy_dockerfile=root / audit_proxy_dockerfile,
         vitaldb_observer_image=vitaldb_observer_image,
         vitaldb_observer_dockerfile=root / vitaldb_observer_dockerfile,
+        redis_relay_image=redis_relay_image,
+        redis_relay_dockerfile=root / redis_relay_dockerfile,
         testkit_image=testkit_image,
         testkit_dockerfile=root / testkit_dockerfile,
     )
+
+
+def compose_service_image_references(
+    compose_text: str,
+) -> tuple[ComposeServiceImageReference, ...]:
+    references: list[ComposeServiceImageReference] = []
+    in_services = False
+    current_service: str | None = None
+    current_image: str | None = None
+    current_dockerfile: Path | None = None
+    in_build = False
+
+    def flush_current() -> None:
+        if current_service is None or current_image is None:
+            return
+        references.append(
+            ComposeServiceImageReference(
+                service=current_service,
+                image=current_image,
+                dockerfile=current_dockerfile,
+            )
+        )
+
+    for line in compose_text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        stripped = line.strip()
+        if indent == 0:
+            flush_current()
+            current_service = None
+            current_image = None
+            current_dockerfile = None
+            in_build = False
+            in_services = stripped == "services:"
+            continue
+        if not in_services:
+            continue
+        if indent == 2 and stripped.endswith(":"):
+            flush_current()
+            current_service = stripped[:-1]
+            current_image = None
+            current_dockerfile = None
+            in_build = False
+            continue
+        if current_service is None:
+            continue
+        if indent == 4:
+            in_build = stripped == "build:"
+            if stripped.startswith("image:"):
+                current_image = _compose_scalar_value(stripped)
+            continue
+        if in_build and indent == 6 and stripped.startswith("dockerfile:"):
+            current_dockerfile = Path(_compose_scalar_value(stripped))
+
+    flush_current()
+    return tuple(references)
+
+
+def _compose_scalar_value(stripped_line: str) -> str:
+    value = stripped_line.split(":", 1)[1].strip()
+    if (
+        len(value) >= 2
+        and value[0] == value[-1]
+        and value[0] in {'"', "'"}
+    ):
+        return value[1:-1]
+    return value

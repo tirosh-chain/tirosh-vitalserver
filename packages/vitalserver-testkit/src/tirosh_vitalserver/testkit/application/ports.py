@@ -4,10 +4,20 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from tirosh_vitalserver.testkit.schemas.http import HttpResponse
 from tirosh_vitalserver.testkit.types.json import JsonValue
+
+if TYPE_CHECKING:
+    from tirosh_vitalserver.testkit.application.recorder_session.models import (
+        VirtualRecorderSessionSnapshot,
+        VirtualRecorderVitalArtifact,
+        VirtualRecorderVitalUploadResult,
+    )
+    from tirosh_vitalserver.testkit.application.recorder_session.recording import (
+        SessionVitalPlayback,
+    )
 
 
 class VitalServerPort(Protocol):
@@ -90,3 +100,26 @@ class RecorderManagementPort(Protocol):
         bed_name: str,
         timeout: float = 5.0,
     ) -> None: ...
+
+
+class SessionVitalFileExporterPort(Protocol):
+    """Session artifact writer for VitalDB `.vital` files."""
+
+    def export_session_vital_file(
+        self,
+        snapshot: VirtualRecorderSessionSnapshot,
+        playback: SessionVitalPlayback,
+    ) -> VirtualRecorderVitalArtifact: ...
+
+
+class SessionVitalFileUploaderPort(Protocol):
+    """Uploader for generated session `.vital` artifacts."""
+
+    def upload_session_vital_file(
+        self,
+        *,
+        target_url: str,
+        artifact_path: str | Path,
+        vrcode: str | None,
+        endpoint: str,
+    ) -> VirtualRecorderVitalUploadResult: ...

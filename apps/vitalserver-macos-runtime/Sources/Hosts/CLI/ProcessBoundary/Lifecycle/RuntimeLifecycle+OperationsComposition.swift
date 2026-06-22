@@ -113,6 +113,9 @@ extension RuntimeLifecycle {
                 automaticRecoveryEnabled: {
                     try automaticRecoveryEnabled()
                 },
+                reconcileGuestCompose: {
+                    try reconcileGuestComposeServices()
+                },
                 restartVMRuntime: {
                     try restartVMRuntimeForWatchdogRecovery()
                 },
@@ -202,6 +205,9 @@ extension RuntimeLifecycle {
                 },
                 setAutomaticBackupSchedule: { enabled, scheduleTimes in
                     try setAutomaticBackupSchedule(enabled: enabled, scheduleTimes: scheduleTimes)
+                },
+                reconcileGuestComposeServices: {
+                    try reconcileGuestComposeServices()
                 },
                 restartRuntimeServices: {
                     try restartRuntimeAfterSettingsApply()

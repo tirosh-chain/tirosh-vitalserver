@@ -108,6 +108,10 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             path: paths.runtimeInstallState,
             fileStore: fileStore
         ).load()
+        let redisRelayStatusRead = RuntimeRedisRelayStatusReader(
+            path: paths.redisRelayStatus,
+            fileStore: fileStore
+        ).load()
         let liveDiagnostics = RuntimeLiveDiagnosticsReader(
             paths: paths,
             runtimeExecutableState: runtimeExecutableState,
@@ -118,6 +122,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             statusRead: statusRead,
             guestStateRead: guestStateRead,
             installStateRead: installStateRead,
+            redisRelayStatusRead: redisRelayStatusRead,
             liveDiagnostics: liveDiagnostics
         )
     }

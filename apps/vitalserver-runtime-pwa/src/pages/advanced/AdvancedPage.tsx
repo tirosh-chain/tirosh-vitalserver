@@ -427,7 +427,7 @@ export function AdvancedPage() {
         ) : null}
         <div className="action-row">
           <ConfirmButton
-            confirmMessage="Apply runtime settings? This may rewrite runtime configuration and restart runtime services when restart after save is enabled."
+            confirmMessage="Apply runtime settings? This may update launchd services, rewrite runtime configuration, and restart the VM runtime only when a changed setting requires it and activation after save is enabled."
             disabled={!canApplyNetworkSettings}
             onClick={() => applyRuntimeSettings(networkSettings)}
           >
@@ -468,7 +468,7 @@ export function AdvancedPage() {
         ) : null}
         <div className="action-row">
           <ConfirmButton
-            confirmMessage="Apply runtime settings? This may rewrite runtime configuration and restart runtime services when restart after save is enabled."
+            confirmMessage="Apply runtime settings? This may update launchd services, rewrite runtime configuration, and restart the VM runtime only when a changed setting requires it and activation after save is enabled."
             disabled={!canApplyAdminSettings}
             onClick={() => applyRuntimeSettings(adminSettings)}
           >

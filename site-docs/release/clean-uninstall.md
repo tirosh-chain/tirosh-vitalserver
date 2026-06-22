@@ -6,14 +6,25 @@
 실행 중인 상태에서 요청하는 정상 제거 흐름이고, reset command는 새 설치가 막힌 Mac을 다시
 설치 가능한 상태로 되돌리는 강제 복구 도구입니다.
 
-## 1. 기능 차이
+## 1. Uninstall mode 정의
+
+| Mode | Command | 목적 | Stop 정책 | Data 정책 |
+|---|---|---|---|---|
+| Standard uninstall | `vitalserver-vm runtime uninstall` | 일반 제거 | graceful stop 실패 시 중단 | Redis data-only backup을 먼저 만들고 logs, backups, Redis backups, 기본 Vital files directory를 보존 |
+| Clean uninstall | `vitalserver-vm runtime uninstall --clean` | Helper/API에서 요청하는 product/user data 제거 | bounded graceful stop을 먼저 시도하고, 실패하면 cleanup을 진행하기 위해 force stop으로 전환 | user data 보존 없음. 설정된 external Vital files directory는 explicit read가 성공한 경우에만 clean 대상 |
+| Force clean uninstall | `vitalserver-vm runtime uninstall --force-clean-uninstaller` | fresh install blocker를 제거하는 recovery | VM process force stop을 포함한 recovery 경로 사용 | clean uninstall 범위를 제거하고 fresh install readiness blocker를 별도 검증 |
+
+Clean uninstall과 Force clean uninstall은 같은 의미가 아닙니다. Helper app의 Clean uninstall은
+`--clean`을 사용합니다. `--force-clean-uninstaller`는 reset/recovery command가 소유합니다.
+
+## 2. 기능 차이
 
 | 구분 | Clean uninstall | Reset for Reinstall command |
 |---|---|---|
 | 목적 | 설치된 Helper/runtime을 정상 제거 | fresh install preflight를 막는 잔존 상태 제거 |
 | 실행 위치 | Helper app, Runtime Control API, runtime CLI 내부 경로 | DMG의 `Troubleshooting Tools` command |
 | 대표 command | `vitalserver-vm runtime uninstall --clean` | `vitalserver-vm runtime uninstall --force-clean-uninstaller` |
-| VM stop | 정상 stop과 service unload를 우선 | VM process force stop을 포함한 recovery 경로 사용 |
+| VM stop | 정상 stop을 먼저 시도하고 실패하면 cleanup용 force stop으로 전환 | VM process force stop을 포함한 recovery 경로 사용 |
 | Helper app 처리 | 호출한 Helper app이 종료 예약을 함께 해야 함 | command가 Helper app 종료를 시도하고 필요하면 강제 종료 |
 | 삭제 범위 | Helper app, runtime home, runtime tools, LaunchDaemon plist, package receipt, clean 대상 user data | clean uninstall 범위에 더해 fresh install blocker 검증에 필요한 Host state까지 강하게 확인 |
 | 완료 기준 | uninstall workflow가 파일 제거, disabled override 정리, receipt 정리를 완료해야 함 | runtime artifact, launchd service, package receipt 중 fresh install blocker가 남지 않아야 함 |
@@ -22,7 +33,7 @@
 일반 현장 사용자는 재설치가 목적이면 Clean uninstall을 반복하지 않습니다. 설치가 막힌 상태에서는
 [Reset for Reinstall command](reset-installer.md)를 사용합니다.
 
-## 2. Clean uninstall의 보존/삭제 정책
+## 3. Clean uninstall의 보존/삭제 정책
 
 표준 uninstall은 clean이 아닐 때 data-only repair backup을 먼저 만들고 logs, backups,
 data-only repair backups, 기본 Vital files directory를 임시 위치에 보존한 뒤 product root를
@@ -32,7 +43,7 @@ Clean uninstall은 user data 보존을 하지 않습니다. 설정된 external V
 clean 대상에 포함됩니다. 다만 configured path를 읽지 못하면 external directory cleanup을 추정하지
 않고 명시적으로 skip log를 남깁니다.
 
-## 3. Progress 결과 판정
+## 4. Progress 결과 판정
 
 Helper app에서 시작한 Clean uninstall은 background worker와 progress viewer를 사용합니다. viewer는
 log marker만으로 성공/실패를 추정하지 않고 현재 runID의 result document를 우선합니다.
@@ -57,7 +68,7 @@ viewer가 `Uninstall result is unavailable`을 표시해도, 먼저
 것입니다. 이 경우는 worker 종료와 result/marker 관측 사이의 progress viewer race로 분류하고,
 cleanup 실패로 보지 않습니다.
 
-## 4. Reset command를 쓰는 상황
+## 5. Reset command를 쓰는 상황
 
 Reset command는 정상 제거 UX가 아니라 recovery tool입니다. 아래 blocker가 보이면 reset
 command를 사용합니다.

@@ -14,6 +14,10 @@ from tirosh_vitalserver.testkit.adapters.outbound.bed_registry_store import (
 from tirosh_vitalserver.testkit.adapters.outbound.session_store import (
     JsonFileVirtualRecorderSessionStore,
 )
+from tirosh_vitalserver.testkit.adapters.outbound.vital_artifact import (
+    VitalDbSessionVitalFileExporter,
+    VitalServerSessionVitalFileUploader,
+)
 from tirosh_vitalserver.testkit.adapters.outbound.vitalserver import VitalServerClient
 from tirosh_vitalserver.testkit.application.usecases import wait_for_server
 from tirosh_vitalserver.testkit.configuration.bed_registry_config import (
@@ -23,6 +27,7 @@ from tirosh_vitalserver.testkit.configuration.logging_config import (
     configure_testkit_logging,
 )
 from tirosh_vitalserver.testkit.configuration.session_config import (
+    load_session_artifact_dir,
     load_session_state_path,
 )
 from tirosh_vitalserver.testkit.observability import (
@@ -124,10 +129,15 @@ def run_serve(args: argparse.Namespace) -> int:
     )
 
     session_state_path = load_session_state_path(args.config)
+    session_artifact_dir = load_session_artifact_dir(args.config)
     bed_registry_state_path = load_bed_registry_state_path(args.config)
     emit_testkit_event(
         "session_store.configured",
         state_path=str(session_state_path),
+    )
+    emit_testkit_event(
+        "session_artifact_store.configured",
+        artifact_dir=str(session_artifact_dir),
     )
     emit_testkit_event(
         "bed_registry_store.configured",
@@ -138,6 +148,10 @@ def run_serve(args: argparse.Namespace) -> int:
         create_testkit_app(
             session_store=JsonFileVirtualRecorderSessionStore(session_state_path),
             bed_registry_store=JsonFileBedRegistryStore(bed_registry_state_path),
+            vital_file_exporter=VitalDbSessionVitalFileExporter(
+                session_artifact_dir,
+            ),
+            vital_file_uploader=VitalServerSessionVitalFileUploader(),
         ),
         host=args.host,
         port=args.port,

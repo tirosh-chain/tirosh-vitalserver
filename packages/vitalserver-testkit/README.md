@@ -88,21 +88,65 @@ GET  /sessions
 POST /sessions
 GET  /sessions/{id}
 POST /sessions/{id}/stop
+POST /sessions/{id}/upload-vital
 DELETE /sessions/{id}
 DELETE /sessions
 ```
 
 `POST /beds`는 `{"roomNames":["OR-A"]}`처럼 명시적인 room name을 받거나,
 `{"count":2,"prefix":"OR"}`로 fresh bed identity를 만든다. `POST /sessions`는
-`bedRoomNames` 없이 simulated recorder payload를 만들지 않는다.
+`bedRoomNames` 없이 simulated recorder payload를 만들지 않는다. session 종료 시 명시적인
+playback window(start/end, pause/resume events, interval, sent message count, recorder payload,
+signal scenario)를 기준으로 `.vital` artifact를 생성하고 VitalServer에 업로드하려면 `POST /sessions`에
+`{"exportVital":true,"uploadVital":true}`를 명시한다. streaming frame 전체를 memory에
+누적하지 않으며, `uploadVital`은 `exportVital` 없이는 유효하지 않다.
+
+Generated bed는 같은 prefix를 반복해도 구분되도록 짧은 random suffix를 붙인다. 기본 prefix
+`testbed`와 suffix `5f83`은 `testbed5f83`으로 생성되며, 이 이름이 TestKit status,
+recorder payload `roomname`, Web Monitoring title, `.vital` filename prefix에 동일하게 사용된다.
+
+`.vital` export/upload session은 아래 상태를 API 계약으로 제공한다.
+
+```text
+running
+stopping
+finalizing-vital
+vital-ready
+uploading
+uploaded
+upload-failed
+```
+
+`vital` 문서는 `exportStatus`, `uploadStatus`, `artifact`, `uploadResult`,
+`exportError`, `uploadError`를 분리해서 제공한다. upload 실패 시 artifact path는 보존되고
+`POST /sessions/{id}/upload-vital`로 수동 retry할 수 있다. Session delete는 generated
+`.vital` artifact를 삭제하지 않으며, API artifact 문서의 `retentionPolicy`는
+`preserve-on-delete`로 표시된다.
 
 TestKit API는 시뮬레이터 실행 상태의 SoT이고, VitalServer가 실제로 인식한 recorder 상태의
 SoT는 `vitaldb-observer`와 Runtime Control API의 recorder 관측 결과입니다.
 생성했던 bed registry는 `[bed_registry].state_path`에, virtual VRecorder 목록은
-`[sessions].state_path`에 저장합니다. 따라서 TestKit API process가 재시작되어도 이전 bed
+`[sessions].state_path`에, generated `.vital` artifacts는 `[sessions].artifact_dir`에
+저장합니다. 따라서 TestKit API process가 재시작되어도 이전 bed
 room name을 다시 선택하거나 session의 target URL과 vrcode를 기준으로 삭제/reset을 다시
 요청할 수 있습니다. 실행 중이던 streaming thread 자체는 복구하지 않고, 재시작 이후에는
 남은 VitalServer recorder 등록을 정리하는 registry로 사용합니다.
+
+Persisted state files are versioned contracts. `sessions.json` writes
+`schema_version: 2`; `bed-registry.json` writes `schema_version: 1`. Missing
+`schema_version` is treated as a legacy v1 document only at the store boundary.
+After a legacy session is loaded and saved again, the store writes the current
+schema and materializes `.vital` state explicitly. Newer schema versions,
+invalid schema values, corrupt JSON, and missing fields in the current schema
+must fail visibly rather than becoming an empty registry or default success.
+
+Troubleshooting: update 직후 `testkit` container가 반복 재시작하고 로그에
+`session_store.load_record.failed`와 `KeyError: 'vital_state'`가 보이면, 이전 버전의
+`sessions.json`이 `.vital` export 상태 필드가 추가되기 전 schema로 남아 있는 것입니다.
+수정 방향은 저장소 로더에서 `vital_state`가 없는 legacy session document만 명시적으로 migrate해
+`not-requested` 상태를 채우는 것입니다. `vital_state: null`이나 다른 필수 session/recorder 필드
+누락은 invalid contract로 실패해야 합니다. 예방 원칙은 optional migration을 필드 단위로 한정하고,
+missing, invalid, failed state를 같은 empty/default success로 합치지 않는 것입니다.
 
 ## Simulated Signal Scenario
 
@@ -129,6 +173,10 @@ waveform 생성에 반영됩니다.
 ```toml
 [bed_registry]
 state_path = "/var/lib/vitalserver-testkit/bed-registry.json"
+
+[sessions]
+state_path = "/var/lib/vitalserver-testkit/sessions.json"
+artifact_dir = "/var/lib/vitalserver-testkit/artifacts"
 
 [beds]
 count = 5

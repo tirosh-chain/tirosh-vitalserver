@@ -70,6 +70,7 @@ Runtime service 상태는 Advanced 화면에서 봅니다. 이 값은 macOS laun
 | Guest log sync service | guest/runtime log 동기화 |
 | Sleep prevention service | runtime 운용 중 macOS sleep 방지 |
 | Watchdog service | runtime 상태 관측과 복구 판단 |
+| Redis Relay | 내부 Redis data를 외부 target Redis로 publish하는 optional relay |
 
 ### 3-2. service 상태값
 
@@ -95,6 +96,11 @@ Service liveness 표시 순서는 operation service와 guest observation service
 
 Guest container service 상태는 guest runtime-state의 `containerServices` 계약에서 옵니다. 컨테이너가 restart 중일 때 `docker compose ps`가 빈 결과를 내보내면 empty success로 취급하지 않고 `read-failed` container observation으로 올립니다.
 Advanced 화면에서 service가 `Not reported`와 다른 상태를 반복해서 오가면, 먼저 `runtime-status.json`의 `containerObservation.composeServicesReadState`와 `composeServicesReadError`를 확인합니다. 이 값이 `read-failed`, `missing`, `stale`이면 UI 표시 문제가 아니라 guest service 관측 계약이 명시적으로 실패하거나 아직 보고되지 않은 상태입니다.
+
+Redis Relay는 optional service입니다. Settings에서 relay가 꺼져 있으면 `Disabled`가 정상 상태입니다.
+Relay가 켜져 있을 때 `running_with_errors`는 relay container가 살아 있지만 target Redis publish 일부가
+실패했다는 뜻입니다. 이 상태는 VitalServer web/recorder traffic 장애와 구분해서 봅니다. 자세한 target
+consumer 계약은 Dev 문서의 [Redis Relay](../dev/redis-relay.md)를 봅니다.
 
 ### 3-3. Service liveness uptime
 
@@ -133,6 +139,13 @@ verify 시각, 마지막 failure를 확인합니다. 이 정보는 audit proxy�
 마지막으로 보낸 activity 시각입니다. 둘은 다릅니다. Data updated가 오래되면 화면 전체가 stale일 수
 있고, Last seen만 오래되면 특정 VRecorder activity 문제일 수 있습니다.
 Anomaly는 개수만으로 원인을 확정하지 않고, 가장 최근 anomaly 종류와 메시지를 먼저 확인합니다.
+
+Troubleshooting: `Data updated`가 오래됐는데 VRecorder가 `Online`으로 표시되면 관측 문서 시각과
+현재 표시 시각이 섞인 상태 판정 문제일 수 있습니다. 원인은 recorder status를 observation의
+`observedAt` 기준으로만 계산하고, UI가 현재 시각 기준 age를 함께 표시하는 것입니다. 수정 방향은
+read model에 명시적인 status evaluation time을 전달해 `Last seen`이 threshold를 지난 recorder를
+`Stale`로 계산하는 것입니다. 예방 원칙은 presentation이 시간 상태를 추측하지 않고, status 계산
+시각을 adapter/read boundary에서 명시적으로 공급하는 것입니다.
 
 ### 4-2. Bed 상태
 

@@ -18,7 +18,8 @@
 
 | 시나리오 | 산출물 | 생성 명령 | 현장 적용 |
 |---|---|---|---|
-| 신규 설치 dev 검증 | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/dev` | release-dev.json 기반 개발 검증 |
+| 신규 설치 dev 빠른 패키징 | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/dev` | release-dev.json 기반 개발 산출물 생성 |
+| 신규 설치 dev 전체 gate | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/dev/all` | review, clean compile, artifact verify, runtime smoke |
 | 신규 설치 release 검증 | `dist/VitalServerHelper-<version>.dmg` | `make dist/dmg/release` | release.json 기반 release 검증 |
 | `.pkg` 직접 배포 dev 검증 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/dev` | `sudo installer -pkg ... -target /` |
 | `.pkg` 직접 배포 release 검증 | `dist/VitalServerHelper-<version>.pkg` | `make dist/pkg/release` | `sudo installer -pkg ... -target /` |
@@ -69,24 +70,34 @@ registry 접근이 필요하지 않습니다.
 Packaging workflow 이름은 각 단계가 보장하는 상태를 뜻합니다. `compile`은 artifact 생성 계약이고,
 installed runtime 상태를 추정하지 않습니다. Guest bootstrap 완료와 runtime contract는 별도
 runtime smoke가 소유합니다.
+DMG dev workflow에서 cache 재사용 여부는 target 이름으로 구분합니다. `make dist/dmg/dev`는 빠른
+패키징 target으로 기존 golden rootfs cache를 재사용할 수 있고, `make dist/dmg/dev/compile`은 clean
+golden rootfs를 새로 요구하는 제품 compile target입니다. 같은 `compile` target을 변수로 cached/clean
+mode 사이에서 바꾸지 않습니다.
 
 | Target | Contract |
 |---|---|
-| `make dist/dmg/dev/review` | package/PWA/Swift/devtools review checks를 실행합니다. |
-| `make dist/dmg/dev/compile` | dev DMG를 clean golden rootfs에서 생성하고, 생성된 DMG를 read-only로 다시 열어 installer PKG와 Troubleshooting Tools layout/executable contract를 검증합니다. Rootfs 준비 proof와 package input은 검증하지만 installed runtime success를 뜻하지 않습니다. |
-| `make dist/dmg/dev/artifact-verify` | 이미 생성된 dev DMG를 `hdiutil verify`와 read-only attach로 검증합니다. |
+| `make dist/dmg/dev` | 기존 golden rootfs cache를 재사용할 수 있는 빠른 dev DMG packaging target입니다. |
+| `make dist/dmg/dev/compile` | dev DMG를 clean golden rootfs에서 생성합니다. Rootfs 준비 proof와 package input은 검증하지만 installed runtime success를 뜻하지 않습니다. |
+| `make dist/dmg/dev/verify` | 이미 생성된 dev DMG artifact와 현재 golden rootfs runtime smoke를 검증합니다. Compile은 실행하지 않습니다. |
+| `make dist/dmg/dev/all` | review checks, clean-rootfs DMG compile, artifact verify, runtime smoke를 실행하는 설치 전 표준 gate입니다. |
 | `make dist/pkg/dev/compile` | dev PKG를 clean golden rootfs에서 생성합니다. |
-| `make dist/dmg/dev/runtime-smoke` | 현재 golden rootfs/disk로 VM을 부팅하고 guest bootstrap, `bootstrap-result.json`, `runtime-state.json`, systemd/docker/http/command-dispatch contract를 검증합니다. |
 | `make dist/pkg/dev/runtime-smoke` | dev PKG와 같은 golden runtime contract를 검증합니다. |
-| `make dist/dmg/dev/verify` | review checks, clean-rootfs DMG compile/artifact verify, runtime smoke를 실행하는 설치 전 표준 gate입니다. |
 | `make dist/pkg/dev/verify` / `make dist/pkg/verify/dev` | package plan/template review, PWA Runtime Control contract/check/test, log archive/retention tests, dev PKG compile, runtime smoke를 실행하는 설치 전 표준 gate입니다. |
 | `make dist/dmg/release/verify` | release DMG 생성 후 runtime smoke를 실행합니다. Release branch gate는 release build target이 소유합니다. |
 | `make dist/pkg/release/verify` | release PKG 생성 후 runtime smoke를 실행합니다. |
 
-`compile passed`는 `installed runtime passed`와 다릅니다. DMG compile은 산출물 readback까지 검증하지만
-macOS에 실제 설치된 runtime success를 뜻하지 않습니다. 설치 전 검증, 수동 QA 전달, release candidate
-확인에는 `verify` target을 사용합니다. Runtime smoke failure는 fallback으로 보정하지 않고 failing stage,
-runId, manifest, bootstrap log, launcher log를 통해 실패 상태를 드러내야 합니다.
+`compile passed`는 `installed runtime passed`와 다릅니다. DMG compile은 clean rootfs 기반 산출물 생성을
+의미하고, 산출물 readback과 golden runtime smoke는 `verify`가 소유합니다. 설치 전 검증, 수동 QA 전달,
+release candidate 확인에는 `verify` target을 사용합니다. Runtime smoke failure는 fallback으로 보정하지
+않고 failing stage, runId, manifest, bootstrap log, launcher log를 통해 실패 상태를 드러내야 합니다.
+`make dist/dmg/dev`는 빠른 packaging target이므로 installed runtime bootstrap, compose start,
+install-provision side effect를 실행하지 않습니다. 설치 후 동작 가능성을 확인해야 할 때는
+`make dist/dmg/dev/verify`, `make dist/dmg/dev/all`, 또는 설치 후 `make dist/installed/health`를
+사용합니다.
+DMG dev의 review, artifact verify, runtime smoke는 `internal/vm/dmg/dev/*` 조합 단계로 유지하지만
+public target으로 노출하지 않습니다. 사용자는 cache packaging, clean compile, verify, full gate 중
+하나를 선택합니다.
 
 Runtime smoke는 Host가 제공한 explicit deploy contract도 검증합니다. Devtools가 VM을 직접 시작하는
 runtime-smoke 경로에서도 `data/deploy/host-time.json`을 써야 하며, Guest는 boot 초기에
@@ -317,6 +328,12 @@ make dist/dmg/release
 따라서 `postinstall`이나 Make target에 provisioning 정책을 다시 넣지 않습니다. `postinstall`은 설치 log를 연결한 뒤 `vitalserver-vm runtime install-provision`을 호출하는 wrapper로 유지합니다.
 
 `install-provision`은 package payload, VM disk/config, cloud-init seed, 권한, launchd service 시작 요청까지 담당합니다. runtime이 실제로 healthy인지 판단하는 일은 `postinstall`이 하지 않습니다. Helper app, watchdog, `vitalserver-vm runtime health`가 `runtime-status.json`과 guest-owned state를 읽어 별도 readiness로 보고합니다. 따라서 `.pkg` 성공은 "runtime service start가 요청됨"을 뜻하고, "VitalServer backend가 ready"를 뜻하지 않습니다. Provision 완료 status는 active operation이 아니어야 하며, watchdog이 이어서 Guest-owned state를 반영할 수 있어야 합니다.
+
+Guest compose에 선언된 service가 disabled 설정을 가질 수 있어도, compose bind mount source는
+install-provision이 명시적으로 만들어야 합니다. Redis Relay는 기본 disabled 상태에서도
+`redis-relay-config/redis-relay.toml`, `redis-relay-secrets`, `redis-relay-status`가 존재해야 guest
+compose start가 실패하지 않습니다. Disabled는 process 동작 여부이고, Host-owned config contract의
+부재를 뜻하지 않습니다.
 
 Fresh install `postinstall`이 실패하면 wrapper는 실패 로그를 `/private/tmp/tirosh-vitalserver-postinstall-failure.log`에 보존한 뒤 이번 package attempt가 만든 product root, Helper app, runtime tools, LaunchDaemon plist, package receipt를 제거합니다. Cleanup은 package nginx 경로로 확인된 orphan host proxy process도 종료합니다. 이 cleanup은 fresh install 경계에서만 동작하며, 외부 `.vital` 경로나 별도 사용자 데이터 경로는 삭제하지 않습니다.
 
@@ -709,6 +726,7 @@ terminal compile failure proof로 기록합니다.
 Fresh install bootstrap도 Docker image bundle을 로드한 직후 `redis:3.2.12-alpine` smoke container를 `--network none`으로 실행합니다. 이 단계가 실패하면 `bootstrap-result.json`은 `guest-bootstrap-docker-runtime-failed` reason code를 기록하고 compose up으로 진행하지 않습니다. Docker version 출력이나 compose binary 존재만으로는 rootfs가 준비됐다고 보지 않습니다.
 
 반복 개발 중에는 기존 golden rootfs cache를 재사용합니다. cache가 없으면 `make dist/pkg/dev`가 자동으로 한 번 생성합니다. VM build를 제품 compile로 보고 clean golden rootfs부터 다시 만들려면 profile target을 사용합니다.
+캐시 재사용은 빠른 packaging target의 의미이고, `compile` target의 의미가 아닙니다.
 
 ```sh
 make dist/pkg/dev/compile
@@ -723,6 +741,8 @@ make dist/dmg/release
 ```
 
 VM compile 여부는 profile target이 소유합니다. 동일 의미의 긴 `VAR=value` 호환 명령은 유지하지 않습니다.
+특히 `dist/dmg/dev/compile`의 clean 의미를 변수로 끄지 않습니다. 캐시를 재사용하는 개발 산출물이 필요하면
+`make dist/dmg/dev`를 사용합니다.
 
 ## Update Bundle
 

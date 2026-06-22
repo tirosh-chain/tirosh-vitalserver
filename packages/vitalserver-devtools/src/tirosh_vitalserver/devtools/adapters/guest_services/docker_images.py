@@ -49,6 +49,13 @@ def build_docker_image_bundle(
             dockerfile=plan.vitaldb_observer_dockerfile,
             context=plan.build_context,
         )
+    if plan.redis_relay_image in plan.images:
+        run_docker_build(
+            platform=plan.platform,
+            image=plan.redis_relay_image,
+            dockerfile=plan.redis_relay_dockerfile,
+            context=plan.build_context,
+        )
     if plan.testkit_image in plan.images:
         run_docker_build(
             platform=plan.platform,

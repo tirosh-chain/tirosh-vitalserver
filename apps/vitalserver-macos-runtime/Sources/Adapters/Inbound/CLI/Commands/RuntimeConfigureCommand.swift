@@ -34,4 +34,5 @@ public enum RuntimeConfigureChange: Equatable, Sendable {
     case backupRetention(Int)
     case logArchiveRetentionDays(Int)
     case logArchiveMaximumGiB(Int)
+    case redisRelaySettingsFile(URL)
 }

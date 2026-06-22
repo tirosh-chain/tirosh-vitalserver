@@ -208,7 +208,7 @@ final class RuntimeChaosScenarioTests: XCTestCase {
         )
 
         do {
-            _ = try await worker.uninstallRuntime(clean: true)
+            _ = try await worker.uninstallRuntime(mode: .clean)
             XCTFail("Expected missing uninstaller")
         } catch {
             XCTAssertEqual((error as? RuntimeClientError)?.errorDescription, RuntimeControlClientConstants.StatusText.missingUninstaller)
@@ -395,6 +395,10 @@ private struct ChaosActionEnvironment: RuntimeActionEnvironment {
 
     func writeAdminPasswordFile(_ password: String) throws -> URL {
         URL(fileURLWithPath: "/tmp/admin-password")
+    }
+
+    func writeRedisRelaySettingsFile(_ settings: RuntimeRedisRelaySettings) throws -> URL {
+        URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
     }
 
     func removeItem(at url: URL) throws {}

@@ -101,17 +101,29 @@ struct RuntimeStatusDisplayPolicy {
         advancedVMHealthPolicy.vmHealth(status: status).map(healthItem)
     }
 
-    func advancedServiceHealth(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [ServiceHealthItem] {
-        advancedServiceHealthPolicy.serviceHealth(status: status, observation: observation, now: now).map(serviceHealthItem)
+    func advancedServiceHealth(
+        status: RuntimeStatus,
+        observation: RuntimeContainerObservation?,
+        redisRelaySettings: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings(),
+        now: Date = Date()
+    ) -> [ServiceHealthItem] {
+        advancedServiceHealthPolicy.serviceHealth(
+            status: status,
+            observation: observation,
+            redisRelaySettings: redisRelaySettings,
+            now: now
+        ).map(serviceHealthItem)
     }
 
     func recorderSummary(
         observation: RuntimeContainerObservation?,
-        vitalDBObservation: VitalDBObservationDocument?
+        vitalDBObservation: VitalDBObservationDocument?,
+        now: Date = Date()
     ) -> RecorderSummary {
         recorderSummaryPolicy.recorderSummary(
             observation: observation,
-            vitalDBObservation: vitalDBObservation
+            vitalDBObservation: vitalDBObservation,
+            now: now
         )
     }
 
@@ -381,8 +393,10 @@ private struct AppRuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusAdv
     var vitalServerName: String { GeneratedRelease.vitalServerName }
     var hostProxyName: String { GeneratedRelease.hostProxyName }
     var vitalDBObserverLabel: String { AppConstants.Labels.vitalDBObserver }
+    var redisRelayLabel: String { AppConstants.Labels.redisRelay }
     var redisUIName: String { GeneratedRelease.redisUIName }
     var swaggerUIName: String { GeneratedRelease.swaggerUIName }
+    var disabledText: String { AppConstants.StatusText.disabled }
     var waitingText: String { AppConstants.StatusText.waiting }
     var guestStateStaleText: String { AppConstants.StatusText.guestStateStale }
     var installingText: String { AppConstants.StatusText.installing }

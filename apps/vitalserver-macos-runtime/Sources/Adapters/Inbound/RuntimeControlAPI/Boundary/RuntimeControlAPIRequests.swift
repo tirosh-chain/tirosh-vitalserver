@@ -34,10 +34,10 @@ public struct RuntimeApplySettingsRequest: Codable, Equatable, Sendable {
 }
 
 public struct RuntimeUninstallRequest: Codable, Equatable, Sendable {
-    public let clean: Bool
+    public let mode: RuntimeUninstallMode
 
-    public init(clean: Bool) {
-        self.clean = clean
+    public init(mode: RuntimeUninstallMode) {
+        self.mode = mode
     }
 }
 

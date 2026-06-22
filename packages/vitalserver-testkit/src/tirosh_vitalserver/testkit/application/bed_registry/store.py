@@ -6,6 +6,8 @@ from typing import Any, Protocol
 
 from tirosh_vitalserver.testkit.domain.bed import Bed
 
+BED_REGISTRY_STORE_SCHEMA_VERSION = 1
+
 
 class BedRegistryStorePort(Protocol):
     """Persistent registry for created bed identities."""

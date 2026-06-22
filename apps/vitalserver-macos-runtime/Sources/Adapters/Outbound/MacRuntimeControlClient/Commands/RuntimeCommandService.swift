@@ -39,7 +39,11 @@ enum RuntimeCommandFactory {
         shellCommand(executable: RuntimeControlClientConstants.Commands.rm, arguments: ["-rf", "--", url.path])
     }
 
-    static func configureRuntimeArguments(settings: RuntimeSettings, adminPasswordFile: String? = nil) -> [String] {
+    static func configureRuntimeArguments(
+        settings: RuntimeSettings,
+        adminPasswordFile: String? = nil,
+        redisRelaySettingsFile: String? = nil
+    ) -> [String] {
         var arguments = [
             RuntimeControlClientConstants.RuntimeCommand.runtime,
             RuntimeControlClientConstants.RuntimeCommand.configure,
@@ -101,6 +105,12 @@ enum RuntimeCommandFactory {
         }
         if let adminPasswordFile {
             arguments += [RuntimeControlClientConstants.RuntimeCommand.optionAdminPasswordFile, adminPasswordFile]
+        }
+        if let redisRelaySettingsFile {
+            arguments += [
+                RuntimeControlClientConstants.RuntimeCommand.optionRedisRelaySettingsFile,
+                redisRelaySettingsFile,
+            ]
         }
         if settings.restartAfterSave {
             arguments.append(RuntimeControlClientConstants.RuntimeCommand.optionRestart)

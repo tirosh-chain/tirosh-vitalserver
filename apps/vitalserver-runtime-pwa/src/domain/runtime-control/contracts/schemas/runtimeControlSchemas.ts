@@ -702,6 +702,39 @@ const runtimeTestKitRecorderSchema = z
   })
   .passthrough();
 
+const runtimeTestKitSessionVitalArtifactSchema = z
+  .object({
+    path: z.string(),
+    filename: z.string(),
+    sizeBytes: z.number(),
+    createdAt: z.number(),
+    format: z.string(),
+    retentionPolicy: z.string()
+  })
+  .passthrough();
+
+const runtimeTestKitSessionVitalUploadResultSchema = z
+  .object({
+    statusCode: z.number(),
+    ok: z.boolean(),
+    elapsedSeconds: z.number(),
+    uploadedAt: z.number(),
+    responseText: z.string(),
+    error: nullableString
+  })
+  .passthrough();
+
+const runtimeTestKitSessionVitalStateSchema = z
+  .object({
+    exportStatus: z.string(),
+    uploadStatus: z.string(),
+    exportError: nullableString,
+    uploadError: nullableString,
+    artifact: runtimeTestKitSessionVitalArtifactSchema.nullable(),
+    uploadResult: runtimeTestKitSessionVitalUploadResultSchema.nullable()
+  })
+  .passthrough();
+
 export const runtimeTestKitSessionSchema = z
   .object({
     id: z.string(),
@@ -726,6 +759,7 @@ export const runtimeTestKitSessionSchema = z
     bytesSent: z.number(),
     lastError: nullableString,
     cleanupErrors: z.array(runtimeTestKitCleanupErrorSchema),
+    vital: runtimeTestKitSessionVitalStateSchema,
     recorders: z.array(runtimeTestKitRecorderSchema)
   })
   .passthrough();

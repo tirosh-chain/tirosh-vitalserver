@@ -2,7 +2,7 @@
 
 제품 구조와 책임 경계를 정리합니다. shared/NAT + host nginx를 v1 기본값으로 두는 이유, 단일 노드에서 보장할 수 있는 범위, Web/PWA UI, native shell, package, host runtime의 책임을 다룹니다.
 
-## 이 문서에서 바로 알아야 할 것
+## 1. 이 문서에서 바로 알아야 할 것
 
 | 질문 | 답 |
 |---|---|
@@ -13,7 +13,7 @@
 | bridged mode는? | Apple `com.apple.vm.networking` 승인이 필요한 향후 옵션 |
 | build/runtime 책임은? | build는 Python, runtime은 Swift, Shell은 얇은 wrapper |
 
-## 목표
+## 2. 목표
 
 Mac mini 또는 Mac Studio에서 Linux VM을 직접 실행하고, VM 내부에서 VitalServer stack을 운영합니다.
 
@@ -68,11 +68,11 @@ Linux guest
 - platform 차이는 capability와 component version으로 노출한다.
 - Web/PWA는 host operation을 직접 실행하지 않는다.
 
-## As-is / To-be
+## 3. As-is / To-be
 
 현재 코드는 macOS native Helper app에서 시작한 전환기 구조입니다. 최종 구조는 같은 product workflow를 Web/PWA, macOS shell, Windows shell이 공유하고, host-specific 실행은 Runtime Control API 뒤로 숨기는 구조입니다.
 
-### As-is
+### 3-1. As-is
 
 현재 macOS Helper app은 SwiftUI presentation, native shell, composition을 담고 있습니다. `MacHostRuntimeAdapter`는 별도 SwiftPM target이며, `MacRuntimeControlApp` 안에서는 composition 파일만 adapter를 import합니다. 다만 아직 같은 Helper app process 안에서 `MacHostRuntimeClient`가 host file, privileged command, `vitalserver-vm` CLI를 직접 호출합니다.
 
@@ -120,7 +120,7 @@ Guest VM
 | `Infrastructure` | installed path, file store, JSON repository/gateway, JSONL/SQLite observability/read model, guest config reading/writing, Redis backup result document loading, health snapshot assembly | host filesystem/shared directory/SQLite/read adapter 구현 |
 | `HostInfrastructure` | legacy compatibility shim | 전환기 기존 import 경로 호환. public 선언은 `Infrastructure` typealias만 유지 |
 
-### Source code architecture boundary
+### 3-2. Source code architecture boundary
 
 현재 SwiftPM target graph는 Clean Architecture와 ports-and-adapters 경계를 강제하는 1차 장치입니다.
 
@@ -188,7 +188,7 @@ As-is의 계층 간 통신은 아래처럼 섞여 있습니다.
 | Host runtime -> Helper UI | `runtime-status.json`, logs, backup metadata file read | API server가 생기면 endpoint/read model로 감쌀 대상 |
 | Host runtime <-> Guest VM | shared directory JSON, logs, deploy files | 최종 구조에서도 유지할 VM/process boundary |
 
-### To-be
+### 3-3. To-be
 
 최종 구조에서는 product UI가 host operation을 직접 실행하지 않습니다. UI는 `RuntimeControl` 계약을 HTTP/SSE API 또는 client SDK로 사용하고, host-specific 실행은 platform별 Runtime Control service가 처리합니다.
 
@@ -362,11 +362,11 @@ VRecorder / Browser
 
 bridged mode는 host nginx 없이 VM이 병원 LAN에 직접 붙는 선택지로 남깁니다. 다만 `com.apple.vm.networking` restricted entitlement 승인이 필요하므로 v1 제품 blocker로 두지 않습니다.
 
-## 배포 모델
+## 4. 배포 모델
 
 최종 목표는 병원 Mac mini/Mac Studio에 설치 가능한 self-contained package입니다. 운영 target Mac은 air-gapped 환경까지 고려합니다.
 
-### Build Machine
+### 4-1. Build Machine
 
 개발자 또는 CI가 VM image를 준비합니다.
 
@@ -382,7 +382,7 @@ download Ubuntu cloud image
 
 이 단계에서는 `qemu-img`, image customization 도구, 네트워크 접근이 필요할 수 있습니다.
 
-### Target Mac
+### 4-2. Target Mac
 
 병원 Mac mini/Mac Studio는 설치 파일만 받습니다.
 
@@ -421,7 +421,9 @@ VitalServerHelper.pkg
 | 외부 apt repository | 필요 없음 |
 | 외부 container registry | 필요 없음 |
 
-## 단일 노드 가용성 범위
+## 5. 단일 노드 가용성 범위
+
+### 5-1. Availability Scope
 
 이 제품은 단일 Mac mini/Mac Studio 위에서 동작하는 single-node runtime입니다. 따라서 제품 문구에서 “고가용성”은 여러 장비로 구성한 HA cluster가 아니라, 단일 장비 안에서 가능한 self-healing, 자동 복구, 데이터 보존, rollback을 의미합니다.
 
@@ -468,17 +470,19 @@ Single-node self-healing runtime
 - 두 대 이상의 장비를 쓰는 cluster HA
 ```
 
+### 5-2. Recovery Components
+
 현재 구현된 단일 노드 복구 장치는 아래입니다.
 
 1. VM/proxy LaunchDaemon은 `RunAtLoad`, `KeepAlive`, `ThrottleInterval`, stdout/stderr log path를 가진다.
 2. watchdog LaunchDaemon은 `vitalserver-vm runtime watchdog`을 주기 실행한다.
-3. watchdog은 VM/proxy/HTTP health를 기준으로 VM/proxy를 kickstart하고 `runtime-status.json`을 갱신한다.
+3. watchdog은 VM/proxy/HTTP health를 기준으로 recovery action을 고른다. Guest compose service 문제는 compose reconcile을 먼저 요청하고, VM/IP boundary 문제만 VM/proxy restart로 승격한다.
 4. guest 내부 Docker Compose stack은 `tirosh-vitalserver-compose.service`로 재부팅 후 재적용된다.
 5. Helper app은 `/Library/Application Support/VitalServerHelper/status/runtime-status.json`을 읽어 정상/복구중/장애/업데이트중 상태를 표시한다.
 6. install/update는 free-space preflight를 수행하고, installer/runtime log는 size 기반 rotation을 수행한다.
 7. guest bootstrap은 bundled image load 후 Docker dangling image cleanup을 수행한다.
 
-### Runtime Status 계약
+### 5-3. Runtime Status 계약
 
 운영 상태의 source of truth는 아래 JSON 파일입니다.
 
@@ -557,7 +561,7 @@ rollback start      -> recovering
 rollback success    -> healthy
 ```
 
-## GUI와 Package
+## 6. GUI와 Package
 
 제품 설치 책임은 `.pkg`에 둡니다. `.dmg`가 필요하면 installer 전달 매체로만 사용하고, DMG root에는
 단일 `Install VitalServer Helper.pkg`를 둡니다. PKG가 Helper app/native shell과 host control components를 함께 설치하고,
@@ -622,7 +626,7 @@ open ".tmp/VitalServer Helper.app"
 
 현재 배포 기준은 unsigned입니다. `.pkg`와 `.dmg`에 Developer ID 서명/notarization을 적용하지 않습니다. 단, nginx binary와 dylib는 `install_name_tool`로 load path를 수정하므로 실행 가능한 Mach-O 상태를 위해 ad-hoc signing(`codesign --sign -`)만 수행합니다.
 
-## Runtime 계층과 통신 계약
+## 7. Runtime 계층과 통신 계약
 
 설치된 target Mac에서 운영 중인 Helper product는 실행 관점에서 세 계층으로 봅니다.
 
@@ -742,7 +746,7 @@ Helper app 내부의 concurrency 경계는 아래처럼 둡니다.
 
 중요한 운영 작업의 owner는 `MacHostRuntimeCommandWorker`입니다. Update, Redis backup, rollback, repair처럼 오래 걸리거나 관리자 권한을 요구하는 작업은 read worker와 섞지 않습니다. UI와 dev Runtime Control API는 같은 `MacHostRuntimeClient` facade를 통해 호출하지만, facade 내부에서는 read worker와 command worker가 분리되어야 합니다. 이 경계가 깨지면 업데이트 중 앱 재시작, UI 끊김, PWA/local UI 상태 차이를 추적하기 어려워집니다.
 
-### Naming Rules
+### 7-1. Naming Rules
 
 리팩터링 중 이름은 platform 종속성과 재사용 가능성을 기준으로 정합니다. 이름이 계층 경계를 설명해야 하며, 단순 wrapper가 여러 단계로 겹쳐 호출 깊이를 늘리는 이름은 피합니다.
 
@@ -763,7 +767,7 @@ Host마다 달라질 가능성이 높은 것은 이름에 host/platform 맥락�
 
 `RuntimeHostClient`는 현재 SwiftUI 전환기에서 필요한 local host affordance 경계입니다. PWA 진입 시 이 계약을 그대로 browser client에 노출한다는 뜻이 아닙니다. PWA는 `RuntimeControlClient`에 해당하는 HTTP/SSE API를 우선 사용하고, local file 선택, log export destination, pairing/native shell 같은 기능은 native shell 또는 Runtime Control API의 별도 endpoint로 재배치합니다.
 
-## Source 책임
+## 8. Source 책임
 
 초기 PoC는 Shell script가 대부분의 일을 직접 수행했습니다. 제품화 단계에서는 책임을 아래처럼 재배치합니다.
 

@@ -58,10 +58,11 @@ upstream remote before approving it:
 make repo/verify-submodule-candidate/remote
 ```
 
-Then run the relevant runtime verification, such as:
+Then run the relevant runtime verification. Use the combined DMG gate when the change should
+also prove clean package compile:
 
 ```sh
-make dist/dmg/dev/verify
+make dist/dmg/dev/all
 ```
 
 Only after the candidate is reviewed and runtime smoke passes should the new commit be added to

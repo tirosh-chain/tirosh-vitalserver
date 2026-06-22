@@ -36,6 +36,9 @@ Remote Console PWA, 관측 sidecar, packaging/update 도구, 검증 도구를 �
 
 ### 2-1. Start
 
+빠른 실행은 upstream VitalServer와 sidecar를 Compose sandbox로 띄워 local 개발과 검증을
+시작하는 경로입니다.
+
 ```sh
 git clone --recurse-submodules https://github.com/tirosh-chain/tirosh-vitalserver.git
 cd tirosh-vitalserver
