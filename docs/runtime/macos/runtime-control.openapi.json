@@ -3619,6 +3619,12 @@
           "service": {
             "type": "string"
           },
+          "containerID": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "name": {
             "type": [
               "string",
@@ -3642,6 +3648,38 @@
               "integer",
               "null"
             ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "memoryLimitBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "oomKilled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "restartCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
           },
           "startedAt": {
             "type": [

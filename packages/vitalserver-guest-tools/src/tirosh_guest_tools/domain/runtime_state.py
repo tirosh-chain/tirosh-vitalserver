@@ -63,18 +63,30 @@ class RuntimeDiskHealth:
 @dataclass(frozen=True)
 class RuntimeContainerService:
     service: str
+    container_id: str | None
     exit_code: int | None
+    error: str | None
+    finished_at: str | None
     health: str | None
+    memory_limit_bytes: int | None
     name: str | None
+    oom_killed: bool | None
+    restart_count: int | None
     started_at: str | None
     state: str | None
     uptime_seconds: int | None
 
     def as_json(self) -> dict[str, object]:
         return {
+            "containerID": self.container_id,
             "exitCode": self.exit_code,
+            "error": self.error,
+            "finishedAt": self.finished_at,
             "health": self.health,
+            "memoryLimitBytes": self.memory_limit_bytes,
             "name": self.name,
+            "oomKilled": self.oom_killed,
+            "restartCount": self.restart_count,
             "service": self.service,
             "startedAt": self.started_at,
             "state": self.state,

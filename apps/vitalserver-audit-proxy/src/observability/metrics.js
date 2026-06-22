@@ -8,6 +8,9 @@ function createMetrics() {
     recorders: new Map(),
     httpRequests: 0,
     socketIoEventsSeen: 0,
+    sendDataEventsObserved: 0,
+    sendDataBytesObserved: 0,
+    lastSendDataObservedAt: null,
     socketIoParseFailures: 0,
     auditWriteFailures: 0,
     auditFileWriteFailures: 0,
@@ -31,11 +34,17 @@ function metricsSnapshot(metrics) {
         selectedIp: recorder.selectedIp,
         ipSource: recorder.ipSource,
         lastSeenAt: recorder.lastSeenAt,
+        sendDataEventsObserved: recorder.sendDataEventsObserved || 0,
+        sendDataBytesObserved: recorder.sendDataBytesObserved || 0,
+        lastSendDataObservedAt: recorder.lastSendDataObservedAt || null,
         redisIpSync: recorder.redisIpSync || null,
       }))
       .sort((left, right) => left.vrcode.localeCompare(right.vrcode)),
     httpRequests: metrics.httpRequests,
     socketIoEventsSeen: metrics.socketIoEventsSeen,
+    sendDataEventsObserved: metrics.sendDataEventsObserved,
+    sendDataBytesObserved: metrics.sendDataBytesObserved,
+    lastSendDataObservedAt: metrics.lastSendDataObservedAt,
     socketIoParseFailures: metrics.socketIoParseFailures,
     auditWriteFailures: metrics.auditWriteFailures,
     auditFileWriteFailures: metrics.auditFileWriteFailures,
@@ -67,6 +76,9 @@ function recordRecorderJoin(metrics, context, vrcode, selectedIp) {
     selectedIp: "",
     ipSource: "",
     lastSeenAt: "",
+    sendDataEventsObserved: 0,
+    sendDataBytesObserved: 0,
+    lastSendDataObservedAt: null,
     redisIpSync: null,
   };
   if (!context.metrics_vrcode) {
@@ -86,6 +98,9 @@ function recordRecorderIpSync(metrics, vrcode, fields) {
     selectedIp: "",
     ipSource: "",
     lastSeenAt: "",
+    sendDataEventsObserved: 0,
+    sendDataBytesObserved: 0,
+    lastSendDataObservedAt: null,
     redisIpSync: null,
   };
   const current = recorder.redisIpSync || {};
@@ -103,6 +118,33 @@ function recordRecorderIpSync(metrics, vrcode, fields) {
       ? fields.lastFailure
       : current.lastFailure || null,
   };
+  metrics.recorders.set(vrcode, recorder);
+}
+
+function recordSendDataObserved(metrics, vrcode, payloadSummary) {
+  const observedAt = new Date().toISOString();
+  const bytes = Number.isFinite(payloadSummary && payloadSummary.bytes)
+    ? payloadSummary.bytes
+    : 0;
+  metrics.sendDataEventsObserved += 1;
+  metrics.sendDataBytesObserved += bytes;
+  metrics.lastSendDataObservedAt = observedAt;
+  if (!vrcode) return;
+
+  const recorder = metrics.recorders.get(vrcode) || {
+    activeConnections: 0,
+    selectedIp: "",
+    ipSource: "",
+    lastSeenAt: "",
+    sendDataEventsObserved: 0,
+    sendDataBytesObserved: 0,
+    lastSendDataObservedAt: null,
+    redisIpSync: null,
+  };
+  recorder.sendDataEventsObserved = (recorder.sendDataEventsObserved || 0) + 1;
+  recorder.sendDataBytesObserved = (recorder.sendDataBytesObserved || 0) + bytes;
+  recorder.lastSendDataObservedAt = observedAt;
+  recorder.lastSeenAt = observedAt;
   metrics.recorders.set(vrcode, recorder);
 }
 
@@ -125,5 +167,6 @@ module.exports = {
   metricsSnapshot,
   recordRecorderJoin,
   recordRecorderIpSync,
+  recordSendDataObserved,
   recordRecorderDisconnect,
 };

@@ -39,11 +39,16 @@ components:
         - recorders
         - httpRequests
         - socketIoEventsSeen
+        - sendDataEventsObserved
+        - sendDataBytesObserved
+        - lastSendDataObservedAt
         - socketIoParseFailures
         - auditWriteFailures
         - auditFileWriteFailures
         - auditStdoutWriteFailures
         - redisIpWriteFailures
+        - redisIpVerifyFailures
+        - redisIpVerifyMismatches
       properties:
         startedAt:
           type: string
@@ -67,6 +72,18 @@ components:
         socketIoEventsSeen:
           type: integer
           minimum: 0
+        sendDataEventsObserved:
+          type: integer
+          minimum: 0
+          description: Number of client send_data events observed by the audit proxy.
+        sendDataBytesObserved:
+          type: integer
+          minimum: 0
+          description: Total compressed send_data payload bytes observed by the audit proxy.
+        lastSendDataObservedAt:
+          type: string
+          nullable: true
+          description: Last timestamp at which the audit proxy observed a client send_data payload.
         socketIoParseFailures:
           type: integer
           minimum: 0
@@ -80,6 +97,12 @@ components:
           type: integer
           minimum: 0
         redisIpWriteFailures:
+          type: integer
+          minimum: 0
+        redisIpVerifyFailures:
+          type: integer
+          minimum: 0
+        redisIpVerifyMismatches:
           type: integer
           minimum: 0
     RecorderConnection:
@@ -97,6 +120,46 @@ components:
         selectedIp:
           type: string
           nullable: true
+        ipSource:
+          type: string
+          nullable: true
         lastSeenAt:
+          type: string
+          nullable: true
+        sendDataEventsObserved:
+          type: integer
+          minimum: 0
+        sendDataBytesObserved:
+          type: integer
+          minimum: 0
+        lastSendDataObservedAt:
+          type: string
+          nullable: true
+        redisIpSync:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/RecorderRedisIPSync"
+    RecorderRedisIPSync:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+        redisKey:
+          type: string
+        selectedIp:
+          type: string
+        ipSource:
+          type: string
+        redisValue:
+          type: string
+          nullable: true
+        lastWriteAt:
+          type: string
+          nullable: true
+        lastVerifiedAt:
+          type: string
+          nullable: true
+        lastFailure:
           type: string
           nullable: true

@@ -229,7 +229,13 @@ final class ContractsTests: XCTestCase {
               "name": "vitalserver-audit-proxy-1",
               "state": "running",
               "health": "healthy",
-              "exitCode": 0
+              "exitCode": 0,
+              "containerID": "container-1",
+              "error": "",
+              "finishedAt": "2026-06-11T01:00:00Z",
+              "memoryLimitBytes": 4294967296,
+              "oomKilled": true,
+              "restartCount": 2
             }
           ]
         }
@@ -239,10 +245,16 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(document.containerServices, [
             RuntimeContainerServiceObservation(
                 service: "audit-proxy",
+                containerID: "container-1",
                 name: "vitalserver-audit-proxy-1",
                 state: "running",
                 health: "healthy",
-                exitCode: 0
+                exitCode: 0,
+                error: "",
+                finishedAt: "2026-06-11T01:00:00Z",
+                memoryLimitBytes: 4294967296,
+                oomKilled: true,
+                restartCount: 2
             ),
         ])
     }

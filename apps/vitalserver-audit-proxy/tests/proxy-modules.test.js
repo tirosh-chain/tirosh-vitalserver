@@ -87,10 +87,11 @@ test("recorder metrics track active joins and disconnects", () => {
 
 test("socket.io auditor summarizes send_data payload", () => {
   const records = [];
+  const metricState = metrics();
   const auditor = createSocketIoAuditService({
     audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
     vrIdentityStore: { setRecorderIp: () => {} },
-    metrics: metrics(),
+    metrics: metricState,
     config: { vitalServer: { ipRewrite: { enabled: true, verifyDelaysMs: [] } } },
   });
   const context = contextFor("VR_A");
@@ -111,6 +112,14 @@ test("socket.io auditor summarizes send_data payload", () => {
     version: "2.3.4",
     rooms_count: 2,
   });
+  const snapshot = metricsSnapshot(metricState);
+  assert.strictEqual(snapshot.sendDataEventsObserved, 1);
+  assert.strictEqual(snapshot.sendDataBytesObserved, Buffer.from(payload, "binary").length);
+  assert.ok(snapshot.lastSendDataObservedAt);
+  assert.strictEqual(snapshot.recorders[0].vrcode, "VR_A");
+  assert.strictEqual(snapshot.recorders[0].sendDataEventsObserved, 1);
+  assert.strictEqual(snapshot.recorders[0].sendDataBytesObserved, Buffer.from(payload, "binary").length);
+  assert.ok(snapshot.recorders[0].lastSendDataObservedAt);
 });
 
 test("socket.io auditor summarizes binary send_data attachments", () => {

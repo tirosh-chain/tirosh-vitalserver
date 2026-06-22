@@ -174,27 +174,45 @@ public struct RuntimeRecorderConnectionObservation: Codable, Equatable, Sendable
 
 public struct RuntimeContainerServiceObservation: Codable, Equatable, Sendable {
     public let service: String
+    public let containerID: String?
     public let name: String?
     public let state: String?
     public let health: String?
     public let exitCode: Int?
+    public let error: String?
+    public let finishedAt: String?
+    public let memoryLimitBytes: Int?
+    public let oomKilled: Bool?
+    public let restartCount: Int?
     public let startedAt: String?
     public let uptimeSeconds: Int?
 
     public init(
         service: String,
+        containerID: String? = nil,
         name: String? = nil,
         state: String? = nil,
         health: String? = nil,
         exitCode: Int? = nil,
+        error: String? = nil,
+        finishedAt: String? = nil,
+        memoryLimitBytes: Int? = nil,
+        oomKilled: Bool? = nil,
+        restartCount: Int? = nil,
         startedAt: String? = nil,
         uptimeSeconds: Int? = nil
     ) {
         self.service = service
+        self.containerID = containerID
         self.name = name
         self.state = state
         self.health = health
         self.exitCode = exitCode
+        self.error = error
+        self.finishedAt = finishedAt
+        self.memoryLimitBytes = memoryLimitBytes
+        self.oomKilled = oomKilled
+        self.restartCount = restartCount
         self.startedAt = startedAt
         self.uptimeSeconds = uptimeSeconds
     }

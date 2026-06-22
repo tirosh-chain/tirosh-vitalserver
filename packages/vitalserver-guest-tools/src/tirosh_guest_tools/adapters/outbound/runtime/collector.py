@@ -7,6 +7,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -27,6 +28,17 @@ VITALDB_OBSERVER_ENDPOINT = SETTINGS.observability.vitaldb_observer_url
 GUEST_READY_URL = "http://127.0.0.1/ready"
 REDIS_UI_URL = "http://127.0.0.1/redis-ui/"
 SWAGGER_UI_URL = "http://127.0.0.1/swagger/"
+
+
+@dataclass(frozen=True)
+class ContainerInspection:
+    container_id: str | None
+    error: str | None
+    finished_at: str | None
+    memory_limit_bytes: int | None
+    oom_killed: bool | None
+    restart_count: int | None
+    started_at: str | None
 
 
 def collect_runtime_state(
@@ -324,13 +336,22 @@ def compose_services(
         service = string_value(item.get("Service")) or string_value(item.get("Name"))
         if service is None:
             continue
-        started_at = container_started_at(item, probe_errors)
+        inspection = container_inspection(item, probe_errors)
+        started_at = None if inspection is None else inspection.started_at
         services.append(
             RuntimeContainerService(
                 service=service,
+                container_id=container_id(item, inspection),
                 exit_code=normalized_exit_code(item.get("ExitCode")),
+                error=None if inspection is None else inspection.error,
+                finished_at=None if inspection is None else inspection.finished_at,
                 health=string_value(item.get("Health")),
+                memory_limit_bytes=(
+                    None if inspection is None else inspection.memory_limit_bytes
+                ),
                 name=string_value(item.get("Name")),
+                oom_killed=None if inspection is None else inspection.oom_killed,
+                restart_count=None if inspection is None else inspection.restart_count,
                 started_at=started_at,
                 state=string_value(item.get("State")),
                 uptime_seconds=uptime_seconds(started_at, now),
@@ -376,10 +397,10 @@ def string_value(value: object) -> str | None:
     return str(value)
 
 
-def container_started_at(
+def container_inspection(
     item: dict[str, object],
     probe_errors: list[ProbeError],
-) -> str | None:
+) -> ContainerInspection | None:
     identifier = string_value(item.get("ID")) or string_value(item.get("Name"))
     if identifier is None:
         append_probe_error(
@@ -390,16 +411,79 @@ def container_started_at(
         return None
     try:
         output = subprocess.check_output(
-            ["docker", "inspect", "--format", "{{.State.StartedAt}}", identifier],
+            ["docker", "inspect", identifier],
             stderr=subprocess.DEVNULL,
             text=True,
-        ).strip()
+        )
     except (OSError, subprocess.CalledProcessError) as error:
         append_probe_error(probe_errors, f"docker inspect {identifier}", error)
         return None
-    if not output or output.startswith("0001-01-01"):
+    try:
+        documents = json.loads(output)
+    except json.JSONDecodeError as error:
+        append_probe_error(probe_errors, f"docker inspect {identifier}", error)
         return None
-    return output
+    if not isinstance(documents, list) or not documents:
+        append_probe_error(
+            probe_errors,
+            f"docker inspect {identifier}",
+            "expected non-empty JSON list",
+        )
+        return None
+    document = documents[0]
+    if not isinstance(document, dict):
+        append_probe_error(
+            probe_errors,
+            f"docker inspect {identifier}",
+            "expected JSON object",
+        )
+        return None
+    state = document.get("State")
+    host_config = document.get("HostConfig")
+    state_document = state if isinstance(state, dict) else {}
+    host_config_document = host_config if isinstance(host_config, dict) else {}
+    return ContainerInspection(
+        container_id=string_value(document.get("Id")),
+        error=string_value(state_document.get("Error")),
+        finished_at=timestamp_value(state_document.get("FinishedAt")),
+        memory_limit_bytes=normalized_integer(host_config_document.get("Memory")),
+        oom_killed=bool_value(state_document.get("OOMKilled")),
+        restart_count=normalized_integer(document.get("RestartCount")),
+        started_at=timestamp_value(state_document.get("StartedAt")),
+    )
+
+
+def container_id(
+    item: dict[str, object],
+    inspection: ContainerInspection | None,
+) -> str | None:
+    if inspection is not None and inspection.container_id is not None:
+        return inspection.container_id
+    return string_value(item.get("ID"))
+
+
+def timestamp_value(value: object) -> str | None:
+    text = string_value(value)
+    if not text or text.startswith("0001-01-01"):
+        return None
+    return text
+
+
+def normalized_integer(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str | int | float | bytes | bytearray):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def bool_value(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    return None
 
 
 def uptime_seconds(started_at: str | None, now: datetime) -> int | None:

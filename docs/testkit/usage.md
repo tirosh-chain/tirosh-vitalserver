@@ -180,6 +180,16 @@ uv run vitalserver-testkit stream-recorder \
   --duration 10
 ```
 
+장시간 soak test는 `elapsed_seconds`, `messages_sent`, `bytes_sent`만으로 성공/실패를 판단하지
+않습니다. 같은 run에서 아래 runtime evidence를 함께 보존해야 합니다.
+
+- guest `runtime-state.json`의 app container `oomKilled`, `restartCount`, `finishedAt`,
+  `memoryLimitBytes`
+- `/audit-proxy/status`의 `sendDataEventsObserved`, `sendDataBytesObserved`,
+  `lastSendDataObservedAt`
+- Redis memory와 guest HTTP status
+- `guest-runtime-state-stale`, `guestHTTP: 502`, audit-proxy upstream failure 같은 연쇄 증상
+
 Python 코드에서 직접 호출할 수도 있습니다.
 
 ```python

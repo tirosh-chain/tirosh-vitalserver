@@ -8,7 +8,7 @@ const {
   clientSocketEvents,
   serverDispatchEventNames,
 } = require("../domain/audit-event-contracts");
-const { recordRecorderJoin } = require("../observability/metrics");
+const { recordRecorderJoin, recordSendDataObserved } = require("../observability/metrics");
 
 const dispatchEvents = new Set(serverDispatchEventNames);
 
@@ -25,7 +25,7 @@ function createSocketIoAuditService({ audit, vrIdentityStore, metrics, config })
       const pending = context.pending_binary_event;
       context.pending_binary_event = null;
       if (pending.event !== clientSocketEvents.SEND_DATA) return;
-      recordSendData(socketIoBinaryAttachmentPayload(payload), context, options, { audit });
+      recordSendData(socketIoBinaryAttachmentPayload(payload), context, options, { audit, metrics });
     },
   };
 }
@@ -90,13 +90,16 @@ function inspectSocketIoPacket(packet, direction, context, options, dependencies
   }
 }
 
-function recordSendData(payload, context, options, { audit }) {
+function recordSendData(payload, context, options, { audit, metrics }) {
+  const payloadSummary = summarizeSendData(payload);
+  const vrcode = context.joined_vrcode || payloadSummary.vrcode || undefined;
+  recordSendDataObserved(metrics, vrcode, payloadSummary);
   audit.record(auditEventTypes.SEND_DATA, {
     request_id: context.request_id,
     connection_id: context.connection_id,
-    vrcode: context.joined_vrcode || undefined,
+    vrcode,
     truncated: Boolean(options.truncated),
-    payload_summary: summarizeSendData(payload),
+    payload_summary: payloadSummary,
   });
 }
 

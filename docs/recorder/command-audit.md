@@ -291,8 +291,8 @@ proxy 상태:
 curl http://localhost:18080/audit-proxy/status
 ```
 
-`/audit-proxy/status`는 현재 WebSocket 수, 관측한 Socket.IO event 수, parse 실패 수, Redis write 실패
-수를 반환합니다.
+`/audit-proxy/status`는 현재 WebSocket 수, 관측한 Socket.IO event 수, 관측한 `send_data` count/bytes,
+recorder별 마지막 `send_data` 관측 시각, parse 실패 수, Redis write 실패 수를 반환합니다.
 
 ## 8. 제품 관점 판단
 
