@@ -18,7 +18,7 @@ paths:
     get:
       operationId: getRecorderIngressStatus
       summary: Read recorder ingress counters
-      description: Returns in-memory counters for proxy traffic, Socket.IO parsing, audit sink failures, and planned send_data spool/replay status fields.
+      description: Returns in-memory counters for proxy traffic, Socket.IO parsing, audit sink failures, send_data spool status, and planned replay status fields.
       responses:
         "200":
           description: Recorder ingress status counters.
@@ -366,6 +366,7 @@ components:
       type: string
       enum:
         - passthrough
+        - mirror_spool
         - spool_only
         - spool_and_replay
     RecorderIngressSpoolStatusValue:

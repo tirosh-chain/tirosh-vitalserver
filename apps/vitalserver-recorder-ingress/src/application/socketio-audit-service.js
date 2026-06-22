@@ -12,12 +12,12 @@ const { recordRecorderJoin, recordSendDataObserved } = require("../observability
 
 const dispatchEvents = new Set(serverDispatchEventNames);
 
-function createSocketIoAuditService({ audit, vrIdentityStore, metrics, config }) {
+function createSocketIoAuditService({ audit, vrIdentityStore, metrics, config, sendDataIngress }) {
   return {
     inspect(payload, direction, context, options = {}) {
       if (!payload || typeof payload !== "string") return;
       for (const packet of splitEngineIoPayload(payload)) {
-        inspectSocketIoPacket(packet, direction, context, options, { audit, vrIdentityStore, metrics, config });
+        inspectSocketIoPacket(packet, direction, context, options, { audit, vrIdentityStore, metrics, config, sendDataIngress });
       }
     },
     inspectBinary(payload, direction, context, options = {}) {
@@ -25,7 +25,7 @@ function createSocketIoAuditService({ audit, vrIdentityStore, metrics, config })
       const pending = context.pending_binary_event;
       context.pending_binary_event = null;
       if (pending.event !== clientSocketEvents.SEND_DATA) return;
-      recordSendData(socketIoBinaryAttachmentPayload(payload), context, options, { audit, metrics });
+      recordSendData(socketIoBinaryAttachmentPayload(payload), context, options, { audit, metrics, sendDataIngress });
     },
   };
 }
@@ -90,10 +90,15 @@ function inspectSocketIoPacket(packet, direction, context, options, dependencies
   }
 }
 
-function recordSendData(payload, context, options, { audit, metrics }) {
+function recordSendData(payload, context, options, { audit, metrics, sendDataIngress }) {
   const payloadSummary = summarizeSendData(payload);
   const vrcode = context.joined_vrcode || payloadSummary.vrcode || undefined;
   recordSendDataObserved(metrics, vrcode, payloadSummary);
+  if (sendDataIngress) {
+    Promise.resolve(sendDataIngress.record(payload, context, payloadSummary)).catch((error) => {
+      console.error("[recorder-ingress] send_data spool failed unexpectedly:", error.message);
+    });
+  }
   audit.record(auditEventTypes.SEND_DATA, {
     request_id: context.request_id,
     connection_id: context.connection_id,

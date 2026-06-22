@@ -94,6 +94,39 @@ test("socket.io auditor summarizes send_data payload", () => {
   assert.ok(snapshot.recorders[0].lastSendDataObservedAt);
 });
 
+test("socket.io auditor mirrors text send_data to ingress service", async () => {
+  const records = [];
+  const spooled = [];
+  const auditor = createSocketIoAuditService({
+    audit: { record: (eventType, fields) => records.push({ eventType, fields }) },
+    vrIdentityStore: { setRecorderIp: () => {} },
+    metrics: metrics(),
+    config: { vitalServer: { ipRewrite: { enabled: true, verifyDelaysMs: [] } } },
+    sendDataIngress: {
+      record: (payload, context, payloadSummary) => {
+        spooled.push({ payload, context, payloadSummary });
+        return Promise.resolve({ ok: true, outcome: "spooled" });
+      },
+    },
+  });
+  const context = contextFor("VR_A");
+  context.joined_vrcode = "VR_A";
+  const payload = zlib.deflateSync(JSON.stringify({
+    vrcode: "VR_A",
+    ver: "2.3.4",
+    rooms: { a: {} },
+  })).toString("binary");
+
+  auditor.inspect(`42["send_data",${JSON.stringify(payload)}]`, "client", context);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.strictEqual(records[0].eventType, auditEventTypes.SEND_DATA);
+  assert.strictEqual(spooled.length, 1);
+  assert.strictEqual(spooled[0].payload, payload);
+  assert.strictEqual(spooled[0].context.connection_id, "connection-1");
+  assert.strictEqual(spooled[0].payloadSummary.vrcode, "VR_A");
+});
+
 test("socket.io auditor summarizes binary send_data attachments", () => {
   const records = [];
   const auditor = createSocketIoAuditService({
@@ -121,6 +154,38 @@ test("socket.io auditor summarizes binary send_data attachments", () => {
     version: "2.3.4",
     rooms_count: 3,
   });
+});
+
+test("socket.io auditor mirrors binary send_data attachments to ingress service", async () => {
+  const spooled = [];
+  const auditor = createSocketIoAuditService({
+    audit: { record: () => {} },
+    vrIdentityStore: { setRecorderIp: () => {} },
+    metrics: metrics(),
+    config: { vitalServer: { ipRewrite: { enabled: true, verifyDelaysMs: [] } } },
+    sendDataIngress: {
+      record: (payload, context, payloadSummary) => {
+        spooled.push({ payload, context, payloadSummary });
+        return Promise.resolve({ ok: true, outcome: "spooled" });
+      },
+    },
+  });
+  const context = contextFor("VR_A");
+  context.joined_vrcode = "VR_A";
+  const payload = zlib.deflateSync(JSON.stringify({
+    vrcode: "VR_A",
+    ver: "2.3.4",
+    rooms: { a: {}, b: {} },
+  }));
+
+  auditor.inspect('451-["send_data",{"_placeholder":true,"num":0}]', "client", context);
+  auditor.inspectBinary(payload, "client", context);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.strictEqual(spooled.length, 1);
+  assert.strictEqual(spooled[0].payload, payload);
+  assert.strictEqual(spooled[0].payloadSummary.payload_type, "buffer");
+  assert.strictEqual(spooled[0].payloadSummary.rooms_count, 2);
 });
 
 test("socket.io auditor removes engine.io message prefix from binary send_data attachments", () => {

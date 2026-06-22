@@ -2,6 +2,7 @@
 
 const sendDataIngressModes = Object.freeze({
   PASSTHROUGH: "passthrough",
+  MIRROR_SPOOL: "mirror_spool",
   SPOOL_ONLY: "spool_only",
   SPOOL_AND_REPLAY: "spool_and_replay",
 });

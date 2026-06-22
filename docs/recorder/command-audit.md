@@ -111,7 +111,21 @@ guest의 `tirosh-guest-container-logs` collector가 `docker compose logs --follo
 
 Redis는 현재 `3.2.12`로 pin되어 있으므로 Redis Stream 대신 Redis List를 보조 조회 sink로 사용합니다.
 
-### 4-3. VRecorder IP rewrite 설정
+### 4-3. `send_data` spool 설정
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `RECORDER_INGRESS_SEND_DATA_MODE` | `mirror_spool` | `passthrough`, `mirror_spool`, `spool_only`, `spool_and_replay` 중 하나 |
+| `RECORDER_INGRESS_SEND_DATA_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:pending` | durable `send_data` spool Redis List key |
+| `RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS` | `10000` | mirror spool pending item limit |
+| `RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES` | `536870912` | mirror spool pending byte limit |
+| `RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES` | `10485760` | 단일 `send_data` payload spool limit |
+
+`mirror_spool`은 Phase 3의 안전한 중간 모드입니다. upstream relay는 유지하면서 durable spool evidence를
+기록합니다. 이 모드에서 limit 초과는 spool status의 `rejected`/`spool_full` evidence로 남지만, 아직
+VRecorder의 upstream 전송을 차단하지 않습니다.
+
+### 4-4. VRecorder IP rewrite 설정
 
 | 환경변수 | 기본값 | 설명 |
 |---|---|---|

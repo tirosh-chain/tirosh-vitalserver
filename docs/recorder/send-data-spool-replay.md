@@ -60,7 +60,8 @@ Replay 성공은 "upstream으로 `send_data` 전달을 완료했다"는 뜻입�
 | Mode | 의미 |
 |---|---|
 | `passthrough` | 현재 동작. `send_data`를 관측하고 upstream으로 바로 relay합니다. Phase 2/3 이전 또는 명시적 비활성화 상태입니다. |
-| `spool_only` | `send_data`를 spool에 기록하지만 upstream replay는 수행하지 않습니다. Phase 3 검증과 안전한 rollout에 사용합니다. |
+| `mirror_spool` | Phase 3 동작. upstream relay는 유지하면서 `send_data`를 durable spool에도 기록합니다. 이 모드는 evidence와 spool 안정화용이며 upstream OOM을 구조적으로 막지는 않습니다. |
+| `spool_only` | upstream direct relay를 끊고 `send_data`를 spool에만 기록합니다. Phase 4 cutover 검증과 안전한 rollout에 사용합니다. |
 | `spool_and_replay` | `send_data`를 spool에 기록하고 replay worker가 upstream으로 재생합니다. Issue #68의 목표 운영 모드입니다. |
 
 Mode는 설정으로 명시되어야 합니다. 설정 누락, decode 실패, 저장소 연결 실패를 `passthrough` 성공으로
@@ -160,7 +161,7 @@ Phase 3/4의 기본 정책은 아래와 같습니다.
 |---|---|---|
 | spool depth와 byte limit 안쪽 | `accept` | 정상 수신 |
 | spool 저장소 unavailable | `reject` | 저장 없이 성공 처리하지 않음 |
-| spool full | `reject` | upstream app OOM을 막기 위해 ingress에서 압력 차단 |
+| spool full | `reject` | `mirror_spool`에서는 spool 기록 거부 evidence로 남기고, Phase 4 cutover 이후에는 upstream 유입 차단에 사용 |
 | 운영자가 dead-letter oldest 정책을 명시한 경우 | `dead_letter_oldest` | 자동 drop이 아니라 명시 설정으로만 허용 |
 
 기본값은 안전해야 합니다. 누락된 설정은 무제한 수신이나 silent drop이 아니라 명시적인 unavailable/error로
@@ -185,8 +186,12 @@ Phase 3/4에서 구현된 뒤 runtime contract와 health policy의 required read
 - text `send_data`가 `spooled`로 기록됨
 - binary attachment `send_data`가 `spooled`로 기록됨
 - Redis write 실패가 `spool_write_failed`로 남음
-- spool full이 `rejected`와 `spool_full`로 남음
+- mirror spool limit 초과가 `rejected`와 `spool_full` evidence로 남음
 - audit 실패와 spool 실패가 다른 counter로 남음
+
+Phase 3의 `mirror_spool`은 upstream WebSocket pipe를 아직 끊지 않습니다. 따라서 `rejected`는 네트워크
+수신 거부가 아니라 spool 기록 거부 evidence입니다. 실제 upstream 유입 차단과 replay 전환은 Phase 4의
+frame-level cutover에서 수행합니다.
 
 ### Phase 4 proof
 

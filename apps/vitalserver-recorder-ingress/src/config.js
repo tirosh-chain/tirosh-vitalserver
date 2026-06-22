@@ -1,6 +1,9 @@
 "use strict";
 
+const { sendDataIngressModes } = require("./domain/send-data-ingress-contracts");
+
 function loadConfig(env) {
+  const sendDataMode = sendDataIngressModeEnv(env, "RECORDER_INGRESS_SEND_DATA_MODE", sendDataIngressModes.MIRROR_SPOOL);
   return {
     listenPort: numberEnv(env, "RECORDER_INGRESS_PORT", 8080),
     upstream: {
@@ -28,6 +31,15 @@ function loadConfig(env) {
         format: logFormatEnv(env, "VITALSERVER_AUDIT_STDOUT_FORMAT", logFormatEnv(env, "VITALSERVER_AUDIT_LOG_FORMAT", "json")),
       },
     },
+    spool: {
+      enabled: sendDataMode !== sendDataIngressModes.PASSTHROUGH,
+      mode: sendDataMode,
+      storage: "redis_list",
+      listKey: env.RECORDER_INGRESS_SEND_DATA_REDIS_LIST || "vitalserver:recorder_ingress:send_data:pending",
+      maxPendingItems: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS", 10000),
+      maxPendingBytes: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES", 512 * 1024 * 1024),
+      maxPayloadBytes: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES", 10 * 1024 * 1024),
+    },
     clientIp: {
       trustProxy: /^(1|true|yes)$/i.test(env.VITALSERVER_TRUST_PROXY || "1"),
     },
@@ -47,6 +59,11 @@ function numberEnv(env, name, fallback) {
 
 function logFormatEnv(env, name, fallback) {
   return env[name] === "logfmt" ? "logfmt" : fallback;
+}
+
+function sendDataIngressModeEnv(env, name, fallback) {
+  const value = env[name] || fallback;
+  return Object.values(sendDataIngressModes).includes(value) ? value : fallback;
 }
 
 function numberListEnv(env, name, fallback) {

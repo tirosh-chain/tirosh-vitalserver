@@ -4,13 +4,20 @@ const http = require("http");
 const net = require("net");
 const crypto = require("crypto");
 const { createAuditRecorder } = require("../../application/audit-recorder");
+const { createSendDataIngressService } = require("../../application/send-data-ingress-service");
 const { auditEventTypes } = require("../../domain/audit-event-contracts");
 const { createSocketIoAuditService } = require("../../application/socketio-audit-service");
-const { createMetrics, metricsSnapshot, recordRecorderDisconnect } = require("../../observability/metrics");
+const {
+  configureSendDataSpool,
+  createMetrics,
+  metricsSnapshot,
+  recordRecorderDisconnect,
+} = require("../../observability/metrics");
 const { createAuditLogWriter } = require("../file/audit-log-writer");
 const { createAuditStdoutWriter } = require("../process/audit-stdout-writer");
 const { createRedisAuditEventStore } = require("../redis/audit-event-store");
 const { createRedisClient } = require("../redis/client");
+const { createRedisSendDataSpoolStore } = require("../redis/send-data-spool-store");
 const { createVrIdentityStore } = require("../redis/vr-identity-store");
 const { createBodyMirror } = require("./body-mirror");
 const { createClientIpSelector } = require("./client-ip");
@@ -18,14 +25,21 @@ const { createWebSocketParser } = require("./websocket-parser");
 
 function createRecorderIngressServer(config) {
   const metrics = createMetrics();
+  configureSendDataSpool(metrics, config.spool);
   const redis = createRedisClient(config.redis);
   const auditLog = createAuditLogWriter(config.audit.log, metrics);
   const auditStdout = createAuditStdoutWriter(config.audit.stdout, metrics);
   const redisAudit = createRedisAuditEventStore(config.audit, redis, metrics);
   const audit = createAuditRecorder(config.audit, [auditLog, auditStdout, redisAudit]);
   const vrIdentityStore = createVrIdentityStore(redis, metrics);
+  const sendDataSpoolStore = createRedisSendDataSpoolStore(config.spool, redis);
+  const sendDataIngress = createSendDataIngressService({
+    config,
+    metrics,
+    spoolStore: sendDataSpoolStore,
+  });
   const clientIp = createClientIpSelector(config.clientIp);
-  const socketIoAudit = createSocketIoAuditService({ audit, vrIdentityStore, metrics, config });
+  const socketIoAudit = createSocketIoAuditService({ audit, vrIdentityStore, metrics, config, sendDataIngress });
 
   const dependencies = { audit, clientIp, config, metrics, socketIoAudit };
   const server = http.createServer((req, res) => proxyHttp(req, res, dependencies));
