@@ -41,10 +41,10 @@ VM 내부 VitalServer process가 OOM killed 된 뒤 data plane은 다시 살아�
    guestHTTP: 502          # Bad Gateway
    ```
 
-4. Edge log에서 audit-proxy upstream 관련 오류가 확인됩니다.
+4. Edge log에서 recorder-ingress upstream 관련 오류가 확인됩니다.
 
    ```text
-   unexpected DNS response for audit-proxy
+   unexpected DNS response for recorder-ingress
    ```
 
 5. Host proxy log에서 VM upstream readiness 실패가 확인됩니다.
@@ -57,12 +57,12 @@ VM 내부 VitalServer process가 OOM killed 된 뒤 data plane은 다시 살아�
 
    ```text
    host-proxy-http-http-probe-command-failed
-   audit-proxy-http-failed
+   recorder-ingress-http-failed
    guest-runtime-state-stale
    ```
 
 이 흐름은 TestKit 전송량 자체가 곧 OOM 원인이라는 뜻은 아닙니다. 명확한 원인 증거는 guest kernel이
-`node` process를 OOM kill 했다는 점이고, 이후 502, audit-proxy DNS/upstream 오류, host proxy readiness
+`node` process를 OOM kill 했다는 점이고, 이후 502, recorder-ingress DNS/upstream 오류, host proxy readiness
 실패, stale guest runtime state는 같은 장애의 관측 결과로 함께 나타날 수 있습니다.
 
 ## Cause

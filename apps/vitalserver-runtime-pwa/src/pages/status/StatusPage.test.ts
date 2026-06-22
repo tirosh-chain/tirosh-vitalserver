@@ -49,7 +49,7 @@ describe("formatVitalRecorderObservationMetric", () => {
     ).toBe("Not reported");
   });
 
-  it("displays active recorder connections when reported by audit proxy", () => {
+  it("displays active recorder connections when reported by recorder ingress", () => {
     expect(
       formatVitalRecorderConnectionMetric({
         source: "unavailable",

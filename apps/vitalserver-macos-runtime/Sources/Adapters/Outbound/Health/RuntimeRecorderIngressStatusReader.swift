@@ -3,7 +3,7 @@ import Contracts
 import Foundation
 import Errors
 
-public struct RuntimeAuditProxyStatusReader {
+public struct RuntimeRecorderIngressStatusReader {
     private let curlPath: String
     private let commandRunner: RuntimeCommandRunner
     private let statusURL: (Int) -> String
@@ -18,13 +18,13 @@ public struct RuntimeAuditProxyStatusReader {
         self.statusURL = statusURL
     }
 
-    public func read(port: Int) -> RuntimeAuditProxyStatusReadResult {
+    public func read(port: Int) -> RuntimeRecorderIngressStatusReadResult {
         let result = commandRunner.run(
             curlPath,
             arguments: ["-fsS", "--max-time", "5", statusURL(port)]
         )
         if !result.outputIssues.isEmpty {
-            return RuntimeAuditProxyStatusReadResult(
+            return RuntimeRecorderIngressStatusReadResult(
                 readState: .outputInvalid,
                 httpStatus: RuntimeHTTPStatusText.invalidResponse,
                 document: nil,
@@ -32,7 +32,7 @@ public struct RuntimeAuditProxyStatusReader {
             )
         }
         guard result.exitCode == 0 else {
-            return RuntimeAuditProxyStatusReadResult(
+            return RuntimeRecorderIngressStatusReadResult(
                 readState: .commandFailed,
                 httpStatus: RuntimeHTTPStatusText.failed,
                 document: nil,
@@ -40,7 +40,7 @@ public struct RuntimeAuditProxyStatusReader {
             )
         }
         guard !result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return RuntimeAuditProxyStatusReadResult(
+            return RuntimeRecorderIngressStatusReadResult(
                 readState: .emptyResponse,
                 httpStatus: RuntimeHTTPStatusText.invalidResponse,
                 document: nil,
@@ -49,17 +49,17 @@ public struct RuntimeAuditProxyStatusReader {
         }
         do {
             let document = try JSONDecoder().decode(
-                RuntimeAuditProxyStatusDocument.self,
+                RuntimeRecorderIngressStatusDocument.self,
                 from: Data(result.stdout.utf8)
             )
-            return RuntimeAuditProxyStatusReadResult(
+            return RuntimeRecorderIngressStatusReadResult(
                 readState: .loaded,
                 httpStatus: "200",
                 document: document,
                 readError: nil
             )
         } catch {
-            return RuntimeAuditProxyStatusReadResult(
+            return RuntimeRecorderIngressStatusReadResult(
                 readState: .invalidResponse,
                 httpStatus: RuntimeHTTPStatusText.invalidResponse,
                 document: nil,

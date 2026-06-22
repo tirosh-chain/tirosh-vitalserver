@@ -71,7 +71,7 @@ local Dockerfile paths, and guest deploy `include` entries in that TOML file
 instead of adding new literals to Make targets.
 
 `docker-images` builds local images such as `vitalserver`,
-`vitalserver-audit-proxy`, and `vitaldb-observer`, pulls external images, and
+`vitalserver-recorder-ingress`, and `vitaldb-observer`, pulls external images, and
 writes the air-gapped Docker image bundle used by PKG/update packaging.
 
 Create an immutable rootfs base from a clean VM disk:

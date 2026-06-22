@@ -51,7 +51,7 @@ function writeRecorderIp(redis, metrics, vrcode, redisKey, selectedIp, successSt
         lastWriteAt: new Date().toISOString(),
         lastFailure: error.message,
       });
-      console.error("[audit-proxy] ip write failed:", error.message);
+      console.error("[recorder-ingress] ip write failed:", error.message);
       if (callback) callback(error);
       return;
     }
@@ -81,7 +81,7 @@ function verifyRecorderIp(redis, metrics, vrcode, redisKey, selectedIp, finalVer
         lastVerifiedAt: verifiedAt,
         lastFailure: error.message,
       });
-      console.error("[audit-proxy] ip verify failed:", error.message);
+      console.error("[recorder-ingress] ip verify failed:", error.message);
       return;
     }
 

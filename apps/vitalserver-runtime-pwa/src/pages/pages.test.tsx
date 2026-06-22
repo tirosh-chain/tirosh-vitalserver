@@ -1128,9 +1128,9 @@ function overview() {
       systemDisk: { availableBytes: 8192, totalBytes: 16384 },
       dataStorage: { usedBytes: 1024, totalBytes: 2048 },
       containerObservation: {
-        auditProxyHTTP: "HTTP 200",
-        auditProxyStatus: null,
-        auditProxyStatusReadError: null,
+        recorderIngressHTTP: "HTTP 200",
+        recorderIngressStatus: null,
+        recorderIngressStatusReadError: null,
         runtimeStateUpdatedAt: null,
         runtimeStateFileUpdatedAt: null,
         runtimeStateFileMetadataError: null,

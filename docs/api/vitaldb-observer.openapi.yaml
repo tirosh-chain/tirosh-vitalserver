@@ -145,7 +145,7 @@ components:
             - type: "null"
     VitalDBRecorderActivityObservation:
       type: object
-      description: Recent VRecorder send_data activity summarized from the audit proxy Redis list.
+      description: Recent VRecorder send_data activity summarized from the recorder ingress Redis list.
       properties:
         windowSeconds:
           type: integer

@@ -416,7 +416,7 @@ def _verify_forbidden_markers(
                     expected="absent",
                     actual=", ".join(found),
                     fix=(
-                        "Keep VRecorder IP correction in the audit proxy, "
+                        "Keep VRecorder IP correction in the recorder ingress, "
                         "not in upstream VitalServer."
                     ),
                 )

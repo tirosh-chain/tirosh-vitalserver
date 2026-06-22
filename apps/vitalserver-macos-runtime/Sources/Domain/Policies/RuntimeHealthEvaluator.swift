@@ -89,8 +89,8 @@ public enum RuntimeHealthEvaluator {
             failureReasons.append(contentsOf: input.proxyPortFailureReasons)
         }
         if let containerObservation = input.containerObservation.observedValue,
-           !isSuccessfulHTTPStatus(containerObservation.auditProxyHTTP) {
-            failureReasons.append(.auditProxyHTTP(containerObservation.auditProxyHTTP))
+           !isSuccessfulHTTPStatus(containerObservation.recorderIngressHTTP) {
+            failureReasons.append(.recorderIngressHTTP(containerObservation.recorderIngressHTTP))
         }
         failureReasons.append(contentsOf: RuntimeObservationHealthPolicy.failureReasons(
             containerObservation: input.containerObservation,

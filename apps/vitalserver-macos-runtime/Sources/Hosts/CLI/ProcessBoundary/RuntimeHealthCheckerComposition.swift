@@ -55,7 +55,7 @@ public enum RuntimeHealthCheckerComposition {
             proxyHealthURL: { Constants.Runtime.proxyHealthURL(port: $0) },
             redisUIHealthURL: { Constants.Runtime.redisUIHealthURL(port: $0) },
             swaggerUIHealthURL: { Constants.Runtime.swaggerUIHealthURL(port: $0) },
-            auditProxyStatusURL: { Constants.Runtime.auditProxyStatusURL(port: $0) }
+            recorderIngressStatusURL: { Constants.Runtime.recorderIngressStatusURL(port: $0) }
         )
     }
 }

@@ -95,8 +95,8 @@ forwarding을 직접 거치면 container 내부에서는 실제 VR IP 대신 Doc
 있습니다.
 
 원본 VitalServer는 proxy forwarding header를 신뢰하지 않고 socket remote address를 사용합니다.
-따라서 macOS 운영 환경에서는 VR 접속이 host-level proxy와 audit proxy를 지나면서 selected client
-IP를 audit proxy가 계산하고, 같은 Redis `ip_<vrcode>` key를 bounded verify/rewrite로 보정합니다.
+따라서 macOS 운영 환경에서는 VR 접속이 host-level proxy와 recorder ingress를 지나면서 selected client
+IP를 recorder ingress가 계산하고, 같은 Redis `ip_<vrcode>` key를 bounded verify/rewrite로 보정합니다.
 Docker container 내부에서만 network 정보를 읽어서는 NAT 이전의 VR IP를 복원할 수 없습니다.
 
 macOS 운영 서버에서는 Docker published port를 외부에 직접 노출하지 않고, host nginx가

@@ -227,7 +227,7 @@ proxy_set_header Forwarded "for=$remote_addr;proto=$scheme;host=$host";
 ```
 
 현재 제품 방향에서는 원본 VitalServer가 이 header를 직접 신뢰하지 않습니다. trust boundary는
-macOS host nginx와 audit proxy이며, audit proxy가 selected client IP를 계산한 뒤 Redis
+macOS host nginx와 recorder ingress이며, recorder ingress가 selected client IP를 계산한 뒤 Redis
 `ip_<vrcode>` key를 bounded verify/rewrite로 보정합니다. client가 직접 보낸 forwarding header는
 nginx config에서 `$remote_addr`로 덮어씁니다.
 

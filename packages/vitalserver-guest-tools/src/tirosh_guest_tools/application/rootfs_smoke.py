@@ -874,7 +874,7 @@ def build_local_docker_smoke_image(run: RootfsSmokeRun) -> str:
 def compose_build(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
     run_checked(
         run,
-        compose_command(run, ["build", "app", "audit-proxy", "vitaldb-observer"]),
+        compose_command(run, ["build", "app", "recorder-ingress", "vitaldb-observer"]),
         timeout_seconds=COMPOSE_BUILD_TIMEOUT_SECONDS,
     )
     return "compose images built", {}
@@ -894,7 +894,7 @@ def compose_up(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
                 "up",
                 "-d",
                 "app",
-                "audit-proxy",
+                "recorder-ingress",
                 "vitaldb-observer",
                 "redis-ui",
                 "swagger-ui",

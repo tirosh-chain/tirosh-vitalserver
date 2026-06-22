@@ -22,7 +22,7 @@ release 문서가 공개/운영 독자를 위한 설명이라면, dev 문서는 
 | `package-map.md` | monorepo package 경계와 공개 여부 설명 |
 | `architecture.md` | Host/Guest, Linux VM, PWA, Runtime Control 구조 설명 |
 | `health-check-contract.md` | Health Check 상태 계약과 실패 의미 설명 |
-| `api-contracts.md` | Runtime Control, Observer, Audit Proxy API 문서 위치 |
+| `api-contracts.md` | Runtime Control, Observer, Recorder Ingress API 문서 위치 |
 | `build-and-release.md` | build, package, update bundle 생성 흐름 |
 | `testing.md` | testkit, runtime chaos, unit/integration 검증 |
 | `troubleshooting.md` | 내부 장애 조사와 failure pattern 기록 기준 |

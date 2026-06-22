@@ -164,8 +164,8 @@ final class RuntimeRecoveryPlannerTests: XCTestCase {
         let plan = RuntimeRecoveryPlanner.plan(input(
             vmLifecycle: runningLifecycle(),
             containerObservation: RuntimeContainerObservation(
-                auditProxyHTTP: "200",
-                auditProxyStatus: nil,
+                recorderIngressHTTP: "200",
+                recorderIngressStatus: nil,
                 containerLogsPresent: true,
                 containerLogsBytes: 1024,
                 composeServices: [

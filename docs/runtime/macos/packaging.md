@@ -149,7 +149,7 @@ Hotfix, service-only update, updater bridge update는 별도 kind가 아니라 `
 
 ## Bundled observer services
 
-기본 Service Stack에는 VitalServer app, Redis, audit proxy, edge/nginx, Redis UI, Swagger UI와 함께
+기본 Service Stack에는 VitalServer app, Redis, recorder ingress, edge/nginx, Redis UI, Swagger UI와 함께
 `vitaldb-observer` container가 포함됩니다. `vitaldb-observer`는 Redis와 proxy/access log를 읽어
 recorder/bed/anomaly snapshot을 계산하지만, 자체 SQLite를 소유하지 않습니다. 최종 observation SoT는
 watchdog/runtime observability SQLite입니다.
@@ -899,7 +899,7 @@ Shell은 installer/launchd wrapper로만 남깁니다. Bundle manifest parsing, 
 
 Swagger UI는 VM guest deploy bundle의 `deploy/docs`를 읽어 multi-spec catalog를 제공합니다.
 기본 포함 spec은 `api/vitalserver.openapi.yaml`(VitalServer), `runtime/macos/runtime-control.openapi.json`
-(Runtime Control API), `api/audit-proxy.openapi.yaml`(Audit Proxy API)입니다.
+(Runtime Control API), `api/recorder-ingress.openapi.yaml`(Recorder Ingress API)입니다.
 기존 `/swagger/openapi.yaml` 호환 경로는 유지합니다.
 
 | 항목 | 필요한 이유 |

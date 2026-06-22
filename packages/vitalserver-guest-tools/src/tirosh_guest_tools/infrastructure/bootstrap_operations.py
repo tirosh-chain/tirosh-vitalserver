@@ -334,7 +334,7 @@ def cleanup_docker_cache() -> None:
 def build_missing_images() -> None:
     for image, service in (
         ("vitalserver:2.3.4", "app"),
-        ("vitalserver-audit-proxy:0.1.0", "audit-proxy"),
+        ("vitalserver-recorder-ingress:0.1.0", "recorder-ingress"),
     ):
         completed = run(["docker", "image", "inspect", image], check=False)
         if completed.returncode != 0:

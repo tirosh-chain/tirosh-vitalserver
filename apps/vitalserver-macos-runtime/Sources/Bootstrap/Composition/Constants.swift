@@ -190,8 +190,8 @@ public enum Constants {
             "http://127.0.0.1:\(port)/swagger/"
         }
 
-        public static func auditProxyStatusURL(port: Int) -> String {
-            "http://127.0.0.1:\(port)/audit-proxy/status"
+        public static func recorderIngressStatusURL(port: Int) -> String {
+            "http://127.0.0.1:\(port)/recorder-ingress/status"
         }
     }
 

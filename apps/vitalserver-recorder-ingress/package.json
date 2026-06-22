@@ -1,8 +1,8 @@
 {
-  "name": "@tirosh/vitalserver-audit-proxy",
+  "name": "@tirosh/vitalserver-recorder-ingress",
   "version": "0.1.0",
   "private": true,
-  "description": "VitalServer Socket.IO audit and edge-observation proxy",
+  "description": "VitalServer recorder ingress, Socket.IO audit, and edge-observation sidecar",
   "type": "commonjs",
   "main": "proxy.js",
   "scripts": {

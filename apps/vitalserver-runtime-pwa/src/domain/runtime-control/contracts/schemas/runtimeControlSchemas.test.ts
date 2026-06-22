@@ -67,8 +67,8 @@ describe("runtime control contract schemas", () => {
         fullRuntimeOverview({
           status: {
             containerObservation: {
-              auditProxyHTTP: "HTTP 200",
-              auditProxyStatus: null,
+              recorderIngressHTTP: "HTTP 200",
+              recorderIngressStatus: null,
               containerLogsPresent: true,
               containerLogsBytes: null,
               containerLogsUpdatedAt: null,
@@ -221,7 +221,7 @@ describe("runtime control contract schemas", () => {
       runtimeOverviewSchema.parse({
         status: {
           containerObservation: {
-            auditProxyHTTP: "HTTP 200"
+            recorderIngressHTTP: "HTTP 200"
           }
         }
       })
@@ -236,7 +236,7 @@ describe("runtime control contract schemas", () => {
         })
       ).status?.containerObservation
     ).toMatchObject({
-      auditProxyHTTP: "HTTP 200",
+      recorderIngressHTTP: "HTTP 200",
       containerLogsPresent: false,
       composeServices: []
     });
@@ -841,9 +841,9 @@ function fullSettings() {
 
 function fullContainerObservation() {
   return {
-    auditProxyHTTP: "HTTP 200",
-    auditProxyStatus: null,
-    auditProxyStatusReadError: null,
+    recorderIngressHTTP: "HTTP 200",
+    recorderIngressStatus: null,
+    recorderIngressStatusReadError: null,
     runtimeStateUpdatedAt: null,
     runtimeStateFileUpdatedAt: null,
     runtimeStateFileMetadataError: null,

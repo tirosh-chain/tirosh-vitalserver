@@ -2,13 +2,13 @@
 
 > ID: TS-090
 > Category: Runtime health / Recorder streaming
-> Owner: macOS runtime / guest compose / audit proxy
+> Owner: macOS runtime / guest compose / recorder ingress
 > Status: implemented
 
 ## Symptom
 
 During long-running recorder streaming, the upstream VitalServer app process can grow until the guest kernel or
-container runtime kills the Node process. Operators may then see `guestHTTP: 502`, audit-proxy upstream failures,
+container runtime kills the Node process. Operators may then see `guestHTTP: 502`, recorder-ingress upstream failures,
 host proxy readiness failures, or stale guest runtime state around the same incident.
 
 The app container may later restart, but without explicit container evidence the incident can look like a broad VM
@@ -20,7 +20,7 @@ The upstream VitalServer application owns internal `send_data`, Redis, filter, a
 does not modify upstream VitalServer internals, so downstream runtime code must not pretend to know the app's internal
 queue or heap state.
 
-Without a container memory boundary, the app can consume memory from the same VM that runs Redis, audit-proxy,
+Without a container memory boundary, the app can consume memory from the same VM that runs Redis, recorder-ingress,
 vitaldb-observer, and the guest runtime state writer. Without container inspection evidence, `502` and stale status
 are only symptoms; they do not prove whether the app was OOM-killed, manually restarted, or failed for another reason.
 
@@ -34,13 +34,13 @@ are only symptoms; they do not prove whether the app was OOM-killed, manually re
   - `finishedAt`
   - `error`
   - `memoryLimitBytes`
-- Record audit-proxy observed `send_data` ingress counters:
+- Record recorder-ingress observed `send_data` ingress counters:
   - observed event count
   - observed compressed payload bytes
   - last observed timestamp
   - recorder-level observed count, bytes, and timestamp
 
-These values are evidence only. The audit proxy observes recorder ingress traffic, not upstream app in-flight work.
+These values are evidence only. The recorder ingress observes recorder ingress traffic, not upstream app in-flight work.
 
 ## Prevention Principle
 
@@ -56,6 +56,6 @@ VM memory increases can buy time, but they must not replace an app container bou
    `memoryLimitBytes` when Docker inspect provides them.
 3. Docker inspect failures remain visible in `probeErrors`; they are not converted into healthy or empty container
    state.
-4. `/audit-proxy/status` reports observed `send_data` count, bytes, and last timestamp globally and per recorder.
+4. `/recorder-ingress/status` reports observed `send_data` count, bytes, and last timestamp globally and per recorder.
 5. A soak test records elapsed time, messages, bytes, app restart/OOM evidence, Redis memory, and guest HTTP status
    together so the incident chain can be read without inferring state from symptoms.

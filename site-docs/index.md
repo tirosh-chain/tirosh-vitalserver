@@ -25,7 +25,7 @@ Vital Server Helper는 병원 내부망 가까이에 설치된 VitalServer를 �
 
 | 항목 | 현재 상태 |
 |---|---|
-| repository | macOS runtime, Runtime Control PWA, observer, audit proxy, testkit 포함 |
+| repository | macOS runtime, Runtime Control PWA, observer, recorder ingress, testkit 포함 |
 | release 문서 | preview 검증과 도입 검토 기준 |
 | 안정 release | 아직 확정되지 않음 |
 | VitalServer와의 관계 | VitalServer 공식 배포와 별도의 Helper project |

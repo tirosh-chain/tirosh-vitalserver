@@ -40,7 +40,7 @@ VM disk가 실제로 삭제됐는지와 VM process가 watchdog으로 재시작�
 2. `2026-05-31T13:21:08Z` runtime event에 `rollback`이 기록됐지만 manager command log에는 rollback 요청이 없었습니다.
 3. rollback은 `/Library/Application Support/TiroshVitalServer/backups/20260531T131407Z-before-0.1.10-dev/rootfs-base.raw.gz`를 복원하려다 파일 없음으로 실패했습니다.
 4. `2026-05-31T13:24:09Z` fresh install이 시작됐고 `provision-vm-disk`가 새 disk를 만들었습니다.
-5. 이후 watchdog은 `guest-http-missing-vm-ip`, `guest-runtime-state-stale`, `host-proxy-http-failed`, `audit-proxy-http-failed`를 근거로 VM/proxy recovery를 수행했습니다.
+5. 이후 watchdog은 `guest-http-missing-vm-ip`, `guest-runtime-state-stale`, `host-proxy-http-failed`, `recorder-ingress-http-failed`를 근거로 VM/proxy recovery를 수행했습니다.
 6. guest `bootstrap-result.json`은 2026-05-23의 `Guest bootstrap is running.` 상태로 남아 있었습니다.
 
 AGENTS.md 원칙상 Host/UI/watchdog은 logs, filename, stale result, 부재 상태를 조합해서 domain state를 추정하면 안 됩니다. State owner가 current state를 explicit contract로 제공하고, consumer는 그 상태를 표시하거나 정책 입력으로만 사용해야 합니다.

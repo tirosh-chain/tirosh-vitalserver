@@ -335,9 +335,9 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
             failureReasons: [],
             latestBackup: nil,
             containerObservation: RuntimeContainerObservation(
-                auditProxyHTTP: "200",
-                auditProxyStatus: nil,
-                auditProxyStatusReadError: nil,
+                recorderIngressHTTP: "200",
+                recorderIngressStatus: nil,
+                recorderIngressStatusReadError: nil,
                 runtimeStateUpdatedAt: nil,
                 runtimeStateFileUpdatedAt: nil,
                 runtimeStateFileMetadataError: nil,

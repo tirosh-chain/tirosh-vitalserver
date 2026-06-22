@@ -4,9 +4,9 @@ import OutboundAdapters
 import XCTest
 import Errors
 
-final class RuntimeAuditProxyStatusReaderTests: XCTestCase {
-    func testReadLoadsAuditProxyStatusDocument() {
-        let commandRunner = AuditProxyStatusCommandRunner()
+final class RuntimeRecorderIngressStatusReaderTests: XCTestCase {
+    func testReadLoadsRecorderIngressStatusDocument() {
+        let commandRunner = RecorderIngressStatusCommandRunner()
         commandRunner.result = RuntimeProcessResult(
             exitCode: 0,
             stdout: #"{"activeWebSockets":1,"activeRecorderConnections":2,"httpRequests":3,"socketIoEventsSeen":4,"socketIoParseFailures":5,"auditWriteFailures":6,"auditFileWriteFailures":7,"auditStdoutWriteFailures":8,"redisIpWriteFailures":9}"#,
@@ -21,15 +21,15 @@ final class RuntimeAuditProxyStatusReaderTests: XCTestCase {
         XCTAssertEqual(result.document?.activeRecorderConnections, 2)
         XCTAssertNil(result.readError)
         XCTAssertEqual(commandRunner.requests, [
-            AuditProxyStatusCommandRequest(
+            RecorderIngressStatusCommandRequest(
                 executable: "/usr/bin/curl",
-                arguments: ["-fsS", "--max-time", "5", "http://127.0.0.1:8080/__audit/status"]
+                arguments: ["-fsS", "--max-time", "5", "http://127.0.0.1:8080/recorder-ingress/status"]
             ),
         ])
     }
 
     func testReadReportsCommandFailureWithoutInventingDocument() {
-        let commandRunner = AuditProxyStatusCommandRunner()
+        let commandRunner = RecorderIngressStatusCommandRunner()
         commandRunner.result = RuntimeProcessResult(exitCode: 7, stdout: "", stderr: "connection refused")
 
         let result = makeReader(commandRunner: commandRunner).read(port: 8080)
@@ -42,7 +42,7 @@ final class RuntimeAuditProxyStatusReaderTests: XCTestCase {
     }
 
     func testReadReportsInvalidResponseWithoutInventingEmptyDocument() {
-        let commandRunner = AuditProxyStatusCommandRunner()
+        let commandRunner = RecorderIngressStatusCommandRunner()
         commandRunner.result = RuntimeProcessResult(exitCode: 0, stdout: "{invalid-json", stderr: "")
 
         let result = makeReader(commandRunner: commandRunner).read(port: 8080)
@@ -54,7 +54,7 @@ final class RuntimeAuditProxyStatusReaderTests: XCTestCase {
     }
 
     func testReadReportsEmptyResponseDistinctFromDecodeFailure() {
-        let commandRunner = AuditProxyStatusCommandRunner()
+        let commandRunner = RecorderIngressStatusCommandRunner()
         commandRunner.result = RuntimeProcessResult(exitCode: 0, stdout: "\n", stderr: "")
 
         let result = makeReader(commandRunner: commandRunner).read(port: 8080)
@@ -66,7 +66,7 @@ final class RuntimeAuditProxyStatusReaderTests: XCTestCase {
     }
 
     func testReadReportsInvalidCommandOutputBeforeDecoding() {
-        let commandRunner = AuditProxyStatusCommandRunner()
+        let commandRunner = RecorderIngressStatusCommandRunner()
         commandRunner.result = RuntimeProcessResult(
             exitCode: 0,
             stdout: #"{"activeWebSockets":1}"#,
@@ -84,26 +84,26 @@ final class RuntimeAuditProxyStatusReaderTests: XCTestCase {
         XCTAssertTrue(result.readError?.hasPrefix("output-invalid ") == true)
     }
 
-    private func makeReader(commandRunner: AuditProxyStatusCommandRunner) -> RuntimeAuditProxyStatusReader {
-        RuntimeAuditProxyStatusReader(
+    private func makeReader(commandRunner: RecorderIngressStatusCommandRunner) -> RuntimeRecorderIngressStatusReader {
+        RuntimeRecorderIngressStatusReader(
             curlPath: "/usr/bin/curl",
             commandRunner: commandRunner,
-            statusURL: { port in "http://127.0.0.1:\(port)/__audit/status" }
+            statusURL: { port in "http://127.0.0.1:\(port)/recorder-ingress/status" }
         )
     }
 }
 
-private struct AuditProxyStatusCommandRequest: Equatable {
+private struct RecorderIngressStatusCommandRequest: Equatable {
     let executable: String
     let arguments: [String]
 }
 
-private final class AuditProxyStatusCommandRunner: RuntimeCommandRunner {
+private final class RecorderIngressStatusCommandRunner: RuntimeCommandRunner {
     var result = RuntimeProcessResult(exitCode: 1, stdout: "", stderr: "")
-    var requests: [AuditProxyStatusCommandRequest] = []
+    var requests: [RecorderIngressStatusCommandRequest] = []
 
     func run(_ executable: String, arguments: [String]) -> RuntimeProcessResult {
-        requests.append(AuditProxyStatusCommandRequest(executable: executable, arguments: arguments))
+        requests.append(RecorderIngressStatusCommandRequest(executable: executable, arguments: arguments))
         return result
     }
 

@@ -1,7 +1,7 @@
 # Runtime observability model
 
 이 문서는 macOS VM runtime의 status, event, log, index 수집 책임을 정리합니다. 목표는
-`runtime-status.json`, `runtime-events.jsonl`, SQLite read model, container logs, audit proxy event가
+`runtime-status.json`, `runtime-events.jsonl`, SQLite read model, container logs, recorder ingress event가
 서로 다른 용도로 존재하더라도 제품 관점에서 어디를 믿고, 어디를 API로 노출할지 명확하게 만드는
 것입니다.
 
@@ -24,10 +24,10 @@ Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
 | `vm/data/run/guest-observability/latest.json` | guest `tirosh-guest-observed` | Helper Logs, export logs | guest OS 진단 스냅샷 |
 | `vm/data/run/guest-observability/snapshots/*` | guest `tirosh-guest-observe` | Helper Logs, export logs | phase별 one-shot 진단 |
 | `vm/data/run/container-logs.log` | guest `tirosh-guest-container-logs` | Helper Logs, export logs | `docker compose logs --follow` 수집본 |
-| `/var/log/vitalserver-audit/audit-events.log` | `vitalserver-audit-proxy` | guest/operator diagnostics | command audit 원본 파일 로그 |
-| audit proxy stdout | `vitalserver-audit-proxy` | container log collector | collector 호환 raw event log |
-| Redis List `vitalserver:audit_events` | `vitalserver-audit-proxy` | 운영 조회/디버깅 | Redis 3.2 호환 보조 조회 sink |
-| `/audit-proxy/status` | `vitalserver-audit-proxy` | watchdog 후보, operator | audit proxy runtime counters |
+| `/var/log/vitalserver-audit/audit-events.log` | `vitalserver-recorder-ingress` | guest/operator diagnostics | command audit 원본 파일 로그 |
+| recorder ingress stdout | `vitalserver-recorder-ingress` | container log collector | collector 호환 raw event log |
+| Redis List `vitalserver:audit_events` | `vitalserver-recorder-ingress` | 운영 조회/디버깅 | Redis 3.2 호환 보조 조회 sink |
+| `/recorder-ingress/status` | `vitalserver-recorder-ingress` | watchdog 후보, operator | recorder ingress runtime counters |
 | `/api/v1/observations` | `vitaldb-observer` | guest `tirosh-runtime-state`, watchdog | VitalDB recorder/bed/anomaly snapshot |
 | vitaldb-observer stdout JSONL | `vitaldb-observer` | container log collector, operator diagnostics | observer collection/readiness diagnostic history |
 | `/run/tirosh/status/redis-relay-status.json` | `vitalserver-redis-relay` | Helper status, operator diagnostics | relay process/progress/error snapshot |
@@ -41,7 +41,7 @@ source인지 명확하지 않다는 점입니다.
 
 각 app과 container는 자기 상태와 raw event만 기록합니다.
 
-- `vitalserver-audit-proxy`는 command audit event를 생성합니다.
+- `vitalserver-recorder-ingress`는 command audit event를 생성합니다.
 - `vitaldb-observer`는 Redis와 proxy/access log를 읽어 VitalDB observation snapshot을 계산합니다.
 - `vitalserver-redis-relay`는 source Redis 3.2의 allowlisted key를 외부 target Redis로 publish하고,
   publish 진행과 target 오류를 status payload로 기록합니다.
@@ -126,7 +126,7 @@ Watchdog 관측 대상:
 - bootstrap result/log failure reason
 - proxy port listener conflict
 - active managed operation guard
-- audit proxy health/status
+- recorder ingress health/status
 - VitalDB observer snapshot
 
 Watchdog은 raw source를 제품 관점 status/event로 정규화합니다.
@@ -244,7 +244,7 @@ guest collectors
   -> container-logs.log
 
 host watchdog
-  -> observe guest state, host services, HTTP endpoints, audit proxy status, VitalDB snapshot
+  -> observe guest state, host services, HTTP endpoints, recorder ingress status, VitalDB snapshot
   -> normalize product status/events
   -> runtime-status.json
   -> runtime-events.jsonl
@@ -266,7 +266,7 @@ Runtime Control API
 
 | 수집자 | 주 책임 | 수집 성격 | 최종 SoT |
 |---|---|---|---|
-| `vitalserver-audit-proxy` | VRecorder/Web Monitoring command 흐름 추적 | event/history | audit file, Redis List |
+| `vitalserver-recorder-ingress` | VRecorder/Web Monitoring command 흐름 추적 | event/history | audit file, Redis List |
 | `vitaldb-observer` | Redis 기준 recorder/bed 상태 관측 | latest snapshot | runtime observability SQLite |
 | guest runtime-state | VM 내부 상태 bridge | latest snapshot | runtime/watchdog |
 | runtime/watchdog | 제품 health/status 판단 | normalized status/history | `runtime-status.json`, runtime observability SQLite |
@@ -275,7 +275,7 @@ Runtime Control API
 
 | Source | Reader | 읽는 정보 | 목적 |
 |---|---|---|---|
-| Socket.IO traffic | `vitalserver-audit-proxy` | `join_vr`, `send_data`, `req_cmd`, dispatch event | command trace |
+| Socket.IO traffic | `vitalserver-recorder-ingress` | `join_vr`, `send_data`, `req_cmd`, dispatch event | command trace |
 | Redis | `vitaldb-observer` | recorder IP, last seen, version, bed, device/filter | VitalDB 상태 snapshot |
 | proxy/access log | `vitaldb-observer` | remote IP, status, websocket handshake | proxy connection context |
 | Linux guest OS | `tirosh-write-runtime-state` | VM IP, CPU, memory, disk, boot ID | guest runtime state |
@@ -286,15 +286,15 @@ Runtime Control API
 
 | Output | Writer | 내용 | History | 용도 |
 |---|---|---|---|---|
-| audit file | `vitalserver-audit-proxy` | command audit event | Yes | command 흐름 추적 |
-| Redis List | `vitalserver-audit-proxy` | command audit event | Yes, capped | 운영 조회/디버깅 |
+| audit file | `vitalserver-recorder-ingress` | command audit event | Yes | command 흐름 추적 |
+| Redis List | `vitalserver-recorder-ingress` | command audit event | Yes, capped | 운영 조회/디버깅 |
 | observer stdout | `vitaldb-observer` | 수집 성공/실패 summary | Yes, via container logs | 진단 |
 | `runtime-state.json` | guest runtime-state | VM/container/observer latest snapshot | No | host로 전달 |
 | `runtime-status.json` | runtime/watchdog | 최신 제품 상태 | No | UI/API latest status |
 | `runtime-events.jsonl` | runtime/watchdog | 제품 상태 이벤트 | Yes | operational history |
 | `runtime-observability.sqlite` | runtime/watchdog | event index, VitalDB observation history | Yes | Runtime Control API read model |
 
-### 4-4. Audit proxy 수집 정보
+### 4-4. Recorder ingress 수집 정보
 
 | 범주 | 수집 정보 | 저장 위치 |
 |---|---|---|
@@ -303,7 +303,7 @@ Runtime Control API
 | Web Monitoring command | `req_cmd`, command job, target vrcode | audit file, Redis List, stdout |
 | Server dispatch | `update`, `restart`, `reboot`, `edit_bed`, `edit_conf` 등 | audit file, Redis List, stdout |
 | Proxy failure | upstream error/timeout | audit file, Redis List, stdout |
-| Runtime metrics | active sockets, recorder connections, parse/write failures | `/audit-proxy/status` |
+| Runtime metrics | active sockets, recorder connections, parse/write failures | `/recorder-ingress/status` |
 
 ### 4-5. VitalDB observer 수집 정보
 
@@ -318,7 +318,7 @@ Runtime Control API
 | Diagnostics | collector process | collection count/duration/failure | stdout JSONL |
 
 Recorder `online` and `stale` are explicit observer states. Consumers must not infer recorder state
-from activity graphs, anomaly text, last-seen age, or audit proxy connection counts. If a recorder is
+from activity graphs, anomaly text, last-seen age, or recorder ingress connection counts. If a recorder is
 reported as both `online` and `stale`, the read model presents it as `stale` because stale means the
 last known online state is no longer current enough for operator trust.
 
@@ -328,7 +328,7 @@ last known online state is no longer current enough for operator trust.
 |---|---|---|---|
 | 설치 파일 | filesystem | VM binary, proxy runner, rootfs, VM disk | Yes |
 | launchd | host service manager | VM/proxy/watchdog loaded state | Yes |
-| HTTP | host/guest endpoints | host proxy, guest HTTP, audit proxy | Yes |
+| HTTP | host/guest endpoints | host proxy, guest HTTP, recorder ingress | Yes |
 | 부가 HTTP | Redis UI, Swagger UI | HTTP status | Display only |
 | guest state | `runtime-state.json` | VM IP, resource, compose services, observer snapshot | Yes for critical service/anomaly policy |
 | port conflict | `lsof` | proxy port listener | Yes |
@@ -390,7 +390,7 @@ read issue 또는 unavailable state로 노출해야 합니다. Status summary는
 | 언제 상태가 바뀌었나? | `runtime-observability.sqlite`, fallback `runtime-events.jsonl`, API `/runtime/events` |
 | guest service가 살아 있나? | watchdog이 읽은 `runtime-state.json` + HTTP probe 결과 |
 | container가 무슨 로그를 냈나? | `container-logs.log` |
-| VRecorder command가 어떤 흐름으로 전달됐나? | audit proxy event log / Redis List |
+| VRecorder command가 어떤 흐름으로 전달됐나? | recorder ingress event log / Redis List |
 | VRecorder/bed/anomaly 최신 관측 결과는? | `runtime-observability.sqlite`, API `RuntimeVitalDBObservationSnapshot` |
 | 장애 원인을 제품 상태로 볼 수 있나? | watchdog이 정규화한 `failureReasons`와 runtime event |
 
@@ -414,7 +414,7 @@ runtime state, not from historical log rows.
 
 ### 7-2. Ownership Boundary
 
-Runtime operational event는 watchdog이 생성합니다. Command audit event는 audit proxy가 생성하고 watchdog은
+Runtime operational event는 watchdog이 생성합니다. Command audit event는 recorder ingress가 생성하고 watchdog은
 필요한 경우 요약 상태만 관측합니다.
 
 Runtime operational event type은 API와 JSONL의 public contract입니다.
@@ -427,7 +427,7 @@ Runtime operational event type은 API와 JSONL의 public contract입니다.
 | `progress-updated` | host runtime | install/update/rollback 같은 workflow 진행 상태 변경 |
 | `health-observed` | watchdog | health snapshot이 수집됨 |
 | `container-observed` | watchdog | container log/status 관측값이 수집됨 |
-| `audit-proxy-observed` | watchdog | audit proxy status/counter 관측값이 수집됨 |
+| `recorder-ingress-observed` | watchdog | recorder ingress status/counter 관측값이 수집됨 |
 | `vitaldb-observed` | watchdog | VitalDB observer snapshot이 수집됨 |
 | `vitaldb-observer-unhealthy` | watchdog | VitalDB observer 조회 또는 readiness가 실패함 |
 | `vitaldb-anomaly-detected` | watchdog | VitalDB observer가 recorder/bed/proxy anomaly를 계산함 |
@@ -610,7 +610,7 @@ publish합니다.
 - `RuntimeStatusReporter`는 최신 status/progress 문서만 기록합니다.
 - watchdog이 `runtime-events.jsonl`을 기록합니다.
 - `GET /runtime/events`는 정규화된 runtime event만 반환합니다.
-- audit proxy는 raw audit event를 계속 파일/stdout/Redis에 남깁니다.
+- recorder ingress는 raw audit event를 계속 파일/stdout/Redis에 남깁니다.
 
 ### 10-2. container observation 모델 추가
 
@@ -618,8 +618,8 @@ Swift 쪽에 `RuntimeContainerObservation` read model을 추가합니다.
 
 현재 포함 항목:
 
-- audit proxy `/audit-proxy/status` HTTP 관측 결과
-- audit proxy `/audit-proxy/status` counter snapshot
+- recorder ingress `/recorder-ingress/status` HTTP 관측 결과
+- recorder ingress `/recorder-ingress/status` counter snapshot
 - `runtime-state.json` 내부 `updatedAt`
 - `runtime-state.json` 파일 수정 시각
 - `container-logs.log` 존재 여부
@@ -628,8 +628,8 @@ Swift 쪽에 `RuntimeContainerObservation` read model을 추가합니다.
 - guest `docker compose ps --format json`에서 정규화한 compose service summary
 
 이 모델은 watchdog의 관측 입력입니다. Helper UI에 그대로 노출하기보다는 `runtime-status`와
-`runtime-events`로 정규화합니다. 현재는 audit proxy status endpoint 접근 실패만
-`audit-proxy-http-<status>` failure reason으로 승격합니다. audit write failure counter는 관측값으로
+`runtime-events`로 정규화합니다. 현재는 recorder ingress status endpoint 접근 실패만
+`recorder-ingress-http-<status>` failure reason으로 승격합니다. audit write failure counter는 관측값으로
 보존하지만 즉시 runtime recovery 실패로 판단하지 않습니다.
 
 남은 후보:
@@ -638,13 +638,13 @@ Swift 쪽에 `RuntimeContainerObservation` read model을 추가합니다.
 - `container-logs.log` updated age를 warning policy에 반영
 - compose service health summary를 recovery trigger와 연결
 
-### 10-3. audit proxy status를 watchdog 관측 대상에 편입
+### 10-3. recorder ingress status를 watchdog 관측 대상에 편입
 
-watchdog이 host proxy를 통해 `/audit-proxy/status`를 읽습니다.
+watchdog이 host proxy를 통해 `/recorder-ingress/status`를 읽습니다.
 
 현재 판단:
 
-- `/audit-proxy/status`를 읽을 수 없으면 `audit-proxy-http-failed` failure reason 기록
+- `/recorder-ingress/status`를 읽을 수 없으면 `recorder-ingress-http-failed` failure reason 기록
 
 향후 판단 후보:
 
@@ -689,15 +689,15 @@ SQLite read model을 도입합니다.
 - API는 raw source가 아니라 SQLite/JSONL 기반 정규화 read model을 기본으로 제공합니다.
 - raw log는 export/debug 대상이고, operational event는 API/자동화 대상입니다.
 - 같은 event를 여러 sink에 남길 수는 있지만, canonical source와 sink 목적을 문서에 명시합니다.
-- Swagger UI는 단일 화면에서 VitalServer, Runtime Control API, Audit Proxy API spec을 선택하는
-  multi-spec catalog로 제공합니다. Audit Proxy spec은 raw proxy traffic이 아니라
-  `/audit-proxy/health`, `/audit-proxy/status` 같은 sidecar 운영 endpoint만 문서화합니다.
+- Swagger UI는 단일 화면에서 VitalServer, Runtime Control API, Recorder Ingress API spec을 선택하는
+  multi-spec catalog로 제공합니다. Recorder Ingress spec은 raw proxy traffic이 아니라
+  `/recorder-ingress/health`, `/recorder-ingress/status` 같은 sidecar 운영 endpoint만 문서화합니다.
 - Helper Status 화면은 현재 runtime snapshot을 보여주고, Events 화면은 `RuntimeEventHistory` 기반의
-  status/event history를 보여줍니다. VRecorder 접속 수와 recorder별 snapshot은 audit proxy
-  `/audit-proxy/status`에서 수집해 `containerObservation.auditProxyStatus`로 전달합니다.
+  status/event history를 보여줍니다. VRecorder 접속 수와 recorder별 snapshot은 recorder ingress
+  `/recorder-ingress/status`에서 수집해 `containerObservation.recorderIngressStatus`로 전달합니다.
 - Helper UI의 상태 문구, severity, service 행 구성, HTTP 상태 표시, uptime formatting은 SwiftUI view가
   아니라 `RuntimeStatusDisplayPolicy`와 `RuntimeEventDisplayPolicy`가 소유합니다. View는 policy output을
   렌더링만 하며, 새 상태/행/표시 규칙을 추가할 때는 먼저 해당 policy를 수정합니다.
-- Service uptime은 audit proxy process start time과 guest `docker inspect .State.StartedAt`에서
+- Service uptime은 recorder ingress process start time과 guest `docker inspect .State.StartedAt`에서
   계산한 uptime을 사용하며, Helper Status/Advanced 화면의 상태 값 옆에 inline으로 표시합니다.
   값이 없으면 표시하지 않고 recovery 판단에는 쓰지 않습니다.

@@ -291,7 +291,7 @@ repair가 같은 request를 재사용하거나 stale request를 다시 실행하
 Compose stop은 whole-stack fallback이 아니라 아래 순서의 명시 operation입니다.
 
 ```text
-testkit -> edge -> swagger-ui -> redis-ui -> audit-proxy -> vitaldb-observer -> app -> redis
+testkit -> edge -> swagger-ui -> redis-ui -> recorder-ingress -> vitaldb-observer -> app -> redis
 ```
 
 기본 stop timeout은 30초입니다. `app`은 90초, `redis`는 60초로 둡니다. timeout이나 dependency
@@ -307,7 +307,7 @@ failure가 발생하면 Guest는 `prepare-update-shutdown-result.json`에 아래
 Host는 이 result를 update failure로 소비해야 합니다. 로그 tail, missing marker, VM process 종료 여부로
 Guest shutdown success를 추정하지 않습니다.
 
-Rollback 중 health wait에서 `host-proxy-http-*`, `audit-proxy-http-failed`,
+Rollback 중 health wait에서 `host-proxy-http-*`, `recorder-ingress-http-failed`,
 `container-service-*-state-exited` 같은 transient reason이 먼저 보일 수 있습니다. 최종적으로
 `hostProxyHTTP=200`과 runtime health가 확인되면 rollback health wait는 성공입니다. 다만 rollback
 성공은 update 성공이 아니며, command log와 runtime event에는 update failure와 rollback success가

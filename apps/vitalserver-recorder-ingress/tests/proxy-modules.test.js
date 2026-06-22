@@ -237,8 +237,8 @@ test("redis parser returns bulk string values for verification", () => {
 
 test("config loads explicit redis ip rewrite policy", () => {
   assert.deepStrictEqual(loadConfig({
-    AUDIT_PROXY_VR_IP_REWRITE_ENABLED: "0",
-    AUDIT_PROXY_VR_IP_VERIFY_DELAYS_MS: "10,250",
+    RECORDER_INGRESS_VR_IP_REWRITE_ENABLED: "0",
+    RECORDER_INGRESS_VR_IP_VERIFY_DELAYS_MS: "10,250",
   }).vitalServer.ipRewrite, {
     enabled: false,
     verifyDelaysMs: [10, 250],
@@ -359,7 +359,7 @@ test("audit recorder fans out masked event envelopes to sinks", () => {
 
   assert.strictEqual(events.length, 1);
   assert.strictEqual(events[0].schema_version, 1);
-  assert.strictEqual(events[0].source, "vitalserver-audit-proxy");
+  assert.strictEqual(events[0].source, "vitalserver-recorder-ingress");
   assert.strictEqual(events[0].event_type, auditEventTypes.REQ_CMD);
   assert.strictEqual(events[0].token, "[masked]");
   assert.deepStrictEqual(events[0].payload, { password: "[masked]", ok: true });

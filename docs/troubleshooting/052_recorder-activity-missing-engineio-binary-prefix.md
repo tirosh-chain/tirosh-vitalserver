@@ -13,7 +13,7 @@ The runtime status can still show VitalServer, network access, and VitalDB Obser
 
 ## Cause
 
-The audit proxy observes raw WebSocket frames. For Socket.IO binary attachments over Engine.IO, the frame payload can begin with the Engine.IO `message` packet type byte `0x04`, followed by the compressed VRecorder `send_data` payload.
+The recorder ingress observes raw WebSocket frames. For Socket.IO binary attachments over Engine.IO, the frame payload can begin with the Engine.IO `message` packet type byte `0x04`, followed by the compressed VRecorder `send_data` payload.
 
 If the proxy passes the raw frame directly to `zlib.inflateSync`, decompression fails with:
 
@@ -25,7 +25,7 @@ The audit event is then recorded with `decode_error` but without `payload_summar
 
 ## Fix Direction
 
-Normalize Socket.IO binary attachment payloads at the audit proxy application boundary before summarizing `send_data`:
+Normalize Socket.IO binary attachment payloads at the recorder ingress application boundary before summarizing `send_data`:
 
 - preserve plain compressed payloads as-is,
 - strip exactly the Engine.IO binary message prefix byte `0x04` when present,

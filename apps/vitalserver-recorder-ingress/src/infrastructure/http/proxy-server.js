@@ -16,7 +16,7 @@ const { createBodyMirror } = require("./body-mirror");
 const { createClientIpSelector } = require("./client-ip");
 const { createWebSocketParser } = require("./websocket-parser");
 
-function createAuditProxyServer(config) {
+function createRecorderIngressServer(config) {
   const metrics = createMetrics();
   const redis = createRedisClient(config.redis);
   const auditLog = createAuditLogWriter(config.audit.log, metrics);
@@ -34,12 +34,12 @@ function createAuditProxyServer(config) {
 }
 
 function proxyHttp(req, res, dependencies) {
-  if (req.url === "/audit-proxy/health") {
+  if (req.url === "/recorder-ingress/health") {
     res.writeHead(204);
     res.end();
     return;
   }
-  if (req.url === "/audit-proxy/status") {
+  if (req.url === "/recorder-ingress/status") {
     const body = JSON.stringify(metricsSnapshot(dependencies.metrics));
     res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
     res.end(body);
@@ -198,4 +198,4 @@ function closeSocketsTogether(client, upstream, metrics, context) {
   upstream.on("close", close);
 }
 
-module.exports = { createAuditProxyServer };
+module.exports = { createRecorderIngressServer };

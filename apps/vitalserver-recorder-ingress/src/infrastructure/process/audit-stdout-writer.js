@@ -9,7 +9,7 @@ function createAuditStdoutWriter(config, metrics, output = process.stdout) {
       output.write(formatAuditLogLine(event, config.format), (error) => {
         if (error) {
           metrics.auditStdoutWriteFailures += 1;
-          console.error("[audit-proxy] audit stdout write failed:", error.message);
+          console.error("[recorder-ingress] audit stdout write failed:", error.message);
         }
       });
     },

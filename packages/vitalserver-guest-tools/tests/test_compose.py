@@ -43,7 +43,7 @@ def test_stop_compose_action_stops_services_in_explicit_order(monkeypatch: Any) 
         "compose:stop --timeout 30 edge:timeout=40",
         "compose:stop --timeout 30 swagger-ui:timeout=40",
         "compose:stop --timeout 30 redis-ui:timeout=40",
-        "compose:stop --timeout 30 audit-proxy:timeout=40",
+        "compose:stop --timeout 30 recorder-ingress:timeout=40",
         "compose:stop --timeout 30 vitaldb-observer:timeout=40",
         "compose:stop --timeout 30 redis-relay:timeout=40",
         "compose:stop --timeout 90 app:timeout=100",

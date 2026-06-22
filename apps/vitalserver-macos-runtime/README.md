@@ -12,7 +12,7 @@ Browser / VRecorder
               -> Docker Compose
                   - VitalServer
                   - Redis
-                  - Audit Proxy
+                  - Recorder Ingress
                   - VitalDB Observer
                   - Redis UI
                   - Swagger UI

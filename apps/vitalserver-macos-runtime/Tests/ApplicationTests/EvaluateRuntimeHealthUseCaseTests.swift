@@ -24,7 +24,7 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
             hostProxyHTTP: nil,
             redisUIHTTP: nil,
             swaggerUIHTTP: nil,
-            auditProxyStatus: nil
+            recorderIngressStatus: nil
         ))
 
         XCTAssertNil(observation.proxyPort)
@@ -32,15 +32,15 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
         XCTAssertEqual(observation.redisUIHTTP, RuntimeHTTPStatusText.missingProxyPort)
         XCTAssertEqual(observation.swaggerUIHTTP, RuntimeHTTPStatusText.missingProxyPort)
         XCTAssertEqual(
-            observation.containerObservation.observedValue?.auditProxyHTTP,
+            observation.containerObservation.observedValue?.recorderIngressHTTP,
             RuntimeHTTPStatusText.missingProxyPort
         )
         XCTAssertEqual(
-            observation.containerObservation.observedValue?.auditProxyStatusReadError,
+            observation.containerObservation.observedValue?.recorderIngressStatusReadError,
             RuntimeHTTPStatusText.missingProxyPort
         )
         XCTAssertEqual(
-            observation.containerObservation.observedValue?.auditProxyStatusReadState,
+            observation.containerObservation.observedValue?.recorderIngressStatusReadState,
             .skippedMissingProxyPort
         )
     }
@@ -302,7 +302,7 @@ private func healthReads(
     hostProxyHTTP: String? = "200",
     redisUIHTTP: String? = "200",
     swaggerUIHTTP: String? = "200",
-    auditProxyStatus: RuntimeAuditProxyStatusReadResult? = nil
+    recorderIngressStatus: RuntimeRecorderIngressStatusReadResult? = nil
 ) -> RuntimeHealthObservationReads {
     RuntimeHealthObservationReads(
         vmExecutable: .executable,
@@ -318,7 +318,7 @@ private func healthReads(
         hostProxyHTTP: hostProxyHTTP.map(RuntimeHTTPProbeResult.reportedStatus),
         redisUIHTTP: redisUIHTTP.map(RuntimeHTTPProbeResult.reportedStatus),
         swaggerUIHTTP: swaggerUIHTTP.map(RuntimeHTTPProbeResult.reportedStatus),
-        auditProxyStatus: auditProxyStatus,
+        recorderIngressStatus: recorderIngressStatus,
         runtimeStateFileModifiedAt: RuntimeFileModifiedAtReadResult(updatedAt: nil, readError: nil),
         containerLogsMetadata: RuntimeContainerLogsMetadata(present: false, bytes: nil, updatedAt: nil, error: nil),
         proxyListenerObservation: nil,

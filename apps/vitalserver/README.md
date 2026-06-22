@@ -49,7 +49,7 @@ upstream VitalServer는 Redis client를 `0.0.0.0:6379`로 생성합니다. wrapp
 연결합니다. 그래서 app container가 redis container의 network namespace를 공유하지 않아도 됩니다.
 
 VR 접속이 신뢰할 수 있는 host-level proxy나 ingress를 지날 때 실제 VR IP 선택과 Redis
-`ip_<vrcode>` 보정은 `vitalserver-audit-proxy`가 담당합니다. 원본 VitalServer에는 proxy-header
+`ip_<vrcode>` 보정은 `vitalserver-recorder-ingress`가 담당합니다. 원본 VitalServer에는 proxy-header
 IP patch를 넣지 않습니다.
 
 macOS Docker Desktop에서는 Docker published port를 VR 장비에 직접 노출하지 말고, host
@@ -67,7 +67,7 @@ VITALSERVER_REDIS_PORT=6379
 외부 장비와 브라우저는 macOS host nginx의 public port로 접속합니다.
 
 Compose stack은 repository root의 `compose.yaml`에서 관리합니다. 이 wrapper app은 VitalServer 실행
-단위만 소유하고, command audit은 `vitalserver-audit-proxy`, Redis/proxy 기반 runtime 관측은
+단위만 소유하고, command audit은 `vitalserver-recorder-ingress`, Redis/proxy 기반 runtime 관측은
 `vitaldb-observer`가 sidecar로 처리합니다.
 
 제품화 전체 맥락은 repository root의 `README.md`와 `docs/index.md`를 기준으로 봅니다.

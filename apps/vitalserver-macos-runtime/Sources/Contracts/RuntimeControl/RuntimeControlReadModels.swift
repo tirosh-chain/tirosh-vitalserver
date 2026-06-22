@@ -1030,7 +1030,7 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
         statusEvaluationTime: String? = nil
     ) {
         let observation = vitalDBObservation
-        let activeConnections = containerObservation?.auditProxyStatus?.activeRecorderConnections
+        let activeConnections = containerObservation?.recorderIngressStatus?.activeRecorderConnections
 
         if let observation {
             let history = RuntimeVitalRecorderHistory(
@@ -1206,11 +1206,11 @@ private func projectedActivityTimelineByVrcode(
 private func recorderRedisIPSyncByVrcode(
     _ containerObservation: RuntimeContainerObservation?
 ) -> [String: RuntimeRecorderRedisIPSyncObservation] {
-    guard let proxyRecorders = containerObservation?.auditProxyStatus?.recorders else {
+    guard let ingressRecorders = containerObservation?.recorderIngressStatus?.recorders else {
         return [:]
     }
     return Dictionary(
-        proxyRecorders.compactMap { recorder in
+        ingressRecorders.compactMap { recorder in
             guard let sync = recorder.redisIpSync else {
                 return nil
             }
@@ -1227,12 +1227,12 @@ private func defaultRecorderRedisIPSync(
     guard let containerObservation else {
         return nil
     }
-    guard containerObservation.auditProxyStatusReadState == .loaded else {
+    guard containerObservation.recorderIngressStatusReadState == .loaded else {
         return RuntimeRecorderRedisIPSyncObservation(
             status: .unavailable,
             redisKey: "ip_\(vrcode)",
-            lastFailure: containerObservation.auditProxyStatusReadError
-                ?? "audit proxy status \(containerObservation.auditProxyStatusReadState.rawValue)"
+            lastFailure: containerObservation.recorderIngressStatusReadError
+                ?? "recorder ingress status \(containerObservation.recorderIngressStatusReadState.rawValue)"
         )
     }
     return RuntimeRecorderRedisIPSyncObservation(

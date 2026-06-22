@@ -65,7 +65,7 @@ curl -sS -i -X POST http://<vm-ip>/upload \
    `proxy_request_buffering off;`를 설정해 request body를 upstream으로 streaming합니다.
 4. 장시간 upload와 parse wait를 위해 upload location의 `client_body_timeout`,
    `proxy_send_timeout`, `proxy_read_timeout`을 길게 명시합니다.
-5. audit-proxy upstream timeout도 long upload와 parser wait를 감당할 수 있도록 늘립니다.
+5. recorder-ingress upstream timeout도 long upload와 parser wait를 감당할 수 있도록 늘립니다.
 6. packaging/template test가 host proxy template, guest edge config, compose timeout default를
    확인하도록 유지합니다.
 

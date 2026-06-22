@@ -17,7 +17,7 @@ Browser / PWA / Native shell
               -> Linux guest service stack
                   -> VitalServer wrapper
                   -> Redis
-                  -> Audit Proxy
+                  -> Recorder Ingress
                   -> VitalDB Observer
                   -> Testkit API
 ```

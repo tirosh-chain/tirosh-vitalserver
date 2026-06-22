@@ -313,7 +313,7 @@ directory처럼 VM restart 전에는 적용되지 않는 값은 Status/Info에�
 Fresh install에서 `vm-lifecycle.json`이 `bootstrapping`에 머물고 guest `bootstrap-result.json`이
 `running`인 채 오래 유지되면 `bootstrap.log`를 먼저 확인합니다. Redis 또는 첫 container start 단계에서
 `runc`/Docker가 실패했는데 bootstrap result가 `failed`로 바뀌지 않으면 Host는 실제 bootstrap 실패를
-보지 못하고 stale runtime state, host proxy failure, audit proxy failure만 표시합니다. Guest bootstrap
+보지 못하고 stale runtime state, host proxy failure, recorder ingress failure만 표시합니다. Guest bootstrap
 script는 시작 시 `running` result를 쓰더라도 실패 trap에서 최종 `completed`가 아닌 상태를 반드시
 `failed`로 덮어써야 합니다. `running`은 한 번 썼다는 marker가 아니라 아직 완료되지 않은 operation
 state입니다.
@@ -461,15 +461,15 @@ uv run pytest packages/vitalserver-guest-tools/tests
 uv run pytest apps/vitaldb-observer/tests
 ```
 
-### 5-4. PWA와 Audit Proxy
+### 5-4. PWA와 Recorder Ingress
 
-PWA와 audit proxy는 Node 기반 검증을 실행합니다.
+PWA와 recorder ingress는 Node 기반 검증을 실행합니다.
 
 ```sh
 npm --prefix apps/vitalserver-runtime-pwa run check
 npm --prefix apps/vitalserver-runtime-pwa test
-npm --prefix apps/vitalserver-audit-proxy run check
-npm --prefix apps/vitalserver-audit-proxy test
+npm --prefix apps/vitalserver-recorder-ingress run check
+npm --prefix apps/vitalserver-recorder-ingress test
 ```
 
 ### 5-5. Release 결과물 검증

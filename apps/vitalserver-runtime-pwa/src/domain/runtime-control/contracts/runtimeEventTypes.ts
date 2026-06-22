@@ -9,7 +9,7 @@ export const runtimeEventTypeValues = [
   "domain-error-observed",
   "vm-error-observed",
   "container-observed",
-  "audit-proxy-observed",
+  "recorder-ingress-observed",
   "vitaldb-observed",
   "vitaldb-observer-unhealthy",
   "vitaldb-anomaly-detected",

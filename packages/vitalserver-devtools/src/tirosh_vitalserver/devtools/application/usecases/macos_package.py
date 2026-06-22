@@ -737,7 +737,7 @@ def guest_compose_contract_preflight_checks(
 def dockerfile_contracts_by_image(plan: DockerImagePlan) -> dict[str, Path]:
     return {
         plan.app_image: plan.app_dockerfile,
-        plan.audit_proxy_image: plan.audit_proxy_dockerfile,
+        plan.recorder_ingress_image: plan.recorder_ingress_dockerfile,
         plan.vitaldb_observer_image: plan.vitaldb_observer_dockerfile,
         plan.redis_relay_image: plan.redis_relay_dockerfile,
         plan.testkit_image: plan.testkit_dockerfile,
@@ -832,11 +832,11 @@ def docker_image_plan_preflight_checks(plan: DockerImagePlan) -> list[PreflightC
     docker_tool = check_required_tool("docker")
     checks = [docker_tool]
     checks.append(check_required_file(plan.app_dockerfile, "dockerfile:app"))
-    if plan.audit_proxy_image in plan.images:
+    if plan.recorder_ingress_image in plan.images:
         checks.append(
             check_required_file(
-                plan.audit_proxy_dockerfile,
-                "dockerfile:audit-proxy",
+                plan.recorder_ingress_dockerfile,
+                "dockerfile:recorder-ingress",
             )
         )
     if plan.vitaldb_observer_image in plan.images:

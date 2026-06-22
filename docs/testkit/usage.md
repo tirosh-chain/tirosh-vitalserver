@@ -185,10 +185,10 @@ uv run vitalserver-testkit stream-recorder \
 
 - guest `runtime-state.json`의 app container `oomKilled`, `restartCount`, `finishedAt`,
   `memoryLimitBytes`
-- `/audit-proxy/status`의 `sendDataEventsObserved`, `sendDataBytesObserved`,
+- `/recorder-ingress/status`의 `sendDataEventsObserved`, `sendDataBytesObserved`,
   `lastSendDataObservedAt`
 - Redis memory와 guest HTTP status
-- `guest-runtime-state-stale`, `guestHTTP: 502`, audit-proxy upstream failure 같은 연쇄 증상
+- `guest-runtime-state-stale`, `guestHTTP: 502`, recorder-ingress upstream failure 같은 연쇄 증상
 
 Python 코드에서 직접 호출할 수도 있습니다.
 

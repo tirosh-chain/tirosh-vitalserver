@@ -80,8 +80,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             redisUIHTTP: "503"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -116,8 +116,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -204,8 +204,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             swaggerUIHTTP: nil
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "000",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "000",
+            recorderIngressStatus: nil,
             containerLogsPresent: false,
             containerLogsBytes: 0,
             composeServices: []
@@ -289,8 +289,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             )
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "000",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "000",
+            recorderIngressStatus: nil,
             containerLogsPresent: false,
             containerLogsBytes: 0,
             composeServices: []
@@ -336,8 +336,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             swaggerUIHTTP: nil
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "000",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "000",
+            recorderIngressStatus: nil,
             containerLogsPresent: false,
             containerLogsBytes: 0,
             composeServices: []
@@ -506,8 +506,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -601,8 +601,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -631,8 +631,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             runtimeStateUpdatedAt: "2025-02-21T21:19:33Z",
             runtimeStateFileUpdatedAt: "2026-06-13T00:00:00Z",
             containerLogsPresent: true,
@@ -663,8 +663,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             runtimeStateUpdatedAt: "2025-02-21T21:19:33Z",
             containerLogsPresent: true,
             containerLogsBytes: 1,
@@ -694,8 +694,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -723,8 +723,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             runtimeStateUpdatedAt: "2026-05-26T04:35:35Z",
             containerLogsPresent: true,
             containerLogsBytes: 1,
@@ -750,8 +750,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -783,8 +783,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             swaggerUIHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -833,8 +833,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         let settings = RuntimeRedisRelaySettings(enabled: true)
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -892,8 +892,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         let settings = RuntimeRedisRelaySettings(enabled: true)
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -1111,8 +1111,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
     func testRecorderSummaryOwnsRecorderDisplayText() {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: RuntimeAuditProxyStatusDocument(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
                 activeRecorderConnections: 2,
                 recorders: [
                     RuntimeRecorderConnectionObservation(
@@ -1261,8 +1261,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -1288,8 +1288,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServicesReadState: .invalid,
@@ -1307,8 +1307,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
     func testRecorderSummaryDoesNotDisplayUnavailableObservationMetricsAsZero() {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: RuntimeAuditProxyStatusDocument(activeRecorderConnections: 2),
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 2),
             containerLogsPresent: true,
             containerLogsBytes: 1
         )

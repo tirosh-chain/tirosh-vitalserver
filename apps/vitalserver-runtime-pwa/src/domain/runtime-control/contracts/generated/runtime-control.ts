@@ -999,7 +999,7 @@ export interface components {
         };
         /** @enum {string} */
         RuntimeVitalDBObservationReadState: "loaded" | "unavailable" | "failed";
-        /** @description PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from audit-proxy connection status when available. */
+        /** @description PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from recorder-ingress connection status when available. */
         RuntimeVitalRecorderSummary: {
             source: components["schemas"]["RuntimeVitalRecorderSummarySource"];
             activeConnections?: number;
@@ -1112,7 +1112,7 @@ export interface components {
             presentInLatestObservation: boolean;
             /** @description Chronological activity samples for the VRecorder, derived from VitalDB observer snapshots. */
             activityTimeline?: components["schemas"]["RuntimeVitalRecorderActivityPoint"][];
-            /** @description Recorder-specific Redis ip_<vrcode> synchronization state reported by the audit proxy. */
+            /** @description Recorder-specific Redis ip_<vrcode> synchronization state reported by the recorder ingress. */
             redisIPSync?: components["schemas"]["RuntimeRecorderRedisIPSyncObservation"] | null;
         };
         /** @enum {string} */
@@ -1314,7 +1314,7 @@ export interface components {
             vitalDBObservation?: components["schemas"]["VitalDBObservationDocument"] | null;
         };
         /** @enum {string} */
-        RuntimeEventType: "status-changed" | "progress-updated" | "health-observed" | "recovery-triggered" | "recovery-completed" | "recovery-suppressed" | "recovery-deferred" | "domain-error-observed" | "vm-error-observed" | "container-observed" | "audit-proxy-observed" | "vitaldb-observed" | "vitaldb-observer-unhealthy" | "vitaldb-anomaly-detected" | "watchdog-skipped" | "recovery-planned" | "service-restart-dispatched" | "observability-store-failed" | "runtime-status-observed" | "guest-state-observed" | "runtime-command-started" | "runtime-command-completed" | "runtime-command-failed";
+        RuntimeEventType: "status-changed" | "progress-updated" | "health-observed" | "recovery-triggered" | "recovery-completed" | "recovery-suppressed" | "recovery-deferred" | "domain-error-observed" | "vm-error-observed" | "container-observed" | "recorder-ingress-observed" | "vitaldb-observed" | "vitaldb-observer-unhealthy" | "vitaldb-anomaly-detected" | "watchdog-skipped" | "recovery-planned" | "service-restart-dispatched" | "observability-store-failed" | "runtime-status-observed" | "guest-state-observed" | "runtime-command-started" | "runtime-command-completed" | "runtime-command-failed";
         /**
          * @description Observed VM lifecycle state. Unknown values are preserved by clients.
          * @enum {string|null}
@@ -1332,9 +1332,9 @@ export interface components {
             recoveryAction?: "installRuntime" | "restartVMService" | "restartProxyService" | "restartWatchdogService" | "waitForGuest" | "restartGuestAgent" | "repairGuestBootstrap" | "restartContainerServices" | "repairProxyConfiguration" | "freeProxyPort" | "inspectVitalDBObservation" | "backupAndRecreateVM" | "fixConfiguration" | "freeHostResources" | "inspectLogs";
         };
         RuntimeContainerObservation: {
-            auditProxyHTTP: string;
-            auditProxyStatus?: components["schemas"]["RuntimeAuditProxyStatusDocument"] | null;
-            auditProxyStatusReadError?: string | null;
+            recorderIngressHTTP: string;
+            recorderIngressStatus?: components["schemas"]["RuntimeRecorderIngressStatusDocument"] | null;
+            recorderIngressStatusReadError?: string | null;
             runtimeStateUpdatedAt?: string | null;
             runtimeStateFileUpdatedAt?: string | null;
             runtimeStateFileMetadataError?: string | null;
@@ -1345,7 +1345,7 @@ export interface components {
             composeServices: components["schemas"]["RuntimeContainerServiceObservation"][];
             composeServicesReadError?: string | null;
         };
-        RuntimeAuditProxyStatusDocument: {
+        RuntimeRecorderIngressStatusDocument: {
             startedAt?: string | null;
             uptimeSeconds?: number | null;
             activeWebSockets: number;
@@ -1529,7 +1529,7 @@ export interface components {
             stale: boolean;
             activity?: components["schemas"]["VitalDBRecorderActivityObservation"] | null;
         };
-        /** @description Recent VRecorder send_data activity summarized from the audit proxy Redis list. */
+        /** @description Recent VRecorder send_data activity summarized from the recorder ingress Redis list. */
         VitalDBRecorderActivityObservation: {
             windowSeconds: number;
             messageCount: number;

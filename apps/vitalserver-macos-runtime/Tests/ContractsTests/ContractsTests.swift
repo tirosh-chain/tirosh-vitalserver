@@ -21,8 +21,8 @@ final class ContractsTests: XCTestCase {
 
     func testRuntimeContainerObservationPreservesRuntimeStateFileMetadataReadState() throws {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             runtimeStateFileMetadataReadState: .notRead,
             containerLogsPresent: false,
             containerLogsBytes: nil
@@ -36,17 +36,17 @@ final class ContractsTests: XCTestCase {
         XCTAssertNil(decoded.runtimeStateFileMetadataError)
     }
 
-    func testAuditProxyStatusReadResultPreservesExplicitReadState() {
+    func testRecorderIngressStatusReadResultPreservesExplicitReadState() {
         XCTAssertEqual(
-            RuntimeAuditProxyStatusReadResult(
+            RuntimeRecorderIngressStatusReadResult(
                 httpStatus: "200",
-                document: RuntimeAuditProxyStatusDocument(activeRecorderConnections: 1),
+                document: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 1),
                 readError: nil
             ).readState,
             .loaded
         )
         XCTAssertEqual(
-            RuntimeAuditProxyStatusReadResult(
+            RuntimeRecorderIngressStatusReadResult(
                 httpStatus: RuntimeHTTPStatusText.failed,
                 document: nil,
                 readError: "command-failed-7"
@@ -54,7 +54,7 @@ final class ContractsTests: XCTestCase {
             .commandFailed
         )
         XCTAssertEqual(
-            RuntimeAuditProxyStatusReadResult(
+            RuntimeRecorderIngressStatusReadResult(
                 httpStatus: RuntimeHTTPStatusText.missingProxyPort,
                 document: nil,
                 readError: RuntimeHTTPStatusText.missingProxyPort
@@ -63,12 +63,12 @@ final class ContractsTests: XCTestCase {
         )
     }
 
-    func testRuntimeContainerObservationPreservesAuditProxyStatusReadState() throws {
+    func testRuntimeContainerObservationPreservesRecorderIngressStatusReadState() throws {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: RuntimeHTTPStatusText.failed,
-            auditProxyStatus: nil,
-            auditProxyStatusReadState: .commandFailed,
-            auditProxyStatusReadError: "command-failed-7",
+            recorderIngressHTTP: RuntimeHTTPStatusText.failed,
+            recorderIngressStatus: nil,
+            recorderIngressStatusReadState: .commandFailed,
+            recorderIngressStatusReadError: "command-failed-7",
             containerLogsPresent: false,
             containerLogsBytes: nil
         )
@@ -76,8 +76,8 @@ final class ContractsTests: XCTestCase {
         let data = try JSONEncoder().encode(observation)
         let decoded = try JSONDecoder().decode(RuntimeContainerObservation.self, from: data)
 
-        XCTAssertEqual(decoded.auditProxyStatusReadState, .commandFailed)
-        XCTAssertEqual(decoded.auditProxyStatusReadError, "command-failed-7")
+        XCTAssertEqual(decoded.recorderIngressStatusReadState, .commandFailed)
+        XCTAssertEqual(decoded.recorderIngressStatusReadError, "command-failed-7")
     }
 
     func testDecodesRuntimeStatusV1() throws {
@@ -225,8 +225,8 @@ final class ContractsTests: XCTestCase {
           "updatedAt": "2026-05-24T00:00:00Z",
           "containerServices": [
             {
-              "service": "audit-proxy",
-              "name": "vitalserver-audit-proxy-1",
+              "service": "recorder-ingress",
+              "name": "vitalserver-recorder-ingress-1",
               "state": "running",
               "health": "healthy",
               "exitCode": 0,
@@ -244,9 +244,9 @@ final class ContractsTests: XCTestCase {
 
         XCTAssertEqual(document.containerServices, [
             RuntimeContainerServiceObservation(
-                service: "audit-proxy",
+                service: "recorder-ingress",
                 containerID: "container-1",
-                name: "vitalserver-audit-proxy-1",
+                name: "vitalserver-recorder-ingress-1",
                 state: "running",
                 health: "healthy",
                 exitCode: 0,
@@ -315,9 +315,9 @@ final class ContractsTests: XCTestCase {
     func testRuntimeContainerObservationPreservesReadErrors() throws {
         let json = """
         {
-          "auditProxyHTTP": "invalid-response",
-          "auditProxyStatus": null,
-          "auditProxyStatusReadError": "decode-failed",
+          "recorderIngressHTTP": "invalid-response",
+          "recorderIngressStatus": null,
+          "recorderIngressStatusReadError": "decode-failed",
           "runtimeStateFileUpdatedAt": null,
           "runtimeStateFileMetadataError": "mtime-read-failed",
           "containerLogsPresent": true,
@@ -331,8 +331,8 @@ final class ContractsTests: XCTestCase {
 
         let observation = try JSONDecoder().decode(RuntimeContainerObservation.self, from: Data(json.utf8))
 
-        XCTAssertEqual(observation.auditProxyStatusReadError, "decode-failed")
-        XCTAssertEqual(observation.auditProxyStatusReadState, .invalidResponse)
+        XCTAssertEqual(observation.recorderIngressStatusReadError, "decode-failed")
+        XCTAssertEqual(observation.recorderIngressStatusReadState, .invalidResponse)
         XCTAssertEqual(observation.runtimeStateFileMetadataError, "mtime-read-failed")
         XCTAssertEqual(observation.containerLogsMetadataError, "size-read-failed")
         XCTAssertEqual(observation.composeServicesReadState, .invalid)
@@ -354,8 +354,8 @@ final class ContractsTests: XCTestCase {
         ] {
             let json = """
             {
-              "auditProxyHTTP": "200",
-              "auditProxyStatus": null,
+              "recorderIngressHTTP": "200",
+              "recorderIngressStatus": null,
               "containerLogsPresent": true,
               "containerLogsBytes": null,
               "composeServices": [],
@@ -377,8 +377,8 @@ final class ContractsTests: XCTestCase {
     func testRuntimeContainerObservationDecodesMissingComposeServicesAsMissingWhenStateAbsent() throws {
         let json = """
         {
-          "auditProxyHTTP": "200",
-          "auditProxyStatus": null,
+          "recorderIngressHTTP": "200",
+          "recorderIngressStatus": null,
           "containerLogsPresent": true,
           "containerLogsBytes": null
         }
@@ -393,8 +393,8 @@ final class ContractsTests: XCTestCase {
 
     func testRuntimeContainerObservationDistinguishesLoadedEmptyComposeServicesFromMissingState() throws {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: false,
             containerLogsBytes: nil,
             composeServicesReadState: .loaded,
@@ -632,7 +632,7 @@ final class ContractsTests: XCTestCase {
           "guest-log-sync-service-not-loaded",
           "host-proxy-http-502",
           "guest-http-probe-failed-failed",
-          "audit-proxy-http-failed",
+          "recorder-ingress-http-failed",
           "container-service-app-state-unhealthy",
           "container-observation-missing",
           "container-observation-read-failed-permission_denied",
@@ -667,7 +667,7 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(reasons[2], .guestLogSyncService("not-loaded"))
         XCTAssertEqual(reasons[3], .hostProxyHTTP("502"))
         XCTAssertEqual(reasons[4], .guestHTTPProbeFailed("failed"))
-        XCTAssertEqual(reasons[5], .auditProxyHTTP("failed"))
+        XCTAssertEqual(reasons[5], .recorderIngressHTTP("failed"))
         XCTAssertEqual(reasons[6], .containerService(service: "app", state: "unhealthy"))
         XCTAssertEqual(reasons[7], .containerObservationMissing)
         XCTAssertEqual(reasons[8], .containerObservationReadFailed("permission_denied"))
@@ -705,7 +705,7 @@ final class ContractsTests: XCTestCase {
             "guest-log-sync-service-not-loaded",
             "host-proxy-http-502",
             "guest-http-probe-failed-failed",
-            "audit-proxy-http-failed",
+            "recorder-ingress-http-failed",
             "container-service-app-state-unhealthy",
             "container-observation-missing",
             "container-observation-read-failed-permission_denied",
@@ -739,8 +739,8 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.proxyPortInUse(port: 80, listeners: "nginx-1234").recoveryAction, .freeProxyPort)
         XCTAssertEqual(RuntimeFailureReason.proxyPortInUse(port: 80, listeners: "nginx-1234").domainSeverity, .critical)
 
-        XCTAssertEqual(RuntimeFailureReason.auditProxyHTTP("failed").domainCategory, .container)
-        XCTAssertEqual(RuntimeFailureReason.auditProxyHTTP("failed").recoveryAction, .restartContainerServices)
+        XCTAssertEqual(RuntimeFailureReason.recorderIngressHTTP("failed").domainCategory, .container)
+        XCTAssertEqual(RuntimeFailureReason.recorderIngressHTTP("failed").recoveryAction, .restartContainerServices)
 
         XCTAssertEqual(RuntimeFailureReason.vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10").domainCategory, .vitalDB)
         XCTAssertEqual(RuntimeFailureReason.vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10").domainSeverity, .warning)
@@ -874,7 +874,7 @@ final class ContractsTests: XCTestCase {
             .domainErrorObserved,
             .vmErrorObserved,
             .containerObserved,
-            .auditProxyObserved,
+            .recorderIngressObserved,
             .vitalDBObserved,
             .vitalDBObserverUnhealthy,
             .vitalDBAnomalyDetected,
@@ -900,7 +900,7 @@ final class ContractsTests: XCTestCase {
             "domain-error-observed",
             "vm-error-observed",
             "container-observed",
-            "audit-proxy-observed",
+            "recorder-ingress-observed",
             "vitaldb-observed",
             "vitaldb-observer-unhealthy",
             "vitaldb-anomaly-detected",
@@ -929,13 +929,13 @@ final class ContractsTests: XCTestCase {
 
         let query = RuntimeEventQuery(
             limit: 25,
-            eventType: .auditProxyObserved,
+            eventType: .recorderIngressObserved,
             since: "2026-05-24T00:00:00Z",
             before: cursor
         )
 
         XCTAssertEqual(query.limit, 25)
-        XCTAssertEqual(query.eventType, .auditProxyObserved)
+        XCTAssertEqual(query.eventType, .recorderIngressObserved)
         XCTAssertEqual(query.since, "2026-05-24T00:00:00Z")
         XCTAssertEqual(query.before, cursor)
     }

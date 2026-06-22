@@ -1904,7 +1904,7 @@
       "RuntimeVitalRecorderSummary": {
         "type": "object",
         "additionalProperties": false,
-        "description": "PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from audit-proxy connection status when available.",
+        "description": "PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from recorder-ingress connection status when available.",
         "required": [
           "source"
         ],
@@ -2405,7 +2405,7 @@
                 "type": "null"
               }
             ],
-            "description": "Recorder-specific Redis ip_<vrcode> synchronization state reported by the audit proxy."
+            "description": "Recorder-specific Redis ip_<vrcode> synchronization state reported by the recorder ingress."
           }
         }
       },
@@ -3307,7 +3307,7 @@
           "domain-error-observed",
           "vm-error-observed",
           "container-observed",
-          "audit-proxy-observed",
+          "recorder-ingress-observed",
           "vitaldb-observed",
           "vitaldb-observer-unhealthy",
           "vitaldb-anomaly-detected",
@@ -3403,25 +3403,25 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "auditProxyHTTP",
+          "recorderIngressHTTP",
           "containerLogsPresent",
           "composeServices"
         ],
         "properties": {
-          "auditProxyHTTP": {
+          "recorderIngressHTTP": {
             "type": "string"
           },
-          "auditProxyStatus": {
+          "recorderIngressStatus": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/RuntimeAuditProxyStatusDocument"
+                "$ref": "#/components/schemas/RuntimeRecorderIngressStatusDocument"
               },
               {
                 "type": "null"
               }
             ]
           },
-          "auditProxyStatusReadError": {
+          "recorderIngressStatusReadError": {
             "type": [
               "string",
               "null"
@@ -3481,7 +3481,7 @@
           }
         }
       },
-      "RuntimeAuditProxyStatusDocument": {
+      "RuntimeRecorderIngressStatusDocument": {
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -4300,7 +4300,7 @@
       "VitalDBRecorderActivityObservation": {
         "type": "object",
         "additionalProperties": false,
-        "description": "Recent VRecorder send_data activity summarized from the audit proxy Redis list.",
+        "description": "Recent VRecorder send_data activity summarized from the recorder ingress Redis list.",
         "required": [
           "windowSeconds",
           "messageCount",

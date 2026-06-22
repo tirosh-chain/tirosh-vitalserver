@@ -10,7 +10,7 @@
 운영 중 별도 update 명령 없이 VitalServer VM이 재시작되고, CPU 사용량이 급격히 올라갑니다. 이후 Remote Console 또는 Helper에는 아래 상태가 반복될 수 있습니다.
 
 - runtime status가 `critical`로 바뀝니다.
-- watchdog message가 `guest-http-missing-vm-ip`, `guest-runtime-state-stale`, `host-proxy-http-failed`, `audit-proxy-http-failed`를 보고합니다.
+- watchdog message가 `guest-http-missing-vm-ip`, `guest-runtime-state-stale`, `host-proxy-http-failed`, `recorder-ingress-http-failed`를 보고합니다.
 - `launchd.err.log`에 아래 오류가 남습니다.
 
 ```text
@@ -39,7 +39,7 @@ apply-bundle이 `stop-runtime-services`에서 900초 동안 VM process exit을 �
 
 - VM이 부팅, guest service start, watchdog restart, launchd respawn을 반복하면서 CPU와 IO 부하가 커집니다.
 - guest `runtime-state.json` 갱신이 멈추거나 stale이 되어 Remote Console 상태가 빠르게 악화됩니다.
-- host proxy, audit proxy, TestKit/Recorder 상태가 연쇄적으로 failed/stale로 보일 수 있습니다.
+- host proxy, recorder ingress, TestKit/Recorder 상태가 연쇄적으로 failed/stale로 보일 수 있습니다.
 - 이미 read-only remount가 발생한 VM disk는 watchdog restart만으로 복구되지 않습니다.
 - 같은 update 또는 테스트를 반복하면 mutable VM disk 손상이 더 커질 수 있습니다.
 
@@ -73,7 +73,7 @@ AGENTS.md 기준으로 보면 watchdog은 guest 내부 상태를 로그에서 �
 1. `2026-05-31T13:51:11Z` install flow가 VM/watchdog 서비스를 시작했습니다.
 2. `2026-05-31T13:51:14Z` install status가 completed로 끝났습니다.
 3. `2026-05-31T13:52:12Z` watchdog은 old `bootstrap-result.json`의 `updatedAt=2026-05-23T14:25:45Z`를 보고 guest bootstrap guard가 만료됐다고 판단했습니다.
-4. `2026-05-31T13:52:14Z` watchdog은 `guest-http-missing-vm-ip`, `guest-runtime-state-stale`, `host-proxy-http-failed`, `audit-proxy-http-failed`를 recoverable failure로 보고 VM restart를 dispatch했습니다.
+4. `2026-05-31T13:52:14Z` watchdog은 `guest-http-missing-vm-ip`, `guest-runtime-state-stale`, `host-proxy-http-failed`, `recorder-ingress-http-failed`를 recoverable failure로 보고 VM restart를 dispatch했습니다.
 5. `2026-05-31T13:52:58Z` guest cloud-init이 완료됐습니다. 즉, watchdog restart 판단은 fresh install 직후 guest bootstrap이 아직 안정화되기 전 구간에서 발생했습니다.
 6. `2026-05-31T14:16:xxZ` guest kernel panic이 `jbd2/vda1-8` journal thread에서 발생했습니다.
 

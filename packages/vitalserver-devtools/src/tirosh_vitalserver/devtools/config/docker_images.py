@@ -35,14 +35,14 @@ def load_docker_images_config(config: TomlTable, root: Path) -> DockerImagesConf
             path=path,
         ),
         app_dockerfile=required_string(docker_images, "app_dockerfile", path=path),
-        audit_proxy_image=required_string(
+        recorder_ingress_image=required_string(
             docker_images,
-            "audit_proxy_image",
+            "recorder_ingress_image",
             path=path,
         ),
-        audit_proxy_dockerfile=required_string(
+        recorder_ingress_dockerfile=required_string(
             docker_images,
-            "audit_proxy_dockerfile",
+            "recorder_ingress_dockerfile",
             path=path,
         ),
         vitaldb_observer_image=required_string(

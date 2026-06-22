@@ -24,7 +24,7 @@ rule: upstream.proxy_header_ip_patch
 
 The Helper runtime depends on a small explicit contract from the original `vitaldb/vitalserver`
 submodule. VitalServer must still expose the expected Socket.IO lifecycle and Redis `ip_<vrcode>`
-read/write behavior, and VRecorder IP correction must remain owned by the audit proxy.
+read/write behavior, and VRecorder IP correction must remain owned by the recorder ingress.
 
 The verification fails when one of these meanings changes:
 
@@ -72,4 +72,4 @@ Only after the candidate is reviewed and runtime smoke passes should the new com
 
 Do not rely on compile errors to discover upstream drift. The submodule contract gate is part of the
 release review path, so upstream contract drift fails before package or DMG compile. Keep IP correction
-in the audit proxy and do not reintroduce proxy-header IP logic into upstream VitalServer.
+in the recorder ingress and do not reintroduce proxy-header IP logic into upstream VitalServer.

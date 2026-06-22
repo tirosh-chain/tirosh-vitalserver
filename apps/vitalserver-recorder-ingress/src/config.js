@@ -2,22 +2,22 @@
 
 function loadConfig(env) {
   return {
-    listenPort: numberEnv(env, "AUDIT_PROXY_PORT", 8080),
+    listenPort: numberEnv(env, "RECORDER_INGRESS_PORT", 8080),
     upstream: {
-      host: env.AUDIT_PROXY_UPSTREAM_HOST || "app",
-      port: numberEnv(env, "AUDIT_PROXY_UPSTREAM_PORT", 80),
-      timeoutMs: numberEnv(env, "AUDIT_PROXY_UPSTREAM_TIMEOUT_MS", 30000),
+      host: env.RECORDER_INGRESS_UPSTREAM_HOST || "app",
+      port: numberEnv(env, "RECORDER_INGRESS_UPSTREAM_PORT", 80),
+      timeoutMs: numberEnv(env, "RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS", 30000),
     },
     redis: {
-      host: env.VITALSERVER_REDIS_HOST || env.AUDIT_PROXY_REDIS_HOST || "redis",
-      port: numberEnv(env, "VITALSERVER_REDIS_PORT", numberEnv(env, "AUDIT_PROXY_REDIS_PORT", 6379)),
-      timeoutMs: numberEnv(env, "AUDIT_PROXY_REDIS_TIMEOUT_MS", 1500),
+      host: env.VITALSERVER_REDIS_HOST || env.RECORDER_INGRESS_REDIS_HOST || "redis",
+      port: numberEnv(env, "VITALSERVER_REDIS_PORT", numberEnv(env, "RECORDER_INGRESS_REDIS_PORT", 6379)),
+      timeoutMs: numberEnv(env, "RECORDER_INGRESS_REDIS_TIMEOUT_MS", 1500),
     },
     audit: {
       enabled: env.VITALSERVER_AUDIT_ENABLED !== "0",
       listKey: env.VITALSERVER_AUDIT_REDIS_LIST || "vitalserver:audit_events",
       maxLen: numberEnv(env, "VITALSERVER_AUDIT_REDIS_MAXLEN", 10000),
-      maxBodyBytes: numberEnv(env, "AUDIT_PROXY_MAX_BODY_BYTES", 5 * 1024 * 1024),
+      maxBodyBytes: numberEnv(env, "RECORDER_INGRESS_MAX_BODY_BYTES", 5 * 1024 * 1024),
       log: {
         enabled: env.VITALSERVER_AUDIT_FILE_ENABLED !== "0",
         path: env.VITALSERVER_AUDIT_LOG_PATH || "/var/log/vitalserver-audit/audit-events.log",
@@ -33,8 +33,8 @@ function loadConfig(env) {
     },
     vitalServer: {
       ipRewrite: {
-        enabled: env.AUDIT_PROXY_VR_IP_REWRITE_ENABLED !== "0",
-        verifyDelaysMs: numberListEnv(env, "AUDIT_PROXY_VR_IP_VERIFY_DELAYS_MS", [250, 1000]),
+        enabled: env.RECORDER_INGRESS_VR_IP_REWRITE_ENABLED !== "0",
+        verifyDelaysMs: numberListEnv(env, "RECORDER_INGRESS_VR_IP_VERIFY_DELAYS_MS", [250, 1000]),
       },
     },
   };

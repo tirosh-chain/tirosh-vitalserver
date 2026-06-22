@@ -97,7 +97,7 @@ final class RuntimeEventFactoryTests: XCTestCase {
                 failureReasons: [
                     .guestRuntimeStateMissing,
                     .hostProxyHTTP("failed"),
-                    .auditProxyHTTP("failed"),
+                    .recorderIngressHTTP("failed"),
                     .containerObservationMissing,
                 ]
             ),

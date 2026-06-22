@@ -198,7 +198,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
                     .guestRuntimeStateStale,
                     .vmLifecycleDocumentStale,
                     .hostProxyHTTP("failed"),
-                    .unknown("audit-proxy-http-failed"),
+                    .unknown("recorder-ingress-http-failed"),
                 ]
             ),
             hostProxyLivenessHTTP: "failed",
@@ -208,7 +208,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         XCTAssertEqual(
             decision,
             .recover(
-                reason: "guest-runtime-state-stale, vm-lifecycle-document-stale, host-proxy-http-failed, audit-proxy-http-failed",
+                reason: "guest-runtime-state-stale, vm-lifecycle-document-stale, host-proxy-http-failed, recorder-ingress-http-failed",
                 plan: RuntimeRecoveryPlan(
                     canRecover: true,
                     restartVM: true,
@@ -233,9 +233,9 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
                 hostProxyHTTP: "http-probe-command-failed exitCode=7",
                 guestHTTP: RuntimeHTTPStatusText.missingVMIP,
                 containerObservation: RuntimeContainerObservation(
-                    auditProxyHTTP: "failed",
-                    auditProxyStatus: nil,
-                    auditProxyStatusReadError: "failed",
+                    recorderIngressHTTP: "failed",
+                    recorderIngressStatus: nil,
+                    recorderIngressStatusReadError: "failed",
                     containerLogsPresent: true,
                     containerLogsBytes: 128,
                     composeServicesReadState: .stale,
@@ -244,7 +244,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
                 failureReasons: [
                     .guestRuntimeStateStale,
                     .hostProxyHTTP("http-probe-command-failed exitCode=7"),
-                    .auditProxyHTTP("failed"),
+                    .recorderIngressHTTP("failed"),
                     .containerObservationReadFailed("guest-runtime-state-stale"),
                 ]
             ),
@@ -255,7 +255,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         XCTAssertEqual(
             decision,
             .recover(
-                reason: "guest-runtime-state-stale, host-proxy-http-http-probe-command-failed exitCode=7, audit-proxy-http-failed, container-observation-read-failed-guest-runtime-state-stale",
+                reason: "guest-runtime-state-stale, host-proxy-http-http-probe-command-failed exitCode=7, recorder-ingress-http-failed, container-observation-read-failed-guest-runtime-state-stale",
                 plan: RuntimeRecoveryPlan(
                     canRecover: true,
                     restartVM: true,

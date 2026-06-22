@@ -15,7 +15,7 @@
 ## Impact
 
 - 설치는 완료된 것처럼 보일 수 있지만 guest service stack이 올라오지 않습니다.
-- VitalServer UI, My Files, observer, audit proxy, Redis Relay가 모두 사용할 수 없습니다.
+- VitalServer UI, My Files, observer, recorder ingress, Redis Relay가 모두 사용할 수 없습니다.
 - Redis data 자체 문제는 아니며, 새 설치 bootstrap 산출물 구성 문제입니다.
 
 ## Cause

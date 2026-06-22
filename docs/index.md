@@ -41,10 +41,10 @@
 | 문서 | 역할 |
 |---|---|
 | [Vital Recorder](recorder/vrecorder.md) | Socket.IO 접속 흐름, VRecorder 식별 기준, Web Monitoring 상태 표시 기준 |
-| [VitalServer command audit](recorder/command-audit.md) | audit proxy 기반 `join_vr`, `send_data`, `req_cmd`, dispatch event 계약 |
+| [VitalServer command audit](recorder/command-audit.md) | recorder ingress 기반 `join_vr`, `send_data`, `req_cmd`, dispatch event 계약 |
 | [Redis 데이터 구조](recorder/redis-data-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 메모 |
 | [OpenAPI 문서](api/vitalserver.openapi.yaml) | upstream VitalServer route에서 추출한 Swagger/OpenAPI spec |
-| [Audit Proxy OpenAPI](api/audit-proxy.openapi.yaml) | audit proxy sidecar 운영 endpoint spec |
+| [Recorder Ingress OpenAPI](api/recorder-ingress.openapi.yaml) | recorder ingress sidecar 운영 endpoint spec |
 
 ### Testkit
 
@@ -108,7 +108,7 @@ Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니�
 make swagger/up
 ```
 
-이후 `http://localhost:8082`에서 Swagger UI를 열면 VitalServer, Runtime Control API, Audit Proxy API
+이후 `http://localhost:8082`에서 Swagger UI를 열면 VitalServer, Runtime Control API, Recorder Ingress API
 spec을 선택해서 볼 수 있습니다. VitalServer spec은 [OpenAPI 문서](api/vitalserver.openapi.yaml)로 관리합니다.
 
 ## 작성 기준

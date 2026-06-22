@@ -32,11 +32,11 @@ final class RefreshRuntimeHealthUseCaseTests: XCTestCase {
     func testRefreshReturnsUnhealthyDecisionWithDomainErrorMessage() {
         let useCase = RefreshRuntimeHealthUseCase()
 
-        let decision = useCase.decision(snapshot: healthSnapshot(reasons: [.auditProxyHTTP("failed")]))
+        let decision = useCase.decision(snapshot: healthSnapshot(reasons: [.recorderIngressHTTP("failed")]))
 
         XCTAssertFalse(decision.healthy)
-        XCTAssertEqual(decision.statusMessage, "runtime health check failed: audit-proxy-http-failed")
-        XCTAssertEqual(decision.observedEventMessage, "runtime domain errors observed: audit-proxy-http-failed")
+        XCTAssertEqual(decision.statusMessage, "runtime health check failed: recorder-ingress-http-failed")
+        XCTAssertEqual(decision.observedEventMessage, "runtime domain errors observed: recorder-ingress-http-failed")
     }
 
     func testObservedEventTypeIsSelectedByUseCaseFromSnapshot() {
@@ -76,19 +76,19 @@ final class RefreshRuntimeHealthUseCaseTests: XCTestCase {
     func testRefreshExecutionWritesUnhealthyStatusAndEventBestEffortBeforeFailing() {
         let sink = RefreshHealthEventSink()
         let operations = operations(
-            snapshot: healthSnapshot(reasons: [.auditProxyHTTP("failed")]),
+            snapshot: healthSnapshot(reasons: [.recorderIngressHTTP("failed")]),
             sink: sink
         )
 
         XCTAssertThrowsError(try RefreshRuntimeHealthUseCase().refresh(operations: operations)) { error in
             XCTAssertEqual(
                 error as? RefreshRuntimeHealthUseCaseError,
-                .operationFailed("runtime health check failed: audit-proxy-http-failed")
+                .operationFailed("runtime health check failed: recorder-ingress-http-failed")
             )
         }
         XCTAssertEqual(sink.events, [
-            "best-effort-status:degraded:health:runtime health check failed: audit-proxy-http-failed",
-            "best-effort-event:degraded:health:runtime domain errors observed: audit-proxy-http-failed",
+            "best-effort-status:degraded:health:runtime health check failed: recorder-ingress-http-failed",
+            "best-effort-event:degraded:health:runtime domain errors observed: recorder-ingress-http-failed",
         ])
     }
 

@@ -3,7 +3,7 @@
 Runtime Control API는 PWA, native shell, remote control client가 공유할 runtime control boundary입니다. 현재 Swift `RuntimeControlAPI` target은 route/DTO, transport-independent router, SSE response model, macOS local loopback HTTP server를 둡니다. 이 문서는 Helper app에 포함되는 Runtime Control PWA와 native UI가 공유하는 계약과 아직 구현이 남은 범위를 정리합니다.
 
 OpenAPI contract는 [`runtime-control.openapi.json`](./runtime-control.openapi.json)에 둡니다. Swift test는 `RuntimeControlAPIEndpoint`와 OpenAPI path/method parity를 검증합니다.
-배포 Swagger UI에서는 이 spec을 VitalServer API, Audit Proxy API와 함께 multi-spec catalog로 노출합니다.
+배포 Swagger UI에서는 이 spec을 VitalServer API, Recorder Ingress API와 함께 multi-spec catalog로 노출합니다.
 
 ## Target
 
@@ -122,7 +122,7 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 | Query | Meaning |
 |---|---|
 | `limit` | 반환할 event 수. 1-500, 기본 100 |
-| `type` | `status-changed`, `health-observed`, `audit-proxy-observed` 같은 runtime event type |
+| `type` | `status-changed`, `health-observed`, `recorder-ingress-observed` 같은 runtime event type |
 | `since` | ISO-8601 timestamp lower bound |
 | `cursor` | 이전 응답의 `nextCursor` 값을 그대로 전달하는 opaque pagination cursor |
 
@@ -145,8 +145,8 @@ capacity 정보는 기존 `dataStorage`를 계속 사용합니다.
 유지하면서 `RuntimeStatus`, `RuntimeSettings`, `RuntimeReleaseInfo`, `RuntimeInstallInfo`, 최신
 `VitalDBObservationDocument`, 그리고 native Status 탭의 `Vital Recorder` 섹션과 같은 성격의
 `RuntimeVitalRecorderSummary`를 한 payload로 제공합니다. `RuntimeVitalRecorderSummary`는
-recorder 상태와 bed 상태를 `vitalDBObservation`에서만 읽습니다. audit-proxy 상태는 recorder 상태로 승격하지
-않고, 현재 연결 수(`activeConnections`)만 제공합니다. audit-proxy status가 없으면 `activeConnections`는
+recorder 상태와 bed 상태를 `vitalDBObservation`에서만 읽습니다. recorder-ingress 상태는 recorder 상태로 승격하지
+않고, 현재 연결 수(`activeConnections`)만 제공합니다. recorder-ingress status가 없으면 `activeConnections`는
 생략되고, `vitalDBObservation`이 없으면 recorder/bed/anomaly count도 생략됩니다. 생략된 count는 관측된
 `0`이 아니라 not-reported state입니다.
 
@@ -175,7 +175,7 @@ frame을 보냅니다. 각 frame의 `id` 값은 `runtime-log-<source>`, `data` �
 `VitalDBObservationDocument`를 반환합니다. 이 payload는 `vitaldb-observer` container가 계산한
 recorder/bed/device/filter/proxy/anomaly snapshot과 최근 `send_data` 활동량 summary를 guest runtime-state
 경로로 전달하고, watchdog이 runtime observability SoT에 저장한 결과입니다. `recorders[].activity`는
-audit proxy Redis List에서 계산한 windowed metric이며 message count, byte count, room count, first/last
+recorder ingress Redis List에서 계산한 windowed metric이며 message count, byte count, room count, first/last
 activity, 초당 message/byte rate를 포함합니다.
 `readIssues`는 observer가 source를 읽거나 파싱하는 중 발견한 문제를 보존합니다. 관련 `readIssues`가 있는
 빈 배열/빈 activity는 실제 관측값 0이 아니라 부분 관측 실패일 수 있습니다.

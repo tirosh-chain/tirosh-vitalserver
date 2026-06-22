@@ -209,7 +209,7 @@ const runtimeRecorderConnectionObservationSchema = z
   })
   .passthrough();
 
-const runtimeAuditProxyStatusDocumentSchema = z
+const runtimeRecorderIngressStatusDocumentSchema = z
   .object({
     startedAt: nullableString,
     uptimeSeconds: nullableNumber,
@@ -240,9 +240,9 @@ const runtimeContainerServiceObservationSchema = z
 
 const runtimeContainerObservationSchema = z
   .object({
-    auditProxyHTTP: z.string(),
-    auditProxyStatus: runtimeAuditProxyStatusDocumentSchema.nullable().optional(),
-    auditProxyStatusReadError: nullableString,
+    recorderIngressHTTP: z.string(),
+    recorderIngressStatus: runtimeRecorderIngressStatusDocumentSchema.nullable().optional(),
+    recorderIngressStatusReadError: nullableString,
     runtimeStateUpdatedAt: nullableString,
     runtimeStateFileUpdatedAt: nullableString,
     runtimeStateFileMetadataError: nullableString,

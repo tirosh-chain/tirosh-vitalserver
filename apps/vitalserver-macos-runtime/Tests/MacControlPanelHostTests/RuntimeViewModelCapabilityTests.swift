@@ -907,8 +907,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
     func testHealthRefreshUpdatesContainerObservationForServiceHealth() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             runtimeStateUpdatedAt: "2026-06-05T00:00:00Z",
             runtimeStateFileUpdatedAt: "2026-06-05T00:00:00Z",
             containerLogsPresent: true,

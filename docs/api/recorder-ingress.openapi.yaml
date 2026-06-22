@@ -1,34 +1,34 @@
 openapi: 3.0.3
 info:
-  title: VitalServer Audit Proxy API
+  title: VitalServer Recorder Ingress API
   version: 0.1.0
-  description: Operational endpoints exposed by the VitalServer audit proxy sidecar.
+  description: Operational endpoints exposed by the VitalServer recorder ingress sidecar.
 servers:
   - url: /
 paths:
-  /audit-proxy/health:
+  /recorder-ingress/health:
     get:
-      operationId: getAuditProxyHealth
-      summary: Check audit proxy liveness
-      description: Returns 204 when the audit proxy process can serve local health checks.
+      operationId: getRecorderIngressHealth
+      summary: Check recorder ingress liveness
+      description: Returns 204 when the recorder ingress process can serve local health checks.
       responses:
         "204":
-          description: Audit proxy is alive.
-  /audit-proxy/status:
+          description: Recorder ingress is alive.
+  /recorder-ingress/status:
     get:
-      operationId: getAuditProxyStatus
-      summary: Read audit proxy counters
+      operationId: getRecorderIngressStatus
+      summary: Read recorder ingress counters
       description: Returns in-memory counters for proxy traffic, Socket.IO parsing, and audit sink failures.
       responses:
         "200":
-          description: Audit proxy status counters.
+          description: Recorder ingress status counters.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AuditProxyStatus"
+                $ref: "#/components/schemas/RecorderIngressStatus"
 components:
   schemas:
-    AuditProxyStatus:
+    RecorderIngressStatus:
       type: object
       additionalProperties: false
       required:
@@ -52,7 +52,7 @@ components:
       properties:
         startedAt:
           type: string
-          description: Audit proxy process start timestamp.
+          description: Recorder ingress process start timestamp.
         uptimeSeconds:
           type: integer
           minimum: 0
@@ -75,15 +75,15 @@ components:
         sendDataEventsObserved:
           type: integer
           minimum: 0
-          description: Number of client send_data events observed by the audit proxy.
+          description: Number of client send_data events observed by the recorder ingress.
         sendDataBytesObserved:
           type: integer
           minimum: 0
-          description: Total compressed send_data payload bytes observed by the audit proxy.
+          description: Total compressed send_data payload bytes observed by the recorder ingress.
         lastSendDataObservedAt:
           type: string
           nullable: true
-          description: Last timestamp at which the audit proxy observed a client send_data payload.
+          description: Last timestamp at which the recorder ingress observed a client send_data payload.
         socketIoParseFailures:
           type: integer
           minimum: 0

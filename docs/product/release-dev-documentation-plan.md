@@ -147,7 +147,7 @@ dev 문서군은 repository 유지보수자가 release 문서를 실제 구현�
 ### Dev 작성 기준
 
 `dev/service-catalog.md`는 `apps/vitalserver`, `apps/vitalserver-macos-runtime`,
-`apps/vitalserver-runtime-pwa`, `apps/vitaldb-observer`, `apps/vitalserver-audit-proxy`,
+`apps/vitalserver-runtime-pwa`, `apps/vitaldb-observer`, `apps/vitalserver-recorder-ingress`,
 `packages/*`의 책임을 설명합니다.
 
 `dev/package-map.md`는 app/package/infra/docs 경계, package별 owner, 외부 공개 여부를
@@ -162,7 +162,7 @@ Linux VM, Runtime Control API, PWA, observer/testkit 관계를 설명합니다. 
 file found/invalid/decode-failed/permission-failed, empty와 missing 구분을
 고정합니다.
 
-`dev/api-contracts.md`는 Runtime Control API, VitalDB Observer API, Audit Proxy API,
+`dev/api-contracts.md`는 Runtime Control API, VitalDB Observer API, Recorder Ingress API,
 OpenAPI source 위치를 설명합니다.
 
 `dev/build-and-release.md`는 `make dist/dmg/release`, `make dist/update/release`,
@@ -234,7 +234,7 @@ Linux VM의 핵심 문장:
 | `apps/vitalserver-macos-runtime` | release 핵심 노출 | macOS Helper app, host runtime, VM orchestration, packaging |
 | `apps/vitalserver-runtime-pwa` | release에서는 "Runtime Control UI"로 제한 노출 | browser/PWA 기반 runtime control surface |
 | `apps/vitaldb-observer` | release에서는 Health Check 내부 collector로 간접 노출 | Redis/proxy 기반 VitalDB observation snapshot 생성 |
-| `apps/vitalserver-audit-proxy` | release에서는 command audit 기능으로 제한 노출 | VRecorder command/audit event sidecar |
+| `apps/vitalserver-recorder-ingress` | release에서는 command audit 기능으로 제한 노출 | VRecorder command/audit event sidecar |
 | `packages/vitalserver-testkit` | release에서는 검증 도구로 제한 노출 | simulated recorder, `.vital` upload, smoke/load validation |
 | `packages/vitalserver-devtools` | dev 전용 | build machine packaging, VM/update bundle tooling |
 | `packages/vitalserver-guest-tools` | dev 전용 | Linux guest-side runtime state, update, logs, repair commands |

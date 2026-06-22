@@ -40,7 +40,7 @@ or rollback that reuses the VM disk can keep the image/rootfs clock.
 ## Fix Direction
 
 - Stop Guest compose services in an explicit update shutdown order:
-  `testkit`, `edge`, `swagger-ui`, `redis-ui`, `audit-proxy`, `vitaldb-observer`,
+  `testkit`, `edge`, `swagger-ui`, `redis-ui`, `recorder-ingress`, `vitaldb-observer`,
   `app`, then `redis`.
 - Use service-specific timeouts: default 30s, `app` 90s, `redis` 60s. These give
   shutdown-heavy services more time without hiding which service is blocking shutdown.

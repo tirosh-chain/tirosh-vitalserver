@@ -72,7 +72,7 @@ health wait가 성공했다고 해서 앞선 update failure event를 지우거�
 | `runtime-status-observed` | runtime status document가 관측됨 |
 | `guest-state-observed` | guest runtime state가 관측됨 |
 | `container-observed` | guest container/service observation이 기록됨 |
-| `audit-proxy-observed` | audit proxy observation이 기록됨 |
+| `recorder-ingress-observed` | recorder ingress observation이 기록됨 |
 | `vitaldb-observed` | recorder observer snapshot이 기록됨 |
 | `vitaldb-observer-unhealthy` | recorder observer가 unhealthy 상태를 보고함 |
 | `vitaldb-anomaly-detected` | recorder/bed anomaly가 감지됨 |

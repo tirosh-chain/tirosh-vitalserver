@@ -78,7 +78,7 @@ make docs/build           # MkDocs site build
 ```text
 apps/
   vitalserver/                VitalServer core runtime wrapper
-  vitalserver-audit-proxy/    VRecorder command/IP/activity audit sidecar
+  vitalserver-recorder-ingress/    VRecorder command/IP/activity audit sidecar
   vitaldb-observer/           recorder/bed/proxy/anomaly observation collector
   vitalserver-macos-runtime/  macOS Helper app, HostCLI, Runtime Control API, packaging
   vitalserver-runtime-pwa/    Remote Console PWA

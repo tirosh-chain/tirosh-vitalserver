@@ -1,6 +1,6 @@
 import Foundation
 
-public struct RuntimeAuditProxyStatusDocument: Codable, Equatable, Sendable {
+public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable {
     public let startedAt: String?
     public let uptimeSeconds: Int?
     public let activeWebSockets: Int
@@ -227,10 +227,10 @@ public enum RuntimeContainerServicesReadState: String, Codable, Equatable, Senda
 }
 
 public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
-    public let auditProxyHTTP: String
-    public let auditProxyStatus: RuntimeAuditProxyStatusDocument?
-    public let auditProxyStatusReadState: RuntimeAuditProxyStatusReadState
-    public let auditProxyStatusReadError: String?
+    public let recorderIngressHTTP: String
+    public let recorderIngressStatus: RuntimeRecorderIngressStatusDocument?
+    public let recorderIngressStatusReadState: RuntimeRecorderIngressStatusReadState
+    public let recorderIngressStatusReadError: String?
     public let runtimeStateUpdatedAt: String?
     public let runtimeStateFileUpdatedAt: String?
     public let runtimeStateFileMetadataReadState: RuntimeFileMetadataReadState
@@ -244,10 +244,10 @@ public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
     public let composeServicesReadError: String?
 
     public init(
-        auditProxyHTTP: String,
-        auditProxyStatus: RuntimeAuditProxyStatusDocument?,
-        auditProxyStatusReadState: RuntimeAuditProxyStatusReadState? = nil,
-        auditProxyStatusReadError: String? = nil,
+        recorderIngressHTTP: String,
+        recorderIngressStatus: RuntimeRecorderIngressStatusDocument?,
+        recorderIngressStatusReadState: RuntimeRecorderIngressStatusReadState? = nil,
+        recorderIngressStatusReadError: String? = nil,
         runtimeStateUpdatedAt: String? = nil,
         runtimeStateFileUpdatedAt: String? = nil,
         runtimeStateFileMetadataReadState: RuntimeFileMetadataReadState? = nil,
@@ -260,15 +260,15 @@ public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
         composeServices: [RuntimeContainerServiceObservation] = [],
         composeServicesReadError: String? = nil
     ) {
-        self.auditProxyHTTP = auditProxyHTTP
-        self.auditProxyStatus = auditProxyStatus
-        self.auditProxyStatusReadState = auditProxyStatusReadState
-            ?? RuntimeAuditProxyStatusReadResult(
-                httpStatus: auditProxyHTTP,
-                document: auditProxyStatus,
-                readError: auditProxyStatusReadError
+        self.recorderIngressHTTP = recorderIngressHTTP
+        self.recorderIngressStatus = recorderIngressStatus
+        self.recorderIngressStatusReadState = recorderIngressStatusReadState
+            ?? RuntimeRecorderIngressStatusReadResult(
+                httpStatus: recorderIngressHTTP,
+                document: recorderIngressStatus,
+                readError: recorderIngressStatusReadError
             ).readState
-        self.auditProxyStatusReadError = auditProxyStatusReadError
+        self.recorderIngressStatusReadError = recorderIngressStatusReadError
         self.runtimeStateUpdatedAt = runtimeStateUpdatedAt
         self.runtimeStateFileUpdatedAt = runtimeStateFileUpdatedAt
         self.runtimeStateFileMetadataReadState = runtimeStateFileMetadataReadState
@@ -290,10 +290,10 @@ public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case auditProxyHTTP
-        case auditProxyStatus
-        case auditProxyStatusReadState
-        case auditProxyStatusReadError
+        case recorderIngressHTTP
+        case recorderIngressStatus
+        case recorderIngressStatusReadState
+        case recorderIngressStatusReadError
         case runtimeStateUpdatedAt
         case runtimeStateFileUpdatedAt
         case runtimeStateFileMetadataReadState
@@ -317,22 +317,22 @@ public struct RuntimeContainerObservation: Codable, Equatable, Sendable {
             [RuntimeContainerServiceObservation].self,
             forKey: .composeServices
         )
-        self.auditProxyHTTP = try container.decode(String.self, forKey: .auditProxyHTTP)
-        self.auditProxyStatus = try container.decodeIfPresent(
-            RuntimeAuditProxyStatusDocument.self,
-            forKey: .auditProxyStatus
+        self.recorderIngressHTTP = try container.decode(String.self, forKey: .recorderIngressHTTP)
+        self.recorderIngressStatus = try container.decodeIfPresent(
+            RuntimeRecorderIngressStatusDocument.self,
+            forKey: .recorderIngressStatus
         )
-        self.auditProxyStatusReadError = try container.decodeIfPresent(
+        self.recorderIngressStatusReadError = try container.decodeIfPresent(
             String.self,
-            forKey: .auditProxyStatusReadError
+            forKey: .recorderIngressStatusReadError
         )
-        self.auditProxyStatusReadState = try container.decodeIfPresent(
-            RuntimeAuditProxyStatusReadState.self,
-            forKey: .auditProxyStatusReadState
-        ) ?? RuntimeAuditProxyStatusReadResult(
-            httpStatus: auditProxyHTTP,
-            document: auditProxyStatus,
-            readError: auditProxyStatusReadError
+        self.recorderIngressStatusReadState = try container.decodeIfPresent(
+            RuntimeRecorderIngressStatusReadState.self,
+            forKey: .recorderIngressStatusReadState
+        ) ?? RuntimeRecorderIngressStatusReadResult(
+            httpStatus: recorderIngressHTTP,
+            document: recorderIngressStatus,
+            readError: recorderIngressStatusReadError
         ).readState
         self.runtimeStateUpdatedAt = try container.decodeIfPresent(String.self, forKey: .runtimeStateUpdatedAt)
         self.runtimeStateFileUpdatedAt = try container.decodeIfPresent(String.self, forKey: .runtimeStateFileUpdatedAt)

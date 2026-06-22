@@ -98,7 +98,7 @@ def sync_swift(root, release, release_file):
         release, "bundle.optionalContainerServices"
     )
     vitalserver = require_service(release, "vitalServer")
-    audit_proxy = require_service(release, "auditProxy")
+    recorder_ingress = require_service(release, "recorderIngress")
     vitaldb_observer = require_service(release, "vitalDBObserver")
     redis_relay = require_service(release, "redisRelay")
     testkit = require_service(release, "testkit")
@@ -108,7 +108,7 @@ def sync_swift(root, release, release_file):
     guest_edge = require_service(release, "guestEdge")
     host_proxy = require_service(release, "hostProxy")
     vitalserver_name = require_field(release, "services.vitalServer.displayName")
-    audit_proxy_name = require_field(release, "services.auditProxy.displayName")
+    recorder_ingress_name = require_field(release, "services.recorderIngress.displayName")
     vitaldb_observer_name = require_field(
         release,
         "services.vitalDBObserver.displayName",
@@ -153,7 +153,7 @@ public enum GeneratedRelease {{
     public static let minUpdaterVersion = {swift_string(min_updater_version)}
     public static let vitalServerVersion = {swift_string(release["vitalServerVersion"])}
     public static let vitalServerName = {swift_string(vitalserver_name)}
-    public static let auditProxyName = {swift_string(audit_proxy_name)}
+    public static let recorderIngressName = {swift_string(recorder_ingress_name)}
     public static let vitalDBObserverName = {swift_string(vitaldb_observer_name)}
     public static let redisRelayName = {swift_string(redis_relay_name)}
     public static let testkitName = {swift_string(testkit_name)}
@@ -163,7 +163,7 @@ public enum GeneratedRelease {{
     public static let guestEdgeName = {swift_string(guest_edge_name)}
     public static let hostProxyName = {swift_string(host_proxy_name)}
     public static let vitalServerImage = {swift_string(vitalserver["image"])}
-    public static let auditProxyImage = {swift_string(audit_proxy["image"])}
+    public static let recorderIngressImage = {swift_string(recorder_ingress["image"])}
     public static let vitalDBObserverImage = {swift_string(vitaldb_observer["image"])}
     public static let redisRelayImage = {swift_string(redis_relay["image"])}
     public static let testkitImage = {swift_string(testkit["image"])}
@@ -172,7 +172,7 @@ public enum GeneratedRelease {{
     public static let swaggerUIImage = {swift_string(swagger_ui["image"])}
     public static let guestEdgeImage = {swift_string(guest_edge["image"])}
     public static let hostProxyImage = {swift_string(host_proxy["image"])}
-    public static let auditProxyVersion = {swift_string(audit_proxy["version"])}
+    public static let recorderIngressVersion = {swift_string(recorder_ingress["version"])}
     public static let vitalDBObserverVersion = {swift_string(vitaldb_observer["version"])}
     public static let redisRelayVersion = {swift_string(redis_relay["version"])}
     public static let testkitVersion = {swift_string(testkit["version"])}
@@ -190,7 +190,7 @@ def sync_compose(root, release):
     compose = root / "Support/Guest/compose.yaml"
     content = compose.read_text(encoding="utf-8")
     vitalserver = require_service(release, "vitalServer")
-    audit_proxy = require_service(release, "auditProxy")
+    recorder_ingress = require_service(release, "recorderIngress")
     vitaldb_observer = require_service(release, "vitalDBObserver")
     redis_relay = require_service(release, "redisRelay")
     testkit = require_service(release, "testkit")
@@ -201,8 +201,8 @@ def sync_compose(root, release):
     replacements = {
         r"image: redis:[^\n]+": f"image: {redis['image']}",
         r"image: vitalserver:[^\n]+": f"image: {vitalserver['image']}",
-        r"image: vitalserver-audit-proxy:[^\n]+": (
-            f"image: {audit_proxy['image']}"
+        r"image: vitalserver-recorder-ingress:[^\n]+": (
+            f"image: {recorder_ingress['image']}"
         ),
         r"image: vitaldb-observer:[^\n]+": f"image: {vitaldb_observer['image']}",
         r"image: vitalserver-redis-relay:[^\n]+": (
@@ -226,7 +226,7 @@ def sync_build_config(root, release):
     config = root.parent.parent / "config/vm-build.toml"
     content = config.read_text(encoding="utf-8")
     vitalserver = require_service(release, "vitalServer")
-    audit_proxy = require_service(release, "auditProxy")
+    recorder_ingress = require_service(release, "recorderIngress")
     vitaldb_observer = require_service(release, "vitalDBObserver")
     redis_relay = require_service(release, "redisRelay")
     testkit = require_service(release, "testkit")
@@ -236,12 +236,12 @@ def sync_build_config(root, release):
     guest_edge = require_service(release, "guestEdge")
     replacements = {
         r'"vitalserver:[^"]+"': f'"{vitalserver["image"]}"',
-        r'\n  "vitalserver-audit-proxy:[^"]+"': f'\n  "{audit_proxy["image"]}"',
+        r'\n  "vitalserver-recorder-ingress:[^"]+"': f'\n  "{recorder_ingress["image"]}"',
         r'\n  "vitaldb-observer:[^"]+"': f'\n  "{vitaldb_observer["image"]}"',
         r'\n  "vitalserver-redis-relay:[^"]+"': f'\n  "{redis_relay["image"]}"',
         r'\n  "vitalserver-testkit:[^"]+"': f'\n  "{testkit["image"]}"',
-        r'audit_proxy_image = "vitalserver-audit-proxy:[^"]+"': (
-            f'audit_proxy_image = "{audit_proxy["image"]}"'
+        r'recorder_ingress_image = "vitalserver-recorder-ingress:[^"]+"': (
+            f'recorder_ingress_image = "{recorder_ingress["image"]}"'
         ),
         r'vitaldb_observer_image = "vitaldb-observer:[^"]+"': (
             f'vitaldb_observer_image = "{vitaldb_observer["image"]}"'
@@ -285,10 +285,10 @@ def sync_guest_scripts(root, release):
         content,
     )
     content = replace(
-        r'\("vitalserver-audit-proxy:[^"]+", "audit-proxy"\)',
+        r'\("vitalserver-recorder-ingress:[^"]+", "recorder-ingress"\)',
         (
-            f'("{require_service(release, "auditProxy")["image"]}", '
-            '"audit-proxy")'
+            f'("{require_service(release, "recorderIngress")["image"]}", '
+            '"recorder-ingress")'
         ),
         content,
     )

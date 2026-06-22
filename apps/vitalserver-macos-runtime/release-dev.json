@@ -20,9 +20,9 @@
       "image": "vitalserver:2.3.4",
       "version": "2.3.4"
     },
-    "auditProxy": {
-      "displayName": "Audit proxy",
-      "image": "vitalserver-audit-proxy:0.1.0",
+    "recorderIngress": {
+      "displayName": "Recorder ingress",
+      "image": "vitalserver-recorder-ingress:0.1.0",
       "version": "0.1.0"
     },
     "vitalDBObserver": {

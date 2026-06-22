@@ -7,7 +7,7 @@ function createRedisAuditEventStore(config, redis, metrics) {
       redis.command(["RPUSH", config.listKey, line], (error) => {
         if (error) {
           metrics.auditWriteFailures += 1;
-          console.error("[audit-proxy] audit redis write failed:", error.message);
+          console.error("[recorder-ingress] audit redis write failed:", error.message);
           return;
         }
         if (config.maxLen > 0) {

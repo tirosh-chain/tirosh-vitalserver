@@ -36,7 +36,7 @@ Recorder activity가 실제 장시간 트래픽 추세를 보여주지 못합니
 
 2026-05-30 코드 검토에서 확인한 구체 흐름:
 
-1. `audit-proxy`가 recorder의 Socket.IO `send_data`를 감지해 Redis list `vitalserver:audit_events`에 audit event를 기록합니다.
+1. `recorder-ingress`가 recorder의 Socket.IO `send_data`를 감지해 Redis list `vitalserver:audit_events`에 audit event를 기록합니다.
 2. `vitaldb-observer`는 Redis list의 최근 event를 읽고 `VITALDB_OBSERVER_RECORDER_ACTIVITY_WINDOW_SECONDS` 기본값인 300초 rolling activity를 계산합니다.
 3. Guest의 `tirosh-runtime-state` systemd service가 기본 5초마다 `vitaldb-observer`의 `/api/v1/observations`를 호출하고, 결과를 `runtime-state.json`의 `vitalDBObservation`에 포함합니다.
 4. Host watchdog은 기본 60초마다 `runtime-state.json`을 읽어 `RuntimeHealthSnapshot`을 만들고, status/event 기록 시 `vitalDBObservation`을 함께 전달합니다.
@@ -104,7 +104,7 @@ docker exec vitalserver-vitaldb-observer env \
 
 ```text
 Recorder send_data
-  -> audit-proxy raw audit event
+  -> recorder-ingress raw audit event
   -> vitaldb-observer 1-minute RecorderActivityBucket observation
   -> guest runtime-state transfer
   -> host observability projection

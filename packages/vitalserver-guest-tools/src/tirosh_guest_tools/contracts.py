@@ -46,7 +46,7 @@ class RuntimeFileName(StrEnum):
 class ComposeService(StrEnum):
     REDIS = "redis"
     APP = "app"
-    AUDIT_PROXY = "audit-proxy"
+    RECORDER_INGRESS = "recorder-ingress"
     VITALDB_OBSERVER = "vitaldb-observer"
     REDIS_RELAY = "redis-relay"
     REDIS_UI = "redis-ui"

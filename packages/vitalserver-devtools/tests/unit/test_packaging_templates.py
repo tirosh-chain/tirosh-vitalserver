@@ -121,8 +121,8 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "/Library/Application Support/VitalServerHelper" in rendered
     assert_upload_proxy_streaming(proxy_config_template_text)
     assert_upload_proxy_streaming(guest_edge_config_text)
-    assert_audit_proxy_upload_timeout(root_compose_text)
-    assert_audit_proxy_upload_timeout(guest_compose_text)
+    assert_recorder_ingress_upload_timeout(root_compose_text)
+    assert_recorder_ingress_upload_timeout(guest_compose_text)
     assert '"${vm_bin}" runtime install-provision' in postinstall_text
     assert "postinstall_timeout_seconds" not in postinstall_text
     assert "runtime install timed out timeoutSeconds=" not in postinstall_text
@@ -414,10 +414,10 @@ def assert_upload_proxy_streaming(config_text: str) -> None:
     assert config_text.count("proxy_read_timeout 1h;") == 2
 
 
-def assert_audit_proxy_upload_timeout(compose_text: str) -> None:
-    """Assert audit proxy keeps long uploads and parser waits open."""
+def assert_recorder_ingress_upload_timeout(compose_text: str) -> None:
+    """Assert recorder ingress keeps long uploads and parser waits open."""
 
     assert (
-        'AUDIT_PROXY_UPSTREAM_TIMEOUT_MS: "${AUDIT_PROXY_UPSTREAM_TIMEOUT_MS:-3600000}"'
+        'RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS: "${RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS:-3600000}"'
         in compose_text
     )

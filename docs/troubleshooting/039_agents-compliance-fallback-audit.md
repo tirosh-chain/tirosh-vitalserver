@@ -525,11 +525,11 @@ git diff --check
 
 분류일: 2026-06-03
 
-Q1 P0 container observation read semantics를 닫았다. `RuntimeContainerObservation`은 `auditProxyStatusReadError`, `runtimeStateFileMetadataError`, `composeServicesReadError`를 보존한다. `RuntimeHealthChecker`는 fresh runtime state의 missing `containerServices`, stale/invalid/missing runtime state, runtime-state mtime read failure, audit proxy command/decode failure를 빈 배열이나 nil 성공으로 축소하지 않는다. mtime read failure는 stale이 아니라 invalid runtime state로 전달한다.
+Q1 P0 container observation read semantics를 닫았다. `RuntimeContainerObservation`은 `recorderIngressStatusReadError`, `runtimeStateFileMetadataError`, `composeServicesReadError`를 보존한다. `RuntimeHealthChecker`는 fresh runtime state의 missing `containerServices`, stale/invalid/missing runtime state, runtime-state mtime read failure, recorder ingress command/decode failure를 빈 배열이나 nil 성공으로 축소하지 않는다. mtime read failure는 stale이 아니라 invalid runtime state로 전달한다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
-| Fixed | 3 | 83, 84, 85 | `RuntimeContainerObservation` read-error fields 추가, `composeServices()` typed result 추가, runtime-state mtime read result와 audit proxy status decode result를 명시화했다. |
+| Fixed | 3 | 83, 84, 85 | `RuntimeContainerObservation` read-error fields 추가, `composeServices()` typed result 추가, runtime-state mtime read result와 recorder ingress status decode result를 명시화했다. |
 | Active after pass | 204 | 1-5, 8-10, 14-27, 31-49, 51-55, 57, 60, 62-74, 77-78, 86, 88-132, 134-135, 139, 142-144, 146-147, 149-150, 153, 155-160, 164-170, 172-173, 179-182, 188, 190-192, 194-198, 200, 210, 212-215, 221, 226, 230, 234, 238-247, 249, 252-285, 300 | Container observation can now distinguish observed empty services from missing/unavailable/decode-failed dependencies. |
 
 검증:
@@ -1147,7 +1147,7 @@ swift test --package-path apps/vitalserver-macos-runtime --filter SQLiteRuntimeO
 
 분류일: 2026-06-03
 
-P1 `RuntimeVitalRecorderSummary`가 missing audit proxy status나 missing VitalDB observation을 observed zero로
+P1 `RuntimeVitalRecorderSummary`가 missing recorder ingress status나 missing VitalDB observation을 observed zero로
 내보내던 경로를 닫았다. Summary count fields와 `activeConnections`는 provider가 값을 보고했을 때만
 존재한다. Swift display policy와 PWA formatter는 missing count를 `Not reported`로 표시하고, reported zero는
 그대로 `0`으로 표시한다.
@@ -1443,13 +1443,13 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 58 - PWA Container Observation Contract Requiredness
 
-P1 PWA container observation schema가 `auditProxyHTTP`, `containerLogsPresent`, `composeServices` 같은 Swift
+P1 PWA container observation schema가 `recorderIngressHTTP`, `containerLogsPresent`, `composeServices` 같은 Swift
 non-optional owner fields를 optional로 받아들이던 경로를 닫았다. Container observation 자체는 status/overview에서
 optional일 수 있지만, 한 번 provider가 observation object를 제공하면 core owner fields는 required로 검증한다.
 
 OpenAPI/PWA generated type/zod schema는 `RuntimeContainerObservation` core fields, nested
-`RuntimeAuditProxyStatusDocument`, `RuntimeRecorderConnectionObservation`, `RuntimeContainerServiceObservation`
-required fields를 Swift contract에 맞췄다. `auditProxyStatusReadError`, `runtimeStateFileMetadataError`,
+`RuntimeRecorderIngressStatusDocument`, `RuntimeRecorderConnectionObservation`, `RuntimeContainerServiceObservation`
+required fields를 Swift contract에 맞췄다. `recorderIngressStatusReadError`, `runtimeStateFileMetadataError`,
 `composeServicesReadError`도 API schema에 추가해 read/decode/metadata failure를 passthrough가 아니라 명시
 contract로 보존한다.
 
@@ -2034,7 +2034,7 @@ P1 PWA `formatting/vitalRecorder.ts`가 non-`vitalDBObservation` source를 모�
 `Not reported`로 표시하던 경로를 닫았다.
 
 Observation metrics now keep source-level reason visible: missing summary source renders `Vital Recorder source not reported`,
-and provider-owned `source: "unavailable"` renders `VitalDB observation unavailable`. Reported audit-proxy active connection
+and provider-owned `source: "unavailable"` renders `VitalDB observation unavailable`. Reported recorder-ingress active connection
 counts remain displayable independently.
 
 | Result | Count | IDs | Notes |

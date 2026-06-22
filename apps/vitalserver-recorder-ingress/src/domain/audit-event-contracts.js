@@ -29,7 +29,7 @@ const serverDispatchEventNames = Object.freeze(Object.values(serverDispatchEvent
 /**
  * @typedef {Object} AuditEnvelope
  * @property {1} schema_version
- * @property {"vitalserver-audit-proxy"} source
+ * @property {"vitalserver-recorder-ingress"} source
  * @property {string} event_type
  * @property {string} ts ISO-8601 timestamp.
  * @property {number} ts_unix_ms Unix timestamp in milliseconds.

@@ -11,9 +11,9 @@ public extension RuntimeReleaseInfo {
                 version: GeneratedRelease.vitalServerVersion
             ),
             RuntimeBundledServiceInfo(
-                name: GeneratedRelease.auditProxyName,
-                image: GeneratedRelease.auditProxyImage,
-                version: GeneratedRelease.auditProxyVersion
+                name: GeneratedRelease.recorderIngressName,
+                image: GeneratedRelease.recorderIngressImage,
+                version: GeneratedRelease.recorderIngressVersion
             ),
             RuntimeBundledServiceInfo(
                 name: GeneratedRelease.vitalDBObserverName,

@@ -193,7 +193,7 @@ API 문서는 OpenAPI 파일로 관리하고, 개발 중에는 Swagger UI로 확
 make swagger/up
 ```
 
-이후 `http://localhost:8082`에서 Swagger UI를 열면 Vital Server, Runtime Control API, Audit Proxy API spec을 선택해서 볼 수 있습니다.
+이후 `http://localhost:8082`에서 Swagger UI를 열면 Vital Server, Runtime Control API, Recorder Ingress API spec을 선택해서 볼 수 있습니다.
 
 설치된 runtime에서는 Helper app의 Swagger UI 항목 또는 `http://127.0.0.1:<proxy-port>/swagger/` 경로로 guest에서 제공하는 Swagger UI를 확인합니다.
 
@@ -238,13 +238,13 @@ Password 원문은 Runtime Control settings/read model과 TOML에 저장하지 �
 TOML의 `[publish]` 섹션은 VitalServer Redis Relay Protocol v1의 target key prefix, event stream,
 fingerprint hash, dedupe hash, stream maxlen, publisher id를 명시합니다.
 
-### 7-4. Audit Proxy API
+### 7-4. Recorder Ingress API
 
-Audit Proxy API는 VRecorder command 흐름과 audit event를 관측하기 위한 sidecar API입니다.
+Recorder Ingress API는 VRecorder command 흐름과 audit event를 관측하기 위한 sidecar API입니다.
 
 | 문서 파일                           | 역할                           |
 | ----------------------------------- | ------------------------------ |
-| `docs/api/audit-proxy.openapi.yaml` | command audit sidecar endpoint |
+| `docs/api/recorder-ingress.openapi.yaml` | command audit sidecar endpoint |
 
 ### 7-5. Vital Server API
 

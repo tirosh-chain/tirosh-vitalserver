@@ -368,8 +368,8 @@ public extension AppConstants {
                 return "Guest HTTP probe failed (\(status))"
             case .guestRuntimeStateStale:
                 return "Guest runtime state stale"
-            case .auditProxyHTTP(let status):
-                return "Audit proxy HTTP \(status)"
+            case .recorderIngressHTTP(let status):
+                return "Recorder ingress HTTP \(status)"
             case .containerService(let service, let state):
                 return "Container \(service) \(titleCasedStatus(state))"
             case .containerObservationMissing:

@@ -13,7 +13,7 @@ function createAuditLogWriter(config, metrics) {
       fs.appendFile(config.path, formatAuditLogLine(event, config.format), (error) => {
         if (error) {
           metrics.auditFileWriteFailures += 1;
-          console.error("[audit-proxy] audit file write failed:", error.message);
+          console.error("[recorder-ingress] audit file write failed:", error.message);
         }
       });
     },

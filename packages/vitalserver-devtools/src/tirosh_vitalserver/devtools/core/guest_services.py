@@ -58,8 +58,8 @@ class DockerImagePlan:
     pull_images: list[str]
     app_image: str
     app_dockerfile: Path
-    audit_proxy_image: str
-    audit_proxy_dockerfile: Path
+    recorder_ingress_image: str
+    recorder_ingress_dockerfile: Path
     vitaldb_observer_image: str
     vitaldb_observer_dockerfile: Path
     redis_relay_image: str
@@ -76,8 +76,8 @@ class DockerImagesConfig:
     images: list[str]
     optional_images: list[str]
     app_dockerfile: str
-    audit_proxy_image: str
-    audit_proxy_dockerfile: str
+    recorder_ingress_image: str
+    recorder_ingress_dockerfile: str
     vitaldb_observer_image: str
     vitaldb_observer_dockerfile: str
     redis_relay_image: str
@@ -175,8 +175,8 @@ def docker_image_plan(
     platform: str,
     images: list[str],
     app_dockerfile: str,
-    audit_proxy_image: str,
-    audit_proxy_dockerfile: str,
+    recorder_ingress_image: str,
+    recorder_ingress_dockerfile: str,
     vitaldb_observer_image: str,
     vitaldb_observer_dockerfile: str,
     redis_relay_image: str,
@@ -188,7 +188,7 @@ def docker_image_plan(
         raise DomainError("error: guest.docker_images.images must not be empty")
     app_image = images[0]
     local_build_images = {
-        audit_proxy_image,
+        recorder_ingress_image,
         vitaldb_observer_image,
         redis_relay_image,
         testkit_image,
@@ -200,8 +200,8 @@ def docker_image_plan(
         pull_images=[image for image in images[1:] if image not in local_build_images],
         app_image=app_image,
         app_dockerfile=root / app_dockerfile,
-        audit_proxy_image=audit_proxy_image,
-        audit_proxy_dockerfile=root / audit_proxy_dockerfile,
+        recorder_ingress_image=recorder_ingress_image,
+        recorder_ingress_dockerfile=root / recorder_ingress_dockerfile,
         vitaldb_observer_image=vitaldb_observer_image,
         vitaldb_observer_dockerfile=root / vitaldb_observer_dockerfile,
         redis_relay_image=redis_relay_image,
