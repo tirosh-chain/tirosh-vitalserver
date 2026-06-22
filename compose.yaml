@@ -41,8 +41,8 @@ services:
       VITALSERVER_REDIS_PORT: "${VITALSERVER_REDIS_PORT:-6379}"
       VITALSERVER_TRUST_PROXY: "${VITALSERVER_TRUST_PROXY:-0}"
     volumes:
-      - type: volume
-        source: vital-files
+      - type: bind
+        source: ${VITALSERVER_VITAL_FILES_DIR:-./data/vital-files}
         target: /opt/vitalserver/vital_files
       - type: volume
         source: vital-vr-release
@@ -87,7 +87,7 @@ services:
       VITALSERVER_AUDIT_LOG_FORMAT: "${VITALSERVER_AUDIT_LOG_FORMAT:-json}"
       VITALSERVER_AUDIT_STDOUT_ENABLED: "${VITALSERVER_AUDIT_STDOUT_ENABLED:-1}"
       VITALSERVER_AUDIT_STDOUT_FORMAT: "${VITALSERVER_AUDIT_STDOUT_FORMAT:-json}"
-      AUDIT_PROXY_UPSTREAM_TIMEOUT_MS: "${AUDIT_PROXY_UPSTREAM_TIMEOUT_MS:-30000}"
+      AUDIT_PROXY_UPSTREAM_TIMEOUT_MS: "${AUDIT_PROXY_UPSTREAM_TIMEOUT_MS:-3600000}"
     volumes:
       - type: volume
         source: audit-logs
@@ -128,6 +128,32 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+    restart: unless-stopped
+
+  redis-relay:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: apps/vitalserver-redis-relay/Dockerfile
+    image: vitalserver-redis-relay:0.1.0
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_RELAY_CONFIG_PATH: "${REDIS_RELAY_CONFIG_PATH:-/run/tirosh/config/redis-relay.toml}"
+      REDIS_RELAY_STATUS_PATH: "${REDIS_RELAY_STATUS_PATH:-/run/tirosh/status/redis-relay-status.json}"
+    volumes:
+      - type: volume
+        source: redis-relay-config
+        target: /run/tirosh/config
+        read_only: true
+      - type: volume
+        source: redis-relay-secrets
+        target: /run/tirosh/secrets
+        read_only: true
+      - type: volume
+        source: redis-relay-status
+        target: /run/tirosh/status
     restart: unless-stopped
 
   redis-ui:
@@ -175,7 +201,9 @@ services:
 
 volumes:
   redis-data:
-  vital-files:
   vital-vr-release:
   vital-tmp-files:
   audit-logs:
+  redis-relay-config:
+  redis-relay-secrets:
+  redis-relay-status:

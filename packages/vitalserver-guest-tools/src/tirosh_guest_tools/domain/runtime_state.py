@@ -20,6 +20,7 @@ class RuntimeCapabilities:
     prepare_update_shutdown: bool = True
     redis_backup: bool = True
     redis_restore: bool = True
+    reconcile_compose: bool = True
     repair_datastore: bool = True
 
     def as_json(self) -> dict[str, bool]:
@@ -28,6 +29,7 @@ class RuntimeCapabilities:
             "prepareUpdateShutdown": self.prepare_update_shutdown,
             "redisBackup": self.redis_backup,
             "redisRestore": self.redis_restore,
+            "reconcileCompose": self.reconcile_compose,
             "repairDatastore": self.repair_datastore,
         }
 

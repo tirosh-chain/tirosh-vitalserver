@@ -61,44 +61,65 @@ class RedisClient:
         keys: set[str] = set()
         while cursor not in seen_cursors:
             seen_cursors.add(cursor)
-            value = self.command("SCAN", cursor, "MATCH", pattern, "COUNT", str(count))
-            if not isinstance(value, list) or len(value) != 2:
-                raise RedisProtocolError(
-                    f"unexpected SCAN response for {pattern}: {value!r}"
-                )
-            next_cursor, page = value
-            if not isinstance(next_cursor, str | int):
-                raise RedisProtocolError(
-                    f"unexpected SCAN cursor for {pattern}: {next_cursor!r}"
-                )
-            if not isinstance(page, list):
-                raise RedisProtocolError(
-                    f"unexpected SCAN page for {pattern}: {page!r}"
-                )
-            for item in page:
-                if not isinstance(item, str):
-                    raise RedisProtocolError(
-                        f"unexpected SCAN key for {pattern}: {item!r}"
-                    )
-                keys.add(item)
+            next_cursor, page = self.scan_page(
+                cursor=cursor,
+                pattern=pattern,
+                count=count,
+            )
+            keys.update(page)
             cursor = str(next_cursor)
             if cursor == "0":
                 break
         return sorted(keys)
 
+    def scan_page(
+        self,
+        *,
+        cursor: str,
+        pattern: str = "*",
+        count: int = 1000,
+    ) -> tuple[str, list[str]]:
+        value = self.command("SCAN", cursor, "MATCH", pattern, "COUNT", str(count))
+        if not isinstance(value, list) or len(value) != 2:
+            raise RedisProtocolError(
+                f"unexpected SCAN response for {pattern}: {value!r}"
+            )
+        next_cursor, page = value
+        if not isinstance(next_cursor, str | int):
+            raise RedisProtocolError(
+                f"unexpected SCAN cursor for {pattern}: {next_cursor!r}"
+            )
+        if not isinstance(page, list):
+            raise RedisProtocolError(
+                f"unexpected SCAN page for {pattern}: {page!r}"
+            )
+        keys: list[str] = []
+        for item in page:
+            if not isinstance(item, str):
+                raise RedisProtocolError(f"unexpected SCAN key for {pattern}: {item!r}")
+            keys.append(item)
+        return str(next_cursor), sorted(keys)
+
     def command(self, *parts: str) -> Any:
+        return self._command(parts, decode_bulk_strings=True)
+
+    def _command(self, parts: tuple[str, ...], *, decode_bulk_strings: bool) -> Any:
         with socket.create_connection(
             (self._endpoint.host, self._endpoint.port),
             timeout=self._endpoint.timeout_seconds,
         ) as connection:
             connection.settimeout(self._endpoint.timeout_seconds)
             connection.sendall(_encode_command(parts))
-            return _RESPReader(connection).read()
+            return _RESPReader(
+                connection,
+                decode_bulk_strings=decode_bulk_strings,
+            ).read()
 
 
 class _RESPReader:
-    def __init__(self, connection: socket.socket) -> None:
+    def __init__(self, connection: socket.socket, *, decode_bulk_strings: bool) -> None:
         self._connection = connection
+        self._decode_bulk_strings = decode_bulk_strings
 
     def read(self) -> Any:
         prefix = self._read_exact(1)
@@ -114,7 +135,7 @@ class _RESPReader:
                 return None
             data = self._read_exact(length)
             self._read_exact(2)
-            return data.decode()
+            return data.decode() if self._decode_bulk_strings else data
         if prefix == b"*":
             length = int(self._read_line().decode())
             if length == -1:

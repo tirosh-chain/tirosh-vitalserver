@@ -176,7 +176,7 @@ public struct ContentView: View {
         .alert(AppConstants.Actions.cleanUninstall, isPresented: $showingCleanUninstallConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
             Button(AppConstants.Actions.cleanUninstall, role: .destructive) {
-                Task { await viewModel.uninstallRuntime(clean: true) }
+                Task { await viewModel.uninstallRuntime(mode: .clean) }
             }
         } message: {
             Text(AppConstants.StatusText.cleanUninstallConfirmation)

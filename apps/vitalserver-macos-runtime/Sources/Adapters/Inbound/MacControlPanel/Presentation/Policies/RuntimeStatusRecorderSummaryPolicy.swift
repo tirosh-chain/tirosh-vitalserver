@@ -1,6 +1,7 @@
 import Contracts
 import RuntimeControl
 import Errors
+import Foundation
 
 public protocol RuntimeStatusRecorderSummaryVocabulary {
     var notReportedText: String { get }
@@ -46,11 +47,13 @@ public struct RuntimeStatusRecorderSummaryPolicy {
 
     public func recorderSummary(
         observation: RuntimeContainerObservation?,
-        vitalDBObservation: VitalDBObservationDocument?
+        vitalDBObservation: VitalDBObservationDocument?,
+        now: Date = Date()
     ) -> RuntimeStatusRecorderSummary {
         let summary = RuntimeVitalRecorderSummary(
             containerObservation: observation,
-            vitalDBObservation: vitalDBObservation
+            vitalDBObservation: vitalDBObservation,
+            statusEvaluationTime: ISO8601DateFormatter().string(from: now)
         )
         return RuntimeStatusRecorderSummary(
             activeConnections: summary.activeConnections.map(String.init) ?? vocabulary.notReportedText,

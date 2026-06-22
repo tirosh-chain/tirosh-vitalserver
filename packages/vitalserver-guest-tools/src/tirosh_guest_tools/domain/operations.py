@@ -18,6 +18,7 @@ class OperationName(StrEnum):
     PREPARE_UPDATE_SHUTDOWN = "prepare-update-shutdown"
     REDIS_BACKUP = "redis-backup"
     REDIS_RESTORE = "redis-restore"
+    RECONCILE_COMPOSE = "reconcile-compose"
     REPAIR_DATASTORE = "repair-datastore"
 
 

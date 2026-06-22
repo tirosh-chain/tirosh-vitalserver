@@ -17,7 +17,9 @@ DEFAULT_PRODUCT_ROOT = Path("/Library/Application Support/TiroshVitalServer")
 DEFAULT_HELPER_APP = Path("/Applications/VitalServer Helper.app")
 DEFAULT_LAUNCHER = Path("/usr/local/bin/vitalserver-vm")
 DEFAULT_UNINSTALLER = Path("/usr/local/bin/tirosh-vitalserver-uninstall")
-DEFAULT_PROXY_PLIST = Path("/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist")
+DEFAULT_PROXY_PLIST = Path(
+    "/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.proxy.plist"
+)
 DEFAULT_SHARED_ROOT = Path("/Users/Shared/TiroshVitalServer")
 
 

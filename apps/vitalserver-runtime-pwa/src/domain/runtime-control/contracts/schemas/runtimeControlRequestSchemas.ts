@@ -34,7 +34,7 @@ export const runtimeApplySettingsRequestSchema = z.object({
 }) satisfies z.ZodType<RuntimeApplySettingsRequest>;
 
 export const runtimeUninstallRequestSchema = z.object({
-  clean: z.boolean()
+  mode: z.enum(["standard", "clean", "forceCleanUninstaller"])
 }) satisfies z.ZodType<RuntimeUninstallRequest>;
 
 export const runtimeBackupRequestSchema = z.object({
@@ -112,7 +112,10 @@ export const runtimeTestKitVirtualRecorderStartRequestSchema = z
     durationSeconds: z.number().positive().nullable().optional(),
     maxMessages: z.number().int().positive().nullable().optional(),
     shiftTime: z.boolean(),
-    generateFrames: z.boolean()
+    generateFrames: z.boolean(),
+    exportVital: z.boolean(),
+    uploadVital: z.boolean(),
+    vitalUploadEndpoint: nonEmptyString
   })
   .refine((request) => request.bedRoomNames.length >= request.recorders, {
     message: "bedRoomNames must include at least one bed per recorder",

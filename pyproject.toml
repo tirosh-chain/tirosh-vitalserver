@@ -40,6 +40,7 @@ src = [
   "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/tests",
   "apps/vitaldb-observer",
+  "apps/vitalserver-redis-relay",
   "scripts",
 ]
 exclude = [
@@ -95,6 +96,7 @@ files = [
   "packages/vitalserver-testkit/src",
   "packages/vitalserver-testkit/tests",
   "apps/vitaldb-observer",
+  "apps/vitalserver-redis-relay",
   "scripts",
 ]
 ignore_missing_imports = true
@@ -103,6 +105,7 @@ mypy_path = [
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
   "apps/vitaldb-observer",
+  "apps/vitalserver-redis-relay",
 ]
 namespace_packages = true
 no_implicit_optional = true
@@ -119,10 +122,12 @@ pythonpath = [
   "packages/vitalserver-devtools/src",
   "packages/vitalserver-testkit/src",
   "apps/vitaldb-observer",
+  "apps/vitalserver-redis-relay",
 ]
 testpaths = [
   "packages/vitalserver-devtools/tests",
   "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/tests",
   "apps/vitaldb-observer/tests",
+  "apps/vitalserver-redis-relay/tests",
 ]

@@ -55,6 +55,10 @@ from tirosh_vitalserver.devtools.core.preflight import (
     print_preflight_report,
 )
 
+APT_SNAPSHOT_PROBE_ATTEMPTS = 2
+APT_SNAPSHOT_PROBE_RETRY_DELAY_SECONDS = 2
+APT_SNAPSHOT_PROBE_TIMEOUT_SECONDS = 30
+
 ROOTFS_REQUIRED_STAGES = (
     "runtime-data-mount",
     "runtime-data-configure",
@@ -159,7 +163,7 @@ def control_runtime(input: RuntimeControlInput) -> int:
     vm_home = resolve_path(root, input.vm_home)
     command = [str(settings.runtime_cli), *input.runtime_args]
     if input.runtime_args[:1] == ["start"]:
-        write_host_time_contract(vm_home)
+        write_runtime_start_contracts(vm_home)
     env = os.environ.copy()
     env["VITALSERVER_VM_HOME"] = str(vm_home)
     return subprocess.run(command, env=env, check=False).returncode
@@ -191,7 +195,7 @@ def start_runtime_detached(input: RuntimeVmHomeInput) -> int:
         print(f"VM is already running: pid {legacy_pid.read_text().strip()}")
         return 0
 
-    write_host_time_contract(vm_home)
+    write_runtime_start_contracts(vm_home)
     env = os.environ.copy()
     env["VITALSERVER_VM_HOME"] = str(vm_home)
     env["VITALSERVER_VM_DETACHED"] = "1"
@@ -205,6 +209,11 @@ def start_runtime_detached(input: RuntimeVmHomeInput) -> int:
         )
     print(f"VM launcher started in background. Logs: {log_file}")
     return 0
+
+
+def write_runtime_start_contracts(vm_home: Path) -> None:
+    write_host_time_contract(vm_home)
+    write_default_redis_relay_contract(vm_home)
 
 
 def write_host_time_contract(vm_home: Path) -> None:
@@ -221,6 +230,47 @@ def write_host_time_contract(vm_home: Path) -> None:
         encoding="utf-8",
     )
     print(f"host time contract written: {path} epochSeconds={epoch_seconds}")
+
+
+def write_default_redis_relay_contract(vm_home: Path) -> None:
+    deploy_dir = vm_home / "data/deploy"
+    run_dir = vm_home / "data/run"
+    config_dir = deploy_dir / "redis-relay-config"
+    secrets_dir = deploy_dir / "redis-relay-secrets"
+    status_dir = run_dir / "redis-relay-status"
+    config_path = config_dir / "redis-relay.toml"
+
+    config_dir.mkdir(parents=True, exist_ok=True)
+    secrets_dir.mkdir(parents=True, exist_ok=True)
+    status_dir.mkdir(parents=True, exist_ok=True)
+    if config_path.exists():
+        print(f"redis relay contract already exists: {config_path}")
+        return
+
+    config_path.write_text(default_redis_relay_toml(), encoding="utf-8")
+    print(f"redis relay disabled contract written: {config_path}")
+
+
+def default_redis_relay_toml() -> str:
+    return "\n".join(
+        [
+            "[redis_relay]",
+            "enabled = false",
+            'scope = "vital_reconstruction"',
+            "include_recorder_network_context = false",
+            "interval_seconds = 1.0",
+            "scan_count = 1000",
+            "",
+            "[source]",
+            'host = "redis"',
+            "port = 6379",
+            "database = 0",
+            "",
+            "[target]",
+            'url = "redis://redis.example:6379/0"',
+            "",
+        ]
+    )
 
 
 def require_no_running_runtime(input: RuntimeVmHomeInput) -> int:
@@ -642,13 +692,42 @@ def check_apt_snapshot_available(snapshot: str) -> list[PreflightCheck]:
     return [probe_apt_snapshot_url(url) for url in urls]
 
 
-def probe_apt_snapshot_url(url: str) -> PreflightCheck:
+def probe_apt_snapshot_url(
+    url: str,
+    *,
+    attempts: int = APT_SNAPSHOT_PROBE_ATTEMPTS,
+    timeout_seconds: int = APT_SNAPSHOT_PROBE_TIMEOUT_SECONDS,
+    retry_delay_seconds: int = APT_SNAPSHOT_PROBE_RETRY_DELAY_SECONDS,
+) -> PreflightCheck:
+    failures: list[str] = []
+    bounded_attempts = max(1, attempts)
+    for attempt in range(1, bounded_attempts + 1):
+        check = probe_apt_snapshot_url_once(url, timeout_seconds=timeout_seconds)
+        if not check.blocks:
+            return check
+        failures.append(f"attempt={attempt} {check.message}; {check.detail}")
+        if attempt < bounded_attempts:
+            time.sleep(max(0, retry_delay_seconds))
+
+    return PreflightCheck(
+        name="apt-snapshot",
+        status=PreflightStatus.UNAVAILABLE,
+        message="Ubuntu apt snapshot endpoint is unavailable after retries",
+        detail="\n".join(failures),
+    )
+
+
+def probe_apt_snapshot_url_once(
+    url: str,
+    *,
+    timeout_seconds: int,
+) -> PreflightCheck:
     request = urllib.request.Request(
         url,
         headers={"User-Agent": "vitalserver-devtools"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             status = response.getcode()
             response.read(1)
     except urllib.error.HTTPError as error:

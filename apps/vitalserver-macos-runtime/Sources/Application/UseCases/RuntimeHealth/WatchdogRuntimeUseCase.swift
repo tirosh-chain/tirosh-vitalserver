@@ -82,6 +82,7 @@ public struct WatchdogRuntimeRecoveryExecutionPlan: Equatable, Sendable {
     public let startedStatusMessage: String
     public let planLogMessage: String
     public let plannedEventMessage: String
+    public let composeReconcileEventMessage: String?
     public let vmRestartEventMessage: String?
     public let proxyRestartEventMessage: String?
 
@@ -92,6 +93,7 @@ public struct WatchdogRuntimeRecoveryExecutionPlan: Equatable, Sendable {
         startedStatusMessage: String,
         planLogMessage: String,
         plannedEventMessage: String,
+        composeReconcileEventMessage: String?,
         vmRestartEventMessage: String?,
         proxyRestartEventMessage: String?
     ) {
@@ -101,6 +103,7 @@ public struct WatchdogRuntimeRecoveryExecutionPlan: Equatable, Sendable {
         self.startedStatusMessage = startedStatusMessage
         self.planLogMessage = planLogMessage
         self.plannedEventMessage = plannedEventMessage
+        self.composeReconcileEventMessage = composeReconcileEventMessage
         self.vmRestartEventMessage = vmRestartEventMessage
         self.proxyRestartEventMessage = proxyRestartEventMessage
     }
@@ -400,6 +403,15 @@ public struct WatchdogRuntimeUseCase {
         )
     }
 
+    public func composeReconcileFailurePlan(error: Error) -> WatchdogRuntimeCommandFailurePlan {
+        WatchdogRuntimeCommandFailurePlan(
+            status: .critical,
+            message: "watchdog guest compose reconcile failed: \(error.localizedDescription)",
+            eventType: .runtimeCommandFailed,
+            printMessage: "watchdog: critical"
+        )
+    }
+
     public func recoveryCompletionPlan(_ snapshot: RuntimeHealthSnapshot) -> WatchdogRuntimeRecoveryCompletionPlan {
         guard RuntimeHealthSnapshotPolicy.isHealthy(snapshot) else {
             return WatchdogRuntimeRecoveryCompletionPlan(
@@ -497,21 +509,22 @@ public struct WatchdogRuntimeUseCase {
         hostProxyLivenessHTTP: String,
         snapshot: RuntimeHealthSnapshot
     ) -> WatchdogRuntimeRecoveryExecutionPlan {
-        let restartReasons = restartReasonText(recoveryPlan)
+        let actionReasons = actionReasonText(recoveryPlan)
         return WatchdogRuntimeRecoveryExecutionPlan(
             reason: reason,
             recoveryPlan: recoveryPlan,
             detectedLogMessage: "watchdog detected unhealthy runtime reasons=\(reason)",
             startedStatusMessage: "watchdog recovery started: \(reason)",
-            planLogMessage: "watchdog recovery plan vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) restartReasons=\(restartReasons) hostProxyHealth=\(hostProxyLivenessHTTP) hostProxyReady=\(snapshot.hostProxyHTTP) guestReady=\(snapshot.guestHTTP)",
-            plannedEventMessage: "watchdog recovery planned vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) reasons=\(restartReasons)",
+            planLogMessage: "watchdog recovery plan compose=\(recoveryPlan.reconcileGuestCompose) vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) actionReasons=\(actionReasons) hostProxyHealth=\(hostProxyLivenessHTTP) hostProxyReady=\(snapshot.hostProxyHTTP) guestReady=\(snapshot.guestHTTP)",
+            plannedEventMessage: "watchdog recovery planned compose=\(recoveryPlan.reconcileGuestCompose) vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) reasons=\(actionReasons)",
+            composeReconcileEventMessage: recoveryPlan.reconcileGuestCompose ? "watchdog compose reconcile dispatched services=guest-compose" : nil,
             vmRestartEventMessage: recoveryPlan.restartVM ? "watchdog restart dispatched services=vm,guest-log-sync" : nil,
             proxyRestartEventMessage: recoveryPlan.restartProxy ? "watchdog restart dispatched services=proxy" : nil
         )
     }
 
-    private func restartReasonText(_ recoveryPlan: RuntimeRecoveryPlan) -> String {
-        let reasonCodes = recoveryPlan.restartReasonCodes
+    private func actionReasonText(_ recoveryPlan: RuntimeRecoveryPlan) -> String {
+        let reasonCodes = recoveryPlan.actionReasonCodes
         guard !reasonCodes.isEmpty else {
             return "none"
         }

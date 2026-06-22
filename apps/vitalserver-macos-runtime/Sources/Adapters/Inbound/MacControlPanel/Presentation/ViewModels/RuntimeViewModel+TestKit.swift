@@ -99,7 +99,8 @@ extension RuntimeViewModel {
             let existingRoomNames = Set(testKitStatus.beds.map(\.roomName))
             let beds = try await testKitController.createTestKitBeds(RuntimeTestKitCreateBedsRequest(
                 count: normalizedTestKitBedCount,
-                prefix: normalizedTestKitBedPrefix
+                prefix: normalizedTestKitBedPrefix,
+                appendRandomSuffix: testKitAppendRandomBedSuffix
             ))
             applyTestKitStatus(await testKitController.loadTestKitStatus())
             selectNewlyCreatedBeds(beds, existingRoomNames: existingRoomNames)
@@ -254,7 +255,8 @@ extension RuntimeViewModel {
             sessionID: sessionID,
             progressMessage: RuntimeTestPanelText.stoppingSession,
             action: { try await $0.stopVirtualRecorders(sessionID: $1) },
-            successMessage: RuntimeTestPanelText.stoppedSession
+            successMessage: RuntimeTestPanelText.stoppedSession,
+            followSessionUntilTerminal: true
         )
     }
 
@@ -302,7 +304,8 @@ extension RuntimeViewModel {
         sessionID: String?,
         progressMessage: String,
         action: @MainActor (any RuntimeTestKitControlling, String) async throws -> RuntimeTestKitSession?,
-        successMessage: (String) -> String
+        successMessage: (String) -> String,
+        followSessionUntilTerminal: Bool = false
     ) async {
         guard let testKitController else {
             message = RuntimeTestPanelText.testKitUnavailable
@@ -322,12 +325,44 @@ extension RuntimeViewModel {
         do {
             let session = try await action(testKitController, sessionID)
             applyTestKitStatus(await testKitController.loadTestKitStatus())
+            if followSessionUntilTerminal, session != nil {
+                await refreshTestKitSessionUntilTerminal(sessionID: sessionID, controller: testKitController)
+            }
             let actionMessage = session.map { successMessage($0.id) }
                 ?? RuntimeTestPanelText.noActiveSession
             recordTestKitActionMessage(actionMessage, tone: session == nil ? .failure : .neutral)
             message = actionMessage
         } catch {
             await applyTestKitActionFailure(error, controller: testKitController)
+        }
+    }
+
+    private func refreshTestKitSessionUntilTerminal(
+        sessionID: String,
+        controller: any RuntimeTestKitControlling
+    ) async {
+        for _ in 0..<20 {
+            let status = await controller.loadTestKitStatus()
+            applyTestKitStatus(status)
+            guard let session = status.sessions.first(where: { $0.id == sessionID }) else {
+                return
+            }
+            if RuntimeTestKitSessionStatePolicy.isTerminal(session.state) {
+                return
+            }
+            if !testKitSessionVitalFinalizationIsPending(session) {
+                return
+            }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+    }
+
+    private func testKitSessionVitalFinalizationIsPending(_ session: RuntimeTestKitSession) -> Bool {
+        switch RuntimeTestKitSessionStatePolicy.normalizedState(session.state) {
+        case "stopping", "finalizing-vital", "uploading":
+            return true
+        default:
+            return false
         }
     }
 
@@ -418,6 +453,51 @@ extension RuntimeViewModel {
         }
     }
 
+    func uploadVitalFilesFromTestTab() async {
+        guard let testKitController else {
+            message = RuntimeTestPanelText.testKitUnavailable
+            recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
+            return
+        }
+        guard let uploader = testKitController as? any RuntimeTestKitVitalFileUploading else {
+            let errorMessage = RuntimeTestKitVitalFileUploadError.uploadNotAvailable.localizedDescription
+            recordTestKitActionMessage(errorMessage, tone: .failure)
+            message = errorMessage
+            return
+        }
+        guard let proxyPort = status.proxyPort else {
+            let errorMessage = RuntimeTestKitVitalFileUploadError.missingProxyPort.localizedDescription
+            recordTestKitActionMessage(errorMessage, tone: .failure)
+            message = errorMessage
+            return
+        }
+
+        let selectedFiles = nativeShell.chooseVitalFiles(prompt: RuntimeTestPanelText.choosingVitalFiles)
+        guard !selectedFiles.isEmpty else {
+            return
+        }
+
+        isRunningTestKitAction = true
+        defer { isRunningTestKitAction = false }
+
+        recordTestKitActionMessage(RuntimeTestPanelText.uploadingVitalFiles)
+        message = RuntimeTestPanelText.uploadingVitalFiles
+        do {
+            let summary = try await uploader.uploadVitalFiles(RuntimeTestKitVitalFileUploadRequest(
+                filePaths: selectedFiles.map(\.path),
+                vitalServerBaseURL: AppConstants.Product.vitalServerURL(proxyPort: proxyPort),
+                endpoint: "/upload",
+                registerBeds: true
+            ))
+            applyTestKitStatus(await testKitController.loadTestKitStatus())
+            let summaryMessage = RuntimeTestPanelText.uploadedVitalFiles(summary)
+            recordTestKitActionMessage(summaryMessage, tone: summary.failedCount > 0 ? .failure : .neutral)
+            message = summaryMessage
+        } catch {
+            await applyTestKitActionFailure(error, controller: testKitController)
+        }
+    }
+
     private func testKitStartRequest() -> RuntimeTestKitVirtualRecorderStartRequest {
         testKitPresentationPolicy.startRequest(RuntimeTestKitStartInput(
             status: testKitStatus,
@@ -439,7 +519,10 @@ extension RuntimeViewModel {
     }
 
     private var normalizedTestKitBedCount: Int {
-        testKitPresentationPolicy.normalizedBedCount(testKitBedCount)
+        guard testKitAppendRandomBedSuffix else {
+            return 1
+        }
+        return testKitPresentationPolicy.normalizedBedCount(testKitBedCount)
     }
 
     private var normalizedTestKitBedPrefix: String {

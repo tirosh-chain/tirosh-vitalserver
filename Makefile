@@ -44,7 +44,7 @@ include make/vm.mk
 .PHONY: \
 	dist/dmg/release dist/pkg/release dist/update/release \
 	dist/update/verify/release dist/update/release/smoke dist/update/release/apply-smoke dist/image-update/release \
-	dist/image-update/verify/release dist/image-update/release/smoke dist/image-update/release/apply-smoke dist/dmg/dev dist/dmg/dev/artifact-verify dist/dmg/dev/compile dist/dmg/dev/review dist/dmg/dev/runtime-smoke dist/dmg/dev/verify \
+	dist/image-update/verify/release dist/image-update/release/smoke dist/image-update/release/apply-smoke dist/dmg/dev dist/dmg/dev/all dist/dmg/dev/compile dist/dmg/dev/verify \
 	dist/pkg/dev dist/pkg/dev/compile dist/pkg/dev/review dist/pkg/dev/runtime-smoke dist/pkg/dev/verify dist/pkg/verify/dev \
 	dist/dmg/release/review dist/dmg/release/verify dist/pkg/release/review dist/pkg/release/verify \
 	dist/update/dev dist/update/verify/dev dist/update/dev/smoke dist/update/dev/apply-smoke \
@@ -74,10 +74,8 @@ dist/image-update/verify/release: internal/vm/image-update/verify/release
 dist/image-update/release/smoke: internal/vm/image-update/smoke/release
 dist/image-update/release/apply-smoke: internal/vm/image-update/apply-smoke/release
 dist/dmg/dev: internal/vm/dmg/dev
-dist/dmg/dev/review: internal/vm/dmg/dev/review
+dist/dmg/dev/all: internal/vm/dmg/dev/all
 dist/dmg/dev/compile: internal/vm/dmg/dev/compile
-dist/dmg/dev/artifact-verify: internal/vm/dmg/dev/artifact-verify
-dist/dmg/dev/runtime-smoke: internal/vm/dmg/dev/runtime-smoke
 dist/dmg/dev/verify: internal/vm/dmg/dev/verify
 dist/pkg/dev: internal/vm/pkg/dev
 dist/pkg/dev/compile: internal/vm/pkg/dev/compile
@@ -269,6 +267,7 @@ help/dist:
 	@printf "  make dist/{pkg|dmg}/release/verify\n"
 	@printf "  make dist/{update|image-update}/verify/{dev|release}\n"
 	@printf "  make dist/{pkg|dmg}/dev/compile\n"
+	@printf "  make dist/dmg/dev/all\n"
 	@printf "  make dist/{pkg|dmg|update|image-update}/{dev|release} [VM_RELEASE_BRANCH=main]\n"
 	@printf "  make dist/{update|image-update}/{dev|release}/smoke\n"
 	@printf "  make dist/troubleshooting/{dev|release}/verify\n"
@@ -278,7 +277,8 @@ help/dist:
 	@printf "VERIFY TARGETS\n"
 	@printf "  dist/pkg/dev/verify           Run package/PWA review, build dev pkg from clean rootfs, and run runtime smoke\n"
 	@printf "  dist/pkg/verify/dev           Alias for dist/pkg/dev/verify\n"
-	@printf "  dist/dmg/dev/verify           Run review, compile/artifact verify, and runtime smoke\n"
+	@printf "  dist/dmg/dev/verify           Verify existing dev DMG artifact and run golden runtime smoke\n"
+	@printf "  dist/dmg/dev/all              Run dev DMG review, clean compile, artifact verify, and runtime smoke\n"
 	@printf "  dist/pkg/release/verify       Run review, build release pkg, and run runtime smoke\n"
 	@printf "  dist/dmg/release/verify       Run review, build release dmg, and run runtime smoke\n"
 	@printf "  dist/update/verify/dev        Verify development product update bundle\n"
@@ -305,11 +305,8 @@ help/dist:
 	@printf "  dist/pkg/dev/runtime-smoke    Validate golden runtime boot contract for dev pkg\n"
 	@printf "  dist/pkg/release              Build release pkg from clean golden rootfs\n"
 	@printf "  dist/pkg/release/review       Run the shared release review gate\n"
-	@printf "  dist/dmg/dev                  Build development installer dmg\n"
-	@printf "  dist/dmg/dev/review           Run package/PWA/Swift/devtools review checks used by dev DMG verify\n"
-	@printf "  dist/dmg/dev/compile          Build development dmg from clean rootfs and verify the DMG artifact\n"
-	@printf "  dist/dmg/dev/artifact-verify  Verify generated dev DMG readback layout and tools\n"
-	@printf "  dist/dmg/dev/runtime-smoke    Validate golden runtime boot contract for dev dmg\n"
+	@printf "  dist/dmg/dev                  Build development installer dmg with reusable rootfs cache\n"
+	@printf "  dist/dmg/dev/compile          Build development dmg from clean rootfs\n"
 	@printf "  dist/dmg/release              Build release installer dmg from clean golden rootfs\n"
 	@printf "  dist/dmg/release/review       Run the shared release review gate\n"
 	@printf "  dist/update/dev               Build development product update bundle\n"

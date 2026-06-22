@@ -8,10 +8,10 @@ import {
 
 describe("console request builders", () => {
   it("builds TestKit bed creation requests with Swift decoder defaults", () => {
-    expect(testKitCreateBedsRequest(1, "testkit-bed")).toEqual({
+    expect(testKitCreateBedsRequest(1, "testbed")).toEqual({
       count: 1,
       roomNames: [],
-      prefix: "testkit-bed",
+      prefix: "testbed",
       adminUserId: "admin"
     });
   });

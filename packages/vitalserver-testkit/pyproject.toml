@@ -8,6 +8,7 @@ dependencies = [
   "pydantic>=2.12,<3",
   "python-socketio[client]>=4.6,<5",
   "uvicorn>=0.32,<1",
+  "vitaldb>=1.7,<2",
 ]
 
 [project.scripts]

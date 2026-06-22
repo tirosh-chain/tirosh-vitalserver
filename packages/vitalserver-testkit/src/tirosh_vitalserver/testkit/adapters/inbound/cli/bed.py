@@ -34,7 +34,7 @@ def add_bed_parsers(
     )
     parser.add_argument(
         "--prefix",
-        default="testkit-bed",
+        default="testbed",
         help="Room name prefix",
     )
     parser.add_argument(

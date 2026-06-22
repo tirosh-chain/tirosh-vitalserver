@@ -192,6 +192,33 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
         XCTAssertFalse(plan.effects.contains(.restartRuntimeServices))
     }
 
+    func testRestartPolicyRequiresContainerServicesReconcileForRedisRelayChange() throws {
+        let harness = Harness()
+
+        let plan = try harness.useCase.plan(
+            ConfigureRuntimeRequest(
+                changes: [
+                    .redisRelay(ConfigureRuntimeRedisRelaySettings(enabled: true)),
+                ],
+                restart: true
+            ),
+            context: harness.context,
+            currentVMConfig: harness.vmConfig,
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
+        )
+
+        XCTAssertTrue(plan.restart)
+        XCTAssertEqual(plan.restartRequirement, .containerServices)
+        XCTAssertTrue(plan.effects.contains(.writeRedisRelayConfiguration(
+            ConfigureRuntimeRedisRelaySettings(enabled: true)
+        )))
+        XCTAssertTrue(plan.effects.contains(.reconcileGuestComposeServices))
+        XCTAssertFalse(plan.effects.contains(.restartRuntimeServices))
+        XCTAssertEqual(plan.logMessage, "runtime configuration updated restart=true restartRequirement=containerServices")
+    }
+
     func testRejectsDiskShrinkAgainstExplicitCurrentDiskSize() {
         let harness = Harness()
 

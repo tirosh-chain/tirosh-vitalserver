@@ -1,7 +1,7 @@
 {
   "channel": "dev",
-  "helperVersion": "0.1.15",
-  "releaseLabel": "0.1.15-dev",
+  "helperVersion": "0.1.16",
+  "releaseLabel": "0.1.16-dev",
   "minUpdaterVersion": "0.1.15",
   "targetPlatform": "macos-arm64",
   "distribution": {
@@ -28,6 +28,11 @@
     "vitalDBObserver": {
       "displayName": "VitalDB observer",
       "image": "vitaldb-observer:0.1.0",
+      "version": "0.1.0"
+    },
+    "redisRelay": {
+      "displayName": "Redis Relay",
+      "image": "vitalserver-redis-relay:0.1.0",
       "version": "0.1.0"
     },
     "testkit": {

@@ -17,12 +17,27 @@ public protocol RuntimeGuestGateway {
     func removeDatastoreRepairResult() throws
     func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws
     func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>
+    func removeGuestComposeReconcileResult() throws
+    func writeGuestComposeReconcileRequest(_ request: RuntimeGuestComposeReconcileRequest) throws
+    func loadGuestComposeReconcileResultDocument() -> RuntimeGuestDocumentLoadResult<GuestComposeReconcileResultDocument>
     func removeRedisRestoreResult() throws
     func writeRedisRestoreRequest(_ request: RedisRestoreRequestDocument) throws
     func loadRedisRestoreResultDocument() -> RuntimeGuestDocumentLoadResult<RedisRestoreResultDocument>
 }
 
 public extension RuntimeGuestGateway {
+    func removeGuestComposeReconcileResult() throws {
+        throw RuntimeGuestCapabilityCheckError.missingCapability("reconcile-compose")
+    }
+
+    func writeGuestComposeReconcileRequest(_ request: RuntimeGuestComposeReconcileRequest) throws {
+        throw RuntimeGuestCapabilityCheckError.missingCapability("reconcile-compose")
+    }
+
+    func loadGuestComposeReconcileResultDocument() -> RuntimeGuestDocumentLoadResult<GuestComposeReconcileResultDocument> {
+        .failed("guest compose reconcile gateway is unavailable")
+    }
+
     func removeRedisRestoreResult() throws {
         throw RuntimeGuestCapabilityCheckError.missingCapability("redis-restore")
     }

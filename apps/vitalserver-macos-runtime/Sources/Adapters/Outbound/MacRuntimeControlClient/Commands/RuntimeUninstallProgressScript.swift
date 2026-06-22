@@ -224,6 +224,14 @@ enum RuntimeUninstallProgressScript {
           rm -f "${worker_pid_file}" 2>/dev/null || true
         }
 
+        mark_missing_terminal_failure() {
+          if ! has_terminal_marker; then
+            echo "${failed_marker_prefix}\(missingMarkerStatus) ${marker_run_id}" >> "${log_file}"
+            write_result "failed" 1 false "uninstall worker exited before terminal marker" "not-checked"
+          fi
+          cleanup_pid_file
+        }
+
         mark_signal_failure() {
           signal_name="$1"
           if ! has_terminal_marker; then
@@ -236,7 +244,7 @@ enum RuntimeUninstallProgressScript {
 
         trap 'mark_signal_failure HUP' HUP
         trap 'mark_signal_failure TERM' TERM
-        trap 'cleanup_pid_file' EXIT
+        trap 'mark_missing_terminal_failure' EXIT
 
         {
           echo "${started_marker}"

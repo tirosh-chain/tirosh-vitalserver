@@ -12,6 +12,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
     public let updateShutdownResultURL: URL
     public let datastoreRepairRequestURL: URL
     public let datastoreRepairResultURL: URL
+    public let guestComposeReconcileRequestURL: URL
+    public let guestComposeReconcileResultURL: URL
     public let redisRestoreRequestURL: URL
     public let redisRestoreResultURL: URL
     private let fileStore: RuntimeFileReading & RuntimeFileWriting
@@ -25,6 +27,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         updateShutdownResultURL: URL,
         datastoreRepairRequestURL: URL,
         datastoreRepairResultURL: URL,
+        guestComposeReconcileRequestURL: URL,
+        guestComposeReconcileResultURL: URL,
         redisRestoreRequestURL: URL,
         redisRestoreResultURL: URL,
         fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore()
@@ -37,6 +41,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         self.updateShutdownResultURL = updateShutdownResultURL
         self.datastoreRepairRequestURL = datastoreRepairRequestURL
         self.datastoreRepairResultURL = datastoreRepairResultURL
+        self.guestComposeReconcileRequestURL = guestComposeReconcileRequestURL
+        self.guestComposeReconcileResultURL = guestComposeReconcileResultURL
         self.redisRestoreRequestURL = redisRestoreRequestURL
         self.redisRestoreResultURL = redisRestoreResultURL
         self.fileStore = fileStore
@@ -111,6 +117,24 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         decode(DatastoreRepairResultDocument.self, from: datastoreRepairResultURL)
     }
 
+    public func removeGuestComposeReconcileResult() throws {
+        try removeFileIfPresent(guestComposeReconcileResultURL)
+    }
+
+    public func writeGuestComposeReconcileRequest(_ request: RuntimeGuestComposeReconcileRequest) throws {
+        try write(
+            GuestComposeReconcileRequestDocument(
+                requestId: request.id,
+                requestedAt: request.requestedAt
+            ),
+            to: guestComposeReconcileRequestURL
+        )
+    }
+
+    public func loadGuestComposeReconcileResultDocument() -> RuntimeGuestDocumentLoadResult<GuestComposeReconcileResultDocument> {
+        decode(GuestComposeReconcileResultDocument.self, from: guestComposeReconcileResultURL)
+    }
+
     public func removeRedisRestoreResult() throws {
         try removeFileIfPresent(redisRestoreResultURL)
     }
@@ -171,4 +195,11 @@ private struct DatastoreRepairRequestDocument: Encodable {
     let requestId: String
     let requestedAt: String
     let operation = "repair-datastore"
+}
+
+private struct GuestComposeReconcileRequestDocument: Encodable {
+    let schemaVersion = 1
+    let requestId: String
+    let requestedAt: String
+    let operation = "reconcile-compose"
 }

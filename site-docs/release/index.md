@@ -23,6 +23,7 @@ Vital Server Helper는 VitalServer 자체를 대체하지 않습니다. VitalSer
 |---|---|
 | runtime 상태 | Helper app과 Runtime Control API의 상태 화면 |
 | recorder/bed activity | Recorders/Beds 화면과 observability event |
+| Redis relay | Settings의 Redis relay 설정과 Advanced 상태 확인 |
 | 지원 자료 | logs, runtime event, support bundle |
 | update 적용 | Product Update bundle 검증과 적용 흐름 |
 | 제거와 재설치 복구 | Clean Uninstall and Reset for Reinstall |

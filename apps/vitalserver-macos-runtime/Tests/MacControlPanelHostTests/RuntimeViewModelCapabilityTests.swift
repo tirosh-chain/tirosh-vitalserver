@@ -1159,6 +1159,60 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.testKitActionMessageTone, .neutral)
     }
 
+    func testCreateTestKitBedsCanUseExactBedNameWithoutRandomSuffix() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        viewModel.testKitBedPrefix = "MORC03"
+        viewModel.testKitBedCount = 4
+        viewModel.testKitAppendRandomBedSuffix = false
+
+        await viewModel.createTestKitBeds()
+
+        XCTAssertEqual(viewModel.testKitStatus.beds.map(\.roomName), ["MORC03"])
+        XCTAssertEqual(testKit.createdRequests.last?.count, 1)
+        XCTAssertEqual(testKit.createdRequests.last?.prefix, "MORC03")
+        XCTAssertEqual(testKit.createdRequests.last?.appendRandomSuffix, false)
+    }
+
+    func testManualVitalUploadSelectsFilesAndUsesHostProxyUploadURL() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        client.status = RuntimeStatus(proxyPort: 18080)
+        let testKit = FakeTestKitController()
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.vitalFileURLs = [
+            URL(fileURLWithPath: "/data/MORC03_260617_120000.vital"),
+            URL(fileURLWithPath: "/data/MORC04_260617_120100.vital"),
+        ]
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            initialStatus: client.status,
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        await viewModel.uploadVitalFilesFromTestTab()
+
+        XCTAssertEqual(nativeShell.chooseVitalFilesPrompts, [RuntimeTestPanelText.choosingVitalFiles])
+        XCTAssertEqual(testKit.vitalUploadRequests.count, 1)
+        XCTAssertEqual(testKit.vitalUploadRequests[0].filePaths, [
+            "/data/MORC03_260617_120000.vital",
+            "/data/MORC04_260617_120100.vital",
+        ])
+        XCTAssertEqual(testKit.vitalUploadRequests[0].vitalServerBaseURL, "http://127.0.0.1:18080/")
+        XCTAssertEqual(testKit.vitalUploadRequests[0].endpoint, "/upload")
+        XCTAssertEqual(viewModel.testKitActionMessage, "Uploaded 2/2 .vital files · beds 2 · failed 0")
+        XCTAssertEqual(viewModel.testKitActionMessageTone, .neutral)
+    }
+
     func testTestKitActionsReportUnavailableOrInvalidInputs() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let viewModel = RuntimeViewModel(
@@ -1510,7 +1564,7 @@ private struct NoopHealthNotifications: HealthNotifying {
 }
 
 @MainActor
-private final class FakeTestKitController: RuntimeTestKitControlling {
+private final class FakeTestKitController: RuntimeTestKitControlling, RuntimeTestKitVitalFileUploading {
     var status = RuntimeTestKitStatus(enabled: true, state: .running)
     var startedRequests: [RuntimeTestKitVirtualRecorderStartRequest] = []
     var resetBedsCount = 0
@@ -1523,16 +1577,28 @@ private final class FakeTestKitController: RuntimeTestKitControlling {
     var restartedSessionIDs: [String?] = []
     var deletedSessionIDs: [String?] = []
     var deletedRecorderVRCodes: [String] = []
+    var createdRequests: [RuntimeTestKitCreateBedsRequest] = []
+    var vitalUploadRequests: [RuntimeTestKitVitalFileUploadRequest] = []
 
     func loadTestKitStatus() async -> RuntimeTestKitStatus {
         status
     }
 
     func createTestKitBeds(_ request: RuntimeTestKitCreateBedsRequest) async throws -> [RuntimeTestKitBed] {
-        let count = request.count ?? request.roomNames.count
-        let prefix = request.prefix
-        let beds = (0..<count).map { index in
-            RuntimeTestKitBed(roomName: "\(prefix)-\(index + 1)", bedID: "bed-\(index + 1)")
+        createdRequests.append(request)
+        let beds: [RuntimeTestKitBed]
+        if !request.roomNames.isEmpty {
+            beds = request.roomNames.enumerated().map { index, roomName in
+                RuntimeTestKitBed(roomName: roomName, bedID: "bed-\(index + 1)")
+            }
+        } else if request.appendRandomSuffix {
+            let count = request.count ?? 0
+            let prefix = request.prefix
+            beds = (0..<count).map { index in
+                RuntimeTestKitBed(roomName: "\(prefix)-\(index + 1)", bedID: "bed-\(index + 1)")
+            }
+        } else {
+            beds = [RuntimeTestKitBed(roomName: request.prefix, bedID: "bed-1")]
         }
         status.beds = beds
         return beds
@@ -1619,6 +1685,34 @@ private final class FakeTestKitController: RuntimeTestKitControlling {
         status.sessions = []
         status.activeSession = nil
         return status
+    }
+
+    func uploadVitalFiles(
+        _ request: RuntimeTestKitVitalFileUploadRequest
+    ) async throws -> RuntimeTestKitVitalFileUploadSummary {
+        vitalUploadRequests.append(request)
+        let bedRoomNames = try RuntimeTestKitVitalFileUploadPolicy.uniqueBedRoomNames(
+            filePaths: request.filePaths
+        )
+        let files = request.filePaths.map { path in
+            let filename = URL(fileURLWithPath: path).lastPathComponent
+            return RuntimeTestKitVitalFileUploadFileResult(
+                path: path,
+                filename: filename,
+                bedRoomName: RuntimeTestKitVitalFileUploadPolicy.bedRoomName(filename: filename) ?? "",
+                sizeBytes: 128,
+                statusCode: 200,
+                ok: true,
+                elapsedSeconds: 0.1
+            )
+        }
+        status.beds = bedRoomNames.enumerated().map { index, roomName in
+            RuntimeTestKitBed(roomName: roomName, bedID: "bed-\(index + 1)")
+        }
+        return RuntimeTestKitVitalFileUploadSummary(
+            files: files,
+            bedRoomNames: bedRoomNames
+        )
     }
 
     private func session(for sessionID: String?, state: String) -> RuntimeTestKitSession? {
@@ -1773,7 +1867,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return success()
     }
 
-    func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
+    func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult {
         success()
     }
 
@@ -1916,11 +2010,13 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     var directoryURL: URL?
     var updateBundleURL: URL?
     var redisBackupArchiveURL: URL?
+    var vitalFileURLs: [URL] = []
     var logExportDestinationURL: URL?
     var logExportDestinationValidationMessages: [String: String] = [:]
     var chooseDirectoryPrompts: [String] = []
     var chooseUpdateBundlePrompts: [String] = []
     var chooseRedisBackupArchivePrompts: [String] = []
+    var chooseVitalFilesPrompts: [String] = []
     var chooseLogExportDestinationPrompts: [String] = []
     var openedFileURLs: [URL] = []
     var openedWebURLs: [URL] = []
@@ -1948,6 +2044,10 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
         chooseRedisBackupArchivePrompts.count
     }
 
+    var chooseVitalFilesCount: Int {
+        chooseVitalFilesPrompts.count
+    }
+
     var chooseLogExportDestinationCount: Int {
         chooseLogExportDestinationPrompts.count
     }
@@ -1965,6 +2065,11 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     func chooseRedisBackupArchive(prompt: String) -> URL? {
         chooseRedisBackupArchivePrompts.append(prompt)
         return redisBackupArchiveURL
+    }
+
+    func chooseVitalFiles(prompt: String) -> [URL] {
+        chooseVitalFilesPrompts.append(prompt)
+        return vitalFileURLs
     }
 
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? {

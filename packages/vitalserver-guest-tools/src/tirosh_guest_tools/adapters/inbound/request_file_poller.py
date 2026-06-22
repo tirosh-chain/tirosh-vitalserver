@@ -50,6 +50,11 @@ REQUESTS: list[tuple[Path, str, str]] = [
         RuntimeService.REDIS_RESTORE.value,
         OperationName.REDIS_RESTORE.value,
     ),
+    (
+        RUNTIME_DIR / RuntimeFileName.RECONCILE_COMPOSE_REQUEST.value,
+        RuntimeService.RECONCILE_COMPOSE.value,
+        OperationName.RECONCILE_COMPOSE.value,
+    ),
 ]
 
 

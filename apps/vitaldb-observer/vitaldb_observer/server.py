@@ -5,6 +5,7 @@ import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from urllib.parse import urlparse
 
 from .collector import VitalDBCollector
 from .config import ObserverSettings, load_settings
@@ -35,13 +36,14 @@ class ObserverRequestHandler(BaseHTTPRequestHandler):
     server: ObserverServer
 
     def do_GET(self) -> None:
-        if self.path == "/health":
+        parsed = urlparse(self.path)
+        if parsed.path == "/health":
             self._json({"status": "ok", "observedAt": utc_now_iso()})
             return
-        if self.path == "/ready":
+        if parsed.path == "/ready":
             self._ready()
             return
-        if self.path == "/api/v1/observations":
+        if parsed.path == "/api/v1/observations":
             self._observations()
             return
         self._json({"error": "not_found"}, status=HTTPStatus.NOT_FOUND)

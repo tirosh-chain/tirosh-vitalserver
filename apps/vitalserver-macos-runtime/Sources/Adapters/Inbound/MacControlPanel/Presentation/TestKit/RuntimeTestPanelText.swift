@@ -1,4 +1,5 @@
 import Errors
+import RuntimeControl
 enum RuntimeTestPanelText {
     static let summary = "Test"
     static let description = "Development and verification tools for exercising VitalServer with virtual recorders."
@@ -25,6 +26,9 @@ enum RuntimeTestPanelText {
     static let refreshedStatus = "Refreshed TestKit status."
     static let orphanCleanup = "Orphan cleanup"
     static let orphanCleanupDescription = "Delete a VRecorder that remains in VitalServer even when no TestKit session is available."
+    static let manualVitalUploadDescription = "Select local .vital files. TestKit registers beds from filenames, then uploads each file through VitalServer /upload."
+    static let choosingVitalFiles = "Choose .vital files"
+    static let uploadingVitalFiles = "Uploading .vital files..."
     static let missingVrcode = "Enter a VRecorder code to delete."
     static let stopSessionsBeforeResettingBeds = "Stop or delete active TestKit sessions before resetting beds."
     static let sharedContainerIPWarning = """
@@ -97,5 +101,9 @@ enum RuntimeTestPanelText {
 
     static func resetSessions(_ count: Int) -> String {
         "Reset \(count) TestKit sessions."
+    }
+
+    static func uploadedVitalFiles(_ summary: RuntimeTestKitVitalFileUploadSummary) -> String {
+        "Uploaded \(summary.uploadedCount)/\(summary.files.count) .vital files · beds \(summary.bedRoomNames.count) · failed \(summary.failedCount)"
     }
 }

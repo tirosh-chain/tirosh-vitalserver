@@ -100,13 +100,40 @@ struct GuestRuntimeSettings: Decodable {
 public struct RuntimeControlSettingsDocument: Codable, Equatable {
     public let logArchiveRetentionDays: Int
     public let logArchiveMaximumGiB: Int
+    public let redisRelay: RuntimeRedisRelaySettings
+
+    enum CodingKeys: String, CodingKey {
+        case logArchiveRetentionDays
+        case logArchiveMaximumGiB
+        case redisRelay
+    }
 
     public init(
         logArchiveRetentionDays: Int = RuntimeSettingsInitialValues.logArchiveRetentionDays,
-        logArchiveMaximumGiB: Int = RuntimeSettingsInitialValues.logArchiveMaximumGiB
+        logArchiveMaximumGiB: Int = RuntimeSettingsInitialValues.logArchiveMaximumGiB,
+        redisRelay: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings()
     ) {
         self.logArchiveRetentionDays = logArchiveRetentionDays
         self.logArchiveMaximumGiB = logArchiveMaximumGiB
+        self.redisRelay = redisRelay
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            logArchiveRetentionDays: try container.decodeIfPresent(
+                Int.self,
+                forKey: .logArchiveRetentionDays
+            ) ?? RuntimeSettingsInitialValues.logArchiveRetentionDays,
+            logArchiveMaximumGiB: try container.decodeIfPresent(
+                Int.self,
+                forKey: .logArchiveMaximumGiB
+            ) ?? RuntimeSettingsInitialValues.logArchiveMaximumGiB,
+            redisRelay: try container.decodeIfPresent(
+                RuntimeRedisRelaySettings.self,
+                forKey: .redisRelay
+            ) ?? RuntimeRedisRelaySettings()
+        )
     }
 
     static func loadResult(
@@ -133,7 +160,8 @@ public struct RuntimeControlSettingsDocument: Codable, Equatable {
     var runtimeSettingsReadInput: RuntimeLogArchiveSettingsReadInput {
         RuntimeLogArchiveSettingsReadInput(
             retentionDays: logArchiveRetentionDays,
-            maximumGiB: logArchiveMaximumGiB
+            maximumGiB: logArchiveMaximumGiB,
+            redisRelay: redisRelay
         )
     }
 }

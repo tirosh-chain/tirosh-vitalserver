@@ -2,6 +2,20 @@ import Foundation
 import Contracts
 import Errors
 
+public enum RuntimeUninstallMode: String, Codable, Equatable, Sendable {
+    case standard
+    case clean
+    case forceCleanUninstaller
+
+    public var clean: Bool {
+        self != .standard
+    }
+
+    public var forceClean: Bool {
+        self == .forceCleanUninstaller
+    }
+}
+
 @MainActor
 public protocol RuntimeControlClient {
     var capabilities: RuntimeControlCapabilities { get }
@@ -16,7 +30,7 @@ public protocol RuntimeControlClient {
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
-    func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult
+    func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult
     func repairProxy() async throws -> RuntimeCommandResult
     func repairDatastore() async throws -> RuntimeCommandResult

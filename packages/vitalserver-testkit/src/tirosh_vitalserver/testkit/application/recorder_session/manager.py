@@ -9,6 +9,8 @@ from dataclasses import replace
 
 from tirosh_vitalserver.testkit.application.ports import (
     RecorderManagementPort,
+    SessionVitalFileExporterPort,
+    SessionVitalFileUploaderPort,
     SocketIoConnectorPort,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
@@ -18,6 +20,14 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderSessionScenario,
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
+    VirtualRecorderVitalUploadStatus,
+)
+from tirosh_vitalserver.testkit.application.recorder_session.policy import (
+    session_is_active_state,
+    vital_state_upload_blocked,
+    vital_state_upload_failed,
+    vital_state_upload_succeeded,
+    vital_state_uploading,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.session import (
     VirtualRecorderSession,
@@ -42,10 +52,14 @@ class VirtualRecorderSessionManager:
         connector: SocketIoConnectorPort,
         recorder_management: RecorderManagementPort | None = None,
         session_store: VirtualRecorderSessionStorePort | None = None,
+        vital_file_exporter: SessionVitalFileExporterPort | None = None,
+        vital_file_uploader: SessionVitalFileUploaderPort | None = None,
     ) -> None:
         self._connector = connector
         self._recorder_management = recorder_management
         self._session_store = session_store
+        self._vital_file_exporter = vital_file_exporter
+        self._vital_file_uploader = vital_file_uploader
         self._sessions: dict[str, VirtualRecorderSession] = {}
         self._stored_sessions = load_stored_sessions(session_store)
         self._lock = threading.RLock()
@@ -70,6 +84,8 @@ class VirtualRecorderSessionManager:
                 session_id=session_id,
                 request=request,
                 connector=self._connector,
+                vital_file_exporter=self._vital_file_exporter,
+                vital_file_uploader=self._vital_file_uploader,
                 snapshot_handler=self._save_snapshot,
             )
             self._sessions[session_id] = session
@@ -423,6 +439,93 @@ class VirtualRecorderSessionManager:
 
         return deleted
 
+    def retry_vital_upload(
+        self,
+        session_id: str,
+    ) -> VirtualRecorderSessionSnapshot | None:
+        """Retry upload for a generated session `.vital` artifact."""
+
+        session = self._session(session_id)
+        if session is not None:
+            snapshot = session.retry_vital_upload()
+            self._save_snapshot(snapshot)
+            return snapshot
+
+        with self._lock:
+            stored_snapshot = self._stored_sessions.get(session_id)
+
+        if stored_snapshot is None:
+            emit_testkit_event(
+                "session.vital_upload_retry.missing",
+                level=logging.WARNING,
+                session_id=session_id,
+            )
+            return None
+
+        artifact = stored_snapshot.vital_state.artifact
+        if artifact is None:
+            failed_snapshot = stored_snapshot_with_upload_failure(
+                stored_snapshot,
+                "vital artifact is not ready",
+                status=VirtualRecorderVitalUploadStatus.BLOCKED,
+            )
+            self._save_snapshot(failed_snapshot)
+            return failed_snapshot
+
+        uploading_snapshot = replace(
+            stored_snapshot,
+            state=VirtualRecorderSessionState.UPLOADING,
+            vital_state=vital_state_uploading(stored_snapshot.vital_state),
+        )
+        self._save_snapshot(uploading_snapshot)
+
+        if self._vital_file_uploader is None:
+            failed_snapshot = stored_snapshot_with_upload_failure(
+                uploading_snapshot,
+                "vital file uploader is not configured",
+            )
+            self._save_snapshot(failed_snapshot)
+            return failed_snapshot
+
+        try:
+            result = self._vital_file_uploader.upload_session_vital_file(
+                target_url=stored_snapshot.request.target_url,
+                artifact_path=artifact.path,
+                vrcode=stored_snapshot.request.vrcode,
+                endpoint=stored_snapshot.request.vital_upload_endpoint,
+            )
+        except Exception as exc:
+            failed_snapshot = stored_snapshot_with_upload_failure(
+                uploading_snapshot,
+                str(exc),
+            )
+            self._save_snapshot(failed_snapshot)
+            return failed_snapshot
+
+        if result.ok:
+            uploaded_snapshot = replace(
+                uploading_snapshot,
+                state=VirtualRecorderSessionState.UPLOADED,
+                vital_state=vital_state_upload_succeeded(
+                    uploading_snapshot.vital_state,
+                    result,
+                ),
+            )
+            self._save_snapshot(uploaded_snapshot)
+            return uploaded_snapshot
+
+        failed_snapshot = replace(
+            uploading_snapshot,
+            state=VirtualRecorderSessionState.UPLOAD_FAILED,
+            vital_state=vital_state_upload_failed(
+                uploading_snapshot.vital_state,
+                error=result.error or "vital upload failed",
+                result=result,
+            ),
+        )
+        self._save_snapshot(failed_snapshot)
+        return failed_snapshot
+
     def delete_vrecorder(
         self,
         target_url: str,
@@ -559,10 +662,7 @@ def load_stored_sessions(
 def session_is_active(snapshot: VirtualRecorderSessionSnapshot) -> bool:
     """Return whether a session still owns runtime resources."""
 
-    return snapshot.state not in (
-        VirtualRecorderSessionState.STOPPED,
-        VirtualRecorderSessionState.FAILED,
-    )
+    return session_is_active_state(snapshot.state)
 
 
 def restart_request(
@@ -651,3 +751,24 @@ def snapshot_with_stop_timeout(
         f"after {timeout_seconds:g}s; cleanup was not run."
     )
     return replace(snapshot, error=message)
+
+
+def stored_snapshot_with_upload_failure(
+    snapshot: VirtualRecorderSessionSnapshot,
+    error: str,
+    *,
+    status: VirtualRecorderVitalUploadStatus = VirtualRecorderVitalUploadStatus.FAILED,
+) -> VirtualRecorderSessionSnapshot:
+    """Return a stored snapshot that preserves upload retry failure details."""
+
+    vital_state = (
+        vital_state_upload_blocked(snapshot.vital_state, error)
+        if status == VirtualRecorderVitalUploadStatus.BLOCKED
+        else vital_state_upload_failed(snapshot.vital_state, error=error)
+    )
+
+    return replace(
+        snapshot,
+        state=VirtualRecorderSessionState.UPLOAD_FAILED,
+        vital_state=vital_state,
+    )

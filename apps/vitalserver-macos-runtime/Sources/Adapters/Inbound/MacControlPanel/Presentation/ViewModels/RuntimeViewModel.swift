@@ -71,7 +71,8 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var testKitSignalProfile = RuntimeTestKitSignalProfile.normal
     @Published var testKitRecorderCount = 1
     @Published var testKitBedCount = 1
-    @Published var testKitBedPrefix = "testkit-bed"
+    @Published var testKitBedPrefix = "testbed"
+    @Published var testKitAppendRandomBedSuffix = true
     @Published var testKitIntervalSeconds = 1.0
     @Published var testKitDurationSeconds = 0.0
     @Published var testKitMaxMessages = 0
@@ -287,7 +288,7 @@ public final class RuntimeViewModel: ObservableObject {
         ].joined(separator: "|")
     }
 
-    func uninstallRuntime(clean: Bool = false) async {
+    func uninstallRuntime(mode: RuntimeUninstallMode = .standard) async {
         guard controlClient.capabilities.canUninstallRuntime else {
             message = AppConstants.StatusText.actionUnavailable
             return
@@ -296,10 +297,10 @@ public final class RuntimeViewModel: ObservableObject {
             preparingMessage: AppConstants.StatusText.uninstallPreparing,
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.uninstallRunning,
-            successMessage: clean
+            successMessage: mode.clean
                 ? AppConstants.StatusText.cleanUninstallCompleted
                 : AppConstants.StatusText.uninstallCompleted,
-            action: { try await self.controlClient.uninstallRuntime(clean: clean) }
+            action: { try await self.controlClient.uninstallRuntime(mode: mode) }
         )
         if uninstallResult.isSuccess {
             await quitAfterSuccessfulUninstall()

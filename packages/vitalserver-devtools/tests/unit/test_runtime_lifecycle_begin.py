@@ -9,8 +9,8 @@ import pytest
 from tirosh_vitalserver.devtools.adapters.macos_release import runtime_lifecycle
 from tirosh_vitalserver.devtools.application.inputs import (
     GoldenRootfsPreflightInput,
-    RuntimeControlInput,
     RootfsRunInput,
+    RuntimeControlInput,
     RuntimeVmHomeInput,
 )
 
@@ -29,7 +29,11 @@ def test_start_runtime_detached_writes_host_time_contract(
         "load_macos_release_settings",
         lambda *_: SimpleNamespace(runtime_cli=runtime_cli),
     )
-    monkeypatch.setattr(runtime_lifecycle, "running_vm_processes_for_home", lambda _: [])
+    monkeypatch.setattr(
+        runtime_lifecycle,
+        "running_vm_processes_for_home",
+        lambda _: [],
+    )
     monkeypatch.setattr(runtime_lifecycle, "process_is_running", lambda _: False)
     monkeypatch.setattr(runtime_lifecycle.time, "time", lambda: 1_780_000_000)
 
@@ -52,6 +56,11 @@ def test_start_runtime_detached_writes_host_time_contract(
         "schemaVersion": 1,
         "updatedAt": "2026-05-28T20:26:40Z",
     }
+    relay_config = tmp_path / "vm/data/deploy/redis-relay-config/redis-relay.toml"
+    assert relay_config.exists()
+    assert 'enabled = false' in relay_config.read_text(encoding="utf-8")
+    assert (tmp_path / "vm/data/deploy/redis-relay-secrets").is_dir()
+    assert (tmp_path / "vm/data/run/redis-relay-status").is_dir()
     assert launches[0][0] == [str(runtime_cli), "start"]
     assert launches[0][1]["VITALSERVER_VM_HOME"] == str(tmp_path / "vm")
     assert launches[0][1]["VITALSERVER_VM_DETACHED"] == "1"
@@ -90,6 +99,23 @@ def test_control_runtime_start_writes_host_time_contract(
     assert result == 0
     assert commands == [[str(runtime_cli), "start"]]
     assert (tmp_path / "vm/data/deploy/host-time.json").exists()
+    assert (tmp_path / "vm/data/deploy/redis-relay-config/redis-relay.toml").exists()
+    assert (tmp_path / "vm/data/deploy/redis-relay-secrets").is_dir()
+    assert (tmp_path / "vm/data/run/redis-relay-status").is_dir()
+
+
+def test_runtime_start_contract_preserves_existing_redis_relay_config(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "vm/data/deploy/redis-relay-config/redis-relay.toml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text("existing-config\n", encoding="utf-8")
+
+    runtime_lifecycle.write_default_redis_relay_contract(tmp_path / "vm")
+
+    assert config_path.read_text(encoding="utf-8") == "existing-config\n"
+    assert (tmp_path / "vm/data/deploy/redis-relay-secrets").is_dir()
+    assert (tmp_path / "vm/data/run/redis-relay-status").is_dir()
 
 
 def test_begin_golden_rootfs_run_records_runtime_data_disk_contract(
@@ -276,6 +302,67 @@ def test_golden_rootfs_preflight_rejects_unavailable_apt_snapshot(
                 expected_run_id="run-test",
             )
         )
+
+
+def test_apt_snapshot_probe_retries_transient_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+
+    class Response:
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+        def getcode(self) -> int:
+            return 200
+
+        def read(self, size: int) -> bytes:
+            assert size == 1
+            return b"x"
+
+    def urlopen(_: object, *, timeout: int) -> Response:
+        calls.append(timeout)
+        if len(calls) == 1:
+            raise TimeoutError("slow snapshot endpoint")
+        return Response()
+
+    monkeypatch.setattr(runtime_lifecycle.urllib.request, "urlopen", urlopen)
+
+    check = runtime_lifecycle.probe_apt_snapshot_url(
+        "https://snapshot.example/InRelease",
+        attempts=2,
+        timeout_seconds=30,
+        retry_delay_seconds=0,
+    )
+
+    assert check.status == runtime_lifecycle.PreflightStatus.PASSED
+    assert calls == [30, 30]
+
+
+def test_apt_snapshot_probe_preserves_unavailable_after_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def urlopen(_: object, *, timeout: int) -> object:
+        assert timeout == 30
+        raise TimeoutError("slow snapshot endpoint")
+
+    monkeypatch.setattr(runtime_lifecycle.urllib.request, "urlopen", urlopen)
+
+    check = runtime_lifecycle.probe_apt_snapshot_url(
+        "https://snapshot.example/InRelease",
+        attempts=2,
+        timeout_seconds=30,
+        retry_delay_seconds=0,
+    )
+
+    assert check.status == runtime_lifecycle.PreflightStatus.UNAVAILABLE
+    assert check.message == "Ubuntu apt snapshot endpoint is unavailable after retries"
+    assert check.detail is not None
+    assert "attempt=1" in check.detail
+    assert "attempt=2" in check.detail
 
 
 def test_golden_rootfs_preflight_rejects_invalid_rootfs_metadata(

@@ -321,6 +321,8 @@ private struct GuestGatewayURLs {
     var updateShutdownResult: URL { root.appendingPathComponent(RuntimeFileNames.updateShutdownResult) }
     var datastoreRepairRequest: URL { root.appendingPathComponent(RuntimeFileNames.datastoreRepairRequest) }
     var datastoreRepairResult: URL { root.appendingPathComponent(RuntimeFileNames.datastoreRepairResult) }
+    var guestComposeReconcileRequest: URL { root.appendingPathComponent(RuntimeFileNames.guestComposeReconcileRequest) }
+    var guestComposeReconcileResult: URL { root.appendingPathComponent(RuntimeFileNames.guestComposeReconcileResult) }
     var redisRestoreRequest: URL { root.appendingPathComponent(RuntimeFileNames.redisRestoreRequest) }
     var redisRestoreResult: URL { root.appendingPathComponent(RuntimeFileNames.redisRestoreResult) }
 
@@ -334,6 +336,8 @@ private struct GuestGatewayURLs {
             updateShutdownResultURL: updateShutdownResult,
             datastoreRepairRequestURL: datastoreRepairRequest,
             datastoreRepairResultURL: datastoreRepairResult,
+            guestComposeReconcileRequestURL: guestComposeReconcileRequest,
+            guestComposeReconcileResultURL: guestComposeReconcileResult,
             redisRestoreRequestURL: redisRestoreRequest,
             redisRestoreResultURL: redisRestoreResult,
             fileStore: fileStore
@@ -427,6 +431,8 @@ private struct GuestGatewayHarness {
     let updateShutdownResultURL: URL
     let datastoreRepairRequestURL: URL
     let datastoreRepairResultURL: URL
+    let guestComposeReconcileRequestURL: URL
+    let guestComposeReconcileResultURL: URL
     let gateway: JSONFileRuntimeGuestGateway
 
     init() throws {
@@ -440,6 +446,8 @@ private struct GuestGatewayHarness {
         updateShutdownResultURL = directory.appendingPathComponent(RuntimeFileNames.updateShutdownResult)
         datastoreRepairRequestURL = directory.appendingPathComponent(RuntimeFileNames.datastoreRepairRequest)
         datastoreRepairResultURL = directory.appendingPathComponent(RuntimeFileNames.datastoreRepairResult)
+        guestComposeReconcileRequestURL = directory.appendingPathComponent(RuntimeFileNames.guestComposeReconcileRequest)
+        guestComposeReconcileResultURL = directory.appendingPathComponent(RuntimeFileNames.guestComposeReconcileResult)
         gateway = JSONFileRuntimeGuestGateway(
             runtimeStateURL: runtimeStateURL,
             bootstrapResultURL: bootstrapResultURL,
@@ -449,6 +457,8 @@ private struct GuestGatewayHarness {
             updateShutdownResultURL: updateShutdownResultURL,
             datastoreRepairRequestURL: datastoreRepairRequestURL,
             datastoreRepairResultURL: datastoreRepairResultURL,
+            guestComposeReconcileRequestURL: guestComposeReconcileRequestURL,
+            guestComposeReconcileResultURL: guestComposeReconcileResultURL,
             redisRestoreRequestURL: directory.appendingPathComponent(RuntimeFileNames.redisRestoreRequest),
             redisRestoreResultURL: directory.appendingPathComponent(RuntimeFileNames.redisRestoreResult)
         )

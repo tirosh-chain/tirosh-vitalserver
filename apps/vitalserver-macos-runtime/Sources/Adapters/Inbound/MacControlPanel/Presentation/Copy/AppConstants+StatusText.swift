@@ -27,6 +27,7 @@ public extension AppConstants {
         public static let critical = "Critical"
         public static let running = "Running"
         public static let stopped = "Stopped"
+        public static let disabled = "Disabled"
         public static let reachable = "Reachable"
         public static let unreachable = "Unreachable"
         public static let installed = "Installed"
@@ -91,12 +92,19 @@ public extension AppConstants {
         public static let settingsApplied = "Runtime settings applied."
         public static let applySettingsConfirmation = "Apply these settings to the installed runtime?\n\nThis may update launchd services, rewrite runtime configuration, and restart the VM runtime only when a changed setting requires it and restart is enabled."
         public static let restartVMRuntimeConfirmation = "Restart the VM runtime now?\n\nVitalServer may be briefly unavailable. Saved VM settings that are waiting for restart become active after the runtime starts again."
-        public static let noVMRuntimeRestartRequired = "No VM runtime restart required for these changes."
+        public static let noRuntimeActivationRequired = "No runtime activation required for these changes."
+        public static let noVMRuntimeRestartRequired = noRuntimeActivationRequired
         public static func vmRuntimeWillRestartAfterSave(requiredBy: String) -> String {
             "The VM runtime will restart after save. Required by: \(requiredBy)."
         }
         public static func vmRuntimeRestartRequiredButDisabled(requiredBy: String) -> String {
             "Saved changes will not become active until the VM runtime restarts. Required by: \(requiredBy)."
+        }
+        public static func containerServicesWillReconcileAfterSave(requiredBy: String) -> String {
+            "Container services will be reconciled after save. Required by: \(requiredBy)."
+        }
+        public static func containerServicesReconcileRequiredButDisabled(requiredBy: String) -> String {
+            "Saved changes will not become active until container services are reconciled. Required by: \(requiredBy)."
         }
         public static let updateBundleApplied = "Update bundle applied."
         public static let updateBundleAppliedRelaunching = "Update bundle applied. Relaunching VitalServer Helper..."
@@ -207,6 +215,7 @@ public extension AppConstants {
         public static let invalidLogArchiveMaximum = "Log archive size limit must be between 1 and 20 GiB."
         public static let adminPasswordRequired = "Admin password reset value must not be empty."
         public static let adminPasswordNewline = "Admin password reset value must not contain newlines."
+        public static let invalidRedisRelayTarget = "Redis relay target settings are invalid."
         public static func commandFailed(exitCode: Int32) -> String {
             "Command failed with exit code \(exitCode)"
         }

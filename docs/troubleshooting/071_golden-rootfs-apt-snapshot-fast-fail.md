@@ -71,6 +71,9 @@ name index fetch separately from package planning.
 - Missing, invalid, unavailable, blocked, and failed preflight states must remain distinct.
 - Guest should record Guest stage failures, not compensate for missing Host dependency
   preflight.
+- Snapshot endpoint probes may retry bounded transient timeouts, but they must still return
+  `UNAVAILABLE` when all attempts fail. Retry is only for external CDN jitter, not a
+  fallback that treats an unreadable snapshot as valid.
 
 ## Related Cases
 
@@ -82,3 +85,6 @@ name index fetch separately from package planning.
 - 2026-06-13: Golden rootfs compile reached VM `apt-plan` before detecting snapshot
   `503 Service Unavailable`. Added Host preflight and separated Guest `apt-index-update`
   stage.
+- 2026-06-19: Dev DMG verify failed before VM start because `noble-updates/InRelease`
+  timed out. Increased snapshot probe timeout and added a bounded retry while preserving
+  final `UNAVAILABLE` status after exhausted attempts.

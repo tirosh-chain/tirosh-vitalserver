@@ -3982,11 +3982,16 @@
       "RuntimeUninstallRequest": {
         "type": "object",
         "required": [
-          "clean"
+          "mode"
         ],
         "properties": {
-          "clean": {
-            "type": "boolean"
+          "mode": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "clean",
+              "forceCleanUninstaller"
+            ]
           }
         }
       },
@@ -4597,7 +4602,10 @@
           "version",
           "intervalSeconds",
           "shiftTime",
-          "generateFrames"
+          "generateFrames",
+          "exportVital",
+          "uploadVital",
+          "vitalUploadEndpoint"
         ],
         "properties": {
           "scenario": {
@@ -4663,6 +4671,15 @@
           },
           "generateFrames": {
             "type": "boolean"
+          },
+          "exportVital": {
+            "type": "boolean"
+          },
+          "uploadVital": {
+            "type": "boolean"
+          },
+          "vitalUploadEndpoint": {
+            "type": "string"
           }
         }
       },
@@ -4727,6 +4744,7 @@
           "messagesSent",
           "bytesSent",
           "cleanupErrors",
+          "vital",
           "recorders"
         ],
         "properties": {
@@ -4826,11 +4844,128 @@
               "$ref": "#/components/schemas/RuntimeTestKitCleanupError"
             }
           },
+          "vital": {
+            "$ref": "#/components/schemas/RuntimeTestKitSessionVitalState"
+          },
           "recorders": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RuntimeTestKitRecorder"
             }
+          }
+        }
+      },
+      "RuntimeTestKitSessionVitalState": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "exportStatus",
+          "uploadStatus"
+        ],
+        "properties": {
+          "exportStatus": {
+            "type": "string"
+          },
+          "uploadStatus": {
+            "type": "string"
+          },
+          "exportError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uploadError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "artifact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeTestKitSessionVitalArtifact"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "uploadResult": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeTestKitSessionVitalUploadResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeTestKitSessionVitalArtifact": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "filename",
+          "sizeBytes",
+          "createdAt",
+          "format",
+          "retentionPolicy"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "format": {
+            "type": "string"
+          },
+          "retentionPolicy": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeTestKitSessionVitalUploadResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "statusCode",
+          "ok",
+          "elapsedSeconds",
+          "uploadedAt",
+          "responseText"
+        ],
+        "properties": {
+          "statusCode": {
+            "type": "integer"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "elapsedSeconds": {
+            "type": "number"
+          },
+          "uploadedAt": {
+            "type": "number"
+          },
+          "responseText": {
+            "type": "string"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

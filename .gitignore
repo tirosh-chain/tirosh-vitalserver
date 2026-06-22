@@ -68,3 +68,4 @@ htmlcov/
 
 # VitalServer is managed as a git submodule.
 vendor/vitalserver/
+data/

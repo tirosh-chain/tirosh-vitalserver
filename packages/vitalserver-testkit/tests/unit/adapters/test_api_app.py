@@ -50,6 +50,29 @@ def test_bed_registry_endpoint_creates_explicit_bed_identities() -> None:
     assert len(beds[0]["bedId"]) == 40
 
 
+def test_bed_registry_endpoint_can_create_exact_prefix_without_random_suffix() -> None:
+    route = route_for("/beds", "POST")
+    registry = BedRegistry()
+
+    response = route.endpoint(
+        CreateBedsRequest(
+            count=1,
+            prefix="MORC03",
+            appendRandomSuffix=False,
+        ),
+        registry,
+    )
+
+    assert [bed["roomName"] for bed in response["beds"]] == ["MORC03"]
+
+
+def test_bed_registry_endpoint_rejects_multiple_exact_prefix_beds() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        CreateBedsRequest(count=2, prefix="MORC03", appendRandomSuffix=False)
+
+    assert "appendRandomSuffix=false requires count to be 1" in str(exc_info.value)
+
+
 def test_bed_registry_endpoints_list_and_reset_registered_beds() -> None:
     registry = BedRegistry()
     manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)

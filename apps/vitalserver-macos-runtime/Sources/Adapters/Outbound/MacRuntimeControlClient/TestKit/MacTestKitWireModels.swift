@@ -23,6 +23,9 @@ struct TestKitStartSessionRequest: Encodable {
     let generateFrames: Bool
     let scenario: String
     let defaultScenario: String
+    let exportVital: Bool
+    let uploadVital: Bool
+    let vitalUploadEndpoint: String
 
     init(
         runtimeRequest: RuntimeTestKitVirtualRecorderStartRequest,
@@ -40,6 +43,9 @@ struct TestKitStartSessionRequest: Encodable {
         generateFrames = runtimeRequest.generateFrames
         scenario = runtimeRequest.scenario.rawValue
         defaultScenario = runtimeRequest.signalProfile.rawValue
+        exportVital = runtimeRequest.exportVital
+        uploadVital = runtimeRequest.uploadVital
+        vitalUploadEndpoint = runtimeRequest.vitalUploadEndpoint
     }
 
     enum CodingKeys: String, CodingKey {
@@ -55,6 +61,9 @@ struct TestKitStartSessionRequest: Encodable {
         case generateFrames
         case scenario
         case defaultScenario
+        case exportVital
+        case uploadVital
+        case vitalUploadEndpoint
     }
 }
 

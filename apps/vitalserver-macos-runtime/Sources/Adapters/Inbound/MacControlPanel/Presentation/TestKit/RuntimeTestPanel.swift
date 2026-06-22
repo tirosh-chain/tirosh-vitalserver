@@ -111,6 +111,10 @@ struct RuntimeTestPanel: View {
 
                 Divider()
 
+                manualVitalUpload
+
+                Divider()
+
                 sessionList
 
                 Divider()
@@ -206,43 +210,66 @@ struct RuntimeTestPanel: View {
             if viewModel.testKitStatus.beds.isEmpty {
                 Text(RuntimeTestPanelText.noBeds)
                     .foregroundStyle(.secondary)
+                    .padding(.top, 2)
             } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(AppConstants.Labels.bedSelection)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                    Text(RuntimeTestPanelText.chooseBeds)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(RuntimeTestPanelText.selectedBeds(
-                        viewModel.selectedTestKitBedCount,
-                        viewModel.testKitRecorderCount,
-                        viewModel.availableTestKitBedCount
-                    ))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
+                Divider()
+                    .padding(.vertical, 4)
 
-                ForEach(viewModel.testKitStatus.beds) { bed in
-                    bedSelectionRow(bed)
-                }
+                bedSelectionSection
             }
         }
     }
 
     private var bedCreationControls: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             testKitIntegerStepper(
                 AppConstants.Labels.bedCount,
                 value: $viewModel.testKitBedCount,
                 range: 1...200,
-                displayValue: String(viewModel.testKitBedCount)
+                displayValue: viewModel.testKitAppendRandomBedSuffix
+                    ? String(viewModel.testKitBedCount)
+                    : "1"
             )
-            TextField(AppConstants.Labels.bedPrefix, text: $viewModel.testKitBedPrefix)
-                .textFieldStyle(.roundedBorder)
+            .disabled(!viewModel.testKitAppendRandomBedSuffix)
+
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(AppConstants.Labels.bedPrefix)
+                    .foregroundStyle(.secondary)
+                TextField(AppConstants.Labels.bedPrefix, text: $viewModel.testKitBedPrefix)
+                    .textFieldStyle(.roundedBorder)
+                Toggle(
+                    AppConstants.Labels.randomBedSuffix,
+                    isOn: $viewModel.testKitAppendRandomBedSuffix
+                )
+                .fixedSize()
+            }
         }
         .disabled(!viewModel.testKitStatus.enabled || viewModel.isRunningTestKitAction)
+    }
+
+    private var bedSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(AppConstants.Labels.bedSelection)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text(RuntimeTestPanelText.chooseBeds)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(RuntimeTestPanelText.selectedBeds(
+                    viewModel.selectedTestKitBedCount,
+                    viewModel.testKitRecorderCount,
+                    viewModel.availableTestKitBedCount
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            ForEach(viewModel.testKitStatus.beds) { bed in
+                bedSelectionRow(bed)
+            }
+        }
     }
 
     private func bedSelectionRow(_ bed: RuntimeTestKitBed) -> some View {
@@ -411,6 +438,22 @@ struct RuntimeTestPanel: View {
         }
     }
 
+    private var manualVitalUpload: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(AppConstants.Labels.sectionVitalFileUpload)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            Text(RuntimeTestPanelText.manualVitalUploadDescription)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(AppConstants.Actions.uploadVitalFiles) {
+                Task { await viewModel.uploadVitalFilesFromTestTab() }
+            }
+            .disabled(!viewModel.testKitStatus.enabled || viewModel.isRunningTestKitAction)
+        }
+    }
+
     private func sessionRow(_ session: RuntimeTestKitSession) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
@@ -421,7 +464,7 @@ struct RuntimeTestPanel: View {
                 Text(sessionDetail(session))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(3)
             }
             Spacer(minLength: 12)
             sessionControls(session)
@@ -550,11 +593,36 @@ struct RuntimeTestPanel: View {
             "\(AppConstants.Labels.recorders): \(session.recorders.count)/\(session.recordersRequested)",
             "\(AppConstants.Labels.beds): \(session.bedRoomNames.count)",
             "\(AppConstants.Labels.interval): \(secondsText(session.intervalSeconds))",
+            vitalDetail(session.vital),
             session.cleanupErrors.isEmpty ? nil : "Cleanup errors: \(session.cleanupErrors.count)",
             session.lastError.map { "\(AppConstants.Labels.lastError): \($0)" }
         ]
         .compactMap { $0 }
         .joined(separator: " · ")
+    }
+
+    private func vitalDetail(_ vital: RuntimeTestKitSessionVitalState?) -> String? {
+        guard let vital else {
+            return nil
+        }
+        var parts = [
+            "export \(displayName(vital.exportStatus))",
+            "upload \(displayName(vital.uploadStatus))",
+        ]
+        if let artifact = vital.artifact {
+            parts.append("\(artifact.filename) \(byteText(artifact.sizeBytes))")
+        }
+        if let exportError = vital.exportError, !exportError.isEmpty {
+            parts.append("export error: \(exportError)")
+        }
+        if let uploadError = vital.uploadError, !uploadError.isEmpty {
+            parts.append("upload error: \(uploadError)")
+        }
+        return "Vital: \(parts.joined(separator: ", "))"
+    }
+
+    private func byteText(_ bytes: Int) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
     private func restartHelpText(_ session: RuntimeTestKitSession) -> String {

@@ -73,11 +73,10 @@ Release 전에 만드는 결과물은 목적이 다릅니다. 먼저 “어떤 �
 | 목적 | command |
 |---|---|
 | 설치된 runtime health 확인 | `make dist/installed/health` |
+| dev DMG 빠른 패키징 | `make dist/dmg/dev` |
 | dev DMG를 VM compile 포함해 생성 | `make dist/dmg/dev/compile` |
-| 생성된 dev DMG layout과 Troubleshooting Tools 검증 | `make dist/dmg/dev/artifact-verify` |
-| dev DMG test/review checks | `make dist/dmg/dev/review` |
-| dev DMG golden runtime boot 계약 검증 | `make dist/dmg/dev/runtime-smoke` |
-| dev DMG 설치 전 표준 검증 | `make dist/dmg/dev/verify` |
+| 생성된 dev DMG와 golden runtime 검증 | `make dist/dmg/dev/verify` |
+| dev DMG 설치 전 전체 gate | `make dist/dmg/dev/all` |
 | dev PKG를 VM compile 포함해 생성 | `make dist/pkg/dev/compile` |
 | dev PKG golden runtime boot 계약 검증 | `make dist/pkg/dev/runtime-smoke` |
 | dev PKG 설치 전 표준 검증 | `make dist/pkg/dev/verify` 또는 `make dist/pkg/verify/dev` |
@@ -102,10 +101,21 @@ Docker/container runtime처럼 base runtime을 바꾸는 upgrade가
 모두 passed인지 확인합니다. Devtools direct start 경로도 `data/deploy/host-time.json`을 써야 하며,
 Guest가 이 Host-owned time contract를 적용하지 못하면 smoke failure입니다.
 
-`verify`는 review/test, compile/artifact verify, runtime-smoke를 묶은 설치 전 표준 gate입니다.
-DMG compile은 clean rootfs로 산출물을 만들고 생성된 DMG를 read-only로 다시 열어 installer PKG와
-Troubleshooting Tools layout/executable contract를 확인합니다. 그래도 `compile`이 통과했다는 사실만으로
-fresh install, installed runtime, update/rollback 동작이 검증된 것으로 보지 않습니다.
+DMG dev target은 역할을 분리합니다. `dist/dmg/dev`는 기존 golden rootfs cache를 재사용할 수 있는
+빠른 패키징 target입니다. `dist/dmg/dev/compile`은 clean rootfs로 산출물을 만드는 compile target이고,
+`dist/dmg/dev/verify`는 이미 생성된 DMG artifact와 golden runtime boot contract를 검증합니다.
+`dist/dmg/dev/all`은 review, clean compile, artifact verify, runtime smoke를 한 번에 실행하는 설치 전
+표준 gate입니다. review, artifact verify, runtime smoke는 `internal/vm/dmg/dev/*` 단계로 존재하지만
+public workflow는 위 네 target만 노출합니다. 그래도 `all`이 통과했다는 사실만으로 fresh install,
+installed runtime, update/rollback 동작이 검증된 것으로 보지 않습니다.
+`dist/dmg/dev`는 설치 provisioning side effect를 실행하지 않으므로, fresh install에서 만들어야 하는
+Host-owned config directory 누락은 잡지 못합니다. Guest compose bind source, runtime smoke, installed
+health까지 확인해야 하는 변경은 `dist/dmg/dev/verify`, `dist/dmg/dev/all`, 또는 설치 후
+`dist/installed/health`로 확인합니다.
+`compile`의 clean 의미는 변수로 끄지 않습니다. 같은 target 이름이 cached compile과 clean compile을
+오가면 검증 결과를 해석할 때 외부 실행 변수를 다시 추적해야 합니다. 캐시를 재사용하는 개발 산출물이
+필요하면 `make dist/dmg/dev`를 사용하고, clean compile proof가 필요하면 `make dist/dmg/dev/compile`
+또는 `make dist/dmg/dev/all`을 사용합니다.
 
 ## 3. 무엇을 검증할까
 
@@ -168,7 +178,7 @@ VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 �
 | workflow 역할 | update/repair/uninstall workflow는 VM 상태를 추측하지 않고 owner가 제공한 결과만 소비하는가 |
 | operation state 보존 | install/uninstall state document는 runtime status message에 덮어 쓰지 않고 별도 read model로 보존되는가 |
 | status 기록 범위 | runtime status writer가 clean uninstall로 제거된 product root를 다시 만들지 않는가 |
-| recovery 구분 | clean uninstall recovery처럼 망가진 상태 정리는 일반 graceful stop이 아니라 명시적 force-clean contract를 쓰는가 |
+| recovery 구분 | clean uninstall과 fresh-install recovery가 `--clean`/`--force-clean-uninstaller` 계약으로 분리되어 있는가 |
 | progress 분리 | progress viewer marker, UI 메시지, shared log line을 runtime cleanup 성공/실패의 source of truth로 쓰지 않는가 |
 
 특히 아래 변경은 직접 VM 제어 호출을 추가하지 말고 owner entrypoint를 먼저 찾아야 합니다.
@@ -178,9 +188,10 @@ VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 �
 | Settings apply 후 restart | Configure restart policy가 VM runtime restart requirement를 판단한 뒤, 필요할 때만 Guest shutdown 준비 후 poweroff 관측을 거쳐 restart |
 | Product update stop plan | update shutdown-stop port를 통해 VM owner가 stop 순서를 실행 |
 | rollback/service-control | service start/stop wrapper가 VM owner를 통과 |
-| watchdog recovery | watchdog 전용 restart intent로 VM owner를 통과 |
+| watchdog recovery | Guest compose 문제는 reconcile request/result contract를 먼저 사용하고, VM boundary 문제만 watchdog 전용 restart intent로 VM owner를 통과 |
 | repair/VM disk replacement | repair intent 또는 best-effort result를 통해 실패 의미를 보존 |
-| Helper UI clean uninstall | `--force-clean-uninstaller`로 force-clean recovery contract 사용 |
+| Helper UI clean uninstall | `--clean` 사용. graceful stop 실패 시 cleanup 진행을 위해 force stop으로 전환하되 fresh install readiness를 성공으로 추정하지 않음 |
+| Reset for Reinstall | `--force-clean-uninstaller` 사용. fresh install blocker 제거와 readiness 검증을 recovery contract로 수행 |
 
 검증할 때는 성공 case만 보지 않습니다. `guest-runtime-state-stale`, VM stop timeout, pid file
 missing, launchd loaded/running mismatch, progress `missing-marker`처럼 서로 다른 상태가 서로
@@ -225,6 +236,13 @@ Release package와 DMG build도 expensive compile 단계에 들어가기 전에 
 전에 필수 tool, golden runtime `Image`/`initrd.img`, `rootfs-base`, Dockerfile 경로, Docker pull image
 manifest와 platform, DMG output attachment 상태를 확인합니다. 이 값들은 build input이므로 누락,
 무효, unavailable, mounted/attached blocked 상태를 빈 값이나 late build failure로 바꾸면 안 됩니다.
+Guest compose service 계약도 같은 compile input입니다. `Support/Guest/compose.yaml`에 선언된 image는
+`guest.docker_images.images` 또는 `optional_images`에 있어야 하고, build `dockerfile`은
+`guest.docker_images.*_dockerfile`과 일치해야 하며, 해당 path는 `guest.deploy.include`로 설치 payload에
+포함되어야 합니다. Redis Relay처럼 UI 설정에서 disabled가 가능한 service도 compose에 항상 존재한다면
+package bundle 관점에서는 필수 image/source 계약입니다. 이 검사는 `make dist/dmg/dev/compile`에서
+Docker build 전에 실패해야 하고, `make dist/dmg/dev/all`은 compile을 포함하므로 같은 누락을 설치 전
+gate에서 막아야 합니다.
 Installed package deploy도 golden rootfs deploy와 같은 bootstrap contracts를 포함해야 합니다.
 `deploy/build-metadata/rootfs-input.json`은 Guest runtime data disk 준비가 읽는 Host-owned contract이며,
 package staging이 Ubuntu source, apt snapshot, runtime data disk, Docker platform 값을 명시적으로 써야
@@ -278,6 +296,15 @@ restart 없이 저장할 때의 pending 상태를 Apply 전에 사용자에게 �
 Settings apply command가 실패하면 Control Panel host composition은 response를 그대로 반환하고
 presentation-local state를 mutate하지 않아야 합니다. Local API port처럼 helper UI가 소유한 값도
 command success가 확인되기 전에는 failed draft를 현재 상태로 승격하면 안 됩니다.
+
+Settings apply의 activation은 한 종류가 아닙니다. CPU, memory, disk, network, Vital files directory처럼
+VM boundary가 바뀌는 설정은 VM runtime restart를 요구합니다. Redis Relay처럼 guest compose service
+묶음만 바뀌는 설정은 VM을 재시작하지 않고 Guest compose reconcile request/result contract로 적용해야
+합니다. Host는 `reconcile-compose.request`를 쓰고 Guest가 `reconcile-compose-result.json`으로 완료
+또는 실패를 보고할 때까지 bounded wait합니다. Guest capability가 없거나 result가 missing/failed이면
+성공으로 추정하지 않습니다. Settings UI는 이 차이를 `Change activation`으로 표시하고, container
+reconcile을 VM restart처럼 설명하면 안 됩니다.
+
 Host는 VM runtime start가 성공했을 때 실제 start에 사용한 VM config를 applied VM config snapshot으로
 기록하고, Settings read contract는 saved config와 applied config를 함께 제공해야 합니다. Vital files
 directory처럼 VM restart 전에는 적용되지 않는 값은 Status/Info에서 applied snapshot을 기준으로
@@ -298,8 +325,11 @@ VM build는 제품 compile로 취급합니다. `make dist/dmg/dev/compile`, `mak
 `make devtools/golden-rootfs/compile`은 golden rootfs proof를 새로 요구하며, kernel panic,
 guest boot failure, rootfs proof failure를 우회하지 않습니다. 다만 compile passed는 installed
 runtime passed를 뜻하지 않습니다. Guest bootstrap 완료, `runtime-state.json` 생성, systemd/docker/http
-계약은 `make dist/dmg/dev/runtime-smoke` 또는 `make dist/pkg/dev/runtime-smoke`가 소유합니다.
-설치/배포 전 표준 게이트는 `make dist/dmg/dev/verify` 또는 `make dist/pkg/dev/verify`처럼 compile과
+계약은 DMG dev에서는 `make dist/dmg/dev/verify` 또는 `make dist/dmg/dev/all`의 runtime smoke phase가
+소유하고, PKG dev에서는 `make dist/pkg/dev/runtime-smoke`가 소유합니다.
+DMG dev fast packaging은 `make dist/dmg/dev`가 소유하고, clean compile은 `make dist/dmg/dev/compile`이
+소유합니다. `compile` target의 cache policy는 실행 변수로 바꾸지 않습니다.
+설치/배포 전 표준 게이트는 `make dist/dmg/dev/all` 또는 `make dist/pkg/dev/verify`처럼 compile과
 runtime smoke를 묶은 명시 workflow입니다. PKG dev verify는 compile 전에 package plan/template unit
 review, PWA Runtime Control contract/check/test, log export archive/rotation/retention test를 실행합니다.
 실패는 runId, failing stage, failure reason 또는 matched pattern, artifact/log path와 함께 드러나야 합니다.
@@ -553,17 +583,23 @@ Pull request는 변경 목적과 검증 근거가 함께 보여야 합니다. �
 - Settings apply 실패 response를 받은 composition/presentation 계층은 local coordinator state를
   성공처럼 mutate하지 않습니다. 실패 case test는 response와 local state를 함께 검증합니다.
 - Settings apply의 `restartAfterSave`는 저장 후 항상 restart가 아니라, Configure policy가 VM runtime
-  restart requirement를 반환했을 때 즉시 restart할지에 대한 intent입니다. policy 없이 UI나 CLI가
-  restart 여부를 추정하면 안 됩니다.
+  restart 또는 container service reconcile requirement를 반환했을 때 저장 후 activation할지에 대한
+  intent입니다. policy 없이 UI나 CLI가 activation 종류를 추정하면 안 됩니다.
 - Settings UI의 restart 안내는 실행 정책이 아니라 표시 정책입니다. 실제 restart requirement의 source of
   truth는 Configure policy이고, UI는 현재 runtime 설정과 draft 설정의 차이를 사용자에게 설명하는 데
-  그쳐야 합니다.
+  그쳐야 합니다. Redis Relay 같은 guest compose service 변경은 VM restart가 아니라 container service
+  reconcile로 표시해야 합니다.
 - VM stop/restart/poweroff 변경은 단일 VM state control 경로를 통하게 합니다. Settings, update,
   repair, watchdog이 guest shutdown 준비 contract를 우회해 개별적으로 VM service를 멈추지 않습니다.
-  Settings restart, update shutdown-stop, rollback/update service start-stop, watchdog VM recovery,
+  Settings restart, update shutdown-stop, rollback/update service start-stop, VM restart가 필요한 watchdog recovery,
   service-control, repair/guest-operation VM start/restart는 VM state control owner entrypoint를 통해
   Host side effect를 실행합니다. Update/rollback workflow는 operation plan 의미를 보존하되, Host service
   start/stop sequencing을 직접 소유하지 않습니다.
+- Watchdog recovery는 failure boundary에 맞는 가장 낮은 activation을 먼저 선택합니다. Guest HTTP
+  unhealthy 또는 critical container service unhealthy처럼 VM process/IP boundary가 유지된 문제는
+  Guest compose reconcile request/result contract로 복구합니다. VM IP missing, VM service not loaded,
+  expired bootstrapping처럼 Host/VM boundary가 깨진 경우만 VM runtime restart로 승격합니다. HTTP probe
+  read failure는 compose reconcile이나 VM restart로 추정하지 말고 typed blocker로 남깁니다.
 - Guest filesystem 또는 disk I/O 장애는 proxy/HTTP failure보다 상위의 guest storage 상태로 남깁니다.
   root filesystem read-only, filesystem error, disk I/O error가 명시되면 `guest-filesystem-read-only`,
   `guest-filesystem-error`, `guest-disk-io-error` reason으로 기록하고, `unknown(vm-...)`이나 단순

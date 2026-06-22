@@ -201,6 +201,22 @@ public struct RuntimeWatchdogRunner {
             .recoveryPlanned
         )
 
+        if let composeReconcileEventMessage = plan.composeReconcileEventMessage {
+            operations.recordObservedEvent(
+                .recovering,
+                .watchdog,
+                composeReconcileEventMessage,
+                initial,
+                .serviceRestartDispatched
+            )
+            do {
+                try operations.reconcileGuestCompose()
+            } catch {
+                let failurePlan = useCase.composeReconcileFailurePlan(error: error)
+                try writeCommandFailure(failurePlan, snapshot: initial, operations: operations, log: log, printLine: printLine)
+                return
+            }
+        }
         if let vmRestartEventMessage = plan.vmRestartEventMessage {
             operations.recordObservedEvent(
                 .recovering,
@@ -271,6 +287,7 @@ public struct RuntimeWatchdogActions {
     public let healthSnapshot: () -> RuntimeHealthSnapshot
     public let proxyLivenessHTTP: (Int?) -> String
     public let automaticRecoveryEnabled: () throws -> Bool
+    public let reconcileGuestCompose: () throws -> Void
     public let restartVMRuntime: () throws -> Void
     public let restartService: (RuntimeManagedService) throws -> Void
     public let writeRuntimeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
@@ -296,6 +313,7 @@ public struct RuntimeWatchdogActions {
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         proxyLivenessHTTP: @escaping (Int?) -> String,
         automaticRecoveryEnabled: @escaping () throws -> Bool,
+        reconcileGuestCompose: @escaping () throws -> Void,
         restartVMRuntime: @escaping () throws -> Void,
         restartService: @escaping (RuntimeManagedService) throws -> Void,
         writeRuntimeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
@@ -320,6 +338,7 @@ public struct RuntimeWatchdogActions {
         self.healthSnapshot = healthSnapshot
         self.proxyLivenessHTTP = proxyLivenessHTTP
         self.automaticRecoveryEnabled = automaticRecoveryEnabled
+        self.reconcileGuestCompose = reconcileGuestCompose
         self.restartVMRuntime = restartVMRuntime
         self.restartService = restartService
         self.writeRuntimeStatus = writeRuntimeStatus

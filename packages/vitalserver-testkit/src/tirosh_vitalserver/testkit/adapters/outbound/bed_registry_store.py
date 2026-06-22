@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from tirosh_vitalserver.testkit.application.bed_registry.store import (
+    BED_REGISTRY_STORE_SCHEMA_VERSION,
     bed_from_record,
     bed_to_record,
 )
@@ -30,9 +31,9 @@ class JsonFileBedRegistryStore:
             payload = self._read_payload()
 
         beds = []
-        for record in payload.get("bed_registry", []):
+        for record in payload["bed_registry"]:
             if not isinstance(record, dict):
-                continue
+                raise ValueError("bed registry record must be an object")
             try:
                 beds.append(bed_from_record(record))
             except Exception as exc:
@@ -42,6 +43,7 @@ class JsonFileBedRegistryStore:
                     path=str(self._path),
                     error=str(exc),
                 )
+                raise
 
         return tuple(beds)
 
@@ -50,6 +52,7 @@ class JsonFileBedRegistryStore:
 
         with self._lock:
             self._write_payload({
+                "schema_version": BED_REGISTRY_STORE_SCHEMA_VERSION,
                 "bed_registry": [bed_to_record(bed) for bed in beds],
             })
 
@@ -57,11 +60,17 @@ class JsonFileBedRegistryStore:
         """Remove every persisted bed identity."""
 
         with self._lock:
-            self._write_payload({"bed_registry": []})
+            self._write_payload({
+                "schema_version": BED_REGISTRY_STORE_SCHEMA_VERSION,
+                "bed_registry": [],
+            })
 
     def _read_payload(self) -> dict[str, Any]:
         if not self._path.exists():
-            return {"bed_registry": []}
+            return {
+                "schema_version": BED_REGISTRY_STORE_SCHEMA_VERSION,
+                "bed_registry": [],
+            }
 
         try:
             with self._path.open("r", encoding="utf-8") as file:
@@ -73,9 +82,14 @@ class JsonFileBedRegistryStore:
                 path=str(self._path),
                 error=str(exc),
             )
-            return {"bed_registry": []}
+            raise
 
-        return payload if isinstance(payload, dict) else {"bed_registry": []}
+        if not isinstance(payload, dict):
+            raise ValueError("bed registry store payload must be an object")
+        bed_registry_store_schema_version(payload)
+        if not isinstance(payload.get("bed_registry"), list):
+            raise ValueError("bed registry store bed_registry must be an array")
+        return payload
 
     def _write_payload(self, payload: dict[str, Any]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -84,3 +98,16 @@ class JsonFileBedRegistryStore:
             json.dump(payload, file, separators=(",", ":"), sort_keys=True)
             file.write("\n")
         temporary_path.replace(self._path)
+
+
+def bed_registry_store_schema_version(payload: dict[str, Any]) -> int:
+    """Return the explicit bed registry store schema version."""
+
+    value = payload.get("schema_version")
+    if value is None:
+        return BED_REGISTRY_STORE_SCHEMA_VERSION
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError("bed registry store schema_version must be an integer")
+    if value != BED_REGISTRY_STORE_SCHEMA_VERSION:
+        raise ValueError("bed registry store schema_version is unsupported")
+    return value

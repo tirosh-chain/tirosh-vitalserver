@@ -37,6 +37,7 @@ ORDERED_STOP_POLICIES = (
     (ComposeService.REDIS_UI, 30),
     (ComposeService.AUDIT_PROXY, 30),
     (ComposeService.VITALDB_OBSERVER, 30),
+    (ComposeService.REDIS_RELAY, 30),
     (ComposeService.APP, 90),
     (ComposeService.REDIS, 60),
 )
@@ -371,6 +372,7 @@ def start_ordered() -> None:
             ComposeService.APP.value,
             ComposeService.AUDIT_PROXY.value,
             ComposeService.VITALDB_OBSERVER.value,
+            ComposeService.REDIS_RELAY.value,
             ComposeService.REDIS_UI.value,
             ComposeService.SWAGGER_UI.value,
         ]

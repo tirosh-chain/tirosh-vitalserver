@@ -14,8 +14,9 @@ final class RuntimeSettingsRestartNoticePolicyTests: XCTestCase {
         let decision = policy.decision(draft: draft, runtime: RuntimeSettings())
 
         XCTAssertFalse(decision.requiresRestart)
+        XCTAssertFalse(decision.requiresActivation)
         XCTAssertEqual(decision.requiredChanges, [])
-        XCTAssertEqual(decision.message, AppConstants.StatusText.noVMRuntimeRestartRequired)
+        XCTAssertEqual(decision.message, AppConstants.StatusText.noRuntimeActivationRequired)
     }
 
     func testReportsRestartRequiredSettingsByDisplayNameWhenRestartIsEnabled() {
@@ -28,6 +29,7 @@ final class RuntimeSettingsRestartNoticePolicyTests: XCTestCase {
         let decision = policy.decision(draft: draft, runtime: RuntimeSettings())
 
         XCTAssertTrue(decision.requiresRestart)
+        XCTAssertTrue(decision.requiresActivation)
         XCTAssertEqual(decision.requiredChanges, [
             AppConstants.Labels.cpu,
             AppConstants.Labels.memory,
@@ -49,6 +51,24 @@ final class RuntimeSettingsRestartNoticePolicyTests: XCTestCase {
         XCTAssertEqual(
             decision.message,
             "Saved changes will not become active until the VM runtime restarts. Required by: Vital files directory."
+        )
+    }
+
+    func testReportsRedisRelayChangeAsContainerServicesReconcileRequired() {
+        var draft = RuntimeSettings()
+        draft.redisRelay.enabled = true
+        draft.restartAfterSave = true
+
+        let decision = policy.decision(draft: draft, runtime: RuntimeSettings())
+
+        XCTAssertFalse(decision.requiresRestart)
+        XCTAssertTrue(decision.requiresContainerServicesReconcile)
+        XCTAssertTrue(decision.requiresActivation)
+        XCTAssertEqual(decision.requiredChanges, [])
+        XCTAssertEqual(decision.containerServiceChanges, [AppConstants.Labels.redisRelay])
+        XCTAssertEqual(
+            decision.message,
+            AppConstants.StatusText.containerServicesWillReconcileAfterSave(requiredBy: AppConstants.Labels.redisRelay)
         )
     }
 }

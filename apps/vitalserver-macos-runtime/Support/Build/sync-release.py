@@ -100,6 +100,7 @@ def sync_swift(root, release, release_file):
     vitalserver = require_service(release, "vitalServer")
     audit_proxy = require_service(release, "auditProxy")
     vitaldb_observer = require_service(release, "vitalDBObserver")
+    redis_relay = require_service(release, "redisRelay")
     testkit = require_service(release, "testkit")
     redis = require_service(release, "redis")
     redis_ui = require_service(release, "redisUI")
@@ -112,6 +113,7 @@ def sync_swift(root, release, release_file):
         release,
         "services.vitalDBObserver.displayName",
     )
+    redis_relay_name = require_field(release, "services.redisRelay.displayName")
     testkit_name = require_field(release, "services.testkit.displayName")
     redis_name = require_field(release, "services.redis.displayName")
     redis_ui_name = require_field(release, "services.redisUI.displayName")
@@ -153,6 +155,7 @@ public enum GeneratedRelease {{
     public static let vitalServerName = {swift_string(vitalserver_name)}
     public static let auditProxyName = {swift_string(audit_proxy_name)}
     public static let vitalDBObserverName = {swift_string(vitaldb_observer_name)}
+    public static let redisRelayName = {swift_string(redis_relay_name)}
     public static let testkitName = {swift_string(testkit_name)}
     public static let redisName = {swift_string(redis_name)}
     public static let redisUIName = {swift_string(redis_ui_name)}
@@ -162,6 +165,7 @@ public enum GeneratedRelease {{
     public static let vitalServerImage = {swift_string(vitalserver["image"])}
     public static let auditProxyImage = {swift_string(audit_proxy["image"])}
     public static let vitalDBObserverImage = {swift_string(vitaldb_observer["image"])}
+    public static let redisRelayImage = {swift_string(redis_relay["image"])}
     public static let testkitImage = {swift_string(testkit["image"])}
     public static let redisImage = {swift_string(redis["image"])}
     public static let redisUIImage = {swift_string(redis_ui["image"])}
@@ -170,6 +174,7 @@ public enum GeneratedRelease {{
     public static let hostProxyImage = {swift_string(host_proxy["image"])}
     public static let auditProxyVersion = {swift_string(audit_proxy["version"])}
     public static let vitalDBObserverVersion = {swift_string(vitaldb_observer["version"])}
+    public static let redisRelayVersion = {swift_string(redis_relay["version"])}
     public static let testkitVersion = {swift_string(testkit["version"])}
     public static let redisVersion = {swift_string(redis["version"])}
     public static let redisUIVersion = {swift_string(redis_ui["version"])}
@@ -187,6 +192,7 @@ def sync_compose(root, release):
     vitalserver = require_service(release, "vitalServer")
     audit_proxy = require_service(release, "auditProxy")
     vitaldb_observer = require_service(release, "vitalDBObserver")
+    redis_relay = require_service(release, "redisRelay")
     testkit = require_service(release, "testkit")
     redis = require_service(release, "redis")
     redis_ui = require_service(release, "redisUI")
@@ -199,6 +205,9 @@ def sync_compose(root, release):
             f"image: {audit_proxy['image']}"
         ),
         r"image: vitaldb-observer:[^\n]+": f"image: {vitaldb_observer['image']}",
+        r"image: vitalserver-redis-relay:[^\n]+": (
+            f"image: {redis_relay['image']}"
+        ),
         r"image: vitalserver-testkit:[^\n]+": f"image: {testkit['image']}",
         r"image: ghcr\.io/joeferner/redis-commander:[^\n]+": (
             f"image: {redis_ui['image']}"
@@ -219,6 +228,7 @@ def sync_build_config(root, release):
     vitalserver = require_service(release, "vitalServer")
     audit_proxy = require_service(release, "auditProxy")
     vitaldb_observer = require_service(release, "vitalDBObserver")
+    redis_relay = require_service(release, "redisRelay")
     testkit = require_service(release, "testkit")
     redis = require_service(release, "redis")
     redis_ui = require_service(release, "redisUI")
@@ -228,12 +238,16 @@ def sync_build_config(root, release):
         r'"vitalserver:[^"]+"': f'"{vitalserver["image"]}"',
         r'\n  "vitalserver-audit-proxy:[^"]+"': f'\n  "{audit_proxy["image"]}"',
         r'\n  "vitaldb-observer:[^"]+"': f'\n  "{vitaldb_observer["image"]}"',
+        r'\n  "vitalserver-redis-relay:[^"]+"': f'\n  "{redis_relay["image"]}"',
         r'\n  "vitalserver-testkit:[^"]+"': f'\n  "{testkit["image"]}"',
         r'audit_proxy_image = "vitalserver-audit-proxy:[^"]+"': (
             f'audit_proxy_image = "{audit_proxy["image"]}"'
         ),
         r'vitaldb_observer_image = "vitaldb-observer:[^"]+"': (
             f'vitaldb_observer_image = "{vitaldb_observer["image"]}"'
+        ),
+        r'redis_relay_image = "vitalserver-redis-relay:[^"]+"': (
+            f'redis_relay_image = "{redis_relay["image"]}"'
         ),
         r'testkit_image = "vitalserver-testkit:[^"]+"': (
             f'testkit_image = "{testkit["image"]}"'

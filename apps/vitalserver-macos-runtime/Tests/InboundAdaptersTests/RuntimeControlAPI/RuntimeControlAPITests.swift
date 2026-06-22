@@ -1113,7 +1113,7 @@ final class RuntimeControlAPITests: XCTestCase {
         let repairDatastore = try await handler.repairDatastore()
         let repairVMDisk = try await handler.repairVMDisk()
         let createRedisBackup = try await handler.createRedisBackup()
-        let uninstall = try await handler.uninstallRuntime(clean: true)
+        let uninstall = try await handler.uninstallRuntime(mode: .clean)
 
         XCTAssertEqual(applySettings.result.stdout, "settings 4")
         XCTAssertEqual(start.result.stdout, "start services")
@@ -2542,8 +2542,12 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeLogExportResult(destination: URL(fileURLWithPath: destination.value))
     }
 
-    func uninstallRuntime(clean: Bool) async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: clean ? "clean uninstall" : "uninstall", stderr: ""))
+    func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(
+            exitCode: 0,
+            stdout: mode.clean ? "clean uninstall" : "uninstall",
+            stderr: ""
+        ))
     }
 }
 
@@ -2847,8 +2851,8 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
         RuntimeCommandResult(exitCode: 0, stdout: "verify \(url.path)", stderr: "")
     }
 
-    func uninstallRuntime(clean: Bool) async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: clean ? "clean uninstall" : "uninstall", stderr: "")
+    func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: mode.clean ? "clean uninstall" : "uninstall", stderr: "")
     }
 
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult {

@@ -262,18 +262,18 @@ struct RuntimeSettingsPanel: View {
     }
 
     private var restartRuntimeSection: some View {
-        settingsSection(AppConstants.Labels.vmRuntimeRestart) {
+        settingsSection(AppConstants.Labels.changeActivation) {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(restartNotice.message)
                         .font(.caption)
-                        .foregroundStyle(restartNotice.requiresRestart ? .primary : .secondary)
+                        .foregroundStyle(restartNotice.requiresActivation ? .primary : .secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     let savedNotice = restartNoticePolicy.decision(
                         draft: viewModel.savedSettings,
                         runtime: viewModel.runtimeSettings
                     )
-                    if savedNotice.requiresRestart && savedNotice.message != restartNotice.message {
+                    if savedNotice.requiresActivation && savedNotice.message != restartNotice.message {
                         Text(savedNotice.message)
                             .font(.caption)
                             .foregroundStyle(.orange)
@@ -292,29 +292,32 @@ struct RuntimeSettingsPanel: View {
             runtime: viewModel.runtimeSettings
         )
         let requiresRestart = restartNotice.requiresRestart || savedNotice.requiresRestart
+        let requiresActivation = restartNotice.requiresActivation || savedNotice.requiresActivation
         return Button {
             showingRestartVMRuntimeConfirmation = true
         } label: {
             Label(
                 requiresRestart
                     ? AppConstants.Labels.requiresVMRestart
-                    : AppConstants.StatusText.noVMRuntimeRestartRequired,
-                systemImage: requiresRestart
+                    : requiresActivation
+                        ? AppConstants.Labels.requiresContainerReconcile
+                        : AppConstants.StatusText.noVMRuntimeRestartRequired,
+                systemImage: requiresActivation
                     ? "arrow.clockwise.circle.fill"
                     : "checkmark.circle.fill"
             )
             .font(.system(size: 14, weight: .semibold))
             .labelStyle(.titleAndIcon)
-            .foregroundStyle(requiresRestart ? .orange : .secondary)
+            .foregroundStyle(requiresActivation ? .orange : .secondary)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background(
                 Capsule()
-                    .fill((requiresRestart ? Color.orange : Color.secondary).opacity(0.12))
+                    .fill((requiresActivation ? Color.orange : Color.secondary).opacity(0.12))
             )
             .overlay(
                 Capsule()
-                    .stroke((requiresRestart ? Color.orange : Color.secondary).opacity(0.35), lineWidth: 1)
+                    .stroke((requiresActivation ? Color.orange : Color.secondary).opacity(0.35), lineWidth: 1)
             )
             .fixedSize()
         }

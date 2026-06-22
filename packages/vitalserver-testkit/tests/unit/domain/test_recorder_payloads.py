@@ -6,6 +6,7 @@ from typing import cast
 
 from tirosh_vitalserver.testkit import encode_realtime_payload
 from tirosh_vitalserver.testkit.domain.bed import (
+    create_bed,
     create_beds,
     require_bed_capacity_for_recorders,
 )
@@ -144,6 +145,25 @@ def test_beds_are_created_before_recorder_payloads() -> None:
     assert [room.room_name for room in rooms] == [bed.room_name for bed in beds]
     assert [room.bed_id for room in rooms] == [bed.bed_id for bed in beds]
     assert set(payload) == {bed.room_name for bed in beds}
+
+
+def test_generated_beds_use_short_unique_room_suffixes() -> None:
+    suffixes = iter(("a1b2", "a1b2", "c3d4", "e5f6"))
+
+    beds = create_beds(
+        count=2,
+        prefix="OR",
+        reserved_room_names=("ORa1b2",),
+        suffix_factory=lambda: next(suffixes),
+    )
+
+    assert [bed.room_name for bed in beds] == ["ORc3d4", "ORe5f6"]
+
+
+def test_generated_testkit_bed_suffix_stays_visible_in_web_monitoring() -> None:
+    bed = create_bed(prefix="testbed", suffix_factory=lambda: "5f83")
+
+    assert bed.room_name == "testbed5f83"
 
 
 def test_simulated_recorder_payload_rejects_duplicate_bed_room_names() -> None:

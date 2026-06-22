@@ -197,8 +197,8 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         return try await hostClient.exportLogs(to: try localFileURL(destination))
     }
 
-    public func uninstallRuntime(clean: Bool) async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.uninstallRuntime(clean: clean))
+    public func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await client.uninstallRuntime(mode: mode))
     }
 
     private func localFileURL(_ reference: RuntimeControlFileReference) throws -> URL {

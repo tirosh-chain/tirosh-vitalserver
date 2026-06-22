@@ -28,6 +28,17 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertEqual(command, "'/bin/rm' '-rf' '--' '/tmp/backup before'")
     }
 
+    func testCleanUninstallCommandUsesCleanArgumentWithoutForceCleanRecoveryArgument() {
+        let command = RuntimeCommandFactory.uninstallCommand(
+            uninstaller: "/usr/local/bin/tirosh-vitalserver-uninstall",
+            clean: true,
+            forceClean: false
+        )
+
+        XCTAssertTrue(command.contains("'--clean'"))
+        XCTAssertFalse(command.contains("--force-clean-uninstaller"))
+    }
+
     func testUninstallCommandStartsBackgroundUninstaller() {
         let command = RuntimeCommandFactory.uninstallCommand(
             uninstaller: "/usr/local/bin/tirosh-vitalserver-uninstall",
@@ -64,6 +75,8 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains("echo \"${started_marker}\""))
         XCTAssertTrue(command.contains("echo \"${completed_marker}\""))
         XCTAssertTrue(command.contains("echo \"${failed_marker_prefix}${background_status} ${marker_run_id}\""))
+        XCTAssertTrue(command.contains("mark_missing_terminal_failure()"))
+        XCTAssertTrue(command.contains("uninstall worker exited before terminal marker"))
         XCTAssertTrue(command.contains("echo \"${marker_run_id}\""))
         XCTAssertTrue(command.contains("echo \"${background_pid}\""))
         XCTAssertTrue(command.contains("> \"${worker_pid_file}\""))
@@ -107,6 +120,8 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(script.contains("/bin/bash \"${worker_script}\" </dev/null >> \"${log_file}\" 2>&1 &"))
         XCTAssertTrue(script.contains("chmod 0644 \"${log_file}\""))
         XCTAssertTrue(script.contains("chmod 0644 \"${worker_pid_file}\""))
+        XCTAssertTrue(script.contains("mark_missing_terminal_failure()"))
+        XCTAssertTrue(script.contains("uninstall worker exited before terminal marker"))
         XCTAssertFalse(script.contains("nohup"))
         XCTAssertTrue(script.contains("echo \"${marker_run_id}\""))
         XCTAssertTrue(script.contains("echo \"${background_pid}\""))
@@ -114,6 +129,24 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(script.contains("ps -p \"${worker_pid}\" -o pid="))
         XCTAssertFalse(script.contains("&;"))
         XCTAssertFalse(script.contains("} < /dev/null >> \"${log_file}\" 2>&1 &"))
+    }
+
+    func testUninstallWorkerMarksMissingTerminalOnUnexpectedExit() {
+        let script = RuntimeUninstallProgressScript.workerScript(
+            plan: RuntimeUninstallProgressScriptPlan(
+                command: "'/bin/uninstall-tool' '--clean'",
+                logPath: "/tmp/uninstall.log",
+                previousLogPath: "/tmp/uninstall.log.previous",
+                viewerScriptPath: "/tmp/uninstall.command",
+                runID: "worker-test"
+            ),
+            shellQuote: RuntimeShellCommandFactory.shellQuote
+        )
+
+        XCTAssertTrue(script.contains("mark_missing_terminal_failure()"))
+        XCTAssertTrue(script.contains("echo \"${failed_marker_prefix}missing-marker ${marker_run_id}\""))
+        XCTAssertTrue(script.contains("write_result \"failed\" 1 false \"uninstall worker exited before terminal marker\" \"not-checked\""))
+        XCTAssertTrue(script.contains("trap 'mark_missing_terminal_failure' EXIT"))
     }
 
     func testUninstallProgressViewerDoesNotUseSignalPermissionAsWorkerState() {

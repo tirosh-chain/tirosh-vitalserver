@@ -3,10 +3,19 @@ import Errors
 
 struct RuntimeSettingsRestartNoticeDecision: Equatable {
     let requiredChanges: [String]
+    let containerServiceChanges: [String]
     let message: String
 
     var requiresRestart: Bool {
         !requiredChanges.isEmpty
+    }
+
+    var requiresContainerServicesReconcile: Bool {
+        !containerServiceChanges.isEmpty
+    }
+
+    var requiresActivation: Bool {
+        requiresRestart || requiresContainerServicesReconcile
     }
 }
 
@@ -16,9 +25,15 @@ struct RuntimeSettingsRestartNoticePolicy {
         runtime: RuntimeSettings
     ) -> RuntimeSettingsRestartNoticeDecision {
         let changes = requiredRestartChanges(draft: draft, runtime: runtime)
+        let containerServiceChanges = requiredContainerServiceChanges(draft: draft, runtime: runtime)
         return RuntimeSettingsRestartNoticeDecision(
             requiredChanges: changes,
-            message: message(requiredChanges: changes, restartAfterSave: draft.restartAfterSave)
+            containerServiceChanges: containerServiceChanges,
+            message: message(
+                requiredChanges: changes,
+                containerServiceChanges: containerServiceChanges,
+                restartAfterSave: draft.restartAfterSave
+            )
         )
     }
 
@@ -41,11 +56,31 @@ struct RuntimeSettingsRestartNoticePolicy {
         return changes
     }
 
-    private func message(requiredChanges: [String], restartAfterSave: Bool) -> String {
-        guard !requiredChanges.isEmpty else {
-            return AppConstants.StatusText.noVMRuntimeRestartRequired
+    func requiredContainerServiceChanges(
+        draft: RuntimeSettings,
+        runtime: RuntimeSettings
+    ) -> [String] {
+        var changes: [String] = []
+        appendIfChanged(AppConstants.Labels.redisRelay, draft.redisRelay, runtime.redisRelay, to: &changes)
+        return changes
+    }
+
+    private func message(
+        requiredChanges: [String],
+        containerServiceChanges: [String],
+        restartAfterSave: Bool
+    ) -> String {
+        guard !requiredChanges.isEmpty || !containerServiceChanges.isEmpty else {
+            return AppConstants.StatusText.noRuntimeActivationRequired
         }
-        let requiredBy = requiredChanges.joined(separator: ", ")
+        if requiredChanges.isEmpty {
+            let requiredBy = containerServiceChanges.joined(separator: ", ")
+            if restartAfterSave {
+                return AppConstants.StatusText.containerServicesWillReconcileAfterSave(requiredBy: requiredBy)
+            }
+            return AppConstants.StatusText.containerServicesReconcileRequiredButDisabled(requiredBy: requiredBy)
+        }
+        let requiredBy = (requiredChanges + containerServiceChanges).joined(separator: ", ")
         if restartAfterSave {
             return AppConstants.StatusText.vmRuntimeWillRestartAfterSave(requiredBy: requiredBy)
         }

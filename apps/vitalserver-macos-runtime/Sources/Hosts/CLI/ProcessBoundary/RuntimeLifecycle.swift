@@ -244,19 +244,33 @@ struct RuntimeLifecycle {
 
         guard result.restart else {
             if result.restartRequirement.requiresRestart {
+                let message = configureActivationRequiredMessage(result.restartRequirement)
                 try writeRuntimeStatus(
                     .degraded,
                     operation: .configure,
-                    message: "runtime configuration updated; VM runtime restart required"
+                    message: message
                 )
-                print("runtime configuration updated; VM runtime restart required")
+                print(message)
                 return
             }
             try writeRuntimeStatus(.healthy, operation: .configure, message: "runtime configuration updated")
             print("runtime configuration updated")
             return
         }
-        print("runtime configuration updated and services restarted")
+        print("runtime configuration updated and required runtime changes activated")
+    }
+
+    private func configureActivationRequiredMessage(
+        _ requirement: ConfigureRuntimeRestartRequirement
+    ) -> String {
+        switch requirement {
+        case .none:
+            return "runtime configuration updated"
+        case .containerServices:
+            return "runtime configuration updated; container services reconcile required"
+        case .vmRuntime:
+            return "runtime configuration updated; VM runtime restart required"
+        }
     }
 
     func verifyBundle(_ bundleURL: URL) throws {
