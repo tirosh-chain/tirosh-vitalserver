@@ -6,7 +6,12 @@ const {
   sendDataSpoolItemStates,
 } = require("./send-data-ingress-contracts");
 
-function createSendDataSpoolItem(payload, context, payloadSummary, options = {}) {
+type SendDataSpoolItemOptions = {
+  now?: () => Date;
+  idFactory?: () => string;
+};
+
+function createSendDataSpoolItem(payload, context, payloadSummary, options: SendDataSpoolItemOptions = {}) {
   const buffer = payloadBuffer(payload);
   if (!buffer) {
     return invalid("send_data payload is not a string or buffer");

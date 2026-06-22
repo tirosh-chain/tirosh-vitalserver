@@ -63,7 +63,7 @@ test("send_data spool terminal states stay narrow", () => {
 });
 
 test("OpenAPI send_data enums match recorder ingress domain contract", () => {
-  const openAPIPath = path.resolve(__dirname, "../../../../docs/api/recorder-ingress.openapi.yaml");
+  const openAPIPath = path.resolve(process.cwd(), "../../docs/api/recorder-ingress.openapi.yaml");
   const openAPI = fs.readFileSync(openAPIPath, "utf8");
 
   assert.deepStrictEqual(enumValues(openAPI, "SendDataIngressMode"), Object.values(sendDataIngressModes));
@@ -73,7 +73,7 @@ test("OpenAPI send_data enums match recorder ingress domain contract", () => {
   );
 });
 
-function enumValues(yaml, schemaName, propertyName) {
+function enumValues(yaml: string, schemaName: string, propertyName?: string) {
   const block = propertyName
     ? nestedBlock(yaml, `${schemaName}:`, `${propertyName}:`)
     : blockAfter(yaml, `${schemaName}:`);
@@ -88,11 +88,11 @@ function enumValues(yaml, schemaName, propertyName) {
   return values;
 }
 
-function nestedBlock(yaml, schemaMarker, propertyMarker) {
+function nestedBlock(yaml: string, schemaMarker: string, propertyMarker: string) {
   return blockAfter(blockAfter(yaml, schemaMarker), propertyMarker);
 }
 
-function blockAfter(text, marker) {
+function blockAfter(text: string, marker: string) {
   const index = text.indexOf(marker);
   assert.notStrictEqual(index, -1, `missing marker: ${marker}`);
   return text.slice(index + marker.length);

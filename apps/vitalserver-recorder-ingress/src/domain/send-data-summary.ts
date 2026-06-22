@@ -2,6 +2,15 @@
 
 const zlib = require("zlib");
 
+type SendDataSummary = {
+  payload_type: string;
+  bytes?: number;
+  vrcode?: string;
+  version?: string;
+  rooms_count?: number;
+  decode_error?: string;
+};
+
 function summarizeSendData(payload) {
   const buffer = Buffer.isBuffer(payload)
     ? payload
@@ -10,7 +19,7 @@ function summarizeSendData(payload) {
       : null;
   if (!buffer) return { payload_type: typeof payload };
 
-  const summary = {
+  const summary: SendDataSummary = {
     payload_type: Buffer.isBuffer(payload) ? "buffer" : "string",
     bytes: buffer.length,
   };

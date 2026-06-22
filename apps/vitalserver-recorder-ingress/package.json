@@ -4,15 +4,20 @@
   "private": true,
   "description": "VitalServer recorder ingress, Socket.IO audit, and edge-observation sidecar",
   "type": "commonjs",
-  "main": "proxy.js",
+  "main": "dist/proxy.js",
   "scripts": {
-    "start": "node proxy.js",
-    "test": "find tests -name '*.test.js' -print | sort | xargs node --test",
-    "test:unit": "find tests/unit -name '*.test.js' -print | sort | xargs node --test",
-    "test:integration": "find tests/integration -name '*.test.js' -print | sort | xargs node --test",
-    "check": "find . -name '*.js' -print -exec node --check {} \\;"
+    "build": "tsc",
+    "start": "node dist/proxy.js",
+    "test": "npm run build && find dist/tests -name '*.test.js' -print | sort | xargs node --test",
+    "test:unit": "npm run build && find dist/tests/unit -name '*.test.js' -print | sort | xargs node --test",
+    "test:integration": "npm run build && find dist/tests/integration -name '*.test.js' -print | sort | xargs node --test",
+    "check": "tsc --noEmit"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "typescript": "^5.9.3"
   }
 }

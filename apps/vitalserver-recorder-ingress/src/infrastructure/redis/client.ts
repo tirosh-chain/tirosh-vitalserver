@@ -8,7 +8,7 @@ function createRedisClient(config) {
       const socket = net.createConnection({ host: config.host, port: config.port });
       let settled = false;
       let data = "";
-      const done = (error, reply) => {
+      const done = (error: Error | null, reply?: unknown) => {
         if (settled) return;
         settled = true;
         socket.destroy();

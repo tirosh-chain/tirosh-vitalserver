@@ -54,7 +54,7 @@ Replay 성공은 "upstream으로 `send_data` 전달을 완료했다"는 뜻입�
 
 ## 3. Ingress mode
 
-`sendDataIngressModes`는 `apps/vitalserver-recorder-ingress/src/domain/send-data-ingress-contracts.js`가
+`sendDataIngressModes`는 `apps/vitalserver-recorder-ingress/src/domain/send-data-ingress-contracts.ts`가
 소유합니다.
 
 | Mode | 의미 |

@@ -136,7 +136,7 @@ VRecorder의 upstream 전송을 차단하지 않습니다.
 
 ### 5-1. Contract owner
 
-코드 기준 event 계약은 `apps/vitalserver-recorder-ingress/src/domain/audit-event-contracts.js`에 모읍니다.
+코드 기준 event 계약은 `apps/vitalserver-recorder-ingress/src/domain/audit-event-contracts.ts`에 모읍니다.
 새 audit event를 추가할 때는 먼저 이 파일에 event type, Socket.IO event name, JSDoc payload
 contract를 추가합니다.
 
