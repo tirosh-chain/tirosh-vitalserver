@@ -14,6 +14,13 @@ does not expose source Redis over HTTP and does not write to source Redis.
 - Target writes use the VitalServer Redis Relay Protocol v1:
   `RESTORE` the binary payload, update the target fingerprint, record publish
   dedupe state, and `XADD` a `key_published` event atomically.
+- Target Redis commands reconnect and retry with bounded exponential backoff
+  when the socket is closed, times out, or fails before a Redis response is
+  read. Retry exhaustion remains an explicit publish failure in relay status.
+- If the target endpoint stays unreachable for longer than one command retry
+  window, the relay process stays alive, records the failed batch, and retries
+  again on the next relay loop. When the target becomes reachable again, the
+  relay resumes publishing the current allowed source Redis snapshots.
 - The relay is a publisher. Target-side consumers own consumer group pending
   recovery, dead-letter handling, decoding, and downstream idempotency.
 - Credential/session/auth keys are always denied.
@@ -132,3 +139,9 @@ The status never includes the target password.
 Docker health checks use this status file to report relay process liveness.
 Target Redis authentication, network, or publish failures are reported in the
 status payload instead of making the container disappear from service liveness.
+Transient target disconnects are retried inside the active batch with bounded
+backoff; persistent failures remain visible as `target_publish_failed` samples.
+Longer target outages do not stop the relay container. The next successful
+batch republishes source keys that are still present in source Redis. The relay
+is not a durable queue: source keys that expire or are deleted while the target
+is unreachable cannot be recovered by the publisher alone.

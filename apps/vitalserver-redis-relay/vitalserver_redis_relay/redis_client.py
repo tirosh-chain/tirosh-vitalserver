@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import socket
 import ssl
+import time
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from types import TracebackType
-from typing import Any
+from typing import Any, Callable
 
 from .replication import (
     KeyType,
@@ -115,6 +116,10 @@ class RedisProtocolError(RuntimeError):
     pass
 
 
+class RedisConnectionError(RedisProtocolError):
+    pass
+
+
 class RedisClient:
     def __init__(
         self,
@@ -122,10 +127,18 @@ class RedisClient:
         *,
         publish_contract: RelayPublishContract | None = None,
         timeout_seconds: float = 2.0,
+        retry_attempts: int = 2,
+        retry_initial_backoff_seconds: float = 0.25,
+        retry_max_backoff_seconds: float = 2.0,
+        retry_sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._endpoint = endpoint
         self._publish_contract = publish_contract or default_publish_contract()
         self._timeout_seconds = timeout_seconds
+        self._retry_attempts = retry_attempts
+        self._retry_initial_backoff_seconds = retry_initial_backoff_seconds
+        self._retry_max_backoff_seconds = retry_max_backoff_seconds
+        self._retry_sleep = retry_sleep
 
     def scan_keys(self, *, count: int) -> list[str]:
         with self.session() as session:
@@ -159,6 +172,10 @@ class RedisClient:
             self._endpoint,
             publish_contract=self._publish_contract,
             timeout_seconds=self._timeout_seconds,
+            retry_attempts=self._retry_attempts,
+            retry_initial_backoff_seconds=self._retry_initial_backoff_seconds,
+            retry_max_backoff_seconds=self._retry_max_backoff_seconds,
+            retry_sleep=self._retry_sleep,
         )
 
 
@@ -169,14 +186,22 @@ class RedisClientSession:
         *,
         publish_contract: RelayPublishContract,
         timeout_seconds: float,
+        retry_attempts: int,
+        retry_initial_backoff_seconds: float,
+        retry_max_backoff_seconds: float,
+        retry_sleep: Callable[[float], None],
     ) -> None:
         self._endpoint = endpoint
         self._publish_contract = publish_contract
         self._timeout_seconds = timeout_seconds
+        self._retry_attempts = retry_attempts
+        self._retry_initial_backoff_seconds = retry_initial_backoff_seconds
+        self._retry_max_backoff_seconds = retry_max_backoff_seconds
+        self._retry_sleep = retry_sleep
         self._connection: socket.socket | ssl.SSLSocket | None = None
 
     def __enter__(self) -> RedisClientSession:
-        self._connection = self._connect()
+        self._connection = self._connect_with_retry()
         return self
 
     def __exit__(
@@ -295,12 +320,29 @@ class RedisClientSession:
         *,
         decode_bulk_strings: bool,
     ) -> Any:
-        connection = self._active_connection()
-        connection.sendall(_encode_command(parts))
-        return _RESPReader(
-            connection,
-            decode_bulk_strings=decode_bulk_strings,
-        ).read()
+        encoded = _encode_command(parts)
+        last_error: BaseException | None = None
+        for attempt in range(self._retry_attempts + 1):
+            try:
+                connection = self._active_connection()
+                connection.sendall(encoded)
+                return _RESPReader(
+                    connection,
+                    decode_bulk_strings=decode_bulk_strings,
+                ).read()
+            except _RETRYABLE_CONNECTION_ERRORS as error:
+                last_error = error
+                self._close_connection()
+                if attempt >= self._retry_attempts:
+                    raise RedisConnectionError(
+                        "Redis command failed after reconnect attempts: "
+                        f"{error}"
+                    ) from error
+                self._sleep_before_retry(attempt)
+                self._connection = self._connect_with_retry()
+        raise RedisConnectionError(
+            "Redis command failed without a response"
+        ) from last_error
 
     def _connect(self) -> socket.socket | ssl.SSLSocket:
         raw = socket.create_connection(
@@ -322,6 +364,36 @@ class RedisClientSession:
             )
             _RESPReader(connection, decode_bulk_strings=True).read()
         return connection
+
+    def _connect_with_retry(self) -> socket.socket | ssl.SSLSocket:
+        last_error: BaseException | None = None
+        for attempt in range(self._retry_attempts + 1):
+            try:
+                return self._connect()
+            except _RETRYABLE_CONNECTION_ERRORS as error:
+                last_error = error
+                if attempt >= self._retry_attempts:
+                    raise RedisConnectionError(
+                        "Redis connection failed after reconnect attempts: "
+                        f"{error}"
+                    ) from error
+                self._sleep_before_retry(attempt)
+        raise RedisConnectionError(
+            "Redis connection failed without a response"
+        ) from last_error
+
+    def _sleep_before_retry(self, attempt: int) -> None:
+        delay = min(
+            self._retry_initial_backoff_seconds * (2**attempt),
+            self._retry_max_backoff_seconds,
+        )
+        if delay > 0:
+            self._retry_sleep(delay)
+
+    def _close_connection(self) -> None:
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
 
     def _active_connection(self) -> socket.socket | ssl.SSLSocket:
         if self._connection is None:
@@ -385,11 +457,18 @@ class _RESPReader:
         while len(data) < length:
             chunk = self._connection.recv(length - len(data))
             if not chunk:
-                raise RedisProtocolError(
+                raise RedisConnectionError(
                     "connection closed while reading Redis response"
                 )
             data += chunk
         return data
+
+
+_RETRYABLE_CONNECTION_ERRORS = (
+    OSError,
+    TimeoutError,
+    RedisConnectionError,
+)
 
 
 def _encode_command(parts: tuple[str | bytes, ...]) -> bytes:

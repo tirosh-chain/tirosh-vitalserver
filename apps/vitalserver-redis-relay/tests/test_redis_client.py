@@ -95,6 +95,69 @@ def test_session_authenticates_and_selects_database_once(monkeypatch: Any) -> No
     assert b"PING" in sockets[0].sent[2]
 
 
+def test_session_reconnects_and_retries_command_after_closed_connection(
+    monkeypatch: Any,
+) -> None:
+    sockets: list[FakeSocket] = []
+    sleeps: list[float] = []
+
+    def create_connection(address: tuple[str, int], timeout: float) -> FakeSocket:
+        socket = FakeSocket(b"" if not sockets else b"+PONG\r\n")
+        sockets.append(socket)
+        return socket
+
+    monkeypatch.setattr(
+        "vitalserver_redis_relay.redis_client.socket.create_connection",
+        create_connection,
+    )
+
+    client = RedisClient(
+        RedisEndpoint(host="target", port=6379, database=0),
+        retry_sleep=sleeps.append,
+    )
+
+    with client.session() as session:
+        assert session.command("PING") == "PONG"
+
+    assert len(sockets) == 2
+    assert sockets[0].closed is True
+    assert b"PING" in sockets[0].sent[0]
+    assert b"PING" in sockets[1].sent[0]
+    assert sleeps == [0.25]
+
+
+def test_session_retries_initial_connection_failure(monkeypatch: Any) -> None:
+    attempts = 0
+    sockets: list[FakeSocket] = []
+    sleeps: list[float] = []
+
+    def create_connection(address: tuple[str, int], timeout: float) -> FakeSocket:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise TimeoutError("target connect timed out")
+        socket = FakeSocket(b"+PONG\r\n")
+        sockets.append(socket)
+        return socket
+
+    monkeypatch.setattr(
+        "vitalserver_redis_relay.redis_client.socket.create_connection",
+        create_connection,
+    )
+
+    client = RedisClient(
+        RedisEndpoint(host="target", port=6379, database=0),
+        retry_sleep=sleeps.append,
+    )
+
+    with client.session() as session:
+        assert session.command("PING") == "PONG"
+
+    assert attempts == 2
+    assert len(sockets) == 1
+    assert sleeps == [0.25]
+
+
 def test_publish_snapshot_if_changed_uses_atomic_protocol_script(
     monkeypatch: Any,
 ) -> None:

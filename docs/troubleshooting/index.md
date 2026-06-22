@@ -97,6 +97,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-086 | TestKit bed suffix가 Web Monitoring에서 보이지 않음 | TestKit / Upstream integration | active | [TestKit bed suffix가 Web Monitoring에서 보이지 않음](086_testkit-bed-suffix-hidden-in-web-monitoring.md) |
 | TS-087 | OOM recovery 이후 watchdog service가 빠져 status가 recovering에 머묾 | Runtime health / Launchd recovery | implemented | [Watchdog Not Loaded After OOM Recovery](087_watchdog-not-loaded-after-oom-recovery.md) |
 | TS-088 | Fresh install 후 Redis Relay image/source 누락으로 bootstrap 실패 | Packaging / Guest bootstrap | implemented | [Redis Relay Missing From Package Bundle](088_redis-relay-missing-from-package-bundle.md) |
+| TS-089 | macOS host watchdog timeout으로 재부팅됨 | Runtime health / Host resources / VM lifecycle | active | [Host macOS Watchdog Timeout Under VM Memory Pressure](089_host-macos-watchdog-timeout-under-vm-memory-pressure.md) |
 
 ## Follow-up 규칙
 
