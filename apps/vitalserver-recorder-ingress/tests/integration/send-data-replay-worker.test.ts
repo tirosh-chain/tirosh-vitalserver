@@ -3,10 +3,16 @@
 const assert = require("assert");
 const test = require("node:test");
 const { createSendDataReplayWorker, replayBatchLimit } = require("../../src/application/send-data-replay-worker");
-const { configureSendDataSpool, createMetrics, metricsSnapshot } = require("../../src/observability/metrics");
+const {
+  configureSendDataSpool,
+  createMetrics,
+  metricsSnapshot,
+  recordSendDataSpoolSpooled,
+} = require("../../src/observability/metrics");
 
 test("send_data replay worker marks successful claimed item as replayed", async () => {
   const metricState = replayMetrics();
+  recordSendDataSpoolSpooled(metricState, "VR_A", 7, 1);
   const moves = [];
   const worker = createSendDataReplayWorker({
     config: spoolConfig(),
@@ -36,7 +42,11 @@ test("send_data replay worker marks successful claimed item as replayed", async 
   const snapshot = metricsSnapshot(metricState);
   assert.strictEqual(snapshot.replay.replayedEvents, 1);
   assert.strictEqual(snapshot.replay.inFlightItems, 0);
+  assert.strictEqual(snapshot.replay.pendingItems, 0);
+  assert.strictEqual(snapshot.spool.pendingItems, 0);
+  assert.strictEqual(snapshot.spool.pendingBytes, 0);
   assert.strictEqual(snapshot.recorders[0].replay.replayedEvents, 1);
+  assert.strictEqual(snapshot.recorders[0].spool.pendingItems, 0);
 });
 
 test("send_data replay worker requeues upstream unavailable before max attempts", async () => {
@@ -70,6 +80,36 @@ test("send_data replay worker requeues upstream unavailable before max attempts"
   assert.strictEqual(snapshot.replay.retryableFailures, 1);
   assert.strictEqual(snapshot.replay.pendingItems, 1);
   assert.strictEqual(snapshot.replay.lastFailure.reason, "upstream_unavailable");
+});
+
+test("send_data replay worker requeues thrown replay target failure before max attempts", async () => {
+  const metricState = replayMetrics();
+  const moves = [];
+  const worker = createSendDataReplayWorker({
+    config: spoolConfig({ replay: replayConfig({ maxAttempts: 3 }) }),
+    metrics: metricState,
+    spoolStore: {
+      claim() {
+        return Promise.resolve({ ok: true, item: spoolItem({ state: "in_flight", attemptCount: 1 }), claim: { raw: "raw" } });
+      },
+      requeue(item, claim) {
+        moves.push({ target: "pending", item, claim });
+        return Promise.resolve({ ok: true, depth: 1 });
+      },
+    },
+    replayTarget: {
+      send() {
+        throw new Error("target config failed");
+      },
+    },
+  });
+
+  const result = await worker.runOnce();
+
+  assert.strictEqual(result.processed, 1);
+  assert.strictEqual(moves[0].item.state, "retryable_failed");
+  assert.strictEqual(moves[0].item.lastFailure.reason, "upstream_unavailable");
+  assert.strictEqual(moves[0].item.lastFailure.message, "target config failed");
 });
 
 test("send_data replay worker dead-letters invalid claimed spool document", async () => {

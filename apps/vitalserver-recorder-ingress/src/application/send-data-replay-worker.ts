@@ -66,7 +66,7 @@ async function runReplayBatch({ config, metrics, spoolStore, replayTarget }) {
 
     const item = claim.item;
     recordSendDataReplayStarted(metrics, item.vrcode, item);
-    const result = await replayTarget.send(item);
+    const result = await sendToReplayTarget(replayTarget, item);
     const decision = completeSendDataReplayAttempt(item, result, config.replay);
     const finalItem = decision.item;
 
@@ -98,6 +98,18 @@ async function runReplayBatch({ config, metrics, spoolStore, replayTarget }) {
   return { ok: true, processed };
 }
 
+async function sendToReplayTarget(replayTarget, item) {
+  try {
+    return await replayTarget.send(item);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: sendDataFailureReasons.UPSTREAM_UNAVAILABLE,
+      message: error && error.message ? error.message : "send_data replay target failed",
+    };
+  }
+}
+
 async function deadLetterInvalidClaim({ claim, metrics, spoolStore }) {
   if (claim.reason !== sendDataFailureReasons.INVALID_PAYLOAD) return;
   const item = deadLetterInvalidSendDataSpoolDocument(claim.raw, claim.reason, claim.message);
@@ -125,4 +137,4 @@ function positiveInteger(value, fallback) {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
-module.exports = { createSendDataReplayWorker, replayBatchLimit };
+module.exports = { createSendDataReplayWorker, replayBatchLimit, sendToReplayTarget };

@@ -78,6 +78,8 @@ def main(argv: list[str] | None = None) -> int:
         replay["deadLetteredEvents"] == 0,
         f"deadLetteredEvents={replay['deadLetteredEvents']}",
     )
+    assert_condition(spool["pendingItems"] == 0, f"spool.pendingItems={spool['pendingItems']}")
+    assert_condition(spool["pendingBytes"] == 0, f"spool.pendingBytes={spool['pendingBytes']}")
     assert_condition(
         redis_lengths["dead_letter"] == 0,
         f"dead_letter list length={redis_lengths['dead_letter']}",

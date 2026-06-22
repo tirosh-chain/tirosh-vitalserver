@@ -216,6 +216,17 @@ function recordSendDataReplayClaimFailed(metrics, reason, message) {
 }
 
 function recordSendDataReplayStarted(metrics, vrcode, item) {
+  const bytes = Number.isFinite(item && item.payloadBytes) ? item.payloadBytes : 0;
+  updateSpool(metrics.sendDataSpool, (spool) => {
+    spool.pendingItems = Math.max(0, spool.pendingItems - 1);
+    spool.pendingBytes = Math.max(0, spool.pendingBytes - bytes);
+    if (spool.pendingItems === 0) spool.oldestPendingAt = null;
+  });
+  updateRecorderSpool(metrics, vrcode, (spool) => {
+    spool.pendingItems = Math.max(0, spool.pendingItems - 1);
+    spool.pendingBytes = Math.max(0, spool.pendingBytes - bytes);
+    if (spool.pendingItems === 0) spool.oldestPendingAt = null;
+  });
   updateReplay(metrics.sendDataReplay, (replay) => {
     replay.status = "replaying";
     replay.inFlightItems += 1;

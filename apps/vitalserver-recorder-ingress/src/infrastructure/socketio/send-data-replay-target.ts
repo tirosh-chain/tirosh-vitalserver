@@ -4,6 +4,8 @@ const { sendDataFailureReasons } = require("../../domain/send-data-ingress-contr
 
 function createSocketIoSendDataReplayTarget(config) {
   const socketIoClient = require("socket.io-client");
+  const replayConfig = config.replay || (config.spool && config.spool.replay) || {};
+  const targetTimeoutMs = replayConfig.targetTimeoutMs || 5000;
 
   return {
     send(item) {
@@ -23,7 +25,7 @@ function createSocketIoSendDataReplayTarget(config) {
           transports: ["websocket", "polling"],
           forceNew: true,
           reconnection: false,
-          timeout: config.replay.targetTimeoutMs,
+          timeout: targetTimeoutMs,
         });
 
         const timeout = setTimeout(() => {
@@ -32,7 +34,7 @@ function createSocketIoSendDataReplayTarget(config) {
             reason: sendDataFailureReasons.UPSTREAM_TIMEOUT,
             message: "send_data replay timed out",
           }, socket);
-        }, config.replay.targetTimeoutMs);
+        }, targetTimeoutMs);
 
         socket.on("connect", () => {
           clearTimeout(timeout);
