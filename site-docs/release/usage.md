@@ -39,40 +39,66 @@ or Host proxy port conflict blocks this install.
 내부 Clean uninstall과 reset command는 목적이 다릅니다. Clean uninstall은 정상 제거 흐름이고, reset command는 재설치 blocker를 제거하는 recovery tool입니다. 차이는
 [Clean Uninstall and Reset for Reinstall](clean-uninstall.md)를 봅니다.
 
-## 2. Helper app에서 확인할 것
+## 2. Runtime 화면에서 확인할 것
 
-설치 후에는 Helper app을 열고 Status 화면부터 확인합니다. Status는 전체 요약이고, 세부 원인은 다른 화면에서 나눠 봅니다.
+설치 후에는 macOS Helper app 또는 Remote Console (PWA)의 Status 화면부터 확인합니다.
+Status는 전체 요약이고, 세부 원인은 다른 화면에서 나눠 봅니다.
 
 ### 2-1. 화면별 확인 포인트
 
-처음에는 Status 화면에서 전체 상태를 보고, 문제가 보이는 영역에 따라 Recorders, Beds, Advanced, Observability, Logs 화면으로 이동합니다.
+처음에는 Status 화면에서 전체 상태를 보고, 문제가 보이는 영역에 따라 Recorders, Beds, Advanced,
+Observability, Logs 화면으로 이동합니다. macOS Helper app과 Remote Console (PWA)는 같은 runtime
+상태 계약을 표시하지만, Finder 열기, local file picker, 권한 상승 같은 host-native 작업은 macOS
+Helper app 또는 host API affordance를 통해 처리합니다.
 
-| 화면 | 언제 보는가 | 확인할 것 |
-|---|---|---|
-| Status | 설치 직후, 평소 상태 확인, 장애 첫 확인 | overall health, VitalServer 연결, PWA 연결, data directory, recorder summary |
-| Recorders | recorder가 보이지 않거나 stale/offline일 때 | VRecorder status, IP, 연결 bed, last seen, anomaly count |
-| Beds | bed와 recorder 연결 상태를 볼 때 | bed status, 연결 VRecorder, patient 연결 여부 |
-| Advanced | runtime service나 VM 상태를 볼 때 | VM/service 상태, active operation, runtime version, failure reasons |
-| Observability | 상태 변화의 시간 순서를 볼 때 | event timeline, recorder anomaly, relationship history |
-| Logs | 지원 자료를 모으거나 상세 로그를 볼 때 | command, update activation, VM, container, watchdog logs |
+| 화면          | 언제 보는가                                 | 확인할 것                                                                    |
+| ------------- | ------------------------------------------- | ---------------------------------------------------------------------------- |
+| Status        | 설치 직후, 평소 상태 확인, 장애 첫 확인     | overall health, VitalServer 연결, Remote Console (PWA) 연결, data directory, recorder summary |
+| Recorders     | recorder가 보이지 않거나 stale/offline일 때 | VRecorder status, IP, 연결 bed, last seen, anomaly count                     |
+| Beds          | bed와 recorder 연결 상태를 볼 때            | bed status, 연결 VRecorder, patient 연결 여부                                |
+| Advanced      | runtime service나 VM 상태를 볼 때           | VM/service 상태, active operation, runtime version, failure reasons          |
+| Observability | 상태 변화의 시간 순서를 볼 때               | event timeline, recorder anomaly, relationship history                       |
+| Logs          | 지원 자료를 모으거나 상세 로그를 볼 때      | command, update activation, VM, container, watchdog logs                     |
 
 설치 직후 Advanced에서 일부 service나 HTTP endpoint가 아직 준비되지 않아도, active operation이 `Installing`이면 설치 작업 중으로, `Initializing`이면 runtime service와 guest가 사용 가능 상태로 올라오는 중으로 봅니다. 설치와 초기 기동이 끝난 뒤에도 `Stopped`, `Unavailable`, `Read failed`가 남아 있을 때 세부 점검을 시작합니다.
 
-### 2-2. 상태를 읽을 때 주의할 점
+### 2-2. 화면 예시
+
+아래 이미지는 release 검증자가 Helper app의 주요 화면을 빠르게 맞춰 보기 위한 참고 자료입니다.
+화면의 값은 예시이며, 실제 상태 판단은 각 화면이 표시하는 최신 runtime status와 event를 기준으로 합니다.
+
+Remote Console (PWA)는 같은 runtime 상태 계약을 브라우저에서 확인하는 화면입니다. macOS native 권한,
+Finder 열기, local file picker 같은 host affordance는 Helper app 또는 host API 경계를 통해 처리합니다.
+
+아래 표의 이미지는 축소 preview입니다. 원본 크기로 보려면 이미지를 엽니다.
+
+| 화면 | macOS Helper app | Remote Console (PWA) |
+|---|---|---|
+| Status | <a href="../../images/swift/status.png"><img src="../../images/swift/status.png" alt="macOS Helper app Status 화면" width="260"></a> | <a href="../../images/pwa/status.png"><img src="../../images/pwa/status.png" alt="Remote Console (PWA) Status 화면" width="260"></a> |
+| Recorders | <a href="../../images/swift/recorders.png"><img src="../../images/swift/recorders.png" alt="macOS Helper app Recorders 화면" width="260"></a> | <a href="../../images/pwa/recorders.png"><img src="../../images/pwa/recorders.png" alt="Remote Console (PWA) Recorders 화면" width="260"></a> |
+| Beds | <a href="../../images/swift/beds.png"><img src="../../images/swift/beds.png" alt="macOS Helper app Beds 화면" width="260"></a> | <a href="../../images/pwa/beds.png"><img src="../../images/pwa/beds.png" alt="Remote Console (PWA) Beds 화면" width="260"></a> |
+| Advanced | <a href="../../images/swift/advanced.png"><img src="../../images/swift/advanced.png" alt="macOS Helper app Advanced 화면" width="260"></a><br><a href="../../images/swift/advanced-initializing.png">Initializing</a> / <a href="../../images/swift/advanced-operations.png">Operations</a> | <a href="../../images/pwa/advanced.png"><img src="../../images/pwa/advanced.png" alt="Remote Console (PWA) Advanced 화면" width="260"></a> |
+| Observability | <a href="../../images/swift/observability.png"><img src="../../images/swift/observability.png" alt="macOS Helper app Observability 화면" width="260"></a> | <a href="../../images/pwa/observability.png"><img src="../../images/pwa/observability.png" alt="Remote Console (PWA) Observability 화면" width="260"></a> |
+| Settings | <a href="../../images/swift/settings.png"><img src="../../images/swift/settings.png" alt="macOS Helper app Settings 화면" width="260"></a><br><a href="../../images/swift/settings-require_vm_restart.png">Requires VM restart</a> | <a href="../../images/pwa/settings.png"><img src="../../images/pwa/settings.png" alt="Remote Console (PWA) Settings 화면" width="260"></a> |
+| Update | <a href="../../images/swift/update.png"><img src="../../images/swift/update.png" alt="macOS Helper app Update 화면" width="260"></a><br><a href="../../images/swift/update-bundle.png">Bundle selected</a> | <a href="../../images/pwa/update.png"><img src="../../images/pwa/update.png" alt="Remote Console (PWA) Update 화면" width="260"></a> |
+| Logs | <a href="../../images/swift/logs.png"><img src="../../images/swift/logs.png" alt="macOS Helper app Logs 화면" width="260"></a> | <a href="../../images/pwa/logs.png"><img src="../../images/pwa/logs.png" alt="Remote Console (PWA) Logs 화면" width="260"></a> |
+| More | <a href="../../images/swift/more-about.png"><img src="../../images/swift/more-about.png" alt="macOS Helper app More About 화면" width="260"></a><br><a href="../../images/swift/more-test.png">Test</a> / <a href="../../images/swift/more-test-running.png">Test running</a> / <a href="../../images/swift/more-danger_zone.png">Danger Zone</a> | <a href="../../images/pwa/more-test.png"><img src="../../images/pwa/more-test.png" alt="Remote Console (PWA) More Test 화면" width="260"></a><br><a href="../../images/pwa/more-dangerzone.png">Danger Zone</a> |
+
+### 2-3. 상태를 읽을 때 주의할 점
 
 상태는 임의로 판단하지 않습니다. 예를 들어 recorder가 화면에 없다고 해서 항상 “장비가 없다”는 뜻은 아닙니다. 관측 자료를 읽지 못했거나, 관측 자료가 오래되었거나, 실제로 최신 관측에 없는 상황이 서로 다를 수 있습니다.
 
-| 보이는 상태 | 먼저 확인할 곳 |
-|---|---|
-| `Critical` | Status의 failure reason, Advanced, Logs |
+| 보이는 상태       | 먼저 확인할 곳                                |
+| ----------------- | --------------------------------------------- |
+| `Critical`        | Status의 failure reason, Advanced, Logs       |
 | `Needs attention` | Status 요약 이후 Recorders/Beds 또는 Advanced |
-| recorder `Stale` | Recorders의 last seen, Observability anomaly |
-| bed `Offline` | Beds의 연결 VRecorder, relationship history |
-| read issue | Logs와 Observability store failure 여부 |
+| recorder `Stale`  | Recorders의 last seen, Observability anomaly  |
+| bed `Offline`     | Beds의 연결 VRecorder, relationship history   |
+| read issue        | Logs와 Observability store failure 여부       |
 
 자세한 상태값 의미는 [Runtime Status](runtime-status.md)를 봅니다.
 
-### 2-3. Backup과 restore
+### 2-4. Backup과 restore
 
 일반 backup/restore는 Advanced -> Recovery operations의 `VitalServer backup`을 사용합니다.
 이 backup은 Helper가 관리하는 runtime 설정, Host runtime 상태, observability history, service data를 하나의 복구 단위로 묶습니다. 따라서 일반 사용자는 runtime data와 service data를 따로 backup하거나
@@ -101,19 +127,21 @@ Settings 화면의 `Restart VM runtime when required`는 저장 후 항상 runti
 
 VM runtime restart가 필요한 설정은 VM 실행 조건을 바꾸는 값입니다.
 
-| 설정 | 적용 방식 |
-|---|---|
-| CPU, memory | VM runtime restart 필요 |
-| disk 증가 | VM disk resize 후 VM runtime restart 필요 |
-| network mode, bridged interface | VM network device 재구성이 필요하므로 VM runtime restart 필요 |
-| Vital files directory | VM shared directory mount 재구성이 필요하므로 VM runtime restart 필요 |
-| VitalServer URL, Remote Console URL, public host/port | runtime config 문서 갱신, VM runtime restart requirement 없음 |
+| 설정                                                                                     | 적용 방식                                                                                                                      |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| CPU, memory                                                                              | VM runtime restart 필요                                                                                                        |
+| disk 증가                                                                                | VM disk resize 후 VM runtime restart 필요                                                                                      |
+| network mode, bridged interface                                                          | VM network device 재구성이 필요하므로 VM runtime restart 필요                                                                  |
+| Vital files directory                                                                    | VM shared directory mount 재구성이 필요하므로 VM runtime restart 필요                                                          |
+| VitalServer URL, Remote Console URL, public host/port                                    | runtime config 문서 갱신, VM runtime restart requirement 없음                                                                  |
 | admin password, VitalServer Helper backup schedule/retention, log archive retention/size | guest runtime settings, Host launchd backup scheduler, Host runtime-control settings 갱신, VM runtime restart requirement 없음 |
-| start on boot, auto recovery, sleep prevention | Host launchd/config 정책 갱신, VM runtime restart requirement 없음 |
+| start on boot, auto recovery, sleep prevention                                           | Host launchd/config 정책 갱신, VM runtime restart requirement 없음                                                             |
 
 따라서 URL, VitalServer Helper backup retention, log archive retention 같은 설정만 바꿨는데 `Restart VM runtime when required`가 켜져 있어도 VM을 내리지 않습니다. 반대로 CPU, memory, disk 증가, network, Vital files directory를 바꾸고 이 옵션을 끄면 설정은 저장되지만 현재 실행 중인 VM에는 다음 VM runtime restart 때 반영됩니다.
 
 Settings 화면은 restart requirement를 각 설정 row에 흩어진 badge로 표시하지 않고, `VM runtime restart` 영역에 모아서 표시합니다. 저장된 설정이 아직 실행 중인 VM에 반영되지 않은 경우 이 영역에서 `Requires VM restart` badge/action을 눌러 pending VM 설정 적용을 확인합니다.
+
+<img src="../../images/swift/settings-require_vm_restart.png" alt="Settings VM runtime restart required 화면" width="720">
 
 Settings 탭은 저장된 설정을 보여주고, Status/Info 탭은 현재 VM runtime에 적용된 설정을 보여줍니다.
 예를 들어 Vital files directory를 바꾸고 VM runtime restart를 하지 않았다면 Settings 탭에는 새 경로가
@@ -163,15 +191,19 @@ Product Update는 Helper app의 Update 탭에서 적용합니다. 현장 Mac에�
 
 ### 4-1. Update 탭에서 진행
 
-| 단계 | 화면에서 할 일 |
-|---|---|
-| Update source | `Choose Bundle`로 전달받은 offline update bundle을 선택 |
-| Bundle verification | `Verify Bundle`로 checksum과 bundle 구성을 먼저 확인 |
-| Apply update | 검증이 성공한 뒤 `Apply Bundle`로 update 적용 |
-| Update progress | 진행 메시지와 command log를 보며 완료 또는 실패 여부 확인 |
+| 단계                | 화면에서 할 일                                            |
+| ------------------- | --------------------------------------------------------- |
+| Update source       | `Choose Bundle`로 전달받은 offline update bundle을 선택   |
+| Bundle verification | `Verify Bundle`로 checksum과 bundle 구성을 먼저 확인      |
+| Apply update        | 검증이 성공한 뒤 `Apply Bundle`로 update 적용             |
+| Update progress     | 진행 메시지와 command log를 보며 완료 또는 실패 여부 확인 |
 
 현재 build에서는 online update가 아니라 offline bundle 적용을 기준으로 합니다. Update 탭에
 `Online update is planned for connected sites` 안내가 보이면, 전달받은 offline bundle을 사용합니다.
+
+<img src="../../images/swift/update.png" alt="Update 화면" width="720">
+
+<img src="../../images/swift/update-bundle.png" alt="Update bundle 선택 화면" width="720">
 
 ### 4-2. 적용 전 확인
 
@@ -209,13 +241,13 @@ update 실패, recorder 관측 실패, service 실행 실패는 확인해야 하
 
 지원 요청을 만들기 전에 아래 정보를 먼저 적어 둡니다.
 
-| 항목 | 예시 |
-|---|---|
-| 발생 시각 | `2026-06-08 14:30 KST` |
-| 사용한 화면 | Status, Update, Recorders, Beds, Observability, Logs |
-| 보이는 상태 | Healthy, Needs attention, Critical, Updating, Recovering 등 |
+| 항목           | 예시                                                         |
+| -------------- | ------------------------------------------------------------ |
+| 발생 시각      | `2026-06-08 14:30 KST`                                       |
+| 사용한 화면    | Status, Update, Recorders, Beds, Observability, Logs         |
+| 보이는 상태    | Healthy, Needs attention, Critical, Updating, Recovering 등  |
 | 직전에 한 작업 | install, update 적용, reset command 실행, runtime start/stop |
-| 선택한 파일 | update bundle, reset command, installer package |
+| 선택한 파일    | update bundle, reset command, installer package              |
 
 가능하면 화면 screenshot도 함께 보관합니다. 다만 환자 정보, 병원 내부 IP, 인증 정보, token이 보이면 공개 issue에 올리지 않습니다.
 
@@ -231,16 +263,18 @@ Helper app이 열리는 상태라면 아래 순서로 확인합니다.
 
 `Open Logs`는 Mac 안의 로그 폴더를 여는 기능이고, `Export Logs`는 지원 담당자에게 전달할 수 있는 zip 파일을 만드는 기능입니다.
 
+<img src="../../images/swift/logs.png" alt="Logs 화면" width="720">
+
 ### 5-3. 상황별로 필요한 자료
 
-| 상황 | 함께 전달할 자료 |
-|---|---|
-| 설치 실패 | Installer 화면 메시지, `/var/log/install.log`, 사용한 installer package 이름 |
-| Update 실패 | Update progress, 선택한 update bundle 이름, Logs 화면의 export zip, Observability event 시간대 |
-| runtime이 Critical | Status/Advanced 상태, failure reasons, Logs 화면의 export zip |
-| recorder/bed가 stale 또는 offline | Recorders/Beds 화면 상태, last seen, Observability anomaly, event 시간대 |
-| Reset command 실패 | 사용자 temp의 `tirosh-vitalserver-reset-for-reinstall.log`, `/private/tmp/tirosh-vitalserver-uninstall.log`, `/var/log/install.log` |
-| 상태 화면을 읽지 못함 | read issue 메시지, Logs 화면의 export zip, Observability store failure 여부 |
+| 상황                              | 함께 전달할 자료                                                                                                                    |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| 설치 실패                         | Installer 화면 메시지, `/var/log/install.log`, 사용한 installer package 이름                                                        |
+| Update 실패                       | Update progress, 선택한 update bundle 이름, Logs 화면의 export zip, Observability event 시간대                                      |
+| runtime이 Critical                | Status/Advanced 상태, failure reasons, Logs 화면의 export zip                                                                       |
+| recorder/bed가 stale 또는 offline | Recorders/Beds 화면 상태, last seen, Observability anomaly, event 시간대                                                            |
+| Reset command 실패                | 사용자 temp의 `tirosh-vitalserver-reset-for-reinstall.log`, `/private/tmp/tirosh-vitalserver-uninstall.log`, `/var/log/install.log` |
+| 상태 화면을 읽지 못함             | read issue 메시지, Logs 화면의 export zip, Observability store failure 여부                                                         |
 
 ### 5-4. 직접 확인할 수 있는 로그
 
@@ -280,26 +314,26 @@ runtime이 설치된 뒤의 상세 로그는 기본적으로 아래 위치에 �
 
 ### 6-1. 주요 경로
 
-| 항목 | 위치 |
-|---|---|
-| Helper app | `/Applications/VitalServer Helper.app` |
-| runtime CLI | `/usr/local/bin/vitalserver-vm` |
-| host proxy runner | `/usr/local/bin/vitalserver-proxy-run` |
-| uninstaller | `/usr/local/bin/tirosh-vitalserver-uninstall` |
-| runtime home | `/Library/Application Support/VitalServerHelper/` |
-| status file | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` |
-| logs | `/Library/Application Support/VitalServerHelper/logs/` |
-| LaunchDaemons | `/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.*.plist` |
+| 항목              | 위치                                                                        |
+| ----------------- | --------------------------------------------------------------------------- |
+| Helper app        | `/Applications/VitalServer Helper.app`                                      |
+| runtime CLI       | `/usr/local/bin/vitalserver-vm`                                             |
+| host proxy runner | `/usr/local/bin/vitalserver-proxy-run`                                      |
+| uninstaller       | `/usr/local/bin/tirosh-vitalserver-uninstall`                               |
+| runtime home      | `/Library/Application Support/VitalServerHelper/`                           |
+| status file       | `/Library/Application Support/VitalServerHelper/status/runtime-status.json` |
+| logs              | `/Library/Application Support/VitalServerHelper/logs/`                      |
+| LaunchDaemons     | `/Library/LaunchDaemons/ai.tirosh.vitalserver.helper.*.plist`               |
 
 ### 6-2. 언제 확인하나
 
-| 경로 | 언제 보는가 |
-|---|---|
-| Helper app | 설치 후 앱을 열거나 app bundle 존재 여부를 확인할 때 |
-| runtime CLI | 지원 담당자가 health, update, service command를 직접 실행할 때 |
-| runtime home | VM/runtime 상태, logs, backups, status 문서 위치를 확인할 때 |
-| status file | Helper app이 읽는 runtime 상태 문서를 확인할 때 |
-| logs | `Export Logs`가 어렵거나 특정 log source를 직접 확인할 때 |
+| 경로          | 언제 보는가                                                       |
+| ------------- | ----------------------------------------------------------------- |
+| Helper app    | 설치 후 앱을 열거나 app bundle 존재 여부를 확인할 때              |
+| runtime CLI   | 지원 담당자가 health, update, service command를 직접 실행할 때    |
+| runtime home  | VM/runtime 상태, logs, backups, status 문서 위치를 확인할 때      |
+| status file   | Helper app이 읽는 runtime 상태 문서를 확인할 때                   |
+| logs          | `Export Logs`가 어렵거나 특정 log source를 직접 확인할 때         |
 | LaunchDaemons | service가 load되어 있는지, disabled override가 남았는지 확인할 때 |
 
 ### 6-3. 직접 수정하지 않을 것
