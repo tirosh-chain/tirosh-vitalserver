@@ -14,10 +14,10 @@ test("config loads explicit redis ip rewrite policy", () => {
   });
 });
 
-test("config enables bounded mirror spool by default", () => {
+test("config enables bounded spool and replay by default", () => {
   assert.deepStrictEqual(loadConfig({}).spool, {
     enabled: true,
-    mode: "mirror_spool",
+    mode: "spool_and_replay",
     storage: "redis_list",
     listKey: "vitalserver:recorder_ingress:send_data:pending",
     inFlightListKey: "vitalserver:recorder_ingress:send_data:in_flight",
@@ -27,7 +27,7 @@ test("config enables bounded mirror spool by default", () => {
     maxPendingBytes: 512 * 1024 * 1024,
     maxPayloadBytes: 10 * 1024 * 1024,
     replay: {
-      enabled: false,
+      enabled: true,
       intervalMs: 1000,
       batchSize: 1,
       maxAttempts: 3,

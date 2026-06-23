@@ -287,6 +287,10 @@ Replay 성공은 "upstream으로 `send_data` emit을 완료했다"는 뜻입니�
 
 `RECORDER_INGRESS_SEND_DATA_MODE`는 ingress가 client `send_data`를 upstream으로 직접 통과시킬지, spool에만 기록할지, replay worker를 사용할지 결정합니다.
 
+기본 운영값은 `spool_and_replay`입니다. Helper Settings의 `send_data mode`는 이 값을 `runtime-settings.json`에 저장하고, guest compose runner가 `RECORDER_INGRESS_SEND_DATA_MODE` 환경변수로 recorder ingress에 전달합니다. 이 설정은 VM restart가 아니라 container service reconcile로 적용됩니다.
+
+`mirror_spool`에서 Redis pending이 늘어나는 것은 "replay worker가 밀려서 소비하지 못하는 backlog"가 아닙니다. 이 mode는 upstream direct relay를 그대로 유지하면서 Redis에 관측용 사본을 남기고, replay를 명시적으로 켜지 않으면 소비자가 없습니다. 따라서 status에서는 이런 상태를 `draining`이 아니라 `mirroring, replay disabled`로 해석해야 합니다. Upstream 메모리 압력을 구조적으로 줄이려면 `mirror_spool`이 아니라 `spool_and_replay`를 사용해야 합니다.
+
 | Mode | Direct upstream relay | Spool write | Replay worker | 용도 |
 |---|---:|---:|---:|---|
 | `passthrough` | 예 | 아니오 | 아니오 | spool 기능 비활성화. 기존 동작에 가깝습니다. |
@@ -454,7 +458,7 @@ Upstream replay는 새 Socket.IO client connection을 만들고 `send_data` even
 
 | 환경변수 | 기본값 | 설명 |
 |---|---|---|
-| `RECORDER_INGRESS_SEND_DATA_MODE` | `mirror_spool` | `passthrough`, `mirror_spool`, `spool_only`, `spool_and_replay` 중 하나 |
+| `RECORDER_INGRESS_SEND_DATA_MODE` | `spool_and_replay` | `passthrough`, `mirror_spool`, `spool_only`, `spool_and_replay` 중 하나 |
 | `RECORDER_INGRESS_SEND_DATA_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:pending` | durable `send_data` spool Redis List key |
 | `RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:in_flight` | replay worker가 claim한 item의 in-flight Redis List key |
 | `RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:replayed` | replay 완료 item Redis List key |

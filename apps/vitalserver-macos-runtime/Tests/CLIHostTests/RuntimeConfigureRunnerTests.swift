@@ -31,6 +31,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 .startOnBoot(false),
                 .autoRecovery(false),
                 .preventSystemSleep(false),
+                .recorderIngressSendDataMode(.mirrorSpool),
                 .backupRetention(20),
             ],
             restart: true
@@ -67,6 +68,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(guestSettings.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(guestSettings.publicHost, "vitaldb.tirosh.ai")
         XCTAssertEqual(guestSettings.publicPort, 443)
+        XCTAssertEqual(guestSettings.recorderIngressSendDataMode, .mirrorSpool)
         XCTAssertEqual(guestSettings.backupRetentionCount, 20)
     }
 

@@ -180,7 +180,7 @@ public struct RuntimeStatusHealthDetailsPolicy {
         return items
     }
 
-    private func recorderIngressQueueValue(
+    public func recorderIngressQueueValue(
         observation: RuntimeContainerObservation?
     ) -> RuntimeStatusHealthDetailValue {
         guard let observation else {
@@ -214,6 +214,8 @@ public struct RuntimeStatusHealthDetailsPolicy {
         let retryableFailures = replay?.retryableFailures
         let deadLetteredEvents = replay?.deadLetteredEvents
         let lastFailure = lastFailureReason(spool: spool, replay: replay)
+        let isMirrorOnly = spool?.mode == "mirror_spool"
+            && (replay?.status == nil || replay?.status == "disabled")
 
         let severity: RuntimeStatusReachabilityPolicy.Severity
         let stateText: String
@@ -223,6 +225,9 @@ public struct RuntimeStatusHealthDetailsPolicy {
         } else if (rejectedEvents ?? 0) > 0 || (retryableFailures ?? 0) > 0 {
             severity = .warning
             stateText = "degraded"
+        } else if isMirrorOnly {
+            severity = .neutral
+            stateText = "mirroring"
         } else if (pending ?? 0) > 0 || (inFlight ?? 0) > 0 {
             severity = .warning
             stateText = "draining"
@@ -232,10 +237,10 @@ public struct RuntimeStatusHealthDetailsPolicy {
         }
 
         var parts = [stateText]
-        if let pending {
+        if let pending, stateText == "healthy" || pending > 0 {
             parts.append("\(pending) pending")
         }
-        if let pendingBytes {
+        if let pendingBytes, pendingBytes > 0 {
             parts.append(formatBytes(pendingBytes))
         }
         if let inFlight, inFlight > 0 {
@@ -246,6 +251,9 @@ public struct RuntimeStatusHealthDetailsPolicy {
         }
         if let lag = replay?.replayLagSeconds {
             parts.append("replay lag \(durationText(lag))")
+        }
+        if isMirrorOnly {
+            parts.append("replay disabled")
         }
         if let rejectedEvents, rejectedEvents > 0 {
             parts.append("\(rejectedEvents) rejected")

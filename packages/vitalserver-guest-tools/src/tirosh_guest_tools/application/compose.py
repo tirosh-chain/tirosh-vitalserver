@@ -6,6 +6,7 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
@@ -14,6 +15,7 @@ from tirosh_guest_tools.contracts import (
     RuntimeFileName,
 )
 from tirosh_guest_tools.domain.errors import (
+    GuestContractError,
     GuestDependencyError,
     GuestUseCaseInputError,
 )
@@ -25,6 +27,7 @@ from tirosh_guest_tools.infrastructure.common import (
     mount_runtime_share,
     mount_vital_files_share,
     output,
+    read_json,
     run,
 )
 
@@ -42,6 +45,13 @@ ORDERED_STOP_POLICIES = (
     (ComposeService.REDIS, 60),
 )
 RUNNING_STATES = {"running", "restarting", "removing", "paused"}
+RECORDER_INGRESS_SEND_DATA_MODES = {
+    "passthrough",
+    "mirror_spool",
+    "spool_only",
+    "spool_and_replay",
+}
+DEFAULT_RECORDER_INGRESS_SEND_DATA_MODE = "spool_and_replay"
 
 
 @dataclass(frozen=True)
@@ -124,7 +134,25 @@ def load_runtime_env() -> RuntimeConfig:
     os.environ["VITALSERVER_PUBLIC_PORT"] = str(config.public_port)
     os.environ["VITALSERVER_ADMIN_PASSWORD"] = config.admin_password
     os.environ["VITALSERVER_VITAL_FILES_DIR"] = config.vital_files_directory
+    os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] = load_recorder_ingress_send_data_mode(
+        DEPLOY_DIR / RuntimeFileName.RUNTIME_SETTINGS.value
+    )
     return config
+
+
+def load_recorder_ingress_send_data_mode(settings_path: os.PathLike[str] | str) -> str:
+    document = read_json(Path(settings_path))
+    mode = document.get(
+        "recorderIngressSendDataMode",
+        DEFAULT_RECORDER_INGRESS_SEND_DATA_MODE,
+    )
+    if not isinstance(mode, str) or mode not in RECORDER_INGRESS_SEND_DATA_MODES:
+        raise GuestContractError(
+            "runtime settings field is invalid: "
+            f"{settings_path} recorderIngressSendDataMode",
+            code="runtime-settings-recorder-ingress-send-data-mode-invalid",
+        )
+    return mode
 
 
 def compose(

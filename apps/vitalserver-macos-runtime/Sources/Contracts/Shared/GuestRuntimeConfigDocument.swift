@@ -89,15 +89,28 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
     public var remoteConsoleURL: String
     public var publicHost: String
     public var publicPort: Int
+    public var recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
     public var automaticBackupEnabled: Bool
     public var backupScheduleTimes: [String]
     public var backupRetentionCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case vitalServerURL
+        case remoteConsoleURL
+        case publicHost
+        case publicPort
+        case recorderIngressSendDataMode
+        case automaticBackupEnabled
+        case backupScheduleTimes
+        case backupRetentionCount
+    }
 
     public init(
         vitalServerURL: String,
         remoteConsoleURL: String,
         publicHost: String,
         publicPort: Int,
+        recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode = RuntimeRecorderIngressDefaults.sendDataMode,
         automaticBackupEnabled: Bool = RuntimeSettingsInitialBackupDefaults.automaticBackupEnabled,
         backupScheduleTimes: [String] = RuntimeSettingsInitialBackupDefaults.backupScheduleTimes,
         backupRetentionCount: Int = RuntimeSettingsInitialBackupDefaults.backupRetentionCount
@@ -106,6 +119,7 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
         self.remoteConsoleURL = remoteConsoleURL
         self.publicHost = publicHost
         self.publicPort = publicPort
+        self.recorderIngressSendDataMode = recorderIngressSendDataMode
         self.automaticBackupEnabled = automaticBackupEnabled
         self.backupScheduleTimes = backupScheduleTimes
         self.backupRetentionCount = backupRetentionCount
@@ -119,6 +133,43 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
             publicPort: runtimeConfig.publicPort
         )
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            vitalServerURL: try container.decode(String.self, forKey: .vitalServerURL),
+            remoteConsoleURL: try container.decode(String.self, forKey: .remoteConsoleURL),
+            publicHost: try container.decode(String.self, forKey: .publicHost),
+            publicPort: try container.decode(Int.self, forKey: .publicPort),
+            recorderIngressSendDataMode: try container.decodeIfPresent(
+                RuntimeRecorderIngressSendDataMode.self,
+                forKey: .recorderIngressSendDataMode
+            ) ?? RuntimeRecorderIngressDefaults.sendDataMode,
+            automaticBackupEnabled: try container.decodeIfPresent(
+                Bool.self,
+                forKey: .automaticBackupEnabled
+            ) ?? RuntimeSettingsInitialBackupDefaults.automaticBackupEnabled,
+            backupScheduleTimes: try container.decodeIfPresent(
+                [String].self,
+                forKey: .backupScheduleTimes
+            ) ?? RuntimeSettingsInitialBackupDefaults.backupScheduleTimes,
+            backupRetentionCount: try container.decodeIfPresent(
+                Int.self,
+                forKey: .backupRetentionCount
+            ) ?? RuntimeSettingsInitialBackupDefaults.backupRetentionCount
+        )
+    }
+}
+
+public enum RuntimeRecorderIngressSendDataMode: String, Codable, CaseIterable, Equatable, Sendable {
+    case passthrough
+    case mirrorSpool = "mirror_spool"
+    case spoolOnly = "spool_only"
+    case spoolAndReplay = "spool_and_replay"
+}
+
+public enum RuntimeRecorderIngressDefaults {
+    public static let sendDataMode = RuntimeRecorderIngressSendDataMode.spoolAndReplay
 }
 
 public enum RuntimeSettingsInitialBackupDefaults {

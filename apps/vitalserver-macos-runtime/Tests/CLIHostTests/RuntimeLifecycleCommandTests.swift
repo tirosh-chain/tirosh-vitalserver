@@ -61,6 +61,8 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             "10",
             "--log-archive-maximum-gib",
             "3",
+            "--recorder-ingress-send-data-mode",
+            "mirror_spool",
             "--restart",
         ])
 
@@ -71,6 +73,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
                 .startOnBoot(false),
                 .logArchiveRetentionDays(10),
                 .logArchiveMaximumGiB(3),
+                .recorderIngressSendDataMode(.mirrorSpool),
             ],
             restart: true
         )))

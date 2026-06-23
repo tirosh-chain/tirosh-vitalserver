@@ -34,6 +34,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "remoteConsoleURL": "https://console.tirosh.ai/",
           "publicHost": "example.test",
           "publicPort": 8080,
+          "recorderIngressSendDataMode": "mirror_spool",
           "automaticBackupEnabled": true,
           "backupScheduleTimes": ["03:15"],
           "backupRetentionCount": 30
@@ -64,10 +65,58 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(settings.publicHost, "example.test")
         XCTAssertEqual(settings.publicPort, 8080)
+        XCTAssertEqual(settings.recorderIngressSendDataMode, .mirrorSpool)
         XCTAssertEqual(settings.backupRetentionCount, 30)
         XCTAssertEqual(settings.proxyPort, 19090)
         XCTAssertFalse(settings.autoRecoveryEnabled)
         XCTAssertFalse(settings.preventSystemSleep)
+    }
+
+    func testLoadsMissingRecorderIngressModeAsProductDefault() throws {
+        let directory = try temporaryDirectory()
+        let vmConfig = directory.appendingPathComponent("vm-config.json")
+        let vmDisk = directory.appendingPathComponent("vm-disk.img")
+        let guestSettings = directory.appendingPathComponent("runtime-settings.json")
+        let proxyLaunchDaemon = directory.appendingPathComponent("proxy.plist")
+
+        try """
+        {
+          "cpuCount": 4,
+          "memoryMiB": 6144,
+          "network": { "mode": "shared", "bridgedInterface": "en0" },
+          "vitalFilesDirectory": { "hostPath": "/Volumes/Vital Files" },
+          "autoRecoveryEnabled": false,
+          "preventSystemSleep": false
+        }
+        """.write(to: vmConfig, atomically: true, encoding: .utf8)
+        FileManager.default.createFile(atPath: vmDisk.path, contents: Data([0]))
+        try """
+        {
+          "vitalServerURL": "https://vitaldb.tirosh.ai/",
+          "remoteConsoleURL": "https://console.tirosh.ai/",
+          "publicHost": "example.test",
+          "publicPort": 8080,
+          "automaticBackupEnabled": true,
+          "backupScheduleTimes": ["03:15"],
+          "backupRetentionCount": 30
+        }
+        """.write(to: guestSettings, atomically: true, encoding: .utf8)
+        try writeProxyLaunchDaemon(proxyLaunchDaemon, proxyPort: 19090)
+
+        let reader = SystemRuntimeSettingsReader(
+            paths: RuntimeSettingsPaths(
+                vmConfig: vmConfig.path,
+                vmDisk: vmDisk.path,
+                guestRuntimeSettings: guestSettings.path,
+                proxyLaunchDaemon: proxyLaunchDaemon.path
+            ),
+            runCommand: startOnBootCommand()
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.readIssues, [])
+        XCTAssertEqual(settings.recorderIngressSendDataMode, .spoolAndReplay)
     }
 
     func testLoadsAppliedVMSettingsFromAppliedVMConfigSnapshot() throws {
@@ -480,6 +529,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         settings.remoteConsoleURL = "https://console.tirosh.ai/"
         settings.publicHost = "public.test"
         settings.publicPort = 8080
+        settings.recorderIngressSendDataMode = .mirrorSpool
         settings.backupRetentionCount = 20
         settings.startOnBoot = false
         settings.autoRecoveryEnabled = false
@@ -498,6 +548,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionProxyPort, in: arguments), "18080")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionVitalServerURL, in: arguments), "https://vitaldb.tirosh.ai/")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionRemoteConsoleURL, in: arguments), "https://console.tirosh.ai/")
+        XCTAssertEqual(
+            value(after: RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataMode, in: arguments),
+            "mirror_spool"
+        )
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionBackupRetention, in: arguments), "20")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionStartOnBoot, in: arguments), "false")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionAutoRecovery, in: arguments), "false")

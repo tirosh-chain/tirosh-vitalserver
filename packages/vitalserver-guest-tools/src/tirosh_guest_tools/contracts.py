@@ -23,6 +23,7 @@ class RuntimeFileName(StrEnum):
     RUNTIME_STATE = "runtime-state.json"
     BOOTSTRAP_RESULT = "bootstrap-result.json"
     RUNTIME_CONFIG = "runtime-config.json"
+    RUNTIME_SETTINGS = "runtime-settings.json"
     REDIS_BACKUP_REQUEST = "redis-backup.request"
     REDIS_BACKUP_RESULT = "redis-backup-result.json"
     REDIS_BACKUP_LOG = "redis-backup.log"

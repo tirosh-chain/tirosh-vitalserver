@@ -3,7 +3,7 @@
 const { sendDataIngressModes } = require("./domain/send-data-ingress-contracts");
 
 function loadConfig(env) {
-  const sendDataMode = sendDataIngressModeEnv(env, "RECORDER_INGRESS_SEND_DATA_MODE", sendDataIngressModes.MIRROR_SPOOL);
+  const sendDataMode = sendDataIngressModeEnv(env, "RECORDER_INGRESS_SEND_DATA_MODE", sendDataIngressModes.SPOOL_AND_REPLAY);
   return {
     listenPort: numberEnv(env, "RECORDER_INGRESS_PORT", 8080),
     upstream: {

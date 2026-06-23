@@ -447,6 +447,8 @@ public struct RuntimeConfigureRunner {
             return .publicHost(value)
         case .publicPort(let value):
             return .publicPort(value)
+        case .recorderIngressSendDataMode(let value):
+            return .recorderIngressSendDataMode(value)
         case .adminPassword(let value):
             return .adminPassword(value)
         case .adminPasswordFile(let value):

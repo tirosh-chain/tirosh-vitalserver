@@ -24,6 +24,7 @@ public enum RuntimeConfigureChange: Equatable, Sendable {
     case remoteConsoleURL(String)
     case publicHost(String)
     case publicPort(Int)
+    case recorderIngressSendDataMode(RuntimeRecorderIngressSendDataMode)
     case adminPassword(String)
     case adminPasswordFile(URL)
     case startOnBoot(Bool)

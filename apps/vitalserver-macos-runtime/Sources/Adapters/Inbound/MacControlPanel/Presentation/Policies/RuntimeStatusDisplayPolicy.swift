@@ -97,6 +97,84 @@ struct RuntimeStatusDisplayPolicy {
         healthDetailsPolicy.healthDetails(status: status, observation: observation, now: now).map(healthItem)
     }
 
+    func recorderIngressQueue(observation: RuntimeContainerObservation?) -> StatusValue {
+        statusValue(healthDetailsPolicy.recorderIngressQueueValue(observation: observation))
+    }
+
+    func recorderIngressDetails(observation: RuntimeContainerObservation?) -> [HealthItem] {
+        guard let observation else {
+            return [
+                healthItem(AppConstants.Labels.recorderIngressReplay, AppConstants.StatusText.notReported, .neutral),
+            ]
+        }
+        guard observation.recorderIngressStatusReadState == .loaded else {
+            return [
+                healthItem(
+                    AppConstants.Labels.recorderIngressReplay,
+                    observation.recorderIngressStatusReadError
+                        ?? "recorder ingress status \(observation.recorderIngressStatusReadState.rawValue)",
+                    .warning
+                ),
+            ]
+        }
+        guard let status = observation.recorderIngressStatus else {
+            return [
+                healthItem(AppConstants.Labels.recorderIngressReplay, AppConstants.StatusText.notReported, .neutral),
+            ]
+        }
+
+        let spool = status.spool
+        let replay = status.replay
+        return [
+            healthItem(
+                AppConstants.Labels.recorderIngressConnections,
+                "\(status.activeRecorderConnections) active / \(status.activeWebSockets) WebSockets",
+                .healthy
+            ),
+            healthItem(AppConstants.Labels.queue, queueDetailText(spool: spool), queueSeverity(spool: spool, replay: replay)),
+            healthItem(
+                AppConstants.Labels.recorderIngressOldestPending,
+                durationText(spool?.oldestPendingAgeSeconds),
+                .neutral
+            ),
+            healthItem(
+                AppConstants.Labels.recorderIngressReplay,
+                replay?.status ?? AppConstants.StatusText.notReported,
+                replaySeverity(replay)
+            ),
+            healthItem(
+                AppConstants.Labels.recorderIngressInFlight,
+                integerText(replay?.inFlightItems),
+                .neutral
+            ),
+            healthItem(
+                AppConstants.Labels.recorderIngressReplayLag,
+                durationText(replay?.replayLagSeconds),
+                .neutral
+            ),
+            healthItem(
+                AppConstants.Labels.recorderIngressBackpressureRejected,
+                integerText(spool?.rejectedEvents),
+                countSeverity(spool?.rejectedEvents, nonZero: .warning)
+            ),
+            healthItem(
+                AppConstants.Labels.recorderIngressRetryableFailures,
+                integerText(replay?.retryableFailures),
+                countSeverity(replay?.retryableFailures, nonZero: .warning)
+            ),
+            healthItem(
+                AppConstants.Labels.recorderIngressDeadLetters,
+                integerText(replay?.deadLetteredEvents),
+                countSeverity(replay?.deadLetteredEvents, nonZero: .critical)
+            ),
+            healthItem(
+                AppConstants.Labels.recorderIngressLastFailure,
+                lastFailureText(spool: spool, replay: replay),
+                lastFailureSeverity(spool: spool, replay: replay)
+            ),
+        ]
+    }
+
     func advancedVMHealth(status: RuntimeStatus) -> [HealthItem] {
         advancedVMHealthPolicy.vmHealth(status: status).map(healthItem)
     }
@@ -143,6 +221,17 @@ struct RuntimeStatusDisplayPolicy {
         HealthItem(label: item.label, value: statusValue(item.value))
     }
 
+    private func healthItem(
+        _ label: String,
+        _ text: String,
+        _ severity: RuntimeStatusReachabilityPolicy.Severity
+    ) -> HealthItem {
+        HealthItem(
+            label: label,
+            value: StatusValue(text: text, severity: displaySeverity(severity), uptimeText: nil)
+        )
+    }
+
     private func serviceHealthItem(_ item: RuntimeStatusAdvancedServiceHealthItem) -> ServiceHealthItem {
         ServiceHealthItem(
             label: item.label,
@@ -163,6 +252,150 @@ struct RuntimeStatusDisplayPolicy {
         case nil:
             return nil
         }
+    }
+
+    private func queueDetailText(spool: RuntimeRecorderIngressSpoolStatus?) -> String {
+        guard let spool else {
+            return AppConstants.StatusText.notReported
+        }
+        var parts: [String] = []
+        if let pendingItems = spool.pendingItems {
+            parts.append("\(pendingItems) pending")
+        }
+        if let pendingBytes = spool.pendingBytes {
+            parts.append(formatBytes(pendingBytes))
+        }
+        return parts.isEmpty ? AppConstants.StatusText.notReported : parts.joined(separator: " / ")
+    }
+
+    private func queueSeverity(
+        spool: RuntimeRecorderIngressSpoolStatus?,
+        replay: RuntimeRecorderIngressReplayStatus?
+    ) -> RuntimeStatusReachabilityPolicy.Severity {
+        if (spool?.writeFailures ?? 0) > 0 || (replay?.deadLetteredEvents ?? 0) > 0 {
+            return .critical
+        }
+        if (spool?.rejectedEvents ?? 0) > 0 || (replay?.retryableFailures ?? 0) > 0 {
+            return .warning
+        }
+        if spool?.mode == "mirror_spool"
+            && (replay?.status == nil || replay?.status == "disabled") {
+            return .neutral
+        }
+        if (spool?.pendingItems ?? replay?.pendingItems ?? 0) > 0 || (replay?.inFlightItems ?? 0) > 0 {
+            return .warning
+        }
+        if spool == nil && replay == nil {
+            return .neutral
+        }
+        return .healthy
+    }
+
+    private func replaySeverity(_ replay: RuntimeRecorderIngressReplayStatus?) -> RuntimeStatusReachabilityPolicy.Severity {
+        guard let status = replay?.status else {
+            return .neutral
+        }
+        switch status {
+        case "failed":
+            return .critical
+        case "degraded":
+            return .warning
+        case "idle", "replaying":
+            return .healthy
+        case "disabled":
+            return .neutral
+        default:
+            return .warning
+        }
+    }
+
+    private func countSeverity(
+        _ value: Int?,
+        nonZero: RuntimeStatusReachabilityPolicy.Severity
+    ) -> RuntimeStatusReachabilityPolicy.Severity {
+        guard let value else {
+            return .neutral
+        }
+        return value > 0 ? nonZero : .healthy
+    }
+
+    private func integerText(_ value: Int?) -> String {
+        value.map(String.init) ?? AppConstants.StatusText.notReported
+    }
+
+    private func durationText(_ seconds: Int?) -> String {
+        guard let seconds else {
+            return AppConstants.StatusText.notReported
+        }
+        let bounded = max(0, seconds)
+        if bounded < 60 {
+            return "\(bounded)s"
+        }
+        let minutes = bounded / 60
+        let remainder = bounded % 60
+        if minutes < 60 {
+            return remainder == 0 ? "\(minutes)m" : "\(minutes)m \(remainder)s"
+        }
+        let hours = minutes / 60
+        let minuteRemainder = minutes % 60
+        return minuteRemainder == 0 ? "\(hours)h" : "\(hours)h \(minuteRemainder)m"
+    }
+
+    private func formatBytes(_ bytes: Int) -> String {
+        if bytes <= 0 {
+            return "0 bytes"
+        }
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+
+    private func lastFailureText(
+        spool: RuntimeRecorderIngressSpoolStatus?,
+        replay: RuntimeRecorderIngressReplayStatus?
+    ) -> String {
+        if let text = failureText(replay?.lastFailure) {
+            return text
+        }
+        if let text = failureText(spool?.lastFailure) {
+            return text
+        }
+        if spool != nil || replay != nil {
+            return "none"
+        }
+        return AppConstants.StatusText.notReported
+    }
+
+    private func failureText(_ failure: RuntimeRecorderIngressFailureObservation?) -> String? {
+        guard let failure else {
+            return nil
+        }
+        if let reason = failure.reason, !reason.isEmpty {
+            if let message = failure.message, !message.isEmpty {
+                return "\(reason): \(message)"
+            }
+            return reason
+        }
+        if let message = failure.message, !message.isEmpty {
+            return message
+        }
+        return nil
+    }
+
+    private func lastFailureSeverity(
+        spool: RuntimeRecorderIngressSpoolStatus?,
+        replay: RuntimeRecorderIngressReplayStatus?
+    ) -> RuntimeStatusReachabilityPolicy.Severity {
+        if replay?.lastFailure != nil || spool?.lastFailure != nil {
+            return (spool?.writeFailures ?? 0) > 0 || (replay?.deadLetteredEvents ?? 0) > 0
+                ? .critical
+                : .warning
+        }
+        if spool == nil && replay == nil {
+            return .neutral
+        }
+        return .healthy
     }
 
     private func statusValue(_ value: RuntimeStatusAdvancedServiceHealthValue) -> StatusValue {
@@ -392,6 +625,7 @@ private struct AppRuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusAdv
     var sleepPreventionServiceLabel: String { AppConstants.Labels.sleepPreventionService }
     var watchdogServiceLabel: String { AppConstants.Labels.watchdogService }
     var vitalServerName: String { GeneratedRelease.vitalServerName }
+    var recorderIngressName: String { GeneratedRelease.recorderIngressName }
     var hostProxyName: String { GeneratedRelease.hostProxyName }
     var vitalDBObserverLabel: String { AppConstants.Labels.vitalDBObserver }
     var redisRelayLabel: String { AppConstants.Labels.redisRelay }

@@ -55,13 +55,40 @@ struct SharedDirectoryDocument: Decodable {
 }
 
 struct GuestRuntimeSettings: Decodable {
+    enum CodingKeys: String, CodingKey {
+        case vitalServerURL
+        case remoteConsoleURL
+        case publicHost
+        case publicPort
+        case recorderIngressSendDataMode
+        case automaticBackupEnabled
+        case backupScheduleTimes
+        case backupRetentionCount
+    }
+
     let vitalServerURL: String
     let remoteConsoleURL: String
     let publicHost: String
     let publicPort: Int
+    let recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
     let automaticBackupEnabled: Bool
     let backupScheduleTimes: [String]
     let backupRetentionCount: Int
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vitalServerURL = try container.decode(String.self, forKey: .vitalServerURL)
+        remoteConsoleURL = try container.decode(String.self, forKey: .remoteConsoleURL)
+        publicHost = try container.decode(String.self, forKey: .publicHost)
+        publicPort = try container.decode(Int.self, forKey: .publicPort)
+        recorderIngressSendDataMode = try container.decodeIfPresent(
+            RuntimeRecorderIngressSendDataMode.self,
+            forKey: .recorderIngressSendDataMode
+        ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataMode
+        automaticBackupEnabled = try container.decode(Bool.self, forKey: .automaticBackupEnabled)
+        backupScheduleTimes = try container.decode([String].self, forKey: .backupScheduleTimes)
+        backupRetentionCount = try container.decode(Int.self, forKey: .backupRetentionCount)
+    }
 
     static func loadResult(
         path: String,
@@ -90,6 +117,7 @@ struct GuestRuntimeSettings: Decodable {
             remoteConsoleURL: remoteConsoleURL,
             publicHost: publicHost,
             publicPort: publicPort,
+            recorderIngressSendDataMode: recorderIngressSendDataMode,
             automaticBackupEnabled: automaticBackupEnabled,
             backupScheduleTimes: backupScheduleTimes,
             backupRetentionCount: backupRetentionCount

@@ -62,6 +62,12 @@ struct RuntimeSettingsRestartNoticePolicy {
     ) -> [String] {
         var changes: [String] = []
         appendIfChanged(AppConstants.Labels.redisRelay, draft.redisRelay, runtime.redisRelay, to: &changes)
+        appendIfChanged(
+            AppConstants.Labels.recorderIngressSendDataMode,
+            draft.recorderIngressSendDataMode,
+            runtime.recorderIngressSendDataMode,
+            to: &changes
+        )
         return changes
     }
 

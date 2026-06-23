@@ -71,4 +71,24 @@ final class RuntimeSettingsRestartNoticePolicyTests: XCTestCase {
             AppConstants.StatusText.containerServicesWillReconcileAfterSave(requiredBy: AppConstants.Labels.redisRelay)
         )
     }
+
+    func testReportsRecorderIngressModeChangeAsContainerServicesReconcileRequired() {
+        var draft = RuntimeSettings()
+        draft.recorderIngressSendDataMode = .mirrorSpool
+        draft.restartAfterSave = true
+
+        let decision = policy.decision(draft: draft, runtime: RuntimeSettings())
+
+        XCTAssertFalse(decision.requiresRestart)
+        XCTAssertTrue(decision.requiresContainerServicesReconcile)
+        XCTAssertTrue(decision.requiresActivation)
+        XCTAssertEqual(decision.requiredChanges, [])
+        XCTAssertEqual(decision.containerServiceChanges, [AppConstants.Labels.recorderIngressSendDataMode])
+        XCTAssertEqual(
+            decision.message,
+            AppConstants.StatusText.containerServicesWillReconcileAfterSave(
+                requiredBy: AppConstants.Labels.recorderIngressSendDataMode
+            )
+        )
+    }
 }

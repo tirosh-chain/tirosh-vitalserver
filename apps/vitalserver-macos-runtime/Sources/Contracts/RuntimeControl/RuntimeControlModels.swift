@@ -132,6 +132,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         case remoteConsoleURL
         case publicHost
         case publicPort
+        case recorderIngressSendDataMode
         case adminPassword
         case changeAdminPassword
         case startOnBoot
@@ -162,6 +163,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var remoteConsoleURL: String
     public var publicHost: String
     public var publicPort: Int
+    public var recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
     public var adminPassword: String
     public var changeAdminPassword: Bool
     public var startOnBoot: Bool
@@ -192,6 +194,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         remoteConsoleURL: String = RuntimeSettingsInitialValues.remoteConsoleURL(),
         publicHost: String = "",
         publicPort: Int = RuntimeSettingsInitialValues.proxyPort,
+        recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode = RuntimeSettingsInitialValues.recorderIngressSendDataMode,
         adminPassword: String = "",
         changeAdminPassword: Bool = false,
         startOnBoot: Bool = true,
@@ -221,6 +224,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.remoteConsoleURL = remoteConsoleURL
         self.publicHost = publicHost
         self.publicPort = publicPort
+        self.recorderIngressSendDataMode = recorderIngressSendDataMode
         self.adminPassword = adminPassword
         self.changeAdminPassword = changeAdminPassword
         self.startOnBoot = startOnBoot
@@ -270,6 +274,10 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
             remoteConsoleURL: try container.decode(String.self, forKey: .remoteConsoleURL),
             publicHost: try container.decode(String.self, forKey: .publicHost),
             publicPort: try container.decode(Int.self, forKey: .publicPort),
+            recorderIngressSendDataMode: try container.decodeIfPresent(
+                RuntimeRecorderIngressSendDataMode.self,
+                forKey: .recorderIngressSendDataMode
+            ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataMode,
             adminPassword: try container.decode(String.self, forKey: .adminPassword),
             changeAdminPassword: try container.decode(Bool.self, forKey: .changeAdminPassword),
             startOnBoot: try container.decode(Bool.self, forKey: .startOnBoot),
@@ -307,6 +315,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         try container.encode(remoteConsoleURL, forKey: .remoteConsoleURL)
         try container.encode(publicHost, forKey: .publicHost)
         try container.encode(publicPort, forKey: .publicPort)
+        try container.encode(recorderIngressSendDataMode, forKey: .recorderIngressSendDataMode)
         try container.encode(adminPassword, forKey: .adminPassword)
         try container.encode(changeAdminPassword, forKey: .changeAdminPassword)
         try container.encode(startOnBoot, forKey: .startOnBoot)
@@ -601,6 +610,7 @@ public enum RuntimeSettingsInitialValues {
     public static let backupRetentionCount = RuntimeSettingsInitialBackupDefaults.backupRetentionCount
     public static let logArchiveRetentionDays = RuntimeLogArchiveRetentionConfiguration.defaultRetentionDays
     public static let logArchiveMaximumGiB = Int(RuntimeLogArchiveRetentionConfiguration.defaultMaximumBytes / 1_073_741_824)
+    public static let recorderIngressSendDataMode = RuntimeRecorderIngressDefaults.sendDataMode
 
     public static func vitalServerURL(proxyPort: Int = proxyPort) -> String {
         "http://\(localhost):\(proxyPort)/"

@@ -6,9 +6,103 @@ from typing import Any
 import pytest
 
 from tirosh_guest_tools.application import compose
-from tirosh_guest_tools.contracts import ComposeService
-from tirosh_guest_tools.domain.errors import GuestDependencyError
+from tirosh_guest_tools.contracts import ComposeService, RuntimeFileName
+from tirosh_guest_tools.domain.errors import GuestContractError, GuestDependencyError
 from tirosh_guest_tools.domain.operations import ComposeAction
+
+
+def test_load_runtime_env_exports_recorder_ingress_send_data_mode(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    settings_path = tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value
+    settings_path.write_text(
+        '{"recorderIngressSendDataMode":"spool_only"}\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_MODE", raising=False)
+
+    compose.load_runtime_env()
+
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_only"
+
+
+def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_replay(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        '{"publicHost":"vital.example.test"}\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_MODE", raising=False)
+
+    compose.load_runtime_env()
+
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_and_replay"
+
+
+def test_load_runtime_env_rejects_invalid_recorder_ingress_mode(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        '{"recorderIngressSendDataMode":"mirrorish"}\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    with pytest.raises(GuestContractError) as error:
+        compose.load_runtime_env()
+
+    assert error.value.code == "runtime-settings-recorder-ingress-send-data-mode-invalid"
 
 
 def test_stop_compose_action_stops_services_in_explicit_order(monkeypatch: Any) -> None:

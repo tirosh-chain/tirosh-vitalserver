@@ -10,6 +10,7 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
     case remoteConsoleURL
     case publicHost
     case publicPort
+    case recorderIngressSendDataMode
     case adminPassword
     case adminPasswordFile
     case startOnBoot
@@ -48,6 +49,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             self = .publicHost
         case "--public-port":
             self = .publicPort
+        case "--recorder-ingress-send-data-mode":
+            self = .recorderIngressSendDataMode
         case "--admin-password":
             self = .adminPassword
         case "--admin-password-file":
@@ -101,6 +104,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             return "--public-host"
         case .publicPort:
             return "--public-port"
+        case .recorderIngressSendDataMode:
+            return "--recorder-ingress-send-data-mode"
         case .adminPassword:
             return "--admin-password"
         case .adminPasswordFile:

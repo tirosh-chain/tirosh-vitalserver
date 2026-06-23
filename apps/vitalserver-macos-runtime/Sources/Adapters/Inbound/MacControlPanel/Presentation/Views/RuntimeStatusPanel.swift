@@ -23,14 +23,28 @@ struct RuntimeStatusPanel: View {
                 recorderSummarySection
                 Divider()
                 RuntimeDisclosureSection(AppConstants.Labels.recorderDetails, isExpanded: $showingRecorderDetails) {
-                    Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
-                        statusRow(AppConstants.Labels.knownRecorders, recorderSummary.knownRecorders)
-                        statusRow(AppConstants.Labels.knownBeds, recorderSummary.knownBeds)
-                        if let latestRecorder = recorderSummary.latestRecorder {
-                            statusRow(AppConstants.Labels.latestRecorder, latestRecorder)
+                    VStack(alignment: .leading, spacing: 14) {
+                        Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                            statusRow(AppConstants.Labels.knownRecorders, recorderSummary.knownRecorders)
+                            statusRow(AppConstants.Labels.knownBeds, recorderSummary.knownBeds)
+                            if let latestRecorder = recorderSummary.latestRecorder {
+                                statusRow(AppConstants.Labels.latestRecorder, latestRecorder)
+                            }
+                            if let observedAt = recorderSummary.observedAt {
+                                statusRow(AppConstants.Labels.recorderObservation, viewModel.presentationFormatter.systemTimeText(observedAt))
+                            }
                         }
-                        if let observedAt = recorderSummary.observedAt {
-                            statusRow(AppConstants.Labels.recorderObservation, viewModel.presentationFormatter.systemTimeText(observedAt))
+                        if !recorderIngressDetailItems.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(AppConstants.Labels.recorderIngress)
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                                    ForEach(recorderIngressDetailItems) { item in
+                                        statusRow(item.label, item.value)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -84,6 +98,7 @@ struct RuntimeStatusPanel: View {
                 .font(.headline)
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.activeRecorderConnections, recorderSummary.activeConnections)
+                statusRow(AppConstants.Labels.recorderIngressQueue, recorderIngressQueueStatus)
                 statusRow(AppConstants.Labels.onlineRecorders, recorderSummary.onlineRecorders)
                 statusRow(AppConstants.Labels.staleRecorders, recorderSummary.staleRecorders)
                 statusRow(AppConstants.Labels.recorderAnomalies, recorderSummary.anomalies)
@@ -144,6 +159,14 @@ struct RuntimeStatusPanel: View {
             vitalDBObservation: viewModel.vitalDBObservationSnapshot.observation,
             now: uptimeNow
         )
+    }
+
+    private var recorderIngressQueueStatus: RuntimeStatusDisplayPolicy.StatusValue {
+        displayPolicy.recorderIngressQueue(observation: viewModel.containerObservation)
+    }
+
+    private var recorderIngressDetailItems: [RuntimeStatusDisplayPolicy.HealthItem] {
+        displayPolicy.recorderIngressDetails(observation: viewModel.containerObservation)
     }
 
     private var vitalServerAvailability: RuntimeStatusDisplayPolicy.StatusValue {

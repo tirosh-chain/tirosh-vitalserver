@@ -53,6 +53,11 @@ struct RuntimeSettingsPanel: View {
                     settingPortField(AppConstants.Labels.runtimeControlPort, value: $viewModel.settings.runtimeControlPort)
                         .disabled(!viewModel.capabilities.canEditNetworkExposure)
                     settingHelp(AppConstants.Labels.runtimeControlPortHelp)
+                    settingRow(AppConstants.Labels.recorderIngressSendDataMode) {
+                        recorderIngressSendDataModePicker
+                    }
+                    .disabled(!viewModel.capabilities.canControlRuntimeServices)
+                    settingHelp(AppConstants.Labels.recorderIngressSendDataModeHelp)
                 }
                 settingsSection(AppConstants.Labels.sectionStorage) {
                     settingDirectoryField(
@@ -197,6 +202,31 @@ struct RuntimeSettingsPanel: View {
         viewModel.settings.networkMode == RuntimeNetworkMode.shared
             ? AppConstants.Labels.sharedNetworkHelp
             : AppConstants.Labels.bridgedNetworkHelp
+    }
+
+    private var recorderIngressSendDataModePicker: some View {
+        Picker("", selection: $viewModel.settings.recorderIngressSendDataMode) {
+            ForEach(RuntimeRecorderIngressSendDataMode.allCases, id: \.self) { mode in
+                Text(recorderIngressSendDataModeLabel(mode))
+                    .tag(mode)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .frame(width: 420)
+    }
+
+    private func recorderIngressSendDataModeLabel(_ mode: RuntimeRecorderIngressSendDataMode) -> String {
+        switch mode {
+        case .passthrough:
+            return AppConstants.Labels.recorderIngressSendDataModePassthrough
+        case .mirrorSpool:
+            return AppConstants.Labels.recorderIngressSendDataModeMirrorSpool
+        case .spoolOnly:
+            return AppConstants.Labels.recorderIngressSendDataModeSpoolOnly
+        case .spoolAndReplay:
+            return AppConstants.Labels.recorderIngressSendDataModeSpoolAndReplay
+        }
     }
 
     private var diskSizeRange: ClosedRange<Int> {

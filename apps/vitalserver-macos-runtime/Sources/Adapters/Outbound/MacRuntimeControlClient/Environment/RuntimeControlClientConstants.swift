@@ -61,6 +61,7 @@ enum RuntimeControlClientConstants {
         static let optionRemoteConsoleURL = "--remote-console-url"
         static let optionPublicHost = "--public-host"
         static let optionPublicPort = "--public-port"
+        static let optionRecorderIngressSendDataMode = "--recorder-ingress-send-data-mode"
         static let optionStartOnBoot = "--start-on-boot"
         static let optionAutoRecovery = "--auto-recovery"
         static let optionPreventSystemSleep = "--prevent-system-sleep"

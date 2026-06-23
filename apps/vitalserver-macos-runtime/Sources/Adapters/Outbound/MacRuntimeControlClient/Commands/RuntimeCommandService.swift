@@ -63,6 +63,8 @@ enum RuntimeCommandFactory {
             settings.publicHost,
             RuntimeControlClientConstants.RuntimeCommand.optionPublicPort,
             String(settings.publicPort),
+            RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataMode,
+            settings.recorderIngressSendDataMode.rawValue,
             RuntimeControlClientConstants.RuntimeCommand.optionVitalServerURL,
             settings.vitalServerURL,
             RuntimeControlClientConstants.RuntimeCommand.optionRemoteConsoleURL,

@@ -1,3 +1,5 @@
+import Contracts
+
 public struct RuntimeVMConfigSettingsReadInput: Equatable, Sendable {
     public let cpuCount: Int
     public let memoryMiB: UInt64
@@ -31,6 +33,7 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
     public let remoteConsoleURL: String
     public let publicHost: String
     public let publicPort: Int
+    public let recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
     public let automaticBackupEnabled: Bool
     public let backupScheduleTimes: [String]
     public let backupRetentionCount: Int
@@ -40,6 +43,7 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
         remoteConsoleURL: String,
         publicHost: String,
         publicPort: Int,
+        recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode = RuntimeSettingsInitialValues.recorderIngressSendDataMode,
         automaticBackupEnabled: Bool,
         backupScheduleTimes: [String],
         backupRetentionCount: Int
@@ -48,6 +52,7 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
         self.remoteConsoleURL = remoteConsoleURL
         self.publicHost = publicHost
         self.publicPort = publicPort
+        self.recorderIngressSendDataMode = recorderIngressSendDataMode
         self.automaticBackupEnabled = automaticBackupEnabled
         self.backupScheduleTimes = backupScheduleTimes
         self.backupRetentionCount = backupRetentionCount
@@ -265,6 +270,7 @@ public enum RuntimeSettingsReadPolicy {
         next.remoteConsoleURL = input.remoteConsoleURL
         next.publicHost = input.publicHost
         next.publicPort = input.publicPort
+        next.recorderIngressSendDataMode = input.recorderIngressSendDataMode
         next.automaticBackupEnabled = input.automaticBackupEnabled
         next.backupScheduleTimes = input.backupScheduleTimes
         next.backupRetentionCount = input.backupRetentionCount

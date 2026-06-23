@@ -16,6 +16,7 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                     .vitalFilesDirectory(URL(fileURLWithPath: "/data/vital-files")),
                     .adminPasswordFile(URL(fileURLWithPath: "/tmp/admin-password")),
                     .startOnBoot(false),
+                    .recorderIngressSendDataMode(.mirrorSpool),
                     .preventSystemSleep(false),
                 ],
                 restart: true
@@ -50,6 +51,11 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
         )
         XCTAssertEqual(guestConfig.adminPassword, "secret")
         XCTAssertEqual(guestConfig.vitalFilesDirectory, "/mnt/vital-files")
+        let guestSettings = try JSONDecoder().decode(
+            GuestRuntimeSettingsDocument.self,
+            from: XCTUnwrap(harness.writes.first { $0.url == harness.guestSettingsURL }?.data)
+        )
+        XCTAssertEqual(guestSettings.recorderIngressSendDataMode, .mirrorSpool)
     }
 
     func testInvalidSecretFileContentFailsBeforeWrites() {

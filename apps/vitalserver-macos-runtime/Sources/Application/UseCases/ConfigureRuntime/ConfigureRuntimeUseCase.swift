@@ -100,6 +100,7 @@ public enum ConfigureRuntimeChange<NetworkMode: Equatable>: Equatable {
     case remoteConsoleURL(String)
     case publicHost(String)
     case publicPort(Int)
+    case recorderIngressSendDataMode(RuntimeRecorderIngressSendDataMode)
     case adminPassword(String)
     case adminPasswordFile(URL)
     case startOnBoot(Bool)
@@ -537,6 +538,8 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
             }
             guestConfig.publicPort = port
             guestRuntimeSettings.publicPort = port
+        case .recorderIngressSendDataMode(let mode):
+            guestRuntimeSettings.recorderIngressSendDataMode = mode
         case .adminPassword(let value):
             guard !value.isEmpty, RuntimeTextValidator.isSingleLine(value) else {
                 throw invalid("--admin-password must not be empty or contain newlines")
