@@ -40,6 +40,7 @@ public extension AppConstants {
         public static let vmErrors = "VM errors"
         public static let watchdog = "Watchdog"
         public static let vitalDBObserver = "VitalDB Observer"
+        public static let recorderIngressQueue = "Recorder ingress queue"
         public static let redisRelay = "Redis Relay"
         public static let vitalRecorder = "Vital Recorder"
         public static let recorderHistory = "Recorder History"

@@ -15,6 +15,8 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
     public let redisIpWriteFailures: Int
     public let redisIpVerifyFailures: Int
     public let redisIpVerifyMismatches: Int
+    public let spool: RuntimeRecorderIngressSpoolStatus?
+    public let replay: RuntimeRecorderIngressReplayStatus?
 
     public init(
         startedAt: String? = nil,
@@ -30,7 +32,9 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         auditStdoutWriteFailures: Int = 0,
         redisIpWriteFailures: Int = 0,
         redisIpVerifyFailures: Int = 0,
-        redisIpVerifyMismatches: Int = 0
+        redisIpVerifyMismatches: Int = 0,
+        spool: RuntimeRecorderIngressSpoolStatus? = nil,
+        replay: RuntimeRecorderIngressReplayStatus? = nil
     ) {
         self.startedAt = startedAt
         self.uptimeSeconds = uptimeSeconds
@@ -46,6 +50,8 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         self.redisIpWriteFailures = redisIpWriteFailures
         self.redisIpVerifyFailures = redisIpVerifyFailures
         self.redisIpVerifyMismatches = redisIpVerifyMismatches
+        self.spool = spool
+        self.replay = replay
     }
 
     enum CodingKeys: String, CodingKey {
@@ -63,6 +69,8 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         case redisIpWriteFailures
         case redisIpVerifyFailures
         case redisIpVerifyMismatches
+        case spool
+        case replay
     }
 
     public init(from decoder: Decoder) throws {
@@ -81,6 +89,8 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         self.redisIpWriteFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpWriteFailures) ?? 0
         self.redisIpVerifyFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpVerifyFailures) ?? 0
         self.redisIpVerifyMismatches = try container.decodeIfPresent(Int.self, forKey: .redisIpVerifyMismatches) ?? 0
+        self.spool = try container.decodeIfPresent(RuntimeRecorderIngressSpoolStatus.self, forKey: .spool)
+        self.replay = try container.decodeIfPresent(RuntimeRecorderIngressReplayStatus.self, forKey: .replay)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -99,6 +109,107 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         try container.encode(redisIpWriteFailures, forKey: .redisIpWriteFailures)
         try container.encode(redisIpVerifyFailures, forKey: .redisIpVerifyFailures)
         try container.encode(redisIpVerifyMismatches, forKey: .redisIpVerifyMismatches)
+        try container.encodeIfPresent(spool, forKey: .spool)
+        try container.encodeIfPresent(replay, forKey: .replay)
+    }
+}
+
+public struct RuntimeRecorderIngressFailureObservation: Codable, Equatable, Sendable {
+    public let reason: String?
+    public let message: String?
+    public let occurredAt: String?
+
+    public init(
+        reason: String? = nil,
+        message: String? = nil,
+        occurredAt: String? = nil
+    ) {
+        self.reason = reason
+        self.message = message
+        self.occurredAt = occurredAt
+    }
+}
+
+public struct RuntimeRecorderIngressSpoolStatus: Codable, Equatable, Sendable {
+    public let mode: String?
+    public let status: String?
+    public let storage: String?
+    public let acceptedEvents: Int?
+    public let spooledEvents: Int?
+    public let rejectedEvents: Int?
+    public let writeFailures: Int?
+    public let pendingItems: Int?
+    public let pendingBytes: Int?
+    public let oldestPendingAgeSeconds: Int?
+    public let lastAcceptedAt: String?
+    public let lastSpooledAt: String?
+    public let lastFailure: RuntimeRecorderIngressFailureObservation?
+
+    public init(
+        mode: String? = nil,
+        status: String? = nil,
+        storage: String? = nil,
+        acceptedEvents: Int? = nil,
+        spooledEvents: Int? = nil,
+        rejectedEvents: Int? = nil,
+        writeFailures: Int? = nil,
+        pendingItems: Int? = nil,
+        pendingBytes: Int? = nil,
+        oldestPendingAgeSeconds: Int? = nil,
+        lastAcceptedAt: String? = nil,
+        lastSpooledAt: String? = nil,
+        lastFailure: RuntimeRecorderIngressFailureObservation? = nil
+    ) {
+        self.mode = mode
+        self.status = status
+        self.storage = storage
+        self.acceptedEvents = acceptedEvents
+        self.spooledEvents = spooledEvents
+        self.rejectedEvents = rejectedEvents
+        self.writeFailures = writeFailures
+        self.pendingItems = pendingItems
+        self.pendingBytes = pendingBytes
+        self.oldestPendingAgeSeconds = oldestPendingAgeSeconds
+        self.lastAcceptedAt = lastAcceptedAt
+        self.lastSpooledAt = lastSpooledAt
+        self.lastFailure = lastFailure
+    }
+}
+
+public struct RuntimeRecorderIngressReplayStatus: Codable, Equatable, Sendable {
+    public let status: String?
+    public let pendingItems: Int?
+    public let inFlightItems: Int?
+    public let replayedEvents: Int?
+    public let retryableFailures: Int?
+    public let deadLetteredEvents: Int?
+    public let replayLagSeconds: Int?
+    public let rateLimitPerSecond: Int?
+    public let lastReplayAt: String?
+    public let lastFailure: RuntimeRecorderIngressFailureObservation?
+
+    public init(
+        status: String? = nil,
+        pendingItems: Int? = nil,
+        inFlightItems: Int? = nil,
+        replayedEvents: Int? = nil,
+        retryableFailures: Int? = nil,
+        deadLetteredEvents: Int? = nil,
+        replayLagSeconds: Int? = nil,
+        rateLimitPerSecond: Int? = nil,
+        lastReplayAt: String? = nil,
+        lastFailure: RuntimeRecorderIngressFailureObservation? = nil
+    ) {
+        self.status = status
+        self.pendingItems = pendingItems
+        self.inFlightItems = inFlightItems
+        self.replayedEvents = replayedEvents
+        self.retryableFailures = retryableFailures
+        self.deadLetteredEvents = deadLetteredEvents
+        self.replayLagSeconds = replayLagSeconds
+        self.rateLimitPerSecond = rateLimitPerSecond
+        self.lastReplayAt = lastReplayAt
+        self.lastFailure = lastFailure
     }
 }
 
@@ -154,6 +265,8 @@ public struct RuntimeRecorderConnectionObservation: Codable, Equatable, Sendable
     public let ipSource: String?
     public let lastSeenAt: String?
     public let redisIpSync: RuntimeRecorderRedisIPSyncObservation?
+    public let spool: RuntimeRecorderIngressSpoolStatus?
+    public let replay: RuntimeRecorderIngressReplayStatus?
 
     public init(
         vrcode: String,
@@ -161,7 +274,9 @@ public struct RuntimeRecorderConnectionObservation: Codable, Equatable, Sendable
         selectedIp: String? = nil,
         ipSource: String? = nil,
         lastSeenAt: String? = nil,
-        redisIpSync: RuntimeRecorderRedisIPSyncObservation? = nil
+        redisIpSync: RuntimeRecorderRedisIPSyncObservation? = nil,
+        spool: RuntimeRecorderIngressSpoolStatus? = nil,
+        replay: RuntimeRecorderIngressReplayStatus? = nil
     ) {
         self.vrcode = vrcode
         self.activeConnections = activeConnections
@@ -169,6 +284,8 @@ public struct RuntimeRecorderConnectionObservation: Codable, Equatable, Sendable
         self.ipSource = ipSource
         self.lastSeenAt = lastSeenAt
         self.redisIpSync = redisIpSync
+        self.spool = spool
+        self.replay = replay
     }
 }
 

@@ -1278,6 +1278,160 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.vitalDBObserver, in: items)?.value.severity, .neutral)
     }
 
+    func testRecorderIngressQueueDisplaysHealthyStatus() {
+        let status = healthyRuntimeStatus()
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                spool: RuntimeRecorderIngressSpoolStatus(
+                    status: "ready",
+                    rejectedEvents: 0,
+                    writeFailures: 0,
+                    pendingItems: 0,
+                    pendingBytes: 0
+                ),
+                replay: RuntimeRecorderIngressReplayStatus(
+                    status: "idle",
+                    pendingItems: 0,
+                    inFlightItems: 0,
+                    retryableFailures: 0,
+                    deadLetteredEvents: 0
+                )
+            ),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, "healthy, 0 pending, 0 bytes")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .healthy)
+    }
+
+    func testRecorderIngressQueueDisplaysDrainingBacklog() {
+        let status = healthyRuntimeStatus()
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                spool: RuntimeRecorderIngressSpoolStatus(
+                    status: "ready",
+                    rejectedEvents: 0,
+                    writeFailures: 0,
+                    pendingItems: 128,
+                    oldestPendingAgeSeconds: 34
+                ),
+                replay: RuntimeRecorderIngressReplayStatus(
+                    status: "replaying",
+                    inFlightItems: 1,
+                    retryableFailures: 0,
+                    deadLetteredEvents: 0,
+                    replayLagSeconds: 12
+                )
+            ),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(
+            item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text,
+            "draining, 128 pending, 1 in flight, oldest 34s, replay lag 12s"
+        )
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .warning)
+    }
+
+    func testRecorderIngressQueueDisplaysFailureEvidence() {
+        let status = healthyRuntimeStatus()
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                spool: RuntimeRecorderIngressSpoolStatus(
+                    status: "ready",
+                    rejectedEvents: 2,
+                    writeFailures: 0
+                ),
+                replay: RuntimeRecorderIngressReplayStatus(
+                    status: "degraded",
+                    retryableFailures: 4,
+                    deadLetteredEvents: 0,
+                    lastFailure: RuntimeRecorderIngressFailureObservation(reason: "upstream_timeout")
+                )
+            ),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(
+            item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text,
+            "degraded, 2 rejected, 4 retryable failures, last failure upstream_timeout"
+        )
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .warning)
+    }
+
+    func testRecorderIngressQueueDisplaysCriticalDeadLetters() {
+        let status = healthyRuntimeStatus()
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                spool: RuntimeRecorderIngressSpoolStatus(
+                    status: "ready",
+                    writeFailures: 0,
+                    pendingItems: 0
+                ),
+                replay: RuntimeRecorderIngressReplayStatus(
+                    status: "degraded",
+                    deadLetteredEvents: 3,
+                    lastFailure: RuntimeRecorderIngressFailureObservation(reason: "invalid_payload")
+                )
+            ),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(
+            item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text,
+            "degraded, 0 pending, 3 dead letters, last failure invalid_payload"
+        )
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .critical)
+    }
+
+    func testRecorderIngressQueueDoesNotDefaultMissingQueueStateToZero() {
+        let status = healthyRuntimeStatus()
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 2),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, AppConstants.StatusText.notReported)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .neutral)
+    }
+
+    func testRecorderIngressQueueDisplaysStatusReadFailure() {
+        let status = healthyRuntimeStatus()
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "failed",
+            recorderIngressStatus: nil,
+            recorderIngressStatusReadState: .commandFailed,
+            recorderIngressStatusReadError: "curl failed",
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, "curl failed")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .warning)
+    }
+
     func testComposeServicesReadFailureIsDisplayedInsteadOfMissingServiceFallback() {
         let status = RuntimeStatus(
             runtimeInstalled: true,
@@ -1326,6 +1480,17 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(summary.anomalies, AppConstants.StatusText.notReported)
         XCTAssertNil(summary.latestRecorder)
         XCTAssertNil(summary.observedAt)
+    }
+
+    private func healthyRuntimeStatus() -> RuntimeStatus {
+        RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
     }
 
     private func item(

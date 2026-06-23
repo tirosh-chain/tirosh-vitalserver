@@ -296,6 +296,7 @@ private struct AppRuntimeStatusHealthDetailsVocabulary: RuntimeStatusHealthDetai
     var hostProxyName: String { GeneratedRelease.hostProxyName }
     var redisName: String { GeneratedRelease.redisName }
     var vitalDBObserverLabel: String { AppConstants.Labels.vitalDBObserver }
+    var recorderIngressQueueLabel: String { AppConstants.Labels.recorderIngressQueue }
     var watchdogLabel: String { AppConstants.Labels.watchdog }
     var waitingText: String { AppConstants.StatusText.waiting }
     var guestStateStaleText: String { AppConstants.StatusText.guestStateStale }

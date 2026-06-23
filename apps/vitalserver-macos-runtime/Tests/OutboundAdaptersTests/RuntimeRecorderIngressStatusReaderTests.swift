@@ -9,7 +9,7 @@ final class RuntimeRecorderIngressStatusReaderTests: XCTestCase {
         let commandRunner = RecorderIngressStatusCommandRunner()
         commandRunner.result = RuntimeProcessResult(
             exitCode: 0,
-            stdout: #"{"activeWebSockets":1,"activeRecorderConnections":2,"httpRequests":3,"socketIoEventsSeen":4,"socketIoParseFailures":5,"auditWriteFailures":6,"auditFileWriteFailures":7,"auditStdoutWriteFailures":8,"redisIpWriteFailures":9}"#,
+            stdout: #"{"activeWebSockets":1,"activeRecorderConnections":2,"httpRequests":3,"socketIoEventsSeen":4,"socketIoParseFailures":5,"auditWriteFailures":6,"auditFileWriteFailures":7,"auditStdoutWriteFailures":8,"redisIpWriteFailures":9,"spool":{"mode":"spool_and_replay","status":"ready","pendingItems":10,"pendingBytes":2048},"replay":{"status":"replaying","inFlightItems":1,"replayLagSeconds":12}}"#,
             stderr: ""
         )
 
@@ -19,6 +19,10 @@ final class RuntimeRecorderIngressStatusReaderTests: XCTestCase {
         XCTAssertEqual(result.httpStatus, "200")
         XCTAssertEqual(result.document?.activeWebSockets, 1)
         XCTAssertEqual(result.document?.activeRecorderConnections, 2)
+        XCTAssertEqual(result.document?.spool?.mode, "spool_and_replay")
+        XCTAssertEqual(result.document?.spool?.pendingItems, 10)
+        XCTAssertEqual(result.document?.replay?.status, "replaying")
+        XCTAssertEqual(result.document?.replay?.replayLagSeconds, 12)
         XCTAssertNil(result.readError)
         XCTAssertEqual(commandRunner.requests, [
             RecorderIngressStatusCommandRequest(

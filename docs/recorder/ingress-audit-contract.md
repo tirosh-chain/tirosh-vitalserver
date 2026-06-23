@@ -104,7 +104,7 @@ Redis는 현재 `3.2.12`로 pin되어 있으므로 Redis Stream 대신 Redis Lis
 
 ### 4-3. `send_data` flow control 설정
 
-`RECORDER_INGRESS_SEND_DATA_*` 설정은 Issue #68의 `send_data` flow control 계약입니다. mode, Redis list, replay interval/batch/rate, backpressure limit의 상세 의미는 [Recorder ingress send_data flow control contract](send-data-flow-control.md#3-1-runtime-설정)를 기준으로 봅니다.
+`RECORDER_INGRESS_SEND_DATA_*` 설정은 Issue #68의 `send_data` flow control 계약입니다. mode, Redis list, replay interval/batch/rate, backpressure limit의 상세 의미는 [Recorder ingress send_data flow control contract](send-data-flow-control.md#11-runtime-설정)를 기준으로 봅니다.
 
 Audit 관점에서는 `send_data` payload summary와 flow control 결과가 다른 실패 의미를 가져야 합니다. Audit sink 실패는 `auditWriteFailures`, spool write 실패는 `spool.writeFailures`, replay 실패는 `replay.retryableFailures` 또는 `replay.deadLetteredEvents`로 분리해서 봅니다.
 
@@ -275,7 +275,7 @@ proxy 상태:
 curl http://localhost:18080/recorder-ingress/status
 ```
 
-`/recorder-ingress/status`는 현재 WebSocket 수, 관측한 Socket.IO event 수, 관측한 `send_data` count/bytes, recorder별 마지막 `send_data` 관측 시각, parse 실패 수, Redis write 실패 수를 반환합니다. `spool`과 `replay` 상태 필드는 [send_data flow control contract](send-data-flow-control.md#9-status-contract)의 상태 계약으로 해석합니다.
+`/recorder-ingress/status`는 현재 WebSocket 수, 관측한 Socket.IO event 수, 관측한 `send_data` count/bytes, recorder별 마지막 `send_data` 관측 시각, parse 실패 수, Redis write 실패 수를 반환합니다. `spool`과 `replay` 상태 필드는 [send_data flow control contract](send-data-flow-control.md#12-status-읽는-법)의 상태 계약으로 해석합니다.
 
 ## 8. 제품 관점 판단
 

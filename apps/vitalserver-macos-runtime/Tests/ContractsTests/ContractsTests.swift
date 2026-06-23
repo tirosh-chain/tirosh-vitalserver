@@ -80,6 +80,78 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(decoded.recorderIngressStatusReadError, "command-failed-7")
     }
 
+    func testRecorderIngressStatusDecodesSpoolAndReplayStateWithoutDefaultingMissingQueueState() throws {
+        let json = """
+        {
+          "activeWebSockets": 1,
+          "activeRecorderConnections": 1,
+          "spool": {
+            "mode": "spool_and_replay",
+            "status": "ready",
+            "storage": "redis_list",
+            "pendingItems": 12,
+            "pendingBytes": 3456,
+            "oldestPendingAgeSeconds": 34,
+            "rejectedEvents": 2,
+            "writeFailures": 0,
+            "lastFailure": {
+              "reason": "spool_full",
+              "message": "pending item limit exceeded",
+              "occurredAt": "2026-06-23T00:00:00Z"
+            }
+          },
+          "replay": {
+            "status": "degraded",
+            "pendingItems": 12,
+            "inFlightItems": 1,
+            "retryableFailures": 3,
+            "deadLetteredEvents": 0,
+            "replayLagSeconds": 45,
+            "rateLimitPerSecond": 2,
+            "lastFailure": {
+              "reason": "upstream_timeout"
+            }
+          },
+          "recorders": [
+            {
+              "vrcode": "VR001",
+              "activeConnections": 1,
+              "spool": {
+                "pendingItems": 3
+              },
+              "replay": {
+                "retryableFailures": 1
+              }
+            }
+          ]
+        }
+        """
+
+        let decoded = try JSONDecoder().decode(
+            RuntimeRecorderIngressStatusDocument.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertEqual(decoded.spool?.mode, "spool_and_replay")
+        XCTAssertEqual(decoded.spool?.pendingItems, 12)
+        XCTAssertEqual(decoded.spool?.pendingBytes, 3456)
+        XCTAssertEqual(decoded.spool?.oldestPendingAgeSeconds, 34)
+        XCTAssertEqual(decoded.spool?.lastFailure?.reason, "spool_full")
+        XCTAssertEqual(decoded.replay?.status, "degraded")
+        XCTAssertEqual(decoded.replay?.inFlightItems, 1)
+        XCTAssertEqual(decoded.replay?.retryableFailures, 3)
+        XCTAssertEqual(decoded.replay?.lastFailure?.reason, "upstream_timeout")
+        XCTAssertEqual(decoded.recorders.first?.spool?.pendingItems, 3)
+        XCTAssertEqual(decoded.recorders.first?.replay?.retryableFailures, 1)
+
+        let legacy = try JSONDecoder().decode(
+            RuntimeRecorderIngressStatusDocument.self,
+            from: Data(#"{"activeWebSockets":1,"activeRecorderConnections":1}"#.utf8)
+        )
+        XCTAssertNil(legacy.spool)
+        XCTAssertNil(legacy.replay)
+    }
+
     func testDecodesRuntimeStatusV1() throws {
         let document = try decodeFixture(RuntimeStatusDocument.self, named: "runtime-status-v1-healthy")
 
