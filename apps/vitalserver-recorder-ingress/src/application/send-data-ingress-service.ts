@@ -1,3 +1,6 @@
+import type { SendDataIngressPort } from "./ports/inbound/send-data-ingress-port";
+import type { SendDataSpoolAppendPort } from "./ports/outbound/send-data-spool-store-port";
+
 "use strict";
 
 const { evaluateSendDataBackpressure } = require("../domain/send-data-backpressure-policy");
@@ -11,7 +14,21 @@ const {
   sendDataSpoolState,
 } = require("../observability/metrics");
 
-function createSendDataIngressService({ config, metrics, spoolStore, now, idFactory }) {
+type SendDataIngressServiceDependencies = {
+  config: Record<string, any>;
+  metrics: Record<string, any>;
+  spoolStore: SendDataSpoolAppendPort;
+  now?: () => Date;
+  idFactory?: () => string;
+};
+
+function createSendDataIngressService({
+  config,
+  metrics,
+  spoolStore,
+  now,
+  idFactory,
+}: SendDataIngressServiceDependencies): SendDataIngressPort {
   return {
     async record(payload, context, payloadSummary) {
       if (!config.spool.enabled) {
@@ -84,7 +101,7 @@ function createSendDataIngressService({ config, metrics, spoolStore, now, idFact
   };
 }
 
-function recorderCode(context, payloadSummary) {
+function recorderCode(context: Record<string, any>, payloadSummary: Record<string, any>) {
   if (payloadSummary && payloadSummary.vrcode) return String(payloadSummary.vrcode);
   if (context && context.joined_vrcode) return String(context.joined_vrcode);
   return "";

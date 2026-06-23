@@ -1,8 +1,15 @@
+import type { AuditRecorderPort } from "./ports/inbound/audit-recorder-port";
+import type { AuditSinkPort } from "./ports/outbound/audit-sink-port";
+
 "use strict";
 
 const { createAuditEnvelope } = require("../domain/audit-envelope");
 
-function createAuditRecorder(config, sinks) {
+type AuditRecorderDependencies = {
+  enabled: boolean;
+};
+
+function createAuditRecorder(config: AuditRecorderDependencies, sinks: AuditSinkPort[]): AuditRecorderPort {
   return {
     record(eventType, fields) {
       if (!config.enabled) return;

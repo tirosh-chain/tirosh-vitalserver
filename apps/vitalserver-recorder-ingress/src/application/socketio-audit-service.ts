@@ -1,3 +1,12 @@
+import type { AuditRecorderPort } from "./ports/inbound/audit-recorder-port";
+import type { SendDataIngressPort } from "./ports/inbound/send-data-ingress-port";
+import type {
+  SocketIoAuditContext,
+  SocketIoAuditOptions,
+  SocketIoAuditPort,
+} from "./ports/inbound/socketio-audit-port";
+import type { VrIdentityStorePort } from "./ports/outbound/vr-identity-store-port";
+
 "use strict";
 
 const { commandRequestFromPayload } = require("../domain/command-request");
@@ -12,7 +21,21 @@ const { recordRecorderJoin, recordSendDataObserved } = require("../observability
 
 const dispatchEvents = new Set(serverDispatchEventNames);
 
-function createSocketIoAuditService({ audit, vrIdentityStore, metrics, config, sendDataIngress }) {
+type SocketIoAuditServiceDependencies = {
+  audit: AuditRecorderPort;
+  vrIdentityStore: VrIdentityStorePort;
+  metrics: Record<string, any>;
+  config: Record<string, any>;
+  sendDataIngress?: SendDataIngressPort;
+};
+
+function createSocketIoAuditService({
+  audit,
+  vrIdentityStore,
+  metrics,
+  config,
+  sendDataIngress,
+}: SocketIoAuditServiceDependencies): SocketIoAuditPort {
   return {
     inspect(payload, direction, context, options = {}) {
       if (!payload || typeof payload !== "string") return;
@@ -30,7 +53,13 @@ function createSocketIoAuditService({ audit, vrIdentityStore, metrics, config, s
   };
 }
 
-function inspectSocketIoPacket(packet, direction, context, options, dependencies) {
+function inspectSocketIoPacket(
+  packet: string,
+  direction: string,
+  context: SocketIoAuditContext,
+  options: SocketIoAuditOptions,
+  dependencies: SocketIoAuditServiceDependencies
+) {
   const isBinaryEvent = packet.startsWith("45");
   if (!packet.startsWith("42") && !isBinaryEvent) return;
   const start = packet.indexOf("[");
@@ -90,7 +119,16 @@ function inspectSocketIoPacket(packet, direction, context, options, dependencies
   }
 }
 
-function recordSendData(payload, context, options, { audit, metrics, sendDataIngress }) {
+function recordSendData(
+  payload: unknown,
+  context: SocketIoAuditContext,
+  options: SocketIoAuditOptions,
+  {
+    audit,
+    metrics,
+    sendDataIngress,
+  }: Pick<SocketIoAuditServiceDependencies, "audit" | "metrics" | "sendDataIngress">
+) {
   const payloadSummary = summarizeSendData(payload);
   const vrcode = context.joined_vrcode || payloadSummary.vrcode || undefined;
   recordSendDataObserved(metrics, vrcode, payloadSummary);
@@ -108,14 +146,19 @@ function recordSendData(payload, context, options, { audit, metrics, sendDataIng
   });
 }
 
-function socketIoBinaryAttachmentPayload(payload) {
+function socketIoBinaryAttachmentPayload(payload: unknown) {
   if (!Buffer.isBuffer(payload) || payload.length === 0) return payload;
   const engineIoMessagePacketType = 0x04;
   if (payload[0] !== engineIoMessagePacketType) return payload;
   return payload.subarray(1);
 }
 
-function recordJoinVr(payload, context, options, { audit, vrIdentityStore, metrics, config }) {
+function recordJoinVr(
+  payload: unknown,
+  context: SocketIoAuditContext,
+  options: SocketIoAuditOptions,
+  { audit, vrIdentityStore, metrics, config }: SocketIoAuditServiceDependencies
+) {
   const vrcode = String(payload || "");
   context.joined_vrcode = vrcode;
   recordRecorderJoin(metrics, context, vrcode, context.ip && context.ip.selected_ip);

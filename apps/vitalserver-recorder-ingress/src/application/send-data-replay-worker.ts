@@ -1,3 +1,14 @@
+import type {
+  SendDataReplayWorkerPort,
+  SendDataReplayWorkerRunResult,
+} from "./ports/inbound/send-data-replay-worker-port";
+import type { SendDataReplayTargetPort } from "./ports/outbound/send-data-replay-target-port";
+import type {
+  SendDataSpoolReplayPort,
+  SendDataSpoolStoreClaimResult,
+  SendDataSpoolStoreWriteResult,
+} from "./ports/outbound/send-data-spool-store-port";
+
 "use strict";
 
 const {
@@ -13,7 +24,21 @@ const {
   recordSendDataReplaySucceeded,
 } = require("../observability/metrics");
 
-function createSendDataReplayWorker({ config, metrics, spoolStore, replayTarget, timer = globalThis }) {
+type SendDataReplayWorkerDependencies = {
+  config: Record<string, any>;
+  metrics: Record<string, any>;
+  spoolStore: SendDataSpoolReplayPort;
+  replayTarget: SendDataReplayTargetPort;
+  timer?: Pick<typeof globalThis, "setInterval" | "clearInterval">;
+};
+
+function createSendDataReplayWorker({
+  config,
+  metrics,
+  spoolStore,
+  replayTarget,
+  timer = globalThis,
+}: SendDataReplayWorkerDependencies): SendDataReplayWorkerPort {
   let interval = null;
   let running = false;
 
@@ -44,7 +69,12 @@ function createSendDataReplayWorker({ config, metrics, spoolStore, replayTarget,
   };
 }
 
-async function runReplayBatch({ config, metrics, spoolStore, replayTarget }) {
+async function runReplayBatch({
+  config,
+  metrics,
+  spoolStore,
+  replayTarget,
+}: SendDataReplayWorkerDependencies): Promise<SendDataReplayWorkerRunResult> {
   const limit = replayBatchLimit(config.replay);
   let processed = 0;
 
@@ -98,7 +128,7 @@ async function runReplayBatch({ config, metrics, spoolStore, replayTarget }) {
   return { ok: true, processed };
 }
 
-async function sendToReplayTarget(replayTarget, item) {
+async function sendToReplayTarget(replayTarget: SendDataReplayTargetPort, item: Record<string, any>) {
   try {
     return await replayTarget.send(item);
   } catch (error) {
@@ -110,7 +140,15 @@ async function sendToReplayTarget(replayTarget, item) {
   }
 }
 
-async function deadLetterInvalidClaim({ claim, metrics, spoolStore }) {
+async function deadLetterInvalidClaim({
+  claim,
+  metrics,
+  spoolStore,
+}: {
+  claim: SendDataSpoolStoreClaimResult;
+  metrics: Record<string, any>;
+  spoolStore: SendDataSpoolReplayPort;
+}) {
   if (claim.reason !== sendDataFailureReasons.INVALID_PAYLOAD) return;
   const item = deadLetterInvalidSendDataSpoolDocument(claim.raw, claim.reason, claim.message);
   const stored = await spoolStore.deadLetter(item, claim.claim);
@@ -121,19 +159,19 @@ async function deadLetterInvalidClaim({ claim, metrics, spoolStore }) {
   recordSendDataReplayDeadLettered(metrics, null, item, item.lastFailure);
 }
 
-function failureMessage(result) {
+function failureMessage(result: SendDataSpoolStoreWriteResult) {
   if (result && result.error && result.error.message) return result.error.message;
   if (result && result.message) return result.message;
   return "send_data replay store command failed";
 }
 
-function replayBatchLimit(config) {
+function replayBatchLimit(config: Record<string, any>) {
   const batchSize = positiveInteger(config.batchSize, 1);
   const rateLimit = positiveInteger(config.rateLimitPerSecond, batchSize);
   return Math.max(1, Math.min(batchSize, rateLimit));
 }
 
-function positiveInteger(value, fallback) {
+function positiveInteger(value: number, fallback: number) {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
