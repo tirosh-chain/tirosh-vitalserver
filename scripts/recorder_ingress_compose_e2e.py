@@ -56,30 +56,55 @@ def main(argv: list[str] | None = None) -> int:
 
     wait_for_status(base_url, args.mode, timeout_seconds=args.ready_timeout)
     reset_redis_lists(compose, keys, env)
+    baseline_status = read_status(base_url)
 
     expected_events = args.recorders * args.max_messages
     run_testkit_stream(args, base_url)
-    wait_for_replay(base_url, expected_events, timeout_seconds=args.replay_timeout)
+    status = wait_for_replay(
+        base_url,
+        baseline_status,
+        expected_events,
+        timeout_seconds=args.replay_timeout,
+    )
 
     redis_lengths = redis_list_lengths(compose, keys, env)
-    status = read_status(base_url)
     replay = status["replay"]
     spool = status["spool"]
+    observed_delta = counter_delta(status, baseline_status, ("sendDataEventsObserved",))
+    spooled_delta = counter_delta(status, baseline_status, ("spool", "spooledEvents"))
+    replayed_delta = counter_delta(status, baseline_status, ("replay", "replayedEvents"))
+    dead_lettered_delta = counter_delta(
+        status,
+        baseline_status,
+        ("replay", "deadLetteredEvents"),
+    )
     assert_condition(spool["mode"] == args.mode, f"unexpected mode: {spool['mode']}")
     assert_condition(
-        spool["spooledEvents"] >= expected_events,
-        f"spooledEvents={spool['spooledEvents']} expected>={expected_events}",
+        observed_delta >= expected_events,
+        f"sendDataEventsObserved delta={observed_delta} expected>={expected_events}",
     )
     assert_condition(
-        replay["replayedEvents"] >= expected_events,
-        f"replayedEvents={replay['replayedEvents']} expected>={expected_events}",
+        spooled_delta >= expected_events,
+        f"spooledEvents delta={spooled_delta} expected>={expected_events}",
     )
     assert_condition(
-        replay["deadLetteredEvents"] == 0,
-        f"deadLetteredEvents={replay['deadLetteredEvents']}",
+        replayed_delta >= expected_events,
+        f"replayedEvents delta={replayed_delta} expected>={expected_events}",
+    )
+    assert_condition(
+        dead_lettered_delta == 0,
+        f"deadLetteredEvents delta={dead_lettered_delta}",
     )
     assert_condition(spool["pendingItems"] == 0, f"spool.pendingItems={spool['pendingItems']}")
     assert_condition(spool["pendingBytes"] == 0, f"spool.pendingBytes={spool['pendingBytes']}")
+    assert_condition(
+        replay["pendingItems"] == 0,
+        f"replay.pendingItems={replay['pendingItems']}",
+    )
+    assert_condition(
+        replay["inFlightItems"] == 0,
+        f"replay.inFlightItems={replay['inFlightItems']}",
+    )
     assert_condition(
         redis_lengths["dead_letter"] == 0,
         f"dead_letter list length={redis_lengths['dead_letter']}",
@@ -95,6 +120,12 @@ def main(argv: list[str] | None = None) -> int:
                 "ok": True,
                 "mode": args.mode,
                 "expectedEvents": expected_events,
+                "deltas": {
+                    "sendDataEventsObserved": observed_delta,
+                    "spooledEvents": spooled_delta,
+                    "replayedEvents": replayed_delta,
+                    "deadLetteredEvents": dead_lettered_delta,
+                },
                 "spool": spool,
                 "replay": replay,
                 "redis": redis_lengths,
@@ -198,7 +229,13 @@ def wait_for_status(base_url: str, mode: str, *, timeout_seconds: float) -> None
     raise RuntimeError(f"recorder-ingress status was not ready: {last_error}")
 
 
-def wait_for_replay(base_url: str, expected_events: int, *, timeout_seconds: float) -> None:
+def wait_for_replay(
+    base_url: str,
+    baseline_status: dict[str, object],
+    expected_events: int,
+    *,
+    timeout_seconds: float,
+) -> dict[str, object]:
     started = time.monotonic()
     last_status: dict[str, object] = {}
     while time.monotonic() - started < timeout_seconds:
@@ -206,13 +243,30 @@ def wait_for_replay(base_url: str, expected_events: int, *, timeout_seconds: flo
         replay = status["replay"]
         last_status = replay
         if (
-            replay["replayedEvents"] >= expected_events
+            counter_delta(status, baseline_status, ("replay", "replayedEvents")) >= expected_events
             and replay["inFlightItems"] == 0
-            and replay["deadLetteredEvents"] == 0
+            and counter_delta(status, baseline_status, ("replay", "deadLetteredEvents")) == 0
         ):
-            return
+            return status
         time.sleep(0.5)
     raise RuntimeError(f"send_data replay did not complete: {json.dumps(last_status)}")
+
+
+def counter_delta(
+    current: dict[str, object],
+    baseline: dict[str, object],
+    path: tuple[str, ...],
+) -> int:
+    return numeric_field(current, path) - numeric_field(baseline, path)
+
+
+def numeric_field(document: dict[str, object], path: tuple[str, ...]) -> int:
+    value: object = document
+    for key in path:
+        if not isinstance(value, dict):
+            return 0
+        value = value.get(key, 0)
+    return int(value) if isinstance(value, (int, float)) else 0
 
 
 def read_status(base_url: str) -> dict[str, object]:

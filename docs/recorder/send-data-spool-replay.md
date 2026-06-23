@@ -227,9 +227,10 @@ Compose 환경 proof는 Swift/macOS runtime build 전에 실행합니다. 이 pr
 make testkit/recorder-ingress/replay
 ```
 
-성공 조건은 testkit stream이 보낸 `send_data` 수만큼 recorder ingress status의 `spooledEvents`와
-`replayedEvents`가 증가하고, Redis `dead_letter` list가 비어 있는 것입니다. Swift `dist/dmg/*` build는
-이 compose proof 이후 guest packaging과 VM compile 경로를 검증하는 단계로 둡니다.
+성공 조건은 testkit stream이 보낸 `send_data` 수만큼 이번 실행의 recorder ingress status delta에서
+`sendDataEventsObserved`, `spooledEvents`, `replayedEvents`가 증가하고, `pending`/`in_flight` 상태가
+비어 있으며 Redis `dead_letter` list가 비어 있는 것입니다. Swift `dist/dmg/*` build는 이 compose proof
+이후 guest packaging과 VM compile 경로를 검증하는 단계로 둡니다.
 
 ### Phase 5 proof
 
