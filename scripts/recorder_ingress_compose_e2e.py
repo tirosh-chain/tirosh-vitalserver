@@ -55,15 +55,26 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     wait_for_status(base_url, args.mode, timeout_seconds=args.ready_timeout)
+    app_state_before = (
+        inspect_compose_container(args.docker, compose, args.app_service, env)
+        if args.assert_app_stable
+        else None
+    )
     reset_redis_lists(compose, keys, env)
     baseline_status = read_status(base_url)
 
     expected_events = args.recorders * args.max_messages
+    min_spooled_events = args.min_spooled_events
+    if min_spooled_events is None:
+        min_spooled_events = expected_events
+    min_replayed_events = args.min_replayed_events
+    if min_replayed_events is None:
+        min_replayed_events = expected_events
     run_testkit_stream(args, base_url)
     status = wait_for_replay(
         base_url,
         baseline_status,
-        expected_events,
+        min_replayed_events,
         timeout_seconds=args.replay_timeout,
     )
 
@@ -72,7 +83,14 @@ def main(argv: list[str] | None = None) -> int:
     spool = status["spool"]
     observed_delta = counter_delta(status, baseline_status, ("sendDataEventsObserved",))
     spooled_delta = counter_delta(status, baseline_status, ("spool", "spooledEvents"))
+    rejected_delta = counter_delta(status, baseline_status, ("spool", "rejectedEvents"))
+    write_failure_delta = counter_delta(status, baseline_status, ("spool", "writeFailures"))
     replayed_delta = counter_delta(status, baseline_status, ("replay", "replayedEvents"))
+    retryable_failure_delta = counter_delta(
+        status,
+        baseline_status,
+        ("replay", "retryableFailures"),
+    )
     dead_lettered_delta = counter_delta(
         status,
         baseline_status,
@@ -84,12 +102,24 @@ def main(argv: list[str] | None = None) -> int:
         f"sendDataEventsObserved delta={observed_delta} expected>={expected_events}",
     )
     assert_condition(
-        spooled_delta >= expected_events,
-        f"spooledEvents delta={spooled_delta} expected>={expected_events}",
+        spooled_delta >= min_spooled_events,
+        f"spooledEvents delta={spooled_delta} expected>={min_spooled_events}",
     )
     assert_condition(
-        replayed_delta >= expected_events,
-        f"replayedEvents delta={replayed_delta} expected>={expected_events}",
+        rejected_delta >= args.min_rejected_events,
+        f"rejectedEvents delta={rejected_delta} expected>={args.min_rejected_events}",
+    )
+    assert_condition(
+        write_failure_delta == 0,
+        f"writeFailures delta={write_failure_delta}",
+    )
+    assert_condition(
+        replayed_delta >= min_replayed_events,
+        f"replayedEvents delta={replayed_delta} expected>={min_replayed_events}",
+    )
+    assert_condition(
+        retryable_failure_delta <= args.max_retryable_failures,
+        f"retryableFailures delta={retryable_failure_delta} expected<={args.max_retryable_failures}",
     )
     assert_condition(
         dead_lettered_delta == 0,
@@ -110,9 +140,24 @@ def main(argv: list[str] | None = None) -> int:
         f"dead_letter list length={redis_lengths['dead_letter']}",
     )
     assert_condition(
-        redis_lengths["replayed"] >= expected_events,
-        f"replayed list length={redis_lengths['replayed']} expected>={expected_events}",
+        redis_lengths["replayed"] >= min_replayed_events,
+        f"replayed list length={redis_lengths['replayed']} expected>={min_replayed_events}",
     )
+    if args.max_replay_lag_seconds is not None:
+        assert_condition(
+            replay["replayLagSeconds"] <= args.max_replay_lag_seconds,
+            (
+                f"replayLagSeconds={replay['replayLagSeconds']} "
+                f"expected<={args.max_replay_lag_seconds}"
+            ),
+        )
+    app_state_after = (
+        inspect_compose_container(args.docker, compose, args.app_service, env)
+        if args.assert_app_stable
+        else None
+    )
+    if app_state_before and app_state_after:
+        assert_app_stable(app_state_before, app_state_after, args.app_service)
 
     print(
         json.dumps(
@@ -123,12 +168,19 @@ def main(argv: list[str] | None = None) -> int:
                 "deltas": {
                     "sendDataEventsObserved": observed_delta,
                     "spooledEvents": spooled_delta,
+                    "rejectedEvents": rejected_delta,
+                    "writeFailures": write_failure_delta,
                     "replayedEvents": replayed_delta,
+                    "retryableFailures": retryable_failure_delta,
                     "deadLetteredEvents": dead_lettered_delta,
                 },
                 "spool": spool,
                 "replay": replay,
                 "redis": redis_lengths,
+                "app": {
+                    "before": app_state_before,
+                    "after": app_state_after,
+                } if args.assert_app_stable else None,
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -142,6 +194,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         description="Verify recorder-ingress send_data spool/replay in Docker Compose.",
     )
     parser.add_argument("--compose", default=os.environ.get("DOCKER_COMPOSE", "docker compose"))
+    parser.add_argument("--docker", default=os.environ.get("DOCKER", "docker"))
     parser.add_argument("--bind-host", default=os.environ.get("VITALSERVER_BIND_HOST", "127.0.0.1"))
     parser.add_argument("--http-port", default=os.environ.get("VITALSERVER_HTTP_PORT", "18080"))
     parser.add_argument("--mode", default="spool_and_replay", choices=["spool_and_replay"])
@@ -152,6 +205,16 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--replay-timeout", type=float, default=30.0)
     parser.add_argument("--replay-interval-ms", default="250")
     parser.add_argument("--replay-rate-limit-per-second", default="20")
+    parser.add_argument("--max-pending-items")
+    parser.add_argument("--max-pending-bytes")
+    parser.add_argument("--max-payload-bytes")
+    parser.add_argument("--min-spooled-events", type=int)
+    parser.add_argument("--min-replayed-events", type=int)
+    parser.add_argument("--min-rejected-events", type=int, default=0)
+    parser.add_argument("--max-retryable-failures", type=int, default=0)
+    parser.add_argument("--max-replay-lag-seconds", type=int)
+    parser.add_argument("--assert-app-stable", action="store_true")
+    parser.add_argument("--app-service", default="app")
     parser.add_argument("--testkit-command", default=default_testkit_command())
     parser.add_argument("--pending-key", default=DEFAULT_PENDING_KEY)
     parser.add_argument("--in-flight-key", default=DEFAULT_IN_FLIGHT_KEY)
@@ -177,6 +240,12 @@ def compose_env(args: argparse.Namespace) -> dict[str, str]:
     env["RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND"] = str(
         args.replay_rate_limit_per_second
     )
+    if args.max_pending_items is not None:
+        env["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS"] = str(args.max_pending_items)
+    if args.max_pending_bytes is not None:
+        env["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES"] = str(args.max_pending_bytes)
+    if args.max_payload_bytes is not None:
+        env["RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES"] = str(args.max_payload_bytes)
     env["RECORDER_INGRESS_SEND_DATA_REDIS_LIST"] = args.pending_key
     env["RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST"] = args.in_flight_key
     env["RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST"] = args.replayed_key
@@ -314,6 +383,52 @@ def redis_llen(compose: list[str], key: str, env: dict[str, str]) -> int:
         capture=True,
     )
     return int(result.stdout.strip())
+
+
+def inspect_compose_container(
+    docker: str,
+    compose: list[str],
+    service: str,
+    env: dict[str, str],
+) -> dict[str, object]:
+    container_id = run(compose + ["ps", "-q", service], env=env, capture=True).stdout.strip()
+    if not container_id:
+        raise RuntimeError(f"compose service has no container: {service}")
+    result = run([docker, "inspect", container_id], env=env, capture=True)
+    documents = json.loads(result.stdout)
+    if not documents:
+        raise RuntimeError(f"docker inspect returned no document for service: {service}")
+    document = documents[0]
+    state = document.get("State") or {}
+    return {
+        "containerId": container_id,
+        "oomKilled": bool(state.get("OOMKilled")),
+        "restartCount": int(document.get("RestartCount") or 0),
+        "status": state.get("Status") or "unknown",
+        "exitCode": int(state.get("ExitCode") or 0),
+    }
+
+
+def assert_app_stable(
+    before: dict[str, object],
+    after: dict[str, object],
+    service: str,
+) -> None:
+    assert_condition(
+        after["oomKilled"] is False,
+        f"{service} container oomKilled=true",
+    )
+    assert_condition(
+        after["restartCount"] == before["restartCount"],
+        (
+            f"{service} restartCount changed "
+            f"{before['restartCount']}->{after['restartCount']}"
+        ),
+    )
+    assert_condition(
+        after["status"] == "running",
+        f"{service} container status={after['status']}",
+    )
 
 
 def run(

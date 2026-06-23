@@ -245,3 +245,19 @@ make testkit/recorder-ingress/replay
 - recorder ingress spool depth가 회복 가능 범위
 - replay lag가 부하 종료 후 감소
 - stale runtime cascade가 재현되지 않음
+
+Compose load proof는 정상 부하와 backpressure를 분리해서 실행합니다.
+
+```sh
+make testkit/recorder-ingress/load
+make testkit/recorder-ingress/backpressure
+```
+
+`testkit/recorder-ingress/load`는 `spool_and_replay`에서 5 recorder x 100 `send_data`를 보내고,
+이번 실행의 observed/spooled/replayed delta, Redis `dead_letter` 부재, replay lag, app container
+`oomKilled=false`, restart count 불변을 확인합니다.
+
+`testkit/recorder-ingress/backpressure`는 의도적으로 `RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS=1`과
+낮은 replay rate를 사용해 `rejectedEvents` delta가 증가하는지 확인합니다. 이 proof의 성공은 모든
+event가 replay되는 것이 아니라, recorder ingress가 overload를 숨기지 않고 `spool_full` 계열 rejection
+evidence로 노출한다는 뜻입니다.

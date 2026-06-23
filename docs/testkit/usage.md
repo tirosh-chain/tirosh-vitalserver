@@ -190,6 +190,16 @@ uv run vitalserver-testkit stream-recorder \
 - Redis memory와 guest HTTP status
 - `guest-runtime-state-stale`, `guestHTTP: 502`, recorder-ingress upstream failure 같은 연쇄 증상
 
+Recorder ingress 자체의 spool/replay load proof는 아래 target으로 분리해 실행합니다.
+
+```sh
+make testkit/recorder-ingress/load
+make testkit/recorder-ingress/backpressure
+```
+
+`load`는 replay lag와 app container `oomKilled`/restart count를 함께 확인하고, `backpressure`는 낮은
+pending limit에서 `rejectedEvents` delta가 증가하는지 확인합니다.
+
 Python 코드에서 직접 호출할 수도 있습니다.
 
 ```python
