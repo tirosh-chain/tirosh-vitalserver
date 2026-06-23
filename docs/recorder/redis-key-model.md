@@ -1,4 +1,4 @@
-# VitalServer Redis 데이터 구조
+# VitalServer recorder Redis key model
 
 이 문서는 Vital Recorder 실시간 payload가 VitalServer를 거쳐 Redis에 저장되는 구조를 정리합니다. Relay 기능을 설계할 때 어떤 key를 보존해야 하는지 판단하기 위한 근거 문서입니다.
 
@@ -28,7 +28,7 @@ Target Redis에서 event를 어떻게 읽고 consumer group, pending recovery, D
 
 ### 2-1. `send_data` 저장 순서
 
-VitalServer는 Socket.IO `send_data` event를 받으면 아래 순서로 Redis key를 갱신합니다. 이 절은 Redis 저장 결과 관점의 축약 흐름입니다. Upstream `send_data` 처리 비용과 recorder ingress spool/replay로 메모리 압력을 완화하는 계약은 [Recorder ingress send_data spool/replay contract](send-data-spool-replay.md)를 기준으로 봅니다.
+VitalServer는 Socket.IO `send_data` event를 받으면 아래 순서로 Redis key를 갱신합니다. 이 절은 Redis 저장 결과 관점의 축약 흐름입니다. Upstream `send_data` 처리 비용과 recorder ingress spool/replay로 메모리 압력을 완화하는 계약은 [Recorder ingress send_data flow control contract](send-data-flow-control.md)를 기준으로 봅니다.
 
 1. zlib 압축 payload를 해제합니다.
 2. JSON을 읽어 `vrcode`, `ver`, `rooms`를 꺼냅니다.

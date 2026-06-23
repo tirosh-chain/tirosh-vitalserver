@@ -1,6 +1,6 @@
-# Recorder ingress send_data spool/replay contract
+# Recorder ingress send_data flow control contract
 
-이 문서는 Issue #68의 본 해결을 위한 recorder ingress `send_data` 수신, 스풀, 재생 계약을 정의합니다. 목표는 upstream VitalServer를 수정하지 않고 recorder ingress가 `send_data`의 명시적 상태 소유자가 되는 것입니다.
+이 문서는 Issue #68의 본 해결을 위한 recorder ingress `send_data` 수신 제어, durable spool, replay, backpressure 계약을 정의합니다. 목표는 upstream VitalServer를 수정하지 않고 recorder ingress가 `send_data`의 명시적 상태 소유자가 되는 것입니다.
 
 ## 1. 문제와 목표
 

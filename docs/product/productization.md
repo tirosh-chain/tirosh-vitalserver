@@ -6,8 +6,8 @@
 
 - [문서 지도](../index.md): 문서별 역할과 읽는 순서
 - [OpenAPI 문서](../api/vitalserver.openapi.yaml): upstream route를 분석해 정리한 Swagger/OpenAPI 문서
-- [Redis 데이터 구조](../recorder/redis-data-model.md): 실시간 monitor data가 Redis에 저장되는 방식
-- [Vital Recorder](../recorder/vrecorder.md): VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준
+- [VitalServer recorder Redis key model](../recorder/redis-key-model.md): 실시간 monitor data가 Redis에 저장되는 방식
+- [Vital Recorder integration contract](../recorder/vital-recorder-integration.md): VRecorder 접속 흐름과 Web Monitoring 상태 표시 기준
 - [testkit 사용법](../testkit/usage.md): 실시간 수집, upload, health 검증 도구 사용법
 
 ## 목표
@@ -161,7 +161,7 @@ Redis에 저장되는 핵심 key는 아래입니다.
 - `devs_<bedid>`, `dtapp_<bedid>`, `ptcon_<bedid>`
 - `dts_<bedid>`, `<bedid><timestamp>`
 
-자세한 key type, TTL, relay 방식은 [Redis 데이터 구조](../recorder/redis-data-model.md)를 기준으로 봅니다.
+자세한 key type, TTL, relay 방식은 [VitalServer recorder Redis key model](../recorder/redis-key-model.md)를 기준으로 봅니다.
 
 ## 제품화 기준
 

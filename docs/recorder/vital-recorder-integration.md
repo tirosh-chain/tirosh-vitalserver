@@ -1,4 +1,4 @@
-# Vital Recorder
+# Vital Recorder integration contract
 
 이 문서는 VitalServer가 Vital Recorder, 이하 VRecorder, 접속을 어떻게 인식하고 Web Monitoring UI에 어떤 상태로 표시하는지 정리합니다. 실제 VRecorder client source는 이 repo에 포함되어 있지 않으므로, 아래 내용은 VitalServer server code가 기대하는 호환 동작을 기준으로 합니다. 실제 제품의 송신 event는 장비 접속 로그와 Redis 값으로 검증합니다.
 
@@ -83,7 +83,7 @@ VitalServer code 기준으로 VRecorder의 identity는 IP가 아니라 `vrcode`�
 
 ### 4-2. Redis 갱신 값
 
-VitalServer는 수신 후 `roomname`으로 bed id를 만들고, Redis에 아래 값을 갱신합니다. 이 표는 Web Monitoring UI를 이해하는 데 필요한 대표 key만 다룹니다. 전체 Redis key model과 relay scope는 [Redis 데이터 구조](redis-data-model.md)를 기준으로 봅니다.
+VitalServer는 수신 후 `roomname`으로 bed id를 만들고, Redis에 아래 값을 갱신합니다. 이 표는 Web Monitoring UI를 이해하는 데 필요한 대표 key만 다룹니다. 전체 Redis key model과 relay scope는 [VitalServer recorder Redis key model](redis-key-model.md)를 기준으로 봅니다.
 
 | Key | 의미 | UI 영향 |
 | --- | --- | --- |

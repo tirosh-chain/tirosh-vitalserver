@@ -342,7 +342,7 @@ dev profile macOS Helper의 Test 탭은 Runtime Control browser console과 Testk
 ## 관련 문서
 
 - [문서 지도](../../docs/index.md): 문서 지도와 작성 기준
-- [Testkit 사용법](../../docs/testkit-usage.md): CLI 사용법과 결과 해석
-- [VitalServer 제품화 전략](../../docs/vitalserver-productization.md): 제품화 맥락
-- [Redis 데이터 구조](../../docs/redis-data-model.md): Redis key 구조와 relay 설계 메모
-- [Runtime observability model](../../docs/macos-runtime/observability.md): 관측 SoT와 Runtime Control API 노출 기준
+- [Testkit 사용법](../../docs/testkit/usage.md): CLI 사용법과 결과 해석
+- [VitalServer 제품화 전략](../../docs/product/productization.md): 제품화 맥락
+- [VitalServer recorder Redis key model](../../docs/recorder/redis-key-model.md): Redis key 구조와 relay 설계 메모
+- [Runtime observability model](../../docs/runtime/macos/observability.md): 관측 SoT와 Runtime Control API 노출 기준

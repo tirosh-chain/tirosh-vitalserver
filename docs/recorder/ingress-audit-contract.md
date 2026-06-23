@@ -1,8 +1,8 @@
-# VitalServer command audit
+# Recorder ingress audit contract
 
-VitalServer command audit은 upstream VitalServer 코드를 수정하지 않고 Socket.IO lifecycle과 UI command event를 추적하기 위한 proxy 계층입니다. 이 문서는 recorder ingress의 위치, 책임 경계, event contract, 운영 확인 방법을 정리합니다.
+Recorder ingress audit은 upstream VitalServer 코드를 수정하지 않고 Socket.IO lifecycle과 UI command event를 추적하기 위한 proxy 계층입니다. 이 문서는 recorder ingress의 위치, 책임 경계, event contract, 운영 확인 방법을 정리합니다.
 
-`send_data` direct relay 차단, durable spool, replay, backpressure state machine은 [Recorder ingress send_data spool/replay contract](send-data-spool-replay.md)가 소유합니다. 이 문서는 audit 관측과 운영 확인만 요약합니다.
+`send_data` direct relay 차단, durable spool, replay, backpressure state machine은 [Recorder ingress send_data flow control contract](send-data-flow-control.md)가 소유합니다. 이 문서는 audit 관측과 운영 확인만 요약합니다.
 
 ## 1. 문서 목적
 
@@ -21,7 +21,7 @@ Recorder ingress는 VitalServer 앞단에서 HTTP/WebSocket traffic을 그대로
 - 환경변수와 audit sink 설정
 - Socket.IO event별 audit contract
 - Redis `ip_<vrcode>` 보정 상태와 확인 방법
-- `send_data` spool/replay 계약 문서로 이어지는 운영 링크
+- `send_data` flow control 계약 문서로 이어지는 운영 링크
 - 제품 관점에서 edge proxy 통합 전에 검증해야 할 조건
 
 ## 2. 배치 위치
@@ -102,11 +102,11 @@ Audit event는 기본적으로 파일 로그와 Redis List에 함께 기록합�
 
 Redis는 현재 `3.2.12`로 pin되어 있으므로 Redis Stream 대신 Redis List를 보조 조회 sink로 사용합니다.
 
-### 4-3. `send_data` spool/replay 설정
+### 4-3. `send_data` flow control 설정
 
-`RECORDER_INGRESS_SEND_DATA_*` 설정은 Issue #68의 `send_data` flow control 계약입니다. mode, Redis list, replay interval/batch/rate, backpressure limit의 상세 의미는 [Recorder ingress send_data spool/replay contract](send-data-spool-replay.md#3-1-runtime-설정)를 기준으로 봅니다.
+`RECORDER_INGRESS_SEND_DATA_*` 설정은 Issue #68의 `send_data` flow control 계약입니다. mode, Redis list, replay interval/batch/rate, backpressure limit의 상세 의미는 [Recorder ingress send_data flow control contract](send-data-flow-control.md#3-1-runtime-설정)를 기준으로 봅니다.
 
-Audit 관점에서는 `send_data` payload summary와 spool/replay 결과가 다른 실패 의미를 가져야 합니다. Audit sink 실패는 `auditWriteFailures`, spool write 실패는 `spool.writeFailures`, replay 실패는 `replay.retryableFailures` 또는 `replay.deadLetteredEvents`로 분리해서 봅니다.
+Audit 관점에서는 `send_data` payload summary와 flow control 결과가 다른 실패 의미를 가져야 합니다. Audit sink 실패는 `auditWriteFailures`, spool write 실패는 `spool.writeFailures`, replay 실패는 `replay.retryableFailures` 또는 `replay.deadLetteredEvents`로 분리해서 봅니다.
 
 ### 4-4. VRecorder IP rewrite 설정
 
@@ -199,7 +199,7 @@ Recorder별 보정 상태는 recorder ingress `/recorder-ingress/status`의 `rec
 
 `send_data` payload는 compressed/binary string입니다. Proxy는 원본 body를 streaming으로 upstream에 전달하면서 audit용 mirror buffer만 별도로 보관합니다. 가능한 경우 payload를 inflate해서 `vrcode`, `version`, `rooms_count`를 기록하고, decode에 실패하면 size와 decode error만 기록합니다.
 
-현재 이 절은 audit 관측 계약입니다. Issue #68의 본 해결에서는 recorder ingress가 `send_data`를 upstream으로 바로 흘려보내는 대신 durable spool에 기록하고 replay worker가 통제된 속도로 upstream에 재생해야 합니다. 그 상태, 실패 reason, backpressure 계약은 [Recorder ingress send_data spool/replay contract](send-data-spool-replay.md)를 기준으로 합니다.
+현재 이 절은 audit 관측 계약입니다. Issue #68의 본 해결에서는 recorder ingress가 `send_data`를 upstream으로 바로 흘려보내는 대신 durable spool에 기록하고 replay worker가 통제된 속도로 upstream에 재생해야 합니다. 그 상태, 실패 reason, backpressure 계약은 [Recorder ingress send_data flow control contract](send-data-flow-control.md)를 기준으로 합니다.
 
 ```json
 {
@@ -275,7 +275,7 @@ proxy 상태:
 curl http://localhost:18080/recorder-ingress/status
 ```
 
-`/recorder-ingress/status`는 현재 WebSocket 수, 관측한 Socket.IO event 수, 관측한 `send_data` count/bytes, recorder별 마지막 `send_data` 관측 시각, parse 실패 수, Redis write 실패 수를 반환합니다. `spool`과 `replay` 상태 필드는 [send-data spool/replay contract](send-data-spool-replay.md#9-status-contract)의 상태 계약으로 해석합니다.
+`/recorder-ingress/status`는 현재 WebSocket 수, 관측한 Socket.IO event 수, 관측한 `send_data` count/bytes, recorder별 마지막 `send_data` 관측 시각, parse 실패 수, Redis write 실패 수를 반환합니다. `spool`과 `replay` 상태 필드는 [send_data flow control contract](send-data-flow-control.md#9-status-contract)의 상태 계약으로 해석합니다.
 
 ## 8. 제품 관점 판단
 
