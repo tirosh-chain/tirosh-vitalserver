@@ -1,7 +1,7 @@
 "use strict";
 
 const { loadConfig } = require("./src/config");
-const { createRecorderIngressServer } = require("./src/adapters/inbound/http/proxy-server");
+const { createRecorderIngressServer } = require("./src/composition/recorder-ingress-composition");
 
 const config = loadConfig(process.env);
 const server = createRecorderIngressServer(config);

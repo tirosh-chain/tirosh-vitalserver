@@ -3,53 +3,20 @@
 const http = require("http");
 const net = require("net");
 const crypto = require("crypto");
-const { createAuditRecorder } = require("../../../application/audit-recorder");
-const { createSendDataIngressService } = require("../../../application/send-data-ingress-service");
-const { createSendDataReplayWorker } = require("../../../application/send-data-replay-worker");
 const { auditEventTypes } = require("../../../domain/audit-event-contracts");
-const { createSocketIoAuditService } = require("../../../application/socketio-audit-service");
-const {
-  configureSendDataSpool,
-  createMetrics,
-  metricsSnapshot,
-  recordRecorderDisconnect,
-} = require("../../../observability/metrics");
-const { createAuditLogWriter } = require("../../outbound/file/audit-log-writer");
-const { createAuditStdoutWriter } = require("../../outbound/process/audit-stdout-writer");
-const { createRedisAuditEventStore } = require("../../outbound/redis/audit-event-store");
-const { createRedisClient } = require("../../outbound/redis/client");
-const { createRedisSendDataSpoolStore } = require("../../outbound/redis/send-data-spool-store");
-const { createVrIdentityStore } = require("../../outbound/redis/vr-identity-store");
-const { createSocketIoSendDataReplayTarget } = require("../../outbound/socketio/send-data-replay-target");
+const { metricsSnapshot, recordRecorderDisconnect } = require("../../../observability/metrics");
 const { createBodyMirror } = require("./body-mirror");
-const { createClientIpSelector } = require("./client-ip");
 const { createClientWebSocketRelay, shouldSuppressSendDataRelay } = require("./websocket-client-relay");
 const { createWebSocketParser } = require("./websocket-parser");
 
-function createRecorderIngressServer(config) {
-  const metrics = createMetrics();
-  configureSendDataSpool(metrics, config.spool);
-  const redis = createRedisClient(config.redis);
-  const auditLog = createAuditLogWriter(config.audit.log, metrics);
-  const auditStdout = createAuditStdoutWriter(config.audit.stdout, metrics);
-  const redisAudit = createRedisAuditEventStore(config.audit, redis, metrics);
-  const audit = createAuditRecorder(config.audit, [auditLog, auditStdout, redisAudit]);
-  const vrIdentityStore = createVrIdentityStore(redis, metrics);
-  const sendDataSpoolStore = createRedisSendDataSpoolStore(config.spool, redis);
-  const sendDataIngress = createSendDataIngressService({
-    config,
-    metrics,
-    spoolStore: sendDataSpoolStore,
-  });
-  const sendDataReplayWorker = createSendDataReplayWorker({
-    config: config.spool,
-    metrics,
-    spoolStore: sendDataSpoolStore,
-    replayTarget: createSocketIoSendDataReplayTarget(config),
-  });
-  const clientIp = createClientIpSelector(config.clientIp);
-  const socketIoAudit = createSocketIoAuditService({ audit, vrIdentityStore, metrics, config, sendDataIngress });
-
+function createRecorderIngressHttpServer({
+  audit,
+  clientIp,
+  config,
+  metrics,
+  sendDataReplayWorker,
+  socketIoAudit,
+}) {
   const dependencies = { audit, clientIp, config, metrics, socketIoAudit };
   const server = http.createServer((req, res) => proxyHttp(req, res, dependencies));
   server.on("upgrade", (req, socket, head) => proxyUpgrade(req, socket, head, dependencies));
@@ -245,4 +212,4 @@ function closeSocketsTogether(client, upstream, metrics, context) {
   upstream.on("close", close);
 }
 
-module.exports = { createRecorderIngressServer };
+module.exports = { createRecorderIngressHttpServer };
