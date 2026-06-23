@@ -20,16 +20,13 @@
 
 ## Cause
 
-`redis-relay` compose service가 추가됐지만 macOS package/build/provision contract에 같은 변경이
-끝까지 반영되지 않았습니다.
+`redis-relay` compose service가 추가됐지만 macOS package/build/provision contract에 같은 변경이 끝까지 반영되지 않았습니다.
 
 - `Support/Guest/compose.yaml`에는 `redis-relay` service와 `apps/vitalserver-redis-relay/Dockerfile` build path가 존재했습니다.
 - `config/vm-build.toml`의 Docker image bundle 목록에는 `vitalserver-redis-relay:0.1.0`이 없었습니다.
 - `guest.deploy.include`에도 `apps/vitalserver-redis-relay`가 없었습니다.
 - 설치된 guest deploy directory에는 relay Dockerfile/source가 없고, image bundle에도 relay image가 없어 bootstrap compose 단계가 실패했습니다.
-- 이후 image/source 누락을 고친 뒤에도 fresh install provisioning이 relay bind source directory를 만들지 않으면
-  같은 bootstrap 실패가 재발합니다. `redis-relay`가 disabled여도 compose는 아래 Host-owned bind source를
-  요구합니다.
+- 이후 image/source 누락을 고친 뒤에도 fresh install provisioning이 relay bind source directory를 만들지 않으면 같은 bootstrap 실패가 재발합니다. `redis-relay`가 disabled여도 compose는 아래 Host-owned bind source를 요구합니다.
   - `/mnt/tirosh/deploy/redis-relay-config/redis-relay.toml`
   - `/mnt/tirosh/deploy/redis-relay-secrets`
   - `/mnt/tirosh/run/redis-relay-status`
@@ -64,8 +61,7 @@ grep -n "redisRelay" apps/vitalserver-macos-runtime/release-dev.json
 1. `release.json`과 `release-dev.json`에 `redisRelay` service를 추가합니다.
 2. `config/vm-build.toml`에 relay image, Dockerfile, deploy include를 추가합니다.
 3. Docker image bundle build가 `vitalserver-redis-relay:0.1.0`을 빌드하고 저장하는지 확인합니다.
-4. install-provision이 relay config/secrets/status bind source directory와 기본 disabled
-   `redis-relay.toml`을 생성하는지 확인합니다.
+4. install-provision이 relay config/secrets/status bind source directory와 기본 disabled `redis-relay.toml`을 생성하는지 확인합니다.
 5. `make dist/dmg/dev/compile` 또는 `make dist/dmg/dev/all`을 실행해 compose image/build contract preflight를 통과시킵니다.
 6. 기존 설치본은 clean uninstall 후 새 DMG로 다시 설치합니다.
 
@@ -74,8 +70,7 @@ grep -n "redisRelay" apps/vitalserver-macos-runtime/release-dev.json
 - macOS package preflight는 guest compose에 선언된 service image가 `guest.docker_images.images` 또는 `optional_images`에 존재하는지 검사합니다.
 - compose build dockerfile은 `guest.docker_images.*_dockerfile`과 일치해야 합니다.
 - compose build dockerfile path는 `guest.deploy.include`에 포함되어야 합니다.
-- Host install-provision은 disabled optional service도 compose bind mount 계약에 필요한 config/secrets/status
-  source를 생성해야 합니다. UI disabled는 process 동작 여부이지 bind source 부재를 의미하지 않습니다.
+- Host install-provision은 disabled optional service도 compose bind mount 계약에 필요한 config/secrets/status source를 생성해야 합니다. UI disabled는 process 동작 여부이지 bind source 부재를 의미하지 않습니다.
 - `dist/dmg/dev/compile`에서 이 contract가 깨지면 Docker build나 DMG 생성 전에 실패해야 합니다.
 - `dist/dmg/dev/all`은 compile을 포함하므로 같은 누락을 설치 전 gate에서 막아야 합니다.
 
@@ -94,6 +89,4 @@ grep -n "redisRelay" apps/vitalserver-macos-runtime/release-dev.json
 ## Follow-up
 
 - 2026-06-19: fresh install에서 Redis만 올라오고 `redis-relay` build source/image가 누락된 상태를 확인했습니다. 패키지 preflight에 compose image/build/deploy contract 검사를 추가했습니다.
-- 2026-06-19: image/source 포함 후에도 fresh install에서 `redis-relay-config`, `redis-relay-secrets`,
-  `redis-relay-status` bind source가 없어 compose start가 실패하는 상태를 확인했습니다. Host
-  install-provision이 기본 disabled relay config를 생성하도록 수정했습니다.
+- 2026-06-19: image/source 포함 후에도 fresh install에서 `redis-relay-config`, `redis-relay-secrets`, `redis-relay-status` bind source가 없어 compose start가 실패하는 상태를 확인했습니다. Host install-provision이 기본 disabled relay config를 생성하도록 수정했습니다.

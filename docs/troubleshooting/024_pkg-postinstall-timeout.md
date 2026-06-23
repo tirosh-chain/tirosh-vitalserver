@@ -42,15 +42,7 @@ PKInstallErrorDomain Code=112
 
 2026-06-02 재분석 후 package install 경계를 다시 분리했습니다. `.pkg`는 fresh install payload와 runtime provisioning을 완료하는 경계이고, VitalServer backend readiness를 판정하는 경계가 아닙니다. 따라서 `postinstall`은 `vitalserver-vm runtime install-provision`만 호출하고 runtime status JSON을 읽어 상태를 추론하거나 health wait를 수행하지 않습니다.
 
-2026-06-04에는 timeout 없이 `postinstall`이 즉시 실패하는 변형을 확인했습니다.
-`preinstall-check`는 payload 설치 전 product artifact가 모두 absent라서 통과했지만,
-payload가 `/Applications`, `/Library/Application Support`, `/usr/local/bin`,
-`/Library/LaunchDaemons`에 복사된 뒤 `postinstall`의 `runtime install-provision`이
-fresh install artifact preflight를 다시 실행했습니다. 그 결과 방금 설치된 package
-payload가 `install-artifact-present` blocker로 보고되어 `preflight-blocked` 상태가
-persist되고 설치가 실패했습니다. 이 케이스에서 macOS Installer는 같은
-`PKInstallErrorDomain Code=112`를 표시하지만, 로그에는 600초 timeout 대신
-`runtime install preflight blocked blockers=install-artifact-present:...`가 남습니다.
+2026-06-04에는 timeout 없이 `postinstall`이 즉시 실패하는 변형을 확인했습니다. `preinstall-check`는 payload 설치 전 product artifact가 모두 absent라서 통과했지만, payload가 `/Applications`, `/Library/Application Support`, `/usr/local/bin`, `/Library/LaunchDaemons`에 복사된 뒤 `postinstall`의 `runtime install-provision`이 fresh install artifact preflight를 다시 실행했습니다. 그 결과 방금 설치된 package payload가 `install-artifact-present` blocker로 보고되어 `preflight-blocked` 상태가 persist되고 설치가 실패했습니다. 이 케이스에서 macOS Installer는 같은 `PKInstallErrorDomain Code=112`를 표시하지만, 로그에는 600초 timeout 대신 `runtime install preflight blocked blockers=install-artifact-present:...`가 남습니다.
 
 ## Checks
 

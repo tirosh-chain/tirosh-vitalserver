@@ -28,12 +28,7 @@ EXT4-fs (vda1): Remounting filesystem read-only
 systemd[1]: ... Failed to spawn executor: Input/output error
 ```
 
-Update 중에는 같은 guest kernel panic 계열이 다른 증상으로 보일 수 있습니다. Guest shutdown
-worker가 Redis backup, service stop, `sync`, `systemctl poweroff` 요청까지 완료했는데도 Host
-apply-bundle이 `stop-runtime-services`에서 900초 동안 VM process exit을 기다리다 실패합니다.
-이 경우 `runtime-events.jsonl`에는 `VM process did not stop within 900s`가 남고,
-`launchd.out.log`에는 `Reached target poweroff.target - System Power Off.` 직후 kernel panic이
-보일 수 있습니다.
+Update 중에는 같은 guest kernel panic 계열이 다른 증상으로 보일 수 있습니다. Guest shutdown worker가 Redis backup, service stop, `sync`, `systemctl poweroff` 요청까지 완료했는데도 Host apply-bundle이 `stop-runtime-services`에서 900초 동안 VM process exit을 기다리다 실패합니다. 이 경우 `runtime-events.jsonl`에는 `VM process did not stop within 900s`가 남고, `launchd.out.log`에는 `Reached target poweroff.target - System Power Off.` 직후 kernel panic이 보일 수 있습니다.
 
 ## Impact
 
@@ -57,12 +52,7 @@ apply-bundle이 `stop-runtime-services`에서 900초 동안 VM process exit을 �
 
 이 패턴에서 guest kernel panic과 VM disk read-only 상태가 직접적인 장애입니다. watchdog restart loop는 2차 증폭 요인입니다.
 
-2026-06-09 update 실패 로그에서는 guest가 systemd `poweroff.target`에 도달한 뒤
-`Kernel panic - not syncing: stack-protector: Kernel stack is corrupted in: __schedule...`를
-출력했습니다. 해당 로그만으로 특정 Ubuntu kernel defect를 확정할 수는 없지만, userland
-update worker는 poweroff 요청까지 완료했고 Host는 VM process exit이라는 Host-owned 상태를
-기다리다 timeout으로 실패했습니다. 이 변형은 update bundle artifact 자체보다 guest
-kernel/rootfs build, Apple Virtualization/virtio, ext4 shutdown 경로 조합을 먼저 의심해야 합니다.
+2026-06-09 update 실패 로그에서는 guest가 systemd `poweroff.target`에 도달한 뒤 `Kernel panic - not syncing: stack-protector: Kernel stack is corrupted in: __schedule...`를 출력했습니다. 해당 로그만으로 특정 Ubuntu kernel defect를 확정할 수는 없지만, userland update worker는 poweroff 요청까지 완료했고 Host는 VM process exit이라는 Host-owned 상태를 기다리다 timeout으로 실패했습니다. 이 변형은 update bundle artifact 자체보다 guest kernel/rootfs build, Apple Virtualization/virtio, ext4 shutdown 경로 조합을 먼저 의심해야 합니다.
 
 AGENTS.md 기준으로 보면 watchdog은 guest 내부 상태를 로그에서 추정하면 안 됩니다. 하지만 현재 구조에서는 guest가 `kernel-panic`, `filesystem-read-only`, `disk-io-error` 같은 terminal storage 상태를 명시 contract로 제공하지 못하면, host는 `missing vmIP`, `stale runtime-state`, `HTTP failed`만 보고 일반 restart 대상으로 취급합니다.
 
@@ -105,9 +95,7 @@ launchctl print system/com.tirosh.vitalserver-vm | grep "exit timeout"
 확인할 증거:
 
 - `Kernel panic - not syncing`이 있으면 guest kernel panic이 1차 원인입니다.
-- update 중이면 `prepare-update-shutdown-result.json`이 `poweroff-ready` 또는 `poweroff-requested`까지 완료됐는지
-  확인합니다. 완료됐다면 Host가 Guest shutdown 상태를 추정하지 않고 VM process exit 상태를
-  별도 실패로 봐야 합니다.
+- update 중이면 `prepare-update-shutdown-result.json`이 `poweroff-ready` 또는 `poweroff-requested`까지 완료됐는지 확인합니다. 완료됐다면 Host가 Guest shutdown 상태를 추정하지 않고 VM process exit 상태를 별도 실패로 봐야 합니다.
 - `jbd2/vda1-8`, `EXT4-fs error`, `Aborting journal`, `Remounting filesystem read-only`는 VM disk/journal 손상을 의미합니다.
 - `Failed to spawn executor: Input/output error`가 반복되면 guest root filesystem이 정상적으로 실행 파일을 읽지 못하는 상태입니다.
 - watchdog log에 `launchd restart label=com.tirosh.vitalserver-vm`가 반복되면 recovery loop입니다.
@@ -264,23 +252,9 @@ AGENTS.md 원칙을 이 TS에 적용할 때 특히 조심할 점:
 
 ## Follow-up
 
-- 2026-06-09: Python guest-tools 전환 이후 update shutdown 경로에서 kernel panic 빈도가
-  높아졌다는 운영 단서를 확인했습니다. Python 자체를 원인으로 단정하지 않고, 전환 과정에서
-  늘어난 Redis backup, Docker compose stop, observability snapshot, result JSON write, request
-  cleanup, `sync` 순서를 우선 의심합니다. 성공 경로는 heavy write와 Host-visible result write를
-  끝낸 뒤 final `sync`를 수행하고, final `sync` 이후에는 `systemctl poweroff` 외 작업을 남기지
-  않는 방향으로 정리했습니다. poweroff 요청 실패는 shutdown 성공 경로가 아니므로 failure
-  result를 별도로 기록할 수 있습니다.
-- 2026-06-09: update shutdown 중 `container-logs`와 `runtime-state` sidecar stop을
-  `check=False` fire-and-forget으로 처리하던 경로를 명시 확인으로 바꿨습니다. Guest shutdown은
-  sidecar stop command 결과와 systemd `ActiveState`를 확인하고, sidecar가 계속 active이면 Docker
-  compose stop이나 poweroff로 진행하지 않습니다. 이 실패는 empty success가 아니라
-  `guest-sidecar-service-*` dependency failure로 남겨야 합니다.
-- 2026-06-09: update shutdown 중 백업 직전 단계에서 `command-poller`와 `redis-backup.timer`를
-  함께 quiesce하고, 이미 시작된 `redis-backup.service`가 종료될 때까지 bounded wait를 둔 뒤에
-  prepare-update-shutdown 백업/compose-stop/poweroff로 진행하도록 확장했습니다. `redis-backup`
- 가 유휴 상태로 내려오지 않으면 Guest 업데이트는 실패로 남기고 진행을 멈춰 중첩 백업이
-  guest의 쓰기 폭증/디스크 손상으로 가지 않게 합니다.
+- 2026-06-09: Python guest-tools 전환 이후 update shutdown 경로에서 kernel panic 빈도가 높아졌다는 운영 단서를 확인했습니다. Python 자체를 원인으로 단정하지 않고, 전환 과정에서 늘어난 Redis backup, Docker compose stop, observability snapshot, result JSON write, request cleanup, `sync` 순서를 우선 의심합니다. 성공 경로는 heavy write와 Host-visible result write를 끝낸 뒤 final `sync`를 수행하고, final `sync` 이후에는 `systemctl poweroff` 외 작업을 남기지 않는 방향으로 정리했습니다. poweroff 요청 실패는 shutdown 성공 경로가 아니므로 failure result를 별도로 기록할 수 있습니다.
+- 2026-06-09: update shutdown 중 `container-logs`와 `runtime-state` sidecar stop을 `check=False` fire-and-forget으로 처리하던 경로를 명시 확인으로 바꿨습니다. Guest shutdown은 sidecar stop command 결과와 systemd `ActiveState`를 확인하고, sidecar가 계속 active이면 Docker compose stop이나 poweroff로 진행하지 않습니다. 이 실패는 empty success가 아니라 `guest-sidecar-service-*` dependency failure로 남겨야 합니다.
+- 2026-06-09: update shutdown 중 백업 직전 단계에서 `command-poller`와 `redis-backup.timer`를 함께 quiesce하고, 이미 시작된 `redis-backup.service`가 종료될 때까지 bounded wait를 둔 뒤에 prepare-update-shutdown 백업/compose-stop/poweroff로 진행하도록 확장했습니다. `redis-backup` 가 유휴 상태로 내려오지 않으면 Guest 업데이트는 실패로 남기고 진행을 멈춰 중첩 백업이 guest의 쓰기 폭증/디스크 손상으로 가지 않게 합니다.
 
 ## Related
 

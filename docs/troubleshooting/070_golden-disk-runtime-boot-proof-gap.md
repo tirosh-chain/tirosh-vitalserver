@@ -18,23 +18,18 @@ service 상태가 Not Reported와 active/failed 사이를 오감
 edge /ready는 한때 성공했지만 Runtime Control status가 정상으로 수렴하지 않음
 ```
 
-TS-069는 stale `rootfs-ready`/manifest를 proof로 믿는 문제를 막았습니다. 하지만 현재 golden disk
-검증은 주로 rootfs 준비 VM 안에서 Docker/Compose/edge readiness를 검증합니다. 실제 Runtime boot
-path에서 Host가 의존하는 `bootstrap-result.json`, `runtime-state.json`, systemd service 상태,
-runtime health convergence까지는 아직 release proof로 묶이지 않았습니다.
+TS-069는 stale `rootfs-ready`/manifest를 proof로 믿는 문제를 막았습니다. 하지만 현재 golden disk 검증은 주로 rootfs 준비 VM 안에서 Docker/Compose/edge readiness를 검증합니다. 실제 Runtime boot path에서 Host가 의존하는 `bootstrap-result.json`, `runtime-state.json`, systemd service 상태, runtime health convergence까지는 아직 release proof로 묶이지 않았습니다.
 
 ## Impact
 
 - build는 성공했지만 설치 직후 Runtime이 초기화 상태에서 멈출 수 있습니다.
-- rootfs smoke는 성공했는데 실제 bootstrap service ordering, runtime-state writer, observability
-  writer, command poller 같은 운영 service 문제가 뒤늦게 드러납니다.
+- rootfs smoke는 성공했는데 실제 bootstrap service ordering, runtime-state writer, observability writer, command poller 같은 운영 service 문제가 뒤늦게 드러납니다.
 - Runtime Control UI는 명시 상태 없이 Not Reported, degraded, critical을 반복 표시할 수 있습니다.
 - golden disk가 실제 운영 boot proof를 제공하지 않으면 VM 관련 장애가 설치 후에야 발견됩니다.
 
 ## Cause
 
-Rootfs smoke와 Runtime boot proof가 다른 책임을 갖는데, 현재 golden disk pipeline은 Runtime boot proof가
-부족합니다.
+Rootfs smoke와 Runtime boot proof가 다른 책임을 갖는데, 현재 golden disk pipeline은 Runtime boot proof가 부족합니다.
 
 - Rootfs smoke는 이미지 내부 dependency, Docker runtime, Compose build/up, edge readiness를 확인합니다.
 - Runtime boot proof는 실제 bootstrap path 이후 Host가 소비하는 runtime contracts를 확인해야 합니다.
@@ -59,11 +54,9 @@ Rootfs smoke와 Runtime boot proof가 다른 책임을 갖는데, 현재 golden 
 - Observability read model or event store is unavailable
 - VitalServer backup directory is missing but reported as an empty backup list
 - TestKit service is expected in dev builds but not available after boot
-- Runtime boot smoke가 `runtime state is missing compose services: ['testkit']`로 실패했지만
-  최신 `runtime-state.json`에는 testkit이 뒤늦게 나타나는 경우
+- Runtime boot smoke가 `runtime state is missing compose services: ['testkit']`로 실패했지만 최신 `runtime-state.json`에는 testkit이 뒤늦게 나타나는 경우
 
-AGENTS.md 기준으로 Host는 Guest 내부 상태를 로그나 추측으로 만들면 안 됩니다. Guest가 명시 contract를
-제공하고, golden disk pipeline은 그 contract가 실제 Runtime boot에서 제공되는지 검증해야 합니다.
+AGENTS.md 기준으로 Host는 Guest 내부 상태를 로그나 추측으로 만들면 안 됩니다. Guest가 명시 contract를 제공하고, golden disk pipeline은 그 contract가 실제 Runtime boot에서 제공되는지 검증해야 합니다.
 
 ## Checks
 
@@ -93,15 +86,12 @@ tirosh-runtime-state once
 
 단기 조치:
 
-1. Runtime이 initializing/degraded/critical에서 멈추면 `bootstrap-result.json`과
-   `runtime-state.json`을 먼저 확인합니다.
+1. Runtime이 initializing/degraded/critical에서 멈추면 `bootstrap-result.json`과 `runtime-state.json`을 먼저 확인합니다.
 2. `bootstrap-result.status=running`이면 stale인지 bootID/updatedAt 기준으로 판단합니다.
 3. `runtime-state.json`이 없거나 invalid면 runtime-state writer/service 문제로 분리합니다.
 4. systemd service가 inactive/failed이면 edge HTTP 결과만으로 정상 boot로 보지 않습니다.
 5. launcher log의 kernel panic/Oops/RCU stall은 TS-069와 같은 terminal guest failure로 처리합니다.
-6. dev build에서 `testkit`만 누락된 runtime boot smoke 실패가 나오면 같은 run의 manifest timestamp와
-   최신 `runtime-state.json`을 비교합니다. testkit이 몇 초 뒤 등장했다면 late-ready service를
-   readiness window 동안 재조회해야 하는 검증 race입니다.
+6. dev build에서 `testkit`만 누락된 runtime boot smoke 실패가 나오면 같은 run의 manifest timestamp와 최신 `runtime-state.json`을 비교합니다. testkit이 몇 초 뒤 등장했다면 late-ready service를 readiness window 동안 재조회해야 하는 검증 race입니다.
 
 ## Prevention
 
@@ -122,10 +112,7 @@ Golden disk pipeline에 Runtime boot proof target을 추가합니다.
 
 ## Feature Scenario Proof
 
-Runtime boot smoke는 “VM이 켜졌다”만 증명하면 안 됩니다. Helper/PWA가 제공하는 기능이 Runtime
-contract를 통해 실행 가능한 최소 상태인지도 확인해야 합니다. 단, 모든 기능을 boot smoke 안에서
-실제 mutate하지는 않습니다. Boot smoke는 capability와 read contract를 확인하고, destructive 또는
-long-running workflow는 별도 scenario smoke로 분리합니다.
+Runtime boot smoke는 “VM이 켜졌다”만 증명하면 안 됩니다. Helper/PWA가 제공하는 기능이 Runtime contract를 통해 실행 가능한 최소 상태인지도 확인해야 합니다. 단, 모든 기능을 boot smoke 안에서 실제 mutate하지는 않습니다. Boot smoke는 capability와 read contract를 확인하고, destructive 또는 long-running workflow는 별도 scenario smoke로 분리합니다.
 
 | Feature scenario | Runtime boot proof | Separate workflow smoke |
 |---|---|---|
@@ -151,9 +138,7 @@ Boot smoke가 직접 실행해도 되는 것은 read-only 또는 bounded local p
 - command capability read
 - command poller service active check
 
-Boot smoke가 직접 실행하지 말아야 하는 것은 VM stop, update apply, restore, uninstall처럼 side effect가
-큰 workflow입니다. 이들은 별도 scenario target에서 실행하고, TS-070 manifest에는 “scenario smoke
-required”로 남깁니다.
+Boot smoke가 직접 실행하지 말아야 하는 것은 VM stop, update apply, restore, uninstall처럼 side effect가 큰 workflow입니다. 이들은 별도 scenario target에서 실행하고, TS-070 manifest에는 “scenario smoke required”로 남깁니다.
 
 ## Required Positive Proof
 
@@ -278,8 +263,7 @@ P1 negative validation:
 - Added manifest `runtime-boot-smoke-manifest.json`.
 - Added Host/devtools wait gate `macos-runtime-wait-runtime-boot-smoke`.
 - Added Make target `internal/vm/golden-rootfs/runtime-smoke`.
-- Bootstrap runs runtime boot smoke only when deploy metadata explicitly sets
-  `runtimeBootSmoke.enabled=true`.
+- Bootstrap runs runtime boot smoke only when deploy metadata explicitly sets `runtimeBootSmoke.enabled=true`.
 - Runtime boot smoke currently validates the 18 positive proof items through these stages:
   - `bootstrap-result`
   - `runtime-state`
@@ -317,15 +301,10 @@ Implemented command-level negative coverage:
 
 - `make internal/vm/golden-rootfs/runtime-smoke` passed end-to-end.
 - Positive VM proof runId: `ce055712-8df2-41df-ba7a-fe2b266c87bd`.
-- The target now invalidates stale `runtime-boot-smoke-manifest.json` and
-  stale `vm-lifecycle.json` before starting a new runtime smoke run.
-- Bootstrap starts the compose stack through `tirosh-vitalserver-compose.service`
-  so the systemd proof matches the actual runtime owner.
-- Compose stop is bounded to avoid multi-minute VM shutdown hangs during build
-  verification.
-- `macos-runtime-wait-stopped` accepts explicit Host process absence when a stale
-  lifecycle document remains in `stopping`, while still rejecting lifecycle
-  `failed`.
+- The target now invalidates stale `runtime-boot-smoke-manifest.json` and stale `vm-lifecycle.json` before starting a new runtime smoke run.
+- Bootstrap starts the compose stack through `tirosh-vitalserver-compose.service` so the systemd proof matches the actual runtime owner.
+- Compose stop is bounded to avoid multi-minute VM shutdown hangs during build verification.
+- `macos-runtime-wait-stopped` accepts explicit Host process absence when a stale lifecycle document remains in `stopping`, while still rejecting lifecycle `failed`.
 
 Still separate from this phase:
 
@@ -334,8 +313,7 @@ Still separate from this phase:
 - Redis backup/restore create and restore scenarios remain separate workflow smoke.
 - Settings apply restart/no-restart scenario remains separate workflow smoke.
 - Update activation/shutdown/rollback scenario remains separate workflow smoke.
-- Observability event append/read and export logs archive completeness remain separate
-  workflow smoke.
+- Observability event append/read and export logs archive completeness remain separate workflow smoke.
 
 2026-06-13 follow-up added explicit package validation workflows:
 
@@ -346,20 +324,13 @@ Still separate from this phase:
 - `make dist/dmg/release/verify`
 - `make dist/pkg/release/verify`
 
-`compile` remains the artifact creation contract. `runtime-smoke` owns golden runtime boot proof.
-`dist/dmg/dev/all` is the combined dev DMG gate; `dist/dmg/dev/verify` checks an existing
-DMG artifact and golden runtime smoke without compiling.
-Package and release verify targets may still be combined handoff gates when their target contract
-states that explicitly.
+`compile` remains the artifact creation contract. `runtime-smoke` owns golden runtime boot proof. `dist/dmg/dev/all` is the combined dev DMG gate; `dist/dmg/dev/verify` checks an existing DMG artifact and golden runtime smoke without compiling. Package and release verify targets may still be combined handoff gates when their target contract states that explicitly.
 
 ## Operational Notes
 
-Do not merge this into TS-069. TS-069 proves the golden rootfs preparation run. TS-070 proves that
-the resulting disk can pass the actual Runtime boot contracts that Host and UI consume.
+Do not merge this into TS-069. TS-069 proves the golden rootfs preparation run. TS-070 proves that the resulting disk can pass the actual Runtime boot contracts that Host and UI consume.
 
-Do not solve this by extending timeout only. Timeout only helps a slow success path. The repeated
-failures here are state contract gaps: missing, invalid, stale, failed, and unknown must stay
-separate.
+Do not solve this by extending timeout only. Timeout only helps a slow success path. The repeated failures here are state contract gaps: missing, invalid, stale, failed, and unknown must stay separate.
 
 ## Related Cases
 
@@ -371,11 +342,6 @@ separate.
 
 ## Follow-up
 
-- 2026-06-11: TS-069 closed the rootfs proof/stale marker gap. Remaining robust golden disk work
-  requires actual Runtime boot proof and runtime negative cases.
-- 2026-06-11: Runtime boot smoke phase 1 added guest manifest validation, Host wait gate,
-  Make target, and command-level positive/P0 negative tests. Mutating feature workflows are
-  still tracked as separate scenario smoke work.
-- 2026-06-11: Runtime boot smoke phase 2 passed an actual golden disk boot and exposed two
-  host-side robustness gaps: stale lifecycle proof before smoke start and stale `stopping`
-  lifecycle after launcher exit. Both are now covered by devtools tests.
+- 2026-06-11: TS-069 closed the rootfs proof/stale marker gap. Remaining robust golden disk work requires actual Runtime boot proof and runtime negative cases.
+- 2026-06-11: Runtime boot smoke phase 1 added guest manifest validation, Host wait gate, Make target, and command-level positive/P0 negative tests. Mutating feature workflows are still tracked as separate scenario smoke work.
+- 2026-06-11: Runtime boot smoke phase 2 passed an actual golden disk boot and exposed two host-side robustness gaps: stale lifecycle proof before smoke start and stale `stopping` lifecycle after launcher exit. Both are now covered by devtools tests.

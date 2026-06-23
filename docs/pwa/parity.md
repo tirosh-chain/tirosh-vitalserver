@@ -54,17 +54,11 @@
 
 ## Recorder Display Rule
 
-PWA Recorders 화면은 Runtime Control API가 제공한 `RuntimeVitalRecorderRecord.status`를 그대로 표시합니다.
-`lastSeenAt`, anomaly, activity timestamp, audit activity 유무로 online/stale 상태를 다시 계산하지 않습니다.
-Host read model은 observer가 제공한 explicit `stale` state를 `online`보다 우선해야 하며, UI는 그 결과를 렌더링만 합니다.
+PWA Recorders 화면은 Runtime Control API가 제공한 `RuntimeVitalRecorderRecord.status`를 그대로 표시합니다. `lastSeenAt`, anomaly, activity timestamp, audit activity 유무로 online/stale 상태를 다시 계산하지 않습니다. Host read model은 observer가 제공한 explicit `stale` state를 `online`보다 우선해야 하며, UI는 그 결과를 렌더링만 합니다.
 
-Recorder activity rolling window는 화면의 현재 시각을 오른쪽 경계로 사용합니다. 마지막 activity timestamp는
-별도 metadata로 표시하고, rolling chart의 오른쪽 축을 마지막 data timestamp에 고정하지 않습니다. 데이터가 멈추면
-현재 시각까지의 bucket은 0으로 표시되어야 합니다. All/history 탐색은 예외적으로 data 범위를 기준으로 페이지를 나눕니다.
+Recorder activity rolling window는 화면의 현재 시각을 오른쪽 경계로 사용합니다. 마지막 activity timestamp는 별도 metadata로 표시하고, rolling chart의 오른쪽 축을 마지막 data timestamp에 고정하지 않습니다. 데이터가 멈추면 현재 시각까지의 bucket은 0으로 표시되어야 합니다. All/history 탐색은 예외적으로 data 범위를 기준으로 페이지를 나눕니다.
 
-Recorder activity summary는 운영자가 바로 판단할 수 있는 `Packets`, `Total packets`, `Data rate`만
-기본 표시합니다. `roomCount`는 observation/API contract에는 남지만, 고유 room 수나 현재 연결 room 수가
-아니므로 Swift/PWA 기본 UI에서 `Room entries`로 노출하지 않습니다.
+Recorder activity summary는 운영자가 바로 판단할 수 있는 `Packets`, `Total packets`, `Data rate`만 기본 표시합니다. `roomCount`는 observation/API contract에는 남지만, 고유 room 수나 현재 연결 room 수가 아니므로 Swift/PWA 기본 UI에서 `Room entries`로 노출하지 않습니다.
 
 ## Host Affordance Gaps
 

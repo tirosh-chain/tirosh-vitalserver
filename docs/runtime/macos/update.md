@@ -269,12 +269,9 @@ activation result writer:
 
 ### Guest Update Shutdown Baseline
 
-Product Update가 guest deploy, container image, runtime tool, proxy artifact를 바꿀 때는 VM을 그냥
-내리지 않습니다. Host는 먼저 `prepare-update-shutdown.request`를 쓰고, Guest가 명시 result를 남길
-때까지 기다린 뒤 VM stop/restart 경로로 진행합니다.
+Product Update가 guest deploy, container image, runtime tool, proxy artifact를 바꿀 때는 VM을 그냥 내리지 않습니다. Host는 먼저 `prepare-update-shutdown.request`를 쓰고, Guest가 명시 result를 남길 때까지 기다린 뒤 VM stop/restart 경로로 진행합니다.
 
-이 shutdown request는 update-specific operation입니다. Settings restart, watchdog recovery, service
-repair가 같은 request를 재사용하거나 stale request를 다시 실행하면 안 됩니다.
+이 shutdown request는 update-specific operation입니다. Settings restart, watchdog recovery, service repair가 같은 request를 재사용하거나 stale request를 다시 실행하면 안 됩니다.
 
 필수 동작:
 
@@ -294,8 +291,7 @@ Compose stop은 whole-stack fallback이 아니라 아래 순서의 명시 operat
 testkit -> edge -> swagger-ui -> redis-ui -> recorder-ingress -> vitaldb-observer -> app -> redis
 ```
 
-기본 stop timeout은 30초입니다. `app`은 90초, `redis`는 60초로 둡니다. timeout이나 dependency
-failure가 발생하면 Guest는 `prepare-update-shutdown-result.json`에 아래 정보를 남깁니다.
+기본 stop timeout은 30초입니다. `app`은 90초, `redis`는 60초로 둡니다. timeout이나 dependency failure가 발생하면 Guest는 `prepare-update-shutdown-result.json`에 아래 정보를 남깁니다.
 
 | field | 의미 |
 |---|---|
@@ -304,14 +300,9 @@ failure가 발생하면 Guest는 `prepare-update-shutdown-result.json`에 아래
 | `details.serviceStates` | failure snapshot의 compose service state |
 | `details.failureSnapshotPath` | diagnostics/snapshot artifact 경로 |
 
-Host는 이 result를 update failure로 소비해야 합니다. 로그 tail, missing marker, VM process 종료 여부로
-Guest shutdown success를 추정하지 않습니다.
+Host는 이 result를 update failure로 소비해야 합니다. 로그 tail, missing marker, VM process 종료 여부로 Guest shutdown success를 추정하지 않습니다.
 
-Rollback 중 health wait에서 `host-proxy-http-*`, `recorder-ingress-http-failed`,
-`container-service-*-state-exited` 같은 transient reason이 먼저 보일 수 있습니다. 최종적으로
-`hostProxyHTTP=200`과 runtime health가 확인되면 rollback health wait는 성공입니다. 다만 rollback
-성공은 update 성공이 아니며, command log와 runtime event에는 update failure와 rollback success가
-둘 다 남아야 합니다.
+Rollback 중 health wait에서 `host-proxy-http-*`, `recorder-ingress-http-failed`, `container-service-*-state-exited` 같은 transient reason이 먼저 보일 수 있습니다. 최종적으로 `hostProxyHTTP=200`과 runtime health가 확인되면 rollback health wait는 성공입니다. 다만 rollback 성공은 update 성공이 아니며, command log와 runtime event에는 update failure와 rollback success가 둘 다 남아야 합니다.
 
 ### Release Gate
 
@@ -353,9 +344,7 @@ update-bundle-<channel>-<kind>-<releaseLabel>/
   migrations/
 ```
 
-`rootfs-base.raw.gz`는 Product Update bundle에 포함하지 않습니다. VM Image/rootfs를
-바꾸는 경우에만 `make dist/image-update/release`로 별도 bundle을 만들며, 이때 manifest에
-`rootfs-base` artifact가 추가됩니다.
+`rootfs-base.raw.gz`는 Product Update bundle에 포함하지 않습니다. VM Image/rootfs를 바꾸는 경우에만 `make dist/image-update/release`로 별도 bundle을 만들며, 이때 manifest에 `rootfs-base` artifact가 추가됩니다.
 
 각 artifact의 의미는 아래와 같습니다.
 

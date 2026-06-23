@@ -574,8 +574,7 @@ golden rootfs compile에서는 Docker/Compose smoke를 실제로 수행해야 �
 
 ## 수정 계획 및 구현 현황
 
-rootfs와 runtime data disk 분리는 별도 설계 변경으로 시작했지만, 2026-06-12 기준 1차 구현은
-compile artifact와 product runtime bootstrap 경로까지 반영되었습니다.
+rootfs와 runtime data disk 분리는 별도 설계 변경으로 시작했지만, 2026-06-12 기준 1차 구현은 compile artifact와 product runtime bootstrap 경로까지 반영되었습니다.
 
 현재 구현 상태:
 

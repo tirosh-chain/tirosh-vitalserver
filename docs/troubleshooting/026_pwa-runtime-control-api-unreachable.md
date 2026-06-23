@@ -54,9 +54,7 @@ PWA 번들은 로드됐지만 Runtime Control API 호출이 브라우저에서 �
 
 수정:
 
-Runtime Control local HTTP server가 loopback origin의 CORS preflight를 `204 No Content`로 응답하고, 실제 API 응답에도 `Access-Control-Allow-Origin`을 붙이도록 했습니다.
-Runtime Control PWA port는 Settings에서 변경할 수 있으며, 저장 후 Helper local API server가 새 포트로 재시작됩니다.
-Runtime Control PWA는 Workbox app-shell precache를 사용하지 않고, 기존 service worker/cache를 제거하는 cleanup `sw.js`만 배포합니다. Helper static responder는 `index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest`를 장기 캐시하지 않습니다.
+Runtime Control local HTTP server가 loopback origin의 CORS preflight를 `204 No Content`로 응답하고, 실제 API 응답에도 `Access-Control-Allow-Origin`을 붙이도록 했습니다. Runtime Control PWA port는 Settings에서 변경할 수 있으며, 저장 후 Helper local API server가 새 포트로 재시작됩니다. Runtime Control PWA는 Workbox app-shell precache를 사용하지 않고, 기존 service worker/cache를 제거하는 cleanup `sw.js`만 배포합니다. Helper static responder는 `index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest`를 장기 캐시하지 않습니다.
 
 ## Follow-up
 

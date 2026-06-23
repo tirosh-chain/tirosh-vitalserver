@@ -11,8 +11,7 @@
 
 ## Symptoms
 
-Product update starts and verifies the update bundle, but fails during runtime shutdown before guest
-activation. Runtime progress shows `apply-bundle` failed at `stop-runtime-services`.
+Product update starts and verifies the update bundle, but fails during runtime shutdown before guest activation. Runtime progress shows `apply-bundle` failed at `stop-runtime-services`.
 
 The guest update shutdown log can include:
 
@@ -20,24 +19,19 @@ The guest update shutdown log can include:
 Guest update shutdown failed at: 'NoneType' object has no attribute 'splitlines'
 ```
 
-The installed runtime may then rollback and return to healthy, making the failure visible only in
-`runtime-events.jsonl` and `prepare-update-shutdown.log`.
+The installed runtime may then rollback and return to healthy, making the failure visible only in `runtime-events.jsonl` and `prepare-update-shutdown.log`.
 
 ## Cause
 
-Guest update shutdown stops Compose services in an explicit order. Before stopping services it reads the
-available service names with:
+Guest update shutdown stops Compose services in an explicit order. Before stopping services it reads the available service names with:
 
 ```text
 docker compose config --services
 ```
 
-The compose wrapper used the generic command runner without stdout capture. As a result, the completed
-process could have `stdout == None`, but `compose_services()` treated stdout as a string and called
-`splitlines()`.
+The compose wrapper used the generic command runner without stdout capture. As a result, the completed process could have `stdout == None`, but `compose_services()` treated stdout as a string and called `splitlines()`.
 
-This is a guest-tools command output contract bug. Missing command output must not become an internal
-Python exception or an empty service set.
+This is a guest-tools command output contract bug. Missing command output must not become an internal Python exception or an empty service set.
 
 ## Actions
 
@@ -45,15 +39,12 @@ Python exception or an empty service set.
 - `compose_services()` must report missing stdout and empty stdout as different dependency failures.
 - Compose service state inspection must also capture stdout so timeout diagnostics can parse `docker compose ps`.
 
-After the fix, this failure should surface with a guest dependency error code such as
-`guest-compose-services-output-missing` or `guest-compose-services-output-empty`, not an
-`AttributeError`.
+After the fix, this failure should surface with a guest dependency error code such as `guest-compose-services-output-missing` or `guest-compose-services-output-empty`, not an `AttributeError`.
 
 ## Prevention
 
 - Command wrappers must declare whether stdout is part of their contract.
-- Missing stdout, empty stdout, non-zero exit, and parse failure are separate meanings and should remain
-  separate in guest-tools code.
+- Missing stdout, empty stdout, non-zero exit, and parse failure are separate meanings and should remain separate in guest-tools code.
 - Update shutdown tests must cover command output capture for Compose read operations.
 
 ## Related Cases

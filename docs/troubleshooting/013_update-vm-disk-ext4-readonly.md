@@ -130,15 +130,6 @@ VM disk repair가 `Archiving current VM disk`에 머문 것처럼 보이면 실�
 - 2026-06-08: local `vm-golden/logs/launcher.log`에서 golden rootfs 준비 중 `EXT4-fs error`, `Aborting journal`, read-only remount가 발생했고, 동시에 같은 `.tmp/vitalserver-vm-golden` `VITALSERVER_VM_HOME`을 쓰는 VM process가 2개 떠 있음을 확인했습니다. detached VM start는 same VM_HOME process scan으로 중복 start를 거부하고, package용 rootfs 기본 크기는 `8G`로 올립니다.
 - 2026-06-09: `wait/rootfs-ready`가 guest kernel panic/soft lockup 이후에도 marker만 기다리며 timeout까지 멈춘 사례를 확인했습니다. wait 단계는 VM lifecycle failure와 launcher log terminal pattern을 즉시 실패로 처리하고, detached start는 launcher log를 append하지 않고 새 run log로 시작합니다.
 - 2026-06-11: golden rootfs rebuild 중 `apt-get`/`dpkg`가 `Illegal instruction`, `Segmentation fault`, `systemd` shared library error를 내고 이후 `Kernel panic - not syncing: Attempted to kill init!`으로 종료되는 사례를 확인했습니다. `wait/rootfs-ready`는 `Kernel panic - not syncing`과 `Attempted to kill init`을 terminal launcher log pattern으로 처리해야 하며, rootfs marker 대기 timeout은 HTTP readiness timeout과 분리합니다.
-- 2026-06-12: golden rootfs compile 중 guest script가 시작되기 전 `EXT4-fs error ... checksum invalid`,
-  `Aborting journal`, `Remounting filesystem read-only`가 발생하고 panic stack이 `hwrng` /
-  `virtio_read [virtio_rng]`로 끝나는 사례를 확인했습니다. 이 경우 `Remounting filesystem read-only`는
-  결과 신호이고, `EXT4-fs error`와 `virtio_rng` panic stack을 먼저 봅니다. VM configuration은
-  product compile 안정성을 위해 `VZVirtioEntropyDeviceConfiguration`을 붙이지 않습니다.
-- 2026-06-12: entropy device 제거 이후에도 Docker daemon start에서
-  `Internal error: Oops`, `Kernel panic - not syncing`, scheduler stack corruption이 반복되는 사례를
-  확인했습니다. `docker.io` 설치 중 service auto-start는 `policy-rc.d`로 막고, rootfs smoke의
-  `docker-service` stage에서 명시적으로 Docker를 시작해 실패 지점을 분리합니다. 같은 지점에서
-  반복 panic하면 rootfs script 순서가 아니라 Ubuntu cloud image serial/kernel 조합 문제로 보고
-  `guest.ubuntu.base_url`과 `guest.ubuntu.apt_snapshot`을 함께 올립니다.
+- 2026-06-12: golden rootfs compile 중 guest script가 시작되기 전 `EXT4-fs error ... checksum invalid`, `Aborting journal`, `Remounting filesystem read-only`가 발생하고 panic stack이 `hwrng` / `virtio_read [virtio_rng]`로 끝나는 사례를 확인했습니다. 이 경우 `Remounting filesystem read-only`는 결과 신호이고, `EXT4-fs error`와 `virtio_rng` panic stack을 먼저 봅니다. VM configuration은 product compile 안정성을 위해 `VZVirtioEntropyDeviceConfiguration`을 붙이지 않습니다.
+- 2026-06-12: entropy device 제거 이후에도 Docker daemon start에서 `Internal error: Oops`, `Kernel panic - not syncing`, scheduler stack corruption이 반복되는 사례를 확인했습니다. `docker.io` 설치 중 service auto-start는 `policy-rc.d`로 막고, rootfs smoke의 `docker-service` stage에서 명시적으로 Docker를 시작해 실패 지점을 분리합니다. 같은 지점에서 반복 panic하면 rootfs script 순서가 아니라 Ubuntu cloud image serial/kernel 조합 문제로 보고 `guest.ubuntu.base_url`과 `guest.ubuntu.apt_snapshot`을 함께 올립니다.
 - 이미 `EXT4-fs error`, `Aborting journal`, `Remounting filesystem read-only`가 발생한 VM disk는 이 수정만으로 복구되지 않습니다. Redis backup을 먼저 확인하고 VM disk repair/recreate 또는 재설치를 진행합니다.

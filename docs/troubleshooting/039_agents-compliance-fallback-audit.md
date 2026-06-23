@@ -835,13 +835,7 @@ swift test --package-path apps/vitalserver-macos-runtime --filter MacTestKitCont
 
 분류일: 2026-06-03
 
-P1 VitalDB observer source boundary에서 audit/proxy/bed/Redis read failure가 empty activity,
-empty proxy connection list, raw bed value, partial Redis key list로 축소되던 경로를 닫았다.
-`ObservationDocument`는 `readIssues`를 운반하고 Swift `VitalDBObservationDocument`, Runtime Control
-OpenAPI, PWA generated/schema contract가 같은 필드를 보존한다. Collector는 malformed audit event,
-invalid timestamp, missing vrcode, invalid numeric payload, missing/malformed access log, invalid UTF-8,
-malformed bed JSON을 source별 read issue로 기록한다. Redis adapter는 wrong type, non-string member,
-malformed SCAN response를 더 이상 empty/partial success로 반환하지 않고 `RedisProtocolError`로 실패한다.
+P1 VitalDB observer source boundary에서 audit/proxy/bed/Redis read failure가 empty activity, empty proxy connection list, raw bed value, partial Redis key list로 축소되던 경로를 닫았다. `ObservationDocument`는 `readIssues`를 운반하고 Swift `VitalDBObservationDocument`, Runtime Control OpenAPI, PWA generated/schema contract가 같은 필드를 보존한다. Collector는 malformed audit event, invalid timestamp, missing vrcode, invalid numeric payload, missing/malformed access log, invalid UTF-8, malformed bed JSON을 source별 read issue로 기록한다. Redis adapter는 wrong type, non-string member, malformed SCAN response를 더 이상 empty/partial success로 반환하지 않고 `RedisProtocolError`로 실패한다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -864,13 +858,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test
 
 분류일: 2026-06-03
 
-P1 PWA Observability page에서 Runtime events, VitalDB observation, guest log sync service read state가
-`0`, empty list, `Stopped`, `Unavailable`로 축소되던 경로를 닫았다. Page 내부에
-`RuntimeEventsRead`와 `VitalDBObservationRead`를 두고 query missing, failed, unavailable, notReported,
-loaded를 분리한다. Runtime event response가 `events`를 제공하지 않으면 empty list가 아니라 incomplete
-response error로 표시한다. VitalDB snapshot failed/unavailable/notReported는 anomaly absence와 분리하고,
-observation `readIssues`가 있으면 "No recorder anomalies"를 표시하지 않는다. Event item은 operation과
-source를 합치지 않고 별도로 표시하며, message 누락을 event type으로 숨기지 않는다.
+P1 PWA Observability page에서 Runtime events, VitalDB observation, guest log sync service read state가 `0`, empty list, `Stopped`, `Unavailable`로 축소되던 경로를 닫았다. Page 내부에 `RuntimeEventsRead`와 `VitalDBObservationRead`를 두고 query missing, failed, unavailable, notReported, loaded를 분리한다. Runtime event response가 `events`를 제공하지 않으면 empty list가 아니라 incomplete response error로 표시한다. VitalDB snapshot failed/unavailable/notReported는 anomaly absence와 분리하고, observation `readIssues`가 있으면 "No recorder anomalies"를 표시하지 않는다. Event item은 operation과 source를 합치지 않고 별도로 표시하며, message 누락을 event type으로 숨기지 않는다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -888,13 +876,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test
 
 분류일: 2026-06-03
 
-P1 Runtime Control API boundary에서 VitalDB observation stream, SSE frame encoding, query parsing이 provider/read
-state를 축소하던 경로를 닫았다. `/vitaldb/observations/stream`은 더 이상
-`snapshot.observation`만 전송하지 않고 JSON encoded `RuntimeVitalDBObservationSnapshot`을 전송해
-`state`와 `readError`를 보존한다. SSE frame codec은 missing id/event/data와 invalid UTF-8 payload를
-empty/default frame으로 만들지 않고 typed encoding error로 실패한다. Error response body는 fallible
-`try?` encoding 대신 deterministic JSON string encoder를 사용해 nil/empty body가 되지 않는다. Runtime
-event query는 duplicate parameter, value 없는 parameter, unknown event type을 bad request로 거절한다.
+P1 Runtime Control API boundary에서 VitalDB observation stream, SSE frame encoding, query parsing이 provider/read state를 축소하던 경로를 닫았다. `/vitaldb/observations/stream`은 더 이상 `snapshot.observation`만 전송하지 않고 JSON encoded `RuntimeVitalDBObservationSnapshot`을 전송해 `state`와 `readError`를 보존한다. SSE frame codec은 missing id/event/data와 invalid UTF-8 payload를 empty/default frame으로 만들지 않고 typed encoding error로 실패한다. Error response body는 fallible `try?` encoding 대신 deterministic JSON string encoder를 사용해 nil/empty body가 되지 않는다. Runtime event query는 duplicate parameter, value 없는 parameter, unknown event type을 bad request로 거절한다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -911,13 +893,7 @@ swift test --package-path apps/vitalserver-macos-runtime --filter RuntimeControl
 
 분류일: 2026-06-03
 
-P1 `SystemRuntimeObservabilityReader`에서 current observation provider 선택과 VitalDB recorder/relationship read
-failure 보존을 명시화했다. Production reader는 더 이상 initializer 내부에서 `.live(paths:)`를 암묵 선택하지
-않고 `SystemRuntimeObservabilityReader.live(paths:)` factory를 통해 live source를 명시한다. Recorder history는
-top-level `readError`를 추가해 observation/current/activity projection read failure가 `recorders=[]` 또는
-`activityHistory.unavailable`로만 보이지 않게 했다. Relationship history는 assignment/event projection
-`readError` 의미를 Runtime Control API/OpenAPI 문서에 명시했다. Current observation이 SQLite projection보다
-우선되는 freshness policy도 문서화했다.
+P1 `SystemRuntimeObservabilityReader`에서 current observation provider 선택과 VitalDB recorder/relationship read failure 보존을 명시화했다. Production reader는 더 이상 initializer 내부에서 `.live(paths:)`를 암묵 선택하지 않고 `SystemRuntimeObservabilityReader.live(paths:)` factory를 통해 live source를 명시한다. Recorder history는 top-level `readError`를 추가해 observation/current/activity projection read failure가 `recorders=[]` 또는 `activityHistory.unavailable`로만 보이지 않게 했다. Relationship history는 assignment/event projection `readError` 의미를 Runtime Control API/OpenAPI 문서에 명시했다. Current observation이 SQLite projection보다 우선되는 freshness policy도 문서화했다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -937,10 +913,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 분류일: 2026-06-03
 
-P1 `RuntimeVitalRecorderActivityPoint` decode boundary에서 activity metric 누락을 `0` 또는 empty bucket list로
-보정하던 경로를 닫았다. `roomCount`, `messagesPerSecond`, `bytesPerSecond`, `buckets`는 recorder activity
-read model의 필수 contract이므로 missing payload는 decode failure로 드러난다. `0`은 provider가 명시적으로
-보고한 측정값일 때만 의미가 있다.
+P1 `RuntimeVitalRecorderActivityPoint` decode boundary에서 activity metric 누락을 `0` 또는 empty bucket list로 보정하던 경로를 닫았다. `roomCount`, `messagesPerSecond`, `bytesPerSecond`, `buckets`는 recorder activity read model의 필수 contract이므로 missing payload는 decode failure로 드러난다. `0`은 provider가 명시적으로 보고한 측정값일 때만 의미가 있다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -957,10 +930,7 @@ swift test --package-path apps/vitalserver-macos-runtime --filter RuntimeControl
 
 분류일: 2026-06-03
 
-P1 Runtime Control/TestKit API error response body encoding에서 fallible `try? JSONEncoder().encode(...)` 경로를
-제거했다. `RuntimeControlErrorResponseEncoder`가 string-only deterministic JSON body를 생성하며, Runtime
-Control router, TestKit router, HTTP wire codec이 같은 encoder를 사용한다. 따라서 error response가 nil/empty
-body로 축소되지 않고, operator-facing message escaping도 같은 규칙을 따른다.
+P1 Runtime Control/TestKit API error response body encoding에서 fallible `try? JSONEncoder().encode(...)` 경로를 제거했다. `RuntimeControlErrorResponseEncoder`가 string-only deterministic JSON body를 생성하며, Runtime Control router, TestKit router, HTTP wire codec이 같은 encoder를 사용한다. 따라서 error response가 nil/empty body로 축소되지 않고, operator-facing message escaping도 같은 규칙을 따른다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -977,10 +947,7 @@ swift test --package-path apps/vitalserver-macos-runtime --filter RuntimeControl
 
 분류일: 2026-06-03
 
-P1 Runtime Control API body decode boundary에서 모든 decode failure를 generic `Invalid request body`로 축소하던
-경로를 닫았다. `RuntimeControlHTTPQueryError.invalidBody`는 이제 원인 message를 운반하며, `decodedBody`는
-대상 request type과 decode failure details를 bad request body에 보존한다. TestKit session command validation도
-nil/blank `sessionID`를 generic invalid body가 아니라 `sessionID is required`로 보고한다.
+P1 Runtime Control API body decode boundary에서 모든 decode failure를 generic `Invalid request body`로 축소하던 경로를 닫았다. `RuntimeControlHTTPQueryError.invalidBody`는 이제 원인 message를 운반하며, `decodedBody`는 대상 request type과 decode failure details를 bad request body에 보존한다. TestKit session command validation도 nil/blank `sessionID`를 generic invalid body가 아니라 `sessionID is required`로 보고한다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -997,12 +964,7 @@ swift test --package-path apps/vitalserver-macos-runtime --filter RuntimeControl
 
 분류일: 2026-06-03
 
-P1 Runtime log request boundary에서 missing `helperMessage` query/body field를 empty string으로 보정하던 경로를
-닫았다. Swift 내부 `RuntimeLogTextRequest.helperMessage`는 optional로 absence와 explicit empty string을
-구분하고, query parser는 field absence를 `nil`, explicit `helperMessage=`를 `""`로 보존한다. Host log reader로
-넘길 때는 legacy host-client signature 연결부에서만 `nil`을 empty string으로 변환하며, append-only helper
-message log가 log source의 SoT라는 문서를 유지한다. OpenAPI/PWA POST body contract는 Pass 57에서 required
-nullable field로 강화되어 body field absence를 더 이상 valid request로 받지 않는다.
+P1 Runtime log request boundary에서 missing `helperMessage` query/body field를 empty string으로 보정하던 경로를 닫았다. Swift 내부 `RuntimeLogTextRequest.helperMessage`는 optional로 absence와 explicit empty string을 구분하고, query parser는 field absence를 `nil`, explicit `helperMessage=`를 `""`로 보존한다. Host log reader로 넘길 때는 legacy host-client signature 연결부에서만 `nil`을 empty string으로 변환하며, append-only helper message log가 log source의 SoT라는 문서를 유지한다. OpenAPI/PWA POST body contract는 Pass 57에서 required nullable field로 강화되어 body field absence를 더 이상 valid request로 받지 않는다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1020,10 +982,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 분류일: 2026-06-03
 
-P1 PWA host log hook에서 `helperMessage: ""`를 항상 전송하던 경로를 닫았다. Pass 57 이후 Runtime log POST
-body는 required nullable `helperMessage`를 보존하므로, `useHostLogs`는 legacy helper message 값이 없을 때
-`helperMessage: null`을 전송한다. Console client는 explicit empty helperMessage request를 여전히 표현할 수
-있지만, hook-level host log read는 absence나 empty string을 만들지 않는다.
+P1 PWA host log hook에서 `helperMessage: ""`를 항상 전송하던 경로를 닫았다. Pass 57 이후 Runtime log POST body는 required nullable `helperMessage`를 보존하므로, `useHostLogs`는 legacy helper message 값이 없을 때 `helperMessage: null`을 전송한다. Console client는 explicit empty helperMessage request를 여전히 표현할 수 있지만, hook-level host log read는 absence나 empty string을 만들지 않는다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1041,10 +1000,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 분류일: 2026-06-03
 
-P1 TestKit session command target에서 PWA가 blank session id를 `null`로 보정하거나 hook mutation이
-`sessionID: null` request를 만들 수 있던 경로를 닫았다. Swift TestKit command DTO도 `sessionID`를 non-optional
-contract로 바꿔 null/missing body는 decode failure, blank string은 validation failure가 된다. PWA request schema,
-request builder, hook mutation type, OpenAPI/generated type을 같은 non-null session target contract로 맞췄다.
+P1 TestKit session command target에서 PWA가 blank session id를 `null`로 보정하거나 hook mutation이 `sessionID: null` request를 만들 수 있던 경로를 닫았다. Swift TestKit command DTO도 `sessionID`를 non-optional contract로 바꿔 null/missing body는 decode failure, blank string은 validation failure가 된다. PWA request schema, request builder, hook mutation type, OpenAPI/generated type을 같은 non-null session target contract로 맞췄다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1063,11 +1019,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 분류일: 2026-06-03
 
-P1 PWA console client에서 body 없는 command와 JSON body command, missing query와 explicit undefined query가
-섞이던 경로를 닫았다. Console client는 JSON body가 있을 때만 `Content-Type`과 request body를 붙이고,
-runtime event query에 explicit `undefined` field가 들어오면 validation error로 멈춘다. Observability page는
-event type filter가 선택된 경우에만 query field를 만든다. `repairProxy`는 Swift API contract에 맞춰
-`proxyPort`를 필수 인자로 고정했다.
+P1 PWA console client에서 body 없는 command와 JSON body command, missing query와 explicit undefined query가 섞이던 경로를 닫았다. Console client는 JSON body가 있을 때만 `Content-Type`과 request body를 붙이고, runtime event query에 explicit `undefined` field가 들어오면 validation error로 멈춘다. Observability page는 event type filter가 선택된 경우에만 query field를 만든다. `repairProxy`는 Swift API contract에 맞춰 `proxyPort`를 필수 인자로 고정했다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1085,10 +1037,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 분류일: 2026-06-03
 
-P1 observability reader contract에서 optional observation projection이 snapshot state/readError의 owner처럼 동작하던
-방향을 닫았다. `RuntimeControlClient`와 `RuntimeObservabilityReading`은 snapshot을 primary read contract로 두고,
-`loadVitalDBObservation()`은 snapshot에서 observation만 꺼내는 compatibility projection이 된다.
-`RuntimeVitalDBObservationSnapshot.fromOptional()`도 loaded observation에 동반된 `readError`를 보존한다.
+P1 observability reader contract에서 optional observation projection이 snapshot state/readError의 owner처럼 동작하던 방향을 닫았다. `RuntimeControlClient`와 `RuntimeObservabilityReading`은 snapshot을 primary read contract로 두고, `loadVitalDBObservation()`은 snapshot에서 observation만 꺼내는 compatibility projection이 된다. `RuntimeVitalDBObservationSnapshot.fromOptional()`도 loaded observation에 동반된 `readError`를 보존한다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1106,10 +1055,7 @@ swift test --package-path apps/vitalserver-macos-runtime --filter RuntimeObserva
 
 분류일: 2026-06-03
 
-P1 relationship projection에서 bed assignment status raw string을 `.unknown`으로 보정하던 경로를 닫았다.
-HostInfrastructure의 `VitalDBBedAssignmentRecord.status`를 `VitalDBBedAssignmentStatus` enum으로 바꾸고,
-SQLite read는 `requiredEnum`으로 invalid status를 projection read failure로 보고한다. Runtime adapter는 typed
-status를 명시 switch로 `RuntimeVitalBedStatus`에 매핑한다.
+P1 relationship projection에서 bed assignment status raw string을 `.unknown`으로 보정하던 경로를 닫았다. HostInfrastructure의 `VitalDBBedAssignmentRecord.status`를 `VitalDBBedAssignmentStatus` enum으로 바꾸고, SQLite read는 `requiredEnum`으로 invalid status를 projection read failure로 보고한다. Runtime adapter는 typed status를 명시 switch로 `RuntimeVitalBedStatus`에 매핑한다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1127,10 +1073,7 @@ swift test --package-path apps/vitalserver-macos-runtime --filter RuntimeObserva
 
 분류일: 2026-06-03
 
-P1 runtime event repository에서 primary JSONL append 성공 후 secondary SQLite append 실패가 로그만 남고 성공처럼
-반환되던 경로를 닫았다. `CompositeRuntimeEventRepository`는 primary event를 보존한 뒤 secondary append 실패를
-`CompositeRuntimeEventRepositoryError.secondaryAppendFailed`로 반환한다. best-effort 호출자는 기존처럼 로그로
-관측하지만, non-best-effort 호출자는 secondary observability 손실을 명시 실패로 받는다.
+P1 runtime event repository에서 primary JSONL append 성공 후 secondary SQLite append 실패가 로그만 남고 성공처럼 반환되던 경로를 닫았다. `CompositeRuntimeEventRepository`는 primary event를 보존한 뒤 secondary append 실패를 `CompositeRuntimeEventRepositoryError.secondaryAppendFailed`로 반환한다. best-effort 호출자는 기존처럼 로그로 관측하지만, non-best-effort 호출자는 secondary observability 손실을 명시 실패로 받는다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1147,10 +1090,7 @@ swift test --package-path apps/vitalserver-macos-runtime --filter SQLiteRuntimeO
 
 분류일: 2026-06-03
 
-P1 `RuntimeVitalRecorderSummary`가 missing recorder ingress status나 missing VitalDB observation을 observed zero로
-내보내던 경로를 닫았다. Summary count fields와 `activeConnections`는 provider가 값을 보고했을 때만
-존재한다. Swift display policy와 PWA formatter는 missing count를 `Not reported`로 표시하고, reported zero는
-그대로 `0`으로 표시한다.
+P1 `RuntimeVitalRecorderSummary`가 missing recorder ingress status나 missing VitalDB observation을 observed zero로 내보내던 경로를 닫았다. Summary count fields와 `activeConnections`는 provider가 값을 보고했을 때만 존재한다. Swift display policy와 PWA formatter는 missing count를 `Not reported`로 표시하고, reported zero는 그대로 `0`으로 표시한다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1170,10 +1110,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 분류일: 2026-06-03
 
-P1 recorder activity history에서 activity projection read failure와 construction path의 projection 미제공이
-같은 `unavailable` source로 보이던 경로를 닫았다. `RuntimeVitalRecorderActivityHistorySource.notProvided`를
-추가해, activity projection을 읽다가 실패한 `unavailable`과 caller가 projection을 제공하지 않은 `notProvided`를
-분리했다. OpenAPI/PWA schema와 API 문서를 함께 갱신했다.
+P1 recorder activity history에서 activity projection read failure와 construction path의 projection 미제공이 같은 `unavailable` source로 보이던 경로를 닫았다. `RuntimeVitalRecorderActivityHistorySource.notProvided`를 추가해, activity projection을 읽다가 실패한 `unavailable`과 caller가 projection을 제공하지 않은 `notProvided`를 분리했다. OpenAPI/PWA schema와 API 문서를 함께 갱신했다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1192,9 +1129,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 분류일: 2026-06-03
 
-P1 recorder/bed read model에서 latest ordering과 duplicate preference가 timestamp string lexical order에 의존하던
-경로를 닫았다. `compareReportedTimestamp`는 ISO8601 instant를 먼저 파싱해 비교하고, timezone offset이 다른
-timestamp도 실제 시각 기준으로 정렬한다.
+P1 recorder/bed read model에서 latest ordering과 duplicate preference가 timestamp string lexical order에 의존하던 경로를 닫았다. `compareReportedTimestamp`는 ISO8601 instant를 먼저 파싱해 비교하고, timezone offset이 다른 timestamp도 실제 시각 기준으로 정렬한다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1211,9 +1146,7 @@ swift test --package-path apps/vitalserver-macos-runtime --filter RuntimeControl
 
 분류일: 2026-06-03
 
-P1 recorder/bed read model builder가 provider-owned `lastSeenAt` 부재를 observation timestamp로 보정하던 경로를
-닫았다. Observation count는 유지하지만, recorder/bed `firstSeenAt`과 `lastSeenAt`은 provider가 explicit
-lastSeenAt을 보고했을 때만 갱신한다.
+P1 recorder/bed read model builder가 provider-owned `lastSeenAt` 부재를 observation timestamp로 보정하던 경로를 닫았다. Observation count는 유지하지만, recorder/bed `firstSeenAt`과 `lastSeenAt`은 provider가 explicit lastSeenAt을 보고했을 때만 갱신한다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1230,10 +1163,7 @@ swift test --package-path apps/vitalserver-macos-runtime --filter RuntimeControl
 
 분류일: 2026-06-03
 
-P1 recorder history builder가 latest observation에 존재하는 recorder의 missing IP/version/bed fields를 과거
-observation 값으로 보정하던 경로를 닫았다. Recorder가 latest observation에 존재하면 latest payload가 해당 field의
-owner이며, nil field는 nil로 유지한다. Historical value는 recorder가 latest observation에 없을 때만 historical
-record context로 남긴다.
+P1 recorder history builder가 latest observation에 존재하는 recorder의 missing IP/version/bed fields를 과거 observation 값으로 보정하던 경로를 닫았다. Recorder가 latest observation에 존재하면 latest payload가 해당 field의 owner이며, nil field는 nil로 유지한다. Historical value는 recorder가 latest observation에 없을 때만 historical record context로 남긴다.
 
 | Result | Count | Original IDs | Evidence |
 |---|---:|---|---|
@@ -1248,15 +1178,9 @@ swift test --package-path apps/vitalserver-macos-runtime --filter RuntimeControl
 
 ## Pass 50 - Vital Recorder/Bed Status and Activity Presence
 
-P1 VitalDB recorder/bed history read model에서 current observation 결측과 observed offline state가 같은
-`offline` 값으로 합쳐지던 경로를 닫았다. `RuntimeVitalRecorderStatus`와 `RuntimeVitalBedStatus`에
-`notObserved`를 추가해서 history에는 있으나 latest VitalDB observation에는 없는 recorder/bed를 명시한다.
-Bed는 current observation에 존재하면서 `online == false`인 경우만 `offline`으로 유지하고, stale owner field가
-없는 상태에서 `stale`을 만들지 않는다.
+P1 VitalDB recorder/bed history read model에서 current observation 결측과 observed offline state가 같은 `offline` 값으로 합쳐지던 경로를 닫았다. `RuntimeVitalRecorderStatus`와 `RuntimeVitalBedStatus`에 `notObserved`를 추가해서 history에는 있으나 latest VitalDB observation에는 없는 recorder/bed를 명시한다. Bed는 current observation에 존재하면서 `online == false`인 경우만 `offline`으로 유지하고, stale owner field가 없는 상태에서 `stale`을 만들지 않는다.
 
-Recorder activity projection도 missing과 observed-empty가 구분되도록 `activityTimeline`을 optional contract로
-바꿨다. Swift/PWA presentation은 nil timeline을 `not reported`로 표시하고, 빈 배열만 “최근 data activity 없음”으로
-표시한다. API OpenAPI/schema/generated TypeScript enum과 status formatter도 같은 vocabulary로 맞췄다.
+Recorder activity projection도 missing과 observed-empty가 구분되도록 `activityTimeline`을 optional contract로 바꿨다. Swift/PWA presentation은 nil timeline을 `not reported`로 표시하고, 빈 배열만 “최근 data activity 없음”으로 표시한다. API OpenAPI/schema/generated TypeScript enum과 status formatter도 같은 vocabulary로 맞췄다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1275,13 +1199,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 51 - Vital Recorder/Bed Duplicate Observation Visibility
 
-P1 VitalDB recorder/bed history read model에서 같은 recorder vrcode 또는 bedID를 가진 source observation이
-`Dictionary(... uniquingKeysWith:)`에서 collapse될 때 duplicate state가 사라지는 문제를 닫았다.
-Aggregate identity는 그대로 하나로 유지하되, `RuntimeVitalRecorderRecord.duplicateObservationCount`와
-`RuntimeVitalBedRecord.duplicateObservationCount`를 추가해 collapse된 extra source record 수를 계약으로 운반한다.
+P1 VitalDB recorder/bed history read model에서 같은 recorder vrcode 또는 bedID를 가진 source observation이 `Dictionary(... uniquingKeysWith:)`에서 collapse될 때 duplicate state가 사라지는 문제를 닫았다. Aggregate identity는 그대로 하나로 유지하되, `RuntimeVitalRecorderRecord.duplicateObservationCount`와 `RuntimeVitalBedRecord.duplicateObservationCount`를 추가해 collapse된 extra source record 수를 계약으로 운반한다.
 
-Swift/PWA details 화면은 duplicate count를 표시한다. OpenAPI/schema/generated TypeScript에도 같은 field를
-추가했다. `0`은 duplicate source observation이 없었다는 관측값이며, missing/read failure의 대체값이 아니다.
+Swift/PWA details 화면은 duplicate count를 표시한다. OpenAPI/schema/generated TypeScript에도 같은 field를 추가했다. `0`은 duplicate source observation이 없었다는 관측값이며, missing/read failure의 대체값이 아니다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1299,14 +1219,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 52 - Loaded VitalDB Observation With Read Issue
 
-P1 VitalDB observation snapshot이 `state=loaded`와 `readError`를 동시에 운반하는 partial failure를 PWA가
-loaded success로 축소하던 경로를 닫았다. `selectVitalDBObservationRead()`는 loaded observation에도
-snapshot `readError`를 유지하고, Observability pipeline은 `Ready with issues`/`Unhealthy with issues`로
-표시한다. Recorder anomaly section은 snapshot read issue와 observation `readIssues`를 함께 표시하고,
-read issue가 있는 loaded observation을 “No recorder anomalies”로 축소하지 않는다.
+P1 VitalDB observation snapshot이 `state=loaded`와 `readError`를 동시에 운반하는 partial failure를 PWA가 loaded success로 축소하던 경로를 닫았다. `selectVitalDBObservationRead()`는 loaded observation에도 snapshot `readError`를 유지하고, Observability pipeline은 `Ready with issues`/`Unhealthy with issues`로 표시한다. Recorder anomaly section은 snapshot read issue와 observation `readIssues`를 함께 표시하고, read issue가 있는 loaded observation을 “No recorder anomalies”로 축소하지 않는다.
 
-Swift ObservabilityPanel은 이미 `vitalDBObservationSnapshot.readError`를 별도 read issue로 표시하고 있었으므로
-이번 pass는 PWA presentation parity를 맞춘다.
+Swift ObservabilityPanel은 이미 `vitalDBObservationSnapshot.readError`를 별도 read issue로 표시하고 있었으므로 이번 pass는 PWA presentation parity를 맞춘다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1322,15 +1237,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 53 - PWA Status Page Missing Provider Fields
 
-P1 PWA StatusPage가 missing endpoint/resource fields를 app defaults, `0`, or `Unknown`으로 보정하던 경로를
-닫았다. VitalServer URL은 `RuntimeStatus.proxyPort`가 있을 때만 링크로 표시하고, Remote Console URL은
-`RuntimeSettings.runtimeControlPort`가 있을 때만 표시한다. 더 이상 settings proxy port나 app default port로
-runtime endpoint state를 추정하지 않는다.
+P1 PWA StatusPage가 missing endpoint/resource fields를 app defaults, `0`, or `Unknown`으로 보정하던 경로를 닫았다. VitalServer URL은 `RuntimeStatus.proxyPort`가 있을 때만 링크로 표시하고, Remote Console URL은 `RuntimeSettings.runtimeControlPort`가 있을 때만 표시한다. 더 이상 settings proxy port나 app default port로 runtime endpoint state를 추정하지 않는다.
 
-Data directory stats는 file count와 size를 분리해 `File count not reported`/`Size not reported`를 표시한다.
-Resource usage는 missing, invalid, incomplete를 `Not reported`, `Invalid resource usage`,
-`Incomplete resource usage`로 구분한다. Active recorder connections는 Pass 45에서 이미 `Not reported`로
-수정됐으므로 active inventory에서 함께 제거했다.
+Data directory stats는 file count와 size를 분리해 `File count not reported`/`Size not reported`를 표시한다. Resource usage는 missing, invalid, incomplete를 `Not reported`, `Invalid resource usage`, `Incomplete resource usage`로 구분한다. Active recorder connections는 Pass 45에서 이미 `Not reported`로 수정됐으므로 active inventory에서 함께 제거했다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1347,14 +1256,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 54 - PWA TestKit Status Presence and Typed Requests
 
-P1 PWA TestKitPage가 missing TestKit status를 empty beds/sessions, disabled=false, `Unknown`, or local-only
-start readiness로 보정하던 경로를 닫았다. `beds`와 `sessions`는 status payload가 있을 때만 arrays로 소비하고,
-payload가 없으면 `TestKit bed/session state is not reported`로 표시한다. Enabled/status/service/url/target/count도
-`Not reported`를 사용해 disabled/empty와 구분한다.
+P1 PWA TestKitPage가 missing TestKit status를 empty beds/sessions, disabled=false, `Unknown`, or local-only start readiness로 보정하던 경로를 닫았다. `beds`와 `sessions`는 status payload가 있을 때만 arrays로 소비하고, payload가 없으면 `TestKit bed/session state is not reported`로 표시한다. Enabled/status/service/url/target/count도 `Not reported`를 사용해 disabled/empty와 구분한다.
 
-TestKit command buttons are enabled only when the service reports `enabled === true` and `state === "running"`;
-selected bed count remains only an input completeness check. Scenario/signal request는 typed option guards를 통해
-state를 갱신하므로 start request에서 UI string cast가 필요 없어졌다.
+TestKit command buttons are enabled only when the service reports `enabled === true` and `state === "running"`; selected bed count remains only an input completeness check. Scenario/signal request는 typed option guards를 통해 state를 갱신하므로 start request에서 UI string cast가 필요 없어졌다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1370,15 +1274,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 55 - PWA Recorder Activity Read Issues
 
-P1 PWA recorder activity formatter가 missing/invalid activity input을 empty chart 또는 zero bucket으로 축소하던
-경로를 닫았다. 기존 chart-friendly `buildRecorderActivityBuckets()`는 유지하되 내부적으로
-`readRecorderActivityBuckets()`를 사용하고, UI는 returned `issues`를 `Recorder activity data is incomplete`로
-표시한다.
+P1 PWA recorder activity formatter가 missing/invalid activity input을 empty chart 또는 zero bucket으로 축소하던 경로를 닫았다. 기존 chart-friendly `buildRecorderActivityBuckets()`는 유지하되 내부적으로 `readRecorderActivityBuckets()`를 사용하고, UI는 returned `issues`를 `Recorder activity data is incomplete`로 표시한다.
 
-Activity timeline missing, invalid point timestamp, missing point counts, invalid embedded bucket timestamp,
-missing/invalid bucket seconds, missing bucket counts를 issue로 운반한다. Embedded bucket source가 제공된 경우
-그 source가 invalid하더라도 parent point count로 fallback하지 않는다. Filled time gaps remain chart artifacts but now
-carry `synthetic: true`, so synthetic zero buckets are not indistinguishable from observed zero buckets in code.
+Activity timeline missing, invalid point timestamp, missing point counts, invalid embedded bucket timestamp, missing/invalid bucket seconds, missing bucket counts를 issue로 운반한다. Embedded bucket source가 제공된 경우 그 source가 invalid하더라도 parent point count로 fallback하지 않는다. Filled time gaps remain chart artifacts but now carry `synthetic: true`, so synthetic zero buckets are not indistinguishable from observed zero buckets in code.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1394,10 +1292,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 56 - PWA Capabilities Contract Requiredness
 
-P1 PWA capabilities schema가 optional boolean 중심이라 provider omission을 valid capability payload로 받아들이던
-경로를 닫았다. `runtimeCapabilitiesSchema`는 Runtime Control API가 소유한 모든 capability boolean을 required로
-검증한다. Partial `{ canUseTestTools: true }` 같은 payload는 schema 단계에서 reject되며, tests/mocks는 full
-capability contract를 사용한다.
+P1 PWA capabilities schema가 optional boolean 중심이라 provider omission을 valid capability payload로 받아들이던 경로를 닫았다. `runtimeCapabilitiesSchema`는 Runtime Control API가 소유한 모든 capability boolean을 required로 검증한다. Partial `{ canUseTestTools: true }` 같은 payload는 schema 단계에서 reject되며, tests/mocks는 full capability contract를 사용한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1413,19 +1308,11 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 57 - PWA Runtime Settings Contract Requiredness
 
-P1 PWA settings schema가 optional field 중심이라 partial `{ proxyPort: 18080 }` 같은 payload를 valid
-RuntimeSettings처럼 받아들이던 경로를 닫았다. `RuntimeSettings`는 Swift settings read model과 같은 full
-settings snapshot contract로 고정하고, OpenAPI/generated TypeScript/zod schema/test fixtures가 모두 같은
-required fields를 사용한다. Settings apply request도 partial patch가 아니라 current settings snapshot에서
-수정한 full settings document를 전송한다.
+P1 PWA settings schema가 optional field 중심이라 partial `{ proxyPort: 18080 }` 같은 payload를 valid RuntimeSettings처럼 받아들이던 경로를 닫았다. `RuntimeSettings`는 Swift settings read model과 같은 full settings snapshot contract로 고정하고, OpenAPI/generated TypeScript/zod schema/test fixtures가 모두 같은 required fields를 사용한다. Settings apply request도 partial patch가 아니라 current settings snapshot에서 수정한 full settings document를 전송한다.
 
-SettingsPage는 settings가 아직 load되지 않았을 때 apply 가능한 domain-like draft를 만들지 않고, apply는 loaded
-settings가 있을 때만 진행된다. `runtimeSettingsPolicy`는 complete settings input만 검증하며, missing 값 보정을
-검증 정책 안에서 수행하지 않는다.
+SettingsPage는 settings가 아직 load되지 않았을 때 apply 가능한 domain-like draft를 만들지 않고, apply는 loaded settings가 있을 때만 진행된다. `runtimeSettingsPolicy`는 complete settings input만 검증하며, missing 값 보정을 검증 정책 안에서 수행하지 않는다.
 
-추가로 이미 closed 상태인 #226의 POST body parity를 정정했다. `/host/logs/read` body는 Swift/PWA request
-shape 테스트와 OpenAPI에서 `helperMessage`를 required nullable field로 표현하며, PWA hook은 legacy helper
-message 값이 없을 때 `helperMessage: null`을 명시적으로 보낸다.
+추가로 이미 closed 상태인 #226의 POST body parity를 정정했다. `/host/logs/read` body는 Swift/PWA request shape 테스트와 OpenAPI에서 `helperMessage`를 required nullable field로 표현하며, PWA hook은 legacy helper message 값이 없을 때 `helperMessage: null`을 명시적으로 보낸다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1443,15 +1330,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 58 - PWA Container Observation Contract Requiredness
 
-P1 PWA container observation schema가 `recorderIngressHTTP`, `containerLogsPresent`, `composeServices` 같은 Swift
-non-optional owner fields를 optional로 받아들이던 경로를 닫았다. Container observation 자체는 status/overview에서
-optional일 수 있지만, 한 번 provider가 observation object를 제공하면 core owner fields는 required로 검증한다.
+P1 PWA container observation schema가 `recorderIngressHTTP`, `containerLogsPresent`, `composeServices` 같은 Swift non-optional owner fields를 optional로 받아들이던 경로를 닫았다. Container observation 자체는 status/overview에서 optional일 수 있지만, 한 번 provider가 observation object를 제공하면 core owner fields는 required로 검증한다.
 
-OpenAPI/PWA generated type/zod schema는 `RuntimeContainerObservation` core fields, nested
-`RuntimeRecorderIngressStatusDocument`, `RuntimeRecorderConnectionObservation`, `RuntimeContainerServiceObservation`
-required fields를 Swift contract에 맞췄다. `recorderIngressStatusReadError`, `runtimeStateFileMetadataError`,
-`composeServicesReadError`도 API schema에 추가해 read/decode/metadata failure를 passthrough가 아니라 명시
-contract로 보존한다.
+OpenAPI/PWA generated type/zod schema는 `RuntimeContainerObservation` core fields, nested `RuntimeRecorderIngressStatusDocument`, `RuntimeRecorderConnectionObservation`, `RuntimeContainerServiceObservation` required fields를 Swift contract에 맞췄다. `recorderIngressStatusReadError`, `runtimeStateFileMetadataError`, `composeServicesReadError`도 API schema에 추가해 read/decode/metadata failure를 passthrough가 아니라 명시 contract로 보존한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1467,14 +1348,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 59 - PWA VitalDB Recorder Activity Observation Requiredness
 
-P1 PWA `VitalDBRecorderActivityObservation` schema가 `windowSeconds`, `messageCount`, `byteCount`,
-`roomCount`, `messagesPerSecond`, `bytesPerSecond`를 optional로 받아들이던 경로를 닫았다. Recorder activity가
-제공된 경우 provider-owned counts/rates는 missing일 수 없으며, 실제 0과 provider omission은 schema 단계에서
-분리된다.
+P1 PWA `VitalDBRecorderActivityObservation` schema가 `windowSeconds`, `messageCount`, `byteCount`, `roomCount`, `messagesPerSecond`, `bytesPerSecond`를 optional로 받아들이던 경로를 닫았다. Recorder activity가 제공된 경우 provider-owned counts/rates는 missing일 수 없으며, 실제 0과 provider omission은 schema 단계에서 분리된다.
 
-Swift/observer contract에 존재하는 `buckets`도 OpenAPI/PWA schema/generated type에 추가했다. Bucket item은
-`bucketStartedAt`, `bucketSeconds`, `messageCount`, `byteCount`, `roomCount`를 required로 검증한다. first/last
-timestamp는 Swift optional field이므로 optional nullable로 유지한다.
+Swift/observer contract에 존재하는 `buckets`도 OpenAPI/PWA schema/generated type에 추가했다. Bucket item은 `bucketStartedAt`, `bucketSeconds`, `messageCount`, `byteCount`, `roomCount`를 required로 검증한다. first/last timestamp는 Swift optional field이므로 optional nullable로 유지한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1490,10 +1366,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 60 - PWA VitalDB Recorder Identity Status Requiredness
 
-P1 PWA `VitalDBRecorderObservation` schema가 raw recorder identity/status fields를 optional로 받아들이던 경로를
-닫았다. Swift `VitalDBRecorderObservation`에서 provider-owned non-optional field인 `vrcode`, `online`, `stale`는
-OpenAPI/PWA generated type/zod schema에서 required로 검증한다. Recorder metadata/timestamps/activity는 기존
-contract대로 optional nullable 또는 optional object로 유지한다.
+P1 PWA `VitalDBRecorderObservation` schema가 raw recorder identity/status fields를 optional로 받아들이던 경로를 닫았다. Swift `VitalDBRecorderObservation`에서 provider-owned non-optional field인 `vrcode`, `online`, `stale`는 OpenAPI/PWA generated type/zod schema에서 required로 검증한다. Recorder metadata/timestamps/activity는 기존 contract대로 optional nullable 또는 optional object로 유지한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1509,10 +1382,7 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 61 - PWA VitalDB Bed Identity Status Requiredness
 
-P1 PWA `VitalDBBedObservation` schema가 raw bed identity/status fields를 optional로 받아들이던 경로를 닫았다.
-Swift `VitalDBBedObservation`에서 provider-owned non-optional field인 `bedID`, `online`은 OpenAPI/PWA generated
-type/zod schema에서 required로 검증한다. Bed name, linked recorder, timestamps, patient connection state는 기존
-contract대로 optional nullable로 유지한다.
+P1 PWA `VitalDBBedObservation` schema가 raw bed identity/status fields를 optional로 받아들이던 경로를 닫았다. Swift `VitalDBBedObservation`에서 provider-owned non-optional field인 `bedID`, `online`은 OpenAPI/PWA generated type/zod schema에서 required로 검증한다. Bed name, linked recorder, timestamps, patient connection state는 기존 contract대로 optional nullable로 유지한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1528,12 +1398,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 62 - PWA VitalDB Anomaly Requiredness
 
-P1 PWA `VitalDBAnomalyObservation` schema가 anomaly identity, kind, severity, timestamp, subject, message를
-optional로 받아들이던 경로를 닫았다. Swift `VitalDBAnomalyObservation`의 모든 fields는 provider-owned
-non-optional diagnostic contract이므로 OpenAPI/PWA generated type/zod schema에서 required로 검증한다.
+P1 PWA `VitalDBAnomalyObservation` schema가 anomaly identity, kind, severity, timestamp, subject, message를 optional로 받아들이던 경로를 닫았다. Swift `VitalDBAnomalyObservation`의 모든 fields는 provider-owned non-optional diagnostic contract이므로 OpenAPI/PWA generated type/zod schema에서 required로 검증한다.
 
-이 변경으로 anomaly가 존재하지만 원인 메시지나 대상이 누락된 payload는 UI에서 불완전한 anomaly로 표시되지 않고
-contract boundary에서 실패한다.
+이 변경으로 anomaly가 존재하지만 원인 메시지나 대상이 누락된 payload는 UI에서 불완전한 anomaly로 표시되지 않고 contract boundary에서 실패한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1549,14 +1416,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 63 - PWA Runtime Overview Section Requiredness
 
-P1 PWA `RuntimeControlOverview` schema가 top-level `status`, `settings`, `release`, `install`,
-`vitalDBObservationSnapshot`, `vitalRecorder` sections를 optional로 받아들이던 경로를 닫았다. Swift
-`RuntimeControlOverview`에서 이 sections는 non-optional owner contract이므로 OpenAPI/PWA generated type/zod
-schema에서 required로 검증한다.
+P1 PWA `RuntimeControlOverview` schema가 top-level `status`, `settings`, `release`, `install`, `vitalDBObservationSnapshot`, `vitalRecorder` sections를 optional로 받아들이던 경로를 닫았다. Swift `RuntimeControlOverview`에서 이 sections는 non-optional owner contract이므로 OpenAPI/PWA generated type/zod schema에서 required로 검증한다.
 
-`vitalDBObservation`은 Swift optional field이므로 optional/null을 유지한다. 대신 snapshot object 자체와
-`vitalDBObservationSnapshot.state`는 required로 강화해 latest observation read state가 빈 object로 통과하지
-않게 했다.
+`vitalDBObservation`은 Swift optional field이므로 optional/null을 유지한다. 대신 snapshot object 자체와 `vitalDBObservationSnapshot.state`는 required로 강화해 latest observation read state가 빈 object로 통과하지 않게 했다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1572,14 +1434,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 64 - PWA Runtime Event Identity Requiredness
 
-P1 PWA `RuntimeEventDocument` schema가 event identity/diagnostic owner fields를 optional로 받아들이던 경로를
-닫았다. Swift `RuntimeEventDocument`의 non-optional fields인 `schemaVersion`, `id`, `source`, `eventType`,
-`timestamp`, `product`, `message`, `runtimeVersion`, `failureReasons`는 OpenAPI/PWA generated type/zod schema에서
-required로 검증한다.
+P1 PWA `RuntimeEventDocument` schema가 event identity/diagnostic owner fields를 optional로 받아들이던 경로를 닫았다. Swift `RuntimeEventDocument`의 non-optional fields인 `schemaVersion`, `id`, `source`, `eventType`, `timestamp`, `product`, `message`, `runtimeVersion`, `failureReasons`는 OpenAPI/PWA generated type/zod schema에서 required로 검증한다.
 
-Original finding의 `status` sub-claim은 Swift owner contract상 optional `RuntimeStatusLevel?`이므로 required로
-바꾸지 않았다. `status` absence는 valid event state이며, UI가 필요하면 missing status를 explicit display state로
-처리해야 한다.
+Original finding의 `status` sub-claim은 Swift owner contract상 optional `RuntimeStatusLevel?`이므로 required로 바꾸지 않았다. `status` absence는 valid event state이며, UI가 필요하면 missing status를 explicit display state로 처리해야 한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1595,12 +1452,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 65 - PWA Runtime Event History Events Requiredness
 
-P1 PWA `RuntimeEventHistory` schema가 `events` field를 optional로 받아들이던 경로를 닫았다. Swift
-`RuntimeEventHistory.events`는 non-optional owner field이므로 OpenAPI/PWA generated type/zod schema에서
-required로 검증한다. `events: []`는 valid empty history이고, field absence는 contract failure다.
+P1 PWA `RuntimeEventHistory` schema가 `events` field를 optional로 받아들이던 경로를 닫았다. Swift `RuntimeEventHistory.events`는 non-optional owner field이므로 OpenAPI/PWA generated type/zod schema에서 required로 검증한다. `events: []`는 valid empty history이고, field absence는 contract failure다.
 
-Original finding의 `matchingCount` sub-claim은 Swift owner contract상 optional pagination metadata이므로 required로
-바꾸지 않았다. Consumers must preserve missing matchingCount separately from a reported zero count.
+Original finding의 `matchingCount` sub-claim은 Swift owner contract상 optional pagination metadata이므로 required로 바꾸지 않았다. Consumers must preserve missing matchingCount separately from a reported zero count.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1616,14 +1470,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 66 - PWA Runtime Vital Recorder Activity Point Requiredness
 
-P1 PWA `RuntimeVitalRecorderActivityPoint` and `RuntimeVitalRecorderActivityBucket` schema가 chart/count fields를
-optional로 받아들이던 경로를 닫았다. Swift read model decode가 이미 `observedAt`, `windowSeconds`,
-`messageCount`, `byteCount`, `roomCount`, `messagesPerSecond`, `bytesPerSecond`, `buckets`와 bucket fields를
-complete payload로 요구하므로 OpenAPI/PWA generated type/zod schema도 같은 required contract로 맞췄다.
+P1 PWA `RuntimeVitalRecorderActivityPoint` and `RuntimeVitalRecorderActivityBucket` schema가 chart/count fields를 optional로 받아들이던 경로를 닫았다. Swift read model decode가 이미 `observedAt`, `windowSeconds`, `messageCount`, `byteCount`, `roomCount`, `messagesPerSecond`, `bytesPerSecond`, `buckets`와 bucket fields를 complete payload로 요구하므로 OpenAPI/PWA generated type/zod schema도 같은 required contract로 맞췄다.
 
-Recorder activity tests now use full valid activity fixtures. Malformed input tests still exercise boundary-invalid
-payloads, but they use explicit `malformedActivityPoints` casting so invalid data is not presented as normal typed
-domain input.
+Recorder activity tests now use full valid activity fixtures. Malformed input tests still exercise boundary-invalid payloads, but they use explicit `malformedActivityPoints` casting so invalid data is not presented as normal typed domain input.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1639,13 +1488,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 67 - PWA Vital Recorder Record Requiredness
 
-P1 PWA `RuntimeVitalRecorderRecord` schema가 recorder read-model identity/status/count fields를 optional로
-받아들이던 경로를 닫았다. Swift `RuntimeVitalRecorderRecord`에서 non-optional인 `vrcode`, `status`,
-`observationCount`, `duplicateObservationCount`, `currentAnomalyCount`, `presentInLatestObservation`은
-OpenAPI/PWA generated type/zod schema에서 required로 검증한다.
+P1 PWA `RuntimeVitalRecorderRecord` schema가 recorder read-model identity/status/count fields를 optional로 받아들이던 경로를 닫았다. Swift `RuntimeVitalRecorderRecord`에서 non-optional인 `vrcode`, `status`, `observationCount`, `duplicateObservationCount`, `currentAnomalyCount`, `presentInLatestObservation`은 OpenAPI/PWA generated type/zod schema에서 required로 검증한다.
 
-`activityTimeline`은 Swift optional field이고 nil이 “activity not reported” state로 사용되므로 optional로 유지한다.
-Valid page/test fixtures now include complete recorder count fields and full activity point payloads.
+`activityTimeline`은 Swift optional field이고 nil이 “activity not reported” state로 사용되므로 optional로 유지한다. Valid page/test fixtures now include complete recorder count fields and full activity point payloads.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1661,13 +1506,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 68 - PWA Vital Bed Record Requiredness
 
-P1 PWA `RuntimeVitalBedRecord` schema가 bed read-model identity/status/count fields를 optional로 받아들이던
-경로를 닫았다. Swift `RuntimeVitalBedRecord`에서 non-optional인 `bedID`, `status`, `observationCount`,
-`duplicateObservationCount`, `currentAnomalyCount`는 OpenAPI/PWA generated type/zod schema에서 required로
-검증한다.
+P1 PWA `RuntimeVitalBedRecord` schema가 bed read-model identity/status/count fields를 optional로 받아들이던 경로를 닫았다. Swift `RuntimeVitalBedRecord`에서 non-optional인 `bedID`, `status`, `observationCount`, `duplicateObservationCount`, `currentAnomalyCount`는 OpenAPI/PWA generated type/zod schema에서 required로 검증한다.
 
-Bed name, linked recorder, patient connection, timestamps, latest anomaly severity는 Swift optional contract이므로
-optional nullable로 유지한다. Valid page/test fixtures now include duplicate bed observation counts.
+Bed name, linked recorder, patient connection, timestamps, latest anomaly severity는 Swift optional contract이므로 optional nullable로 유지한다. Valid page/test fixtures now include duplicate bed observation counts.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1683,13 +1524,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 69 - PWA Vital Recorder Activity History Requiredness
 
-P1 PWA `RuntimeVitalRecorderHistory` schema가 recorder/beds list와 activity history provenance를 optional로
-받아들이던 경로를 닫았다. Swift `RuntimeVitalRecorderHistory`는 `recorders`, `beds`,
-`activityHistory`를 non-optional로 제공하고, no data는 missing이 아니라 explicit empty array로 표현한다.
+P1 PWA `RuntimeVitalRecorderHistory` schema가 recorder/beds list와 activity history provenance를 optional로 받아들이던 경로를 닫았다. Swift `RuntimeVitalRecorderHistory`는 `recorders`, `beds`, `activityHistory`를 non-optional로 제공하고, no data는 missing이 아니라 explicit empty array로 표현한다.
 
-`RuntimeVitalRecorderActivityHistory.source`와 `bucketCount`도 required로 맞췄다. Projection이 아직 제공되지
-않거나 사용할 수 없는 경우에도 provider는 `notProvided`/`unavailable` source와 bucket count를 명시해야 하며,
-PWA는 `{}` activity metadata를 정상 payload로 받아들이지 않는다.
+`RuntimeVitalRecorderActivityHistory.source`와 `bucketCount`도 required로 맞췄다. Projection이 아직 제공되지 않거나 사용할 수 없는 경우에도 provider는 `notProvided`/`unavailable` source와 bucket count를 명시해야 하며, PWA는 `{}` activity metadata를 정상 payload로 받아들이지 않는다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1705,12 +1542,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 70 - PWA Host Log Text Response Requiredness
 
-P1 PWA `RuntimeLogTextResponse` schema가 successful log read response에서 `text` 누락을 허용하던 경로를 닫았다.
-Swift `RuntimeLogTextResponse.text`는 non-optional이며, read failure는 successful empty response가 아니라 API error
-또는 typed contract error로 남아야 한다.
+P1 PWA `RuntimeLogTextResponse` schema가 successful log read response에서 `text` 누락을 허용하던 경로를 닫았다. Swift `RuntimeLogTextResponse.text`는 non-optional이며, read failure는 successful empty response가 아니라 API error 또는 typed contract error로 남아야 한다.
 
-OpenAPI/PWA generated type/zod schema 모두 `text`를 required로 맞췄고, console client는 `{}` log response를
-`RuntimeControlContractError`로 거부한다. Empty log는 `text: ""`로만 표현된다.
+OpenAPI/PWA generated type/zod schema 모두 `text`를 required로 맞췄고, console client는 `{}` log response를 `RuntimeControlContractError`로 거부한다. Empty log는 `text: ""`로만 표현된다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1726,13 +1560,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 71 - PWA Host Log Export Result Requiredness
 
-P1 PWA `RuntimeLogExportResult` schema가 successful log export response에서 `destination` 누락을 허용하던
-경로를 닫았다. Swift `RuntimeLogExportResult.destination`은 non-optional이고 exporter는 archive move 완료 후
-destination URL을 반환한다.
+P1 PWA `RuntimeLogExportResult` schema가 successful log export response에서 `destination` 누락을 허용하던 경로를 닫았다. Swift `RuntimeLogExportResult.destination`은 non-optional이고 exporter는 archive move 완료 후 destination URL을 반환한다.
 
-OpenAPI/PWA generated type/zod schema 모두 `destination`을 required로 맞췄고, console client는 `{}` export
-result를 `RuntimeControlContractError`로 거부한다. Export failure는 successful response omission이 아니라
-API/command failure로 남아야 한다.
+OpenAPI/PWA generated type/zod schema 모두 `destination`을 required로 맞췄고, console client는 `{}` export result를 `RuntimeControlContractError`로 거부한다. Export failure는 successful response omission이 아니라 API/command failure로 남아야 한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1748,12 +1578,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 72 - PWA Update Bundle Summary Response Requiredness
 
-P1 PWA `RuntimeUpdateBundleSummaryResponse` schema가 successful update bundle summary response에서 `summary`
-누락을 허용하던 경로를 닫았다. Swift `RuntimeUpdateBundleSummaryResponse.summary`는 non-optional이며, bundle
-summary를 만들 수 없는 경우는 successful empty response가 아니라 API/contract failure로 남아야 한다.
+P1 PWA `RuntimeUpdateBundleSummaryResponse` schema가 successful update bundle summary response에서 `summary` 누락을 허용하던 경로를 닫았다. Swift `RuntimeUpdateBundleSummaryResponse.summary`는 non-optional이며, bundle summary를 만들 수 없는 경우는 successful empty response가 아니라 API/contract failure로 남아야 한다.
 
-OpenAPI/PWA generated type/zod schema 모두 `summary`를 required로 맞췄고, console client는 `{}` summary
-response를 `RuntimeControlContractError`로 거부한다.
+OpenAPI/PWA generated type/zod schema 모두 `summary`를 required로 맞췄고, console client는 `{}` summary response를 `RuntimeControlContractError`로 거부한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1769,17 +1596,11 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 73 - PWA Beds Page Missing Data and Required Field Display
 
-P1 PWA `BedsPage`가 missing query data를 `[]`로 필터링해 empty bed list처럼 렌더링하던 경로를 닫았다.
-성공 상태인데 `data`가 없으면 `Bed history response is incomplete` contract error로 표시하고, provider가 보낸
-observed empty array만 `No beds have been observed.`로 표시한다.
+P1 PWA `BedsPage`가 missing query data를 `[]`로 필터링해 empty bed list처럼 렌더링하던 경로를 닫았다. 성공 상태인데 `data`가 없으면 `Bed history response is incomplete` contract error로 표시하고, provider가 보낸 observed empty array만 `No beds have been observed.`로 표시한다.
 
-Pass 68 이후 `RuntimeVitalBedRecord.bedID`, `observationCount`, `duplicateObservationCount`,
-`currentAnomalyCount`는 schema/generated type에서 required이므로 UI의 `hasBedID` filter, missing identity
-`Unknown` fallback, count `?? 0` fallback을 제거했다. Invalid/missing `lastSeenAt` sort value도 `0` timestamp로
-만들지 않고 valid timestamp 뒤로 보낸다.
+Pass 68 이후 `RuntimeVitalBedRecord.bedID`, `observationCount`, `duplicateObservationCount`, `currentAnomalyCount`는 schema/generated type에서 required이므로 UI의 `hasBedID` filter, missing identity `Unknown` fallback, count `?? 0` fallback을 제거했다. Invalid/missing `lastSeenAt` sort value도 `0` timestamp로 만들지 않고 valid timestamp 뒤로 보낸다.
 
-Provider-owned bed summary/assignment summary를 UI가 재계산하는 #134/#135는 `/vitaldb/beds` API가 아직 array
-response만 제공하는 구조적 문제이므로 active로 유지한다.
+Provider-owned bed summary/assignment summary를 UI가 재계산하는 #134/#135는 `/vitaldb/beds` API가 아직 array response만 제공하는 구조적 문제이므로 active로 유지한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1795,16 +1616,11 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm run check
 
 ## Pass 74 - TestKit Session Store and Cleanup Failure Visibility
 
-P1 TestKit persisted session decode/defaulting과 cleanup/persistence failure hiding 경로를 닫았다.
-`session_snapshot_from_record`와 nested recorder decode는 persisted JSON에서 필수 session/request/recorder fields가
-누락되면 `normal`, `0`, `false`, `[]`로 보정하지 않고 decode failure로 남긴다.
+P1 TestKit persisted session decode/defaulting과 cleanup/persistence failure hiding 경로를 닫았다. `session_snapshot_from_record`와 nested recorder decode는 persisted JSON에서 필수 session/request/recorder fields가 누락되면 `normal`, `0`, `false`, `[]`로 보정하지 않고 decode failure로 남긴다.
 
-`JsonFileVirtualRecorderSessionStore`는 corrupt JSON, non-object payload, invalid `sessions` shape, malformed record를
-empty session list로 바꾸지 않는다. Manager startup의 stored session load failure도 `{}`로 축소하지 않고 throw한다.
+`JsonFileVirtualRecorderSessionStore`는 corrupt JSON, non-object payload, invalid `sessions` shape, malformed record를 empty session list로 바꾸지 않는다. Manager startup의 stored session load failure도 `{}`로 축소하지 않고 throw한다.
 
-Session save/delete persistence failure는 event-only warning이 아니라 command failure로 전파된다. VitalServer recorder
-or bed cleanup을 요청했는데 recorder management provider가 없으면 success-like empty cleanup result가 아니라
-`cleanup_errors`/`cleanupErrors`에 명시된다.
+Session save/delete persistence failure는 event-only warning이 아니라 command failure로 전파된다. VitalServer recorder or bed cleanup을 요청했는데 recorder management provider가 없으면 success-like empty cleanup result가 아니라 `cleanup_errors`/`cleanupErrors`에 명시된다.
 
 Pass 73의 active count를 재검산해 46에서 47로 바로잡았다. #123-#130 8개를 닫은 뒤 active finding은 39개다.
 
@@ -1822,18 +1638,11 @@ PATH=/opt/homebrew/bin:$PATH uv run ruff check packages/vitalserver-testkit/src/
 
 ## Pass 75 - Vital Recorder History Provider Summary Contract
 
-P1 PWA Beds/Recorders page가 list rows에서 summary/current/anomaly counts를 재계산하던 경로를 닫았다.
-`RuntimeVitalRecorderHistory.summary`를 Swift provider-owned contract로 추가했고, OpenAPI/PWA generated type/zod
-schema에서 required로 검증한다.
+P1 PWA Beds/Recorders page가 list rows에서 summary/current/anomaly counts를 재계산하던 경로를 닫았다. `RuntimeVitalRecorderHistory.summary`를 Swift provider-owned contract로 추가했고, OpenAPI/PWA generated type/zod schema에서 required로 검증한다.
 
-Summary는 `knownRecorders`, `currentRecorders`, `onlineRecorders`, `staleRecorders`, `recorderAnomalies`,
-`knownBeds`, `onlineBeds`, `staleBeds`, `bedAssignments`, `bedAnomalies`를 제공한다. Current recorder summary는
-`presentInLatestObservation == true` record만 기준으로 계산하고, bed assignment/anomaly summary는 `notObserved`
-bed를 제외한 current bed 기준으로 계산한다.
+Summary는 `knownRecorders`, `currentRecorders`, `onlineRecorders`, `staleRecorders`, `recorderAnomalies`, `knownBeds`, `onlineBeds`, `staleBeds`, `bedAssignments`, `bedAnomalies`를 제공한다. Current recorder summary는 `presentInLatestObservation == true` record만 기준으로 계산하고, bed assignment/anomaly summary는 `notObserved` bed를 제외한 current bed 기준으로 계산한다.
 
-PWA `BedsPage`는 `/vitaldb/recorders` history response의 `beds + summary`를 소비한다. `RecordersPage`는
-missing history data를 empty list로 렌더링하지 않고 contract error로 표시하며, `presentInLatestObservation === true`
-만 current row로 취급한다. Required `vrcode`/count fields는 UI에서 filter 또는 `?? 0` fallback 없이 표시한다.
+PWA `BedsPage`는 `/vitaldb/recorders` history response의 `beds + summary`를 소비한다. `RecordersPage`는 missing history data를 empty list로 렌더링하지 않고 contract error로 표시하며, `presentInLatestObservation === true` 만 current row로 취급한다. Required `vrcode`/count fields는 UI에서 filter 또는 `?? 0` fallback 없이 표시한다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1850,13 +1659,9 @@ swift test --package-path apps/vitalserver-macos-runtime --filter RuntimeControl
 
 ## Pass 76 - PWA Recorder Activity History Read Error Boundary
 
-P1 PWA `RecordersPage`가 `activityHistory.readError`를 표시하면서도 chart를 계속 렌더링하던 경로를 닫았다.
-`RuntimeVitalRecorderHistory.activityHistory`는 Pass 69 이후 required contract이므로 `RecorderDetails` prop도 required로
-바꿨다.
+P1 PWA `RecordersPage`가 `activityHistory.readError`를 표시하면서도 chart를 계속 렌더링하던 경로를 닫았다. `RuntimeVitalRecorderHistory.activityHistory`는 Pass 69 이후 required contract이므로 `RecorderDetails` prop도 required로 바꿨다.
 
-Activity projection read failure가 있으면 `Recorder activity history is incomplete` error state만 표시하고
-`RecorderActivityChart`를 렌더링하지 않는다. Missing activity and no reported activity remain distinct through
-`activityTimeline === undefined` and provider-owned `activityHistory.source/readError`.
+Activity projection read failure가 있으면 `Recorder activity history is incomplete` error state만 표시하고 `RecorderActivityChart`를 렌더링하지 않는다. Missing activity and no reported activity remain distinct through `activityTimeline === undefined` and provider-owned `activityHistory.source/readError`.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1874,13 +1679,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/pages/pages
 
 P1 PWA `RecordersPage`의 #159/#160을 업데이트된 AGENTS.md 기준으로 재검토해 `not-an-issue`로 닫았다.
 
-#159 search filter는 provider state를 만들거나 read failure를 success-like value로 바꾸지 않는다. `vrcode`는 required
-contract이고, `lastIP`, `version`, `bedID`, `bedName`은 optional/not-reported display fields다. 검색은 사용자가
-입력한 query와 현재 표시 가능한 labels를 비교하는 presentation filter로 남는다.
+#159 search filter는 provider state를 만들거나 read failure를 success-like value로 바꾸지 않는다. `vrcode`는 required contract이고, `lastIP`, `version`, `bedID`, `bedName`은 optional/not-reported display fields다. 검색은 사용자가 입력한 query와 현재 표시 가능한 labels를 비교하는 presentation filter로 남는다.
 
-#160 current/history toggle도 provider state를 만들지 않는다. Pass 75 이후 current set은 UI가 추론하지 않고
-provider-owned `presentInLatestObservation === true` contract를 표시 필터로만 사용한다. Toggle은 same read model의
-view mode이며 domain/read model state transition이 아니다.
+#160 current/history toggle도 provider state를 만들지 않는다. Pass 75 이후 current set은 UI가 추론하지 않고 provider-owned `presentInLatestObservation === true` contract를 표시 필터로만 사용한다. Toggle은 same read model의 view mode이며 domain/read model state transition이 아니다.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1895,12 +1696,9 @@ git diff --check
 
 ## Pass 78 - PWA Logs Page Missing Text Boundary
 
-P1 PWA `LogsPage`가 missing log query data를 `""`로 보정해 empty log와 같은 UI path로 렌더링하던 경로를 닫았다.
-`RuntimeLogTextResponse.text`는 Pass 70 이후 required contract이므로, loaded query 상태에서 `data`가 없으면
-`Log response is incomplete` contract error를 표시한다.
+P1 PWA `LogsPage`가 missing log query data를 `""`로 보정해 empty log와 같은 UI path로 렌더링하던 경로를 닫았다. `RuntimeLogTextResponse.text`는 Pass 70 이후 required contract이므로, loaded query 상태에서 `data`가 없으면 `Log response is incomplete` contract error를 표시한다.
 
-실제 empty log는 provider가 `text: ""`를 반환한 경우에만 `No log lines are available for this source.`로 표시한다.
-Missing response data and successful empty log text are now separate states.
+실제 empty log는 provider가 `text: ""`를 반환한 경우에만 `No log lines are available for this source.`로 표시한다. Missing response data and successful empty log text are now separate states.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1916,14 +1714,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/pages/pages
 
 ## Pass 79 - PWA Log Export Capability State Boundary
 
-P1 PWA `LogsPage`가 `capabilities.data?.canExportLogs !== true` 하나로 capability loading, read failure,
-missing response data, unsupported capability를 모두 disabled state로 축소하던 경로를 닫았다.
+P1 PWA `LogsPage`가 `capabilities.data?.canExportLogs !== true` 하나로 capability loading, read failure, missing response data, unsupported capability를 모두 disabled state로 축소하던 경로를 닫았다.
 
-Log export capability is now rendered from explicit query/contract states:
-loading shows `Loading export capability...`, read failure shows `Failed to read export capability`, missing capability data
-shows `Export capability response is incomplete`, and provider-owned `canExportLogs: false` shows an unsupported-capability
-message. The export controls remain disabled, but the disabled state is now backed by an explicit reason instead of optional
-field fallback.
+Log export capability is now rendered from explicit query/contract states: loading shows `Loading export capability...`, read failure shows `Failed to read export capability`, missing capability data shows `Export capability response is incomplete`, and provider-owned `canExportLogs: false` shows an unsupported-capability message. The export controls remain disabled, but the disabled state is now backed by an explicit reason instead of optional field fallback.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1939,12 +1732,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/pages/pages
 
 ## Pass 80 - PWA Settings Draft Load Boundary
 
-P1 PWA `SettingsPage`가 settings load 전에 `emptyRuntimeSettingsDraft`를 form state로 만들고 `""`/`false` values를
-runtime settings처럼 렌더링하던 경로를 닫았다.
+P1 PWA `SettingsPage`가 settings load 전에 `emptyRuntimeSettingsDraft`를 form state로 만들고 `""`/`false` values를 runtime settings처럼 렌더링하던 경로를 닫았다.
 
-The settings draft is now nullable and is created only after provider-owned settings data exists. Missing settings data renders
-`Settings response is incomplete` and no settings form controls. Read failure still renders `Failed to read settings`, and the
-Apply control remains disabled without manufacturing draft values.
+The settings draft is now nullable and is created only after provider-owned settings data exists. Missing settings data renders `Settings response is incomplete` and no settings form controls. Read failure still renders `Failed to read settings`, and the Apply control remains disabled without manufacturing draft values.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1962,13 +1752,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/pages/pages
 
 P1 PWA `SettingsPage`의 remaining settings field/control fallback 묶음을 닫았다.
 
-`minimumDiskGiB`와 settings minimum disk text now use the required provider field directly instead of optional `?? 1`
-fallback. Disabling custom advertised URL no longer mutates the draft `publicHost`/`publicPort`; the request mapper still
-derives the disabled advertised URL command state explicitly when applying. Default advertised URL preview no longer falls back
-to port `80` when the draft proxy port is missing/invalid; it renders `Proxy port is not available.` instead.
+`minimumDiskGiB`와 settings minimum disk text now use the required provider field directly instead of optional `?? 1` fallback. Disabling custom advertised URL no longer mutates the draft `publicHost`/`publicPort`; the request mapper still derives the disabled advertised URL command state explicitly when applying. Default advertised URL preview no longer falls back to port `80` when the draft proxy port is missing/invalid; it renders `Proxy port is not available.` instead.
 
-`startOnBoot` enablement is now computed by pure `startOnBootControlState` from explicit `startOnBootConfigurable`,
-capability read state, and `canControlRuntimeServices`, and the disabled UI shows the concrete reason.
+`startOnBoot` enablement is now computed by pure `startOnBootControlState` from explicit `startOnBootConfigurable`, capability read state, and `canControlRuntimeServices`, and the disabled UI shows the concrete reason.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -1984,12 +1770,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/pages/pages
 
 ## Pass 82 - PWA Settings Apply Redirect Boundary
 
-P1 PWA `SettingsPage`가 settings apply 성공 후 fixed 1초 timeout으로 새 Runtime Control port에 자동 이동하던 경로를
-닫았다.
+P1 PWA `SettingsPage`가 settings apply 성공 후 fixed 1초 timeout으로 새 Runtime Control port에 자동 이동하던 경로를 닫았다.
 
-Apply completion is no longer treated as new server readiness. When the Remote Console port changes, the page records the target
-URL and renders an explicit `Remote Console` link with text telling the operator to open it after the Runtime Control API is
-available on the new port. No timer-based redirect or readiness guess remains in the Settings page.
+Apply completion is no longer treated as new server readiness. When the Remote Console port changes, the page records the target URL and renders an explicit `Remote Console` link with text telling the operator to open it after the Runtime Control API is available on the new port. No timer-based redirect or readiness guess remains in the Settings page.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -2005,16 +1788,11 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/pages/pages
 
 ## Pass 83 - PWA HTTP Status and URL Ownership Boundary
 
-P1 PWA `formatting/http.ts`가 HTTP probe strings를 regex로 success/failure state로 해석하고, host/port가 없는 Runtime URL을
-browser location 또는 local default로 추정하던 경로를 닫았다.
+P1 PWA `formatting/http.ts`가 HTTP probe strings를 regex로 success/failure state로 해석하고, host/port가 없는 Runtime URL을 browser location 또는 local default로 추정하던 경로를 닫았다.
 
-`formatHTTPStatus` now formats explicit provider text only and returns `Not reported` for missing text. It no longer converts
-`HTTP 200` to `Reachable` or `failed` to `Unreachable`. Advanced service health no longer marks HTTP probe rows healthy from
-string parsing; it displays probe text with neutral/missing tone unless a provider-owned boolean exists.
+`formatHTTPStatus` now formats explicit provider text only and returns `Not reported` for missing text. It no longer converts `HTTP 200` to `Reachable` or `failed` to `Unreachable`. Advanced service health no longer marks HTTP probe rows healthy from string parsing; it displays probe text with neutral/missing tone unless a provider-owned boolean exists.
 
-Runtime URL construction now requires explicit `{ host, port }`. Status shows a VitalServer link only when `settings.publicHost`
-and `settings.publicPort` are both available, and Remote Console shows a port label rather than inventing a host. Settings
-previews also avoid browser-host/default-port URL synthesis.
+Runtime URL construction now requires explicit `{ host, port }`. Status shows a VitalServer link only when `settings.publicHost` and `settings.publicPort` are both available, and Remote Console shows a port label rather than inventing a host. Settings previews also avoid browser-host/default-port URL synthesis.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -2030,12 +1808,9 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/domain/runt
 
 ## Pass 84 - PWA Vital Recorder Unavailable Metric Reason
 
-P1 PWA `formatting/vitalRecorder.ts`가 non-`vitalDBObservation` source를 모든 observation metric에서 generic
-`Not reported`로 표시하던 경로를 닫았다.
+P1 PWA `formatting/vitalRecorder.ts`가 non-`vitalDBObservation` source를 모든 observation metric에서 generic `Not reported`로 표시하던 경로를 닫았다.
 
-Observation metrics now keep source-level reason visible: missing summary source renders `Vital Recorder source not reported`,
-and provider-owned `source: "unavailable"` renders `VitalDB observation unavailable`. Reported recorder-ingress active connection
-counts remain displayable independently.
+Observation metrics now keep source-level reason visible: missing summary source renders `Vital Recorder source not reported`, and provider-owned `source: "unavailable"` renders `VitalDB observation unavailable`. Reported recorder-ingress active connection counts remain displayable independently.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -2051,17 +1826,11 @@ PATH=/opt/homebrew/bin:$PATH /opt/homebrew/bin/npm test -- --run src/pages/statu
 
 ## Pass 85 - Swift Presentation Display Ownership Boundary
 
-P2 Swift presentation leftovers were closed across `RuntimeStatusPanel`, `RuntimeRecordersPanel`, `RuntimeBedsPanel`, and
-`RuntimeRecorderActivityChartDataBuilder`.
+P2 Swift presentation leftovers were closed across `RuntimeStatusPanel`, `RuntimeRecordersPanel`, `RuntimeBedsPanel`, and `RuntimeRecorderActivityChartDataBuilder`.
 
-Status no longer creates remote client host from local hostname/`localhost`; service links are shown only when `publicHost` is
-explicit. Resource usage with missing percent no longer renders a 0% progress bar. Recorder/Bed optional metadata now uses
-field-specific not-reported labels instead of generic `Unknown`.
+Status no longer creates remote client host from local hostname/`localhost`; service links are shown only when `publicHost` is explicit. Resource usage with missing percent no longer renders a 0% progress bar. Recorder/Bed optional metadata now uses field-specific not-reported labels instead of generic `Unknown`.
 
-Recorder activity latest sample, latest bucket, total packets, selected-period availability, and read failure handling now come
-from `RuntimeRecorderActivityChartDataBuilder.display(...)`; the View renders explicit display states instead of deriving them
-from array order and local reductions. Bed details no longer join against current recorder records to infer linked recorder
-status/IP; those values stay not reported until a provider-owned bed relationship contract supplies them.
+Recorder activity latest sample, latest bucket, total packets, selected-period availability, and read failure handling now come from `RuntimeRecorderActivityChartDataBuilder.display(...)`; the View renders explicit display states instead of deriving them from array order and local reductions. Bed details no longer join against current recorder records to infer linked recorder status/IP; those values stay not reported until a provider-owned bed relationship contract supplies them.
 
 | Result | Count | IDs | Notes |
 |---|---:|---|---|
@@ -2135,6 +1904,5 @@ git diff --check
 ## Next Steps
 
 - No active finding remains in the current TS39 audit queue.
-- If AGENTS.md changes again or new TS39 findings are discovered, append them as a new revalidation pass instead of editing
-  historical pass results.
+- If AGENTS.md changes again or new TS39 findings are discovered, append them as a new revalidation pass instead of editing historical pass results.
 - Add new findings only when a new root cause or P0/P1 risk is found.

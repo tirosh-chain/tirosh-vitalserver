@@ -27,17 +27,13 @@ execution error: The command exited with a non-zero status. (127)
 
 ## Impact
 
-실제 uninstaller가 실행되기 전에 background worker wrapper가 실패합니다. 따라서 VM stop,
-Redis backup, package receipt cleanup, runtime artifact cleanup은 시작되지 않았을 수 있습니다.
+실제 uninstaller가 실행되기 전에 background worker wrapper가 실패합니다. 따라서 VM stop, Redis backup, package receipt cleanup, runtime artifact cleanup은 시작되지 않았을 수 있습니다.
 
-이 증상은 clean uninstall workflow 내부 실패가 아니라 Helper app이 생성한 privileged shell wrapper
-실패입니다.
+이 증상은 clean uninstall workflow 내부 실패가 아니라 Helper app이 생성한 privileged shell wrapper 실패입니다.
 
 ## Cause
 
-Helper app의 uninstall command wrapper가 background worker를 시작할 때 `nohup /bin/bash ... &`를
-사용했습니다. 일부 macOS privileged shell 실행 환경에서는 `nohup`이 console detach를 수행하지
-못하고 `Inappropriate ioctl for device`와 exit 127로 종료됩니다.
+Helper app의 uninstall command wrapper가 background worker를 시작할 때 `nohup /bin/bash ... &`를 사용했습니다. 일부 macOS privileged shell 실행 환경에서는 `nohup`이 console detach를 수행하지 못하고 `Inappropriate ioctl for device`와 exit 127로 종료됩니다.
 
 ## Checks
 
@@ -46,13 +42,11 @@ cat /private/tmp/tirosh-vitalserver-uninstall.log
 tail -n 80 /private/tmp/tirosh-vitalserver-helper-message.log
 ```
 
-`nohup: can't detach from console`가 있으면 VM/runtime state보다 uninstall wrapper failure를 먼저
-봅니다.
+`nohup: can't detach from console`가 있으면 VM/runtime state보다 uninstall wrapper failure를 먼저 봅니다.
 
 ## Actions
 
-최신 Helper app은 uninstall background worker를 시작할 때 `nohup`에 의존하지 않습니다. worker는
-stdin을 `/dev/null`로 분리하고 stdout/stderr를 uninstall log로 redirect한 뒤 background로 실행합니다.
+최신 Helper app은 uninstall background worker를 시작할 때 `nohup`에 의존하지 않습니다. worker는 stdin을 `/dev/null`로 분리하고 stdout/stderr를 uninstall log로 redirect한 뒤 background로 실행합니다.
 
 이미 이 실패가 난 설치본에서는 최신 Helper app 또는 Reset Installer package로 다시 실행합니다.
 
@@ -70,5 +64,4 @@ stdin을 `/dev/null`로 분리하고 stdout/stderr를 uninstall log로 redirect�
 
 ## Follow-up
 
-- 2026-06-10: 설치된 Helper app의 clean uninstall이 exit 127로 실패한 로그를 확인했습니다.
-  현재 소스에도 `nohup` 사용이 남아 있어 wrapper를 수정했습니다.
+- 2026-06-10: 설치된 Helper app의 clean uninstall이 exit 127로 실패한 로그를 확인했습니다. 현재 소스에도 `nohup` 사용이 남아 있어 wrapper를 수정했습니다.

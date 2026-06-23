@@ -7,8 +7,7 @@
 
 ## Symptoms
 
-`make dist/dmg/dev/compile` or `make devtools/golden-rootfs/compile` fails after the
-temporary golden rootfs VM has already started:
+`make dist/dmg/dev/compile` or `make devtools/golden-rootfs/compile` fails after the temporary golden rootfs VM has already started:
 
 ```text
 error: guest rootfs preparation failed while waiting for rootfs marker:
@@ -26,19 +25,13 @@ Package 'python3-venv' has no installation candidate
 
 ## Impact
 
-The build spends time on Swift build, staging, cloud-init, and VM startup before discovering
-that the pinned apt snapshot cannot provide package indexes. The final error can look like
-missing packages even though the root cause is external snapshot unavailability.
+The build spends time on Swift build, staging, cloud-init, and VM startup before discovering that the pinned apt snapshot cannot provide package indexes. The final error can look like missing packages even though the root cause is external snapshot unavailability.
 
 ## Cause
 
-The golden rootfs pipeline treated apt snapshot availability as Guest-owned work. The Guest
-script configured snapshot sources and entered `apt-plan`; if `apt-get update` could not
-fetch indexes, `apt-get -s install` later failed with missing package messages.
+The golden rootfs pipeline treated apt snapshot availability as Guest-owned work. The Guest script configured snapshot sources and entered `apt-plan`; if `apt-get update` could not fetch indexes, `apt-get -s install` later failed with missing package messages.
 
-Host already owns the build input contract and can read `rootfs-input.json` before starting
-the VM. It should not defer an unavailable external dependency to a late Guest package
-operation.
+Host already owns the build input contract and can read `rootfs-input.json` before starting the VM. It should not defer an unavailable external dependency to a late Guest package operation.
 
 ## Checks
 
@@ -48,13 +41,11 @@ tail -n 240 .tmp/vitalserver-vm-golden/logs/launcher.log
 sed -n '1,220p' .tmp/vitalserver-vm-golden/data/deploy/build-metadata/rootfs-input.json
 ```
 
-If the failure is a current `runId`, `stage=apt-plan`, `exitCode=100`, and launcher log
-contains snapshot `503`, treat it as apt snapshot availability, not a package list change.
+If the failure is a current `runId`, `stage=apt-plan`, `exitCode=100`, and launcher log contains snapshot `503`, treat it as apt snapshot availability, not a package list change.
 
 ## Actions
 
-`macos-runtime-preflight-golden-rootfs` now runs after staging and `macos-runtime-rootfs-begin`
-but before cloud-init generation and VM start. It checks:
+`macos-runtime-preflight-golden-rootfs` now runs after staging and `macos-runtime-rootfs-begin` but before cloud-init generation and VM start. It checks:
 
 - current `runId` in `golden-rootfs-run.json`
 - current `runId`, `guestClockUtc`, and `ubuntu.aptSnapshot` in `rootfs-input.json`
@@ -62,18 +53,14 @@ but before cloud-init generation and VM start. It checks:
 - no stale rootfs ready/manifest/failure/apt-plan proof before VM start
 - Ubuntu snapshot `noble`, `noble-updates`, and `noble-security` InRelease reachability
 
-The Guest script also separates `apt-index-update` from `apt-plan`, so late Guest failures
-name index fetch separately from package planning.
+The Guest script also separates `apt-index-update` from `apt-plan`, so late Guest failures name index fetch separately from package planning.
 
 ## Prevention
 
 - Host-owned external dependency reads must happen before expensive VM startup.
 - Missing, invalid, unavailable, blocked, and failed preflight states must remain distinct.
-- Guest should record Guest stage failures, not compensate for missing Host dependency
-  preflight.
-- Snapshot endpoint probes may retry bounded transient timeouts, but they must still return
-  `UNAVAILABLE` when all attempts fail. Retry is only for external CDN jitter, not a
-  fallback that treats an unreadable snapshot as valid.
+- Guest should record Guest stage failures, not compensate for missing Host dependency preflight.
+- Snapshot endpoint probes may retry bounded transient timeouts, but they must still return `UNAVAILABLE` when all attempts fail. Retry is only for external CDN jitter, not a fallback that treats an unreadable snapshot as valid.
 
 ## Related Cases
 
@@ -82,9 +69,5 @@ name index fetch separately from package planning.
 
 ## Follow-up
 
-- 2026-06-13: Golden rootfs compile reached VM `apt-plan` before detecting snapshot
-  `503 Service Unavailable`. Added Host preflight and separated Guest `apt-index-update`
-  stage.
-- 2026-06-19: Dev DMG verify failed before VM start because `noble-updates/InRelease`
-  timed out. Increased snapshot probe timeout and added a bounded retry while preserving
-  final `UNAVAILABLE` status after exhausted attempts.
+- 2026-06-13: Golden rootfs compile reached VM `apt-plan` before detecting snapshot `503 Service Unavailable`. Added Host preflight and separated Guest `apt-index-update` stage.
+- 2026-06-19: Dev DMG verify failed before VM start because `noble-updates/InRelease` timed out. Increased snapshot probe timeout and added a bounded retry while preserving final `UNAVAILABLE` status after exhausted attempts.

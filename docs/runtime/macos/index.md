@@ -2,8 +2,7 @@
 
 `apps/vitalserver-macos-runtime`의 설계, 빌드, 설치, 운영 문서 진입점입니다.
 
-앱 README는 실제 사용자가 자주 접하는 시나리오와 핵심 명령을 먼저 다룹니다. 제품 구조, 패키징 계약,
-VM runtime, troubleshooting은 아래 문서로 나누어 관리합니다.
+앱 README는 실제 사용자가 자주 접하는 시나리오와 핵심 명령을 먼저 다룹니다. 제품 구조, 패키징 계약, VM runtime, troubleshooting은 아래 문서로 나누어 관리합니다.
 
 ## 1. 빠른 지도
 
@@ -33,8 +32,7 @@ VM runtime, troubleshooting은 아래 문서로 나누어 관리합니다.
 
 ### 2-1. v1 runtime topology
 
-v1 제품 구조는 `shared/NAT VM + macOS host nginx`입니다. VRecorder와 browser는 target Mac의 LAN IP로
-접속하고, macOS host nginx가 Linux VM 내부 VitalServer로 요청을 전달합니다.
+v1 제품 구조는 `shared/NAT VM + macOS host nginx`입니다. VRecorder와 browser는 target Mac의 LAN IP로 접속하고, macOS host nginx가 Linux VM 내부 VitalServer로 요청을 전달합니다.
 
 ```text
 VRecorder / Browser
@@ -50,8 +48,7 @@ VRecorder / Browser
 
 ### 2-2. Network mode 기준
 
-Bridged mode는 Apple `com.apple.vm.networking` restricted entitlement 승인이 필요한 향후 옵션입니다.
-v1에서는 host nginx를 통해 VRecorder 원 IP 보존을 제품화합니다.
+Bridged mode는 Apple `com.apple.vm.networking` restricted entitlement 승인이 필요한 향후 옵션입니다. v1에서는 host nginx를 통해 VRecorder 원 IP 보존을 제품화합니다.
 
 ## 3. 주요 명령어
 

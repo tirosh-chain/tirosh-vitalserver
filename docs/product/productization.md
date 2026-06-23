@@ -1,8 +1,6 @@
 # VitalServer 제품화 전략
 
-이 문서는 VitalServer를 연구/데모용 서버가 아니라 제품 환경에서 사용할 수 있는 구성요소로
-만들기 위한 기준 문서입니다. 상세 실행법은 다른 문서로 분리하고, 여기서는 제품화 목표,
-현재 확인된 동작, 운영에 필요한 보강 지점, 다음 작업을 정리합니다.
+이 문서는 VitalServer를 연구/데모용 서버가 아니라 제품 환경에서 사용할 수 있는 구성요소로 만들기 위한 기준 문서입니다. 상세 실행법은 다른 문서로 분리하고, 여기서는 제품화 목표, 현재 확인된 동작, 운영에 필요한 보강 지점, 다음 작업을 정리합니다.
 
 관련 문서:
 
@@ -14,9 +12,7 @@
 
 ## 목표
 
-이 저장소의 목표는 원본 VitalServer를 명시 upstream snapshot으로 고정하고, 외곽 레이어를 쌓아
-운영 가능한 제품 구성요소로 만드는 것입니다. Compose, 문서, 검증 도구는 이 저장소에서 관리하고,
-VitalServer 애플리케이션 자체 수정은 기본 제품 경로로 삼지 않습니다.
+이 저장소의 목표는 원본 VitalServer를 명시 upstream snapshot으로 고정하고, 외곽 레이어를 쌓아 운영 가능한 제품 구성요소로 만드는 것입니다. Compose, 문서, 검증 도구는 이 저장소에서 관리하고, VitalServer 애플리케이션 자체 수정은 기본 제품 경로로 삼지 않습니다.
 
 우리가 관리하는 영역:
 
@@ -56,9 +52,7 @@ VitalServer 애플리케이션 자체 수정은 기본 제품 경로로 삼지 �
 - Redis UI: `http://localhost:8081`
 - Swagger UI: `http://localhost:8082`
 
-Swagger UI는 같은 origin에서 VitalServer를 호출하도록 `/vitalserver` reverse proxy를 사용합니다.
-OpenAPI 문서에는 이 proxy server만 노출해서, Swagger의 `Try it out`이 브라우저 CORS에
-걸리지 않도록 합니다.
+Swagger UI는 같은 origin에서 VitalServer를 호출하도록 `/vitalserver` reverse proxy를 사용합니다. OpenAPI 문서에는 이 proxy server만 노출해서, Swagger의 `Try it out`이 브라우저 CORS에 걸리지 않도록 합니다.
 
 ```sh
 make compose/up            # proxy와 기본 Compose sandbox 실행
@@ -83,24 +77,15 @@ upstream VitalServer `2.3.4` 코드를 분석하면서 public 문서와 다른 �
 | API 문서 | 별도 Swagger 없음 | 이 repo에서 `docs/api/vitalserver.openapi.yaml`로 생성 |
 | Redis 구조 | 문서화 부족 | `monitor.js`, `db.js` 기준으로 별도 정리 |
 
-제품화 작업에서는 public 문서보다 현재 포함한 upstream code를 우선 기준으로 삼습니다.
-public 문서와 다른 부분은 OpenAPI와 제품화 문서에 명시합니다.
+제품화 작업에서는 public 문서보다 현재 포함한 upstream code를 우선 기준으로 삼습니다. public 문서와 다른 부분은 OpenAPI와 제품화 문서에 명시합니다.
 
 ### VR Network Settings IP
 
-Web Monitoring의 `Network Settings`는 Socket.IO `join_vr` 처리 시 저장된 `ip_<vrcode>` 값을
-받아 `http://<ip>`로 엽니다. 실제 VRecorder client source는 이 repo에 없으므로 제품 장비가
-`join_vr`를 보내는지는 접속 로그와 Redis 값으로 검증합니다. macOS Docker Desktop의 port
-forwarding을 직접 거치면 container 내부에서는 실제 VR IP 대신 Docker gateway IP가 보일 수
-있습니다.
+Web Monitoring의 `Network Settings`는 Socket.IO `join_vr` 처리 시 저장된 `ip_<vrcode>` 값을 받아 `http://<ip>`로 엽니다. 실제 VRecorder client source는 이 repo에 없으므로 제품 장비가 `join_vr`를 보내는지는 접속 로그와 Redis 값으로 검증합니다. macOS Docker Desktop의 port forwarding을 직접 거치면 container 내부에서는 실제 VR IP 대신 Docker gateway IP가 보일 수 있습니다.
 
-원본 VitalServer는 proxy forwarding header를 신뢰하지 않고 socket remote address를 사용합니다.
-따라서 macOS 운영 환경에서는 VR 접속이 host-level proxy와 recorder ingress를 지나면서 selected client
-IP를 recorder ingress가 계산하고, 같은 Redis `ip_<vrcode>` key를 bounded verify/rewrite로 보정합니다.
-Docker container 내부에서만 network 정보를 읽어서는 NAT 이전의 VR IP를 복원할 수 없습니다.
+원본 VitalServer는 proxy forwarding header를 신뢰하지 않고 socket remote address를 사용합니다. 따라서 macOS 운영 환경에서는 VR 접속이 host-level proxy와 recorder ingress를 지나면서 selected client IP를 recorder ingress가 계산하고, 같은 Redis `ip_<vrcode>` key를 bounded verify/rewrite로 보정합니다. Docker container 내부에서만 network 정보를 읽어서는 NAT 이전의 VR IP를 복원할 수 없습니다.
 
-macOS 운영 서버에서는 Docker published port를 외부에 직접 노출하지 않고, host nginx가
-외부 접속을 받은 뒤 Docker backend로 proxy합니다.
+macOS 운영 서버에서는 Docker published port를 외부에 직접 노출하지 않고, host nginx가 외부 접속을 받은 뒤 Docker backend로 proxy합니다.
 
 ```text
 VR 장비 / 브라우저
@@ -122,16 +107,9 @@ VR 장비 / 브라우저
 }
 ```
 
-이 구성에서 Docker backend는 macOS host loopback에만 열고, 외부 장비와 브라우저는 host
-nginx port로만 접속합니다. Docker published port를 LAN에 직접 노출하면 Docker Desktop NAT
-이후의 gateway IP가 `ip_<vrcode>`에 저장될 수 있습니다.
-Redis는 host에 publish하지 않고 Compose 내부 network의 `redis:6379`로만 접근합니다.
+이 구성에서 Docker backend는 macOS host loopback에만 열고, 외부 장비와 브라우저는 host nginx port로만 접속합니다. Docker published port를 LAN에 직접 노출하면 Docker Desktop NAT 이후의 gateway IP가 `ip_<vrcode>`에 저장될 수 있습니다. Redis는 host에 publish하지 않고 Compose 내부 network의 `redis:6379`로만 접근합니다.
 
-Web Monitoring의 Socket.IO 접속 주소는 기본적으로 same-origin path(`/`)를 사용합니다. 즉 브라우저가
-`http://<macOS host LAN IP 또는 DNS>`로 접속하면 Socket.IO도 같은 host와 port로
-붙습니다. 여러 접속 주소를 동시에 지원해야 하는 환경에서는 `VITALSERVER_PUBLIC_HOST`를
-비워두는 것이 안전합니다. 단일 public 주소로 강제해야 하는 환경에서만
-`VITALSERVER_PUBLIC_HOST`, `VITALSERVER_PUBLIC_PORT`를 명시합니다.
+Web Monitoring의 Socket.IO 접속 주소는 기본적으로 same-origin path(`/`)를 사용합니다. 즉 브라우저가 `http://<macOS host LAN IP 또는 DNS>`로 접속하면 Socket.IO도 같은 host와 port로 붙습니다. 여러 접속 주소를 동시에 지원해야 하는 환경에서는 `VITALSERVER_PUBLIC_HOST`를 비워두는 것이 안전합니다. 단일 public 주소로 강제해야 하는 환경에서만 `VITALSERVER_PUBLIC_HOST`, `VITALSERVER_PUBLIC_PORT`를 명시합니다.
 
 host nginx config는 아래 명령으로 렌더링합니다.
 
@@ -139,12 +117,9 @@ host nginx config는 아래 명령으로 렌더링합니다.
 make proxy/config
 ```
 
-렌더링된 config는 macOS host의 nginx 설정에 포함합니다. 이 config는 client가 보낸
-forwarding header를 신뢰하지 않고 host nginx의 `$remote_addr`로 덮어써서 VitalServer에
-전달합니다.
+렌더링된 config는 macOS host의 nginx 설정에 포함합니다. 이 config는 client가 보낸 forwarding header를 신뢰하지 않고 host nginx의 `$remote_addr`로 덮어써서 VitalServer에 전달합니다.
 
-로컬 PoC에서는 Homebrew nginx를 설치한 뒤 `make compose/up`으로 proxy와 Docker backend를 함께 실행합니다.
-기본 proxy port는 80이므로 nginx 실행 시 관리자 권한이 필요할 수 있습니다.
+로컬 PoC에서는 Homebrew nginx를 설치한 뒤 `make compose/up`으로 proxy와 Docker backend를 함께 실행합니다. 기본 proxy port는 80이므로 nginx 실행 시 관리자 권한이 필요할 수 있습니다.
 
 ```sh
 make compose/up
@@ -152,18 +127,15 @@ make proxy/status
 make compose/down
 ```
 
-`make compose/up`은 Docker backend를 loopback으로 올리고, `.tmp/macos-nginx/vitalserver.conf`를 생성한 뒤
-해당 config로 nginx를 실행합니다. Homebrew service를 등록하거나 launchd를 수정하지 않습니다.
+`make compose/up`은 Docker backend를 loopback으로 올리고, `.tmp/macos-nginx/vitalserver.conf`를 생성한 뒤 해당 config로 nginx를 실행합니다. Homebrew service를 등록하거나 launchd를 수정하지 않습니다.
 
-설치형 배포에서는 nginx binary와 config를 macOS host에 설치하고 launchd로 관리합니다.
-LaunchDaemon plist는 아래 명령으로 렌더링합니다.
+설치형 배포에서는 nginx binary와 config를 macOS host에 설치하고 launchd로 관리합니다. LaunchDaemon plist는 아래 명령으로 렌더링합니다.
 
 ```sh
 make proxy/plist
 ```
 
-설치 패키지는 nginx config, launchd plist, deploy `runtime-config.json`을 함께 생성해 container
-backend와 native proxy가 같은 port 계약을 사용하도록 유지합니다.
+설치 패키지는 nginx config, launchd plist, deploy `runtime-config.json`을 함께 생성해 container backend와 native proxy가 같은 port 계약을 사용하도록 유지합니다.
 
 ## 데이터 흐름
 
@@ -175,15 +147,11 @@ backend와 native proxy가 같은 port 계약을 사용하도록 유지합니다
 4. Redis에 bed 상태, device metadata, timestamp index, 압축 frame을 저장합니다.
 5. Web Monitoring client에는 `recv_data` event를 emit합니다.
 
-testkit은 기본적으로 simulated room map payload를 생성하고, 필요하면 실제 장비에서 캡처한
-JSON payload를 upstream이 기대하는 형태로 감싼 뒤 전송합니다.
+testkit은 기본적으로 simulated room map payload를 생성하고, 필요하면 실제 장비에서 캡처한 JSON payload를 upstream이 기대하는 형태로 감싼 뒤 전송합니다.
 
-제품화 검증의 첫 기준은 단순 전송 성공이 아니라, 전송 후 VitalServer의 UI용 endpoint에서
-bed metadata가 조회되는 것입니다.
+제품화 검증의 첫 기준은 단순 전송 성공이 아니라, 전송 후 VitalServer의 UI용 endpoint에서 bed metadata가 조회되는 것입니다.
 
-여러 recorder machine이 동시에 붙는 상황, 반복 전송량, 장시간 streaming 검증은 testkit
-scenario로 재현합니다. 실제 실행 명령과 config 예시는 [testkit 사용법](../testkit/usage.md)에
-모읍니다.
+여러 recorder machine이 동시에 붙는 상황, 반복 전송량, 장시간 streaming 검증은 testkit scenario로 재현합니다. 실제 실행 명령과 config 예시는 [testkit 사용법](../testkit/usage.md)에 모읍니다.
 
 Redis에 저장되는 핵심 key는 아래입니다.
 
@@ -205,11 +173,8 @@ Redis에 저장되는 핵심 key는 아래입니다.
 - 제품 VM의 포트, 관리자 비밀번호, Swagger 포트는 deploy `runtime-config.json`으로 조정합니다.
 - 일회성 override는 `VITALSERVER_PROXY_PORT=8080 make compose/up`처럼 Make 변수로 넘깁니다.
 - VitalServer upstream submodule은 원본 `vitaldb/vitalserver` commit으로 명시적으로 고정합니다.
-- `repo/verify-submodule`은 release review gate에서 approved upstream commit과 compatibility
-  contract를 compile 전에 검증합니다.
-- 새 upstream commit을 검토할 때는 `repo/verify-submodule-candidate`로 compatibility를 먼저
-  확인하고, runtime smoke까지 통과한 뒤 `config/upstream-vitalserver-contract.json`의
-  `approvedCommits`에 추가합니다.
+- `repo/verify-submodule`은 release review gate에서 approved upstream commit과 compatibility contract를 compile 전에 검증합니다.
+- 새 upstream commit을 검토할 때는 `repo/verify-submodule-candidate`로 compatibility를 먼저 확인하고, runtime smoke까지 통과한 뒤 `config/upstream-vitalserver-contract.json`의 `approvedCommits`에 추가합니다.
 
 ### API
 
@@ -258,8 +223,7 @@ Redis에 저장되는 핵심 key는 아래입니다.
 
 ## 다음 작업
 
-우선순위는 Redis relay입니다. 제품 구성에서 source VitalServer의 Redis 데이터를 다른 Redis로
-실시간 전송해야 하기 때문입니다.
+우선순위는 Redis relay입니다. 제품 구성에서 source VitalServer의 Redis 데이터를 다른 Redis로 실시간 전송해야 하기 때문입니다.
 
 1. `vitalserver-testkit redis-relay` subcommand 추가
 2. source/target Redis URL, polling interval, lookback window 설정
