@@ -49,9 +49,9 @@ function loadConfig(env) {
           sendDataMode === sendDataIngressModes.SPOOL_AND_REPLAY
         ),
         intervalMs: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS", 1000),
-        batchSize: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", 1),
+        batchSize: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", 10),
         maxAttempts: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS", 3),
-        rateLimitPerSecond: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND", 1),
+        rateLimitPerSecond: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND", 10),
         targetTimeoutMs: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS", 5000),
       },
     },

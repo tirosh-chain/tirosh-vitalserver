@@ -118,7 +118,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime health
       vitalserver-vm runtime guest-log-sync
       vitalserver-vm runtime watchdog
-      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--recorder-ingress-send-data-mode passthrough|mirror_spool|spool_only|spool_and_replay] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--log-archive-retention-days <days>] [--log-archive-maximum-gib <gib>] [--redis-relay-settings-file <path>] [--restart]
+      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--recorder-ingress-send-data-mode passthrough|mirror_spool|spool_only|spool_and_replay] [--recorder-ingress-send-data-replay-batch-size <count>] [--recorder-ingress-send-data-replay-rate-limit-per-second <count>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--log-archive-retention-days <days>] [--log-archive-maximum-gib <gib>] [--redis-relay-settings-file <path>] [--restart]
       vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
@@ -257,6 +257,20 @@ extension RuntimeLifecycleCommand {
                 )
             }
             return .recorderIngressSendDataMode(mode)
+        case .recorderIngressSendDataReplayBatchSize:
+            guard let batchSize = Int(value) else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(
+                    "--recorder-ingress-send-data-replay-batch-size must be an integer"
+                )
+            }
+            return .recorderIngressSendDataReplayBatchSize(batchSize)
+        case .recorderIngressSendDataReplayRateLimitPerSecond:
+            guard let rateLimit = Int(value) else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(
+                    "--recorder-ingress-send-data-replay-rate-limit-per-second must be an integer"
+                )
+            }
+            return .recorderIngressSendDataReplayRateLimitPerSecond(rateLimit)
         case .adminPassword:
             return .adminPassword(value)
         case .adminPasswordFile:

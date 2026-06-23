@@ -63,6 +63,10 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             "3",
             "--recorder-ingress-send-data-mode",
             "mirror_spool",
+            "--recorder-ingress-send-data-replay-batch-size",
+            "8",
+            "--recorder-ingress-send-data-replay-rate-limit-per-second",
+            "12",
             "--restart",
         ])
 
@@ -74,6 +78,8 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
                 .logArchiveRetentionDays(10),
                 .logArchiveMaximumGiB(3),
                 .recorderIngressSendDataMode(.mirrorSpool),
+                .recorderIngressSendDataReplayBatchSize(8),
+                .recorderIngressSendDataReplayRateLimitPerSecond(12),
             ],
             restart: true
         )))

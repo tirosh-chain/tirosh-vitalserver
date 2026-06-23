@@ -68,6 +68,18 @@ struct RuntimeSettingsRestartNoticePolicy {
             runtime.recorderIngressSendDataMode,
             to: &changes
         )
+        appendIfChanged(
+            AppConstants.Labels.recorderIngressReplayBatchSize,
+            draft.recorderIngressSendDataReplayBatchSize,
+            runtime.recorderIngressSendDataReplayBatchSize,
+            to: &changes
+        )
+        appendIfChanged(
+            AppConstants.Labels.recorderIngressReplayRateLimit,
+            draft.recorderIngressSendDataReplayRateLimitPerSecond,
+            runtime.recorderIngressSendDataReplayRateLimitPerSecond,
+            to: &changes
+        )
         return changes
     }
 

@@ -25,6 +25,8 @@ public enum RuntimeConfigureChange: Equatable, Sendable {
     case publicHost(String)
     case publicPort(Int)
     case recorderIngressSendDataMode(RuntimeRecorderIngressSendDataMode)
+    case recorderIngressSendDataReplayBatchSize(Int)
+    case recorderIngressSendDataReplayRateLimitPerSecond(Int)
     case adminPassword(String)
     case adminPasswordFile(URL)
     case startOnBoot(Bool)

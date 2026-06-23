@@ -34,6 +34,8 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
     public let publicHost: String
     public let publicPort: Int
     public let recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
+    public let recorderIngressSendDataReplayBatchSize: Int
+    public let recorderIngressSendDataReplayRateLimitPerSecond: Int
     public let automaticBackupEnabled: Bool
     public let backupScheduleTimes: [String]
     public let backupRetentionCount: Int
@@ -44,6 +46,8 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
         publicHost: String,
         publicPort: Int,
         recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode = RuntimeSettingsInitialValues.recorderIngressSendDataMode,
+        recorderIngressSendDataReplayBatchSize: Int = RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize,
+        recorderIngressSendDataReplayRateLimitPerSecond: Int = RuntimeSettingsInitialValues.recorderIngressSendDataReplayRateLimitPerSecond,
         automaticBackupEnabled: Bool,
         backupScheduleTimes: [String],
         backupRetentionCount: Int
@@ -53,6 +57,8 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
         self.publicHost = publicHost
         self.publicPort = publicPort
         self.recorderIngressSendDataMode = recorderIngressSendDataMode
+        self.recorderIngressSendDataReplayBatchSize = recorderIngressSendDataReplayBatchSize
+        self.recorderIngressSendDataReplayRateLimitPerSecond = recorderIngressSendDataReplayRateLimitPerSecond
         self.automaticBackupEnabled = automaticBackupEnabled
         self.backupScheduleTimes = backupScheduleTimes
         self.backupRetentionCount = backupRetentionCount
@@ -271,6 +277,8 @@ public enum RuntimeSettingsReadPolicy {
         next.publicHost = input.publicHost
         next.publicPort = input.publicPort
         next.recorderIngressSendDataMode = input.recorderIngressSendDataMode
+        next.recorderIngressSendDataReplayBatchSize = input.recorderIngressSendDataReplayBatchSize
+        next.recorderIngressSendDataReplayRateLimitPerSecond = input.recorderIngressSendDataReplayRateLimitPerSecond
         next.automaticBackupEnabled = input.automaticBackupEnabled
         next.backupScheduleTimes = input.backupScheduleTimes
         next.backupRetentionCount = input.backupRetentionCount

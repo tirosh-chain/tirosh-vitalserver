@@ -58,6 +58,24 @@ struct RuntimeSettingsPanel: View {
                     }
                     .disabled(!viewModel.capabilities.canControlRuntimeServices)
                     settingHelp(AppConstants.Labels.recorderIngressSendDataModeHelp)
+                    settingSlider(
+                        AppConstants.Labels.recorderIngressReplayBatchSize,
+                        value: $viewModel.settings.recorderIngressSendDataReplayBatchSize,
+                        range: AppConstants.SettingsLimits.minimumRecorderIngressReplayBatchSize...AppConstants.SettingsLimits.maximumRecorderIngressReplayBatchSize,
+                        step: AppConstants.SettingsLimits.recorderIngressReplayBatchSizeStep,
+                        suffix: AppConstants.Labels.unitItems
+                    )
+                    .disabled(!viewModel.capabilities.canControlRuntimeServices)
+                    settingHelp(AppConstants.Labels.recorderIngressReplayBatchSizeHelp)
+                    settingSlider(
+                        AppConstants.Labels.recorderIngressReplayRateLimit,
+                        value: $viewModel.settings.recorderIngressSendDataReplayRateLimitPerSecond,
+                        range: AppConstants.SettingsLimits.minimumRecorderIngressReplayRateLimitPerSecond...AppConstants.SettingsLimits.maximumRecorderIngressReplayRateLimitPerSecond,
+                        step: AppConstants.SettingsLimits.recorderIngressReplayRateLimitStep,
+                        suffix: AppConstants.Labels.unitItemsPerSecond
+                    )
+                    .disabled(!viewModel.capabilities.canControlRuntimeServices)
+                    settingHelp(AppConstants.Labels.recorderIngressReplayRateLimitHelp)
                 }
                 settingsSection(AppConstants.Labels.sectionStorage) {
                     settingDirectoryField(

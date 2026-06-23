@@ -52,6 +52,8 @@ RECORDER_INGRESS_SEND_DATA_MODES = {
     "spool_and_replay",
 }
 DEFAULT_RECORDER_INGRESS_SEND_DATA_MODE = "spool_and_replay"
+DEFAULT_RECORDER_INGRESS_REPLAY_BATCH_SIZE = 10
+DEFAULT_RECORDER_INGRESS_REPLAY_RATE_LIMIT_PER_SECOND = 10
 
 
 @dataclass(frozen=True)
@@ -134,14 +136,42 @@ def load_runtime_env() -> RuntimeConfig:
     os.environ["VITALSERVER_PUBLIC_PORT"] = str(config.public_port)
     os.environ["VITALSERVER_ADMIN_PASSWORD"] = config.admin_password
     os.environ["VITALSERVER_VITAL_FILES_DIR"] = config.vital_files_directory
-    os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] = load_recorder_ingress_send_data_mode(
+    load_recorder_ingress_send_data_env(
         DEPLOY_DIR / RuntimeFileName.RUNTIME_SETTINGS.value
     )
     return config
 
 
-def load_recorder_ingress_send_data_mode(settings_path: os.PathLike[str] | str) -> str:
+def load_recorder_ingress_send_data_env(settings_path: os.PathLike[str] | str) -> None:
     document = read_json(Path(settings_path))
+    os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] = recorder_ingress_send_data_mode(
+        document,
+        settings_path,
+    )
+    os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] = str(
+        positive_int_setting(
+            document,
+            settings_path,
+            "recorderIngressSendDataReplayBatchSize",
+            DEFAULT_RECORDER_INGRESS_REPLAY_BATCH_SIZE,
+            "runtime-settings-recorder-ingress-send-data-replay-batch-size-invalid",
+        )
+    )
+    os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND"] = str(
+        positive_int_setting(
+            document,
+            settings_path,
+            "recorderIngressSendDataReplayRateLimitPerSecond",
+            DEFAULT_RECORDER_INGRESS_REPLAY_RATE_LIMIT_PER_SECOND,
+            "runtime-settings-recorder-ingress-send-data-replay-rate-limit-invalid",
+        )
+    )
+
+
+def recorder_ingress_send_data_mode(
+    document: dict[str, Any],
+    settings_path: os.PathLike[str] | str,
+) -> str:
     mode = document.get(
         "recorderIngressSendDataMode",
         DEFAULT_RECORDER_INGRESS_SEND_DATA_MODE,
@@ -153,6 +183,22 @@ def load_recorder_ingress_send_data_mode(settings_path: os.PathLike[str] | str) 
             code="runtime-settings-recorder-ingress-send-data-mode-invalid",
         )
     return mode
+
+
+def positive_int_setting(
+    document: dict[str, Any],
+    settings_path: os.PathLike[str] | str,
+    field: str,
+    default: int,
+    code: str,
+) -> int:
+    value = document.get(field, default)
+    if not isinstance(value, int) or value <= 0:
+        raise GuestContractError(
+            f"runtime settings field is invalid: {settings_path} {field}",
+            code=code,
+        )
+    return value
 
 
 def compose(

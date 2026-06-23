@@ -15,64 +15,99 @@ type SendDataReplayPayloadResult =
       message: string;
     };
 
-function createSocketIoSendDataReplayTarget(config): SendDataReplayTargetPort {
-  const socketIoClient = require("socket.io-client");
+function createSocketIoSendDataReplayTarget(config, socketIoClientOverride = null): SendDataReplayTargetPort {
+  const socketIoClient = socketIoClientOverride || require("socket.io-client");
   const replayConfig = config.replay || (config.spool && config.spool.replay) || {};
   const targetTimeoutMs = replayConfig.targetTimeoutMs || 5000;
+  const upstreamUrl = `http://${config.upstream.host}:${config.upstream.port}`;
+  let socket = null;
+  let connecting = null;
 
   return {
-    send(item) {
+    async send(item) {
       const payload = payloadFromSpoolItem(item);
       if (!payload.ok) return Promise.resolve(payload);
 
-      return new Promise((resolve) => {
-        let settled = false;
-        const done = (result, socket) => {
-          if (settled) return;
-          settled = true;
-          if (socket) socket.close();
-          resolve(result);
+      const connection = await connectedSocket();
+      if (!connection.ok) return connection;
+
+      try {
+        connection.socket.emit("send_data", payload.value);
+        return { ok: true as const };
+      } catch (error) {
+        closeSocket(connection.socket);
+        return {
+          ok: false as const,
+          reason: sendDataFailureReasons.UPSTREAM_UNAVAILABLE,
+          message: error && error.message ? error.message : "upstream Socket.IO emit failed",
         };
-
-        const socket = socketIoClient(`http://${config.upstream.host}:${config.upstream.port}`, {
-          transports: ["websocket", "polling"],
-          forceNew: true,
-          reconnection: false,
-          timeout: targetTimeoutMs,
-        });
-
-        const timeout = setTimeout(() => {
-          done({
-            ok: false,
-            reason: sendDataFailureReasons.UPSTREAM_TIMEOUT,
-            message: "send_data replay timed out",
-          }, socket);
-        }, targetTimeoutMs);
-
-        socket.on("connect", () => {
-          clearTimeout(timeout);
-          socket.emit("send_data", payload.value);
-          done({ ok: true }, socket);
-        });
-        socket.on("connect_error", (error) => {
-          clearTimeout(timeout);
-          done({
-            ok: false,
-            reason: sendDataFailureReasons.UPSTREAM_UNAVAILABLE,
-            message: error && error.message ? error.message : "upstream Socket.IO connection failed",
-          }, socket);
-        });
-        socket.on("connect_timeout", () => {
-          clearTimeout(timeout);
-          done({
-            ok: false,
-            reason: sendDataFailureReasons.UPSTREAM_TIMEOUT,
-            message: "upstream Socket.IO connection timed out",
-          }, socket);
-        });
-      });
+      }
     },
   };
+
+  function connectedSocket() {
+    if (socket && socket.connected) return Promise.resolve({ ok: true as const, socket });
+    if (connecting) return connecting;
+
+    connecting = new Promise((resolve) => {
+      let settled = false;
+      const candidate = socketIoClient(upstreamUrl, {
+        transports: ["websocket", "polling"],
+        forceNew: true,
+        reconnection: false,
+        timeout: targetTimeoutMs,
+      });
+
+      const done = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        connecting = null;
+        if (result.ok) {
+          socket = candidate;
+        } else {
+          closeSocket(candidate);
+        }
+        resolve(result);
+      };
+
+      const timeout = setTimeout(() => {
+        done({
+          ok: false as const,
+          reason: sendDataFailureReasons.UPSTREAM_TIMEOUT,
+          message: "send_data replay timed out",
+        });
+      }, targetTimeoutMs);
+
+      candidate.on("connect", () => {
+        done({ ok: true as const, socket: candidate });
+      });
+      candidate.on("connect_error", (error) => {
+        done({
+          ok: false as const,
+          reason: sendDataFailureReasons.UPSTREAM_UNAVAILABLE,
+          message: error && error.message ? error.message : "upstream Socket.IO connection failed",
+        });
+      });
+      candidate.on("connect_timeout", () => {
+        done({
+          ok: false as const,
+          reason: sendDataFailureReasons.UPSTREAM_TIMEOUT,
+          message: "upstream Socket.IO connection timed out",
+        });
+      });
+      candidate.on("disconnect", () => {
+        if (socket === candidate) socket = null;
+      });
+    });
+
+    return connecting;
+  }
+
+  function closeSocket(socketToClose) {
+    if (socket === socketToClose) socket = null;
+    if (socketToClose && typeof socketToClose.close === "function") socketToClose.close();
+  }
 }
 
 function payloadFromSpoolItem(item): SendDataReplayPayloadResult {

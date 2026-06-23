@@ -101,6 +101,8 @@ public enum ConfigureRuntimeChange<NetworkMode: Equatable>: Equatable {
     case publicHost(String)
     case publicPort(Int)
     case recorderIngressSendDataMode(RuntimeRecorderIngressSendDataMode)
+    case recorderIngressSendDataReplayBatchSize(Int)
+    case recorderIngressSendDataReplayRateLimitPerSecond(Int)
     case adminPassword(String)
     case adminPasswordFile(URL)
     case startOnBoot(Bool)
@@ -540,6 +542,16 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
             guestRuntimeSettings.publicPort = port
         case .recorderIngressSendDataMode(let mode):
             guestRuntimeSettings.recorderIngressSendDataMode = mode
+        case .recorderIngressSendDataReplayBatchSize(let value):
+            guard value > 0 else {
+                throw invalid("--recorder-ingress-send-data-replay-batch-size must be greater than 0")
+            }
+            guestRuntimeSettings.recorderIngressSendDataReplayBatchSize = value
+        case .recorderIngressSendDataReplayRateLimitPerSecond(let value):
+            guard value > 0 else {
+                throw invalid("--recorder-ingress-send-data-replay-rate-limit-per-second must be greater than 0")
+            }
+            guestRuntimeSettings.recorderIngressSendDataReplayRateLimitPerSecond = value
         case .adminPassword(let value):
             guard !value.isEmpty, RuntimeTextValidator.isSingleLine(value) else {
                 throw invalid("--admin-password must not be empty or contain newlines")

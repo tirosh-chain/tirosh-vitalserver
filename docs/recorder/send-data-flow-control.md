@@ -450,9 +450,13 @@ RPOPLPUSH pending -> in_flight
   -> invalid/max attempts: move in_flight -> dead_letter
 ```
 
-Replay worker는 tick마다 `min(batchSize, rateLimitPerSecond)`개까지 처리합니다. 따라서 `RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND`만 높이고 `RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE`를 기본값 `1`로 두면 실제 처리량은 tick마다 1개로 제한됩니다.
+Replay worker는 tick마다 `min(batchSize, rateLimitPerSecond)`개까지 처리합니다. 따라서 `RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND`만 높이고 `RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE`를 낮게 두면 실제 처리량은 batch size에 묶입니다. 기본값은 둘 다 `10`입니다.
 
-Upstream replay는 새 Socket.IO client connection을 만들고 `send_data` event를 emit한 뒤 connection을 닫습니다. Upstream handler가 ack를 제공하지 않으므로 replay 성공은 "emit 완료"입니다. Upstream 내부 처리 성공을 의미하지 않습니다.
+Upstream replay target은 upstream VitalServer로 가는 Socket.IO client connection을 유지하고, replay item마다 같은 connection에 `send_data` event를 emit합니다. Connection이 없거나 끊긴 상태면 다음 replay 시점에 새 connection을 만들고, 연결 실패나 timeout은 `upstream_unavailable` 또는 `upstream_timeout` retryable failure로 남깁니다.
+
+이 persistent replay connection은 replay 처리량에 직접적인 영향을 줍니다. 매 item마다 `connect -> emit -> close`를 반복하면 handshake 비용 때문에 설정상 rate를 높여도 실제 소비 속도가 낮아질 수 있습니다. Persistent connection은 그 비용을 제거해 worker가 설정된 `batchSize`/`rateLimitPerSecond`에 더 가깝게 동작하게 만듭니다.
+
+단, upstream handler가 ack를 제공하지 않으므로 replay 성공은 "Socket.IO emit 완료"입니다. Upstream 내부의 inflate, JSON parse, Redis 갱신, UI broadcast, filter/trend 처리가 끝났다는 뜻은 아닙니다.
 
 ## 11. Runtime 설정
 
@@ -468,12 +472,12 @@ Upstream replay는 새 Socket.IO client connection을 만들고 `send_data` even
 | `RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES` | `10485760` | 단일 `send_data` payload spool limit |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_ENABLED` | mode 기반 | 빈 값이면 `spool_and_replay`에서 활성화, 그 외 mode에서 비활성화 |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS` | `1000` | replay worker tick interval |
-| `RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE` | `1` | worker tick마다 처리할 최대 item 수 |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE` | `10` | worker tick마다 처리할 최대 item 수 |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS` | `3` | retry 후 dead-letter로 전환할 최대 replay 시도 수 |
-| `RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND` | `1` | worker tick에서 적용하는 replay rate limit |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND` | `10` | worker tick에서 적용하는 replay rate limit |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS` | `5000` | upstream Socket.IO replay 연결 timeout |
 
-현재 구현은 mode와 numeric env에 documented default/fallback을 사용합니다. 즉 invalid mode나 invalid number가 process startup failure가 되지는 않습니다. 이 점은 "외부 상태를 성공으로 숨기지 않는다"는 runtime/domain 원칙과는 별개로, 설정 parser의 현재 구현 상태입니다. 이후 strict config validation을 도입하면 invalid config를 명시 실패로 승격할 수 있습니다.
+현재 recorder ingress process의 env parser는 mode와 numeric env에 documented default/fallback을 사용합니다. 즉 invalid mode나 invalid number가 process startup failure가 되지는 않습니다. 단, Helper `runtime-settings.json`에서 guest compose env로 전달되는 `send_data` mode, replay batch size, replay rate limit은 guest compose runner가 먼저 검증합니다. runtime-settings 값이 invalid이면 compose env 생성이 실패하고 recorder ingress를 잘못된 값으로 기동하지 않습니다.
 
 ## 12. Status 읽는 법
 

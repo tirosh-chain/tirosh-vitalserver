@@ -37,5 +37,11 @@ extension AppConstants {
         static let minimumLogArchiveMaximumGiB = 1
         static let maximumLogArchiveMaximumGiB = 20
         static let logArchiveMaximumStepGiB = 1
+        static let minimumRecorderIngressReplayBatchSize = 1
+        static let maximumRecorderIngressReplayBatchSize = 100
+        static let recorderIngressReplayBatchSizeStep = 1
+        static let minimumRecorderIngressReplayRateLimitPerSecond = 1
+        static let maximumRecorderIngressReplayRateLimitPerSecond = 100
+        static let recorderIngressReplayRateLimitStep = 1
     }
 }

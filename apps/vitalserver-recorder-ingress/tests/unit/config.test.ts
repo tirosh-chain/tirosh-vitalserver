@@ -29,9 +29,9 @@ test("config enables bounded spool and replay by default", () => {
     replay: {
       enabled: true,
       intervalMs: 1000,
-      batchSize: 1,
+      batchSize: 10,
       maxAttempts: 3,
-      rateLimitPerSecond: 1,
+      rateLimitPerSecond: 10,
       targetTimeoutMs: 5000,
     },
   });
@@ -58,9 +58,9 @@ test("config supports explicit send_data passthrough mode", () => {
     replay: {
       enabled: false,
       intervalMs: 1000,
-      batchSize: 1,
+      batchSize: 10,
       maxAttempts: 3,
-      rateLimitPerSecond: 1,
+      rateLimitPerSecond: 10,
       targetTimeoutMs: 5000,
     },
   });

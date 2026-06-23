@@ -30,17 +30,30 @@ def test_load_runtime_env_exports_recorder_ingress_send_data_mode(
     )()
     settings_path = tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value
     settings_path.write_text(
-        '{"recorderIngressSendDataMode":"spool_only"}\n',
+        """
+        {
+          "recorderIngressSendDataMode": "spool_only",
+          "recorderIngressSendDataReplayBatchSize": 8,
+          "recorderIngressSendDataReplayRateLimitPerSecond": 12
+        }
+        """,
         encoding="utf-8",
     )
 
     monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_MODE", raising=False)
+    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", raising=False)
+    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND", raising=False)
 
     compose.load_runtime_env()
 
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_only"
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "8"
+    assert (
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND"]
+        == "12"
+    )
 
 
 def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_replay(
@@ -68,10 +81,17 @@ def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_re
     monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_MODE", raising=False)
+    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", raising=False)
+    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND", raising=False)
 
     compose.load_runtime_env()
 
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_and_replay"
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "10"
+    assert (
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND"]
+        == "10"
+    )
 
 
 def test_load_runtime_env_rejects_invalid_recorder_ingress_mode(
@@ -103,6 +123,40 @@ def test_load_runtime_env_rejects_invalid_recorder_ingress_mode(
         compose.load_runtime_env()
 
     assert error.value.code == "runtime-settings-recorder-ingress-send-data-mode-invalid"
+
+
+def test_load_runtime_env_rejects_invalid_recorder_ingress_replay_settings(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        '{"recorderIngressSendDataReplayRateLimitPerSecond":0}\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    with pytest.raises(GuestContractError) as error:
+        compose.load_runtime_env()
+
+    assert (
+        error.value.code
+        == "runtime-settings-recorder-ingress-send-data-replay-rate-limit-invalid"
+    )
 
 
 def test_stop_compose_action_stops_services_in_explicit_order(monkeypatch: Any) -> None:

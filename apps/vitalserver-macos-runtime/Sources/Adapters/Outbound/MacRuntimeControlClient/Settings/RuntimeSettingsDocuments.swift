@@ -61,6 +61,8 @@ struct GuestRuntimeSettings: Decodable {
         case publicHost
         case publicPort
         case recorderIngressSendDataMode
+        case recorderIngressSendDataReplayBatchSize
+        case recorderIngressSendDataReplayRateLimitPerSecond
         case automaticBackupEnabled
         case backupScheduleTimes
         case backupRetentionCount
@@ -71,6 +73,8 @@ struct GuestRuntimeSettings: Decodable {
     let publicHost: String
     let publicPort: Int
     let recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
+    let recorderIngressSendDataReplayBatchSize: Int
+    let recorderIngressSendDataReplayRateLimitPerSecond: Int
     let automaticBackupEnabled: Bool
     let backupScheduleTimes: [String]
     let backupRetentionCount: Int
@@ -85,6 +89,14 @@ struct GuestRuntimeSettings: Decodable {
             RuntimeRecorderIngressSendDataMode.self,
             forKey: .recorderIngressSendDataMode
         ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataMode
+        recorderIngressSendDataReplayBatchSize = try container.decodeIfPresent(
+            Int.self,
+            forKey: .recorderIngressSendDataReplayBatchSize
+        ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize
+        recorderIngressSendDataReplayRateLimitPerSecond = try container.decodeIfPresent(
+            Int.self,
+            forKey: .recorderIngressSendDataReplayRateLimitPerSecond
+        ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataReplayRateLimitPerSecond
         automaticBackupEnabled = try container.decode(Bool.self, forKey: .automaticBackupEnabled)
         backupScheduleTimes = try container.decode([String].self, forKey: .backupScheduleTimes)
         backupRetentionCount = try container.decode(Int.self, forKey: .backupRetentionCount)
@@ -118,6 +130,8 @@ struct GuestRuntimeSettings: Decodable {
             publicHost: publicHost,
             publicPort: publicPort,
             recorderIngressSendDataMode: recorderIngressSendDataMode,
+            recorderIngressSendDataReplayBatchSize: recorderIngressSendDataReplayBatchSize,
+            recorderIngressSendDataReplayRateLimitPerSecond: recorderIngressSendDataReplayRateLimitPerSecond,
             automaticBackupEnabled: automaticBackupEnabled,
             backupScheduleTimes: backupScheduleTimes,
             backupRetentionCount: backupRetentionCount

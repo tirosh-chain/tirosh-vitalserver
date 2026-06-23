@@ -1350,7 +1350,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     inFlightItems: 1,
                     retryableFailures: 0,
                     deadLetteredEvents: 0,
-                    replayLagSeconds: 12
+                    replayLagSeconds: 12,
+                    rateLimitPerSecond: 12
                 )
             ),
             containerLogsPresent: true,
@@ -1365,6 +1366,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressOldestPending, in: items)?.value.text, "34s")
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.text, "replaying")
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.severity, .healthy)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplayRateLimit, in: items)?.value.text, "12 items/sec")
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressInFlight, in: items)?.value.text, "1")
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplayLag, in: items)?.value.text, "12s")
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressBackpressureRejected, in: items)?.value.text, "2")

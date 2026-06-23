@@ -143,6 +143,12 @@ struct RuntimeStatusDisplayPolicy {
                 replaySeverity(replay)
             ),
             healthItem(
+                AppConstants.Labels.recorderIngressReplayRateLimit,
+                replay?.rateLimitPerSecond.map { "\($0) \(AppConstants.Labels.unitItemsPerSecond)" }
+                    ?? AppConstants.StatusText.notReported,
+                .neutral
+            ),
+            healthItem(
                 AppConstants.Labels.recorderIngressInFlight,
                 integerText(replay?.inFlightItems),
                 .neutral

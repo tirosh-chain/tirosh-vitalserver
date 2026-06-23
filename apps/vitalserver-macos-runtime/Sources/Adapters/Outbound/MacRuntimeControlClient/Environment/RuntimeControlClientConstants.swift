@@ -62,6 +62,8 @@ enum RuntimeControlClientConstants {
         static let optionPublicHost = "--public-host"
         static let optionPublicPort = "--public-port"
         static let optionRecorderIngressSendDataMode = "--recorder-ingress-send-data-mode"
+        static let optionRecorderIngressSendDataReplayBatchSize = "--recorder-ingress-send-data-replay-batch-size"
+        static let optionRecorderIngressSendDataReplayRateLimitPerSecond = "--recorder-ingress-send-data-replay-rate-limit-per-second"
         static let optionStartOnBoot = "--start-on-boot"
         static let optionAutoRecovery = "--auto-recovery"
         static let optionPreventSystemSleep = "--prevent-system-sleep"

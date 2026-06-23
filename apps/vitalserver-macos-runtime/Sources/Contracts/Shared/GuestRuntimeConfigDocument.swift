@@ -90,6 +90,8 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
     public var publicHost: String
     public var publicPort: Int
     public var recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
+    public var recorderIngressSendDataReplayBatchSize: Int
+    public var recorderIngressSendDataReplayRateLimitPerSecond: Int
     public var automaticBackupEnabled: Bool
     public var backupScheduleTimes: [String]
     public var backupRetentionCount: Int
@@ -100,6 +102,8 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
         case publicHost
         case publicPort
         case recorderIngressSendDataMode
+        case recorderIngressSendDataReplayBatchSize
+        case recorderIngressSendDataReplayRateLimitPerSecond
         case automaticBackupEnabled
         case backupScheduleTimes
         case backupRetentionCount
@@ -111,6 +115,8 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
         publicHost: String,
         publicPort: Int,
         recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode = RuntimeRecorderIngressDefaults.sendDataMode,
+        recorderIngressSendDataReplayBatchSize: Int = RuntimeRecorderIngressDefaults.replayBatchSize,
+        recorderIngressSendDataReplayRateLimitPerSecond: Int = RuntimeRecorderIngressDefaults.replayRateLimitPerSecond,
         automaticBackupEnabled: Bool = RuntimeSettingsInitialBackupDefaults.automaticBackupEnabled,
         backupScheduleTimes: [String] = RuntimeSettingsInitialBackupDefaults.backupScheduleTimes,
         backupRetentionCount: Int = RuntimeSettingsInitialBackupDefaults.backupRetentionCount
@@ -120,6 +126,8 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
         self.publicHost = publicHost
         self.publicPort = publicPort
         self.recorderIngressSendDataMode = recorderIngressSendDataMode
+        self.recorderIngressSendDataReplayBatchSize = recorderIngressSendDataReplayBatchSize
+        self.recorderIngressSendDataReplayRateLimitPerSecond = recorderIngressSendDataReplayRateLimitPerSecond
         self.automaticBackupEnabled = automaticBackupEnabled
         self.backupScheduleTimes = backupScheduleTimes
         self.backupRetentionCount = backupRetentionCount
@@ -145,6 +153,14 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
                 RuntimeRecorderIngressSendDataMode.self,
                 forKey: .recorderIngressSendDataMode
             ) ?? RuntimeRecorderIngressDefaults.sendDataMode,
+            recorderIngressSendDataReplayBatchSize: try container.decodeIfPresent(
+                Int.self,
+                forKey: .recorderIngressSendDataReplayBatchSize
+            ) ?? RuntimeRecorderIngressDefaults.replayBatchSize,
+            recorderIngressSendDataReplayRateLimitPerSecond: try container.decodeIfPresent(
+                Int.self,
+                forKey: .recorderIngressSendDataReplayRateLimitPerSecond
+            ) ?? RuntimeRecorderIngressDefaults.replayRateLimitPerSecond,
             automaticBackupEnabled: try container.decodeIfPresent(
                 Bool.self,
                 forKey: .automaticBackupEnabled
@@ -170,6 +186,8 @@ public enum RuntimeRecorderIngressSendDataMode: String, Codable, CaseIterable, E
 
 public enum RuntimeRecorderIngressDefaults {
     public static let sendDataMode = RuntimeRecorderIngressSendDataMode.spoolAndReplay
+    public static let replayBatchSize = 10
+    public static let replayRateLimitPerSecond = 10
 }
 
 public enum RuntimeSettingsInitialBackupDefaults {

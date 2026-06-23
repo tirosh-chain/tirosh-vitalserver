@@ -17,6 +17,8 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                     .adminPasswordFile(URL(fileURLWithPath: "/tmp/admin-password")),
                     .startOnBoot(false),
                     .recorderIngressSendDataMode(.mirrorSpool),
+                    .recorderIngressSendDataReplayBatchSize(8),
+                    .recorderIngressSendDataReplayRateLimitPerSecond(12),
                     .preventSystemSleep(false),
                 ],
                 restart: true
@@ -56,6 +58,8 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
             from: XCTUnwrap(harness.writes.first { $0.url == harness.guestSettingsURL }?.data)
         )
         XCTAssertEqual(guestSettings.recorderIngressSendDataMode, .mirrorSpool)
+        XCTAssertEqual(guestSettings.recorderIngressSendDataReplayBatchSize, 8)
+        XCTAssertEqual(guestSettings.recorderIngressSendDataReplayRateLimitPerSecond, 12)
     }
 
     func testInvalidSecretFileContentFailsBeforeWrites() {

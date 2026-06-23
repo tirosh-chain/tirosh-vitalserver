@@ -449,6 +449,10 @@ public struct RuntimeConfigureRunner {
             return .publicPort(value)
         case .recorderIngressSendDataMode(let value):
             return .recorderIngressSendDataMode(value)
+        case .recorderIngressSendDataReplayBatchSize(let value):
+            return .recorderIngressSendDataReplayBatchSize(value)
+        case .recorderIngressSendDataReplayRateLimitPerSecond(let value):
+            return .recorderIngressSendDataReplayRateLimitPerSecond(value)
         case .adminPassword(let value):
             return .adminPassword(value)
         case .adminPasswordFile(let value):

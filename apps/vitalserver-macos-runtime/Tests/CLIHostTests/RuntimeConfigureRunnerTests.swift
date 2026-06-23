@@ -32,6 +32,8 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 .autoRecovery(false),
                 .preventSystemSleep(false),
                 .recorderIngressSendDataMode(.mirrorSpool),
+                .recorderIngressSendDataReplayBatchSize(8),
+                .recorderIngressSendDataReplayRateLimitPerSecond(12),
                 .backupRetention(20),
             ],
             restart: true
@@ -69,6 +71,8 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(guestSettings.publicHost, "vitaldb.tirosh.ai")
         XCTAssertEqual(guestSettings.publicPort, 443)
         XCTAssertEqual(guestSettings.recorderIngressSendDataMode, .mirrorSpool)
+        XCTAssertEqual(guestSettings.recorderIngressSendDataReplayBatchSize, 8)
+        XCTAssertEqual(guestSettings.recorderIngressSendDataReplayRateLimitPerSecond, 12)
         XCTAssertEqual(guestSettings.backupRetentionCount, 20)
     }
 

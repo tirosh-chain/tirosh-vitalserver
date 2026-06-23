@@ -35,6 +35,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "publicHost": "example.test",
           "publicPort": 8080,
           "recorderIngressSendDataMode": "mirror_spool",
+          "recorderIngressSendDataReplayBatchSize": 8,
+          "recorderIngressSendDataReplayRateLimitPerSecond": 12,
           "automaticBackupEnabled": true,
           "backupScheduleTimes": ["03:15"],
           "backupRetentionCount": 30
@@ -66,6 +68,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.publicHost, "example.test")
         XCTAssertEqual(settings.publicPort, 8080)
         XCTAssertEqual(settings.recorderIngressSendDataMode, .mirrorSpool)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayBatchSize, 8)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayRateLimitPerSecond, 12)
         XCTAssertEqual(settings.backupRetentionCount, 30)
         XCTAssertEqual(settings.proxyPort, 19090)
         XCTAssertFalse(settings.autoRecoveryEnabled)
@@ -117,6 +121,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         XCTAssertEqual(settings.readIssues, [])
         XCTAssertEqual(settings.recorderIngressSendDataMode, .spoolAndReplay)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayBatchSize, 10)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayRateLimitPerSecond, 10)
     }
 
     func testLoadsAppliedVMSettingsFromAppliedVMConfigSnapshot() throws {
@@ -530,6 +536,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         settings.publicHost = "public.test"
         settings.publicPort = 8080
         settings.recorderIngressSendDataMode = .mirrorSpool
+        settings.recorderIngressSendDataReplayBatchSize = 8
+        settings.recorderIngressSendDataReplayRateLimitPerSecond = 12
         settings.backupRetentionCount = 20
         settings.startOnBoot = false
         settings.autoRecoveryEnabled = false
@@ -551,6 +559,17 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(
             value(after: RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataMode, in: arguments),
             "mirror_spool"
+        )
+        XCTAssertEqual(
+            value(after: RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataReplayBatchSize, in: arguments),
+            "8"
+        )
+        XCTAssertEqual(
+            value(
+                after: RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataReplayRateLimitPerSecond,
+                in: arguments
+            ),
+            "12"
         )
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionBackupRetention, in: arguments), "20")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionStartOnBoot, in: arguments), "false")
