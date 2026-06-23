@@ -2,8 +2,8 @@
 
 const assert = require("assert");
 const test = require("node:test");
-const { createClientWebSocketRelay } = require("../../src/infrastructure/http/websocket-client-relay");
-const { encodeWebSocketFrame, readFrame } = require("../../src/infrastructure/http/websocket-parser");
+const { createClientWebSocketRelay } = require("../../src/adapters/inbound/http/websocket-client-relay");
+const { encodeWebSocketFrame, readFrame } = require("../../src/adapters/inbound/http/websocket-parser");
 
 test("websocket client relay passes all frames in mirror_spool mode", () => {
   const observed = [];

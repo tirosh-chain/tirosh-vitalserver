@@ -4,8 +4,8 @@ const assert = require("assert");
 const crypto = require("crypto");
 const net = require("net");
 const test = require("node:test");
-const { createRecorderIngressServer } = require("../../src/infrastructure/http/proxy-server");
-const { encodeWebSocketFrame, readFrame } = require("../../src/infrastructure/http/websocket-parser");
+const { createRecorderIngressServer } = require("../../src/adapters/inbound/http/proxy-server");
+const { encodeWebSocketFrame, readFrame } = require("../../src/adapters/inbound/http/websocket-parser");
 
 test("recorder ingress suppresses client send_data frames in spool_only mode", { timeout: 2000 }, async () => {
   const fixture = await startProxyFixture("spool_only");

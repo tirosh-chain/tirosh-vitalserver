@@ -4,8 +4,8 @@ const assert = require("assert");
 const test = require("node:test");
 const { createAuditRecorder } = require("../../src/application/audit-recorder");
 const { auditEventTypes } = require("../../src/domain/audit-event-contracts");
-const { formatAuditLogLine } = require("../../src/infrastructure/file/audit-log-format");
-const { createAuditStdoutWriter } = require("../../src/infrastructure/process/audit-stdout-writer");
+const { formatAuditLogLine } = require("../../src/adapters/outbound/file/audit-log-format");
+const { createAuditStdoutWriter } = require("../../src/adapters/outbound/process/audit-stdout-writer");
 
 test("audit recorder fans out masked event envelopes to sinks", () => {
   const events = [];

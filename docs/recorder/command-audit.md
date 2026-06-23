@@ -158,8 +158,9 @@ contract를 추가합니다.
 Recorder ingress 코드는 작은 DDD 경계로 구성합니다.
 
 - `src/domain`: VitalServer Socket.IO event 이름, audit event 계약, command payload 해석, `send_data` 요약 규칙
-- `src/application`: Socket.IO audit 유스케이스와 도메인 흐름
-- `src/infrastructure`: HTTP/WebSocket proxy, Redis audit sink, Redis VRecorder identity store
+- `src/application`: Socket.IO audit, `send_data` ingress/replay 유스케이스와 `ports` 계약
+- `src/adapters/inbound`: HTTP/WebSocket proxy 같은 inbound entrypoint
+- `src/adapters/outbound`: Redis store, Socket.IO replay target, audit file/stdout sink 같은 outbound IO 구현
 - `src/observability`: runtime metric 수집과 status snapshot
 
 ### 5-3. Common fields

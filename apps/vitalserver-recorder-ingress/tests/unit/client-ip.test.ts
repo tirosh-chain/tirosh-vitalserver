@@ -2,7 +2,7 @@
 
 const assert = require("assert");
 const test = require("node:test");
-const { createClientIpSelector } = require("../../src/infrastructure/http/client-ip");
+const { createClientIpSelector } = require("../../src/adapters/inbound/http/client-ip");
 
 test("client ip selector trusts forwarded headers only when enabled", () => {
   const req = {

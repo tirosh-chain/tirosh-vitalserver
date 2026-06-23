@@ -1,7 +1,7 @@
 "use strict";
 
-const { sendDataIngressModes } = require("../../domain/send-data-ingress-contracts");
-const { filterClientSocketIoSendDataPayload } = require("../../domain/socketio-send-data-filter");
+const { sendDataIngressModes } = require("../../../domain/send-data-ingress-contracts");
+const { filterClientSocketIoSendDataPayload } = require("../../../domain/socketio-send-data-filter");
 const { encodeWebSocketFrame, readFrame } = require("./websocket-parser");
 
 function createClientWebSocketRelay({ mode, onFrame }) {

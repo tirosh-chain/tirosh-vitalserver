@@ -2,7 +2,7 @@
 
 const assert = require("assert");
 const test = require("node:test");
-const { payloadFromSpoolItem } = require("../../src/infrastructure/socketio/send-data-replay-target");
+const { payloadFromSpoolItem } = require("../../src/adapters/outbound/socketio/send-data-replay-target");
 
 test("send_data replay target restores binary payload from spool item", () => {
   const result = payloadFromSpoolItem({

@@ -2,7 +2,7 @@
 
 const assert = require("assert");
 const test = require("node:test");
-const { parseRespReply } = require("../../src/infrastructure/redis/client");
+const { parseRespReply } = require("../../src/adapters/outbound/redis/client");
 
 test("redis parser returns bulk string values for verification", () => {
   assert.deepStrictEqual(parseRespReply("+OK\r\n"), { complete: true, value: "OK" });

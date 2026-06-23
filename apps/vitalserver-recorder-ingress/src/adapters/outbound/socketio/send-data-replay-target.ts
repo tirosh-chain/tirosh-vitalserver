@@ -1,6 +1,6 @@
 "use strict";
 
-const { sendDataFailureReasons } = require("../../domain/send-data-ingress-contracts");
+const { sendDataFailureReasons } = require("../../../domain/send-data-ingress-contracts");
 
 function createSocketIoSendDataReplayTarget(config) {
   const socketIoClient = require("socket.io-client");

@@ -1,6 +1,6 @@
 "use strict";
 
-const { recordRecorderIpSync } = require("../../observability/metrics");
+const { recordRecorderIpSync } = require("../../../observability/metrics");
 
 function createVrIdentityStore(redis, metrics) {
   return {

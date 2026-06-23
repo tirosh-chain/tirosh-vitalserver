@@ -3,24 +3,24 @@
 const http = require("http");
 const net = require("net");
 const crypto = require("crypto");
-const { createAuditRecorder } = require("../../application/audit-recorder");
-const { createSendDataIngressService } = require("../../application/send-data-ingress-service");
-const { createSendDataReplayWorker } = require("../../application/send-data-replay-worker");
-const { auditEventTypes } = require("../../domain/audit-event-contracts");
-const { createSocketIoAuditService } = require("../../application/socketio-audit-service");
+const { createAuditRecorder } = require("../../../application/audit-recorder");
+const { createSendDataIngressService } = require("../../../application/send-data-ingress-service");
+const { createSendDataReplayWorker } = require("../../../application/send-data-replay-worker");
+const { auditEventTypes } = require("../../../domain/audit-event-contracts");
+const { createSocketIoAuditService } = require("../../../application/socketio-audit-service");
 const {
   configureSendDataSpool,
   createMetrics,
   metricsSnapshot,
   recordRecorderDisconnect,
-} = require("../../observability/metrics");
-const { createAuditLogWriter } = require("../file/audit-log-writer");
-const { createAuditStdoutWriter } = require("../process/audit-stdout-writer");
-const { createRedisAuditEventStore } = require("../redis/audit-event-store");
-const { createRedisClient } = require("../redis/client");
-const { createRedisSendDataSpoolStore } = require("../redis/send-data-spool-store");
-const { createVrIdentityStore } = require("../redis/vr-identity-store");
-const { createSocketIoSendDataReplayTarget } = require("../socketio/send-data-replay-target");
+} = require("../../../observability/metrics");
+const { createAuditLogWriter } = require("../../outbound/file/audit-log-writer");
+const { createAuditStdoutWriter } = require("../../outbound/process/audit-stdout-writer");
+const { createRedisAuditEventStore } = require("../../outbound/redis/audit-event-store");
+const { createRedisClient } = require("../../outbound/redis/client");
+const { createRedisSendDataSpoolStore } = require("../../outbound/redis/send-data-spool-store");
+const { createVrIdentityStore } = require("../../outbound/redis/vr-identity-store");
+const { createSocketIoSendDataReplayTarget } = require("../../outbound/socketio/send-data-replay-target");
 const { createBodyMirror } = require("./body-mirror");
 const { createClientIpSelector } = require("./client-ip");
 const { createClientWebSocketRelay, shouldSuppressSendDataRelay } = require("./websocket-client-relay");

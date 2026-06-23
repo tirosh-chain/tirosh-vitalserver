@@ -2,7 +2,7 @@
 
 const assert = require("assert");
 const test = require("node:test");
-const { createRedisSendDataSpoolStore } = require("../../src/infrastructure/redis/send-data-spool-store");
+const { createRedisSendDataSpoolStore } = require("../../src/adapters/outbound/redis/send-data-spool-store");
 
 test("redis send_data spool store appends JSON item to configured list", async () => {
   const calls = [];

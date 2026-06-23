@@ -2,7 +2,7 @@
 
 const assert = require("assert");
 const test = require("node:test");
-const { createVrIdentityStore } = require("../../src/infrastructure/redis/vr-identity-store");
+const { createVrIdentityStore } = require("../../src/adapters/outbound/redis/vr-identity-store");
 const { metricsSnapshot } = require("../../src/observability/metrics");
 const { metrics } = require("../helpers");
 

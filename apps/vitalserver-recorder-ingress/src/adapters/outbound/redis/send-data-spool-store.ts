@@ -1,7 +1,7 @@
 "use strict";
 
-const { beginSendDataReplayAttempt } = require("../../domain/send-data-replay-policy");
-const { sendDataFailureReasons } = require("../../domain/send-data-ingress-contracts");
+const { beginSendDataReplayAttempt } = require("../../../domain/send-data-replay-policy");
+const { sendDataFailureReasons } = require("../../../domain/send-data-ingress-contracts");
 
 function createRedisSendDataSpoolStore(config, redis) {
   const inFlightKey = config.inFlightListKey || `${config.listKey}:in_flight`;
