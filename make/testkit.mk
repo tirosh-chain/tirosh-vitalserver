@@ -33,7 +33,8 @@ testkit/recorder-ingress/replay: require-testkit-runtime
 	$(PYTHON) scripts/recorder_ingress_compose_e2e.py \
 		--compose "$(DOCKER_COMPOSE)" \
 		--bind-host "$(VITALSERVER_BIND_HOST)" \
-		--http-port "$(VITALSERVER_HTTP_PORT)"
+		--http-port "$(VITALSERVER_HTTP_PORT)" \
+		--replay-batch-size 5
 
 testkit/recorder-ingress/load: require-testkit-runtime
 	RECORDER_INGRESS_SEND_DATA_MODE=spool_and_replay \
@@ -47,6 +48,7 @@ testkit/recorder-ingress/load: require-testkit-runtime
 		--recorders 5 \
 		--max-messages 100 \
 		--interval 0.02 \
+		--replay-batch-size 13 \
 		--replay-rate-limit-per-second 50 \
 		--max-replay-lag-seconds 30 \
 		--assert-app-stable
@@ -62,7 +64,7 @@ testkit/recorder-ingress/backpressure: require-testkit-runtime
 		--http-port "$(VITALSERVER_HTTP_PORT)" \
 		--recorders 2 \
 		--max-messages 10 \
-		--interval 0 \
+		--interval 0.001 \
 		--replay-rate-limit-per-second 1 \
 		--max-pending-items 1 \
 		--min-spooled-events 1 \

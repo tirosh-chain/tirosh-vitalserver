@@ -1,7 +1,6 @@
 # VitalServer Redis 데이터 구조
 
-이 문서는 Vital Recorder 실시간 payload가 VitalServer를 거쳐 Redis에 저장되는 구조를 정리합니다.
-Relay 기능을 설계할 때 어떤 key를 보존해야 하는지 판단하기 위한 근거 문서입니다.
+이 문서는 Vital Recorder 실시간 payload가 VitalServer를 거쳐 Redis에 저장되는 구조를 정리합니다. Relay 기능을 설계할 때 어떤 key를 보존해야 하는지 판단하기 위한 근거 문서입니다.
 
 기준 코드는 upstream `vendor/vitalserver/vitalserver-old/service/include`의 `monitor.js`와 `db.js`입니다.
 
@@ -9,11 +8,9 @@ Relay 기능을 설계할 때 어떤 key를 보존해야 하는지 판단하기 
 
 ### 1-1. 왜 이 구조를 파악하는가
 
-이 구조를 파악하는 목적은 단순 관찰이 아닙니다. Source Redis의 실시간 데이터를 외부 target Redis로
-relay해서 upstream VitalServer를 제품 구성요소로 사용할 수 있게 만드는 것이 목적입니다.
+이 구조를 파악하는 목적은 단순 관찰이 아닙니다. Source Redis의 실시간 데이터를 외부 target Redis로 relay해서 upstream VitalServer를 제품 구성요소로 사용할 수 있게 만드는 것이 목적입니다.
 
-Relay는 VitalServer raw Redis port를 외부에 직접 열지 않습니다. 대신 Helper-managed relay container가
-source Redis를 read-only로 읽고, allowlisted key snapshot과 metadata event를 target Redis로 publish합니다.
+Relay는 VitalServer raw Redis port를 외부에 직접 열지 않습니다. 대신 Helper-managed relay container가 source Redis를 read-only로 읽고, allowlisted key snapshot과 metadata event를 target Redis로 publish합니다.
 
 ### 1-2. 이 문서가 다루는 범위
 
@@ -25,14 +22,13 @@ source Redis를 read-only로 읽고, allowlisted key snapshot과 metadata event�
 - relay scope를 나누는 기준
 - relay 구현이 지켜야 하는 binary/TTL/consumer 책임 경계
 
-Target Redis에서 event를 어떻게 읽고 consumer group, pending recovery, DLQ를 어떻게 운영하는지는
-site dev 문서의 [Redis Relay](../../site-docs/dev/redis-relay.md)를 기준으로 봅니다.
+Target Redis에서 event를 어떻게 읽고 consumer group, pending recovery, DLQ를 어떻게 운영하는지는 site dev 문서의 [Redis Relay](../../site-docs/dev/redis-relay.md)를 기준으로 봅니다.
 
 ## 2. 저장 흐름
 
-### 2-1. `send_data` 처리 순서
+### 2-1. `send_data` 저장 순서
 
-VitalServer는 Socket.IO `send_data` event를 받으면 아래 순서로 처리합니다.
+VitalServer는 Socket.IO `send_data` event를 받으면 아래 순서로 Redis key를 갱신합니다. 이 절은 Redis 저장 결과 관점의 축약 흐름입니다. Upstream `send_data` 처리 비용과 recorder ingress spool/replay로 메모리 압력을 완화하는 계약은 [Recorder ingress send_data spool/replay contract](send-data-spool-replay.md)를 기준으로 봅니다.
 
 1. zlib 압축 payload를 해제합니다.
 2. JSON을 읽어 `vrcode`, `ver`, `rooms`를 꺼냅니다.
@@ -42,8 +38,7 @@ VitalServer는 Socket.IO `send_data` event를 받으면 아래 순서로 처리�
 
 ### 2-2. testkit payload와 같은 흐름
 
-testkit의 `send-recorder` command는 이 흐름에 맞춰 `{vrcode, ver, rooms}` payload를 zlib으로 압축해
-`send_data` event로 보냅니다.
+testkit의 `send-recorder` command는 이 흐름에 맞춰 `{vrcode, ver, rooms}` payload를 zlib으로 압축해 `send_data` event로 보냅니다.
 
 따라서 testkit으로 만든 Redis key는 실제 Vital Recorder가 만든 Redis key와 같은 구조를 따라야 합니다.
 
@@ -68,8 +63,7 @@ sha1("admin/mnw4anvs4")
 
 ### 3-2. `vrcode`
 
-`vrcode`는 recorder를 식별하는 값입니다. VitalServer는 recorder별 담당 bed 목록, 마지막 전송 시각,
-recorder version 같은 context를 `vrcode` 기반 key에 저장합니다.
+`vrcode`는 recorder를 식별하는 값입니다. VitalServer는 recorder별 담당 bed 목록, 마지막 전송 시각, recorder version 같은 context를 `vrcode` 기반 key에 저장합니다.
 
 ## 4. Redis Key Model
 
@@ -118,8 +112,7 @@ TTL 값은 upstream 코드의 `EX` 값 기준입니다.
 - 6시간: `21600`
 - 5분: `300`
 
-Relay는 source key의 TTL 의미를 target Redis에 유지해야 합니다. Source key가 이미 만료되었거나 scan
-시점에 사라진 경우는 empty success가 아니라 missing snapshot으로 다룹니다.
+Relay는 source key의 TTL 의미를 target Redis에 유지해야 합니다. Source key가 이미 만료되었거나 scan 시점에 사라진 경우는 empty success가 아니라 missing snapshot으로 다룹니다.
 
 ## 5. Payload 예시
 
@@ -167,8 +160,7 @@ vrver_de8d5733096db32506a924ac566c903c343e2338
 
 ### 5-3. Frame payload 읽기
 
-`<bedid><timestamp>` key는 raw JSON이 아니라 zlib gzip으로 압축된 binary입니다. 읽을 때는 Redis `GET`으로
-bytes를 가져온 뒤 압축을 해제해야 합니다.
+`<bedid><timestamp>` key는 raw JSON이 아니라 zlib gzip으로 압축된 binary입니다. 읽을 때는 Redis `GET`으로 bytes를 가져온 뒤 압축을 해제해야 합니다.
 
 ```python
 import json
@@ -187,8 +179,7 @@ Waveform과 trend를 외부 consumer가 decode하는 목적이면 아래 key가 
 - `dts_<bedid>`, `<bedid><timestamp>`
 - `trend_<bedid>_<minute_ts>`, `dts_trend_result_<bedid>`
 
-이 scope는 payload volume이 큰 waveform/trend path를 우선합니다. Bed/recorder 관계나 device context를
-완전히 복원하기 위한 scope는 아닙니다.
+이 scope는 payload volume이 큰 waveform/trend path를 우선합니다. Bed/recorder 관계나 device context를 완전히 복원하기 위한 scope는 아닙니다.
 
 ### 6-2. `vital_reconstruction`
 
@@ -215,15 +206,13 @@ Recorder connection IP나 active IP 확인 같은 network context가 필요할 �
 
 ### 6-4. Denylist
 
-Credential, session, token, auth, rate-limit, websocket 같은 운영 내부 key는 relay하지 않습니다.
-Relay는 allowlist보다 denylist를 먼저 적용합니다.
+Credential, session, token, auth, rate-limit, websocket 같은 운영 내부 key는 relay하지 않습니다. Relay는 allowlist보다 denylist를 먼저 적용합니다.
 
 ## 7. Relay 방식
 
 ### 7-1. Source read 방식
 
-현재 relay는 Redis keyspace notification이나 per-bed timestamp cursor를 사용하지 않습니다. Source Redis
-설정을 바꾸지 않고 아래 command로 allowlisted key snapshot을 읽습니다.
+현재 relay는 Redis keyspace notification이나 per-bed timestamp cursor를 사용하지 않습니다. Source Redis 설정을 바꾸지 않고 아래 command로 allowlisted key snapshot을 읽습니다.
 
 - `SCAN`
 - `TYPE`
@@ -236,35 +225,28 @@ Relay는 allowlist보다 denylist를 먼저 적용합니다.
 
 Target Redis에는 VitalServer Redis Relay Protocol v1로 publish합니다.
 
-Publisher는 target key `RESTORE`, fingerprint update, publish dedupe, `key_published` stream event를
-atomic하게 기록합니다. HTTP/base64 export는 실시간/대용량 waveform relay 경로로 사용하지 않습니다.
+Publisher는 target key `RESTORE`, fingerprint update, publish dedupe, `key_published` stream event를 atomic하게 기록합니다. HTTP/base64 export는 실시간/대용량 waveform relay 경로로 사용하지 않습니다.
 
 ### 7-3. Consumer 책임
 
 Target Redis consumer는 stream event의 `target_key`를 fetch해서 decode해야 합니다.
 
-Consumer group pending recovery, DLQ, decode idempotency, downstream write idempotency는 relay가 아니라
-target consumer 책임입니다.
+Consumer group pending recovery, DLQ, decode idempotency, downstream write idempotency는 relay가 아니라 target consumer 책임입니다.
 
 ## 8. 외부 Redis Relay 계약
 
 ### 8-1. Source Redis는 외부에 공개하지 않음
 
-외부 consumer가 VitalServer host와 같은 Docker network에 없고 다른 PC 또는 Kubernetes에서 실행될 때도
-source Redis를 직접 외부에 노출하지 않습니다.
+외부 consumer가 VitalServer host와 같은 Docker network에 없고 다른 PC 또는 Kubernetes에서 실행될 때도 source Redis를 직접 외부에 노출하지 않습니다.
 
-대신 VitalServer compose 내부의 relay container가 source Redis 3.2에 Redis protocol로 직접 접근하고,
-설정된 target Redis 8.x endpoint로 publish합니다.
+대신 VitalServer compose 내부의 relay container가 source Redis 3.2에 Redis protocol로 직접 접근하고, 설정된 target Redis 8.x endpoint로 publish합니다.
 
 ### 8-2. Helper UI는 preset만 노출
 
-Helper app은 regex를 노출하지 않고, `waveform_trend_only` 또는 `vital_reconstruction` 같은 preset만
-설정합니다.
+Helper app은 regex를 노출하지 않고, `waveform_trend_only` 또는 `vital_reconstruction` 같은 preset만 설정합니다.
 
-Regex allowlist와 denylist는 relay code의 policy가 소유합니다. UI가 domain policy를 만들거나 수정하지
-않습니다.
+Regex allowlist와 denylist는 relay code의 policy가 소유합니다. UI가 domain policy를 만들거나 수정하지 않습니다.
 
 ### 8-3. Contract reference
 
-Target Redis key prefix, event stream, Protocol v1 field, consumer 권장 흐름은 site dev 문서의
-[Redis Relay](../../site-docs/dev/redis-relay.md)를 기준으로 봅니다.
+Target Redis key prefix, event stream, Protocol v1 field, consumer 권장 흐름은 site dev 문서의 [Redis Relay](../../site-docs/dev/redis-relay.md)를 기준으로 봅니다.

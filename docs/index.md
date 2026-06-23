@@ -1,7 +1,6 @@
 # 문서 지도
 
-이 디렉터리는 VitalServer 제품화 작업에서 확인한 사실, 결정, 운영 기준을 정리합니다.
-처음 보는 사람은 root [README](https://github.com/tirosh-chain/tirosh-vitalserver#readme)를 먼저 읽고, 아래 지도에서 필요한 문서군으로 이동합니다.
+이 디렉터리는 VitalServer 제품화 작업에서 확인한 사실, 결정, 운영 기준을 정리합니다. 처음 보는 사람은 root [README](https://github.com/tirosh-chain/tirosh-vitalserver#readme)를 먼저 읽고, 아래 지도에서 필요한 문서군으로 이동합니다.
 
 ## 빠른 경로
 
@@ -11,6 +10,7 @@
 | Vital Server Helper 공개/운영 문서 보기 | [Release Overview](../site-docs/release/index.md) |
 | Vital Server Helper 오픈소스 개발 문서 보기 | [Dev Overview](../site-docs/dev/index.md) |
 | Vital Server Helper release/dev 문서 작성 기준 보기 | [Vital Server Helper Release/Dev Documentation Plan](product/release-dev-documentation-plan.md) |
+| VRecorder/recorder ingress 문서군 보기 | [Recorder documentation map](recorder/README.md) |
 | VRecorder가 VitalServer에 어떻게 붙는지 보기 | [Vital Recorder](recorder/vrecorder.md) |
 | command audit event 계약 확인하기 | [VitalServer command audit](recorder/command-audit.md) |
 | recorder `send_data` spool/replay 계약 확인하기 | [Recorder ingress send_data spool/replay contract](recorder/send-data-spool-replay.md) |
@@ -41,6 +41,7 @@
 
 | 문서 | 역할 |
 |---|---|
+| [Recorder documentation map](recorder/README.md) | VRecorder, Redis key model, recorder ingress audit, send_data spool/replay 문서의 읽는 순서와 책임 경계 |
 | [Vital Recorder](recorder/vrecorder.md) | Socket.IO 접속 흐름, VRecorder 식별 기준, Web Monitoring 상태 표시 기준 |
 | [VitalServer command audit](recorder/command-audit.md) | recorder ingress 기반 `join_vr`, `send_data`, `req_cmd`, dispatch event 계약 |
 | [Recorder ingress send_data spool/replay contract](recorder/send-data-spool-replay.md) | upstream 수정 없이 `send_data`를 수신, 저장, 재생하기 위한 상태/실패/backpressure 계약 |
@@ -98,11 +99,12 @@ VM runtime 문서는 [VitalServer macOS Runtime](runtime/macos/index.md)를 진�
 
 1. root [README](https://github.com/tirosh-chain/tirosh-vitalserver#readme)
 2. [VitalServer 제품화 전략](product/productization.md)
-3. [Vital Recorder](recorder/vrecorder.md)
-4. [Testkit 사용법](testkit/usage.md)
-5. [Redis 데이터 구조](recorder/redis-data-model.md)
-6. [VitalServer macOS Runtime](runtime/macos/index.md)
-7. [Branch 운영 기준](repository/branching.md)
+3. [Recorder documentation map](recorder/README.md)
+4. [Vital Recorder](recorder/vrecorder.md)
+5. [Testkit 사용법](testkit/usage.md)
+6. [Redis 데이터 구조](recorder/redis-data-model.md)
+7. [VitalServer macOS Runtime](runtime/macos/index.md)
+8. [Branch 운영 기준](repository/branching.md)
 
 Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니다.
 
@@ -110,8 +112,7 @@ Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니�
 make swagger/up
 ```
 
-이후 `http://localhost:8082`에서 Swagger UI를 열면 VitalServer, Runtime Control API, Recorder Ingress API
-spec을 선택해서 볼 수 있습니다. VitalServer spec은 [OpenAPI 문서](api/vitalserver.openapi.yaml)로 관리합니다.
+이후 `http://localhost:8082`에서 Swagger UI를 열면 VitalServer, Runtime Control API, Recorder Ingress API spec을 선택해서 볼 수 있습니다. VitalServer spec은 [OpenAPI 문서](api/vitalserver.openapi.yaml)로 관리합니다.
 
 ## 작성 기준
 

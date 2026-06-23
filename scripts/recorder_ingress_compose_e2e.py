@@ -204,6 +204,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--ready-timeout", type=float, default=90.0)
     parser.add_argument("--replay-timeout", type=float, default=30.0)
     parser.add_argument("--replay-interval-ms", default="250")
+    parser.add_argument("--replay-batch-size")
     parser.add_argument("--replay-rate-limit-per-second", default="20")
     parser.add_argument("--max-pending-items")
     parser.add_argument("--max-pending-bytes")
@@ -237,6 +238,8 @@ def compose_env(args: argparse.Namespace) -> dict[str, str]:
     env["RECORDER_INGRESS_SEND_DATA_MODE"] = args.mode
     env["RECORDER_INGRESS_SEND_DATA_REPLAY_ENABLED"] = "1"
     env["RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS"] = str(args.replay_interval_ms)
+    if args.replay_batch_size is not None:
+        env["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] = str(args.replay_batch_size)
     env["RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND"] = str(
         args.replay_rate_limit_per_second
     )
@@ -309,10 +312,14 @@ def wait_for_replay(
     last_status: dict[str, object] = {}
     while time.monotonic() - started < timeout_seconds:
         status = read_status(base_url)
+        spool = status["spool"]
         replay = status["replay"]
         last_status = replay
         if (
             counter_delta(status, baseline_status, ("replay", "replayedEvents")) >= expected_events
+            and spool["pendingItems"] == 0
+            and spool["pendingBytes"] == 0
+            and replay["pendingItems"] == 0
             and replay["inFlightItems"] == 0
             and counter_delta(status, baseline_status, ("replay", "deadLetteredEvents")) == 0
         ):

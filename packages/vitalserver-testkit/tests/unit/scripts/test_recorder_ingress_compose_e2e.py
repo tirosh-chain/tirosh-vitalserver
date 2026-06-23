@@ -38,16 +38,26 @@ def test_wait_for_replay_uses_replayed_delta_not_absolute_counter(
     statuses = iter(
         [
             {
+                "spool": {
+                    "pendingItems": 0,
+                    "pendingBytes": 0,
+                },
                 "replay": {
                     "replayedEvents": 11,
                     "deadLetteredEvents": 3,
+                    "pendingItems": 0,
                     "inFlightItems": 0,
                 },
             },
             {
+                "spool": {
+                    "pendingItems": 0,
+                    "pendingBytes": 0,
+                },
                 "replay": {
                     "replayedEvents": 16,
                     "deadLetteredEvents": 3,
+                    "pendingItems": 0,
                     "inFlightItems": 0,
                 },
             },
@@ -81,9 +91,14 @@ def test_wait_for_replay_rejects_dead_letter_delta(
         e2e,
         "read_status",
         lambda _base_url: {
+            "spool": {
+                "pendingItems": 0,
+                "pendingBytes": 0,
+            },
             "replay": {
                 "replayedEvents": 6,
                 "deadLetteredEvents": 1,
+                "pendingItems": 0,
                 "inFlightItems": 0,
             },
         },
@@ -99,9 +114,62 @@ def test_wait_for_replay_rejects_dead_letter_delta(
         )
 
 
+def test_wait_for_replay_waits_for_pending_items_to_drain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = {
+        "replay": {
+            "replayedEvents": 0,
+            "deadLetteredEvents": 0,
+        },
+    }
+    statuses = iter(
+        [
+            {
+                "spool": {
+                    "pendingItems": 1,
+                    "pendingBytes": 512,
+                },
+                "replay": {
+                    "replayedEvents": 1,
+                    "deadLetteredEvents": 0,
+                    "pendingItems": 1,
+                    "inFlightItems": 0,
+                },
+            },
+            {
+                "spool": {
+                    "pendingItems": 0,
+                    "pendingBytes": 0,
+                },
+                "replay": {
+                    "replayedEvents": 3,
+                    "deadLetteredEvents": 0,
+                    "pendingItems": 0,
+                    "inFlightItems": 0,
+                },
+            },
+        ]
+    )
+
+    monkeypatch.setattr(e2e, "read_status", lambda _base_url: next(statuses))
+    monkeypatch.setattr(e2e.time, "sleep", lambda _seconds: None)
+
+    status = e2e.wait_for_replay(
+        "http://127.0.0.1:18080",
+        baseline,
+        1,
+        timeout_seconds=1,
+    )
+
+    assert status["replay"]["replayedEvents"] == 3
+
+
 def test_compose_env_includes_optional_backpressure_limits() -> None:
     args = e2e.parse_args(
         [
+            "--replay-batch-size",
+            "13",
             "--max-pending-items",
             "1",
             "--max-pending-bytes",
@@ -113,6 +181,7 @@ def test_compose_env_includes_optional_backpressure_limits() -> None:
 
     env = e2e.compose_env(args)
 
+    assert env["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "13"
     assert env["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS"] == "1"
     assert env["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES"] == "2048"
     assert env["RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES"] == "1024"
