@@ -1,3 +1,5 @@
+import type { SendDataSpoolItem } from "../../../domain/send-data-spool-types";
+
 export type SendDataSpoolStoreClaim = {
   raw?: string;
   inFlightKey?: string;
@@ -12,7 +14,7 @@ export type SendDataSpoolStoreWriteResult = {
 
 export type SendDataSpoolStoreClaimResult = {
   ok: boolean;
-  item?: Record<string, any> | null;
+  item?: SendDataSpoolItem | null;
   claim?: SendDataSpoolStoreClaim | null;
   reason?: string;
   message?: string;
@@ -21,21 +23,21 @@ export type SendDataSpoolStoreClaimResult = {
 };
 
 export type SendDataSpoolAppendPort = {
-  append(item: Record<string, any>): Promise<SendDataSpoolStoreWriteResult> | SendDataSpoolStoreWriteResult;
+  append(item: SendDataSpoolItem): Promise<SendDataSpoolStoreWriteResult> | SendDataSpoolStoreWriteResult;
 };
 
 export type SendDataSpoolReplayPort = {
   claim(): Promise<SendDataSpoolStoreClaimResult> | SendDataSpoolStoreClaimResult;
   requeue(
-    item: Record<string, any>,
+    item: SendDataSpoolItem,
     claim?: SendDataSpoolStoreClaim | null
   ): Promise<SendDataSpoolStoreWriteResult> | SendDataSpoolStoreWriteResult;
   markReplayed(
-    item: Record<string, any>,
+    item: SendDataSpoolItem,
     claim?: SendDataSpoolStoreClaim | null
   ): Promise<SendDataSpoolStoreWriteResult> | SendDataSpoolStoreWriteResult;
   deadLetter(
-    item: Record<string, any>,
+    item: SendDataSpoolItem,
     claim?: SendDataSpoolStoreClaim | null
   ): Promise<SendDataSpoolStoreWriteResult> | SendDataSpoolStoreWriteResult;
 };

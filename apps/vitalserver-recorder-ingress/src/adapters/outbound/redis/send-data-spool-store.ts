@@ -1,9 +1,24 @@
-import type { SendDataSpoolStorePort } from "../../../application/ports/outbound/send-data-spool-store-port";
+import type {
+  SendDataSpoolStoreClaim,
+  SendDataSpoolStorePort,
+  SendDataSpoolStoreWriteResult,
+} from "../../../application/ports/outbound/send-data-spool-store-port";
+import type { SendDataReplayAttemptOptions, SendDataSpoolItem } from "../../../domain/send-data-spool-types";
 
 "use strict";
 
 const { beginSendDataReplayAttempt } = require("../../../domain/send-data-replay-policy");
 const { sendDataFailureReasons } = require("../../../domain/send-data-ingress-contracts");
+
+type RedisCommandResult =
+  | {
+      ok: true;
+      reply: unknown;
+    }
+  | {
+      ok: false;
+      error: Error;
+    };
 
 function createRedisSendDataSpoolStore(config, redis): SendDataSpoolStorePort {
   const inFlightKey = config.inFlightListKey || `${config.listKey}:in_flight`;
@@ -22,7 +37,7 @@ function createRedisSendDataSpoolStore(config, redis): SendDataSpoolStorePort {
         });
       });
     },
-    async claim(options: any = {}) {
+    async claim(options: SendDataReplayAttemptOptions = {}) {
       const rawResult = await redisCommand(redis, ["RPOPLPUSH", config.listKey, inFlightKey]);
       if (!rawResult.ok) return rawResult;
       if (rawResult.reply === null) return { ok: true, item: null, claim: null };
@@ -74,17 +89,27 @@ function createRedisSendDataSpoolStore(config, redis): SendDataSpoolStorePort {
   };
 }
 
-async function moveClaim(redis, claim, targetKey, item) {
+async function moveClaim(
+  redis,
+  claim: SendDataSpoolStoreClaim | null | undefined,
+  targetKey: string,
+  item: SendDataSpoolItem
+): Promise<SendDataSpoolStoreWriteResult> {
   if (claim && claim.raw) {
     const removeResult = await redisCommand(redis, ["LREM", claim.inFlightKey, "1", claim.raw]);
     if (!removeResult.ok) return removeResult;
   }
   const pushResult = await redisCommand(redis, ["RPUSH", targetKey, JSON.stringify(item)]);
   if (!pushResult.ok) return pushResult;
-  return { ok: true, depth: Number.isFinite(pushResult.reply) ? pushResult.reply : null };
+  return {
+    ok: true,
+    depth: typeof pushResult.reply === "number" && Number.isFinite(pushResult.reply)
+      ? pushResult.reply
+      : null,
+  };
 }
 
-function redisCommand(redis, args): Promise<any> {
+function redisCommand(redis, args): Promise<RedisCommandResult> {
   return new Promise((resolve) => {
     redis.command(args, (error, reply) => {
       if (error) {

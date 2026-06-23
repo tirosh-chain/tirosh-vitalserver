@@ -24,8 +24,16 @@ const dispatchEvents = new Set(serverDispatchEventNames);
 type SocketIoAuditServiceDependencies = {
   audit: AuditRecorderPort;
   vrIdentityStore: VrIdentityStorePort;
-  metrics: Record<string, any>;
-  config: Record<string, any>;
+  metrics: {
+    socketIoParseFailures: number;
+    socketIoEventsSeen: number;
+    [key: string]: unknown;
+  };
+  config: {
+    vitalServer: {
+      ipRewrite: Parameters<VrIdentityStorePort["setRecorderIp"]>[2];
+    };
+  };
   sendDataIngress?: SendDataIngressPort;
 };
 
@@ -161,7 +169,8 @@ function recordJoinVr(
 ) {
   const vrcode = String(payload || "");
   context.joined_vrcode = vrcode;
-  recordRecorderJoin(metrics, context, vrcode, context.ip && context.ip.selected_ip);
+  const selectedIp = typeof context.ip?.selected_ip === "string" ? context.ip.selected_ip : undefined;
+  recordRecorderJoin(metrics, context, vrcode, selectedIp);
   audit.record(auditEventTypes.JOIN_VR, {
     request_id: context.request_id,
     connection_id: context.connection_id,
@@ -169,7 +178,7 @@ function recordJoinVr(
     truncated: Boolean(options.truncated),
     ...context.ip,
   });
-  vrIdentityStore.setRecorderIp(vrcode, context.ip && context.ip.selected_ip, config.vitalServer.ipRewrite);
+  vrIdentityStore.setRecorderIp(vrcode, selectedIp, config.vitalServer.ipRewrite);
 }
 
 module.exports = { createSocketIoAuditService, socketIoBinaryAttachmentPayload };

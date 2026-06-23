@@ -1,3 +1,21 @@
+import type {
+  SendDataReplayAttemptOptions,
+  SendDataReplayAttemptResult,
+  SendDataReplayCompletionResult,
+  SendDataReplayConfig,
+  SendDataSpoolItem,
+} from "./send-data-spool-types";
+
+type ReplayItemValidationResult =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      reason: string;
+      message: string;
+    };
+
 "use strict";
 
 const {
@@ -5,9 +23,12 @@ const {
   sendDataSpoolItemStates,
 } = require("./send-data-ingress-contracts");
 
-function beginSendDataReplayAttempt(item, options: any = {}) {
+function beginSendDataReplayAttempt(
+  item: SendDataSpoolItem,
+  options: SendDataReplayAttemptOptions = {}
+): SendDataReplayAttemptResult {
   const validation = validateReplayItem(item);
-  if (!validation.ok) return validation;
+  if (validation.ok === false) return validation;
 
   const now = options.now || (() => new Date());
   return {
@@ -21,7 +42,12 @@ function beginSendDataReplayAttempt(item, options: any = {}) {
   };
 }
 
-function completeSendDataReplayAttempt(item, result, config, options: any = {}) {
+function completeSendDataReplayAttempt(
+  item: SendDataSpoolItem,
+  result: { ok: boolean; reason?: string; message?: string },
+  config: SendDataReplayConfig,
+  options: SendDataReplayAttemptOptions = {}
+): SendDataReplayCompletionResult {
   const now = options.now || (() => new Date());
   const occurredAt = now().toISOString();
   if (result && result.ok) {
@@ -76,7 +102,12 @@ function completeSendDataReplayAttempt(item, result, config, options: any = {}) 
   };
 }
 
-function deadLetterInvalidSendDataSpoolDocument(raw, reason, message, options: any = {}) {
+function deadLetterInvalidSendDataSpoolDocument(
+  raw: string | undefined,
+  reason: string | undefined,
+  message: string | undefined,
+  options: SendDataReplayAttemptOptions = {}
+): SendDataSpoolItem {
   const now = options.now || (() => new Date());
   const occurredAt = now().toISOString();
   return {
@@ -103,7 +134,7 @@ function deadLetterInvalidSendDataSpoolDocument(raw, reason, message, options: a
   };
 }
 
-function validateReplayItem(item) {
+function validateReplayItem(item: SendDataSpoolItem): ReplayItemValidationResult {
   if (!item || typeof item !== "object") {
     return invalid("send_data spool document is not an object");
   }
@@ -122,11 +153,11 @@ function validateReplayItem(item) {
   return { ok: true };
 }
 
-function failureRecord(reason, message, occurredAt) {
+function failureRecord(reason: string, message: string, occurredAt: string) {
   return { reason, message, occurredAt };
 }
 
-function invalid(message) {
+function invalid(message: string): SendDataReplayAttemptResult {
   return {
     ok: false,
     reason: sendDataFailureReasons.INVALID_PAYLOAD,

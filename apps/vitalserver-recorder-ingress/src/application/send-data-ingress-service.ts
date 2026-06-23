@@ -1,5 +1,10 @@
 import type { SendDataIngressPort } from "./ports/inbound/send-data-ingress-port";
 import type { SendDataSpoolAppendPort } from "./ports/outbound/send-data-spool-store-port";
+import type {
+  SendDataContext,
+  SendDataPayloadSummary,
+  SendDataSpoolConfig,
+} from "../domain/send-data-spool-types";
 
 "use strict";
 
@@ -15,8 +20,8 @@ const {
 } = require("../observability/metrics");
 
 type SendDataIngressServiceDependencies = {
-  config: Record<string, any>;
-  metrics: Record<string, any>;
+  config: { spool: SendDataSpoolConfig };
+  metrics: Record<string, unknown>;
   spoolStore: SendDataSpoolAppendPort;
   now?: () => Date;
   idFactory?: () => string;
@@ -101,7 +106,7 @@ function createSendDataIngressService({
   };
 }
 
-function recorderCode(context: Record<string, any>, payloadSummary: Record<string, any>) {
+function recorderCode(context: SendDataContext, payloadSummary: SendDataPayloadSummary) {
   if (payloadSummary && payloadSummary.vrcode) return String(payloadSummary.vrcode);
   if (context && context.joined_vrcode) return String(context.joined_vrcode);
   return "";

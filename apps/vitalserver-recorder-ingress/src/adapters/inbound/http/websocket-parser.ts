@@ -1,5 +1,10 @@
 "use strict";
 
+type WebSocketFrameEncodeOptions = {
+  mask?: boolean;
+  maskKey?: Buffer;
+};
+
 function createWebSocketParser(onFrame) {
   let buffer = Buffer.alloc(0);
 
@@ -56,7 +61,7 @@ function readFrame(buffer) {
   };
 }
 
-function encodeWebSocketFrame(payload, opcode, options: any = {}) {
+function encodeWebSocketFrame(payload, opcode, options: WebSocketFrameEncodeOptions = {}) {
   const buffer = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload), "utf8");
   const mask = Boolean(options.mask);
   const length = buffer.length;

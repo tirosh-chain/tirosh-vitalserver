@@ -1,3 +1,9 @@
+import type {
+  SendDataContext,
+  SendDataPayloadSummary,
+  SendDataSpoolItemResult,
+} from "./send-data-spool-types";
+
 "use strict";
 
 const crypto = require("crypto");
@@ -11,7 +17,12 @@ type SendDataSpoolItemOptions = {
   idFactory?: () => string;
 };
 
-function createSendDataSpoolItem(payload, context, payloadSummary, options: SendDataSpoolItemOptions = {}) {
+function createSendDataSpoolItem(
+  payload: unknown,
+  context: SendDataContext,
+  payloadSummary: SendDataPayloadSummary,
+  options: SendDataSpoolItemOptions = {}
+): SendDataSpoolItemResult {
   const buffer = payloadBuffer(payload);
   if (!buffer) {
     return invalid("send_data payload is not a string or buffer");
@@ -46,19 +57,19 @@ function createSendDataSpoolItem(payload, context, payloadSummary, options: Send
   };
 }
 
-function payloadBuffer(payload) {
+function payloadBuffer(payload: unknown): Buffer | null {
   if (Buffer.isBuffer(payload)) return payload;
   if (typeof payload === "string") return Buffer.from(payload, "binary");
   return null;
 }
 
-function recorderCode(context, payloadSummary) {
+function recorderCode(context: SendDataContext, payloadSummary: SendDataPayloadSummary) {
   if (payloadSummary && payloadSummary.vrcode) return String(payloadSummary.vrcode);
   if (context && context.joined_vrcode) return String(context.joined_vrcode);
   return "";
 }
 
-function invalid(message) {
+function invalid(message: string): SendDataSpoolItemResult {
   return {
     ok: false,
     reason: sendDataFailureReasons.INVALID_PAYLOAD,

@@ -8,6 +8,11 @@ import type {
   SendDataSpoolStoreClaimResult,
   SendDataSpoolStoreWriteResult,
 } from "./ports/outbound/send-data-spool-store-port";
+import type {
+  SendDataReplayConfig,
+  SendDataSpoolConfig,
+  SendDataSpoolItem,
+} from "../domain/send-data-spool-types";
 
 "use strict";
 
@@ -25,8 +30,8 @@ const {
 } = require("../observability/metrics");
 
 type SendDataReplayWorkerDependencies = {
-  config: Record<string, any>;
-  metrics: Record<string, any>;
+  config: SendDataSpoolConfig;
+  metrics: Record<string, unknown>;
   spoolStore: SendDataSpoolReplayPort;
   replayTarget: SendDataReplayTargetPort;
   timer?: Pick<typeof globalThis, "setInterval" | "clearInterval">;
@@ -128,7 +133,7 @@ async function runReplayBatch({
   return { ok: true, processed };
 }
 
-async function sendToReplayTarget(replayTarget: SendDataReplayTargetPort, item: Record<string, any>) {
+async function sendToReplayTarget(replayTarget: SendDataReplayTargetPort, item: SendDataSpoolItem) {
   try {
     return await replayTarget.send(item);
   } catch (error) {
@@ -146,7 +151,7 @@ async function deadLetterInvalidClaim({
   spoolStore,
 }: {
   claim: SendDataSpoolStoreClaimResult;
-  metrics: Record<string, any>;
+  metrics: Record<string, unknown>;
   spoolStore: SendDataSpoolReplayPort;
 }) {
   if (claim.reason !== sendDataFailureReasons.INVALID_PAYLOAD) return;
@@ -165,7 +170,7 @@ function failureMessage(result: SendDataSpoolStoreWriteResult) {
   return "send_data replay store command failed";
 }
 
-function replayBatchLimit(config: Record<string, any>) {
+function replayBatchLimit(config: SendDataReplayConfig) {
   const batchSize = positiveInteger(config.batchSize, 1);
   const rateLimit = positiveInteger(config.rateLimitPerSecond, batchSize);
   return Math.max(1, Math.min(batchSize, rateLimit));

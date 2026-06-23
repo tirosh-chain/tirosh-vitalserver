@@ -1,4 +1,4 @@
-import type { Server } from "http";
+import type { IncomingMessage, Server } from "http";
 import type { AuditRecorderPort } from "../../../application/ports/inbound/audit-recorder-port";
 import type { SendDataReplayWorkerPort } from "../../../application/ports/inbound/send-data-replay-worker-port";
 import type { SocketIoAuditPort } from "../../../application/ports/inbound/socketio-audit-port";
@@ -15,14 +15,34 @@ const { createClientWebSocketRelay, shouldSuppressSendDataRelay } = require("./w
 const { createWebSocketParser } = require("./websocket-parser");
 
 type ClientIpSelectorPort = {
-  select(req: Record<string, any>): Record<string, any>;
+  select(req: IncomingMessage): Record<string, unknown>;
+};
+
+type RecorderIngressHttpConfig = {
+  upstream: {
+    host: string;
+    port: number;
+    timeoutMs: number;
+  };
+  audit: {
+    maxBodyBytes: number;
+  };
+  spool: {
+    mode: string;
+  };
+};
+
+type RecorderIngressHttpMetrics = {
+  httpRequests: number;
+  activeWebSockets: number;
+  [key: string]: unknown;
 };
 
 type RecorderIngressHttpServerDependencies = {
   audit: AuditRecorderPort;
   clientIp: ClientIpSelectorPort;
-  config: Record<string, any>;
-  metrics: Record<string, any>;
+  config: RecorderIngressHttpConfig;
+  metrics: RecorderIngressHttpMetrics;
   sendDataReplayWorker: SendDataReplayWorkerPort;
   socketIoAudit: SocketIoAuditPort;
 };

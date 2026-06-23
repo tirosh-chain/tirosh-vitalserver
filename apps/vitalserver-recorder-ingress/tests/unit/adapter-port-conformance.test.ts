@@ -2,6 +2,7 @@ import type { AuditSinkPort } from "../../src/application/ports/outbound/audit-s
 import type { SendDataReplayTargetPort } from "../../src/application/ports/outbound/send-data-replay-target-port";
 import type { SendDataSpoolStorePort } from "../../src/application/ports/outbound/send-data-spool-store-port";
 import type { VrIdentityStorePort } from "../../src/application/ports/outbound/vr-identity-store-port";
+import type { SendDataSpoolItem } from "../../src/domain/send-data-spool-types";
 
 "use strict";
 
@@ -65,7 +66,7 @@ test("redis spool store port preserves append dependency failure as explicit fai
     },
   });
 
-  const result = await spoolStore.append({ id: "senddata_test", state: "pending" });
+  const result = await spoolStore.append(spoolItem());
 
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.error.message, "redis RPUSH failed");
@@ -102,5 +103,24 @@ function spoolConfig() {
     inFlightListKey: "vitalserver:recorder_ingress:send_data:in_flight",
     replayedListKey: "vitalserver:recorder_ingress:send_data:replayed",
     deadLetterListKey: "vitalserver:recorder_ingress:send_data:dead_letter",
+  };
+}
+
+function spoolItem(): SendDataSpoolItem {
+  return {
+    schemaVersion: 1,
+    id: "senddata_test",
+    state: "pending",
+    vrcode: "VR_A",
+    connectionId: "connection-1",
+    requestId: "request-1",
+    receivedAt: "2026-06-22T10:00:00.000Z",
+    payloadEncoding: "binary",
+    payloadBytes: 7,
+    payloadBase64: Buffer.from("payload").toString("base64"),
+    payloadSummary: { bytes: 7, vrcode: "VR_A" },
+    attemptCount: 0,
+    lastAttemptAt: null,
+    lastFailure: null,
   };
 }

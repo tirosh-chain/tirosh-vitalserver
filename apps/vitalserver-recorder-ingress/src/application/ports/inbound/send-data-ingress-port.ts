@@ -1,9 +1,15 @@
+import type {
+  SendDataContext,
+  SendDataPayloadSummary,
+  SendDataSpoolItem,
+} from "../../../domain/send-data-spool-types";
+
 export type SendDataIngressResult =
   | {
       ok: true;
       outcome: "accepted" | "spooled";
       mode?: string;
-      item?: unknown;
+      item?: SendDataSpoolItem;
     }
   | {
       ok: false;
@@ -13,5 +19,9 @@ export type SendDataIngressResult =
     };
 
 export type SendDataIngressPort = {
-  record(payload: unknown, context: Record<string, any>, payloadSummary: Record<string, any>): Promise<SendDataIngressResult>;
+  record(
+    payload: unknown,
+    context: SendDataContext,
+    payloadSummary: SendDataPayloadSummary
+  ): Promise<SendDataIngressResult>;
 };

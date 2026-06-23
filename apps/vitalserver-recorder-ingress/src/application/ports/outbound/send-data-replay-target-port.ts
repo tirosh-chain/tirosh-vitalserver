@@ -1,3 +1,5 @@
+import type { SendDataSpoolItem } from "../../../domain/send-data-spool-types";
+
 export type SendDataReplayTargetResult =
   | {
       ok: true;
@@ -9,5 +11,5 @@ export type SendDataReplayTargetResult =
     };
 
 export type SendDataReplayTargetPort = {
-  send(item: Record<string, any>): Promise<SendDataReplayTargetResult> | SendDataReplayTargetResult;
+  send(item: SendDataSpoolItem | Partial<SendDataSpoolItem>): Promise<SendDataReplayTargetResult> | SendDataReplayTargetResult;
 };
