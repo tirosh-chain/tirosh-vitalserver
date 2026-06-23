@@ -1,10 +1,12 @@
+import type { AuditSinkPort } from "../../../application/ports/outbound/audit-sink-port";
+
 "use strict";
 
 const fs = require("fs");
 const path = require("path");
 const { formatAuditLogLine } = require("./audit-log-format");
 
-function createAuditLogWriter(config, metrics) {
+function createAuditLogWriter(config, metrics): AuditSinkPort {
   ensureLogDirectory(config.path);
 
   return {

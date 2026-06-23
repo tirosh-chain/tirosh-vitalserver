@@ -1,8 +1,10 @@
+import type { VrIdentityStorePort } from "../../../application/ports/outbound/vr-identity-store-port";
+
 "use strict";
 
 const { recordRecorderIpSync } = require("../../../observability/metrics");
 
-function createVrIdentityStore(redis, metrics) {
+function createVrIdentityStore(redis, metrics): VrIdentityStorePort {
   return {
     setRecorderIp(vrcode, selectedIp, policy) {
       if (!vrcode || !selectedIp) return;

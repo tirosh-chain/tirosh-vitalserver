@@ -1,8 +1,10 @@
+import type { AuditSinkPort } from "../../../application/ports/outbound/audit-sink-port";
+
 "use strict";
 
 const { formatAuditLogLine } = require("../file/audit-log-format");
 
-function createAuditStdoutWriter(config, metrics, output = process.stdout) {
+function createAuditStdoutWriter(config, metrics, output = process.stdout): AuditSinkPort {
   return {
     write(event) {
       if (!config.enabled) return;

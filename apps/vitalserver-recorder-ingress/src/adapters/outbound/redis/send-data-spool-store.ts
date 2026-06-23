@@ -1,9 +1,11 @@
+import type { SendDataSpoolStorePort } from "../../../application/ports/outbound/send-data-spool-store-port";
+
 "use strict";
 
 const { beginSendDataReplayAttempt } = require("../../../domain/send-data-replay-policy");
 const { sendDataFailureReasons } = require("../../../domain/send-data-ingress-contracts");
 
-function createRedisSendDataSpoolStore(config, redis) {
+function createRedisSendDataSpoolStore(config, redis): SendDataSpoolStorePort {
   const inFlightKey = config.inFlightListKey || `${config.listKey}:in_flight`;
   const replayedKey = config.replayedListKey || `${config.listKey}:replayed`;
   const deadLetterKey = config.deadLetterListKey || `${config.listKey}:dead_letter`;

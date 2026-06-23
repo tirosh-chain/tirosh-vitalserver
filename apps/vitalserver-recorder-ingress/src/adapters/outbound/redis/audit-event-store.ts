@@ -1,6 +1,8 @@
+import type { AuditSinkPort } from "../../../application/ports/outbound/audit-sink-port";
+
 "use strict";
 
-function createRedisAuditEventStore(config, redis, metrics) {
+function createRedisAuditEventStore(config, redis, metrics): AuditSinkPort {
   return {
     write(event) {
       const line = JSON.stringify(event);

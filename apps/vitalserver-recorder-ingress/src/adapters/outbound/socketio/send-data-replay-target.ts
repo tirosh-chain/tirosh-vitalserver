@@ -1,8 +1,21 @@
+import type { SendDataReplayTargetPort } from "../../../application/ports/outbound/send-data-replay-target-port";
+
 "use strict";
 
 const { sendDataFailureReasons } = require("../../../domain/send-data-ingress-contracts");
 
-function createSocketIoSendDataReplayTarget(config) {
+type SendDataReplayPayloadResult =
+  | {
+      ok: true;
+      value: Buffer | string;
+    }
+  | {
+      ok: false;
+      reason: string;
+      message: string;
+    };
+
+function createSocketIoSendDataReplayTarget(config): SendDataReplayTargetPort {
   const socketIoClient = require("socket.io-client");
   const replayConfig = config.replay || (config.spool && config.spool.replay) || {};
   const targetTimeoutMs = replayConfig.targetTimeoutMs || 5000;
@@ -62,10 +75,10 @@ function createSocketIoSendDataReplayTarget(config) {
   };
 }
 
-function payloadFromSpoolItem(item) {
+function payloadFromSpoolItem(item): SendDataReplayPayloadResult {
   if (!item || typeof item.payloadBase64 !== "string") {
     return {
-      ok: false,
+      ok: false as const,
       reason: sendDataFailureReasons.INVALID_PAYLOAD,
       message: "send_data spool item has no payloadBase64",
     };
@@ -76,16 +89,16 @@ function payloadFromSpoolItem(item) {
     buffer = Buffer.from(item.payloadBase64, "base64");
   } catch (error) {
     return {
-      ok: false,
+      ok: false as const,
       reason: sendDataFailureReasons.INVALID_PAYLOAD,
       message: error.message,
     };
   }
 
-  if (item.payloadEncoding === "binary") return { ok: true, value: buffer };
-  if (item.payloadEncoding === "string") return { ok: true, value: buffer.toString("binary") };
+  if (item.payloadEncoding === "binary") return { ok: true as const, value: buffer };
+  if (item.payloadEncoding === "string") return { ok: true as const, value: buffer.toString("binary") };
   return {
-    ok: false,
+    ok: false as const,
     reason: sendDataFailureReasons.INVALID_PAYLOAD,
     message: `unsupported send_data payload encoding ${item.payloadEncoding}`,
   };

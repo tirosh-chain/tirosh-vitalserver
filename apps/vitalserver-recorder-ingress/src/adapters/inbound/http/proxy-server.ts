@@ -1,3 +1,8 @@
+import type { Server } from "http";
+import type { AuditRecorderPort } from "../../../application/ports/inbound/audit-recorder-port";
+import type { SendDataReplayWorkerPort } from "../../../application/ports/inbound/send-data-replay-worker-port";
+import type { SocketIoAuditPort } from "../../../application/ports/inbound/socketio-audit-port";
+
 "use strict";
 
 const http = require("http");
@@ -9,6 +14,19 @@ const { createBodyMirror } = require("./body-mirror");
 const { createClientWebSocketRelay, shouldSuppressSendDataRelay } = require("./websocket-client-relay");
 const { createWebSocketParser } = require("./websocket-parser");
 
+type ClientIpSelectorPort = {
+  select(req: Record<string, any>): Record<string, any>;
+};
+
+type RecorderIngressHttpServerDependencies = {
+  audit: AuditRecorderPort;
+  clientIp: ClientIpSelectorPort;
+  config: Record<string, any>;
+  metrics: Record<string, any>;
+  sendDataReplayWorker: SendDataReplayWorkerPort;
+  socketIoAudit: SocketIoAuditPort;
+};
+
 function createRecorderIngressHttpServer({
   audit,
   clientIp,
@@ -16,7 +34,7 @@ function createRecorderIngressHttpServer({
   metrics,
   sendDataReplayWorker,
   socketIoAudit,
-}) {
+}: RecorderIngressHttpServerDependencies): Server {
   const dependencies = { audit, clientIp, config, metrics, socketIoAudit };
   const server = http.createServer((req, res) => proxyHttp(req, res, dependencies));
   server.on("upgrade", (req, socket, head) => proxyUpgrade(req, socket, head, dependencies));
