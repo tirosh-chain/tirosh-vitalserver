@@ -101,6 +101,34 @@ final class ConfigureRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.logMessage, "runtime configuration updated restart=false restartRequirement=none")
     }
 
+    func testRestartPolicyRequiresContainerServicesReconcileForRecorderIngressChange() throws {
+        let harness = Harness()
+
+        let plan = try harness.useCase.plan(
+            ConfigureRuntimeRequest(
+                changes: [
+                    .recorderIngressSendDataReplayMaxMiBPerSecond(25),
+                ],
+                restart: true
+            ),
+            context: harness.context,
+            currentVMConfig: harness.vmConfig,
+            currentGuestRuntimeConfig: harness.guestConfig,
+            currentGuestRuntimeSettings: harness.guestSettings,
+            currentVMDiskSizeGiB: harness.currentDiskGiB
+        )
+
+        XCTAssertTrue(plan.restart)
+        XCTAssertEqual(plan.restartRequirement, .containerServices)
+        XCTAssertTrue(plan.effects.contains(.reconcileGuestComposeServices))
+        XCTAssertFalse(plan.effects.contains(.restartRuntimeServices))
+        XCTAssertEqual(
+            plan.logMessage,
+            "runtime configuration updated restart=true restartRequirement=containerServices"
+        )
+        XCTAssertEqual(plan.guestRuntimeSettings.recorderIngressSendDataReplayMaxMiBPerSecond, 25)
+    }
+
     func testRestartPolicyRequiresVMRuntimeRestartForVitalFilesDirectoryChange() throws {
         let harness = Harness()
 

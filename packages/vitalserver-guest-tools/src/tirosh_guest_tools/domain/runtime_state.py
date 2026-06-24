@@ -68,6 +68,7 @@ class RuntimeContainerService:
     error: str | None
     finished_at: str | None
     health: str | None
+    memory_used_bytes: int | None
     memory_limit_bytes: int | None
     name: str | None
     oom_killed: bool | None
@@ -83,6 +84,7 @@ class RuntimeContainerService:
             "error": self.error,
             "finishedAt": self.finished_at,
             "health": self.health,
+            "memoryUsedBytes": self.memory_used_bytes,
             "memoryLimitBytes": self.memory_limit_bytes,
             "name": self.name,
             "oomKilled": self.oom_killed,

@@ -78,7 +78,10 @@ final class RuntimeControlContractsTests: XCTestCase {
             vmErrors: [],
             vmIP: "192.168.64.2",
             guestHTTP: "200",
-            hostProxyHTTP: "200"
+            hostProxyHTTP: "200",
+            vitalServerMemory: RuntimeContainerMemoryUsage(usedBytes: 1_073_741_824, limitBytes: 4_294_967_296),
+            recorderIngressMemory: RuntimeContainerMemoryUsage(usedBytes: 134_217_728, limitBytes: nil),
+            redisMemory: RuntimeContainerMemoryUsage(usedBytes: 67_108_864, limitBytes: 536_870_912)
         )
 
         XCTAssertTrue(RuntimeReadinessPolicy.isReady(status))
@@ -97,6 +100,9 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded.vmServiceState, .loaded)
         XCTAssertEqual(decoded.proxyServiceState, .loaded)
         XCTAssertEqual(decoded.watchdogServiceState, .loaded)
+        XCTAssertEqual(decoded.vitalServerMemory?.percent, 25)
+        XCTAssertEqual(decoded.recorderIngressMemory, RuntimeContainerMemoryUsage(usedBytes: 134_217_728, limitBytes: nil))
+        XCTAssertEqual(decoded.redisMemory?.percent, 12.5)
         XCTAssertTrue(RuntimeReadinessPolicy.isReady(decoded))
     }
 

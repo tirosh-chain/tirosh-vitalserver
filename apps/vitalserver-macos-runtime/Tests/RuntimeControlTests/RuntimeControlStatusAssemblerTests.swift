@@ -18,7 +18,23 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
                     guestHTTP: "200",
                     redisUIHTTP: "200",
                     swaggerUIHTTP: "200",
-                    cpuUsagePercent: 12.5
+                    cpuUsagePercent: 12.5,
+                    containerServices: [
+                        RuntimeContainerServiceObservation(
+                            service: "app",
+                            memoryUsedBytes: 1_073_741_824,
+                            memoryLimitBytes: 4_294_967_296
+                        ),
+                        RuntimeContainerServiceObservation(
+                            service: "recorder-ingress",
+                            memoryUsedBytes: 134_217_728
+                        ),
+                        RuntimeContainerServiceObservation(
+                            service: "redis",
+                            memoryUsedBytes: 67_108_864,
+                            memoryLimitBytes: 536_870_912
+                        ),
+                    ]
                 ),
                 error: nil,
                 issue: nil
@@ -34,6 +50,11 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         XCTAssertEqual(status.operation, RuntimeOperation.health)
         XCTAssertEqual(status.startedAt, "2026-06-01T00:00:00Z")
         XCTAssertEqual(status.cpuUsagePercent, 12.5)
+        XCTAssertEqual(status.vitalServerMemory, RuntimeContainerMemoryUsage(usedBytes: 1_073_741_824, limitBytes: 4_294_967_296))
+        XCTAssertEqual(status.vitalServerMemory?.percent, 25)
+        XCTAssertEqual(status.recorderIngressMemory, RuntimeContainerMemoryUsage(usedBytes: 134_217_728))
+        XCTAssertNil(status.recorderIngressMemory?.percent)
+        XCTAssertEqual(status.redisMemory?.percent, 12.5)
         XCTAssertEqual(status.proxyPort, 19090)
         XCTAssertEqual(status.readIssues, [RuntimeStatusReadIssue]())
     }

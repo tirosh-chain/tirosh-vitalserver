@@ -33,7 +33,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 .preventSystemSleep(false),
                 .recorderIngressSendDataMode(.mirrorSpool),
                 .recorderIngressSendDataReplayBatchSize(8),
-                .recorderIngressSendDataReplayRateLimitPerSecond(12),
+                .recorderIngressSendDataReplayMaxMiBPerSecond(12),
                 .backupRetention(20),
             ],
             restart: true
@@ -72,7 +72,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(guestSettings.publicPort, 443)
         XCTAssertEqual(guestSettings.recorderIngressSendDataMode, .mirrorSpool)
         XCTAssertEqual(guestSettings.recorderIngressSendDataReplayBatchSize, 8)
-        XCTAssertEqual(guestSettings.recorderIngressSendDataReplayRateLimitPerSecond, 12)
+        XCTAssertEqual(guestSettings.recorderIngressSendDataReplayMaxMiBPerSecond, 12)
         XCTAssertEqual(guestSettings.backupRetentionCount, 20)
     }
 
@@ -190,6 +190,24 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(result.restartRequirement, .containerServices)
         XCTAssertEqual(harness.reconcileComposeCount, 1)
         XCTAssertEqual(harness.restartCount, 0)
+    }
+
+    func testConfigureReconcilesGuestComposeForRecorderIngressReplayThroughputChangeWhenRestartIsRequested() throws {
+        let harness = try Harness()
+
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.recorderIngressSendDataReplayMaxMiBPerSecond(25)],
+            restart: true
+        ))
+
+        XCTAssertTrue(result.restart)
+        XCTAssertEqual(result.restartRequirement, .containerServices)
+        XCTAssertEqual(harness.reconcileComposeCount, 1)
+        XCTAssertEqual(harness.restartCount, 0)
+
+        let data = try XCTUnwrap(harness.fileStore.files[harness.paths.guestRuntimeSettings])
+        let settings = try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: data)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayMaxMiBPerSecond, 25)
     }
 
     func testConfigureRejectsInvalidLogArchiveSettings() throws {

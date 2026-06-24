@@ -53,7 +53,12 @@ RECORDER_INGRESS_SEND_DATA_MODES = {
 }
 DEFAULT_RECORDER_INGRESS_SEND_DATA_MODE = "spool_and_replay"
 DEFAULT_RECORDER_INGRESS_REPLAY_BATCH_SIZE = 10
-DEFAULT_RECORDER_INGRESS_REPLAY_RATE_LIMIT_PER_SECOND = 10
+DEFAULT_RECORDER_INGRESS_REPLAY_MAX_MIB_PER_SECOND = 20
+DEFAULT_CONTAINER_MEMORY_LIMITS_ENABLED = False
+DEFAULT_APP_CONTAINER_MEMORY_LIMIT_MIB = 2048
+DEFAULT_RECORDER_INGRESS_CONTAINER_MEMORY_LIMIT_MIB = 410
+DEFAULT_REDIS_CONTAINER_MEMORY_LIMIT_MIB = 3277
+MIB_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -136,14 +141,17 @@ def load_runtime_env() -> RuntimeConfig:
     os.environ["VITALSERVER_PUBLIC_PORT"] = str(config.public_port)
     os.environ["VITALSERVER_ADMIN_PASSWORD"] = config.admin_password
     os.environ["VITALSERVER_VITAL_FILES_DIR"] = config.vital_files_directory
-    load_recorder_ingress_send_data_env(
-        DEPLOY_DIR / RuntimeFileName.RUNTIME_SETTINGS.value
-    )
+    settings_path = DEPLOY_DIR / RuntimeFileName.RUNTIME_SETTINGS.value
+    settings_document = read_json(settings_path)
+    load_recorder_ingress_send_data_env(settings_document, settings_path)
+    write_compose_runtime_limits(settings_document, settings_path)
     return config
 
 
-def load_recorder_ingress_send_data_env(settings_path: os.PathLike[str] | str) -> None:
-    document = read_json(Path(settings_path))
+def load_recorder_ingress_send_data_env(
+    document: dict[str, Any],
+    settings_path: os.PathLike[str] | str,
+) -> None:
     os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] = recorder_ingress_send_data_mode(
         document,
         settings_path,
@@ -157,15 +165,67 @@ def load_recorder_ingress_send_data_env(settings_path: os.PathLike[str] | str) -
             "runtime-settings-recorder-ingress-send-data-replay-batch-size-invalid",
         )
     )
-    os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND"] = str(
-        positive_int_setting(
+    replay_max_mib_per_second = positive_int_setting(
+        document,
+        settings_path,
+        "recorderIngressSendDataReplayMaxMiBPerSecond",
+        DEFAULT_RECORDER_INGRESS_REPLAY_MAX_MIB_PER_SECOND,
+        "runtime-settings-recorder-ingress-send-data-replay-max-mib-invalid",
+    )
+    os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"] = str(
+        replay_max_mib_per_second * MIB_BYTES
+    )
+
+
+def write_compose_runtime_limits(
+    document: dict[str, Any],
+    settings_path: os.PathLike[str] | str,
+) -> None:
+    output_path = DEPLOY_DIR / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value
+    enabled = bool_setting(
+        document,
+        settings_path,
+        "containerMemoryLimitsEnabled",
+        DEFAULT_CONTAINER_MEMORY_LIMITS_ENABLED,
+        "runtime-settings-container-memory-limits-enabled-invalid",
+    )
+    if not enabled:
+        try:
+            output_path.unlink()
+        except FileNotFoundError:
+            pass
+        return
+
+    limits = {
+        ComposeService.APP.value: positive_int_setting(
             document,
             settings_path,
-            "recorderIngressSendDataReplayRateLimitPerSecond",
-            DEFAULT_RECORDER_INGRESS_REPLAY_RATE_LIMIT_PER_SECOND,
-            "runtime-settings-recorder-ingress-send-data-replay-rate-limit-invalid",
-        )
-    )
+            "vitalServerContainerMemoryLimitMiB",
+            DEFAULT_APP_CONTAINER_MEMORY_LIMIT_MIB,
+            "runtime-settings-vitalserver-container-memory-limit-mib-invalid",
+        ),
+        ComposeService.RECORDER_INGRESS.value: positive_int_setting(
+            document,
+            settings_path,
+            "recorderIngressContainerMemoryLimitMiB",
+            DEFAULT_RECORDER_INGRESS_CONTAINER_MEMORY_LIMIT_MIB,
+            "runtime-settings-recorder-ingress-container-memory-limit-mib-invalid",
+        ),
+        ComposeService.REDIS.value: positive_int_setting(
+            document,
+            settings_path,
+            "redisContainerMemoryLimitMiB",
+            DEFAULT_REDIS_CONTAINER_MEMORY_LIMIT_MIB,
+            "runtime-settings-redis-container-memory-limit-mib-invalid",
+        ),
+    }
+    lines = ["services:"]
+    for service, limit_mib in limits.items():
+        lines.extend([
+            f"  {service}:",
+            f"    mem_limit: {limit_mib * MIB_BYTES}",
+        ])
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def recorder_ingress_send_data_mode(
@@ -194,6 +254,22 @@ def positive_int_setting(
 ) -> int:
     value = document.get(field, default)
     if not isinstance(value, int) or value <= 0:
+        raise GuestContractError(
+            f"runtime settings field is invalid: {settings_path} {field}",
+            code=code,
+        )
+    return value
+
+
+def bool_setting(
+    document: dict[str, Any],
+    settings_path: os.PathLike[str] | str,
+    field: str,
+    default: bool,
+    code: str,
+) -> bool:
+    value = document.get(field, default)
+    if not isinstance(value, bool):
         raise GuestContractError(
             f"runtime settings field is invalid: {settings_path} {field}",
             code=code,

@@ -24,6 +24,19 @@ import { KeyValueRows } from "@/components/KeyValueRows";
 import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
 
+type RuntimeStatus = NonNullable<RuntimeControlOverview["status"]>;
+type RuntimeContainerObservation = NonNullable<RuntimeStatus["containerObservation"]>;
+type RuntimeRecorderIngressStatus = NonNullable<
+  RuntimeContainerObservation["recorderIngressStatus"]
+>;
+type RuntimeRecorderIngressSpool = RuntimeRecorderIngressStatus["spool"];
+type RuntimeRecorderIngressReplay = RuntimeRecorderIngressStatus["replay"];
+type RuntimeRecorderIngressThroughput = RuntimeRecorderIngressStatus["throughput"];
+type RuntimeRecorderIngressFailure = {
+  reason?: string | null;
+  message?: string | null;
+};
+
 export function StatusPage() {
   const overviewQuery = useRuntimeOverview();
 
@@ -46,10 +59,13 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
   const status = overview.status;
   const state = status?.runtimeState;
   const stats = status?.dataDirectoryStats;
+  const containerObservation = status?.containerObservation;
+  const recorderIngressStatus = containerObservation?.recorderIngressStatus;
   const vitalRecorder = overview.vitalRecorder;
   const browserHostname = currentBrowserHostname();
   const vitalServerURL = advertisedVitalServerURL(overview, browserHostname);
   const remoteConsoleURL = advertisedRemoteConsoleURL(overview, browserHostname);
+  const recorderIngressDetailRows = recorderIngressDetails(recorderIngressStatus);
 
   return (
     <div className="page-stack">
@@ -134,6 +150,10 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
               value: formatVitalRecorderConnectionMetric(vitalRecorder)
             },
             {
+              label: "Recorder ingress queue",
+              value: recorderIngressQueueStatus(containerObservation)
+            },
+            {
               label: "Known recorders",
               value: formatVitalRecorderObservationMetric(
                 vitalRecorder,
@@ -172,6 +192,12 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
         />
       </Panel>
 
+      {recorderIngressDetailRows.length > 0 ? (
+        <Panel title="Recorder ingress">
+          <KeyValueRows rows={recorderIngressDetailRows} />
+        </Panel>
+      ) : null}
+
       <Panel title="Resource usage">
         <KeyValueRows
           rows={[
@@ -186,6 +212,18 @@ function StatusOverview({ overview }: { overview: RuntimeControlOverview }) {
             {
               label: "Memory available to VM",
               value: formatResourceUsage(status?.memory)
+            },
+            {
+              label: "VitalServer memory",
+              value: formatContainerMemory(containerObservation, "app")
+            },
+            {
+              label: "Recorder ingress memory",
+              value: formatContainerMemory(containerObservation, "recorder-ingress")
+            },
+            {
+              label: "Redis memory",
+              value: formatContainerMemory(containerObservation, "redis")
             },
             {
               label: "VM disk",
@@ -294,6 +332,263 @@ function formatResourceUsage(value: unknown): string {
     return `${formatBytes(availableBytes)} / ${formatBytes(totalBytes)}`;
   }
   return "Incomplete resource usage";
+}
+
+function recorderIngressDetails(status: RuntimeRecorderIngressStatus | null | undefined) {
+  if (!status) {
+    return [];
+  }
+  const spool = status.spool;
+  const replay = status.replay;
+  return [
+    {
+      label: "Connections",
+      value: `${status.activeRecorderConnections} active / ${status.activeWebSockets} WebSockets`
+    },
+    {
+      label: "Queue",
+      value: formatRecorderIngressQueueDetail(spool)
+    },
+    {
+      label: "Throughput",
+      value: formatRecorderIngressThroughput(status.throughput)
+    },
+    {
+      label: "Oldest pending",
+      value: formatDurationSeconds(spool?.oldestPendingAgeSeconds)
+    },
+    {
+      label: "Replay",
+      value: replay?.status ?? NOT_REPORTED
+    },
+    {
+      label: "Replay throughput",
+      value: formatReplayThroughput(replay)
+    },
+    {
+      label: "In flight",
+      value: formatNumber(replay?.inFlightItems)
+    },
+    {
+      label: "Replay lag",
+      value: formatDurationSeconds(replay?.replayLagSeconds)
+    },
+    {
+      label: "Backpressure rejected",
+      value: formatNumber(spool?.rejectedEvents)
+    },
+    {
+      label: "Retryable failures",
+      value: formatNumber(replay?.retryableFailures)
+    },
+    {
+      label: "Dead letters",
+      value: formatNumber(replay?.deadLetteredEvents)
+    },
+    {
+      label: "Last failure",
+      value: formatRecorderIngressLastFailure(spool?.lastFailure, replay?.lastFailure)
+    }
+  ];
+}
+
+function recorderIngressQueueStatus(
+  observation: RuntimeContainerObservation | null | undefined
+): string {
+  if (!observation) {
+    return NOT_REPORTED;
+  }
+  if (observation.recorderIngressStatusReadError) {
+    return `Read failed: ${observation.recorderIngressStatusReadError}`;
+  }
+  const status = observation.recorderIngressStatus;
+  if (!status) {
+    return NOT_REPORTED;
+  }
+  const spool = status.spool;
+  const replay = status.replay;
+  if (!spool && !replay) {
+    return "Not reported";
+  }
+  const pending = spool?.pendingItems ?? replay?.pendingItems;
+  const oldest = spool?.oldestPendingAgeSeconds;
+  const lag = replay?.replayLagSeconds;
+  const rejected = spool?.rejectedEvents ?? 0;
+  const retryable = replay?.retryableFailures ?? 0;
+  const deadLetters = replay?.deadLetteredEvents ?? 0;
+  const writeFailures = spool?.writeFailures ?? 0;
+  const state =
+    deadLetters > 0 || writeFailures > 0
+      ? "failed"
+      : rejected > 0 || retryable > 0
+        ? "degraded"
+        : (pending ?? 0) > 0
+          ? "draining"
+          : "healthy";
+  const parts = [state];
+  if (pending !== undefined) {
+    parts.push(`${pending} pending`);
+  }
+  if (spool?.pendingBytes !== null && spool?.pendingBytes !== undefined) {
+    parts.push(formatBytes(spool.pendingBytes));
+  }
+  if (oldest !== null && oldest !== undefined) {
+    parts.push(`oldest ${formatDurationSeconds(oldest)}`);
+  }
+  if (lag !== null && lag !== undefined) {
+    parts.push(`replay lag ${formatDurationSeconds(lag)}`);
+  }
+  if (deadLetters > 0) {
+    parts.push(`${deadLetters} dead letters`);
+  }
+  return parts.join(", ");
+}
+
+function formatRecorderIngressQueueDetail(spool: RuntimeRecorderIngressSpool): string {
+  if (!spool) {
+    return NOT_REPORTED;
+  }
+  const parts = [];
+  if (spool.pendingItems !== null && spool.pendingItems !== undefined) {
+    parts.push(`${spool.pendingItems} pending`);
+  }
+  if (spool.pendingBytes !== null && spool.pendingBytes !== undefined) {
+    parts.push(formatBytes(spool.pendingBytes));
+  }
+  return parts.length > 0 ? parts.join(" / ") : NOT_REPORTED;
+}
+
+function formatRecorderIngressThroughput(
+  throughput: RuntimeRecorderIngressThroughput
+): string {
+  if (!throughput) {
+    return NOT_REPORTED;
+  }
+  const parts = [];
+  if (
+    throughput.observedBytesPerSecond !== null &&
+    throughput.observedBytesPerSecond !== undefined
+  ) {
+    parts.push(`in ${formatBytesPerSecond(throughput.observedBytesPerSecond)}`);
+  }
+  if (
+    throughput.replayedBytesPerSecond !== null &&
+    throughput.replayedBytesPerSecond !== undefined
+  ) {
+    parts.push(`replay ${formatBytesPerSecond(throughput.replayedBytesPerSecond)}`);
+  }
+  if (
+    throughput.queueGrowthBytesPerSecond !== null &&
+    throughput.queueGrowthBytesPerSecond !== undefined
+  ) {
+    parts.push(`queue ${formatSignedBytesPerSecond(throughput.queueGrowthBytesPerSecond)}`);
+  }
+  return parts.length > 0 ? parts.join(", ") : NOT_REPORTED;
+}
+
+function formatReplayThroughput(replay: RuntimeRecorderIngressReplay): string {
+  if (!replay?.maxBytesPerSecond) {
+    return NOT_REPORTED;
+  }
+  const base = formatBytesPerSecond(replay.maxBytesPerSecond);
+  const adaptive = replay.adaptive;
+  if (
+    adaptive?.enabled !== true ||
+    adaptive.minBytesPerSecond === null ||
+    adaptive.minBytesPerSecond === undefined ||
+    adaptive.maxBytesPerSecond === null ||
+    adaptive.maxBytesPerSecond === undefined
+  ) {
+    return base;
+  }
+  return `${base}, adaptive ${formatBytesPerSecond(
+    adaptive.minBytesPerSecond
+  )}-${formatBytesPerSecond(adaptive.maxBytesPerSecond)}`;
+}
+
+function formatRecorderIngressLastFailure(
+  spoolFailure: RuntimeRecorderIngressFailure | null | undefined,
+  replayFailure: RuntimeRecorderIngressFailure | null | undefined
+): string {
+  return (
+    formatRecorderIngressFailure(replayFailure) ??
+    formatRecorderIngressFailure(spoolFailure) ??
+    "none"
+  );
+}
+
+function formatRecorderIngressFailure(
+  failure: RuntimeRecorderIngressFailure | null | undefined
+): string | null {
+  if (!failure) {
+    return null;
+  }
+  if (failure.reason && failure.message) {
+    return `${failure.reason}: ${failure.message}`;
+  }
+  return failure.reason ?? failure.message ?? null;
+}
+
+function formatContainerMemory(
+  observation: RuntimeContainerObservation | null | undefined,
+  service: string
+): string {
+  const container = observation?.composeServices.find(
+    (candidate) => candidate.service === service
+  );
+  if (!container) {
+    return NOT_REPORTED;
+  }
+  if (
+    container.memoryUsedBytes !== null &&
+    container.memoryUsedBytes !== undefined &&
+    container.memoryLimitBytes !== null &&
+    container.memoryLimitBytes !== undefined
+  ) {
+    return `${formatBytes(container.memoryUsedBytes)} / ${formatBytes(
+      container.memoryLimitBytes
+    )}`;
+  }
+  if (container.memoryUsedBytes !== null && container.memoryUsedBytes !== undefined) {
+    return `${formatBytes(container.memoryUsedBytes)} / unknown limit`;
+  }
+  return NOT_REPORTED;
+}
+
+function formatDurationSeconds(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return NOT_REPORTED;
+  }
+  const seconds = Math.max(0, Math.round(value));
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  if (minutes < 60) {
+    return remainder === 0 ? `${minutes}m` : `${minutes}m ${remainder}s`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const minuteRemainder = minutes % 60;
+  return minuteRemainder === 0 ? `${hours}h` : `${hours}h ${minuteRemainder}m`;
+}
+
+function formatNumber(value: number | null | undefined): string {
+  return value === null || value === undefined ? NOT_REPORTED : String(value);
+}
+
+function formatBytesPerSecond(value: number): string {
+  return `${formatBytes(Math.max(0, Math.round(value)))}/s`;
+}
+
+function formatSignedBytesPerSecond(value: number): string {
+  if (value > 0) {
+    return `+${formatBytesPerSecond(value)}`;
+  }
+  if (value < 0) {
+    return `-${formatBytesPerSecond(Math.abs(value))}`;
+  }
+  return formatBytesPerSecond(0);
 }
 
 function numberValue(value: unknown): number | undefined {

@@ -78,8 +78,15 @@ export type SendDataReplayConfig = {
   intervalMs?: number;
   batchSize?: number;
   maxAttempts?: number;
-  rateLimitPerSecond?: number;
+  maxBytesPerSecond?: number;
   targetTimeoutMs?: number;
+  adaptive?: SendDataReplayAdaptiveConfig;
+};
+
+export type SendDataReplayAdaptiveConfig = {
+  enabled?: boolean;
+  minBytesPerSecond?: number;
+  maxBytesPerSecond?: number;
 };
 
 export type SendDataReplayAttemptOptions = {

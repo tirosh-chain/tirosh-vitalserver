@@ -40,8 +40,17 @@ extension AppConstants {
         static let minimumRecorderIngressReplayBatchSize = 1
         static let maximumRecorderIngressReplayBatchSize = 100
         static let recorderIngressReplayBatchSizeStep = 1
-        static let minimumRecorderIngressReplayRateLimitPerSecond = 1
-        static let maximumRecorderIngressReplayRateLimitPerSecond = 100
-        static let recorderIngressReplayRateLimitStep = 1
+        static let minimumRecorderIngressReplayMaxMiBPerSecond = 1
+        static let maximumRecorderIngressReplayMaxMiBPerSecond = 100
+        static let recorderIngressReplayThroughputStep = 5
+        static let minimumVitalServerContainerMemoryLimitMiB = 512
+        static let maximumVitalServerContainerMemoryLimitMiB = 32_768
+        static let minimumRecorderIngressContainerMemoryLimitMiB = 128
+        static let maximumRecorderIngressContainerMemoryLimitMiB = 4_096
+        static let minimumRedisContainerMemoryLimitMiB = 256
+        static let maximumRedisContainerMemoryLimitMiB = 8_192
+        static let containerMemoryLimitStepMiB = 128
+        static let containerMemoryLimitPercentStep = 1
+        static let maximumCombinedContainerMemoryLimitPercent = 70
     }
 }

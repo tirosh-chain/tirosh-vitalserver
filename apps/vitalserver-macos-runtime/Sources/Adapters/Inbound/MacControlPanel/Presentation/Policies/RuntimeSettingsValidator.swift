@@ -60,6 +60,12 @@ public struct RuntimeSettingsValidator {
         if settings.changeAdminPassword, !isLineSafe(settings.adminPassword) {
             return .invalid("Admin password reset value must not contain newlines.")
         }
+        if settings.containerMemoryLimitsEnabled,
+           !containerMemoryLimitsAreValid(settings) {
+            return .invalid(
+                "Container memory limits must be within the allowed MiB ranges and total no more than 70% of the VM memory allocation."
+            )
+        }
         if settings.redisRelay.enabled {
             let target = settings.redisRelay.target
             if target.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -120,6 +126,35 @@ public struct RuntimeSettingsValidator {
             return false
         }
         return true
+    }
+
+    private func containerMemoryLimitsAreValid(_ settings: RuntimeSettings) -> Bool {
+        let vmMemoryMiB = settings.memoryGiB * 1024
+        let totalPercent = (
+            Double(settings.vitalServerContainerMemoryLimitMiB)
+                + Double(settings.recorderIngressContainerMemoryLimitMiB)
+                + Double(settings.redisContainerMemoryLimitMiB)
+        ) / Double(max(vmMemoryMiB, 1)) * 100.0
+        return validLimit(
+            settings.vitalServerContainerMemoryLimitMiB,
+            minimum: AppConstants.SettingsLimits.minimumVitalServerContainerMemoryLimitMiB,
+            maximum: min(AppConstants.SettingsLimits.maximumVitalServerContainerMemoryLimitMiB, vmMemoryMiB)
+        )
+        && validLimit(
+            settings.recorderIngressContainerMemoryLimitMiB,
+            minimum: AppConstants.SettingsLimits.minimumRecorderIngressContainerMemoryLimitMiB,
+            maximum: min(AppConstants.SettingsLimits.maximumRecorderIngressContainerMemoryLimitMiB, vmMemoryMiB)
+        )
+        && validLimit(
+            settings.redisContainerMemoryLimitMiB,
+            minimum: AppConstants.SettingsLimits.minimumRedisContainerMemoryLimitMiB,
+            maximum: min(AppConstants.SettingsLimits.maximumRedisContainerMemoryLimitMiB, vmMemoryMiB)
+        )
+        && totalPercent <= Double(AppConstants.SettingsLimits.maximumCombinedContainerMemoryLimitPercent)
+    }
+
+    private func validLimit(_ value: Int, minimum: Int, maximum: Int) -> Bool {
+        value >= minimum && value <= max(minimum, maximum)
     }
 }
 

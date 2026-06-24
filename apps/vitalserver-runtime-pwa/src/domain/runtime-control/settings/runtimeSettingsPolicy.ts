@@ -40,6 +40,14 @@ const protectedDirectoryNames = new Set([
   "iCloud Drive"
 ]);
 
+export const containerMemoryLimitRanges = {
+  vitalServer: { minMiB: 512, maxMiB: 32_768 },
+  recorderIngress: { minMiB: 128, maxMiB: 4_096 },
+  redis: { minMiB: 256, maxMiB: 8_192 },
+  stepPercent: 1,
+  maxCombinedPercent: 70
+} as const;
+
 const restartRequiredSettings: Array<{
   label: string;
   changed: (draft: RuntimeSettings, runtime: RuntimeSettings) => boolean;
@@ -69,6 +77,45 @@ const restartRequiredSettings: Array<{
     label: "Vital files directory",
     changed: (draft, runtime) =>
       draft.vitalFilesDirectory !== runtime.vitalFilesDirectory
+  }
+];
+
+const containerServiceReconcileSettings: Array<{
+  label: string;
+  changed: (draft: RuntimeSettings, runtime: RuntimeSettings) => boolean;
+}> = [
+  {
+    label: "Recorder load control",
+    changed: (draft, runtime) =>
+      draft.recorderIngressSendDataMode !== runtime.recorderIngressSendDataMode
+  },
+  {
+    label: "Recorder replay throughput",
+    changed: (draft, runtime) =>
+      draft.recorderIngressSendDataReplayMaxMiBPerSecond !==
+      runtime.recorderIngressSendDataReplayMaxMiBPerSecond
+  },
+  {
+    label: "Container memory limits",
+    changed: (draft, runtime) =>
+      draft.containerMemoryLimitsEnabled !== runtime.containerMemoryLimitsEnabled
+  },
+  {
+    label: "VitalServer container memory limit",
+    changed: (draft, runtime) =>
+      draft.vitalServerContainerMemoryLimitMiB !==
+      runtime.vitalServerContainerMemoryLimitMiB
+  },
+  {
+    label: "Recorder ingress container memory limit",
+    changed: (draft, runtime) =>
+      draft.recorderIngressContainerMemoryLimitMiB !==
+      runtime.recorderIngressContainerMemoryLimitMiB
+  },
+  {
+    label: "Redis container memory limit",
+    changed: (draft, runtime) =>
+      draft.redisContainerMemoryLimitMiB !== runtime.redisContainerMemoryLimitMiB
   }
 ];
 
@@ -124,6 +171,46 @@ export function validateRuntimeSettings(
   ) {
     errors.push("Log archive size limit must be between 1 and 20 GiB.");
   }
+  if (
+    settings.recorderIngressSendDataReplayMaxMiBPerSecond < 1 ||
+    settings.recorderIngressSendDataReplayMaxMiBPerSecond > 100
+  ) {
+    errors.push("Max replay throughput must be between 1 and 100 MiB/s.");
+  }
+  if (settings.containerMemoryLimitsEnabled) {
+    appendContainerMemoryLimitError({
+      errors,
+      label: "VitalServer container memory limit",
+      valueMiB: settings.vitalServerContainerMemoryLimitMiB,
+      memoryGiB: settings.memoryGiB,
+      range: containerMemoryLimitRanges.vitalServer
+    });
+    appendContainerMemoryLimitError({
+      errors,
+      label: "Recorder ingress container memory limit",
+      valueMiB: settings.recorderIngressContainerMemoryLimitMiB,
+      memoryGiB: settings.memoryGiB,
+      range: containerMemoryLimitRanges.recorderIngress
+    });
+    appendContainerMemoryLimitError({
+      errors,
+      label: "Redis container memory limit",
+      valueMiB: settings.redisContainerMemoryLimitMiB,
+      memoryGiB: settings.memoryGiB,
+      range: containerMemoryLimitRanges.redis
+    });
+    const totalPercent =
+      ((settings.vitalServerContainerMemoryLimitMiB +
+        settings.recorderIngressContainerMemoryLimitMiB +
+        settings.redisContainerMemoryLimitMiB) /
+        Math.max(settings.memoryGiB * 1024, 1)) *
+      100;
+    if (totalPercent > containerMemoryLimitRanges.maxCombinedPercent) {
+      errors.push(
+        `Container memory limits must total no more than ${containerMemoryLimitRanges.maxCombinedPercent}% of VM memory.`
+      );
+    }
+  }
   if (isProtectedVitalFilesDirectory(settings.vitalFilesDirectory)) {
     errors.push(
       "Vital files directory cannot be Desktop, Documents, Downloads, or iCloud Drive."
@@ -133,6 +220,24 @@ export function validateRuntimeSettings(
   return { valid: errors.length === 0, errors };
 }
 
+function appendContainerMemoryLimitError(input: {
+  errors: string[];
+  label: string;
+  valueMiB: number;
+  memoryGiB: number;
+  range: { minMiB: number; maxMiB: number };
+}) {
+  const maximumMiB = Math.max(
+    input.range.minMiB,
+    Math.min(input.range.maxMiB, input.memoryGiB * 1024)
+  );
+  if (input.valueMiB < input.range.minMiB || input.valueMiB > maximumMiB) {
+    input.errors.push(
+      `${input.label} must be between ${input.range.minMiB} and ${maximumMiB} MiB.`
+    );
+  }
+}
+
 export function runtimeSettingsActivationDecision(
   draft: RuntimeSettings,
   runtime: RuntimeSettings
@@ -140,7 +245,9 @@ export function runtimeSettingsActivationDecision(
   const vmRestartChanges = restartRequiredSettings
     .filter((setting) => setting.changed(draft, runtime))
     .map((setting) => setting.label);
-  const containerServiceChanges: string[] = [];
+  const containerServiceChanges = containerServiceReconcileSettings
+    .filter((setting) => setting.changed(draft, runtime))
+    .map((setting) => setting.label);
   const requiresVMRestart = vmRestartChanges.length > 0;
   const requiresContainerServicesReconcile = containerServiceChanges.length > 0;
   const requiresActivation =

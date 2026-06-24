@@ -63,21 +63,39 @@ struct RuntimeSettingsRestartNoticePolicy {
         var changes: [String] = []
         appendIfChanged(AppConstants.Labels.redisRelay, draft.redisRelay, runtime.redisRelay, to: &changes)
         appendIfChanged(
-            AppConstants.Labels.recorderIngressSendDataMode,
+            AppConstants.Labels.recorderIngressLoadControl,
             draft.recorderIngressSendDataMode,
             runtime.recorderIngressSendDataMode,
             to: &changes
         )
         appendIfChanged(
-            AppConstants.Labels.recorderIngressReplayBatchSize,
-            draft.recorderIngressSendDataReplayBatchSize,
-            runtime.recorderIngressSendDataReplayBatchSize,
+            AppConstants.Labels.recorderIngressMaxReplayThroughput,
+            draft.recorderIngressSendDataReplayMaxMiBPerSecond,
+            runtime.recorderIngressSendDataReplayMaxMiBPerSecond,
             to: &changes
         )
         appendIfChanged(
-            AppConstants.Labels.recorderIngressReplayRateLimit,
-            draft.recorderIngressSendDataReplayRateLimitPerSecond,
-            runtime.recorderIngressSendDataReplayRateLimitPerSecond,
+            AppConstants.Labels.containerMemoryLimits,
+            draft.containerMemoryLimitsEnabled,
+            runtime.containerMemoryLimitsEnabled,
+            to: &changes
+        )
+        appendIfChanged(
+            AppConstants.Labels.vitalServerContainerMemoryLimit,
+            draft.vitalServerContainerMemoryLimitMiB,
+            runtime.vitalServerContainerMemoryLimitMiB,
+            to: &changes
+        )
+        appendIfChanged(
+            AppConstants.Labels.recorderIngressContainerMemoryLimit,
+            draft.recorderIngressContainerMemoryLimitMiB,
+            runtime.recorderIngressContainerMemoryLimitMiB,
+            to: &changes
+        )
+        appendIfChanged(
+            AppConstants.Labels.redisContainerMemoryLimit,
+            draft.redisContainerMemoryLimitMiB,
+            runtime.redisContainerMemoryLimitMiB,
             to: &changes
         )
         return changes

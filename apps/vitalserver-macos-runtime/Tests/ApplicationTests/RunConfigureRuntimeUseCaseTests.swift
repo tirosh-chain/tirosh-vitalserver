@@ -18,7 +18,7 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                     .startOnBoot(false),
                     .recorderIngressSendDataMode(.mirrorSpool),
                     .recorderIngressSendDataReplayBatchSize(8),
-                    .recorderIngressSendDataReplayRateLimitPerSecond(12),
+                    .recorderIngressSendDataReplayMaxMiBPerSecond(12),
                     .preventSystemSleep(false),
                 ],
                 restart: true
@@ -59,7 +59,7 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
         )
         XCTAssertEqual(guestSettings.recorderIngressSendDataMode, .mirrorSpool)
         XCTAssertEqual(guestSettings.recorderIngressSendDataReplayBatchSize, 8)
-        XCTAssertEqual(guestSettings.recorderIngressSendDataReplayRateLimitPerSecond, 12)
+        XCTAssertEqual(guestSettings.recorderIngressSendDataReplayMaxMiBPerSecond, 12)
     }
 
     func testInvalidSecretFileContentFailsBeforeWrites() {

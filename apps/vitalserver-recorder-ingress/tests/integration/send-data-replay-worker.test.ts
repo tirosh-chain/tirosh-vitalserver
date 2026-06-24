@@ -82,6 +82,87 @@ test("send_data replay worker requeues upstream unavailable before max attempts"
   assert.strictEqual(snapshot.replay.lastFailure.reason, "upstream_unavailable");
 });
 
+test("send_data replay worker lowers adaptive replay rate after upstream failure", async () => {
+  const adaptiveSpoolConfig = spoolConfig({
+    replay: replayConfig({
+      batchSize: 8,
+      maxBytesPerSecond: 8 * 1024 * 1024,
+      adaptive: {
+        enabled: true,
+        minBytesPerSecond: 2 * 1024 * 1024,
+        maxBytesPerSecond: 8 * 1024 * 1024,
+      },
+    }),
+  });
+  const metricState = replayMetrics(adaptiveSpoolConfig);
+  const worker = createSendDataReplayWorker({
+    config: adaptiveSpoolConfig,
+    metrics: metricState,
+    spoolStore: {
+      claim() {
+        return Promise.resolve({ ok: true, item: spoolItem({ state: "in_flight", attemptCount: 1 }), claim: { raw: "raw" } });
+      },
+      requeue(item) {
+        return Promise.resolve({ ok: true, item, depth: 1 });
+      },
+    },
+    replayTarget: {
+      send() {
+        return Promise.resolve({ ok: false, reason: "upstream_unavailable", message: "connect ECONNREFUSED" });
+      },
+    },
+  });
+
+  const result = await worker.runOnce();
+
+  assert.strictEqual(result.processed, 8);
+  const snapshot = metricsSnapshot(metricState);
+  assert.strictEqual(snapshot.replay.maxBytesPerSecond, 4 * 1024 * 1024);
+  assert.strictEqual(snapshot.replay.adaptive.currentMaxBytesPerSecond, 4 * 1024 * 1024);
+  assert.strictEqual(snapshot.replay.adaptive.lastDecision, "decrease");
+  assert.strictEqual(snapshot.replay.adaptive.lastReason, "replay_failures");
+});
+
+test("send_data replay worker stops after byte budget is consumed", async () => {
+  const metricState = replayMetrics(spoolConfig({
+    replay: replayConfig({
+      batchSize: 10,
+      maxBytesPerSecond: 14,
+      adaptive: { enabled: false },
+    }),
+  }));
+  let claimed = 0;
+  const worker = createSendDataReplayWorker({
+    config: spoolConfig({
+      replay: replayConfig({
+        batchSize: 10,
+        maxBytesPerSecond: 14,
+        adaptive: { enabled: false },
+      }),
+    }),
+    metrics: metricState,
+    spoolStore: {
+      claim() {
+        claimed += 1;
+        return Promise.resolve({ ok: true, item: spoolItem({ state: "in_flight", attemptCount: 1, id: `senddata_${claimed}` }), claim: { raw: `raw-${claimed}` } });
+      },
+      markReplayed(item) {
+        return Promise.resolve({ ok: true, item, depth: 1 });
+      },
+    },
+    replayTarget: {
+      send() {
+        return Promise.resolve({ ok: true });
+      },
+    },
+  });
+
+  const result = await worker.runOnce();
+
+  assert.strictEqual(result.processed, 2);
+  assert.strictEqual(claimed, 2);
+});
+
 test("send_data replay worker requeues thrown replay target failure before max attempts", async () => {
   const metricState = replayMetrics();
   const moves = [];
@@ -149,14 +230,14 @@ test("send_data replay worker dead-letters invalid claimed spool document", asyn
   assert.strictEqual(snapshot.replay.deadLetteredEvents, 1);
 });
 
-test("send_data replay worker applies configured batch and rate limit", async () => {
-  assert.strictEqual(replayBatchLimit({ batchSize: 10, rateLimitPerSecond: 3 }), 3);
-  assert.strictEqual(replayBatchLimit({ batchSize: 2, rateLimitPerSecond: 5 }), 2);
+test("send_data replay worker applies configured batch size", async () => {
+  assert.strictEqual(replayBatchLimit({ batchSize: 10, maxBytesPerSecond: 3 }), 10);
+  assert.strictEqual(replayBatchLimit({ batchSize: 2, maxBytesPerSecond: 5 }), 2);
 });
 
-function replayMetrics() {
+function replayMetrics(config = spoolConfig()) {
   const metricState = createMetrics();
-  configureSendDataSpool(metricState, spoolConfig());
+  configureSendDataSpool(metricState, config);
   return metricState;
 }
 
@@ -180,7 +261,7 @@ function replayConfig(overrides = {}) {
     intervalMs: 1000,
     batchSize: 1,
     maxAttempts: 3,
-    rateLimitPerSecond: 1,
+    maxBytesPerSecond: 1,
     targetTimeoutMs: 5000,
     ...overrides,
   };

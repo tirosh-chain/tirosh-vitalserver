@@ -1337,6 +1337,12 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
                 activeWebSockets: 3,
                 activeRecorderConnections: 2,
+                throughput: RuntimeRecorderIngressThroughputStatus(
+                    observedBytesPerSecond: 5_242_880,
+                    spooledBytesPerSecond: 5_242_880,
+                    replayedBytesPerSecond: 4_194_304,
+                    queueGrowthBytesPerSecond: 1_048_576
+                ),
                 spool: RuntimeRecorderIngressSpoolStatus(
                     status: "ready",
                     rejectedEvents: 2,
@@ -1351,7 +1357,12 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     retryableFailures: 0,
                     deadLetteredEvents: 0,
                     replayLagSeconds: 12,
-                    rateLimitPerSecond: 12
+                    maxBytesPerSecond: 4 * 1_048_576,
+                    adaptive: RuntimeRecorderIngressReplayAdaptiveStatus(
+                        enabled: true,
+                        minBytesPerSecond: 2 * 1_048_576,
+                        maxBytesPerSecond: 12 * 1_048_576
+                    )
                 )
             ),
             containerLogsPresent: true,
@@ -1363,10 +1374,17 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressConnections, in: items)?.value.text, "2 active / 3 WebSockets")
         XCTAssertEqual(item(AppConstants.Labels.queue, in: items)?.value.text, "128 pending / 24 MB")
         XCTAssertEqual(item(AppConstants.Labels.queue, in: items)?.value.severity, .warning)
+        XCTAssertEqual(
+            item(AppConstants.Labels.recorderIngressThroughput, in: items)?.value.text,
+            "in 5.2 MB/s, replay 4.2 MB/s, queue +1 MB/s"
+        )
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressOldestPending, in: items)?.value.text, "34s")
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.text, "replaying")
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.severity, .healthy)
-        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplayRateLimit, in: items)?.value.text, "12 items/sec")
+        XCTAssertEqual(
+            item(AppConstants.Labels.recorderIngressReplayThroughput, in: items)?.value.text,
+            "4.0 MiB/s, adaptive 2.0 MiB/s-12.0 MiB/s"
+        )
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressInFlight, in: items)?.value.text, "1")
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplayLag, in: items)?.value.text, "12s")
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressBackpressureRejected, in: items)?.value.text, "2")

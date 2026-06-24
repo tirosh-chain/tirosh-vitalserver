@@ -104,7 +104,9 @@ Redis는 현재 `3.2.12`로 pin되어 있으므로 Redis Stream 대신 Redis Lis
 
 ### 4-3. `send_data` flow control 설정
 
-`RECORDER_INGRESS_SEND_DATA_*` 설정은 Issue #68의 `send_data` flow control 계약입니다. mode, Redis list, replay interval/batch/rate, backpressure limit의 상세 의미는 [Recorder ingress send_data flow control contract](send-data-flow-control.md#11-runtime-설정)를 기준으로 봅니다.
+`RECORDER_INGRESS_SEND_DATA_*` 설정은 Issue #68의 `send_data` flow control 계약입니다. mode, Redis list, replay interval, 내부 batch guard, replay byte throughput, adaptive replay, backpressure limit의 상세 의미는 [Recorder ingress send_data flow control contract](send-data-flow-control.md#11-runtime-설정)를 기준으로 봅니다.
+
+Audit 문서에서는 replay 제한을 item count 기반 rate로 설명하지 않습니다. 운영 UI의 주 조절값은 Helper Settings의 `Max replay throughput`이고, recorder ingress runtime/API에서는 `*BytesPerSecond` 필드로 노출됩니다. Audit 관점에서는 이 값이 `send_data` payload가 upstream VitalServer로 replay되는 byte throughput 상한이라는 점만 알면 됩니다.
 
 Audit 관점에서는 `send_data` payload summary와 flow control 결과가 다른 실패 의미를 가져야 합니다. Audit sink 실패는 `auditWriteFailures`, spool write 실패는 `spool.writeFailures`, replay 실패는 `replay.retryableFailures` 또는 `replay.deadLetteredEvents`로 분리해서 봅니다.
 

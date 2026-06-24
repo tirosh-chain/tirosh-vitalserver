@@ -144,6 +144,17 @@ describe("runtime console pages", () => {
     expect(
       screen.getByRole("link", { name: "http://console.example.test/" })
     ).toHaveAttribute("href", "http://console.example.test/");
+    expect(
+      screen.getByText("draining, 5 pending, 9.0 KiB, oldest 34s, replay lag 12s")
+    ).toBeInTheDocument();
+    expect(screen.getByText("2 active / 3 WebSockets")).toBeInTheDocument();
+    expect(
+      screen.getByText("in 2.0 MiB/s, replay 1.0 MiB/s, queue +1.0 MiB/s")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("5.0 MiB/s, adaptive 1.0 MiB/s-10.0 MiB/s")
+    ).toBeInTheDocument();
+    expect(screen.getByText("100.0 MiB / 512.0 MiB")).toBeInTheDocument();
     expect(screen.getByText(/2.0 KiB \/ 4.0 KiB/)).toBeInTheDocument();
   });
 
@@ -225,6 +236,18 @@ describe("runtime console pages", () => {
     fireEvent.change(screen.getByLabelText("Advertised port"), {
       target: { value: "443" }
     });
+    fireEvent.change(screen.getByLabelText("Max replay throughput"), {
+      target: { value: "25" }
+    });
+    fireEvent.change(screen.getByLabelText(/VitalServer limit/), {
+      target: { value: "40" }
+    });
+    fireEvent.change(screen.getByLabelText(/Recorder ingress limit/), {
+      target: { value: "8" }
+    });
+    fireEvent.change(screen.getByLabelText(/Redis limit/), {
+      target: { value: "12" }
+    });
     fireEvent.click(screen.getByLabelText("Start on boot"));
     fireEvent.click(screen.getByLabelText("Auto recovery"));
     fireEvent.click(screen.getByLabelText("Prevent system sleep"));
@@ -239,10 +262,83 @@ describe("runtime console pages", () => {
           cpuCount: 3,
           publicHost: "edge.local",
           publicPort: 443,
+          recorderIngressSendDataReplayMaxMiBPerSecond: 25,
+          containerMemoryLimitsEnabled: true,
+          vitalServerContainerMemoryLimitMiB: 1638,
+          recorderIngressContainerMemoryLimitMiB: 328,
+          redisContainerMemoryLimitMiB: 492,
           startOnBoot: false,
           autoRecoveryEnabled: false,
           preventSystemSleep: false,
           restartAfterSave: false
+        })
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("normalizes enabled container memory limits to the combined cap", () => {
+    const apply = pendingMutation();
+    hooks.useApplyRuntimeSettings.mockReturnValue(apply);
+    hooks.useRuntimeSettings.mockReturnValue(query(settings({
+      memoryGiB: 4,
+      containerMemoryLimitsEnabled: true,
+      vitalServerContainerMemoryLimitMiB: 4096,
+      recorderIngressContainerMemoryLimitMiB: 512,
+      redisContainerMemoryLimitMiB: 1024
+    })));
+
+    renderPage(<SettingsPage />);
+
+    expect(screen.getByText("Container limit total: 70% / 70% of VM memory")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(apply.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          containerMemoryLimitsEnabled: true,
+          vitalServerContainerMemoryLimitMiB: 1311,
+          recorderIngressContainerMemoryLimitMiB: 512,
+          redisContainerMemoryLimitMiB: 1024
+        })
+      }),
+      expect.any(Object)
+    );
+  });
+
+  it("enables activation automatically for container memory limit changes", () => {
+    const apply = pendingMutation();
+    hooks.useApplyRuntimeSettings.mockReturnValue(apply);
+    hooks.useRuntimeSettings.mockReturnValue(query(settings({
+      restartAfterSave: false,
+      containerMemoryLimitsEnabled: true,
+      vitalServerContainerMemoryLimitMiB: 2048,
+      recorderIngressContainerMemoryLimitMiB: 256,
+      redisContainerMemoryLimitMiB: 512
+    })));
+
+    renderPage(<SettingsPage />);
+
+    expect(
+      screen.getByLabelText("Activate required runtime changes after save")
+    ).not.toBeChecked();
+
+    fireEvent.change(screen.getByLabelText(/VitalServer limit/), {
+      target: { value: "40" }
+    });
+
+    expect(
+      screen.getByLabelText("Activate required runtime changes after save")
+    ).toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(apply.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          restartAfterSave: true,
+          vitalServerContainerMemoryLimitMiB: 1638
         })
       }),
       expect.any(Object)
@@ -1129,7 +1225,65 @@ function overview() {
       dataStorage: { usedBytes: 1024, totalBytes: 2048 },
       containerObservation: {
         recorderIngressHTTP: "HTTP 200",
-        recorderIngressStatus: null,
+        recorderIngressStatus: {
+          activeWebSockets: 3,
+          activeRecorderConnections: 2,
+          recorders: [],
+          httpRequests: 4,
+          socketIoEventsSeen: 5,
+          socketIoParseFailures: 0,
+          auditWriteFailures: 0,
+          auditFileWriteFailures: 0,
+          auditStdoutWriteFailures: 0,
+          redisIpWriteFailures: 0,
+          redisIpVerifyFailures: 0,
+          redisIpVerifyMismatches: 0,
+          throughput: {
+            windowSeconds: 10,
+            observedBytesPerSecond: 2097152,
+            spooledBytesPerSecond: 2097152,
+            replayedBytesPerSecond: 1048576,
+            queueGrowthBytesPerSecond: 1048576
+          },
+          spool: {
+            mode: "spool_and_replay",
+            status: "draining",
+            storage: "redis",
+            acceptedEvents: 10,
+            spooledEvents: 9,
+            rejectedEvents: 0,
+            writeFailures: 0,
+            pendingItems: 5,
+            pendingBytes: 9216,
+            oldestPendingAgeSeconds: 34,
+            lastAcceptedAt: "2026-05-31T01:00:00Z",
+            lastSpooledAt: "2026-05-31T01:00:00Z",
+            lastFailure: null
+          },
+          replay: {
+            status: "replaying",
+            pendingItems: 5,
+            inFlightItems: 1,
+            replayedEvents: 4,
+            retryableFailures: 0,
+            deadLetteredEvents: 0,
+            replayLagSeconds: 12,
+            maxBytesPerSecond: 5242880,
+            configuredMaxBytesPerSecond: 10485760,
+            adaptive: {
+              enabled: true,
+              minBytesPerSecond: 1048576,
+              maxBytesPerSecond: 10485760,
+              currentMaxBytesPerSecond: 5242880,
+              lastDecision: "increase",
+              lastReason: "queue_growth",
+              lastChangedAt: "2026-05-31T01:00:00Z",
+              memoryGuardStatus: "unavailable"
+            },
+            lastReplayAt: "2026-05-31T01:00:00Z",
+            lastFailure: null
+          }
+        },
         recorderIngressStatusReadError: null,
         runtimeStateUpdatedAt: null,
         runtimeStateFileUpdatedAt: null,
@@ -1139,6 +1293,39 @@ function overview() {
         containerLogsUpdatedAt: null,
         containerLogsMetadataError: null,
         composeServices: [
+          {
+            service: "app",
+            name: "vitalserver-app-1",
+            state: "running",
+            health: "healthy",
+            memoryUsedBytes: 104857600,
+            memoryLimitBytes: 536870912,
+            exitCode: null,
+            startedAt: "2026-05-31T00:00:00Z",
+            uptimeSeconds: 3600
+          },
+          {
+            service: "recorder-ingress",
+            name: "recorder-ingress-1",
+            state: "running",
+            health: "healthy",
+            memoryUsedBytes: 20971520,
+            memoryLimitBytes: 134217728,
+            exitCode: null,
+            startedAt: "2026-05-31T00:00:00Z",
+            uptimeSeconds: 3600
+          },
+          {
+            service: "redis",
+            name: "redis-1",
+            state: "running",
+            health: "healthy",
+            memoryUsedBytes: 31457280,
+            memoryLimitBytes: null,
+            exitCode: null,
+            startedAt: "2026-05-31T00:00:00Z",
+            uptimeSeconds: 3600
+          },
           {
             service: "vitaldb-observer",
             name: "vitaldb-observer-1",
@@ -1172,7 +1359,7 @@ function overview() {
   };
 }
 
-function settings() {
+function settings(overrides = {}) {
   return {
     cpuCount: 2,
     memoryGiB: 4,
@@ -1184,6 +1371,13 @@ function settings() {
     runtimeControlPort: 18321,
     publicHost: "host.local",
     publicPort: 18080,
+    recorderIngressSendDataMode: "spool_and_replay" as const,
+    recorderIngressSendDataReplayBatchSize: 10,
+    recorderIngressSendDataReplayMaxMiBPerSecond: 20,
+    containerMemoryLimitsEnabled: true,
+    vitalServerContainerMemoryLimitMiB: 2048,
+    recorderIngressContainerMemoryLimitMiB: 256,
+    redisContainerMemoryLimitMiB: 512,
     vitalServerURL: "http://vital.example.test/",
     remoteConsoleURL: "http://console.example.test/",
     adminPassword: "",
@@ -1204,7 +1398,8 @@ function settings() {
         source: "guestRuntimeConfig",
         message: "permission denied"
       }
-    ]
+    ],
+    ...overrides
   };
 }
 

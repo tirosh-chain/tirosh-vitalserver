@@ -119,6 +119,18 @@ struct RuntimeStatusPanel: View {
                     usage: viewModel.status.memory
                 )
                 resourceRow(
+                    AppConstants.Labels.vitalServerMemoryUsage,
+                    usage: viewModel.status.vitalServerMemory
+                )
+                resourceRow(
+                    AppConstants.Labels.recorderIngressMemoryUsage,
+                    usage: viewModel.status.recorderIngressMemory
+                )
+                resourceRow(
+                    AppConstants.Labels.redisMemoryUsage,
+                    usage: viewModel.status.redisMemory
+                )
+                resourceRow(
                     AppConstants.Labels.systemDiskUsage,
                     usage: viewModel.status.systemDisk
                 )
@@ -349,6 +361,21 @@ struct RuntimeStatusPanel: View {
             percent: usage?.percent,
             detail: usage.map { "\(formatBytes($0.usedBytes)) / \(formatBytes($0.totalBytes))" } ?? AppConstants.StatusText.notChecked
         )
+    }
+
+    private func resourceRow(_ label: String, usage: RuntimeContainerMemoryUsage?) -> some View {
+        resourceRow(
+            label,
+            percent: usage?.percent,
+            detail: usage.map(containerMemoryDetail) ?? AppConstants.StatusText.notChecked
+        )
+    }
+
+    private func containerMemoryDetail(_ usage: RuntimeContainerMemoryUsage) -> String {
+        guard let limitBytes = usage.limitBytes else {
+            return "\(formatBytes(usage.usedBytes)) / unknown limit"
+        }
+        return "\(formatBytes(usage.usedBytes)) / \(formatBytes(limitBytes))"
     }
 
     private func resourceRow(_ label: String, percent: Double?, detail: String) -> some View {

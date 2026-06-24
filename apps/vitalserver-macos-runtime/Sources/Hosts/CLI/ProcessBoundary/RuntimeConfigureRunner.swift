@@ -451,8 +451,16 @@ public struct RuntimeConfigureRunner {
             return .recorderIngressSendDataMode(value)
         case .recorderIngressSendDataReplayBatchSize(let value):
             return .recorderIngressSendDataReplayBatchSize(value)
-        case .recorderIngressSendDataReplayRateLimitPerSecond(let value):
-            return .recorderIngressSendDataReplayRateLimitPerSecond(value)
+        case .recorderIngressSendDataReplayMaxMiBPerSecond(let value):
+            return .recorderIngressSendDataReplayMaxMiBPerSecond(value)
+        case .containerMemoryLimitsEnabled(let value):
+            return .containerMemoryLimitsEnabled(value)
+        case .vitalServerContainerMemoryLimitMiB(let value):
+            return .vitalServerContainerMemoryLimitMiB(value)
+        case .recorderIngressContainerMemoryLimitMiB(let value):
+            return .recorderIngressContainerMemoryLimitMiB(value)
+        case .redisContainerMemoryLimitMiB(let value):
+            return .redisContainerMemoryLimitMiB(value)
         case .adminPassword(let value):
             return .adminPassword(value)
         case .adminPasswordFile(let value):

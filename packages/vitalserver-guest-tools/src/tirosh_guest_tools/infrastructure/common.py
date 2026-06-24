@@ -48,15 +48,18 @@ def is_mountpoint(path: Path) -> bool:
 
 
 def compose_command(arguments: list[str]) -> list[str]:
-    return [
+    command = [
         "docker",
         "compose",
         "--project-name",
         PROJECT_NAME,
         "-f",
         str(DEPLOY_DIR / RuntimeFileName.COMPOSE.value),
-        *arguments,
     ]
+    runtime_limits = DEPLOY_DIR / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value
+    if runtime_limits.exists():
+        command.extend(["-f", str(runtime_limits)])
+    return [*command, *arguments]
 
 
 def run(

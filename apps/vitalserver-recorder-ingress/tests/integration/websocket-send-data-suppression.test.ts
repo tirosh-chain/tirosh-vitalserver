@@ -127,7 +127,7 @@ function configFor(mode, upstreamPort, redisPort) {
         intervalMs: 1000,
         batchSize: 1,
         maxAttempts: 3,
-        rateLimitPerSecond: 1,
+        maxBytesPerSecond: 1024 * 1024,
         targetTimeoutMs: 1000,
       },
     },

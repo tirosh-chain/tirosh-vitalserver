@@ -2,8 +2,17 @@
 
 const { sendDataIngressModes } = require("./domain/send-data-ingress-contracts");
 
+const MIB = 1024 * 1024;
+const DEFAULT_REPLAY_MAX_BYTES_PER_SECOND = 20 * MIB;
+const DEFAULT_REPLAY_MIN_BYTES_PER_SECOND = 1 * MIB;
+
 function loadConfig(env) {
   const sendDataMode = sendDataIngressModeEnv(env, "RECORDER_INGRESS_SEND_DATA_MODE", sendDataIngressModes.SPOOL_AND_REPLAY);
+  const replayMaxBytesPerSecond = numberEnv(
+    env,
+    "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND",
+    DEFAULT_REPLAY_MAX_BYTES_PER_SECOND
+  );
   return {
     listenPort: numberEnv(env, "RECORDER_INGRESS_PORT", 8080),
     upstream: {
@@ -51,8 +60,21 @@ function loadConfig(env) {
         intervalMs: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS", 1000),
         batchSize: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", 10),
         maxAttempts: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS", 3),
-        rateLimitPerSecond: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND", 10),
+        maxBytesPerSecond: replayMaxBytesPerSecond,
         targetTimeoutMs: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS", 5000),
+        adaptive: {
+          enabled: booleanEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_ENABLED", true),
+          minBytesPerSecond: numberEnv(
+            env,
+            "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_BYTES_PER_SECOND",
+            DEFAULT_REPLAY_MIN_BYTES_PER_SECOND
+          ),
+          maxBytesPerSecond: numberEnv(
+            env,
+            "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_BYTES_PER_SECOND",
+            replayMaxBytesPerSecond
+          ),
+        },
       },
     },
     clientIp: {

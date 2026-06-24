@@ -1360,6 +1360,60 @@ export interface components {
             redisIpWriteFailures: number;
             redisIpVerifyFailures: number;
             redisIpVerifyMismatches: number;
+            throughput?: components["schemas"]["RuntimeRecorderIngressThroughputStatus"];
+            spool?: components["schemas"]["RuntimeRecorderIngressSpoolStatus"];
+            replay?: components["schemas"]["RuntimeRecorderIngressReplayStatus"];
+        };
+        RuntimeRecorderIngressThroughputStatus: {
+            windowSeconds?: number | null;
+            observedBytesPerSecond?: number | null;
+            spooledBytesPerSecond?: number | null;
+            replayedBytesPerSecond?: number | null;
+            queueGrowthBytesPerSecond?: number | null;
+        };
+        RuntimeRecorderIngressFailureObservation: {
+            reason?: string | null;
+            message?: string | null;
+            occurredAt?: string | null;
+        };
+        RuntimeRecorderIngressSpoolStatus: {
+            mode?: string | null;
+            status?: string | null;
+            storage?: string | null;
+            acceptedEvents?: number | null;
+            spooledEvents?: number | null;
+            rejectedEvents?: number | null;
+            writeFailures?: number | null;
+            pendingItems?: number | null;
+            pendingBytes?: number | null;
+            oldestPendingAgeSeconds?: number | null;
+            lastAcceptedAt?: string | null;
+            lastSpooledAt?: string | null;
+            lastFailure?: components["schemas"]["RuntimeRecorderIngressFailureObservation"];
+        };
+        RuntimeRecorderIngressReplayStatus: {
+            status?: string | null;
+            pendingItems?: number | null;
+            inFlightItems?: number | null;
+            replayedEvents?: number | null;
+            retryableFailures?: number | null;
+            deadLetteredEvents?: number | null;
+            replayLagSeconds?: number | null;
+            maxBytesPerSecond?: number | null;
+            configuredMaxBytesPerSecond?: number | null;
+            adaptive?: components["schemas"]["RuntimeRecorderIngressReplayAdaptiveStatus"];
+            lastReplayAt?: string | null;
+            lastFailure?: components["schemas"]["RuntimeRecorderIngressFailureObservation"];
+        };
+        RuntimeRecorderIngressReplayAdaptiveStatus: {
+            enabled?: boolean | null;
+            minBytesPerSecond?: number | null;
+            maxBytesPerSecond?: number | null;
+            currentMaxBytesPerSecond?: number | null;
+            lastDecision?: string | null;
+            lastReason?: string | null;
+            lastChangedAt?: string | null;
+            memoryGuardStatus?: string | null;
         };
         RuntimeRecorderConnectionObservation: {
             vrcode: string;
@@ -1378,6 +1432,7 @@ export interface components {
             exitCode?: number | null;
             error?: string | null;
             finishedAt?: string | null;
+            memoryUsedBytes?: number | null;
             memoryLimitBytes?: number | null;
             oomKilled?: boolean | null;
             restartCount?: number | null;
@@ -1410,6 +1465,19 @@ export interface components {
             remoteConsoleURL: string;
             publicHost: string;
             publicPort: number;
+            /** @enum {string} */
+            recorderIngressSendDataMode: "passthrough" | "mirror_spool" | "spool_only" | "spool_and_replay";
+            recorderIngressSendDataReplayBatchSize: number;
+            /** @description Maximum recorder send_data replay throughput in MiB/s. */
+            recorderIngressSendDataReplayMaxMiBPerSecond: number;
+            /** @description Whether Docker hard memory limits are applied to selected runtime containers. */
+            containerMemoryLimitsEnabled: boolean;
+            /** @description VitalServer container hard memory limit in MiB when container memory limits are enabled. */
+            vitalServerContainerMemoryLimitMiB: number;
+            /** @description Recorder ingress container hard memory limit in MiB when container memory limits are enabled. */
+            recorderIngressContainerMemoryLimitMiB: number;
+            /** @description Redis container hard memory limit in MiB when container memory limits are enabled. */
+            redisContainerMemoryLimitMiB: number;
             adminPassword: string;
             changeAdminPassword: boolean;
             startOnBoot: boolean;

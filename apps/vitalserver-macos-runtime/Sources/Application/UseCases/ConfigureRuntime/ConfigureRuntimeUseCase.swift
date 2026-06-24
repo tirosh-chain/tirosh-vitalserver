@@ -102,7 +102,11 @@ public enum ConfigureRuntimeChange<NetworkMode: Equatable>: Equatable {
     case publicPort(Int)
     case recorderIngressSendDataMode(RuntimeRecorderIngressSendDataMode)
     case recorderIngressSendDataReplayBatchSize(Int)
-    case recorderIngressSendDataReplayRateLimitPerSecond(Int)
+    case recorderIngressSendDataReplayMaxMiBPerSecond(Int)
+    case containerMemoryLimitsEnabled(Bool)
+    case vitalServerContainerMemoryLimitMiB(Int)
+    case recorderIngressContainerMemoryLimitMiB(Int)
+    case redisContainerMemoryLimitMiB(Int)
     case adminPassword(String)
     case adminPasswordFile(URL)
     case startOnBoot(Bool)
@@ -407,6 +411,9 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         if changes.contains(where: \.changesRedisRelay) {
             return .containerServices
         }
+        if changes.contains(where: \.changesRecorderIngressSendDataConfig) {
+            return .containerServices
+        }
         return .none
     }
 
@@ -547,11 +554,28 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                 throw invalid("--recorder-ingress-send-data-replay-batch-size must be greater than 0")
             }
             guestRuntimeSettings.recorderIngressSendDataReplayBatchSize = value
-        case .recorderIngressSendDataReplayRateLimitPerSecond(let value):
+        case .recorderIngressSendDataReplayMaxMiBPerSecond(let value):
             guard value > 0 else {
-                throw invalid("--recorder-ingress-send-data-replay-rate-limit-per-second must be greater than 0")
+                throw invalid("--recorder-ingress-send-data-replay-max-mib-per-second must be greater than 0")
             }
-            guestRuntimeSettings.recorderIngressSendDataReplayRateLimitPerSecond = value
+            guestRuntimeSettings.recorderIngressSendDataReplayMaxMiBPerSecond = value
+        case .containerMemoryLimitsEnabled(let enabled):
+            guestRuntimeSettings.containerMemoryLimitsEnabled = enabled
+        case .vitalServerContainerMemoryLimitMiB(let value):
+            guard value > 0 else {
+                throw invalid("--vitalserver-container-memory-limit-mib must be greater than 0")
+            }
+            guestRuntimeSettings.vitalServerContainerMemoryLimitMiB = value
+        case .recorderIngressContainerMemoryLimitMiB(let value):
+            guard value > 0 else {
+                throw invalid("--recorder-ingress-container-memory-limit-mib must be greater than 0")
+            }
+            guestRuntimeSettings.recorderIngressContainerMemoryLimitMiB = value
+        case .redisContainerMemoryLimitMiB(let value):
+            guard value > 0 else {
+                throw invalid("--redis-container-memory-limit-mib must be greater than 0")
+            }
+            guestRuntimeSettings.redisContainerMemoryLimitMiB = value
         case .adminPassword(let value):
             guard !value.isEmpty, RuntimeTextValidator.isSingleLine(value) else {
                 throw invalid("--admin-password must not be empty or contain newlines")
@@ -684,6 +708,21 @@ private extension ConfigureRuntimeChange {
     var changesRedisRelay: Bool {
         switch self {
         case .redisRelay:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var changesRecorderIngressSendDataConfig: Bool {
+        switch self {
+        case .recorderIngressSendDataMode,
+             .recorderIngressSendDataReplayBatchSize,
+             .recorderIngressSendDataReplayMaxMiBPerSecond,
+             .containerMemoryLimitsEnabled,
+             .vitalServerContainerMemoryLimitMiB,
+             .recorderIngressContainerMemoryLimitMiB,
+             .redisContainerMemoryLimitMiB:
             return true
         default:
             return false

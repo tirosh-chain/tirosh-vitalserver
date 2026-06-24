@@ -59,6 +59,12 @@ const vitalDBAnomalyKindSchema = z.enum([
   "observer-unhealthy"
 ]);
 const networkModeSchema = z.enum(["shared", "bridged"]);
+const recorderIngressSendDataModeSchema = z.enum([
+  "passthrough",
+  "mirror_spool",
+  "spool_only",
+  "spool_and_replay"
+]);
 const testKitStateSchema = z.enum([
   "disabled",
   "stopped",
@@ -133,6 +139,13 @@ export const runtimeSettingsSchema = z
     remoteConsoleURL: z.string(),
     publicHost: z.string(),
     publicPort: z.number(),
+    recorderIngressSendDataMode: recorderIngressSendDataModeSchema,
+    recorderIngressSendDataReplayBatchSize: z.number(),
+    recorderIngressSendDataReplayMaxMiBPerSecond: z.number(),
+    containerMemoryLimitsEnabled: z.boolean(),
+    vitalServerContainerMemoryLimitMiB: z.number(),
+    recorderIngressContainerMemoryLimitMiB: z.number(),
+    redisContainerMemoryLimitMiB: z.number(),
     adminPassword: z.string(),
     changeAdminPassword: z.boolean(),
     startOnBoot: z.boolean(),
@@ -209,6 +222,72 @@ const runtimeRecorderConnectionObservationSchema = z
   })
   .passthrough();
 
+const runtimeRecorderIngressThroughputStatusSchema = z
+  .object({
+    windowSeconds: nullableNumber,
+    observedBytesPerSecond: nullableNumber,
+    spooledBytesPerSecond: nullableNumber,
+    replayedBytesPerSecond: nullableNumber,
+    queueGrowthBytesPerSecond: nullableNumber
+  })
+  .passthrough();
+
+const runtimeRecorderIngressFailureObservationSchema = z
+  .object({
+    reason: nullableString,
+    message: nullableString,
+    occurredAt: nullableString
+  })
+  .passthrough();
+
+const runtimeRecorderIngressSpoolStatusSchema = z
+  .object({
+    mode: nullableString,
+    status: nullableString,
+    storage: nullableString,
+    acceptedEvents: nullableNumber,
+    spooledEvents: nullableNumber,
+    rejectedEvents: nullableNumber,
+    writeFailures: nullableNumber,
+    pendingItems: nullableNumber,
+    pendingBytes: nullableNumber,
+    oldestPendingAgeSeconds: nullableNumber,
+    lastAcceptedAt: nullableString,
+    lastSpooledAt: nullableString,
+    lastFailure: runtimeRecorderIngressFailureObservationSchema.nullable().optional()
+  })
+  .passthrough();
+
+const runtimeRecorderIngressReplayAdaptiveStatusSchema = z
+  .object({
+    enabled: nullableBoolean,
+    minBytesPerSecond: nullableNumber,
+    maxBytesPerSecond: nullableNumber,
+    currentMaxBytesPerSecond: nullableNumber,
+    lastDecision: nullableString,
+    lastReason: nullableString,
+    lastChangedAt: nullableString,
+    memoryGuardStatus: nullableString
+  })
+  .passthrough();
+
+const runtimeRecorderIngressReplayStatusSchema = z
+  .object({
+    status: nullableString,
+    pendingItems: nullableNumber,
+    inFlightItems: nullableNumber,
+    replayedEvents: nullableNumber,
+    retryableFailures: nullableNumber,
+    deadLetteredEvents: nullableNumber,
+    replayLagSeconds: nullableNumber,
+    maxBytesPerSecond: nullableNumber,
+    configuredMaxBytesPerSecond: nullableNumber,
+    adaptive: runtimeRecorderIngressReplayAdaptiveStatusSchema.nullable().optional(),
+    lastReplayAt: nullableString,
+    lastFailure: runtimeRecorderIngressFailureObservationSchema.nullable().optional()
+  })
+  .passthrough();
+
 const runtimeRecorderIngressStatusDocumentSchema = z
   .object({
     startedAt: nullableString,
@@ -222,7 +301,12 @@ const runtimeRecorderIngressStatusDocumentSchema = z
     auditWriteFailures: z.number(),
     auditFileWriteFailures: z.number(),
     auditStdoutWriteFailures: z.number(),
-    redisIpWriteFailures: z.number()
+    redisIpWriteFailures: z.number(),
+    redisIpVerifyFailures: z.number().optional(),
+    redisIpVerifyMismatches: z.number().optional(),
+    throughput: runtimeRecorderIngressThroughputStatusSchema.nullable().optional(),
+    spool: runtimeRecorderIngressSpoolStatusSchema.nullable().optional(),
+    replay: runtimeRecorderIngressReplayStatusSchema.nullable().optional()
   })
   .passthrough();
 
@@ -233,6 +317,8 @@ const runtimeContainerServiceObservationSchema = z
     state: nullableString,
     health: nullableString,
     exitCode: nullableNumber,
+    memoryUsedBytes: nullableNumber,
+    memoryLimitBytes: nullableNumber,
     startedAt: nullableString,
     uptimeSeconds: nullableNumber
   })

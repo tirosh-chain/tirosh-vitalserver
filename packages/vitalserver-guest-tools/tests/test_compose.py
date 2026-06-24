@@ -8,6 +8,7 @@ import pytest
 from tirosh_guest_tools.application import compose
 from tirosh_guest_tools.contracts import ComposeService, RuntimeFileName
 from tirosh_guest_tools.domain.errors import GuestContractError, GuestDependencyError
+from tirosh_guest_tools.infrastructure import common
 from tirosh_guest_tools.domain.operations import ComposeAction
 
 
@@ -34,7 +35,7 @@ def test_load_runtime_env_exports_recorder_ingress_send_data_mode(
         {
           "recorderIngressSendDataMode": "spool_only",
           "recorderIngressSendDataReplayBatchSize": 8,
-          "recorderIngressSendDataReplayRateLimitPerSecond": 12
+          "recorderIngressSendDataReplayMaxMiBPerSecond": 12
         }
         """,
         encoding="utf-8",
@@ -44,16 +45,163 @@ def test_load_runtime_env_exports_recorder_ingress_send_data_mode(
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_MODE", raising=False)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", raising=False)
-    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND", raising=False)
+    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND", raising=False)
 
     compose.load_runtime_env()
 
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_only"
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "8"
     assert (
-        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND"]
-        == "12"
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"]
+        == str(12 * 1024 * 1024)
     )
+    assert not (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).exists()
+
+
+def test_load_runtime_env_writes_compose_runtime_memory_limits(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        """
+        {
+          "containerMemoryLimitsEnabled": true,
+          "vitalServerContainerMemoryLimitMiB": 4096,
+          "recorderIngressContainerMemoryLimitMiB": 512,
+          "redisContainerMemoryLimitMiB": 1024
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    compose.load_runtime_env()
+
+    assert (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).read_text(
+        encoding="utf-8"
+    ) == (
+        "services:\n"
+        "  app:\n"
+        f"    mem_limit: {4096 * 1024 * 1024}\n"
+        "  recorder-ingress:\n"
+        f"    mem_limit: {512 * 1024 * 1024}\n"
+        "  redis:\n"
+        f"    mem_limit: {1024 * 1024 * 1024}\n"
+    )
+
+
+def test_load_runtime_env_uses_redis_heavy_default_memory_limits(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        '{"containerMemoryLimitsEnabled":true}\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    compose.load_runtime_env()
+
+    assert (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).read_text(
+        encoding="utf-8"
+    ) == (
+        "services:\n"
+        "  app:\n"
+        f"    mem_limit: {2048 * 1024 * 1024}\n"
+        "  recorder-ingress:\n"
+        f"    mem_limit: {410 * 1024 * 1024}\n"
+        "  redis:\n"
+        f"    mem_limit: {3277 * 1024 * 1024}\n"
+    )
+
+
+def test_load_runtime_env_removes_compose_runtime_memory_limits_when_disabled(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        '{"containerMemoryLimitsEnabled":false}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).write_text(
+        "services: {}\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    compose.load_runtime_env()
+
+    assert not (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).exists()
+
+
+def test_compose_command_uses_runtime_limits_override_when_present(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).write_text(
+        "services: {}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(common, "DEPLOY_DIR", tmp_path)
+
+    command = common.compose_command(["config"])
+
+    assert command == [
+        "docker",
+        "compose",
+        "--project-name",
+        common.PROJECT_NAME,
+        "-f",
+        str(tmp_path / RuntimeFileName.COMPOSE.value),
+        "-f",
+        str(tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value),
+        "config",
+    ]
 
 
 def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_replay(
@@ -82,15 +230,15 @@ def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_re
     monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_MODE", raising=False)
     monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", raising=False)
-    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND", raising=False)
+    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND", raising=False)
 
     compose.load_runtime_env()
 
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_and_replay"
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "10"
     assert (
-        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND"]
-        == "10"
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"]
+        == str(20 * 1024 * 1024)
     )
 
 
@@ -143,7 +291,7 @@ def test_load_runtime_env_rejects_invalid_recorder_ingress_replay_settings(
         },
     )()
     (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
-        '{"recorderIngressSendDataReplayRateLimitPerSecond":0}\n',
+        '{"recorderIngressSendDataReplayMaxMiBPerSecond":0}\n',
         encoding="utf-8",
     )
 
@@ -155,7 +303,7 @@ def test_load_runtime_env_rejects_invalid_recorder_ingress_replay_settings(
 
     assert (
         error.value.code
-        == "runtime-settings-recorder-ingress-send-data-replay-rate-limit-invalid"
+        == "runtime-settings-recorder-ingress-send-data-replay-max-mib-invalid"
     )
 
 

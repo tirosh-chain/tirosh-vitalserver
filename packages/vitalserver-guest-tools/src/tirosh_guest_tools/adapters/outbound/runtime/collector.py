@@ -41,6 +41,12 @@ class ContainerInspection:
     started_at: str | None
 
 
+@dataclass(frozen=True)
+class ContainerMemoryStats:
+    used_bytes: int | None
+    limit_bytes: int | None
+
+
 def collect_runtime_state(
     *,
     guest_http: RuntimeHTTPProbeStatus | str | None = None,
@@ -332,23 +338,25 @@ def compose_services(
         return None
     services: list[RuntimeContainerService] = []
     now = datetime.now(UTC)
+    memory_stats = container_memory_stats(probe_errors)
     for item in documents:
         service = string_value(item.get("Service")) or string_value(item.get("Name"))
         if service is None:
             continue
         inspection = container_inspection(item, probe_errors)
+        identifier = container_id(item, inspection)
+        memory = memory_stats_for(item, identifier, memory_stats)
         started_at = None if inspection is None else inspection.started_at
         services.append(
             RuntimeContainerService(
                 service=service,
-                container_id=container_id(item, inspection),
+                container_id=identifier,
                 exit_code=normalized_exit_code(item.get("ExitCode")),
                 error=None if inspection is None else inspection.error,
                 finished_at=None if inspection is None else inspection.finished_at,
                 health=string_value(item.get("Health")),
-                memory_limit_bytes=(
-                    None if inspection is None else inspection.memory_limit_bytes
-                ),
+                memory_used_bytes=None if memory is None else memory.used_bytes,
+                memory_limit_bytes=None if inspection is None else inspection.memory_limit_bytes,
                 name=string_value(item.get("Name")),
                 oom_killed=None if inspection is None else inspection.oom_killed,
                 restart_count=None if inspection is None else inspection.restart_count,
@@ -358,6 +366,94 @@ def compose_services(
             )
         )
     return services
+
+
+def container_memory_stats(
+    probe_errors: list[ProbeError],
+) -> dict[str, ContainerMemoryStats]:
+    try:
+        output = subprocess.check_output(
+            ["docker", "stats", "--no-stream", "--format", "{{json .}}"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        append_probe_error(probe_errors, "docker stats", error)
+        return {}
+
+    stats: dict[str, ContainerMemoryStats] = {}
+    for line in output.splitlines():
+        try:
+            document = json.loads(line)
+        except json.JSONDecodeError as error:
+            append_probe_error(probe_errors, "docker stats", error)
+            continue
+        if not isinstance(document, dict):
+            append_probe_error(probe_errors, "docker stats", "expected JSON object")
+            continue
+        memory = parse_memory_usage(string_value(document.get("MemUsage")))
+        for key in (
+            string_value(document.get("ID")),
+            string_value(document.get("Container")),
+            string_value(document.get("Name")),
+        ):
+            if key:
+                stats[key] = memory
+    return stats
+
+
+def memory_stats_for(
+    item: dict[str, object],
+    container_identifier: str | None,
+    stats: dict[str, ContainerMemoryStats],
+) -> ContainerMemoryStats | None:
+    for key in (
+        container_identifier,
+        string_value(item.get("ID")),
+        string_value(item.get("Name")),
+    ):
+        if key and key in stats:
+            return stats[key]
+    return None
+
+
+def parse_memory_usage(value: str | None) -> ContainerMemoryStats:
+    if value is None:
+        return ContainerMemoryStats(used_bytes=None, limit_bytes=None)
+    used_text, separator, limit_text = value.partition("/")
+    return ContainerMemoryStats(
+        used_bytes=parse_docker_size(used_text.strip()),
+        limit_bytes=parse_docker_size(limit_text.strip()) if separator else None,
+    )
+
+
+def parse_docker_size(value: str | None) -> int | None:
+    if not value:
+        return None
+    compact = value.strip().replace(" ", "")
+    units = {
+        "b": 1,
+        "kb": 1000,
+        "mb": 1000**2,
+        "gb": 1000**3,
+        "tb": 1000**4,
+        "kib": 1024,
+        "mib": 1024**2,
+        "gib": 1024**3,
+        "tib": 1024**4,
+    }
+    lower = compact.lower()
+    for suffix, multiplier in sorted(units.items(), key=lambda item: len(item[0]), reverse=True):
+        if lower.endswith(suffix):
+            number = lower[: -len(suffix)]
+            try:
+                return int(float(number) * multiplier)
+            except ValueError:
+                return None
+    try:
+        return int(float(lower))
+    except ValueError:
+        return None
 
 
 def parse_compose_documents(output: str) -> list[dict[str, object]]:
@@ -446,7 +542,7 @@ def container_inspection(
         container_id=string_value(document.get("Id")),
         error=string_value(state_document.get("Error")),
         finished_at=timestamp_value(state_document.get("FinishedAt")),
-        memory_limit_bytes=normalized_integer(host_config_document.get("Memory")),
+        memory_limit_bytes=explicit_memory_limit_bytes(host_config_document.get("Memory")),
         oom_killed=bool_value(state_document.get("OOMKilled")),
         restart_count=normalized_integer(document.get("RestartCount")),
         started_at=timestamp_value(state_document.get("StartedAt")),
@@ -478,6 +574,13 @@ def normalized_integer(value: object) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def explicit_memory_limit_bytes(value: object) -> int | None:
+    limit = normalized_integer(value)
+    if limit is None or limit <= 0:
+        return None
+    return limit
 
 
 def bool_value(value: object) -> bool | None:

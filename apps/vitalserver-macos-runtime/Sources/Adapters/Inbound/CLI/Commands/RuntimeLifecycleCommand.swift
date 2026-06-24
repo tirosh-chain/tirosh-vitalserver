@@ -118,7 +118,7 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime health
       vitalserver-vm runtime guest-log-sync
       vitalserver-vm runtime watchdog
-      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--recorder-ingress-send-data-mode passthrough|mirror_spool|spool_only|spool_and_replay] [--recorder-ingress-send-data-replay-batch-size <count>] [--recorder-ingress-send-data-replay-rate-limit-per-second <count>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--log-archive-retention-days <days>] [--log-archive-maximum-gib <gib>] [--redis-relay-settings-file <path>] [--restart]
+      vitalserver-vm runtime configure [--cpu <count>] [--memory-gib <gib>] [--disk-gib <gib>] [--network shared|bridged] [--bridged-interface <id>] [--proxy-port <port>] [--vital-files-dir <path>] [--vitalserver-url <url>] [--remote-console-url <url>] [--public-host <host>] [--public-port <port>] [--recorder-ingress-send-data-mode passthrough|mirror_spool|spool_only|spool_and_replay] [--recorder-ingress-send-data-replay-batch-size <count>] [--recorder-ingress-send-data-replay-max-mib-per-second <count>] [--container-memory-limits true|false] [--vitalserver-container-memory-limit-mib <mib>] [--recorder-ingress-container-memory-limit-mib <mib>] [--redis-container-memory-limit-mib <mib>] [--admin-password <password>] [--start-on-boot true|false] [--auto-recovery true|false] [--prevent-system-sleep true|false] [--automatic-backup true|false] [--backup-schedule-times HH:mm[,HH:mm]] [--backup-retention <count>] [--log-archive-retention-days <days>] [--log-archive-maximum-gib <gib>] [--redis-relay-settings-file <path>] [--restart]
       vitalserver-vm runtime configure [--admin-password-file <path>] [--restart]
       vitalserver-vm runtime verify-bundle <bundle.tar.gz>
       vitalserver-vm runtime stage-bundle <bundle.tar.gz>
@@ -264,13 +264,39 @@ extension RuntimeLifecycleCommand {
                 )
             }
             return .recorderIngressSendDataReplayBatchSize(batchSize)
-        case .recorderIngressSendDataReplayRateLimitPerSecond:
-            guard let rateLimit = Int(value) else {
+        case .recorderIngressSendDataReplayMaxMiBPerSecond:
+            guard let maxMiBPerSecond = Int(value) else {
                 throw RuntimeLifecycleCommandParseError.missingArgument(
-                    "--recorder-ingress-send-data-replay-rate-limit-per-second must be an integer"
+                    "--recorder-ingress-send-data-replay-max-mib-per-second must be an integer"
                 )
             }
-            return .recorderIngressSendDataReplayRateLimitPerSecond(rateLimit)
+            return .recorderIngressSendDataReplayMaxMiBPerSecond(maxMiBPerSecond)
+        case .containerMemoryLimitsEnabled:
+            guard let enabled = RuntimeBooleanParser.parse(value) else {
+                throw RuntimeLifecycleCommandParseError.missingArgument("--container-memory-limits must be true or false")
+            }
+            return .containerMemoryLimitsEnabled(enabled)
+        case .vitalServerContainerMemoryLimitMiB:
+            guard let limitMiB = Int(value) else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(
+                    "--vitalserver-container-memory-limit-mib must be an integer"
+                )
+            }
+            return .vitalServerContainerMemoryLimitMiB(limitMiB)
+        case .recorderIngressContainerMemoryLimitMiB:
+            guard let limitMiB = Int(value) else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(
+                    "--recorder-ingress-container-memory-limit-mib must be an integer"
+                )
+            }
+            return .recorderIngressContainerMemoryLimitMiB(limitMiB)
+        case .redisContainerMemoryLimitMiB:
+            guard let limitMiB = Int(value) else {
+                throw RuntimeLifecycleCommandParseError.missingArgument(
+                    "--redis-container-memory-limit-mib must be an integer"
+                )
+            }
+            return .redisContainerMemoryLimitMiB(limitMiB)
         case .adminPassword:
             return .adminPassword(value)
         case .adminPasswordFile:

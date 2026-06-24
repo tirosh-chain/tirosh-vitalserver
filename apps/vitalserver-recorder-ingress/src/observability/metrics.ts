@@ -18,6 +18,7 @@ function createMetrics() {
     redisIpWriteFailures: 0,
     redisIpVerifyFailures: 0,
     redisIpVerifyMismatches: 0,
+    sendDataThroughput: defaultThroughputStatus(),
     sendDataSpool: defaultSpoolStatus(),
     sendDataReplay: defaultReplayStatus(),
   };
@@ -56,6 +57,7 @@ function metricsSnapshot(metrics) {
     redisIpWriteFailures: metrics.redisIpWriteFailures,
     redisIpVerifyFailures: metrics.redisIpVerifyFailures,
     redisIpVerifyMismatches: metrics.redisIpVerifyMismatches,
+    throughput: throughputSnapshot(metrics.sendDataThroughput),
     spool: spoolSnapshot(metrics.sendDataSpool),
     replay: replaySnapshot(metrics.sendDataReplay),
   };
@@ -72,7 +74,22 @@ function configureSendDataSpool(metrics, config) {
   metrics.sendDataSpool.storage = config.storage || "redis_list";
   metrics.sendDataSpool.status = config.enabled ? "ready" : "disabled";
   metrics.sendDataReplay.status = config.replay && config.replay.enabled ? "idle" : "disabled";
-  metrics.sendDataReplay.rateLimitPerSecond = config.replay ? config.replay.rateLimitPerSecond : 0;
+  const adaptive = replayAdaptiveConfig(config.replay);
+  const currentMaxBytes = adaptive.enabled
+    ? clamp(config.replay ? config.replay.maxBytesPerSecond : 0, adaptive.minBytesPerSecond, adaptive.maxBytesPerSecond)
+    : (config.replay ? config.replay.maxBytesPerSecond : 0);
+  metrics.sendDataReplay.maxBytesPerSecond = currentMaxBytes;
+  metrics.sendDataReplay.configuredMaxBytesPerSecond = config.replay ? config.replay.maxBytesPerSecond : 0;
+  metrics.sendDataReplay.adaptive = {
+    enabled: adaptive.enabled,
+    minBytesPerSecond: adaptive.minBytesPerSecond,
+    maxBytesPerSecond: adaptive.maxBytesPerSecond,
+    currentMaxBytesPerSecond: currentMaxBytes,
+    lastDecision: adaptive.enabled ? "initialized" : "disabled",
+    lastReason: adaptive.enabled ? "configured" : "adaptive_disabled",
+    lastChangedAt: null,
+    memoryGuardStatus: "unavailable",
+  };
 }
 
 function sendDataSpoolState(metrics) {
@@ -132,6 +149,7 @@ function recordSendDataObserved(metrics, vrcode, payloadSummary) {
     : 0;
   metrics.sendDataEventsObserved += 1;
   metrics.sendDataBytesObserved += bytes;
+  recordThroughputSample(metrics.sendDataThroughput, "observed", bytes);
   metrics.lastSendDataObservedAt = observedAt;
   if (!vrcode) return;
 
@@ -166,6 +184,7 @@ function recordSendDataSpoolSpooled(metrics, vrcode, payloadBytes, depth) {
     spool.oldestPendingAt = spool.oldestPendingAt || observedAt;
     spool.lastSpooledAt = observedAt;
   });
+  recordThroughputSample(metrics.sendDataThroughput, "spooled", bytes);
   updateReplay(metrics.sendDataReplay, (replay) => {
     if (replay.status !== "disabled") replay.pendingItems += 1;
   });
@@ -240,6 +259,8 @@ function recordSendDataReplayStarted(metrics, vrcode, item) {
 
 function recordSendDataReplaySucceeded(metrics, vrcode, item) {
   const replayedAt = new Date().toISOString();
+  const bytes = Number.isFinite(item && item.payloadBytes) ? item.payloadBytes : 0;
+  recordThroughputSample(metrics.sendDataThroughput, "replayed", bytes);
   updateReplay(metrics.sendDataReplay, (replay) => {
     replay.status = "idle";
     replay.inFlightItems = Math.max(0, replay.inFlightItems - 1);
@@ -289,6 +310,26 @@ function recordSendDataReplayDeadLettered(metrics, vrcode, item, failure) {
   });
 }
 
+function recordSendDataReplayRateDecision(metrics, decision) {
+  updateReplay(metrics.sendDataReplay, (replay) => {
+    replay.maxBytesPerSecond = decision.maxBytesPerSecond;
+    replay.adaptive = replay.adaptive || defaultReplayAdaptiveStatus();
+    replay.adaptive.currentMaxBytesPerSecond = decision.maxBytesPerSecond;
+    replay.adaptive.lastDecision = decision.action;
+    replay.adaptive.lastReason = decision.reason;
+    replay.adaptive.lastChangedAt = new Date().toISOString();
+  });
+}
+
+function sendDataReplayRateState(metrics) {
+  const replay = metrics.sendDataReplay || defaultReplayStatus();
+  return {
+    configuredMaxBytesPerSecond: replay.configuredMaxBytesPerSecond || replay.maxBytesPerSecond || 0,
+    currentMaxBytesPerSecond: replay.maxBytesPerSecond || 0,
+    adaptive: replay.adaptive || defaultReplayAdaptiveStatus(),
+  };
+}
+
 function recordRecorderDisconnect(metrics, context) {
   const vrcode = context.metrics_vrcode;
   if (!vrcode) return;
@@ -327,6 +368,38 @@ function updateRecorderReplay(metrics, vrcode, apply) {
 
 function updateReplay(replay, apply) {
   apply(replay);
+}
+
+function recordThroughputSample(throughput, key, bytes) {
+  const boundedBytes = Number.isFinite(bytes) ? Math.max(0, bytes) : 0;
+  const samples = throughput[key] || [];
+  samples.push({ observedAtMs: Date.now(), bytes: boundedBytes });
+  throughput[key] = pruneThroughputSamples(samples, throughput.windowSeconds);
+}
+
+function throughputSnapshot(throughput) {
+  const windowSeconds = throughput.windowSeconds || 10;
+  const observed = bytesPerSecond(throughput.observed, windowSeconds);
+  const spooled = bytesPerSecond(throughput.spooled, windowSeconds);
+  const replayed = bytesPerSecond(throughput.replayed, windowSeconds);
+  return {
+    windowSeconds,
+    observedBytesPerSecond: observed,
+    spooledBytesPerSecond: spooled,
+    replayedBytesPerSecond: replayed,
+    queueGrowthBytesPerSecond: spooled - replayed,
+  };
+}
+
+function bytesPerSecond(samples, windowSeconds) {
+  const pruned = pruneThroughputSamples(samples || [], windowSeconds);
+  const bytes = pruned.reduce((total, sample) => total + sample.bytes, 0);
+  return bytes / Math.max(windowSeconds, 1);
+}
+
+function pruneThroughputSamples(samples, windowSeconds) {
+  const cutoff = Date.now() - Math.max(windowSeconds, 1) * 1000;
+  return samples.filter((sample) => sample.observedAtMs >= cutoff);
 }
 
 function spoolSnapshot(spool) {
@@ -371,7 +444,9 @@ function replaySnapshot(replay) {
     retryableFailures: replay.retryableFailures,
     deadLetteredEvents: replay.deadLetteredEvents,
     replayLagSeconds: replay.replayLagSeconds,
-    rateLimitPerSecond: replay.rateLimitPerSecond,
+    maxBytesPerSecond: replay.maxBytesPerSecond,
+    configuredMaxBytesPerSecond: replay.configuredMaxBytesPerSecond,
+    adaptive: replay.adaptive,
     lastReplayAt: replay.lastReplayAt,
     lastFailure: replay.lastFailure,
   };
@@ -446,6 +521,15 @@ function defaultSpoolStatus() {
   };
 }
 
+function defaultThroughputStatus() {
+  return {
+    windowSeconds: 10,
+    observed: [],
+    spooled: [],
+    replayed: [],
+  };
+}
+
 function defaultReplayStatus() {
   return {
     status: "disabled",
@@ -455,10 +539,50 @@ function defaultReplayStatus() {
     retryableFailures: 0,
     deadLetteredEvents: 0,
     replayLagSeconds: null,
-    rateLimitPerSecond: 0,
+    maxBytesPerSecond: 0,
+    configuredMaxBytesPerSecond: 0,
+    adaptive: defaultReplayAdaptiveStatus(),
     lastReplayAt: null,
     lastFailure: null,
   };
+}
+
+function defaultReplayAdaptiveStatus() {
+  return {
+    enabled: false,
+    minBytesPerSecond: 0,
+    maxBytesPerSecond: 0,
+    currentMaxBytesPerSecond: 0,
+    lastDecision: "disabled",
+    lastReason: "adaptive_disabled",
+    lastChangedAt: null,
+    memoryGuardStatus: "unavailable",
+  };
+}
+
+function replayAdaptiveConfig(replayConfig) {
+  const configuredRate = replayConfig ? replayConfig.maxBytesPerSecond : 0;
+  const adaptive = (replayConfig && replayConfig.adaptive) || {};
+  const enabled = Boolean(adaptive.enabled);
+  const minBytesPerSecond = positiveInteger(adaptive.minBytesPerSecond, 1);
+  const maxBytesPerSecond = Math.max(
+    minBytesPerSecond,
+    positiveInteger(adaptive.maxBytesPerSecond, configuredRate || minBytesPerSecond)
+  );
+  return {
+    enabled,
+    minBytesPerSecond,
+    maxBytesPerSecond,
+  };
+}
+
+function positiveInteger(value, fallback) {
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
+
+function clamp(value, min, max) {
+  const number = Number.isFinite(value) ? value : min;
+  return Math.min(max, Math.max(min, Math.floor(number)));
 }
 
 function defaultRecorderSpoolStatus() {
@@ -500,11 +624,13 @@ module.exports = {
   recordSendDataReplayClaimFailed,
   recordSendDataReplayDeadLettered,
   recordSendDataReplayRetryableFailed,
+  recordSendDataReplayRateDecision,
   recordSendDataReplayStarted,
   recordSendDataReplaySucceeded,
   recordRecorderJoin,
   recordRecorderIpSync,
   recordSendDataObserved,
   recordRecorderDisconnect,
+  sendDataReplayRateState,
   sendDataSpoolState,
 };

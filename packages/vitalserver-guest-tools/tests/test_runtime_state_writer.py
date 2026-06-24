@@ -85,6 +85,11 @@ def test_compose_services_reads_stopped_containers_with_all(
 
     def check_output(command: list[str], **kwargs: object) -> str:
         commands.append(command)
+        if command[:2] == ["docker", "stats"]:
+            return (
+                '{"ID":"container-1","Name":"vitalserver-app-1",'
+                '"MemUsage":"512MiB / 4GiB"}\n'
+            )
         if command[:2] == ["docker", "inspect"]:
             return (
                 "[{"
@@ -128,7 +133,48 @@ def test_compose_services_reads_stopped_containers_with_all(
     assert services[0].oom_killed is True
     assert services[0].finished_at == "2026-06-12T00:00:00Z"
     assert services[0].error == "container oom killed"
+    assert services[0].memory_used_bytes == 536870912
     assert services[0].memory_limit_bytes == 4294967296
+
+
+def test_compose_services_reports_unknown_container_limit_when_no_hard_limit_is_configured(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    (tmp_path / RuntimeFileName.COMPOSE.value).write_text("services: {}\n")
+    monkeypatch.setattr(collector, "DEPLOY_DIR", tmp_path)
+
+    def check_output(command: list[str], **kwargs: object) -> str:
+        if command[:2] == ["docker", "stats"]:
+            return (
+                '{"ID":"container-1","Name":"vitalserver-app-1",'
+                '"MemUsage":"512MiB / 4GiB"}\n'
+            )
+        if command[:2] == ["docker", "inspect"]:
+            return '[{"Id":"container-1","HostConfig":{"Memory":0}}]'
+        return (
+            '{"Service":"app","Name":"vitalserver-app-1",'
+            '"State":"running","Health":"","ExitCode":0,"ID":"container-1"}'
+        )
+
+    monkeypatch.setattr(collector.subprocess, "check_output", check_output)
+
+    services = collector.compose_services([])
+
+    assert services is not None
+    assert services[0].memory_used_bytes == 536870912
+    assert services[0].memory_limit_bytes is None
+
+
+def test_parse_docker_memory_usage_preserves_missing_values() -> None:
+    assert collector.parse_memory_usage("1.5GiB / 4GiB") == collector.ContainerMemoryStats(
+        used_bytes=1610612736,
+        limit_bytes=4294967296,
+    )
+    assert collector.parse_memory_usage(None) == collector.ContainerMemoryStats(
+        used_bytes=None,
+        limit_bytes=None,
+    )
 
 
 def test_compose_services_reports_inspect_failure(

@@ -35,7 +35,11 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
     public let publicPort: Int
     public let recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
     public let recorderIngressSendDataReplayBatchSize: Int
-    public let recorderIngressSendDataReplayRateLimitPerSecond: Int
+    public let recorderIngressSendDataReplayMaxMiBPerSecond: Int
+    public let containerMemoryLimitsEnabled: Bool
+    public let vitalServerContainerMemoryLimitMiB: Int
+    public let recorderIngressContainerMemoryLimitMiB: Int
+    public let redisContainerMemoryLimitMiB: Int
     public let automaticBackupEnabled: Bool
     public let backupScheduleTimes: [String]
     public let backupRetentionCount: Int
@@ -47,7 +51,11 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
         publicPort: Int,
         recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode = RuntimeSettingsInitialValues.recorderIngressSendDataMode,
         recorderIngressSendDataReplayBatchSize: Int = RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize,
-        recorderIngressSendDataReplayRateLimitPerSecond: Int = RuntimeSettingsInitialValues.recorderIngressSendDataReplayRateLimitPerSecond,
+        recorderIngressSendDataReplayMaxMiBPerSecond: Int = RuntimeSettingsInitialValues.recorderIngressSendDataReplayMaxMiBPerSecond,
+        containerMemoryLimitsEnabled: Bool = RuntimeSettingsInitialValues.containerMemoryLimitsEnabled,
+        vitalServerContainerMemoryLimitMiB: Int = RuntimeSettingsInitialValues.vitalServerContainerMemoryLimitMiB,
+        recorderIngressContainerMemoryLimitMiB: Int = RuntimeSettingsInitialValues.recorderIngressContainerMemoryLimitMiB,
+        redisContainerMemoryLimitMiB: Int = RuntimeSettingsInitialValues.redisContainerMemoryLimitMiB,
         automaticBackupEnabled: Bool,
         backupScheduleTimes: [String],
         backupRetentionCount: Int
@@ -58,7 +66,11 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
         self.publicPort = publicPort
         self.recorderIngressSendDataMode = recorderIngressSendDataMode
         self.recorderIngressSendDataReplayBatchSize = recorderIngressSendDataReplayBatchSize
-        self.recorderIngressSendDataReplayRateLimitPerSecond = recorderIngressSendDataReplayRateLimitPerSecond
+        self.recorderIngressSendDataReplayMaxMiBPerSecond = recorderIngressSendDataReplayMaxMiBPerSecond
+        self.containerMemoryLimitsEnabled = containerMemoryLimitsEnabled
+        self.vitalServerContainerMemoryLimitMiB = vitalServerContainerMemoryLimitMiB
+        self.recorderIngressContainerMemoryLimitMiB = recorderIngressContainerMemoryLimitMiB
+        self.redisContainerMemoryLimitMiB = redisContainerMemoryLimitMiB
         self.automaticBackupEnabled = automaticBackupEnabled
         self.backupScheduleTimes = backupScheduleTimes
         self.backupRetentionCount = backupRetentionCount
@@ -278,7 +290,11 @@ public enum RuntimeSettingsReadPolicy {
         next.publicPort = input.publicPort
         next.recorderIngressSendDataMode = input.recorderIngressSendDataMode
         next.recorderIngressSendDataReplayBatchSize = input.recorderIngressSendDataReplayBatchSize
-        next.recorderIngressSendDataReplayRateLimitPerSecond = input.recorderIngressSendDataReplayRateLimitPerSecond
+        next.recorderIngressSendDataReplayMaxMiBPerSecond = input.recorderIngressSendDataReplayMaxMiBPerSecond
+        next.containerMemoryLimitsEnabled = input.containerMemoryLimitsEnabled
+        next.vitalServerContainerMemoryLimitMiB = input.vitalServerContainerMemoryLimitMiB
+        next.recorderIngressContainerMemoryLimitMiB = input.recorderIngressContainerMemoryLimitMiB
+        next.redisContainerMemoryLimitMiB = input.redisContainerMemoryLimitMiB
         next.automaticBackupEnabled = input.automaticBackupEnabled
         next.backupScheduleTimes = input.backupScheduleTimes
         next.backupRetentionCount = input.backupRetentionCount

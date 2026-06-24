@@ -419,6 +419,7 @@ public enum RuntimeControlStatusAssembler {
         let document = statusRead.document
         let guestState = guestStateRead.document
         let containerObservation = document?.containerObservation
+        let containerServices = guestState?.containerServices ?? []
         let startedAt = containerObservation?.composeServices.first { $0.service == "app" }?.startedAt
         let proxyPortIssue = document.flatMap { document -> RuntimeStatusReadIssue? in
             document.proxyPort == nil
@@ -477,6 +478,9 @@ public enum RuntimeControlStatusAssembler {
             swaggerUIHTTP: document?.swaggerUIHTTP,
             cpuUsagePercent: guestState?.cpuUsagePercent,
             memory: guestState?.memory,
+            vitalServerMemory: containerMemoryUsage(service: "app", services: containerServices),
+            recorderIngressMemory: containerMemoryUsage(service: "recorder-ingress", services: containerServices),
+            redisMemory: containerMemoryUsage(service: "redis", services: containerServices),
             systemDisk: guestState?.systemDisk,
             dataStorage: guestState?.vitalFilesDisk,
             guestRuntimeStateError: guestStateRead.error,
@@ -487,6 +491,21 @@ public enum RuntimeControlStatusAssembler {
             containerObservation: containerObservation,
             vitalDBObservation: document?.vitalDBObservation,
             redisRelayStatus: redisRelayStatusRead.document
+        )
+    }
+
+    private static func containerMemoryUsage(
+        service: String,
+        services: [RuntimeContainerServiceObservation]
+    ) -> RuntimeContainerMemoryUsage? {
+        guard let container = services.first(where: { $0.service == service }),
+              let usedBytes = container.memoryUsedBytes
+        else {
+            return nil
+        }
+        return RuntimeContainerMemoryUsage(
+            usedBytes: Int64(usedBytes),
+            limitBytes: container.memoryLimitBytes.map(Int64.init)
         )
     }
 }

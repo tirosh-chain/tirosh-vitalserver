@@ -20,13 +20,17 @@ const {
   completeSendDataReplayAttempt,
   deadLetterInvalidSendDataSpoolDocument,
 } = require("../domain/send-data-replay-policy");
+const { decideSendDataReplayRate } = require("../domain/send-data-replay-rate-policy");
 const { sendDataFailureReasons } = require("../domain/send-data-ingress-contracts");
 const {
+  metricsSnapshot,
   recordSendDataReplayClaimFailed,
   recordSendDataReplayDeadLettered,
+  recordSendDataReplayRateDecision,
   recordSendDataReplayRetryableFailed,
   recordSendDataReplayStarted,
   recordSendDataReplaySucceeded,
+  sendDataReplayRateState,
 } = require("../observability/metrics");
 
 type SendDataReplayWorkerDependencies = {
@@ -80,15 +84,29 @@ async function runReplayBatch({
   spoolStore,
   replayTarget,
 }: SendDataReplayWorkerDependencies): Promise<SendDataReplayWorkerRunResult> {
-  const limit = replayBatchLimit(config.replay);
+  const replayRate = sendDataReplayRateState(metrics);
+  const itemLimit = replayBatchLimit({
+    ...config.replay,
+    maxBytesPerSecond: replayRate.currentMaxBytesPerSecond || config.replay.maxBytesPerSecond,
+  });
+  const byteBudget = replayByteBudget({
+    ...config.replay,
+    maxBytesPerSecond: replayRate.currentMaxBytesPerSecond || config.replay.maxBytesPerSecond,
+  });
   let processed = 0;
+  let processedBytes = 0;
+  const signals = {
+    replayFailures: 0,
+  };
 
-  for (let index = 0; index < limit; index += 1) {
+  for (let index = 0; index < itemLimit; index += 1) {
+    if (processed > 0 && processedBytes >= byteBudget) break;
     const claim = await spoolStore.claim();
     if (!claim.ok) {
       await deadLetterInvalidClaim({ claim, metrics, spoolStore });
       processed += claim.reason === sendDataFailureReasons.INVALID_PAYLOAD ? 1 : 0;
       if (claim.reason !== sendDataFailureReasons.INVALID_PAYLOAD) {
+        signals.replayFailures += 1;
         recordSendDataReplayClaimFailed(
           metrics,
           claim.reason || sendDataFailureReasons.SPOOL_UNAVAILABLE,
@@ -100,6 +118,7 @@ async function runReplayBatch({
     if (!claim.item) break;
 
     const item = claim.item;
+    const itemBytes = positiveInteger(item.payloadBytes, 0);
     recordSendDataReplayStarted(metrics, item.vrcode, item);
     const result = await sendToReplayTarget(replayTarget, item);
     const decision = completeSendDataReplayAttempt(item, result, config.replay);
@@ -108,6 +127,7 @@ async function runReplayBatch({
     if (decision.action === "mark_replayed") {
       const stored = await spoolStore.markReplayed(finalItem, claim.claim);
       if (!stored.ok) {
+        signals.replayFailures += 1;
         recordSendDataReplayClaimFailed(metrics, sendDataFailureReasons.SPOOL_WRITE_FAILED, failureMessage(stored));
       } else {
         recordSendDataReplaySucceeded(metrics, finalItem.vrcode, finalItem);
@@ -115,21 +135,29 @@ async function runReplayBatch({
     } else if (decision.action === "dead_letter") {
       const stored = await spoolStore.deadLetter(finalItem, claim.claim);
       if (!stored.ok) {
+        signals.replayFailures += 1;
         recordSendDataReplayClaimFailed(metrics, sendDataFailureReasons.SPOOL_WRITE_FAILED, failureMessage(stored));
       } else {
+        if (finalItem.lastFailure && finalItem.lastFailure.reason !== sendDataFailureReasons.INVALID_PAYLOAD) {
+          signals.replayFailures += 1;
+        }
         recordSendDataReplayDeadLettered(metrics, finalItem.vrcode, finalItem, finalItem.lastFailure);
       }
     } else {
       const stored = await spoolStore.requeue(finalItem, claim.claim);
       if (!stored.ok) {
+        signals.replayFailures += 1;
         recordSendDataReplayClaimFailed(metrics, sendDataFailureReasons.SPOOL_WRITE_FAILED, failureMessage(stored));
       } else {
+        signals.replayFailures += 1;
         recordSendDataReplayRetryableFailed(metrics, finalItem.vrcode, finalItem, finalItem.lastFailure);
       }
     }
     processed += 1;
+    processedBytes += itemBytes;
   }
 
+  updateAdaptiveReplayRate({ config, metrics, signals });
   return { ok: true, processed };
 }
 
@@ -172,12 +200,32 @@ function failureMessage(result: SendDataSpoolStoreWriteResult) {
 
 function replayBatchLimit(config: SendDataReplayConfig) {
   const batchSize = positiveInteger(config.batchSize, 1);
-  const rateLimit = positiveInteger(config.rateLimitPerSecond, batchSize);
-  return Math.max(1, Math.min(batchSize, rateLimit));
+  return Math.max(1, batchSize);
+}
+
+function replayByteBudget(config: SendDataReplayConfig) {
+  const maxBytesPerSecond = positiveInteger(config.maxBytesPerSecond, 1);
+  const intervalMs = positiveInteger(config.intervalMs, 1000);
+  return Math.max(1, Math.floor(maxBytesPerSecond * intervalMs / 1000));
+}
+
+function updateAdaptiveReplayRate({ config, metrics, signals }) {
+  if (!config.replay) return;
+  const rateState = sendDataReplayRateState(metrics);
+  const snapshot = metricsSnapshot(metrics);
+  const decision = decideSendDataReplayRate({
+    configuredMaxBytesPerSecond: rateState.configuredMaxBytesPerSecond || config.replay.maxBytesPerSecond,
+    currentMaxBytesPerSecond: rateState.currentMaxBytesPerSecond,
+    adaptive: rateState.adaptive,
+    pendingItems: snapshot.replay ? snapshot.replay.pendingItems : 0,
+    queueGrowthBytesPerSecond: snapshot.throughput ? snapshot.throughput.queueGrowthBytesPerSecond : 0,
+    replayFailures: signals.replayFailures,
+  });
+  recordSendDataReplayRateDecision(metrics, decision);
 }
 
 function positiveInteger(value: number, fallback: number) {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
-module.exports = { createSendDataReplayWorker, replayBatchLimit, sendToReplayTarget };
+module.exports = { createSendDataReplayWorker, replayBatchLimit, sendToReplayTarget, updateAdaptiveReplayRate };

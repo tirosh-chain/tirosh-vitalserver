@@ -9,6 +9,12 @@ export type RuntimeSettingsDraft = {
   vitalFilesDirectory: string;
   publicHost: string;
   publicPort: string;
+  recorderIngressLoadControlEnabled: boolean;
+  recorderIngressSendDataReplayMaxMiBPerSecond: string;
+  containerMemoryLimitsEnabled: boolean;
+  vitalServerContainerMemoryLimitMiB: string;
+  recorderIngressContainerMemoryLimitMiB: string;
+  redisContainerMemoryLimitMiB: string;
   automaticBackupEnabled: boolean;
   backupScheduleTimes: string;
   backupRetentionCount: string;
@@ -29,6 +35,12 @@ export const emptyRuntimeSettingsDraft: RuntimeSettingsDraft = {
   vitalFilesDirectory: "",
   publicHost: "",
   publicPort: "",
+  recorderIngressLoadControlEnabled: true,
+  recorderIngressSendDataReplayMaxMiBPerSecond: "",
+  containerMemoryLimitsEnabled: false,
+  vitalServerContainerMemoryLimitMiB: "",
+  recorderIngressContainerMemoryLimitMiB: "",
+  redisContainerMemoryLimitMiB: "",
   automaticBackupEnabled: false,
   backupScheduleTimes: "",
   backupRetentionCount: "",
@@ -52,6 +64,21 @@ export function runtimeSettingsToDraft(
     vitalFilesDirectory: settings.vitalFilesDirectory,
     publicHost: settings.publicHost,
     publicPort: formatNumber(settings.publicPort),
+    recorderIngressLoadControlEnabled:
+      settings.recorderIngressSendDataMode !== "passthrough",
+    recorderIngressSendDataReplayMaxMiBPerSecond: formatNumber(
+      settings.recorderIngressSendDataReplayMaxMiBPerSecond
+    ),
+    containerMemoryLimitsEnabled: settings.containerMemoryLimitsEnabled,
+    vitalServerContainerMemoryLimitMiB: formatNumber(
+      settings.vitalServerContainerMemoryLimitMiB
+    ),
+    recorderIngressContainerMemoryLimitMiB: formatNumber(
+      settings.recorderIngressContainerMemoryLimitMiB
+    ),
+    redisContainerMemoryLimitMiB: formatNumber(
+      settings.redisContainerMemoryLimitMiB
+    ),
     automaticBackupEnabled: settings.automaticBackupEnabled,
     backupScheduleTimes: settings.backupScheduleTimes.join(", "),
     backupRetentionCount: formatNumber(settings.backupRetentionCount),
@@ -83,6 +110,24 @@ export function draftToRuntimeSettings(
     vitalFilesDirectory: draft.vitalFilesDirectory.trim(),
     publicHost: customAdvertisedURL ? draft.publicHost.trim() : "",
     publicPort: customAdvertisedURL ? requiredNumber(draft.publicPort) : proxyPort,
+    recorderIngressSendDataMode: draft.recorderIngressLoadControlEnabled
+      ? "spool_and_replay"
+      : "passthrough",
+    recorderIngressSendDataReplayBatchSize:
+      current.recorderIngressSendDataReplayBatchSize,
+    recorderIngressSendDataReplayMaxMiBPerSecond: requiredNumber(
+      draft.recorderIngressSendDataReplayMaxMiBPerSecond
+    ),
+    containerMemoryLimitsEnabled: draft.containerMemoryLimitsEnabled,
+    vitalServerContainerMemoryLimitMiB: requiredNumber(
+      draft.vitalServerContainerMemoryLimitMiB
+    ),
+    recorderIngressContainerMemoryLimitMiB: requiredNumber(
+      draft.recorderIngressContainerMemoryLimitMiB
+    ),
+    redisContainerMemoryLimitMiB: requiredNumber(
+      draft.redisContainerMemoryLimitMiB
+    ),
     adminPassword: current.adminPassword,
     changeAdminPassword: current.changeAdminPassword,
     automaticBackupEnabled: draft.automaticBackupEnabled,

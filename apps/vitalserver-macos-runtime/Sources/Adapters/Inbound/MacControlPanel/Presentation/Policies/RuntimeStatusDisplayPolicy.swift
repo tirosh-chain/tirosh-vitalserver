@@ -133,6 +133,11 @@ struct RuntimeStatusDisplayPolicy {
             ),
             healthItem(AppConstants.Labels.queue, queueDetailText(spool: spool), queueSeverity(spool: spool, replay: replay)),
             healthItem(
+                AppConstants.Labels.recorderIngressThroughput,
+                throughputText(status.throughput),
+                .neutral
+            ),
+            healthItem(
                 AppConstants.Labels.recorderIngressOldestPending,
                 durationText(spool?.oldestPendingAgeSeconds),
                 .neutral
@@ -143,9 +148,8 @@ struct RuntimeStatusDisplayPolicy {
                 replaySeverity(replay)
             ),
             healthItem(
-                AppConstants.Labels.recorderIngressReplayRateLimit,
-                replay?.rateLimitPerSecond.map { "\($0) \(AppConstants.Labels.unitItemsPerSecond)" }
-                    ?? AppConstants.StatusText.notReported,
+                AppConstants.Labels.recorderIngressReplayThroughput,
+                replayThroughputText(replay),
                 .neutral
             ),
             healthItem(
@@ -274,6 +278,40 @@ struct RuntimeStatusDisplayPolicy {
         return parts.isEmpty ? AppConstants.StatusText.notReported : parts.joined(separator: " / ")
     }
 
+    private func throughputText(_ throughput: RuntimeRecorderIngressThroughputStatus?) -> String {
+        guard let throughput else {
+            return AppConstants.StatusText.notReported
+        }
+        var parts: [String] = []
+        if let observed = throughput.observedBytesPerSecond {
+            parts.append("in \(formatBytesPerSecond(observed))")
+        }
+        if let replayed = throughput.replayedBytesPerSecond {
+            parts.append("replay \(formatBytesPerSecond(replayed))")
+        }
+        if let growth = throughput.queueGrowthBytesPerSecond {
+            parts.append("queue \(signedBytesPerSecond(growth))")
+        }
+        return parts.isEmpty ? AppConstants.StatusText.notReported : parts.joined(separator: ", ")
+    }
+
+    private func replayThroughputText(_ replay: RuntimeRecorderIngressReplayStatus?) -> String {
+        guard let replay else {
+            return AppConstants.StatusText.notReported
+        }
+        guard let bytesPerSecond = replay.maxBytesPerSecond else {
+            return AppConstants.StatusText.notReported
+        }
+        let base = formatBinaryBytesPerSecond(bytesPerSecond)
+        guard replay.adaptive?.enabled == true,
+              let min = replay.adaptive?.minBytesPerSecond,
+              let max = replay.adaptive?.maxBytesPerSecond
+        else {
+            return base
+        }
+        return "\(base), adaptive \(formatBinaryBytesPerSecond(min))-\(formatBinaryBytesPerSecond(max))"
+    }
+
     private func queueSeverity(
         spool: RuntimeRecorderIngressSpoolStatus?,
         replay: RuntimeRecorderIngressReplayStatus?
@@ -355,6 +393,40 @@ struct RuntimeStatusDisplayPolicy {
         formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
+    }
+
+    private func formatBytesPerSecond(_ bytesPerSecond: Double) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return "\(formatter.string(fromByteCount: Int64(max(0, bytesPerSecond).rounded())))/s"
+    }
+
+    private func formatBinaryBytesPerSecond(_ bytesPerSecond: Int) -> String {
+        let bounded = max(0, bytesPerSecond)
+        if bounded < 1_024 {
+            return "\(bounded) B/s"
+        }
+        let kib = Double(bounded) / 1_024
+        if kib < 1_024 {
+            return String(format: "%.1f KiB/s", kib)
+        }
+        let mib = Double(bounded) / 1_048_576
+        if mib < 1_024 {
+            return String(format: "%.1f MiB/s", mib)
+        }
+        let gib = Double(bounded) / 1_073_741_824
+        return String(format: "%.1f GiB/s", gib)
+    }
+
+    private func signedBytesPerSecond(_ bytesPerSecond: Double) -> String {
+        if bytesPerSecond > 0 {
+            return "+\(formatBytesPerSecond(bytesPerSecond))"
+        }
+        if bytesPerSecond < 0 {
+            return "-\(formatBytesPerSecond(abs(bytesPerSecond)))"
+        }
+        return formatBytesPerSecond(0)
     }
 
     private func lastFailureText(

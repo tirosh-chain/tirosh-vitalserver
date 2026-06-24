@@ -4,6 +4,8 @@ const assert = require("assert");
 const test = require("node:test");
 const { loadConfig } = require("../../src/config");
 
+const MIB = 1024 * 1024;
+
 test("config loads explicit redis ip rewrite policy", () => {
   assert.deepStrictEqual(loadConfig({
     RECORDER_INGRESS_VR_IP_REWRITE_ENABLED: "0",
@@ -31,8 +33,13 @@ test("config enables bounded spool and replay by default", () => {
       intervalMs: 1000,
       batchSize: 10,
       maxAttempts: 3,
-      rateLimitPerSecond: 10,
+      maxBytesPerSecond: 20 * MIB,
       targetTimeoutMs: 5000,
+      adaptive: {
+        enabled: true,
+        minBytesPerSecond: 1 * MIB,
+        maxBytesPerSecond: 20 * MIB,
+      },
     },
   });
 });
@@ -60,8 +67,13 @@ test("config supports explicit send_data passthrough mode", () => {
       intervalMs: 1000,
       batchSize: 10,
       maxAttempts: 3,
-      rateLimitPerSecond: 10,
+      maxBytesPerSecond: 20 * MIB,
       targetTimeoutMs: 5000,
+      adaptive: {
+        enabled: true,
+        minBytesPerSecond: 1 * MIB,
+        maxBytesPerSecond: 20 * MIB,
+      },
     },
   });
 });
@@ -75,15 +87,23 @@ test("config enables send_data replay for spool_and_replay mode", () => {
     RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS: "250",
     RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE: "4",
     RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS: "5",
-    RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND: "2",
+    RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND: String(2 * MIB),
     RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS: "750",
+    RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_ENABLED: "0",
+    RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_BYTES_PER_SECOND: String(2 * MIB),
+    RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_BYTES_PER_SECOND: String(9 * MIB),
   }).spool.replay, {
     enabled: true,
     intervalMs: 250,
     batchSize: 4,
     maxAttempts: 5,
-    rateLimitPerSecond: 2,
+    maxBytesPerSecond: 2 * MIB,
     targetTimeoutMs: 750,
+    adaptive: {
+      enabled: false,
+      minBytesPerSecond: 2 * MIB,
+      maxBytesPerSecond: 9 * MIB,
+    },
   });
   assert.strictEqual(loadConfig({
     RECORDER_INGRESS_SEND_DATA_MODE: "spool_and_replay",

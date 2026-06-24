@@ -21,6 +21,12 @@ describe("runtime settings form mapping", () => {
         vitalFilesDirectory: "/data/vital-files",
         publicHost: "vital.local",
         publicPort: 443,
+        recorderIngressSendDataMode: "spool_and_replay",
+        recorderIngressSendDataReplayMaxMiBPerSecond: 25,
+        containerMemoryLimitsEnabled: true,
+        vitalServerContainerMemoryLimitMiB: 4096,
+        recorderIngressContainerMemoryLimitMiB: 512,
+        redisContainerMemoryLimitMiB: 1024,
         automaticBackupEnabled: true,
         backupScheduleTimes: ["03:15", "15:15"],
         backupRetentionCount: 7,
@@ -40,6 +46,12 @@ describe("runtime settings form mapping", () => {
       vitalFilesDirectory: "/data/vital-files",
       publicHost: "vital.local",
       publicPort: "443",
+      recorderIngressLoadControlEnabled: true,
+      recorderIngressSendDataReplayMaxMiBPerSecond: "25",
+      containerMemoryLimitsEnabled: true,
+      vitalServerContainerMemoryLimitMiB: "4096",
+      recorderIngressContainerMemoryLimitMiB: "512",
+      redisContainerMemoryLimitMiB: "1024",
       automaticBackupEnabled: true,
       backupScheduleTimes: "03:15, 15:15",
       backupRetentionCount: "7",
@@ -87,7 +99,31 @@ describe("runtime settings form mapping", () => {
       minimumDiskGiB: 32,
       proxyPort: 18080,
       publicHost: "example.local",
-      publicPort: 443
+      publicPort: 443,
+      recorderIngressSendDataMode: "spool_and_replay",
+      recorderIngressSendDataReplayMaxMiBPerSecond: 20
+    });
+  });
+
+  it("maps recorder load control to passthrough or spool_and_replay settings", () => {
+    expect(
+      draftToRuntimeSettings(
+        draft({
+          ...draftFromSettings(runtimeSettings()),
+          recorderIngressLoadControlEnabled: false,
+          recorderIngressSendDataReplayMaxMiBPerSecond: "35"
+        }),
+        runtimeSettings(),
+        false
+      )
+    ).toMatchObject({
+      recorderIngressSendDataMode: "passthrough",
+      recorderIngressSendDataReplayBatchSize: 10,
+      recorderIngressSendDataReplayMaxMiBPerSecond: 35,
+      containerMemoryLimitsEnabled: false,
+      vitalServerContainerMemoryLimitMiB: 4096,
+      recorderIngressContainerMemoryLimitMiB: 512,
+      redisContainerMemoryLimitMiB: 1024
     });
   });
 
@@ -157,6 +193,13 @@ function runtimeSettings(overrides = {}) {
     remoteConsoleURL: "http://127.0.0.1:18321/",
     publicHost: "",
     publicPort: 80,
+    recorderIngressSendDataMode: "spool_and_replay" as const,
+    recorderIngressSendDataReplayBatchSize: 10,
+    recorderIngressSendDataReplayMaxMiBPerSecond: 20,
+    containerMemoryLimitsEnabled: false,
+    vitalServerContainerMemoryLimitMiB: 4096,
+    recorderIngressContainerMemoryLimitMiB: 512,
+    redisContainerMemoryLimitMiB: 1024,
     adminPassword: "",
     changeAdminPassword: false,
     startOnBoot: true,
@@ -189,6 +232,12 @@ function draft(
     vitalFilesDirectory: "",
     publicHost: "",
     publicPort: "",
+    recorderIngressLoadControlEnabled: true,
+    recorderIngressSendDataReplayMaxMiBPerSecond: "20",
+    containerMemoryLimitsEnabled: false,
+    vitalServerContainerMemoryLimitMiB: "4096",
+    recorderIngressContainerMemoryLimitMiB: "512",
+    redisContainerMemoryLimitMiB: "1024",
     automaticBackupEnabled: false,
     backupScheduleTimes: "",
     backupRetentionCount: "",

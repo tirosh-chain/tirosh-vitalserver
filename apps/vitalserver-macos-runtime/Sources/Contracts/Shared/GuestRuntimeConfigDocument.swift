@@ -91,7 +91,11 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
     public var publicPort: Int
     public var recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
     public var recorderIngressSendDataReplayBatchSize: Int
-    public var recorderIngressSendDataReplayRateLimitPerSecond: Int
+    public var recorderIngressSendDataReplayMaxMiBPerSecond: Int
+    public var containerMemoryLimitsEnabled: Bool
+    public var vitalServerContainerMemoryLimitMiB: Int
+    public var recorderIngressContainerMemoryLimitMiB: Int
+    public var redisContainerMemoryLimitMiB: Int
     public var automaticBackupEnabled: Bool
     public var backupScheduleTimes: [String]
     public var backupRetentionCount: Int
@@ -103,7 +107,11 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
         case publicPort
         case recorderIngressSendDataMode
         case recorderIngressSendDataReplayBatchSize
-        case recorderIngressSendDataReplayRateLimitPerSecond
+        case recorderIngressSendDataReplayMaxMiBPerSecond
+        case containerMemoryLimitsEnabled
+        case vitalServerContainerMemoryLimitMiB
+        case recorderIngressContainerMemoryLimitMiB
+        case redisContainerMemoryLimitMiB
         case automaticBackupEnabled
         case backupScheduleTimes
         case backupRetentionCount
@@ -116,7 +124,11 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
         publicPort: Int,
         recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode = RuntimeRecorderIngressDefaults.sendDataMode,
         recorderIngressSendDataReplayBatchSize: Int = RuntimeRecorderIngressDefaults.replayBatchSize,
-        recorderIngressSendDataReplayRateLimitPerSecond: Int = RuntimeRecorderIngressDefaults.replayRateLimitPerSecond,
+        recorderIngressSendDataReplayMaxMiBPerSecond: Int = RuntimeRecorderIngressDefaults.replayMaxMiBPerSecond,
+        containerMemoryLimitsEnabled: Bool = RuntimeContainerMemoryLimitDefaults.enabled,
+        vitalServerContainerMemoryLimitMiB: Int = RuntimeContainerMemoryLimitDefaults.vitalServerMiB,
+        recorderIngressContainerMemoryLimitMiB: Int = RuntimeContainerMemoryLimitDefaults.recorderIngressMiB,
+        redisContainerMemoryLimitMiB: Int = RuntimeContainerMemoryLimitDefaults.redisMiB,
         automaticBackupEnabled: Bool = RuntimeSettingsInitialBackupDefaults.automaticBackupEnabled,
         backupScheduleTimes: [String] = RuntimeSettingsInitialBackupDefaults.backupScheduleTimes,
         backupRetentionCount: Int = RuntimeSettingsInitialBackupDefaults.backupRetentionCount
@@ -127,7 +139,11 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
         self.publicPort = publicPort
         self.recorderIngressSendDataMode = recorderIngressSendDataMode
         self.recorderIngressSendDataReplayBatchSize = recorderIngressSendDataReplayBatchSize
-        self.recorderIngressSendDataReplayRateLimitPerSecond = recorderIngressSendDataReplayRateLimitPerSecond
+        self.recorderIngressSendDataReplayMaxMiBPerSecond = recorderIngressSendDataReplayMaxMiBPerSecond
+        self.containerMemoryLimitsEnabled = containerMemoryLimitsEnabled
+        self.vitalServerContainerMemoryLimitMiB = vitalServerContainerMemoryLimitMiB
+        self.recorderIngressContainerMemoryLimitMiB = recorderIngressContainerMemoryLimitMiB
+        self.redisContainerMemoryLimitMiB = redisContainerMemoryLimitMiB
         self.automaticBackupEnabled = automaticBackupEnabled
         self.backupScheduleTimes = backupScheduleTimes
         self.backupRetentionCount = backupRetentionCount
@@ -157,10 +173,26 @@ public struct GuestRuntimeSettingsDocument: Codable, Equatable, Sendable {
                 Int.self,
                 forKey: .recorderIngressSendDataReplayBatchSize
             ) ?? RuntimeRecorderIngressDefaults.replayBatchSize,
-            recorderIngressSendDataReplayRateLimitPerSecond: try container.decodeIfPresent(
+            recorderIngressSendDataReplayMaxMiBPerSecond: try container.decodeIfPresent(
                 Int.self,
-                forKey: .recorderIngressSendDataReplayRateLimitPerSecond
-            ) ?? RuntimeRecorderIngressDefaults.replayRateLimitPerSecond,
+                forKey: .recorderIngressSendDataReplayMaxMiBPerSecond
+            ) ?? RuntimeRecorderIngressDefaults.replayMaxMiBPerSecond,
+            containerMemoryLimitsEnabled: try container.decodeIfPresent(
+                Bool.self,
+                forKey: .containerMemoryLimitsEnabled
+            ) ?? RuntimeContainerMemoryLimitDefaults.enabled,
+            vitalServerContainerMemoryLimitMiB: try container.decodeIfPresent(
+                Int.self,
+                forKey: .vitalServerContainerMemoryLimitMiB
+            ) ?? RuntimeContainerMemoryLimitDefaults.vitalServerMiB,
+            recorderIngressContainerMemoryLimitMiB: try container.decodeIfPresent(
+                Int.self,
+                forKey: .recorderIngressContainerMemoryLimitMiB
+            ) ?? RuntimeContainerMemoryLimitDefaults.recorderIngressMiB,
+            redisContainerMemoryLimitMiB: try container.decodeIfPresent(
+                Int.self,
+                forKey: .redisContainerMemoryLimitMiB
+            ) ?? RuntimeContainerMemoryLimitDefaults.redisMiB,
             automaticBackupEnabled: try container.decodeIfPresent(
                 Bool.self,
                 forKey: .automaticBackupEnabled
@@ -187,7 +219,14 @@ public enum RuntimeRecorderIngressSendDataMode: String, Codable, CaseIterable, E
 public enum RuntimeRecorderIngressDefaults {
     public static let sendDataMode = RuntimeRecorderIngressSendDataMode.spoolAndReplay
     public static let replayBatchSize = 10
-    public static let replayRateLimitPerSecond = 10
+    public static let replayMaxMiBPerSecond = 20
+}
+
+public enum RuntimeContainerMemoryLimitDefaults {
+    public static let enabled = false
+    public static let vitalServerMiB = 2048
+    public static let recorderIngressMiB = 410
+    public static let redisMiB = 3277
 }
 
 public enum RuntimeSettingsInitialBackupDefaults {

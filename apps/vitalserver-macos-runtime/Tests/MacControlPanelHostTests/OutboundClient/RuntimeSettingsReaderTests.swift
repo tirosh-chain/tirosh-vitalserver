@@ -36,7 +36,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "publicPort": 8080,
           "recorderIngressSendDataMode": "mirror_spool",
           "recorderIngressSendDataReplayBatchSize": 8,
-          "recorderIngressSendDataReplayRateLimitPerSecond": 12,
+          "recorderIngressSendDataReplayMaxMiBPerSecond": 12,
           "automaticBackupEnabled": true,
           "backupScheduleTimes": ["03:15"],
           "backupRetentionCount": 30
@@ -69,7 +69,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.publicPort, 8080)
         XCTAssertEqual(settings.recorderIngressSendDataMode, .mirrorSpool)
         XCTAssertEqual(settings.recorderIngressSendDataReplayBatchSize, 8)
-        XCTAssertEqual(settings.recorderIngressSendDataReplayRateLimitPerSecond, 12)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayMaxMiBPerSecond, 12)
         XCTAssertEqual(settings.backupRetentionCount, 30)
         XCTAssertEqual(settings.proxyPort, 19090)
         XCTAssertFalse(settings.autoRecoveryEnabled)
@@ -122,7 +122,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.readIssues, [])
         XCTAssertEqual(settings.recorderIngressSendDataMode, .spoolAndReplay)
         XCTAssertEqual(settings.recorderIngressSendDataReplayBatchSize, 10)
-        XCTAssertEqual(settings.recorderIngressSendDataReplayRateLimitPerSecond, 10)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayMaxMiBPerSecond, 20)
     }
 
     func testLoadsAppliedVMSettingsFromAppliedVMConfigSnapshot() throws {
@@ -537,7 +537,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         settings.publicPort = 8080
         settings.recorderIngressSendDataMode = .mirrorSpool
         settings.recorderIngressSendDataReplayBatchSize = 8
-        settings.recorderIngressSendDataReplayRateLimitPerSecond = 12
+        settings.recorderIngressSendDataReplayMaxMiBPerSecond = 12
         settings.backupRetentionCount = 20
         settings.startOnBoot = false
         settings.autoRecoveryEnabled = false
@@ -566,7 +566,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         )
         XCTAssertEqual(
             value(
-                after: RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataReplayRateLimitPerSecond,
+                after: RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataReplayMaxMiBPerSecond,
                 in: arguments
             ),
             "12"

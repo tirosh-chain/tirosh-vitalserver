@@ -107,10 +107,28 @@ final class ContractsTests: XCTestCase {
             "retryableFailures": 3,
             "deadLetteredEvents": 0,
             "replayLagSeconds": 45,
-            "rateLimitPerSecond": 2,
+            "maxBytesPerSecond": 2097152,
+            "configuredMaxBytesPerSecond": 10485760,
+            "adaptive": {
+              "enabled": true,
+              "minBytesPerSecond": 1048576,
+              "maxBytesPerSecond": 10485760,
+              "currentMaxBytesPerSecond": 2097152,
+              "lastDecision": "decrease",
+              "lastReason": "replay_failures",
+              "lastChangedAt": "2026-06-23T00:00:01Z",
+              "memoryGuardStatus": "unavailable"
+            },
             "lastFailure": {
               "reason": "upstream_timeout"
             }
+          },
+          "throughput": {
+            "windowSeconds": 10,
+            "observedBytesPerSecond": 5120.0,
+            "spooledBytesPerSecond": 4096.0,
+            "replayedBytesPerSecond": 3072.0,
+            "queueGrowthBytesPerSecond": 1024.0
           },
           "recorders": [
             {
@@ -141,6 +159,13 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(decoded.replay?.inFlightItems, 1)
         XCTAssertEqual(decoded.replay?.retryableFailures, 3)
         XCTAssertEqual(decoded.replay?.lastFailure?.reason, "upstream_timeout")
+        XCTAssertEqual(decoded.replay?.configuredMaxBytesPerSecond, 10_485_760)
+        XCTAssertEqual(decoded.replay?.adaptive?.currentMaxBytesPerSecond, 2_097_152)
+        XCTAssertEqual(decoded.replay?.adaptive?.lastDecision, "decrease")
+        XCTAssertEqual(decoded.replay?.adaptive?.memoryGuardStatus, "unavailable")
+        XCTAssertEqual(decoded.throughput?.windowSeconds, 10)
+        XCTAssertEqual(decoded.throughput?.observedBytesPerSecond, 5120.0)
+        XCTAssertEqual(decoded.throughput?.queueGrowthBytesPerSecond, 1024.0)
         XCTAssertEqual(decoded.recorders.first?.spool?.pendingItems, 3)
         XCTAssertEqual(decoded.recorders.first?.replay?.retryableFailures, 1)
 
@@ -305,6 +330,7 @@ final class ContractsTests: XCTestCase {
               "containerID": "container-1",
               "error": "",
               "finishedAt": "2026-06-11T01:00:00Z",
+              "memoryUsedBytes": 536870912,
               "memoryLimitBytes": 4294967296,
               "oomKilled": true,
               "restartCount": 2
@@ -324,6 +350,7 @@ final class ContractsTests: XCTestCase {
                 exitCode: 0,
                 error: "",
                 finishedAt: "2026-06-11T01:00:00Z",
+                memoryUsedBytes: 536870912,
                 memoryLimitBytes: 4294967296,
                 oomKilled: true,
                 restartCount: 2

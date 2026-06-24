@@ -15,6 +15,7 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
     public let redisIpWriteFailures: Int
     public let redisIpVerifyFailures: Int
     public let redisIpVerifyMismatches: Int
+    public let throughput: RuntimeRecorderIngressThroughputStatus?
     public let spool: RuntimeRecorderIngressSpoolStatus?
     public let replay: RuntimeRecorderIngressReplayStatus?
 
@@ -33,6 +34,7 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         redisIpWriteFailures: Int = 0,
         redisIpVerifyFailures: Int = 0,
         redisIpVerifyMismatches: Int = 0,
+        throughput: RuntimeRecorderIngressThroughputStatus? = nil,
         spool: RuntimeRecorderIngressSpoolStatus? = nil,
         replay: RuntimeRecorderIngressReplayStatus? = nil
     ) {
@@ -50,6 +52,7 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         self.redisIpWriteFailures = redisIpWriteFailures
         self.redisIpVerifyFailures = redisIpVerifyFailures
         self.redisIpVerifyMismatches = redisIpVerifyMismatches
+        self.throughput = throughput
         self.spool = spool
         self.replay = replay
     }
@@ -69,6 +72,7 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         case redisIpWriteFailures
         case redisIpVerifyFailures
         case redisIpVerifyMismatches
+        case throughput
         case spool
         case replay
     }
@@ -89,6 +93,10 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         self.redisIpWriteFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpWriteFailures) ?? 0
         self.redisIpVerifyFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpVerifyFailures) ?? 0
         self.redisIpVerifyMismatches = try container.decodeIfPresent(Int.self, forKey: .redisIpVerifyMismatches) ?? 0
+        self.throughput = try container.decodeIfPresent(
+            RuntimeRecorderIngressThroughputStatus.self,
+            forKey: .throughput
+        )
         self.spool = try container.decodeIfPresent(RuntimeRecorderIngressSpoolStatus.self, forKey: .spool)
         self.replay = try container.decodeIfPresent(RuntimeRecorderIngressReplayStatus.self, forKey: .replay)
     }
@@ -109,8 +117,31 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         try container.encode(redisIpWriteFailures, forKey: .redisIpWriteFailures)
         try container.encode(redisIpVerifyFailures, forKey: .redisIpVerifyFailures)
         try container.encode(redisIpVerifyMismatches, forKey: .redisIpVerifyMismatches)
+        try container.encodeIfPresent(throughput, forKey: .throughput)
         try container.encodeIfPresent(spool, forKey: .spool)
         try container.encodeIfPresent(replay, forKey: .replay)
+    }
+}
+
+public struct RuntimeRecorderIngressThroughputStatus: Codable, Equatable, Sendable {
+    public let windowSeconds: Int?
+    public let observedBytesPerSecond: Double?
+    public let spooledBytesPerSecond: Double?
+    public let replayedBytesPerSecond: Double?
+    public let queueGrowthBytesPerSecond: Double?
+
+    public init(
+        windowSeconds: Int? = nil,
+        observedBytesPerSecond: Double? = nil,
+        spooledBytesPerSecond: Double? = nil,
+        replayedBytesPerSecond: Double? = nil,
+        queueGrowthBytesPerSecond: Double? = nil
+    ) {
+        self.windowSeconds = windowSeconds
+        self.observedBytesPerSecond = observedBytesPerSecond
+        self.spooledBytesPerSecond = spooledBytesPerSecond
+        self.replayedBytesPerSecond = replayedBytesPerSecond
+        self.queueGrowthBytesPerSecond = queueGrowthBytesPerSecond
     }
 }
 
@@ -184,7 +215,9 @@ public struct RuntimeRecorderIngressReplayStatus: Codable, Equatable, Sendable {
     public let retryableFailures: Int?
     public let deadLetteredEvents: Int?
     public let replayLagSeconds: Int?
-    public let rateLimitPerSecond: Int?
+    public let maxBytesPerSecond: Int?
+    public let configuredMaxBytesPerSecond: Int?
+    public let adaptive: RuntimeRecorderIngressReplayAdaptiveStatus?
     public let lastReplayAt: String?
     public let lastFailure: RuntimeRecorderIngressFailureObservation?
 
@@ -196,7 +229,9 @@ public struct RuntimeRecorderIngressReplayStatus: Codable, Equatable, Sendable {
         retryableFailures: Int? = nil,
         deadLetteredEvents: Int? = nil,
         replayLagSeconds: Int? = nil,
-        rateLimitPerSecond: Int? = nil,
+        maxBytesPerSecond: Int? = nil,
+        configuredMaxBytesPerSecond: Int? = nil,
+        adaptive: RuntimeRecorderIngressReplayAdaptiveStatus? = nil,
         lastReplayAt: String? = nil,
         lastFailure: RuntimeRecorderIngressFailureObservation? = nil
     ) {
@@ -207,9 +242,42 @@ public struct RuntimeRecorderIngressReplayStatus: Codable, Equatable, Sendable {
         self.retryableFailures = retryableFailures
         self.deadLetteredEvents = deadLetteredEvents
         self.replayLagSeconds = replayLagSeconds
-        self.rateLimitPerSecond = rateLimitPerSecond
+        self.maxBytesPerSecond = maxBytesPerSecond
+        self.configuredMaxBytesPerSecond = configuredMaxBytesPerSecond
+        self.adaptive = adaptive
         self.lastReplayAt = lastReplayAt
         self.lastFailure = lastFailure
+    }
+}
+
+public struct RuntimeRecorderIngressReplayAdaptiveStatus: Codable, Equatable, Sendable {
+    public let enabled: Bool?
+    public let minBytesPerSecond: Int?
+    public let maxBytesPerSecond: Int?
+    public let currentMaxBytesPerSecond: Int?
+    public let lastDecision: String?
+    public let lastReason: String?
+    public let lastChangedAt: String?
+    public let memoryGuardStatus: String?
+
+    public init(
+        enabled: Bool? = nil,
+        minBytesPerSecond: Int? = nil,
+        maxBytesPerSecond: Int? = nil,
+        currentMaxBytesPerSecond: Int? = nil,
+        lastDecision: String? = nil,
+        lastReason: String? = nil,
+        lastChangedAt: String? = nil,
+        memoryGuardStatus: String? = nil
+    ) {
+        self.enabled = enabled
+        self.minBytesPerSecond = minBytesPerSecond
+        self.maxBytesPerSecond = maxBytesPerSecond
+        self.currentMaxBytesPerSecond = currentMaxBytesPerSecond
+        self.lastDecision = lastDecision
+        self.lastReason = lastReason
+        self.lastChangedAt = lastChangedAt
+        self.memoryGuardStatus = memoryGuardStatus
     }
 }
 
@@ -298,6 +366,7 @@ public struct RuntimeContainerServiceObservation: Codable, Equatable, Sendable {
     public let exitCode: Int?
     public let error: String?
     public let finishedAt: String?
+    public let memoryUsedBytes: Int?
     public let memoryLimitBytes: Int?
     public let oomKilled: Bool?
     public let restartCount: Int?
@@ -313,6 +382,7 @@ public struct RuntimeContainerServiceObservation: Codable, Equatable, Sendable {
         exitCode: Int? = nil,
         error: String? = nil,
         finishedAt: String? = nil,
+        memoryUsedBytes: Int? = nil,
         memoryLimitBytes: Int? = nil,
         oomKilled: Bool? = nil,
         restartCount: Int? = nil,
@@ -327,6 +397,7 @@ public struct RuntimeContainerServiceObservation: Codable, Equatable, Sendable {
         self.exitCode = exitCode
         self.error = error
         self.finishedAt = finishedAt
+        self.memoryUsedBytes = memoryUsedBytes
         self.memoryLimitBytes = memoryLimitBytes
         self.oomKilled = oomKilled
         self.restartCount = restartCount

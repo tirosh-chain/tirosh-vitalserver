@@ -25,13 +25,32 @@ describe("runtime settings policy", () => {
       backupScheduleTimes: ["03:15"],
       backupRetentionCount: 31,
       logArchiveRetentionDays: 31,
-      logArchiveMaximumGiB: 21
+      logArchiveMaximumGiB: 21,
+      recorderIngressSendDataReplayMaxMiBPerSecond: 101,
+      containerMemoryLimitsEnabled: false
     }));
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toHaveLength(9);
+    expect(result.errors).toHaveLength(10);
     expect(result.errors).toContain("Log archive retention must be between 1 and 30 days.");
     expect(result.errors).toContain("Log archive size limit must be between 1 and 20 GiB.");
+    expect(result.errors).toContain("Max replay throughput must be between 1 and 100 MiB/s.");
+  });
+
+  it("validates enabled container memory limits in MiB against VM memory", () => {
+    const result = validateRuntimeSettings(fullSettings({
+      memoryGiB: 4,
+      containerMemoryLimitsEnabled: true,
+      vitalServerContainerMemoryLimitMiB: 8192,
+      recorderIngressContainerMemoryLimitMiB: 64,
+      redisContainerMemoryLimitMiB: 9000
+    }));
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("VitalServer container memory limit must be between 512 and 4096 MiB.");
+    expect(result.errors).toContain("Recorder ingress container memory limit must be between 128 and 4096 MiB.");
+    expect(result.errors).toContain("Redis container memory limit must be between 256 and 4096 MiB.");
+    expect(result.errors).toContain("Container memory limits must total no more than 70% of VM memory.");
   });
 
   it("rejects backup times outside HH:mm clock range", () => {
@@ -105,6 +124,46 @@ describe("runtime settings policy", () => {
       "The VM runtime will restart after save. Required by: CPU, Memory allocation."
     );
   });
+
+  it("reports container reconcile activation for recorder load control changes", () => {
+    const runtime = fullSettings();
+    const draft = fullSettings({
+      recorderIngressSendDataMode: "passthrough" as const,
+      recorderIngressSendDataReplayMaxMiBPerSecond: 25,
+      restartAfterSave: true
+    });
+
+    const decision = runtimeSettingsActivationDecision(draft, runtime);
+
+    expect(decision.requiresActivation).toBe(true);
+    expect(decision.requiresVMRestart).toBe(false);
+    expect(decision.requiresContainerServicesReconcile).toBe(true);
+    expect(decision.containerServiceChanges).toEqual([
+      "Recorder load control",
+      "Recorder replay throughput"
+    ]);
+    expect(decision.message).toBe(
+      "Container services will be reconciled after save. Required by: Recorder load control, Recorder replay throughput."
+    );
+  });
+
+  it("reports container reconcile activation for container memory limit changes", () => {
+    const runtime = fullSettings();
+    const draft = fullSettings({
+      containerMemoryLimitsEnabled: false,
+      vitalServerContainerMemoryLimitMiB: 2048,
+      restartAfterSave: true
+    });
+
+    const decision = runtimeSettingsActivationDecision(draft, runtime);
+
+    expect(decision.requiresActivation).toBe(true);
+    expect(decision.requiresVMRestart).toBe(false);
+    expect(decision.requiresContainerServicesReconcile).toBe(true);
+    expect(decision.containerServiceChanges).toEqual([
+      "VitalServer container memory limit"
+    ]);
+  });
 });
 
 function fullSettings(overrides = {}) {
@@ -123,6 +182,13 @@ function fullSettings(overrides = {}) {
     remoteConsoleURL: "http://127.0.0.1:18321/",
     publicHost: "",
     publicPort: 80,
+    recorderIngressSendDataMode: "spool_and_replay" as const,
+    recorderIngressSendDataReplayBatchSize: 10,
+    recorderIngressSendDataReplayMaxMiBPerSecond: 20,
+    containerMemoryLimitsEnabled: false,
+    vitalServerContainerMemoryLimitMiB: 4096,
+    recorderIngressContainerMemoryLimitMiB: 512,
+    redisContainerMemoryLimitMiB: 1024,
     adminPassword: "",
     changeAdminPassword: false,
     startOnBoot: true,

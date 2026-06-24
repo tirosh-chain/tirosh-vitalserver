@@ -30,6 +30,8 @@ VitalServer code 기준으로 VRecorder 호환 client는 Socket.IO로 접속한 
 4. VRecorder는 같은 연결에서 `send_data` event를 주기적으로 보냅니다.
 5. Web Monitoring은 bed별로 `join_bed`를 보내고, `recv_vr_ipaddr`로 받은 IP를 Network Settings 대상 주소로 사용합니다.
 
+제품 runtime에서는 VRecorder의 `send_data`가 recorder ingress에서 먼저 durable spool에 저장된 뒤 replay worker를 통해 upstream VitalServer로 전달될 수 있습니다. 이 경우 VRecorder가 이미 `send_data`를 보냈더라도 upstream Redis 갱신과 Web Monitoring UI 반영은 replay가 처리된 뒤에 일어납니다. pending queue나 replay lag가 있으면 VRecorder 송신과 UI 반영 사이에 의도적인 지연이 생길 수 있으며, 이 지연과 backlog는 [Recorder ingress send_data flow control contract](send-data-flow-control.md)의 Status 계약으로 확인합니다.
+
 ### 2-2. `join_vr`의 의미
 
 `join_vr`는 Network Settings IP를 저장하는 server-side entrypoint입니다. 이 repo 안에서는 실제 VRecorder가 `join_vr`를 emit하는 client code를 확인할 수 없지만, 해당 event가 없으면 `ip_<vrcode>`를 채우는 정상 경로가 사라집니다.
@@ -83,7 +85,7 @@ VitalServer code 기준으로 VRecorder의 identity는 IP가 아니라 `vrcode`�
 
 ### 4-2. Redis 갱신 값
 
-VitalServer는 수신 후 `roomname`으로 bed id를 만들고, Redis에 아래 값을 갱신합니다. 이 표는 Web Monitoring UI를 이해하는 데 필요한 대표 key만 다룹니다. 전체 Redis key model과 relay scope는 [VitalServer recorder Redis key model](redis-key-model.md)를 기준으로 봅니다.
+VitalServer는 upstream handler가 `send_data`를 처리한 뒤 `roomname`으로 bed id를 만들고, Redis에 아래 값을 갱신합니다. recorder ingress `spool_and_replay` mode에서는 이 처리가 VRecorder 송신 즉시가 아니라 replay worker가 upstream으로 emit한 뒤에 일어납니다. 이 표는 Web Monitoring UI를 이해하는 데 필요한 대표 key만 다룹니다. 전체 Redis key model과 relay scope는 [VitalServer recorder Redis key model](redis-key-model.md)를 기준으로 봅니다.
 
 | Key | 의미 | UI 영향 |
 | --- | --- | --- |

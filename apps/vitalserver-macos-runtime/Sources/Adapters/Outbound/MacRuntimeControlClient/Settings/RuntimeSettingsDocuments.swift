@@ -62,7 +62,11 @@ struct GuestRuntimeSettings: Decodable {
         case publicPort
         case recorderIngressSendDataMode
         case recorderIngressSendDataReplayBatchSize
-        case recorderIngressSendDataReplayRateLimitPerSecond
+        case recorderIngressSendDataReplayMaxMiBPerSecond
+        case containerMemoryLimitsEnabled
+        case vitalServerContainerMemoryLimitMiB
+        case recorderIngressContainerMemoryLimitMiB
+        case redisContainerMemoryLimitMiB
         case automaticBackupEnabled
         case backupScheduleTimes
         case backupRetentionCount
@@ -74,7 +78,11 @@ struct GuestRuntimeSettings: Decodable {
     let publicPort: Int
     let recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
     let recorderIngressSendDataReplayBatchSize: Int
-    let recorderIngressSendDataReplayRateLimitPerSecond: Int
+    let recorderIngressSendDataReplayMaxMiBPerSecond: Int
+    let containerMemoryLimitsEnabled: Bool
+    let vitalServerContainerMemoryLimitMiB: Int
+    let recorderIngressContainerMemoryLimitMiB: Int
+    let redisContainerMemoryLimitMiB: Int
     let automaticBackupEnabled: Bool
     let backupScheduleTimes: [String]
     let backupRetentionCount: Int
@@ -93,10 +101,26 @@ struct GuestRuntimeSettings: Decodable {
             Int.self,
             forKey: .recorderIngressSendDataReplayBatchSize
         ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize
-        recorderIngressSendDataReplayRateLimitPerSecond = try container.decodeIfPresent(
+        recorderIngressSendDataReplayMaxMiBPerSecond = try container.decodeIfPresent(
             Int.self,
-            forKey: .recorderIngressSendDataReplayRateLimitPerSecond
-        ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataReplayRateLimitPerSecond
+            forKey: .recorderIngressSendDataReplayMaxMiBPerSecond
+        ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataReplayMaxMiBPerSecond
+        containerMemoryLimitsEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .containerMemoryLimitsEnabled
+        ) ?? RuntimeSettingsInitialValues.containerMemoryLimitsEnabled
+        vitalServerContainerMemoryLimitMiB = try container.decodeIfPresent(
+            Int.self,
+            forKey: .vitalServerContainerMemoryLimitMiB
+        ) ?? RuntimeSettingsInitialValues.vitalServerContainerMemoryLimitMiB
+        recorderIngressContainerMemoryLimitMiB = try container.decodeIfPresent(
+            Int.self,
+            forKey: .recorderIngressContainerMemoryLimitMiB
+        ) ?? RuntimeSettingsInitialValues.recorderIngressContainerMemoryLimitMiB
+        redisContainerMemoryLimitMiB = try container.decodeIfPresent(
+            Int.self,
+            forKey: .redisContainerMemoryLimitMiB
+        ) ?? RuntimeSettingsInitialValues.redisContainerMemoryLimitMiB
         automaticBackupEnabled = try container.decode(Bool.self, forKey: .automaticBackupEnabled)
         backupScheduleTimes = try container.decode([String].self, forKey: .backupScheduleTimes)
         backupRetentionCount = try container.decode(Int.self, forKey: .backupRetentionCount)
@@ -131,7 +155,11 @@ struct GuestRuntimeSettings: Decodable {
             publicPort: publicPort,
             recorderIngressSendDataMode: recorderIngressSendDataMode,
             recorderIngressSendDataReplayBatchSize: recorderIngressSendDataReplayBatchSize,
-            recorderIngressSendDataReplayRateLimitPerSecond: recorderIngressSendDataReplayRateLimitPerSecond,
+            recorderIngressSendDataReplayMaxMiBPerSecond: recorderIngressSendDataReplayMaxMiBPerSecond,
+            containerMemoryLimitsEnabled: containerMemoryLimitsEnabled,
+            vitalServerContainerMemoryLimitMiB: vitalServerContainerMemoryLimitMiB,
+            recorderIngressContainerMemoryLimitMiB: recorderIngressContainerMemoryLimitMiB,
+            redisContainerMemoryLimitMiB: redisContainerMemoryLimitMiB,
             automaticBackupEnabled: automaticBackupEnabled,
             backupScheduleTimes: backupScheduleTimes,
             backupRetentionCount: backupRetentionCount

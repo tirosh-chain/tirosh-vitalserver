@@ -28,7 +28,7 @@ Target Redis에서 event를 어떻게 읽고 consumer group, pending recovery, D
 
 ### 2-1. `send_data` 저장 순서
 
-VitalServer는 Socket.IO `send_data` event를 받으면 아래 순서로 Redis key를 갱신합니다. 이 절은 Redis 저장 결과 관점의 축약 흐름입니다. Upstream `send_data` 처리 비용과 recorder ingress spool/replay로 메모리 압력을 완화하는 계약은 [Recorder ingress send_data flow control contract](send-data-flow-control.md)를 기준으로 봅니다.
+VitalServer는 Socket.IO `send_data` event를 받으면 아래 순서로 Redis key를 갱신합니다. 제품 runtime에서 recorder ingress `spool_and_replay` mode가 켜져 있으면, 이 순서는 VRecorder가 처음 보낸 시점이 아니라 replay worker가 upstream VitalServer로 `send_data`를 emit한 뒤의 저장 흐름입니다. 이 절은 Redis 저장 결과 관점의 축약 흐름입니다. Upstream `send_data` 처리 비용과 recorder ingress spool/replay로 메모리 압력을 완화하는 계약은 [Recorder ingress send_data flow control contract](send-data-flow-control.md)를 기준으로 봅니다.
 
 1. zlib 압축 payload를 해제합니다.
 2. JSON을 읽어 `vrcode`, `ver`, `rooms`를 꺼냅니다.

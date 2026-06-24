@@ -49,6 +49,7 @@ components:
         - redisIpWriteFailures
         - redisIpVerifyFailures
         - redisIpVerifyMismatches
+        - throughput
       properties:
         startedAt:
           type: string
@@ -105,6 +106,8 @@ components:
         redisIpVerifyMismatches:
           type: integer
           minimum: 0
+        throughput:
+          $ref: "#/components/schemas/RecorderIngressThroughputStatus"
         spool:
           nullable: true
           allOf:
@@ -235,6 +238,35 @@ components:
           nullable: true
         lastFailure:
           $ref: "#/components/schemas/RecorderIngressFailure"
+    RecorderIngressThroughputStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - windowSeconds
+        - observedBytesPerSecond
+        - spooledBytesPerSecond
+        - replayedBytesPerSecond
+        - queueGrowthBytesPerSecond
+      properties:
+        windowSeconds:
+          type: integer
+          minimum: 1
+          description: Rolling measurement window in seconds.
+        observedBytesPerSecond:
+          type: number
+          minimum: 0
+          description: Compressed send_data payload bytes observed from VRecorders per second.
+        spooledBytesPerSecond:
+          type: number
+          minimum: 0
+          description: Compressed send_data payload bytes accepted into spool per second.
+        replayedBytesPerSecond:
+          type: number
+          minimum: 0
+          description: Compressed send_data payload bytes emitted to upstream VitalServer by replay per second. This is emit throughput, not upstream processing completion.
+        queueGrowthBytesPerSecond:
+          type: number
+          description: spooledBytesPerSecond minus replayedBytesPerSecond. Positive values indicate backlog growth.
     RecorderIngressReplayStatus:
       type: object
       additionalProperties: false
@@ -246,7 +278,9 @@ components:
         - retryableFailures
         - deadLetteredEvents
         - replayLagSeconds
-        - rateLimitPerSecond
+        - maxBytesPerSecond
+        - configuredMaxBytesPerSecond
+        - adaptive
         - lastReplayAt
         - lastFailure
       properties:
@@ -271,15 +305,60 @@ components:
           type: integer
           minimum: 0
           nullable: true
-        rateLimitPerSecond:
+        maxBytesPerSecond:
           type: integer
+          description: Current effective replay throughput limit in bytes per second. Adaptive replay may lower this below the configured limit.
           minimum: 0
           nullable: true
+        configuredMaxBytesPerSecond:
+          type: integer
+          description: Configured replay throughput limit in bytes per second.
+          minimum: 0
+          nullable: true
+        adaptive:
+          $ref: "#/components/schemas/RecorderIngressReplayAdaptiveStatus"
         lastReplayAt:
           type: string
           nullable: true
         lastFailure:
           $ref: "#/components/schemas/RecorderIngressFailure"
+    RecorderIngressReplayAdaptiveStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - enabled
+        - minBytesPerSecond
+        - maxBytesPerSecond
+        - currentMaxBytesPerSecond
+        - lastDecision
+        - lastReason
+        - lastChangedAt
+        - memoryGuardStatus
+      properties:
+        enabled:
+          type: boolean
+        minBytesPerSecond:
+          type: integer
+          description: Adaptive replay lower bound in bytes per second.
+          minimum: 0
+        maxBytesPerSecond:
+          type: integer
+          description: Adaptive replay upper bound in bytes per second.
+          minimum: 0
+        currentMaxBytesPerSecond:
+          type: integer
+          description: Current adaptive replay throughput limit in bytes per second.
+          minimum: 0
+        lastDecision:
+          type: string
+        lastReason:
+          type: string
+        lastChangedAt:
+          type: string
+          nullable: true
+        memoryGuardStatus:
+          type: string
+          description: Memory guard state reported by explicit providers. Use unavailable when no explicit provider has supplied memory guard input.
     RecorderSpoolStatus:
       type: object
       additionalProperties: false
