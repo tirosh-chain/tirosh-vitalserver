@@ -82,6 +82,20 @@ function createSendDataIngressService({
         const message = appendResult.error && appendResult.error.message
           ? appendResult.error.message
           : "send_data spool write failed";
+        if (appendResult.reason === sendDataFailureReasons.SPOOL_FULL) {
+          recordSendDataSpoolRejected(
+            metrics,
+            itemResult.item.vrcode,
+            sendDataFailureReasons.SPOOL_FULL,
+            message
+          );
+          return {
+            ok: false,
+            outcome: "rejected",
+            reason: sendDataFailureReasons.SPOOL_FULL,
+            message,
+          };
+        }
         recordSendDataSpoolWriteFailed(
           metrics,
           itemResult.item.vrcode,

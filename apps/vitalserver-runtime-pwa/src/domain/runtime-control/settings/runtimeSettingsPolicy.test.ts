@@ -53,6 +53,19 @@ describe("runtime settings policy", () => {
     expect(result.errors).toContain("Container memory limits must total no more than 70% of VM memory.");
   });
 
+  it("allows container memory limit total at the displayed maximum percent", () => {
+    const result = validateRuntimeSettings(fullSettings({
+      memoryGiB: 8,
+      containerMemoryLimitsEnabled: true,
+      vitalServerContainerMemoryLimitMiB: 2048,
+      recorderIngressContainerMemoryLimitMiB: 410,
+      redisContainerMemoryLimitMiB: 3277
+    }));
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).not.toContain("Container memory limits must total no more than 70% of VM memory.");
+  });
+
   it("rejects backup times outside HH:mm clock range", () => {
     const result = validateRuntimeSettings(fullSettings({
       backupScheduleTimes: ["24:00", "03:60"]
@@ -183,7 +196,7 @@ function fullSettings(overrides = {}) {
     publicHost: "",
     publicPort: 80,
     recorderIngressSendDataMode: "spool_and_replay" as const,
-    recorderIngressSendDataReplayBatchSize: 10,
+    recorderIngressSendDataReplayBatchSize: 1000,
     recorderIngressSendDataReplayMaxMiBPerSecond: 20,
     containerMemoryLimitsEnabled: false,
     vitalServerContainerMemoryLimitMiB: 4096,

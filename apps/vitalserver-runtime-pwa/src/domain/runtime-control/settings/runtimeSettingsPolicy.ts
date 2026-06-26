@@ -199,12 +199,11 @@ export function validateRuntimeSettings(
       memoryGiB: settings.memoryGiB,
       range: containerMemoryLimitRanges.redis
     });
+    const vmMiB = Math.max(settings.memoryGiB * 1024, 1);
     const totalPercent =
-      ((settings.vitalServerContainerMemoryLimitMiB +
-        settings.recorderIngressContainerMemoryLimitMiB +
-        settings.redisContainerMemoryLimitMiB) /
-        Math.max(settings.memoryGiB * 1024, 1)) *
-      100;
+      containerMemoryLimitPercent(settings.vitalServerContainerMemoryLimitMiB, vmMiB) +
+      containerMemoryLimitPercent(settings.recorderIngressContainerMemoryLimitMiB, vmMiB) +
+      containerMemoryLimitPercent(settings.redisContainerMemoryLimitMiB, vmMiB);
     if (totalPercent > containerMemoryLimitRanges.maxCombinedPercent) {
       errors.push(
         `Container memory limits must total no more than ${containerMemoryLimitRanges.maxCombinedPercent}% of VM memory.`
@@ -339,6 +338,10 @@ function validBackupTime(value: string): boolean {
   const hour = Number(match[1]);
   const minute = Number(match[2]);
   return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+}
+
+function containerMemoryLimitPercent(valueMiB: number, vmMiB: number): number {
+  return Math.round((valueMiB / Math.max(vmMiB, 1)) * 100);
 }
 
 function activationMessage(input: {

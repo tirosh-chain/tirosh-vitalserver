@@ -3,6 +3,7 @@ import type {
   SendDataReplayWorkerRunResult,
 } from "./ports/inbound/send-data-replay-worker-port";
 import type { SendDataReplayTargetPort } from "./ports/outbound/send-data-replay-target-port";
+import type { MemoryGuardPort } from "./ports/outbound/memory-guard-port";
 import type {
   SendDataSpoolReplayPort,
   SendDataSpoolStoreClaimResult,
@@ -38,11 +39,13 @@ type SendDataReplayWorkerDependencies = {
   metrics: Record<string, unknown>;
   spoolStore: SendDataSpoolReplayPort;
   replayTarget: SendDataReplayTargetPort;
+  memoryGuard?: MemoryGuardPort;
   timer?: Pick<typeof globalThis, "setInterval" | "clearInterval">;
 };
 
 function createSendDataReplayWorker({
   config,
+  memoryGuard,
   metrics,
   spoolStore,
   replayTarget,
@@ -70,7 +73,7 @@ function createSendDataReplayWorker({
       if (running) return { ok: false, processed: 0, reason: "already_running" };
       running = true;
       try {
-        return await runReplayBatch({ config, metrics, spoolStore, replayTarget });
+        return await runReplayBatch({ config, memoryGuard, metrics, spoolStore, replayTarget });
       } finally {
         running = false;
       }
@@ -80,85 +83,129 @@ function createSendDataReplayWorker({
 
 async function runReplayBatch({
   config,
+  memoryGuard,
   metrics,
   spoolStore,
   replayTarget,
 }: SendDataReplayWorkerDependencies): Promise<SendDataReplayWorkerRunResult> {
   const replayRate = sendDataReplayRateState(metrics);
-  const itemLimit = replayBatchLimit({
-    ...config.replay,
-    maxBytesPerSecond: replayRate.currentMaxBytesPerSecond || config.replay.maxBytesPerSecond,
+  const memoryGuardRead = await readMemoryGuard(memoryGuard);
+  const control = decideSendDataReplayRate({
+    configuredMaxBytesPerSecond: replayRate.configuredMaxBytesPerSecond || config.replay.maxBytesPerSecond,
+    currentMaxBytesPerSecond: replayRate.currentMaxBytesPerSecond || config.replay.maxBytesPerSecond,
+    currentItemsPerTick: replayRate.currentItemsPerTick || replayBatchLimit(config.replay),
+    currentConcurrency: replayRate.currentConcurrency || replayConcurrencyLimit(config.replay),
+    configuredItemsPerTick: replayBatchLimit(config.replay),
+    configuredConcurrency: replayConcurrencyLimit(config.replay),
+    adaptive: config.replay.adaptive,
+    pendingItems: metricsSnapshot(metrics).replay ? metricsSnapshot(metrics).replay.pendingItems : 0,
+    queueGrowthBytesPerSecond: metricsSnapshot(metrics).throughput ? metricsSnapshot(metrics).throughput.queueGrowthBytesPerSecond : 0,
+    replayFailures: 0,
+    memoryGuard: memoryGuardRead,
   });
+  recordSendDataReplayRateDecision(metrics, control);
+  const itemLimit = Math.max(1, control.itemsPerTick);
+  const concurrency = Math.max(1, control.concurrency || 1);
   const byteBudget = replayByteBudget({
     ...config.replay,
-    maxBytesPerSecond: replayRate.currentMaxBytesPerSecond || config.replay.maxBytesPerSecond,
+    maxBytesPerSecond: control.maxBytesPerSecond,
   });
   let processed = 0;
+  let attempts = 0;
   let processedBytes = 0;
   const signals = {
     replayFailures: 0,
   };
 
-  for (let index = 0; index < itemLimit; index += 1) {
-    if (processed > 0 && processedBytes >= byteBudget) break;
-    const claim = await spoolStore.claim();
-    if (!claim.ok) {
-      await deadLetterInvalidClaim({ claim, metrics, spoolStore });
-      processed += claim.reason === sendDataFailureReasons.INVALID_PAYLOAD ? 1 : 0;
-      if (claim.reason !== sendDataFailureReasons.INVALID_PAYLOAD) {
-        signals.replayFailures += 1;
-        recordSendDataReplayClaimFailed(
-          metrics,
-          claim.reason || sendDataFailureReasons.SPOOL_UNAVAILABLE,
-          claim.error ? claim.error.message : claim.message || "send_data replay claim failed"
-        );
-      }
-      continue;
-    }
-    if (!claim.item) break;
+  let queueEmpty = false;
 
-    const item = claim.item;
-    const itemBytes = positiveInteger(item.payloadBytes, 0);
-    recordSendDataReplayStarted(metrics, item.vrcode, item);
-    const result = await sendToReplayTarget(replayTarget, item);
-    const decision = completeSendDataReplayAttempt(item, result, config.replay);
-    const finalItem = decision.item;
-
-    if (decision.action === "mark_replayed") {
-      const stored = await spoolStore.markReplayed(finalItem, claim.claim);
-      if (!stored.ok) {
-        signals.replayFailures += 1;
-        recordSendDataReplayClaimFailed(metrics, sendDataFailureReasons.SPOOL_WRITE_FAILED, failureMessage(stored));
-      } else {
-        recordSendDataReplaySucceeded(metrics, finalItem.vrcode, finalItem);
-      }
-    } else if (decision.action === "dead_letter") {
-      const stored = await spoolStore.deadLetter(finalItem, claim.claim);
-      if (!stored.ok) {
-        signals.replayFailures += 1;
-        recordSendDataReplayClaimFailed(metrics, sendDataFailureReasons.SPOOL_WRITE_FAILED, failureMessage(stored));
-      } else {
-        if (finalItem.lastFailure && finalItem.lastFailure.reason !== sendDataFailureReasons.INVALID_PAYLOAD) {
+  while (!queueEmpty && attempts < itemLimit) {
+    const batch = [];
+    while (batch.length < concurrency && attempts < itemLimit) {
+      if (attempts > 0 && processedBytes >= byteBudget) break;
+      const claim = await spoolStore.claim();
+      attempts += 1;
+      if (!claim.ok) {
+        await deadLetterInvalidClaim({ claim, metrics, spoolStore });
+        if (claim.reason === sendDataFailureReasons.INVALID_PAYLOAD) {
+          processed += 1;
+        } else {
           signals.replayFailures += 1;
+          recordSendDataReplayClaimFailed(
+            metrics,
+            claim.reason || sendDataFailureReasons.SPOOL_UNAVAILABLE,
+            claim.error ? claim.error.message : claim.message || "send_data replay claim failed"
+          );
         }
-        recordSendDataReplayDeadLettered(metrics, finalItem.vrcode, finalItem, finalItem.lastFailure);
+        continue;
       }
-    } else {
-      const stored = await spoolStore.requeue(finalItem, claim.claim);
-      if (!stored.ok) {
-        signals.replayFailures += 1;
-        recordSendDataReplayClaimFailed(metrics, sendDataFailureReasons.SPOOL_WRITE_FAILED, failureMessage(stored));
-      } else {
-        signals.replayFailures += 1;
-        recordSendDataReplayRetryableFailed(metrics, finalItem.vrcode, finalItem, finalItem.lastFailure);
+      if (!claim.item) {
+        queueEmpty = true;
+        break;
       }
+
+      const item = claim.item;
+      processedBytes += positiveInteger(item.payloadBytes, 0);
+      recordSendDataReplayStarted(metrics, item.vrcode, item);
+      batch.push(processReplayClaim({ config, metrics, spoolStore, replayTarget, claim, item }));
     }
-    processed += 1;
-    processedBytes += itemBytes;
+
+    if (batch.length === 0) break;
+    const results = await Promise.all(batch);
+    for (const result of results) {
+      processed += 1;
+      signals.replayFailures += result.replayFailures;
+    }
   }
 
-  updateAdaptiveReplayRate({ config, metrics, signals });
+  updateAdaptiveReplayRate({ config, memoryGuardRead, metrics, signals });
   return { ok: true, processed };
+}
+
+async function processReplayClaim({
+  config,
+  metrics,
+  spoolStore,
+  replayTarget,
+  claim,
+  item,
+}) {
+  let replayFailures = 0;
+  const result = await sendToReplayTarget(replayTarget, item);
+  const decision = completeSendDataReplayAttempt(item, result, config.replay);
+  const finalItem = decision.item;
+
+  if (decision.action === "mark_replayed") {
+    const stored = await spoolStore.markReplayed(finalItem, claim.claim);
+    if (!stored.ok) {
+      replayFailures += 1;
+      recordSendDataReplayClaimFailed(metrics, sendDataFailureReasons.SPOOL_WRITE_FAILED, failureMessage(stored));
+    } else {
+      recordSendDataReplaySucceeded(metrics, finalItem.vrcode, finalItem);
+    }
+  } else if (decision.action === "dead_letter") {
+    const stored = await spoolStore.deadLetter(finalItem, claim.claim);
+    if (!stored.ok) {
+      replayFailures += 1;
+      recordSendDataReplayClaimFailed(metrics, sendDataFailureReasons.SPOOL_WRITE_FAILED, failureMessage(stored));
+    } else {
+      if (finalItem.lastFailure && finalItem.lastFailure.reason !== sendDataFailureReasons.INVALID_PAYLOAD) {
+        replayFailures += 1;
+      }
+      recordSendDataReplayDeadLettered(metrics, finalItem.vrcode, finalItem, finalItem.lastFailure);
+    }
+  } else {
+    const stored = await spoolStore.requeue(finalItem, claim.claim);
+    if (!stored.ok) {
+      replayFailures += 1;
+      recordSendDataReplayClaimFailed(metrics, sendDataFailureReasons.SPOOL_WRITE_FAILED, failureMessage(stored));
+    } else {
+      replayFailures += 1;
+      recordSendDataReplayRetryableFailed(metrics, finalItem.vrcode, finalItem, finalItem.lastFailure);
+    }
+  }
+
+  return { replayFailures };
 }
 
 async function sendToReplayTarget(replayTarget: SendDataReplayTargetPort, item: SendDataSpoolItem) {
@@ -203,23 +250,47 @@ function replayBatchLimit(config: SendDataReplayConfig) {
   return Math.max(1, batchSize);
 }
 
+function replayConcurrencyLimit(config: SendDataReplayConfig) {
+  const adaptive = config.adaptive || {};
+  return Math.max(1, positiveInteger(adaptive.maxConcurrency, 1));
+}
+
 function replayByteBudget(config: SendDataReplayConfig) {
   const maxBytesPerSecond = positiveInteger(config.maxBytesPerSecond, 1);
   const intervalMs = positiveInteger(config.intervalMs, 1000);
   return Math.max(1, Math.floor(maxBytesPerSecond * intervalMs / 1000));
 }
 
-function updateAdaptiveReplayRate({ config, metrics, signals }) {
+async function readMemoryGuard(memoryGuard?: MemoryGuardPort) {
+  if (!memoryGuard) {
+    return { status: "unavailable", message: "memory guard reader not configured" };
+  }
+  try {
+    return await memoryGuard.read();
+  } catch (error) {
+    return {
+      status: "failed",
+      message: error && error.message ? error.message : "memory guard read failed",
+    };
+  }
+}
+
+function updateAdaptiveReplayRate({ config, memoryGuardRead, metrics, signals }) {
   if (!config.replay) return;
   const rateState = sendDataReplayRateState(metrics);
   const snapshot = metricsSnapshot(metrics);
   const decision = decideSendDataReplayRate({
     configuredMaxBytesPerSecond: rateState.configuredMaxBytesPerSecond || config.replay.maxBytesPerSecond,
     currentMaxBytesPerSecond: rateState.currentMaxBytesPerSecond,
+    currentItemsPerTick: rateState.currentItemsPerTick,
+    currentConcurrency: rateState.currentConcurrency,
+    configuredItemsPerTick: replayBatchLimit(config.replay),
+    configuredConcurrency: replayConcurrencyLimit(config.replay),
     adaptive: rateState.adaptive,
     pendingItems: snapshot.replay ? snapshot.replay.pendingItems : 0,
     queueGrowthBytesPerSecond: snapshot.throughput ? snapshot.throughput.queueGrowthBytesPerSecond : 0,
     replayFailures: signals.replayFailures,
+    memoryGuard: memoryGuardRead,
   });
   recordSendDataReplayRateDecision(metrics, decision);
 }

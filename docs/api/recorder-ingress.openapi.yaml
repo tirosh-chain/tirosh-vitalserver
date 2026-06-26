@@ -330,6 +330,12 @@ components:
         - minBytesPerSecond
         - maxBytesPerSecond
         - currentMaxBytesPerSecond
+        - minItemsPerTick
+        - maxItemsPerTick
+        - currentItemsPerTick
+        - minConcurrency
+        - maxConcurrency
+        - currentConcurrency
         - lastDecision
         - lastReason
         - lastChangedAt
@@ -349,6 +355,30 @@ components:
           type: integer
           description: Current adaptive replay throughput limit in bytes per second.
           minimum: 0
+        minItemsPerTick:
+          type: integer
+          description: Adaptive replay lower bound for claimed send_data items per worker tick.
+          minimum: 0
+        maxItemsPerTick:
+          type: integer
+          description: Adaptive replay upper bound for claimed send_data items per worker tick.
+          minimum: 0
+        currentItemsPerTick:
+          type: integer
+          description: Current adaptive replay item claim budget per worker tick.
+          minimum: 0
+        minConcurrency:
+          type: integer
+          description: Adaptive replay lower bound for concurrent upstream send_data attempts.
+          minimum: 0
+        maxConcurrency:
+          type: integer
+          description: Adaptive replay upper bound for concurrent upstream send_data attempts.
+          minimum: 0
+        currentConcurrency:
+          type: integer
+          description: Current adaptive replay concurrency limit for upstream send_data attempts.
+          minimum: 0
         lastDecision:
           type: string
         lastReason:
@@ -359,6 +389,17 @@ components:
         memoryGuardStatus:
           type: string
           description: Memory guard state reported by explicit providers. Use unavailable when no explicit provider has supplied memory guard input.
+          enum:
+            - healthy
+            - warm
+            - hot
+            - critical
+            - missing
+            - stale
+            - invalid
+            - failed
+            - unavailable
+            - disabled
     RecorderSpoolStatus:
       type: object
       additionalProperties: false

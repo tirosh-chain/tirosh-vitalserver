@@ -114,6 +114,9 @@ final class ContractsTests: XCTestCase {
               "minBytesPerSecond": 1048576,
               "maxBytesPerSecond": 10485760,
               "currentMaxBytesPerSecond": 2097152,
+              "minConcurrency": 1,
+              "maxConcurrency": 8,
+              "currentConcurrency": 4,
               "lastDecision": "decrease",
               "lastReason": "replay_failures",
               "lastChangedAt": "2026-06-23T00:00:01Z",
@@ -161,8 +164,9 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(decoded.replay?.lastFailure?.reason, "upstream_timeout")
         XCTAssertEqual(decoded.replay?.configuredMaxBytesPerSecond, 10_485_760)
         XCTAssertEqual(decoded.replay?.adaptive?.currentMaxBytesPerSecond, 2_097_152)
+        XCTAssertEqual(decoded.replay?.adaptive?.currentConcurrency, 4)
         XCTAssertEqual(decoded.replay?.adaptive?.lastDecision, "decrease")
-        XCTAssertEqual(decoded.replay?.adaptive?.memoryGuardStatus, "unavailable")
+        XCTAssertEqual(decoded.replay?.adaptive?.memoryGuardStatus, .unavailable)
         XCTAssertEqual(decoded.throughput?.windowSeconds, 10)
         XCTAssertEqual(decoded.throughput?.observedBytesPerSecond, 5120.0)
         XCTAssertEqual(decoded.throughput?.queueGrowthBytesPerSecond, 1024.0)
@@ -175,6 +179,13 @@ final class ContractsTests: XCTestCase {
         )
         XCTAssertNil(legacy.spool)
         XCTAssertNil(legacy.replay)
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeRecorderIngressStatusDocument.self,
+                from: Data(#"{"activeWebSockets":1,"activeRecorderConnections":1,"replay":{"adaptive":{"memoryGuardStatus":"not-ready"}}}"#.utf8)
+            )
+        )
     }
 
     func testDecodesRuntimeStatusV1() throws {

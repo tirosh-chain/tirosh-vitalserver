@@ -5,6 +5,11 @@ const { sendDataIngressModes } = require("./domain/send-data-ingress-contracts")
 const MIB = 1024 * 1024;
 const DEFAULT_REPLAY_MAX_BYTES_PER_SECOND = 20 * MIB;
 const DEFAULT_REPLAY_MIN_BYTES_PER_SECOND = 1 * MIB;
+const DEFAULT_REPLAY_MIN_ITEMS_PER_TICK = 50;
+const DEFAULT_REPLAY_MAX_ITEMS_PER_TICK = 1000;
+const DEFAULT_REPLAY_MIN_CONCURRENCY = 1;
+const DEFAULT_REPLAY_MAX_CONCURRENCY = 8;
+const DEFAULT_MAX_PENDING_ITEMS = 100000;
 
 function loadConfig(env) {
   const sendDataMode = sendDataIngressModeEnv(env, "RECORDER_INGRESS_SEND_DATA_MODE", sendDataIngressModes.SPOOL_AND_REPLAY);
@@ -24,6 +29,13 @@ function loadConfig(env) {
       host: env.VITALSERVER_REDIS_HOST || env.RECORDER_INGRESS_REDIS_HOST || "redis",
       port: numberEnv(env, "VITALSERVER_REDIS_PORT", numberEnv(env, "RECORDER_INGRESS_REDIS_PORT", 6379)),
       timeoutMs: numberEnv(env, "RECORDER_INGRESS_REDIS_TIMEOUT_MS", 1500),
+      maxQueueLength: numberEnv(env, "RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH", 50000),
+      retry: {
+        maxAttempts: numberEnv(env, "RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS", 3),
+        baseDelayMs: numberEnv(env, "RECORDER_INGRESS_REDIS_RETRY_BASE_DELAY_MS", 25),
+        maxDelayMs: numberEnv(env, "RECORDER_INGRESS_REDIS_RETRY_MAX_DELAY_MS", 500),
+        jitterRatio: ratioEnv(env, "RECORDER_INGRESS_REDIS_RETRY_JITTER_RATIO", 0.2),
+      },
     },
     audit: {
       enabled: env.VITALSERVER_AUDIT_ENABLED !== "0",
@@ -48,7 +60,7 @@ function loadConfig(env) {
       inFlightListKey: env.RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST || "vitalserver:recorder_ingress:send_data:in_flight",
       replayedListKey: env.RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST || "vitalserver:recorder_ingress:send_data:replayed",
       deadLetterListKey: env.RECORDER_INGRESS_SEND_DATA_DEAD_LETTER_REDIS_LIST || "vitalserver:recorder_ingress:send_data:dead_letter",
-      maxPendingItems: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS", 10000),
+      maxPendingItems: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS", DEFAULT_MAX_PENDING_ITEMS),
       maxPendingBytes: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES", 512 * 1024 * 1024),
       maxPayloadBytes: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES", 10 * 1024 * 1024),
       replay: {
@@ -58,7 +70,7 @@ function loadConfig(env) {
           sendDataMode === sendDataIngressModes.SPOOL_AND_REPLAY
         ),
         intervalMs: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS", 1000),
-        batchSize: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", 10),
+        batchSize: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", DEFAULT_REPLAY_MAX_ITEMS_PER_TICK),
         maxAttempts: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS", 3),
         maxBytesPerSecond: replayMaxBytesPerSecond,
         targetTimeoutMs: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS", 5000),
@@ -74,8 +86,32 @@ function loadConfig(env) {
             "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_BYTES_PER_SECOND",
             replayMaxBytesPerSecond
           ),
+          minItemsPerTick: numberEnv(
+            env,
+            "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_ITEMS_PER_TICK",
+            DEFAULT_REPLAY_MIN_ITEMS_PER_TICK
+          ),
+          maxItemsPerTick: numberEnv(
+            env,
+            "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_ITEMS_PER_TICK",
+            DEFAULT_REPLAY_MAX_ITEMS_PER_TICK
+          ),
+          minConcurrency: numberEnv(
+            env,
+            "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY",
+            DEFAULT_REPLAY_MIN_CONCURRENCY
+          ),
+          maxConcurrency: numberEnv(
+            env,
+            "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY",
+            DEFAULT_REPLAY_MAX_CONCURRENCY
+          ),
         },
       },
+    },
+    memoryGuard: {
+      runtimeStatePath: env.RECORDER_INGRESS_RUNTIME_STATE_PATH || "/run/tirosh/runtime/runtime-state.json",
+      maxAgeMs: numberEnv(env, "RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS", 15000),
     },
     clientIp: {
       trustProxy: /^(1|true|yes)$/i.test(env.VITALSERVER_TRUST_PROXY || "1"),
@@ -92,6 +128,11 @@ function loadConfig(env) {
 function numberEnv(env, name, fallback) {
   const value = Number.parseInt(env[name] || "", 10);
   return Number.isFinite(value) ? value : fallback;
+}
+
+function ratioEnv(env, name, fallback) {
+  const value = Number.parseFloat(env[name] || "");
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
 function booleanEnv(env, name, fallback) {

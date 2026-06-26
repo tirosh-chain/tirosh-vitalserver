@@ -250,30 +250,61 @@ public struct RuntimeRecorderIngressReplayStatus: Codable, Equatable, Sendable {
     }
 }
 
+public enum RuntimeRecorderIngressMemoryGuardStatus: String, CaseIterable, Codable, Equatable, Sendable {
+    case healthy
+    case warm
+    case hot
+    case critical
+    case missing
+    case stale
+    case invalid
+    case failed
+    case unavailable
+    case disabled
+}
+
 public struct RuntimeRecorderIngressReplayAdaptiveStatus: Codable, Equatable, Sendable {
     public let enabled: Bool?
     public let minBytesPerSecond: Int?
     public let maxBytesPerSecond: Int?
     public let currentMaxBytesPerSecond: Int?
+    public let minItemsPerTick: Int?
+    public let maxItemsPerTick: Int?
+    public let currentItemsPerTick: Int?
+    public let minConcurrency: Int?
+    public let maxConcurrency: Int?
+    public let currentConcurrency: Int?
     public let lastDecision: String?
     public let lastReason: String?
     public let lastChangedAt: String?
-    public let memoryGuardStatus: String?
+    public let memoryGuardStatus: RuntimeRecorderIngressMemoryGuardStatus?
 
     public init(
         enabled: Bool? = nil,
         minBytesPerSecond: Int? = nil,
         maxBytesPerSecond: Int? = nil,
         currentMaxBytesPerSecond: Int? = nil,
+        minItemsPerTick: Int? = nil,
+        maxItemsPerTick: Int? = nil,
+        currentItemsPerTick: Int? = nil,
+        minConcurrency: Int? = nil,
+        maxConcurrency: Int? = nil,
+        currentConcurrency: Int? = nil,
         lastDecision: String? = nil,
         lastReason: String? = nil,
         lastChangedAt: String? = nil,
-        memoryGuardStatus: String? = nil
+        memoryGuardStatus: RuntimeRecorderIngressMemoryGuardStatus? = nil
     ) {
         self.enabled = enabled
         self.minBytesPerSecond = minBytesPerSecond
         self.maxBytesPerSecond = maxBytesPerSecond
         self.currentMaxBytesPerSecond = currentMaxBytesPerSecond
+        self.minItemsPerTick = minItemsPerTick
+        self.maxItemsPerTick = maxItemsPerTick
+        self.currentItemsPerTick = currentItemsPerTick
+        self.minConcurrency = minConcurrency
+        self.maxConcurrency = maxConcurrency
+        self.currentConcurrency = currentConcurrency
         self.lastDecision = lastDecision
         self.lastReason = lastReason
         self.lastChangedAt = lastChangedAt

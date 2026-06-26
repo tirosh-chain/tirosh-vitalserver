@@ -9,6 +9,7 @@ import type { SendDataReplayAttemptOptions, SendDataSpoolItem } from "../../../d
 
 const { beginSendDataReplayAttempt } = require("../../../domain/send-data-replay-policy");
 const { sendDataFailureReasons } = require("../../../domain/send-data-ingress-contracts");
+const { isRedisQueueFullError } = require("./client");
 
 type RedisCommandResult =
   | {
@@ -30,6 +31,10 @@ function createRedisSendDataSpoolStore(config, redis): SendDataSpoolStorePort {
       return new Promise((resolve) => {
         redis.command(["RPUSH", config.listKey, JSON.stringify(item)], (error, reply) => {
           if (error) {
+            if (isRedisQueueFullError(error)) {
+              resolve({ ok: false, reason: sendDataFailureReasons.SPOOL_FULL, error });
+              return;
+            }
             resolve({ ok: false, error });
             return;
           }

@@ -52,9 +52,9 @@ RECORDER_INGRESS_SEND_DATA_MODES = {
     "spool_and_replay",
 }
 DEFAULT_RECORDER_INGRESS_SEND_DATA_MODE = "spool_and_replay"
-DEFAULT_RECORDER_INGRESS_REPLAY_BATCH_SIZE = 10
+DEFAULT_RECORDER_INGRESS_REPLAY_BATCH_SIZE = 1000
 DEFAULT_RECORDER_INGRESS_REPLAY_MAX_MIB_PER_SECOND = 20
-DEFAULT_CONTAINER_MEMORY_LIMITS_ENABLED = False
+DEFAULT_CONTAINER_MEMORY_LIMITS_ENABLED = True
 DEFAULT_APP_CONTAINER_MEMORY_LIMIT_MIB = 2048
 DEFAULT_RECORDER_INGRESS_CONTAINER_MEMORY_LIMIT_MIB = 410
 DEFAULT_REDIS_CONTAINER_MEMORY_LIMIT_MIB = 3277
@@ -157,12 +157,15 @@ def load_recorder_ingress_send_data_env(
         settings_path,
     )
     os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] = str(
-        positive_int_setting(
-            document,
-            settings_path,
-            "recorderIngressSendDataReplayBatchSize",
+        max(
             DEFAULT_RECORDER_INGRESS_REPLAY_BATCH_SIZE,
-            "runtime-settings-recorder-ingress-send-data-replay-batch-size-invalid",
+            positive_int_setting(
+                document,
+                settings_path,
+                "recorderIngressSendDataReplayBatchSize",
+                DEFAULT_RECORDER_INGRESS_REPLAY_BATCH_SIZE,
+                "runtime-settings-recorder-ingress-send-data-replay-batch-size-invalid",
+            ),
         )
     )
     replay_max_mib_per_second = positive_int_setting(

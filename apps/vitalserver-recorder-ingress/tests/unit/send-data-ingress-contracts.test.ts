@@ -12,6 +12,9 @@ const {
   sendDataSpoolItemStates,
   isTerminalSpoolItemState,
 } = require("../../src/domain/send-data-ingress-contracts");
+const {
+  recorderIngressReplayMemoryGuardStatusValues,
+} = require("../../src/domain/memory-guard-types");
 
 test("send_data ingress contract keeps mode, outcome, and state names explicit", () => {
   assert.deepStrictEqual(Object.values(sendDataIngressModes), [
@@ -70,6 +73,10 @@ test("OpenAPI send_data enums match recorder ingress domain contract", () => {
   assert.deepStrictEqual(
     enumValues(openAPI, "RecorderIngressFailure", "reason"),
     Object.values(sendDataFailureReasons)
+  );
+  assert.deepStrictEqual(
+    enumValues(openAPI, "RecorderIngressReplayAdaptiveStatus", "memoryGuardStatus"),
+    recorderIngressReplayMemoryGuardStatusValues
   );
 });
 

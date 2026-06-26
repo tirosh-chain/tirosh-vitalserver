@@ -87,6 +87,10 @@ export type SendDataReplayAdaptiveConfig = {
   enabled?: boolean;
   minBytesPerSecond?: number;
   maxBytesPerSecond?: number;
+  minItemsPerTick?: number;
+  maxItemsPerTick?: number;
+  minConcurrency?: number;
+  maxConcurrency?: number;
 };
 
 export type SendDataReplayAttemptOptions = {

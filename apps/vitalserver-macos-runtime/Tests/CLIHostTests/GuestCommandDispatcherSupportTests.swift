@@ -124,6 +124,29 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         )
     }
 
+    func testRecorderIngressMountsRuntimeStateReadOnlyForMemoryGuard() throws {
+        let compose = try readGuestSupportFile("compose.yaml")
+        guard let serviceStart = compose.range(of: "  recorder-ingress:") else {
+            XCTFail("recorder-ingress service is missing")
+            return
+        }
+        guard let nextService = compose.range(
+            of: "\n  vitaldb-observer:",
+            range: serviceStart.upperBound..<compose.endIndex
+        ) else {
+            XCTFail("recorder-ingress service boundary is missing")
+            return
+        }
+        let recorderIngress = String(compose[serviceStart.lowerBound..<nextService.lowerBound])
+
+        XCTAssertTrue(recorderIngress.contains("RECORDER_INGRESS_RUNTIME_STATE_PATH: \"${RECORDER_INGRESS_RUNTIME_STATE_PATH:-/run/tirosh/runtime/runtime-state.json}\""))
+        XCTAssertTrue(recorderIngress.contains("RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH: \"${RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH:-50000}\""))
+        XCTAssertTrue(recorderIngress.contains("RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS: \"${RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS:-3}\""))
+        XCTAssertTrue(recorderIngress.contains("source: /mnt/tirosh/run"))
+        XCTAssertTrue(recorderIngress.contains("target: /run/tirosh/runtime"))
+        XCTAssertTrue(recorderIngress.contains("read_only: true"))
+    }
+
     func testDockerRuntimeSmokeRunsWithoutUnsupportedBPFJITSysctlGuard() throws {
         let bootstrap = try readGuestSupportFile("bootstrap.sh")
         let workflow = try readGuestToolsFile("application/bootstrap.py")

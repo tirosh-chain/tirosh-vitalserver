@@ -223,25 +223,33 @@ Recorder ingress는 backlog를 `send_data` spool item으로 바꿔 Redis pending
 
 중요한 점은 Redis로 옮겼다고 해서 backlog가 사라지는 것이 아니라는 점입니다. 문제를 숨긴 것이 아니라, upstream heap 안의 암묵적인 대기열을 운영 가능한 명시적 queue로 바꾼 것입니다.
 
+이때 Redis write path도 flow control의 일부입니다. Recorder ingress가 `send_data`를 받을 때마다 spool append, audit append, recorder IP sync 같은 Redis command를 실행하는데, 이 command마다 새 TCP connection을 만들면 큰 burst에서 connection storm이 먼저 병목이 됩니다. 그러면 VitalServer OOM 경계를 보기도 전에 `redis command timeout`, `EADDRNOTAVAIL`, `spool_write_failed`가 증가하고, replay할 item 자체가 Redis에 충분히 들어가지 못합니다.
+
+그래서 recorder ingress의 Redis adapter는 persistent connection과 FIFO command queue를 사용합니다. Redis가 잠깐 끊기거나 timeout이 나면 retry/backoff/jitter를 적용한 뒤 최종 실패만 `spool_write_failed`, `auditWriteFailures`, `spool_unavailable` 같은 명시적 evidence로 올립니다. 이 retry는 실패를 성공으로 바꾸는 fallback이 아닙니다. 일시적인 transport 실패를 재시도하되, queue overflow나 최종 write failure는 그대로 상태에 남겨 운영자가 "upstream이 느린 것"과 "spool 저장소가 쓰기 실패한 것"을 구분할 수 있게 하는 가용성 장치입니다.
+
+또 하나 중요한 경계는 Redis command queue를 용도별로 분리하는 것입니다. `send_data` spool/replay, audit append, recorder IP sync가 하나의 Redis client queue를 공유하면 audit이나 IP sync처럼 부가적인 관측 write가 몰렸을 때도 `send_data` spool append가 같은 in-process queue 상한에 걸릴 수 있습니다. 그러면 실제로는 Redis 전체가 죽은 것이 아니라 recorder ingress 내부의 공유 command queue가 꽉 찬 상황인데, replay할 원본 payload 자체가 저장되지 못합니다. 현재 구조는 `send_data`, audit, identity sync가 각각 별도의 persistent Redis client와 command queue를 사용합니다. 그래서 audit write failure가 늘어도 critical path인 `send_data` spool/replay queue를 직접 소모하지 않습니다.
+
+`send_data` spool append에서 Redis command queue가 꽉 찬 경우는 일반적인 `spool_write_failed`가 아니라 backpressure로 취급합니다. 이 경우 ingress는 `spool_full` reason과 `rejected` outcome을 남기고, `writeFailures`가 아니라 `rejectedEvents`로 집계합니다. 의미가 다르기 때문입니다. `spool_write_failed`는 저장소 write가 실패한 것이고, `spool_full`은 지금 더 받으면 명시적으로 보호해야 하는 흐름 제어 한계에 도달했다는 뜻입니다.
+
 ### 3-3. ingest 단계에서는 payload를 upstream처럼 깊게 처리하지 않는다
 
 Recorder ingress가 spool item을 만들 때 payload를 waveform/trend domain으로 해석하지 않습니다. Replay의 source of truth는 원본 compressed payload bytes를 담은 `payloadBase64`입니다. Audit과 routing에 필요한 요약은 만들 수 있지만, upstream처럼 room별 `JSON.stringify`, `gzipSync`, Redis frame write, UI broadcast, filter/trend 계산을 수행하지 않습니다.
 
 그래서 ingest 단계의 메모리 사용은 upstream 처리와 성격이 다릅니다. Upstream은 payload 하나를 실제 VitalServer domain 처리로 확장하지만, recorder ingress는 "나중에 upstream으로 다시 보낼 원본 일감"을 보존합니다. 이 차이 때문에 VRecorder burst가 들어오는 순간에 upstream 수준의 object expansion과 broadcast buffer가 만들어지지 않습니다.
 
-### 3-4. replay worker가 upstream 유입 속도를 제한한다
+### 3-4. replay worker가 VitalServer memory를 보면서 upstream 유입 속도를 제한한다
 
-Replay worker는 pending item을 한 번에 무제한 꺼내지 않습니다. 설정된 interval마다 실행되고, 내부 `batchSize`와 byte budget을 함께 적용합니다. Claim한 item은 `pending -> in_flight`로 이동한 뒤 upstream Socket.IO `send_data`로 emit되고, 결과에 따라 `replayed`, `requeued`, `dead_letter`로 정리됩니다. Item 하나를 claim하기 전에는 그 item의 정확한 payload size를 알 수 없기 때문에, worker는 최소 1개는 처리하고 누적 `payloadBytes`가 tick budget을 넘으면 다음 tick까지 멈춥니다.
+Replay worker는 pending item을 한 번에 무제한 꺼내지 않습니다. 설정된 interval마다 실행되고, adaptive controller가 결정한 byte budget, item budget, concurrency budget을 함께 적용합니다. Claim한 item은 `pending -> in_flight`로 이동한 뒤 upstream Socket.IO `send_data`로 emit되고, 결과에 따라 `replayed`, `requeued`, `dead_letter`로 정리됩니다. Item 하나를 claim하기 전에는 그 item의 정확한 payload size를 알 수 없기 때문에 payload size는 "이번 tick에서 byte budget을 넘었는지" 확인하는 회계값으로만 사용합니다. 얼마나 많이 claim하고 동시에 몇 개를 upstream으로 보낼지는 payload 평균이 아니라 VitalServer memory guard, queue growth, replay failure가 결정합니다.
 
 이 구조에서는 VRecorder 입력 속도와 upstream 입력 속도가 분리됩니다.
 
 ```text
 VRecorder input rate: burst 가능
 Redis pending growth: backpressure limit까지 명시적으로 증가
-upstream replay throughput: worker 설정으로 제한
+upstream replay throughput: memory guard가 허용한 worker budget으로 제한
 ```
 
-따라서 upstream은 "VRecorder가 지금 보내는 속도"가 아니라 "replay worker가 허용한 payload byte throughput"으로만 `send_data`를 받습니다. Replay throughput을 upstream이 지속적으로 처리 가능한 수준보다 낮게 잡으면, section 2에서 설명한 inflate/parse/Redis/UI/filter 작업이 동시에 과도하게 쌓이는 상황을 줄일 수 있습니다.
+따라서 upstream은 "VRecorder가 지금 보내는 속도"가 아니라 "replay worker가 현재 VitalServer memory 상태에서 허용한 replay budget"으로만 `send_data`를 받습니다. VitalServer memory가 낮고 queue가 늘면 budget을 올리고, memory가 높거나 replay failure가 보이면 budget을 낮춥니다. 이 방식은 section 2에서 설명한 inflate/parse/Redis/UI/filter 작업이 한꺼번에 쌓이는 상황을 줄이면서도, memory 여유가 있을 때는 20대 recorder의 작은 `send_data` item을 초당 10개 같은 낮은 고정 batch에 묶어두지 않습니다.
 
 ### 3-5. 과부하는 성공처럼 숨기지 않고 명시적인 상태가 된다
 
@@ -255,7 +263,7 @@ Upstream이 내려가 있거나 느리면 replay item은 retry되거나 retry �
 |---|---|
 | VRecorder burst가 upstream Socket.IO queue로 바로 들어감 | `send_data` direct relay를 제거하고 Redis pending list에 먼저 저장 |
 | payload가 즉시 inflate/string/object/room buffer로 확장됨 | ingest 단계에서는 원본 compressed payload를 replay item으로 보존 |
-| room별 UI broadcast와 Redis write가 burst 속도로 생성됨 | replay worker가 upstream으로 보내는 속도를 제한 |
+| room별 UI broadcast와 Redis write가 burst 속도로 생성됨 | replay worker가 VitalServer memory guard를 보고 upstream으로 보내는 byte/item budget을 제한 |
 | backlog가 Node heap, Redis client queue, Socket.IO queue에 섞임 | `pendingItems`, `pendingBytes`, lag, failure counter로 읽히는 명시적 queue로 이동 |
 | 과부하가 OOM이나 502로 늦게 드러남 | `spool_full`, `rejected`, retry, dead letter로 조기에 드러남 |
 
@@ -277,7 +285,7 @@ Upstream이 내려가 있거나 느리면 replay item은 retry되거나 retry �
 
 여기서 중요한 균형이 생깁니다. Replay 속도가 너무 낮으면 upstream은 편하지만 pending queue가 계속 쌓이고, UI가 보는 데이터는 늦어집니다. Replay 속도가 너무 높으면 pending은 빨리 줄지만 upstream은 다시 section 2에서 설명한 inflate, JSON parse, Redis 갱신, UI broadcast, filter/trend 처리를 한꺼번에 많이 수행하게 됩니다. 그래서 replay 속도는 "높을수록 좋은 값"이 아니라, upstream이 지속적으로 버틸 수 있는 속도에 맞춰 조절해야 하는 값입니다.
 
-현재 Helper Settings는 이 균형점을 최대한 단순하게 드러냅니다. 운영자가 평소에 만지는 것은 `Recorder load control`과 `Max replay throughput`입니다. 내부적으로는 worker tick, batch size, retry limit 같은 값도 있지만, 일반 운영 UI에서 모두 노출하면 "무엇을 조절해야 하는지"가 흐려집니다. 그래서 기본 운영 판단은 "load control을 켤 것인가"와 "켜져 있을 때 upstream으로 초당 몇 MiB까지 replay할 수 있게 할 것인가"로 줄입니다.
+현재 Helper Settings는 이 균형점을 최대한 단순하게 드러냅니다. 운영자가 평소에 만지는 것은 `Recorder load control`과 `Max replay throughput`입니다. 내부적으로는 worker tick, item budget, retry limit 같은 값도 있지만, 일반 운영 UI에서 모두 노출하면 "무엇을 조절해야 하는지"가 흐려집니다. 그래서 기본 운영 판단은 "load control을 켤 것인가"와 "켜져 있을 때 upstream으로 초당 몇 MiB까지 replay할 수 있게 할 것인가"로 줄입니다.
 
 | 설정 | 쉽게 말하면 | 너무 낮으면 | 너무 높으면 |
 |---|---|---|---|
@@ -287,9 +295,9 @@ Upstream이 내려가 있거나 느리면 replay item은 retry되거나 retry �
 
 기본 `Max replay throughput`은 `20 MiB/s`입니다. 이 값은 "항상 안전한 최대치"가 아니라, `10 MiB/s`처럼 너무 보수적인 시작값 때문에 정상적인 입력에서도 queue가 불필요하게 쌓이는 상황을 피하기 위한 기본 상한입니다. 실제 운영값은 recorder 수, payload 크기, upstream CPU/memory, UI client 수, Redis 상태를 보면서 조정해야 합니다. Pending과 replay lag가 계속 증가하는데 upstream memory와 retry/dead letter가 안정적이면 이 값을 더 올릴 수 있고, upstream memory pressure나 timeout이 보이면 낮춰야 합니다.
 
-Helper Settings에서 이 값을 바꾸면 `runtime-settings.json`에 MiB/s 단위로 저장되고, guest compose runner가 bytes/sec로 변환해 recorder ingress 환경변수로 전달합니다. 즉 replay 처리량 상한은 코드에 박힌 숨은 값이 아니라 운영자가 명시적으로 조절하는 runtime 설정입니다. `batchSize`, retry count, timeout 같은 값은 내부 안전장치와 진단용 설정으로 남아 있지만, 일반 Status/Settings 흐름에서는 `Max replay throughput`이 주 조절점입니다.
+Helper Settings에서 이 값을 바꾸면 `runtime-settings.json`에 MiB/s 단위로 저장되고, guest compose runner가 bytes/sec로 변환해 recorder ingress 환경변수로 전달합니다. 즉 replay 처리량 상한은 코드에 박힌 숨은 값이 아니라 운영자가 명시적으로 조절하는 runtime 설정입니다. Item budget, retry count, timeout 같은 값은 내부 안전장치와 진단용 설정으로 남아 있지만, 일반 Status/Settings 흐름에서는 `Max replay throughput`이 주 조절점입니다.
 
-`Container memory limits`는 replay throughput과 다른 종류의 설정입니다. Replay throughput은 upstream으로 들어가는 byte 속도를 조절합니다. Container memory limit은 처리 속도를 높이지 않고, 각 container가 사용할 수 있는 memory 상한을 Docker `mem_limit`으로 제한합니다. 따라서 이 값은 queue를 drain 하는 knob이 아니라 과부하가 생겼을 때 upstream `app`, recorder ingress, Redis 중 어느 container가 얼마나 커질 수 있는지를 명시하는 hard guard입니다.
+`Container memory limits`는 replay throughput과 다른 종류의 설정입니다. Replay throughput은 upstream으로 들어가는 byte 속도를 조절합니다. Container memory limit은 처리 속도를 높이지 않고, 각 container가 사용할 수 있는 memory 상한을 Docker `mem_limit`으로 제한합니다. 따라서 이 값은 queue를 drain 하는 knob이 아니라 과부하가 생겼을 때 upstream `app`, recorder ingress, Redis 중 어느 container가 얼마나 커질 수 있는지를 명시하는 hard guard입니다. 이 기능은 기본적으로 켜져 있습니다. 그래야 guest runtime collector가 VitalServer container의 명시 memory limit을 runtime-state에 기록할 수 있고, recorder ingress adaptive controller가 `healthy/warm/hot/critical`을 추측 없이 계산할 수 있습니다.
 
 Helper Settings는 container limit을 VM memory 대비 percentage slider로 보여줍니다. 세 container의 합계는 VM memory의 `70%`를 넘지 않게 제한합니다. 나머지 약 30%는 guest OS, Docker overhead, filesystem cache, 기타 runtime 여유로 남깁니다.
 
@@ -304,17 +312,17 @@ UI는 percentage로 보여주지만 Helper는 값을 MiB 단위로 저장하고,
 | Guest compose env | `RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND` | bytes/sec | recorder ingress process가 바로 계산에 사용할 수 있는 단위입니다. |
 | Recorder ingress status/API | `maxBytesPerSecond`, `configuredMaxBytesPerSecond`, `adaptive.currentMaxBytesPerSecond` | bytes/sec | machine-readable contract에서는 단위를 이름에 포함해 오해를 줄입니다. |
 
-Recorder ingress는 이 값을 고정 replay throughput으로만 쓰지 않고 adaptive controller의 상한으로도 사용합니다. 기본 adaptive range는 `1 MiB/s..Max replay throughput`입니다. Replay가 upstream unavailable/timeout 같은 명시 실패를 만나면 다음 tick의 effective replay throughput을 낮춥니다. 반대로 pending queue가 있고 최근 byte throughput 기준 queue growth가 양수인데 replay failure가 없으면 다음 tick의 throughput을 `1 MiB/s`씩 올립니다.
+Recorder ingress는 이 값을 고정 replay throughput으로만 쓰지 않고 adaptive controller의 byte 상한으로도 사용합니다. 기본 adaptive byte range는 `1 MiB/s..Max replay throughput`입니다. Item budget과 concurrency budget은 별도 사용자 설정이 아니라 controller 내부 출력입니다. VitalServer memory guard가 `healthy`이고 pending queue가 늘면 다음 tick의 effective replay byte throughput, item budget, concurrency budget을 올립니다. VitalServer memory guard가 `warm`이면 급격한 증가를 막고, `hot`이면 낮추며, `critical`이면 최소 budget으로 줄입니다. Memory guard를 읽지 못하거나 stale이면 healthy로 추정하지 않고 보수적인 budget을 사용합니다.
 
 ```text
-failure observed
-  -> lower effective replay throughput within min/max
+VitalServer memory hot/critical or replay failure observed
+  -> lower effective replay byte throughput, item budget, and concurrency within min/max
 
-queue growing and no replay failure
-  -> raise effective replay throughput within min/max
+queue growing, no replay failure, memory guard healthy
+  -> raise effective replay byte throughput, item budget, and concurrency within min/max
 ```
 
-이 controller는 현재 recorder ingress가 직접 소유한 신호만 사용합니다. 즉 `retryableFailures`, `deadLetteredEvents`, `pendingItems`, `throughput.queueGrowthBytesPerSecond`처럼 `/recorder-ingress/status`로도 설명 가능한 값입니다. Upstream app container memory는 Helper Status에 표시되지만, recorder ingress process가 직접 읽는 입력은 아직 아닙니다. 따라서 adaptive status의 memory guard는 명시 provider가 생기기 전까지 `unavailable`로 남아야 하며, 이 값을 추정해서 제어에 사용하지 않습니다.
+이 controller는 recorder ingress가 직접 관측한 queue/failure 신호와, guest runtime collector가 명시적으로 작성한 runtime-state memory guard를 함께 사용합니다. VitalServer memory는 recorder-ingress가 Docker를 직접 추측해서 읽는 값이 아닙니다. Guest runtime collector가 `docker stats`와 `docker inspect`로 app container memory를 수집해 `/mnt/tirosh/run/runtime-state.json`에 쓰고, compose는 이 파일을 recorder-ingress에 read-only로 mount합니다. Recorder-ingress는 이 explicit document가 loaded이고 stale이 아닐 때만 memory guard input으로 사용합니다. missing, stale, invalid, failed, unavailable은 healthy로 추정하지 않습니다.
 
 Replay target은 upstream Socket.IO connection을 유지합니다. 이 부분은 OOM의 직접 원인을 제거하는 기능은 아닙니다. OOM의 핵심 원인은 upstream이 payload를 압축 해제하고, JSON으로 만들고, Redis를 갱신하고, UI로 broadcast하고, filter/trend 처리를 하면서 같은 데이터를 여러 형태로 확장하는 데 있습니다. Persistent connection은 이 upstream 내부 비용을 없애지 않습니다.
 
@@ -520,11 +528,11 @@ RPOPLPUSH pending -> in_flight
   -> invalid/max attempts: move in_flight -> dead_letter
 ```
 
-Replay worker는 tick마다 내부 `batchSize`와 byte budget을 함께 적용합니다. 따라서 `RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND`를 높여도 `RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE`가 너무 낮으면 실제 처리량은 batch size에 묶일 수 있습니다. 기본 batch size는 `10`, 기본 byte 상한은 `20 MiB/s`입니다.
+Replay worker는 tick마다 adaptive item budget, byte budget, concurrency budget을 함께 적용합니다. 과거처럼 낮은 고정 `batchSize`가 남아 있으면 작은 payload가 많은 20대 recorder 환경에서 `20 MiB/s` 상한을 설정해도 실제 replay가 `10 items/sec` 수준에 묶일 수 있습니다. 반대로 item budget만 높이고 upstream emit을 한 번에 하나씩만 보내면 `In flight`가 계속 1에 머물러 connection/emit latency가 병목이 됩니다. 현재 기본 internal batch guard는 `1000 items/tick`, 기본 concurrency guard는 `1..8`입니다. 실제 current item budget과 current concurrency는 memory guard와 queue 상태에 따라 내려가거나 올라갑니다. 기본 byte 상한은 `20 MiB/s`입니다.
 
 Upstream replay target은 upstream VitalServer로 가는 Socket.IO client connection을 유지하고, replay item마다 같은 connection에 `send_data` event를 emit합니다. Connection이 없거나 끊긴 상태면 다음 replay 시점에 새 connection을 만들고, 연결 실패나 timeout은 `upstream_unavailable` 또는 `upstream_timeout` retryable failure로 남깁니다.
 
-이 persistent replay connection은 replay 처리량에 직접적인 영향을 줍니다. 매 item마다 `connect -> emit -> close`를 반복하면 handshake 비용 때문에 byte throughput 상한을 높여도 실제 소비 속도가 낮아질 수 있습니다. Persistent connection은 그 비용을 제거해 worker가 설정된 `batchSize`와 byte budget에 더 가깝게 동작하게 만듭니다.
+이 persistent replay connection은 replay 처리량에 직접적인 영향을 줍니다. 매 item마다 `connect -> emit -> close`를 반복하면 handshake 비용 때문에 byte throughput 상한을 높여도 실제 소비 속도가 낮아질 수 있습니다. Persistent connection은 그 비용을 제거해 worker가 adaptive item budget과 byte budget에 더 가깝게 동작하게 만듭니다.
 
 단, upstream handler가 ack를 제공하지 않으므로 replay 성공은 "Socket.IO emit 완료"입니다. Upstream 내부의 inflate, JSON parse, Redis 갱신, UI broadcast, filter/trend 처리가 끝났다는 뜻은 아닙니다.
 
@@ -537,18 +545,30 @@ Upstream replay target은 upstream VitalServer로 가는 Socket.IO client connec
 | `RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:in_flight` | replay worker가 claim한 item의 in-flight Redis List key |
 | `RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:replayed` | replay 완료 item Redis List key |
 | `RECORDER_INGRESS_SEND_DATA_DEAD_LETTER_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:dead_letter` | retry하지 않는 dead-letter item Redis List key |
-| `RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS` | `10000` | pending spool item limit |
+| `RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS` | `100000` | pending spool item limit. 작은 payload가 많은 20대 recorder 환경에서 byte 여유가 있는데 item count만으로 조기 reject되는 것을 피하기 위한 기본값입니다. |
 | `RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES` | `536870912` | pending spool byte limit |
 | `RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES` | `10485760` | 단일 `send_data` payload spool limit |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_ENABLED` | mode 기반 | 빈 값이면 `spool_and_replay`에서 활성화, 그 외 mode에서 비활성화 |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS` | `1000` | replay worker tick interval |
-| `RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE` | `10` | worker tick마다 처리할 최대 item 수 |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE` | `1000` | worker tick마다 claim할 수 있는 내부 item guard. 일반 운영 knob이 아니라 adaptive item budget의 상한 guard입니다. 기존 settings document에 더 낮은 legacy 값이 남아 있어도 guest compose runner는 이 guard minimum 아래로 낮추지 않습니다. |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS` | `3` | retry 후 dead-letter로 전환할 최대 replay 시도 수 |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND` | `20971520` | worker tick에서 적용하는 replay byte throughput 상한. 기본값은 `20 MiB/s`입니다. |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS` | `5000` | upstream Socket.IO replay 연결 timeout |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_ENABLED` | `true` | replay failure와 queue growth에 따라 effective replay byte throughput을 조절할지 |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_BYTES_PER_SECOND` | `1048576` | adaptive replay throughput 하한. 기본값은 `1 MiB/s`입니다. |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY` | `1` | adaptive replay가 동시에 upstream으로 보낼 수 있는 send_data item 수의 하한 |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY` | `8` | adaptive replay가 동시에 upstream으로 보낼 수 있는 send_data item 수의 상한 |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_BYTES_PER_SECOND` | replay max bytes/sec | adaptive replay throughput 상한 |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_ITEMS_PER_TICK` | `50` | adaptive item budget 하한 |
+| `RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_ITEMS_PER_TICK` | `1000` | adaptive item budget 상한 |
+| `RECORDER_INGRESS_REDIS_TIMEOUT_MS` | `1500` | Redis command/connection timeout. 최종 실패는 spool/audit/IP sync failure evidence로 남습니다. |
+| `RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH` | `50000` | persistent Redis connection 앞의 in-process command queue 상한. 초과하면 `redis command queue full`로 실패합니다. |
+| `RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS` | `3` | Redis transport timeout/connection failure를 재시도할 최대 횟수 |
+| `RECORDER_INGRESS_REDIS_RETRY_BASE_DELAY_MS` | `25` | Redis retry exponential backoff 시작 지연 |
+| `RECORDER_INGRESS_REDIS_RETRY_MAX_DELAY_MS` | `500` | Redis retry backoff 상한 |
+| `RECORDER_INGRESS_REDIS_RETRY_JITTER_RATIO` | `0.2` | Redis retry가 동시에 몰리지 않도록 적용하는 jitter 비율 |
+| `RECORDER_INGRESS_RUNTIME_STATE_PATH` | `/run/tirosh/runtime/runtime-state.json` | VitalServer memory guard를 읽는 explicit runtime-state contract path |
+| `RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS` | `15000` | runtime-state가 이보다 오래되면 memory guard를 stale로 보고 healthy로 추정하지 않음 |
 
 현재 recorder ingress process의 env parser는 mode와 numeric env에 documented default/fallback을 사용합니다. 즉 invalid mode나 invalid number가 process startup failure가 되지는 않습니다. 단, Helper `runtime-settings.json`에서 guest compose env로 전달되는 `send_data` mode와 replay throughput은 guest compose runner가 먼저 검증합니다. runtime-settings 값이 invalid이면 compose env 생성이 실패하고 recorder ingress를 잘못된 값으로 기동하지 않습니다.
 
@@ -578,6 +598,8 @@ Recorder ingress `/recorder-ingress/status`는 전체 상태와 recorder별 상�
 | `replay.maxBytesPerSecond` | 현재 effective replay throughput | adaptive가 켜져 있으면 설정값보다 낮아질 수 있습니다. |
 | `replay.configuredMaxBytesPerSecond` | 설정으로 들어온 replay throughput 상한 | adaptive 상한의 기준입니다. |
 | `replay.adaptive.currentMaxBytesPerSecond` | adaptive controller가 현재 적용 중인 replay throughput | Helper의 `Replay throughput` 행은 이 값을 MiB/s로 표시합니다. |
+| `replay.adaptive.currentItemsPerTick` | adaptive controller가 현재 적용 중인 tick당 item claim budget | 작은 payload가 많은 workload에서 실제 replay item/sec 병목을 확인할 수 있습니다. |
+| `replay.adaptive.currentConcurrency` | adaptive controller가 현재 적용 중인 upstream send_data 동시 처리 상한 | queue가 늘고 replay throughput이 낮은데 이 값이 낮으면 concurrency budget이 병목입니다. 이 값이 이미 높거나 max인데도 queue가 늘면 upstream 처리 latency나 VitalServer memory guard 상태를 함께 봐야 합니다. |
 | `replay.adaptive.memoryGuardStatus` | app container memory guard 상태 | 명시 입력이 없으면 `unavailable`입니다. 추정해서 쓰지 않습니다. |
 | `replay.pendingItems` | replay 관점의 pending count | spool pending과 함께 봐야 합니다. |
 | `replay.inFlightItems` | claim 후 처리 중인 item 수 | 오래 유지되면 worker crash나 store move 실패를 의심해야 합니다. |
@@ -634,7 +656,32 @@ make testkit/recorder-ingress/replay
 make testkit/recorder-ingress/load
 ```
 
-이 proof는 `spool_and_replay`에서 5 recorder x 100 `send_data`를 보내고, observed/spooled/replayed delta, Redis `dead_letter` 부재, replay lag, app container `oomKilled=false`, restart count 불변을 확인합니다. replay interval, byte throughput, batch guard를 함께 명시해 load 종료 후 pending spool이 drain 되는지도 확인합니다.
+이 proof는 Issue #68의 최소 운영 목표에 맞춰 `spool_and_replay`에서 20 recorder x 100 `send_data`를 보내고, observed/spooled/replayed delta, Redis `dead_letter` 부재, replay lag, app container `oomKilled=false`, restart count 불변을 확인합니다. replay interval, byte throughput, batch guard를 함께 명시해 load 종료 후 pending spool이 drain 되는지도 확인합니다. 이때 replay throughput 설정은 legacy item/sec env가 아니라 `RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND`로 전달되어야 합니다.
+
+Local Compose proof는 recorder-ingress replay path와 app stability를 확인하는 proof입니다. VitalServer memory-driven adaptive proof는 VM runtime에서 따로 확인해야 합니다. VM proof에서는 guest runtime collector가 `/mnt/tirosh/run/runtime-state.json`에 `app` container의 `memoryUsedBytes`와 명시 `memoryLimitBytes`를 쓰고, recorder-ingress status가 `replay.adaptive.memoryGuardStatus`를 `unavailable`이나 `stale`이 아닌 실제 pressure state로 보고해야 합니다.
+
+runtime-state가 recorder-ingress에 mount된 VM/runtime 환경에서는 status-only proof target으로 memory guard assertion을 함께 확인합니다.
+
+```sh
+make testkit/recorder-ingress/runtime-load
+```
+
+이 target은 Docker Compose를 직접 재시작하거나 Redis list를 reset하지 않고, recorder-ingress HTTP status를 기준으로 pending drain과 `replay.adaptive.memoryGuardStatus`를 확인합니다. 그래서 시작 baseline의 `spool.pendingItems`, `spool.pendingBytes`, `replay.pendingItems`, `replay.inFlightItems`가 모두 0이어야 합니다. 기존 backlog가 있으면 proof가 애매해지므로 status-only proof는 시작 전에 실패합니다. Status-only proof는 Docker inspect를 사용하지 않으므로 app container restart/OOM stability를 직접 주장하지 않습니다. 성공 JSON의 `proofScope`는 `status-only`, `appStabilityAsserted`는 `false`로 남습니다. Compose container inspect가 가능한 local proof에서는 아래처럼 e2e script를 직접 실행해 app container stability까지 함께 확인할 수 있습니다.
+
+```sh
+.venv/bin/python scripts/recorder_ingress_compose_e2e.py \
+  --recorders 20 \
+  --max-messages 100 \
+  --interval 0.02 \
+  --replay-batch-size 1000 \
+  --replay-max-mib-per-second 20 \
+  --replay-timeout 90 \
+  --max-replay-lag-seconds 30 \
+  --assert-app-stable \
+  --require-memory-guard
+```
+
+`--require-memory-guard`는 `replay.adaptive.memoryGuardStatus`가 `healthy`, `warm`, `hot`, `critical` 중 하나일 때만 성공합니다. `missing`, `stale`, `invalid`, `failed`, `unavailable`, field 누락은 memory-driven proof가 아닙니다.
 
 ### Backpressure proof
 

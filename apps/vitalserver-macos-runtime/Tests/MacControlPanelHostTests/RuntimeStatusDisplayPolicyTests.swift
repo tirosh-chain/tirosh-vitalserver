@@ -1361,7 +1361,10 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     adaptive: RuntimeRecorderIngressReplayAdaptiveStatus(
                         enabled: true,
                         minBytesPerSecond: 2 * 1_048_576,
-                        maxBytesPerSecond: 12 * 1_048_576
+                        maxBytesPerSecond: 12 * 1_048_576,
+                        currentItemsPerTick: 500,
+                        currentConcurrency: 8,
+                        memoryGuardStatus: .healthy
                     )
                 )
             ),
@@ -1383,7 +1386,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.severity, .healthy)
         XCTAssertEqual(
             item(AppConstants.Labels.recorderIngressReplayThroughput, in: items)?.value.text,
-            "4.0 MiB/s, adaptive 2.0 MiB/s-12.0 MiB/s"
+            "4.0 MiB/s, adaptive 2.0 MiB/s-12.0 MiB/s, guard healthy, 500 items/tick, concurrency 8"
         )
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressInFlight, in: items)?.value.text, "1")
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplayLag, in: items)?.value.text, "12s")
@@ -1565,7 +1568,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .neutral)
     }
 
-    func testRecorderIngressQueueDisplaysStatusReadFailure() {
+    func testRecorderIngressQueueDisplaysStatusReadFailureAsNotReady() {
         let status = healthyRuntimeStatus()
         let observation = RuntimeContainerObservation(
             recorderIngressHTTP: "failed",
@@ -1578,8 +1581,24 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
         let items = policy.healthDetails(status: status, observation: observation)
 
-        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, "curl failed")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, AppConstants.StatusText.notReady)
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .warning)
+    }
+
+    func testRecorderIngressDetailsDisplaysStatusReadFailureAsNotReady() {
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "failed",
+            recorderIngressStatus: nil,
+            recorderIngressStatusReadState: .commandFailed,
+            recorderIngressStatusReadError: "command-failed-7 exitCode=7 stderr=curl failed",
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.recorderIngressDetails(observation: observation)
+
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.text, AppConstants.StatusText.notReady)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.severity, .warning)
     }
 
     func testComposeServicesReadFailureIsDisplayedInsteadOfMissingServiceFallback() {

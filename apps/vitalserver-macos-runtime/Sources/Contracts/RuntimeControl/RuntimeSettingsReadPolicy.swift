@@ -65,7 +65,10 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
         self.publicHost = publicHost
         self.publicPort = publicPort
         self.recorderIngressSendDataMode = recorderIngressSendDataMode
-        self.recorderIngressSendDataReplayBatchSize = recorderIngressSendDataReplayBatchSize
+        self.recorderIngressSendDataReplayBatchSize = max(
+            recorderIngressSendDataReplayBatchSize,
+            RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize
+        )
         self.recorderIngressSendDataReplayMaxMiBPerSecond = recorderIngressSendDataReplayMaxMiBPerSecond
         self.containerMemoryLimitsEnabled = containerMemoryLimitsEnabled
         self.vitalServerContainerMemoryLimitMiB = vitalServerContainerMemoryLimitMiB
@@ -289,7 +292,10 @@ public enum RuntimeSettingsReadPolicy {
         next.publicHost = input.publicHost
         next.publicPort = input.publicPort
         next.recorderIngressSendDataMode = input.recorderIngressSendDataMode
-        next.recorderIngressSendDataReplayBatchSize = input.recorderIngressSendDataReplayBatchSize
+        next.recorderIngressSendDataReplayBatchSize = max(
+            input.recorderIngressSendDataReplayBatchSize,
+            RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize
+        )
         next.recorderIngressSendDataReplayMaxMiBPerSecond = input.recorderIngressSendDataReplayMaxMiBPerSecond
         next.containerMemoryLimitsEnabled = input.containerMemoryLimitsEnabled
         next.vitalServerContainerMemoryLimitMiB = input.vitalServerContainerMemoryLimitMiB

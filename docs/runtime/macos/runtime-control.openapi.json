@@ -3399,12 +3399,46 @@
           }
         }
       },
+      "RuntimeRecorderIngressStatusReadState": {
+        "type": "string",
+        "enum": [
+          "notRead",
+          "loaded",
+          "skippedMissingProxyPort",
+          "commandFailed",
+          "emptyResponse",
+          "outputInvalid",
+          "invalidResponse",
+          "readFailed"
+        ]
+      },
+      "RuntimeFileMetadataReadState": {
+        "type": "string",
+        "enum": [
+          "notRead",
+          "loaded",
+          "readFailed"
+        ]
+      },
+      "RuntimeContainerServicesReadState": {
+        "type": "string",
+        "enum": [
+          "loaded",
+          "missing",
+          "invalid",
+          "stale",
+          "read-failed"
+        ]
+      },
       "RuntimeContainerObservation": {
         "type": "object",
         "additionalProperties": false,
         "required": [
           "recorderIngressHTTP",
+          "recorderIngressStatusReadState",
+          "runtimeStateFileMetadataReadState",
           "containerLogsPresent",
+          "composeServicesReadState",
           "composeServices"
         ],
         "properties": {
@@ -3420,6 +3454,9 @@
                 "type": "null"
               }
             ]
+          },
+          "recorderIngressStatusReadState": {
+            "$ref": "#/components/schemas/RuntimeRecorderIngressStatusReadState"
           },
           "recorderIngressStatusReadError": {
             "type": [
@@ -3438,6 +3475,9 @@
               "string",
               "null"
             ]
+          },
+          "runtimeStateFileMetadataReadState": {
+            "$ref": "#/components/schemas/RuntimeFileMetadataReadState"
           },
           "runtimeStateFileMetadataError": {
             "type": [
@@ -3472,6 +3512,9 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeContainerServiceObservation"
             }
+          },
+          "composeServicesReadState": {
+            "$ref": "#/components/schemas/RuntimeContainerServicesReadState"
           },
           "composeServicesReadError": {
             "type": [
@@ -3836,6 +3879,48 @@
             ],
             "minimum": 0
           },
+          "minItemsPerTick": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "maxItemsPerTick": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "currentItemsPerTick": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "minConcurrency": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "maxConcurrency": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "currentConcurrency": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
           "lastDecision": {
             "type": [
               "string",
@@ -3858,6 +3943,19 @@
             "type": [
               "string",
               "null"
+            ],
+            "enum": [
+              "healthy",
+              "warm",
+              "hot",
+              "critical",
+              "missing",
+              "stale",
+              "invalid",
+              "failed",
+              "unavailable",
+              "disabled",
+              null
             ]
           }
         }

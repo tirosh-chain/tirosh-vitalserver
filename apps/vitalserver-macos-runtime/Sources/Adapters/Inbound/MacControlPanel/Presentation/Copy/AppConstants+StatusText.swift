@@ -40,6 +40,7 @@ public extension AppConstants {
         public static let noLogData = "No log data for this source yet."
         public static let unknown = "Unknown"
         public static let notReported = "Not reported"
+        public static let notReady = "Not ready"
         public static let online = "Online"
         public static let offline = "Offline"
         public static let stale = "Stale"
@@ -284,6 +285,26 @@ public extension AppConstants {
                 return failed
             case .unknown(let rawValue):
                 return titleCasedStatus(rawValue)
+            }
+        }
+
+        public static func recorderIngressStatusReadState(
+            _ value: RuntimeRecorderIngressStatusReadState?
+        ) -> String {
+            guard let value else {
+                return notReported
+            }
+            switch value {
+            case .loaded:
+                return ready
+            case .notRead,
+                 .skippedMissingProxyPort,
+                 .commandFailed,
+                 .emptyResponse,
+                 .outputInvalid,
+                 .invalidResponse,
+                 .readFailed:
+                return notReady
             }
         }
 

@@ -65,6 +65,18 @@ const recorderIngressSendDataModeSchema = z.enum([
   "spool_only",
   "spool_and_replay"
 ]);
+const recorderIngressMemoryGuardStatusSchema = z.enum([
+  "healthy",
+  "warm",
+  "hot",
+  "critical",
+  "missing",
+  "stale",
+  "invalid",
+  "failed",
+  "unavailable",
+  "disabled"
+]);
 const testKitStateSchema = z.enum([
   "disabled",
   "stopped",
@@ -264,10 +276,16 @@ const runtimeRecorderIngressReplayAdaptiveStatusSchema = z
     minBytesPerSecond: nullableNumber,
     maxBytesPerSecond: nullableNumber,
     currentMaxBytesPerSecond: nullableNumber,
+    minItemsPerTick: nullableNumber,
+    maxItemsPerTick: nullableNumber,
+    currentItemsPerTick: nullableNumber,
+    minConcurrency: nullableNumber,
+    maxConcurrency: nullableNumber,
+    currentConcurrency: nullableNumber,
     lastDecision: nullableString,
     lastReason: nullableString,
     lastChangedAt: nullableString,
-    memoryGuardStatus: nullableString
+    memoryGuardStatus: recorderIngressMemoryGuardStatusSchema.nullable().optional()
   })
   .passthrough();
 
@@ -324,19 +342,47 @@ const runtimeContainerServiceObservationSchema = z
   })
   .passthrough();
 
+const runtimeRecorderIngressStatusReadStateSchema = z.enum([
+  "notRead",
+  "loaded",
+  "skippedMissingProxyPort",
+  "commandFailed",
+  "emptyResponse",
+  "outputInvalid",
+  "invalidResponse",
+  "readFailed"
+]);
+
+const runtimeFileMetadataReadStateSchema = z.enum([
+  "notRead",
+  "loaded",
+  "readFailed"
+]);
+
+const runtimeContainerServicesReadStateSchema = z.enum([
+  "loaded",
+  "missing",
+  "invalid",
+  "stale",
+  "read-failed"
+]);
+
 const runtimeContainerObservationSchema = z
   .object({
     recorderIngressHTTP: z.string(),
     recorderIngressStatus: runtimeRecorderIngressStatusDocumentSchema.nullable().optional(),
+    recorderIngressStatusReadState: runtimeRecorderIngressStatusReadStateSchema,
     recorderIngressStatusReadError: nullableString,
     runtimeStateUpdatedAt: nullableString,
     runtimeStateFileUpdatedAt: nullableString,
+    runtimeStateFileMetadataReadState: runtimeFileMetadataReadStateSchema,
     runtimeStateFileMetadataError: nullableString,
     containerLogsPresent: z.boolean(),
     containerLogsBytes: nullableNumber,
     containerLogsUpdatedAt: nullableString,
     containerLogsMetadataError: nullableString,
     composeServices: z.array(runtimeContainerServiceObservationSchema),
+    composeServicesReadState: runtimeContainerServicesReadStateSchema,
     composeServicesReadError: nullableString
   })
   .passthrough();

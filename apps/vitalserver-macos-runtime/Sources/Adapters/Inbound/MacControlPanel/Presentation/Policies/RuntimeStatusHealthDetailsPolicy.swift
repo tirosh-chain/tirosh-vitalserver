@@ -23,6 +23,7 @@ public protocol RuntimeStatusHealthDetailsVocabulary: RuntimeStatusVMStateVocabu
     var guestStateStaleText: String { get }
 
     func installStateText(_ state: RuntimeFileState) -> String
+    func recorderIngressStatusReadStateText(_ state: RuntimeRecorderIngressStatusReadState) -> String
     func vmErrorText(_ error: RuntimeVMError) -> String
     func domainErrorText(_ reason: RuntimeFailureReason) -> String
 }
@@ -188,8 +189,7 @@ public struct RuntimeStatusHealthDetailsPolicy {
         }
         guard observation.recorderIngressStatusReadState == .loaded else {
             return value(
-                observation.recorderIngressStatusReadError
-                    ?? "recorder ingress status \(observation.recorderIngressStatusReadState.rawValue)",
+                vocabulary.recorderIngressStatusReadStateText(observation.recorderIngressStatusReadState),
                 .warning
             )
         }

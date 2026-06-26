@@ -1331,18 +1331,27 @@ export interface components {
             /** @enum {string} */
             recoveryAction?: "installRuntime" | "restartVMService" | "restartProxyService" | "restartWatchdogService" | "waitForGuest" | "restartGuestAgent" | "repairGuestBootstrap" | "restartContainerServices" | "repairProxyConfiguration" | "freeProxyPort" | "inspectVitalDBObservation" | "backupAndRecreateVM" | "fixConfiguration" | "freeHostResources" | "inspectLogs";
         };
+        /** @enum {string} */
+        RuntimeRecorderIngressStatusReadState: "notRead" | "loaded" | "skippedMissingProxyPort" | "commandFailed" | "emptyResponse" | "outputInvalid" | "invalidResponse" | "readFailed";
+        /** @enum {string} */
+        RuntimeFileMetadataReadState: "notRead" | "loaded" | "readFailed";
+        /** @enum {string} */
+        RuntimeContainerServicesReadState: "loaded" | "missing" | "invalid" | "stale" | "read-failed";
         RuntimeContainerObservation: {
             recorderIngressHTTP: string;
             recorderIngressStatus?: components["schemas"]["RuntimeRecorderIngressStatusDocument"] | null;
+            recorderIngressStatusReadState: components["schemas"]["RuntimeRecorderIngressStatusReadState"];
             recorderIngressStatusReadError?: string | null;
             runtimeStateUpdatedAt?: string | null;
             runtimeStateFileUpdatedAt?: string | null;
+            runtimeStateFileMetadataReadState: components["schemas"]["RuntimeFileMetadataReadState"];
             runtimeStateFileMetadataError?: string | null;
             containerLogsPresent: boolean;
             containerLogsBytes?: number | null;
             containerLogsUpdatedAt?: string | null;
             containerLogsMetadataError?: string | null;
             composeServices: components["schemas"]["RuntimeContainerServiceObservation"][];
+            composeServicesReadState: components["schemas"]["RuntimeContainerServicesReadState"];
             composeServicesReadError?: string | null;
         };
         RuntimeRecorderIngressStatusDocument: {
@@ -1410,10 +1419,16 @@ export interface components {
             minBytesPerSecond?: number | null;
             maxBytesPerSecond?: number | null;
             currentMaxBytesPerSecond?: number | null;
+            minItemsPerTick?: number | null;
+            maxItemsPerTick?: number | null;
+            currentItemsPerTick?: number | null;
+            minConcurrency?: number | null;
+            maxConcurrency?: number | null;
+            currentConcurrency?: number | null;
             lastDecision?: string | null;
             lastReason?: string | null;
             lastChangedAt?: string | null;
-            memoryGuardStatus?: string | null;
+            memoryGuardStatus?: "healthy" | "warm" | "hot" | "critical" | "missing" | "stale" | "invalid" | "failed" | "unavailable" | "disabled" | null;
         };
         RuntimeRecorderConnectionObservation: {
             vrcode: string;

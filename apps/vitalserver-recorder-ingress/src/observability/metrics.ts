@@ -85,6 +85,14 @@ function configureSendDataSpool(metrics, config) {
     minBytesPerSecond: adaptive.minBytesPerSecond,
     maxBytesPerSecond: adaptive.maxBytesPerSecond,
     currentMaxBytesPerSecond: currentMaxBytes,
+    currentItemsPerTick: adaptive.enabled
+      ? adaptive.maxItemsPerTick
+      : (config.replay ? config.replay.batchSize : 0),
+    minItemsPerTick: adaptive.minItemsPerTick,
+    maxItemsPerTick: adaptive.maxItemsPerTick,
+    minConcurrency: adaptive.minConcurrency,
+    maxConcurrency: adaptive.maxConcurrency,
+    currentConcurrency: adaptive.enabled ? adaptive.maxConcurrency : 1,
     lastDecision: adaptive.enabled ? "initialized" : "disabled",
     lastReason: adaptive.enabled ? "configured" : "adaptive_disabled",
     lastChangedAt: null,
@@ -315,9 +323,12 @@ function recordSendDataReplayRateDecision(metrics, decision) {
     replay.maxBytesPerSecond = decision.maxBytesPerSecond;
     replay.adaptive = replay.adaptive || defaultReplayAdaptiveStatus();
     replay.adaptive.currentMaxBytesPerSecond = decision.maxBytesPerSecond;
+    replay.adaptive.currentItemsPerTick = decision.itemsPerTick;
+    replay.adaptive.currentConcurrency = decision.concurrency;
     replay.adaptive.lastDecision = decision.action;
     replay.adaptive.lastReason = decision.reason;
     replay.adaptive.lastChangedAt = new Date().toISOString();
+    replay.adaptive.memoryGuardStatus = decision.memoryGuardStatus;
   });
 }
 
@@ -326,6 +337,8 @@ function sendDataReplayRateState(metrics) {
   return {
     configuredMaxBytesPerSecond: replay.configuredMaxBytesPerSecond || replay.maxBytesPerSecond || 0,
     currentMaxBytesPerSecond: replay.maxBytesPerSecond || 0,
+    currentItemsPerTick: replay.adaptive ? replay.adaptive.currentItemsPerTick : 0,
+    currentConcurrency: replay.adaptive ? replay.adaptive.currentConcurrency : 0,
     adaptive: replay.adaptive || defaultReplayAdaptiveStatus(),
   };
 }
@@ -553,6 +566,12 @@ function defaultReplayAdaptiveStatus() {
     minBytesPerSecond: 0,
     maxBytesPerSecond: 0,
     currentMaxBytesPerSecond: 0,
+    minItemsPerTick: 0,
+    maxItemsPerTick: 0,
+    currentItemsPerTick: 0,
+    minConcurrency: 0,
+    maxConcurrency: 0,
+    currentConcurrency: 0,
     lastDecision: "disabled",
     lastReason: "adaptive_disabled",
     lastChangedAt: null,
@@ -569,10 +588,18 @@ function replayAdaptiveConfig(replayConfig) {
     minBytesPerSecond,
     positiveInteger(adaptive.maxBytesPerSecond, configuredRate || minBytesPerSecond)
   );
+  const minItemsPerTick = positiveInteger(adaptive.minItemsPerTick, 50);
+  const maxItemsPerTick = Math.max(minItemsPerTick, positiveInteger(adaptive.maxItemsPerTick, 1000));
+  const minConcurrency = positiveInteger(adaptive.minConcurrency, 1);
+  const maxConcurrency = Math.max(minConcurrency, positiveInteger(adaptive.maxConcurrency, 8));
   return {
     enabled,
     minBytesPerSecond,
     maxBytesPerSecond,
+    minItemsPerTick,
+    maxItemsPerTick,
+    minConcurrency,
+    maxConcurrency,
   };
 }
 

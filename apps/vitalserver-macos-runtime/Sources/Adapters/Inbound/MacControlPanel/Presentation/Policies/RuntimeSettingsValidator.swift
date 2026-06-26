@@ -130,11 +130,18 @@ public struct RuntimeSettingsValidator {
 
     private func containerMemoryLimitsAreValid(_ settings: RuntimeSettings) -> Bool {
         let vmMemoryMiB = settings.memoryGiB * 1024
-        let totalPercent = (
-            Double(settings.vitalServerContainerMemoryLimitMiB)
-                + Double(settings.recorderIngressContainerMemoryLimitMiB)
-                + Double(settings.redisContainerMemoryLimitMiB)
-        ) / Double(max(vmMemoryMiB, 1)) * 100.0
+        let totalPercent = containerMemoryLimitPercent(
+            settings.vitalServerContainerMemoryLimitMiB,
+            vmMemoryMiB: vmMemoryMiB
+        )
+        + containerMemoryLimitPercent(
+            settings.recorderIngressContainerMemoryLimitMiB,
+            vmMemoryMiB: vmMemoryMiB
+        )
+        + containerMemoryLimitPercent(
+            settings.redisContainerMemoryLimitMiB,
+            vmMemoryMiB: vmMemoryMiB
+        )
         return validLimit(
             settings.vitalServerContainerMemoryLimitMiB,
             minimum: AppConstants.SettingsLimits.minimumVitalServerContainerMemoryLimitMiB,
@@ -150,11 +157,15 @@ public struct RuntimeSettingsValidator {
             minimum: AppConstants.SettingsLimits.minimumRedisContainerMemoryLimitMiB,
             maximum: min(AppConstants.SettingsLimits.maximumRedisContainerMemoryLimitMiB, vmMemoryMiB)
         )
-        && totalPercent <= Double(AppConstants.SettingsLimits.maximumCombinedContainerMemoryLimitPercent)
+        && totalPercent <= AppConstants.SettingsLimits.maximumCombinedContainerMemoryLimitPercent
     }
 
     private func validLimit(_ value: Int, minimum: Int, maximum: Int) -> Bool {
         value >= minimum && value <= max(minimum, maximum)
+    }
+
+    private func containerMemoryLimitPercent(_ valueMiB: Int, vmMemoryMiB: Int) -> Int {
+        Int((Double(valueMiB) / Double(max(vmMemoryMiB, 1)) * 100.0).rounded())
     }
 }
 

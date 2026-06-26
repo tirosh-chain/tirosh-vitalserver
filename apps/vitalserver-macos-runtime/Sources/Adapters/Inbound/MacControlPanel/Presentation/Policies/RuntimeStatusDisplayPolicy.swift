@@ -111,8 +111,9 @@ struct RuntimeStatusDisplayPolicy {
             return [
                 healthItem(
                     AppConstants.Labels.recorderIngressReplay,
-                    observation.recorderIngressStatusReadError
-                        ?? "recorder ingress status \(observation.recorderIngressStatusReadState.rawValue)",
+                    AppConstants.StatusText.recorderIngressStatusReadState(
+                        observation.recorderIngressStatusReadState
+                    ),
                     .warning
                 ),
             ]
@@ -309,7 +310,19 @@ struct RuntimeStatusDisplayPolicy {
         else {
             return base
         }
-        return "\(base), adaptive \(formatBinaryBytesPerSecond(min))-\(formatBinaryBytesPerSecond(max))"
+        var parts = [
+            "\(base), adaptive \(formatBinaryBytesPerSecond(min))-\(formatBinaryBytesPerSecond(max))"
+        ]
+        if let memoryGuardStatus = replay.adaptive?.memoryGuardStatus {
+            parts.append("guard \(memoryGuardStatus.rawValue)")
+        }
+        if let itemsPerTick = replay.adaptive?.currentItemsPerTick {
+            parts.append("\(itemsPerTick) items/tick")
+        }
+        if let concurrency = replay.adaptive?.currentConcurrency {
+            parts.append("concurrency \(concurrency)")
+        }
+        return parts.joined(separator: ", ")
     }
 
     private func queueSeverity(
@@ -623,6 +636,10 @@ private struct AppRuntimeStatusHealthDetailsVocabulary: RuntimeStatusHealthDetai
 
     func installStateText(_ state: RuntimeFileState) -> String {
         AppConstants.StatusText.installState(state)
+    }
+
+    func recorderIngressStatusReadStateText(_ state: RuntimeRecorderIngressStatusReadState) -> String {
+        AppConstants.StatusText.recorderIngressStatusReadState(state)
     }
 
     func vmStateText(_ value: RuntimeVMState?) -> String {

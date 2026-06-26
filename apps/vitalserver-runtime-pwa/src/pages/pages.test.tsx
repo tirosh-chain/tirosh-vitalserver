@@ -152,7 +152,7 @@ describe("runtime console pages", () => {
       screen.getByText("in 2.0 MiB/s, replay 1.0 MiB/s, queue +1.0 MiB/s")
     ).toBeInTheDocument();
     expect(
-      screen.getByText("5.0 MiB/s, adaptive 1.0 MiB/s-10.0 MiB/s")
+      screen.getByText("5.0 MiB/s, adaptive 1.0 MiB/s-10.0 MiB/s, guard unavailable, 500 items/tick, concurrency 8")
     ).toBeInTheDocument();
     expect(screen.getByText("100.0 MiB / 512.0 MiB")).toBeInTheDocument();
     expect(screen.getByText(/2.0 KiB \/ 4.0 KiB/)).toBeInTheDocument();
@@ -1275,6 +1275,12 @@ function overview() {
               minBytesPerSecond: 1048576,
               maxBytesPerSecond: 10485760,
               currentMaxBytesPerSecond: 5242880,
+              minItemsPerTick: 50,
+              maxItemsPerTick: 1000,
+              currentItemsPerTick: 500,
+              minConcurrency: 1,
+              maxConcurrency: 8,
+              currentConcurrency: 8,
               lastDecision: "increase",
               lastReason: "queue_growth",
               lastChangedAt: "2026-05-31T01:00:00Z",
@@ -1284,14 +1290,17 @@ function overview() {
             lastFailure: null
           }
         },
+        recorderIngressStatusReadState: "loaded",
         recorderIngressStatusReadError: null,
         runtimeStateUpdatedAt: null,
         runtimeStateFileUpdatedAt: null,
+        runtimeStateFileMetadataReadState: "notRead",
         runtimeStateFileMetadataError: null,
         containerLogsPresent: true,
         containerLogsBytes: null,
         containerLogsUpdatedAt: null,
         containerLogsMetadataError: null,
+        composeServicesReadState: "loaded",
         composeServices: [
           {
             service: "app",

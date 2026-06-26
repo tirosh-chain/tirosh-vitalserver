@@ -7,6 +7,7 @@ import {
   sameHostRuntimeURL
 } from "./http";
 import { formatRuntimeState } from "./runtimeState";
+import { formatRecorderIngressStatusReadState } from "./recorderIngress";
 import { formatPatientStatus } from "./status";
 import { formatUptimeSince } from "./time";
 
@@ -27,6 +28,12 @@ describe("runtime presentation formatting", () => {
     expect(formatRuntimeState("healthy")).toBe("Healthy");
     expect(formatRuntimeState("critical")).toBe("Critical");
     expect(formatRuntimeState(undefined)).toBe("Unknown");
+  });
+
+  it("maps recorder ingress read state values to display labels", () => {
+    expect(formatRecorderIngressStatusReadState("loaded")).toBe("Ready");
+    expect(formatRecorderIngressStatusReadState("commandFailed")).toBe("Not ready");
+    expect(formatRecorderIngressStatusReadState(undefined)).toBe("Not reported");
   });
 
   it("formats patient status without converting missing state to absence", () => {

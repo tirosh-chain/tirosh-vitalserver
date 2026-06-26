@@ -50,12 +50,12 @@ def test_load_runtime_env_exports_recorder_ingress_send_data_mode(
     compose.load_runtime_env()
 
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_only"
-    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "8"
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "1000"
     assert (
         compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"]
         == str(12 * 1024 * 1024)
     )
-    assert not (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).exists()
+    assert (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).exists()
 
 
 def test_load_runtime_env_writes_compose_runtime_memory_limits(
@@ -235,10 +235,21 @@ def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_re
     compose.load_runtime_env()
 
     assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_and_replay"
-    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "10"
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "1000"
     assert (
         compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"]
         == str(20 * 1024 * 1024)
+    )
+    assert (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).read_text(
+        encoding="utf-8"
+    ) == (
+        "services:\n"
+        "  app:\n"
+        f"    mem_limit: {2048 * 1024 * 1024}\n"
+        "  recorder-ingress:\n"
+        f"    mem_limit: {410 * 1024 * 1024}\n"
+        "  redis:\n"
+        f"    mem_limit: {3277 * 1024 * 1024}\n"
     )
 
 

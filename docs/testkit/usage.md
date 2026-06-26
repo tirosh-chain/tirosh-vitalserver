@@ -170,10 +170,11 @@ Recorder ingress 자체의 spool/replay load proof는 아래 target으로 분리
 
 ```sh
 make testkit/recorder-ingress/load
+make testkit/recorder-ingress/runtime-load
 make testkit/recorder-ingress/backpressure
 ```
 
-`load`는 replay lag와 app container `oomKilled`/restart count를 함께 확인하고, `backpressure`는 낮은 pending limit에서 `rejectedEvents` delta가 증가하는지 확인합니다.
+`load`는 local Docker Compose에서 20 recorder 기준 replay lag와 app container `oomKilled`/restart count를 함께 확인합니다. `runtime-load`는 이미 떠 있는 runtime endpoint를 대상으로 Compose 직접 접근 없이 HTTP status만 사용하고, `--require-memory-guard`로 `replay.adaptive.memoryGuardStatus`가 `healthy`, `warm`, `hot`, `critical` 중 하나인지 확인합니다. `runtime-load`는 Redis list를 reset하지 않으므로 시작 baseline의 `spool.pendingItems`, `spool.pendingBytes`, `replay.pendingItems`, `replay.inFlightItems`가 모두 0이어야 합니다. `backpressure`는 낮은 pending limit에서 `rejectedEvents` delta가 증가하는지 확인합니다. 성공 출력의 `proofScope`, `appStabilityAsserted`, `adaptive.currentMaxBytesPerSecond`, `adaptive.currentItemsPerTick`, `adaptive.currentConcurrency`, `adaptive.memoryGuardStatus`를 함께 보면 proof 범위와 replay 병목을 확인할 수 있습니다.
 
 Python 코드에서 직접 호출할 수도 있습니다.
 

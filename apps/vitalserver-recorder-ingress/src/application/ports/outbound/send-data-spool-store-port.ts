@@ -8,6 +8,7 @@ export type SendDataSpoolStoreClaim = {
 export type SendDataSpoolStoreWriteResult = {
   ok: boolean;
   depth?: number | null;
+  reason?: string;
   error?: Error;
   message?: string;
 };

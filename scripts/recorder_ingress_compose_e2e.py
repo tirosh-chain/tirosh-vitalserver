@@ -31,6 +31,7 @@ class RedisKeys:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    assert_valid_argument_combination(args)
     keys = RedisKeys(
         pending=args.pending_key,
         in_flight=args.in_flight_key,
@@ -41,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     compose = shlex.split(args.compose)
     base_url = f"http://{args.bind_host}:{args.http_port}"
 
-    if args.start_compose:
+    if args.start_compose and not args.status_only:
         run(
             compose
             + [
@@ -57,11 +58,14 @@ def main(argv: list[str] | None = None) -> int:
     wait_for_status(base_url, args.mode, timeout_seconds=args.ready_timeout)
     app_state_before = (
         inspect_compose_container(args.docker, compose, args.app_service, env)
-        if args.assert_app_stable
+        if args.assert_app_stable and not args.status_only
         else None
     )
-    reset_redis_lists(compose, keys, env)
+    if not args.status_only:
+        reset_redis_lists(compose, keys, env)
     baseline_status = read_status(base_url)
+    if args.status_only:
+        assert_clean_status_baseline(baseline_status)
 
     expected_events = args.recorders * args.max_messages
     min_spooled_events = args.min_spooled_events
@@ -78,20 +82,20 @@ def main(argv: list[str] | None = None) -> int:
         timeout_seconds=args.replay_timeout,
     )
 
-    redis_lengths = redis_list_lengths(compose, keys, env)
+    redis_lengths = None if args.status_only else redis_list_lengths(compose, keys, env)
     replay = status["replay"]
     spool = status["spool"]
-    observed_delta = counter_delta(status, baseline_status, ("sendDataEventsObserved",))
-    spooled_delta = counter_delta(status, baseline_status, ("spool", "spooledEvents"))
-    rejected_delta = counter_delta(status, baseline_status, ("spool", "rejectedEvents"))
-    write_failure_delta = counter_delta(status, baseline_status, ("spool", "writeFailures"))
-    replayed_delta = counter_delta(status, baseline_status, ("replay", "replayedEvents"))
-    retryable_failure_delta = counter_delta(
+    observed_delta = required_counter_delta(status, baseline_status, ("sendDataEventsObserved",))
+    spooled_delta = required_counter_delta(status, baseline_status, ("spool", "spooledEvents"))
+    rejected_delta = required_counter_delta(status, baseline_status, ("spool", "rejectedEvents"))
+    write_failure_delta = required_counter_delta(status, baseline_status, ("spool", "writeFailures"))
+    replayed_delta = required_counter_delta(status, baseline_status, ("replay", "replayedEvents"))
+    retryable_failure_delta = required_counter_delta(
         status,
         baseline_status,
         ("replay", "retryableFailures"),
     )
-    dead_lettered_delta = counter_delta(
+    dead_lettered_delta = required_counter_delta(
         status,
         baseline_status,
         ("replay", "deadLetteredEvents"),
@@ -125,24 +129,29 @@ def main(argv: list[str] | None = None) -> int:
         dead_lettered_delta == 0,
         f"deadLetteredEvents delta={dead_lettered_delta}",
     )
-    assert_condition(spool["pendingItems"] == 0, f"spool.pendingItems={spool['pendingItems']}")
-    assert_condition(spool["pendingBytes"] == 0, f"spool.pendingBytes={spool['pendingBytes']}")
+    spool_pending_items = required_numeric_field(status, ("spool", "pendingItems"))
+    spool_pending_bytes = required_numeric_field(status, ("spool", "pendingBytes"))
+    replay_pending_items = required_numeric_field(status, ("replay", "pendingItems"))
+    replay_in_flight_items = required_numeric_field(status, ("replay", "inFlightItems"))
+    assert_condition(spool_pending_items == 0, f"spool.pendingItems={spool_pending_items}")
+    assert_condition(spool_pending_bytes == 0, f"spool.pendingBytes={spool_pending_bytes}")
     assert_condition(
-        replay["pendingItems"] == 0,
-        f"replay.pendingItems={replay['pendingItems']}",
+        replay_pending_items == 0,
+        f"replay.pendingItems={replay_pending_items}",
     )
     assert_condition(
-        replay["inFlightItems"] == 0,
-        f"replay.inFlightItems={replay['inFlightItems']}",
+        replay_in_flight_items == 0,
+        f"replay.inFlightItems={replay_in_flight_items}",
     )
-    assert_condition(
-        redis_lengths["dead_letter"] == 0,
-        f"dead_letter list length={redis_lengths['dead_letter']}",
-    )
-    assert_condition(
-        redis_lengths["replayed"] >= min_replayed_events,
-        f"replayed list length={redis_lengths['replayed']} expected>={min_replayed_events}",
-    )
+    if redis_lengths is not None:
+        assert_condition(
+            redis_lengths["dead_letter"] == 0,
+            f"dead_letter list length={redis_lengths['dead_letter']}",
+        )
+        assert_condition(
+            redis_lengths["replayed"] >= min_replayed_events,
+            f"replayed list length={redis_lengths['replayed']} expected>={min_replayed_events}",
+        )
     if args.max_replay_lag_seconds is not None:
         assert_condition(
             replay["replayLagSeconds"] <= args.max_replay_lag_seconds,
@@ -151,9 +160,13 @@ def main(argv: list[str] | None = None) -> int:
                 f"expected<={args.max_replay_lag_seconds}"
             ),
         )
+    memory_guard_status = replay_memory_guard_status(status)
+    adaptive = replay_adaptive_summary(status)
+    if args.require_memory_guard:
+        assert_memory_guard_loaded(memory_guard_status)
     app_state_after = (
         inspect_compose_container(args.docker, compose, args.app_service, env)
-        if args.assert_app_stable
+        if args.assert_app_stable and not args.status_only
         else None
     )
     if app_state_before and app_state_after:
@@ -164,6 +177,8 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "ok": True,
                 "mode": args.mode,
+                "proofScope": "status-only" if args.status_only else "compose",
+                "appStabilityAsserted": bool(args.assert_app_stable and not args.status_only),
                 "expectedEvents": expected_events,
                 "deltas": {
                     "sendDataEventsObserved": observed_delta,
@@ -176,6 +191,8 @@ def main(argv: list[str] | None = None) -> int:
                 },
                 "spool": spool,
                 "replay": replay,
+                "adaptive": adaptive,
+                "memoryGuardStatus": memory_guard_status,
                 "redis": redis_lengths,
                 "app": {
                     "before": app_state_before,
@@ -187,6 +204,13 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     return 0
+
+
+def assert_valid_argument_combination(args: argparse.Namespace) -> None:
+    assert_condition(
+        not (args.status_only and args.assert_app_stable),
+        "status-only proof cannot assert app stability without Docker inspect",
+    )
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -205,7 +229,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--replay-timeout", type=float, default=30.0)
     parser.add_argument("--replay-interval-ms", default="250")
     parser.add_argument("--replay-batch-size")
-    parser.add_argument("--replay-rate-limit-per-second", default="20")
+    parser.add_argument("--replay-max-mib-per-second", type=int, default=20)
+    parser.add_argument("--replay-min-concurrency")
+    parser.add_argument("--replay-max-concurrency")
     parser.add_argument("--max-pending-items")
     parser.add_argument("--max-pending-bytes")
     parser.add_argument("--max-payload-bytes")
@@ -214,6 +240,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--min-rejected-events", type=int, default=0)
     parser.add_argument("--max-retryable-failures", type=int, default=0)
     parser.add_argument("--max-replay-lag-seconds", type=int)
+    parser.add_argument(
+        "--require-memory-guard",
+        action="store_true",
+        help="Require replay.adaptive.memoryGuardStatus to be a loaded pressure state.",
+    )
     parser.add_argument("--assert-app-stable", action="store_true")
     parser.add_argument("--app-service", default="app")
     parser.add_argument("--testkit-command", default=default_testkit_command())
@@ -226,6 +257,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_false",
         dest="start_compose",
         help="Use an already running Compose stack instead of recreating recorder-ingress.",
+    )
+    parser.add_argument(
+        "--status-only",
+        action="store_true",
+        help=(
+            "Use only recorder-ingress HTTP status for proof. "
+            "This skips Docker Compose start/reset/Redis length/container inspect checks."
+        ),
     )
     parser.set_defaults(start_compose=True)
     return parser.parse_args(argv)
@@ -240,9 +279,17 @@ def compose_env(args: argparse.Namespace) -> dict[str, str]:
     env["RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS"] = str(args.replay_interval_ms)
     if args.replay_batch_size is not None:
         env["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] = str(args.replay_batch_size)
-    env["RECORDER_INGRESS_SEND_DATA_REPLAY_RATE_LIMIT_PER_SECOND"] = str(
-        args.replay_rate_limit_per_second
+    env["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"] = str(
+        args.replay_max_mib_per_second * 1024 * 1024
     )
+    if args.replay_min_concurrency is not None:
+        env["RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY"] = str(
+            args.replay_min_concurrency
+        )
+    if args.replay_max_concurrency is not None:
+        env["RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY"] = str(
+            args.replay_max_concurrency
+        )
     if args.max_pending_items is not None:
         env["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS"] = str(args.max_pending_items)
     if args.max_pending_bytes is not None:
@@ -316,16 +363,43 @@ def wait_for_replay(
         replay = status["replay"]
         last_status = replay
         if (
-            counter_delta(status, baseline_status, ("replay", "replayedEvents")) >= expected_events
-            and spool["pendingItems"] == 0
-            and spool["pendingBytes"] == 0
-            and replay["pendingItems"] == 0
-            and replay["inFlightItems"] == 0
-            and counter_delta(status, baseline_status, ("replay", "deadLetteredEvents")) == 0
+            required_counter_delta(status, baseline_status, ("replay", "replayedEvents")) >= expected_events
+            and required_numeric_field(status, ("spool", "pendingItems")) == 0
+            and required_numeric_field(status, ("spool", "pendingBytes")) == 0
+            and required_numeric_field(status, ("replay", "pendingItems")) == 0
+            and required_numeric_field(status, ("replay", "inFlightItems")) == 0
+            and required_counter_delta(status, baseline_status, ("replay", "deadLetteredEvents")) == 0
         ):
             return status
         time.sleep(0.5)
     raise RuntimeError(f"send_data replay did not complete: {json.dumps(last_status)}")
+
+
+def assert_clean_status_baseline(status: dict[str, object]) -> None:
+    spool = status.get("spool")
+    replay = status.get("replay")
+    assert_condition(isinstance(spool, dict), "status-only baseline missing spool status")
+    assert_condition(isinstance(replay, dict), "status-only baseline missing replay status")
+    spool_pending_items = required_numeric_field(status, ("spool", "pendingItems"))
+    spool_pending_bytes = required_numeric_field(status, ("spool", "pendingBytes"))
+    replay_pending_items = required_numeric_field(status, ("replay", "pendingItems"))
+    replay_in_flight_items = required_numeric_field(status, ("replay", "inFlightItems"))
+    assert_condition(
+        spool_pending_items == 0,
+        f"status-only baseline spool.pendingItems={spool_pending_items}",
+    )
+    assert_condition(
+        spool_pending_bytes == 0,
+        f"status-only baseline spool.pendingBytes={spool_pending_bytes}",
+    )
+    assert_condition(
+        replay_pending_items == 0,
+        f"status-only baseline replay.pendingItems={replay_pending_items}",
+    )
+    assert_condition(
+        replay_in_flight_items == 0,
+        f"status-only baseline replay.inFlightItems={replay_in_flight_items}",
+    )
 
 
 def counter_delta(
@@ -336,13 +410,65 @@ def counter_delta(
     return numeric_field(current, path) - numeric_field(baseline, path)
 
 
+def required_counter_delta(
+    current: dict[str, object],
+    baseline: dict[str, object],
+    path: tuple[str, ...],
+) -> int:
+    return required_numeric_field(current, path) - required_numeric_field(baseline, path)
+
+
 def numeric_field(document: dict[str, object], path: tuple[str, ...]) -> int:
     value: object = document
     for key in path:
         if not isinstance(value, dict):
             return 0
         value = value.get(key, 0)
-    return int(value) if isinstance(value, (int, float)) else 0
+    return int(value) if is_numeric_value(value) else 0
+
+
+def required_numeric_field(document: dict[str, object], path: tuple[str, ...]) -> int:
+    value: object = document
+    joined_path = ".".join(path)
+    for key in path:
+        assert_condition(isinstance(value, dict), f"missing numeric field: {joined_path}")
+        value = value.get(key)
+    assert_condition(is_numeric_value(value), f"missing numeric field: {joined_path}")
+    return int(value)
+
+
+def is_numeric_value(value: object) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float))
+
+
+def replay_memory_guard_status(status: dict[str, object]) -> str | None:
+    value = replay_adaptive_summary(status).get("memoryGuardStatus")
+    return value if isinstance(value, str) and value else None
+
+
+def replay_adaptive_summary(status: dict[str, object]) -> dict[str, object]:
+    replay = status.get("replay")
+    if not isinstance(replay, dict):
+        return {}
+    adaptive = replay.get("adaptive")
+    if not isinstance(adaptive, dict):
+        return {}
+    keys = (
+        "memoryGuardStatus",
+        "currentMaxBytesPerSecond",
+        "currentItemsPerTick",
+        "currentConcurrency",
+        "lastDecision",
+        "lastReason",
+    )
+    return {key: adaptive[key] for key in keys if key in adaptive}
+
+
+def assert_memory_guard_loaded(status: str | None) -> None:
+    assert_condition(
+        status in {"healthy", "warm", "hot", "critical"},
+        f"memoryGuardStatus={status}",
+    )
 
 
 def read_status(base_url: str) -> dict[str, object]:

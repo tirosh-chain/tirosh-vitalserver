@@ -118,13 +118,23 @@ describe("runtime settings form mapping", () => {
       )
     ).toMatchObject({
       recorderIngressSendDataMode: "passthrough",
-      recorderIngressSendDataReplayBatchSize: 10,
+      recorderIngressSendDataReplayBatchSize: 1000,
       recorderIngressSendDataReplayMaxMiBPerSecond: 35,
       containerMemoryLimitsEnabled: false,
       vitalServerContainerMemoryLimitMiB: 4096,
       recorderIngressContainerMemoryLimitMiB: 512,
       redisContainerMemoryLimitMiB: 1024
     });
+  });
+
+  it("promotes legacy hidden recorder ingress batch size to the internal guard minimum", () => {
+    expect(
+      draftToRuntimeSettings(
+        draftFromSettings(runtimeSettings({ recorderIngressSendDataReplayBatchSize: 10 })),
+        runtimeSettings({ recorderIngressSendDataReplayBatchSize: 10 }),
+        false
+      ).recorderIngressSendDataReplayBatchSize
+    ).toBe(1000);
   });
 
   it("detects custom advertised URL settings", () => {
@@ -194,7 +204,7 @@ function runtimeSettings(overrides = {}) {
     publicHost: "",
     publicPort: 80,
     recorderIngressSendDataMode: "spool_and_replay" as const,
-    recorderIngressSendDataReplayBatchSize: 10,
+    recorderIngressSendDataReplayBatchSize: 1000,
     recorderIngressSendDataReplayMaxMiBPerSecond: 20,
     containerMemoryLimitsEnabled: false,
     vitalServerContainerMemoryLimitMiB: 4096,

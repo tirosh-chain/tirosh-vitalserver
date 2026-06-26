@@ -260,7 +260,10 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.publicHost = publicHost
         self.publicPort = publicPort
         self.recorderIngressSendDataMode = recorderIngressSendDataMode
-        self.recorderIngressSendDataReplayBatchSize = recorderIngressSendDataReplayBatchSize
+        self.recorderIngressSendDataReplayBatchSize = max(
+            recorderIngressSendDataReplayBatchSize,
+            RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize
+        )
         self.recorderIngressSendDataReplayMaxMiBPerSecond = recorderIngressSendDataReplayMaxMiBPerSecond
         self.containerMemoryLimitsEnabled = containerMemoryLimitsEnabled
         self.vitalServerContainerMemoryLimitMiB = vitalServerContainerMemoryLimitMiB

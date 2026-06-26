@@ -18,6 +18,7 @@ import {
   formatVitalRecorderConnectionMetric,
   formatVitalRecorderObservationMetric
 } from "@/domain/runtime-control/formatting/vitalRecorder";
+import { formatRecorderIngressStatusReadState } from "@/domain/runtime-control/formatting/recorderIngress";
 import { NOT_REPORTED } from "@/domain/runtime-control/formatting/reported";
 import { ErrorState } from "@/components/ErrorState";
 import { KeyValueRows } from "@/components/KeyValueRows";
@@ -392,14 +393,14 @@ function recorderIngressDetails(status: RuntimeRecorderIngressStatus | null | un
   ];
 }
 
-function recorderIngressQueueStatus(
+export function recorderIngressQueueStatus(
   observation: RuntimeContainerObservation | null | undefined
 ): string {
   if (!observation) {
     return NOT_REPORTED;
   }
-  if (observation.recorderIngressStatusReadError) {
-    return `Read failed: ${observation.recorderIngressStatusReadError}`;
+  if (observation.recorderIngressStatusReadState !== "loaded") {
+    return formatRecorderIngressStatusReadState(observation.recorderIngressStatusReadState);
   }
   const status = observation.recorderIngressStatus;
   if (!status) {
@@ -501,9 +502,21 @@ function formatReplayThroughput(replay: RuntimeRecorderIngressReplay): string {
   ) {
     return base;
   }
-  return `${base}, adaptive ${formatBytesPerSecond(
+  const parts = [
+    `${base}, adaptive ${formatBytesPerSecond(
     adaptive.minBytesPerSecond
-  )}-${formatBytesPerSecond(adaptive.maxBytesPerSecond)}`;
+    )}-${formatBytesPerSecond(adaptive.maxBytesPerSecond)}`,
+  ];
+  if (adaptive.memoryGuardStatus) {
+    parts.push(`guard ${adaptive.memoryGuardStatus}`);
+  }
+  if (adaptive.currentItemsPerTick !== null && adaptive.currentItemsPerTick !== undefined) {
+    parts.push(`${adaptive.currentItemsPerTick} items/tick`);
+  }
+  if (adaptive.currentConcurrency !== null && adaptive.currentConcurrency !== undefined) {
+    parts.push(`concurrency ${adaptive.currentConcurrency}`);
+  }
+  return parts.join(", ");
 }
 
 function formatRecorderIngressLastFailure(

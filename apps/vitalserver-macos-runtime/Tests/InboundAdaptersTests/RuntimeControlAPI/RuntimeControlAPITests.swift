@@ -441,6 +441,16 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(openAPIEventTypes, swiftEventTypes)
     }
 
+    func testRecorderIngressMemoryGuardStatusOpenAPIEnumMatchesSwiftContract() throws {
+        let openAPIStatuses = try openAPIStringEnum(
+            schemaName: "RuntimeRecorderIngressReplayAdaptiveStatus",
+            propertyName: "memoryGuardStatus"
+        )
+        let swiftStatuses = RuntimeRecorderIngressMemoryGuardStatus.allCases.map(\.rawValue)
+
+        XCTAssertEqual(openAPIStatuses, swiftStatuses)
+    }
+
     func testRuntimeControlOpenAPIOperationsDoNotUseFileReferences() throws {
         let operations = try openAPIOperations()
 
@@ -2053,6 +2063,17 @@ final class RuntimeControlAPITests: XCTestCase {
         let schemas = try XCTUnwrap(components["schemas"] as? [String: Any])
         let schema = try XCTUnwrap(schemas[name] as? [String: Any])
         return try XCTUnwrap(schema["enum"] as? [String])
+    }
+
+    private func openAPIStringEnum(schemaName: String, propertyName: String) throws -> [String] {
+        let document = try openAPIDocument()
+        let components = try XCTUnwrap(document["components"] as? [String: Any])
+        let schemas = try XCTUnwrap(components["schemas"] as? [String: Any])
+        let schema = try XCTUnwrap(schemas[schemaName] as? [String: Any])
+        let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+        let property = try XCTUnwrap(properties[propertyName] as? [String: Any])
+        let values = try XCTUnwrap(property["enum"] as? [Any])
+        return values.compactMap { $0 as? String }
     }
 
     private func openAPIDocument() throws -> [String: Any] {

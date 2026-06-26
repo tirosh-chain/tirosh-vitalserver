@@ -74,6 +74,39 @@ test("send_data ingress service preserves spool write failure", async () => {
   assert.strictEqual(snapshot.spool.lastFailure.message, "redis unavailable");
 });
 
+test("send_data ingress service reports spool queue full as backpressure", async () => {
+  const metricState = configuredMetrics();
+  const queueFull = new Error("redis command queue full length=50001");
+  const service = createSendDataIngressService({
+    config: { spool: spoolConfig() },
+    metrics: metricState,
+    spoolStore: {
+      append() {
+        return Promise.resolve({ ok: false, reason: "spool_full", error: queueFull });
+      },
+    },
+    now: () => new Date("2026-06-22T09:00:00.000Z"),
+    idFactory: () => "senddata_test",
+  });
+
+  const result = await service.record(
+    "payload",
+    { request_id: "request-1", connection_id: "connection-1", joined_vrcode: "VR_A" },
+    { bytes: 7 }
+  );
+
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.outcome, "rejected");
+  assert.strictEqual(result.reason, "spool_full");
+  assert.strictEqual(result.message, "redis command queue full length=50001");
+  const snapshot = metricsSnapshot(metricState);
+  assert.strictEqual(snapshot.spool.acceptedEvents, 1);
+  assert.strictEqual(snapshot.spool.rejectedEvents, 1);
+  assert.strictEqual(snapshot.spool.writeFailures, 0);
+  assert.strictEqual(snapshot.spool.status, "degraded");
+  assert.strictEqual(snapshot.spool.lastFailure.reason, "spool_full");
+});
+
 test("send_data ingress service preserves thrown spool dependency failure", async () => {
   const metricState = configuredMetrics();
   const service = createSendDataIngressService({

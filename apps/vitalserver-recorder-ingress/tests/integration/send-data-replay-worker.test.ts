@@ -91,6 +91,8 @@ test("send_data replay worker lowers adaptive replay rate after upstream failure
         enabled: true,
         minBytesPerSecond: 2 * 1024 * 1024,
         maxBytesPerSecond: 8 * 1024 * 1024,
+        minItemsPerTick: 8,
+        maxItemsPerTick: 8,
       },
     }),
   });
@@ -98,6 +100,7 @@ test("send_data replay worker lowers adaptive replay rate after upstream failure
   const worker = createSendDataReplayWorker({
     config: adaptiveSpoolConfig,
     metrics: metricState,
+    memoryGuard: loadedMemoryGuard(0.4),
     spoolStore: {
       claim() {
         return Promise.resolve({ ok: true, item: spoolItem({ state: "in_flight", attemptCount: 1 }), claim: { raw: "raw" } });
@@ -121,6 +124,7 @@ test("send_data replay worker lowers adaptive replay rate after upstream failure
   assert.strictEqual(snapshot.replay.adaptive.currentMaxBytesPerSecond, 4 * 1024 * 1024);
   assert.strictEqual(snapshot.replay.adaptive.lastDecision, "decrease");
   assert.strictEqual(snapshot.replay.adaptive.lastReason, "replay_failures");
+  assert.strictEqual(snapshot.replay.adaptive.memoryGuardStatus, "healthy");
 });
 
 test("send_data replay worker stops after byte budget is consumed", async () => {
@@ -161,6 +165,117 @@ test("send_data replay worker stops after byte budget is consumed", async () => 
 
   assert.strictEqual(result.processed, 2);
   assert.strictEqual(claimed, 2);
+});
+
+test("send_data replay worker bounds repeated claim failures by item budget", async () => {
+  const metricState = replayMetrics(spoolConfig({
+    replay: replayConfig({
+      batchSize: 3,
+      maxBytesPerSecond: 1024,
+      adaptive: { enabled: false },
+    }),
+  }));
+  let claims = 0;
+  const worker = createSendDataReplayWorker({
+    config: spoolConfig({
+      replay: replayConfig({
+        batchSize: 3,
+        maxBytesPerSecond: 1024,
+        adaptive: { enabled: false },
+      }),
+    }),
+    metrics: metricState,
+    spoolStore: {
+      claim() {
+        claims += 1;
+        return Promise.resolve({
+          ok: false,
+          reason: "spool_unavailable",
+          message: "redis unavailable",
+        });
+      },
+    },
+    replayTarget: {
+      send() {
+        throw new Error("should not replay without a claim");
+      },
+    },
+  });
+
+  const result = await worker.runOnce();
+
+  assert.strictEqual(result.processed, 0);
+  assert.strictEqual(claims, 3);
+  const snapshot = metricsSnapshot(metricState);
+  assert.strictEqual(snapshot.replay.status, "failed");
+  assert.strictEqual(snapshot.replay.retryableFailures, 0);
+  assert.strictEqual(snapshot.replay.lastFailure.reason, "spool_unavailable");
+});
+
+test("send_data replay worker uses adaptive item budget for many small payloads", async () => {
+  const config = spoolConfig({
+    replay: replayConfig({
+      batchSize: 1000,
+      maxBytesPerSecond: 20 * 1024 * 1024,
+      adaptive: {
+        enabled: true,
+        minBytesPerSecond: 1 * 1024 * 1024,
+        maxBytesPerSecond: 20 * 1024 * 1024,
+        minItemsPerTick: 50,
+        maxItemsPerTick: 1000,
+      },
+    }),
+  });
+  const metricState = replayMetrics(config);
+  let claimed = 0;
+  let replayed = 0;
+  let activeSends = 0;
+  let maxActiveSends = 0;
+  const worker = createSendDataReplayWorker({
+    config,
+    metrics: metricState,
+    memoryGuard: loadedMemoryGuard(0.4),
+    spoolStore: {
+      claim() {
+        claimed += 1;
+        if (claimed > 100) {
+          return Promise.resolve({ ok: true, item: null, claim: null });
+        }
+        return Promise.resolve({
+          ok: true,
+          item: spoolItem({
+            state: "in_flight",
+            id: `senddata_${claimed}`,
+            payloadBytes: 16,
+          }),
+          claim: { raw: `raw-${claimed}` },
+        });
+      },
+      markReplayed(item) {
+        replayed += 1;
+        return Promise.resolve({ ok: true, item, depth: Math.max(0, 100 - replayed) });
+      },
+    },
+    replayTarget: {
+      async send() {
+        activeSends += 1;
+        maxActiveSends = Math.max(maxActiveSends, activeSends);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        activeSends -= 1;
+        return Promise.resolve({ ok: true });
+      },
+    },
+  });
+
+  const result = await worker.runOnce();
+
+  assert.strictEqual(result.processed, 100);
+  assert.strictEqual(replayed, 100);
+  assert.strictEqual(maxActiveSends, 8);
+  const snapshot = metricsSnapshot(metricState);
+  assert.strictEqual(snapshot.replay.adaptive.currentItemsPerTick, 1000);
+  assert.strictEqual(snapshot.replay.adaptive.currentConcurrency, 8);
+  assert.strictEqual(snapshot.replay.adaptive.memoryGuardStatus, "healthy");
 });
 
 test("send_data replay worker requeues thrown replay target failure before max attempts", async () => {
@@ -284,5 +399,21 @@ function spoolItem(overrides = {}) {
     lastAttemptAt: "2026-06-22T10:00:01.000Z",
     lastFailure: null,
     ...overrides,
+  };
+}
+
+function loadedMemoryGuard(ratio) {
+  return {
+    read() {
+      return Promise.resolve({
+        status: "loaded",
+        vitalServer: {
+          memoryUsedBytes: Math.floor(ratio * 1000),
+          memoryLimitBytes: 1000,
+          usageRatio: ratio,
+          observedAt: new Date().toISOString(),
+        },
+      });
+    },
   };
 }

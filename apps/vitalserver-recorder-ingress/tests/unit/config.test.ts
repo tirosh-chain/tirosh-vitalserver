@@ -16,6 +16,28 @@ test("config loads explicit redis ip rewrite policy", () => {
   });
 });
 
+test("config loads explicit redis availability policy", () => {
+  assert.deepStrictEqual(loadConfig({
+    RECORDER_INGRESS_REDIS_TIMEOUT_MS: "2500",
+    RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH: "1234",
+    RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS: "5",
+    RECORDER_INGRESS_REDIS_RETRY_BASE_DELAY_MS: "50",
+    RECORDER_INGRESS_REDIS_RETRY_MAX_DELAY_MS: "2000",
+    RECORDER_INGRESS_REDIS_RETRY_JITTER_RATIO: "0.5",
+  }).redis, {
+    host: "redis",
+    port: 6379,
+    timeoutMs: 2500,
+    maxQueueLength: 1234,
+    retry: {
+      maxAttempts: 5,
+      baseDelayMs: 50,
+      maxDelayMs: 2000,
+      jitterRatio: 0.5,
+    },
+  });
+});
+
 test("config enables bounded spool and replay by default", () => {
   assert.deepStrictEqual(loadConfig({}).spool, {
     enabled: true,
@@ -25,13 +47,13 @@ test("config enables bounded spool and replay by default", () => {
     inFlightListKey: "vitalserver:recorder_ingress:send_data:in_flight",
     replayedListKey: "vitalserver:recorder_ingress:send_data:replayed",
     deadLetterListKey: "vitalserver:recorder_ingress:send_data:dead_letter",
-    maxPendingItems: 10000,
+    maxPendingItems: 100000,
     maxPendingBytes: 512 * 1024 * 1024,
     maxPayloadBytes: 10 * 1024 * 1024,
     replay: {
       enabled: true,
       intervalMs: 1000,
-      batchSize: 10,
+      batchSize: 1000,
       maxAttempts: 3,
       maxBytesPerSecond: 20 * MIB,
       targetTimeoutMs: 5000,
@@ -39,8 +61,16 @@ test("config enables bounded spool and replay by default", () => {
         enabled: true,
         minBytesPerSecond: 1 * MIB,
         maxBytesPerSecond: 20 * MIB,
+        minItemsPerTick: 50,
+        maxItemsPerTick: 1000,
+        minConcurrency: 1,
+        maxConcurrency: 8,
       },
     },
+  });
+  assert.deepStrictEqual(loadConfig({}).memoryGuard, {
+    runtimeStatePath: "/run/tirosh/runtime/runtime-state.json",
+    maxAgeMs: 15000,
   });
 });
 
@@ -65,7 +95,7 @@ test("config supports explicit send_data passthrough mode", () => {
     replay: {
       enabled: false,
       intervalMs: 1000,
-      batchSize: 10,
+      batchSize: 1000,
       maxAttempts: 3,
       maxBytesPerSecond: 20 * MIB,
       targetTimeoutMs: 5000,
@@ -73,6 +103,10 @@ test("config supports explicit send_data passthrough mode", () => {
         enabled: true,
         minBytesPerSecond: 1 * MIB,
         maxBytesPerSecond: 20 * MIB,
+        minItemsPerTick: 50,
+        maxItemsPerTick: 1000,
+        minConcurrency: 1,
+        maxConcurrency: 8,
       },
     },
   });
@@ -92,6 +126,10 @@ test("config enables send_data replay for spool_and_replay mode", () => {
     RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_ENABLED: "0",
     RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_BYTES_PER_SECOND: String(2 * MIB),
     RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_BYTES_PER_SECOND: String(9 * MIB),
+    RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_ITEMS_PER_TICK: "25",
+    RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_ITEMS_PER_TICK: "500",
+    RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY: "2",
+    RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY: "6",
   }).spool.replay, {
     enabled: true,
     intervalMs: 250,
@@ -103,6 +141,10 @@ test("config enables send_data replay for spool_and_replay mode", () => {
       enabled: false,
       minBytesPerSecond: 2 * MIB,
       maxBytesPerSecond: 9 * MIB,
+      minItemsPerTick: 25,
+      maxItemsPerTick: 500,
+      minConcurrency: 2,
+      maxConcurrency: 6,
     },
   });
   assert.strictEqual(loadConfig({

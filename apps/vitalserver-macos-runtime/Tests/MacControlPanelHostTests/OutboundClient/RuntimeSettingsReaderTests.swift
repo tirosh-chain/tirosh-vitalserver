@@ -121,7 +121,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         XCTAssertEqual(settings.readIssues, [])
         XCTAssertEqual(settings.recorderIngressSendDataMode, .spoolAndReplay)
-        XCTAssertEqual(settings.recorderIngressSendDataReplayBatchSize, 10)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayBatchSize, 1000)
         XCTAssertEqual(settings.recorderIngressSendDataReplayMaxMiBPerSecond, 20)
     }
 

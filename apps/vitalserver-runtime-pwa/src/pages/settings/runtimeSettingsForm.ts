@@ -1,5 +1,7 @@
 import type { RuntimeSettings } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 
+const RECORDER_INGRESS_INTERNAL_REPLAY_BATCH_SIZE = 1000;
+
 export type RuntimeSettingsDraft = {
   cpuCount: string;
   memoryGiB: string;
@@ -37,7 +39,7 @@ export const emptyRuntimeSettingsDraft: RuntimeSettingsDraft = {
   publicPort: "",
   recorderIngressLoadControlEnabled: true,
   recorderIngressSendDataReplayMaxMiBPerSecond: "",
-  containerMemoryLimitsEnabled: false,
+  containerMemoryLimitsEnabled: true,
   vitalServerContainerMemoryLimitMiB: "",
   recorderIngressContainerMemoryLimitMiB: "",
   redisContainerMemoryLimitMiB: "",
@@ -113,8 +115,10 @@ export function draftToRuntimeSettings(
     recorderIngressSendDataMode: draft.recorderIngressLoadControlEnabled
       ? "spool_and_replay"
       : "passthrough",
-    recorderIngressSendDataReplayBatchSize:
+    recorderIngressSendDataReplayBatchSize: Math.max(
       current.recorderIngressSendDataReplayBatchSize,
+      RECORDER_INGRESS_INTERNAL_REPLAY_BATCH_SIZE
+    ),
     recorderIngressSendDataReplayMaxMiBPerSecond: requiredNumber(
       draft.recorderIngressSendDataReplayMaxMiBPerSecond
     ),

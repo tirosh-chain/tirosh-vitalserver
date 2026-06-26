@@ -69,10 +69,13 @@ describe("runtime control contract schemas", () => {
             containerObservation: {
               recorderIngressHTTP: "HTTP 200",
               recorderIngressStatus: null,
+              recorderIngressStatusReadState: "loaded",
+              runtimeStateFileMetadataReadState: "readFailed",
               containerLogsPresent: true,
               containerLogsBytes: null,
               containerLogsUpdatedAt: null,
               containerLogsMetadataError: "size-read-failed,mtime-read-failed",
+              composeServicesReadState: "loaded",
               composeServices: []
             }
           }
@@ -237,9 +240,55 @@ describe("runtime control contract schemas", () => {
       ).status?.containerObservation
     ).toMatchObject({
       recorderIngressHTTP: "HTTP 200",
+      recorderIngressStatusReadState: "loaded",
+      runtimeStateFileMetadataReadState: "notRead",
       containerLogsPresent: false,
+      composeServicesReadState: "loaded",
       composeServices: []
     });
+  });
+
+  it("requires known recorder ingress memory guard status values", () => {
+    expect(
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          status: {
+            containerObservation: {
+              ...fullContainerObservation(),
+              recorderIngressStatus: fullRecorderIngressStatusDocument("healthy")
+            }
+          }
+        })
+      ).status?.containerObservation?.recorderIngressStatus?.replay?.adaptive
+        ?.memoryGuardStatus
+    ).toBe("healthy");
+
+    expect(
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          status: {
+            containerObservation: {
+              ...fullContainerObservation(),
+              recorderIngressStatus: fullRecorderIngressStatusDocument(null)
+            }
+          }
+        })
+      ).status?.containerObservation?.recorderIngressStatus?.replay?.adaptive
+        ?.memoryGuardStatus
+    ).toBeNull();
+
+    expect(() =>
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          status: {
+            containerObservation: {
+              ...fullContainerObservation(),
+              recorderIngressStatus: fullRecorderIngressStatusDocument("not-ready")
+            }
+          }
+        })
+      )
+    ).toThrow();
   });
 
   it("requires complete VitalDB recorder activity observations", () => {
@@ -850,16 +899,68 @@ function fullContainerObservation() {
   return {
     recorderIngressHTTP: "HTTP 200",
     recorderIngressStatus: null,
+    recorderIngressStatusReadState: "loaded",
     recorderIngressStatusReadError: null,
     runtimeStateUpdatedAt: null,
     runtimeStateFileUpdatedAt: null,
+    runtimeStateFileMetadataReadState: "notRead",
     runtimeStateFileMetadataError: null,
     containerLogsPresent: false,
     containerLogsBytes: null,
     containerLogsUpdatedAt: null,
     containerLogsMetadataError: null,
     composeServices: [],
+    composeServicesReadState: "loaded",
     composeServicesReadError: null
+  };
+}
+
+function fullRecorderIngressStatusDocument(memoryGuardStatus: string | null) {
+  return {
+    startedAt: "2026-06-25T00:00:00Z",
+    uptimeSeconds: 30,
+    activeWebSockets: 1,
+    activeRecorderConnections: 1,
+    recorders: [],
+    httpRequests: 10,
+    socketIoEventsSeen: 20,
+    socketIoParseFailures: 0,
+    auditWriteFailures: 0,
+    auditFileWriteFailures: 0,
+    auditStdoutWriteFailures: 0,
+    redisIpWriteFailures: 0,
+    redisIpVerifyFailures: 0,
+    throughput: null,
+    spool: null,
+    replay: {
+      status: "replaying",
+      pendingItems: 1,
+      inFlightItems: 1,
+      replayedEvents: 10,
+      retryableFailures: 0,
+      deadLetteredEvents: 0,
+      replayLagSeconds: 0,
+      maxBytesPerSecond: 20 * 1024 * 1024,
+      configuredMaxBytesPerSecond: 20 * 1024 * 1024,
+      adaptive: {
+        enabled: true,
+        minBytesPerSecond: 1024 * 1024,
+        maxBytesPerSecond: 20 * 1024 * 1024,
+        currentMaxBytesPerSecond: 20 * 1024 * 1024,
+        minItemsPerTick: 50,
+        maxItemsPerTick: 1000,
+        currentItemsPerTick: 1000,
+        minConcurrency: 1,
+        maxConcurrency: 8,
+        currentConcurrency: 8,
+        lastDecision: "keep",
+        lastReason: "steady",
+        lastChangedAt: "2026-06-25T00:00:01Z",
+        memoryGuardStatus
+      },
+      lastReplayAt: "2026-06-25T00:00:02Z",
+      lastFailure: null
+    }
   };
 }
 

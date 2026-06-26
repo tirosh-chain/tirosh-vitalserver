@@ -218,12 +218,12 @@ public enum RuntimeRecorderIngressSendDataMode: String, Codable, CaseIterable, E
 
 public enum RuntimeRecorderIngressDefaults {
     public static let sendDataMode = RuntimeRecorderIngressSendDataMode.spoolAndReplay
-    public static let replayBatchSize = 10
+    public static let replayBatchSize = 1000
     public static let replayMaxMiBPerSecond = 20
 }
 
 public enum RuntimeContainerMemoryLimitDefaults {
-    public static let enabled = false
+    public static let enabled = true
     public static let vitalServerMiB = 2048
     public static let recorderIngressMiB = 410
     public static let redisMiB = 3277
