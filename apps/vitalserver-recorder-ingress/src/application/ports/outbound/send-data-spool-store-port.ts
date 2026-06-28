@@ -23,11 +23,26 @@ export type SendDataSpoolStoreClaimResult = {
   raw?: string;
 };
 
+export type SendDataSpoolStoreTrimResult = {
+  ok: boolean;
+  skippedRealtimeItems?: number;
+  skippedRealtimeBytes?: number;
+  skippedRealtimeByRecorder?: Record<string, { items: number; bytes: number }>;
+  preservedRealtimeItems?: number;
+  depth?: number | null;
+  reason?: string;
+  error?: Error;
+  message?: string;
+};
+
 export type SendDataSpoolAppendPort = {
   append(item: SendDataSpoolItem): Promise<SendDataSpoolStoreWriteResult> | SendDataSpoolStoreWriteResult;
 };
 
 export type SendDataSpoolReplayPort = {
+  trimPending(
+    maxItems: number
+  ): Promise<SendDataSpoolStoreTrimResult> | SendDataSpoolStoreTrimResult;
   claim(): Promise<SendDataSpoolStoreClaimResult> | SendDataSpoolStoreClaimResult;
   requeue(
     item: SendDataSpoolItem,

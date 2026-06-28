@@ -9,6 +9,7 @@ import type { SendDataReplayAttemptOptions, SendDataSpoolItem } from "../../../d
 
 const { beginSendDataReplayAttempt } = require("../../../domain/send-data-replay-policy");
 const { sendDataFailureReasons } = require("../../../domain/send-data-ingress-contracts");
+const { decideSendDataRealtimeRetention } = require("../../../domain/send-data-realtime-retention-policy");
 const { isRedisQueueFullError } = require("./client");
 
 type RedisCommandResult =
@@ -25,6 +26,7 @@ function createRedisSendDataSpoolStore(config, redis): SendDataSpoolStorePort {
   const inFlightKey = config.inFlightListKey || `${config.listKey}:in_flight`;
   const replayedKey = config.replayedListKey || `${config.listKey}:replayed`;
   const deadLetterKey = config.deadLetterListKey || `${config.listKey}:dead_letter`;
+  const maxReplayedItems = Number.isFinite(config.maxReplayedItems) ? Number(config.maxReplayedItems) : null;
 
   return {
     append(item) {
@@ -41,6 +43,58 @@ function createRedisSendDataSpoolStore(config, redis): SendDataSpoolStorePort {
           resolve({ ok: true, depth: Number.isFinite(reply) ? reply : null });
         });
       });
+    },
+    async trimPending(maxItems) {
+      if (!Number.isFinite(maxItems) || maxItems < 0) {
+        return { ok: true, skippedRealtimeItems: 0, skippedRealtimeBytes: 0, preservedRealtimeItems: 0, depth: null };
+      }
+      const lengthResult = await redisCommand(redis, ["LLEN", config.listKey]);
+      if (!lengthResult.ok) return lengthResult;
+      const length = Number(lengthResult.reply);
+      if (!Number.isFinite(length) || length <= maxItems) {
+        return {
+          ok: true,
+          skippedRealtimeItems: 0,
+          skippedRealtimeBytes: 0,
+          preservedRealtimeItems: 0,
+          depth: Number.isFinite(length) ? length : null,
+        };
+      }
+
+      const candidateSkippedItems = Math.max(0, length - maxItems);
+      const skippedRawResult = await redisCommand(redis, ["LRANGE", config.listKey, "0", String(candidateSkippedItems - 1)]);
+      if (!skippedRawResult.ok) return skippedRawResult;
+      const keptRawResult = maxItems === 0
+        ? { ok: true, reply: [] }
+        : await redisCommand(redis, ["LRANGE", config.listKey, String(-maxItems), "-1"]);
+      if (!keptRawResult.ok) return keptRawResult;
+
+      const skippedRecords = parseSpoolRawItems(skippedRawResult.reply);
+      const keptRecords = parseSpoolRawItems(keptRawResult.reply);
+      const retention = decideSendDataRealtimeRetention({
+        skippedCandidates: skippedRecords,
+        keptCandidates: keptRecords,
+      });
+      const trimStart = maxItems === 0 ? "1" : String(-maxItems);
+      const trimEnd = maxItems === 0 ? "0" : "-1";
+      const trimResult = await redisCommand(redis, ["LTRIM", config.listKey, trimStart, trimEnd]);
+      if (!trimResult.ok) return trimResult;
+      const preservedRawItems = skippedRecords
+        .filter((record) => retention.preservedIndexes.includes(record.index))
+        .map((record) => record.raw);
+      if (preservedRawItems.length > 0) {
+        const pushResult = await redisCommand(redis, ["RPUSH", config.listKey, ...preservedRawItems]);
+        if (!pushResult.ok) return pushResult;
+      }
+
+      return {
+        ok: true,
+        skippedRealtimeItems: retention.skippedRealtimeItems,
+        skippedRealtimeBytes: retention.skippedRealtimeBytes,
+        skippedRealtimeByRecorder: retention.skippedRealtimeByRecorder,
+        preservedRealtimeItems: retention.preservedRealtimeItems,
+        depth: maxItems + retention.preservedRealtimeItems,
+      };
     },
     async claim(options: SendDataReplayAttemptOptions = {}) {
       const rawResult = await redisCommand(redis, ["RPOPLPUSH", config.listKey, inFlightKey]);
@@ -86,7 +140,15 @@ function createRedisSendDataSpoolStore(config, redis): SendDataSpoolStorePort {
       return moveClaim(redis, claim, config.listKey, item);
     },
     async markReplayed(item, claim) {
-      return moveClaim(redis, claim, replayedKey, item);
+      const result = await moveClaim(redis, claim, replayedKey, item);
+      if (!result.ok) return result;
+      if (maxReplayedItems !== null && maxReplayedItems >= 0) {
+        const trimStart = maxReplayedItems === 0 ? "1" : String(-maxReplayedItems);
+        const trimEnd = maxReplayedItems === 0 ? "0" : "-1";
+        const trimResult = await redisCommand(redis, ["LTRIM", replayedKey, trimStart, trimEnd]);
+        if (!trimResult.ok) return trimResult;
+      }
+      return result;
     },
     async deadLetter(item, claim) {
       return moveClaim(redis, claim, deadLetterKey, item);
@@ -124,6 +186,25 @@ function redisCommand(redis, args): Promise<RedisCommandResult> {
       resolve({ ok: true, reply });
     });
   });
+}
+
+function parseSpoolRawItems(rawItems) {
+  const records = [];
+  const items = Array.isArray(rawItems) ? rawItems : [];
+  items.forEach((raw, index) => {
+    try {
+      const item = JSON.parse(String(raw));
+      records.push({
+        index,
+        raw: String(raw),
+        vrcode: typeof item.vrcode === "string" && item.vrcode ? item.vrcode : null,
+        payloadBytes: Number.isFinite(item && item.payloadBytes) ? Number(item.payloadBytes) : 0,
+      });
+    } catch (_error) {
+      records.push({ index, raw: String(raw), vrcode: null, payloadBytes: 0 });
+    }
+  });
+  return records;
 }
 
 module.exports = { createRedisSendDataSpoolStore };

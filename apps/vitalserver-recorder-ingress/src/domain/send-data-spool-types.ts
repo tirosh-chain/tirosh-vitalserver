@@ -67,10 +67,19 @@ export type SendDataSpoolConfig = {
   inFlightListKey?: string;
   replayedListKey?: string;
   deadLetterListKey?: string;
+  maxReplayedItems?: number;
+  maxRealtimePendingItems?: number;
   maxPendingItems: number;
   maxPendingBytes: number;
   maxPayloadBytes: number;
   replay?: SendDataReplayConfig;
+};
+
+export type SendDataRawArchiveConfig = {
+  enabled: boolean;
+  path: string;
+  maxFileBytes?: number;
+  maxFiles?: number;
 };
 
 export type SendDataReplayConfig = {

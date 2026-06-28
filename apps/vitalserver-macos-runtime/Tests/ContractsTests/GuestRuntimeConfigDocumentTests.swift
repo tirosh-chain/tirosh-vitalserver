@@ -32,7 +32,7 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
         XCTAssertFalse(document.testkitEnabled)
     }
 
-    func testDecodeRequiresExplicitAdvertisedURLs() {
+    func testDecodeMigratesLegacyAdvertisedURLs() throws {
         let json = """
         {
           "vitalserverHttpPort": 18080,
@@ -49,12 +49,13 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
         }
         """
 
-        XCTAssertThrowsError(
-            try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: Data(json.utf8))
-        )
+        let document = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: Data(json.utf8))
+
+        XCTAssertEqual(document.vitalServerURL, "http://vitaldb.tirosh.ai:8080/")
+        XCTAssertEqual(document.remoteConsoleURL, "")
     }
 
-    func testDecodeRejectsLegacyRuntimeConfigWithoutExplicitURLs() {
+    func testDecodeMigratesLegacyRuntimeConfigWithoutExplicitURLs() throws {
         let json = """
         {
           "vitalserverHttpPort": 18080,
@@ -71,9 +72,10 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
         }
         """
 
-        XCTAssertThrowsError(
-            try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: Data(json.utf8))
-        )
+        let document = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: Data(json.utf8))
+
+        XCTAssertEqual(document.vitalServerURL, "http://vitaldb.tirosh.ai:8080/")
+        XCTAssertEqual(document.remoteConsoleURL, "")
     }
 
     func testRequiresExplicitGuestRuntimeConfigFields() {

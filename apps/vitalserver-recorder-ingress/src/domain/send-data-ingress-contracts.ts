@@ -12,6 +12,7 @@ const sendDataIngressOutcomes = Object.freeze({
   SPOOLED: "spooled",
   REJECTED: "rejected",
   INVALID_PAYLOAD: "invalid_payload",
+  RAW_ARCHIVE_WRITE_FAILED: "raw_archive_write_failed",
   SPOOL_WRITE_FAILED: "spool_write_failed",
 });
 
@@ -33,6 +34,8 @@ const sendDataFailureReasons = Object.freeze({
   INVALID_PAYLOAD: "invalid_payload",
   SPOOL_UNAVAILABLE: "spool_unavailable",
   SPOOL_FULL: "spool_full",
+  RAW_ARCHIVE_UNAVAILABLE: "raw_archive_unavailable",
+  RAW_ARCHIVE_WRITE_FAILED: "raw_archive_write_failed",
   SPOOL_WRITE_FAILED: "spool_write_failed",
   UPSTREAM_UNAVAILABLE: "upstream_unavailable",
   UPSTREAM_TIMEOUT: "upstream_timeout",

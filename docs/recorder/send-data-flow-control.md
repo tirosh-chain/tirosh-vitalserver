@@ -378,7 +378,7 @@ Helper Settings의 값은 `runtime-settings.json`에 저장되고, guest compose
 
 `spool_only`와 `spool_and_replay`에서는 recorder ingress가 client WebSocket frame을 frame-level로 검사합니다. Socket.IO `send_data` text event와 관련 binary attachment는 upstream direct relay에서 제거하고, `join_vr`, `req_cmd`, control frame 등 다른 frame은 계속 전달합니다.
 
-현재 구현에서 중요한 점은 client frame relay와 spool write가 같은 synchronous transaction이 아니라는 것입니다. Socket.IO audit service가 `send_data`를 관측하면 spool 기록을 비동기로 요청하고, WebSocket relay는 mode에 따라 `send_data` frame을 제거합니다. 따라서 `spool_and_replay`에서 spool write가 실패해도 해당 client frame이 upstream으로 fallback relay되지 않습니다. 실패는 client ack가 아니라 `/recorder-ingress/status`의 spool failure evidence로 확인해야 합니다.
+현재 구현에서 중요한 점은 client frame relay와 spool write가 같은 synchronous transaction이 아니라는 것입니다. Socket.IO audit service가 `send_data`를 관측하면 spool 기록을 비동기로 요청하고, WebSocket relay는 mode에 따라 `send_data` frame을 제거합니다. 따라서 `spool_and_replay`에서 spool write가 실패해도 해당 client frame이 upstream으로 fallback relay되지 않습니다. 실패는 client ack가 아니라 `/recorder-ingress/status`의 spool failure evidence와 send_data failure JSONL로 확인해야 합니다.
 
 ## 6. 한 send_data의 lifecycle
 
@@ -404,6 +404,10 @@ client WebSocket frame observed
 - spool write failed: Redis append가 실패했습니다.
 - replay retryable failed: upstream 연결 실패나 timeout처럼 다시 시도할 수 있는 실패입니다.
 - dead lettered: invalid spool document이거나 retry 한도를 넘겨 더 이상 재시도하지 않습니다.
+
+`invalid_payload`, `rejected`, `spool_write_failed`, `dead_lettered`는 send_data failure JSONL에도 append됩니다. 이 파일은 Redis spool 자체에 쓰지 못한 사건을 보존하기 위한 진단 sink이며, replay source of truth가 아닙니다. 기본 위치는 container 내부 `/var/log/vitalserver-recorder-ingress/failures/send-data-failures.jsonl`입니다. Local Compose는 이를 `./data/recorder-ingress-failures`에 bind mount하고, macOS runtime guest compose는 `/mnt/tirosh/run/recorder-ingress-failures`에 bind mount합니다.
+
+Failure JSONL은 원본 payload를 기본 저장하지 않습니다. 각 line은 `schemaVersion`, `observedAt`, `kind`, `reason`, `message`, `vrcode`, correlation id, payload byte 수, `payloadSha256`, replay attempt 정보를 담습니다. invalid spool document의 경우 raw document 내용 대신 `rawDocumentBytes`와 `rawDocumentSha256`만 남깁니다. 파일 append 자체가 실패하면 `/recorder-ingress/status`의 `failureLogWriteFailures`가 증가하며, 원래 spool/replay failure를 성공으로 바꾸지 않습니다.
 
 ## 7. Spool item schema
 
@@ -536,6 +540,141 @@ Upstream replay target은 upstream VitalServer로 가는 Socket.IO client connec
 
 단, upstream handler가 ack를 제공하지 않으므로 replay 성공은 "Socket.IO emit 완료"입니다. Upstream 내부의 inflate, JSON parse, Redis 갱신, UI broadcast, filter/trend 처리가 끝났다는 뜻은 아닙니다.
 
+### 10-1. 실시간 replay와 `.vital` 원본 복구의 경계
+
+실시간 replay는 VitalServer app을 최신 상태에 가깝게 유지하기 위한 hot path입니다. 이 경로는
+VitalServer app의 Socket.IO `send_data` handler가 현재 시점의 live stream을 처리한다는 전제에 묶여
+있습니다. VitalServer app이 과거 timestamp payload를 받아 이미 지난 recording 구간의 `.vital` 파일에
+정확히 병합한다고 가정하면 안 됩니다.
+
+따라서 heavy 입력에서 실시간성을 유지하기 위해 pending item을 sampling, coalescing, drop-head 같은
+정책으로 줄이더라도, 그 item을 원본 데이터에서 버렸다는 뜻이 되면 안 됩니다. 목표 계약은 hot path와
+cold path를 분리하는 것입니다.
+
+```text
+VRecorder send_data
+  -> recorder ingress
+     -> cold path: raw append-only archive
+     -> hot path: realtime pending projection
+        -> sampling/coalescing/drop-head
+        -> upstream Socket.IO replay
+
+idle/recovery
+  -> raw archive
+  -> generated .vital file
+  -> VitalServer /upload
+  -> VitalServer storage + My Files Redis index
+```
+
+Cold path는 recorder ingress가 수신한 원본 compressed payload와 explicit metadata를 append-only로
+보존합니다. Raw archive write가 성공한 뒤에만 hot path의 sampling이나 drop을 성공 상태로 볼 수 있습니다.
+Raw archive write 실패, permission failure, disk full, decode failure는 실시간 drop과 다른 failure로
+남겨야 합니다.
+
+Hot path는 bounded realtime projection입니다. 이 projection은 VitalServer app OOM을 피하기 위해 최신성
+위주로 운영합니다. 현재 구현은 Redis pending list의 최신 window를 남기고 replay worker가 최신 item부터
+upstream으로 보냅니다. 추가로 최신 window 안에 없는 recorder가 있으면, 버려질 구간에서 그 recorder의
+가장 최신 payload 하나를 realtime representative sample로 tail에 보존합니다. 따라서 realtime은 "원본 전체
+구간 보존"이 아니라 "active recorder의 최신 상태를 계속 갱신하는 표본 stream"입니다. Heavy 조건에서 replay
+처리량보다 입력량이 크면 어떤 원본 payload들은 realtime으로 가지 않습니다. 이때 특정 과거 구간의 원본
+완전성은 realtime이 아니라 raw archive와 `.vital` export/upload가 책임집니다.
+
+제품 운영 기준에서는 realtime projection도 무작위 손실처럼 보이면 안 됩니다. 현재 hot path는 최신 window와
+recorder representative sample 기반이며, queue가 명시적으로 비었을 때 recorder별 pending metric도 함께 drain
+처리합니다. 이 representative sample 때문에 `pendingItems`는 설정한 latest-window 크기보다 recorder 수만큼
+조금 커질 수 있습니다. 다음 단계의
+정교한 policy는 recorder/track 단위 latest-value coalescing, 시간 bucket별 `first/last/min/max/count`
+요약, signal type별 priority sampling을 적용할 수 있습니다. 이때 status 이름도 원본 손실을 뜻하는
+`dropped`가 아니라, cold path에 원본이 남아 있는 경우에는 `skippedRealtimeEvents`처럼 실시간 전송
+후보에서 제외되었다는 의미를 드러내야 합니다.
+
+Idle/recovery path는 raw archive를 읽어 별도 `.vital` 파일을 생성한 뒤 VitalServer `/upload` 또는
+`/upload_vital.php`로 업로드합니다. My Files 목록은 storage directory를 직접 스캔한 결과만으로 결정되지
+않고 upload endpoint가 Redis에 생성한 filelist index에 의존하므로, 생성된 `.vital` 파일을 storage
+directory에 직접 복사하는 방식은 복구 계약이 아닙니다.
+
+현재 구현은 raw archive JSONL, Redis pending list에 대한 realtime trim, failure log, 그리고 testkit
+기반 수동 `.vital` export proof를 제공합니다. 따라서 현재의 `skippedRealtimeEvents`는
+"VitalServer로 realtime replay되지 않은 pending item"을 뜻하며, export/upload 명령이 성공하기 전까지는
+운영자가 자동 복구 완료 상태로 해석하면 안 됩니다. 자동 idle export worker는 아직 별도 단계입니다.
+
+Recorder가 종료되었음을 뜻하는 명시 event는 현재 recorder ingress 계약에 없습니다. 따라서 socket
+disconnect, `activeConnections = 0`, 또는 `send_data` silence를 `stopped`, `sleep`, `idle` 같은 recorder
+상태로 승격하지 않습니다. 자동화 trigger는 recorder lifecycle 추론이 아니라 raw archive 구간의
+`finalizable_by_inactivity` 정책입니다. 기본 정책은 같은 `vrcode`에 대해 join과 raw archive append가
+관측되었고, active connection이 없으며, 마지막 raw archive append 이후 5분(`300000ms`) 동안 archive cursor가
+안정적이고 realtime replay가 drain되었으며 같은 cursor가 아직 export/upload되지 않은 경우에만 export/upload
+후보로 봅니다. 5분이 지나기 전에는 `inactive_candidate`이며, 이 상태도 "종료됨"을 뜻하지 않습니다.
+
+제품화 결정은 다음과 같습니다.
+
+1. 지금 단계에서는 recorder ingress process 안에 idle export/upload worker를 넣지 않습니다.
+   자동 worker는 upload 중복 방지, export checkpoint, retry state, upload result persistence가 필요하므로
+   별도 operation state machine으로 설계해야 합니다.
+2. 대신 testkit에 운영 명령 하나를 제공합니다. `recover-raw-archive-vital`은 raw archive JSONL을
+   `.vital` 파일로 export한 뒤 VitalServer upload endpoint로 반영합니다. 이 명령은 VitalServer storage를
+   직접 쓰지 않고 `/upload` 계약을 사용합니다.
+3. 디스크 사용량은 raw archive 운영의 필수 알람 대상입니다. `rawArchive.writeFailures > 0`,
+   `rawArchive.status = failed`, 또는 raw archive volume free space가 운영 임계치 아래로 내려가면
+   realtime skip을 복구 가능 사건으로 보면 안 됩니다. 먼저 TS-092 runbook 기준으로 archive path,
+   filesystem free space, permission, rotation/retention 설정을 확인합니다.
+4. Realtime fairness는 현재 SLO 후보를 status로 관측합니다. 제품 SLO 문장은
+   "active observed recorder는 최근 60초 안에 최소 1회 realtime replay되어야 한다"입니다.
+   현재 구현은 `realtimeCoverage.activeRecordersMissingRecentReplay`로 위반 후보를 노출하지만,
+   SLO 위반 시 자동 알람/정책 조치까지는 아직 수행하지 않습니다. 다음 단계에서 이 필드를 Helper/API
+   alert로 승격하고, 위반 시 replay budget 또는 recorder별 representative preservation을 조정할지 결정합니다.
+
+### 10-2. 레퍼런스 기준으로 결정한 사항
+
+이 방향은 단순히 오래된 데이터를 버리는 구현 편의가 아니라, stream/backpressure/time-series system에서
+반복적으로 쓰이는 경계 분리 패턴을 recorder ingress 상황에 맞춘 것입니다.
+
+| 레퍼런스 | 관련 원칙 | 이 문서의 결정 |
+|---|---|---|
+| [Akka Streams buffer overflow strategies](https://doc.akka.io/libraries/akka-core/current/stream/operators/Source-or-Flow/buffer.html) | bounded buffer는 `backpressure`, `dropHead`, `dropTail`, `dropNew`, `dropBuffer`, `fail`처럼 overflow 의미를 명시적으로 구분합니다. | Redis pending trim은 암묵적 성공이 아니라 명시적 realtime overflow 정책입니다. 현재 `skippedRealtimeEvents`는 hot path에서 replay 후보가 제거된 사건으로 기록합니다. |
+| [Akka Streams conflate/rate transformation](https://doc.akka.io/libraries/akka-core/current/stream/stream-rate.html) | producer가 너무 빠르고 consumer를 backpressure할 수 없을 때 `conflate`로 여러 element를 summary로 합쳐 downstream rate와 분리합니다. | 다음 단계의 hot path는 무조건 drop이 아니라 recorder/track 최신값 coalescing, window summary, priority sampling을 정책으로 선택할 수 있어야 합니다. |
+| [Apache Flink back pressure monitoring](https://nightlies.apache.org/flink/flink-docs-stable/docs/ops/monitoring/back_pressure/) | downstream이 source보다 느리면 back pressure가 upstream 방향으로 전파되며, idle/busy/backpressured time을 분리해 봅니다. | recorder ingress status는 live input, realtime pending, replay throughput, idle/recovery 가능 상태를 서로 다른 상태로 노출해야 합니다. |
+| [InfluxDB downsampling tasks](https://docs.influxdata.com/influxdb/v2/process-data/common-tasks/downsample-data/) | downsampling은 시간 window aggregate를 별도 bucket에 저장해 전체 disk/query 비용을 줄입니다. | hot path sampling은 raw 원본을 대체하지 않습니다. raw archive와 realtime projection은 별도 저장/처리 경로여야 합니다. |
+| [TimescaleDB continuous aggregates and real-time aggregates](https://docs2.tigerdata.com/docs/learn/continuous-aggregates) | raw hypertable 위에 continuous aggregate를 만들고, 필요하면 최근 raw와 materialized aggregate를 결합합니다. | `.vital` 복구는 raw archive에서 별도로 산출하고, realtime view는 최신 상태 표시용 projection으로 둡니다. |
+| [OpenTelemetry sampling](https://opentelemetry.io/docs/concepts/sampling/) | high-volume telemetry는 head/tail/probabilistic sampling을 조합하되, sampling decision 기준과 운영 비용을 명시합니다. | 생체 데이터도 signal type, 오류/알람 여부, recorder별 volume에 따라 sampling priority를 explicit policy로 둬야 하며 무작위 drop을 기본으로 두지 않습니다. |
+| [Signal downsampling and anti-aliasing](https://en.wikipedia.org/wiki/Downsampling_%28signal_processing%29) | 단순 decimation은 aliasing을 만들 수 있고, sample-rate reduction 전에는 저역통과/anti-aliasing 관점이 필요합니다. | waveform을 줄일 때 단순 N번째 sample 유지가 아니라 min/max/last 또는 signal별 downsampling policy를 검토해야 합니다. |
+
+이 레퍼런스들을 기준으로 현재 결론은 다음과 같습니다.
+
+1. 원본 보존과 실시간 전송은 같은 queue에 맡기지 않습니다.
+2. Hot path는 bounded realtime projection이며, 최신성/latency를 위해 sampling이나 coalescing을 허용합니다.
+3. Cold path는 append-only raw archive이며, `.vital` 복구의 source of truth입니다.
+4. Idle/recovery path는 cold path에서 별도 `.vital` 파일을 생성하고 VitalServer `/upload` 계약으로 반영합니다.
+5. Raw archive가 없는 상태에서 realtime skip은 복구 가능한 사건이 아니라 replay 손실 사건입니다.
+   Raw archive가 있는 상태에서도 `.vital` export worker가 완료되기 전까지는 replay 후보 제외 사건입니다.
+
+수동 proof 명령은 다음 순서입니다.
+
+```bash
+uv run vitalserver-testkit export-raw-archive-vital \
+  data/recorder-ingress-raw/send-data-raw.jsonl \
+  --output-dir /private/tmp/recorder-ingress-vital-export
+
+uv run vitalserver-testkit upload-vital \
+  /private/tmp/recorder-ingress-vital-export \
+  --vitalserver-url http://127.0.0.1:8080 \
+  --endpoint /upload
+```
+
+운영자가 한 번에 실행할 때는 아래 명령을 사용합니다.
+
+```bash
+uv run vitalserver-testkit recover-raw-archive-vital \
+  data/recorder-ingress-raw/send-data-raw.jsonl \
+  --output-dir /private/tmp/recorder-ingress-vital-export \
+  --vitalserver-url http://127.0.0.1:8080 \
+  --endpoint /upload
+```
+
+`export-raw-archive-vital`은 raw archive JSONL의 `payloadBase64`를 inflate하고 vrcode별 `.vital` 파일을
+생성합니다. 이 명령은 VitalServer storage를 직접 쓰지 않습니다. 반영은 `upload-vital`이 `/upload`
+응답 body `success`를 확인하는 방식으로 수행합니다.
+
 ## 11. Runtime 설정
 
 | 환경변수 | 기본값 | 설명 |
@@ -545,6 +684,8 @@ Upstream replay target은 upstream VitalServer로 가는 Socket.IO client connec
 | `RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:in_flight` | replay worker가 claim한 item의 in-flight Redis List key |
 | `RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:replayed` | replay 완료 item Redis List key |
 | `RECORDER_INGRESS_SEND_DATA_DEAD_LETTER_REDIS_LIST` | `vitalserver:recorder_ingress:send_data:dead_letter` | retry하지 않는 dead-letter item Redis List key |
+| `RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS` | `10000` | 성공한 replay evidence를 최근 N개만 보존합니다. `pending`, `in_flight`, `dead_letter`에는 적용하지 않습니다. |
+| `RECORDER_INGRESS_SEND_DATA_REALTIME_MAX_PENDING_ITEMS` | `2000` | 실시간성을 위해 최신 pending N개를 기본 window로 보존합니다. Window에서 빠지는 recorder의 최신 representative sample은 추가 보존될 수 있고, 실제 제거된 오래된 pending만 `skippedRealtimeEvents`로 집계합니다. 실패나 dead-letter가 아닙니다. |
 | `RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS` | `100000` | pending spool item limit. 작은 payload가 많은 20대 recorder 환경에서 byte 여유가 있는데 item count만으로 조기 reject되는 것을 피하기 위한 기본값입니다. |
 | `RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES` | `536870912` | pending spool byte limit |
 | `RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES` | `10485760` | 단일 `send_data` payload spool limit |
@@ -561,6 +702,8 @@ Upstream replay target은 upstream VitalServer로 가는 Socket.IO client connec
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_BYTES_PER_SECOND` | replay max bytes/sec | adaptive replay throughput 상한 |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_ITEMS_PER_TICK` | `50` | adaptive item budget 하한 |
 | `RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_ITEMS_PER_TICK` | `1000` | adaptive item budget 상한 |
+| `RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILE_BYTES` | `536870912` | raw archive active JSONL 파일 회전 크기. `0` 이하면 회전을 비활성화합니다. |
+| `RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES` | `24` | active 파일을 포함한 raw archive 보존 파일 수. 초과한 rotated archive는 오래된 것부터 삭제합니다. |
 | `RECORDER_INGRESS_REDIS_TIMEOUT_MS` | `1500` | Redis command/connection timeout. 최종 실패는 spool/audit/IP sync failure evidence로 남습니다. |
 | `RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH` | `50000` | persistent Redis connection 앞의 in-process command queue 상한. 초과하면 `redis command queue full`로 실패합니다. |
 | `RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS` | `3` | Redis transport timeout/connection failure를 재시도할 최대 횟수 |
@@ -569,6 +712,12 @@ Upstream replay target은 upstream VitalServer로 가는 Socket.IO client connec
 | `RECORDER_INGRESS_REDIS_RETRY_JITTER_RATIO` | `0.2` | Redis retry가 동시에 몰리지 않도록 적용하는 jitter 비율 |
 | `RECORDER_INGRESS_RUNTIME_STATE_PATH` | `/run/tirosh/runtime/runtime-state.json` | VitalServer memory guard를 읽는 explicit runtime-state contract path |
 | `RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS` | `15000` | runtime-state가 이보다 오래되면 memory guard를 stale로 보고 healthy로 추정하지 않음 |
+| `RECORDER_INGRESS_FAILURE_LOG_ENABLED` | `1` | send_data failure JSONL append 여부 |
+| `RECORDER_INGRESS_FAILURE_LOG_PATH` | `/var/log/vitalserver-recorder-ingress/failures/send-data-failures.jsonl` | append-only send_data failure JSONL path |
+| `RECORDER_INGRESS_RAW_ARCHIVE_ENABLED` | `1` | `.vital` recovery source가 되는 원본 `send_data` raw archive JSONL append 여부 |
+| `RECORDER_INGRESS_RAW_ARCHIVE_PATH` | `/var/lib/vitalserver-recorder-ingress/raw/send-data-raw.jsonl` | append-only raw archive JSONL path. Local Compose는 `./data/recorder-ingress-raw`, macOS runtime은 `vm/data/run/recorder-ingress-raw`에 bind mount합니다. |
+| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED` | `0` | raw archive `.vital` export/upload worker enable flag. 현재 product default는 disabled이며, worker가 활성화될 때도 아래 quiet window와 checkpoint 정책을 따라야 합니다. |
+| `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS` | `300000` | 자동 export/upload 후보가 되기 전 필요한 raw archive inactivity window. 이 값은 recorder stopped 추론이 아니라 `finalizable_by_inactivity` 판단에만 사용합니다. |
 
 현재 recorder ingress process의 env parser는 mode와 numeric env에 documented default/fallback을 사용합니다. 즉 invalid mode나 invalid number가 process startup failure가 되지는 않습니다. 단, Helper `runtime-settings.json`에서 guest compose env로 전달되는 `send_data` mode와 replay throughput은 guest compose runner가 먼저 검증합니다. runtime-settings 값이 invalid이면 compose env 생성이 실패하고 recorder ingress를 잘못된 값으로 기동하지 않습니다.
 
@@ -577,8 +726,10 @@ Upstream replay target은 upstream VitalServer로 가는 Socket.IO client connec
 Recorder ingress `/recorder-ingress/status`는 전체 상태와 recorder별 상태를 함께 제공합니다.
 
 - `spool`: 전체 spool 상태
+- `rawArchive`: `.vital` recovery source raw archive 상태
 - `replay`: 전체 replay 상태
 - `throughput`: 최근 window 기준 `send_data` byte throughput
+- `realtimeCoverage`: active recorder가 최근 realtime replay window에서 빠졌는지 보는 coverage 상태
 - `recorders[].spool`: recorder별 spool 상태
 - `recorders[].replay`: recorder별 replay 상태
 
@@ -589,8 +740,12 @@ Recorder ingress `/recorder-ingress/status`는 전체 상태와 recorder별 상�
 | `spool.status` | `ready`면 spool write가 가능한 상태 | `degraded`는 reject가 있었거나 일부 실패가 있었다는 뜻입니다. `failed`는 write failure가 있었다는 뜻입니다. |
 | `spool.pendingItems` / `pendingBytes` | replay 대기 중인 backlog | 계속 증가하면 replay 처리량이 입력보다 낮거나 upstream 장애가 있을 수 있습니다. |
 | `spool.oldestPendingAgeSeconds` | 가장 오래된 pending item age | 증가하면 replay lag가 쌓이는 중입니다. |
+| `spool.skippedRealtimeEvents` | latency 보존을 위해 realtime replay 후보에서 제외한 pending item 수 | raw archive와 `.vital` export 완료를 뜻하지 않습니다. |
 | `spool.rejectedEvents` | backpressure reject count | overload를 숨기지 않고 드러낸 evidence입니다. |
 | `spool.writeFailures` | Redis append/move 실패 count | upstream 장애가 아니라 spool 저장소 문제입니다. |
+| `rawArchive.status` | `ready`면 raw archive append가 가능한 상태 | `failed`면 원본 복구 source write가 실패한 상태라 hot path drop/sampling을 복구 가능으로 보면 안 됩니다. |
+| `rawArchive.persistedEvents` / `persistedBytes` | raw archive에 보존한 원본 `send_data` count/bytes | `.vital` 파일 생성이나 upload 완료를 뜻하지 않습니다. |
+| `rawArchive.writeFailures` | raw archive append 실패 count | disk full, permission failure, path 문제를 확인해야 합니다. |
 | `throughput.observedBytesPerSecond` | VRecorder에서 ingress가 관측한 입력 byte rate | item/sec보다 payload 크기를 더 잘 반영합니다. |
 | `throughput.replayedBytesPerSecond` | replay worker가 upstream으로 emit한 byte rate | upstream 내부 처리 완료를 뜻하지 않습니다. emit 기준입니다. |
 | `throughput.queueGrowthBytesPerSecond` | `spooledBytesPerSecond - replayedBytesPerSecond` | 양수면 backlog가 늘고, 음수면 drain 중입니다. |
@@ -603,12 +758,14 @@ Recorder ingress `/recorder-ingress/status`는 전체 상태와 recorder별 상�
 | `replay.adaptive.memoryGuardStatus` | app container memory guard 상태 | 명시 입력이 없으면 `unavailable`입니다. 추정해서 쓰지 않습니다. |
 | `replay.pendingItems` | replay 관점의 pending count | spool pending과 함께 봐야 합니다. |
 | `replay.inFlightItems` | claim 후 처리 중인 item 수 | 오래 유지되면 worker crash나 store move 실패를 의심해야 합니다. |
+| `realtimeCoverage.activeRecordersMissingRecentReplay` | 빈 배열이면 현재 연결된 observed recorder가 coverage window 안에서 최소 한 번 replay됐습니다. | 값이 있으면 해당 recorder는 live input은 있지만 최근 realtime replay가 없습니다. raw archive 보존과 별개로 realtime SLO 위반 후보입니다. |
+| `realtimeCoverage.minReplayedEventsPerRecorder` / `maxReplayedEventsPerRecorder` | recorder별 realtime replay 분포 | min이 0이면 특정 recorder가 process 시작 이후 realtime replay를 받지 못했습니다. 분포가 크게 벌어지면 fair sampling 정책이 필요합니다. |
 | `replay.retryableFailures` | retry 대상 실패 count | upstream unavailable/timeout이 반복될 때 증가합니다. |
 | `replay.deadLetteredEvents` | terminal failure count | invalid spool document나 retry 한도 초과를 확인해야 합니다. |
 | `replay.replayLagSeconds` | replay 완료 또는 실패 item의 lag | 부하 종료 뒤 감소해야 합니다. 계속 증가하면 replay 처리량이 부족합니다. |
 | `lastFailure` | 마지막 실패 reason/message/time | 실패 종류를 operator가 판단하는 1차 evidence입니다. |
 
-macOS Helper의 Status 탭은 Redis를 직접 읽지 않습니다. Host UI는 Guest 내부 Redis key 구조를 추측하지 않고, recorder ingress가 `/recorder-ingress/status`로 제공한 `spool`/`replay` read model만 표시합니다. 이 경계가 있어야 Redis key 이름이나 list layout이 바뀌어도 Host UI가 Guest 내부 저장소 구현에 묶이지 않습니다.
+macOS Helper의 Status 탭은 Redis나 raw archive 파일을 직접 읽지 않습니다. Host UI는 Guest 내부 Redis key 구조나 파일 layout을 추측하지 않고, recorder ingress가 `/recorder-ingress/status`로 제공한 `spool`/`rawArchive`/`replay` read model만 표시합니다. 이 경계가 있어야 Redis key 이름, list layout, archive layout이 바뀌어도 Host UI가 Guest 내부 저장소 구현에 묶이지 않습니다.
 
 Guest runtime state는 container별 memory 관측값도 제공합니다. Helper Status의 Resource usage 섹션은 VM 전체 메모리와 별도로 upstream `app` container, `recorder-ingress` container, `redis` container의 memory 사용량을 표시합니다. 여기서 중요한 대상은 upstream `app` container입니다. OOM 위험은 VM 전체 free memory만으로 판단하기 어렵고, 실제로 section 2의 무거운 `send_data` 처리를 수행하는 Node process가 들어 있는 container의 `memoryUsedBytes / memoryLimitBytes`를 같이 봐야 합니다.
 

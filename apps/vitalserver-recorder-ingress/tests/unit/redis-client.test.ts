@@ -19,6 +19,14 @@ test("redis parser returns bulk string values for verification", () => {
   assert.deepStrictEqual(parseRespReply("$12\r\n172.31"), { complete: false });
 });
 
+test("redis parser returns array values for range reads", () => {
+  assert.deepStrictEqual(parseRespReply("*2\r\n$3\r\none\r\n$3\r\ntwo\r\n"), {
+    complete: true,
+    value: ["one", "two"],
+  });
+  assert.deepStrictEqual(parseRespReply("*2\r\n$3\r\none\r\n$3\r\n"), { complete: false });
+});
+
 test("redis client reuses one connection for queued commands", async () => {
   let replies = 0;
   const sockets: any[] = [];

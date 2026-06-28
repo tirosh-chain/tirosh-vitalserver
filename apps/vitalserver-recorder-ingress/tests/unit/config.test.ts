@@ -47,6 +47,8 @@ test("config enables bounded spool and replay by default", () => {
     inFlightListKey: "vitalserver:recorder_ingress:send_data:in_flight",
     replayedListKey: "vitalserver:recorder_ingress:send_data:replayed",
     deadLetterListKey: "vitalserver:recorder_ingress:send_data:dead_letter",
+    maxReplayedItems: 10000,
+    maxRealtimePendingItems: 2000,
     maxPendingItems: 100000,
     maxPendingBytes: 512 * 1024 * 1024,
     maxPayloadBytes: 10 * 1024 * 1024,
@@ -72,12 +74,58 @@ test("config enables bounded spool and replay by default", () => {
     runtimeStatePath: "/run/tirosh/runtime/runtime-state.json",
     maxAgeMs: 15000,
   });
+  assert.deepStrictEqual(loadConfig({}).failureLog, {
+    enabled: true,
+    path: "/var/log/vitalserver-recorder-ingress/failures/send-data-failures.jsonl",
+  });
+  assert.deepStrictEqual(loadConfig({}).rawArchive, {
+    enabled: true,
+    path: "/var/lib/vitalserver-recorder-ingress/raw/send-data-raw.jsonl",
+    maxFileBytes: 512 * MIB,
+    maxFiles: 24,
+    autoExport: {
+      enabled: false,
+      quietWindowMs: 300000,
+    },
+  });
+});
+
+test("config loads explicit send_data failure log settings", () => {
+  assert.deepStrictEqual(loadConfig({
+    RECORDER_INGRESS_FAILURE_LOG_ENABLED: "0",
+    RECORDER_INGRESS_FAILURE_LOG_PATH: "/external/send-data-failures.jsonl",
+  }).failureLog, {
+    enabled: false,
+    path: "/external/send-data-failures.jsonl",
+  });
+});
+
+test("config loads explicit send_data raw archive settings", () => {
+  assert.deepStrictEqual(loadConfig({
+    RECORDER_INGRESS_RAW_ARCHIVE_ENABLED: "0",
+    RECORDER_INGRESS_RAW_ARCHIVE_PATH: "/external/send-data-raw.jsonl",
+    RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILE_BYTES: "1234",
+    RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES: "3",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED: "1",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS: "600000",
+  }).rawArchive, {
+    enabled: false,
+    path: "/external/send-data-raw.jsonl",
+    maxFileBytes: 1234,
+    maxFiles: 3,
+    autoExport: {
+      enabled: true,
+      quietWindowMs: 600000,
+    },
+  });
 });
 
 test("config supports explicit send_data passthrough mode", () => {
   assert.deepStrictEqual(loadConfig({
     RECORDER_INGRESS_SEND_DATA_MODE: "passthrough",
     RECORDER_INGRESS_SEND_DATA_REDIS_LIST: "custom:list",
+    RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS: "123",
+    RECORDER_INGRESS_SEND_DATA_REALTIME_MAX_PENDING_ITEMS: "456",
     RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS: "7",
     RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES: "11",
     RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES: "13",
@@ -89,6 +137,8 @@ test("config supports explicit send_data passthrough mode", () => {
     inFlightListKey: "vitalserver:recorder_ingress:send_data:in_flight",
     replayedListKey: "vitalserver:recorder_ingress:send_data:replayed",
     deadLetterListKey: "vitalserver:recorder_ingress:send_data:dead_letter",
+    maxReplayedItems: 123,
+    maxRealtimePendingItems: 456,
     maxPendingItems: 7,
     maxPendingBytes: 11,
     maxPayloadBytes: 13,

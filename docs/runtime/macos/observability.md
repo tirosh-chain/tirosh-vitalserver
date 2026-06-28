@@ -22,6 +22,8 @@ Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
 | `vm/data/run/guest-observability/snapshots/*` | guest `tirosh-guest-observe` | Helper Logs, export logs | phase별 one-shot 진단 |
 | `vm/data/run/container-logs.log` | guest `tirosh-guest-container-logs` | Helper Logs, export logs | `docker compose logs --follow` 수집본 |
 | `/var/log/vitalserver-audit/audit-events.log` | `vitalserver-recorder-ingress` | guest/operator diagnostics | command audit 원본 파일 로그 |
+| `vm/data/run/recorder-ingress-failures/send-data-failures.jsonl` | `vitalserver-recorder-ingress` | guest/operator diagnostics | `send_data` spool/replay terminal failure evidence |
+| `vm/data/run/recorder-ingress-raw/send-data-raw.jsonl` | `vitalserver-recorder-ingress` | `.vital` recovery source | `send_data` 원본 compressed payload append-only archive |
 | recorder ingress stdout | `vitalserver-recorder-ingress` | container log collector | collector 호환 raw event log |
 | Redis List `vitalserver:audit_events` | `vitalserver-recorder-ingress` | 운영 조회/디버깅 | Redis 3.2 호환 보조 조회 sink |
 | `/recorder-ingress/status` | `vitalserver-recorder-ingress` | watchdog 후보, operator | recorder ingress runtime counters |

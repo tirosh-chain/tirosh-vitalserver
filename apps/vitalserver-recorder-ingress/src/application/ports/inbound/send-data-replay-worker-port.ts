@@ -7,7 +7,8 @@ export type SendDataReplayWorkerRunResult =
   | {
       ok: false;
       processed: number;
-      reason: "already_running";
+      reason: "already_running" | "spool_unavailable" | "spool_write_failed";
+      message?: string;
     };
 
 export type SendDataReplayWorkerPort = {

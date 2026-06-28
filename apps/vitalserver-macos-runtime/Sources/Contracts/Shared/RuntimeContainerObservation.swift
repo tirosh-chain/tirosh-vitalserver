@@ -12,10 +12,12 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
     public let auditWriteFailures: Int
     public let auditFileWriteFailures: Int
     public let auditStdoutWriteFailures: Int
+    public let failureLogWriteFailures: Int
     public let redisIpWriteFailures: Int
     public let redisIpVerifyFailures: Int
     public let redisIpVerifyMismatches: Int
     public let throughput: RuntimeRecorderIngressThroughputStatus?
+    public let rawArchive: RuntimeRecorderIngressRawArchiveStatus?
     public let spool: RuntimeRecorderIngressSpoolStatus?
     public let replay: RuntimeRecorderIngressReplayStatus?
 
@@ -31,10 +33,12 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         auditWriteFailures: Int = 0,
         auditFileWriteFailures: Int = 0,
         auditStdoutWriteFailures: Int = 0,
+        failureLogWriteFailures: Int = 0,
         redisIpWriteFailures: Int = 0,
         redisIpVerifyFailures: Int = 0,
         redisIpVerifyMismatches: Int = 0,
         throughput: RuntimeRecorderIngressThroughputStatus? = nil,
+        rawArchive: RuntimeRecorderIngressRawArchiveStatus? = nil,
         spool: RuntimeRecorderIngressSpoolStatus? = nil,
         replay: RuntimeRecorderIngressReplayStatus? = nil
     ) {
@@ -49,10 +53,12 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         self.auditWriteFailures = auditWriteFailures
         self.auditFileWriteFailures = auditFileWriteFailures
         self.auditStdoutWriteFailures = auditStdoutWriteFailures
+        self.failureLogWriteFailures = failureLogWriteFailures
         self.redisIpWriteFailures = redisIpWriteFailures
         self.redisIpVerifyFailures = redisIpVerifyFailures
         self.redisIpVerifyMismatches = redisIpVerifyMismatches
         self.throughput = throughput
+        self.rawArchive = rawArchive
         self.spool = spool
         self.replay = replay
     }
@@ -69,10 +75,12 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         case auditWriteFailures
         case auditFileWriteFailures
         case auditStdoutWriteFailures
+        case failureLogWriteFailures
         case redisIpWriteFailures
         case redisIpVerifyFailures
         case redisIpVerifyMismatches
         case throughput
+        case rawArchive
         case spool
         case replay
     }
@@ -90,12 +98,17 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         self.auditWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditWriteFailures) ?? 0
         self.auditFileWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditFileWriteFailures) ?? 0
         self.auditStdoutWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditStdoutWriteFailures) ?? 0
+        self.failureLogWriteFailures = try container.decodeIfPresent(Int.self, forKey: .failureLogWriteFailures) ?? 0
         self.redisIpWriteFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpWriteFailures) ?? 0
         self.redisIpVerifyFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpVerifyFailures) ?? 0
         self.redisIpVerifyMismatches = try container.decodeIfPresent(Int.self, forKey: .redisIpVerifyMismatches) ?? 0
         self.throughput = try container.decodeIfPresent(
             RuntimeRecorderIngressThroughputStatus.self,
             forKey: .throughput
+        )
+        self.rawArchive = try container.decodeIfPresent(
+            RuntimeRecorderIngressRawArchiveStatus.self,
+            forKey: .rawArchive
         )
         self.spool = try container.decodeIfPresent(RuntimeRecorderIngressSpoolStatus.self, forKey: .spool)
         self.replay = try container.decodeIfPresent(RuntimeRecorderIngressReplayStatus.self, forKey: .replay)
@@ -114,10 +127,12 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         try container.encode(auditWriteFailures, forKey: .auditWriteFailures)
         try container.encode(auditFileWriteFailures, forKey: .auditFileWriteFailures)
         try container.encode(auditStdoutWriteFailures, forKey: .auditStdoutWriteFailures)
+        try container.encode(failureLogWriteFailures, forKey: .failureLogWriteFailures)
         try container.encode(redisIpWriteFailures, forKey: .redisIpWriteFailures)
         try container.encode(redisIpVerifyFailures, forKey: .redisIpVerifyFailures)
         try container.encode(redisIpVerifyMismatches, forKey: .redisIpVerifyMismatches)
         try container.encodeIfPresent(throughput, forKey: .throughput)
+        try container.encodeIfPresent(rawArchive, forKey: .rawArchive)
         try container.encodeIfPresent(spool, forKey: .spool)
         try container.encodeIfPresent(replay, forKey: .replay)
     }
@@ -145,6 +160,40 @@ public struct RuntimeRecorderIngressThroughputStatus: Codable, Equatable, Sendab
     }
 }
 
+public struct RuntimeRecorderIngressRawArchiveStatus: Codable, Equatable, Sendable {
+    public let status: String?
+    public let path: String?
+    public let persistedEvents: Int?
+    public let persistedBytes: Int?
+    public let writeFailures: Int?
+    public let lastArchivedAt: String?
+    public let lastArchiveId: String?
+    public let lastOffset: Int?
+    public let lastFailure: RuntimeRecorderIngressFailureObservation?
+
+    public init(
+        status: String? = nil,
+        path: String? = nil,
+        persistedEvents: Int? = nil,
+        persistedBytes: Int? = nil,
+        writeFailures: Int? = nil,
+        lastArchivedAt: String? = nil,
+        lastArchiveId: String? = nil,
+        lastOffset: Int? = nil,
+        lastFailure: RuntimeRecorderIngressFailureObservation? = nil
+    ) {
+        self.status = status
+        self.path = path
+        self.persistedEvents = persistedEvents
+        self.persistedBytes = persistedBytes
+        self.writeFailures = writeFailures
+        self.lastArchivedAt = lastArchivedAt
+        self.lastArchiveId = lastArchiveId
+        self.lastOffset = lastOffset
+        self.lastFailure = lastFailure
+    }
+}
+
 public struct RuntimeRecorderIngressFailureObservation: Codable, Equatable, Sendable {
     public let reason: String?
     public let message: String?
@@ -167,6 +216,7 @@ public struct RuntimeRecorderIngressSpoolStatus: Codable, Equatable, Sendable {
     public let storage: String?
     public let acceptedEvents: Int?
     public let spooledEvents: Int?
+    public let skippedRealtimeEvents: Int?
     public let rejectedEvents: Int?
     public let writeFailures: Int?
     public let pendingItems: Int?
@@ -182,6 +232,7 @@ public struct RuntimeRecorderIngressSpoolStatus: Codable, Equatable, Sendable {
         storage: String? = nil,
         acceptedEvents: Int? = nil,
         spooledEvents: Int? = nil,
+        skippedRealtimeEvents: Int? = nil,
         rejectedEvents: Int? = nil,
         writeFailures: Int? = nil,
         pendingItems: Int? = nil,
@@ -196,6 +247,7 @@ public struct RuntimeRecorderIngressSpoolStatus: Codable, Equatable, Sendable {
         self.storage = storage
         self.acceptedEvents = acceptedEvents
         self.spooledEvents = spooledEvents
+        self.skippedRealtimeEvents = skippedRealtimeEvents
         self.rejectedEvents = rejectedEvents
         self.writeFailures = writeFailures
         self.pendingItems = pendingItems

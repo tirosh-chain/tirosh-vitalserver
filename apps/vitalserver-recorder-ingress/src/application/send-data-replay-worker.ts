@@ -3,6 +3,7 @@ import type {
   SendDataReplayWorkerRunResult,
 } from "./ports/inbound/send-data-replay-worker-port";
 import type { SendDataReplayTargetPort } from "./ports/outbound/send-data-replay-target-port";
+import type { SendDataFailureSinkPort } from "./ports/outbound/send-data-failure-sink-port";
 import type { MemoryGuardPort } from "./ports/outbound/memory-guard-port";
 import type {
   SendDataSpoolReplayPort,
@@ -23,19 +24,23 @@ const {
 } = require("../domain/send-data-replay-policy");
 const { decideSendDataReplayRate } = require("../domain/send-data-replay-rate-policy");
 const { sendDataFailureReasons } = require("../domain/send-data-ingress-contracts");
+const { recordSendDataFailure } = require("./send-data-failure-log");
 const {
   metricsSnapshot,
   recordSendDataReplayClaimFailed,
   recordSendDataReplayDeadLettered,
+  recordSendDataReplayQueueDrained,
   recordSendDataReplayRateDecision,
   recordSendDataReplayRetryableFailed,
   recordSendDataReplayStarted,
   recordSendDataReplaySucceeded,
+  recordSendDataRealtimeSkipped,
   sendDataReplayRateState,
 } = require("../observability/metrics");
 
 type SendDataReplayWorkerDependencies = {
   config: SendDataSpoolConfig;
+  failureSink?: SendDataFailureSinkPort;
   metrics: Record<string, unknown>;
   spoolStore: SendDataSpoolReplayPort;
   replayTarget: SendDataReplayTargetPort;
@@ -45,6 +50,7 @@ type SendDataReplayWorkerDependencies = {
 
 function createSendDataReplayWorker({
   config,
+  failureSink,
   memoryGuard,
   metrics,
   spoolStore,
@@ -73,7 +79,7 @@ function createSendDataReplayWorker({
       if (running) return { ok: false, processed: 0, reason: "already_running" };
       running = true;
       try {
-        return await runReplayBatch({ config, memoryGuard, metrics, spoolStore, replayTarget });
+        return await runReplayBatch({ config, failureSink, memoryGuard, metrics, spoolStore, replayTarget });
       } finally {
         running = false;
       }
@@ -83,13 +89,17 @@ function createSendDataReplayWorker({
 
 async function runReplayBatch({
   config,
+  failureSink,
   memoryGuard,
   metrics,
   spoolStore,
   replayTarget,
 }: SendDataReplayWorkerDependencies): Promise<SendDataReplayWorkerRunResult> {
+  const trimResult = await trimRealtimePending({ config, metrics, spoolStore });
+  if (trimResult.ok === false) return trimResult;
   const replayRate = sendDataReplayRateState(metrics);
   const memoryGuardRead = await readMemoryGuard(memoryGuard);
+  const snapshot = metricsSnapshot(metrics);
   const control = decideSendDataReplayRate({
     configuredMaxBytesPerSecond: replayRate.configuredMaxBytesPerSecond || config.replay.maxBytesPerSecond,
     currentMaxBytesPerSecond: replayRate.currentMaxBytesPerSecond || config.replay.maxBytesPerSecond,
@@ -98,8 +108,8 @@ async function runReplayBatch({
     configuredItemsPerTick: replayBatchLimit(config.replay),
     configuredConcurrency: replayConcurrencyLimit(config.replay),
     adaptive: config.replay.adaptive,
-    pendingItems: metricsSnapshot(metrics).replay ? metricsSnapshot(metrics).replay.pendingItems : 0,
-    queueGrowthBytesPerSecond: metricsSnapshot(metrics).throughput ? metricsSnapshot(metrics).throughput.queueGrowthBytesPerSecond : 0,
+    pendingItems: snapshot.replay ? snapshot.replay.pendingItems : 0,
+    queueGrowthBytesPerSecond: snapshot.throughput ? snapshot.throughput.queueGrowthBytesPerSecond : 0,
     replayFailures: 0,
     memoryGuard: memoryGuardRead,
   });
@@ -126,7 +136,7 @@ async function runReplayBatch({
       const claim = await spoolStore.claim();
       attempts += 1;
       if (!claim.ok) {
-        await deadLetterInvalidClaim({ claim, metrics, spoolStore });
+        await deadLetterInvalidClaim({ claim, failureSink, metrics, spoolStore });
         if (claim.reason === sendDataFailureReasons.INVALID_PAYLOAD) {
           processed += 1;
         } else {
@@ -141,13 +151,14 @@ async function runReplayBatch({
       }
       if (!claim.item) {
         queueEmpty = true;
+        recordSendDataReplayQueueDrained(metrics);
         break;
       }
 
       const item = claim.item;
       processedBytes += positiveInteger(item.payloadBytes, 0);
       recordSendDataReplayStarted(metrics, item.vrcode, item);
-      batch.push(processReplayClaim({ config, metrics, spoolStore, replayTarget, claim, item }));
+      batch.push(processReplayClaim({ config, failureSink, metrics, spoolStore, replayTarget, claim, item }));
     }
 
     if (batch.length === 0) break;
@@ -162,8 +173,43 @@ async function runReplayBatch({
   return { ok: true, processed };
 }
 
+async function trimRealtimePending({ config, metrics, spoolStore }) {
+  if (!Number.isFinite(config.maxRealtimePendingItems) || config.maxRealtimePendingItems < 0) {
+    return { ok: true as const };
+  }
+  if (typeof spoolStore.trimPending !== "function") {
+    const message = "send_data spool trimPending contract is not configured";
+    recordSendDataReplayClaimFailed(metrics, sendDataFailureReasons.SPOOL_UNAVAILABLE, message);
+    return {
+      ok: false as const,
+      processed: 0,
+      reason: sendDataFailureReasons.SPOOL_UNAVAILABLE,
+      message,
+    };
+  }
+  const result = await spoolStore.trimPending(config.maxRealtimePendingItems);
+  if (!result.ok) {
+    const reason = result.reason || sendDataFailureReasons.SPOOL_UNAVAILABLE;
+    const message = failureMessage(result);
+    recordSendDataReplayClaimFailed(
+      metrics,
+      reason,
+      message
+    );
+    return {
+      ok: false as const,
+      processed: 0,
+      reason,
+      message,
+    };
+  }
+  recordSendDataRealtimeSkipped(metrics, result);
+  return { ok: true as const };
+}
+
 async function processReplayClaim({
   config,
+  failureSink,
   metrics,
   spoolStore,
   replayTarget,
@@ -193,6 +239,12 @@ async function processReplayClaim({
         replayFailures += 1;
       }
       recordSendDataReplayDeadLettered(metrics, finalItem.vrcode, finalItem, finalItem.lastFailure);
+      recordSendDataFailure(failureSink, {
+        kind: "send_data_replay_dead_lettered",
+        reason: finalItem.lastFailure ? finalItem.lastFailure.reason : sendDataFailureReasons.UPSTREAM_UNAVAILABLE,
+        message: finalItem.lastFailure ? finalItem.lastFailure.message : "send_data replay dead-lettered",
+        item: finalItem,
+      });
     }
   } else {
     const stored = await spoolStore.requeue(finalItem, claim.claim);
@@ -222,10 +274,12 @@ async function sendToReplayTarget(replayTarget: SendDataReplayTargetPort, item: 
 
 async function deadLetterInvalidClaim({
   claim,
+  failureSink,
   metrics,
   spoolStore,
 }: {
   claim: SendDataSpoolStoreClaimResult;
+  failureSink?: SendDataFailureSinkPort;
   metrics: Record<string, unknown>;
   spoolStore: SendDataSpoolReplayPort;
 }) {
@@ -237,6 +291,13 @@ async function deadLetterInvalidClaim({
     return;
   }
   recordSendDataReplayDeadLettered(metrics, null, item, item.lastFailure);
+  recordSendDataFailure(failureSink, {
+    kind: "send_data_replay_dead_lettered",
+    reason: item.lastFailure ? item.lastFailure.reason : sendDataFailureReasons.INVALID_PAYLOAD,
+    message: item.lastFailure ? item.lastFailure.message : "invalid send_data spool document",
+    item,
+    rawDocument: claim.raw,
+  });
 }
 
 function failureMessage(result: SendDataSpoolStoreWriteResult) {

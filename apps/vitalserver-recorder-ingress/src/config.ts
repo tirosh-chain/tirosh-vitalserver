@@ -10,6 +10,11 @@ const DEFAULT_REPLAY_MAX_ITEMS_PER_TICK = 1000;
 const DEFAULT_REPLAY_MIN_CONCURRENCY = 1;
 const DEFAULT_REPLAY_MAX_CONCURRENCY = 8;
 const DEFAULT_MAX_PENDING_ITEMS = 100000;
+const DEFAULT_MAX_REPLAYED_ITEMS = 10000;
+const DEFAULT_MAX_REALTIME_PENDING_ITEMS = 2000;
+const DEFAULT_RAW_ARCHIVE_MAX_FILE_BYTES = 512 * MIB;
+const DEFAULT_RAW_ARCHIVE_MAX_FILES = 24;
+const DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS = 5 * 60 * 1000;
 
 function loadConfig(env) {
   const sendDataMode = sendDataIngressModeEnv(env, "RECORDER_INGRESS_SEND_DATA_MODE", sendDataIngressModes.SPOOL_AND_REPLAY);
@@ -60,6 +65,12 @@ function loadConfig(env) {
       inFlightListKey: env.RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST || "vitalserver:recorder_ingress:send_data:in_flight",
       replayedListKey: env.RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST || "vitalserver:recorder_ingress:send_data:replayed",
       deadLetterListKey: env.RECORDER_INGRESS_SEND_DATA_DEAD_LETTER_REDIS_LIST || "vitalserver:recorder_ingress:send_data:dead_letter",
+      maxReplayedItems: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS", DEFAULT_MAX_REPLAYED_ITEMS),
+      maxRealtimePendingItems: numberEnv(
+        env,
+        "RECORDER_INGRESS_SEND_DATA_REALTIME_MAX_PENDING_ITEMS",
+        DEFAULT_MAX_REALTIME_PENDING_ITEMS
+      ),
       maxPendingItems: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS", DEFAULT_MAX_PENDING_ITEMS),
       maxPendingBytes: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES", 512 * 1024 * 1024),
       maxPayloadBytes: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES", 10 * 1024 * 1024),
@@ -112,6 +123,30 @@ function loadConfig(env) {
     memoryGuard: {
       runtimeStatePath: env.RECORDER_INGRESS_RUNTIME_STATE_PATH || "/run/tirosh/runtime/runtime-state.json",
       maxAgeMs: numberEnv(env, "RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS", 15000),
+    },
+    failureLog: {
+      enabled: env.RECORDER_INGRESS_FAILURE_LOG_ENABLED !== "0",
+      path: env.RECORDER_INGRESS_FAILURE_LOG_PATH
+        || "/var/log/vitalserver-recorder-ingress/failures/send-data-failures.jsonl",
+    },
+    rawArchive: {
+      enabled: env.RECORDER_INGRESS_RAW_ARCHIVE_ENABLED !== "0",
+      path: env.RECORDER_INGRESS_RAW_ARCHIVE_PATH
+        || "/var/lib/vitalserver-recorder-ingress/raw/send-data-raw.jsonl",
+      maxFileBytes: numberEnv(
+        env,
+        "RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILE_BYTES",
+        DEFAULT_RAW_ARCHIVE_MAX_FILE_BYTES
+      ),
+      maxFiles: numberEnv(env, "RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES", DEFAULT_RAW_ARCHIVE_MAX_FILES),
+      autoExport: {
+        enabled: booleanEnv(env, "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED", false),
+        quietWindowMs: numberEnv(
+          env,
+          "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS",
+          DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS
+        ),
+      },
     },
     clientIp: {
       trustProxy: /^(1|true|yes)$/i.test(env.VITALSERVER_TRUST_PROXY || "1"),

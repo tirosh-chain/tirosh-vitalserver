@@ -71,8 +71,9 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
         let publicPort = try container.decode(Int.self, forKey: .publicPort)
         self.publicHost = publicHost
         self.publicPort = publicPort
-        self.vitalServerURL = try container.decode(String.self, forKey: .vitalServerURL)
-        self.remoteConsoleURL = try container.decode(String.self, forKey: .remoteConsoleURL)
+        self.vitalServerURL = try container.decodeIfPresent(String.self, forKey: .vitalServerURL)
+            ?? Self.legacyVitalServerURL(publicHost: publicHost, publicPort: publicPort)
+        self.remoteConsoleURL = try container.decodeIfPresent(String.self, forKey: .remoteConsoleURL) ?? ""
         self.adminPassword = try container.decode(String.self, forKey: .adminPassword)
         self.vitalFilesDirectory = try container.decode(String.self, forKey: .vitalFilesDirectory)
         self.redisUiPort = try container.decode(Int.self, forKey: .redisUiPort)
@@ -81,6 +82,10 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
             Bool.self,
             forKey: .testkitEnabled
         )
+    }
+
+    private static func legacyVitalServerURL(publicHost: String, publicPort: Int) -> String {
+        "http://\(publicHost):\(publicPort)/"
     }
 }
 

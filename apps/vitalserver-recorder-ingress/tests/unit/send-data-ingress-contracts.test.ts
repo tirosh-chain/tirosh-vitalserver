@@ -28,6 +28,7 @@ test("send_data ingress contract keeps mode, outcome, and state names explicit",
     "spooled",
     "rejected",
     "invalid_payload",
+    "raw_archive_write_failed",
     "spool_write_failed",
   ]);
   assert.deepStrictEqual(Object.values(sendDataSpoolItemStates), [
@@ -49,6 +50,8 @@ test("send_data ingress contract keeps failure reasons explicit", () => {
     "invalid_payload",
     "spool_unavailable",
     "spool_full",
+    "raw_archive_unavailable",
+    "raw_archive_write_failed",
     "spool_write_failed",
     "upstream_unavailable",
     "upstream_timeout",

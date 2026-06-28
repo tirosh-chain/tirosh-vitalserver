@@ -1,5 +1,7 @@
 "use strict";
 
+const { decideSendDataRealtimeCoverage } = require("../domain/send-data-realtime-coverage-policy");
+
 function createMetrics() {
   return {
     startedAt: new Date().toISOString(),
@@ -15,10 +17,12 @@ function createMetrics() {
     auditWriteFailures: 0,
     auditFileWriteFailures: 0,
     auditStdoutWriteFailures: 0,
+    failureLogWriteFailures: 0,
     redisIpWriteFailures: 0,
     redisIpVerifyFailures: 0,
     redisIpVerifyMismatches: 0,
     sendDataThroughput: defaultThroughputStatus(),
+    sendDataRawArchive: defaultRawArchiveStatus(),
     sendDataSpool: defaultSpoolStatus(),
     sendDataReplay: defaultReplayStatus(),
   };
@@ -54,12 +58,15 @@ function metricsSnapshot(metrics) {
     auditWriteFailures: metrics.auditWriteFailures,
     auditFileWriteFailures: metrics.auditFileWriteFailures,
     auditStdoutWriteFailures: metrics.auditStdoutWriteFailures,
+    failureLogWriteFailures: metrics.failureLogWriteFailures,
     redisIpWriteFailures: metrics.redisIpWriteFailures,
     redisIpVerifyFailures: metrics.redisIpVerifyFailures,
     redisIpVerifyMismatches: metrics.redisIpVerifyMismatches,
     throughput: throughputSnapshot(metrics.sendDataThroughput),
+    rawArchive: rawArchiveSnapshot(metrics.sendDataRawArchive),
     spool: spoolSnapshot(metrics.sendDataSpool),
     replay: replaySnapshot(metrics.sendDataReplay),
+    realtimeCoverage: realtimeCoverageSnapshot(metrics.recorders),
   };
 }
 
@@ -98,6 +105,11 @@ function configureSendDataSpool(metrics, config) {
     lastChangedAt: null,
     memoryGuardStatus: "unavailable",
   };
+}
+
+function configureSendDataRawArchive(metrics, config) {
+  metrics.sendDataRawArchive.status = config && config.enabled ? "ready" : "disabled";
+  metrics.sendDataRawArchive.path = config && config.path ? config.path : null;
 }
 
 function sendDataSpoolState(metrics) {
@@ -184,17 +196,20 @@ function recordSendDataSpoolAccepted(metrics, vrcode, payloadBytes) {
 function recordSendDataSpoolSpooled(metrics, vrcode, payloadBytes, depth) {
   const observedAt = new Date().toISOString();
   const bytes = Number.isFinite(payloadBytes) ? payloadBytes : 0;
+  const hasExplicitDepth = Number.isFinite(depth);
   updateSpool(metrics.sendDataSpool, (spool) => {
     spool.status = spool.status === "disabled" ? "disabled" : "ready";
     spool.spooledEvents += 1;
-    spool.pendingItems = Number.isFinite(depth) ? depth : spool.pendingItems + 1;
+    spool.pendingItems = hasExplicitDepth ? depth : spool.pendingItems + 1;
     spool.pendingBytes += bytes;
     spool.oldestPendingAt = spool.oldestPendingAt || observedAt;
     spool.lastSpooledAt = observedAt;
   });
   recordThroughputSample(metrics.sendDataThroughput, "spooled", bytes);
   updateReplay(metrics.sendDataReplay, (replay) => {
-    if (replay.status !== "disabled") replay.pendingItems += 1;
+    if (replay.status !== "disabled") {
+      replay.pendingItems = hasExplicitDepth ? depth : replay.pendingItems + 1;
+    }
   });
   updateRecorderSpool(metrics, vrcode, (spool) => {
     spool.spooledEvents += 1;
@@ -234,6 +249,27 @@ function recordSendDataSpoolWriteFailed(metrics, vrcode, reason, message) {
   });
 }
 
+function recordSendDataRawArchived(metrics, item, result) {
+  const archivedAt = new Date().toISOString();
+  const bytes = Number.isFinite(item && item.payloadBytes) ? item.payloadBytes : 0;
+  const archive = metrics.sendDataRawArchive || defaultRawArchiveStatus();
+  archive.status = archive.status === "disabled" ? "disabled" : "ready";
+  archive.persistedEvents += 1;
+  archive.persistedBytes += bytes;
+  archive.lastArchivedAt = archivedAt;
+  archive.lastArchiveId = result && result.archiveId ? result.archiveId : archive.lastArchiveId;
+  archive.lastOffset = Number.isFinite(result && result.offset) ? result.offset : archive.lastOffset;
+  metrics.sendDataRawArchive = archive;
+}
+
+function recordSendDataRawArchiveWriteFailed(metrics, reason, message) {
+  const archive = metrics.sendDataRawArchive || defaultRawArchiveStatus();
+  archive.status = "failed";
+  archive.writeFailures += 1;
+  archive.lastFailure = failureRecord(reason, message);
+  metrics.sendDataRawArchive = archive;
+}
+
 function recordSendDataReplayClaimFailed(metrics, reason, message) {
   const failure = failureRecord(reason, message);
   updateReplay(metrics.sendDataReplay, (replay) => {
@@ -247,12 +283,18 @@ function recordSendDataReplayStarted(metrics, vrcode, item) {
   updateSpool(metrics.sendDataSpool, (spool) => {
     spool.pendingItems = Math.max(0, spool.pendingItems - 1);
     spool.pendingBytes = Math.max(0, spool.pendingBytes - bytes);
-    if (spool.pendingItems === 0) spool.oldestPendingAt = null;
+    if (spool.pendingItems === 0) {
+      spool.pendingBytes = 0;
+      spool.oldestPendingAt = null;
+    }
   });
   updateRecorderSpool(metrics, vrcode, (spool) => {
     spool.pendingItems = Math.max(0, spool.pendingItems - 1);
     spool.pendingBytes = Math.max(0, spool.pendingBytes - bytes);
-    if (spool.pendingItems === 0) spool.oldestPendingAt = null;
+    if (spool.pendingItems === 0) {
+      spool.pendingBytes = 0;
+      spool.oldestPendingAt = null;
+    }
   });
   updateReplay(metrics.sendDataReplay, (replay) => {
     replay.status = "replaying";
@@ -263,6 +305,27 @@ function recordSendDataReplayStarted(metrics, vrcode, item) {
     replay.inFlightItems += 1;
     replay.pendingItems = Math.max(0, replay.pendingItems - 1);
   });
+}
+
+function recordSendDataReplayQueueDrained(metrics) {
+  updateSpool(metrics.sendDataSpool, (spool) => {
+    spool.pendingItems = 0;
+    spool.pendingBytes = 0;
+    spool.oldestPendingAt = null;
+  });
+  updateReplay(metrics.sendDataReplay, (replay) => {
+    replay.pendingItems = 0;
+  });
+
+  for (const [vrcode, recorder] of metrics.recorders.entries()) {
+    recorder.spool = recorder.spool || defaultRecorderSpoolStatus();
+    recorder.replay = recorder.replay || defaultRecorderReplayStatus();
+    recorder.spool.pendingItems = 0;
+    recorder.spool.pendingBytes = 0;
+    recorder.spool.oldestPendingAt = null;
+    recorder.replay.pendingItems = 0;
+    metrics.recorders.set(vrcode, recorder);
+  }
 }
 
 function recordSendDataReplaySucceeded(metrics, vrcode, item) {
@@ -422,6 +485,7 @@ function spoolSnapshot(spool) {
     storage: spool.storage,
     acceptedEvents: spool.acceptedEvents,
     spooledEvents: spool.spooledEvents,
+    skippedRealtimeEvents: spool.skippedRealtimeEvents,
     rejectedEvents: spool.rejectedEvents,
     writeFailures: spool.writeFailures,
     pendingItems: spool.pendingItems,
@@ -437,6 +501,7 @@ function recorderSpoolSnapshot(spool) {
   return {
     acceptedEvents: spool.acceptedEvents,
     spooledEvents: spool.spooledEvents,
+    skippedRealtimeEvents: spool.skippedRealtimeEvents,
     rejectedEvents: spool.rejectedEvents,
     writeFailures: spool.writeFailures,
     pendingItems: spool.pendingItems,
@@ -463,6 +528,80 @@ function replaySnapshot(replay) {
     lastReplayAt: replay.lastReplayAt,
     lastFailure: replay.lastFailure,
   };
+}
+
+function rawArchiveSnapshot(archive) {
+  return {
+    status: archive.status,
+    path: archive.path,
+    persistedEvents: archive.persistedEvents,
+    persistedBytes: archive.persistedBytes,
+    writeFailures: archive.writeFailures,
+    lastArchivedAt: archive.lastArchivedAt,
+    lastArchiveId: archive.lastArchiveId,
+    lastOffset: archive.lastOffset,
+    lastFailure: archive.lastFailure,
+  };
+}
+
+function realtimeCoverageSnapshot(recorders) {
+  const windowSeconds = 60;
+  return decideSendDataRealtimeCoverage({
+    recorders: Array.from(recorders.entries()).map(([vrcode, recorder]) => ({
+      vrcode,
+      activeConnections: recorder.activeConnections,
+      sendDataEventsObserved: recorder.sendDataEventsObserved || 0,
+      replayedEvents: recorder.replay && recorder.replay.replayedEvents ? recorder.replay.replayedEvents : 0,
+      lastReplayAt: recorder.replay && recorder.replay.lastReplayAt ? recorder.replay.lastReplayAt : null,
+    })),
+    nowMs: Date.now(),
+    windowSeconds,
+  });
+}
+
+function recordSendDataRealtimeSkipped(metrics, result) {
+  const skippedRealtimeItems = positiveInteger(result && result.skippedRealtimeItems, 0);
+  const skippedRealtimeBytes = positiveInteger(result && result.skippedRealtimeBytes, 0);
+  if (skippedRealtimeItems === 0) return;
+  const skippedAt = new Date().toISOString();
+
+  updateSpool(metrics.sendDataSpool, (spool) => {
+    spool.skippedRealtimeEvents += skippedRealtimeItems;
+    spool.pendingItems = Math.max(0, spool.pendingItems - skippedRealtimeItems);
+    spool.pendingBytes = Math.max(0, spool.pendingBytes - skippedRealtimeBytes);
+    if (spool.pendingItems === 0) {
+      spool.pendingBytes = 0;
+      spool.oldestPendingAt = null;
+    } else {
+      spool.oldestPendingAt = skippedAt;
+    }
+  });
+  updateReplay(metrics.sendDataReplay, (replay) => {
+    replay.pendingItems = Math.max(0, replay.pendingItems - skippedRealtimeItems);
+  });
+
+  const byRecorder = result && result.skippedRealtimeByRecorder && typeof result.skippedRealtimeByRecorder === "object"
+    ? result.skippedRealtimeByRecorder
+    : {};
+  for (const [vrcode, skipped] of Object.entries(byRecorder)) {
+    const skippedRecord = skipped as { items?: number; bytes?: number };
+    const recorderSkippedItems = positiveInteger(skippedRecord && skippedRecord.items, 0);
+    const recorderSkippedBytes = positiveInteger(skippedRecord && skippedRecord.bytes, 0);
+    updateRecorderSpool(metrics, vrcode, (spool) => {
+      spool.skippedRealtimeEvents += recorderSkippedItems;
+      spool.pendingItems = Math.max(0, spool.pendingItems - recorderSkippedItems);
+      spool.pendingBytes = Math.max(0, spool.pendingBytes - recorderSkippedBytes);
+      if (spool.pendingItems === 0) {
+        spool.pendingBytes = 0;
+        spool.oldestPendingAt = null;
+      } else {
+        spool.oldestPendingAt = skippedAt;
+      }
+    });
+    updateRecorderReplay(metrics, vrcode, (replay) => {
+      replay.pendingItems = Math.max(0, replay.pendingItems - recorderSkippedItems);
+    });
+  }
 }
 
 function recorderReplaySnapshot(replay) {
@@ -523,6 +662,7 @@ function defaultSpoolStatus() {
     storage: "redis_list",
     acceptedEvents: 0,
     spooledEvents: 0,
+    skippedRealtimeEvents: 0,
     rejectedEvents: 0,
     writeFailures: 0,
     pendingItems: 0,
@@ -530,6 +670,20 @@ function defaultSpoolStatus() {
     oldestPendingAt: null,
     lastAcceptedAt: null,
     lastSpooledAt: null,
+    lastFailure: null,
+  };
+}
+
+function defaultRawArchiveStatus() {
+  return {
+    status: "disabled",
+    path: null,
+    persistedEvents: 0,
+    persistedBytes: 0,
+    writeFailures: 0,
+    lastArchivedAt: null,
+    lastArchiveId: null,
+    lastOffset: null,
     lastFailure: null,
   };
 }
@@ -616,6 +770,7 @@ function defaultRecorderSpoolStatus() {
   return {
     acceptedEvents: 0,
     spooledEvents: 0,
+    skippedRealtimeEvents: 0,
     rejectedEvents: 0,
     writeFailures: 0,
     pendingItems: 0,
@@ -641,15 +796,20 @@ function defaultRecorderReplayStatus() {
 }
 
 module.exports = {
+  configureSendDataRawArchive,
   configureSendDataSpool,
   createMetrics,
   metricsSnapshot,
+  recordSendDataRawArchived,
+  recordSendDataRawArchiveWriteFailed,
   recordSendDataSpoolAccepted,
+  recordSendDataRealtimeSkipped,
   recordSendDataSpoolRejected,
   recordSendDataSpoolSpooled,
   recordSendDataSpoolWriteFailed,
   recordSendDataReplayClaimFailed,
   recordSendDataReplayDeadLettered,
+  recordSendDataReplayQueueDrained,
   recordSendDataReplayRetryableFailed,
   recordSendDataReplayRateDecision,
   recordSendDataReplayStarted,

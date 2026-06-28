@@ -46,10 +46,15 @@ components:
         - auditWriteFailures
         - auditFileWriteFailures
         - auditStdoutWriteFailures
+        - failureLogWriteFailures
         - redisIpWriteFailures
         - redisIpVerifyFailures
         - redisIpVerifyMismatches
         - throughput
+        - rawArchive
+        - spool
+        - replay
+        - realtimeCoverage
       properties:
         startedAt:
           type: string
@@ -97,6 +102,10 @@ components:
         auditStdoutWriteFailures:
           type: integer
           minimum: 0
+        failureLogWriteFailures:
+          type: integer
+          minimum: 0
+          description: Number of send_data failure JSONL append failures. This is distinct from send_data spool/replay failures.
         redisIpWriteFailures:
           type: integer
           minimum: 0
@@ -108,6 +117,8 @@ components:
           minimum: 0
         throughput:
           $ref: "#/components/schemas/RecorderIngressThroughputStatus"
+        rawArchive:
+          $ref: "#/components/schemas/RecorderIngressRawArchiveStatus"
         spool:
           nullable: true
           allOf:
@@ -116,6 +127,8 @@ components:
           nullable: true
           allOf:
             - $ref: "#/components/schemas/RecorderIngressReplayStatus"
+        realtimeCoverage:
+          $ref: "#/components/schemas/RecorderIngressRealtimeCoverageStatus"
     RecorderConnection:
       type: object
       additionalProperties: false
@@ -182,6 +195,50 @@ components:
         lastFailure:
           type: string
           nullable: true
+    RecorderIngressRealtimeCoverageStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - windowSeconds
+        - observedRecorderCount
+        - activeObservedRecorderCount
+        - replayedRecorderCount
+        - activeRecordersMissingRecentReplay
+        - minReplayedEventsPerRecorder
+        - maxReplayedEventsPerRecorder
+        - maxReplayAgeSeconds
+      properties:
+        windowSeconds:
+          type: integer
+          minimum: 1
+          description: Recent replay coverage window in seconds.
+        observedRecorderCount:
+          type: integer
+          minimum: 0
+          description: Recorders that have sent at least one send_data payload since process start.
+        activeObservedRecorderCount:
+          type: integer
+          minimum: 0
+          description: Observed recorders that are currently connected.
+        replayedRecorderCount:
+          type: integer
+          minimum: 0
+          description: Observed recorders with at least one successful realtime replay.
+        activeRecordersMissingRecentReplay:
+          type: array
+          items:
+            type: string
+          description: Active observed recorders with no replay success inside the coverage window.
+        minReplayedEventsPerRecorder:
+          type: integer
+          minimum: 0
+        maxReplayedEventsPerRecorder:
+          type: integer
+          minimum: 0
+        maxReplayAgeSeconds:
+          type: integer
+          minimum: 0
+          nullable: true
     RecorderIngressSpoolStatus:
       type: object
       additionalProperties: false
@@ -191,6 +248,7 @@ components:
         - storage
         - acceptedEvents
         - spooledEvents
+        - skippedRealtimeEvents
         - rejectedEvents
         - writeFailures
         - pendingItems
@@ -214,6 +272,10 @@ components:
         spooledEvents:
           type: integer
           minimum: 0
+        skippedRealtimeEvents:
+          type: integer
+          minimum: 0
+          description: Number of older pending send_data items intentionally skipped from real-time replay to preserve latency. Raw archive retention is reported separately.
         rejectedEvents:
           type: integer
           minimum: 0
@@ -267,6 +329,46 @@ components:
         queueGrowthBytesPerSecond:
           type: number
           description: spooledBytesPerSecond minus replayedBytesPerSecond. Positive values indicate backlog growth.
+    RecorderIngressRawArchiveStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - path
+        - persistedEvents
+        - persistedBytes
+        - writeFailures
+        - lastArchivedAt
+        - lastArchiveId
+        - lastOffset
+        - lastFailure
+      properties:
+        status:
+          $ref: "#/components/schemas/RecorderIngressSpoolStatusValue"
+        path:
+          type: string
+          nullable: true
+        persistedEvents:
+          type: integer
+          minimum: 0
+        persistedBytes:
+          type: integer
+          minimum: 0
+        writeFailures:
+          type: integer
+          minimum: 0
+        lastArchivedAt:
+          type: string
+          nullable: true
+        lastArchiveId:
+          type: string
+          nullable: true
+        lastOffset:
+          type: integer
+          minimum: 0
+          nullable: true
+        lastFailure:
+          $ref: "#/components/schemas/RecorderIngressFailure"
     RecorderIngressReplayStatus:
       type: object
       additionalProperties: false
@@ -521,6 +623,8 @@ components:
             - invalid_payload
             - spool_unavailable
             - spool_full
+            - raw_archive_unavailable
+            - raw_archive_write_failed
             - spool_write_failed
             - upstream_unavailable
             - upstream_timeout

@@ -68,7 +68,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.publicHost, "example.test")
         XCTAssertEqual(settings.publicPort, 8080)
         XCTAssertEqual(settings.recorderIngressSendDataMode, .mirrorSpool)
-        XCTAssertEqual(settings.recorderIngressSendDataReplayBatchSize, 8)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayBatchSize, 1000)
         XCTAssertEqual(settings.recorderIngressSendDataReplayMaxMiBPerSecond, 12)
         XCTAssertEqual(settings.backupRetentionCount, 30)
         XCTAssertEqual(settings.proxyPort, 19090)
@@ -921,7 +921,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "status": "healthy",
           "operation": "health",
           "message": "ok",
-          "updatedAt": "2026-05-26T00:01:00Z",
+          "updatedAt": "2099-05-26T00:01:00Z",
           "productRoot": "/tmp/product",
           "runtimeHome": "/tmp/vm",
           "runtimeVersion": "1.0.0",
@@ -1254,14 +1254,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "vitalDBObservation": {
             "schemaVersion": 1,
             "source": "vitaldb-observer",
-            "observedAt": "2026-05-26T00:01:00Z",
+            "observedAt": "2099-05-26T00:01:00Z",
             "ready": true,
             "recorderOnlineThresholdSeconds": 60,
             "recorders": [
               {
                 "vrcode": "VR_STATUS",
                 "ip": "192.168.64.10",
-                "lastSeenAt": "2026-05-26T00:01:00Z",
+                "lastSeenAt": "2099-05-26T00:01:00Z",
                 "online": true,
                 "stale": false
               }
@@ -1285,7 +1285,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let history = reader.loadVitalDBRecorders()
 
-        XCTAssertEqual(history.updatedAt, "2026-05-26T00:01:00Z")
+        XCTAssertEqual(history.updatedAt, "2099-05-26T00:01:00Z")
         XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_STATUS"])
         XCTAssertEqual(history.recorders.first?.status, .online)
     }
@@ -1301,7 +1301,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "status": "healthy",
           "operation": "watchdog",
           "message": "ok",
-          "updatedAt": "2026-05-26T00:01:00Z",
+          "updatedAt": "2099-05-26T00:01:00Z",
           "productRoot": "/tmp/product",
           "runtimeHome": "/tmp/vm",
           "runtimeVersion": "1.0.0",
@@ -1317,14 +1317,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "vitalDBObservation": {
             "schemaVersion": 1,
             "source": "vitaldb-observer",
-            "observedAt": "2026-05-26T00:01:00Z",
+            "observedAt": "2099-05-26T00:01:00Z",
             "ready": true,
             "recorderOnlineThresholdSeconds": 60,
             "recorders": [
               {
                 "vrcode": "VR_STALE_STATUS",
                 "ip": "192.168.64.10",
-                "lastSeenAt": "2026-05-26T00:01:00Z",
+                "lastSeenAt": "2099-05-26T00:01:00Z",
                 "online": true,
                 "stale": false
               }
@@ -1342,18 +1342,18 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "schemaVersion": 1,
           "vmIP": "192.168.64.2",
           "guestHTTP": "200",
-          "updatedAt": "2026-05-26T00:01:05Z",
+          "updatedAt": "2099-05-26T00:01:05Z",
           "vitalDBObservation": {
             "schemaVersion": 1,
             "source": "vitaldb-observer",
-            "observedAt": "2026-05-26T00:01:05Z",
+            "observedAt": "2099-05-26T00:01:05Z",
             "ready": true,
             "recorderOnlineThresholdSeconds": 60,
             "recorders": [
               {
                 "vrcode": "VR_FRESH_GUEST",
                 "ip": "192.168.64.11",
-                "lastSeenAt": "2026-05-26T00:01:05Z",
+                "lastSeenAt": "2099-05-26T00:01:05Z",
                 "online": true,
                 "stale": false
               }
@@ -1380,8 +1380,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let status = statusReader.loadStatus(settings: RuntimeSettings())
         let history = observabilityReader.loadVitalDBRecorders()
 
-        XCTAssertEqual(status.vitalDBObservation?.observedAt, "2026-05-26T00:01:00Z")
-        XCTAssertEqual(history.updatedAt, "2026-05-26T00:01:05Z")
+        XCTAssertEqual(status.vitalDBObservation?.observedAt, "2099-05-26T00:01:00Z")
+        XCTAssertEqual(history.updatedAt, "2099-05-26T00:01:05Z")
         XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_FRESH_GUEST"])
         XCTAssertEqual(history.recorders.first?.status, .online)
     }

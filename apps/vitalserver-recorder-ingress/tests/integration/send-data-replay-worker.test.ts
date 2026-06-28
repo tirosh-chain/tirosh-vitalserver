@@ -212,6 +212,73 @@ test("send_data replay worker bounds repeated claim failures by item budget", as
   assert.strictEqual(snapshot.replay.lastFailure.reason, "spool_unavailable");
 });
 
+test("send_data replay worker reports missing realtime trim contract when cap is configured", async () => {
+  const metricState = replayMetrics(spoolConfig({ maxRealtimePendingItems: 10 }));
+  const worker = createSendDataReplayWorker({
+    config: spoolConfig({ maxRealtimePendingItems: 10 }),
+    metrics: metricState,
+    spoolStore: {
+      claim() {
+        throw new Error("claim should not run without realtime trim contract");
+      },
+    },
+    replayTarget: {
+      send() {
+        throw new Error("send should not run without realtime trim contract");
+      },
+    },
+  });
+
+  const result = await worker.runOnce();
+
+  assert.deepStrictEqual(result, {
+    ok: false,
+    processed: 0,
+    reason: "spool_unavailable",
+    message: "send_data spool trimPending contract is not configured",
+  });
+  const snapshot = metricsSnapshot(metricState);
+  assert.strictEqual(snapshot.replay.status, "failed");
+  assert.strictEqual(snapshot.replay.lastFailure.reason, "spool_unavailable");
+});
+
+test("send_data replay worker stops when realtime trim fails", async () => {
+  const metricState = replayMetrics(spoolConfig({ maxRealtimePendingItems: 10 }));
+  const worker = createSendDataReplayWorker({
+    config: spoolConfig({ maxRealtimePendingItems: 10 }),
+    metrics: metricState,
+    spoolStore: {
+      trimPending() {
+        return Promise.resolve({
+          ok: false,
+          reason: "spool_unavailable",
+          message: "redis unavailable",
+        });
+      },
+      claim() {
+        throw new Error("claim should not run after realtime trim failure");
+      },
+    },
+    replayTarget: {
+      send() {
+        throw new Error("send should not run after realtime trim failure");
+      },
+    },
+  });
+
+  const result = await worker.runOnce();
+
+  assert.deepStrictEqual(result, {
+    ok: false,
+    processed: 0,
+    reason: "spool_unavailable",
+    message: "redis unavailable",
+  });
+  const snapshot = metricsSnapshot(metricState);
+  assert.strictEqual(snapshot.replay.status, "failed");
+  assert.strictEqual(snapshot.replay.lastFailure.reason, "spool_unavailable");
+});
+
 test("send_data replay worker uses adaptive item budget for many small payloads", async () => {
   const config = spoolConfig({
     replay: replayConfig({
@@ -311,8 +378,10 @@ test("send_data replay worker requeues thrown replay target failure before max a
 test("send_data replay worker dead-letters invalid claimed spool document", async () => {
   const metricState = replayMetrics();
   const moves = [];
+  const failures = [];
   const worker = createSendDataReplayWorker({
     config: spoolConfig(),
+    failureSink: { record: (event) => failures.push(event) },
     metrics: metricState,
     spoolStore: {
       claim() {
@@ -343,6 +412,11 @@ test("send_data replay worker dead-letters invalid claimed spool document", asyn
   assert.strictEqual(moves[0].item.lastFailure.reason, "invalid_payload");
   const snapshot = metricsSnapshot(metricState);
   assert.strictEqual(snapshot.replay.deadLetteredEvents, 1);
+  assert.strictEqual(failures.length, 1);
+  assert.strictEqual(failures[0].kind, "send_data_replay_dead_lettered");
+  assert.strictEqual(failures[0].reason, "invalid_payload");
+  assert.strictEqual(failures[0].rawDocumentBytes, 4);
+  assert.strictEqual(failures[0].rawDocumentSha256, "17eed55d881c0dd5fe0935a98d89dd9e52d62aed941f3fb7d17bd490e5aa3e8f");
 });
 
 test("send_data replay worker applies configured batch size", async () => {

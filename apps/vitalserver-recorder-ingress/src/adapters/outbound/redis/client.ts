@@ -153,31 +153,61 @@ function createRedisClient(config, dependencies: any = {}) {
 }
 
 function parseRespReply(data) {
-  if (!data) return { complete: false };
-  const prefix = data[0];
+  const parsed = parseRespValue(data, 0);
+  if (!parsed.complete) return { complete: false };
+  if (parsed.error) return { complete: true, error: parsed.error };
+  return { complete: true, value: parsed.value };
+}
+
+function parseRespValue(data, offset) {
+  if (!data || offset >= data.length) return { complete: false };
+  const prefix = data[offset];
   if (prefix === "-") {
-    const end = data.indexOf("\r\n");
+    const end = data.indexOf("\r\n", offset);
     if (end < 0) return { complete: false };
-    return { complete: true, error: new Error(data.slice(1, end)) };
+    return { complete: true, nextOffset: end + 2, error: new Error(data.slice(offset + 1, end)) };
   }
   if (prefix === "+" || prefix === ":") {
-    const end = data.indexOf("\r\n");
+    const end = data.indexOf("\r\n", offset);
     if (end < 0) return { complete: false };
-    const value = data.slice(1, end);
-    return { complete: true, value: prefix === ":" ? Number.parseInt(value, 10) : value };
+    const value = data.slice(offset + 1, end);
+    return {
+      complete: true,
+      nextOffset: end + 2,
+      value: prefix === ":" ? Number.parseInt(value, 10) : value,
+    };
   }
   if (prefix === "$") {
-    const end = data.indexOf("\r\n");
+    const end = data.indexOf("\r\n", offset);
     if (end < 0) return { complete: false };
-    const byteLength = Number.parseInt(data.slice(1, end), 10);
+    const byteLength = Number.parseInt(data.slice(offset + 1, end), 10);
     if (!Number.isFinite(byteLength)) {
       return { complete: true, error: new Error("invalid redis bulk string length") };
     }
-    if (byteLength < 0) return { complete: true, value: null };
+    if (byteLength < 0) return { complete: true, nextOffset: end + 2, value: null };
     const valueStart = end + 2;
     const valueEnd = valueStart + byteLength;
     if (data.length < valueEnd + 2) return { complete: false };
-    return { complete: true, value: data.slice(valueStart, valueEnd) };
+    return { complete: true, nextOffset: valueEnd + 2, value: data.slice(valueStart, valueEnd) };
+  }
+  if (prefix === "*") {
+    const end = data.indexOf("\r\n", offset);
+    if (end < 0) return { complete: false };
+    const length = Number.parseInt(data.slice(offset + 1, end), 10);
+    if (!Number.isFinite(length)) {
+      return { complete: true, error: new Error("invalid redis array length") };
+    }
+    if (length < 0) return { complete: true, nextOffset: end + 2, value: null };
+    const values = [];
+    let cursor = end + 2;
+    for (let index = 0; index < length; index += 1) {
+      const item = parseRespValue(data, cursor);
+      if (!item.complete) return { complete: false };
+      if (item.error) return item;
+      values.push(item.value);
+      cursor = item.nextOffset;
+    }
+    return { complete: true, nextOffset: cursor, value: values };
   }
   return { complete: true, error: new Error("unsupported redis reply") };
 }

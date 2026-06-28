@@ -13,7 +13,7 @@ export type SendDataIngressResult =
     }
   | {
       ok: false;
-      outcome: "invalid_payload" | "rejected" | "spool_write_failed";
+      outcome: "invalid_payload" | "rejected" | "raw_archive_write_failed" | "spool_write_failed";
       reason: string;
       message: string;
     };

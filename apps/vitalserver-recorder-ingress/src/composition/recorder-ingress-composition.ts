@@ -4,6 +4,8 @@ const { createRecorderIngressHttpServer } = require("../adapters/inbound/http/pr
 const { createClientIpSelector } = require("../adapters/inbound/http/client-ip");
 const { createAuditLogWriter } = require("../adapters/outbound/file/audit-log-writer");
 const { createAuditStdoutWriter } = require("../adapters/outbound/process/audit-stdout-writer");
+const { createSendDataFailureLogWriter } = require("../adapters/outbound/file/send-data-failure-log-writer");
+const { createSendDataRawArchiveWriter } = require("../adapters/outbound/file/send-data-raw-archive-writer");
 const { createRuntimeStateMemoryGuardReader } = require("../adapters/outbound/file/runtime-state-memory-guard-reader");
 const { createRedisAuditEventStore } = require("../adapters/outbound/redis/audit-event-store");
 const { createRedisClient } = require("../adapters/outbound/redis/client");
@@ -14,11 +16,12 @@ const { createAuditRecorder } = require("../application/audit-recorder");
 const { createSendDataIngressService } = require("../application/send-data-ingress-service");
 const { createSendDataReplayWorker } = require("../application/send-data-replay-worker");
 const { createSocketIoAuditService } = require("../application/socketio-audit-service");
-const { configureSendDataSpool, createMetrics } = require("../observability/metrics");
+const { configureSendDataRawArchive, configureSendDataSpool, createMetrics } = require("../observability/metrics");
 
 function createRecorderIngressServer(config) {
   const metrics = createMetrics();
   configureSendDataSpool(metrics, config.spool);
+  configureSendDataRawArchive(metrics, config.rawArchive);
 
   const sendDataRedis = createRedisClient(config.redis);
   const auditRedis = createRedisClient(config.redis);
@@ -26,16 +29,21 @@ function createRecorderIngressServer(config) {
   const auditLog = createAuditLogWriter(config.audit.log, metrics);
   const auditStdout = createAuditStdoutWriter(config.audit.stdout, metrics);
   const redisAudit = createRedisAuditEventStore(config.audit, auditRedis, metrics);
+  const sendDataFailureLog = createSendDataFailureLogWriter(config.failureLog, metrics);
+  const sendDataRawArchive = createSendDataRawArchiveWriter(config.rawArchive);
   const audit = createAuditRecorder(config.audit, [auditLog, auditStdout, redisAudit]);
   const vrIdentityStore = createVrIdentityStore(identityRedis, metrics);
   const sendDataSpoolStore = createRedisSendDataSpoolStore(config.spool, sendDataRedis);
   const sendDataIngress = createSendDataIngressService({
     config,
+    failureSink: sendDataFailureLog,
     metrics,
+    rawArchive: sendDataRawArchive,
     spoolStore: sendDataSpoolStore,
   });
   const sendDataReplayWorker = createSendDataReplayWorker({
     config: config.spool,
+    failureSink: sendDataFailureLog,
     metrics,
     memoryGuard: createRuntimeStateMemoryGuardReader(config.memoryGuard),
     spoolStore: sendDataSpoolStore,

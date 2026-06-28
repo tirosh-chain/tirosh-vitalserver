@@ -1,4 +1,6 @@
 import type { AuditSinkPort } from "../../src/application/ports/outbound/audit-sink-port";
+import type { SendDataFailureSinkPort } from "../../src/application/ports/outbound/send-data-failure-sink-port";
+import type { SendDataRawArchivePort } from "../../src/application/ports/outbound/send-data-raw-archive-port";
 import type { SendDataReplayTargetPort } from "../../src/application/ports/outbound/send-data-replay-target-port";
 import type { SendDataSpoolStorePort } from "../../src/application/ports/outbound/send-data-spool-store-port";
 import type { VrIdentityStorePort } from "../../src/application/ports/outbound/vr-identity-store-port";
@@ -11,6 +13,8 @@ const os = require("os");
 const path = require("path");
 const test = require("node:test");
 const { createAuditLogWriter } = require("../../src/adapters/outbound/file/audit-log-writer");
+const { createSendDataFailureLogWriter } = require("../../src/adapters/outbound/file/send-data-failure-log-writer");
+const { createSendDataRawArchiveWriter } = require("../../src/adapters/outbound/file/send-data-raw-archive-writer");
 const { createAuditStdoutWriter } = require("../../src/adapters/outbound/process/audit-stdout-writer");
 const { createRedisAuditEventStore } = require("../../src/adapters/outbound/redis/audit-event-store");
 const { createRedisSendDataSpoolStore } = require("../../src/adapters/outbound/redis/send-data-spool-store");
@@ -35,6 +39,14 @@ test("outbound adapters expose the application port methods they implement", () 
     listKey: "vitalserver:audit_events",
     maxLen: 0,
   }, redis, metrics);
+  const failureLog: SendDataFailureSinkPort = createSendDataFailureLogWriter({
+    enabled: false,
+    path: path.join(os.tmpdir(), "recorder-ingress-port-conformance", "send-data-failures.jsonl"),
+  }, metrics);
+  const rawArchive: SendDataRawArchivePort = createSendDataRawArchiveWriter({
+    enabled: false,
+    path: path.join(os.tmpdir(), "recorder-ingress-port-conformance", "send-data-raw.jsonl"),
+  });
   const spoolStore: SendDataSpoolStorePort = createRedisSendDataSpoolStore(spoolConfig(), redis);
   const vrIdentityStore: VrIdentityStorePort = createVrIdentityStore(redis, metrics);
   const replayTarget: SendDataReplayTargetPort = createSocketIoSendDataReplayTarget(replayTargetConfig());
@@ -42,7 +54,9 @@ test("outbound adapters expose the application port methods they implement", () 
   assertPortMethods(auditLog, ["write"]);
   assertPortMethods(auditStdout, ["write"]);
   assertPortMethods(redisAudit, ["write"]);
-  assertPortMethods(spoolStore, ["append", "claim", "requeue", "markReplayed", "deadLetter"]);
+  assertPortMethods(failureLog, ["record"]);
+  assertPortMethods(rawArchive, ["append"]);
+  assertPortMethods(spoolStore, ["append", "trimPending", "claim", "requeue", "markReplayed", "deadLetter"]);
   assertPortMethods(vrIdentityStore, ["setRecorderIp"]);
   assertPortMethods(replayTarget, ["send"]);
 });
