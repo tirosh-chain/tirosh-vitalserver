@@ -31,7 +31,10 @@ def connect_socketio(base_url: str, *, timeout: float = 30.0) -> SocketIoClientP
         ) from exc
 
     client = socketio.Client(
-        reconnection=False,
+        reconnection=True,
+        reconnection_attempts=0,
+        reconnection_delay=1,
+        reconnection_delay_max=5,
         request_timeout=timeout,
         logger=False,
         engineio_logger=False,
