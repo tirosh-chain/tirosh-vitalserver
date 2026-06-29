@@ -892,25 +892,34 @@ struct RuntimeSettingsPanel: View {
         let percentRange = containerMemoryLimitPercentRange(minimumMiB: minimumMiB, maximumMiB: maximumMiB)
         return settingRow(label) {
             HStack(spacing: 12) {
-                Slider(
-                    value: Binding(
-                        get: { Double(containerMemoryLimitPercent(value.wrappedValue)) },
-                        set: { nextPercent in
-                            let otherTotal = otherContainerMemoryLimitPercentTotal(excluding: target)
-                            let combinedMaximum = AppConstants.SettingsLimits.maximumCombinedContainerMemoryLimitPercent
-                            let allowedUpper = max(percentRange.lowerBound, min(percentRange.upperBound, combinedMaximum - otherTotal))
-                            let percent = min(max(Int(nextPercent.rounded()), percentRange.lowerBound), allowedUpper)
-                            value.wrappedValue = containerMemoryLimitMiB(
-                                percent: percent,
-                                minimumMiB: minimumMiB,
-                                maximumMiB: maximumMiB
-                            )
-                        }
-                    ),
-                    in: Double(percentRange.lowerBound)...Double(percentRange.upperBound),
-                    step: Double(AppConstants.SettingsLimits.containerMemoryLimitPercentStep)
-                )
-                .frame(width: 260)
+                if sliderRangeCanMove(percentRange) {
+                    Slider(
+                        value: Binding(
+                            get: {
+                                Double(clamped(
+                                    containerMemoryLimitPercent(value.wrappedValue),
+                                    to: percentRange
+                                ))
+                            },
+                            set: { nextPercent in
+                                let otherTotal = otherContainerMemoryLimitPercentTotal(excluding: target)
+                                let combinedMaximum = AppConstants.SettingsLimits.maximumCombinedContainerMemoryLimitPercent
+                                let allowedUpper = max(percentRange.lowerBound, min(percentRange.upperBound, combinedMaximum - otherTotal))
+                                let percent = min(max(Int(nextPercent.rounded()), percentRange.lowerBound), allowedUpper)
+                                value.wrappedValue = containerMemoryLimitMiB(
+                                    percent: percent,
+                                    minimumMiB: minimumMiB,
+                                    maximumMiB: maximumMiB
+                                )
+                            }
+                        ),
+                        in: Double(percentRange.lowerBound)...Double(percentRange.upperBound),
+                        step: Double(AppConstants.SettingsLimits.containerMemoryLimitPercentStep)
+                    )
+                    .frame(width: 260)
+                } else {
+                    disabledSliderPlaceholder
+                }
                 Text(containerMemoryLimitText(value.wrappedValue))
                     .fontWeight(.medium)
                     .frame(width: 120, alignment: .leading)
@@ -928,20 +937,48 @@ struct RuntimeSettingsPanel: View {
         step: Int = 1,
         suffix: String = ""
     ) -> some View {
-        HStack(spacing: 12) {
-            Slider(
-                value: Binding(
-                    get: { Double(value.wrappedValue) },
-                    set: { value.wrappedValue = Int($0) }
-                ),
-                in: Double(range.lowerBound)...Double(range.upperBound),
-                step: Double(step)
-            )
-            .frame(width: 260)
-            Text(suffix.isEmpty ? "\(value.wrappedValue)" : "\(value.wrappedValue) \(suffix)")
+        let sliderRange = normalizedSliderRange(range)
+        let sliderStep = normalizedSliderStep(step)
+        let displayValue = clamped(value.wrappedValue, to: sliderRange)
+        return HStack(spacing: 12) {
+            if sliderRangeCanMove(sliderRange) {
+                Slider(
+                    value: Binding(
+                        get: { Double(clamped(value.wrappedValue, to: sliderRange)) },
+                        set: { value.wrappedValue = clamped(Int($0), to: sliderRange) }
+                    ),
+                    in: Double(sliderRange.lowerBound)...Double(sliderRange.upperBound),
+                    step: Double(sliderStep)
+                )
+                .frame(width: 260)
+            } else {
+                disabledSliderPlaceholder
+            }
+            Text(suffix.isEmpty ? "\(displayValue)" : "\(displayValue) \(suffix)")
                 .fontWeight(.medium)
                 .frame(width: 90, alignment: .leading)
         }
+    }
+
+    private func normalizedSliderRange(_ range: ClosedRange<Int>) -> ClosedRange<Int> {
+        if range.lowerBound <= range.upperBound {
+            return range
+        }
+        return range.upperBound...range.upperBound
+    }
+
+    private func normalizedSliderStep(_ step: Int) -> Int {
+        max(step, 1)
+    }
+
+    private func sliderRangeCanMove(_ range: ClosedRange<Int>) -> Bool {
+        range.upperBound > range.lowerBound
+    }
+
+    private var disabledSliderPlaceholder: some View {
+        RoundedRectangle(cornerRadius: 2)
+            .fill(Color(nsColor: .quaternaryLabelColor).opacity(0.2))
+            .frame(width: 260, height: 4)
     }
 
     private func settingDirectoryField(

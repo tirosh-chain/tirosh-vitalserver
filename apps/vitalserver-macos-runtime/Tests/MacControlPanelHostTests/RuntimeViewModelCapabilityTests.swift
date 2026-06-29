@@ -1359,6 +1359,31 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         render(ContentView().environmentObject(viewModel))
     }
 
+    func testRuntimeSettingsPanelRendersOutOfRangeSliderSettings() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.settings.cpuCount = 1
+        viewModel.settings.memoryGiB = 0
+        viewModel.settings.diskGiB = 1
+        viewModel.settings.recorderIngressSendDataReplayMaxMiBPerSecond = 0
+        viewModel.settings.backupRetentionCount = 0
+        viewModel.settings.logArchiveRetentionDays = 0
+        viewModel.settings.logArchiveMaximumGiB = 999
+        viewModel.settings.vitalServerContainerMemoryLimitMiB = 64
+        viewModel.settings.recorderIngressContainerMemoryLimitMiB = 16
+        viewModel.settings.redisContainerMemoryLimitMiB = 16
+
+        render(RuntimeSettingsPanel(
+            viewModel: viewModel,
+            showingApplySettingsConfirmation: .constant(false),
+            showingRestartVMRuntimeConfirmation: .constant(false)
+        ))
+    }
+
     private func applySmokeState(to viewModel: RuntimeViewModel) {
         let observedAt = "2026-05-30T00:00:00Z"
         let activity = VitalDBRecorderActivityObservation(

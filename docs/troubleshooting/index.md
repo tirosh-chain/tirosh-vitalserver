@@ -104,6 +104,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-093 | Golden runtime smoke가 `runtime-settings.json` 누락으로 manifest를 만들지 못함 | Packaging / Guest bootstrap | active | [Golden Runtime Smoke Missing Runtime Settings](093_runtime-smoke-missing-runtime-settings.md) |
 | TS-094 | Watchdog이 VitalDB observation 누락 때문에 Compose recovery를 막음 | Runtime health / Watchdog recovery / Guest containers | active | [Watchdog VitalDB Observation Blocks Compose Recovery](094_watchdog-vitaldb-observation-blocks-compose-recovery.md) |
 | TS-095 | Guest Compose 실패의 inner stderr가 공유 진단에 남지 않음 | Guest bootstrap / Runtime health / Diagnostics | active | [Guest Compose Failure Missing Diagnostics](095_guest-compose-failure-missing-diagnostics.md) |
+| TS-096 | Helper Settings가 invalid slider value/range로 SIGTRAP 종료됨 | Runtime health / macOS Helper UI | active | [Helper Settings Slider Crash](096_helper-settings-slider-crash.md) |
 
 ## Follow-up 규칙
 
