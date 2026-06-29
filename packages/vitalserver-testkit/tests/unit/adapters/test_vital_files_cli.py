@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,7 +13,7 @@ from tirosh_vitalserver.testkit.domain.vital_file import PayloadFile
 
 def test_recover_raw_archive_vital_delegates_to_product_cli(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     raw_archive = tmp_path / "send-data-raw.jsonl"
     output_dir = tmp_path / "exported"
@@ -21,7 +22,11 @@ def test_recover_raw_archive_vital_delegates_to_product_cli(
 
     monkeypatch.setattr(vital_files.shutil, "which", lambda _name: "/bin/recovery")
 
-    def fake_run(command, *, check):
+    def fake_run(
+        command: Sequence[str],
+        *,
+        check: bool,
+    ) -> SimpleNamespace:
         captured["command"] = command
         captured["check"] = check
         return SimpleNamespace(returncode=0)
@@ -68,7 +73,7 @@ def test_recover_raw_archive_vital_delegates_to_product_cli(
 
 def test_upload_vital_does_not_require_recorder_recovery(
     tmp_path: Path,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     vital_path = tmp_path / "BED_260101_010101.vital"
     vital_path.write_bytes(b"vital")
@@ -111,7 +116,9 @@ def test_upload_vital_does_not_require_recorder_recovery(
     assert result == 0
 
 
-def test_raw_archive_export_reports_missing_recorder_recovery(monkeypatch) -> None:
+def test_raw_archive_export_reports_missing_recorder_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(vital_files.shutil, "which", lambda _name: None)
 
     with pytest.raises(RuntimeError, match=r"raw archive \.vital recovery requires"):

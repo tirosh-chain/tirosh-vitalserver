@@ -4,7 +4,6 @@ import json
 import subprocess
 
 import pytest
-
 from scripts import recorder_ingress_compose_e2e as e2e
 
 
@@ -140,7 +139,10 @@ def test_wait_for_replay_rejects_missing_proof_counters(
         },
     )
 
-    with pytest.raises(AssertionError, match="missing numeric field: replay.deadLetteredEvents"):
+    with pytest.raises(
+        AssertionError,
+        match=r"missing numeric field: replay\.deadLetteredEvents",
+    ):
         e2e.wait_for_replay(
             "http://127.0.0.1:18080",
             baseline,
@@ -224,13 +226,15 @@ def test_replay_memory_guard_status_reads_adaptive_status() -> None:
         "lastReason": "steady",
     }
     assert (
-        e2e.replay_adaptive_summary({
-            "replay": {
-                "adaptive": {
-                    "unknownFutureField": "ignored",
+        e2e.replay_adaptive_summary(
+            {
+                "replay": {
+                    "adaptive": {
+                        "unknownFutureField": "ignored",
+                    },
                 },
-            },
-        })
+            }
+        )
         == {}
     )
     assert e2e.replay_memory_guard_status({"replay": {"adaptive": {}}}) is None
@@ -270,7 +274,9 @@ def test_compose_env_includes_optional_backpressure_limits() -> None:
     env = e2e.compose_env(args)
 
     assert env["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "13"
-    assert env["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"] == str(25 * 1024 * 1024)
+    assert env["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"] == str(
+        25 * 1024 * 1024
+    )
     assert env["RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY"] == "2"
     assert env["RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY"] == "12"
     assert env["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS"] == "1"
@@ -323,23 +329,39 @@ def test_status_only_main_uses_http_status_without_compose_or_redis(
         },
     }
 
-    monkeypatch.setattr(e2e, "run", lambda *args, **kwargs: pytest.fail("compose should not run"))
+    monkeypatch.setattr(
+        e2e, "run", lambda *args, **kwargs: pytest.fail("compose should not run")
+    )
     monkeypatch.setattr(e2e, "wait_for_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(e2e, "read_status", lambda _base_url: baseline)
     monkeypatch.setattr(e2e, "run_testkit_stream", lambda *args, **kwargs: None)
     monkeypatch.setattr(e2e, "wait_for_replay", lambda *args, **kwargs: final)
-    monkeypatch.setattr(e2e, "redis_list_lengths", lambda *args, **kwargs: pytest.fail("redis should not be inspected"))
-    monkeypatch.setattr(e2e, "reset_redis_lists", lambda *args, **kwargs: pytest.fail("redis should not be reset"))
-    monkeypatch.setattr(e2e, "inspect_compose_container", lambda *args, **kwargs: pytest.fail("container should not be inspected"))
+    monkeypatch.setattr(
+        e2e,
+        "redis_list_lengths",
+        lambda *args, **kwargs: pytest.fail("redis should not be inspected"),
+    )
+    monkeypatch.setattr(
+        e2e,
+        "reset_redis_lists",
+        lambda *args, **kwargs: pytest.fail("redis should not be reset"),
+    )
+    monkeypatch.setattr(
+        e2e,
+        "inspect_compose_container",
+        lambda *args, **kwargs: pytest.fail("container should not be inspected"),
+    )
 
-    exit_code = e2e.main([
-        "--status-only",
-        "--require-memory-guard",
-        "--recorders",
-        "1",
-        "--max-messages",
-        "1",
-    ])
+    exit_code = e2e.main(
+        [
+            "--status-only",
+            "--require-memory-guard",
+            "--recorders",
+            "1",
+            "--max-messages",
+            "1",
+        ]
+    )
 
     assert exit_code == 0
     output = json.loads(capsys.readouterr().out)
@@ -365,19 +387,30 @@ def test_status_only_main_rejects_dirty_baseline(
         },
     }
 
-    monkeypatch.setattr(e2e, "run", lambda *args, **kwargs: pytest.fail("compose should not run"))
+    monkeypatch.setattr(
+        e2e, "run", lambda *args, **kwargs: pytest.fail("compose should not run")
+    )
     monkeypatch.setattr(e2e, "wait_for_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(e2e, "read_status", lambda _base_url: baseline)
-    monkeypatch.setattr(e2e, "run_testkit_stream", lambda *args, **kwargs: pytest.fail("testkit should not run"))
+    monkeypatch.setattr(
+        e2e,
+        "run_testkit_stream",
+        lambda *args, **kwargs: pytest.fail("testkit should not run"),
+    )
 
-    with pytest.raises(AssertionError, match="status-only baseline spool.pendingItems=1"):
-        e2e.main([
-            "--status-only",
-            "--recorders",
-            "1",
-            "--max-messages",
-            "1",
-        ])
+    with pytest.raises(
+        AssertionError,
+        match=r"status-only baseline spool\.pendingItems=1",
+    ):
+        e2e.main(
+            [
+                "--status-only",
+                "--recorders",
+                "1",
+                "--max-messages",
+                "1",
+            ]
+        )
 
 
 def test_status_only_main_rejects_missing_baseline_fields(
@@ -393,19 +426,30 @@ def test_status_only_main_rejects_missing_baseline_fields(
         },
     }
 
-    monkeypatch.setattr(e2e, "run", lambda *args, **kwargs: pytest.fail("compose should not run"))
+    monkeypatch.setattr(
+        e2e, "run", lambda *args, **kwargs: pytest.fail("compose should not run")
+    )
     monkeypatch.setattr(e2e, "wait_for_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(e2e, "read_status", lambda _base_url: baseline)
-    monkeypatch.setattr(e2e, "run_testkit_stream", lambda *args, **kwargs: pytest.fail("testkit should not run"))
+    monkeypatch.setattr(
+        e2e,
+        "run_testkit_stream",
+        lambda *args, **kwargs: pytest.fail("testkit should not run"),
+    )
 
-    with pytest.raises(AssertionError, match="missing numeric field: spool.pendingItems"):
-        e2e.main([
-            "--status-only",
-            "--recorders",
-            "1",
-            "--max-messages",
-            "1",
-        ])
+    with pytest.raises(
+        AssertionError,
+        match=r"missing numeric field: spool\.pendingItems",
+    ):
+        e2e.main(
+            [
+                "--status-only",
+                "--recorders",
+                "1",
+                "--max-messages",
+                "1",
+            ]
+        )
 
 
 def test_status_only_main_rejects_boolean_baseline_fields(
@@ -422,19 +466,30 @@ def test_status_only_main_rejects_boolean_baseline_fields(
         },
     }
 
-    monkeypatch.setattr(e2e, "run", lambda *args, **kwargs: pytest.fail("compose should not run"))
+    monkeypatch.setattr(
+        e2e, "run", lambda *args, **kwargs: pytest.fail("compose should not run")
+    )
     monkeypatch.setattr(e2e, "wait_for_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(e2e, "read_status", lambda _base_url: baseline)
-    monkeypatch.setattr(e2e, "run_testkit_stream", lambda *args, **kwargs: pytest.fail("testkit should not run"))
+    monkeypatch.setattr(
+        e2e,
+        "run_testkit_stream",
+        lambda *args, **kwargs: pytest.fail("testkit should not run"),
+    )
 
-    with pytest.raises(AssertionError, match="missing numeric field: spool.pendingItems"):
-        e2e.main([
-            "--status-only",
-            "--recorders",
-            "1",
-            "--max-messages",
-            "1",
-        ])
+    with pytest.raises(
+        AssertionError,
+        match=r"missing numeric field: spool\.pendingItems",
+    ):
+        e2e.main(
+            [
+                "--status-only",
+                "--recorders",
+                "1",
+                "--max-messages",
+                "1",
+            ]
+        )
 
 
 def test_status_only_main_rejects_app_stability_assertion() -> None:
@@ -442,14 +497,16 @@ def test_status_only_main_rejects_app_stability_assertion() -> None:
         AssertionError,
         match="status-only proof cannot assert app stability without Docker inspect",
     ):
-        e2e.main([
-            "--status-only",
-            "--assert-app-stable",
-            "--recorders",
-            "1",
-            "--max-messages",
-            "1",
-        ])
+        e2e.main(
+            [
+                "--status-only",
+                "--assert-app-stable",
+                "--recorders",
+                "1",
+                "--max-messages",
+                "1",
+            ]
+        )
 
 
 def test_inspect_compose_container_reports_oom_and_restart_state(

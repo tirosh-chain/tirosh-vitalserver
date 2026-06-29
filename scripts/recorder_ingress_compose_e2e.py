@@ -13,12 +13,13 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-
+from typing import Any, TypeGuard
 
 DEFAULT_PENDING_KEY = "vitalserver:recorder_ingress:send_data:pending"
 DEFAULT_IN_FLIGHT_KEY = "vitalserver:recorder_ingress:send_data:in_flight"
 DEFAULT_REPLAYED_KEY = "vitalserver:recorder_ingress:send_data:replayed"
 DEFAULT_DEAD_LETTER_KEY = "vitalserver:recorder_ingress:send_data:dead_letter"
+JsonObject = dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -44,8 +45,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.start_compose and not args.status_only:
         run(
-            compose
-            + [
+            [
+                *compose,
                 "up",
                 "-d",
                 "--build",
@@ -83,13 +84,23 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     redis_lengths = None if args.status_only else redis_list_lengths(compose, keys, env)
-    replay = status["replay"]
-    spool = status["spool"]
-    observed_delta = required_counter_delta(status, baseline_status, ("sendDataEventsObserved",))
-    spooled_delta = required_counter_delta(status, baseline_status, ("spool", "spooledEvents"))
-    rejected_delta = required_counter_delta(status, baseline_status, ("spool", "rejectedEvents"))
-    write_failure_delta = required_counter_delta(status, baseline_status, ("spool", "writeFailures"))
-    replayed_delta = required_counter_delta(status, baseline_status, ("replay", "replayedEvents"))
+    replay = object_field(status, ("replay",))
+    spool = object_field(status, ("spool",))
+    observed_delta = required_counter_delta(
+        status, baseline_status, ("sendDataEventsObserved",)
+    )
+    spooled_delta = required_counter_delta(
+        status, baseline_status, ("spool", "spooledEvents")
+    )
+    rejected_delta = required_counter_delta(
+        status, baseline_status, ("spool", "rejectedEvents")
+    )
+    write_failure_delta = required_counter_delta(
+        status, baseline_status, ("spool", "writeFailures")
+    )
+    replayed_delta = required_counter_delta(
+        status, baseline_status, ("replay", "replayedEvents")
+    )
     retryable_failure_delta = required_counter_delta(
         status,
         baseline_status,
@@ -123,7 +134,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     assert_condition(
         retryable_failure_delta <= args.max_retryable_failures,
-        f"retryableFailures delta={retryable_failure_delta} expected<={args.max_retryable_failures}",
+        (
+            f"retryableFailures delta={retryable_failure_delta} "
+            f"expected<={args.max_retryable_failures}"
+        ),
     )
     assert_condition(
         dead_lettered_delta == 0,
@@ -133,8 +147,12 @@ def main(argv: list[str] | None = None) -> int:
     spool_pending_bytes = required_numeric_field(status, ("spool", "pendingBytes"))
     replay_pending_items = required_numeric_field(status, ("replay", "pendingItems"))
     replay_in_flight_items = required_numeric_field(status, ("replay", "inFlightItems"))
-    assert_condition(spool_pending_items == 0, f"spool.pendingItems={spool_pending_items}")
-    assert_condition(spool_pending_bytes == 0, f"spool.pendingBytes={spool_pending_bytes}")
+    assert_condition(
+        spool_pending_items == 0, f"spool.pendingItems={spool_pending_items}"
+    )
+    assert_condition(
+        spool_pending_bytes == 0, f"spool.pendingBytes={spool_pending_bytes}"
+    )
     assert_condition(
         replay_pending_items == 0,
         f"replay.pendingItems={replay_pending_items}",
@@ -150,7 +168,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         assert_condition(
             redis_lengths["replayed"] >= min_replayed_events,
-            f"replayed list length={redis_lengths['replayed']} expected>={min_replayed_events}",
+            (
+                f"replayed list length={redis_lengths['replayed']} "
+                f"expected>={min_replayed_events}"
+            ),
         )
     if args.max_replay_lag_seconds is not None:
         assert_condition(
@@ -178,7 +199,9 @@ def main(argv: list[str] | None = None) -> int:
                 "ok": True,
                 "mode": args.mode,
                 "proofScope": "status-only" if args.status_only else "compose",
-                "appStabilityAsserted": bool(args.assert_app_stable and not args.status_only),
+                "appStabilityAsserted": bool(
+                    args.assert_app_stable and not args.status_only
+                ),
                 "expectedEvents": expected_events,
                 "deltas": {
                     "sendDataEventsObserved": observed_delta,
@@ -197,7 +220,9 @@ def main(argv: list[str] | None = None) -> int:
                 "app": {
                     "before": app_state_before,
                     "after": app_state_after,
-                } if args.assert_app_stable else None,
+                }
+                if args.assert_app_stable
+                else None,
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -217,11 +242,19 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Verify recorder-ingress send_data spool/replay in Docker Compose.",
     )
-    parser.add_argument("--compose", default=os.environ.get("DOCKER_COMPOSE", "docker compose"))
+    parser.add_argument(
+        "--compose", default=os.environ.get("DOCKER_COMPOSE", "docker compose")
+    )
     parser.add_argument("--docker", default=os.environ.get("DOCKER", "docker"))
-    parser.add_argument("--bind-host", default=os.environ.get("VITALSERVER_BIND_HOST", "127.0.0.1"))
-    parser.add_argument("--http-port", default=os.environ.get("VITALSERVER_HTTP_PORT", "18080"))
-    parser.add_argument("--mode", default="spool_and_replay", choices=["spool_and_replay"])
+    parser.add_argument(
+        "--bind-host", default=os.environ.get("VITALSERVER_BIND_HOST", "127.0.0.1")
+    )
+    parser.add_argument(
+        "--http-port", default=os.environ.get("VITALSERVER_HTTP_PORT", "18080")
+    )
+    parser.add_argument(
+        "--mode", default="spool_and_replay", choices=["spool_and_replay"]
+    )
     parser.add_argument("--recorders", type=int, default=2)
     parser.add_argument("--max-messages", type=int, default=3)
     parser.add_argument("--interval", type=float, default=0.1)
@@ -256,14 +289,18 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--no-start-compose",
         action="store_false",
         dest="start_compose",
-        help="Use an already running Compose stack instead of recreating recorder-ingress.",
+        help=(
+            "Use an already running Compose stack instead of recreating "
+            "recorder-ingress."
+        ),
     )
     parser.add_argument(
         "--status-only",
         action="store_true",
         help=(
             "Use only recorder-ingress HTTP status for proof. "
-            "This skips Docker Compose start/reset/Redis length/container inspect checks."
+            "This skips Docker Compose start/reset/Redis length/container "
+            "inspect checks."
         ),
     )
     parser.set_defaults(start_compose=True)
@@ -278,7 +315,9 @@ def compose_env(args: argparse.Namespace) -> dict[str, str]:
     env["RECORDER_INGRESS_SEND_DATA_REPLAY_ENABLED"] = "1"
     env["RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS"] = str(args.replay_interval_ms)
     if args.replay_batch_size is not None:
-        env["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] = str(args.replay_batch_size)
+        env["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] = str(
+            args.replay_batch_size
+        )
     env["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"] = str(
         args.replay_max_mib_per_second * 1024 * 1024
     )
@@ -291,11 +330,17 @@ def compose_env(args: argparse.Namespace) -> dict[str, str]:
             args.replay_max_concurrency
         )
     if args.max_pending_items is not None:
-        env["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS"] = str(args.max_pending_items)
+        env["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS"] = str(
+            args.max_pending_items
+        )
     if args.max_pending_bytes is not None:
-        env["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES"] = str(args.max_pending_bytes)
+        env["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES"] = str(
+            args.max_pending_bytes
+        )
     if args.max_payload_bytes is not None:
-        env["RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES"] = str(args.max_payload_bytes)
+        env["RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES"] = str(
+            args.max_payload_bytes
+        )
     env["RECORDER_INGRESS_SEND_DATA_REDIS_LIST"] = args.pending_key
     env["RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST"] = args.in_flight_key
     env["RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST"] = args.replayed_key
@@ -313,7 +358,8 @@ def default_testkit_command() -> str:
 
 
 def run_testkit_stream(args: argparse.Namespace, base_url: str) -> None:
-    command = shlex.split(args.testkit_command) + [
+    command = [
+        *shlex.split(args.testkit_command),
         "stream-recorder",
         "--vitalserver-url",
         base_url,
@@ -339,10 +385,15 @@ def wait_for_status(base_url: str, mode: str, *, timeout_seconds: float) -> None
             status = read_status(base_url)
             spool = status.get("spool") or {}
             replay = status.get("replay") or {}
-            if spool.get("mode") == mode and replay.get("status") in {"idle", "replaying"}:
+            if spool.get("mode") == mode and replay.get("status") in {
+                "idle",
+                "replaying",
+            }:
                 return
-            last_error = f"mode={spool.get('mode')} replay.status={replay.get('status')}"
-        except Exception as exc:  # noqa: BLE001 - diagnostic boundary, not domain state.
+            last_error = (
+                f"mode={spool.get('mode')} replay.status={replay.get('status')}"
+            )
+        except Exception as exc:
             last_error = str(exc)
         time.sleep(1)
     raise RuntimeError(f"recorder-ingress status was not ready: {last_error}")
@@ -350,25 +401,30 @@ def wait_for_status(base_url: str, mode: str, *, timeout_seconds: float) -> None
 
 def wait_for_replay(
     base_url: str,
-    baseline_status: dict[str, object],
+    baseline_status: JsonObject,
     expected_events: int,
     *,
     timeout_seconds: float,
-) -> dict[str, object]:
+) -> JsonObject:
     started = time.monotonic()
-    last_status: dict[str, object] = {}
+    last_status: JsonObject = {}
     while time.monotonic() - started < timeout_seconds:
         status = read_status(base_url)
-        spool = status["spool"]
-        replay = status["replay"]
+        replay = object_field(status, ("replay",))
         last_status = replay
         if (
-            required_counter_delta(status, baseline_status, ("replay", "replayedEvents")) >= expected_events
+            required_counter_delta(
+                status, baseline_status, ("replay", "replayedEvents")
+            )
+            >= expected_events
             and required_numeric_field(status, ("spool", "pendingItems")) == 0
             and required_numeric_field(status, ("spool", "pendingBytes")) == 0
             and required_numeric_field(status, ("replay", "pendingItems")) == 0
             and required_numeric_field(status, ("replay", "inFlightItems")) == 0
-            and required_counter_delta(status, baseline_status, ("replay", "deadLetteredEvents")) == 0
+            and required_counter_delta(
+                status, baseline_status, ("replay", "deadLetteredEvents")
+            )
+            == 0
         ):
             return status
         time.sleep(0.5)
@@ -378,8 +434,12 @@ def wait_for_replay(
 def assert_clean_status_baseline(status: dict[str, object]) -> None:
     spool = status.get("spool")
     replay = status.get("replay")
-    assert_condition(isinstance(spool, dict), "status-only baseline missing spool status")
-    assert_condition(isinstance(replay, dict), "status-only baseline missing replay status")
+    assert_condition(
+        isinstance(spool, dict), "status-only baseline missing spool status"
+    )
+    assert_condition(
+        isinstance(replay, dict), "status-only baseline missing replay status"
+    )
     spool_pending_items = required_numeric_field(status, ("spool", "pendingItems"))
     spool_pending_bytes = required_numeric_field(status, ("spool", "pendingBytes"))
     replay_pending_items = required_numeric_field(status, ("replay", "pendingItems"))
@@ -403,53 +463,71 @@ def assert_clean_status_baseline(status: dict[str, object]) -> None:
 
 
 def counter_delta(
-    current: dict[str, object],
-    baseline: dict[str, object],
+    current: JsonObject,
+    baseline: JsonObject,
     path: tuple[str, ...],
 ) -> int:
     return numeric_field(current, path) - numeric_field(baseline, path)
 
 
 def required_counter_delta(
-    current: dict[str, object],
-    baseline: dict[str, object],
+    current: JsonObject,
+    baseline: JsonObject,
     path: tuple[str, ...],
 ) -> int:
-    return required_numeric_field(current, path) - required_numeric_field(baseline, path)
+    return required_numeric_field(current, path) - required_numeric_field(
+        baseline, path
+    )
 
 
-def numeric_field(document: dict[str, object], path: tuple[str, ...]) -> int:
+def numeric_field(document: JsonObject, path: tuple[str, ...]) -> int:
     value: object = document
     for key in path:
-        if not isinstance(value, dict):
+        if not is_json_object(value):
             return 0
         value = value.get(key, 0)
     return int(value) if is_numeric_value(value) else 0
 
 
-def required_numeric_field(document: dict[str, object], path: tuple[str, ...]) -> int:
+def required_numeric_field(document: JsonObject, path: tuple[str, ...]) -> int:
     value: object = document
     joined_path = ".".join(path)
     for key in path:
-        assert_condition(isinstance(value, dict), f"missing numeric field: {joined_path}")
+        if not is_json_object(value):
+            raise AssertionError(f"missing numeric field: {joined_path}")
         value = value.get(key)
-    assert_condition(is_numeric_value(value), f"missing numeric field: {joined_path}")
+    if not is_numeric_value(value):
+        raise AssertionError(f"missing numeric field: {joined_path}")
     return int(value)
 
 
-def is_numeric_value(value: object) -> bool:
+def object_field(document: JsonObject, path: tuple[str, ...]) -> JsonObject:
+    value: object = document
+    joined_path = ".".join(path)
+    for key in path:
+        if not is_json_object(value):
+            raise AssertionError(f"missing object field: {joined_path}")
+        value = value.get(key)
+    if not is_json_object(value):
+        raise AssertionError(f"missing object field: {joined_path}")
+    return value
+
+
+def is_json_object(value: object) -> TypeGuard[JsonObject]:
+    return isinstance(value, dict)
+
+
+def is_numeric_value(value: object) -> TypeGuard[int | float]:
     return not isinstance(value, bool) and isinstance(value, (int, float))
 
 
-def replay_memory_guard_status(status: dict[str, object]) -> str | None:
+def replay_memory_guard_status(status: JsonObject) -> str | None:
     value = replay_adaptive_summary(status).get("memoryGuardStatus")
     return value if isinstance(value, str) and value else None
 
 
-def replay_adaptive_summary(status: dict[str, object]) -> dict[str, object]:
-    replay = status.get("replay")
-    if not isinstance(replay, dict):
-        return {}
+def replay_adaptive_summary(status: JsonObject) -> JsonObject:
+    replay = object_field(status, ("replay",))
     adaptive = replay.get("adaptive")
     if not isinstance(adaptive, dict):
         return {}
@@ -471,21 +549,25 @@ def assert_memory_guard_loaded(status: str | None) -> None:
     )
 
 
-def read_status(base_url: str) -> dict[str, object]:
+def read_status(base_url: str) -> JsonObject:
     request = urllib.request.Request(f"{base_url}/recorder-ingress/status")
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
             if response.status != 200:
                 raise RuntimeError(f"status HTTP {response.status}")
-            return json.loads(response.read().decode("utf-8"))
+            document = json.loads(response.read().decode("utf-8"))
+            assert_condition(
+                isinstance(document, dict), "status response is not object"
+            )
+            return document
     except urllib.error.URLError as exc:
         raise RuntimeError(f"status read failed: {exc}") from exc
 
 
 def reset_redis_lists(compose: list[str], keys: RedisKeys, env: dict[str, str]) -> None:
     run(
-        compose
-        + [
+        [
+            *compose,
             "exec",
             "-T",
             "redis",
@@ -500,7 +582,9 @@ def reset_redis_lists(compose: list[str], keys: RedisKeys, env: dict[str, str]) 
     )
 
 
-def redis_list_lengths(compose: list[str], keys: RedisKeys, env: dict[str, str]) -> dict[str, int]:
+def redis_list_lengths(
+    compose: list[str], keys: RedisKeys, env: dict[str, str]
+) -> dict[str, int]:
     return {
         "pending": redis_llen(compose, keys.pending, env),
         "in_flight": redis_llen(compose, keys.in_flight, env),
@@ -511,7 +595,7 @@ def redis_list_lengths(compose: list[str], keys: RedisKeys, env: dict[str, str])
 
 def redis_llen(compose: list[str], key: str, env: dict[str, str]) -> int:
     result = run(
-        compose + ["exec", "-T", "redis", "redis-cli", "LLEN", key],
+        [*compose, "exec", "-T", "redis", "redis-cli", "LLEN", key],
         env=env,
         capture=True,
     )
@@ -523,16 +607,24 @@ def inspect_compose_container(
     compose: list[str],
     service: str,
     env: dict[str, str],
-) -> dict[str, object]:
-    container_id = run(compose + ["ps", "-q", service], env=env, capture=True).stdout.strip()
+) -> JsonObject:
+    container_id = run(
+        [*compose, "ps", "-q", service], env=env, capture=True
+    ).stdout.strip()
     if not container_id:
         raise RuntimeError(f"compose service has no container: {service}")
     result = run([docker, "inspect", container_id], env=env, capture=True)
     documents = json.loads(result.stdout)
     if not documents:
-        raise RuntimeError(f"docker inspect returned no document for service: {service}")
+        raise RuntimeError(
+            f"docker inspect returned no document for service: {service}"
+        )
     document = documents[0]
+    assert_condition(
+        isinstance(document, dict), "docker inspect document is not object"
+    )
     state = document.get("State") or {}
+    assert_condition(isinstance(state, dict), "docker inspect State is not object")
     return {
         "containerId": container_id,
         "oomKilled": bool(state.get("OOMKilled")),
@@ -583,7 +675,8 @@ def run(
         executable = command[0] if command else "<empty>"
         raise RuntimeError(
             f"required command not found: {executable}. "
-            "Set --compose or DOCKER_COMPOSE to the Docker Compose command available on this host."
+            "Set --compose or DOCKER_COMPOSE to the Docker Compose command "
+            "available on this host."
         ) from exc
 
 
