@@ -183,8 +183,8 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             swaggerUIHTTP: "200",
             containerServices: [
                 RuntimeContainerServiceObservation(
-                    service: "audit-proxy",
-                    name: "vitalserver-audit-proxy-1",
+                    service: "recorder-ingress",
+                    name: "vitalserver-recorder-ingress-1",
                     state: "running",
                     health: "healthy",
                     exitCode: 0
@@ -216,16 +216,16 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertFalse(snapshot.failureReasons.contains(.guestBootstrapFailed))
         XCTAssertTrue(httpProber.requestedURLs.contains("http://127.0.0.1:8080/ready"))
-        XCTAssertEqual(snapshot.containerObservation?.auditProxyHTTP, "200")
-        XCTAssertEqual(snapshot.containerObservation?.auditProxyStatus?.socketIoEventsSeen, 3)
-        XCTAssertNil(snapshot.containerObservation?.auditProxyStatusReadError)
+        XCTAssertEqual(snapshot.containerObservation?.recorderIngressHTTP, "200")
+        XCTAssertEqual(snapshot.containerObservation?.recorderIngressStatus?.socketIoEventsSeen, 3)
+        XCTAssertNil(snapshot.containerObservation?.recorderIngressStatusReadError)
         XCTAssertEqual(snapshot.containerObservation?.runtimeStateUpdatedAt, "2026-05-24T00:00:00Z")
         XCTAssertEqual(snapshot.containerObservation?.runtimeStateFileUpdatedAt, "2027-01-15T08:00:00Z")
         XCTAssertNil(snapshot.containerObservation?.runtimeStateFileMetadataError)
         XCTAssertEqual(snapshot.containerObservation?.containerLogsPresent, true)
         XCTAssertEqual(snapshot.containerObservation?.containerLogsBytes, 14)
         XCTAssertEqual(snapshot.containerObservation?.containerLogsUpdatedAt, "2027-01-15T08:01:00Z")
-        XCTAssertEqual(snapshot.containerObservation?.composeServices.map(\.service), ["audit-proxy"])
+        XCTAssertEqual(snapshot.containerObservation?.composeServices.map(\.service), ["recorder-ingress"])
         XCTAssertEqual(snapshot.containerObservation?.composeServicesReadState, .loaded)
         XCTAssertNil(snapshot.containerObservation?.composeServicesReadError)
         XCTAssertEqual(snapshot.vmIP, "192.168.64.2")
@@ -536,8 +536,8 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertEqual(snapshot.hostProxyHTTP, RuntimeHTTPStatusText.missingProxyPort)
         XCTAssertEqual(snapshot.redisUIHTTP, RuntimeHTTPStatusText.missingProxyPort)
         XCTAssertEqual(snapshot.swaggerUIHTTP, RuntimeHTTPStatusText.missingProxyPort)
-        XCTAssertEqual(snapshot.containerObservation?.auditProxyHTTP, RuntimeHTTPStatusText.missingProxyPort)
-        XCTAssertEqual(snapshot.containerObservation?.auditProxyStatusReadError, RuntimeHTTPStatusText.missingProxyPort)
+        XCTAssertEqual(snapshot.containerObservation?.recorderIngressHTTP, RuntimeHTTPStatusText.missingProxyPort)
+        XCTAssertEqual(snapshot.containerObservation?.recorderIngressStatusReadError, RuntimeHTTPStatusText.missingProxyPort)
         XCTAssertTrue(snapshot.failureReasons.contains(.hostProxyConfigInvalid))
         XCTAssertFalse(httpProber.requestedURLs.contains(Constants.Runtime.proxyHealthURL(port: RuntimeInstallSettings.defaultProxyPort)))
     }
@@ -937,7 +937,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertFalse(snapshot.failureReasons.contains(.hostProxyListenerMismatch(port: 8080, listeners: "malformed")))
     }
 
-    func testSnapshotReportsAuditProxyStatusFailure() {
+    func testSnapshotReportsRecorderIngressStatusFailure() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
@@ -972,16 +972,16 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         let snapshot = healthSnapshot(from: checker)
 
-        XCTAssertEqual(snapshot.containerObservation?.auditProxyHTTP, "failed")
-        XCTAssertEqual(snapshot.containerObservation?.auditProxyStatusReadState, .commandFailed)
-        XCTAssertTrue(snapshot.containerObservation?.auditProxyStatusReadError?.hasPrefix("command-failed-7 ") == true)
+        XCTAssertEqual(snapshot.containerObservation?.recorderIngressHTTP, "failed")
+        XCTAssertEqual(snapshot.containerObservation?.recorderIngressStatusReadState, .commandFailed)
+        XCTAssertTrue(snapshot.containerObservation?.recorderIngressStatusReadError?.hasPrefix("command-failed-7 ") == true)
         XCTAssertEqual(snapshot.containerObservation?.composeServicesReadState, .missing)
         XCTAssertEqual(snapshot.containerObservation?.composeServices, [])
         XCTAssertEqual(snapshot.containerObservation?.composeServicesReadError, "container-services-missing")
-        XCTAssertTrue(snapshot.failureReasons.contains(.auditProxyHTTP("failed")))
+        XCTAssertTrue(snapshot.failureReasons.contains(.recorderIngressHTTP("failed")))
     }
 
-    func testSnapshotReportsInvalidAuditProxyStatusResponse() throws {
+    func testSnapshotReportsInvalidRecorderIngressStatusResponse() throws {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
@@ -1016,13 +1016,13 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         let snapshot = healthSnapshot(from: checker)
 
-        XCTAssertEqual(snapshot.containerObservation?.auditProxyHTTP, RuntimeHTTPStatusText.invalidResponse)
-        XCTAssertEqual(snapshot.containerObservation?.auditProxyStatusReadState, .invalidResponse)
-        XCTAssertNil(snapshot.containerObservation?.auditProxyStatus)
-        let readError = try XCTUnwrap(snapshot.containerObservation?.auditProxyStatusReadError)
+        XCTAssertEqual(snapshot.containerObservation?.recorderIngressHTTP, RuntimeHTTPStatusText.invalidResponse)
+        XCTAssertEqual(snapshot.containerObservation?.recorderIngressStatusReadState, .invalidResponse)
+        XCTAssertNil(snapshot.containerObservation?.recorderIngressStatus)
+        let readError = try XCTUnwrap(snapshot.containerObservation?.recorderIngressStatusReadError)
         XCTAssertTrue(readError.hasPrefix("decode-failed reason="))
         XCTAssertTrue(readError.contains("dataCorrupted"))
-        XCTAssertTrue(snapshot.failureReasons.contains(.auditProxyHTTP(RuntimeHTTPStatusText.invalidResponse)))
+        XCTAssertTrue(snapshot.failureReasons.contains(.recorderIngressHTTP(RuntimeHTTPStatusText.invalidResponse)))
     }
 
     func testSnapshotReportsContainerLogMetadataReadFailure() {

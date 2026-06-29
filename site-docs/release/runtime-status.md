@@ -117,7 +117,7 @@ Service liveness의 시간 값은 Guest가 보고한 explicit service start time
 
 ## 4. Recorder와 Bed
 
-Recorders/Beds 화면은 recorder observer와 audit proxy에서 만든 관측 결과를 표시합니다.
+Recorders/Beds 화면은 recorder observer와 recorder ingress에서 만든 관측 결과를 표시합니다.
 
 ### 4-1. VRecorder 상태
 
@@ -132,7 +132,7 @@ Recorders/Beds 화면은 recorder observer와 audit proxy에서 만든 관측 �
 Recorders 화면에서는 `VRecorder`, `Status`, `IP`, `Bed`, `Last seen`, `Anomaly`를 함께 봅니다.
 `IP` column에는 VRecorder 관측 IP와 IP verification 요약이 함께 표시될 수 있습니다.
 Recorder를 선택하면 Details의 `Network access`에서 connection IP, selected IP, 마지막
-verify 시각, 마지막 failure를 확인합니다. 이 정보는 audit proxy가 명시적으로 제공한 recorder별
+verify 시각, 마지막 failure를 확인합니다. 이 정보는 recorder ingress가 명시적으로 제공한 recorder별
 상태이며, Service liveness에는 recorder별 상세 상태를 표시하지 않습니다.
 `History` 토글을 켜면 최신 관측에 없는 과거 recorder도 볼 수 있습니다.
 `Data updated`는 recorder/bed 상태 snapshot이 갱신된 시각이고, `Last seen`은 해당 VRecorder가
@@ -204,7 +204,7 @@ Status의 data directory는 saved settings가 아니라 현재 VM runtime에 적
 | `vm-lifecycle.json` | VM이 `stopping`, `stopped`, `failed` 중 어디에 머물렀는지 확인 |
 | `launchd.out.log`의 guest shutdown 로그 | Docker/containerd stop, filesystem remount, poweroff 실패 여부 확인 |
 | `prepare-update-shutdown.request` | Settings apply인데 update shutdown request가 남아 반복 실행되는지 확인 |
-| failure reasons | `host-proxy-http-*`, `audit-proxy-http-failed`, `guest-runtime-state-stale`이 연쇄인지 확인 |
+| failure reasons | `host-proxy-http-*`, `recorder-ingress-http-failed`, `guest-runtime-state-stale`이 연쇄인지 확인 |
 
 증상이 `configure` 직후 VM stop 요청, guest runtime state stale, host proxy HTTP 실패 순서로 이어지면 Host proxy만 복구할 문제가 아닐 수 있습니다. VM shutdown 과정에서 guest service 또는 filesystem I/O가 아직 남아 있으면 디스크 오류가 드러나거나 악화될 수 있습니다.
 

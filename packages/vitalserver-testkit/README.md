@@ -148,6 +148,16 @@ Troubleshooting: update 직후 `testkit` container가 반복 재시작하고 로
 누락은 invalid contract로 실패해야 합니다. 예방 원칙은 optional migration을 필드 단위로 한정하고,
 missing, invalid, failed state를 같은 empty/default success로 합치지 않는 것입니다.
 
+Troubleshooting: 여러 virtual VRecorder session을 오래 실행할 때 TestKit API의 session은
+`running`이지만 `vitaldb-observer`가 일부 recorder를 `stale-recorder`로 보고하면, 먼저
+각 session의 recorder `connected`, `lastSendDataAt`, `messagesSent`와 VitalServer의
+`utime_<vrcode>` 갱신을 함께 비교합니다. 이 증상은 Socket.IO 관리 연결이 끊긴 뒤
+TestKit이 reconnect/`join_vr` 재등록을 하지 않거나, 끊긴 상태의 `send_data` emit 시도를
+성공처럼 세면 발생합니다. 수정 방향은 장기 streaming client에서 reconnect를 활성화하고
+reconnect 후 `join_vr`를 다시 보내며, disconnected 상태의 emit은 전송 성공으로 기록하지
+않는 것입니다. 예방 원칙은 TestKit 실행 상태와 VitalServer 관측 상태를 별도 SoT로 두고,
+연결 끊김을 messagesSent 증가나 empty error로 숨기지 않는 것입니다.
+
 ## Simulated Signal Scenario
 
 testkit은 simulated recorder data를 만들 때 시나리오 이름을 `RecorderSignalScenario`로
@@ -342,7 +352,7 @@ dev profile macOS Helper의 Test 탭은 Runtime Control browser console과 Testk
 ## 관련 문서
 
 - [문서 지도](../../docs/index.md): 문서 지도와 작성 기준
-- [Testkit 사용법](../../docs/testkit-usage.md): CLI 사용법과 결과 해석
-- [VitalServer 제품화 전략](../../docs/vitalserver-productization.md): 제품화 맥락
-- [Redis 데이터 구조](../../docs/redis-data-model.md): Redis key 구조와 relay 설계 메모
-- [Runtime observability model](../../docs/macos-runtime/observability.md): 관측 SoT와 Runtime Control API 노출 기준
+- [Testkit 사용법](../../docs/testkit/usage.md): CLI 사용법과 결과 해석
+- [VitalServer 제품화 전략](../../docs/product/productization.md): 제품화 맥락
+- [VitalServer recorder Redis key model](../../docs/recorder/redis-key-model.md): Redis key 구조와 relay 설계 메모
+- [Runtime observability model](../../docs/runtime/macos/observability.md): 관측 SoT와 Runtime Control API 노출 기준

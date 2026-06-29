@@ -32,7 +32,7 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
         XCTAssertFalse(document.testkitEnabled)
     }
 
-    func testDecodeRequiresExplicitAdvertisedURLs() {
+    func testDecodeMigratesLegacyAdvertisedURLs() throws {
         let json = """
         {
           "vitalserverHttpPort": 18080,
@@ -49,12 +49,13 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
         }
         """
 
-        XCTAssertThrowsError(
-            try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: Data(json.utf8))
-        )
+        let document = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: Data(json.utf8))
+
+        XCTAssertEqual(document.vitalServerURL, "http://vitaldb.tirosh.ai:8080/")
+        XCTAssertEqual(document.remoteConsoleURL, "")
     }
 
-    func testDecodeRejectsLegacyRuntimeConfigWithoutExplicitURLs() {
+    func testDecodeMigratesLegacyRuntimeConfigWithoutExplicitURLs() throws {
         let json = """
         {
           "vitalserverHttpPort": 18080,
@@ -71,9 +72,10 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
         }
         """
 
-        XCTAssertThrowsError(
-            try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: Data(json.utf8))
-        )
+        let document = try JSONDecoder().decode(GuestRuntimeConfigDocument.self, from: Data(json.utf8))
+
+        XCTAssertEqual(document.vitalServerURL, "http://vitaldb.tirosh.ai:8080/")
+        XCTAssertEqual(document.remoteConsoleURL, "")
     }
 
     func testRequiresExplicitGuestRuntimeConfigFields() {
@@ -120,6 +122,13 @@ final class GuestRuntimeConfigDocumentTests: XCTestCase {
         XCTAssertEqual(document.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(document.publicHost, "vitaldb.tirosh.ai")
         XCTAssertEqual(document.publicPort, 443)
+        XCTAssertEqual(document.recorderIngressSendDataMode, .spoolAndReplay)
+        XCTAssertEqual(document.recorderIngressSendDataReplayBatchSize, 1000)
+        XCTAssertEqual(document.recorderIngressSendDataReplayMaxMiBPerSecond, 20)
+        XCTAssertTrue(document.containerMemoryLimitsEnabled)
+        XCTAssertEqual(document.vitalServerContainerMemoryLimitMiB, 2048)
+        XCTAssertEqual(document.recorderIngressContainerMemoryLimitMiB, 410)
+        XCTAssertEqual(document.redisContainerMemoryLimitMiB, 3277)
         XCTAssertEqual(document.automaticBackupEnabled, true)
         XCTAssertEqual(document.backupScheduleTimes, ["03:15"])
         XCTAssertEqual(document.backupRetentionCount, 30)

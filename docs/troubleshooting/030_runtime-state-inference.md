@@ -45,7 +45,7 @@ Runtime 상태가 실제 상황과 다르게 보이거나, update 진행 상태�
 - Host proxy launchd plist에서 port를 읽지 못했는데 default port만 사용하고 config 문제를 숨깁니다.
 - Guest runtime-state 파일의 modification date를 읽지 못했는데 stale 상태만 표시하고 invalid 원인을 숨깁니다.
 - Runtime events JSONL 파일을 읽거나 decode하지 못했는데 빈 이벤트 목록처럼 보입니다.
-- VitalDB recorder observation이 없는데 audit-proxy connection 목록을 recorder 상태 요약으로 승격합니다.
+- VitalDB recorder observation이 없는데 recorder-ingress connection 목록을 recorder 상태 요약으로 승격합니다.
 - VitalDB recorder observation이 없는데 UI가 recorder/bed/anomaly 수를 `0`으로 표시합니다.
 - Host proxy listener scan이 실패했는데 listener 없음처럼 처리되어 port 충돌 진단 근거가 사라집니다.
 - Backup archive 크기 계산이 실패했는데 `Unknown` 크기로 표시되어 목록 조회 실패와 실제 unknown size가 섞입니다.
@@ -155,12 +155,12 @@ runtime-version read/parse failure -> missing version
 host proxy port read/parse failure -> default proxy port only
 guest runtime-state metadata read failure -> stale only
 runtime event JSONL read/decode failure -> empty event list only
-audit proxy status decode failure -> curl failure
+recorder ingress status decode failure -> curl failure
 update bundle manifest read/decode failure -> missing summary
 latest backup read failure -> no backups available
 log collection read/copy failure -> silent skip
 guest log collection read failure -> no guest logs
-audit-proxy recorder connections -> VitalDB recorder summary fallback
+recorder-ingress recorder connections -> VitalDB recorder summary fallback
 missing VitalDB recorder observation -> zero recorder metrics
 host proxy listener scan failure -> no proxy port failure reason
 backup size read failure -> unknown backup size
@@ -208,7 +208,7 @@ container log metadata read failure -> missing container log metadata
 33. Host proxy port reader는 configured port와 fallback port를 구분합니다. Fallback을 사용하면 `hostProxyConfigInvalid` failure reason을 health snapshot에 남깁니다.
 34. Guest runtime-state freshness reader는 stale과 metadata read failure를 구분합니다. Metadata read failure는 stale과 함께 `guestRuntimeStateInvalid`를 남깁니다.
 35. Runtime event JSONL reader는 loaded events와 read/decode issues를 함께 제공합니다. Invalid lines는 valid events와 분리해서 기록합니다.
-36. Audit proxy status probe는 request failure와 invalid response를 구분합니다. Curl 실패는 `failed`, 응답 contract decode 실패는 `invalid-response`로 노출합니다.
+36. Recorder ingress status probe는 request failure와 invalid response를 구분합니다. Curl 실패는 `failed`, 응답 contract decode 실패는 `invalid-response`로 노출합니다.
 37. Update bundle summary는 typed manifest contract를 사용합니다. Missing manifest와 invalid manifest를 같은 메시지로 합치지 않습니다.
 38. Latest backup reader는 목록 read failure와 empty backup list를 구분합니다. Rollback preflight는 read failure를 `no backups available`로 바꾸지 않습니다.
 39. Log collection은 missing source와 read/copy failure를 구분합니다. Export logs는 collection failure를 숨기지 않고 호출자에게 전달합니다.
@@ -311,7 +311,7 @@ container log metadata read failure -> missing container log metadata
 - 2026-05-30: Host proxy port reader가 configured port와 fallback port를 분리했습니다. Launchd plist port를 읽지 못하면 default port를 쓰더라도 `hostProxyConfigInvalid`를 health failure reason으로 남깁니다.
 - 2026-05-30: Guest runtime-state freshness reader가 stale과 metadata read failure를 분리했습니다. Modification date를 읽지 못하면 `guestRuntimeStateInvalid`를 함께 남깁니다.
 - 2026-05-30: Runtime event JSONL reader가 loaded events와 read/decode issues를 분리했습니다. Legacy `all()`은 events만 반환하지만 `allResult()`로 문제 원인을 확인할 수 있습니다.
-- 2026-05-30: Audit proxy status 응답 decode 실패를 curl 실패와 섞지 않고 `invalid-response`로 노출합니다.
+- 2026-05-30: Recorder ingress status 응답 decode 실패를 curl 실패와 섞지 않고 `invalid-response`로 노출합니다.
 - 2026-05-30: Update bundle summary가 `[String: Any]` 임의 파싱 대신 `UpdateBundleManifest` contract를 사용하고, missing/invalid manifest를 구분합니다.
 - 2026-05-30: Latest backup 조회가 backup directory read failure를 empty list로 숨기지 않도록 변경했습니다. Status convenience path는 실패를 로그에 남기고, rollback preflight는 오류를 그대로 받습니다.
 - 2026-05-30: Runtime log collection이 존재하는 log source의 read/copy/size 실패를 조용히 skip하지 않고 throw하도록 변경했습니다. UI log preview는 실패 메시지를 표시하고, export logs는 실패를 호출자에게 전달합니다.

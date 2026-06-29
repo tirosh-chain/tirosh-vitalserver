@@ -1,7 +1,6 @@
 # 문서 지도
 
-이 디렉터리는 VitalServer 제품화 작업에서 확인한 사실, 결정, 운영 기준을 정리합니다.
-처음 보는 사람은 root [README](https://github.com/tirosh-chain/tirosh-vitalserver#readme)를 먼저 읽고, 아래 지도에서 필요한 문서군으로 이동합니다.
+이 디렉터리는 VitalServer 제품화 작업에서 확인한 사실, 결정, 운영 기준을 정리합니다. 처음 보는 사람은 root [README](https://github.com/tirosh-chain/tirosh-vitalserver#readme)를 먼저 읽고, 아래 지도에서 필요한 문서군으로 이동합니다.
 
 ## 빠른 경로
 
@@ -11,10 +10,11 @@
 | Vital Server Helper 공개/운영 문서 보기 | [Release Overview](../site-docs/release/index.md) |
 | Vital Server Helper 오픈소스 개발 문서 보기 | [Dev Overview](../site-docs/dev/index.md) |
 | Vital Server Helper release/dev 문서 작성 기준 보기 | [Vital Server Helper Release/Dev Documentation Plan](product/release-dev-documentation-plan.md) |
-| VRecorder가 VitalServer에 어떻게 붙는지 보기 | [Vital Recorder](recorder/vrecorder.md) |
-| command audit event 계약 확인하기 | [VitalServer command audit](recorder/command-audit.md) |
+| VRecorder가 VitalServer에 어떻게 붙는지 보기 | [Vital Recorder integration contract](recorder/vital-recorder-integration.md) |
+| command audit event 계약 확인하기 | [Recorder ingress audit contract](recorder/ingress-audit-contract.md) |
+| recorder `send_data` flow control 계약 확인하기 | [Recorder ingress send_data flow control contract](recorder/send-data-flow-control.md) |
 | testkit으로 검증 실행하기 | [Testkit 사용법](testkit/usage.md) |
-| Redis key와 relay 근거 보기 | [Redis 데이터 구조](recorder/redis-data-model.md) |
+| Redis key와 relay 근거 보기 | [VitalServer recorder Redis key model](recorder/redis-key-model.md) |
 | Mac mini VM runtime/package 이해하기 | [VitalServer macOS Runtime](runtime/macos/index.md) |
 | runtime operation 상태 전이 검증 기준 보기 | [Runtime State Machine Traceability](runtime/macos/state-machine-traceability.md) |
 | Runtime Control PWA 구현 기준 보기 | [Runtime Control PWA](pwa/index.md) |
@@ -40,11 +40,12 @@
 
 | 문서 | 역할 |
 |---|---|
-| [Vital Recorder](recorder/vrecorder.md) | Socket.IO 접속 흐름, VRecorder 식별 기준, Web Monitoring 상태 표시 기준 |
-| [VitalServer command audit](recorder/command-audit.md) | audit proxy 기반 `join_vr`, `send_data`, `req_cmd`, dispatch event 계약 |
-| [Redis 데이터 구조](recorder/redis-data-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 메모 |
+| [Vital Recorder integration contract](recorder/vital-recorder-integration.md) | Socket.IO 접속 흐름, VRecorder 식별 기준, Web Monitoring 상태 표시 기준 |
+| [Recorder ingress audit contract](recorder/ingress-audit-contract.md) | recorder ingress 기반 `join_vr`, `send_data`, `req_cmd`, dispatch event 계약 |
+| [Recorder ingress send_data flow control contract](recorder/send-data-flow-control.md) | upstream 수정 없이 `send_data` 유입을 제어하고 저장, 재생, backpressure 상태를 노출하는 계약 |
+| [VitalServer recorder Redis key model](recorder/redis-key-model.md) | VitalServer가 Redis에 저장하는 key 구조와 relay 설계 메모 |
 | [OpenAPI 문서](api/vitalserver.openapi.yaml) | upstream VitalServer route에서 추출한 Swagger/OpenAPI spec |
-| [Audit Proxy OpenAPI](api/audit-proxy.openapi.yaml) | audit proxy sidecar 운영 endpoint spec |
+| [Recorder Ingress OpenAPI](api/recorder-ingress.openapi.yaml) | recorder ingress sidecar 운영 endpoint spec |
 
 ### Testkit
 
@@ -96,9 +97,9 @@ VM runtime 문서는 [VitalServer macOS Runtime](runtime/macos/index.md)를 진�
 
 1. root [README](https://github.com/tirosh-chain/tirosh-vitalserver#readme)
 2. [VitalServer 제품화 전략](product/productization.md)
-3. [Vital Recorder](recorder/vrecorder.md)
+3. [Vital Recorder integration contract](recorder/vital-recorder-integration.md)
 4. [Testkit 사용법](testkit/usage.md)
-5. [Redis 데이터 구조](recorder/redis-data-model.md)
+5. [VitalServer recorder Redis key model](recorder/redis-key-model.md)
 6. [VitalServer macOS Runtime](runtime/macos/index.md)
 7. [Branch 운영 기준](repository/branching.md)
 
@@ -108,13 +109,12 @@ Swagger UI로 API를 확인할 때는 root에서 아래 명령을 실행합니�
 make swagger/up
 ```
 
-이후 `http://localhost:8082`에서 Swagger UI를 열면 VitalServer, Runtime Control API, Audit Proxy API
-spec을 선택해서 볼 수 있습니다. VitalServer spec은 [OpenAPI 문서](api/vitalserver.openapi.yaml)로 관리합니다.
+이후 `http://localhost:8082`에서 Swagger UI를 열면 VitalServer, Runtime Control API, Recorder Ingress API spec을 선택해서 볼 수 있습니다. VitalServer spec은 [OpenAPI 문서](api/vitalserver.openapi.yaml)로 관리합니다.
 
 ## 작성 기준
 
 - 문서는 가능한 한 한글로 작성합니다.
 - CLI, API, Socket.IO, Redis, Docker, Compose처럼 개발자에게 익숙한 용어는 원어를 유지합니다.
 - 실행 방법은 사용법 문서에 모으고, 전략 문서에는 판단 기준과 결정 배경을 남깁니다.
-- Redis key와 relay처럼 구현의 근거가 되는 사실은 [Redis 데이터 구조](recorder/redis-data-model.md)에 모읍니다.
+- Redis key와 relay처럼 구현의 근거가 되는 사실은 [VitalServer recorder Redis key model](recorder/redis-key-model.md)에 모읍니다.
 - VM package/runtime 세부 사항은 `docs/runtime/macos/` 문서군에 모읍니다.

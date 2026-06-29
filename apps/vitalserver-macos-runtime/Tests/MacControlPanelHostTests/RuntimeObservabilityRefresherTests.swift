@@ -113,8 +113,8 @@ final class RuntimeObservabilityRefresherTests: XCTestCase {
 
     private func runtimeContainerObservation(http: String) -> RuntimeContainerObservation {
         RuntimeContainerObservation(
-            auditProxyHTTP: http,
-            auditProxyStatus: nil,
+            recorderIngressHTTP: http,
+            recorderIngressStatus: nil,
             containerLogsPresent: false,
             containerLogsBytes: nil
         )

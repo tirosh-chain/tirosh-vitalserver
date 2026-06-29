@@ -397,6 +397,10 @@ private struct ChaosActionEnvironment: RuntimeActionEnvironment {
         URL(fileURLWithPath: "/tmp/admin-password")
     }
 
+    func writeRecorderIngressSettingsFile(_ settings: RuntimeRecorderIngressSettings) throws -> URL {
+        URL(fileURLWithPath: "/tmp/recorder-ingress-settings.json")
+    }
+
     func writeRedisRelaySettingsFile(_ settings: RuntimeRedisRelaySettings) throws -> URL {
         URL(fileURLWithPath: "/tmp/redis-relay-settings.json")
     }

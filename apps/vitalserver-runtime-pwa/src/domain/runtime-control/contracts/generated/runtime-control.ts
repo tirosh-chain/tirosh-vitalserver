@@ -999,7 +999,7 @@ export interface components {
         };
         /** @enum {string} */
         RuntimeVitalDBObservationReadState: "loaded" | "unavailable" | "failed";
-        /** @description PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from audit-proxy connection status when available. */
+        /** @description PWA-friendly Vital Recorder summary derived from VitalDB observation. activeConnections is copied from recorder-ingress connection status when available. */
         RuntimeVitalRecorderSummary: {
             source: components["schemas"]["RuntimeVitalRecorderSummarySource"];
             activeConnections?: number;
@@ -1112,7 +1112,7 @@ export interface components {
             presentInLatestObservation: boolean;
             /** @description Chronological activity samples for the VRecorder, derived from VitalDB observer snapshots. */
             activityTimeline?: components["schemas"]["RuntimeVitalRecorderActivityPoint"][];
-            /** @description Recorder-specific Redis ip_<vrcode> synchronization state reported by the audit proxy. */
+            /** @description Recorder-specific Redis ip_<vrcode> synchronization state reported by the recorder ingress. */
             redisIPSync?: components["schemas"]["RuntimeRecorderRedisIPSyncObservation"] | null;
         };
         /** @enum {string} */
@@ -1314,7 +1314,7 @@ export interface components {
             vitalDBObservation?: components["schemas"]["VitalDBObservationDocument"] | null;
         };
         /** @enum {string} */
-        RuntimeEventType: "status-changed" | "progress-updated" | "health-observed" | "recovery-triggered" | "recovery-completed" | "recovery-suppressed" | "recovery-deferred" | "domain-error-observed" | "vm-error-observed" | "container-observed" | "audit-proxy-observed" | "vitaldb-observed" | "vitaldb-observer-unhealthy" | "vitaldb-anomaly-detected" | "watchdog-skipped" | "recovery-planned" | "service-restart-dispatched" | "observability-store-failed" | "runtime-status-observed" | "guest-state-observed" | "runtime-command-started" | "runtime-command-completed" | "runtime-command-failed";
+        RuntimeEventType: "status-changed" | "progress-updated" | "health-observed" | "recovery-triggered" | "recovery-completed" | "recovery-suppressed" | "recovery-deferred" | "domain-error-observed" | "vm-error-observed" | "container-observed" | "recorder-ingress-observed" | "vitaldb-observed" | "vitaldb-observer-unhealthy" | "vitaldb-anomaly-detected" | "watchdog-skipped" | "recovery-planned" | "service-restart-dispatched" | "observability-store-failed" | "runtime-status-observed" | "guest-state-observed" | "runtime-command-started" | "runtime-command-completed" | "runtime-command-failed";
         /**
          * @description Observed VM lifecycle state. Unknown values are preserved by clients.
          * @enum {string|null}
@@ -1331,21 +1331,30 @@ export interface components {
             /** @enum {string} */
             recoveryAction?: "installRuntime" | "restartVMService" | "restartProxyService" | "restartWatchdogService" | "waitForGuest" | "restartGuestAgent" | "repairGuestBootstrap" | "restartContainerServices" | "repairProxyConfiguration" | "freeProxyPort" | "inspectVitalDBObservation" | "backupAndRecreateVM" | "fixConfiguration" | "freeHostResources" | "inspectLogs";
         };
+        /** @enum {string} */
+        RuntimeRecorderIngressStatusReadState: "notRead" | "loaded" | "skippedMissingProxyPort" | "commandFailed" | "emptyResponse" | "outputInvalid" | "invalidResponse" | "readFailed";
+        /** @enum {string} */
+        RuntimeFileMetadataReadState: "notRead" | "loaded" | "readFailed";
+        /** @enum {string} */
+        RuntimeContainerServicesReadState: "loaded" | "missing" | "invalid" | "stale" | "read-failed";
         RuntimeContainerObservation: {
-            auditProxyHTTP: string;
-            auditProxyStatus?: components["schemas"]["RuntimeAuditProxyStatusDocument"] | null;
-            auditProxyStatusReadError?: string | null;
+            recorderIngressHTTP: string;
+            recorderIngressStatus?: components["schemas"]["RuntimeRecorderIngressStatusDocument"] | null;
+            recorderIngressStatusReadState: components["schemas"]["RuntimeRecorderIngressStatusReadState"];
+            recorderIngressStatusReadError?: string | null;
             runtimeStateUpdatedAt?: string | null;
             runtimeStateFileUpdatedAt?: string | null;
+            runtimeStateFileMetadataReadState: components["schemas"]["RuntimeFileMetadataReadState"];
             runtimeStateFileMetadataError?: string | null;
             containerLogsPresent: boolean;
             containerLogsBytes?: number | null;
             containerLogsUpdatedAt?: string | null;
             containerLogsMetadataError?: string | null;
             composeServices: components["schemas"]["RuntimeContainerServiceObservation"][];
+            composeServicesReadState: components["schemas"]["RuntimeContainerServicesReadState"];
             composeServicesReadError?: string | null;
         };
-        RuntimeAuditProxyStatusDocument: {
+        RuntimeRecorderIngressStatusDocument: {
             startedAt?: string | null;
             uptimeSeconds?: number | null;
             activeWebSockets: number;
@@ -1360,6 +1369,110 @@ export interface components {
             redisIpWriteFailures: number;
             redisIpVerifyFailures: number;
             redisIpVerifyMismatches: number;
+            throughput?: components["schemas"]["RuntimeRecorderIngressThroughputStatus"];
+            rawArchive?: components["schemas"]["RuntimeRecorderIngressRawArchiveStatus"];
+            spool?: components["schemas"]["RuntimeRecorderIngressSpoolStatus"];
+            replay?: components["schemas"]["RuntimeRecorderIngressReplayStatus"];
+        };
+        RuntimeRecorderIngressThroughputStatus: {
+            windowSeconds?: number | null;
+            observedBytesPerSecond?: number | null;
+            spooledBytesPerSecond?: number | null;
+            replayedBytesPerSecond?: number | null;
+            queueGrowthBytesPerSecond?: number | null;
+        };
+        RuntimeRecorderIngressFailureObservation: {
+            reason?: string | null;
+            message?: string | null;
+            occurredAt?: string | null;
+        };
+        RuntimeRecorderIngressRawArchiveStatus: {
+            status?: string | null;
+            path?: string | null;
+            persistedEvents?: number | null;
+            persistedBytes?: number | null;
+            writeFailures?: number | null;
+            lastArchivedAt?: string | null;
+            lastArchiveId?: string | null;
+            lastOffset?: number | null;
+            lastFailure?: components["schemas"]["RuntimeRecorderIngressFailureObservation"];
+            autoExport?: components["schemas"]["RuntimeRecorderIngressRawArchiveAutoExportStatus"];
+        };
+        RuntimeRecorderIngressRawArchiveAutoExportStatus: {
+            status?: string | null;
+            finalizable?: boolean | null;
+            reasons?: string[];
+            archivePath?: string | null;
+            archiveCursor?: number | null;
+            cursorStableForMs?: number | null;
+            lastDecisionAt?: string | null;
+            activeJob?: components["schemas"]["RuntimeRecorderIngressRawArchiveAutoExportJob"];
+            uploadedJobs?: number | null;
+            failedJobs?: number | null;
+            lastResult?: {
+                [key: string]: unknown;
+            } | null;
+            lastFailure?: components["schemas"]["RuntimeRecorderIngressFailureObservation"];
+        };
+        RuntimeRecorderIngressRawArchiveAutoExportJob: {
+            jobId?: string | null;
+            archivePath?: string | null;
+            archiveCursor?: number | null;
+            state?: string | null;
+            attempts?: number | null;
+            maxAttempts?: number | null;
+            createdAt?: string | null;
+            updatedAt?: string | null;
+            startedAt?: string | null;
+            completedAt?: string | null;
+            nextAttemptAt?: string | null;
+            lastFailure?: components["schemas"]["RuntimeRecorderIngressFailureObservation"];
+        };
+        RuntimeRecorderIngressSpoolStatus: {
+            mode?: string | null;
+            status?: string | null;
+            storage?: string | null;
+            acceptedEvents?: number | null;
+            spooledEvents?: number | null;
+            rejectedEvents?: number | null;
+            writeFailures?: number | null;
+            pendingItems?: number | null;
+            pendingBytes?: number | null;
+            oldestPendingAgeSeconds?: number | null;
+            lastAcceptedAt?: string | null;
+            lastSpooledAt?: string | null;
+            lastFailure?: components["schemas"]["RuntimeRecorderIngressFailureObservation"];
+        };
+        RuntimeRecorderIngressReplayStatus: {
+            status?: string | null;
+            pendingItems?: number | null;
+            inFlightItems?: number | null;
+            replayedEvents?: number | null;
+            retryableFailures?: number | null;
+            deadLetteredEvents?: number | null;
+            replayLagSeconds?: number | null;
+            maxBytesPerSecond?: number | null;
+            configuredMaxBytesPerSecond?: number | null;
+            adaptive?: components["schemas"]["RuntimeRecorderIngressReplayAdaptiveStatus"];
+            lastReplayAt?: string | null;
+            lastFailure?: components["schemas"]["RuntimeRecorderIngressFailureObservation"];
+        };
+        RuntimeRecorderIngressReplayAdaptiveStatus: {
+            enabled?: boolean | null;
+            minBytesPerSecond?: number | null;
+            maxBytesPerSecond?: number | null;
+            currentMaxBytesPerSecond?: number | null;
+            minItemsPerTick?: number | null;
+            maxItemsPerTick?: number | null;
+            currentItemsPerTick?: number | null;
+            minConcurrency?: number | null;
+            maxConcurrency?: number | null;
+            currentConcurrency?: number | null;
+            lastDecision?: string | null;
+            lastReason?: string | null;
+            lastChangedAt?: string | null;
+            /** @enum {string|null} */
+            memoryGuardStatus?: "healthy" | "warm" | "hot" | "critical" | "missing" | "stale" | "invalid" | "failed" | "unavailable" | "disabled" | null;
         };
         RuntimeRecorderConnectionObservation: {
             vrcode: string;
@@ -1371,10 +1484,17 @@ export interface components {
         };
         RuntimeContainerServiceObservation: {
             service: string;
+            containerID?: string | null;
             name?: string | null;
             state?: string | null;
             health?: string | null;
             exitCode?: number | null;
+            error?: string | null;
+            finishedAt?: string | null;
+            memoryUsedBytes?: number | null;
+            memoryLimitBytes?: number | null;
+            oomKilled?: boolean | null;
+            restartCount?: number | null;
             startedAt?: string | null;
             uptimeSeconds?: number | null;
         };
@@ -1404,6 +1524,20 @@ export interface components {
             remoteConsoleURL: string;
             publicHost: string;
             publicPort: number;
+            /** @enum {string} */
+            recorderIngressSendDataMode: "passthrough" | "mirror_spool" | "spool_only" | "spool_and_replay";
+            recorderIngressSendDataReplayBatchSize: number;
+            /** @description Maximum recorder send_data replay throughput in MiB/s. */
+            recorderIngressSendDataReplayMaxMiBPerSecond: number;
+            recorderIngress: components["schemas"]["RuntimeRecorderIngressSettings"];
+            /** @description Whether Docker hard memory limits are applied to selected runtime containers. */
+            containerMemoryLimitsEnabled: boolean;
+            /** @description VitalServer container hard memory limit in MiB when container memory limits are enabled. */
+            vitalServerContainerMemoryLimitMiB: number;
+            /** @description Recorder ingress container hard memory limit in MiB when container memory limits are enabled. */
+            recorderIngressContainerMemoryLimitMiB: number;
+            /** @description Redis container hard memory limit in MiB when container memory limits are enabled. */
+            redisContainerMemoryLimitMiB: number;
             adminPassword: string;
             changeAdminPassword: boolean;
             startOnBoot: boolean;
@@ -1415,7 +1549,48 @@ export interface components {
             backupRetentionCount: number;
             logArchiveRetentionDays: number;
             logArchiveMaximumGiB: number;
+            redisRelay: components["schemas"]["RuntimeRedisRelaySettings"];
             restartAfterSave: boolean;
+        };
+        RuntimeRecorderIngressSettings: {
+            sendDataMaxPendingItems: number;
+            sendDataMaxPendingMiB: number;
+            sendDataMaxPayloadMiB: number;
+            sendDataReplayedMaxItems: number;
+            sendDataRealtimeMaxPendingItems: number;
+            sendDataReplayIntervalMs: number;
+            sendDataReplayMaxAttempts: number;
+            sendDataReplayTargetTimeoutMs: number;
+            sendDataReplayAdaptiveMinConcurrency: number;
+            sendDataReplayAdaptiveMaxConcurrency: number;
+            rawArchiveEnabled: boolean;
+            rawArchiveMaxFileMiB: number;
+            rawArchiveMaxFiles: number;
+            rawArchiveAutoExportEnabled: boolean;
+            rawArchiveAutoExportQuietSeconds: number;
+            rawArchiveAutoExportScanIntervalSeconds: number;
+            rawArchiveAutoExportCursorStableSeconds: number;
+            rawArchiveAutoExportRetryDelaySeconds: number;
+            rawArchiveAutoExportMaxAttempts: number;
+            rawArchiveAutoExportRequestTimeoutSeconds: number;
+        };
+        /** @enum {string} */
+        RuntimeRedisRelayScope: "waveform_trend_only" | "vital_reconstruction";
+        RuntimeRedisRelayTarget: {
+            url: string;
+            username: string;
+            password: string;
+            clearPassword: boolean;
+            passwordConfigured: boolean;
+            tls: boolean;
+        };
+        RuntimeRedisRelaySettings: {
+            enabled: boolean;
+            target: components["schemas"]["RuntimeRedisRelayTarget"];
+            scope: components["schemas"]["RuntimeRedisRelayScope"];
+            includeRecorderNetworkContext: boolean;
+            intervalSeconds: number;
+            scanCount: number;
         };
         RuntimeSettingsReadIssue: {
             source: string;
@@ -1529,7 +1704,7 @@ export interface components {
             stale: boolean;
             activity?: components["schemas"]["VitalDBRecorderActivityObservation"] | null;
         };
-        /** @description Recent VRecorder send_data activity summarized from the audit proxy Redis list. */
+        /** @description Recent VRecorder send_data activity summarized from the recorder ingress Redis list. */
         VitalDBRecorderActivityObservation: {
             windowSeconds: number;
             messageCount: number;

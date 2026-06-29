@@ -55,13 +55,82 @@ struct SharedDirectoryDocument: Decodable {
 }
 
 struct GuestRuntimeSettings: Decodable {
+    enum CodingKeys: String, CodingKey {
+        case vitalServerURL
+        case remoteConsoleURL
+        case publicHost
+        case publicPort
+        case recorderIngressSendDataMode
+        case recorderIngressSendDataReplayBatchSize
+        case recorderIngressSendDataReplayMaxMiBPerSecond
+        case recorderIngress
+        case containerMemoryLimitsEnabled
+        case vitalServerContainerMemoryLimitMiB
+        case recorderIngressContainerMemoryLimitMiB
+        case redisContainerMemoryLimitMiB
+        case automaticBackupEnabled
+        case backupScheduleTimes
+        case backupRetentionCount
+    }
+
     let vitalServerURL: String
     let remoteConsoleURL: String
     let publicHost: String
     let publicPort: Int
+    let recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
+    let recorderIngressSendDataReplayBatchSize: Int
+    let recorderIngressSendDataReplayMaxMiBPerSecond: Int
+    let recorderIngress: RuntimeRecorderIngressSettings
+    let containerMemoryLimitsEnabled: Bool
+    let vitalServerContainerMemoryLimitMiB: Int
+    let recorderIngressContainerMemoryLimitMiB: Int
+    let redisContainerMemoryLimitMiB: Int
     let automaticBackupEnabled: Bool
     let backupScheduleTimes: [String]
     let backupRetentionCount: Int
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vitalServerURL = try container.decode(String.self, forKey: .vitalServerURL)
+        remoteConsoleURL = try container.decode(String.self, forKey: .remoteConsoleURL)
+        publicHost = try container.decode(String.self, forKey: .publicHost)
+        publicPort = try container.decode(Int.self, forKey: .publicPort)
+        recorderIngressSendDataMode = try container.decodeIfPresent(
+            RuntimeRecorderIngressSendDataMode.self,
+            forKey: .recorderIngressSendDataMode
+        ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataMode
+        recorderIngressSendDataReplayBatchSize = try container.decodeIfPresent(
+            Int.self,
+            forKey: .recorderIngressSendDataReplayBatchSize
+        ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize
+        recorderIngressSendDataReplayMaxMiBPerSecond = try container.decodeIfPresent(
+            Int.self,
+            forKey: .recorderIngressSendDataReplayMaxMiBPerSecond
+        ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataReplayMaxMiBPerSecond
+        recorderIngress = try container.decodeIfPresent(
+            RuntimeRecorderIngressSettings.self,
+            forKey: .recorderIngress
+        ) ?? RuntimeRecorderIngressSettings()
+        containerMemoryLimitsEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .containerMemoryLimitsEnabled
+        ) ?? RuntimeSettingsInitialValues.containerMemoryLimitsEnabled
+        vitalServerContainerMemoryLimitMiB = try container.decodeIfPresent(
+            Int.self,
+            forKey: .vitalServerContainerMemoryLimitMiB
+        ) ?? RuntimeSettingsInitialValues.vitalServerContainerMemoryLimitMiB
+        recorderIngressContainerMemoryLimitMiB = try container.decodeIfPresent(
+            Int.self,
+            forKey: .recorderIngressContainerMemoryLimitMiB
+        ) ?? RuntimeSettingsInitialValues.recorderIngressContainerMemoryLimitMiB
+        redisContainerMemoryLimitMiB = try container.decodeIfPresent(
+            Int.self,
+            forKey: .redisContainerMemoryLimitMiB
+        ) ?? RuntimeSettingsInitialValues.redisContainerMemoryLimitMiB
+        automaticBackupEnabled = try container.decode(Bool.self, forKey: .automaticBackupEnabled)
+        backupScheduleTimes = try container.decode([String].self, forKey: .backupScheduleTimes)
+        backupRetentionCount = try container.decode(Int.self, forKey: .backupRetentionCount)
+    }
 
     static func loadResult(
         path: String,
@@ -90,6 +159,14 @@ struct GuestRuntimeSettings: Decodable {
             remoteConsoleURL: remoteConsoleURL,
             publicHost: publicHost,
             publicPort: publicPort,
+            recorderIngressSendDataMode: recorderIngressSendDataMode,
+            recorderIngressSendDataReplayBatchSize: recorderIngressSendDataReplayBatchSize,
+            recorderIngressSendDataReplayMaxMiBPerSecond: recorderIngressSendDataReplayMaxMiBPerSecond,
+            recorderIngress: recorderIngress,
+            containerMemoryLimitsEnabled: containerMemoryLimitsEnabled,
+            vitalServerContainerMemoryLimitMiB: vitalServerContainerMemoryLimitMiB,
+            recorderIngressContainerMemoryLimitMiB: recorderIngressContainerMemoryLimitMiB,
+            redisContainerMemoryLimitMiB: redisContainerMemoryLimitMiB,
             automaticBackupEnabled: automaticBackupEnabled,
             backupScheduleTimes: backupScheduleTimes,
             backupRetentionCount: backupRetentionCount

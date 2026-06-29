@@ -65,7 +65,7 @@ PWA / Helper app
               -> Linux guest services
                   -> Vital Server wrapper
                   -> Redis
-                  -> Audit Proxy
+                  -> Recorder Ingress
                   -> Recorder Observer
                   -> Testkit API
 ```
@@ -78,7 +78,7 @@ PWA / Helper app
 | Runtime Control API  | 화면이 runtime 상태와 명령을 같은 방식으로 다루게 함             |
 | Host runtime         | VM, proxy, 파일, 권한, update, recovery를 관리                   |
 | VM                   | VitalServer 주변 service가 같은 Linux 환경에서 실행되게 함       |
-| Linux guest services | Redis, observer, audit proxy, testkit, Vital Server wrapper 실행 |
+| Linux guest services | Redis, observer, recorder ingress, testkit, Vital Server wrapper 실행 |
 
 각 구성 요소는 자기 일이 아닌 상태를 추측하지 않습니다. 예를 들어 화면은 recorder 상태를 직접 만들지 않고, API가 제공한 상태를 표시합니다. Host도 Guest 내부 상태를 로그나 파일명으로 짐작하지 않고, Guest가 제공한 상태 문서를 읽습니다.
 

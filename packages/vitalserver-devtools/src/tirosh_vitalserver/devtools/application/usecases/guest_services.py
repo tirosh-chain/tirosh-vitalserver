@@ -109,6 +109,7 @@ def stage_guest_deployment(
         config=deploy_config,
         docker_bundle=docker_bundle,
         optional_docker_bundle=optional_docker_bundle,
+        include_optional=optional_docker_bundle is not None,
     )
     stage_guest_deploy(plan)
     ubuntu_config = load_ubuntu_image_config(config)

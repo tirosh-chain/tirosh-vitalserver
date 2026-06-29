@@ -7,8 +7,7 @@
 
 ## Symptoms
 
-`make devtools/golden-rootfs/compile`, `make dist/dmg/dev/compile`, 또는
-`make dist/dmg/dev` 중 golden rootfs 준비가 불안정하게 실패합니다. 대표 증상은 아래처럼 보입니다.
+`make devtools/golden-rootfs/compile`, `make dist/dmg/dev/compile`, 또는 `make dist/dmg/dev` 중 golden rootfs 준비가 불안정하게 실패합니다. 대표 증상은 아래처럼 보입니다.
 
 ```text
 error: timed out waiting for .../.tmp/vitalserver-vm-golden/data/run/rootfs-ready
@@ -28,10 +27,7 @@ error: rootfs runtime manifest is missing; rebuild the golden rootfs with Docker
 E: Release file for http://ports.ubuntu.com/ubuntu-ports/dists/noble-updates/InRelease is not valid yet
 ```
 
-더 위험한 변형은 이전 성공 run의 `rootfs-ready` marker나
-`rootfs-runtime-manifest.json`이 남아 있는 상태입니다. 새 VM 준비가 실패했는데 Host/devtools가
-이전 marker 또는 manifest를 proof로 오해하면, 실패한 rootfs가 통과했거나 기존
-`rootfs-base.raw.gz`를 새 산출물처럼 착각할 수 있습니다.
+더 위험한 변형은 이전 성공 run의 `rootfs-ready` marker나 `rootfs-runtime-manifest.json`이 남아 있는 상태입니다. 새 VM 준비가 실패했는데 Host/devtools가 이전 marker 또는 manifest를 proof로 오해하면, 실패한 rootfs가 통과했거나 기존 `rootfs-base.raw.gz`를 새 산출물처럼 착각할 수 있습니다.
 
 정상은 golden rootfs 준비의 현재 run이 아래 proof를 모두 새로 제공하는 것입니다.
 
@@ -56,8 +52,7 @@ E: Release file for http://ports.ubuntu.com/ubuntu-ports/dists/noble-updates/InR
 
 ## Cause
 
-Golden rootfs pipeline에서 `rootfs-ready` marker, manifest, launcher log, VM lifecycle, VM process,
-compressed rootfs output이 같은 run의 proof인지 명시적으로 묶이지 않으면 stale proof 문제가 생깁니다.
+Golden rootfs pipeline에서 `rootfs-ready` marker, manifest, launcher log, VM lifecycle, VM process, compressed rootfs output이 같은 run의 proof인지 명시적으로 묶이지 않으면 stale proof 문제가 생깁니다.
 
 특히 아래 상태는 모두 다른 의미입니다.
 
@@ -76,9 +71,7 @@ compressed rootfs output이 같은 run의 proof인지 명시적으로 묶이지 
 - VM launcher process still running
 - previous `rootfs-base.raw.gz` still present
 
-이 상태들을 단순히 “없으면 기다림”, “있으면 성공”, “output이 있으면 재사용”으로 처리하면
-AGENTS.md의 state/fallback boundary를 위반합니다. Rootfs 준비 proof는 추정하면 안 되고,
-현재 run owner가 명시적으로 제공해야 합니다.
+이 상태들을 단순히 “없으면 기다림”, “있으면 성공”, “output이 있으면 재사용”으로 처리하면 AGENTS.md의 state/fallback boundary를 위반합니다. Rootfs 준비 proof는 추정하면 안 되고, 현재 run owner가 명시적으로 제공해야 합니다.
 
 ## Checks
 
@@ -111,38 +104,16 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 - `apt.snapshot`이 manifest의 `ubuntu.aptSnapshot`과 다르면 proof가 아닙니다.
 - `rootfs-failure.json`이 현재 runId로 남아 있으면 Guest가 rootfs 준비를 명시 실패한 것입니다.
 - launcher log에 kernel panic/Oops/RCU stall, read-only filesystem, invalid ELF, 반복 I/O error, signal ILL/userspace crash/systemd freeze가 있으면 timeout까지 기다리지 말고 terminal guest failure로 봅니다.
-- launcher log에 `EXT4-fs error`, `Aborting journal`, `checksum invalid`가 있으면
-  `Remounting filesystem read-only`보다 앞선 원인 신호로 봅니다.
-- `docker.service` start 실패 직전에 `EXT4-fs error ... checksum invalid`와
-  `Remounting filesystem read-only`가 나오면 Docker daemon failure로 축소하지 않습니다.
-  mutable root disk attachment/write synchronization 문제로 분류합니다.
-- apt log에 `Release file ... is not valid yet`가 있으면 apt repository 문제가 아니라 golden rootfs
-  guest clock이 compile input으로 고정되지 않은 상태를 먼저 의심합니다. `rootfs-input.json`에
-  `guestClockUtc`가 있고, guest bootstrap이 `apt-get update` 전에 `guest-clock` stage를 통과했는지
-  확인합니다.
-- launcher log에서 `dpkg-deb` 또는 `tar`가 반복 `Segmentation fault`를 내고 뒤이어
-  `Illegal instruction`이 보이면 cloud-init 자체 오류로 축소하지 않습니다. Guest userspace가
-  package unpack 단계에서 불안정해진 것이므로 build VM resource/device policy를 먼저 봅니다.
-- panic stack에 `hwrng`, `virtio_read`, `virtio_rng`가 함께 보이면 Virtualization.framework entropy
-  device가 guest kernel panic을 유발했을 가능성을 우선 검토합니다.
-- panic stack에 `Undefined instruction`과 `seccomp_run_filters`가 함께 보이면 Docker/rootfs smoke
-  중 seccomp kernel path가 무너진 것으로 분류합니다. 이 경우 container image architecture mismatch로
-  축소하지 않습니다.
-- `docker-image-load`가 passed 된 뒤 `docker-smoke` 시작 직후
-  `tirosh-vitalserver-rootfs-smoke`가 `Illegal instruction`으로 죽고 kernel stack에
-  `seccomp_run_filters`가 보이면 Docker image bundle 또는 load 단계 문제가 아닙니다. Apple
-  Virtualization.framework guest kernel에서 container seccomp path가 terminal failure를 만든
-  것입니다.
-- panic process가 `systemd-journal`, `systemd-network`, `systemd-resolve`처럼 Docker container가
-  아닌 기본 systemd 서비스여도 같은 분류입니다. 이 경우 container `security_opt`만으로는
-  충분하지 않고 guest kernel command line의 `seccomp=0` contract가 필요합니다.
-- `docker.io` install 중 service auto-start가 아니라 rootfs smoke의 `docker-service` stage에서
-  `dockerd` start가 kernel panic/Oops로 실패하면 Docker package 설치 순서 문제가 아닙니다.
-  Ubuntu cloud image serial/kernel과 Apple Virtualization guest 조합을 compile input으로 보고
-  검증된 `guest.ubuntu.base_url` / `guest.ubuntu.apt_snapshot` 조합으로 올립니다.
-- `EXT4-fs error` 이후 `Accessing a corrupted shared library`, `Illegal instruction`, systemd Oops가
-  번갈아 보이면 Docker binary만의 문제가 아닙니다. 쓰기 가능한 root disk attachment와 guest kernel
-  device path contract를 먼저 분리합니다.
+- launcher log에 `EXT4-fs error`, `Aborting journal`, `checksum invalid`가 있으면 `Remounting filesystem read-only`보다 앞선 원인 신호로 봅니다.
+- `docker.service` start 실패 직전에 `EXT4-fs error ... checksum invalid`와 `Remounting filesystem read-only`가 나오면 Docker daemon failure로 축소하지 않습니다. mutable root disk attachment/write synchronization 문제로 분류합니다.
+- apt log에 `Release file ... is not valid yet`가 있으면 apt repository 문제가 아니라 golden rootfs guest clock이 compile input으로 고정되지 않은 상태를 먼저 의심합니다. `rootfs-input.json`에 `guestClockUtc`가 있고, guest bootstrap이 `apt-get update` 전에 `guest-clock` stage를 통과했는지 확인합니다.
+- launcher log에서 `dpkg-deb` 또는 `tar`가 반복 `Segmentation fault`를 내고 뒤이어 `Illegal instruction`이 보이면 cloud-init 자체 오류로 축소하지 않습니다. Guest userspace가 package unpack 단계에서 불안정해진 것이므로 build VM resource/device policy를 먼저 봅니다.
+- panic stack에 `hwrng`, `virtio_read`, `virtio_rng`가 함께 보이면 Virtualization.framework entropy device가 guest kernel panic을 유발했을 가능성을 우선 검토합니다.
+- panic stack에 `Undefined instruction`과 `seccomp_run_filters`가 함께 보이면 Docker/rootfs smoke 중 seccomp kernel path가 무너진 것으로 분류합니다. 이 경우 container image architecture mismatch로 축소하지 않습니다.
+- `docker-image-load`가 passed 된 뒤 `docker-smoke` 시작 직후 `tirosh-vitalserver-rootfs-smoke`가 `Illegal instruction`으로 죽고 kernel stack에 `seccomp_run_filters`가 보이면 Docker image bundle 또는 load 단계 문제가 아닙니다. Apple Virtualization.framework guest kernel에서 container seccomp path가 terminal failure를 만든 것입니다.
+- panic process가 `systemd-journal`, `systemd-network`, `systemd-resolve`처럼 Docker container가 아닌 기본 systemd 서비스여도 같은 분류입니다. 이 경우 container `security_opt`만으로는 충분하지 않고 guest kernel command line의 `seccomp=0` contract가 필요합니다.
+- `docker.io` install 중 service auto-start가 아니라 rootfs smoke의 `docker-service` stage에서 `dockerd` start가 kernel panic/Oops로 실패하면 Docker package 설치 순서 문제가 아닙니다. Ubuntu cloud image serial/kernel과 Apple Virtualization guest 조합을 compile input으로 보고 검증된 `guest.ubuntu.base_url` / `guest.ubuntu.apt_snapshot` 조합으로 올립니다.
+- `EXT4-fs error` 이후 `Accessing a corrupted shared library`, `Illegal instruction`, systemd Oops가 번갈아 보이면 Docker binary만의 문제가 아닙니다. 쓰기 가능한 root disk attachment와 guest kernel device path contract를 먼저 분리합니다.
 - VM process가 남아 있으면 mutable runtime files를 다시 쓰면 안 됩니다.
 
 ## Actions
@@ -150,16 +121,11 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 개발 환경에서 즉시 조치:
 
 1. VM launcher process가 남아 있으면 먼저 원인을 기록합니다.
-2. 현재 `launcher.log`, `vm-lifecycle.json`, `rootfs-runtime-manifest.json`,
-   `rootfs-smoke-diagnostics`를 보존합니다.
+2. 현재 `launcher.log`, `vm-lifecycle.json`, `rootfs-runtime-manifest.json`, `rootfs-smoke-diagnostics`를 보존합니다.
 3. `macos-runtime-require-no-running`이 통과하지 않으면 golden rootfs 재시도를 시작하지 않습니다.
-4. 재시도 전 남은 launcher가 graceful stop에 반응하지 않으면
-   `macos-runtime-force-stop --vm-home .tmp/vitalserver-vm-golden --timeout <seconds>`로
-   VM_HOME을 명시한 프로세스만 정리합니다.
-5. stale marker/manifest가 의심되면 현재 run proof와 구분될 때까지 `rootfs-base.raw.gz`를 release
-   산출물로 사용하지 않습니다.
-6. rootfs size가 8G 미만이면 VM을 띄우기 전에 config/domain validation에서 실패해야 합니다. 실제
-   VM disk 부족으로 증상을 재현하려고 작은 rootfs를 부팅하지 않습니다.
+4. 재시도 전 남은 launcher가 graceful stop에 반응하지 않으면 `macos-runtime-force-stop --vm-home .tmp/vitalserver-vm-golden --timeout <seconds>`로 VM_HOME을 명시한 프로세스만 정리합니다.
+5. stale marker/manifest가 의심되면 현재 run proof와 구분될 때까지 `rootfs-base.raw.gz`를 release 산출물로 사용하지 않습니다.
+6. rootfs size가 8G 미만이면 VM을 띄우기 전에 config/domain validation에서 실패해야 합니다. 실제 VM disk 부족으로 증상을 재현하려고 작은 rootfs를 부팅하지 않습니다.
 
 ## Prevention
 
@@ -236,40 +202,22 @@ ls -lh .tmp/vitalserver-vm-pkg/rootfs-base.raw.gz
 
 ## Applied Guards
 
-- `macos-runtime-rootfs-begin` command가 golden rootfs run context를 만들고 stale
-  `rootfs-ready`, manifest, diagnostics를 invalidates 합니다.
+- `macos-runtime-rootfs-begin` command가 golden rootfs run context를 만들고 stale `rootfs-ready`, manifest, diagnostics를 invalidates 합니다.
 - guest deploy metadata의 `runId`가 guest-tools rootfs smoke manifest로 전달됩니다.
 - `rootfs-ready`는 JSON marker가 되었고 `runId`를 포함합니다.
-- `macos-runtime-wait-rootfs-ready`는 marker만 보지 않고 manifest schema, expected `runId`,
-  required stages, cleanup status를 함께 확인합니다.
-- `rootfs-base` compression gate는 stopped lifecycle, no running VM process, manifest `runId`,
-  ready marker `runId`, required stages, cleanup status, apt plan proof를 모두 확인합니다.
-- guest preparation failure marker(`rootfs-failure.json`)는 `wait-rootfs-ready`에서 즉시 terminal
-  failure로 처리됩니다.
-- guest apt plan(`rootfs-apt-plan.json`)은 runId와 apt snapshot을 포함해 manifest에 포함되고,
-  blocked base runtime upgrade 또는 snapshot mismatch는 rootfs artifact 압축을 막습니다.
-- `macos-runtime-force-stop`은 VM_HOME을 명시적으로 가진 launcher process만 대상으로 삼고,
-  cleanup trap은 실패 후 이 command를 사용해 다음 compile을 막는 stale launcher를 남기지 않습니다.
+- `macos-runtime-wait-rootfs-ready`는 marker만 보지 않고 manifest schema, expected `runId`, required stages, cleanup status를 함께 확인합니다.
+- `rootfs-base` compression gate는 stopped lifecycle, no running VM process, manifest `runId`, ready marker `runId`, required stages, cleanup status, apt plan proof를 모두 확인합니다.
+- guest preparation failure marker(`rootfs-failure.json`)는 `wait-rootfs-ready`에서 즉시 terminal failure로 처리됩니다.
+- guest apt plan(`rootfs-apt-plan.json`)은 runId와 apt snapshot을 포함해 manifest에 포함되고, blocked base runtime upgrade 또는 snapshot mismatch는 rootfs artifact 압축을 막습니다.
+- `macos-runtime-force-stop`은 VM_HOME을 명시적으로 가진 launcher process만 대상으로 삼고, cleanup trap은 실패 후 이 command를 사용해 다음 compile을 막는 stale launcher를 남기지 않습니다.
 - rootfs gzip output은 temporary file validation 후 atomic replace 합니다.
-- test-only fault injection은 deploy metadata의 `faultInjection`으로만 활성화되며,
-  `testMode=true`가 아니면 guest smoke가 무시합니다.
-- `make internal/vm/golden-rootfs/negative`는 실제 VM에서 `edge-ready` fault를 주입하고,
-  manifest failure, VM process cleanup, rootfs-base rejection을 검증합니다.
-- macOS VM configuration no longer attaches `VZVirtioEntropyDeviceConfiguration`; repeated
-  `hwrng`/`virtio_rng` panic stacks during product compile are treated as a launcher configuration
-  regression, not as a guest bootstrap failure.
-- Golden rootfs compile now blocks service auto-start during apt install and starts Docker explicitly in
-  `docker-service`; the Noble boot asset and apt snapshot are pinned together as rootfs compile inputs.
-- Guest kernel command line includes `seccomp=0`, and existing VM configs are normalized to add that
-  token. Docker runtime smoke and product compose services also run with `seccomp=unconfined`. This is
-  an explicit Apple Virtualization guest kernel compatibility contract, not a fallback: rootfs compile
-  must fail visibly if this policy is removed and the guest kernel re-enters the seccomp Oops path.
-- Writable root disks use uncached, full-synchronization `VZDiskImageStorageDeviceAttachment`
-  policy. Rootfs compile treats repeated EXT4 checksum/read-only transitions as disk attachment
-  integrity failures, not as Docker service failures.
-- Rootfs guest clock is now an explicit Host-provided input. `prepare-airgap-rootfs.sh` fails in
-  `guest-clock` when `guestClockUtc` is missing or invalid, and apt starts only after that clock has
-  been applied.
+- test-only fault injection은 deploy metadata의 `faultInjection`으로만 활성화되며, `testMode=true`가 아니면 guest smoke가 무시합니다.
+- `make internal/vm/golden-rootfs/negative`는 실제 VM에서 `edge-ready` fault를 주입하고, manifest failure, VM process cleanup, rootfs-base rejection을 검증합니다.
+- macOS VM configuration no longer attaches `VZVirtioEntropyDeviceConfiguration`; repeated `hwrng`/`virtio_rng` panic stacks during product compile are treated as a launcher configuration regression, not as a guest bootstrap failure.
+- Golden rootfs compile now blocks service auto-start during apt install and starts Docker explicitly in `docker-service`; the Noble boot asset and apt snapshot are pinned together as rootfs compile inputs.
+- Guest kernel command line includes `seccomp=0`, and existing VM configs are normalized to add that token. Docker runtime smoke and product compose services also run with `seccomp=unconfined`. This is an explicit Apple Virtualization guest kernel compatibility contract, not a fallback: rootfs compile must fail visibly if this policy is removed and the guest kernel re-enters the seccomp Oops path.
+- Writable root disks use uncached, full-synchronization `VZDiskImageStorageDeviceAttachment` policy. Rootfs compile treats repeated EXT4 checksum/read-only transitions as disk attachment integrity failures, not as Docker service failures.
+- Rootfs guest clock is now an explicit Host-provided input. `prepare-airgap-rootfs.sh` fails in `guest-clock` when `guestClockUtc` is missing or invalid, and apt starts only after that clock has been applied.
 
 ## Required Negative Cases
 
@@ -308,17 +256,11 @@ P1 negative validation can be split between unit tests and VM tests.
 
 ## Operational Notes
 
-`rootfs-ready` is a completion marker, not the source of truth. The source of truth is the
-current run's validated manifest plus stopped VM lifecycle and absence of a running launcher
-process.
+`rootfs-ready` is a completion marker, not the source of truth. The source of truth is the current run's validated manifest plus stopped VM lifecycle and absence of a running launcher process.
 
-When this case recurs, do not fix it by increasing timeout alone. Longer timeout only hides
-terminal guest failure, stale proof, or process cleanup bugs.
+When this case recurs, do not fix it by increasing timeout alone. Longer timeout only hides terminal guest failure, stale proof, or process cleanup bugs.
 
-If `rootfs-apt-plan.json` reports blocked base runtime upgrades, do not make the guard list
-looser just to make the build pass. Treat it as an input drift: the Ubuntu cloud image,
-kernel/initrd, apt snapshot, and runtime package set are no longer one reproducible compile
-input. Keep the apt plan guard as the proof that the base runtime did not mutate unexpectedly.
+If `rootfs-apt-plan.json` reports blocked base runtime upgrades, do not make the guard list looser just to make the build pass. Treat it as an input drift: the Ubuntu cloud image, kernel/initrd, apt snapshot, and runtime package set are no longer one reproducible compile input. Keep the apt plan guard as the proof that the base runtime did not mutate unexpectedly.
 
 ## Related Cases
 
@@ -329,11 +271,6 @@ input. Keep the apt plan guard as the proof that the base runtime did not mutate
 ## Follow-up
 
 - 2026-06-11: golden rootfs smoke was moved into guest-tools and manifest schema v2 was added.
-- 2026-06-11: remaining gap identified: robust validation must include stale marker/manifest,
-  current-run identity, failed-run artifact protection, and VM process cleanup negative cases.
-- 2026-06-11: TS-069 guards added with runId proof, stale proof invalidation,
-  manifest-aware wait, rootfs-base runId gate, disk-space stage, atomic gzip output,
-  and actual negative VM validation for `edge-ready` timeout fault.
-- 2026-06-12: golden rootfs compile now pins `guest.ubuntu.apt_snapshot`, records apt plan
-  runId/snapshot proof, detects blocked apt mutation before kernel panic/timeout, and
-  force-cleans VM_HOME-scoped launcher processes that ignore graceful stop.
+- 2026-06-11: remaining gap identified: robust validation must include stale marker/manifest, current-run identity, failed-run artifact protection, and VM process cleanup negative cases.
+- 2026-06-11: TS-069 guards added with runId proof, stale proof invalidation, manifest-aware wait, rootfs-base runId gate, disk-space stage, atomic gzip output, and actual negative VM validation for `edge-ready` timeout fault.
+- 2026-06-12: golden rootfs compile now pins `guest.ubuntu.apt_snapshot`, records apt plan runId/snapshot proof, detects blocked apt mutation before kernel panic/timeout, and force-cleans VM_HOME-scoped launcher processes that ignore graceful stop.

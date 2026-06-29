@@ -7,8 +7,7 @@
 
 ## Symptom
 
-Settings에서 vital files directory 같은 설정만 바꿔 Apply 했는데 VM이 내려가고, UI나 logs가 update 중인 것처럼 보입니다.
-helper message log에는 다음과 같은 메시지가 반복될 수 있습니다.
+Settings에서 vital files directory 같은 설정만 바꿔 Apply 했는데 VM이 내려가고, UI나 logs가 update 중인 것처럼 보입니다. helper message log에는 다음과 같은 메시지가 반복될 수 있습니다.
 
 ```text
 waiting for guest update shutdown worker
@@ -47,20 +46,15 @@ status가 `updating` 또는 operation `apply-bundle`처럼 보이면 설정 적�
 
 ### Symptom
 
-Advanced network의 advertised service URL이 비어 있거나 invalid인 상태에서 Settings Apply를 눌러도
-사용자에게 명확한 실패 상태가 보이지 않고, 일부 local API 설정은 적용된 것처럼 보일 수 있었습니다.
+Advanced network의 advertised service URL이 비어 있거나 invalid인 상태에서 Settings Apply를 눌러도 사용자에게 명확한 실패 상태가 보이지 않고, 일부 local API 설정은 적용된 것처럼 보일 수 있었습니다.
 
 ### Cause
 
-Control Panel host composition이 CLI `configure` 결과를 받은 뒤 `exitCode`를 확인하지 않고
-`localAPISettings.apply(settings:)`를 호출했습니다. 따라서 command boundary에서는 실패한 설정이
-presentation-local state에 성공처럼 반영될 수 있었습니다.
+Control Panel host composition이 CLI `configure` 결과를 받은 뒤 `exitCode`를 확인하지 않고 `localAPISettings.apply(settings:)`를 호출했습니다. 따라서 command boundary에서는 실패한 설정이 presentation-local state에 성공처럼 반영될 수 있었습니다.
 
 ### Fix Direction
 
-Local API port 같은 presentation-local 설정은 `applySettings` command가 성공한 경우에만 갱신합니다.
-command failure response는 그대로 UI로 전달되어야 하며, local coordinator가 실패한 draft 값을 현재
-상태로 승격하면 안 됩니다.
+Local API port 같은 presentation-local 설정은 `applySettings` command가 성공한 경우에만 갱신합니다. command failure response는 그대로 UI로 전달되어야 하며, local coordinator가 실패한 draft 값을 현재 상태로 승격하면 안 됩니다.
 
 ### Prevention Principle
 

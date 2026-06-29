@@ -441,6 +441,16 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(openAPIEventTypes, swiftEventTypes)
     }
 
+    func testRecorderIngressMemoryGuardStatusOpenAPIEnumMatchesSwiftContract() throws {
+        let openAPIStatuses = try openAPIStringEnum(
+            schemaName: "RuntimeRecorderIngressReplayAdaptiveStatus",
+            propertyName: "memoryGuardStatus"
+        )
+        let swiftStatuses = RuntimeRecorderIngressMemoryGuardStatus.allCases.map(\.rawValue)
+
+        XCTAssertEqual(openAPIStatuses, swiftStatuses)
+    }
+
     func testRuntimeControlOpenAPIOperationsDoNotUseFileReferences() throws {
         let operations = try openAPIOperations()
 
@@ -1235,13 +1245,13 @@ final class RuntimeControlAPITests: XCTestCase {
 
         let response = await router.route(.init(
             method: .get,
-            path: "/runtime/events?limit=1&type=audit-proxy-observed&since=2026-05-24T00:01:00Z"
+            path: "/runtime/events?limit=1&type=recorder-ingress-observed&since=2026-05-24T00:01:00Z"
         ))
         let history = try decode(RuntimeEventHistory.self, from: response)
 
         XCTAssertEqual(history.events.map(\.id), ["event-3"])
         XCTAssertEqual(client.eventQueries, [
-            RuntimeEventQuery(limit: 1, eventType: .auditProxyObserved, since: "2026-05-24T00:01:00Z"),
+            RuntimeEventQuery(limit: 1, eventType: .recorderIngressObserved, since: "2026-05-24T00:01:00Z"),
         ])
     }
 
@@ -2055,6 +2065,17 @@ final class RuntimeControlAPITests: XCTestCase {
         return try XCTUnwrap(schema["enum"] as? [String])
     }
 
+    private func openAPIStringEnum(schemaName: String, propertyName: String) throws -> [String] {
+        let document = try openAPIDocument()
+        let components = try XCTUnwrap(document["components"] as? [String: Any])
+        let schemas = try XCTUnwrap(components["schemas"] as? [String: Any])
+        let schema = try XCTUnwrap(schemas[schemaName] as? [String: Any])
+        let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+        let property = try XCTUnwrap(properties[propertyName] as? [String: Any])
+        let values = try XCTUnwrap(property["enum"] as? [Any])
+        return values.compactMap { $0 as? String }
+    }
+
     private func openAPIDocument() throws -> [String: Any] {
         let testFile = URL(fileURLWithPath: #filePath)
         let packageRoot = testFile
@@ -2749,13 +2770,13 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
             ),
             RuntimeEventDocument(
                 id: "event-3",
-                eventType: .auditProxyObserved,
+                eventType: .recorderIngressObserved,
                 timestamp: "2026-05-24T00:02:00Z",
                 product: "VitalServerHelper",
                 status: .healthy,
                 previousStatus: nil,
                 operation: .health,
-                message: "audit proxy observed",
+                message: "recorder ingress observed",
                 runtimeVersion: "1.2.3",
                 failureReasons: [],
                 containerObservation: nil,

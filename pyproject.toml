@@ -5,8 +5,10 @@ description = "Production wrapper and validation workspace for upstream VitalSer
 requires-python = ">=3.14"
 dependencies = [
   "pydantic-settings>=2.14.1",
+  "tirosh-vitalserver-core",
   "tirosh-vitalserver-devtools",
   "tirosh-vitalserver-guest-tools",
+  "tirosh-vitalserver-recorder-recovery",
   "tirosh-vitalserver-testkit",
 ]
 
@@ -22,21 +24,29 @@ docs = [
 
 [tool.uv.workspace]
 members = [
+  "packages/vitalserver-core",
+  "apps/vitalserver-recorder-recovery",
   "packages/vitalserver-devtools",
   "packages/vitalserver-guest-tools",
   "packages/vitalserver-testkit",
 ]
 
 [tool.uv.sources]
+tirosh-vitalserver-core = { workspace = true }
 tirosh-vitalserver-devtools = { workspace = true }
 tirosh-vitalserver-guest-tools = { workspace = true }
+tirosh-vitalserver-recorder-recovery = { workspace = true }
 tirosh-vitalserver-testkit = { workspace = true }
 
 [tool.ruff]
 src = [
+  "packages/vitalserver-core/src",
+  "apps/vitalserver-recorder-recovery/src",
   "packages/vitalserver-devtools/src",
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
+  "packages/vitalserver-core/tests",
+  "apps/vitalserver-recorder-recovery/tests",
   "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/tests",
   "apps/vitaldb-observer",
@@ -89,6 +99,10 @@ check_untyped_defs = true
 disallow_untyped_defs = true
 explicit_package_bases = true
 files = [
+  "packages/vitalserver-core/src",
+  "packages/vitalserver-core/tests",
+  "apps/vitalserver-recorder-recovery/src",
+  "apps/vitalserver-recorder-recovery/tests",
   "packages/vitalserver-devtools/src",
   "packages/vitalserver-devtools/tests",
   "packages/vitalserver-guest-tools/src",
@@ -101,6 +115,8 @@ files = [
 ]
 ignore_missing_imports = true
 mypy_path = [
+  "packages/vitalserver-core/src",
+  "apps/vitalserver-recorder-recovery/src",
   "packages/vitalserver-devtools/src",
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
@@ -119,12 +135,17 @@ warn_unused_ignores = true
 addopts = "-ra -v"
 pythonpath = [
   ".",
+  "packages/vitalserver-core/src",
+  "apps/vitalserver-recorder-recovery/src",
   "packages/vitalserver-devtools/src",
+  "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
   "apps/vitaldb-observer",
   "apps/vitalserver-redis-relay",
 ]
 testpaths = [
+  "packages/vitalserver-core/tests",
+  "apps/vitalserver-recorder-recovery/tests",
   "packages/vitalserver-devtools/tests",
   "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/tests",

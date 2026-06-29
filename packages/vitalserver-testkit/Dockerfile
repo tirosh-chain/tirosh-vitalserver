@@ -2,6 +2,12 @@ FROM python:3.14-slim
 
 WORKDIR /opt/vitalserver-testkit
 
+COPY packages/vitalserver-core /opt/vitalserver-core
+RUN pip install --no-cache-dir /opt/vitalserver-core
+
+COPY apps/vitalserver-recorder-recovery /opt/vitalserver-recorder-recovery
+RUN pip install --no-cache-dir /opt/vitalserver-recorder-recovery
+
 COPY packages/vitalserver-testkit/pyproject.toml ./
 COPY packages/vitalserver-testkit/src ./src
 COPY config/testkit.toml ./config/testkit.toml

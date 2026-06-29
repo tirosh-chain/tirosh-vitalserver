@@ -11,7 +11,7 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
     case domainErrorObserved
     case vmErrorObserved
     case containerObserved
-    case auditProxyObserved
+    case recorderIngressObserved
     case vitalDBObserved
     case vitalDBObserverUnhealthy
     case vitalDBAnomalyDetected
@@ -37,7 +37,7 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
         .domainErrorObserved,
         .vmErrorObserved,
         .containerObserved,
-        .auditProxyObserved,
+        .recorderIngressObserved,
         .vitalDBObserved,
         .vitalDBObserverUnhealthy,
         .vitalDBAnomalyDetected,
@@ -74,8 +74,8 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             self = .vmErrorObserved
         case "container-observed":
             self = .containerObserved
-        case "audit-proxy-observed":
-            self = .auditProxyObserved
+        case "recorder-ingress-observed":
+            self = .recorderIngressObserved
         case "vitaldb-observed":
             self = .vitalDBObserved
         case "vitaldb-observer-unhealthy":
@@ -127,8 +127,8 @@ public enum RuntimeEventType: Codable, Equatable, Sendable {
             return "vm-error-observed"
         case .containerObserved:
             return "container-observed"
-        case .auditProxyObserved:
-            return "audit-proxy-observed"
+        case .recorderIngressObserved:
+            return "recorder-ingress-observed"
         case .vitalDBObserved:
             return "vitaldb-observed"
         case .vitalDBObserverUnhealthy:

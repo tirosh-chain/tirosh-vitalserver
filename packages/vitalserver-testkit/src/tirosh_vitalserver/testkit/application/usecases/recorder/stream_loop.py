@@ -6,7 +6,10 @@ import threading
 import time
 from collections.abc import Mapping
 
-from tirosh_vitalserver.testkit.application.ports import SocketIoConnectorPort
+from tirosh_vitalserver.testkit.application.ports import (
+    SocketIoClientPort,
+    SocketIoConnectorPort,
+)
 from tirosh_vitalserver.testkit.application.recorder_lifecycle import (
     register_vrecorder_lifecycle,
 )
@@ -43,6 +46,7 @@ def stream_realtime_payload(
     pause_event: threading.Event | None = None,
     runtime_state: RecorderRuntimeState | None = None,
     connector: SocketIoConnectorPort,
+    disconnected_timeout_seconds: float = 5.0,
 ) -> RealtimeStreamResult:
     """Keep one Socket.IO connection open and emit `send_data` repeatedly."""
 
@@ -112,6 +116,11 @@ def stream_realtime_payload(
                 encoded = encode_realtime_payload(
                     frame_payload,
                     shift_time=shift_time and not generate_frames,
+                )
+                wait_until_stream_connected(
+                    client,
+                    timeout_seconds=disconnected_timeout_seconds,
+                    stop_event=stop_event,
                 )
                 client.emit("send_data", encoded)
                 if runtime_state is not None:
@@ -226,3 +235,25 @@ def stream_is_paused(pause_event: threading.Event | None) -> bool:
     """Return whether the stream loop should keep the connection idle."""
 
     return pause_event is not None and pause_event.is_set()
+
+
+def wait_until_stream_connected(
+    client: SocketIoClientPort,
+    *,
+    timeout_seconds: float,
+    stop_event: threading.Event | None,
+) -> None:
+    """Wait for a reconnect-capable Socket.IO client before sending data."""
+
+    if client.connected:
+        return
+    if timeout_seconds < 0:
+        raise ValueError("timeout_seconds must be greater than or equal to 0")
+
+    started = time.perf_counter()
+    while not client.connected:
+        if stop_event is not None and stop_event.is_set():
+            raise RuntimeError("stream stopped while Socket.IO was disconnected")
+        if time.perf_counter() - started >= timeout_seconds:
+            raise RuntimeError("Socket.IO disconnected before send_data")
+        client.sleep(min(0.2, max(timeout_seconds, 0.01)))

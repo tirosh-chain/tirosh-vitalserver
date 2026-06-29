@@ -33,7 +33,10 @@ public enum RuntimeWatchdogRecoveryPolicy {
         if let bootstrapObservationIssue = bootstrapObservationIssue(snapshot.failureReasons) {
             return .unrecoverable(reason: bootstrapObservationIssue.rawValue)
         }
-        if let observationSourceIssue = observationSourceIssue(snapshot.failureReasons) {
+        if let observationSourceIssue = observationSourceIssue(
+            snapshot.failureReasons,
+            containerObservation: snapshot.containerObservation.map(RuntimeObservationInput.loaded) ?? .notReported
+        ) {
             return .unrecoverable(reason: observationSourceIssue.rawValue)
         }
 
@@ -110,8 +113,14 @@ public enum RuntimeWatchdogRecoveryPolicy {
         }
     }
 
-    private static func observationSourceIssue(_ reasons: [RuntimeFailureReason]) -> RuntimeFailureReason? {
-        reasons.first { reason in
+    private static func observationSourceIssue(
+        _ reasons: [RuntimeFailureReason],
+        containerObservation: RuntimeObservationInput<RuntimeContainerObservation>
+    ) -> RuntimeFailureReason? {
+        if RuntimeObservationHealthPolicy.requiresGuestComposeReconcile(containerObservation: containerObservation) {
+            return nil
+        }
+        return reasons.first { reason in
             switch reason {
             case .containerObservationReadFailed:
                 return !reason.isContainerObservationReadFailureFromStaleGuestRuntimeState

@@ -183,6 +183,21 @@ def test_sync_clock_rejects_missing_host_time_contract(tmp_path: Path) -> None:
         bootstrap_operations.sync_clock(bootstrap_context(tmp_path))
 
 
+def test_prepare_shared_directories_creates_recorder_ingress_bind_sources(
+    tmp_path: Path,
+) -> None:
+    context = bootstrap_context(tmp_path)
+
+    bootstrap_operations.prepare_shared_directories(context)
+
+    assert context.vital_files_mount.is_dir()
+    assert (context.runtime_dir / "recorder-ingress-failures").is_dir()
+    assert (context.runtime_dir / "recorder-ingress-raw").is_dir()
+    assert (context.runtime_dir / "recorder-ingress-recovery").is_dir()
+    assert (context.runtime_dir / "redis-relay-status").is_dir()
+    assert (context.runtime_dir.parent / "vr-release").is_dir()
+
+
 def bootstrap_context(tmp_path: Path) -> GuestBootstrapContext:
     deploy_dir = tmp_path / "deploy"
     deploy_dir.mkdir(parents=True)

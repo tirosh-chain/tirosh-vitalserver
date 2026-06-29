@@ -95,8 +95,7 @@ make devtools/download
 config/vm-build.toml
 ```
 
-`make devtools/download`는 build-machine 전용 Python package인
-`packages/vitalserver-devtools`의 `vitalserver-devtools ubuntu` CLI를 호출합니다.
+`make devtools/download`는 build-machine 전용 Python package인 `packages/vitalserver-devtools`의 `vitalserver-devtools ubuntu` CLI를 호출합니다.
 
 | 항목 | 기본값 |
 |---|---|
@@ -135,8 +134,7 @@ make devtools/cloud-init
 | SSH public key | `~/.ssh/id_ed25519.pub`가 있으면 자동 포함 |
 | bootstrap | `/mnt/tirosh/deploy/bootstrap.sh` 자동 실행 |
 
-기본값은 `config/vm-build.toml`의 `[cloud_init]`에서 관리합니다.
-일회성 값을 바꾸려면 build CLI를 직접 호출합니다.
+기본값은 `config/vm-build.toml`의 `[cloud_init]`에서 관리합니다. 일회성 값을 바꾸려면 build CLI를 직접 호출합니다.
 
 ```sh
 uv run --project packages/vitalserver-devtools vitalserver-devtools \
@@ -190,28 +188,9 @@ bootstrap 순서:
 7. bundled Docker image를 load한 뒤 `docker compose up -d`로 VitalServer/Redis/UI/edge nginx 실행
 8. runtime state에 VM IP와 guest HTTP readiness 기록
 
-Guest tools는 `guest-tools.toml`에만 package 운영 default를 둡니다. 로깅 정책도
-`[logging]` section에 선언하고, Python entrypoint는 이를 `logging.config.dictConfig`
-형태로 적용합니다.
-`runtime-config.json`은 Host가 제공하는 실행 계약이므로 `adminPassword`,
-`redisHost`, `redisPort`, `vitalServerURL`, `remoteConsoleURL`,
-`publicHost`, `publicPort`, `trustProxy`, `vitalFilesDirectory`,
-`testkitEnabled`가 모두 명시돼야 합니다.
-Guest는 이 값을 추론하거나 보정하지 않습니다.
-`vitalServerURL`과 `remoteConsoleURL`은 운영자가 등록한 외부 접속 URL을 그대로
-표시하기 위한 Host-owned advertised URL입니다. `publicHost/publicPort`는 guest
-호환을 위해 유지하며, `vitalServerURL`이 있으면 Host가 host/port를 파생합니다.
-초기 install settings에 advertised URL이 없으면 Host는 문서화된 localhost 기본값
-`http://127.0.0.1:<proxyPort>/`와 `http://127.0.0.1:18321/`을 명시 runtime config로 씁니다.
-초기 install settings가 별도 admin password를 제공하지 않으면 Host install
-settings의 문서화된 기본값인 `admin`을 명시 runtime config로 씁니다.
+Guest tools는 `guest-tools.toml`에만 package 운영 default를 둡니다. 로깅 정책도 `[logging]` section에 선언하고, Python entrypoint는 이를 `logging.config.dictConfig` 형태로 적용합니다. `runtime-config.json`은 Host가 제공하는 실행 계약이므로 `adminPassword`, `redisHost`, `redisPort`, `vitalServerURL`, `remoteConsoleURL`, `publicHost`, `publicPort`, `trustProxy`, `vitalFilesDirectory`, `testkitEnabled`가 모두 명시돼야 합니다. Guest는 이 값을 추론하거나 보정하지 않습니다. `vitalServerURL`과 `remoteConsoleURL`은 운영자가 등록한 외부 접속 URL을 그대로 표시하기 위한 Host-owned advertised URL입니다. `publicHost/publicPort`는 guest 호환을 위해 유지하며, `vitalServerURL`이 있으면 Host가 host/port를 파생합니다. 초기 install settings에 advertised URL이 없으면 Host는 문서화된 localhost 기본값 `http://127.0.0.1:<proxyPort>/`와 `http://127.0.0.1:18321/`을 명시 runtime config로 씁니다. 초기 install settings가 별도 admin password를 제공하지 않으면 Host install settings의 문서화된 기본값인 `admin`을 명시 runtime config로 씁니다.
 
-제품 설치 runtime seed는 OS 계정 password 접근을 열지 않습니다. Host는
-cloud-init에 `ssh_pwauth: false`, locked `ubuntu` account, 그리고 install
-settings의 `sshAuthorizedKeys`에 명시된 OpenSSH public key만 기록합니다.
-`sshAuthorizedKeys`가 비어 있으면 guest OS SSH 로그인 경로는 없고, 운영 제어는
-HostCLI/Helper, Runtime Control API, Guest tools request/result 계약을 통해서만
-수행합니다.
+제품 설치 runtime seed는 OS 계정 password 접근을 열지 않습니다. Host는 cloud-init에 `ssh_pwauth: false`, locked `ubuntu` account, 그리고 install settings의 `sshAuthorizedKeys`에 명시된 OpenSSH public key만 기록합니다. `sshAuthorizedKeys`가 비어 있으면 guest OS SSH 로그인 경로는 없고, 운영 제어는 HostCLI/Helper, Runtime Control API, Guest tools request/result 계약을 통해서만 수행합니다.
 
 Guest tools package는 CLI를 application usecase의 inbound adapter로만 둡니다.
 
@@ -221,8 +200,7 @@ tirosh_guest_tools/application  # compose, update, repair, backup, observability
 tirosh_guest_tools/*            # console entrypoint와 Linux integration wrapper
 ```
 
-CLI 외의 호출자도 `application` usecase를 직접 호출할 수 있어야 합니다. 따라서 package 내부에서는
-다른 CLI `main()`을 `sys.argv` 변경으로 재호출하지 않습니다.
+CLI 외의 호출자도 `application` usecase를 직접 호출할 수 있어야 합니다. 따라서 package 내부에서는 다른 CLI `main()`을 `sys.argv` 변경으로 재호출하지 않습니다.
 
 ## 7. macOS Data Sharing
 

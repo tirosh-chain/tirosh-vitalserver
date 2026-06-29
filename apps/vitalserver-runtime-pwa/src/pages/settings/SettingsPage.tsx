@@ -14,6 +14,7 @@ import {
   usesCustomAdvertisedURL
 } from "@/pages/settings/runtimeSettingsForm";
 import {
+  containerMemoryLimitRanges,
   runtimeSettingsActivationDecision,
   startOnBootControlState,
   validateRuntimeSettings,
@@ -35,7 +36,12 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (settings.data) {
-      setDraft(runtimeSettingsToDraft(settings.data));
+      setDraft(
+        normalizeContainerMemoryLimitDraft(
+          runtimeSettingsToDraft(settings.data),
+          settings.data.memoryGiB * 1024
+        )
+      );
       setCustomAdvertisedURL(usesCustomAdvertisedURL(settings.data));
     } else {
       setDraft(null);
@@ -47,7 +53,28 @@ export function SettingsPage() {
     field: keyof RuntimeSettingsDraft,
     value: string | boolean
   ) => {
-    setDraft((current) => current && { ...current, [field]: value });
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      const next = { ...current, [field]: value };
+      const normalized = normalizeContainerMemoryLimitDraft(
+        next,
+        draftMemoryMiB(next, settings.data?.memoryGiB ?? 0)
+      );
+      if (
+        field !== "restartAfterSave" &&
+        settings.data &&
+        customAdvertisedURL !== undefined
+      ) {
+        return enableContainerReconcileActivationWhenNeeded(
+          normalized,
+          settings.data,
+          customAdvertisedURL
+        );
+      }
+      return normalized;
+    });
   };
 
   const apply = () => {
@@ -178,6 +205,57 @@ export function SettingsPage() {
   const logArchiveAppliedState = runtimeSettings
     ? logArchiveAppliedSettingsSummary(settings.data, runtimeSettings)
     : "";
+  const containerMemoryLimitVMMaxMiB =
+    (runtimeSettings?.memoryGiB ?? settings.data.memoryGiB) * 1024;
+  const containerMemoryLimitTotalPercent = runtimeSettings
+    ? runtimeContainerLimitTotalPercent(runtimeSettings)
+    : 0;
+  const updateReplayThroughput = (value: string) => {
+    updateField("recorderIngressSendDataReplayMaxMiBPerSecond", value);
+  };
+  const normalizeReplayThroughput = () => {
+    updateField(
+      "recorderIngressSendDataReplayMaxMiBPerSecond",
+      normalizeReplayThroughputValue(draft.recorderIngressSendDataReplayMaxMiBPerSecond)
+    );
+  };
+  const updateContainerMemoryLimitPercent = (
+    field:
+      | "vitalServerContainerMemoryLimitMiB"
+      | "recorderIngressContainerMemoryLimitMiB"
+      | "redisContainerMemoryLimitMiB",
+    nextPercent: number,
+    range: { minMiB: number; maxMiB: number }
+  ) => {
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      const vmMiB = draftMemoryMiB(current, settings.data.memoryGiB);
+      const otherPercent =
+        containerMemoryLimitDraftTotalPercent(current, vmMiB) -
+        containerMemoryLimitPercent(current[field], vmMiB);
+      const percentRange = containerMemoryLimitPercentRange(
+        range,
+        vmMiB
+      );
+      const allowedUpper = Math.max(
+        percentRange.min,
+        Math.min(
+          percentRange.max,
+          containerMemoryLimitRanges.maxCombinedPercent - otherPercent
+        )
+      );
+      const percent = Math.min(
+        Math.max(Math.round(nextPercent), percentRange.min),
+        allowedUpper
+      );
+      return enableContainerReconcileActivationWhenNeeded(normalizeContainerMemoryLimitDraft({
+        ...current,
+        [field]: String(containerMemoryLimitMiB(percent, range, vmMiB))
+      }, vmMiB), settings.data, customAdvertisedURL);
+    });
+  };
   const backupSettingsPending = runtimeSettings
     ? backupSettingsChanged(settings.data, runtimeSettings)
     : false;
@@ -327,6 +405,316 @@ export function SettingsPage() {
             Default advertised URL: {defaultAdvertisedURLPreview}
           </p>
         )}
+      </Panel>
+
+      <Panel title="Recorder load control">
+        <div className="settings-grid">
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={draft.recorderIngressLoadControlEnabled}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField(
+                  "recorderIngressLoadControlEnabled",
+                  event.target.checked
+                )
+              }
+            />
+            Recorder load control
+          </label>
+          <label>
+            Max replay throughput
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="5"
+              value={draft.recorderIngressSendDataReplayMaxMiBPerSecond}
+              disabled={
+                !canControlServices || !draft.recorderIngressLoadControlEnabled
+              }
+              onChange={(event) =>
+                updateReplayThroughput(event.target.value)
+              }
+              onBlur={normalizeReplayThroughput}
+            />
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={draft.containerMemoryLimitsEnabled}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("containerMemoryLimitsEnabled", event.target.checked)
+              }
+            />
+            Container memory limits
+          </label>
+          <p className="muted full-width">
+            Container limit total: {containerMemoryLimitTotalPercent}% /{" "}
+            {containerMemoryLimitRanges.maxCombinedPercent}% of VM memory
+          </p>
+          <label>
+            VitalServer limit:{" "}
+            {containerMemoryLimitPercent(
+              draft.vitalServerContainerMemoryLimitMiB,
+              containerMemoryLimitVMMaxMiB
+            )}
+            % ({draft.vitalServerContainerMemoryLimitMiB} MiB)
+            <input
+              type="range"
+              min={
+                containerMemoryLimitPercentRange(
+                  containerMemoryLimitRanges.vitalServer,
+                  containerMemoryLimitVMMaxMiB
+                ).min
+              }
+              max={
+                containerMemoryLimitPercentRange(
+                  containerMemoryLimitRanges.vitalServer,
+                  containerMemoryLimitVMMaxMiB
+                ).max
+              }
+              step={containerMemoryLimitRanges.stepPercent}
+              value={containerMemoryLimitPercent(
+                draft.vitalServerContainerMemoryLimitMiB,
+                containerMemoryLimitVMMaxMiB
+              )}
+              disabled={!canControlServices || !draft.containerMemoryLimitsEnabled}
+              onChange={(event) =>
+                updateContainerMemoryLimitPercent(
+                  "vitalServerContainerMemoryLimitMiB",
+                  Number(event.target.value),
+                  containerMemoryLimitRanges.vitalServer
+                )
+              }
+            />
+          </label>
+          <label>
+            Recorder ingress limit:{" "}
+            {containerMemoryLimitPercent(
+              draft.recorderIngressContainerMemoryLimitMiB,
+              containerMemoryLimitVMMaxMiB
+            )}
+            % ({draft.recorderIngressContainerMemoryLimitMiB} MiB)
+            <input
+              type="range"
+              min={
+                containerMemoryLimitPercentRange(
+                  containerMemoryLimitRanges.recorderIngress,
+                  containerMemoryLimitVMMaxMiB
+                ).min
+              }
+              max={
+                containerMemoryLimitPercentRange(
+                  containerMemoryLimitRanges.recorderIngress,
+                  containerMemoryLimitVMMaxMiB
+                ).max
+              }
+              step={containerMemoryLimitRanges.stepPercent}
+              value={containerMemoryLimitPercent(
+                draft.recorderIngressContainerMemoryLimitMiB,
+                containerMemoryLimitVMMaxMiB
+              )}
+              disabled={!canControlServices || !draft.containerMemoryLimitsEnabled}
+              onChange={(event) =>
+                updateContainerMemoryLimitPercent(
+                  "recorderIngressContainerMemoryLimitMiB",
+                  Number(event.target.value),
+                  containerMemoryLimitRanges.recorderIngress
+                )
+              }
+            />
+          </label>
+          <label>
+            Redis limit:{" "}
+            {containerMemoryLimitPercent(
+              draft.redisContainerMemoryLimitMiB,
+              containerMemoryLimitVMMaxMiB
+            )}
+            % ({draft.redisContainerMemoryLimitMiB} MiB)
+            <input
+              type="range"
+              min={
+                containerMemoryLimitPercentRange(
+                  containerMemoryLimitRanges.redis,
+                  containerMemoryLimitVMMaxMiB
+                ).min
+              }
+              max={
+                containerMemoryLimitPercentRange(
+                  containerMemoryLimitRanges.redis,
+                  containerMemoryLimitVMMaxMiB
+                ).max
+              }
+              step={containerMemoryLimitRanges.stepPercent}
+              value={containerMemoryLimitPercent(
+                draft.redisContainerMemoryLimitMiB,
+                containerMemoryLimitVMMaxMiB
+              )}
+              disabled={!canControlServices || !draft.containerMemoryLimitsEnabled}
+              onChange={(event) =>
+                updateContainerMemoryLimitPercent(
+                  "redisContainerMemoryLimitMiB",
+                  Number(event.target.value),
+                  containerMemoryLimitRanges.redis
+                )
+              }
+            />
+          </label>
+          <label>
+            Hot path storage MiB
+            <input
+              type="number"
+              min="1"
+              value={draft.recorderIngressSendDataMaxPendingMiB}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("recorderIngressSendDataMaxPendingMiB", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            Archive file size MiB
+            <input
+              type="number"
+              min="1"
+              value={draft.recorderIngressRawArchiveMaxFileMiB}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("recorderIngressRawArchiveMaxFileMiB", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            Archive retention
+            <input
+              type="number"
+              min="1"
+              value={draft.recorderIngressRawArchiveMaxFiles}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("recorderIngressRawArchiveMaxFiles", event.target.value)
+              }
+            />
+          </label>
+        </div>
+        <p className="muted">
+          Load control queues recorder send_data and replays payloads to
+          VitalServer at a controlled throughput. Throughput is configured in
+          MiB/s. Recorder archives are automatically exported for all connected
+          recorders after files are ready. Container memory limits are hard
+          Docker limits configured in MiB. These changes are applied when
+          container services are reconciled.
+        </p>
+      </Panel>
+
+      <Panel title="Redis Relay">
+        <div className="settings-grid">
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={draft.redisRelayEnabled}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("redisRelayEnabled", event.target.checked)
+              }
+            />
+            Enable relay
+          </label>
+          <label>
+            Target URL
+            <input
+              type="text"
+              value={draft.redisRelayTargetURL}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("redisRelayTargetURL", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            Username
+            <input
+              type="text"
+              value={draft.redisRelayUsername}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("redisRelayUsername", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              value={draft.redisRelayPassword}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("redisRelayPassword", event.target.value)
+              }
+            />
+          </label>
+          {draft.redisRelayPasswordConfigured ? (
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={draft.redisRelayClearPassword}
+                disabled={!canControlServices}
+                onChange={(event) =>
+                  updateField("redisRelayClearPassword", event.target.checked)
+                }
+              />
+              Clear saved password
+            </label>
+          ) : null}
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={draft.redisRelayTLS}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("redisRelayTLS", event.target.checked)
+              }
+            />
+            TLS
+          </label>
+          <label>
+            Data scope
+            <select
+              value={draft.redisRelayScope}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField(
+                  "redisRelayScope",
+                  event.target.value as RuntimeSettingsDraft["redisRelayScope"]
+                )
+              }
+            >
+              <option value="waveform_trend_only">Waveform/trend only</option>
+              <option value="vital_reconstruction">Vital reconstruction</option>
+            </select>
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={draft.redisRelayIncludeRecorderNetworkContext}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField(
+                  "redisRelayIncludeRecorderNetworkContext",
+                  event.target.checked
+                )
+              }
+            />
+            Include recorder network context
+          </label>
+        </div>
+        <p className="muted">
+          Publishes allowlisted VitalServer Redis data to an external Redis
+          target. Use redis:// or rediss:// URLs.
+        </p>
       </Panel>
 
       <Panel title="Storage and VitalServer Helper backups">
@@ -547,6 +935,134 @@ export function SettingsPage() {
 
 function currentBrowserHostname(): string | undefined {
   return globalThis.location?.hostname;
+}
+
+function normalizeReplayThroughputValue(value: string): string {
+  const parsed = parseOptionalNumber(value);
+  if (parsed === undefined || parsed <= 1) {
+    return "1";
+  }
+  return String(Math.min(100, Math.max(5, Math.round(parsed / 5) * 5)));
+}
+
+function draftMemoryMiB(draft: RuntimeSettingsDraft, fallbackMemoryGiB: number): number {
+  return Math.max((parseOptionalNumber(draft.memoryGiB) ?? fallbackMemoryGiB) * 1024, 1);
+}
+
+function normalizeContainerMemoryLimitDraft(
+  draft: RuntimeSettingsDraft,
+  vmMiB: number
+): RuntimeSettingsDraft {
+  if (!draft.containerMemoryLimitsEnabled) {
+    return draft;
+  }
+  let next = { ...draft };
+  for (const field of [
+    "vitalServerContainerMemoryLimitMiB",
+    "redisContainerMemoryLimitMiB",
+    "recorderIngressContainerMemoryLimitMiB"
+  ] as const) {
+    const surplus =
+      containerMemoryLimitDraftTotalPercent(next, vmMiB) -
+      containerMemoryLimitRanges.maxCombinedPercent;
+    if (surplus <= 0) {
+      return next;
+    }
+    const range = containerMemoryLimitRangeForField(field);
+    const currentPercent = containerMemoryLimitPercent(next[field], vmMiB);
+    const minimumPercent = containerMemoryLimitPercentRange(range, vmMiB).min;
+    const nextPercent = Math.max(minimumPercent, currentPercent - surplus);
+    next = {
+      ...next,
+      [field]: String(containerMemoryLimitMiB(nextPercent, range, vmMiB))
+    };
+  }
+  return next;
+}
+
+function enableContainerReconcileActivationWhenNeeded(
+  draft: RuntimeSettingsDraft,
+  runtime: Parameters<typeof draftToRuntimeSettings>[1],
+  customAdvertisedURL: boolean
+): RuntimeSettingsDraft {
+  const candidate = draftToRuntimeSettings(draft, runtime, customAdvertisedURL);
+  const decision = runtimeSettingsActivationDecision(candidate, runtime);
+  if (
+    decision.requiresContainerServicesReconcile &&
+    !decision.requiresVMRestart
+  ) {
+    return { ...draft, restartAfterSave: true };
+  }
+  return draft;
+}
+
+function containerMemoryLimitRangeForField(
+  field:
+    | "vitalServerContainerMemoryLimitMiB"
+    | "recorderIngressContainerMemoryLimitMiB"
+    | "redisContainerMemoryLimitMiB"
+): { minMiB: number; maxMiB: number } {
+  if (field === "recorderIngressContainerMemoryLimitMiB") {
+    return containerMemoryLimitRanges.recorderIngress;
+  }
+  if (field === "redisContainerMemoryLimitMiB") {
+    return containerMemoryLimitRanges.redis;
+  }
+  return containerMemoryLimitRanges.vitalServer;
+}
+
+function runtimeContainerLimitTotalPercent(settings: {
+  memoryGiB: number;
+  vitalServerContainerMemoryLimitMiB: number;
+  recorderIngressContainerMemoryLimitMiB: number;
+  redisContainerMemoryLimitMiB: number;
+}): number {
+  const vmMiB = Math.max(settings.memoryGiB * 1024, 1);
+  return Math.round(
+    ((settings.vitalServerContainerMemoryLimitMiB +
+      settings.recorderIngressContainerMemoryLimitMiB +
+      settings.redisContainerMemoryLimitMiB) /
+      vmMiB) *
+      100
+  );
+}
+
+function containerMemoryLimitDraftTotalPercent(
+  draft: RuntimeSettingsDraft,
+  vmMiB: number
+): number {
+  return (
+    containerMemoryLimitPercent(draft.vitalServerContainerMemoryLimitMiB, vmMiB) +
+    containerMemoryLimitPercent(draft.recorderIngressContainerMemoryLimitMiB, vmMiB) +
+    containerMemoryLimitPercent(draft.redisContainerMemoryLimitMiB, vmMiB)
+  );
+}
+
+function containerMemoryLimitPercent(value: string, vmMiB: number): number {
+  const valueMiB = parseOptionalNumber(value) ?? 0;
+  return Math.round((valueMiB / Math.max(vmMiB, 1)) * 100);
+}
+
+function containerMemoryLimitMiB(
+  percent: number,
+  range: { minMiB: number; maxMiB: number },
+  vmMiB: number
+): number {
+  const valueMiB = Math.round((Math.max(vmMiB, 1) * percent) / 100);
+  return Math.min(Math.max(valueMiB, range.minMiB), Math.min(range.maxMiB, vmMiB));
+}
+
+function containerMemoryLimitPercentRange(
+  range: { minMiB: number; maxMiB: number },
+  vmMiB: number
+): { min: number; max: number } {
+  const safeVMMiB = Math.max(vmMiB, 1);
+  const min = Math.max(1, Math.ceil((range.minMiB / safeVMMiB) * 100));
+  const max = Math.max(
+    min,
+    Math.min(100, Math.floor((Math.min(range.maxMiB, safeVMMiB) / safeVMMiB) * 100))
+  );
+  return { min, max };
 }
 
 function changedRuntimeControlPortValue(

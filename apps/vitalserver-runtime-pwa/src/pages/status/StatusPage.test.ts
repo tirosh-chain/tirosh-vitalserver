@@ -3,6 +3,7 @@ import {
   formatVitalRecorderConnectionMetric,
   formatVitalRecorderObservationMetric
 } from "@/domain/runtime-control/formatting/vitalRecorder";
+import { recorderIngressQueueStatus } from "./StatusPage";
 
 describe("formatVitalRecorderObservationMetric", () => {
   it("does not display unavailable VitalDB observation metrics as zero", () => {
@@ -49,12 +50,76 @@ describe("formatVitalRecorderObservationMetric", () => {
     ).toBe("Not reported");
   });
 
-  it("displays active recorder connections when reported by audit proxy", () => {
+  it("displays active recorder connections when reported by recorder ingress", () => {
     expect(
       formatVitalRecorderConnectionMetric({
         source: "unavailable",
         activeConnections: 2
       })
     ).toBe(2);
+  });
+});
+
+describe("recorderIngressQueueStatus", () => {
+  it("does not expose raw command failure text while recorder ingress is not ready", () => {
+    expect(
+      recorderIngressQueueStatus({
+        recorderIngressHTTP: "failed",
+        recorderIngressStatus: null,
+        recorderIngressStatusReadState: "commandFailed",
+        recorderIngressStatusReadError:
+          "command-failed-7 exitCode=7 stderr=curl: (7) Failed to connect to 127.0.0.1 port 80"
+      } as Parameters<typeof recorderIngressQueueStatus>[0])
+    ).toBe("Not ready");
+  });
+
+  it("uses read state instead of inferring readiness from read error text", () => {
+    expect(
+      recorderIngressQueueStatus({
+        recorderIngressHTTP: "failed",
+        recorderIngressStatus: null,
+        recorderIngressStatusReadState: "commandFailed",
+        recorderIngressStatusReadError: null
+      } as Parameters<typeof recorderIngressQueueStatus>[0])
+    ).toBe("Not ready");
+  });
+
+  it("reports raw archive write failures in the recorder ingress queue summary", () => {
+    expect(
+      recorderIngressQueueStatus({
+        recorderIngressHTTP: "200",
+        recorderIngressStatusReadState: "loaded",
+        recorderIngressStatusReadError: null,
+        recorderIngressStatus: {
+          activeWebSockets: 1,
+          activeRecorderConnections: 1,
+          recorders: [],
+          httpRequests: 1,
+          socketIoEventsSeen: 1,
+          socketIoParseFailures: 0,
+          auditWriteFailures: 0,
+          auditFileWriteFailures: 0,
+          auditStdoutWriteFailures: 0,
+          redisIpWriteFailures: 0,
+          redisIpVerifyFailures: 0,
+          redisIpVerifyMismatches: 0,
+          rawArchive: {
+            status: "failed",
+            persistedEvents: 12,
+            persistedBytes: 2048,
+            writeFailures: 2
+          },
+          spool: {
+            status: "ready",
+            pendingItems: 0,
+            pendingBytes: 0
+          }
+        },
+        runtimeStateFileMetadataReadState: "loaded",
+        containerLogsPresent: true,
+        composeServices: [],
+        composeServicesReadState: "loaded"
+      } as Parameters<typeof recorderIngressQueueStatus>[0])
+    ).toContain("failed");
   });
 });

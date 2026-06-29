@@ -21,8 +21,8 @@ final class ContractsTests: XCTestCase {
 
     func testRuntimeContainerObservationPreservesRuntimeStateFileMetadataReadState() throws {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             runtimeStateFileMetadataReadState: .notRead,
             containerLogsPresent: false,
             containerLogsBytes: nil
@@ -36,17 +36,17 @@ final class ContractsTests: XCTestCase {
         XCTAssertNil(decoded.runtimeStateFileMetadataError)
     }
 
-    func testAuditProxyStatusReadResultPreservesExplicitReadState() {
+    func testRecorderIngressStatusReadResultPreservesExplicitReadState() {
         XCTAssertEqual(
-            RuntimeAuditProxyStatusReadResult(
+            RuntimeRecorderIngressStatusReadResult(
                 httpStatus: "200",
-                document: RuntimeAuditProxyStatusDocument(activeRecorderConnections: 1),
+                document: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 1),
                 readError: nil
             ).readState,
             .loaded
         )
         XCTAssertEqual(
-            RuntimeAuditProxyStatusReadResult(
+            RuntimeRecorderIngressStatusReadResult(
                 httpStatus: RuntimeHTTPStatusText.failed,
                 document: nil,
                 readError: "command-failed-7"
@@ -54,7 +54,7 @@ final class ContractsTests: XCTestCase {
             .commandFailed
         )
         XCTAssertEqual(
-            RuntimeAuditProxyStatusReadResult(
+            RuntimeRecorderIngressStatusReadResult(
                 httpStatus: RuntimeHTTPStatusText.missingProxyPort,
                 document: nil,
                 readError: RuntimeHTTPStatusText.missingProxyPort
@@ -63,12 +63,12 @@ final class ContractsTests: XCTestCase {
         )
     }
 
-    func testRuntimeContainerObservationPreservesAuditProxyStatusReadState() throws {
+    func testRuntimeContainerObservationPreservesRecorderIngressStatusReadState() throws {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: RuntimeHTTPStatusText.failed,
-            auditProxyStatus: nil,
-            auditProxyStatusReadState: .commandFailed,
-            auditProxyStatusReadError: "command-failed-7",
+            recorderIngressHTTP: RuntimeHTTPStatusText.failed,
+            recorderIngressStatus: nil,
+            recorderIngressStatusReadState: .commandFailed,
+            recorderIngressStatusReadError: "command-failed-7",
             containerLogsPresent: false,
             containerLogsBytes: nil
         )
@@ -76,8 +76,116 @@ final class ContractsTests: XCTestCase {
         let data = try JSONEncoder().encode(observation)
         let decoded = try JSONDecoder().decode(RuntimeContainerObservation.self, from: data)
 
-        XCTAssertEqual(decoded.auditProxyStatusReadState, .commandFailed)
-        XCTAssertEqual(decoded.auditProxyStatusReadError, "command-failed-7")
+        XCTAssertEqual(decoded.recorderIngressStatusReadState, .commandFailed)
+        XCTAssertEqual(decoded.recorderIngressStatusReadError, "command-failed-7")
+    }
+
+    func testRecorderIngressStatusDecodesSpoolAndReplayStateWithoutDefaultingMissingQueueState() throws {
+        let json = """
+        {
+          "activeWebSockets": 1,
+          "activeRecorderConnections": 1,
+          "spool": {
+            "mode": "spool_and_replay",
+            "status": "ready",
+            "storage": "redis_list",
+            "pendingItems": 12,
+            "pendingBytes": 3456,
+            "oldestPendingAgeSeconds": 34,
+            "rejectedEvents": 2,
+            "writeFailures": 0,
+            "lastFailure": {
+              "reason": "spool_full",
+              "message": "pending item limit exceeded",
+              "occurredAt": "2026-06-23T00:00:00Z"
+            }
+          },
+          "replay": {
+            "status": "degraded",
+            "pendingItems": 12,
+            "inFlightItems": 1,
+            "retryableFailures": 3,
+            "deadLetteredEvents": 0,
+            "replayLagSeconds": 45,
+            "maxBytesPerSecond": 2097152,
+            "configuredMaxBytesPerSecond": 10485760,
+            "adaptive": {
+              "enabled": true,
+              "minBytesPerSecond": 1048576,
+              "maxBytesPerSecond": 10485760,
+              "currentMaxBytesPerSecond": 2097152,
+              "minConcurrency": 1,
+              "maxConcurrency": 8,
+              "currentConcurrency": 4,
+              "lastDecision": "decrease",
+              "lastReason": "replay_failures",
+              "lastChangedAt": "2026-06-23T00:00:01Z",
+              "memoryGuardStatus": "unavailable"
+            },
+            "lastFailure": {
+              "reason": "upstream_timeout"
+            }
+          },
+          "throughput": {
+            "windowSeconds": 10,
+            "observedBytesPerSecond": 5120.0,
+            "spooledBytesPerSecond": 4096.0,
+            "replayedBytesPerSecond": 3072.0,
+            "queueGrowthBytesPerSecond": 1024.0
+          },
+          "recorders": [
+            {
+              "vrcode": "VR001",
+              "activeConnections": 1,
+              "spool": {
+                "pendingItems": 3
+              },
+              "replay": {
+                "retryableFailures": 1
+              }
+            }
+          ]
+        }
+        """
+
+        let decoded = try JSONDecoder().decode(
+            RuntimeRecorderIngressStatusDocument.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertEqual(decoded.spool?.mode, "spool_and_replay")
+        XCTAssertEqual(decoded.spool?.pendingItems, 12)
+        XCTAssertEqual(decoded.spool?.pendingBytes, 3456)
+        XCTAssertEqual(decoded.spool?.oldestPendingAgeSeconds, 34)
+        XCTAssertEqual(decoded.spool?.lastFailure?.reason, "spool_full")
+        XCTAssertEqual(decoded.replay?.status, "degraded")
+        XCTAssertEqual(decoded.replay?.inFlightItems, 1)
+        XCTAssertEqual(decoded.replay?.retryableFailures, 3)
+        XCTAssertEqual(decoded.replay?.lastFailure?.reason, "upstream_timeout")
+        XCTAssertEqual(decoded.replay?.configuredMaxBytesPerSecond, 10_485_760)
+        XCTAssertEqual(decoded.replay?.adaptive?.currentMaxBytesPerSecond, 2_097_152)
+        XCTAssertEqual(decoded.replay?.adaptive?.currentConcurrency, 4)
+        XCTAssertEqual(decoded.replay?.adaptive?.lastDecision, "decrease")
+        XCTAssertEqual(decoded.replay?.adaptive?.memoryGuardStatus, .unavailable)
+        XCTAssertEqual(decoded.throughput?.windowSeconds, 10)
+        XCTAssertEqual(decoded.throughput?.observedBytesPerSecond, 5120.0)
+        XCTAssertEqual(decoded.throughput?.queueGrowthBytesPerSecond, 1024.0)
+        XCTAssertEqual(decoded.recorders.first?.spool?.pendingItems, 3)
+        XCTAssertEqual(decoded.recorders.first?.replay?.retryableFailures, 1)
+
+        let legacy = try JSONDecoder().decode(
+            RuntimeRecorderIngressStatusDocument.self,
+            from: Data(#"{"activeWebSockets":1,"activeRecorderConnections":1}"#.utf8)
+        )
+        XCTAssertNil(legacy.spool)
+        XCTAssertNil(legacy.replay)
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeRecorderIngressStatusDocument.self,
+                from: Data(#"{"activeWebSockets":1,"activeRecorderConnections":1,"replay":{"adaptive":{"memoryGuardStatus":"not-ready"}}}"#.utf8)
+            )
+        )
     }
 
     func testDecodesRuntimeStatusV1() throws {
@@ -225,11 +333,18 @@ final class ContractsTests: XCTestCase {
           "updatedAt": "2026-05-24T00:00:00Z",
           "containerServices": [
             {
-              "service": "audit-proxy",
-              "name": "vitalserver-audit-proxy-1",
+              "service": "recorder-ingress",
+              "name": "vitalserver-recorder-ingress-1",
               "state": "running",
               "health": "healthy",
-              "exitCode": 0
+              "exitCode": 0,
+              "containerID": "container-1",
+              "error": "",
+              "finishedAt": "2026-06-11T01:00:00Z",
+              "memoryUsedBytes": 536870912,
+              "memoryLimitBytes": 4294967296,
+              "oomKilled": true,
+              "restartCount": 2
             }
           ]
         }
@@ -238,11 +353,18 @@ final class ContractsTests: XCTestCase {
 
         XCTAssertEqual(document.containerServices, [
             RuntimeContainerServiceObservation(
-                service: "audit-proxy",
-                name: "vitalserver-audit-proxy-1",
+                service: "recorder-ingress",
+                containerID: "container-1",
+                name: "vitalserver-recorder-ingress-1",
                 state: "running",
                 health: "healthy",
-                exitCode: 0
+                exitCode: 0,
+                error: "",
+                finishedAt: "2026-06-11T01:00:00Z",
+                memoryUsedBytes: 536870912,
+                memoryLimitBytes: 4294967296,
+                oomKilled: true,
+                restartCount: 2
             ),
         ])
     }
@@ -303,9 +425,9 @@ final class ContractsTests: XCTestCase {
     func testRuntimeContainerObservationPreservesReadErrors() throws {
         let json = """
         {
-          "auditProxyHTTP": "invalid-response",
-          "auditProxyStatus": null,
-          "auditProxyStatusReadError": "decode-failed",
+          "recorderIngressHTTP": "invalid-response",
+          "recorderIngressStatus": null,
+          "recorderIngressStatusReadError": "decode-failed",
           "runtimeStateFileUpdatedAt": null,
           "runtimeStateFileMetadataError": "mtime-read-failed",
           "containerLogsPresent": true,
@@ -319,8 +441,8 @@ final class ContractsTests: XCTestCase {
 
         let observation = try JSONDecoder().decode(RuntimeContainerObservation.self, from: Data(json.utf8))
 
-        XCTAssertEqual(observation.auditProxyStatusReadError, "decode-failed")
-        XCTAssertEqual(observation.auditProxyStatusReadState, .invalidResponse)
+        XCTAssertEqual(observation.recorderIngressStatusReadError, "decode-failed")
+        XCTAssertEqual(observation.recorderIngressStatusReadState, .invalidResponse)
         XCTAssertEqual(observation.runtimeStateFileMetadataError, "mtime-read-failed")
         XCTAssertEqual(observation.containerLogsMetadataError, "size-read-failed")
         XCTAssertEqual(observation.composeServicesReadState, .invalid)
@@ -342,8 +464,8 @@ final class ContractsTests: XCTestCase {
         ] {
             let json = """
             {
-              "auditProxyHTTP": "200",
-              "auditProxyStatus": null,
+              "recorderIngressHTTP": "200",
+              "recorderIngressStatus": null,
               "containerLogsPresent": true,
               "containerLogsBytes": null,
               "composeServices": [],
@@ -365,8 +487,8 @@ final class ContractsTests: XCTestCase {
     func testRuntimeContainerObservationDecodesMissingComposeServicesAsMissingWhenStateAbsent() throws {
         let json = """
         {
-          "auditProxyHTTP": "200",
-          "auditProxyStatus": null,
+          "recorderIngressHTTP": "200",
+          "recorderIngressStatus": null,
           "containerLogsPresent": true,
           "containerLogsBytes": null
         }
@@ -381,8 +503,8 @@ final class ContractsTests: XCTestCase {
 
     func testRuntimeContainerObservationDistinguishesLoadedEmptyComposeServicesFromMissingState() throws {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: false,
             containerLogsBytes: nil,
             composeServicesReadState: .loaded,
@@ -620,7 +742,7 @@ final class ContractsTests: XCTestCase {
           "guest-log-sync-service-not-loaded",
           "host-proxy-http-502",
           "guest-http-probe-failed-failed",
-          "audit-proxy-http-failed",
+          "recorder-ingress-http-failed",
           "container-service-app-state-unhealthy",
           "container-observation-missing",
           "container-observation-read-failed-permission_denied",
@@ -655,7 +777,7 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(reasons[2], .guestLogSyncService("not-loaded"))
         XCTAssertEqual(reasons[3], .hostProxyHTTP("502"))
         XCTAssertEqual(reasons[4], .guestHTTPProbeFailed("failed"))
-        XCTAssertEqual(reasons[5], .auditProxyHTTP("failed"))
+        XCTAssertEqual(reasons[5], .recorderIngressHTTP("failed"))
         XCTAssertEqual(reasons[6], .containerService(service: "app", state: "unhealthy"))
         XCTAssertEqual(reasons[7], .containerObservationMissing)
         XCTAssertEqual(reasons[8], .containerObservationReadFailed("permission_denied"))
@@ -693,7 +815,7 @@ final class ContractsTests: XCTestCase {
             "guest-log-sync-service-not-loaded",
             "host-proxy-http-502",
             "guest-http-probe-failed-failed",
-            "audit-proxy-http-failed",
+            "recorder-ingress-http-failed",
             "container-service-app-state-unhealthy",
             "container-observation-missing",
             "container-observation-read-failed-permission_denied",
@@ -727,8 +849,8 @@ final class ContractsTests: XCTestCase {
         XCTAssertEqual(RuntimeFailureReason.proxyPortInUse(port: 80, listeners: "nginx-1234").recoveryAction, .freeProxyPort)
         XCTAssertEqual(RuntimeFailureReason.proxyPortInUse(port: 80, listeners: "nginx-1234").domainSeverity, .critical)
 
-        XCTAssertEqual(RuntimeFailureReason.auditProxyHTTP("failed").domainCategory, .container)
-        XCTAssertEqual(RuntimeFailureReason.auditProxyHTTP("failed").recoveryAction, .restartContainerServices)
+        XCTAssertEqual(RuntimeFailureReason.recorderIngressHTTP("failed").domainCategory, .container)
+        XCTAssertEqual(RuntimeFailureReason.recorderIngressHTTP("failed").recoveryAction, .restartContainerServices)
 
         XCTAssertEqual(RuntimeFailureReason.vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10").domainCategory, .vitalDB)
         XCTAssertEqual(RuntimeFailureReason.vitalDBAnomaly(kind: "duplicate-ip", subject: "10.0.0.10").domainSeverity, .warning)
@@ -862,7 +984,7 @@ final class ContractsTests: XCTestCase {
             .domainErrorObserved,
             .vmErrorObserved,
             .containerObserved,
-            .auditProxyObserved,
+            .recorderIngressObserved,
             .vitalDBObserved,
             .vitalDBObserverUnhealthy,
             .vitalDBAnomalyDetected,
@@ -888,7 +1010,7 @@ final class ContractsTests: XCTestCase {
             "domain-error-observed",
             "vm-error-observed",
             "container-observed",
-            "audit-proxy-observed",
+            "recorder-ingress-observed",
             "vitaldb-observed",
             "vitaldb-observer-unhealthy",
             "vitaldb-anomaly-detected",
@@ -917,13 +1039,13 @@ final class ContractsTests: XCTestCase {
 
         let query = RuntimeEventQuery(
             limit: 25,
-            eventType: .auditProxyObserved,
+            eventType: .recorderIngressObserved,
             since: "2026-05-24T00:00:00Z",
             before: cursor
         )
 
         XCTAssertEqual(query.limit, 25)
-        XCTAssertEqual(query.eventType, .auditProxyObserved)
+        XCTAssertEqual(query.eventType, .recorderIngressObserved)
         XCTAssertEqual(query.since, "2026-05-24T00:00:00Z")
         XCTAssertEqual(query.before, cursor)
     }

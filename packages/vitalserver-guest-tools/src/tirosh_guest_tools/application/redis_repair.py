@@ -97,7 +97,7 @@ def restart_runtime_compose() -> None:
             [
                 "stop",
                 ComposeService.APP.value,
-                ComposeService.AUDIT_PROXY.value,
+                ComposeService.RECORDER_INGRESS.value,
                 ComposeService.REDIS_UI.value,
                 ComposeService.EDGE.value,
                 ComposeService.REDIS.value,

@@ -8,7 +8,7 @@
 |---|---|---|
 | Runtime Control API | `docs/macos-runtime/runtime-control.openapi.json` | PWA/native shell과 host runtime 사이의 contract |
 | VitalDB Observer API | `docs/openapi/vitaldb-observer.openapi.yaml` | observer container 내부 API |
-| Audit Proxy API | `docs/openapi/audit-proxy.openapi.yaml` | command audit sidecar endpoint |
+| Recorder Ingress API | `docs/openapi/recorder-ingress.openapi.yaml` | command audit sidecar endpoint |
 | VitalServer API | `docs/openapi.yaml` | upstream VitalServer route에서 추출한 API 문서 |
 
 ## Runtime Control API
@@ -24,9 +24,9 @@ VitalDB Observer API는 Redis와 proxy/access log를 읽어 observation snapshot
 이 API는 내부 collector API입니다. 최종 product-facing source of truth는 runtime
 observability read model입니다.
 
-## Audit Proxy API
+## Recorder Ingress API
 
-Audit Proxy API는 VRecorder command 흐름과 audit event를 관측하기 위한 sidecar
+Recorder Ingress API는 VRecorder command 흐름과 audit event를 관측하기 위한 sidecar
 contract입니다.
 
 ## 문서 작성 기준

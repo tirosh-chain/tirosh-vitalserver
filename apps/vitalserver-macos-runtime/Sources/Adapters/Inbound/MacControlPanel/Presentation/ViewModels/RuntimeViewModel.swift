@@ -311,6 +311,7 @@ public final class RuntimeViewModel: ObservableObject {
 
     func prepareApplySettings() -> Bool {
         normalizeAdvertisedURLSettings()
+        normalizeRecorderArchiveSettings()
         return validateSettings()
     }
 
@@ -320,6 +321,7 @@ public final class RuntimeViewModel: ObservableObject {
             return
         }
         normalizeAdvertisedURLSettings()
+        normalizeRecorderArchiveSettings()
         guard validateSettings() else {
             return
         }
@@ -488,6 +490,11 @@ public final class RuntimeViewModel: ObservableObject {
             settingsValidationMessage = nil
         }
         return result.isValid
+    }
+
+    private func normalizeRecorderArchiveSettings() {
+        settings.recorderIngress.rawArchiveEnabled = true
+        settings.recorderIngress.rawArchiveAutoExportEnabled = true
     }
 
     private func loadRuntimeSettings() async {

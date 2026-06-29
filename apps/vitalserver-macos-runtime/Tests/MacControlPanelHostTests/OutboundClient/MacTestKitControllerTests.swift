@@ -144,8 +144,8 @@ final class MacTestKitControllerTests: XCTestCase {
                 RuntimeStatus(
                     vmIP: nil,
                     containerObservation: RuntimeContainerObservation(
-                        auditProxyHTTP: "200",
-                        auditProxyStatus: nil,
+                        recorderIngressHTTP: "200",
+                        recorderIngressStatus: nil,
                         containerLogsPresent: false,
                         containerLogsBytes: nil,
                         composeServices: [
@@ -180,8 +180,8 @@ final class MacTestKitControllerTests: XCTestCase {
                 RuntimeStatus(
                     vmIP: nil,
                     containerObservation: RuntimeContainerObservation(
-                        auditProxyHTTP: "200",
-                        auditProxyStatus: nil,
+                        recorderIngressHTTP: "200",
+                        recorderIngressStatus: nil,
                         containerLogsPresent: false,
                         containerLogsBytes: nil,
                         composeServices: [
@@ -436,8 +436,8 @@ final class MacTestKitControllerTests: XCTestCase {
                 RuntimeStatus(
                     vmIP: nil,
                     containerObservation: RuntimeContainerObservation(
-                        auditProxyHTTP: "200",
-                        auditProxyStatus: nil,
+                        recorderIngressHTTP: "200",
+                        recorderIngressStatus: nil,
                         containerLogsPresent: false,
                         containerLogsBytes: nil,
                         composeServices: [

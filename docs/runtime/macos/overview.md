@@ -2,8 +2,7 @@
 
 Mac mini/Mac Studio에서 VitalServer를 Linux VM 기반 runtime으로 운영하기 위한 문서군의 시작점입니다.
 
-앱 README는 빠른 실행과 주요 시나리오를 다룹니다. 이 문서는 VM launcher 문서군 안에서 어떤 문서를
-언제 보면 되는지, 실제 사용자가 접할 흐름이 어디에 대응되는지 정리합니다.
+앱 README는 빠른 실행과 주요 시나리오를 다룹니다. 이 문서는 VM launcher 문서군 안에서 어떤 문서를 언제 보면 되는지, 실제 사용자가 접할 흐름이 어디에 대응되는지 정리합니다.
 
 ## 1. 문서 목적
 
@@ -42,12 +41,9 @@ Web/PWA Helper UI
                   -> Linux guest Service Stack / VitalServer service
 ```
 
-macOS/Windows native app은 장기적으로 product UI를 소유하지 않고, local runtime host/native shell 역할을
-맡습니다. 설치, local service bootstrap, pairing URL/QR, recovery, native picker/dialog 같은
-platform-specific 작업은 native shell과 host runtime component에 남깁니다.
+macOS/Windows native app은 장기적으로 product UI를 소유하지 않고, local runtime host/native shell 역할을 맡습니다. 설치, local service bootstrap, pairing URL/QR, recovery, native picker/dialog 같은 platform-specific 작업은 native shell과 host runtime component에 남깁니다.
 
-자세한 경계는 [Architecture](architecture.md)와
-[ADR 0002](../../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md)를 봅니다.
+자세한 경계는 [Architecture](architecture.md)와 [ADR 0002](../../adr/0002-helper-client-boundary-for-local-and-remote-runtime.md)를 봅니다.
 
 ### 2-2. v1 macOS runtime network
 
@@ -65,9 +61,7 @@ VRecorder / Browser
                   -> Swagger UI
 ```
 
-v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docker Desktop/OrbStack류 VM NAT에서
-원 IP가 바뀌는 문제를 피하기 위해 host proxy를 Mac에서 직접 실행합니다. bridged mode는 Apple
-restricted entitlement 승인이 필요한 향후 옵션입니다.
+v1 기본값은 `shared/NAT VM + macOS host proxy`입니다. 이 구조는 Docker Desktop/OrbStack류 VM NAT에서 원 IP가 바뀌는 문제를 피하기 위해 host proxy를 Mac에서 직접 실행합니다. bridged mode는 Apple restricted entitlement 승인이 필요한 향후 옵션입니다.
 
 ## 3. Helper app 화면 지도
 
@@ -162,13 +156,9 @@ make dist/update/verify/release
 dist/update-bundles/update-bundle-<channel>-<kind>-<releaseLabel>.tar.gz
 ```
 
-Product Update bundle은 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor/VM Driver tools,
-host nginx bundle, Service Stack/guest deploy 같은 artifact를 `.tar.gz`로 묶습니다.
+Product Update bundle은 Helper UI, Native Shell, Runtime Control API, Updater, Supervisor/VM Driver tools, host nginx bundle, Service Stack/guest deploy 같은 artifact를 `.tar.gz`로 묶습니다.
 
-`make dist/update/release`는 rootfs를 포함하지 않는 `product-update` bundle을 만듭니다. `guest-deploy`
-변경은 기본 migration과 guest activation 경로를 통해 VM 내부에 반영됩니다. VM Image/rootfs 자체를
-바꿔야 하는 경우에만 `make dist/image-update/release`를 사용하며, 이 흐름은 Danger Zone의
-`vm-image-update` 대상입니다. VM Image bundle도 기존 mutable `vm-disk.img`를 자동 교체하지 않습니다.
+`make dist/update/release`는 rootfs를 포함하지 않는 `product-update` bundle을 만듭니다. `guest-deploy` 변경은 기본 migration과 guest activation 경로를 통해 VM 내부에 반영됩니다. VM Image/rootfs 자체를 바꿔야 하는 경우에만 `make dist/image-update/release`를 사용하며, 이 흐름은 Danger Zone의 `vm-image-update` 대상입니다. VM Image bundle도 기존 mutable `vm-disk.img`를 자동 교체하지 않습니다.
 
 ### 6-4. 개발용 설치 테스트
 
@@ -190,10 +180,7 @@ make runtime/down
 
 ### 7-1. Product release와 component version
 
-`VitalServer Helper`는 최상위 product release입니다. 플랫폼별 native shell, Runtime Control API
-implementation, VM provider 구현은 같은 Helper release 아래의 variant로 취급하고, 실제 변경 범위는
-component version으로 설명합니다. 각 layer는 platform 종속성과 책임이 다르므로 version label과 bundle
-manifest도 이 경계를 드러내야 합니다.
+`VitalServer Helper`는 최상위 product release입니다. 플랫폼별 native shell, Runtime Control API implementation, VM provider 구현은 같은 Helper release 아래의 variant로 취급하고, 실제 변경 범위는 component version으로 설명합니다. 각 layer는 platform 종속성과 책임이 다르므로 version label과 bundle manifest도 이 경계를 드러내야 합니다.
 
 | Layer | Platform dependency | 책임 | Manifest key |
 |---|---|---|---|
@@ -208,12 +195,9 @@ manifest도 이 경계를 드러내야 합니다.
 | VM Image | guest OS/image-specific | Linux guest OS/base rootfs/kernel/initrd class artifact | `components.vmImage` |
 | VitalServer service | service-specific | VM 안에서 실행되는 VitalServer app/container | `components.vitalServer` |
 
-Bundle manifest는 이 모델을 그대로 반영합니다. `helperVersion`은 최상위 release를 가리키고,
-`targetPlatform`은 적용 가능한 단일 platform variant를 제한하며, 하위 version은 `components` map에
-기록합니다.
+Bundle manifest는 이 모델을 그대로 반영합니다. `helperVersion`은 최상위 release를 가리키고, `targetPlatform`은 적용 가능한 단일 platform variant를 제한하며, 하위 version은 `components` map에 기록합니다.
 
-예를 들어 macOS 전용 VM Driver 변경은 `targetPlatform: "macos-arm64"`와 `components.vmDriver`로
-표현하고, Service Stack 변경은 platform과 독립적인 `components.serviceStack`으로 표현합니다.
+예를 들어 macOS 전용 VM Driver 변경은 `targetPlatform: "macos-arm64"`와 `components.vmDriver`로 표현하고, Service Stack 변경은 platform과 독립적인 `components.serviceStack`으로 표현합니다.
 
 ### 7-2. Platform별 runtime 구현
 
@@ -237,8 +221,7 @@ Update bundle kind는 의도적으로 두 개만 둡니다.
 | `product-update` | Update 탭 | Helper UI, Native Shell, Runtime Control API, Updater, Supervisor, VM Driver, Service Stack, 개별 service/container, host proxy, migrations |
 | `vm-image-update` | Danger Zone | VM Image/rootfs/base OS/kernel/initrd class artifact |
 
-Hotfix, service-only update, updater bridge update는 별도 bundle kind를 만들지 않고 `product-update`의
-channel, changed components, `requiresTwoPhaseUpdate` 같은 metadata로 표현합니다.
+Hotfix, service-only update, updater bridge update는 별도 bundle kind를 만들지 않고 `product-update`의 channel, changed components, `requiresTwoPhaseUpdate` 같은 metadata로 표현합니다.
 
 ## 8. 산출물 기준
 

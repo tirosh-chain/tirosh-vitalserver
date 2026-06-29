@@ -22,10 +22,7 @@ make pwa/verify-contract
 make e2e/smoke
 ```
 
-`make e2e/smoke`는 Runtime Control local HTTP server를 실제로 띄운 뒤
-`/runtime/capabilities`, `/runtime/status`, `/runtime/settings`,
-`/runtime/events`, `/runtime/overview`와 missing-token failure를 검증합니다.
-설치, update 적용, rollback 같은 destructive 작업은 수행하지 않습니다.
+`make e2e/smoke`는 Runtime Control local HTTP server를 실제로 띄운 뒤 `/runtime/capabilities`, `/runtime/status`, `/runtime/settings`, `/runtime/events`, `/runtime/overview`와 missing-token failure를 검증합니다. 설치, update 적용, rollback 같은 destructive 작업은 수행하지 않습니다.
 
 Runtime Control host file 권한은 로컬 audit으로 확인합니다.
 
@@ -52,8 +49,7 @@ E2E_LOOP_COUNT=5 E2E_LOOP_INTERVAL=10 make e2e/local/loop
 Runtime Control API contract는 OpenAPI와 Zod schema 양쪽을 확인합니다.
 
 - `generate:api`로 OpenAPI generated type을 갱신합니다.
-- `make pwa/verify-contract`는 OpenAPI generated type을 임시 생성본과 비교하고, committed generated
-  client가 최신이 아니면 실패합니다.
+- `make pwa/verify-contract`는 OpenAPI generated type을 임시 생성본과 비교하고, committed generated client가 최신이 아니면 실패합니다.
 - API response는 domain schema에서 검증합니다.
 - feature/page는 raw JSON에 직접 의존하지 않습니다.
 

@@ -40,6 +40,7 @@ public extension AppConstants {
         public static let noLogData = "No log data for this source yet."
         public static let unknown = "Unknown"
         public static let notReported = "Not reported"
+        public static let notReady = "Not ready"
         public static let online = "Online"
         public static let offline = "Offline"
         public static let stale = "Stale"
@@ -90,7 +91,7 @@ public extension AppConstants {
         public static let settingsApplyPreparing = "Preparing runtime settings..."
         public static let settingsApplyRunning = "Applying runtime settings..."
         public static let settingsApplied = "Runtime settings applied."
-        public static let applySettingsConfirmation = "Apply these settings to the installed runtime?\n\nThis may update launchd services, rewrite runtime configuration, and restart the VM runtime only when a changed setting requires it and restart is enabled."
+        public static let applySettingsConfirmation = "Apply these settings to the installed runtime?\n\nThis may update launchd services, rewrite runtime configuration, reconcile container services when required, and restart the VM runtime only when a changed setting requires it and activation after save is enabled."
         public static let restartVMRuntimeConfirmation = "Restart the VM runtime now?\n\nVitalServer may be briefly unavailable. Saved VM settings that are waiting for restart become active after the runtime starts again."
         public static let noRuntimeActivationRequired = "No runtime activation required for these changes."
         public static let noVMRuntimeRestartRequired = noRuntimeActivationRequired
@@ -287,6 +288,26 @@ public extension AppConstants {
             }
         }
 
+        public static func recorderIngressStatusReadState(
+            _ value: RuntimeRecorderIngressStatusReadState?
+        ) -> String {
+            guard let value else {
+                return notReported
+            }
+            switch value {
+            case .loaded:
+                return ready
+            case .notRead,
+                 .skippedMissingProxyPort,
+                 .commandFailed,
+                 .emptyResponse,
+                 .outputInvalid,
+                 .invalidResponse,
+                 .readFailed:
+                return notReady
+            }
+        }
+
         public static func vmError(_ value: RuntimeVMError) -> String {
             switch value {
             case .missingExecutable:
@@ -368,8 +389,8 @@ public extension AppConstants {
                 return "Guest HTTP probe failed (\(status))"
             case .guestRuntimeStateStale:
                 return "Guest runtime state stale"
-            case .auditProxyHTTP(let status):
-                return "Audit proxy HTTP \(status)"
+            case .recorderIngressHTTP(let status):
+                return "Recorder ingress HTTP \(status)"
             case .containerService(let service, let state):
                 return "Container \(service) \(titleCasedStatus(state))"
             case .containerObservationMissing:

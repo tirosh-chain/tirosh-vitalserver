@@ -60,6 +60,15 @@ public struct RuntimeSettingsValidator {
         if settings.changeAdminPassword, !isLineSafe(settings.adminPassword) {
             return .invalid("Admin password reset value must not contain newlines.")
         }
+        if settings.containerMemoryLimitsEnabled,
+           !containerMemoryLimitsAreValid(settings) {
+            return .invalid(
+                "Container memory limits must be within the allowed MiB ranges and total no more than 70% of the VM memory allocation."
+            )
+        }
+        if !recorderIngressSettingsAreValid(settings.recorderIngress) {
+            return .invalid("Recorder ingress hot/cold path settings must be positive, and replay max concurrency must be at least min concurrency.")
+        }
         if settings.redisRelay.enabled {
             let target = settings.redisRelay.target
             if target.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -120,6 +129,71 @@ public struct RuntimeSettingsValidator {
             return false
         }
         return true
+    }
+
+    private func containerMemoryLimitsAreValid(_ settings: RuntimeSettings) -> Bool {
+        let vmMemoryMiB = settings.memoryGiB * 1024
+        let totalPercent = containerMemoryLimitPercent(
+            settings.vitalServerContainerMemoryLimitMiB,
+            vmMemoryMiB: vmMemoryMiB
+        )
+        + containerMemoryLimitPercent(
+            settings.recorderIngressContainerMemoryLimitMiB,
+            vmMemoryMiB: vmMemoryMiB
+        )
+        + containerMemoryLimitPercent(
+            settings.redisContainerMemoryLimitMiB,
+            vmMemoryMiB: vmMemoryMiB
+        )
+        return validLimit(
+            settings.vitalServerContainerMemoryLimitMiB,
+            minimum: AppConstants.SettingsLimits.minimumVitalServerContainerMemoryLimitMiB,
+            maximum: min(AppConstants.SettingsLimits.maximumVitalServerContainerMemoryLimitMiB, vmMemoryMiB)
+        )
+        && validLimit(
+            settings.recorderIngressContainerMemoryLimitMiB,
+            minimum: AppConstants.SettingsLimits.minimumRecorderIngressContainerMemoryLimitMiB,
+            maximum: min(AppConstants.SettingsLimits.maximumRecorderIngressContainerMemoryLimitMiB, vmMemoryMiB)
+        )
+        && validLimit(
+            settings.redisContainerMemoryLimitMiB,
+            minimum: AppConstants.SettingsLimits.minimumRedisContainerMemoryLimitMiB,
+            maximum: min(AppConstants.SettingsLimits.maximumRedisContainerMemoryLimitMiB, vmMemoryMiB)
+        )
+        && totalPercent <= AppConstants.SettingsLimits.maximumCombinedContainerMemoryLimitPercent
+    }
+
+    private func recorderIngressSettingsAreValid(_ settings: RuntimeRecorderIngressSettings) -> Bool {
+        let positiveValues = [
+            settings.sendDataMaxPendingItems,
+            settings.sendDataMaxPendingMiB,
+            settings.sendDataMaxPayloadMiB,
+            settings.sendDataReplayedMaxItems,
+            settings.sendDataRealtimeMaxPendingItems,
+            settings.sendDataReplayIntervalMs,
+            settings.sendDataReplayMaxAttempts,
+            settings.sendDataReplayTargetTimeoutMs,
+            settings.sendDataReplayAdaptiveMinConcurrency,
+            settings.sendDataReplayAdaptiveMaxConcurrency,
+            settings.rawArchiveMaxFileMiB,
+            settings.rawArchiveMaxFiles,
+            settings.rawArchiveAutoExportQuietSeconds,
+            settings.rawArchiveAutoExportScanIntervalSeconds,
+            settings.rawArchiveAutoExportCursorStableSeconds,
+            settings.rawArchiveAutoExportRetryDelaySeconds,
+            settings.rawArchiveAutoExportMaxAttempts,
+            settings.rawArchiveAutoExportRequestTimeoutSeconds
+        ]
+        return positiveValues.allSatisfy { $0 > 0 }
+            && settings.sendDataReplayAdaptiveMaxConcurrency >= settings.sendDataReplayAdaptiveMinConcurrency
+    }
+
+    private func validLimit(_ value: Int, minimum: Int, maximum: Int) -> Bool {
+        value >= minimum && value <= max(minimum, maximum)
+    }
+
+    private func containerMemoryLimitPercent(_ valueMiB: Int, vmMemoryMiB: Int) -> Int {
+        Int((Double(valueMiB) / Double(max(vmMemoryMiB, 1)) * 100.0).rounded())
     }
 }
 

@@ -174,7 +174,12 @@ def release_package_preflight_report(
             compose_path=settings.runtime_dir / "Support/Guest/compose.yaml",
             deploy_include_sources=[
                 include.source for include in settings.guest_deploy.includes
-            ],
+            ]
+            + (
+                [include.source for include in settings.guest_deploy.optional_includes]
+                if "testkit" in release.optional_container_services
+                else []
+            ),
         )
     )
     return PreflightReport(name=f"release-{output_kind}", checks=tuple(checks))
@@ -659,6 +664,8 @@ def docker_image_bundle_preflight_checks(
             plan=plan.image_plan,
             known_images=set(docker_config.images) | set(docker_config.optional_images),
             deploy_include_sources=deploy_include_sources,
+            optional_images=set(docker_config.optional_images),
+            include_optional=include_optional,
         )
     )
     if (
@@ -685,6 +692,8 @@ def guest_compose_contract_preflight_checks(
     plan: DockerImagePlan,
     known_images: set[str],
     deploy_include_sources: list[Path],
+    optional_images: set[str] | None = None,
+    include_optional: bool = False,
 ) -> list[PreflightCheck]:
     compose_text, error = read_text_for_preflight(compose_path)
     if error:
@@ -697,6 +706,12 @@ def guest_compose_contract_preflight_checks(
             )
         ]
     references = compose_service_image_references(compose_text)
+    if optional_images and not include_optional:
+        references = tuple(
+            reference
+            for reference in references
+            if reference.image not in optional_images
+        )
     if not references:
         return [
             PreflightCheck(
@@ -737,7 +752,8 @@ def guest_compose_contract_preflight_checks(
 def dockerfile_contracts_by_image(plan: DockerImagePlan) -> dict[str, Path]:
     return {
         plan.app_image: plan.app_dockerfile,
-        plan.audit_proxy_image: plan.audit_proxy_dockerfile,
+        plan.recorder_ingress_image: plan.recorder_ingress_dockerfile,
+        plan.recorder_recovery_image: plan.recorder_recovery_dockerfile,
         plan.vitaldb_observer_image: plan.vitaldb_observer_dockerfile,
         plan.redis_relay_image: plan.redis_relay_dockerfile,
         plan.testkit_image: plan.testkit_dockerfile,
@@ -832,11 +848,18 @@ def docker_image_plan_preflight_checks(plan: DockerImagePlan) -> list[PreflightC
     docker_tool = check_required_tool("docker")
     checks = [docker_tool]
     checks.append(check_required_file(plan.app_dockerfile, "dockerfile:app"))
-    if plan.audit_proxy_image in plan.images:
+    if plan.recorder_ingress_image in plan.images:
         checks.append(
             check_required_file(
-                plan.audit_proxy_dockerfile,
-                "dockerfile:audit-proxy",
+                plan.recorder_ingress_dockerfile,
+                "dockerfile:recorder-ingress",
+            )
+        )
+    if plan.recorder_recovery_image in plan.images:
+        checks.append(
+            check_required_file(
+                plan.recorder_recovery_dockerfile,
+                "dockerfile:recorder-recovery",
             )
         )
     if plan.vitaldb_observer_image in plan.images:
@@ -1162,6 +1185,7 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
             config=settings.guest_deploy,
             docker_bundle=settings.docker_bundle,
             optional_docker_bundle=optional_docker_bundle,
+            include_optional="testkit" in release.optional_container_services,
         ),
         rootfs_input_metadata_plan=RootfsInputMetadataPlan(
             deploy_dir=package_vm_home / "data/deploy",

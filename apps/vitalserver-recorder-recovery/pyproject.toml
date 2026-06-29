@@ -1,0 +1,22 @@
+[project]
+name = "tirosh-vitalserver-recorder-recovery"
+version = "0.1.0"
+description = "Product raw-archive to .vital recovery service for VitalServer recorder ingress."
+requires-python = ">=3.14"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "pydantic>=2.12,<3",
+  "tirosh-vitalserver-core",
+  "uvicorn>=0.32,<1",
+  "vitaldb>=1.7,<2",
+]
+
+[project.scripts]
+vitalserver-recorder-recovery = "tirosh_vitalserver.recorder_recovery.adapters.inbound.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tirosh_vitalserver"]

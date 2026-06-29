@@ -23,14 +23,28 @@ struct RuntimeStatusPanel: View {
                 recorderSummarySection
                 Divider()
                 RuntimeDisclosureSection(AppConstants.Labels.recorderDetails, isExpanded: $showingRecorderDetails) {
-                    Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
-                        statusRow(AppConstants.Labels.knownRecorders, recorderSummary.knownRecorders)
-                        statusRow(AppConstants.Labels.knownBeds, recorderSummary.knownBeds)
-                        if let latestRecorder = recorderSummary.latestRecorder {
-                            statusRow(AppConstants.Labels.latestRecorder, latestRecorder)
+                    VStack(alignment: .leading, spacing: 14) {
+                        Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                            statusRow(AppConstants.Labels.knownRecorders, recorderSummary.knownRecorders)
+                            statusRow(AppConstants.Labels.knownBeds, recorderSummary.knownBeds)
+                            if let latestRecorder = recorderSummary.latestRecorder {
+                                statusRow(AppConstants.Labels.latestRecorder, latestRecorder)
+                            }
+                            if let observedAt = recorderSummary.observedAt {
+                                statusRow(AppConstants.Labels.recorderObservation, viewModel.presentationFormatter.systemTimeText(observedAt))
+                            }
                         }
-                        if let observedAt = recorderSummary.observedAt {
-                            statusRow(AppConstants.Labels.recorderObservation, viewModel.presentationFormatter.systemTimeText(observedAt))
+                        if !recorderIngressDetailItems.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(AppConstants.Labels.recorderIngress)
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
+                                    ForEach(recorderIngressDetailItems) { item in
+                                        statusRow(item.label, item.value)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -84,6 +98,7 @@ struct RuntimeStatusPanel: View {
                 .font(.headline)
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.activeRecorderConnections, recorderSummary.activeConnections)
+                statusRow(AppConstants.Labels.recorderIngressQueue, recorderIngressQueueStatus)
                 statusRow(AppConstants.Labels.onlineRecorders, recorderSummary.onlineRecorders)
                 statusRow(AppConstants.Labels.staleRecorders, recorderSummary.staleRecorders)
                 statusRow(AppConstants.Labels.recorderAnomalies, recorderSummary.anomalies)
@@ -102,6 +117,18 @@ struct RuntimeStatusPanel: View {
                 resourceRow(
                     AppConstants.Labels.memoryUsage,
                     usage: viewModel.status.memory
+                )
+                resourceRow(
+                    AppConstants.Labels.vitalServerMemoryUsage,
+                    usage: viewModel.status.vitalServerMemory
+                )
+                resourceRow(
+                    AppConstants.Labels.recorderIngressMemoryUsage,
+                    usage: viewModel.status.recorderIngressMemory
+                )
+                resourceRow(
+                    AppConstants.Labels.redisMemoryUsage,
+                    usage: viewModel.status.redisMemory
                 )
                 resourceRow(
                     AppConstants.Labels.systemDiskUsage,
@@ -144,6 +171,14 @@ struct RuntimeStatusPanel: View {
             vitalDBObservation: viewModel.vitalDBObservationSnapshot.observation,
             now: uptimeNow
         )
+    }
+
+    private var recorderIngressQueueStatus: RuntimeStatusDisplayPolicy.StatusValue {
+        displayPolicy.recorderIngressQueue(observation: viewModel.containerObservation)
+    }
+
+    private var recorderIngressDetailItems: [RuntimeStatusDisplayPolicy.HealthItem] {
+        displayPolicy.recorderIngressDetails(observation: viewModel.containerObservation)
     }
 
     private var vitalServerAvailability: RuntimeStatusDisplayPolicy.StatusValue {
@@ -326,6 +361,21 @@ struct RuntimeStatusPanel: View {
             percent: usage?.percent,
             detail: usage.map { "\(formatBytes($0.usedBytes)) / \(formatBytes($0.totalBytes))" } ?? AppConstants.StatusText.notChecked
         )
+    }
+
+    private func resourceRow(_ label: String, usage: RuntimeContainerMemoryUsage?) -> some View {
+        resourceRow(
+            label,
+            percent: usage?.percent,
+            detail: usage.map(containerMemoryDetail) ?? AppConstants.StatusText.notChecked
+        )
+    }
+
+    private func containerMemoryDetail(_ usage: RuntimeContainerMemoryUsage) -> String {
+        guard let limitBytes = usage.limitBytes else {
+            return "\(formatBytes(usage.usedBytes)) / unknown limit"
+        }
+        return "\(formatBytes(usage.usedBytes)) / \(formatBytes(limitBytes))"
     }
 
     private func resourceRow(_ label: String, percent: Double?, detail: String) -> some View {

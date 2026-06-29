@@ -78,7 +78,10 @@ final class RuntimeControlContractsTests: XCTestCase {
             vmErrors: [],
             vmIP: "192.168.64.2",
             guestHTTP: "200",
-            hostProxyHTTP: "200"
+            hostProxyHTTP: "200",
+            vitalServerMemory: RuntimeContainerMemoryUsage(usedBytes: 1_073_741_824, limitBytes: 4_294_967_296),
+            recorderIngressMemory: RuntimeContainerMemoryUsage(usedBytes: 134_217_728, limitBytes: nil),
+            redisMemory: RuntimeContainerMemoryUsage(usedBytes: 67_108_864, limitBytes: 536_870_912)
         )
 
         XCTAssertTrue(RuntimeReadinessPolicy.isReady(status))
@@ -97,6 +100,9 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded.vmServiceState, .loaded)
         XCTAssertEqual(decoded.proxyServiceState, .loaded)
         XCTAssertEqual(decoded.watchdogServiceState, .loaded)
+        XCTAssertEqual(decoded.vitalServerMemory?.percent, 25)
+        XCTAssertEqual(decoded.recorderIngressMemory, RuntimeContainerMemoryUsage(usedBytes: 134_217_728, limitBytes: nil))
+        XCTAssertEqual(decoded.redisMemory?.percent, 12.5)
         XCTAssertTrue(RuntimeReadinessPolicy.isReady(decoded))
     }
 
@@ -921,8 +927,8 @@ final class RuntimeControlContractsTests: XCTestCase {
         )
         let status = RuntimeStatus(
             containerObservation: RuntimeContainerObservation(
-                auditProxyHTTP: "200",
-                auditProxyStatus: nil,
+                recorderIngressHTTP: "200",
+                recorderIngressStatus: nil,
                 containerLogsPresent: true,
                 containerLogsBytes: 128,
                 composeServices: [service]
@@ -1317,7 +1323,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.summary.staleRecorders, 1)
     }
 
-    func testVitalRecorderHistoryMergesRecorderRedisIPSyncFromAuditProxyStatus() {
+    func testVitalRecorderHistoryMergesRecorderRedisIPSyncFromRecorderIngressStatus() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:12:00Z",
             ready: true,
@@ -1338,8 +1344,8 @@ final class RuntimeControlContractsTests: XCTestCase {
             ]
         )
         let containerObservation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: RuntimeAuditProxyStatusDocument(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
                 recorders: [
                     RuntimeRecorderConnectionObservation(
                         vrcode: "VR_A",
@@ -1374,7 +1380,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.recorders.first { $0.vrcode == "VR_B" }?.redisIPSync?.redisKey, "ip_VR_B")
     }
 
-    func testVitalRecorderHistoryKeepsAuditProxyStatusUnavailableDistinctFromUnknown() {
+    func testVitalRecorderHistoryKeepsRecorderIngressStatusUnavailableDistinctFromUnknown() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:12:00Z",
             ready: true,
@@ -1389,10 +1395,10 @@ final class RuntimeControlContractsTests: XCTestCase {
             ]
         )
         let containerObservation = RuntimeContainerObservation(
-            auditProxyHTTP: RuntimeHTTPStatusText.failed,
-            auditProxyStatus: nil,
-            auditProxyStatusReadState: .commandFailed,
-            auditProxyStatusReadError: "curl failed",
+            recorderIngressHTTP: RuntimeHTTPStatusText.failed,
+            recorderIngressStatus: nil,
+            recorderIngressStatusReadState: .commandFailed,
+            recorderIngressStatusReadError: "curl failed",
             containerLogsPresent: false,
             containerLogsBytes: nil
         )
@@ -1728,8 +1734,8 @@ final class RuntimeControlContractsTests: XCTestCase {
         )
         var status = RuntimeStatus(vitalDBObservation: staleObservation)
         status.containerObservation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: RuntimeAuditProxyStatusDocument(activeRecorderConnections: 1),
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 1),
             containerLogsPresent: false,
             containerLogsBytes: nil
         )
@@ -1762,11 +1768,11 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(loadedOverview.vitalRecorder.latestRecorder?.vrcode, "FRESH")
     }
 
-    func testVitalRecorderSummaryDoesNotInferRecorderStateFromAuditProxyConnections() {
+    func testVitalRecorderSummaryDoesNotInferRecorderStateFromRecorderIngressConnections() {
         let status = RuntimeStatus(
             containerObservation: RuntimeContainerObservation(
-                auditProxyHTTP: "200",
-                auditProxyStatus: RuntimeAuditProxyStatusDocument(
+                recorderIngressHTTP: "200",
+                recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
                     activeRecorderConnections: 2,
                     recorders: [
                         RuntimeRecorderConnectionObservation(
@@ -1801,7 +1807,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertNil(summary.latestRecorder)
     }
 
-    func testVitalRecorderSummaryDoesNotDefaultMissingAuditProxyConnectionsToZero() {
+    func testVitalRecorderSummaryDoesNotDefaultMissingRecorderIngressConnectionsToZero() {
         let summary = RuntimeVitalRecorderSummary(status: RuntimeStatus())
 
         XCTAssertEqual(summary.source, .unavailable)

@@ -7,11 +7,9 @@
 
 ## Symptom
 
-VM 내부 VitalServer process가 OOM killed 된 뒤 data plane은 다시 살아납니다.
-`http://127.0.0.1/`과 VM upstream은 응답하지만 Helper status는 계속 `recovering`에 머뭅니다.
+VM 내부 VitalServer process가 OOM killed 된 뒤 data plane은 다시 살아납니다. `http://127.0.0.1/`과 VM upstream은 응답하지만 Helper status는 계속 `recovering`에 머뭅니다.
 
-`runtime-status.json`은 오래된 `recovering + watchdog` 상태를 유지하고, `launchctl print`에서는
-`ai.tirosh.vitalserver.helper.watchdog` service를 찾지 못합니다.
+`runtime-status.json`은 오래된 `recovering + watchdog` 상태를 유지하고, `launchctl print`에서는 `ai.tirosh.vitalserver.helper.watchdog` service를 찾지 못합니다.
 
 현장 로그에서는 장시간 TestKit VRecorder session 이후 아래 흐름이 함께 보일 수 있습니다.
 
@@ -32,8 +30,7 @@ VM 내부 VitalServer process가 OOM killed 된 뒤 data plane은 다시 살아�
    anon-rss:5157484kB      # about 4.9 GiB resident anonymous memory
    ```
 
-   Linux kernel log의 `kB`는 보통 1024-byte 단위로 해석하므로 `anon-rss:5157484kB`는 약
-   5,281,263,616 bytes, 즉 약 5.28 GB / 4.92 GiB입니다.
+   Linux kernel log의 `kB`는 보통 1024-byte 단위로 해석하므로 `anon-rss:5157484kB`는 약 5,281,263,616 bytes, 즉 약 5.28 GB / 4.92 GiB입니다.
 
 3. OOM 이후 guest HTTP 상태가 비정상으로 전환됩니다.
 
@@ -41,10 +38,10 @@ VM 내부 VitalServer process가 OOM killed 된 뒤 data plane은 다시 살아�
    guestHTTP: 502          # Bad Gateway
    ```
 
-4. Edge log에서 audit-proxy upstream 관련 오류가 확인됩니다.
+4. Edge log에서 recorder-ingress upstream 관련 오류가 확인됩니다.
 
    ```text
-   unexpected DNS response for audit-proxy
+   unexpected DNS response for recorder-ingress
    ```
 
 5. Host proxy log에서 VM upstream readiness 실패가 확인됩니다.
@@ -57,21 +54,17 @@ VM 내부 VitalServer process가 OOM killed 된 뒤 data plane은 다시 살아�
 
    ```text
    host-proxy-http-http-probe-command-failed
-   audit-proxy-http-failed
+   recorder-ingress-http-failed
    guest-runtime-state-stale
    ```
 
-이 흐름은 TestKit 전송량 자체가 곧 OOM 원인이라는 뜻은 아닙니다. 명확한 원인 증거는 guest kernel이
-`node` process를 OOM kill 했다는 점이고, 이후 502, audit-proxy DNS/upstream 오류, host proxy readiness
-실패, stale guest runtime state는 같은 장애의 관측 결과로 함께 나타날 수 있습니다.
+이 흐름은 TestKit 전송량 자체가 곧 OOM 원인이라는 뜻은 아닙니다. 명확한 원인 증거는 guest kernel이 `node` process를 OOM kill 했다는 점이고, 이후 502, recorder-ingress DNS/upstream 오류, host proxy readiness 실패, stale guest runtime state는 같은 장애의 관측 결과로 함께 나타날 수 있습니다.
 
 ## Cause
 
-OOM의 1차 원인은 guest 내부 VitalServer process가 큰 작업 중 메모리 한계에 도달한 것입니다.
-그 뒤 VM/proxy는 다시 살아날 수 있지만, watchdog launchd job이 빠진 상태면 다음 health pass가 실행되지 않습니다.
+OOM의 1차 원인은 guest 내부 VitalServer process가 큰 작업 중 메모리 한계에 도달한 것입니다. 그 뒤 VM/proxy는 다시 살아날 수 있지만, watchdog launchd job이 빠진 상태면 다음 health pass가 실행되지 않습니다.
 
-기존 start/install 순서는 watchdog을 proxy 뒤에 시작했습니다. proxy 시작 또는 복구가 중간에 끊기면
-runtime status owner인 watchdog이 올라오지 못하고, 마지막 `recovering` 문서가 terminal 상태로 갱신되지 않았습니다.
+기존 start/install 순서는 watchdog을 proxy 뒤에 시작했습니다. proxy 시작 또는 복구가 중간에 끊기면 runtime status owner인 watchdog이 올라오지 못하고, 마지막 `recovering` 문서가 terminal 상태로 갱신되지 않았습니다.
 
 ## Fix Direction
 

@@ -34,14 +34,14 @@ final class RuntimeHealthCheckRunnerTests: XCTestCase {
     }
 
     func testRunRecordsDomainErrorEventWhenUnhealthyReasonIsNotVMError() {
-        let harness = HealthCheckHarness(snapshot: healthSnapshot(reasons: [.auditProxyHTTP("failed")]))
+        let harness = HealthCheckHarness(snapshot: healthSnapshot(reasons: [.recorderIngressHTTP("failed")]))
 
         XCTAssertThrowsError(try harness.runner.run())
 
         XCTAssertEqual(harness.events, [
             "print-status",
-            "status:degraded:health:runtime health check failed: audit-proxy-http-failed",
-            "event:degraded:health:runtime domain errors observed: audit-proxy-http-failed",
+            "status:degraded:health:runtime health check failed: recorder-ingress-http-failed",
+            "event:degraded:health:runtime domain errors observed: recorder-ingress-http-failed",
             "print:health: failed",
         ])
     }

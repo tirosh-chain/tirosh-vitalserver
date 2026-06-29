@@ -24,7 +24,7 @@ VitalServer, Vital Recorder, VRecorder 관련 이름과 권리는 각 원 소유
 | 운영자가 궁금해하는 질문 | 현재 제공하는 것 |
 |---|---|
 | runtime이 실행 중인가? | Helper app과 runtime CLI의 상태 확인 |
-| recorder activity가 보이는가? | recorder observer와 audit proxy 기반 관측 |
+| recorder activity가 보이는가? | recorder observer와 recorder ingress 기반 관측 |
 | bed 관계를 볼 수 있는가? | Beds 화면과 relationship history |
 | 장애 조사 자료를 모을 수 있는가? | status, event, logs, support 자료 |
 | update 입력을 검증할 수 있는가? | Product Update bundle verify/apply 흐름 |
@@ -39,7 +39,7 @@ VitalServer, Vital Recorder, VRecorder 관련 이름과 권리는 각 원 소유
 | runtime CLI | `apps/vitalserver-macos-runtime`의 `vitalserver-vm` target |
 | Remote Console (PWA) | `apps/vitalserver-runtime-pwa` |
 | Recorder observer | `apps/vitaldb-observer` |
-| Audit proxy | `apps/vitalserver-audit-proxy` |
+| Recorder ingress | `apps/vitalserver-recorder-ingress` |
 | Testkit | recorder simulation과 검증 도구 package |
 | Docs | `site-docs/` MkDocs 문서 |
 

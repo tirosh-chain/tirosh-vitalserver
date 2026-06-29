@@ -13,7 +13,7 @@
 
 ```text
 watchdog cannot recover missing installed artifacts: container-observation-read-failed-guest-runtime-state-stale
-Failure reasons: Guest runtime state stale, Host proxy HTTP failed, Audit proxy HTTP failed, Container observation read failed (Guest Runtime State Stale)
+Failure reasons: Guest runtime state stale, Host proxy HTTP failed, Recorder ingress HTTP failed, Container observation read failed (Guest Runtime State Stale)
 ```
 
 The wording suggests missing installed files, but the reported blocker is stale guest runtime-state observation.

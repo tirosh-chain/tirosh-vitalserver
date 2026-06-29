@@ -552,3 +552,32 @@ def bed_to_document(bed: Bed) -> dict[str, str]:
         "roomName": bed.room_name,
         "bedId": bed.bed_id,
     }
+
+
+def transfer_summary_to_document(summary: Any) -> dict[str, Any]:
+    """Return explicit upload summary fields for API callers."""
+
+    total_requests = len(summary.results)
+    successful_requests = sum(
+        1
+        for result in summary.results
+        if result.error is None and 200 <= result.response.status_code < 300
+    )
+    failed_requests = total_requests - successful_requests
+    total_bytes_sent = sum(result.bytes_sent for result in summary.results)
+    return {
+        "totalRequests": total_requests,
+        "successfulRequests": successful_requests,
+        "failedRequests": failed_requests,
+        "totalBytesSent": total_bytes_sent,
+        "elapsedSeconds": summary.elapsed_seconds,
+        "results": [
+            {
+                "path": str(result.path),
+                "bytesSent": result.bytes_sent,
+                "statusCode": result.response.status_code,
+                "error": result.error,
+            }
+            for result in summary.results
+        ],
+    }

@@ -5,7 +5,8 @@ public enum RuntimeObservationHealthPolicy {
     private static let criticalContainerServices: Set<String> = [
         "redis",
         "app",
-        "audit-proxy",
+        "recorder-recovery",
+        "recorder-ingress",
         "vitaldb-observer",
         "edge",
     ]

@@ -1,0 +1,26 @@
+{
+  "name": "@tirosh/vitalserver-recorder-ingress",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VitalServer recorder ingress, Socket.IO audit, and edge-observation sidecar",
+  "type": "commonjs",
+  "main": "dist/proxy.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/proxy.js",
+    "test": "npm run build && find dist/tests -name '*.test.js' -print | sort | xargs node --test",
+    "test:unit": "npm run build && find dist/tests/unit -name '*.test.js' -print | sort | xargs node --test",
+    "test:integration": "npm run build && find dist/tests/integration -name '*.test.js' -print | sort | xargs node --test",
+    "check": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "socket.io-client": "^2.3.0"
+  }
+}

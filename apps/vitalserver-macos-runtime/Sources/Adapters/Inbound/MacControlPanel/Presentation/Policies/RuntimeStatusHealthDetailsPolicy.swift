@@ -17,11 +17,13 @@ public protocol RuntimeStatusHealthDetailsVocabulary: RuntimeStatusVMStateVocabu
     var hostProxyName: String { get }
     var redisName: String { get }
     var vitalDBObserverLabel: String { get }
+    var recorderIngressQueueLabel: String { get }
     var watchdogLabel: String { get }
     var waitingText: String { get }
     var guestStateStaleText: String { get }
 
     func installStateText(_ state: RuntimeFileState) -> String
+    func recorderIngressStatusReadStateText(_ state: RuntimeRecorderIngressStatusReadState) -> String
     func vmErrorText(_ error: RuntimeVMError) -> String
     func domainErrorText(_ reason: RuntimeFailureReason) -> String
 }
@@ -166,6 +168,10 @@ public struct RuntimeStatusHealthDetailsPolicy {
                 value: value(composeValue(for: .vitalDBObserver, observation: observation, now: now))
             ),
             RuntimeStatusHealthDetailItem(
+                label: vocabulary.recorderIngressQueueLabel,
+                value: recorderIngressQueueValue(observation: observation)
+            ),
+            RuntimeStatusHealthDetailItem(
                 label: vocabulary.watchdogLabel,
                 value: value(serviceValuePolicy.serviceValue(
                     state: status.watchdogServiceState
@@ -173,6 +179,150 @@ public struct RuntimeStatusHealthDetailsPolicy {
             ),
         ])
         return items
+    }
+
+    public func recorderIngressQueueValue(
+        observation: RuntimeContainerObservation?
+    ) -> RuntimeStatusHealthDetailValue {
+        guard let observation else {
+            return value(vocabulary.notReportedText, .neutral)
+        }
+        guard observation.recorderIngressStatusReadState == .loaded else {
+            return value(
+                vocabulary.recorderIngressStatusReadStateText(observation.recorderIngressStatusReadState),
+                .warning
+            )
+        }
+        guard let status = observation.recorderIngressStatus else {
+            return value(vocabulary.notReportedText, .neutral)
+        }
+        guard status.spool != nil || status.replay != nil else {
+            return value(vocabulary.notReportedText, .neutral)
+        }
+
+        let spool = status.spool
+        let replay = status.replay
+        if spool?.status == "disabled" && (replay?.status == nil || replay?.status == "disabled") {
+            return value("disabled", .neutral)
+        }
+
+        let pending = firstPresent(spool?.pendingItems, replay?.pendingItems)
+        let inFlight = replay?.inFlightItems
+        let pendingBytes = spool?.pendingBytes
+        let writeFailures = spool?.writeFailures
+        let rejectedEvents = spool?.rejectedEvents
+        let retryableFailures = replay?.retryableFailures
+        let deadLetteredEvents = replay?.deadLetteredEvents
+        let lastFailure = lastFailureReason(spool: spool, replay: replay)
+        let isMirrorOnly = spool?.mode == "mirror_spool"
+            && (replay?.status == nil || replay?.status == "disabled")
+
+        let severity: RuntimeStatusReachabilityPolicy.Severity
+        let stateText: String
+        if (writeFailures ?? 0) > 0 || (deadLetteredEvents ?? 0) > 0 {
+            severity = .critical
+            stateText = spool?.status == "failed" ? "failed" : "degraded"
+        } else if (rejectedEvents ?? 0) > 0 || (retryableFailures ?? 0) > 0 {
+            severity = .warning
+            stateText = "degraded"
+        } else if isMirrorOnly {
+            severity = .neutral
+            stateText = "mirroring"
+        } else if (pending ?? 0) > 0 || (inFlight ?? 0) > 0 {
+            severity = .warning
+            stateText = "draining"
+        } else {
+            severity = .healthy
+            stateText = "healthy"
+        }
+
+        var parts = [stateText]
+        if let pending, stateText == "healthy" || pending > 0 {
+            parts.append("\(pending) pending")
+        }
+        if let pendingBytes, pendingBytes > 0 {
+            parts.append(formatBytes(pendingBytes))
+        }
+        if let inFlight, inFlight > 0 {
+            parts.append("\(inFlight) in flight")
+        }
+        if let oldest = spool?.oldestPendingAgeSeconds {
+            parts.append("oldest \(durationText(oldest))")
+        }
+        if let lag = replay?.replayLagSeconds {
+            parts.append("replay lag \(durationText(lag))")
+        }
+        if isMirrorOnly {
+            parts.append("replay disabled")
+        }
+        if let rejectedEvents, rejectedEvents > 0 {
+            parts.append("\(rejectedEvents) rejected")
+        }
+        if let retryableFailures, retryableFailures > 0 {
+            parts.append("\(retryableFailures) retryable failures")
+        }
+        if let deadLetteredEvents, deadLetteredEvents > 0 {
+            parts.append("\(deadLetteredEvents) dead letters")
+        }
+        if let writeFailures, writeFailures > 0 {
+            parts.append("\(writeFailures) write failures")
+        }
+        if let lastFailure {
+            parts.append("last failure \(lastFailure)")
+        }
+
+        return value(parts.joined(separator: ", "), severity)
+    }
+
+    private func firstPresent(_ left: Int?, _ right: Int?) -> Int? {
+        if let left {
+            return left
+        }
+        return right
+    }
+
+    private func lastFailureReason(
+        spool: RuntimeRecorderIngressSpoolStatus?,
+        replay: RuntimeRecorderIngressReplayStatus?
+    ) -> String? {
+        if let reason = replay?.lastFailure?.reason, !reason.isEmpty {
+            return reason
+        }
+        if let reason = spool?.lastFailure?.reason, !reason.isEmpty {
+            return reason
+        }
+        if let message = replay?.lastFailure?.message, !message.isEmpty {
+            return message
+        }
+        if let message = spool?.lastFailure?.message, !message.isEmpty {
+            return message
+        }
+        return nil
+    }
+
+    private func durationText(_ seconds: Int) -> String {
+        let bounded = max(0, seconds)
+        if bounded < 60 {
+            return "\(bounded)s"
+        }
+        let minutes = bounded / 60
+        let remainder = bounded % 60
+        if minutes < 60 {
+            return remainder == 0 ? "\(minutes)m" : "\(minutes)m \(remainder)s"
+        }
+        let hours = minutes / 60
+        let minuteRemainder = minutes % 60
+        return minuteRemainder == 0 ? "\(hours)h" : "\(hours)h \(minuteRemainder)m"
+    }
+
+    private func formatBytes(_ bytes: Int) -> String {
+        if bytes <= 0 {
+            return "0 bytes"
+        }
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(bytes))
     }
 
     private func uptimeText(

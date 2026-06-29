@@ -22,11 +22,7 @@ Update apply 또는 rollback 중 Helper의 Diagnostics가 짧은 시간 안에 �
 
 이 구조에서는 상태 writer가 여러 개이고, 별도의 durable operation owner가 없기 때문에 watchdog과 update apply가 status read-model을 lock처럼 공유하는 race가 생깁니다.
 
-Update 실패 후 rollback으로 전환되는 구간에서는 `updating`과 `recovering` 우선순위도 분리되어야 합니다.
-`runtime-status.json`의 `status=recovering`은 update가 계속 진행 중이라는 뜻이 아니라 recovery operation이
-service liveness 표시를 소유한다는 뜻입니다. rollback workflow는 runtime service restart와 health wait를
-함께 수행하므로, apply-bundle failure recovery가 rollback 성공 뒤에 다시 service restart를 실행하면 같은
-service state가 두 번 흔들릴 수 있습니다.
+Update 실패 후 rollback으로 전환되는 구간에서는 `updating`과 `recovering` 우선순위도 분리되어야 합니다. `runtime-status.json`의 `status=recovering`은 update가 계속 진행 중이라는 뜻이 아니라 recovery operation이 service liveness 표시를 소유한다는 뜻입니다. rollback workflow는 runtime service restart와 health wait를 함께 수행하므로, apply-bundle failure recovery가 rollback 성공 뒤에 다시 service restart를 실행하면 같은 service state가 두 번 흔들릴 수 있습니다.
 
 ## Checks
 
@@ -63,10 +59,8 @@ managed operation 소유권은 `runtime-status.json`이 아니라 별도 durable
 - lease read failure는 성공/empty로 취급하지 않고 watchdog recovery를 차단합니다.
 - apply-bundle 종료 시 lease를 release합니다. release 실패는 원래 apply 실패를 덮지 않고 로그에 남깁니다.
 - diagnostic log export는 `runtime-operation-lease.json`을 포함해야 합니다.
-- Service liveness 표시 우선순위는 install, initialization, recovery, update, explicit service state 순서로
-  적용합니다. recovery를 update 표시로 흡수하지 않습니다.
-- apply-bundle failure recovery는 rollback workflow를 recovery owner로 취급합니다. rollback 성공 뒤
-  apply-bundle layer가 별도의 runtime service restart를 추가로 수행하지 않습니다.
+- Service liveness 표시 우선순위는 install, initialization, recovery, update, explicit service state 순서로 적용합니다. recovery를 update 표시로 흡수하지 않습니다.
+- apply-bundle failure recovery는 rollback workflow를 recovery owner로 취급합니다. rollback 성공 뒤 apply-bundle layer가 별도의 runtime service restart를 추가로 수행하지 않습니다.
 
 ## Prevention
 

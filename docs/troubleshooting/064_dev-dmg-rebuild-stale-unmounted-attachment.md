@@ -26,18 +26,13 @@ The next rebuild may then fail earlier with a stale attached image that has no m
 
 ## Impact
 
-The operator has already unmounted the volume, but the disk image remains attached in
-`hdiutil info`. The build stops before replacing the output DMG.
+The operator has already unmounted the volume, but the disk image remains attached in `hdiutil info`. The build stops before replacing the output DMG.
 
 ## Cause
 
-The DMG builder treated every matching attached image as a hard blocker. That was correct
-for mounted volumes, but too strict for an unmounted stale attachment that still reports a
-device entry.
+The DMG builder treated every matching attached image as a hard blocker. That was correct for mounted volumes, but too strict for an unmounted stale attachment that still reports a device entry.
 
-The artifact verifier also detached the inspected DMG through the mount path. When macOS reports
-the volume as busy, the image can remain attached even after the mounted volume disappears. That
-left explicit external state behind for the next build.
+The artifact verifier also detached the inspected DMG through the mount path. When macOS reports the volume as busy, the image can remain attached even after the mounted volume disappears. That left explicit external state behind for the next build.
 
 ## Checks
 
@@ -45,26 +40,19 @@ left explicit external state behind for the next build.
 hdiutil info
 ```
 
-If the output DMG appears with no `mount-point` but still has a `dev-entry`, it is a stale
-unmounted attachment.
+If the output DMG appears with no `mount-point` but still has a `dev-entry`, it is a stale unmounted attachment.
 
 ## Actions
 
-The devtools DMG builder now keeps mounted images as explicit blockers, but detaches matching
-unmounted attachments through `hdiutil detach <dev-entry>` before unlinking and recreating
-the output DMG.
+The devtools DMG builder now keeps mounted images as explicit blockers, but detaches matching unmounted attachments through `hdiutil detach <dev-entry>` before unlinking and recreating the output DMG.
 
-The artifact verifier detaches generated DMGs through the `dev-entry` reported by `hdiutil attach`
-when available. If the normal detach fails, it retries once with `hdiutil detach -force <dev-entry>`.
-If force detach also fails, verification fails explicitly instead of hiding the cleanup failure.
+The artifact verifier detaches generated DMGs through the `dev-entry` reported by `hdiutil attach` when available. If the normal detach fails, it retries once with `hdiutil detach -force <dev-entry>`. If force detach also fails, verification fails explicitly instead of hiding the cleanup failure.
 
 ## Prevention
 
 - Mounted images stay visible as user/action state and must not be silently replaced.
-- Unmounted attached images are build-owned stale attachment state and can be detached by the
-  build tool using the explicit `dev-entry` from `hdiutil info`.
-- DMG verification cleanup should prefer device entries over mount paths and report any final detach
-  failure as a packaging verification failure.
+- Unmounted attached images are build-owned stale attachment state and can be detached by the build tool using the explicit `dev-entry` from `hdiutil info`.
+- DMG verification cleanup should prefer device entries over mount paths and report any final detach failure as a packaging verification failure.
 
 ## Related Cases
 
@@ -72,8 +60,5 @@ If force detach also fails, verification fails explicitly instead of hiding the 
 
 ## Follow-up
 
-- 2026-06-10: `make dist/dmg/dev` failed with `(not mounted)` even after unmount. The builder
-  now detaches unmounted matching attachments and the dev DMG build completed.
-- 2026-06-15: `make dist/dmg/dev/verify` failed during artifact inspection because `hdiutil detach`
-  by mount path returned `Resource busy`. The verifier now uses the device entry and force-retries
-  cleanup before reporting a final detach failure.
+- 2026-06-10: `make dist/dmg/dev` failed with `(not mounted)` even after unmount. The builder now detaches unmounted matching attachments and the dev DMG build completed.
+- 2026-06-15: `make dist/dmg/dev/verify` failed during artifact inspection because `hdiutil detach` by mount path returned `Resource busy`. The verifier now uses the device entry and force-retries cleanup before reporting a final detach failure.

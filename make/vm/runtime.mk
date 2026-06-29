@@ -10,7 +10,7 @@ VM_RECREATE_ROOTFS ?= false
 # Diagnostic/CI wait knobs.
 VM_WAIT_TIMEOUT ?= 300
 VM_HTTP_WAIT_TIMEOUT ?= 600
-VM_ROOTFS_READY_TIMEOUT ?= 420
+VM_ROOTFS_READY_TIMEOUT ?= 600
 
 # Internal orchestration: generated per golden rootfs compile run.
 VM_ROOTFS_RUN_ID ?=

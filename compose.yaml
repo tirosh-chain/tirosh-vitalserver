@@ -27,6 +27,7 @@ services:
       context: .
       dockerfile: apps/vitalserver/docker/Dockerfile
     image: vitalserver:2.3.4
+    mem_limit: "${VITALSERVER_APP_MEMORY_LIMIT:-4g}"
     depends_on:
       redis:
         condition: service_healthy
@@ -40,6 +41,7 @@ services:
       VITALSERVER_REDIS_HOST: "${VITALSERVER_REDIS_HOST:-redis}"
       VITALSERVER_REDIS_PORT: "${VITALSERVER_REDIS_PORT:-6379}"
       VITALSERVER_TRUST_PROXY: "${VITALSERVER_TRUST_PROXY:-0}"
+      NODE_OPTIONS: "--require /opt/vitalserver/runtime/node-preload.js --max-old-space-size=${VITALSERVER_APP_NODE_OLD_SPACE_MB:-3072}"
     volumes:
       - type: bind
         source: ${VITALSERVER_VITAL_FILES_DIR:-./data/vital-files}
@@ -60,12 +62,12 @@ services:
       retries: 30
     restart: unless-stopped
 
-  audit-proxy:
+  recorder-ingress:
     platform: linux/amd64
     build:
       context: .
-      dockerfile: apps/vitalserver-audit-proxy/Dockerfile
-    image: vitalserver-audit-proxy:0.1.0
+      dockerfile: apps/vitalserver-recorder-ingress/Dockerfile
+    image: vitalserver-recorder-ingress:0.1.0
     depends_on:
       app:
         condition: service_healthy
@@ -74,10 +76,16 @@ services:
     ports:
       - "${VITALSERVER_BIND_HOST:-127.0.0.1}:${VITALSERVER_HTTP_PORT:-18080}:8080"
     environment:
-      AUDIT_PROXY_UPSTREAM_HOST: app
-      AUDIT_PROXY_UPSTREAM_PORT: "80"
+      RECORDER_INGRESS_UPSTREAM_HOST: app
+      RECORDER_INGRESS_UPSTREAM_PORT: "80"
       VITALSERVER_REDIS_HOST: "${VITALSERVER_REDIS_HOST:-redis}"
       VITALSERVER_REDIS_PORT: "${VITALSERVER_REDIS_PORT:-6379}"
+      RECORDER_INGRESS_REDIS_TIMEOUT_MS: "${RECORDER_INGRESS_REDIS_TIMEOUT_MS:-1500}"
+      RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH: "${RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH:-50000}"
+      RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS: "${RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS:-3}"
+      RECORDER_INGRESS_REDIS_RETRY_BASE_DELAY_MS: "${RECORDER_INGRESS_REDIS_RETRY_BASE_DELAY_MS:-25}"
+      RECORDER_INGRESS_REDIS_RETRY_MAX_DELAY_MS: "${RECORDER_INGRESS_REDIS_RETRY_MAX_DELAY_MS:-500}"
+      RECORDER_INGRESS_REDIS_RETRY_JITTER_RATIO: "${RECORDER_INGRESS_REDIS_RETRY_JITTER_RATIO:-0.2}"
       VITALSERVER_TRUST_PROXY: "${VITALSERVER_TRUST_PROXY:-0}"
       VITALSERVER_AUDIT_ENABLED: "${VITALSERVER_AUDIT_ENABLED:-1}"
       VITALSERVER_AUDIT_REDIS_LIST: "${VITALSERVER_AUDIT_REDIS_LIST:-vitalserver:audit_events}"
@@ -87,16 +95,63 @@ services:
       VITALSERVER_AUDIT_LOG_FORMAT: "${VITALSERVER_AUDIT_LOG_FORMAT:-json}"
       VITALSERVER_AUDIT_STDOUT_ENABLED: "${VITALSERVER_AUDIT_STDOUT_ENABLED:-1}"
       VITALSERVER_AUDIT_STDOUT_FORMAT: "${VITALSERVER_AUDIT_STDOUT_FORMAT:-json}"
-      AUDIT_PROXY_UPSTREAM_TIMEOUT_MS: "${AUDIT_PROXY_UPSTREAM_TIMEOUT_MS:-3600000}"
+      RECORDER_INGRESS_FAILURE_LOG_ENABLED: "${RECORDER_INGRESS_FAILURE_LOG_ENABLED:-1}"
+      RECORDER_INGRESS_FAILURE_LOG_PATH: "${RECORDER_INGRESS_FAILURE_LOG_PATH:-/var/log/vitalserver-recorder-ingress/failures/send-data-failures.jsonl}"
+      RECORDER_INGRESS_RAW_ARCHIVE_ENABLED: "${RECORDER_INGRESS_RAW_ARCHIVE_ENABLED:-1}"
+      RECORDER_INGRESS_RAW_ARCHIVE_PATH: "${RECORDER_INGRESS_RAW_ARCHIVE_PATH:-/var/lib/vitalserver-recorder-ingress/raw/send-data-raw.jsonl}"
+      RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILE_BYTES: "${RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILE_BYTES:-536870912}"
+      RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES: "${RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES:-24}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED:-0}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS:-300000}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_MS: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_MS:-60000}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_CURSOR_STABLE_MS: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_CURSOR_STABLE_MS:-60000}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS:-60000}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS:-3}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS:-300000}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RECOVER_URL: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RECOVER_URL:-http://testkit:18322/raw-archive/recover-vital}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_VITALSERVER_URL: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_VITALSERVER_URL:-http://app:80}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_UPLOAD_ENDPOINT: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_UPLOAD_ENDPOINT:-/upload}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR:-/var/lib/vitalserver-recorder-ingress/recovery/vital-export}"
+      RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH: "${RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH:-/var/lib/vitalserver-recorder-ingress/recovery/raw-archive-auto-export-state.json}"
+      RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS: "${RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS:-3600000}"
+      RECORDER_INGRESS_SEND_DATA_MODE: "${RECORDER_INGRESS_SEND_DATA_MODE:-spool_and_replay}"
+      RECORDER_INGRESS_SEND_DATA_REDIS_LIST: "${RECORDER_INGRESS_SEND_DATA_REDIS_LIST:-vitalserver:recorder_ingress:send_data:pending}"
+      RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST: "${RECORDER_INGRESS_SEND_DATA_IN_FLIGHT_REDIS_LIST:-vitalserver:recorder_ingress:send_data:in_flight}"
+      RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST: "${RECORDER_INGRESS_SEND_DATA_REPLAYED_REDIS_LIST:-vitalserver:recorder_ingress:send_data:replayed}"
+      RECORDER_INGRESS_SEND_DATA_DEAD_LETTER_REDIS_LIST: "${RECORDER_INGRESS_SEND_DATA_DEAD_LETTER_REDIS_LIST:-vitalserver:recorder_ingress:send_data:dead_letter}"
+      RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS: "${RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS:-10000}"
+      RECORDER_INGRESS_SEND_DATA_REALTIME_MAX_PENDING_ITEMS: "${RECORDER_INGRESS_SEND_DATA_REALTIME_MAX_PENDING_ITEMS:-2000}"
+      RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS: "${RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS:-100000}"
+      RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES: "${RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES:-536870912}"
+      RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES: "${RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES:-10485760}"
+      RECORDER_INGRESS_SEND_DATA_REPLAY_ENABLED: "${RECORDER_INGRESS_SEND_DATA_REPLAY_ENABLED:-}"
+      RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS: "${RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS:-1000}"
+      RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE: "${RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE:-1000}"
+      RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS: "${RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS:-3}"
+      RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND: "${RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND:-20971520}"
+      RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY: "${RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY:-1}"
+      RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY: "${RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY:-8}"
+      RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS: "${RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS:-5000}"
+      RECORDER_INGRESS_RUNTIME_STATE_PATH: "${RECORDER_INGRESS_RUNTIME_STATE_PATH:-/run/tirosh/runtime/runtime-state.json}"
+      RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS: "${RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS:-15000}"
     volumes:
       - type: volume
         source: audit-logs
         target: /var/log/vitalserver-audit
+      - type: bind
+        source: ${RECORDER_INGRESS_FAILURE_LOG_DIR:-./data/recorder-ingress-failures}
+        target: /var/log/vitalserver-recorder-ingress/failures
+      - type: bind
+        source: ${RECORDER_INGRESS_RAW_ARCHIVE_DIR:-./data/recorder-ingress-raw}
+        target: /var/lib/vitalserver-recorder-ingress/raw
+      - type: bind
+        source: ${RECORDER_INGRESS_RECOVERY_DIR:-./data/recorder-ingress-recovery}
+        target: /var/lib/vitalserver-recorder-ingress/recovery
     healthcheck:
       test:
         - CMD-SHELL
         - >-
-          node -e "require('http').get('http://127.0.0.1:8080/audit-proxy/health', r => process.exit(r.statusCode === 204 ? 0 : 1)).on('error', () => process.exit(1))"
+          node -e "require('http').get('http://127.0.0.1:8080/recorder-ingress/health', r => process.exit(r.statusCode === 204 ? 0 : 1)).on('error', () => process.exit(1))"
       interval: 10s
       timeout: 5s
       retries: 30
@@ -111,7 +166,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      audit-proxy:
+      recorder-ingress:
         condition: service_healthy
     ports:
       - "${VITALDB_OBSERVER_BIND_HOST:-127.0.0.1}:${VITALDB_OBSERVER_PORT:-18083}:8080"
@@ -182,7 +237,7 @@ services:
         [
           {"name":"VitalServer","url":"/docs/api/vitalserver.openapi.yaml"},
           {"name":"Runtime Control API","url":"/docs/runtime/macos/runtime-control.openapi.json"},
-          {"name":"Audit Proxy","url":"/docs/api/audit-proxy.openapi.yaml"},
+          {"name":"Recorder Ingress","url":"/docs/api/recorder-ingress.openapi.yaml"},
           {"name":"VitalDB Observer","url":"/docs/api/vitaldb-observer.openapi.yaml"}
         ]
       URLS_PRIMARY_NAME: "VitalServer"

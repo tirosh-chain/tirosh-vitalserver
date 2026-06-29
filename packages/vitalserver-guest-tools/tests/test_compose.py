@@ -1,14 +1,614 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from tirosh_guest_tools.application import compose
-from tirosh_guest_tools.contracts import ComposeService
-from tirosh_guest_tools.domain.errors import GuestDependencyError
+from tirosh_guest_tools.contracts import ComposeService, RuntimeFileName
+from tirosh_guest_tools.domain.errors import GuestContractError, GuestDependencyError
 from tirosh_guest_tools.domain.operations import ComposeAction
+from tirosh_guest_tools.infrastructure import common
+
+
+def test_container_bind_source_directories_cover_compose_runtime_binds() -> None:
+    compose_path = (
+        Path(__file__).resolve().parents[3]
+        / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    )
+    document = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    services = document.get("services")
+    assert isinstance(services, dict)
+
+    runtime_root = str(common.RUNTIME_DIR)
+    runtime_bind_sources: set[str] = set()
+    for service in services.values():
+        assert isinstance(service, dict)
+        volumes = service.get("volumes", [])
+        assert isinstance(volumes, list)
+        for volume in volumes:
+            if not isinstance(volume, dict) or volume.get("type") != "bind":
+                continue
+            source = volume.get("source")
+            if isinstance(source, str) and source.startswith(runtime_root + "/"):
+                runtime_bind_sources.add(source)
+
+    prepared_sources = {
+        str(path)
+        for path in common.container_bind_source_directories(common.RUNTIME_DIR)
+    }
+    assert runtime_bind_sources == prepared_sources
+
+
+def test_checked_compose_preserves_command_output_and_diagnostics(
+    monkeypatch: Any,
+) -> None:
+    def fake_compose(
+        arguments: list[str],
+        *,
+        check: bool = True,
+        timeout_seconds: float | None = None,
+        capture_output: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        del timeout_seconds
+        del capture_output
+        if arguments == ["up", "-d", "app"]:
+            raise subprocess.CalledProcessError(
+                17,
+                ["docker", "compose", "up", "-d", "app"],
+                output="created app",
+                stderr="dependency failed",
+            )
+        assert check is False
+        if arguments == ["ps", "--all"]:
+            return subprocess.CompletedProcess(
+                arguments,
+                0,
+                stdout="app Created",
+                stderr="",
+            )
+        if arguments == ["ps", "--all", "--format", "json"]:
+            return subprocess.CompletedProcess(
+                arguments,
+                0,
+                stdout='[{"Service":"app","State":"created"}]',
+                stderr="",
+            )
+        if arguments == ["logs", "--tail=200"]:
+            return subprocess.CompletedProcess(
+                arguments,
+                0,
+                stdout="redis ready",
+                stderr="",
+            )
+        raise AssertionError(f"unexpected compose arguments: {arguments}")
+
+    monkeypatch.setattr(compose, "compose", fake_compose)
+
+    with pytest.raises(compose.ComposeCommandError) as error:
+        compose.checked_compose(
+            ["up", "-d", "app"],
+            stage="application service startup",
+        )
+
+    assert error.value.code == "guest-compose-command-failed"
+    assert "application service startup" in error.value.message
+    assert "created app" in error.value.message
+    assert "dependency failed" in error.value.message
+    assert "app Created" in error.value.message
+    assert "redis ready" in error.value.message
+
+
+def test_load_runtime_env_exports_recorder_ingress_send_data_mode(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    settings_path = tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value
+    settings_path.write_text(
+        """
+        {
+          "recorderIngressSendDataMode": "spool_only",
+          "recorderIngressSendDataReplayBatchSize": 8,
+          "recorderIngressSendDataReplayMaxMiBPerSecond": 12
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_MODE", raising=False)
+    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", raising=False)
+    monkeypatch.delenv(
+        "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND",
+        raising=False,
+    )
+
+    compose.load_runtime_env()
+
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_only"
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "1000"
+    assert (
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"]
+        == str(12 * 1024 * 1024)
+    )
+    assert (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).exists()
+
+
+def test_load_runtime_env_exports_recorder_ingress_hot_and_cold_path_settings(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    settings_path = tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value
+    settings_path.write_text(
+        """
+        {
+          "recorderIngress": {
+            "sendDataMaxPendingItems": 110000,
+            "sendDataMaxPendingMiB": 640,
+            "sendDataMaxPayloadMiB": 12,
+            "sendDataReplayedMaxItems": 12000,
+            "sendDataRealtimeMaxPendingItems": 2400,
+            "sendDataReplayIntervalMs": 1500,
+            "sendDataReplayMaxAttempts": 4,
+            "sendDataReplayTargetTimeoutMs": 7000,
+            "sendDataReplayAdaptiveMinConcurrency": 2,
+            "sendDataReplayAdaptiveMaxConcurrency": 6,
+            "rawArchiveEnabled": false,
+            "rawArchiveMaxFileMiB": 768,
+            "rawArchiveMaxFiles": 36,
+            "rawArchiveAutoExportEnabled": true,
+            "rawArchiveAutoExportQuietSeconds": 420,
+            "rawArchiveAutoExportScanIntervalSeconds": 90,
+            "rawArchiveAutoExportCursorStableSeconds": 120,
+            "rawArchiveAutoExportRetryDelaySeconds": 180,
+            "rawArchiveAutoExportMaxAttempts": 5,
+            "rawArchiveAutoExportRequestTimeoutSeconds": 600
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    compose.load_runtime_env()
+
+    assert (
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS"]
+        == "110000"
+    )
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES"] == str(
+        640 * 1024 * 1024
+    )
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES"] == str(
+        12 * 1024 * 1024
+    )
+    assert (
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS"]
+        == "12000"
+    )
+    assert (
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REALTIME_MAX_PENDING_ITEMS"]
+        == "2400"
+    )
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS"] == "1500"
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS"] == "4"
+    assert (
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS"]
+        == "7000"
+    )
+    assert (
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY"]
+        == "2"
+    )
+    assert (
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY"]
+        == "6"
+    )
+    assert compose.os.environ["RECORDER_INGRESS_RAW_ARCHIVE_ENABLED"] == "0"
+    assert compose.os.environ["RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILE_BYTES"] == str(
+        768 * 1024 * 1024
+    )
+    assert compose.os.environ["RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES"] == "36"
+    assert compose.os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED"] == "1"
+    assert (
+        compose.os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS"]
+        == "420000"
+    )
+    assert (
+        compose.os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_MS"]
+        == "90000"
+    )
+    assert (
+        compose.os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_CURSOR_STABLE_MS"]
+        == "120000"
+    )
+    assert (
+        compose.os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS"]
+        == "180000"
+    )
+    assert (
+        compose.os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS"]
+        == "5"
+    )
+    assert (
+        compose.os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS"]
+        == "600000"
+    )
+
+
+def test_load_runtime_env_writes_compose_runtime_memory_limits(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        """
+        {
+          "containerMemoryLimitsEnabled": true,
+          "vitalServerContainerMemoryLimitMiB": 4096,
+          "recorderIngressContainerMemoryLimitMiB": 512,
+          "redisContainerMemoryLimitMiB": 1024
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    compose.load_runtime_env()
+
+    assert (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).read_text(
+        encoding="utf-8"
+    ) == (
+        "services:\n"
+        "  app:\n"
+        f"    mem_limit: {4096 * 1024 * 1024}\n"
+        "  recorder-ingress:\n"
+        f"    mem_limit: {512 * 1024 * 1024}\n"
+        "  redis:\n"
+        f"    mem_limit: {1024 * 1024 * 1024}\n"
+    )
+
+
+def test_load_runtime_env_uses_redis_heavy_default_memory_limits(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        '{"containerMemoryLimitsEnabled":true}\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    compose.load_runtime_env()
+
+    assert (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).read_text(
+        encoding="utf-8"
+    ) == (
+        "services:\n"
+        "  app:\n"
+        f"    mem_limit: {2048 * 1024 * 1024}\n"
+        "  recorder-ingress:\n"
+        f"    mem_limit: {410 * 1024 * 1024}\n"
+        "  redis:\n"
+        f"    mem_limit: {3277 * 1024 * 1024}\n"
+    )
+
+
+def test_load_runtime_env_removes_compose_runtime_memory_limits_when_disabled(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        '{"containerMemoryLimitsEnabled":false}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).write_text(
+        "services: {}\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    compose.load_runtime_env()
+
+    assert not (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).exists()
+
+
+def test_compose_command_uses_runtime_limits_override_when_present(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).write_text(
+        "services: {}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(common, "DEPLOY_DIR", tmp_path)
+
+    command = common.compose_command(["config"])
+
+    assert command == [
+        "docker",
+        "compose",
+        "--project-name",
+        common.PROJECT_NAME,
+        "-f",
+        str(tmp_path / RuntimeFileName.COMPOSE.value),
+        "-f",
+        str(tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value),
+        "config",
+    ]
+
+
+def test_load_runtime_env_defaults_missing_recorder_ingress_mode_to_spool_and_replay(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        '{"publicHost":"vital.example.test"}\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_MODE", raising=False)
+    monkeypatch.delenv("RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE", raising=False)
+    monkeypatch.delenv(
+        "RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND",
+        raising=False,
+    )
+
+    compose.load_runtime_env()
+
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_MODE"] == "spool_and_replay"
+    assert compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_BATCH_SIZE"] == "1000"
+    assert (
+        compose.os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"]
+        == str(20 * 1024 * 1024)
+    )
+    assert (tmp_path / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value).read_text(
+        encoding="utf-8"
+    ) == (
+        "services:\n"
+        "  app:\n"
+        f"    mem_limit: {2048 * 1024 * 1024}\n"
+        "  recorder-ingress:\n"
+        f"    mem_limit: {410 * 1024 * 1024}\n"
+        "  redis:\n"
+        f"    mem_limit: {3277 * 1024 * 1024}\n"
+    )
+
+
+def test_load_runtime_env_rejects_invalid_recorder_ingress_mode(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        '{"recorderIngressSendDataMode":"mirrorish"}\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    with pytest.raises(GuestContractError) as error:
+        compose.load_runtime_env()
+
+    assert (
+        error.value.code
+        == "runtime-settings-recorder-ingress-send-data-mode-invalid"
+    )
+
+
+def test_load_runtime_env_rejects_invalid_recorder_ingress_replay_settings(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        '{"recorderIngressSendDataReplayMaxMiBPerSecond":0}\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    with pytest.raises(GuestContractError) as error:
+        compose.load_runtime_env()
+
+    assert (
+        error.value.code
+        == "runtime-settings-recorder-ingress-send-data-replay-max-mib-invalid"
+    )
+
+
+def test_load_runtime_env_rejects_invalid_recorder_ingress_settings_object(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        '{"recorderIngress":{"sendDataMaxPendingItems":0}}\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    with pytest.raises(GuestContractError) as error:
+        compose.load_runtime_env()
+
+    assert (
+        error.value.code
+        == "runtime-settings-recorder-ingress-sendDataMaxPendingItems-invalid"
+    )
+
+
+def test_load_runtime_env_rejects_recorder_ingress_concurrency_inversion(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    runtime_config = type(
+        "RuntimeConfig",
+        (),
+        {
+            "redis_host": "redis",
+            "redis_port": 6379,
+            "trust_proxy": True,
+            "public_host": "vital.example.test",
+            "public_port": 443,
+            "admin_password": "secret",
+            "vital_files_directory": "/data/vital-files",
+        },
+    )()
+    (tmp_path / RuntimeFileName.RUNTIME_SETTINGS.value).write_text(
+        """
+        {
+          "recorderIngress": {
+            "sendDataReplayAdaptiveMinConcurrency": 4,
+            "sendDataReplayAdaptiveMaxConcurrency": 2
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(compose, "DEPLOY_DIR", tmp_path)
+    monkeypatch.setattr(compose, "load_config", lambda path: runtime_config)
+
+    with pytest.raises(GuestContractError) as error:
+        compose.load_runtime_env()
+
+    assert (
+        error.value.code
+        == "runtime-settings-recorder-ingress-"
+        "sendDataReplayAdaptiveMaxConcurrency-invalid"
+    )
 
 
 def test_stop_compose_action_stops_services_in_explicit_order(monkeypatch: Any) -> None:
@@ -43,12 +643,49 @@ def test_stop_compose_action_stops_services_in_explicit_order(monkeypatch: Any) 
         "compose:stop --timeout 30 edge:timeout=40",
         "compose:stop --timeout 30 swagger-ui:timeout=40",
         "compose:stop --timeout 30 redis-ui:timeout=40",
-        "compose:stop --timeout 30 audit-proxy:timeout=40",
+        "compose:stop --timeout 30 recorder-ingress:timeout=40",
         "compose:stop --timeout 30 vitaldb-observer:timeout=40",
         "compose:stop --timeout 30 redis-relay:timeout=40",
         "compose:stop --timeout 90 app:timeout=100",
         "compose:stop --timeout 60 redis:timeout=70",
         "sync",
+    ]
+
+
+def test_up_compose_action_prepares_recorder_ingress_bind_sources(
+    monkeypatch: Any,
+) -> None:
+    events: list[str] = []
+
+    monkeypatch.setattr(
+        compose,
+        "mount_runtime_share",
+        lambda: events.append("mount-runtime-share"),
+    )
+    monkeypatch.setattr(
+        compose,
+        "mount_vital_files_share",
+        lambda: events.append("mount-vital-files-share"),
+    )
+    monkeypatch.setattr(compose, "load_runtime_env", lambda: object())
+    monkeypatch.setattr(
+        compose,
+        "prepare_container_bind_source_directories",
+        lambda: events.append("prepare-container-bind-source-directories"),
+    )
+    monkeypatch.setattr(
+        compose,
+        "start_ordered",
+        lambda: events.append("start-ordered"),
+    )
+
+    compose.run_compose_action(ComposeAction.UP)
+
+    assert events == [
+        "mount-runtime-share",
+        "mount-vital-files-share",
+        "prepare-container-bind-source-directories",
+        "start-ordered",
     ]
 
 

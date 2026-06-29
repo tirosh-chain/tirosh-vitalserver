@@ -59,6 +59,52 @@ const vitalDBAnomalyKindSchema = z.enum([
   "observer-unhealthy"
 ]);
 const networkModeSchema = z.enum(["shared", "bridged"]);
+const recorderIngressSendDataModeSchema = z.enum([
+  "passthrough",
+  "mirror_spool",
+  "spool_only",
+  "spool_and_replay"
+]);
+const redisRelayScopeSchema = z.enum([
+  "waveform_trend_only",
+  "vital_reconstruction"
+]);
+const runtimeRecorderIngressSettingsSchema = z
+  .object({
+    sendDataMaxPendingItems: z.number().int(),
+    sendDataMaxPendingMiB: z.number().int(),
+    sendDataMaxPayloadMiB: z.number().int(),
+    sendDataReplayedMaxItems: z.number().int(),
+    sendDataRealtimeMaxPendingItems: z.number().int(),
+    sendDataReplayIntervalMs: z.number().int(),
+    sendDataReplayMaxAttempts: z.number().int(),
+    sendDataReplayTargetTimeoutMs: z.number().int(),
+    sendDataReplayAdaptiveMinConcurrency: z.number().int(),
+    sendDataReplayAdaptiveMaxConcurrency: z.number().int(),
+    rawArchiveEnabled: z.boolean(),
+    rawArchiveMaxFileMiB: z.number().int(),
+    rawArchiveMaxFiles: z.number().int(),
+    rawArchiveAutoExportEnabled: z.boolean(),
+    rawArchiveAutoExportQuietSeconds: z.number().int(),
+    rawArchiveAutoExportScanIntervalSeconds: z.number().int(),
+    rawArchiveAutoExportCursorStableSeconds: z.number().int(),
+    rawArchiveAutoExportRetryDelaySeconds: z.number().int(),
+    rawArchiveAutoExportMaxAttempts: z.number().int(),
+    rawArchiveAutoExportRequestTimeoutSeconds: z.number().int()
+  })
+  .passthrough();
+const recorderIngressMemoryGuardStatusSchema = z.enum([
+  "healthy",
+  "warm",
+  "hot",
+  "critical",
+  "missing",
+  "stale",
+  "invalid",
+  "failed",
+  "unavailable",
+  "disabled"
+]);
 const testKitStateSchema = z.enum([
   "disabled",
   "stopped",
@@ -120,19 +166,27 @@ export const runtimeSettingsSchema = z
           })
           .passthrough()
       ),
-    cpuCount: z.number(),
-    memoryGiB: z.number(),
-    diskGiB: z.number(),
-    minimumDiskGiB: z.number(),
+    cpuCount: z.number().int(),
+    memoryGiB: z.number().int(),
+    diskGiB: z.number().int(),
+    minimumDiskGiB: z.number().int(),
     networkMode: networkModeSchema,
     bridgedInterface: z.string().nullable(),
-    proxyPort: z.number(),
-    runtimeControlPort: z.number(),
+    proxyPort: z.number().int(),
+    runtimeControlPort: z.number().int(),
     vitalFilesDirectory: z.string(),
     vitalServerURL: z.string(),
     remoteConsoleURL: z.string(),
     publicHost: z.string(),
-    publicPort: z.number(),
+    publicPort: z.number().int(),
+    recorderIngressSendDataMode: recorderIngressSendDataModeSchema,
+    recorderIngressSendDataReplayBatchSize: z.number().int(),
+    recorderIngressSendDataReplayMaxMiBPerSecond: z.number().int(),
+    recorderIngress: runtimeRecorderIngressSettingsSchema,
+    containerMemoryLimitsEnabled: z.boolean(),
+    vitalServerContainerMemoryLimitMiB: z.number().int(),
+    recorderIngressContainerMemoryLimitMiB: z.number().int(),
+    redisContainerMemoryLimitMiB: z.number().int(),
     adminPassword: z.string(),
     changeAdminPassword: z.boolean(),
     startOnBoot: z.boolean(),
@@ -141,9 +195,28 @@ export const runtimeSettingsSchema = z
     preventSystemSleep: z.boolean(),
     automaticBackupEnabled: z.boolean(),
     backupScheduleTimes: z.string().array(),
-    backupRetentionCount: z.number(),
-    logArchiveRetentionDays: z.number(),
-    logArchiveMaximumGiB: z.number(),
+    backupRetentionCount: z.number().int(),
+    logArchiveRetentionDays: z.number().int(),
+    logArchiveMaximumGiB: z.number().int(),
+    redisRelay: z
+      .object({
+        enabled: z.boolean(),
+        target: z
+          .object({
+            url: z.string(),
+            username: z.string(),
+            password: z.string(),
+            clearPassword: z.boolean(),
+            passwordConfigured: z.boolean(),
+            tls: z.boolean()
+          })
+          .passthrough(),
+        scope: redisRelayScopeSchema,
+        includeRecorderNetworkContext: z.boolean(),
+        intervalSeconds: z.number(),
+        scanCount: z.number().int()
+      })
+      .passthrough(),
     restartAfterSave: z.boolean()
   })
   .passthrough();
@@ -209,7 +282,130 @@ const runtimeRecorderConnectionObservationSchema = z
   })
   .passthrough();
 
-const runtimeAuditProxyStatusDocumentSchema = z
+const runtimeRecorderIngressThroughputStatusSchema = z
+  .object({
+    windowSeconds: nullableNumber,
+    observedBytesPerSecond: nullableNumber,
+    spooledBytesPerSecond: nullableNumber,
+    replayedBytesPerSecond: nullableNumber,
+    queueGrowthBytesPerSecond: nullableNumber
+  })
+  .passthrough();
+
+const runtimeRecorderIngressFailureObservationSchema = z
+  .object({
+    reason: nullableString,
+    message: nullableString,
+    occurredAt: nullableString
+  })
+  .passthrough();
+
+const runtimeRecorderIngressRawArchiveAutoExportJobSchema = z
+  .object({
+    jobId: nullableString,
+    archivePath: nullableString,
+    archiveCursor: nullableNumber,
+    state: nullableString,
+    attempts: nullableNumber,
+    maxAttempts: nullableNumber,
+    createdAt: nullableString,
+    updatedAt: nullableString,
+    startedAt: nullableString,
+    completedAt: nullableString,
+    nextAttemptAt: nullableString,
+    lastFailure: runtimeRecorderIngressFailureObservationSchema.nullable().optional()
+  })
+  .passthrough();
+
+const runtimeRecorderIngressRawArchiveAutoExportStatusSchema = z
+  .object({
+    status: nullableString,
+    finalizable: nullableBoolean,
+    reasons: z.array(z.string()).optional(),
+    archivePath: nullableString,
+    archiveCursor: nullableNumber,
+    cursorStableForMs: nullableNumber,
+    lastDecisionAt: nullableString,
+    activeJob: runtimeRecorderIngressRawArchiveAutoExportJobSchema.nullable().optional(),
+    uploadedJobs: nullableNumber,
+    failedJobs: nullableNumber,
+    lastResult: z.record(z.string(), z.unknown()).nullable().optional(),
+    lastFailure: runtimeRecorderIngressFailureObservationSchema.nullable().optional()
+  })
+  .passthrough();
+
+const runtimeRecorderIngressRawArchiveStatusSchema = z
+  .object({
+    status: nullableString,
+    path: nullableString,
+    persistedEvents: nullableNumber,
+    persistedBytes: nullableNumber,
+    writeFailures: nullableNumber,
+    lastArchivedAt: nullableString,
+    lastArchiveId: nullableString,
+    lastOffset: nullableNumber,
+    lastFailure: runtimeRecorderIngressFailureObservationSchema.nullable().optional(),
+    autoExport: runtimeRecorderIngressRawArchiveAutoExportStatusSchema
+      .nullable()
+      .optional()
+  })
+  .passthrough();
+
+const runtimeRecorderIngressSpoolStatusSchema = z
+  .object({
+    mode: nullableString,
+    status: nullableString,
+    storage: nullableString,
+    acceptedEvents: nullableNumber,
+    spooledEvents: nullableNumber,
+    rejectedEvents: nullableNumber,
+    writeFailures: nullableNumber,
+    pendingItems: nullableNumber,
+    pendingBytes: nullableNumber,
+    oldestPendingAgeSeconds: nullableNumber,
+    lastAcceptedAt: nullableString,
+    lastSpooledAt: nullableString,
+    lastFailure: runtimeRecorderIngressFailureObservationSchema.nullable().optional()
+  })
+  .passthrough();
+
+const runtimeRecorderIngressReplayAdaptiveStatusSchema = z
+  .object({
+    enabled: nullableBoolean,
+    minBytesPerSecond: nullableNumber,
+    maxBytesPerSecond: nullableNumber,
+    currentMaxBytesPerSecond: nullableNumber,
+    minItemsPerTick: nullableNumber,
+    maxItemsPerTick: nullableNumber,
+    currentItemsPerTick: nullableNumber,
+    minConcurrency: nullableNumber,
+    maxConcurrency: nullableNumber,
+    currentConcurrency: nullableNumber,
+    lastDecision: nullableString,
+    lastReason: nullableString,
+    lastChangedAt: nullableString,
+    memoryGuardStatus: recorderIngressMemoryGuardStatusSchema.nullable().optional()
+  })
+  .passthrough();
+
+const runtimeRecorderIngressReplayStatusSchema = z
+  .object({
+    status: nullableString,
+    pendingItems: nullableNumber,
+    inFlightItems: nullableNumber,
+    replayedEvents: nullableNumber,
+    retryableFailures: nullableNumber,
+    deadLetteredEvents: nullableNumber,
+    replayLagSeconds: nullableNumber,
+    maxBytesPerSecond: nullableNumber,
+    configuredMaxBytesPerSecond: nullableNumber,
+    adaptive: runtimeRecorderIngressReplayAdaptiveStatusSchema.nullable().optional(),
+    lastReplayAt: nullableString,
+    lastFailure: runtimeRecorderIngressFailureObservationSchema.nullable().optional()
+  })
+  .passthrough();
+
+const runtimeRecorderIngressStatusDocumentSchema = z
   .object({
     startedAt: nullableString,
     uptimeSeconds: nullableNumber,
@@ -222,7 +418,13 @@ const runtimeAuditProxyStatusDocumentSchema = z
     auditWriteFailures: z.number(),
     auditFileWriteFailures: z.number(),
     auditStdoutWriteFailures: z.number(),
-    redisIpWriteFailures: z.number()
+    redisIpWriteFailures: z.number(),
+    redisIpVerifyFailures: z.number().optional(),
+    redisIpVerifyMismatches: z.number().optional(),
+    throughput: runtimeRecorderIngressThroughputStatusSchema.nullable().optional(),
+    rawArchive: runtimeRecorderIngressRawArchiveStatusSchema.nullable().optional(),
+    spool: runtimeRecorderIngressSpoolStatusSchema.nullable().optional(),
+    replay: runtimeRecorderIngressReplayStatusSchema.nullable().optional()
   })
   .passthrough();
 
@@ -233,24 +435,54 @@ const runtimeContainerServiceObservationSchema = z
     state: nullableString,
     health: nullableString,
     exitCode: nullableNumber,
+    memoryUsedBytes: nullableNumber,
+    memoryLimitBytes: nullableNumber,
     startedAt: nullableString,
     uptimeSeconds: nullableNumber
   })
   .passthrough();
 
+const runtimeRecorderIngressStatusReadStateSchema = z.enum([
+  "notRead",
+  "loaded",
+  "skippedMissingProxyPort",
+  "commandFailed",
+  "emptyResponse",
+  "outputInvalid",
+  "invalidResponse",
+  "readFailed"
+]);
+
+const runtimeFileMetadataReadStateSchema = z.enum([
+  "notRead",
+  "loaded",
+  "readFailed"
+]);
+
+const runtimeContainerServicesReadStateSchema = z.enum([
+  "loaded",
+  "missing",
+  "invalid",
+  "stale",
+  "read-failed"
+]);
+
 const runtimeContainerObservationSchema = z
   .object({
-    auditProxyHTTP: z.string(),
-    auditProxyStatus: runtimeAuditProxyStatusDocumentSchema.nullable().optional(),
-    auditProxyStatusReadError: nullableString,
+    recorderIngressHTTP: z.string(),
+    recorderIngressStatus: runtimeRecorderIngressStatusDocumentSchema.nullable().optional(),
+    recorderIngressStatusReadState: runtimeRecorderIngressStatusReadStateSchema,
+    recorderIngressStatusReadError: nullableString,
     runtimeStateUpdatedAt: nullableString,
     runtimeStateFileUpdatedAt: nullableString,
+    runtimeStateFileMetadataReadState: runtimeFileMetadataReadStateSchema,
     runtimeStateFileMetadataError: nullableString,
     containerLogsPresent: z.boolean(),
     containerLogsBytes: nullableNumber,
     containerLogsUpdatedAt: nullableString,
     containerLogsMetadataError: nullableString,
     composeServices: z.array(runtimeContainerServiceObservationSchema),
+    composeServicesReadState: runtimeContainerServicesReadStateSchema,
     composeServicesReadError: nullableString
   })
   .passthrough();

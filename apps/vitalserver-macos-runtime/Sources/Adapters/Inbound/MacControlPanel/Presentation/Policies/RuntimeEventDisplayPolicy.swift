@@ -86,7 +86,7 @@ public struct RuntimeEventDisplayPolicy {
         if !event.failureReasons.isEmpty {
             details.append("\(vocabulary.failureReasonsLabel): \(event.failureReasons.map(vocabulary.domainErrorText).joined(separator: ", "))")
         }
-        if let observation = event.containerObservation?.auditProxyStatus {
+        if let observation = event.containerObservation?.recorderIngressStatus {
             details.append("\(vocabulary.activeRecorderConnectionsLabel): \(observation.activeRecorderConnections)")
             details.append("\(vocabulary.knownRecordersLabel): \(observation.recorders.count)")
         }

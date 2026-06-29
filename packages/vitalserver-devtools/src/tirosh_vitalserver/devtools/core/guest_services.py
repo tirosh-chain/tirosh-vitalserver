@@ -58,8 +58,10 @@ class DockerImagePlan:
     pull_images: list[str]
     app_image: str
     app_dockerfile: Path
-    audit_proxy_image: str
-    audit_proxy_dockerfile: Path
+    recorder_ingress_image: str
+    recorder_ingress_dockerfile: Path
+    recorder_recovery_image: str
+    recorder_recovery_dockerfile: Path
     vitaldb_observer_image: str
     vitaldb_observer_dockerfile: Path
     redis_relay_image: str
@@ -76,8 +78,10 @@ class DockerImagesConfig:
     images: list[str]
     optional_images: list[str]
     app_dockerfile: str
-    audit_proxy_image: str
-    audit_proxy_dockerfile: str
+    recorder_ingress_image: str
+    recorder_ingress_dockerfile: str
+    recorder_recovery_image: str
+    recorder_recovery_dockerfile: str
     vitaldb_observer_image: str
     vitaldb_observer_dockerfile: str
     redis_relay_image: str
@@ -102,13 +106,17 @@ def guest_deploy_plan(
     config: GuestDeployConfig,
     docker_bundle: Path | None,
     optional_docker_bundle: Path | None = None,
+    include_optional: bool = False,
 ) -> GuestDeployPlan:
+    configured_includes = list(config.includes)
+    if include_optional:
+        configured_includes.extend(config.optional_includes)
     includes = [
         GuestDeployEntry(
             source=root / entry.source,
             destination=deploy_dir / entry.destination,
         )
-        for entry in config.includes
+        for entry in configured_includes
     ]
     python_wheel_projects = [
         GuestPythonWheelProject(
@@ -175,8 +183,10 @@ def docker_image_plan(
     platform: str,
     images: list[str],
     app_dockerfile: str,
-    audit_proxy_image: str,
-    audit_proxy_dockerfile: str,
+    recorder_ingress_image: str,
+    recorder_ingress_dockerfile: str,
+    recorder_recovery_image: str,
+    recorder_recovery_dockerfile: str,
     vitaldb_observer_image: str,
     vitaldb_observer_dockerfile: str,
     redis_relay_image: str,
@@ -188,7 +198,8 @@ def docker_image_plan(
         raise DomainError("error: guest.docker_images.images must not be empty")
     app_image = images[0]
     local_build_images = {
-        audit_proxy_image,
+        recorder_ingress_image,
+        recorder_recovery_image,
         vitaldb_observer_image,
         redis_relay_image,
         testkit_image,
@@ -200,8 +211,10 @@ def docker_image_plan(
         pull_images=[image for image in images[1:] if image not in local_build_images],
         app_image=app_image,
         app_dockerfile=root / app_dockerfile,
-        audit_proxy_image=audit_proxy_image,
-        audit_proxy_dockerfile=root / audit_proxy_dockerfile,
+        recorder_ingress_image=recorder_ingress_image,
+        recorder_ingress_dockerfile=root / recorder_ingress_dockerfile,
+        recorder_recovery_image=recorder_recovery_image,
+        recorder_recovery_dockerfile=root / recorder_recovery_dockerfile,
         vitaldb_observer_image=vitaldb_observer_image,
         vitaldb_observer_dockerfile=root / vitaldb_observer_dockerfile,
         redis_relay_image=redis_relay_image,

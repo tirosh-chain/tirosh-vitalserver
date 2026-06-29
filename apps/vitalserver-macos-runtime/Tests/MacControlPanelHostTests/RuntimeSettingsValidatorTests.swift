@@ -202,6 +202,41 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
         )
     }
 
+    func testRejectsEnabledContainerMemoryLimitsOutsideAllowedRanges() {
+        var settings = validSettings()
+        settings.memoryGiB = 4
+        settings.containerMemoryLimitsEnabled = true
+        settings.vitalServerContainerMemoryLimitMiB = 8192
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid("Container memory limits must be within the allowed MiB ranges and total no more than 70% of the VM memory allocation.")
+        )
+
+        settings = validSettings()
+        settings.containerMemoryLimitsEnabled = true
+        settings.recorderIngressContainerMemoryLimitMiB = 64
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .invalid("Container memory limits must be within the allowed MiB ranges and total no more than 70% of the VM memory allocation.")
+        )
+    }
+
+    func testAllowsContainerMemoryLimitTotalAtDisplayedMaximumPercent() {
+        var settings = validSettings()
+        settings.memoryGiB = 8
+        settings.containerMemoryLimitsEnabled = true
+        settings.vitalServerContainerMemoryLimitMiB = 2048
+        settings.recorderIngressContainerMemoryLimitMiB = 410
+        settings.redisContainerMemoryLimitMiB = 3277
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .valid
+        )
+    }
+
     func testRejectsInvalidRedisRelayTargetWhenRelayIsEnabled() {
         var settings = validSettings()
         settings.redisRelay.enabled = true

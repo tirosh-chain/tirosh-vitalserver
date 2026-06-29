@@ -42,6 +42,7 @@ enum RuntimeCommandFactory {
     static func configureRuntimeArguments(
         settings: RuntimeSettings,
         adminPasswordFile: String? = nil,
+        recorderIngressSettingsFile: String? = nil,
         redisRelaySettingsFile: String? = nil
     ) -> [String] {
         var arguments = [
@@ -63,6 +64,22 @@ enum RuntimeCommandFactory {
             settings.publicHost,
             RuntimeControlClientConstants.RuntimeCommand.optionPublicPort,
             String(settings.publicPort),
+            RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataMode,
+            settings.recorderIngressSendDataMode.rawValue,
+            RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataReplayBatchSize,
+            String(settings.recorderIngressSendDataReplayBatchSize),
+            RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataReplayMaxMiBPerSecond,
+            String(settings.recorderIngressSendDataReplayMaxMiBPerSecond),
+            RuntimeControlClientConstants.RuntimeCommand.optionContainerMemoryLimits,
+            settings.containerMemoryLimitsEnabled
+                ? RuntimeControlClientConstants.RuntimeCommand.boolTrue
+                : RuntimeControlClientConstants.RuntimeCommand.boolFalse,
+            RuntimeControlClientConstants.RuntimeCommand.optionVitalServerContainerMemoryLimitMiB,
+            String(settings.vitalServerContainerMemoryLimitMiB),
+            RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressContainerMemoryLimitMiB,
+            String(settings.recorderIngressContainerMemoryLimitMiB),
+            RuntimeControlClientConstants.RuntimeCommand.optionRedisContainerMemoryLimitMiB,
+            String(settings.redisContainerMemoryLimitMiB),
             RuntimeControlClientConstants.RuntimeCommand.optionVitalServerURL,
             settings.vitalServerURL,
             RuntimeControlClientConstants.RuntimeCommand.optionRemoteConsoleURL,
@@ -105,6 +122,12 @@ enum RuntimeCommandFactory {
         }
         if let adminPasswordFile {
             arguments += [RuntimeControlClientConstants.RuntimeCommand.optionAdminPasswordFile, adminPasswordFile]
+        }
+        if let recorderIngressSettingsFile {
+            arguments += [
+                RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSettingsFile,
+                recorderIngressSettingsFile,
+            ]
         }
         if let redisRelaySettingsFile {
             arguments += [

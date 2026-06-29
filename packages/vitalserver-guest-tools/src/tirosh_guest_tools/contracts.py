@@ -20,9 +20,11 @@ class RuntimeService(StrEnum):
 
 class RuntimeFileName(StrEnum):
     COMPOSE = "compose.yaml"
+    COMPOSE_RUNTIME_LIMITS = "compose.runtime-limits.yaml"
     RUNTIME_STATE = "runtime-state.json"
     BOOTSTRAP_RESULT = "bootstrap-result.json"
     RUNTIME_CONFIG = "runtime-config.json"
+    RUNTIME_SETTINGS = "runtime-settings.json"
     REDIS_BACKUP_REQUEST = "redis-backup.request"
     REDIS_BACKUP_RESULT = "redis-backup-result.json"
     REDIS_BACKUP_LOG = "redis-backup.log"
@@ -46,7 +48,8 @@ class RuntimeFileName(StrEnum):
 class ComposeService(StrEnum):
     REDIS = "redis"
     APP = "app"
-    AUDIT_PROXY = "audit-proxy"
+    RECORDER_RECOVERY = "recorder-recovery"
+    RECORDER_INGRESS = "recorder-ingress"
     VITALDB_OBSERVER = "vitaldb-observer"
     REDIS_RELAY = "redis-relay"
     REDIS_UI = "redis-ui"

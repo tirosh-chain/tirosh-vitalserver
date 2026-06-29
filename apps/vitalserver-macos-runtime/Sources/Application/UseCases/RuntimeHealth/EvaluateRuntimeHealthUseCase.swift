@@ -308,26 +308,26 @@ public struct EvaluateRuntimeHealthUseCase {
             loadedState: reads.guestRuntimeState.loadedState,
             readFailureReasons: guestRuntimeStateReadFailureReasons(reads.guestRuntimeState.readIssue)
         )
-        let auditProxyHTTP: String
-        let auditProxyStatus: RuntimeAuditProxyStatusDocument?
-        let auditProxyStatusReadState: RuntimeAuditProxyStatusReadState
-        let auditProxyStatusReadError: String?
-        if let auditProxyStatusRead = reads.auditProxyStatus {
-            auditProxyHTTP = auditProxyStatusRead.httpStatus
-            auditProxyStatus = auditProxyStatusRead.document
-            auditProxyStatusReadState = auditProxyStatusRead.readState
-            auditProxyStatusReadError = auditProxyStatusRead.readError
+        let recorderIngressHTTP: String
+        let recorderIngressStatus: RuntimeRecorderIngressStatusDocument?
+        let recorderIngressStatusReadState: RuntimeRecorderIngressStatusReadState
+        let recorderIngressStatusReadError: String?
+        if let recorderIngressStatusRead = reads.recorderIngressStatus {
+            recorderIngressHTTP = recorderIngressStatusRead.httpStatus
+            recorderIngressStatus = recorderIngressStatusRead.document
+            recorderIngressStatusReadState = recorderIngressStatusRead.readState
+            recorderIngressStatusReadError = recorderIngressStatusRead.readError
         } else {
-            auditProxyHTTP = RuntimeHTTPStatusText.missingProxyPort
-            auditProxyStatus = nil
-            auditProxyStatusReadState = .skippedMissingProxyPort
-            auditProxyStatusReadError = RuntimeHTTPStatusText.missingProxyPort
+            recorderIngressHTTP = RuntimeHTTPStatusText.missingProxyPort
+            recorderIngressStatus = nil
+            recorderIngressStatusReadState = .skippedMissingProxyPort
+            recorderIngressStatusReadError = RuntimeHTTPStatusText.missingProxyPort
         }
         return RuntimeContainerObservation(
-            auditProxyHTTP: auditProxyHTTP,
-            auditProxyStatus: auditProxyStatus,
-            auditProxyStatusReadState: auditProxyStatusReadState,
-            auditProxyStatusReadError: auditProxyStatusReadError,
+            recorderIngressHTTP: recorderIngressHTTP,
+            recorderIngressStatus: recorderIngressStatus,
+            recorderIngressStatusReadState: recorderIngressStatusReadState,
+            recorderIngressStatusReadError: recorderIngressStatusReadError,
             runtimeStateUpdatedAt: reads.guestRuntimeState.freshState?.updatedAt,
             runtimeStateFileUpdatedAt: reads.runtimeStateFileModifiedAt.updatedAt,
             runtimeStateFileMetadataReadState: reads.runtimeStateFileModifiedAt.readState,

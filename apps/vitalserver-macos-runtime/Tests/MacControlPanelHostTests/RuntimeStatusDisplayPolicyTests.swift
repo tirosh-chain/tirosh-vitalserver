@@ -80,8 +80,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             redisUIHTTP: "503"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -116,8 +116,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -204,8 +204,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             swaggerUIHTTP: nil
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "000",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "000",
+            recorderIngressStatus: nil,
             containerLogsPresent: false,
             containerLogsBytes: 0,
             composeServices: []
@@ -289,8 +289,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             )
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "000",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "000",
+            recorderIngressStatus: nil,
             containerLogsPresent: false,
             containerLogsBytes: 0,
             composeServices: []
@@ -336,8 +336,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             swaggerUIHTTP: nil
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "000",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "000",
+            recorderIngressStatus: nil,
             containerLogsPresent: false,
             containerLogsBytes: 0,
             composeServices: []
@@ -506,8 +506,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -601,8 +601,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -631,8 +631,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             runtimeStateUpdatedAt: "2025-02-21T21:19:33Z",
             runtimeStateFileUpdatedAt: "2026-06-13T00:00:00Z",
             containerLogsPresent: true,
@@ -663,8 +663,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             runtimeStateUpdatedAt: "2025-02-21T21:19:33Z",
             containerLogsPresent: true,
             containerLogsBytes: 1,
@@ -694,8 +694,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -723,8 +723,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             runtimeStateUpdatedAt: "2026-05-26T04:35:35Z",
             containerLogsPresent: true,
             containerLogsBytes: 1,
@@ -750,8 +750,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -783,13 +783,15 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             swaggerUIHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
                 RuntimeContainerServiceObservation(service: "app", uptimeSeconds: 1),
                 RuntimeContainerServiceObservation(service: "edge", uptimeSeconds: 2),
+                RuntimeContainerServiceObservation(service: "recorder-ingress", uptimeSeconds: 5),
+                RuntimeContainerServiceObservation(service: "recorder-recovery", uptimeSeconds: 6),
                 RuntimeContainerServiceObservation(service: "redis-ui", uptimeSeconds: 3),
                 RuntimeContainerServiceObservation(service: "swagger-ui", uptimeSeconds: 4),
             ]
@@ -803,6 +805,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             AppConstants.Labels.sleepPreventionService,
             AppConstants.Labels.watchdogService,
             AppConstants.Labels.vitalDBObserver,
+            GeneratedRelease.recorderIngressName,
+            GeneratedRelease.recorderRecoveryName,
             AppConstants.Labels.redisRelay,
             GeneratedRelease.vitalServerName,
             GeneratedRelease.hostProxyName,
@@ -811,6 +815,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         ])
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.action, .openVitalServer)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:01")
+        XCTAssertEqual(item(GeneratedRelease.recorderIngressName, in: items)?.value.uptimeText, "00:00:05")
+        XCTAssertEqual(item(GeneratedRelease.recorderRecoveryName, in: items)?.value.uptimeText, "00:00:06")
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.value.text, AppConstants.StatusText.unavailable)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.httpStatus, "503")
         XCTAssertEqual(item(AppConstants.Labels.guestLogSyncService, in: items)?.value.text, AppConstants.StatusText.running)
@@ -833,8 +839,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         let settings = RuntimeRedisRelaySettings(enabled: true)
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -892,8 +898,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         let settings = RuntimeRedisRelaySettings(enabled: true)
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -1111,8 +1117,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
     func testRecorderSummaryOwnsRecorderDisplayText() {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: RuntimeAuditProxyStatusDocument(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
                 activeRecorderConnections: 2,
                 recorders: [
                     RuntimeRecorderConnectionObservation(
@@ -1261,8 +1267,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServices: [
@@ -1278,6 +1284,326 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.vitalDBObserver, in: items)?.value.severity, .neutral)
     }
 
+    func testRecorderIngressQueueDisplaysHealthyStatus() {
+        let status = healthyRuntimeStatus()
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                spool: RuntimeRecorderIngressSpoolStatus(
+                    status: "ready",
+                    rejectedEvents: 0,
+                    writeFailures: 0,
+                    pendingItems: 0,
+                    pendingBytes: 0
+                ),
+                replay: RuntimeRecorderIngressReplayStatus(
+                    status: "idle",
+                    pendingItems: 0,
+                    inFlightItems: 0,
+                    retryableFailures: 0,
+                    deadLetteredEvents: 0
+                )
+            ),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, "healthy, 0 pending")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .healthy)
+    }
+
+    func testRecorderIngressQueueStatusValueIsAvailableForStatusPanel() {
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                spool: RuntimeRecorderIngressSpoolStatus(
+                    status: "ready",
+                    pendingItems: 7
+                ),
+                replay: RuntimeRecorderIngressReplayStatus(status: "replaying")
+            ),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let value = policy.recorderIngressQueue(observation: observation)
+
+        XCTAssertEqual(value.text, "draining, 7 pending")
+        XCTAssertEqual(value.severity, .warning)
+    }
+
+    func testRecorderIngressDetailsDisplayOperationalRows() {
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                activeWebSockets: 3,
+                activeRecorderConnections: 2,
+                throughput: RuntimeRecorderIngressThroughputStatus(
+                    observedBytesPerSecond: 5_242_880,
+                    spooledBytesPerSecond: 5_242_880,
+                    replayedBytesPerSecond: 4_194_304,
+                    queueGrowthBytesPerSecond: 1_048_576
+                ),
+                spool: RuntimeRecorderIngressSpoolStatus(
+                    status: "ready",
+                    rejectedEvents: 2,
+                    writeFailures: 0,
+                    pendingItems: 128,
+                    pendingBytes: 24_000_000,
+                    oldestPendingAgeSeconds: 34
+                ),
+                replay: RuntimeRecorderIngressReplayStatus(
+                    status: "replaying",
+                    inFlightItems: 1,
+                    retryableFailures: 0,
+                    deadLetteredEvents: 0,
+                    replayLagSeconds: 12,
+                    maxBytesPerSecond: 4 * 1_048_576,
+                    adaptive: RuntimeRecorderIngressReplayAdaptiveStatus(
+                        enabled: true,
+                        minBytesPerSecond: 2 * 1_048_576,
+                        maxBytesPerSecond: 12 * 1_048_576,
+                        currentItemsPerTick: 500,
+                        currentConcurrency: 8,
+                        memoryGuardStatus: .healthy
+                    )
+                )
+            ),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.recorderIngressDetails(observation: observation)
+
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressConnections, in: items)?.value.text, "2 active / 3 WebSockets")
+        XCTAssertEqual(item(AppConstants.Labels.queue, in: items)?.value.text, "128 pending / 24 MB")
+        XCTAssertEqual(item(AppConstants.Labels.queue, in: items)?.value.severity, .warning)
+        XCTAssertEqual(
+            item(AppConstants.Labels.recorderIngressThroughput, in: items)?.value.text,
+            "in 5.2 MB/s, replay 4.2 MB/s, queue +1 MB/s"
+        )
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressOldestPending, in: items)?.value.text, "34s")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.text, "replaying")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.severity, .healthy)
+        XCTAssertEqual(
+            item(AppConstants.Labels.recorderIngressReplayThroughput, in: items)?.value.text,
+            "4.0 MiB/s, adaptive 2.0 MiB/s-12.0 MiB/s, guard healthy, 500 items/tick, concurrency 8"
+        )
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressInFlight, in: items)?.value.text, "1")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplayLag, in: items)?.value.text, "12s")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressBackpressureRejected, in: items)?.value.text, "2")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressBackpressureRejected, in: items)?.value.severity, .warning)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressRetryableFailures, in: items)?.value.text, "0")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressRetryableFailures, in: items)?.value.severity, .healthy)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressDeadLetters, in: items)?.value.text, "0")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressDeadLetters, in: items)?.value.severity, .healthy)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressLastFailure, in: items)?.value.text, "none")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressLastFailure, in: items)?.value.severity, .healthy)
+    }
+
+    func testRecorderIngressDetailsDoNotDefaultMissingQueueFieldsToZero() {
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 2),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.recorderIngressDetails(observation: observation)
+
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressConnections, in: items)?.value.text, "2 active / 0 WebSockets")
+        XCTAssertEqual(item(AppConstants.Labels.queue, in: items)?.value.text, AppConstants.StatusText.notReported)
+        XCTAssertEqual(item(AppConstants.Labels.queue, in: items)?.value.severity, .neutral)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.text, AppConstants.StatusText.notReported)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.severity, .neutral)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressBackpressureRejected, in: items)?.value.text, AppConstants.StatusText.notReported)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressBackpressureRejected, in: items)?.value.severity, .neutral)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressDeadLetters, in: items)?.value.text, AppConstants.StatusText.notReported)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressDeadLetters, in: items)?.value.severity, .neutral)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressLastFailure, in: items)?.value.text, AppConstants.StatusText.notReported)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressLastFailure, in: items)?.value.severity, .neutral)
+    }
+
+    func testRecorderIngressQueueDisplaysDrainingBacklog() {
+        let status = healthyRuntimeStatus()
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                spool: RuntimeRecorderIngressSpoolStatus(
+                    status: "ready",
+                    rejectedEvents: 0,
+                    writeFailures: 0,
+                    pendingItems: 128,
+                    oldestPendingAgeSeconds: 34
+                ),
+                replay: RuntimeRecorderIngressReplayStatus(
+                    status: "replaying",
+                    inFlightItems: 1,
+                    retryableFailures: 0,
+                    deadLetteredEvents: 0,
+                    replayLagSeconds: 12
+                )
+            ),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(
+            item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text,
+            "draining, 128 pending, 1 in flight, oldest 34s, replay lag 12s"
+        )
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .warning)
+    }
+
+    func testRecorderIngressQueueDisplaysMirrorSpoolAsMirroringNotDraining() {
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                spool: RuntimeRecorderIngressSpoolStatus(
+                    mode: "mirror_spool",
+                    status: "ready",
+                    rejectedEvents: 0,
+                    writeFailures: 0,
+                    pendingItems: 128,
+                    pendingBytes: 24_000_000,
+                    oldestPendingAgeSeconds: 34
+                ),
+                replay: RuntimeRecorderIngressReplayStatus(
+                    status: "disabled",
+                    inFlightItems: 0,
+                    retryableFailures: 0,
+                    deadLetteredEvents: 0
+                )
+            ),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let summary = policy.recorderIngressQueue(observation: observation)
+        let details = policy.recorderIngressDetails(observation: observation)
+
+        XCTAssertEqual(
+            summary.text,
+            "mirroring, 128 pending, 24 MB, oldest 34s, replay disabled"
+        )
+        XCTAssertEqual(summary.severity, .neutral)
+        XCTAssertEqual(item(AppConstants.Labels.queue, in: details)?.value.text, "128 pending / 24 MB")
+        XCTAssertEqual(item(AppConstants.Labels.queue, in: details)?.value.severity, .neutral)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: details)?.value.text, "disabled")
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: details)?.value.severity, .neutral)
+    }
+
+    func testRecorderIngressQueueDisplaysFailureEvidence() {
+        let status = healthyRuntimeStatus()
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                spool: RuntimeRecorderIngressSpoolStatus(
+                    status: "ready",
+                    rejectedEvents: 2,
+                    writeFailures: 0
+                ),
+                replay: RuntimeRecorderIngressReplayStatus(
+                    status: "degraded",
+                    retryableFailures: 4,
+                    deadLetteredEvents: 0,
+                    lastFailure: RuntimeRecorderIngressFailureObservation(reason: "upstream_timeout")
+                )
+            ),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(
+            item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text,
+            "degraded, 2 rejected, 4 retryable failures, last failure upstream_timeout"
+        )
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .warning)
+    }
+
+    func testRecorderIngressQueueDisplaysCriticalDeadLetters() {
+        let status = healthyRuntimeStatus()
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                spool: RuntimeRecorderIngressSpoolStatus(
+                    status: "ready",
+                    writeFailures: 0,
+                    pendingItems: 0
+                ),
+                replay: RuntimeRecorderIngressReplayStatus(
+                    status: "degraded",
+                    deadLetteredEvents: 3,
+                    lastFailure: RuntimeRecorderIngressFailureObservation(reason: "invalid_payload")
+                )
+            ),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(
+            item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text,
+            "degraded, 3 dead letters, last failure invalid_payload"
+        )
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .critical)
+    }
+
+    func testRecorderIngressQueueDoesNotDefaultMissingQueueStateToZero() {
+        let status = healthyRuntimeStatus()
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 2),
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, AppConstants.StatusText.notReported)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .neutral)
+    }
+
+    func testRecorderIngressQueueDisplaysStatusReadFailureAsNotReady() {
+        let status = healthyRuntimeStatus()
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "failed",
+            recorderIngressStatus: nil,
+            recorderIngressStatusReadState: .commandFailed,
+            recorderIngressStatusReadError: "curl failed",
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.healthDetails(status: status, observation: observation)
+
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, AppConstants.StatusText.notReady)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .warning)
+    }
+
+    func testRecorderIngressDetailsDisplaysStatusReadFailureAsNotReady() {
+        let observation = RuntimeContainerObservation(
+            recorderIngressHTTP: "failed",
+            recorderIngressStatus: nil,
+            recorderIngressStatusReadState: .commandFailed,
+            recorderIngressStatusReadError: "command-failed-7 exitCode=7 stderr=curl failed",
+            containerLogsPresent: true,
+            containerLogsBytes: 1
+        )
+
+        let items = policy.recorderIngressDetails(observation: observation)
+
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.text, AppConstants.StatusText.notReady)
+        XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.severity, .warning)
+    }
+
     func testComposeServicesReadFailureIsDisplayedInsteadOfMissingServiceFallback() {
         let status = RuntimeStatus(
             runtimeInstalled: true,
@@ -1288,8 +1614,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 1,
             composeServicesReadState: .invalid,
@@ -1307,8 +1633,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
     func testRecorderSummaryDoesNotDisplayUnavailableObservationMetricsAsZero() {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: RuntimeAuditProxyStatusDocument(activeRecorderConnections: 2),
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 2),
             containerLogsPresent: true,
             containerLogsBytes: 1
         )
@@ -1326,6 +1652,17 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(summary.anomalies, AppConstants.StatusText.notReported)
         XCTAssertNil(summary.latestRecorder)
         XCTAssertNil(summary.observedAt)
+    }
+
+    private func healthyRuntimeStatus() -> RuntimeStatus {
+        RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceLoaded: true,
+            proxyServiceLoaded: true,
+            watchdogServiceLoaded: true,
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
     }
 
     private func item(

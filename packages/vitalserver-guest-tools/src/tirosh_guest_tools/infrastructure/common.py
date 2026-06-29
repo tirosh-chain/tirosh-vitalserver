@@ -22,6 +22,16 @@ VITAL_FILES_MOUNT_POINT = SETTINGS.shares.vital_files_mount
 DEPLOY_DIR = SETTINGS.paths.deploy_dir
 RUNTIME_DIR = SETTINGS.paths.runtime_dir
 PROJECT_NAME = SETTINGS.compose.project_name
+RECORDER_INGRESS_FAILURES_DIR_NAME = "recorder-ingress-failures"
+RECORDER_INGRESS_RAW_ARCHIVE_DIR_NAME = "recorder-ingress-raw"
+RECORDER_INGRESS_RECOVERY_DIR_NAME = "recorder-ingress-recovery"
+REDIS_RELAY_STATUS_DIR_NAME = "redis-relay-status"
+CONTAINER_BIND_SOURCE_DIR_NAMES = (
+    RECORDER_INGRESS_FAILURES_DIR_NAME,
+    RECORDER_INGRESS_RAW_ARCHIVE_DIR_NAME,
+    RECORDER_INGRESS_RECOVERY_DIR_NAME,
+    REDIS_RELAY_STATUS_DIR_NAME,
+)
 
 
 def utc_now() -> str:
@@ -43,20 +53,38 @@ def mount_vital_files_share() -> None:
     mount_share(VITAL_FILES_MOUNT_TAG, VITAL_FILES_MOUNT_POINT)
 
 
+def container_bind_source_directories(
+    runtime_dir: Path = RUNTIME_DIR,
+) -> tuple[Path, ...]:
+    return tuple(runtime_dir / name for name in CONTAINER_BIND_SOURCE_DIR_NAMES)
+
+
+def prepare_container_bind_source_directories(
+    runtime_dir: Path = RUNTIME_DIR,
+) -> tuple[Path, ...]:
+    directories = container_bind_source_directories(runtime_dir)
+    for directory in directories:
+        directory.mkdir(parents=True, exist_ok=True)
+    return directories
+
+
 def is_mountpoint(path: Path) -> bool:
     return subprocess.run(["mountpoint", "-q", str(path)], check=False).returncode == 0
 
 
 def compose_command(arguments: list[str]) -> list[str]:
-    return [
+    command = [
         "docker",
         "compose",
         "--project-name",
         PROJECT_NAME,
         "-f",
         str(DEPLOY_DIR / RuntimeFileName.COMPOSE.value),
-        *arguments,
     ]
+    runtime_limits = DEPLOY_DIR / RuntimeFileName.COMPOSE_RUNTIME_LIMITS.value
+    if runtime_limits.exists():
+        command.extend(["-f", str(runtime_limits)])
+    return [*command, *arguments]
 
 
 def run(

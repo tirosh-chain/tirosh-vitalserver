@@ -100,11 +100,17 @@ def test_guest_compose_contract_accepts_release_declared_services() -> None:
         deploy_include_sources=[
             include.source for include in settings.guest_deploy.includes
         ],
+        optional_images=set(docker_config.optional_images),
+        include_optional=False,
     )
 
     assert not [check for check in checks if check.blocks]
+    assert any(check.name == "guest-compose-image:recorder-recovery" for check in checks)
+    assert any(check.name == "guest-compose-dockerfile:recorder-recovery" for check in checks)
+    assert any(check.name == "guest-compose-deploy:recorder-recovery" for check in checks)
     assert any(check.name == "guest-compose-image:redis-relay" for check in checks)
     assert any(check.name == "guest-compose-deploy:redis-relay" for check in checks)
+    assert not any(check.name.endswith(":testkit") for check in checks)
 
 
 def test_guest_compose_contract_rejects_missing_redis_relay_deploy_include() -> None:
@@ -130,6 +136,8 @@ def test_guest_compose_contract_rejects_missing_redis_relay_deploy_include() -> 
             for include in settings.guest_deploy.includes
             if include.source != Path("apps/vitalserver-redis-relay")
         ],
+        optional_images=set(docker_config.optional_images),
+        include_optional=False,
     )
 
     redis_relay_deploy = next(

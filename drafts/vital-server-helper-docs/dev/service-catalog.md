@@ -10,7 +10,7 @@
 | `apps/vitalserver-macos-runtime` | Vital Server Helper | macOS Helper app, host runtime, VM orchestration, packaging |
 | `apps/vitalserver-runtime-pwa` | Runtime Control UI | browser/PWA 기반 runtime control surface |
 | `apps/vitaldb-observer` | Health Check 내부 collector | Redis/proxy 기반 VitalDB observation snapshot 생성 |
-| `apps/vitalserver-audit-proxy` | command audit 기능 | VRecorder command/audit event sidecar |
+| `apps/vitalserver-recorder-ingress` | command audit 기능 | VRecorder command/audit event sidecar |
 | `packages/vitalserver-testkit` | 검증 도구 | simulated recorder, `.vital` upload, smoke/load validation |
 | `packages/vitalserver-devtools` | dev 전용 | build machine packaging, VM/update bundle tooling |
 | `packages/vitalserver-guest-tools` | dev 전용 | Linux guest-side runtime state, update, logs, repair commands |

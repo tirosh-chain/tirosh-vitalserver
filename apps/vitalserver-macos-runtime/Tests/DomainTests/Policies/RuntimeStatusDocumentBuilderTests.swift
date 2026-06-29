@@ -89,7 +89,7 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
             healthSnapshot: snapshot(failureReasons: [
                 .guestRuntimeStateMissing,
                 .hostProxyHTTP("failed"),
-                .auditProxyHTTP("failed"),
+                .recorderIngressHTTP("failed"),
                 .containerObservationMissing,
             ]),
             latestBackup: nil

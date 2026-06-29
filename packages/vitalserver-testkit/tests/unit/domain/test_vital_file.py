@@ -32,6 +32,13 @@ def test_assert_vital_filenames_accepts_vitaldb_upload_shape(tmp_path: Path) -> 
     assert_vital_filenames(iter_vital_files(vital_file))
 
 
+def test_assert_vital_filenames_accepts_auto_export_suffix(tmp_path: Path) -> None:
+    vital_file = tmp_path / "DEMO_260509_120000_auto_export.vital"
+    vital_file.write_bytes(b"payload")
+
+    assert_vital_filenames(iter_vital_files(vital_file))
+
+
 def test_assert_vital_filenames_rejects_unknown_shape(tmp_path: Path) -> None:
     vital_file = tmp_path / "DEMO.vital"
     vital_file.write_bytes(b"payload")

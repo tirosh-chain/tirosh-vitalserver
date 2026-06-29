@@ -45,10 +45,7 @@ src/
 - OpenAPI generated type은 compile-time contract이고, Zod schema는 runtime contract gate입니다.
 - `app`은 concrete `RuntimeControlApiClient`를 만들고 `RuntimeControlGatewayProvider`로 주입하는 composition root입니다.
 - `pages`와 `components`는 HTTP client를 직접 import하지 않습니다.
-- Recorder activity chart는 `/vitaldb/recorders`의 embedded `activityTimeline`을 materialize하지 않고
-  `/vitaldb/recorders/{vrcode}/activity` window response를 React Query key
-  `(vrcode, bucketSeconds, period, pageIndex)`로 조회합니다. Slider drag 중에는 page label만 바꾸고,
-  commit/debounce 후 window를 fetch합니다.
+- Recorder activity chart는 `/vitaldb/recorders`의 embedded `activityTimeline`을 materialize하지 않고 `/vitaldb/recorders/{vrcode}/activity` window response를 React Query key `(vrcode, bucketSeconds, period, pageIndex)`로 조회합니다. Slider drag 중에는 page label만 바꾸고, commit/debounce 후 window를 fetch합니다.
 
 ## Runtime Control Gateway
 
@@ -62,9 +59,7 @@ PWA application layer의 port 이름은 `RuntimeControlGateway`입니다.
 | `src/console/requestBuilders.ts` | command request body validation and construction |
 | `src/infrastructure/console-api/runtimeControlApiClient.ts` | fetch, URL, token, response schema parsing |
 
-이 이름은 의도적으로 `console`과 `runtime-control`을 나눕니다. `console`은 이 PWA의 application layer이고,
-`runtime-control`은 Host/API가 제공하는 product contract입니다. HTTP 세부 구현은 infrastructure adapter에만
-있어야 합니다.
+이 이름은 의도적으로 `console`과 `runtime-control`을 나눕니다. `console`은 이 PWA의 application layer이고, `runtime-control`은 Host/API가 제공하는 product contract입니다. HTTP 세부 구현은 infrastructure adapter에만 있어야 합니다.
 
 ## Contract Drift Guard
 
@@ -76,8 +71,7 @@ Runtime Control API 계약은 세 곳에서 동시에 관리됩니다.
 | `src/domain/runtime-control/contracts/generated/runtime-control.ts` | OpenAPI generated TypeScript type |
 | `src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts` | runtime response validation |
 
-Schema는 OpenAPI type보다 보수적으로 동작할 수 있습니다. 특히 Swift contract가 non-optional로 제공하는
-상태 의미는 generated type이 optional로 보이더라도 Zod schema에서 required로 검증합니다.
+Schema는 OpenAPI type보다 보수적으로 동작할 수 있습니다. 특히 Swift contract가 non-optional로 제공하는 상태 의미는 generated type이 optional로 보이더라도 Zod schema에서 required로 검증합니다.
 
 중요한 guard:
 

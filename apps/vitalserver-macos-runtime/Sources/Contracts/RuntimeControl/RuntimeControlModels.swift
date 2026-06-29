@@ -48,6 +48,23 @@ public struct RuntimeControlCapabilities: Codable, Equatable, Sendable {
     }
 }
 
+public struct RuntimeContainerMemoryUsage: Codable, Equatable, Sendable {
+    public var usedBytes: Int64
+    public var limitBytes: Int64?
+
+    public init(usedBytes: Int64, limitBytes: Int64? = nil) {
+        self.usedBytes = usedBytes
+        self.limitBytes = limitBytes
+    }
+
+    public var percent: Double? {
+        guard let limitBytes, limitBytes > 0 else {
+            return nil
+        }
+        return min(max((Double(usedBytes) / Double(limitBytes)) * 100.0, 0), 100)
+    }
+}
+
 public enum RuntimeNetworkMode: String, Codable, Equatable, Sendable {
     case shared
     case bridged
@@ -132,6 +149,14 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         case remoteConsoleURL
         case publicHost
         case publicPort
+        case recorderIngressSendDataMode
+        case recorderIngressSendDataReplayBatchSize
+        case recorderIngressSendDataReplayMaxMiBPerSecond
+        case recorderIngress
+        case containerMemoryLimitsEnabled
+        case vitalServerContainerMemoryLimitMiB
+        case recorderIngressContainerMemoryLimitMiB
+        case redisContainerMemoryLimitMiB
         case adminPassword
         case changeAdminPassword
         case startOnBoot
@@ -162,6 +187,14 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var remoteConsoleURL: String
     public var publicHost: String
     public var publicPort: Int
+    public var recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
+    public var recorderIngressSendDataReplayBatchSize: Int
+    public var recorderIngressSendDataReplayMaxMiBPerSecond: Int
+    public var recorderIngress: RuntimeRecorderIngressSettings
+    public var containerMemoryLimitsEnabled: Bool
+    public var vitalServerContainerMemoryLimitMiB: Int
+    public var recorderIngressContainerMemoryLimitMiB: Int
+    public var redisContainerMemoryLimitMiB: Int
     public var adminPassword: String
     public var changeAdminPassword: Bool
     public var startOnBoot: Bool
@@ -192,6 +225,14 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         remoteConsoleURL: String = RuntimeSettingsInitialValues.remoteConsoleURL(),
         publicHost: String = "",
         publicPort: Int = RuntimeSettingsInitialValues.proxyPort,
+        recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode = RuntimeSettingsInitialValues.recorderIngressSendDataMode,
+        recorderIngressSendDataReplayBatchSize: Int = RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize,
+        recorderIngressSendDataReplayMaxMiBPerSecond: Int = RuntimeSettingsInitialValues.recorderIngressSendDataReplayMaxMiBPerSecond,
+        recorderIngress: RuntimeRecorderIngressSettings = RuntimeRecorderIngressSettings(),
+        containerMemoryLimitsEnabled: Bool = RuntimeSettingsInitialValues.containerMemoryLimitsEnabled,
+        vitalServerContainerMemoryLimitMiB: Int = RuntimeSettingsInitialValues.vitalServerContainerMemoryLimitMiB,
+        recorderIngressContainerMemoryLimitMiB: Int = RuntimeSettingsInitialValues.recorderIngressContainerMemoryLimitMiB,
+        redisContainerMemoryLimitMiB: Int = RuntimeSettingsInitialValues.redisContainerMemoryLimitMiB,
         adminPassword: String = "",
         changeAdminPassword: Bool = false,
         startOnBoot: Bool = true,
@@ -221,6 +262,17 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         self.remoteConsoleURL = remoteConsoleURL
         self.publicHost = publicHost
         self.publicPort = publicPort
+        self.recorderIngressSendDataMode = recorderIngressSendDataMode
+        self.recorderIngressSendDataReplayBatchSize = max(
+            recorderIngressSendDataReplayBatchSize,
+            RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize
+        )
+        self.recorderIngressSendDataReplayMaxMiBPerSecond = recorderIngressSendDataReplayMaxMiBPerSecond
+        self.recorderIngress = recorderIngress
+        self.containerMemoryLimitsEnabled = containerMemoryLimitsEnabled
+        self.vitalServerContainerMemoryLimitMiB = vitalServerContainerMemoryLimitMiB
+        self.recorderIngressContainerMemoryLimitMiB = recorderIngressContainerMemoryLimitMiB
+        self.redisContainerMemoryLimitMiB = redisContainerMemoryLimitMiB
         self.adminPassword = adminPassword
         self.changeAdminPassword = changeAdminPassword
         self.startOnBoot = startOnBoot
@@ -270,6 +322,38 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
             remoteConsoleURL: try container.decode(String.self, forKey: .remoteConsoleURL),
             publicHost: try container.decode(String.self, forKey: .publicHost),
             publicPort: try container.decode(Int.self, forKey: .publicPort),
+            recorderIngressSendDataMode: try container.decodeIfPresent(
+                RuntimeRecorderIngressSendDataMode.self,
+                forKey: .recorderIngressSendDataMode
+            ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataMode,
+            recorderIngressSendDataReplayBatchSize: try container.decodeIfPresent(
+                Int.self,
+                forKey: .recorderIngressSendDataReplayBatchSize
+            ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize,
+            recorderIngressSendDataReplayMaxMiBPerSecond: try container.decodeIfPresent(
+                Int.self,
+                forKey: .recorderIngressSendDataReplayMaxMiBPerSecond
+            ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataReplayMaxMiBPerSecond,
+            recorderIngress: try container.decodeIfPresent(
+                RuntimeRecorderIngressSettings.self,
+                forKey: .recorderIngress
+            ) ?? RuntimeRecorderIngressSettings(),
+            containerMemoryLimitsEnabled: try container.decodeIfPresent(
+                Bool.self,
+                forKey: .containerMemoryLimitsEnabled
+            ) ?? RuntimeSettingsInitialValues.containerMemoryLimitsEnabled,
+            vitalServerContainerMemoryLimitMiB: try container.decodeIfPresent(
+                Int.self,
+                forKey: .vitalServerContainerMemoryLimitMiB
+            ) ?? RuntimeSettingsInitialValues.vitalServerContainerMemoryLimitMiB,
+            recorderIngressContainerMemoryLimitMiB: try container.decodeIfPresent(
+                Int.self,
+                forKey: .recorderIngressContainerMemoryLimitMiB
+            ) ?? RuntimeSettingsInitialValues.recorderIngressContainerMemoryLimitMiB,
+            redisContainerMemoryLimitMiB: try container.decodeIfPresent(
+                Int.self,
+                forKey: .redisContainerMemoryLimitMiB
+            ) ?? RuntimeSettingsInitialValues.redisContainerMemoryLimitMiB,
             adminPassword: try container.decode(String.self, forKey: .adminPassword),
             changeAdminPassword: try container.decode(Bool.self, forKey: .changeAdminPassword),
             startOnBoot: try container.decode(Bool.self, forKey: .startOnBoot),
@@ -307,6 +391,17 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         try container.encode(remoteConsoleURL, forKey: .remoteConsoleURL)
         try container.encode(publicHost, forKey: .publicHost)
         try container.encode(publicPort, forKey: .publicPort)
+        try container.encode(recorderIngressSendDataMode, forKey: .recorderIngressSendDataMode)
+        try container.encode(recorderIngressSendDataReplayBatchSize, forKey: .recorderIngressSendDataReplayBatchSize)
+        try container.encode(
+            recorderIngressSendDataReplayMaxMiBPerSecond,
+            forKey: .recorderIngressSendDataReplayMaxMiBPerSecond
+        )
+        try container.encode(recorderIngress, forKey: .recorderIngress)
+        try container.encode(containerMemoryLimitsEnabled, forKey: .containerMemoryLimitsEnabled)
+        try container.encode(vitalServerContainerMemoryLimitMiB, forKey: .vitalServerContainerMemoryLimitMiB)
+        try container.encode(recorderIngressContainerMemoryLimitMiB, forKey: .recorderIngressContainerMemoryLimitMiB)
+        try container.encode(redisContainerMemoryLimitMiB, forKey: .redisContainerMemoryLimitMiB)
         try container.encode(adminPassword, forKey: .adminPassword)
         try container.encode(changeAdminPassword, forKey: .changeAdminPassword)
         try container.encode(startOnBoot, forKey: .startOnBoot)
@@ -601,6 +696,13 @@ public enum RuntimeSettingsInitialValues {
     public static let backupRetentionCount = RuntimeSettingsInitialBackupDefaults.backupRetentionCount
     public static let logArchiveRetentionDays = RuntimeLogArchiveRetentionConfiguration.defaultRetentionDays
     public static let logArchiveMaximumGiB = Int(RuntimeLogArchiveRetentionConfiguration.defaultMaximumBytes / 1_073_741_824)
+    public static let recorderIngressSendDataMode = RuntimeRecorderIngressDefaults.sendDataMode
+    public static let recorderIngressSendDataReplayBatchSize = RuntimeRecorderIngressDefaults.replayBatchSize
+    public static let recorderIngressSendDataReplayMaxMiBPerSecond = RuntimeRecorderIngressDefaults.replayMaxMiBPerSecond
+    public static let containerMemoryLimitsEnabled = RuntimeContainerMemoryLimitDefaults.enabled
+    public static let vitalServerContainerMemoryLimitMiB = RuntimeContainerMemoryLimitDefaults.vitalServerMiB
+    public static let recorderIngressContainerMemoryLimitMiB = RuntimeContainerMemoryLimitDefaults.recorderIngressMiB
+    public static let redisContainerMemoryLimitMiB = RuntimeContainerMemoryLimitDefaults.redisMiB
 
     public static func vitalServerURL(proxyPort: Int = proxyPort) -> String {
         "http://\(localhost):\(proxyPort)/"
@@ -707,6 +809,9 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var swaggerUIHTTP: String?
     public var cpuUsagePercent: Double?
     public var memory: ResourceUsage?
+    public var vitalServerMemory: RuntimeContainerMemoryUsage?
+    public var recorderIngressMemory: RuntimeContainerMemoryUsage?
+    public var redisMemory: RuntimeContainerMemoryUsage?
     public var systemDisk: ResourceUsage?
     public var dataStorage: ResourceUsage?
     public var dataStorageError: String?
@@ -761,6 +866,9 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         swaggerUIHTTP: String? = nil,
         cpuUsagePercent: Double? = nil,
         memory: ResourceUsage? = nil,
+        vitalServerMemory: RuntimeContainerMemoryUsage? = nil,
+        recorderIngressMemory: RuntimeContainerMemoryUsage? = nil,
+        redisMemory: RuntimeContainerMemoryUsage? = nil,
         systemDisk: ResourceUsage? = nil,
         dataStorage: ResourceUsage? = nil,
         dataStorageError: String? = nil,
@@ -814,6 +922,9 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.swaggerUIHTTP = swaggerUIHTTP
         self.cpuUsagePercent = cpuUsagePercent
         self.memory = memory
+        self.vitalServerMemory = vitalServerMemory
+        self.recorderIngressMemory = recorderIngressMemory
+        self.redisMemory = redisMemory
         self.systemDisk = systemDisk
         self.dataStorage = dataStorage
         self.dataStorageError = dataStorageError

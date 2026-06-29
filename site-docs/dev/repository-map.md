@@ -40,7 +40,7 @@
 
 Repository root에서는 먼저 두 가지만 구분하면 됩니다.
 
-`apps/`는 실제로 실행되는 것들이 모인 곳입니다. Helper app, PWA, observer, audit proxy처럼 제품을 이루는 app과 service가 여기에 있습니다.
+`apps/`는 실제로 실행되는 것들이 모인 곳입니다. Helper app, PWA, observer, recorder ingress처럼 제품을 이루는 app과 service가 여기에 있습니다.
 
 `packages/`는 그 app들을 만들고 검증하고 운영하는 데 쓰는 도구가 모인 곳입니다. testkit, devtools, guest tools처럼 여러 위치에서 재사용되는 package가 여기에 있습니다.
 
@@ -67,7 +67,8 @@ Repository root에서는 먼저 두 가지만 구분하면 됩니다.
 | `apps/vitalserver-macos-runtime` | macOS Helper app, host runtime, VM 관리, packaging         |
 | `apps/vitalserver-runtime-pwa`   | browser에서 여는 Runtime Control UI                        |
 | `apps/vitaldb-observer`          | Redis/proxy를 읽어 recorder/bed 상태를 정리                |
-| `apps/vitalserver-audit-proxy`   | VRecorder command와 audit event를 관측                     |
+| `apps/vitalserver-recorder-ingress`   | VRecorder command와 audit event를 관측                     |
+| `apps/vitalserver-recorder-recovery`  | recorder ingress raw archive를 `.vital`로 복구하는 service |
 
 ### 2-2. packages
 

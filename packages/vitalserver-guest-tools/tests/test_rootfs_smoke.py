@@ -78,6 +78,10 @@ def test_rootfs_smoke_writes_manifest_v2_for_success(tmp_path: Path) -> None:
     ) == {"data-root": str(tmp_path / "runtime-data/docker")}
     assert (tmp_path / "runtime-data/docker/tmp").is_dir()
     assert (tmp_path / "runtime-data/containerd").is_dir()
+    assert (context.runtime_dir / "recorder-ingress-failures").is_dir()
+    assert (context.runtime_dir / "recorder-ingress-raw").is_dir()
+    assert (context.runtime_dir / "recorder-ingress-recovery").is_dir()
+    assert (context.runtime_dir / "redis-relay-status").is_dir()
     assert f'root = "{tmp_path / "runtime-data/containerd"}"' in (
         context.containerd_config_path.read_text(encoding="utf-8")
     )

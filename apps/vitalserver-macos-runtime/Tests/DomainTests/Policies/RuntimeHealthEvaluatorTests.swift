@@ -93,23 +93,23 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         XCTAssertEqual(snapshot.failureReasons, [])
     }
 
-    func testAuditProxyStatusFailureProducesTypedReason() {
+    func testRecorderIngressStatusFailureProducesTypedReason() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
             containerObservation: RuntimeContainerObservation(
-                auditProxyHTTP: "failed",
-                auditProxyStatus: nil,
+                recorderIngressHTTP: "failed",
+                recorderIngressStatus: nil,
                 containerLogsPresent: true,
                 containerLogsBytes: 1024
             )
         ))
 
-        XCTAssertEqual(snapshot.failureReasons, [.auditProxyHTTP("failed")])
+        XCTAssertEqual(snapshot.failureReasons, [.recorderIngressHTTP("failed")])
     }
 
-    func testAuditProxyCountersAreObservedWithoutTriggeringRecovery() {
+    func testRecorderIngressCountersAreObservedWithoutTriggeringRecovery() {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: RuntimeAuditProxyStatusDocument(auditWriteFailures: 2),
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(auditWriteFailures: 2),
             containerLogsPresent: true,
             containerLogsBytes: 2048
         )
@@ -121,8 +121,8 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
 
     func testCriticalContainerServiceFailureProducesTypedReason() {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 2048,
             composeServices: [
@@ -130,6 +130,11 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
                     service: "app",
                     state: "running",
                     health: "unhealthy"
+                ),
+                RuntimeContainerServiceObservation(
+                    service: "recorder-recovery",
+                    state: "exited",
+                    exitCode: 1
                 ),
                 RuntimeContainerServiceObservation(
                     service: "redis-ui",
@@ -142,13 +147,14 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
 
         XCTAssertEqual(snapshot.failureReasons, [
             .containerService(service: "app", state: "unhealthy"),
+            .containerService(service: "recorder-recovery", state: "exited"),
         ])
     }
 
     func testMissingComposeServicesProducesContainerObservationMissingReason() {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 2048,
             composeServicesReadState: .missing,
@@ -163,8 +169,8 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
 
     func testInvalidComposeServicesProducesContainerObservationReadFailedReason() {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 2048,
             composeServicesReadState: .invalid,
@@ -179,8 +185,8 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
 
     func testCriticalContainerServiceStartingHealthIsNotARecoveryReason() {
         let observation = RuntimeContainerObservation(
-            auditProxyHTTP: "200",
-            auditProxyStatus: nil,
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: nil,
             containerLogsPresent: true,
             containerLogsBytes: 2048,
             composeServices: [

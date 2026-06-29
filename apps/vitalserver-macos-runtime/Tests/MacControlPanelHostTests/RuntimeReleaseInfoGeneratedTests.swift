@@ -10,7 +10,7 @@ final class RuntimeReleaseInfoGeneratedTests: XCTestCase {
 
         var expectedNames = [
             GeneratedRelease.vitalServerName,
-            GeneratedRelease.auditProxyName,
+            GeneratedRelease.recorderIngressName,
             GeneratedRelease.vitalDBObserverName,
             GeneratedRelease.redisRelayName,
             GeneratedRelease.redisName,

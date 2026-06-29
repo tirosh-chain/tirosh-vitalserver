@@ -506,7 +506,7 @@ def write_valid_runtime_documents(
         for name in (
             "redis",
             "app",
-            "audit-proxy",
+            "recorder-ingress",
             "vitaldb-observer",
             "redis-relay",
             "redis-ui",

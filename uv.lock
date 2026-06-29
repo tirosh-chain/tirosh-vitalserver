@@ -13,8 +13,10 @@ resolution-markers = [
 [manifest]
 members = [
     "tirosh-vitalserver",
+    "tirosh-vitalserver-core",
     "tirosh-vitalserver-devtools",
     "tirosh-vitalserver-guest-tools",
+    "tirosh-vitalserver-recorder-recovery",
     "tirosh-vitalserver-testkit",
 ]
 
@@ -1229,8 +1231,10 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "pydantic-settings" },
+    { name = "tirosh-vitalserver-core" },
     { name = "tirosh-vitalserver-devtools" },
     { name = "tirosh-vitalserver-guest-tools" },
+    { name = "tirosh-vitalserver-recorder-recovery" },
     { name = "tirosh-vitalserver-testkit" },
 ]
 
@@ -1247,8 +1251,10 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.14.1" },
+    { name = "tirosh-vitalserver-core", editable = "packages/vitalserver-core" },
     { name = "tirosh-vitalserver-devtools", editable = "packages/vitalserver-devtools" },
     { name = "tirosh-vitalserver-guest-tools", editable = "packages/vitalserver-guest-tools" },
+    { name = "tirosh-vitalserver-recorder-recovery", editable = "apps/vitalserver-recorder-recovery" },
     { name = "tirosh-vitalserver-testkit", editable = "packages/vitalserver-testkit" },
 ]
 
@@ -1261,6 +1267,11 @@ dev = [
 docs = [{ name = "mkdocs", specifier = ">=1.6.0" }]
 
 [[package]]
+name = "tirosh-vitalserver-core"
+version = "0.1.0"
+source = { editable = "packages/vitalserver-core" }
+
+[[package]]
 name = "tirosh-vitalserver-devtools"
 version = "0.1.0"
 source = { editable = "packages/vitalserver-devtools" }
@@ -1271,6 +1282,27 @@ version = "0.1.0"
 source = { editable = "packages/vitalserver-guest-tools" }
 
 [[package]]
+name = "tirosh-vitalserver-recorder-recovery"
+version = "0.1.0"
+source = { editable = "apps/vitalserver-recorder-recovery" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "pydantic" },
+    { name = "tirosh-vitalserver-core" },
+    { name = "uvicorn" },
+    { name = "vitaldb" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "pydantic", specifier = ">=2.12,<3" },
+    { name = "tirosh-vitalserver-core", editable = "packages/vitalserver-core" },
+    { name = "uvicorn", specifier = ">=0.32,<1" },
+    { name = "vitaldb", specifier = ">=1.7,<2" },
+]
+
+[[package]]
 name = "tirosh-vitalserver-testkit"
 version = "0.1.1"
 source = { editable = "packages/vitalserver-testkit" }
@@ -1278,6 +1310,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "pydantic" },
     { name = "python-socketio", extra = ["client"] },
+    { name = "tirosh-vitalserver-core" },
     { name = "uvicorn" },
     { name = "vitaldb" },
 ]
@@ -1287,6 +1320,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "pydantic", specifier = ">=2.12,<3" },
     { name = "python-socketio", extras = ["client"], specifier = ">=4.6,<5" },
+    { name = "tirosh-vitalserver-core", editable = "packages/vitalserver-core" },
     { name = "uvicorn", specifier = ">=0.32,<1" },
     { name = "vitaldb", specifier = ">=1.7,<2" },
 ]

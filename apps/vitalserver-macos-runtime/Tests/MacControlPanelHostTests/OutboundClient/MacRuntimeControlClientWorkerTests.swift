@@ -128,9 +128,10 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         _ = try await client.startRuntimeServices()
         _ = try await client.stopRuntimeServices()
 
-        XCTAssertEqual(environment.removedPasswordFiles.map(\.path), [
-            "/tmp/redis-relay-settings.json",
+        XCTAssertEqual(environment.removedTemporaryFiles.map(\.path), [
             "/tmp/admin-password",
+            "/tmp/recorder-ingress-settings.json",
+            "/tmp/redis-relay-settings.json",
         ])
         XCTAssertEqual(runner.shellCommands.count, 12)
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--clean") })
@@ -154,14 +155,40 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let result = try await worker.applySettings(settings)
 
         XCTAssertEqual(result.exitCode, 0)
-        XCTAssertEqual(environment.removedPasswordFiles.map(\.path), [
-            "/tmp/redis-relay-settings.json",
+        XCTAssertEqual(environment.removedTemporaryFiles.map(\.path), [
             "/tmp/admin-password",
+            "/tmp/recorder-ingress-settings.json",
+            "/tmp/redis-relay-settings.json",
         ])
         XCTAssertEqual(result.outputIssues.count, 1)
         XCTAssertEqual(result.outputIssues.first?.stream, .stderr)
         XCTAssertTrue(result.outputIssues.first?.message.contains("admin password file cleanup failed") == true)
         XCTAssertTrue(result.outputIssues.first?.message.contains("/tmp/admin-password") == true)
+    }
+
+    func testApplySettingsCleansPreparedTemporaryFilesWhenLaterPreparationFails() async throws {
+        let environment = AdapterFakeActionEnvironment()
+        environment.redisRelaySettingsWriteError = CocoaError(.fileWriteNoPermission)
+        let runner = AdapterFakePrivilegedCommandRunner()
+        let worker = MacRuntimeControlCommandWorker(
+            privilegedCommandRunner: runner,
+            actionEnvironment: environment,
+            logExporter: AdapterFakeLogExporter()
+        )
+        var settings = RuntimeSettings()
+        settings.changeAdminPassword = true
+        settings.adminPassword = "secret"
+
+        do {
+            _ = try await worker.applySettings(settings)
+            XCTFail("Expected Redis relay settings file preparation failure")
+        } catch {
+            XCTAssertEqual(runner.shellCommands, [])
+            XCTAssertEqual(environment.removedTemporaryFiles.map(\.path), [
+                "/tmp/admin-password",
+                "/tmp/recorder-ingress-settings.json",
+            ])
+        }
     }
 
     func testCommandWorkerReportsMissingExecutableBoundaries() async {
@@ -419,8 +446,10 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
     let executableStates: [String: RuntimeFileState]
     var removeError: Error?
     var removeErrorPaths: Set<String>?
+    var redisRelaySettingsWriteError: Error?
     private let lock = NSLock()
-    private var protectedRemovedPasswordFiles: [URL] = []
+    private var protectedRemovedTemporaryFiles: [URL] = []
+    private var protectedWrittenRecorderIngressSettings: [RuntimeRecorderIngressSettings] = []
     private var protectedWrittenRedisRelaySettings: [RuntimeRedisRelaySettings] = []
 
     init(executableStates: [String: RuntimeFileState] = [
@@ -430,12 +459,16 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
         self.executableStates = executableStates
     }
 
-    var removedPasswordFiles: [URL] {
-        lock.withLock { protectedRemovedPasswordFiles }
+    var removedTemporaryFiles: [URL] {
+        lock.withLock { protectedRemovedTemporaryFiles }
     }
 
     var writtenRedisRelaySettings: [RuntimeRedisRelaySettings] {
         lock.withLock { protectedWrittenRedisRelaySettings }
+    }
+
+    var writtenRecorderIngressSettings: [RuntimeRecorderIngressSettings] {
+        lock.withLock { protectedWrittenRecorderIngressSettings }
     }
 
     func executableState(atPath path: String) -> RuntimeFileState {
@@ -446,7 +479,17 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
         URL(fileURLWithPath: "/tmp/admin-password")
     }
 
+    func writeRecorderIngressSettingsFile(_ settings: RuntimeRecorderIngressSettings) throws -> URL {
+        lock.withLock {
+            protectedWrittenRecorderIngressSettings.append(settings)
+        }
+        return URL(fileURLWithPath: "/tmp/recorder-ingress-settings.json")
+    }
+
     func writeRedisRelaySettingsFile(_ settings: RuntimeRedisRelaySettings) throws -> URL {
+        if let redisRelaySettingsWriteError {
+            throw redisRelaySettingsWriteError
+        }
         lock.withLock {
             protectedWrittenRedisRelaySettings.append(settings)
         }
@@ -455,7 +498,7 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
 
     func removeItem(at url: URL) throws {
         lock.withLock {
-            protectedRemovedPasswordFiles.append(url)
+            protectedRemovedTemporaryFiles.append(url)
         }
         if let removeError, removeErrorPaths?.contains(url.path) ?? true {
             throw removeError

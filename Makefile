@@ -232,6 +232,8 @@ help/compose:
 	@printf "  make compose/{up|open|ps|logs|shell|restart|down|rebuild|build|config|clean/volumes|clean}\n"
 	@printf "  make swagger/{up|down}\n"
 	@printf "  make testkit/{smoke|verify|health|load|stream}\n"
+	@printf "  make testkit/recorder-ingress/replay\n"
+	@printf "  make testkit/recorder-ingress/{load|backpressure}\n"
 	@printf "\n"
 	@printf "COMPOSE TARGETS\n"
 	@printf "  compose/up             Start Compose sandbox through macOS host proxy\n"
@@ -253,6 +255,10 @@ help/compose:
 	@printf "  testkit/health         Check VitalServer health with testkit\n"
 	@printf "  testkit/load           Run finite load scenario\n"
 	@printf "  testkit/stream         Stream sample data until interrupted\n"
+	@printf "  testkit/recorder-ingress/replay  Verify recorder-ingress spool_and_replay through Compose\n"
+	@printf "  testkit/recorder-ingress/load    Verify recorder-ingress replay under bounded load\n"
+	@printf "  testkit/recorder-ingress/backpressure\n"
+	@printf "                         Verify recorder-ingress explicit rejection under tight spool limit\n"
 	@printf "\n"
 	@printf "TOOL TARGETS\n"
 	@printf "  swagger/up             Start Swagger UI only\n"
@@ -417,7 +423,7 @@ help/devtools:
 	@printf "\n"
 	@printf "VARIABLES\n"
 	@printf "  VM_COMPRESSION_THREADS=N      Use pigz with N compression threads when available\n"
-	@printf "  VM_ROOTFS_READY_TIMEOUT=300   Diagnostic wait timeout for rootfs compile proof\n"
+	@printf "  VM_ROOTFS_READY_TIMEOUT=600   Diagnostic wait timeout for rootfs compile proof\n"
 	@printf "  VM_ROOTFS_SMOKE_FAIL_STAGE=x  Diagnostic fault injection for golden rootfs negative tests\n"
 
 help/proxy:

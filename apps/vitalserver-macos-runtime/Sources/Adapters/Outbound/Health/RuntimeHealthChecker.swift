@@ -18,7 +18,7 @@ public struct RuntimeHealthCheckerContext {
     public let proxyHealthURL: (Int) -> String
     public let redisUIHealthURL: (Int) -> String
     public let swaggerUIHealthURL: (Int) -> String
-    public let auditProxyStatusURL: (Int) -> String
+    public let recorderIngressStatusURL: (Int) -> String
 
     public init(
         installedPaths: InstalledRuntimePaths,
@@ -35,7 +35,7 @@ public struct RuntimeHealthCheckerContext {
         proxyHealthURL: @escaping (Int) -> String,
         redisUIHealthURL: @escaping (Int) -> String,
         swaggerUIHealthURL: @escaping (Int) -> String,
-        auditProxyStatusURL: @escaping (Int) -> String
+        recorderIngressStatusURL: @escaping (Int) -> String
     ) {
         self.installedPaths = installedPaths
         self.vmExecutablePath = vmExecutablePath
@@ -51,7 +51,7 @@ public struct RuntimeHealthCheckerContext {
         self.proxyHealthURL = proxyHealthURL
         self.redisUIHealthURL = redisUIHealthURL
         self.swaggerUIHealthURL = swaggerUIHealthURL
-        self.auditProxyStatusURL = auditProxyStatusURL
+        self.recorderIngressStatusURL = recorderIngressStatusURL
     }
 }
 
@@ -105,7 +105,7 @@ public struct RuntimeHealthChecker {
             hostProxyHTTP: hostProxyHTTP,
             redisUIHTTP: redisUIHTTP,
             swaggerUIHTTP: swaggerUIHTTP,
-            auditProxyStatus: proxyPort.map(auditProxyStatus(port:)),
+            recorderIngressStatus: proxyPort.map(recorderIngressStatus(port:)),
             runtimeStateFileModifiedAt: runtimeStateFileModifiedAt(guestRuntimeState),
             containerLogsMetadata: containerLogsMetadata(),
             proxyListenerObservation: proxyPort.map(proxyListenerObservation(port:)),
@@ -202,11 +202,11 @@ public struct RuntimeHealthChecker {
         ).read()
     }
 
-    private func auditProxyStatus(port: Int) -> RuntimeAuditProxyStatusReadResult {
-        RuntimeAuditProxyStatusReader(
+    private func recorderIngressStatus(port: Int) -> RuntimeRecorderIngressStatusReadResult {
+        RuntimeRecorderIngressStatusReader(
             curlPath: context.curlPath,
             commandRunner: commandRunner,
-            statusURL: context.auditProxyStatusURL
+            statusURL: context.recorderIngressStatusURL
         ).read(port: port)
     }
 }

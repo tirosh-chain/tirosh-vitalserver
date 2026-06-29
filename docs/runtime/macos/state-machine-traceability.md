@@ -2,9 +2,7 @@
 
 이 문서는 runtime operation order가 중요한 흐름을 어떤 단위로 명세하고 검증할지 정리합니다.
 
-목표는 구현 파일 목록을 설명하는 것이 아니라, 상태 전이가 있는 기능을 변경할 때 반드시 남겨야 하는
-traceability 증거를 고정하는 것입니다. AGENTS.md 기준에 따라 state owner가 아닌 계층은 상태를 추론하지
-않고, missing/invalid/failed/stale/zero/empty 의미를 서로 바꾸지 않습니다.
+목표는 구현 파일 목록을 설명하는 것이 아니라, 상태 전이가 있는 기능을 변경할 때 반드시 남겨야 하는 traceability 증거를 고정하는 것입니다. AGENTS.md 기준에 따라 state owner가 아닌 계층은 상태를 추론하지 않고, missing/invalid/failed/stale/zero/empty 의미를 서로 바꾸지 않습니다.
 
 ## Traceability Template
 

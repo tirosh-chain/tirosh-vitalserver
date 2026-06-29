@@ -61,6 +61,14 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             "10",
             "--log-archive-maximum-gib",
             "3",
+            "--recorder-ingress-send-data-mode",
+            "mirror_spool",
+            "--recorder-ingress-send-data-replay-batch-size",
+            "8",
+            "--recorder-ingress-send-data-replay-max-mib-per-second",
+            "12",
+            "--recorder-ingress-settings-file",
+            "/tmp/recorder-ingress-settings.json",
             "--restart",
         ])
 
@@ -71,6 +79,10 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
                 .startOnBoot(false),
                 .logArchiveRetentionDays(10),
                 .logArchiveMaximumGiB(3),
+                .recorderIngressSendDataMode(.mirrorSpool),
+                .recorderIngressSendDataReplayBatchSize(8),
+                .recorderIngressSendDataReplayMaxMiBPerSecond(12),
+                .recorderIngressSettingsFile(URL(fileURLWithPath: "/tmp/recorder-ingress-settings.json")),
             ],
             restart: true
         )))

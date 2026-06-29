@@ -17,6 +17,8 @@ public protocol RuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusHTTPV
     var sleepPreventionServiceLabel: String { get }
     var watchdogServiceLabel: String { get }
     var vitalServerName: String { get }
+    var recorderIngressName: String { get }
+    var recorderRecoveryName: String { get }
     var hostProxyName: String { get }
     var vitalDBObserverLabel: String { get }
     var redisRelayLabel: String { get }
@@ -66,6 +68,8 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
     private enum ComposeService: String {
         case vitalServer = "app"
         case networkAccess = "edge"
+        case recorderRecovery = "recorder-recovery"
+        case recorderIngress = "recorder-ingress"
         case vitalDBObserver = "vitaldb-observer"
         case redisRelay = "redis-relay"
         case redisUI = "redis-ui"
@@ -131,6 +135,26 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             composeServiceItem(
                 vocabulary.vitalDBObserverLabel,
                 service: .vitalDBObserver,
+                observation: observation,
+                now: now,
+                installInProgress: installInProgress,
+                initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
+                updateInProgress: updateInProgress
+            ),
+            composeServiceItem(
+                vocabulary.recorderIngressName,
+                service: .recorderIngress,
+                observation: observation,
+                now: now,
+                installInProgress: installInProgress,
+                initializationInProgress: initializationInProgress,
+                recoveryInProgress: recoveryInProgress,
+                updateInProgress: updateInProgress
+            ),
+            composeServiceItem(
+                vocabulary.recorderRecoveryName,
+                service: .recorderRecovery,
                 observation: observation,
                 now: now,
                 installInProgress: installInProgress,

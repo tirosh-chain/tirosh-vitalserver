@@ -55,7 +55,7 @@ Clean Architecture와 DDD는 이름 자체보다 효과가 중요합니다. 이 
 | 문서                                               | 역할                                                                                   |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | [Architecture](architecture.md)                    | 제품 구조, Host/Guest, Linux VM, PWA, 1차 hardware target 설명                         |
-| [Runtime Contracts](runtime-contracts.md)          | 상태 의미, Runtime Control, Observer, Audit Proxy API 계약 설명                        |
+| [Runtime Contracts](runtime-contracts.md)          | 상태 의미, Runtime Control, Observer, Recorder Ingress API 계약 설명                        |
 | [Redis Relay](redis-relay.md)                      | 외부 Redis consumer 수신 방법, Protocol v1 event, publisher/consumer 책임 경계 설명    |
 | [Backup/Restore 계약](backup-restore-contracts.md) | VitalServer backup 대상, artifact schema owner, restore compatibility 계약 설명        |
 | [Repository Map](repository-map.md)                | 실행 단위, package 책임, monorepo 경계 설명                                            |

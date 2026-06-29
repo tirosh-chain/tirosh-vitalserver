@@ -67,12 +67,15 @@ describe("runtime control contract schemas", () => {
         fullRuntimeOverview({
           status: {
             containerObservation: {
-              auditProxyHTTP: "HTTP 200",
-              auditProxyStatus: null,
+              recorderIngressHTTP: "HTTP 200",
+              recorderIngressStatus: null,
+              recorderIngressStatusReadState: "loaded",
+              runtimeStateFileMetadataReadState: "readFailed",
               containerLogsPresent: true,
               containerLogsBytes: null,
               containerLogsUpdatedAt: null,
               containerLogsMetadataError: "size-read-failed,mtime-read-failed",
+              composeServicesReadState: "loaded",
               composeServices: []
             }
           }
@@ -221,7 +224,7 @@ describe("runtime control contract schemas", () => {
       runtimeOverviewSchema.parse({
         status: {
           containerObservation: {
-            auditProxyHTTP: "HTTP 200"
+            recorderIngressHTTP: "HTTP 200"
           }
         }
       })
@@ -236,10 +239,56 @@ describe("runtime control contract schemas", () => {
         })
       ).status?.containerObservation
     ).toMatchObject({
-      auditProxyHTTP: "HTTP 200",
+      recorderIngressHTTP: "HTTP 200",
+      recorderIngressStatusReadState: "loaded",
+      runtimeStateFileMetadataReadState: "notRead",
       containerLogsPresent: false,
+      composeServicesReadState: "loaded",
       composeServices: []
     });
+  });
+
+  it("requires known recorder ingress memory guard status values", () => {
+    expect(
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          status: {
+            containerObservation: {
+              ...fullContainerObservation(),
+              recorderIngressStatus: fullRecorderIngressStatusDocument("healthy")
+            }
+          }
+        })
+      ).status?.containerObservation?.recorderIngressStatus?.replay?.adaptive
+        ?.memoryGuardStatus
+    ).toBe("healthy");
+
+    expect(
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          status: {
+            containerObservation: {
+              ...fullContainerObservation(),
+              recorderIngressStatus: fullRecorderIngressStatusDocument(null)
+            }
+          }
+        })
+      ).status?.containerObservation?.recorderIngressStatus?.replay?.adaptive
+        ?.memoryGuardStatus
+    ).toBeNull();
+
+    expect(() =>
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          status: {
+            containerObservation: {
+              ...fullContainerObservation(),
+              recorderIngressStatus: fullRecorderIngressStatusDocument("not-ready")
+            }
+          }
+        })
+      )
+    ).toThrow();
   });
 
   it("requires complete VitalDB recorder activity observations", () => {
@@ -824,6 +873,14 @@ function fullSettings() {
     remoteConsoleURL: "http://127.0.0.1:18321/",
     publicHost: "",
     publicPort: 80,
+    recorderIngressSendDataMode: "spool_and_replay" as const,
+    recorderIngressSendDataReplayBatchSize: 10,
+    recorderIngressSendDataReplayMaxMiBPerSecond: 20,
+    recorderIngress: fullRecorderIngressSettings(),
+    containerMemoryLimitsEnabled: true,
+    vitalServerContainerMemoryLimitMiB: 4096,
+    recorderIngressContainerMemoryLimitMiB: 512,
+    redisContainerMemoryLimitMiB: 1024,
     adminPassword: "",
     changeAdminPassword: false,
     startOnBoot: true,
@@ -835,24 +892,116 @@ function fullSettings() {
     backupRetentionCount: 30,
     logArchiveRetentionDays: 14,
     logArchiveMaximumGiB: 1,
+    redisRelay: {
+      enabled: false,
+      target: {
+        url: "redis://redis.example:6379/0",
+        username: "",
+        password: "",
+        clearPassword: false,
+        passwordConfigured: false,
+        tls: false
+      },
+      scope: "vital_reconstruction" as const,
+      includeRecorderNetworkContext: false,
+      intervalSeconds: 1,
+      scanCount: 1000
+    },
     restartAfterSave: true
+  };
+}
+
+function fullRecorderIngressSettings() {
+  return {
+    sendDataMaxPendingItems: 100000,
+    sendDataMaxPendingMiB: 512,
+    sendDataMaxPayloadMiB: 10,
+    sendDataReplayedMaxItems: 10000,
+    sendDataRealtimeMaxPendingItems: 2000,
+    sendDataReplayIntervalMs: 1000,
+    sendDataReplayMaxAttempts: 3,
+    sendDataReplayTargetTimeoutMs: 5000,
+    sendDataReplayAdaptiveMinConcurrency: 1,
+    sendDataReplayAdaptiveMaxConcurrency: 8,
+    rawArchiveEnabled: true,
+    rawArchiveMaxFileMiB: 512,
+    rawArchiveMaxFiles: 24,
+    rawArchiveAutoExportEnabled: true,
+    rawArchiveAutoExportQuietSeconds: 300,
+    rawArchiveAutoExportScanIntervalSeconds: 60,
+    rawArchiveAutoExportCursorStableSeconds: 60,
+    rawArchiveAutoExportRetryDelaySeconds: 60,
+    rawArchiveAutoExportMaxAttempts: 3,
+    rawArchiveAutoExportRequestTimeoutSeconds: 300
   };
 }
 
 function fullContainerObservation() {
   return {
-    auditProxyHTTP: "HTTP 200",
-    auditProxyStatus: null,
-    auditProxyStatusReadError: null,
+    recorderIngressHTTP: "HTTP 200",
+    recorderIngressStatus: null,
+    recorderIngressStatusReadState: "loaded",
+    recorderIngressStatusReadError: null,
     runtimeStateUpdatedAt: null,
     runtimeStateFileUpdatedAt: null,
+    runtimeStateFileMetadataReadState: "notRead",
     runtimeStateFileMetadataError: null,
     containerLogsPresent: false,
     containerLogsBytes: null,
     containerLogsUpdatedAt: null,
     containerLogsMetadataError: null,
     composeServices: [],
+    composeServicesReadState: "loaded",
     composeServicesReadError: null
+  };
+}
+
+function fullRecorderIngressStatusDocument(memoryGuardStatus: string | null) {
+  return {
+    startedAt: "2026-06-25T00:00:00Z",
+    uptimeSeconds: 30,
+    activeWebSockets: 1,
+    activeRecorderConnections: 1,
+    recorders: [],
+    httpRequests: 10,
+    socketIoEventsSeen: 20,
+    socketIoParseFailures: 0,
+    auditWriteFailures: 0,
+    auditFileWriteFailures: 0,
+    auditStdoutWriteFailures: 0,
+    redisIpWriteFailures: 0,
+    redisIpVerifyFailures: 0,
+    throughput: null,
+    spool: null,
+    replay: {
+      status: "replaying",
+      pendingItems: 1,
+      inFlightItems: 1,
+      replayedEvents: 10,
+      retryableFailures: 0,
+      deadLetteredEvents: 0,
+      replayLagSeconds: 0,
+      maxBytesPerSecond: 20 * 1024 * 1024,
+      configuredMaxBytesPerSecond: 20 * 1024 * 1024,
+      adaptive: {
+        enabled: true,
+        minBytesPerSecond: 1024 * 1024,
+        maxBytesPerSecond: 20 * 1024 * 1024,
+        currentMaxBytesPerSecond: 20 * 1024 * 1024,
+        minItemsPerTick: 50,
+        maxItemsPerTick: 1000,
+        currentItemsPerTick: 1000,
+        minConcurrency: 1,
+        maxConcurrency: 8,
+        currentConcurrency: 8,
+        lastDecision: "keep",
+        lastReason: "steady",
+        lastChangedAt: "2026-06-25T00:00:01Z",
+        memoryGuardStatus
+      },
+      lastReplayAt: "2026-06-25T00:00:02Z",
+      lastFailure: null
+    }
   };
 }
 

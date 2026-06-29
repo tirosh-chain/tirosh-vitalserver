@@ -70,7 +70,7 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
     case guestHTTP(String)
     case guestHTTPProbeFailed(String)
     case guestRuntimeStateStale
-    case auditProxyHTTP(String)
+    case recorderIngressHTTP(String)
     case containerService(service: String, state: String)
     case containerObservationMissing
     case containerObservationReadFailed(String)
@@ -257,8 +257,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
                 self = .guestHTTPProbeFailed(String(rawValue.dropFirst("guest-http-probe-failed-".count)))
             } else if rawValue.hasPrefix("guest-http-") {
                 self = .guestHTTP(String(rawValue.dropFirst("guest-http-".count)))
-            } else if rawValue.hasPrefix("audit-proxy-http-") {
-                self = .auditProxyHTTP(String(rawValue.dropFirst("audit-proxy-http-".count)))
+            } else if rawValue.hasPrefix("recorder-ingress-http-") {
+                self = .recorderIngressHTTP(String(rawValue.dropFirst("recorder-ingress-http-".count)))
             } else if rawValue.hasPrefix("container-observation-read-failed-") {
                 self = .containerObservationReadFailed(
                     String(rawValue.dropFirst("container-observation-read-failed-".count))
@@ -335,8 +335,8 @@ public enum RuntimeFailureReason: Codable, Equatable, Sendable {
             return "guest-http-probe-failed-\(status)"
         case .guestRuntimeStateStale:
             return "guest-runtime-state-stale"
-        case .auditProxyHTTP(let status):
-            return "audit-proxy-http-\(status)"
+        case .recorderIngressHTTP(let status):
+            return "recorder-ingress-http-\(status)"
         case .containerService(let service, let state):
             return "container-service-\(service)-state-\(state)"
         case .containerObservationMissing:
@@ -656,7 +656,7 @@ public extension RuntimeFailureReason {
         case .guestBootstrapResultMissing, .guestBootstrapResultUnavailable,
              .guestBootstrapMissingRuntimePackages, .guestBootstrapDockerRuntimeFailed, .guestBootstrapFailed:
             return .guestBootstrap
-        case .auditProxyHTTP, .containerService:
+        case .recorderIngressHTTP, .containerService:
             return .container
         case .vitalDBAnomaly, .vitalDBObservationMissing, .vitalDBObservationReadFailed, .vitalDBObservationStale:
             return .vitalDB
@@ -735,7 +735,7 @@ public extension RuntimeFailureReason {
             return .waitForGuest
         case .guestRuntimeStateStale:
             return .restartGuestAgent
-        case .auditProxyHTTP, .containerService:
+        case .recorderIngressHTTP, .containerService:
             return .restartContainerServices
         case .vitalDBAnomaly, .vitalDBObservationMissing, .vitalDBObservationReadFailed, .vitalDBObservationStale:
             return .inspectVitalDBObservation

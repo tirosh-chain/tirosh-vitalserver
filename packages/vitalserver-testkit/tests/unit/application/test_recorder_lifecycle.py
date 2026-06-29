@@ -37,6 +37,27 @@ def test_register_vrecorder_lifecycle_emits_join_and_records_events() -> None:
     assert set(MANAGEMENT_EVENTS).issubset(client.handlers)
 
 
+def test_register_vrecorder_lifecycle_rejoins_after_reconnect() -> None:
+    client = FakeSocketIoClient()
+    state = RecorderRuntimeState(
+        vrcode="VR_TEST",
+        base_url="http://example.test",
+        local_ip="192.0.2.10",
+    )
+
+    register_vrecorder_lifecycle(client, state=state)
+    client.connected = False
+    client.handlers["disconnect"]()
+    client.connected = True
+    client.handlers["connect"]()
+
+    snapshot = state.snapshot()
+
+    assert client.emitted == [("join_vr", "VR_TEST"), ("join_vr", "VR_TEST")]
+    assert snapshot.connected
+    assert snapshot.join_sent
+
+
 def test_stream_realtime_payload_records_join_and_send_data() -> None:
     client = FakeSocketIoClient()
 
@@ -80,3 +101,55 @@ def test_stream_realtime_payload_records_join_and_send_data() -> None:
     assert snapshot.messages_sent == 1
     assert snapshot.bytes_sent == result.bytes_sent
     assert not client.connected
+
+
+def test_stream_realtime_payload_does_not_count_disconnected_send() -> None:
+    client = FakeSocketIoClient()
+
+    def connector(
+        base_url: str,
+        *,
+        timeout: float = 30.0,
+    ) -> FakeSocketIoClient:
+        return client
+
+    def disconnect_after_join(event: str, data: object = None) -> None:
+        client.emitted.append((event, data))
+        if event == "join_vr":
+            client.connected = False
+            client.handlers["disconnect"]()
+
+    client.emit = disconnect_after_join  # type: ignore[method-assign]
+
+    payload: JsonObject = {
+        "vrcode": "VR_TEST",
+        "ver": "testkit",
+        "rooms": {
+            "0": {
+                "roomname": "BED01",
+                "trks": [],
+            }
+        },
+    }
+    state = RecorderRuntimeState(
+        vrcode="VR_TEST",
+        base_url="http://example.test",
+        local_ip="192.0.2.10",
+    )
+
+    result = stream_realtime_payload(
+        "http://example.test",
+        payload,
+        max_messages=1,
+        shift_time=False,
+        runtime_state=state,
+        connector=connector,
+        disconnected_timeout_seconds=0.01,
+    )
+
+    snapshot = state.snapshot()
+
+    assert result.error == "Socket.IO disconnected before send_data"
+    assert client.emitted == [("join_vr", "VR_TEST")]
+    assert snapshot.messages_sent == 0
+    assert result.messages_sent == 0

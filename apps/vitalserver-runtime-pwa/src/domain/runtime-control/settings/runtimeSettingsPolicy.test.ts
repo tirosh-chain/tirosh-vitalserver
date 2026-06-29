@@ -25,13 +25,100 @@ describe("runtime settings policy", () => {
       backupScheduleTimes: ["03:15"],
       backupRetentionCount: 31,
       logArchiveRetentionDays: 31,
-      logArchiveMaximumGiB: 21
+      logArchiveMaximumGiB: 21,
+      recorderIngressSendDataReplayMaxMiBPerSecond: 101,
+      containerMemoryLimitsEnabled: false
     }));
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toHaveLength(9);
+    expect(result.errors).toHaveLength(10);
     expect(result.errors).toContain("Log archive retention must be between 1 and 30 days.");
     expect(result.errors).toContain("Log archive size limit must be between 1 and 20 GiB.");
+    expect(result.errors).toContain("Max replay throughput must be between 1 and 100 MiB/s.");
+  });
+
+  it("validates enabled Redis Relay target settings", () => {
+    const result = validateRuntimeSettings(fullSettings({
+      redisRelay: redisRelaySettings({
+        enabled: true,
+        target: {
+          url: "http://redis.example:6379/0",
+          username: "relay",
+          password: "",
+          clearPassword: false,
+          passwordConfigured: false,
+          tls: false
+        }
+      })
+    }));
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain(
+      "Redis Relay target URL must be redis:// or rediss:// with a host."
+    );
+  });
+
+  it("rejects Redis Relay target paths that are not database numbers", () => {
+    const result = validateRuntimeSettings(fullSettings({
+      redisRelay: redisRelaySettings({
+        enabled: true,
+        target: {
+          url: "redis://redis.example:6379/not-a-db",
+          username: "relay",
+          password: "",
+          clearPassword: false,
+          passwordConfigured: false,
+          tls: false
+        }
+      })
+    }));
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain(
+      "Redis Relay target URL must be redis:// or rediss:// with a host."
+    );
+  });
+
+  it("rejects fractional recorder ingress integer settings", () => {
+    const result = validateRuntimeSettings(fullSettings({
+      recorderIngressSendDataReplayMaxMiBPerSecond: 20.5,
+      recorderIngress: recorderIngressSettings({
+        sendDataReplayIntervalMs: 1000.5
+      })
+    }));
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("Max replay throughput must be between 1 and 100 MiB/s.");
+    expect(result.errors).toContain("Replay interval must be an integer 1 or greater.");
+  });
+
+  it("validates enabled container memory limits in MiB against VM memory", () => {
+    const result = validateRuntimeSettings(fullSettings({
+      memoryGiB: 4,
+      containerMemoryLimitsEnabled: true,
+      vitalServerContainerMemoryLimitMiB: 8192,
+      recorderIngressContainerMemoryLimitMiB: 64,
+      redisContainerMemoryLimitMiB: 9000
+    }));
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("VitalServer container memory limit must be between 512 and 4096 MiB.");
+    expect(result.errors).toContain("Recorder ingress container memory limit must be between 128 and 4096 MiB.");
+    expect(result.errors).toContain("Redis container memory limit must be between 256 and 4096 MiB.");
+    expect(result.errors).toContain("Container memory limits must total no more than 70% of VM memory.");
+  });
+
+  it("allows container memory limit total at the displayed maximum percent", () => {
+    const result = validateRuntimeSettings(fullSettings({
+      memoryGiB: 8,
+      containerMemoryLimitsEnabled: true,
+      vitalServerContainerMemoryLimitMiB: 2048,
+      recorderIngressContainerMemoryLimitMiB: 410,
+      redisContainerMemoryLimitMiB: 3277
+    }));
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).not.toContain("Container memory limits must total no more than 70% of VM memory.");
   });
 
   it("rejects backup times outside HH:mm clock range", () => {
@@ -105,6 +192,59 @@ describe("runtime settings policy", () => {
       "The VM runtime will restart after save. Required by: CPU, Memory allocation."
     );
   });
+
+  it("reports container reconcile activation for recorder load control changes", () => {
+    const runtime = fullSettings();
+    const draft = fullSettings({
+      recorderIngressSendDataMode: "passthrough" as const,
+      recorderIngressSendDataReplayMaxMiBPerSecond: 25,
+      restartAfterSave: true
+    });
+
+    const decision = runtimeSettingsActivationDecision(draft, runtime);
+
+    expect(decision.requiresActivation).toBe(true);
+    expect(decision.requiresVMRestart).toBe(false);
+    expect(decision.requiresContainerServicesReconcile).toBe(true);
+    expect(decision.containerServiceChanges).toEqual([
+      "Recorder load control",
+      "Recorder replay throughput"
+    ]);
+    expect(decision.message).toBe(
+      "Container services will be reconciled after save. Required by: Recorder load control, Recorder replay throughput."
+    );
+  });
+
+  it("reports container reconcile activation for container memory limit changes", () => {
+    const runtime = fullSettings();
+    const draft = fullSettings({
+      containerMemoryLimitsEnabled: false,
+      vitalServerContainerMemoryLimitMiB: 2048,
+      restartAfterSave: true
+    });
+
+    const decision = runtimeSettingsActivationDecision(draft, runtime);
+
+    expect(decision.requiresActivation).toBe(true);
+    expect(decision.requiresVMRestart).toBe(false);
+    expect(decision.requiresContainerServicesReconcile).toBe(true);
+    expect(decision.containerServiceChanges).toEqual([
+      "VitalServer container memory limit"
+    ]);
+  });
+
+  it("reports container reconcile activation for Redis Relay changes", () => {
+    const runtime = fullSettings();
+    const draft = fullSettings({
+      redisRelay: redisRelaySettings({ enabled: true }),
+      restartAfterSave: true
+    });
+
+    const decision = runtimeSettingsActivationDecision(draft, runtime);
+
+    expect(decision.requiresContainerServicesReconcile).toBe(true);
+    expect(decision.containerServiceChanges).toEqual(["Redis Relay"]);
+  });
 });
 
 function fullSettings(overrides = {}) {
@@ -123,6 +263,14 @@ function fullSettings(overrides = {}) {
     remoteConsoleURL: "http://127.0.0.1:18321/",
     publicHost: "",
     publicPort: 80,
+    recorderIngressSendDataMode: "spool_and_replay" as const,
+    recorderIngressSendDataReplayBatchSize: 1000,
+    recorderIngressSendDataReplayMaxMiBPerSecond: 20,
+    recorderIngress: recorderIngressSettings(),
+    containerMemoryLimitsEnabled: false,
+    vitalServerContainerMemoryLimitMiB: 4096,
+    recorderIngressContainerMemoryLimitMiB: 512,
+    redisContainerMemoryLimitMiB: 1024,
     adminPassword: "",
     changeAdminPassword: false,
     startOnBoot: true,
@@ -134,7 +282,53 @@ function fullSettings(overrides = {}) {
     backupRetentionCount: 30,
     logArchiveRetentionDays: 14,
     logArchiveMaximumGiB: 1,
+    redisRelay: redisRelaySettings(),
     restartAfterSave: true,
+    ...overrides
+  };
+}
+
+function redisRelaySettings(overrides = {}) {
+  return {
+    enabled: false,
+    target: {
+      url: "redis://redis.example:6379/0",
+      username: "",
+      password: "",
+      clearPassword: false,
+      passwordConfigured: false,
+      tls: false
+    },
+    scope: "vital_reconstruction" as const,
+    includeRecorderNetworkContext: false,
+    intervalSeconds: 1,
+    scanCount: 1000,
+    ...overrides
+  };
+}
+
+function recorderIngressSettings(overrides = {}) {
+  return {
+    sendDataMaxPendingItems: 100000,
+    sendDataMaxPendingMiB: 512,
+    sendDataMaxPayloadMiB: 10,
+    sendDataReplayedMaxItems: 10000,
+    sendDataRealtimeMaxPendingItems: 2000,
+    sendDataReplayIntervalMs: 1000,
+    sendDataReplayMaxAttempts: 3,
+    sendDataReplayTargetTimeoutMs: 5000,
+    sendDataReplayAdaptiveMinConcurrency: 1,
+    sendDataReplayAdaptiveMaxConcurrency: 8,
+    rawArchiveEnabled: true,
+    rawArchiveMaxFileMiB: 512,
+    rawArchiveMaxFiles: 24,
+    rawArchiveAutoExportEnabled: true,
+    rawArchiveAutoExportQuietSeconds: 300,
+    rawArchiveAutoExportScanIntervalSeconds: 60,
+    rawArchiveAutoExportCursorStableSeconds: 60,
+    rawArchiveAutoExportRetryDelaySeconds: 60,
+    rawArchiveAutoExportMaxAttempts: 3,
+    rawArchiveAutoExportRequestTimeoutSeconds: 300,
     ...overrides
   };
 }

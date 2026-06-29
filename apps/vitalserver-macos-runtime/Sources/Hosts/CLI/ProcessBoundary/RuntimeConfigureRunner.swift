@@ -447,6 +447,22 @@ public struct RuntimeConfigureRunner {
             return .publicHost(value)
         case .publicPort(let value):
             return .publicPort(value)
+        case .recorderIngressSendDataMode(let value):
+            return .recorderIngressSendDataMode(value)
+        case .recorderIngressSendDataReplayBatchSize(let value):
+            return .recorderIngressSendDataReplayBatchSize(value)
+        case .recorderIngressSendDataReplayMaxMiBPerSecond(let value):
+            return .recorderIngressSendDataReplayMaxMiBPerSecond(value)
+        case .recorderIngressSettingsFile(let value):
+            return .recorderIngress(try recorderIngressSettings(from: value))
+        case .containerMemoryLimitsEnabled(let value):
+            return .containerMemoryLimitsEnabled(value)
+        case .vitalServerContainerMemoryLimitMiB(let value):
+            return .vitalServerContainerMemoryLimitMiB(value)
+        case .recorderIngressContainerMemoryLimitMiB(let value):
+            return .recorderIngressContainerMemoryLimitMiB(value)
+        case .redisContainerMemoryLimitMiB(let value):
+            return .redisContainerMemoryLimitMiB(value)
         case .adminPassword(let value):
             return .adminPassword(value)
         case .adminPasswordFile(let value):
@@ -490,5 +506,10 @@ public struct RuntimeConfigureRunner {
             intervalSeconds: settings.intervalSeconds,
             scanCount: settings.scanCount
         )
+    }
+
+    private func recorderIngressSettings(from url: URL) throws -> RuntimeRecorderIngressSettings {
+        let data = try actions.readSecretFile(url).data(using: .utf8) ?? Data()
+        return try JSONDecoder().decode(RuntimeRecorderIngressSettings.self, from: data)
     }
 }

@@ -68,7 +68,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         }
 
         try harness.store.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
-        try harness.store.append(event(id: "event-2", timestamp: "2026-05-24T00:01:00Z", type: .auditProxyObserved))
+        try harness.store.append(event(id: "event-2", timestamp: "2026-05-24T00:01:00Z", type: .recorderIngressObserved))
         try harness.store.append(event(id: "event-3", timestamp: "2026-05-24T00:02:00Z", type: .containerObserved))
 
         XCTAssertEqual(harness.store.query(RuntimeEventQuery(limit: 2)).events.map(\.id), ["event-2", "event-3"])
@@ -81,12 +81,12 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         }
 
         try harness.store.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
-        try harness.store.append(event(id: "event-2", timestamp: "2026-05-24T00:01:00Z", type: .auditProxyObserved))
-        try harness.store.append(event(id: "event-3", timestamp: "2026-05-24T00:02:00Z", type: .auditProxyObserved))
+        try harness.store.append(event(id: "event-2", timestamp: "2026-05-24T00:01:00Z", type: .recorderIngressObserved))
+        try harness.store.append(event(id: "event-3", timestamp: "2026-05-24T00:02:00Z", type: .recorderIngressObserved))
 
         let events = harness.store.query(RuntimeEventQuery(
             limit: 10,
-            eventType: .auditProxyObserved,
+            eventType: .recorderIngressObserved,
             since: "2026-05-24T00:02:00Z"
         )).events
 
@@ -100,7 +100,7 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
         }
 
         try harness.store.append(event(id: "event-1", timestamp: "2026-05-24T00:00:00Z", type: .statusChanged))
-        try harness.store.append(event(id: "event-2", timestamp: "2026-05-24T00:01:00Z", type: .auditProxyObserved))
+        try harness.store.append(event(id: "event-2", timestamp: "2026-05-24T00:01:00Z", type: .recorderIngressObserved))
         try harness.store.append(event(id: "event-3", timestamp: "2026-05-24T00:02:00Z", type: .containerObserved))
 
         let firstPage = harness.store.query(RuntimeEventQuery(limit: 2))

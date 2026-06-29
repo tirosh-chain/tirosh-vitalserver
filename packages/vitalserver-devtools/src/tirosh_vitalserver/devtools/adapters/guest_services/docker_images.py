@@ -35,11 +35,18 @@ def build_docker_image_bundle(
         dockerfile=plan.app_dockerfile,
         context=plan.build_context,
     )
-    if plan.audit_proxy_image in plan.images:
+    if plan.recorder_ingress_image in plan.images:
         run_docker_build(
             platform=plan.platform,
-            image=plan.audit_proxy_image,
-            dockerfile=plan.audit_proxy_dockerfile,
+            image=plan.recorder_ingress_image,
+            dockerfile=plan.recorder_ingress_dockerfile,
+            context=plan.build_context,
+        )
+    if plan.recorder_recovery_image in plan.images:
+        run_docker_build(
+            platform=plan.platform,
+            image=plan.recorder_recovery_image,
+            dockerfile=plan.recorder_recovery_dockerfile,
             context=plan.build_context,
         )
     if plan.vitaldb_observer_image in plan.images:

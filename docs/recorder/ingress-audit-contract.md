@@ -1,0 +1,300 @@
+# Recorder ingress audit contract
+
+Recorder ingress audit은 upstream VitalServer 코드를 수정하지 않고 Socket.IO lifecycle과 UI command event를 추적하기 위한 proxy 계층입니다. 이 문서는 recorder ingress의 위치, 책임 경계, event contract, 운영 확인 방법을 정리합니다.
+
+`send_data` direct relay 차단, durable spool, replay, backpressure state machine은 [Recorder ingress send_data flow control contract](send-data-flow-control.md)가 소유합니다. 이 문서는 audit 관측과 운영 확인만 요약합니다.
+
+## 1. 문서 목적
+
+### 1-1. Recorder ingress가 필요한 이유
+
+Upstream VitalServer는 VRecorder connection, 생체신호 전송, UI command dispatch를 Socket.IO event로 처리합니다. Helper runtime은 이 흐름을 관측해야 하지만 upstream 코드를 직접 patch하지 않는 것을 원칙으로 합니다.
+
+Recorder ingress는 VitalServer 앞단에서 HTTP/WebSocket traffic을 그대로 relay하면서 필요한 event만 audit event로 기록합니다. Proxy의 관측 실패는 VitalServer 기능 실패로 전파하지 않습니다.
+
+### 1-2. 이 문서가 다루는 범위
+
+이 문서는 다음 범위를 다룹니다.
+
+- recorder ingress 배치 위치
+- recorder ingress가 소유하는 책임과 소유하지 않는 책임
+- 환경변수와 audit sink 설정
+- Socket.IO event별 audit contract
+- Redis `ip_<vrcode>` 보정 상태와 확인 방법
+- `send_data` flow control 계약 문서로 이어지는 운영 링크
+- 제품 관점에서 edge proxy 통합 전에 검증해야 할 조건
+
+## 2. 배치 위치
+
+### 2-1. 현재 proxy chain
+
+1차 구현은 `vitalserver-recorder-ingress`를 VitalServer app 앞에 둡니다.
+
+```text
+host nginx
+  -> guest nginx
+  -> vitalserver-recorder-ingress
+  -> upstream VitalServer app
+```
+
+### 2-2. 장기 edge proxy 방향
+
+장기적으로는 guest nginx와 recorder ingress를 하나의 edge proxy로 합칠 수 있습니다. 다만 제품 관점에서는 먼저 recorder ingress를 안정화한 뒤, nginx가 맡고 있는 Redis UI, Swagger UI, health, header policy, WebSocket upgrade routing을 단계적으로 이전해야 합니다.
+
+## 3. 책임 경계
+
+### 3-1. Recorder ingress가 소유하는 책임
+
+Recorder ingress는 VitalServer traffic에서 관측 가능한 event를 audit 가능한 형태로 남깁니다.
+
+- `join_vr` event audit
+- `join_vr` 시점의 selected IP/source 계산
+- Redis `ip_<vrcode>` 보정 저장과 bounded verify/rewrite
+- `send_data` event audit
+- `req_cmd` event audit
+- server -> VRecorder command dispatch event audit
+- audit Redis List sink
+- proxy health/status endpoint 제공
+
+### 3-2. Recorder ingress가 소유하지 않는 책임
+
+Recorder ingress는 upstream VitalServer의 domain state를 만들거나 추론하지 않습니다.
+
+- VitalServer command 성공/실패 판정
+- VRecorder runtime 상태 결정
+- bed/recorder domain state 생성
+- upstream Socket.IO event 의미 변경
+- upstream VitalServer 코드 patch
+- audit 실패를 VitalServer 기능 실패로 승격
+
+### 3-3. 실패 격리 원칙
+
+Audit 실패는 VitalServer 기능 실패로 전파하지 않습니다. 대신 실패는 proxy status, audit sink write failure count, recorder별 Redis IP sync 상태로 노출합니다. 누락, 비활성화, 실패, 검증 중 상태는 서로 다른 의미이므로 같은 상태로 합치지 않습니다.
+
+## 4. Runtime 설정
+
+### 4-1. Proxy와 upstream 설정
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `RECORDER_INGRESS_PORT` | `8080` | recorder ingress listen port |
+| `RECORDER_INGRESS_UPSTREAM_HOST` | `app` | upstream VitalServer host |
+| `RECORDER_INGRESS_UPSTREAM_PORT` | `80` | upstream VitalServer port |
+| `RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS` | `30000` | upstream VitalServer 응답 대기 timeout |
+| `VITALSERVER_TRUST_PROXY` | `1` | forwarding header 신뢰 여부 |
+
+### 4-2. Audit sink 설정
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `VITALSERVER_REDIS_HOST` | `redis` | Redis host |
+| `VITALSERVER_REDIS_PORT` | `6379` | Redis port |
+| `VITALSERVER_AUDIT_ENABLED` | `1` | `0`이면 audit write 비활성화 |
+| `VITALSERVER_AUDIT_REDIS_LIST` | `vitalserver:audit_events` | audit event Redis List key |
+| `VITALSERVER_AUDIT_REDIS_MAXLEN` | `10000` | Redis List 유지 길이 |
+| `VITALSERVER_AUDIT_FILE_ENABLED` | `1` | `0`이면 audit file log 비활성화 |
+| `VITALSERVER_AUDIT_LOG_PATH` | `/var/log/vitalserver-audit/audit-events.log` | append-only audit log path |
+| `VITALSERVER_AUDIT_LOG_FORMAT` | `json` | `json` 또는 `logfmt` |
+| `VITALSERVER_AUDIT_STDOUT_ENABLED` | `1` | `0`이면 container log collector용 stdout audit log 비활성화 |
+| `VITALSERVER_AUDIT_STDOUT_FORMAT` | `VITALSERVER_AUDIT_LOG_FORMAT` | stdout audit log format. `json` 또는 `logfmt` |
+
+Audit event는 기본적으로 파일 로그와 Redis List에 함께 기록합니다. 파일 로그는 Docker named volume `audit-logs`에 저장되므로 컨테이너 재시작 후에도 유지됩니다. 같은 event를 stdout에도 기록하므로 guest의 `tirosh-guest-container-logs` collector가 `docker compose logs --follow`로 수집하는 `container-logs.log`에도 포함됩니다.
+
+Redis는 현재 `3.2.12`로 pin되어 있으므로 Redis Stream 대신 Redis List를 보조 조회 sink로 사용합니다.
+
+### 4-3. `send_data` flow control 설정
+
+`RECORDER_INGRESS_SEND_DATA_*` 설정은 Issue #68의 `send_data` flow control 계약입니다. mode, Redis list, replay interval, 내부 batch guard, replay byte throughput, adaptive replay, backpressure limit의 상세 의미는 [Recorder ingress send_data flow control contract](send-data-flow-control.md#11-runtime-설정)를 기준으로 봅니다.
+
+Audit 문서에서는 replay 제한을 item count 기반 rate로 설명하지 않습니다. 운영 UI의 주 조절값은 Helper Settings의 `Max replay throughput`이고, recorder ingress runtime/API에서는 `*BytesPerSecond` 필드로 노출됩니다. Audit 관점에서는 이 값이 `send_data` payload가 upstream VitalServer로 replay되는 byte throughput 상한이라는 점만 알면 됩니다.
+
+Audit 관점에서는 `send_data` payload summary와 flow control 결과가 다른 실패 의미를 가져야 합니다. Audit sink 실패는 `auditWriteFailures`, spool write 실패는 `spool.writeFailures`, replay 실패는 `replay.retryableFailures` 또는 `replay.deadLetteredEvents`로 분리해서 봅니다.
+
+### 4-4. VRecorder IP rewrite 설정
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `RECORDER_INGRESS_VR_IP_REWRITE_ENABLED` | `1` | `0`이면 Redis `ip_<vrcode>` 보정 비활성화 |
+| `RECORDER_INGRESS_VR_IP_VERIFY_DELAYS_MS` | `250,1000` | Redis write 뒤 `GET ip_<vrcode>` 검증을 수행할 millisecond 지연 목록 |
+
+## 5. Event contract
+
+### 5-1. Contract owner
+
+코드 기준 event 계약은 `apps/vitalserver-recorder-ingress/src/domain/audit-event-contracts.ts`에 모읍니다. 새 audit event를 추가할 때는 먼저 이 파일에 event type, Socket.IO event name, JSDoc payload contract를 추가합니다.
+
+### 5-2. Code boundary
+
+Recorder ingress 코드는 작은 DDD 경계로 구성합니다.
+
+- `src/domain`: VitalServer Socket.IO event 이름, audit event 계약, command payload 해석, `send_data` 요약 규칙
+- `src/application`: Socket.IO audit, `send_data` ingress/replay 유스케이스와 `ports` 계약
+- `src/composition`: config를 받아 application service, ports, adapters를 조립하는 bootstrap boundary
+- `src/adapters/inbound`: HTTP/WebSocket proxy 같은 inbound entrypoint
+- `src/adapters/outbound`: Redis store, Socket.IO replay target, audit file/stdout sink 같은 outbound IO 구현
+- `src/observability`: runtime metric 수집과 status snapshot
+
+### 5-3. Common fields
+
+모든 audit event는 공통 필드를 포함합니다.
+
+```json
+{
+  "schema_version": 1,
+  "source": "vitalserver-recorder-ingress",
+  "event_type": "join_vr",
+  "ts": "2026-05-24T00:00:00.000Z",
+  "ts_unix_ms": 1779552000000
+}
+```
+
+## 6. Socket.IO event별 audit
+
+### 6-1. `join_vr`
+
+Upstream VitalServer는 VRecorder가 Socket.IO `join_vr` event를 보낼 때 room join callback 안에서 `SET ip_<vrcode> <socket-address>`를 실행합니다. Browser/bed 쪽은 이후 `join_bed` 흐름에서 `GET ip_<vrcode>` 값을 읽어 `recv_vr_ipaddr`로 받습니다.
+
+원본 upstream은 proxy forwarding header를 신뢰하지 않으므로 container network에서는 이 값이 VRecorder LAN IP가 아니라 runtime/proxy 내부 주소가 될 수 있습니다. Helper runtime에서는 upstream VitalServer를 수정하지 않고 recorder ingress가 같은 `ip_<vrcode>` key만 보정합니다. 추가 Redis key는 만들지 않습니다.
+
+이 책임 경계는 `config/upstream-vitalserver-contract.json`과 `repo/verify-submodule`로 검증합니다. Release verify에서는 approved upstream commit이어야 하고, `join_vr`, `join_bed`, `send_data`, `recv_vr_ipaddr`, Redis `ip_<vrcode>` read/write contract가 유지되어야 합니다. `x-forwarded-for`, `VITALSERVER_TRUST_PROXY`, `get_vr_client_ip` 같은 upstream proxy-header IP patch marker는 실패로 처리합니다. 새 upstream 후보는 `repo/verify-submodule-candidate`로 compatibility를 먼저 확인한 뒤 승인 manifest에 추가합니다.
+
+보정은 단순 delay write가 아니라 다음 순서로 수행합니다.
+
+```text
+join_vr observed
+-> SET ip_<vrcode> <selected_vr_ip>
+-> configured delay after write: GET ip_<vrcode>
+-> mismatch: bounded rewrite using the same key
+-> final mismatch/write/verify failure: proxy status에 recorder별 failure state 기록
+```
+
+Recorder별 보정 상태는 recorder ingress `/recorder-ingress/status`의 `recorders[].redisIpSync`에 노출되고, Runtime Control read model을 거쳐 Recorders 화면의 IP column과 Recorder Details > Network access에 표시됩니다. Service liveness에는 recorder별 상세 상태를 표시하지 않습니다.
+
+```json
+{
+  "event_type": "join_vr",
+  "vrcode": "VR001",
+  "selected_ip": "172.31.0.152",
+  "selected_source": "x-forwarded-for",
+  "remote_address": "172.18.0.1",
+  "trust_proxy": true
+}
+```
+
+### 6-2. Redis IP sync status
+
+`recorders[].redisIpSync.status` 값은 다음 의미를 가집니다.
+
+| 상태 | 의미 |
+|---|---|
+| `unknown` | recorder ingress status는 loaded지만 해당 `vrcode`의 `join_vr` 보정 상태가 아직 없음 |
+| `unavailable` | recorder ingress status를 읽지 못해 recorder별 Redis sync 상태를 확인할 수 없음 |
+| `disabled` | Redis IP rewrite가 명시적으로 비활성화됨 |
+| `pending` / `written` | write 또는 verify가 진행 중 |
+| `verified` | Redis 값이 selected VRecorder IP와 일치함 |
+| `correcting` / `corrected` | mismatch를 감지했고 같은 key로 rewrite를 수행함 |
+| `mismatch` | bounded verify 이후에도 Redis 값이 selected IP와 달랐음 |
+| `write_failed` | Redis `SET ip_<vrcode>` 실패 |
+| `verify_failed` | Redis `GET ip_<vrcode>` 검증 실패 |
+
+### 6-3. `send_data`
+
+`send_data` payload는 compressed/binary string입니다. Proxy는 원본 body를 streaming으로 upstream에 전달하면서 audit용 mirror buffer만 별도로 보관합니다. 가능한 경우 payload를 inflate해서 `vrcode`, `version`, `rooms_count`를 기록하고, decode에 실패하면 size와 decode error만 기록합니다.
+
+현재 이 절은 audit 관측 계약입니다. Issue #68의 본 해결에서는 recorder ingress가 `send_data`를 upstream으로 바로 흘려보내는 대신 durable spool에 기록하고 replay worker가 통제된 속도로 upstream에 재생해야 합니다. 그 상태, 실패 reason, backpressure 계약은 [Recorder ingress send_data flow control contract](send-data-flow-control.md)를 기준으로 합니다.
+
+```json
+{
+  "event_type": "send_data",
+  "payload_summary": {
+    "payload_type": "string",
+    "bytes": 12345,
+    "vrcode": "VR001",
+    "version": "2.3.4",
+    "rooms_count": 4
+  }
+}
+```
+
+### 6-4. `req_cmd`
+
+```json
+{
+  "event_type": "req_cmd",
+  "command_job": "restart_vr",
+  "target_vrcode": "VR001",
+  "payload": {
+    "job": "restart_vr",
+    "vrcode": "VR001"
+  }
+}
+```
+
+### 6-5. `command_dispatch`
+
+```json
+{
+  "event_type": "command_dispatch",
+  "dispatch_event": "restart"
+}
+```
+
+현재 dispatch event는 `update`, `del_bed`, `restart`, `reboot`, `add_event`, `edit_bed`, `edit_conf`를 기록합니다.
+
+## 7. 운영 확인
+
+### 7-1. Local check
+
+로컬 문법/단위 테스트:
+
+```sh
+npm --prefix apps/vitalserver-recorder-ingress run check
+npm --prefix apps/vitalserver-recorder-ingress test
+```
+
+### 7-2. Redis List sink 확인
+
+최근 audit event:
+
+```sh
+docker compose exec redis redis-cli LRANGE vitalserver:audit_events -10 -1
+```
+
+### 7-3. File/stdout log 확인
+
+파일 audit log:
+
+```sh
+docker compose exec recorder-ingress tail -n 20 /var/log/vitalserver-audit/audit-events.log
+VITALSERVER_AUDIT_LOG_FORMAT=logfmt docker compose up -d recorder-ingress
+```
+
+### 7-4. Proxy status 확인
+
+proxy 상태:
+
+```sh
+curl http://localhost:18080/recorder-ingress/status
+```
+
+`/recorder-ingress/status`는 현재 WebSocket 수, 관측한 Socket.IO event 수, 관측한 `send_data` count/bytes, recorder별 마지막 `send_data` 관측 시각, parse 실패 수, Redis write 실패 수를 반환합니다. `spool`과 `replay` 상태 필드는 [send_data flow control contract](send-data-flow-control.md#12-status-읽는-법)의 상태 계약으로 해석합니다.
+
+## 8. 제품 관점 판단
+
+### 8-1. 단일 edge proxy 가능성
+
+Edge proxy를 하나만 유지하는 방향은 가능합니다. 단, 단일 edge proxy가 되려면 아래 기능이 모두 제품 기능으로 검증돼야 합니다.
+
+- HTTP reverse proxy
+- WebSocket upgrade proxy
+- Socket.IO polling proxy
+- Redis UI/Swagger UI route
+- health/readiness endpoint
+- `X-Forwarded-*` overwrite policy
+- audit 실패 격리
+- access/audit log 분리
+- update/rollback 시 설정 호환성
+
+### 8-2. 분리 유지 기준
+
+현재 단계에서는 recorder ingress를 app 앞단에 추가하고, guest nginx 제거는 별도 단계에서 진행합니다. Proxy 통합은 observability와 command audit 계약이 안정화된 뒤 제품 기능으로 검증해야 합니다.

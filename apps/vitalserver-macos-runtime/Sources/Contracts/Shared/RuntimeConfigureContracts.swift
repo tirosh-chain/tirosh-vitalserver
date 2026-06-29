@@ -10,6 +10,14 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
     case remoteConsoleURL
     case publicHost
     case publicPort
+    case recorderIngressSendDataMode
+    case recorderIngressSendDataReplayBatchSize
+    case recorderIngressSendDataReplayMaxMiBPerSecond
+    case recorderIngressSettingsFile
+    case containerMemoryLimitsEnabled
+    case vitalServerContainerMemoryLimitMiB
+    case recorderIngressContainerMemoryLimitMiB
+    case redisContainerMemoryLimitMiB
     case adminPassword
     case adminPasswordFile
     case startOnBoot
@@ -48,6 +56,22 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             self = .publicHost
         case "--public-port":
             self = .publicPort
+        case "--recorder-ingress-send-data-mode":
+            self = .recorderIngressSendDataMode
+        case "--recorder-ingress-send-data-replay-batch-size":
+            self = .recorderIngressSendDataReplayBatchSize
+        case "--recorder-ingress-send-data-replay-max-mib-per-second":
+            self = .recorderIngressSendDataReplayMaxMiBPerSecond
+        case "--recorder-ingress-settings-file":
+            self = .recorderIngressSettingsFile
+        case "--container-memory-limits":
+            self = .containerMemoryLimitsEnabled
+        case "--vitalserver-container-memory-limit-mib":
+            self = .vitalServerContainerMemoryLimitMiB
+        case "--recorder-ingress-container-memory-limit-mib":
+            self = .recorderIngressContainerMemoryLimitMiB
+        case "--redis-container-memory-limit-mib":
+            self = .redisContainerMemoryLimitMiB
         case "--admin-password":
             self = .adminPassword
         case "--admin-password-file":
@@ -101,6 +125,22 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             return "--public-host"
         case .publicPort:
             return "--public-port"
+        case .recorderIngressSendDataMode:
+            return "--recorder-ingress-send-data-mode"
+        case .recorderIngressSendDataReplayBatchSize:
+            return "--recorder-ingress-send-data-replay-batch-size"
+        case .recorderIngressSendDataReplayMaxMiBPerSecond:
+            return "--recorder-ingress-send-data-replay-max-mib-per-second"
+        case .recorderIngressSettingsFile:
+            return "--recorder-ingress-settings-file"
+        case .containerMemoryLimitsEnabled:
+            return "--container-memory-limits"
+        case .vitalServerContainerMemoryLimitMiB:
+            return "--vitalserver-container-memory-limit-mib"
+        case .recorderIngressContainerMemoryLimitMiB:
+            return "--recorder-ingress-container-memory-limit-mib"
+        case .redisContainerMemoryLimitMiB:
+            return "--redis-container-memory-limit-mib"
         case .adminPassword:
             return "--admin-password"
         case .adminPasswordFile:

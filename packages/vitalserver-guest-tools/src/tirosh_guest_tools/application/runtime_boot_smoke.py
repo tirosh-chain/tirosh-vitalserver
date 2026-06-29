@@ -93,7 +93,7 @@ REQUIRED_REQUEST_RESULT_PAIRS = (
 BASE_REQUIRED_COMPOSE_SERVICES = (
     ComposeService.REDIS.value,
     ComposeService.APP.value,
-    ComposeService.AUDIT_PROXY.value,
+    ComposeService.RECORDER_INGRESS.value,
     ComposeService.VITALDB_OBSERVER.value,
     ComposeService.REDIS_RELAY.value,
     ComposeService.REDIS_UI.value,

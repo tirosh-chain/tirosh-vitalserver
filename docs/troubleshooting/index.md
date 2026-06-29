@@ -98,6 +98,13 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-087 | OOM recovery 이후 watchdog service가 빠져 status가 recovering에 머묾 | Runtime health / Launchd recovery | implemented | [Watchdog Not Loaded After OOM Recovery](087_watchdog-not-loaded-after-oom-recovery.md) |
 | TS-088 | Fresh install 후 Redis Relay image/source 누락으로 bootstrap 실패 | Packaging / Guest bootstrap | implemented | [Redis Relay Missing From Package Bundle](088_redis-relay-missing-from-package-bundle.md) |
 | TS-089 | macOS host watchdog timeout으로 재부팅됨 | Runtime health / Host resources / VM lifecycle | active | [Host macOS Watchdog Timeout Under VM Memory Pressure](089_host-macos-watchdog-timeout-under-vm-memory-pressure.md) |
+| TS-090 | VitalServer app OOM을 app boundary와 명시 증거로 분리해야 함 | Runtime health / Recorder streaming | implemented | [VitalServer App OOM Boundary And Evidence](090_vitalserver-app-oom-boundary-and-evidence.md) |
+| TS-091 | Golden rootfs smoke가 edge-ready 통과 후 cleanup wait 예산에 걸림 | Packaging / Local development / Guest bootstrap | implemented | [Golden Rootfs Cleanup Wait Timeout](091_golden-rootfs-cleanup-timeout.md) |
+| TS-092 | Recorder ingress raw archive disk pressure를 realtime skip과 분리해야 함 | Runtime health / Recorder streaming | active | [Recorder Ingress Raw Archive Disk Pressure](092_recorder-ingress-raw-archive-disk-pressure.md) |
+| TS-093 | Golden runtime smoke가 `runtime-settings.json` 누락으로 manifest를 만들지 못함 | Packaging / Guest bootstrap | active | [Golden Runtime Smoke Missing Runtime Settings](093_runtime-smoke-missing-runtime-settings.md) |
+| TS-094 | Watchdog이 VitalDB observation 누락 때문에 Compose recovery를 막음 | Runtime health / Watchdog recovery / Guest containers | active | [Watchdog VitalDB Observation Blocks Compose Recovery](094_watchdog-vitaldb-observation-blocks-compose-recovery.md) |
+| TS-095 | Guest Compose 실패의 inner stderr가 공유 진단에 남지 않음 | Guest bootstrap / Runtime health / Diagnostics | active | [Guest Compose Failure Missing Diagnostics](095_guest-compose-failure-missing-diagnostics.md) |
+| TS-096 | Helper Settings가 invalid slider value/range로 SIGTRAP 종료됨 | Runtime health / macOS Helper UI | active | [Helper Settings Slider Crash](096_helper-settings-slider-crash.md) |
 
 ## Follow-up 규칙
 

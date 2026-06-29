@@ -100,6 +100,14 @@ public enum ConfigureRuntimeChange<NetworkMode: Equatable>: Equatable {
     case remoteConsoleURL(String)
     case publicHost(String)
     case publicPort(Int)
+    case recorderIngressSendDataMode(RuntimeRecorderIngressSendDataMode)
+    case recorderIngressSendDataReplayBatchSize(Int)
+    case recorderIngressSendDataReplayMaxMiBPerSecond(Int)
+    case recorderIngress(RuntimeRecorderIngressSettings)
+    case containerMemoryLimitsEnabled(Bool)
+    case vitalServerContainerMemoryLimitMiB(Int)
+    case recorderIngressContainerMemoryLimitMiB(Int)
+    case redisContainerMemoryLimitMiB(Int)
     case adminPassword(String)
     case adminPasswordFile(URL)
     case startOnBoot(Bool)
@@ -404,6 +412,9 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         if changes.contains(where: \.changesRedisRelay) {
             return .containerServices
         }
+        if changes.contains(where: \.changesRecorderIngressSendDataConfig) {
+            return .containerServices
+        }
         return .none
     }
 
@@ -537,6 +548,38 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
             }
             guestConfig.publicPort = port
             guestRuntimeSettings.publicPort = port
+        case .recorderIngressSendDataMode(let mode):
+            guestRuntimeSettings.recorderIngressSendDataMode = mode
+        case .recorderIngressSendDataReplayBatchSize(let value):
+            guard value > 0 else {
+                throw invalid("--recorder-ingress-send-data-replay-batch-size must be greater than 0")
+            }
+            guestRuntimeSettings.recorderIngressSendDataReplayBatchSize = value
+        case .recorderIngressSendDataReplayMaxMiBPerSecond(let value):
+            guard value > 0 else {
+                throw invalid("--recorder-ingress-send-data-replay-max-mib-per-second must be greater than 0")
+            }
+            guestRuntimeSettings.recorderIngressSendDataReplayMaxMiBPerSecond = value
+        case .recorderIngress(let value):
+            try validateRecorderIngressSettings(value)
+            guestRuntimeSettings.recorderIngress = value
+        case .containerMemoryLimitsEnabled(let enabled):
+            guestRuntimeSettings.containerMemoryLimitsEnabled = enabled
+        case .vitalServerContainerMemoryLimitMiB(let value):
+            guard value > 0 else {
+                throw invalid("--vitalserver-container-memory-limit-mib must be greater than 0")
+            }
+            guestRuntimeSettings.vitalServerContainerMemoryLimitMiB = value
+        case .recorderIngressContainerMemoryLimitMiB(let value):
+            guard value > 0 else {
+                throw invalid("--recorder-ingress-container-memory-limit-mib must be greater than 0")
+            }
+            guestRuntimeSettings.recorderIngressContainerMemoryLimitMiB = value
+        case .redisContainerMemoryLimitMiB(let value):
+            guard value > 0 else {
+                throw invalid("--redis-container-memory-limit-mib must be greater than 0")
+            }
+            guestRuntimeSettings.redisContainerMemoryLimitMiB = value
         case .adminPassword(let value):
             guard !value.isEmpty, RuntimeTextValidator.isSingleLine(value) else {
                 throw invalid("--admin-password must not be empty or contain newlines")
@@ -651,6 +694,37 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         }
     }
 
+    private func validateRecorderIngressSettings(
+        _ settings: RuntimeRecorderIngressSettings
+    ) throws {
+        let positiveFields: [(String, Int)] = [
+            ("sendDataMaxPendingItems", settings.sendDataMaxPendingItems),
+            ("sendDataMaxPendingMiB", settings.sendDataMaxPendingMiB),
+            ("sendDataMaxPayloadMiB", settings.sendDataMaxPayloadMiB),
+            ("sendDataReplayedMaxItems", settings.sendDataReplayedMaxItems),
+            ("sendDataRealtimeMaxPendingItems", settings.sendDataRealtimeMaxPendingItems),
+            ("sendDataReplayIntervalMs", settings.sendDataReplayIntervalMs),
+            ("sendDataReplayMaxAttempts", settings.sendDataReplayMaxAttempts),
+            ("sendDataReplayTargetTimeoutMs", settings.sendDataReplayTargetTimeoutMs),
+            ("sendDataReplayAdaptiveMinConcurrency", settings.sendDataReplayAdaptiveMinConcurrency),
+            ("sendDataReplayAdaptiveMaxConcurrency", settings.sendDataReplayAdaptiveMaxConcurrency),
+            ("rawArchiveMaxFileMiB", settings.rawArchiveMaxFileMiB),
+            ("rawArchiveMaxFiles", settings.rawArchiveMaxFiles),
+            ("rawArchiveAutoExportQuietSeconds", settings.rawArchiveAutoExportQuietSeconds),
+            ("rawArchiveAutoExportScanIntervalSeconds", settings.rawArchiveAutoExportScanIntervalSeconds),
+            ("rawArchiveAutoExportCursorStableSeconds", settings.rawArchiveAutoExportCursorStableSeconds),
+            ("rawArchiveAutoExportRetryDelaySeconds", settings.rawArchiveAutoExportRetryDelaySeconds),
+            ("rawArchiveAutoExportMaxAttempts", settings.rawArchiveAutoExportMaxAttempts),
+            ("rawArchiveAutoExportRequestTimeoutSeconds", settings.rawArchiveAutoExportRequestTimeoutSeconds),
+        ]
+        if let invalidField = positiveFields.first(where: { $0.1 <= 0 }) {
+            throw invalid("--recorder-ingress-settings-file \(invalidField.0) must be greater than 0")
+        }
+        guard settings.sendDataReplayAdaptiveMaxConcurrency >= settings.sendDataReplayAdaptiveMinConcurrency else {
+            throw invalid("--recorder-ingress-settings-file sendDataReplayAdaptiveMaxConcurrency must be greater than or equal to min concurrency")
+        }
+    }
+
     private func invalid(_ message: String) -> ConfigureRuntimeError {
         .invalidArgument(message)
     }
@@ -669,6 +743,22 @@ private extension ConfigureRuntimeChange {
     var changesRedisRelay: Bool {
         switch self {
         case .redisRelay:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var changesRecorderIngressSendDataConfig: Bool {
+        switch self {
+        case .recorderIngressSendDataMode,
+             .recorderIngressSendDataReplayBatchSize,
+             .recorderIngressSendDataReplayMaxMiBPerSecond,
+             .recorderIngress,
+             .containerMemoryLimitsEnabled,
+             .vitalServerContainerMemoryLimitMiB,
+             .recorderIngressContainerMemoryLimitMiB,
+             .redisContainerMemoryLimitMiB:
             return true
         default:
             return false

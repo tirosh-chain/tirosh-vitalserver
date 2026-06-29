@@ -112,7 +112,7 @@ public struct RuntimeFileModifiedAtReadResult {
     }
 }
 
-public enum RuntimeAuditProxyStatusReadState: String, Codable, Equatable, Sendable {
+public enum RuntimeRecorderIngressStatusReadState: String, Codable, Equatable, Sendable {
     case notRead
     case loaded
     case skippedMissingProxyPort
@@ -123,19 +123,19 @@ public enum RuntimeAuditProxyStatusReadState: String, Codable, Equatable, Sendab
     case readFailed
 }
 
-public struct RuntimeAuditProxyStatusReadResult {
-    public let readState: RuntimeAuditProxyStatusReadState
+public struct RuntimeRecorderIngressStatusReadResult {
+    public let readState: RuntimeRecorderIngressStatusReadState
     public let httpStatus: String
-    public let document: RuntimeAuditProxyStatusDocument?
+    public let document: RuntimeRecorderIngressStatusDocument?
     public let readError: String?
 
     public init(
-        readState: RuntimeAuditProxyStatusReadState? = nil,
+        readState: RuntimeRecorderIngressStatusReadState? = nil,
         httpStatus: String,
-        document: RuntimeAuditProxyStatusDocument?,
+        document: RuntimeRecorderIngressStatusDocument?,
         readError: String?
     ) {
-        self.readState = readState ?? RuntimeAuditProxyStatusReadResult.readState(
+        self.readState = readState ?? RuntimeRecorderIngressStatusReadResult.readState(
             httpStatus: httpStatus,
             document: document,
             readError: readError
@@ -147,9 +147,9 @@ public struct RuntimeAuditProxyStatusReadResult {
 
     private static func readState(
         httpStatus: String,
-        document: RuntimeAuditProxyStatusDocument?,
+        document: RuntimeRecorderIngressStatusDocument?,
         readError: String?
-    ) -> RuntimeAuditProxyStatusReadState {
+    ) -> RuntimeRecorderIngressStatusReadState {
         if document != nil, readError == nil {
             return .loaded
         }
@@ -205,7 +205,7 @@ public struct RuntimeHealthObservationReads {
     public let hostProxyHTTP: RuntimeHTTPProbeResult?
     public let redisUIHTTP: RuntimeHTTPProbeResult?
     public let swaggerUIHTTP: RuntimeHTTPProbeResult?
-    public let auditProxyStatus: RuntimeAuditProxyStatusReadResult?
+    public let recorderIngressStatus: RuntimeRecorderIngressStatusReadResult?
     public let runtimeStateFileModifiedAt: RuntimeFileModifiedAtReadResult
     public let containerLogsMetadata: RuntimeContainerLogsMetadata
     public let proxyListenerObservation: RuntimeHostProxyListenerObservation?
@@ -227,7 +227,7 @@ public struct RuntimeHealthObservationReads {
         hostProxyHTTP: RuntimeHTTPProbeResult?,
         redisUIHTTP: RuntimeHTTPProbeResult?,
         swaggerUIHTTP: RuntimeHTTPProbeResult?,
-        auditProxyStatus: RuntimeAuditProxyStatusReadResult?,
+        recorderIngressStatus: RuntimeRecorderIngressStatusReadResult?,
         runtimeStateFileModifiedAt: RuntimeFileModifiedAtReadResult,
         containerLogsMetadata: RuntimeContainerLogsMetadata,
         proxyListenerObservation: RuntimeHostProxyListenerObservation?,
@@ -248,7 +248,7 @@ public struct RuntimeHealthObservationReads {
         self.hostProxyHTTP = hostProxyHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
-        self.auditProxyStatus = auditProxyStatus
+        self.recorderIngressStatus = recorderIngressStatus
         self.runtimeStateFileModifiedAt = runtimeStateFileModifiedAt
         self.containerLogsMetadata = containerLogsMetadata
         self.proxyListenerObservation = proxyListenerObservation

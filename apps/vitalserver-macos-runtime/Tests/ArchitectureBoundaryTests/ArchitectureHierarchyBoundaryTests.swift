@@ -1217,8 +1217,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         let useCaseText = try String(contentsOf: useCaseFile, encoding: .utf8)
         for token in [
             "public struct RuntimeHealthObservationReads",
-            "public struct RuntimeAuditProxyStatusReadResult",
-            "public enum RuntimeAuditProxyStatusReadState",
+            "public struct RuntimeRecorderIngressStatusReadResult",
+            "public enum RuntimeRecorderIngressStatusReadState",
             "public struct RuntimeHostProxyListenerObservation",
             "public struct RuntimeGuestRuntimeStateObservation",
             "public struct RuntimeContainerLogsMetadata",
@@ -1268,7 +1268,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
-    func testAuditProxyStatusReadStateStaysExplicit() throws {
+    func testRecorderIngressStatusReadStateStaysExplicit() throws {
         let root = packageRoot()
         let contractsText = try String(
             contentsOf: root.appendingPathComponent("Sources/Contracts/Shared/RuntimeHealthObservationReads.swift"),
@@ -1279,24 +1279,24 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             encoding: .utf8
         )
         let readerText = try String(
-            contentsOf: root.appendingPathComponent("Sources/Adapters/Outbound/Health/RuntimeAuditProxyStatusReader.swift"),
+            contentsOf: root.appendingPathComponent("Sources/Adapters/Outbound/Health/RuntimeRecorderIngressStatusReader.swift"),
             encoding: .utf8
         )
 
         XCTAssertTrue(
-            contractsText.contains("public enum RuntimeAuditProxyStatusReadState")
+            contractsText.contains("public enum RuntimeRecorderIngressStatusReadState")
                 && contractsText.contains("case commandFailed")
                 && contractsText.contains("case emptyResponse")
-                && contractsText.contains("public let readState: RuntimeAuditProxyStatusReadState"),
-            "Audit proxy status reads must preserve command/decode/empty/output failures explicitly"
+                && contractsText.contains("public let readState: RuntimeRecorderIngressStatusReadState"),
+            "Recorder ingress status reads must preserve command/decode/empty/output failures explicitly"
         )
         XCTAssertTrue(
-            containerObservationText.contains("auditProxyStatusReadState"),
-            "Runtime container observation must carry audit proxy read state to API/UI consumers"
+            containerObservationText.contains("recorderIngressStatusReadState"),
+            "Runtime container observation must carry recorder ingress read state to API/UI consumers"
         )
         XCTAssertFalse(
             readerText.contains(#"httpStatus: "failed""#),
-            "Audit proxy reader must not encode command failure as an invented HTTP status string only"
+            "Recorder ingress reader must not encode command failure as an invented HTTP status string only"
         )
     }
 

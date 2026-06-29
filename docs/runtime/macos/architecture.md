@@ -563,24 +563,11 @@ rollback success    -> healthy
 
 ## 6. GUI와 Package
 
-제품 설치 책임은 `.pkg`에 둡니다. `.dmg`가 필요하면 installer 전달 매체로만 사용하고, DMG root에는
-단일 `Install VitalServer Helper.pkg`를 둡니다. PKG가 Helper app/native shell과 host control components를 함께 설치하고,
-Helper UI는 설치 이후 상태 확인과 운영 작업을 담당합니다. 장기적으로 이 UI는 Web/PWA primary implementation으로 이동하고 native app은 local runtime host/shell 역할에 집중합니다.
+제품 설치 책임은 `.pkg`에 둡니다. `.dmg`가 필요하면 installer 전달 매체로만 사용하고, DMG root에는 단일 `Install VitalServer Helper.pkg`를 둡니다. PKG가 Helper app/native shell과 host control components를 함께 설치하고, Helper UI는 설치 이후 상태 확인과 운영 작업을 담당합니다. 장기적으로 이 UI는 Web/PWA primary implementation으로 이동하고 native app은 local runtime host/shell 역할에 집중합니다.
 
-단일 PKG를 기본 배포물로 선택한 이유는 설치 대상이 self-contained app 하나가 아니기 때문입니다.
-이 제품은 `/Applications`에 Helper app을 놓는 것 외에도 `/usr/local/bin` Updater/Supervisor/VM Driver tools,
-`/Library/LaunchDaemons` system services, `/Library/Application Support/VitalServerHelper` 아래의
-VM Image/runtime asset, host nginx bundle, Docker image bundle을 설치하고 `postinstall`에서 VM disk,
-cloud-init seed, component config, launchd 상태를 provision합니다. 이런 system-wide 설치는 macOS
-Installer가 권한 상승, receipt, MDM/Jamf 배포, CLI 설치(`installer -pkg ... -target /`)를 다룰 수
-있는 `.pkg`가 더 맞습니다.
+단일 PKG를 기본 배포물로 선택한 이유는 설치 대상이 self-contained app 하나가 아니기 때문입니다. 이 제품은 `/Applications`에 Helper app을 놓는 것 외에도 `/usr/local/bin` Updater/Supervisor/VM Driver tools, `/Library/LaunchDaemons` system services, `/Library/Application Support/VitalServerHelper` 아래의 VM Image/runtime asset, host nginx bundle, Docker image bundle을 설치하고 `postinstall`에서 VM disk, cloud-init seed, component config, launchd 상태를 provision합니다. 이런 system-wide 설치는 macOS Installer가 권한 상승, receipt, MDM/Jamf 배포, CLI 설치(`installer -pkg ... -target /`)를 다룰 수 있는 `.pkg`가 더 맞습니다.
 
-`.app`만 제공하는 방식은 제품이 앱 bundle 하나로 닫혀 있고 사용자가 `/Applications`로 복사한 뒤 실행하면
-충분할 때 적합합니다. 예를 들어 별도 LaunchDaemon, privileged helper, `/usr/local/bin` CLI, shared
-runtime data, install-time provisioning이 없고, 최초 실행 시 사용자 권한으로 필요한 설정을 끝낼 수 있는
-제품이면 drag-and-drop DMG나 zip/app 배포가 더 단순합니다. Tirosh VitalServer는 headless VM service와
-host proxy를 부팅 시 자동 실행해야 하므로 `.app`만으로 배포하면 설치 책임이 Helper app에 과하게 섞이고,
-깨진 설치/MDM 배포/제거 경로가 불명확해집니다.
+`.app`만 제공하는 방식은 제품이 앱 bundle 하나로 닫혀 있고 사용자가 `/Applications`로 복사한 뒤 실행하면 충분할 때 적합합니다. 예를 들어 별도 LaunchDaemon, privileged helper, `/usr/local/bin` CLI, shared runtime data, install-time provisioning이 없고, 최초 실행 시 사용자 권한으로 필요한 설정을 끝낼 수 있는 제품이면 drag-and-drop DMG나 zip/app 배포가 더 단순합니다. Tirosh VitalServer는 headless VM service와 host proxy를 부팅 시 자동 실행해야 하므로 `.app`만으로 배포하면 설치 책임이 Helper app에 과하게 섞이고, 깨진 설치/MDM 배포/제거 경로가 불명확해집니다.
 
 ```text
 VitalServerHelper.dmg
@@ -599,10 +586,7 @@ VitalServerHelper.dmg
 | VitalServer container/runtime 설정 | deploy `runtime-config.json` |
 | 서비스 자동 실행 | LaunchDaemon plist |
 
-Helper app은 설치 이후 상태 확인, 설정 변경, offline/online Product Update bundle 적용,
-rollback, 로그 조회, 제거 진입점을 제공하는 UI로 봅니다. VM Image와 privileged provisioning은 installer pkg가 담당합니다.
-설정 변경은 Helper app이 직접 JSON/plist를 수정하지 않고 `vitalserver-vm runtime configure ... --restart`를
-administrator privilege로 호출합니다.
+Helper app은 설치 이후 상태 확인, 설정 변경, offline/online Product Update bundle 적용, rollback, 로그 조회, 제거 진입점을 제공하는 UI로 봅니다. VM Image와 privileged provisioning은 installer pkg가 담당합니다. 설정 변경은 Helper app이 직접 JSON/plist를 수정하지 않고 `vitalserver-vm runtime configure ... --restart`를 administrator privilege로 호출합니다.
 
 역할 경계는 아래처럼 고정합니다.
 
@@ -620,9 +604,7 @@ make devtools/app
 open ".tmp/VitalServer Helper.app"
 ```
 
-제품 DMG는 drag-and-drop app wrapper가 아니라 installer pkg를 전달합니다.
-`make dist/pkg/dev`는 Helper app을 `/Applications/VitalServer Helper.app` payload로 포함하고,
-`make dist/dmg/dev`는 DMG root에 `Install VitalServer Helper.pkg`만 배치합니다.
+제품 DMG는 drag-and-drop app wrapper가 아니라 installer pkg를 전달합니다. `make dist/pkg/dev`는 Helper app을 `/Applications/VitalServer Helper.app` payload로 포함하고, `make dist/dmg/dev`는 DMG root에 `Install VitalServer Helper.pkg`만 배치합니다.
 
 현재 배포 기준은 unsigned입니다. `.pkg`와 `.dmg`에 Developer ID 서명/notarization을 적용하지 않습니다. 단, nginx binary와 dylib는 `install_name_tool`로 load path를 수정하므로 실행 가능한 Mach-O 상태를 위해 ad-hoc signing(`codesign --sign -`)만 수행합니다.
 

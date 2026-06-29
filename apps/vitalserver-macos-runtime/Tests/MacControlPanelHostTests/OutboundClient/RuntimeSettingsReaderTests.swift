@@ -34,6 +34,9 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "remoteConsoleURL": "https://console.tirosh.ai/",
           "publicHost": "example.test",
           "publicPort": 8080,
+          "recorderIngressSendDataMode": "mirror_spool",
+          "recorderIngressSendDataReplayBatchSize": 8,
+          "recorderIngressSendDataReplayMaxMiBPerSecond": 12,
           "automaticBackupEnabled": true,
           "backupScheduleTimes": ["03:15"],
           "backupRetentionCount": 30
@@ -64,10 +67,62 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(settings.remoteConsoleURL, "https://console.tirosh.ai/")
         XCTAssertEqual(settings.publicHost, "example.test")
         XCTAssertEqual(settings.publicPort, 8080)
+        XCTAssertEqual(settings.recorderIngressSendDataMode, .mirrorSpool)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayBatchSize, 1000)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayMaxMiBPerSecond, 12)
         XCTAssertEqual(settings.backupRetentionCount, 30)
         XCTAssertEqual(settings.proxyPort, 19090)
         XCTAssertFalse(settings.autoRecoveryEnabled)
         XCTAssertFalse(settings.preventSystemSleep)
+    }
+
+    func testLoadsMissingRecorderIngressModeAsProductDefault() throws {
+        let directory = try temporaryDirectory()
+        let vmConfig = directory.appendingPathComponent("vm-config.json")
+        let vmDisk = directory.appendingPathComponent("vm-disk.img")
+        let guestSettings = directory.appendingPathComponent("runtime-settings.json")
+        let proxyLaunchDaemon = directory.appendingPathComponent("proxy.plist")
+
+        try """
+        {
+          "cpuCount": 4,
+          "memoryMiB": 6144,
+          "network": { "mode": "shared", "bridgedInterface": "en0" },
+          "vitalFilesDirectory": { "hostPath": "/Volumes/Vital Files" },
+          "autoRecoveryEnabled": false,
+          "preventSystemSleep": false
+        }
+        """.write(to: vmConfig, atomically: true, encoding: .utf8)
+        FileManager.default.createFile(atPath: vmDisk.path, contents: Data([0]))
+        try """
+        {
+          "vitalServerURL": "https://vitaldb.tirosh.ai/",
+          "remoteConsoleURL": "https://console.tirosh.ai/",
+          "publicHost": "example.test",
+          "publicPort": 8080,
+          "automaticBackupEnabled": true,
+          "backupScheduleTimes": ["03:15"],
+          "backupRetentionCount": 30
+        }
+        """.write(to: guestSettings, atomically: true, encoding: .utf8)
+        try writeProxyLaunchDaemon(proxyLaunchDaemon, proxyPort: 19090)
+
+        let reader = SystemRuntimeSettingsReader(
+            paths: RuntimeSettingsPaths(
+                vmConfig: vmConfig.path,
+                vmDisk: vmDisk.path,
+                guestRuntimeSettings: guestSettings.path,
+                proxyLaunchDaemon: proxyLaunchDaemon.path
+            ),
+            runCommand: startOnBootCommand()
+        )
+
+        let settings = reader.load()
+
+        XCTAssertEqual(settings.readIssues, [])
+        XCTAssertEqual(settings.recorderIngressSendDataMode, .spoolAndReplay)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayBatchSize, 1000)
+        XCTAssertEqual(settings.recorderIngressSendDataReplayMaxMiBPerSecond, 20)
     }
 
     func testLoadsAppliedVMSettingsFromAppliedVMConfigSnapshot() throws {
@@ -480,6 +535,9 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         settings.remoteConsoleURL = "https://console.tirosh.ai/"
         settings.publicHost = "public.test"
         settings.publicPort = 8080
+        settings.recorderIngressSendDataMode = .mirrorSpool
+        settings.recorderIngressSendDataReplayBatchSize = 8
+        settings.recorderIngressSendDataReplayMaxMiBPerSecond = 12
         settings.backupRetentionCount = 20
         settings.startOnBoot = false
         settings.autoRecoveryEnabled = false
@@ -488,16 +546,34 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let arguments = RuntimeCommandFactory.configureRuntimeArguments(
             settings: settings,
-            adminPasswordFile: "/tmp/password"
+            adminPasswordFile: "/tmp/password",
+            recorderIngressSettingsFile: "/tmp/recorder-ingress-settings.json"
         )
 
         XCTAssertEqual(arguments.first, RuntimeControlClientConstants.RuntimeCommand.runtime)
         XCTAssertTrue(arguments.contains(RuntimeControlClientConstants.RuntimeCommand.optionAdminPasswordFile))
         XCTAssertTrue(arguments.contains("/tmp/password"))
+        XCTAssertTrue(arguments.contains(RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSettingsFile))
+        XCTAssertTrue(arguments.contains("/tmp/recorder-ingress-settings.json"))
         XCTAssertTrue(arguments.contains(RuntimeControlClientConstants.RuntimeCommand.optionRestart))
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionProxyPort, in: arguments), "18080")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionVitalServerURL, in: arguments), "https://vitaldb.tirosh.ai/")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionRemoteConsoleURL, in: arguments), "https://console.tirosh.ai/")
+        XCTAssertEqual(
+            value(after: RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataMode, in: arguments),
+            "mirror_spool"
+        )
+        XCTAssertEqual(
+            value(after: RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataReplayBatchSize, in: arguments),
+            "8"
+        )
+        XCTAssertEqual(
+            value(
+                after: RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSendDataReplayMaxMiBPerSecond,
+                in: arguments
+            ),
+            "12"
+        )
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionBackupRetention, in: arguments), "20")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionStartOnBoot, in: arguments), "false")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionAutoRecovery, in: arguments), "false")
@@ -848,7 +924,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "status": "healthy",
           "operation": "health",
           "message": "ok",
-          "updatedAt": "2026-05-26T00:01:00Z",
+          "updatedAt": "2099-05-26T00:01:00Z",
           "productRoot": "/tmp/product",
           "runtimeHome": "/tmp/vm",
           "runtimeVersion": "1.0.0",
@@ -1181,14 +1257,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "vitalDBObservation": {
             "schemaVersion": 1,
             "source": "vitaldb-observer",
-            "observedAt": "2026-05-26T00:01:00Z",
+            "observedAt": "2099-05-26T00:01:00Z",
             "ready": true,
             "recorderOnlineThresholdSeconds": 60,
             "recorders": [
               {
                 "vrcode": "VR_STATUS",
                 "ip": "192.168.64.10",
-                "lastSeenAt": "2026-05-26T00:01:00Z",
+                "lastSeenAt": "2099-05-26T00:01:00Z",
                 "online": true,
                 "stale": false
               }
@@ -1212,7 +1288,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let history = reader.loadVitalDBRecorders()
 
-        XCTAssertEqual(history.updatedAt, "2026-05-26T00:01:00Z")
+        XCTAssertEqual(history.updatedAt, "2099-05-26T00:01:00Z")
         XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_STATUS"])
         XCTAssertEqual(history.recorders.first?.status, .online)
     }
@@ -1228,7 +1304,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "status": "healthy",
           "operation": "watchdog",
           "message": "ok",
-          "updatedAt": "2026-05-26T00:01:00Z",
+          "updatedAt": "2099-05-26T00:01:00Z",
           "productRoot": "/tmp/product",
           "runtimeHome": "/tmp/vm",
           "runtimeVersion": "1.0.0",
@@ -1244,14 +1320,14 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "vitalDBObservation": {
             "schemaVersion": 1,
             "source": "vitaldb-observer",
-            "observedAt": "2026-05-26T00:01:00Z",
+            "observedAt": "2099-05-26T00:01:00Z",
             "ready": true,
             "recorderOnlineThresholdSeconds": 60,
             "recorders": [
               {
                 "vrcode": "VR_STALE_STATUS",
                 "ip": "192.168.64.10",
-                "lastSeenAt": "2026-05-26T00:01:00Z",
+                "lastSeenAt": "2099-05-26T00:01:00Z",
                 "online": true,
                 "stale": false
               }
@@ -1269,18 +1345,18 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "schemaVersion": 1,
           "vmIP": "192.168.64.2",
           "guestHTTP": "200",
-          "updatedAt": "2026-05-26T00:01:05Z",
+          "updatedAt": "2099-05-26T00:01:05Z",
           "vitalDBObservation": {
             "schemaVersion": 1,
             "source": "vitaldb-observer",
-            "observedAt": "2026-05-26T00:01:05Z",
+            "observedAt": "2099-05-26T00:01:05Z",
             "ready": true,
             "recorderOnlineThresholdSeconds": 60,
             "recorders": [
               {
                 "vrcode": "VR_FRESH_GUEST",
                 "ip": "192.168.64.11",
-                "lastSeenAt": "2026-05-26T00:01:05Z",
+                "lastSeenAt": "2099-05-26T00:01:05Z",
                 "online": true,
                 "stale": false
               }
@@ -1307,8 +1383,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let status = statusReader.loadStatus(settings: RuntimeSettings())
         let history = observabilityReader.loadVitalDBRecorders()
 
-        XCTAssertEqual(status.vitalDBObservation?.observedAt, "2026-05-26T00:01:00Z")
-        XCTAssertEqual(history.updatedAt, "2026-05-26T00:01:05Z")
+        XCTAssertEqual(status.vitalDBObservation?.observedAt, "2099-05-26T00:01:00Z")
+        XCTAssertEqual(history.updatedAt, "2099-05-26T00:01:05Z")
         XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_FRESH_GUEST"])
         XCTAssertEqual(history.recorders.first?.status, .online)
     }

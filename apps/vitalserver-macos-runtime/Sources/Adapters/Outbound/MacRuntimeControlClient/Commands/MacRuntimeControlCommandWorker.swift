@@ -44,40 +44,48 @@ public actor MacRuntimeControlCommandWorker {
 
     public func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult {
         try ensureExecutable(.launcher)
+        var temporaryFiles: [RuntimeTemporarySettingsFile] = []
         var adminPasswordFile: URL?
-        if settings.changeAdminPassword {
-            adminPasswordFile = try actionEnvironment.writeAdminPasswordFile(settings.adminPassword)
-        }
-        let redisRelaySettingsFile = try actionEnvironment.writeRedisRelaySettingsFile(settings.redisRelay)
-        let result = await runPrivileged(RuntimeCommandFactory.shellCommand(
-            executable: RuntimeControlClientConstants.Paths.launcher,
-            arguments: RuntimeCommandFactory.configureRuntimeArguments(
-                settings: settings,
-                adminPasswordFile: adminPasswordFile?.path,
-                redisRelaySettingsFile: redisRelaySettingsFile.path
-            )
-        ))
-        var cleanupIssues: [RuntimeCommandOutputIssue] = []
+
         do {
-            try actionEnvironment.removeItem(at: redisRelaySettingsFile)
-        } catch {
-            cleanupIssues.append(RuntimeCommandOutputIssue(
-                stream: .stderr,
-                message: "Redis relay settings file cleanup failed path=\(redisRelaySettingsFile.path) reason=\(error.localizedDescription)"
-            ))
-        }
-        if let adminPasswordFile {
-            do {
-                try actionEnvironment.removeItem(at: adminPasswordFile)
-            } catch {
-                cleanupIssues.append(RuntimeCommandOutputIssue(
-                    stream: .stderr,
-                    message: "admin password file cleanup failed path=\(adminPasswordFile.path) reason=\(error.localizedDescription)"
-                ))
+            if settings.changeAdminPassword {
+                adminPasswordFile = try actionEnvironment.writeAdminPasswordFile(settings.adminPassword)
+                if let adminPasswordFile {
+                    temporaryFiles.append(RuntimeTemporarySettingsFile(
+                        url: adminPasswordFile,
+                        label: "admin password file"
+                    ))
+                }
             }
-        }
-        return cleanupIssues.reduce(result) { partialResult, issue in
-            partialResult.appendingOutputIssue(issue)
+
+            let recorderIngressSettingsFile = try actionEnvironment.writeRecorderIngressSettingsFile(settings.recorderIngress)
+            temporaryFiles.append(RuntimeTemporarySettingsFile(
+                url: recorderIngressSettingsFile,
+                label: "recorder ingress settings file"
+            ))
+
+            let redisRelaySettingsFile = try actionEnvironment.writeRedisRelaySettingsFile(settings.redisRelay)
+            temporaryFiles.append(RuntimeTemporarySettingsFile(
+                url: redisRelaySettingsFile,
+                label: "Redis relay settings file"
+            ))
+
+            let result = await runPrivileged(RuntimeCommandFactory.shellCommand(
+                executable: RuntimeControlClientConstants.Paths.launcher,
+                arguments: RuntimeCommandFactory.configureRuntimeArguments(
+                    settings: settings,
+                    adminPasswordFile: adminPasswordFile?.path,
+                    recorderIngressSettingsFile: recorderIngressSettingsFile.path,
+                    redisRelaySettingsFile: redisRelaySettingsFile.path
+                )
+            ))
+            let cleanupIssues = cleanupTemporarySettingsFiles(temporaryFiles)
+            return cleanupIssues.reduce(result) { partialResult, issue in
+                partialResult.appendingOutputIssue(issue)
+            }
+        } catch {
+            _ = cleanupTemporarySettingsFiles(temporaryFiles)
+            throw error
         }
     }
 
@@ -160,6 +168,23 @@ public actor MacRuntimeControlCommandWorker {
         ))
     }
 
+    private func cleanupTemporarySettingsFiles(
+        _ files: [RuntimeTemporarySettingsFile]
+    ) -> [RuntimeCommandOutputIssue] {
+        var issues: [RuntimeCommandOutputIssue] = []
+        for file in files {
+            do {
+                try actionEnvironment.removeItem(at: file.url)
+            } catch {
+                issues.append(RuntimeCommandOutputIssue(
+                    stream: .stderr,
+                    message: "\(file.label) cleanup failed path=\(file.url.path) reason=\(error.localizedDescription)"
+                ))
+            }
+        }
+        return issues
+    }
+
     public func repairRuntimeServices() async throws -> RuntimeCommandResult {
         try ensureExecutable(.launcher)
         return await runPrivileged(RuntimeCommandFactory.runtimeServicesCommand(action: .repair))
@@ -224,6 +249,11 @@ public actor MacRuntimeControlCommandWorker {
     private func runPrivileged(_ shellCommand: String) async -> RuntimeCommandResult {
         await privilegedCommandRunner.run(shellCommand: shellCommand)
     }
+}
+
+private struct RuntimeTemporarySettingsFile {
+    let url: URL
+    let label: String
 }
 
 private extension RuntimeCommandResult {
