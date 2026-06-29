@@ -86,6 +86,16 @@ test("config enables bounded spool and replay by default", () => {
     autoExport: {
       enabled: false,
       quietWindowMs: 300000,
+      scanIntervalMs: 60000,
+      cursorStableMs: 60000,
+      retryDelayMs: 60000,
+      maxAttempts: 3,
+      requestTimeoutMs: 300000,
+      recoverUrl: "http://testkit:18322/raw-archive/recover-vital",
+      vitalserverUrl: "http://app:80",
+      uploadEndpoint: "/upload",
+      outputDir: "/var/lib/vitalserver-recorder-ingress/recovery/vital-export",
+      statePath: "/var/lib/vitalserver-recorder-ingress/recovery/raw-archive-auto-export-state.json",
     },
   });
 });
@@ -108,6 +118,16 @@ test("config loads explicit send_data raw archive settings", () => {
     RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES: "3",
     RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED: "1",
     RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS: "600000",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_MS: "10000",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_CURSOR_STABLE_MS: "20000",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS: "30000",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS: "5",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS: "40000",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RECOVER_URL: "http://recover.test/raw",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_VITALSERVER_URL: "http://app.test",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_UPLOAD_ENDPOINT: "/upload_vital.php",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR: "/external/export",
+    RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH: "/external/state.json",
   }).rawArchive, {
     enabled: false,
     path: "/external/send-data-raw.jsonl",
@@ -116,6 +136,16 @@ test("config loads explicit send_data raw archive settings", () => {
     autoExport: {
       enabled: true,
       quietWindowMs: 600000,
+      scanIntervalMs: 10000,
+      cursorStableMs: 20000,
+      retryDelayMs: 30000,
+      maxAttempts: 5,
+      requestTimeoutMs: 40000,
+      recoverUrl: "http://recover.test/raw",
+      vitalserverUrl: "http://app.test",
+      uploadEndpoint: "/upload_vital.php",
+      outputDir: "/external/export",
+      statePath: "/external/state.json",
     },
   });
 });

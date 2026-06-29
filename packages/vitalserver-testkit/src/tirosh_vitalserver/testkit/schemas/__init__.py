@@ -10,6 +10,7 @@ from tirosh_vitalserver.testkit.schemas.testkit_api import (
     CreateBedsRequest,
     DeleteBedsRequest,
     DeleteVirtualRecorderRequest,
+    RecoverRawArchiveVitalRequest,
     RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "HttpResponse",
     "RealtimeMessageDocument",
     "RecorderPayloadDocument",
+    "RecoverRawArchiveVitalRequest",
     "RestartVirtualRecorderSessionRequest",
     "StartVirtualRecordersRequest",
 ]

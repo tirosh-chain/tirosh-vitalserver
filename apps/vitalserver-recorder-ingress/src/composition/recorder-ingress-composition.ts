@@ -5,7 +5,9 @@ const { createClientIpSelector } = require("../adapters/inbound/http/client-ip")
 const { createAuditLogWriter } = require("../adapters/outbound/file/audit-log-writer");
 const { createAuditStdoutWriter } = require("../adapters/outbound/process/audit-stdout-writer");
 const { createSendDataFailureLogWriter } = require("../adapters/outbound/file/send-data-failure-log-writer");
+const { createSendDataRawArchiveExportJobStore } = require("../adapters/outbound/file/send-data-raw-archive-export-job-store");
 const { createSendDataRawArchiveWriter } = require("../adapters/outbound/file/send-data-raw-archive-writer");
+const { createTestkitRawArchiveRecoveryExecutor } = require("../adapters/outbound/http/testkit-raw-archive-recovery-executor");
 const { createRuntimeStateMemoryGuardReader } = require("../adapters/outbound/file/runtime-state-memory-guard-reader");
 const { createRedisAuditEventStore } = require("../adapters/outbound/redis/audit-event-store");
 const { createRedisClient } = require("../adapters/outbound/redis/client");
@@ -14,6 +16,7 @@ const { createVrIdentityStore } = require("../adapters/outbound/redis/vr-identit
 const { createSocketIoSendDataReplayTarget } = require("../adapters/outbound/socketio/send-data-replay-target");
 const { createAuditRecorder } = require("../application/audit-recorder");
 const { createSendDataIngressService } = require("../application/send-data-ingress-service");
+const { createSendDataRawArchiveExportWorker } = require("../application/send-data-raw-archive-export-worker");
 const { createSendDataReplayWorker } = require("../application/send-data-replay-worker");
 const { createSocketIoAuditService } = require("../application/socketio-audit-service");
 const { configureSendDataRawArchive, configureSendDataSpool, createMetrics } = require("../observability/metrics");
@@ -31,6 +34,8 @@ function createRecorderIngressServer(config) {
   const redisAudit = createRedisAuditEventStore(config.audit, auditRedis, metrics);
   const sendDataFailureLog = createSendDataFailureLogWriter(config.failureLog, metrics);
   const sendDataRawArchive = createSendDataRawArchiveWriter(config.rawArchive);
+  const sendDataRawArchiveExportJobStore = createSendDataRawArchiveExportJobStore(config);
+  const sendDataRawArchiveRecoveryExecutor = createTestkitRawArchiveRecoveryExecutor(config);
   const audit = createAuditRecorder(config.audit, [auditLog, auditStdout, redisAudit]);
   const vrIdentityStore = createVrIdentityStore(identityRedis, metrics);
   const sendDataSpoolStore = createRedisSendDataSpoolStore(config.spool, sendDataRedis);
@@ -49,6 +54,12 @@ function createRecorderIngressServer(config) {
     spoolStore: sendDataSpoolStore,
     replayTarget: createSocketIoSendDataReplayTarget(config),
   });
+  const sendDataRawArchiveExportWorker = createSendDataRawArchiveExportWorker({
+    config,
+    executor: sendDataRawArchiveRecoveryExecutor,
+    jobStore: sendDataRawArchiveExportJobStore,
+    metrics,
+  });
   const clientIp = createClientIpSelector(config.clientIp);
   const socketIoAudit = createSocketIoAuditService({ audit, vrIdentityStore, metrics, config, sendDataIngress });
 
@@ -57,6 +68,7 @@ function createRecorderIngressServer(config) {
     clientIp,
     config,
     metrics,
+    sendDataRawArchiveExportWorker,
     sendDataReplayWorker,
     socketIoAudit,
   });

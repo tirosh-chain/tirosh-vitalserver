@@ -310,6 +310,22 @@ uv run vitalserver-testkit recover-raw-archive-vital \
   --concurrency 4
 ```
 
+TestKit server는 같은 기능을 HTTP API로도 제공합니다. Recorder ingress auto export worker는 이 endpoint를
+호출합니다. `rawArchivePath`와 `outputDir`은 recorder-ingress와 testkit container가 같은 mount path로 볼 수
+있어야 합니다.
+
+```sh
+curl -X POST http://127.0.0.1:18322/raw-archive/recover-vital \
+  -H 'content-type: application/json' \
+  -d '{
+    "rawArchivePath": "/var/lib/vitalserver-recorder-ingress/raw/send-data-raw.jsonl",
+    "outputDir": "/var/lib/vitalserver-recorder-ingress/recovery/vital-export",
+    "vitalserverUrl": "http://app:80",
+    "endpoint": "/upload",
+    "skipFilenameCheck": true
+  }'
+```
+
 Python 코드에서 직접 호출할 수도 있습니다.
 
 ```python

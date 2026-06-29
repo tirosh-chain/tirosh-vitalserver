@@ -10,10 +10,10 @@ from tirosh_vitalserver.testkit.adapters.inbound.cli.common import (
     add_load_args,
 )
 from tirosh_vitalserver.testkit.adapters.inbound.cli.output import print_summary
-from tirosh_vitalserver.testkit.adapters.outbound.vitalserver import VitalServerClient
 from tirosh_vitalserver.testkit.adapters.outbound.raw_archive_vital_artifact import (
     RawArchiveVitalFileExporter,
 )
+from tirosh_vitalserver.testkit.adapters.outbound.vitalserver import VitalServerClient
 from tirosh_vitalserver.testkit.application.usecases import (
     assert_transfer_success,
     upload_vital_files,
@@ -75,7 +75,10 @@ def add_vital_file_parsers(
 
     recover_parser = subparsers.add_parser(
         "recover-raw-archive-vital",
-        help="Export recorder-ingress raw archive JSONL and upload generated .vital files",
+        help=(
+            "Export recorder-ingress raw archive JSONL and upload generated "
+            ".vital files"
+        ),
     )
     add_common_server_args(recover_parser)
     add_load_args(recover_parser)

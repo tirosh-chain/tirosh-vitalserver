@@ -110,6 +110,10 @@ function configureSendDataSpool(metrics, config) {
 function configureSendDataRawArchive(metrics, config) {
   metrics.sendDataRawArchive.status = config && config.enabled ? "ready" : "disabled";
   metrics.sendDataRawArchive.path = config && config.path ? config.path : null;
+  metrics.sendDataRawArchive.autoExport = metrics.sendDataRawArchive.autoExport || defaultRawArchiveAutoExportStatus();
+  metrics.sendDataRawArchive.autoExport.status = config && config.autoExport && config.autoExport.enabled
+    ? "idle"
+    : "disabled";
 }
 
 function sendDataSpoolState(metrics) {
@@ -541,6 +545,76 @@ function rawArchiveSnapshot(archive) {
     lastArchiveId: archive.lastArchiveId,
     lastOffset: archive.lastOffset,
     lastFailure: archive.lastFailure,
+    autoExport: archive.autoExport || defaultRawArchiveAutoExportStatus(),
+  };
+}
+
+function recordSendDataRawArchiveAutoExportDecision(metrics, decision) {
+  const archive = metrics.sendDataRawArchive || defaultRawArchiveStatus();
+  const autoExport = archive.autoExport || defaultRawArchiveAutoExportStatus();
+  autoExport.status = decision.state || autoExport.status;
+  autoExport.finalizable = Boolean(decision.finalizable);
+  autoExport.reasons = Array.isArray(decision.reasons) ? decision.reasons : [];
+  autoExport.archivePath = decision.archivePath || autoExport.archivePath || null;
+  autoExport.archiveCursor = Number.isFinite(decision.archiveCursor) ? decision.archiveCursor : autoExport.archiveCursor;
+  autoExport.cursorStableForMs = Number.isFinite(decision.cursorStableForMs)
+    ? decision.cursorStableForMs
+    : autoExport.cursorStableForMs;
+  autoExport.lastDecisionAt = new Date().toISOString();
+  archive.autoExport = autoExport;
+  metrics.sendDataRawArchive = archive;
+}
+
+function recordSendDataRawArchiveAutoExportStarted(metrics, job) {
+  const archive = metrics.sendDataRawArchive || defaultRawArchiveStatus();
+  const autoExport = archive.autoExport || defaultRawArchiveAutoExportStatus();
+  autoExport.status = "running";
+  autoExport.activeJob = rawArchiveAutoExportJobSnapshot(job);
+  autoExport.lastDecisionAt = new Date().toISOString();
+  archive.autoExport = autoExport;
+  metrics.sendDataRawArchive = archive;
+}
+
+function recordSendDataRawArchiveAutoExportSucceeded(metrics, job, result) {
+  const archive = metrics.sendDataRawArchive || defaultRawArchiveStatus();
+  const autoExport = archive.autoExport || defaultRawArchiveAutoExportStatus();
+  autoExport.status = "uploaded";
+  autoExport.finalizable = false;
+  autoExport.reasons = [];
+  autoExport.activeJob = null;
+  autoExport.uploadedJobs += 1;
+  autoExport.lastResult = result || null;
+  autoExport.lastDecisionAt = new Date().toISOString();
+  archive.autoExport = autoExport;
+  metrics.sendDataRawArchive = archive;
+}
+
+function recordSendDataRawArchiveAutoExportFailed(metrics, job, reason, message) {
+  const archive = metrics.sendDataRawArchive || defaultRawArchiveStatus();
+  const autoExport = archive.autoExport || defaultRawArchiveAutoExportStatus();
+  autoExport.status = job && job.state ? job.state : "failed";
+  autoExport.activeJob = job ? rawArchiveAutoExportJobSnapshot(job) : autoExport.activeJob;
+  autoExport.failedJobs += 1;
+  autoExport.lastFailure = failureRecord(reason, message);
+  autoExport.lastDecisionAt = new Date().toISOString();
+  archive.autoExport = autoExport;
+  metrics.sendDataRawArchive = archive;
+}
+
+function rawArchiveAutoExportJobSnapshot(job) {
+  return {
+    jobId: job.jobId,
+    archivePath: job.archivePath,
+    archiveCursor: job.archiveCursor,
+    state: job.state,
+    attempts: job.attempts,
+    maxAttempts: job.maxAttempts,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    startedAt: job.startedAt,
+    completedAt: job.completedAt,
+    nextAttemptAt: job.nextAttemptAt,
+    lastFailure: job.lastFailure,
   };
 }
 
@@ -685,6 +759,24 @@ function defaultRawArchiveStatus() {
     lastArchiveId: null,
     lastOffset: null,
     lastFailure: null,
+    autoExport: defaultRawArchiveAutoExportStatus(),
+  };
+}
+
+function defaultRawArchiveAutoExportStatus() {
+  return {
+    status: "disabled",
+    finalizable: false,
+    reasons: [],
+    archivePath: null,
+    archiveCursor: null,
+    cursorStableForMs: null,
+    lastDecisionAt: null,
+    activeJob: null,
+    uploadedJobs: 0,
+    failedJobs: 0,
+    lastResult: null,
+    lastFailure: null,
   };
 }
 
@@ -802,6 +894,10 @@ module.exports = {
   metricsSnapshot,
   recordSendDataRawArchived,
   recordSendDataRawArchiveWriteFailed,
+  recordSendDataRawArchiveAutoExportDecision,
+  recordSendDataRawArchiveAutoExportFailed,
+  recordSendDataRawArchiveAutoExportStarted,
+  recordSendDataRawArchiveAutoExportSucceeded,
   recordSendDataSpoolAccepted,
   recordSendDataRealtimeSkipped,
   recordSendDataSpoolRejected,

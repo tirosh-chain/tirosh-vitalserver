@@ -15,6 +15,9 @@ const DEFAULT_MAX_REALTIME_PENDING_ITEMS = 2000;
 const DEFAULT_RAW_ARCHIVE_MAX_FILE_BYTES = 512 * MIB;
 const DEFAULT_RAW_ARCHIVE_MAX_FILES = 24;
 const DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS = 5 * 60 * 1000;
+const DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_MS = 60 * 1000;
+const DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS = 60 * 1000;
+const DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 function loadConfig(env) {
   const sendDataMode = sendDataIngressModeEnv(env, "RECORDER_INGRESS_SEND_DATA_MODE", sendDataIngressModes.SPOOL_AND_REPLAY);
@@ -146,6 +149,35 @@ function loadConfig(env) {
           "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS",
           DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS
         ),
+        scanIntervalMs: numberEnv(
+          env,
+          "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_MS",
+          DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_MS
+        ),
+        cursorStableMs: numberEnv(
+          env,
+          "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_CURSOR_STABLE_MS",
+          DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_MS
+        ),
+        retryDelayMs: numberEnv(
+          env,
+          "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS",
+          DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS
+        ),
+        maxAttempts: numberEnv(env, "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS", 3),
+        requestTimeoutMs: numberEnv(
+          env,
+          "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS",
+          DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS
+        ),
+        recoverUrl: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RECOVER_URL
+          || "http://testkit:18322/raw-archive/recover-vital",
+        vitalserverUrl: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_VITALSERVER_URL || "http://app:80",
+        uploadEndpoint: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_UPLOAD_ENDPOINT || "/upload",
+        outputDir: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR
+          || "/var/lib/vitalserver-recorder-ingress/recovery/vital-export",
+        statePath: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH
+          || "/var/lib/vitalserver-recorder-ingress/recovery/raw-archive-auto-export-state.json",
       },
     },
     clientIp: {

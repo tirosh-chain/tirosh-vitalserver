@@ -10,6 +10,8 @@
 - `/recorder-ingress/status` shows `rawArchive.status = failed`.
 - `/recorder-ingress/status` shows `rawArchive.writeFailures > 0`.
 - `rawArchive.lastFailure.message` includes disk, permission, or append errors.
+- `rawArchive.autoExport.status` stays `retryable_failed` or `failed` because the recovery
+  volume, TestKit recovery API, or VitalServer upload endpoint is unavailable.
 - Heavy recorder streaming continues, but `spool.skippedRealtimeEvents` also increases.
 
 `spool.skippedRealtimeEvents` is not the same failure. It means pending items were excluded from realtime replay candidates. If raw archive is failed at the same time, those skipped realtime candidates must not be treated as recoverable until archive persistence is confirmed.
@@ -83,6 +85,8 @@ uv run vitalserver-testkit recover-raw-archive-vital \
 - Alert when raw archive free space drops below the operational threshold.
 - Alert when `rawArchive.writeFailures` increases.
 - Alert when `rawArchive.status` is `failed`.
+- Alert when `rawArchive.autoExport.status` is `failed`, or when it stays
+  `retryable_failed` beyond the configured retry window.
 - Keep export output outside the raw archive volume when investigating disk pressure.
 - Size retention from measured heavy-load bytes per minute, not from recorder count alone.
 

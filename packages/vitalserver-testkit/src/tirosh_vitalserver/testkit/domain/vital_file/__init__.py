@@ -34,6 +34,6 @@ __all__ = [
     "playback_time_for_sequence",
     "raw_archive_payload_from_record",
     "raw_archive_payloads_from_jsonl_lines",
-    "vital_tracks_from_recorder_playback",
     "vital_tracks_by_vrcode_from_raw_archive",
+    "vital_tracks_from_recorder_playback",
 ]

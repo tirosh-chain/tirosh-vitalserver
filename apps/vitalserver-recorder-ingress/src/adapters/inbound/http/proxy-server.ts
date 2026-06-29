@@ -1,5 +1,6 @@
 import type { IncomingMessage, Server } from "http";
 import type { AuditRecorderPort } from "../../../application/ports/inbound/audit-recorder-port";
+import type { SendDataRawArchiveExportWorkerPort } from "../../../application/ports/inbound/send-data-raw-archive-export-worker-port";
 import type { SendDataReplayWorkerPort } from "../../../application/ports/inbound/send-data-replay-worker-port";
 import type { SocketIoAuditPort } from "../../../application/ports/inbound/socketio-audit-port";
 
@@ -43,6 +44,7 @@ type RecorderIngressHttpServerDependencies = {
   clientIp: ClientIpSelectorPort;
   config: RecorderIngressHttpConfig;
   metrics: RecorderIngressHttpMetrics;
+  sendDataRawArchiveExportWorker: SendDataRawArchiveExportWorkerPort;
   sendDataReplayWorker: SendDataReplayWorkerPort;
   socketIoAudit: SocketIoAuditPort;
 };
@@ -52,14 +54,21 @@ function createRecorderIngressHttpServer({
   clientIp,
   config,
   metrics,
+  sendDataRawArchiveExportWorker,
   sendDataReplayWorker,
   socketIoAudit,
 }: RecorderIngressHttpServerDependencies): Server {
   const dependencies = { audit, clientIp, config, metrics, socketIoAudit };
   const server = http.createServer((req, res) => proxyHttp(req, res, dependencies));
   server.on("upgrade", (req, socket, head) => proxyUpgrade(req, socket, head, dependencies));
-  server.on("listening", () => sendDataReplayWorker.start());
-  server.on("close", () => sendDataReplayWorker.stop());
+  server.on("listening", () => {
+    sendDataReplayWorker.start();
+    sendDataRawArchiveExportWorker.start();
+  });
+  server.on("close", () => {
+    sendDataReplayWorker.stop();
+    sendDataRawArchiveExportWorker.stop();
+  });
   return server;
 }
 

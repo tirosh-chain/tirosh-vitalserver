@@ -342,6 +342,7 @@ components:
         - lastArchiveId
         - lastOffset
         - lastFailure
+        - autoExport
       properties:
         status:
           $ref: "#/components/schemas/RecorderIngressSpoolStatusValue"
@@ -366,6 +367,125 @@ components:
         lastOffset:
           type: integer
           minimum: 0
+          nullable: true
+        lastFailure:
+          $ref: "#/components/schemas/RecorderIngressFailure"
+        autoExport:
+          $ref: "#/components/schemas/RecorderIngressRawArchiveAutoExportStatus"
+    RecorderIngressRawArchiveAutoExportStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - finalizable
+        - reasons
+        - archivePath
+        - archiveCursor
+        - cursorStableForMs
+        - lastDecisionAt
+        - activeJob
+        - uploadedJobs
+        - failedJobs
+        - lastResult
+        - lastFailure
+      properties:
+        status:
+          type: string
+          enum:
+            - disabled
+            - idle
+            - open
+            - inactive_candidate
+            - finalizable_by_inactivity
+            - running
+            - uploaded
+            - retryable_failed
+            - failed
+        finalizable:
+          type: boolean
+        reasons:
+          type: array
+          items:
+            type: string
+        archivePath:
+          type: string
+          nullable: true
+        archiveCursor:
+          type: integer
+          minimum: 0
+          nullable: true
+        cursorStableForMs:
+          type: integer
+          minimum: 0
+          nullable: true
+        lastDecisionAt:
+          type: string
+          nullable: true
+        activeJob:
+          $ref: "#/components/schemas/RecorderIngressRawArchiveAutoExportJob"
+        uploadedJobs:
+          type: integer
+          minimum: 0
+        failedJobs:
+          type: integer
+          minimum: 0
+        lastResult:
+          type: object
+          additionalProperties: true
+          nullable: true
+        lastFailure:
+          $ref: "#/components/schemas/RecorderIngressFailure"
+    RecorderIngressRawArchiveAutoExportJob:
+      type: object
+      nullable: true
+      additionalProperties: false
+      required:
+        - jobId
+        - archivePath
+        - archiveCursor
+        - state
+        - attempts
+        - maxAttempts
+        - createdAt
+        - updatedAt
+        - startedAt
+        - completedAt
+        - nextAttemptAt
+        - lastFailure
+      properties:
+        jobId:
+          type: string
+        archivePath:
+          type: string
+        archiveCursor:
+          type: integer
+          minimum: 0
+        state:
+          type: string
+          enum:
+            - pending
+            - running
+            - uploaded
+            - retryable_failed
+            - failed
+        attempts:
+          type: integer
+          minimum: 0
+        maxAttempts:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        startedAt:
+          type: string
+          nullable: true
+        completedAt:
+          type: string
+          nullable: true
+        nextAttemptAt:
+          type: string
           nullable: true
         lastFailure:
           $ref: "#/components/schemas/RecorderIngressFailure"
