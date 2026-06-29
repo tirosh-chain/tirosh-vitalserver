@@ -609,10 +609,17 @@ disconnect, `activeConnections = 0`, 또는 `send_data` silence를 `stopped`, `s
 안정적이고 realtime replay가 drain되었으며 같은 cursor가 아직 export/upload되지 않은 경우에만 export/upload
 후보로 봅니다. 5분이 지나기 전에는 `inactive_candidate`이며, 이 상태도 "종료됨"을 뜻하지 않습니다.
 
+recorder ingress process가 `SIGTERM` 또는 `SIGINT`로 종료될 때는 별도 `shutdown` trigger를 사용합니다.
+이 trigger는 recorder lifecycle 추론이 아니라 process 종료 이벤트입니다. 종료 path는 active socket을 닫고
+마지막 auto export tick을 실행합니다. 이때 realtime replay가 이미 drain되었으면 `finalizable_by_shutdown`으로
+`.vital` export/upload를 시도하며, replay backlog가 남아 있으면 업로드를 진행하지 않고 raw archive와 recovery
+state를 bind mount에 보존합니다. 따라서 종료 시 upload 실패나 보류는 raw archive 삭제로 이어지면 안 되며, 다음
+기동 후 auto export worker 또는 수동 `recover-raw-archive-vital` 명령이 같은 raw archive를 처리해야 합니다.
+
 제품화 결정은 다음과 같습니다.
 
 1. recorder ingress process는 raw archive auto export worker를 소유합니다. Worker는 raw archive cursor를
-   관측하고, `finalizable_by_inactivity`가 참이면 job document를 만든 뒤 제품 `recorder-recovery` API를 호출합니다.
+   관측하고, `finalizable_by_inactivity` 또는 종료 path의 `finalizable_by_shutdown`이 참이면 job document를 만든 뒤 제품 `recorder-recovery` API를 호출합니다.
    Job state, retry state, upload result, checkpoint는
    `RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_STATE_PATH` JSON 문서에 남깁니다.
 2. 수동 운영 명령도 유지합니다. `recover-raw-archive-vital`은 raw archive JSONL을

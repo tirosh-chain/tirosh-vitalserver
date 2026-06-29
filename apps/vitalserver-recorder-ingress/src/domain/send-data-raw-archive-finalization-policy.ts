@@ -3,6 +3,7 @@ export type SendDataRawArchiveFinalizationState =
   | "open"
   | "inactive_candidate"
   | "finalizable_by_inactivity"
+  | "finalizable_by_shutdown"
   | "already_exported";
 
 export type SendDataRawArchiveFinalizationReason =
@@ -17,6 +18,7 @@ export type SendDataRawArchiveFinalizationReason =
 
 export type SendDataRawArchiveFinalizationInput = {
   vrcode: string;
+  trigger?: "inactivity" | "shutdown";
   hasJoined: boolean;
   rawArchiveRecords: number;
   activeConnections: number;
@@ -47,6 +49,7 @@ function decideSendDataRawArchiveFinalization(
   const quietWindowMs = positiveInteger(input.quietWindowMs, DEFAULT_QUIET_WINDOW_MS);
   const inactiveForMs = ageMs(input.lastRawArchivedAt, input.nowMs);
   const reasons: SendDataRawArchiveFinalizationReason[] = [];
+  const shutdownRequested = input.trigger === "shutdown";
 
   if (!input.hasJoined) {
     return decision(input, "not_observed", false, quietWindowMs, inactiveForMs, ["recorder_not_observed"]);
@@ -62,10 +65,10 @@ function decideSendDataRawArchiveFinalization(
   }
   if (inactiveForMs === null) {
     reasons.push("last_archive_timestamp_missing");
-  } else if (inactiveForMs < quietWindowMs) {
+  } else if (!shutdownRequested && inactiveForMs < quietWindowMs) {
     reasons.push("quiet_window_not_elapsed");
   }
-  if (!input.archiveCursorStable) {
+  if (!shutdownRequested && !input.archiveCursorStable) {
     reasons.push("archive_cursor_not_stable");
   }
   if (!input.realtimeReplayDrained) {
@@ -73,7 +76,14 @@ function decideSendDataRawArchiveFinalization(
   }
 
   if (reasons.length === 0) {
-    return decision(input, "finalizable_by_inactivity", true, quietWindowMs, inactiveForMs, []);
+    return decision(
+      input,
+      shutdownRequested ? "finalizable_by_shutdown" : "finalizable_by_inactivity",
+      true,
+      quietWindowMs,
+      inactiveForMs,
+      []
+    );
   }
 
   const candidate = reasons.every((reason) => reason !== "active_connection_present" && reason !== "raw_archive_empty");

@@ -46,6 +46,48 @@ test("recorder ingress HTTP adapter starts and stops injected workers on server 
   assert.deepStrictEqual(calls, ["replay-start", "raw-start", "replay-stop", "raw-stop"]);
 });
 
+test("recorder ingress HTTP adapter runs shutdown raw archive export trigger", async () => {
+  const calls = [];
+  const server = createRecorderIngressHttpServer({
+    audit: { record() {} },
+    clientIp: { select() { return { selected_ip: "127.0.0.1" }; } },
+    config: httpAdapterConfig(),
+    metrics: createMetrics(),
+    sendDataRawArchiveExportWorker: {
+      start() {
+        calls.push("raw-start");
+      },
+      stop() {
+        calls.push("raw-stop");
+      },
+      async runOnce(options) {
+        calls.push(`raw-run:${options && options.trigger}`);
+        return { ok: true, state: "uploaded" };
+      },
+    },
+    sendDataReplayWorker: {
+      start() {
+        calls.push("replay-start");
+      },
+      stop() {
+        calls.push("replay-stop");
+      },
+      async runOnce() {
+        return { ok: true, processed: 0, disabled: true };
+      },
+    },
+    socketIoAudit: {
+      inspect() {},
+      inspectBinary() {},
+    },
+  });
+
+  const result = await server.prepareShutdown();
+
+  assert.deepStrictEqual(result, { ok: true, state: "uploaded" });
+  assert.deepStrictEqual(calls, ["replay-stop", "raw-stop", "raw-run:shutdown"]);
+});
+
 function httpAdapterConfig() {
   return {
     upstream: { host: "127.0.0.1", port: 1, timeoutMs: 1000 },

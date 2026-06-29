@@ -7,8 +7,12 @@ export type SendDataRawArchiveExportWorkerRunResult = {
   jobId?: string;
 };
 
+export type SendDataRawArchiveExportWorkerRunOptions = {
+  trigger?: "inactivity" | "shutdown";
+};
+
 export type SendDataRawArchiveExportWorkerPort = {
   start(): void;
   stop(): void;
-  runOnce(): Promise<SendDataRawArchiveExportWorkerRunResult>;
+  runOnce(options?: SendDataRawArchiveExportWorkerRunOptions): Promise<SendDataRawArchiveExportWorkerRunResult>;
 };

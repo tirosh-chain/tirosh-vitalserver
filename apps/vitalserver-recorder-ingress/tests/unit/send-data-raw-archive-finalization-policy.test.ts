@@ -90,6 +90,44 @@ test("raw archive finalization requires stable archive cursor and drained realti
   ]);
 });
 
+test("raw archive shutdown finalization does not wait for inactivity or cursor stability", () => {
+  const decision = decideSendDataRawArchiveFinalization({
+    vrcode: "VR-1",
+    trigger: "shutdown",
+    hasJoined: true,
+    rawArchiveRecords: 12,
+    activeConnections: 0,
+    lastRawArchivedAt: "2026-06-28T10:04:59.000Z",
+    nowMs: Date.parse("2026-06-28T10:05:00.000Z"),
+    archiveCursorStable: false,
+    realtimeReplayDrained: true,
+    alreadyExported: false,
+  });
+
+  assert.strictEqual(decision.state, "finalizable_by_shutdown");
+  assert.strictEqual(decision.finalizable, true);
+  assert.deepStrictEqual(decision.reasons, []);
+});
+
+test("raw archive shutdown finalization still requires drained realtime replay", () => {
+  const decision = decideSendDataRawArchiveFinalization({
+    vrcode: "VR-1",
+    trigger: "shutdown",
+    hasJoined: true,
+    rawArchiveRecords: 12,
+    activeConnections: 0,
+    lastRawArchivedAt: "2026-06-28T10:04:59.000Z",
+    nowMs: Date.parse("2026-06-28T10:05:00.000Z"),
+    archiveCursorStable: false,
+    realtimeReplayDrained: false,
+    alreadyExported: false,
+  });
+
+  assert.strictEqual(decision.state, "inactive_candidate");
+  assert.strictEqual(decision.finalizable, false);
+  assert.deepStrictEqual(decision.reasons, ["realtime_replay_not_drained"]);
+});
+
 test("raw archive finalization preserves not observed and already exported states", () => {
   const nowMs = Date.parse("2026-06-28T10:05:00.000Z");
 

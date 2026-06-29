@@ -82,6 +82,55 @@ test("raw archive export worker waits for stable cursor before upload", async ()
   assert.strictEqual(state.lastObserved.archiveCursor, 42);
 });
 
+test("raw archive export worker uploads on shutdown without waiting for stable cursor", async () => {
+  const metrics = metricsWithFinalizableArchive();
+  const state = emptyState();
+  const requests = [];
+  const worker = createSendDataRawArchiveExportWorker({
+    config: workerConfig(),
+    metrics,
+    jobStore: memoryJobStore(state),
+    executor: {
+      async recover(request) {
+        requests.push(request);
+        return { ok: true, statusCode: 200, response: { upload: { successfulRequests: 1 } } };
+      },
+    },
+  });
+
+  const result = await worker.runOnce({ trigger: "shutdown" });
+
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.state, "uploaded");
+  assert.strictEqual(requests.length, 1);
+  assert.strictEqual(state.checkpoint.archiveCursor, 42);
+});
+
+test("raw archive export worker keeps shutdown archive pending when replay is not drained", async () => {
+  const metrics = metricsWithFinalizableArchive();
+  metrics.sendDataReplay.pendingItems = 1;
+  const state = emptyState();
+  let calls = 0;
+  const worker = createSendDataRawArchiveExportWorker({
+    config: workerConfig(),
+    metrics,
+    jobStore: memoryJobStore(state),
+    executor: {
+      async recover() {
+        calls += 1;
+        return { ok: true, statusCode: 200, response: {} };
+      },
+    },
+  });
+
+  const result = await worker.runOnce({ trigger: "shutdown" });
+
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.state, "inactive_candidate");
+  assert.strictEqual(calls, 0);
+  assert.deepStrictEqual(metrics.sendDataRawArchive.autoExport.reasons, ["realtime_replay_not_drained"]);
+});
+
 function metricsWithFinalizableArchive() {
   const metrics = createMetrics();
   configureSendDataRawArchive(metrics, {

@@ -1,4 +1,5 @@
 import type { IncomingMessage, Server } from "http";
+import type { Socket } from "net";
 import type { AuditRecorderPort } from "../../../application/ports/inbound/audit-recorder-port";
 import type { SendDataRawArchiveExportWorkerPort } from "../../../application/ports/inbound/send-data-raw-archive-export-worker-port";
 import type { SendDataReplayWorkerPort } from "../../../application/ports/inbound/send-data-replay-worker-port";
@@ -49,6 +50,10 @@ type RecorderIngressHttpServerDependencies = {
   socketIoAudit: SocketIoAuditPort;
 };
 
+export type RecorderIngressHttpServer = Server & {
+  prepareShutdown?: () => Promise<unknown>;
+};
+
 function createRecorderIngressHttpServer({
   audit,
   clientIp,
@@ -57,9 +62,14 @@ function createRecorderIngressHttpServer({
   sendDataRawArchiveExportWorker,
   sendDataReplayWorker,
   socketIoAudit,
-}: RecorderIngressHttpServerDependencies): Server {
+}: RecorderIngressHttpServerDependencies): RecorderIngressHttpServer {
   const dependencies = { audit, clientIp, config, metrics, socketIoAudit };
-  const server = http.createServer((req, res) => proxyHttp(req, res, dependencies));
+  const activeSockets = new Set<Socket>();
+  const server: RecorderIngressHttpServer = http.createServer((req, res) => proxyHttp(req, res, dependencies));
+  server.on("connection", (socket) => {
+    activeSockets.add(socket);
+    socket.on("close", () => activeSockets.delete(socket));
+  });
   server.on("upgrade", (req, socket, head) => proxyUpgrade(req, socket, head, dependencies));
   server.on("listening", () => {
     sendDataReplayWorker.start();
@@ -69,7 +79,30 @@ function createRecorderIngressHttpServer({
     sendDataReplayWorker.stop();
     sendDataRawArchiveExportWorker.stop();
   });
+  server.prepareShutdown = async () => {
+    sendDataReplayWorker.stop();
+    sendDataRawArchiveExportWorker.stop();
+    for (const socket of activeSockets) {
+      socket.destroy();
+    }
+    await waitForActiveSocketsToClose(activeSockets, 250);
+    return sendDataRawArchiveExportWorker.runOnce({ trigger: "shutdown" });
+  };
   return server;
+}
+
+function waitForActiveSocketsToClose(activeSockets: Set<Socket>, timeoutMs: number) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const poll = () => {
+      if (activeSockets.size === 0 || Date.now() >= deadline) {
+        resolve(null);
+        return;
+      }
+      setTimeout(poll, 10);
+    };
+    poll();
+  });
 }
 
 function proxyHttp(req, res, dependencies) {

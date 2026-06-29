@@ -1,4 +1,5 @@
 import type { SendDataRawArchiveExportWorkerPort } from "./ports/inbound/send-data-raw-archive-export-worker-port";
+import type { SendDataRawArchiveExportWorkerRunOptions } from "./ports/inbound/send-data-raw-archive-export-worker-port";
 import type {
   SendDataRawArchiveExportJob,
   SendDataRawArchiveExportJobStorePort,
@@ -33,7 +34,7 @@ function createSendDataRawArchiveExportWorker({
   let timer: NodeJS.Timeout | null = null;
   let running = false;
 
-  async function runOnce() {
+  async function runOnce(options: SendDataRawArchiveExportWorkerRunOptions = {}) {
     if (!settings.enabled) {
       recordSendDataRawArchiveAutoExportDecision(metrics, {
         state: "disabled",
@@ -48,7 +49,7 @@ function createSendDataRawArchiveExportWorker({
 
     running = true;
     try {
-      return await runExportTick({ settings, executor, jobStore, metrics });
+      return await runExportTick({ settings, executor, jobStore, metrics, trigger: options.trigger || "inactivity" });
     } finally {
       running = false;
     }
@@ -72,7 +73,7 @@ function createSendDataRawArchiveExportWorker({
   };
 }
 
-async function runExportTick({ settings, executor, jobStore, metrics }) {
+async function runExportTick({ settings, executor, jobStore, metrics, trigger }) {
   const snapshot = metricsSnapshot(metrics);
   const archive = snapshot.rawArchive || {};
   const archivePath = archive.path || "";
@@ -117,6 +118,7 @@ async function runExportTick({ settings, executor, jobStore, metrics }) {
 
   const decision = decideSendDataRawArchiveFinalization({
     vrcode: "raw_archive",
+    trigger,
     hasJoined: (snapshot.recorders || []).some((recorder) => (recorder.sendDataEventsObserved || 0) > 0),
     rawArchiveRecords: archive.persistedEvents || 0,
     activeConnections: snapshot.activeRecorderConnections || 0,
