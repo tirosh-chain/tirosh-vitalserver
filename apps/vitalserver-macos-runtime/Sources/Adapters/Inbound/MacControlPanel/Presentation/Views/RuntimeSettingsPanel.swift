@@ -99,6 +99,11 @@ struct RuntimeSettingsPanel: View {
                     )
                     .disabled(!viewModel.capabilities.canControlRuntimeServices || !viewModel.settings.containerMemoryLimitsEnabled)
                 }
+                settingsSection(AppConstants.Labels.recorderIngressHotColdPath) {
+                    recorderIngressSettingsFields
+                    settingHelp(AppConstants.Labels.recorderIngressHotColdPathHelp)
+                }
+                .disabled(!viewModel.capabilities.canControlRuntimeServices)
                 settingsSection(AppConstants.Labels.sectionStorage) {
                     settingDirectoryField(
                         AppConstants.Labels.vitalFilesDirectory,
@@ -196,6 +201,7 @@ struct RuntimeSettingsPanel: View {
             clampContainerMemoryLimits()
             normalizeContainerMemoryLimitTotal()
             normalizeRecorderLoadControlMode()
+            normalizeRecorderArchiveDefaults()
         }
         .onChange(of: viewModel.settings.cpuCount) {
             clampCPUCountToSystemLimit()
@@ -211,6 +217,9 @@ struct RuntimeSettingsPanel: View {
         }
         .onChange(of: viewModel.settings.recorderIngressSendDataMode) {
             normalizeRecorderLoadControlMode()
+            enableContainerReconcileActivationWhenNeeded()
+        }
+        .onChange(of: viewModel.settings.recorderIngress) {
             enableContainerReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.containerMemoryLimitsEnabled) {
@@ -301,6 +310,11 @@ struct RuntimeSettingsPanel: View {
         case .mirrorSpool, .spoolOnly:
             viewModel.settings.recorderIngressSendDataMode = .spoolAndReplay
         }
+    }
+
+    private func normalizeRecorderArchiveDefaults() {
+        viewModel.settings.recorderIngress.rawArchiveEnabled = true
+        viewModel.settings.recorderIngress.rawArchiveAutoExportEnabled = true
     }
 
     private func enableContainerReconcileActivationWhenNeeded() {
@@ -958,6 +972,22 @@ struct RuntimeSettingsPanel: View {
         }
     }
 
+    @ViewBuilder
+    private var recorderIngressSettingsFields: some View {
+        settingIntegerField(AppConstants.Labels.recorderIngressPendingMiB, value: $viewModel.settings.recorderIngress.sendDataMaxPendingMiB)
+        settingIntegerField(AppConstants.Labels.recorderIngressRawArchiveFileMiB, value: $viewModel.settings.recorderIngress.rawArchiveMaxFileMiB)
+        settingIntegerField(AppConstants.Labels.recorderIngressRawArchiveFiles, value: $viewModel.settings.recorderIngress.rawArchiveMaxFiles)
+    }
+
+    private func settingIntegerField(_ label: String, value: Binding<Int>) -> some View {
+        settingRow(label) {
+            TextField("", value: value, formatter: positiveIntegerFormatter)
+                .labelsHidden()
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 120)
+        }
+    }
+
     private func settingToggle(_ label: String, isOn: Binding<Bool>) -> some View {
         settingRow(label) {
             Toggle("", isOn: isOn)
@@ -970,6 +1000,14 @@ struct RuntimeSettingsPanel: View {
         formatter.numberStyle = .none
         formatter.minimum = 1
         formatter.maximum = 65_535
+        formatter.allowsFloats = false
+        return formatter
+    }
+
+    private var positiveIntegerFormatter: NumberFormatter {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.minimum = 1
         formatter.allowsFloats = false
         return formatter
     }

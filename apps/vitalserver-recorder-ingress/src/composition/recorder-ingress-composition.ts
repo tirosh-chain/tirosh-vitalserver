@@ -7,7 +7,7 @@ const { createAuditStdoutWriter } = require("../adapters/outbound/process/audit-
 const { createSendDataFailureLogWriter } = require("../adapters/outbound/file/send-data-failure-log-writer");
 const { createSendDataRawArchiveExportJobStore } = require("../adapters/outbound/file/send-data-raw-archive-export-job-store");
 const { createSendDataRawArchiveWriter } = require("../adapters/outbound/file/send-data-raw-archive-writer");
-const { createTestkitRawArchiveRecoveryExecutor } = require("../adapters/outbound/http/testkit-raw-archive-recovery-executor");
+const { createRawArchiveRecoveryExecutor } = require("../adapters/outbound/http/raw-archive-recovery-executor");
 const { createRuntimeStateMemoryGuardReader } = require("../adapters/outbound/file/runtime-state-memory-guard-reader");
 const { createRedisAuditEventStore } = require("../adapters/outbound/redis/audit-event-store");
 const { createRedisClient } = require("../adapters/outbound/redis/client");
@@ -35,7 +35,7 @@ function createRecorderIngressServer(config) {
   const sendDataFailureLog = createSendDataFailureLogWriter(config.failureLog, metrics);
   const sendDataRawArchive = createSendDataRawArchiveWriter(config.rawArchive);
   const sendDataRawArchiveExportJobStore = createSendDataRawArchiveExportJobStore(config);
-  const sendDataRawArchiveRecoveryExecutor = createTestkitRawArchiveRecoveryExecutor(config);
+  const sendDataRawArchiveRecoveryExecutor = createRawArchiveRecoveryExecutor(config);
   const audit = createAuditRecorder(config.audit, [auditLog, auditStdout, redisAudit]);
   const vrIdentityStore = createVrIdentityStore(identityRedis, metrics);
   const sendDataSpoolStore = createRedisSendDataSpoolStore(config.spool, sendDataRedis);

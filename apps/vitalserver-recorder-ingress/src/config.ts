@@ -143,7 +143,7 @@ function loadConfig(env) {
       ),
       maxFiles: numberEnv(env, "RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES", DEFAULT_RAW_ARCHIVE_MAX_FILES),
       autoExport: {
-        enabled: booleanEnv(env, "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED", false),
+        enabled: booleanEnv(env, "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED", true),
         quietWindowMs: numberEnv(
           env,
           "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS",
@@ -170,8 +170,7 @@ function loadConfig(env) {
           "RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS",
           DEFAULT_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS
         ),
-        recoverUrl: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RECOVER_URL
-          || "http://testkit:18322/raw-archive/recover-vital",
+        recoverUrl: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RECOVER_URL || "",
         vitalserverUrl: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_VITALSERVER_URL || "http://app:80",
         uploadEndpoint: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_UPLOAD_ENDPOINT || "/upload",
         outputDir: env.RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_OUTPUT_DIR

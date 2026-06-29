@@ -60,6 +60,8 @@ class DockerImagePlan:
     app_dockerfile: Path
     recorder_ingress_image: str
     recorder_ingress_dockerfile: Path
+    recorder_recovery_image: str
+    recorder_recovery_dockerfile: Path
     vitaldb_observer_image: str
     vitaldb_observer_dockerfile: Path
     redis_relay_image: str
@@ -78,6 +80,8 @@ class DockerImagesConfig:
     app_dockerfile: str
     recorder_ingress_image: str
     recorder_ingress_dockerfile: str
+    recorder_recovery_image: str
+    recorder_recovery_dockerfile: str
     vitaldb_observer_image: str
     vitaldb_observer_dockerfile: str
     redis_relay_image: str
@@ -102,13 +106,17 @@ def guest_deploy_plan(
     config: GuestDeployConfig,
     docker_bundle: Path | None,
     optional_docker_bundle: Path | None = None,
+    include_optional: bool = False,
 ) -> GuestDeployPlan:
+    configured_includes = list(config.includes)
+    if include_optional:
+        configured_includes.extend(config.optional_includes)
     includes = [
         GuestDeployEntry(
             source=root / entry.source,
             destination=deploy_dir / entry.destination,
         )
-        for entry in config.includes
+        for entry in configured_includes
     ]
     python_wheel_projects = [
         GuestPythonWheelProject(
@@ -177,6 +185,8 @@ def docker_image_plan(
     app_dockerfile: str,
     recorder_ingress_image: str,
     recorder_ingress_dockerfile: str,
+    recorder_recovery_image: str,
+    recorder_recovery_dockerfile: str,
     vitaldb_observer_image: str,
     vitaldb_observer_dockerfile: str,
     redis_relay_image: str,
@@ -189,6 +199,7 @@ def docker_image_plan(
     app_image = images[0]
     local_build_images = {
         recorder_ingress_image,
+        recorder_recovery_image,
         vitaldb_observer_image,
         redis_relay_image,
         testkit_image,
@@ -202,6 +213,8 @@ def docker_image_plan(
         app_dockerfile=root / app_dockerfile,
         recorder_ingress_image=recorder_ingress_image,
         recorder_ingress_dockerfile=root / recorder_ingress_dockerfile,
+        recorder_recovery_image=recorder_recovery_image,
+        recorder_recovery_dockerfile=root / recorder_recovery_dockerfile,
         vitaldb_observer_image=vitaldb_observer_image,
         vitaldb_observer_dockerfile=root / vitaldb_observer_dockerfile,
         redis_relay_image=redis_relay_image,

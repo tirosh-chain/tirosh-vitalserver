@@ -13,6 +13,7 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
     case recorderIngressSendDataMode
     case recorderIngressSendDataReplayBatchSize
     case recorderIngressSendDataReplayMaxMiBPerSecond
+    case recorderIngressSettingsFile
     case containerMemoryLimitsEnabled
     case vitalServerContainerMemoryLimitMiB
     case recorderIngressContainerMemoryLimitMiB
@@ -61,6 +62,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             self = .recorderIngressSendDataReplayBatchSize
         case "--recorder-ingress-send-data-replay-max-mib-per-second":
             self = .recorderIngressSendDataReplayMaxMiBPerSecond
+        case "--recorder-ingress-settings-file":
+            self = .recorderIngressSettingsFile
         case "--container-memory-limits":
             self = .containerMemoryLimitsEnabled
         case "--vitalserver-container-memory-limit-mib":
@@ -128,6 +131,8 @@ public enum RuntimeConfigureOption: Equatable, Sendable {
             return "--recorder-ingress-send-data-replay-batch-size"
         case .recorderIngressSendDataReplayMaxMiBPerSecond:
             return "--recorder-ingress-send-data-replay-max-mib-per-second"
+        case .recorderIngressSettingsFile:
+            return "--recorder-ingress-settings-file"
         case .containerMemoryLimitsEnabled:
             return "--container-memory-limits"
         case .vitalServerContainerMemoryLimitMiB:

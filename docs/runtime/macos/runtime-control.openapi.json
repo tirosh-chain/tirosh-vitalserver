@@ -3608,6 +3608,9 @@
           "throughput": {
             "$ref": "#/components/schemas/RuntimeRecorderIngressThroughputStatus"
           },
+          "rawArchive": {
+            "$ref": "#/components/schemas/RuntimeRecorderIngressRawArchiveStatus"
+          },
           "spool": {
             "$ref": "#/components/schemas/RuntimeRecorderIngressSpoolStatus"
           },
@@ -3677,6 +3680,225 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "RuntimeRecorderIngressRawArchiveStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "persistedEvents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "persistedBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "writeFailures": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "lastArchivedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastArchiveId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastOffset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "lastFailure": {
+            "$ref": "#/components/schemas/RuntimeRecorderIngressFailureObservation"
+          },
+          "autoExport": {
+            "$ref": "#/components/schemas/RuntimeRecorderIngressRawArchiveAutoExportStatus"
+          }
+        }
+      },
+      "RuntimeRecorderIngressRawArchiveAutoExportStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finalizable": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "archivePath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "archiveCursor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "cursorStableForMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "lastDecisionAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "activeJob": {
+            "$ref": "#/components/schemas/RuntimeRecorderIngressRawArchiveAutoExportJob"
+          },
+          "uploadedJobs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "failedJobs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "lastResult": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          },
+          "lastFailure": {
+            "$ref": "#/components/schemas/RuntimeRecorderIngressFailureObservation"
+          }
+        }
+      },
+      "RuntimeRecorderIngressRawArchiveAutoExportJob": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "jobId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "archivePath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "archiveCursor": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "state": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attempts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "maxAttempts": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nextAttemptAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastFailure": {
+            "$ref": "#/components/schemas/RuntimeRecorderIngressFailureObservation"
           }
         }
       },
@@ -4154,6 +4376,7 @@
           "recorderIngressSendDataMode",
           "recorderIngressSendDataReplayBatchSize",
           "recorderIngressSendDataReplayMaxMiBPerSecond",
+          "recorderIngress",
           "containerMemoryLimitsEnabled",
           "vitalServerContainerMemoryLimitMiB",
           "recorderIngressContainerMemoryLimitMiB",
@@ -4169,6 +4392,7 @@
           "backupRetentionCount",
           "logArchiveRetentionDays",
           "logArchiveMaximumGiB",
+          "redisRelay",
           "restartAfterSave"
         ],
         "properties": {
@@ -4240,6 +4464,9 @@
             "type": "integer",
             "description": "Maximum recorder send_data replay throughput in MiB/s."
           },
+          "recorderIngress": {
+            "$ref": "#/components/schemas/RuntimeRecorderIngressSettings"
+          },
           "containerMemoryLimitsEnabled": {
             "type": "boolean",
             "description": "Whether Docker hard memory limits are applied to selected runtime containers."
@@ -4292,10 +4519,192 @@
           "logArchiveMaximumGiB": {
             "type": "integer"
           },
+          "redisRelay": {
+            "$ref": "#/components/schemas/RuntimeRedisRelaySettings"
+          },
           "restartAfterSave": {
             "type": "boolean"
           }
         }
+      },
+      "RuntimeRecorderIngressSettings": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sendDataMaxPendingItems": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sendDataMaxPendingMiB": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sendDataMaxPayloadMiB": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sendDataReplayedMaxItems": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sendDataRealtimeMaxPendingItems": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sendDataReplayIntervalMs": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sendDataReplayMaxAttempts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sendDataReplayTargetTimeoutMs": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sendDataReplayAdaptiveMinConcurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sendDataReplayAdaptiveMaxConcurrency": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rawArchiveEnabled": {
+            "type": "boolean"
+          },
+          "rawArchiveMaxFileMiB": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rawArchiveMaxFiles": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rawArchiveAutoExportEnabled": {
+            "type": "boolean"
+          },
+          "rawArchiveAutoExportQuietSeconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rawArchiveAutoExportScanIntervalSeconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rawArchiveAutoExportCursorStableSeconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rawArchiveAutoExportRetryDelaySeconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rawArchiveAutoExportMaxAttempts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rawArchiveAutoExportRequestTimeoutSeconds": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "sendDataMaxPendingItems",
+          "sendDataMaxPendingMiB",
+          "sendDataMaxPayloadMiB",
+          "sendDataReplayedMaxItems",
+          "sendDataRealtimeMaxPendingItems",
+          "sendDataReplayIntervalMs",
+          "sendDataReplayMaxAttempts",
+          "sendDataReplayTargetTimeoutMs",
+          "sendDataReplayAdaptiveMinConcurrency",
+          "sendDataReplayAdaptiveMaxConcurrency",
+          "rawArchiveEnabled",
+          "rawArchiveMaxFileMiB",
+          "rawArchiveMaxFiles",
+          "rawArchiveAutoExportEnabled",
+          "rawArchiveAutoExportQuietSeconds",
+          "rawArchiveAutoExportScanIntervalSeconds",
+          "rawArchiveAutoExportCursorStableSeconds",
+          "rawArchiveAutoExportRetryDelaySeconds",
+          "rawArchiveAutoExportMaxAttempts",
+          "rawArchiveAutoExportRequestTimeoutSeconds"
+        ]
+      },
+      "RuntimeRedisRelayScope": {
+        "type": "string",
+        "enum": [
+          "waveform_trend_only",
+          "vital_reconstruction"
+        ]
+      },
+      "RuntimeRedisRelayTarget": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "clearPassword": {
+            "type": "boolean"
+          },
+          "passwordConfigured": {
+            "type": "boolean"
+          },
+          "tls": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "url",
+          "username",
+          "password",
+          "clearPassword",
+          "passwordConfigured",
+          "tls"
+        ]
+      },
+      "RuntimeRedisRelaySettings": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "target": {
+            "$ref": "#/components/schemas/RuntimeRedisRelayTarget"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/RuntimeRedisRelayScope"
+          },
+          "includeRecorderNetworkContext": {
+            "type": "boolean"
+          },
+          "intervalSeconds": {
+            "type": "number",
+            "minimum": 0.1
+          },
+          "scanCount": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "enabled",
+          "target",
+          "scope",
+          "includeRecorderNetworkContext",
+          "intervalSeconds",
+          "scanCount"
+        ]
       },
       "RuntimeSettingsReadIssue": {
         "type": "object",

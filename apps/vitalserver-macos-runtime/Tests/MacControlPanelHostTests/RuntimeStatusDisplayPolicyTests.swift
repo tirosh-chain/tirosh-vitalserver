@@ -791,6 +791,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                 RuntimeContainerServiceObservation(service: "app", uptimeSeconds: 1),
                 RuntimeContainerServiceObservation(service: "edge", uptimeSeconds: 2),
                 RuntimeContainerServiceObservation(service: "recorder-ingress", uptimeSeconds: 5),
+                RuntimeContainerServiceObservation(service: "recorder-recovery", uptimeSeconds: 6),
                 RuntimeContainerServiceObservation(service: "redis-ui", uptimeSeconds: 3),
                 RuntimeContainerServiceObservation(service: "swagger-ui", uptimeSeconds: 4),
             ]
@@ -805,6 +806,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             AppConstants.Labels.watchdogService,
             AppConstants.Labels.vitalDBObserver,
             GeneratedRelease.recorderIngressName,
+            GeneratedRelease.recorderRecoveryName,
             AppConstants.Labels.redisRelay,
             GeneratedRelease.vitalServerName,
             GeneratedRelease.hostProxyName,
@@ -814,6 +816,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.action, .openVitalServer)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:01")
         XCTAssertEqual(item(GeneratedRelease.recorderIngressName, in: items)?.value.uptimeText, "00:00:05")
+        XCTAssertEqual(item(GeneratedRelease.recorderRecoveryName, in: items)?.value.uptimeText, "00:00:06")
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.value.text, AppConstants.StatusText.unavailable)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.httpStatus, "503")
         XCTAssertEqual(item(AppConstants.Labels.guestLogSyncService, in: items)?.value.text, AppConstants.StatusText.running)

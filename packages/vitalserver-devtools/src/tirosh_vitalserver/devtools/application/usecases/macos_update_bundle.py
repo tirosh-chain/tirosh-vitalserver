@@ -127,6 +127,7 @@ def build_update_bundle(input: ReleaseUpdateBundleInput) -> int:
             config=settings.guest_deploy,
             docker_bundle=settings.docker_bundle,
             optional_docker_bundle=optional_docker_bundle,
+            include_optional="testkit" in release.optional_container_services,
         ),
     )
     rootfs_base = resolve_path(root, input.rootfs_base) if input.rootfs_base else None

@@ -104,6 +104,8 @@ optional_bundle_path = ".tmp/vitalserver-vm-pkg/optional-docker-images/vitalserv
 app_dockerfile = "apps/vitalserver/docker/Dockerfile"
 recorder_ingress_image = "vitalserver-recorder-ingress:0.1.0"
 recorder_ingress_dockerfile = "apps/vitalserver-recorder-ingress/Dockerfile"
+recorder_recovery_image = "vitalserver-recorder-recovery:0.1.0"
+recorder_recovery_dockerfile = "apps/vitalserver-recorder-recovery/Dockerfile"
 vitaldb_observer_image = "vitaldb-observer:0.1.0"
 vitaldb_observer_dockerfile = "apps/vitaldb-observer/Dockerfile"
 redis_relay_image = "vitalserver-redis-relay:0.1.0"
@@ -113,6 +115,7 @@ testkit_dockerfile = "packages/vitalserver-testkit/Dockerfile"
 images = [
   "vitalserver:2.3.4",
   "vitalserver-recorder-ingress:0.1.0",
+  "vitalserver-recorder-recovery:0.1.0",
   "vitaldb-observer:0.1.0",
   "vitalserver-redis-relay:0.1.0",
   "redis:3.2.12-alpine",
@@ -135,12 +138,16 @@ include = [
   "apps/vitalserver/docker",
   "apps/vitalserver/runtime",
   "apps/vitalserver-recorder-ingress",
+  "apps/vitalserver-recorder-recovery",
+  "packages/vitalserver-core",
   "apps/vitaldb-observer",
   "apps/vitalserver-redis-relay",
-  "packages/vitalserver-testkit",
   "vendor/vitalserver/vitalserver-old",
   { source = "docs/api/vitalserver.openapi.yaml", destination = "docs/openapi.yaml" },
   { source = "docs/api/recorder-ingress.openapi.yaml", destination = "docs/openapi/recorder-ingress.openapi.yaml" },
   { source = "docs/api/vitaldb-observer.openapi.yaml", destination = "docs/openapi/vitaldb-observer.openapi.yaml" },
   { source = "docs/runtime/macos/runtime-control.openapi.json", destination = "docs/macos-runtime/runtime-control.openapi.json" },
+]
+optional_include = [
+  "packages/vitalserver-testkit",
 ]

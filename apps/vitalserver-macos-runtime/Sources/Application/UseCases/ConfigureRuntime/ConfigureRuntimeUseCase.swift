@@ -103,6 +103,7 @@ public enum ConfigureRuntimeChange<NetworkMode: Equatable>: Equatable {
     case recorderIngressSendDataMode(RuntimeRecorderIngressSendDataMode)
     case recorderIngressSendDataReplayBatchSize(Int)
     case recorderIngressSendDataReplayMaxMiBPerSecond(Int)
+    case recorderIngress(RuntimeRecorderIngressSettings)
     case containerMemoryLimitsEnabled(Bool)
     case vitalServerContainerMemoryLimitMiB(Int)
     case recorderIngressContainerMemoryLimitMiB(Int)
@@ -559,6 +560,9 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                 throw invalid("--recorder-ingress-send-data-replay-max-mib-per-second must be greater than 0")
             }
             guestRuntimeSettings.recorderIngressSendDataReplayMaxMiBPerSecond = value
+        case .recorderIngress(let value):
+            try validateRecorderIngressSettings(value)
+            guestRuntimeSettings.recorderIngress = value
         case .containerMemoryLimitsEnabled(let enabled):
             guestRuntimeSettings.containerMemoryLimitsEnabled = enabled
         case .vitalServerContainerMemoryLimitMiB(let value):
@@ -690,6 +694,37 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         }
     }
 
+    private func validateRecorderIngressSettings(
+        _ settings: RuntimeRecorderIngressSettings
+    ) throws {
+        let positiveFields: [(String, Int)] = [
+            ("sendDataMaxPendingItems", settings.sendDataMaxPendingItems),
+            ("sendDataMaxPendingMiB", settings.sendDataMaxPendingMiB),
+            ("sendDataMaxPayloadMiB", settings.sendDataMaxPayloadMiB),
+            ("sendDataReplayedMaxItems", settings.sendDataReplayedMaxItems),
+            ("sendDataRealtimeMaxPendingItems", settings.sendDataRealtimeMaxPendingItems),
+            ("sendDataReplayIntervalMs", settings.sendDataReplayIntervalMs),
+            ("sendDataReplayMaxAttempts", settings.sendDataReplayMaxAttempts),
+            ("sendDataReplayTargetTimeoutMs", settings.sendDataReplayTargetTimeoutMs),
+            ("sendDataReplayAdaptiveMinConcurrency", settings.sendDataReplayAdaptiveMinConcurrency),
+            ("sendDataReplayAdaptiveMaxConcurrency", settings.sendDataReplayAdaptiveMaxConcurrency),
+            ("rawArchiveMaxFileMiB", settings.rawArchiveMaxFileMiB),
+            ("rawArchiveMaxFiles", settings.rawArchiveMaxFiles),
+            ("rawArchiveAutoExportQuietSeconds", settings.rawArchiveAutoExportQuietSeconds),
+            ("rawArchiveAutoExportScanIntervalSeconds", settings.rawArchiveAutoExportScanIntervalSeconds),
+            ("rawArchiveAutoExportCursorStableSeconds", settings.rawArchiveAutoExportCursorStableSeconds),
+            ("rawArchiveAutoExportRetryDelaySeconds", settings.rawArchiveAutoExportRetryDelaySeconds),
+            ("rawArchiveAutoExportMaxAttempts", settings.rawArchiveAutoExportMaxAttempts),
+            ("rawArchiveAutoExportRequestTimeoutSeconds", settings.rawArchiveAutoExportRequestTimeoutSeconds),
+        ]
+        if let invalidField = positiveFields.first(where: { $0.1 <= 0 }) {
+            throw invalid("--recorder-ingress-settings-file \(invalidField.0) must be greater than 0")
+        }
+        guard settings.sendDataReplayAdaptiveMaxConcurrency >= settings.sendDataReplayAdaptiveMinConcurrency else {
+            throw invalid("--recorder-ingress-settings-file sendDataReplayAdaptiveMaxConcurrency must be greater than or equal to min concurrency")
+        }
+    }
+
     private func invalid(_ message: String) -> ConfigureRuntimeError {
         .invalidArgument(message)
     }
@@ -719,6 +754,7 @@ private extension ConfigureRuntimeChange {
         case .recorderIngressSendDataMode,
              .recorderIngressSendDataReplayBatchSize,
              .recorderIngressSendDataReplayMaxMiBPerSecond,
+             .recorderIngress,
              .containerMemoryLimitsEnabled,
              .vitalServerContainerMemoryLimitMiB,
              .recorderIngressContainerMemoryLimitMiB,

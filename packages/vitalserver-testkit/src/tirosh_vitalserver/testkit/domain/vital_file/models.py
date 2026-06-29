@@ -1,14 +1,7 @@
-"""Value objects for local `.vital` files."""
+"""Compatibility export for shared `.vital` file value objects."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
+from tirosh_vitalserver.core.domain.vital_file import PayloadFile
 
-
-@dataclass(frozen=True)
-class PayloadFile:
-    """Local file selected for VitalServer upload."""
-
-    path: Path
-    size_bytes: int
+__all__ = ["PayloadFile"]

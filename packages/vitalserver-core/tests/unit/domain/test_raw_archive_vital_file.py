@@ -3,21 +3,17 @@ from __future__ import annotations
 import base64
 import json
 import zlib
-from pathlib import Path
 
-from vitaldb import VitalFile
-
-from tirosh_vitalserver.testkit.adapters.outbound.raw_archive_vital_artifact import (
-    RawArchiveVitalFileExporter,
+from tirosh_vitalserver.core.domain.vital_file import (
+    raw_archive_payloads_from_jsonl_lines,
+    vital_tracks_by_vrcode_from_raw_archive,
 )
 
 
-def test_raw_archive_exporter_writes_vital_file(tmp_path: Path) -> None:
-    raw_archive = tmp_path / "send-data-raw.jsonl"
-    output_dir = tmp_path / "exported"
+def test_raw_archive_payloads_decode_send_data_jsonl() -> None:
     payload = {
         "vrcode": "VR_RAW",
-        "ver": "testkit",
+        "ver": "recorder",
         "rooms": {
             "OR1": {
                 "roomname": "OR1",
@@ -47,19 +43,12 @@ def test_raw_archive_exporter_writes_vital_file(tmp_path: Path) -> None:
             zlib.compress(json.dumps(payload).encode())
         ).decode(),
     }
-    raw_archive.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
-    artifacts = RawArchiveVitalFileExporter().export_raw_archive(
-        raw_archive,
-        output_dir,
-    )
+    payloads = raw_archive_payloads_from_jsonl_lines((json.dumps(record),))
+    tracks = vital_tracks_by_vrcode_from_raw_archive(payloads)
 
-    assert len(artifacts) == 1
-    assert artifacts[0].vrcode == "VR_RAW"
-    assert artifacts[0].filename.endswith(".vital")
-    assert artifacts[0].size_bytes > 0
-
-    vital_file = VitalFile(artifacts[0].path, header_only=True)
-    assert vital_file.dtstart == 1782620000.0
-    assert "OR1_Demo/HR" in vital_file.get_track_names()
-    assert "TestKit/METADATA" in vital_file.get_track_names()
+    assert payloads[0].vrcode == "VR_RAW"
+    assert payloads[0].archive_id == "senddata-test"
+    assert tuple(tracks) == ("VR_RAW",)
+    assert tracks["VR_RAW"][0].dtname == "OR1_Demo/HR"
+    assert tracks["VR_RAW"][0].records[0].value == 72

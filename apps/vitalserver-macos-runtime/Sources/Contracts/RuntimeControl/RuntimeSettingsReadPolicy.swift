@@ -36,6 +36,7 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
     public let recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
     public let recorderIngressSendDataReplayBatchSize: Int
     public let recorderIngressSendDataReplayMaxMiBPerSecond: Int
+    public let recorderIngress: RuntimeRecorderIngressSettings
     public let containerMemoryLimitsEnabled: Bool
     public let vitalServerContainerMemoryLimitMiB: Int
     public let recorderIngressContainerMemoryLimitMiB: Int
@@ -52,6 +53,7 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
         recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode = RuntimeSettingsInitialValues.recorderIngressSendDataMode,
         recorderIngressSendDataReplayBatchSize: Int = RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize,
         recorderIngressSendDataReplayMaxMiBPerSecond: Int = RuntimeSettingsInitialValues.recorderIngressSendDataReplayMaxMiBPerSecond,
+        recorderIngress: RuntimeRecorderIngressSettings = RuntimeRecorderIngressSettings(),
         containerMemoryLimitsEnabled: Bool = RuntimeSettingsInitialValues.containerMemoryLimitsEnabled,
         vitalServerContainerMemoryLimitMiB: Int = RuntimeSettingsInitialValues.vitalServerContainerMemoryLimitMiB,
         recorderIngressContainerMemoryLimitMiB: Int = RuntimeSettingsInitialValues.recorderIngressContainerMemoryLimitMiB,
@@ -70,6 +72,7 @@ public struct RuntimeGuestRuntimeSettingsReadInput: Equatable, Sendable {
             RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize
         )
         self.recorderIngressSendDataReplayMaxMiBPerSecond = recorderIngressSendDataReplayMaxMiBPerSecond
+        self.recorderIngress = recorderIngress
         self.containerMemoryLimitsEnabled = containerMemoryLimitsEnabled
         self.vitalServerContainerMemoryLimitMiB = vitalServerContainerMemoryLimitMiB
         self.recorderIngressContainerMemoryLimitMiB = recorderIngressContainerMemoryLimitMiB
@@ -297,6 +300,7 @@ public enum RuntimeSettingsReadPolicy {
             RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize
         )
         next.recorderIngressSendDataReplayMaxMiBPerSecond = input.recorderIngressSendDataReplayMaxMiBPerSecond
+        next.recorderIngress = input.recorderIngress
         next.containerMemoryLimitsEnabled = input.containerMemoryLimitsEnabled
         next.vitalServerContainerMemoryLimitMiB = input.vitalServerContainerMemoryLimitMiB
         next.recorderIngressContainerMemoryLimitMiB = input.recorderIngressContainerMemoryLimitMiB

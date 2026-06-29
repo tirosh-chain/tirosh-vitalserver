@@ -27,6 +27,7 @@ public enum RuntimeConfigureChange: Equatable, Sendable {
     case recorderIngressSendDataMode(RuntimeRecorderIngressSendDataMode)
     case recorderIngressSendDataReplayBatchSize(Int)
     case recorderIngressSendDataReplayMaxMiBPerSecond(Int)
+    case recorderIngressSettingsFile(URL)
     case containerMemoryLimitsEnabled(Bool)
     case vitalServerContainerMemoryLimitMiB(Int)
     case recorderIngressContainerMemoryLimitMiB(Int)

@@ -83,4 +83,43 @@ describe("recorderIngressQueueStatus", () => {
       } as Parameters<typeof recorderIngressQueueStatus>[0])
     ).toBe("Not ready");
   });
+
+  it("reports raw archive write failures in the recorder ingress queue summary", () => {
+    expect(
+      recorderIngressQueueStatus({
+        recorderIngressHTTP: "200",
+        recorderIngressStatusReadState: "loaded",
+        recorderIngressStatusReadError: null,
+        recorderIngressStatus: {
+          activeWebSockets: 1,
+          activeRecorderConnections: 1,
+          recorders: [],
+          httpRequests: 1,
+          socketIoEventsSeen: 1,
+          socketIoParseFailures: 0,
+          auditWriteFailures: 0,
+          auditFileWriteFailures: 0,
+          auditStdoutWriteFailures: 0,
+          redisIpWriteFailures: 0,
+          redisIpVerifyFailures: 0,
+          redisIpVerifyMismatches: 0,
+          rawArchive: {
+            status: "failed",
+            persistedEvents: 12,
+            persistedBytes: 2048,
+            writeFailures: 2
+          },
+          spool: {
+            status: "ready",
+            pendingItems: 0,
+            pendingBytes: 0
+          }
+        },
+        runtimeStateFileMetadataReadState: "loaded",
+        containerLogsPresent: true,
+        composeServices: [],
+        composeServicesReadState: "loaded"
+      } as Parameters<typeof recorderIngressQueueStatus>[0])
+    ).toContain("failed");
+  });
 });

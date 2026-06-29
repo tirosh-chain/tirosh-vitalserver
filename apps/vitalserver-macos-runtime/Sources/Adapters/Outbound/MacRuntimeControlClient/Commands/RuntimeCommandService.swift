@@ -42,6 +42,7 @@ enum RuntimeCommandFactory {
     static func configureRuntimeArguments(
         settings: RuntimeSettings,
         adminPasswordFile: String? = nil,
+        recorderIngressSettingsFile: String? = nil,
         redisRelaySettingsFile: String? = nil
     ) -> [String] {
         var arguments = [
@@ -121,6 +122,12 @@ enum RuntimeCommandFactory {
         }
         if let adminPasswordFile {
             arguments += [RuntimeControlClientConstants.RuntimeCommand.optionAdminPasswordFile, adminPasswordFile]
+        }
+        if let recorderIngressSettingsFile {
+            arguments += [
+                RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSettingsFile,
+                recorderIngressSettingsFile,
+            ]
         }
         if let redisRelaySettingsFile {
             arguments += [

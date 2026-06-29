@@ -19,6 +19,7 @@ class GuestDeployConfig:
     python_wheel_destination: Path
     python_wheel_projects: list[Path]
     includes: list[GuestDeployInclude]
+    optional_includes: list[GuestDeployInclude]
 
 
 def parse_guest_deploy_include(item: object) -> GuestDeployInclude:

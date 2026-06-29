@@ -226,7 +226,7 @@ print(f"bytes={transfer_total_bytes_sent(summary)}")
 
 ## TestKit API server
 
-Runtime Helper의 Test 탭과 PWA가 TestKit을 제어할 수 있도록 TestKit은 FastAPI server를 제공한다. macOS runtime dev bundle에서는 TestKit을 guest Docker Compose의 `testkit` container로 포함하고, Helper는 VM IP의 `http://<vm-ip>:18322` API를 호출한다. 이 server는 virtual VRecorder session의 시작/중지/상태 조회를 담당한다.
+Runtime Helper의 Test 탭과 PWA가 TestKit을 제어할 수 있도록 TestKit은 FastAPI server를 제공한다. macOS runtime dev bundle에서는 TestKit을 guest Docker Compose의 `testkit` container로 포함하고, Helper는 VM IP의 `http://<vm-ip>:18322` API를 호출한다. Stable release runtime에서는 TestKit container와 deploy source를 제외한다. 이 server는 virtual VRecorder session의 시작/중지/상태 조회를 담당한다.
 
 ```sh
 uv run vitalserver-testkit serve \
@@ -234,7 +234,7 @@ uv run vitalserver-testkit serve \
   --port 18322
 ```
 
-위 명령은 local 개발용이다. 제품 runtime에서는 `vitalserver-testkit:0.1.1` container가 `0.0.0.0:18322`로 API를 열고, 생성된 virtual VRecorder는 guest compose network 안에서 `http://edge/`를 대상으로 접속한다.
+위 명령은 local 개발용이다. Dev runtime에서는 `vitalserver-testkit:0.1.1` container가 `0.0.0.0:18322`로 API를 열고, 생성된 virtual VRecorder는 guest compose network 안에서 `http://edge/`를 대상으로 접속한다.
 
 API는 bed registry와 session lifecycle을 분리한다.
 
@@ -282,9 +282,13 @@ TestKit API의 SoT는 “시뮬레이터가 무엇을 실행 중인지”이다.
 Helper Test 탭의 `Manual .vital upload`는 로컬 `.vital` 파일 여러 개를 선택하고, 파일명 `bedname_yymmdd_hhmmss.vital`에서 bed room name을 추출해 TestKit bed registry에 등록한 뒤, 각 파일을 VitalServer `/upload`로 multipart streaming upload합니다. 이 경로는 파일 저장 위치와 My Files 조회 index를 같은 VitalServer upload 계약으로 갱신하기 위한 기능입니다.
 
 Recorder ingress raw archive JSONL을 `.vital` 파일로 변환한 뒤 같은 upload 계약으로 반영할 수도 있습니다.
+이 기능의 제품 소유자는 `apps/vitalserver-recorder-recovery`이며, TestKit CLI는 제품 CLI를 호출하는
+검증 wrapper입니다. TestKit은 recorder-recovery Python 내부 모듈을 import하지 않습니다.
+단독 설치된 TestKit CLI에서 raw archive 명령을 사용하려면 `tirosh-vitalserver-recorder-recovery`가
+별도로 설치되어 있어야 합니다. 그 외 TestKit 명령은 recorder-recovery 없이 동작해야 합니다.
 
 ```sh
-uv run vitalserver-testkit export-raw-archive-vital \
+uv run vitalserver-recorder-recovery export-raw-archive-vital \
   data/recorder-ingress-raw/send-data-raw.jsonl \
   --output-dir /private/tmp/recorder-ingress-vital-export
 ```
@@ -302,7 +306,7 @@ raw archive를 읽어 output directory에 `.vital` 파일을 만든 뒤, 생성�
 endpoint로 전송합니다. VitalServer storage directory에 직접 복사하지 않습니다.
 
 ```sh
-uv run vitalserver-testkit recover-raw-archive-vital \
+uv run vitalserver-recorder-recovery recover-raw-archive-vital \
   data/recorder-ingress-raw/send-data-raw.jsonl \
   --output-dir /private/tmp/recorder-ingress-vital-export \
   --vitalserver-url http://localhost \
@@ -310,12 +314,13 @@ uv run vitalserver-testkit recover-raw-archive-vital \
   --concurrency 4
 ```
 
-TestKit server는 같은 기능을 HTTP API로도 제공합니다. Recorder ingress auto export worker는 이 endpoint를
-호출합니다. `rawArchivePath`와 `outputDir`은 recorder-ingress와 testkit container가 같은 mount path로 볼 수
-있어야 합니다.
+제품 `recorder-recovery` server는 같은 기능을 HTTP API로도 제공합니다. Recorder ingress auto export worker는
+기본적으로 이 endpoint를 호출합니다. TestKit server는 이 recovery endpoint를 제공하지 않습니다.
+`rawArchivePath`와 `outputDir`은 recorder-ingress와 recorder-recovery container가 같은 mount path로
+볼 수 있어야 합니다.
 
 ```sh
-curl -X POST http://127.0.0.1:18322/raw-archive/recover-vital \
+curl -X POST http://recorder-recovery:8080/raw-archive/recover-vital \
   -H 'content-type: application/json' \
   -d '{
     "rawArchivePath": "/var/lib/vitalserver-recorder-ingress/raw/send-data-raw.jsonl",
@@ -326,7 +331,7 @@ curl -X POST http://127.0.0.1:18322/raw-archive/recover-vital \
   }'
 ```
 
-Python 코드에서 직접 호출할 수도 있습니다.
+TestKit의 `.vital` upload 검증 경로는 Python 코드에서 직접 호출할 수도 있습니다.
 
 ```python
 from tirosh_vitalserver.testkit import (

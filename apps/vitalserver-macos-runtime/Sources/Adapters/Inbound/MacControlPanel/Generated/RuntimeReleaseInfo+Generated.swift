@@ -16,6 +16,11 @@ public extension RuntimeReleaseInfo {
                 version: GeneratedRelease.recorderIngressVersion
             ),
             RuntimeBundledServiceInfo(
+                name: GeneratedRelease.recorderRecoveryName,
+                image: GeneratedRelease.recorderRecoveryImage,
+                version: GeneratedRelease.recorderRecoveryVersion
+            ),
+            RuntimeBundledServiceInfo(
                 name: GeneratedRelease.vitalDBObserverName,
                 image: GeneratedRelease.vitalDBObserverImage,
                 version: GeneratedRelease.vitalDBObserverVersion

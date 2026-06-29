@@ -99,6 +99,7 @@ def sync_swift(root, release, release_file):
     )
     vitalserver = require_service(release, "vitalServer")
     recorder_ingress = require_service(release, "recorderIngress")
+    recorder_recovery = require_service(release, "recorderRecovery")
     vitaldb_observer = require_service(release, "vitalDBObserver")
     redis_relay = require_service(release, "redisRelay")
     testkit = require_service(release, "testkit")
@@ -109,6 +110,10 @@ def sync_swift(root, release, release_file):
     host_proxy = require_service(release, "hostProxy")
     vitalserver_name = require_field(release, "services.vitalServer.displayName")
     recorder_ingress_name = require_field(release, "services.recorderIngress.displayName")
+    recorder_recovery_name = require_field(
+        release,
+        "services.recorderRecovery.displayName",
+    )
     vitaldb_observer_name = require_field(
         release,
         "services.vitalDBObserver.displayName",
@@ -154,6 +159,7 @@ public enum GeneratedRelease {{
     public static let vitalServerVersion = {swift_string(release["vitalServerVersion"])}
     public static let vitalServerName = {swift_string(vitalserver_name)}
     public static let recorderIngressName = {swift_string(recorder_ingress_name)}
+    public static let recorderRecoveryName = {swift_string(recorder_recovery_name)}
     public static let vitalDBObserverName = {swift_string(vitaldb_observer_name)}
     public static let redisRelayName = {swift_string(redis_relay_name)}
     public static let testkitName = {swift_string(testkit_name)}
@@ -164,6 +170,7 @@ public enum GeneratedRelease {{
     public static let hostProxyName = {swift_string(host_proxy_name)}
     public static let vitalServerImage = {swift_string(vitalserver["image"])}
     public static let recorderIngressImage = {swift_string(recorder_ingress["image"])}
+    public static let recorderRecoveryImage = {swift_string(recorder_recovery["image"])}
     public static let vitalDBObserverImage = {swift_string(vitaldb_observer["image"])}
     public static let redisRelayImage = {swift_string(redis_relay["image"])}
     public static let testkitImage = {swift_string(testkit["image"])}
@@ -173,6 +180,7 @@ public enum GeneratedRelease {{
     public static let guestEdgeImage = {swift_string(guest_edge["image"])}
     public static let hostProxyImage = {swift_string(host_proxy["image"])}
     public static let recorderIngressVersion = {swift_string(recorder_ingress["version"])}
+    public static let recorderRecoveryVersion = {swift_string(recorder_recovery["version"])}
     public static let vitalDBObserverVersion = {swift_string(vitaldb_observer["version"])}
     public static let redisRelayVersion = {swift_string(redis_relay["version"])}
     public static let testkitVersion = {swift_string(testkit["version"])}
@@ -191,6 +199,7 @@ def sync_compose(root, release):
     content = compose.read_text(encoding="utf-8")
     vitalserver = require_service(release, "vitalServer")
     recorder_ingress = require_service(release, "recorderIngress")
+    recorder_recovery = require_service(release, "recorderRecovery")
     vitaldb_observer = require_service(release, "vitalDBObserver")
     redis_relay = require_service(release, "redisRelay")
     testkit = require_service(release, "testkit")
@@ -203,6 +212,9 @@ def sync_compose(root, release):
         r"image: vitalserver:[^\n]+": f"image: {vitalserver['image']}",
         r"image: vitalserver-recorder-ingress:[^\n]+": (
             f"image: {recorder_ingress['image']}"
+        ),
+        r"image: vitalserver-recorder-recovery:[^\n]+": (
+            f"image: {recorder_recovery['image']}"
         ),
         r"image: vitaldb-observer:[^\n]+": f"image: {vitaldb_observer['image']}",
         r"image: vitalserver-redis-relay:[^\n]+": (
@@ -227,6 +239,7 @@ def sync_build_config(root, release):
     content = config.read_text(encoding="utf-8")
     vitalserver = require_service(release, "vitalServer")
     recorder_ingress = require_service(release, "recorderIngress")
+    recorder_recovery = require_service(release, "recorderRecovery")
     vitaldb_observer = require_service(release, "vitalDBObserver")
     redis_relay = require_service(release, "redisRelay")
     testkit = require_service(release, "testkit")
@@ -237,11 +250,15 @@ def sync_build_config(root, release):
     replacements = {
         r'"vitalserver:[^"]+"': f'"{vitalserver["image"]}"',
         r'\n  "vitalserver-recorder-ingress:[^"]+"': f'\n  "{recorder_ingress["image"]}"',
+        r'\n  "vitalserver-recorder-recovery:[^"]+"': f'\n  "{recorder_recovery["image"]}"',
         r'\n  "vitaldb-observer:[^"]+"': f'\n  "{vitaldb_observer["image"]}"',
         r'\n  "vitalserver-redis-relay:[^"]+"': f'\n  "{redis_relay["image"]}"',
         r'\n  "vitalserver-testkit:[^"]+"': f'\n  "{testkit["image"]}"',
         r'recorder_ingress_image = "vitalserver-recorder-ingress:[^"]+"': (
             f'recorder_ingress_image = "{recorder_ingress["image"]}"'
+        ),
+        r'recorder_recovery_image = "vitalserver-recorder-recovery:[^"]+"': (
+            f'recorder_recovery_image = "{recorder_recovery["image"]}"'
         ),
         r'vitaldb_observer_image = "vitaldb-observer:[^"]+"': (
             f'vitaldb_observer_image = "{vitaldb_observer["image"]}"'

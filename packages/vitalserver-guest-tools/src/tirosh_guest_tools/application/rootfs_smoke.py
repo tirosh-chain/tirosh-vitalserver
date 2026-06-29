@@ -27,6 +27,7 @@ from tirosh_guest_tools.infrastructure.common import (
     VITAL_FILES_MOUNT_POINT,
     mount_runtime_share,
     mount_vital_files_share,
+    prepare_container_bind_source_directories,
     utc_now,
     write_json,
 )
@@ -252,6 +253,7 @@ def run_rootfs_smoke(
     operations.mount_vital_files_share()
     context.runtime_dir.mkdir(parents=True, exist_ok=True)
     context.vital_files_mount.mkdir(parents=True, exist_ok=True)
+    prepare_container_bind_source_directories(context.runtime_dir)
 
     run = RootfsSmokeRun(context=context, operations=operations)
     run.write_manifest()
@@ -874,7 +876,16 @@ def build_local_docker_smoke_image(run: RootfsSmokeRun) -> str:
 def compose_build(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
     run_checked(
         run,
-        compose_command(run, ["build", "app", "recorder-ingress", "vitaldb-observer"]),
+        compose_command(
+            run,
+            [
+                "build",
+                "app",
+                "recorder-recovery",
+                "recorder-ingress",
+                "vitaldb-observer",
+            ],
+        ),
         timeout_seconds=COMPOSE_BUILD_TIMEOUT_SECONDS,
     )
     return "compose images built", {}
@@ -894,6 +905,7 @@ def compose_up(run: RootfsSmokeRun) -> tuple[str, dict[str, Any]]:
                 "up",
                 "-d",
                 "app",
+                "recorder-recovery",
                 "recorder-ingress",
                 "vitaldb-observer",
                 "redis-ui",

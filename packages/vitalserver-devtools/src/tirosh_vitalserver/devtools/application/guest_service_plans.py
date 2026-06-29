@@ -32,6 +32,8 @@ def docker_image_bundle_build_plan(
         app_dockerfile=docker_config.app_dockerfile,
         recorder_ingress_image=docker_config.recorder_ingress_image,
         recorder_ingress_dockerfile=docker_config.recorder_ingress_dockerfile,
+        recorder_recovery_image=docker_config.recorder_recovery_image,
+        recorder_recovery_dockerfile=docker_config.recorder_recovery_dockerfile,
         vitaldb_observer_image=docker_config.vitaldb_observer_image,
         vitaldb_observer_dockerfile=docker_config.vitaldb_observer_dockerfile,
         redis_relay_image=docker_config.redis_relay_image,

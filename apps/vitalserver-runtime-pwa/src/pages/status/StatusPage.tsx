@@ -33,6 +33,7 @@ type RuntimeRecorderIngressStatus = NonNullable<
 type RuntimeRecorderIngressSpool = RuntimeRecorderIngressStatus["spool"];
 type RuntimeRecorderIngressReplay = RuntimeRecorderIngressStatus["replay"];
 type RuntimeRecorderIngressThroughput = RuntimeRecorderIngressStatus["throughput"];
+type RuntimeRecorderIngressRawArchive = RuntimeRecorderIngressStatus["rawArchive"];
 type RuntimeRecorderIngressFailure = {
   reason?: string | null;
   message?: string | null;
@@ -341,6 +342,7 @@ function recorderIngressDetails(status: RuntimeRecorderIngressStatus | null | un
   }
   const spool = status.spool;
   const replay = status.replay;
+  const rawArchive = status.rawArchive;
   return [
     {
       label: "Connections",
@@ -353,6 +355,14 @@ function recorderIngressDetails(status: RuntimeRecorderIngressStatus | null | un
     {
       label: "Throughput",
       value: formatRecorderIngressThroughput(status.throughput)
+    },
+    {
+      label: "Raw archive",
+      value: formatRecorderIngressRawArchive(rawArchive)
+    },
+    {
+      label: "Raw archive auto export",
+      value: formatRecorderIngressRawArchiveAutoExport(rawArchive)
     },
     {
       label: "Oldest pending",
@@ -388,7 +398,12 @@ function recorderIngressDetails(status: RuntimeRecorderIngressStatus | null | un
     },
     {
       label: "Last failure",
-      value: formatRecorderIngressLastFailure(spool?.lastFailure, replay?.lastFailure)
+      value: formatRecorderIngressLastFailure(
+        spool?.lastFailure,
+        replay?.lastFailure,
+        rawArchive?.lastFailure,
+        rawArchive?.autoExport?.lastFailure
+      )
     }
   ];
 }
@@ -408,7 +423,8 @@ export function recorderIngressQueueStatus(
   }
   const spool = status.spool;
   const replay = status.replay;
-  if (!spool && !replay) {
+  const rawArchive = status.rawArchive;
+  if (!spool && !replay && !rawArchive) {
     return "Not reported";
   }
   const pending = spool?.pendingItems ?? replay?.pendingItems;
@@ -418,10 +434,15 @@ export function recorderIngressQueueStatus(
   const retryable = replay?.retryableFailures ?? 0;
   const deadLetters = replay?.deadLetteredEvents ?? 0;
   const writeFailures = spool?.writeFailures ?? 0;
+  const rawArchiveWriteFailures = rawArchive?.writeFailures ?? 0;
+  const autoExportFailedJobs = rawArchive?.autoExport?.failedJobs ?? 0;
   const state =
-    deadLetters > 0 || writeFailures > 0
+    deadLetters > 0 ||
+    writeFailures > 0 ||
+    rawArchiveWriteFailures > 0 ||
+    rawArchive?.status === "failed"
       ? "failed"
-      : rejected > 0 || retryable > 0
+      : rejected > 0 || retryable > 0 || autoExportFailedJobs > 0
         ? "degraded"
         : (pending ?? 0) > 0
           ? "draining"
@@ -441,6 +462,12 @@ export function recorderIngressQueueStatus(
   }
   if (deadLetters > 0) {
     parts.push(`${deadLetters} dead letters`);
+  }
+  if (rawArchiveWriteFailures > 0) {
+    parts.push(`${rawArchiveWriteFailures} raw archive write failures`);
+  }
+  if (autoExportFailedJobs > 0) {
+    parts.push(`${autoExportFailedJobs} auto export failures`);
   }
   return parts.join(", ");
 }
@@ -487,6 +514,54 @@ function formatRecorderIngressThroughput(
   return parts.length > 0 ? parts.join(", ") : NOT_REPORTED;
 }
 
+function formatRecorderIngressRawArchive(
+  rawArchive: RuntimeRecorderIngressRawArchive
+): string {
+  if (!rawArchive) {
+    return NOT_REPORTED;
+  }
+  const parts = [rawArchive.status ?? "unknown"];
+  if (rawArchive.persistedEvents !== null && rawArchive.persistedEvents !== undefined) {
+    parts.push(`${rawArchive.persistedEvents} events`);
+  }
+  if (rawArchive.persistedBytes !== null && rawArchive.persistedBytes !== undefined) {
+    parts.push(formatBytes(rawArchive.persistedBytes));
+  }
+  if (rawArchive.writeFailures !== null && rawArchive.writeFailures !== undefined) {
+    parts.push(`${rawArchive.writeFailures} write failures`);
+  }
+  if (rawArchive.lastArchivedAt) {
+    parts.push(`last ${formatLocalDateTime(rawArchive.lastArchivedAt)}`);
+  }
+  return parts.join(", ");
+}
+
+function formatRecorderIngressRawArchiveAutoExport(
+  rawArchive: RuntimeRecorderIngressRawArchive
+): string {
+  const autoExport = rawArchive?.autoExport;
+  if (!autoExport) {
+    return NOT_REPORTED;
+  }
+  const parts = [autoExport.status ?? "unknown"];
+  if (autoExport.finalizable === true) {
+    parts.push("finalizable");
+  }
+  if (autoExport.uploadedJobs !== null && autoExport.uploadedJobs !== undefined) {
+    parts.push(`${autoExport.uploadedJobs} uploaded`);
+  }
+  if (autoExport.failedJobs !== null && autoExport.failedJobs !== undefined) {
+    parts.push(`${autoExport.failedJobs} failed`);
+  }
+  if (autoExport.activeJob?.state) {
+    parts.push(`job ${autoExport.activeJob.state}`);
+  }
+  if (autoExport.reasons?.length) {
+    parts.push(autoExport.reasons.join(", "));
+  }
+  return parts.join(", ");
+}
+
 function formatReplayThroughput(replay: RuntimeRecorderIngressReplay): string {
   if (!replay?.maxBytesPerSecond) {
     return NOT_REPORTED;
@@ -521,9 +596,13 @@ function formatReplayThroughput(replay: RuntimeRecorderIngressReplay): string {
 
 function formatRecorderIngressLastFailure(
   spoolFailure: RuntimeRecorderIngressFailure | null | undefined,
-  replayFailure: RuntimeRecorderIngressFailure | null | undefined
+  replayFailure: RuntimeRecorderIngressFailure | null | undefined,
+  rawArchiveFailure?: RuntimeRecorderIngressFailure | null,
+  rawArchiveAutoExportFailure?: RuntimeRecorderIngressFailure | null
 ): string {
   return (
+    formatRecorderIngressFailure(rawArchiveAutoExportFailure) ??
+    formatRecorderIngressFailure(rawArchiveFailure) ??
     formatRecorderIngressFailure(replayFailure) ??
     formatRecorderIngressFailure(spoolFailure) ??
     "none"

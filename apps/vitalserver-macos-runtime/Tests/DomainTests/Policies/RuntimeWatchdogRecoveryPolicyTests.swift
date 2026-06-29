@@ -126,6 +126,61 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         )
     }
 
+    func testVitalDBObservationMissingDoesNotBlockContainerRecoveryPlan() {
+        let decision = RuntimeWatchdogRecoveryPolicy.decision(
+            snapshot: healthSnapshot(
+                vmLifecycle: RuntimeVMLifecycleDocument(
+                    state: .bootstrapping,
+                    startedAt: "2026-06-29T07:46:19Z",
+                    updatedAt: "2026-06-29T07:46:19Z",
+                    deadlineAt: "2000-01-01T00:00:00Z"
+                ),
+                hostProxyHTTP: "failed",
+                guestHTTP: "failed",
+                containerObservation: RuntimeContainerObservation(
+                    recorderIngressHTTP: "failed",
+                    recorderIngressStatus: nil,
+                    containerLogsPresent: true,
+                    containerLogsBytes: 1024,
+                    composeServices: [
+                        RuntimeContainerServiceObservation(
+                            service: "app",
+                            state: "created"
+                        ),
+                    ]
+                ),
+                failureReasons: [
+                    .guestHTTPProbeFailed("failed"),
+                    .vmLifecycleDocumentStale,
+                    .hostProxyHTTP("failed"),
+                    .recorderIngressHTTP("failed"),
+                    .containerService(service: "app", state: "created"),
+                    .vitalDBObservationMissing,
+                ]
+            ),
+            hostProxyLivenessHTTP: "failed",
+            automaticRecoveryEnabled: true
+        )
+
+        XCTAssertEqual(
+            decision,
+            .recover(
+                reason: "guest-http-probe-failed-failed, vm-lifecycle-document-stale, host-proxy-http-failed, recorder-ingress-http-failed, container-service-app-state-created, vitaldb-observation-missing",
+                plan: RuntimeRecoveryPlan(
+                    canRecover: true,
+                    restartVM: false,
+                    restartGuestLogSync: false,
+                    restartProxy: true,
+                    reconcileGuestCompose: true,
+                    actionReasons: [
+                        .containerFailureRequiresComposeReconcile,
+                        .hostProxyLivenessUnhealthy("failed"),
+                    ]
+                )
+            )
+        )
+    }
+
     func testNonStaleContainerObservationReadIssueBlocksAutomaticRecovery() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(

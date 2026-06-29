@@ -75,6 +75,12 @@ struct RuntimeSettingsRestartNoticePolicy {
             to: &changes
         )
         appendIfChanged(
+            AppConstants.Labels.recorderIngressHotColdPath,
+            draft.recorderIngress,
+            runtime.recorderIngress,
+            to: &changes
+        )
+        appendIfChanged(
             AppConstants.Labels.containerMemoryLimits,
             draft.containerMemoryLimitsEnabled,
             runtime.containerMemoryLimitsEnabled,

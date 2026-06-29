@@ -2,19 +2,14 @@
 
 import logging
 import time
-from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 
-from tirosh_vitalserver.testkit.adapters.outbound.raw_archive_vital_artifact import (
-    RawArchiveVitalFileExporter,
-)
 from tirosh_vitalserver.testkit.adapters.outbound.recorder import (
     SocketIoRecorderManagementClient,
     connect_socketio,
 )
-from tirosh_vitalserver.testkit.adapters.outbound.vitalserver import VitalServerClient
 from tirosh_vitalserver.testkit.application.bed_registry import BedRegistry
 from tirosh_vitalserver.testkit.application.bed_registry.store import (
     BedRegistryStorePort,
@@ -31,15 +26,7 @@ from tirosh_vitalserver.testkit.application.recorder_session import (
 from tirosh_vitalserver.testkit.application.recorder_session.store import (
     VirtualRecorderSessionStorePort,
 )
-from tirosh_vitalserver.testkit.application.usecases import (
-    assert_transfer_success,
-    upload_vital_files,
-)
 from tirosh_vitalserver.testkit.domain.bed import Bed
-from tirosh_vitalserver.testkit.domain.vital_file import (
-    assert_vital_filenames,
-    iter_vital_files,
-)
 from tirosh_vitalserver.testkit.errors import (
     ActiveBedAssignmentsExistError,
     BedAlreadyAssignedError,
@@ -49,7 +36,6 @@ from tirosh_vitalserver.testkit.schemas.testkit_api import (
     CreateBedsRequest,
     DeleteBedsRequest,
     DeleteVirtualRecorderRequest,
-    RecoverRawArchiveVitalRequest,
     RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
 )
@@ -431,80 +417,6 @@ def create_testkit_app(
             state=snapshot.state.value,
         )
         return session_snapshot_to_document(snapshot)
-
-    @app.post("/raw-archive/recover-vital")
-    def recover_raw_archive_vital(
-        request: RecoverRawArchiveVitalRequest,
-    ) -> dict[str, Any]:
-        emit_testkit_event(
-            "api.raw_archive.recover_vital.requested",
-            raw_archive_path=request.raw_archive_path,
-            output_dir=request.output_dir,
-            vitalserver_url=request.vitalserver_url,
-            endpoint=request.endpoint,
-        )
-        try:
-            exporter = RawArchiveVitalFileExporter()
-            artifacts = exporter.export_raw_archive(
-                Path(request.raw_archive_path),
-                Path(request.output_dir),
-            )
-            payloads = iter_vital_files(Path(request.output_dir))
-            if not request.skip_filename_check:
-                assert_vital_filenames(payloads)
-
-            client = VitalServerClient(
-                request.vitalserver_url,
-                timeout=request.timeout,
-            )
-            summary = upload_vital_files(
-                client,
-                payloads,
-                vrcode=request.vrcode,
-                concurrency=request.concurrency,
-                repeat=request.repeat,
-                endpoint=request.endpoint,
-            )
-            assert_transfer_success(
-                summary,
-                max_failure_rate=request.max_failure_rate,
-            )
-        except ValueError as exc:
-            emit_testkit_event(
-                "api.raw_archive.recover_vital.rejected",
-                level=logging.WARNING,
-                error=str(exc),
-            )
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            emit_testkit_event(
-                "api.raw_archive.recover_vital.failed",
-                level=logging.WARNING,
-                error=str(exc),
-            )
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-        response = {
-            "artifacts": [
-                {
-                    "vrcode": artifact.vrcode,
-                    "path": artifact.path,
-                    "filename": artifact.filename,
-                    "sizeBytes": artifact.size_bytes,
-                    "createdAt": artifact.created_at,
-                    "trackCount": artifact.track_count,
-                }
-                for artifact in artifacts
-            ],
-            "upload": transfer_summary_to_document(summary),
-        }
-        emit_testkit_event(
-            "api.raw_archive.recover_vital.accepted",
-            artifacts=len(artifacts),
-            upload_success=response["upload"]["successfulRequests"],
-            upload_failed=response["upload"]["failedRequests"],
-        )
-        return response
 
     @app.post("/sessions/{session_id}/pause")
     def pause_session(

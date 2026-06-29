@@ -170,6 +170,7 @@ public struct RuntimeRecorderIngressRawArchiveStatus: Codable, Equatable, Sendab
     public let lastArchiveId: String?
     public let lastOffset: Int?
     public let lastFailure: RuntimeRecorderIngressFailureObservation?
+    public let autoExport: RuntimeRecorderIngressRawArchiveAutoExportStatus?
 
     public init(
         status: String? = nil,
@@ -180,7 +181,8 @@ public struct RuntimeRecorderIngressRawArchiveStatus: Codable, Equatable, Sendab
         lastArchivedAt: String? = nil,
         lastArchiveId: String? = nil,
         lastOffset: Int? = nil,
-        lastFailure: RuntimeRecorderIngressFailureObservation? = nil
+        lastFailure: RuntimeRecorderIngressFailureObservation? = nil,
+        autoExport: RuntimeRecorderIngressRawArchiveAutoExportStatus? = nil
     ) {
         self.status = status
         self.path = path
@@ -191,6 +193,162 @@ public struct RuntimeRecorderIngressRawArchiveStatus: Codable, Equatable, Sendab
         self.lastArchiveId = lastArchiveId
         self.lastOffset = lastOffset
         self.lastFailure = lastFailure
+        self.autoExport = autoExport
+    }
+}
+
+public struct RuntimeRecorderIngressRawArchiveAutoExportStatus: Codable, Equatable, Sendable {
+    public let status: String?
+    public let finalizable: Bool?
+    public let reasons: [String]?
+    public let archivePath: String?
+    public let archiveCursor: Int?
+    public let cursorStableForMs: Int?
+    public let lastDecisionAt: String?
+    public let activeJob: RuntimeRecorderIngressRawArchiveAutoExportJob?
+    public let uploadedJobs: Int?
+    public let failedJobs: Int?
+    public let lastResult: RuntimeRecorderIngressRawArchiveAutoExportResult?
+    public let lastFailure: RuntimeRecorderIngressFailureObservation?
+
+    public init(
+        status: String? = nil,
+        finalizable: Bool? = nil,
+        reasons: [String]? = nil,
+        archivePath: String? = nil,
+        archiveCursor: Int? = nil,
+        cursorStableForMs: Int? = nil,
+        lastDecisionAt: String? = nil,
+        activeJob: RuntimeRecorderIngressRawArchiveAutoExportJob? = nil,
+        uploadedJobs: Int? = nil,
+        failedJobs: Int? = nil,
+        lastResult: RuntimeRecorderIngressRawArchiveAutoExportResult? = nil,
+        lastFailure: RuntimeRecorderIngressFailureObservation? = nil
+    ) {
+        self.status = status
+        self.finalizable = finalizable
+        self.reasons = reasons
+        self.archivePath = archivePath
+        self.archiveCursor = archiveCursor
+        self.cursorStableForMs = cursorStableForMs
+        self.lastDecisionAt = lastDecisionAt
+        self.activeJob = activeJob
+        self.uploadedJobs = uploadedJobs
+        self.failedJobs = failedJobs
+        self.lastResult = lastResult
+        self.lastFailure = lastFailure
+    }
+}
+
+public struct RuntimeRecorderIngressRawArchiveAutoExportJob: Codable, Equatable, Sendable {
+    public let jobId: String?
+    public let archivePath: String?
+    public let archiveCursor: Int?
+    public let state: String?
+    public let attempts: Int?
+    public let maxAttempts: Int?
+    public let createdAt: String?
+    public let updatedAt: String?
+    public let startedAt: String?
+    public let completedAt: String?
+    public let nextAttemptAt: String?
+    public let lastFailure: RuntimeRecorderIngressFailureObservation?
+
+    public init(
+        jobId: String? = nil,
+        archivePath: String? = nil,
+        archiveCursor: Int? = nil,
+        state: String? = nil,
+        attempts: Int? = nil,
+        maxAttempts: Int? = nil,
+        createdAt: String? = nil,
+        updatedAt: String? = nil,
+        startedAt: String? = nil,
+        completedAt: String? = nil,
+        nextAttemptAt: String? = nil,
+        lastFailure: RuntimeRecorderIngressFailureObservation? = nil
+    ) {
+        self.jobId = jobId
+        self.archivePath = archivePath
+        self.archiveCursor = archiveCursor
+        self.state = state
+        self.attempts = attempts
+        self.maxAttempts = maxAttempts
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+        self.nextAttemptAt = nextAttemptAt
+        self.lastFailure = lastFailure
+    }
+}
+
+public struct RuntimeRecorderIngressRawArchiveAutoExportResult: Codable, Equatable, Sendable {
+    public let values: [String: RuntimeJSONValue]
+
+    public init(
+        values: [String: RuntimeJSONValue] = [:]
+    ) {
+        self.values = values
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        values = try container.decode([String: RuntimeJSONValue].self)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(values)
+    }
+}
+
+public enum RuntimeJSONValue: Codable, Equatable, Sendable {
+    case null
+    case bool(Bool)
+    case int(Int)
+    case double(Double)
+    case string(String)
+    case array([RuntimeJSONValue])
+    case object([String: RuntimeJSONValue])
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Int.self) {
+            self = .int(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .double(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode([RuntimeJSONValue].self) {
+            self = .array(value)
+        } else {
+            self = .object(try container.decode([String: RuntimeJSONValue].self))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .null:
+            try container.encodeNil()
+        case .bool(let value):
+            try container.encode(value)
+        case .int(let value):
+            try container.encode(value)
+        case .double(let value):
+            try container.encode(value)
+        case .string(let value):
+            try container.encode(value)
+        case .array(let value):
+            try container.encode(value)
+        case .object(let value):
+            try container.encode(value)
+        }
     }
 }
 

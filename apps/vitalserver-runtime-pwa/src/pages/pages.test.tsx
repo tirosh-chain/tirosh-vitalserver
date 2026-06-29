@@ -1383,6 +1383,7 @@ function settings(overrides = {}) {
     recorderIngressSendDataMode: "spool_and_replay" as const,
     recorderIngressSendDataReplayBatchSize: 10,
     recorderIngressSendDataReplayMaxMiBPerSecond: 20,
+    recorderIngress: recorderIngressSettings(),
     containerMemoryLimitsEnabled: true,
     vitalServerContainerMemoryLimitMiB: 2048,
     recorderIngressContainerMemoryLimitMiB: 256,
@@ -1397,6 +1398,21 @@ function settings(overrides = {}) {
     backupRetentionCount: 7,
     logArchiveRetentionDays: 14,
     logArchiveMaximumGiB: 1,
+    redisRelay: {
+      enabled: false,
+      target: {
+        url: "redis://redis.example:6379/0",
+        username: "",
+        password: "",
+        clearPassword: false,
+        passwordConfigured: false,
+        tls: false
+      },
+      scope: "vital_reconstruction" as const,
+      includeRecorderNetworkContext: false,
+      intervalSeconds: 1,
+      scanCount: 1000
+    },
     startOnBoot: true,
     startOnBootConfigurable: true,
     autoRecoveryEnabled: true,
@@ -1409,6 +1425,31 @@ function settings(overrides = {}) {
       }
     ],
     ...overrides
+  };
+}
+
+function recorderIngressSettings() {
+  return {
+    sendDataMaxPendingItems: 100000,
+    sendDataMaxPendingMiB: 512,
+    sendDataMaxPayloadMiB: 10,
+    sendDataReplayedMaxItems: 10000,
+    sendDataRealtimeMaxPendingItems: 2000,
+    sendDataReplayIntervalMs: 1000,
+    sendDataReplayMaxAttempts: 3,
+    sendDataReplayTargetTimeoutMs: 5000,
+    sendDataReplayAdaptiveMinConcurrency: 1,
+    sendDataReplayAdaptiveMaxConcurrency: 8,
+    rawArchiveEnabled: true,
+    rawArchiveMaxFileMiB: 512,
+    rawArchiveMaxFiles: 24,
+    rawArchiveAutoExportEnabled: true,
+    rawArchiveAutoExportQuietSeconds: 300,
+    rawArchiveAutoExportScanIntervalSeconds: 60,
+    rawArchiveAutoExportCursorStableSeconds: 60,
+    rawArchiveAutoExportRetryDelaySeconds: 60,
+    rawArchiveAutoExportMaxAttempts: 3,
+    rawArchiveAutoExportRequestTimeoutSeconds: 300
   };
 }
 

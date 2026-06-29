@@ -239,7 +239,7 @@ public enum RuntimeRecoveryPlanner {
             && input.vmIP == nil
         let canPlanGuestComposeReconcile = !guestComposeReconcileReasons.isEmpty
 
-        if case .readFailed(let status) = guestHTTP {
+        if case .readFailed(let status) = guestHTTP, !canPlanGuestComposeReconcile {
             blockers.append("recovery-blocked-guest-http-read-failed-\(runtimeRecoveryFailureToken(status))")
         }
         if !canPlanVMRestart && !canPlanGuestComposeReconcile {

@@ -132,6 +132,11 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
                     health: "unhealthy"
                 ),
                 RuntimeContainerServiceObservation(
+                    service: "recorder-recovery",
+                    state: "exited",
+                    exitCode: 1
+                ),
+                RuntimeContainerServiceObservation(
                     service: "redis-ui",
                     state: "exited",
                     health: "unhealthy"
@@ -142,6 +147,7 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
 
         XCTAssertEqual(snapshot.failureReasons, [
             .containerService(service: "app", state: "unhealthy"),
+            .containerService(service: "recorder-recovery", state: "exited"),
         ])
     }
 

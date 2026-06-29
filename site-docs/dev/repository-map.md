@@ -68,6 +68,7 @@ Repository root에서는 먼저 두 가지만 구분하면 됩니다.
 | `apps/vitalserver-runtime-pwa`   | browser에서 여는 Runtime Control UI                        |
 | `apps/vitaldb-observer`          | Redis/proxy를 읽어 recorder/bed 상태를 정리                |
 | `apps/vitalserver-recorder-ingress`   | VRecorder command와 audit event를 관측                     |
+| `apps/vitalserver-recorder-recovery`  | recorder ingress raw archive를 `.vital`로 복구하는 service |
 
 ### 2-2. packages
 

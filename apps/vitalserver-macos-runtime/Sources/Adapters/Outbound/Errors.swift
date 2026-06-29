@@ -74,6 +74,7 @@ public enum ProcessStateError: Error, CustomStringConvertible, Equatable {
 public enum RuntimeActionEnvironmentError: LocalizedError {
     case invalidAdminPassword
     case adminPasswordFileCreateFailed(path: String, reason: String)
+    case recorderIngressSettingsFileCreateFailed(path: String, reason: String)
     case redisRelaySettingsFileCreateFailed(path: String, reason: String)
 
     public var errorDescription: String? {
@@ -82,6 +83,8 @@ public enum RuntimeActionEnvironmentError: LocalizedError {
             return "Admin password must be UTF-8."
         case .adminPasswordFileCreateFailed(let path, let reason):
             return "Failed to prepare the admin password file path=\(path) reason=\(reason)."
+        case .recorderIngressSettingsFileCreateFailed(let path, let reason):
+            return "Failed to prepare the recorder ingress settings file path=\(path) reason=\(reason)."
         case .redisRelaySettingsFileCreateFailed(let path, let reason):
             return "Failed to prepare the Redis relay settings file path=\(path) reason=\(reason)."
         }

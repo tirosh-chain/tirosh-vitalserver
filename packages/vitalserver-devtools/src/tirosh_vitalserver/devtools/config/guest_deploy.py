@@ -47,6 +47,7 @@ def load_guest_deploy_config(config: TomlTable) -> GuestDeployConfig:
             )
         ],
         includes=load_guest_deploy_includes(deploy, path=path),
+        optional_includes=load_optional_guest_deploy_includes(deploy, path=path),
     )
 
 
@@ -58,6 +59,17 @@ def load_guest_deploy_includes(
     value = config.get("include")
     if not isinstance(value, list) or not value:
         raise SystemExit(f"error: missing {path}.include list")
+    return [parse_guest_deploy_include(item) for item in value]
+
+
+def load_optional_guest_deploy_includes(
+    config: TomlTable,
+    *,
+    path: str = "guest.deploy",
+) -> list[GuestDeployInclude]:
+    value = config.get("optional_include", [])
+    if not isinstance(value, list):
+        raise SystemExit(f"error: invalid {path}.optional_include list")
     return [parse_guest_deploy_include(item) for item in value]
 
 

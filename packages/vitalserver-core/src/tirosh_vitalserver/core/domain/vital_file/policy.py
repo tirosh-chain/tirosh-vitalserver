@@ -1,0 +1,24 @@
+"""Validation policy for `.vital` upload files."""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterable
+
+from tirosh_vitalserver.core.domain.vital_file.models import PayloadFile
+from tirosh_vitalserver.core.errors import InvalidVitalFilenameError
+
+VITAL_FILENAME_RE = re.compile(r"^.+_\d{6}_\d{6}(_auto_export)?\.vital$")
+
+
+def assert_vital_filenames(payloads: Iterable[PayloadFile]) -> None:
+    """Validate the filename shape documented by VitalDB upload API."""
+
+    invalid = [
+        payload.path.name
+        for payload in payloads
+        if not VITAL_FILENAME_RE.match(payload.path.name)
+    ]
+
+    if invalid:
+        raise InvalidVitalFilenameError(tuple(invalid))

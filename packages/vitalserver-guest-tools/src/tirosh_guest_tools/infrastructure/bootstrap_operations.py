@@ -26,6 +26,7 @@ from tirosh_guest_tools.infrastructure.common import (
     compose_command,
     mount_runtime_share,
     mount_vital_files_share,
+    prepare_container_bind_source_directories,
     utc_now,
     write_json,
 )
@@ -285,6 +286,7 @@ def start_guest_background_services() -> None:
 
 def prepare_shared_directories(context: GuestBootstrapContext) -> None:
     context.vital_files_mount.mkdir(parents=True, exist_ok=True)
+    prepare_container_bind_source_directories(context.runtime_dir)
     (context.runtime_dir.parent / "vr-release").mkdir(parents=True, exist_ok=True)
 
 
@@ -334,6 +336,7 @@ def cleanup_docker_cache() -> None:
 def build_missing_images() -> None:
     for image, service in (
         ("vitalserver:2.3.4", "app"),
+        ("vitalserver-recorder-recovery:0.1.0", "recorder-recovery"),
         ("vitalserver-recorder-ingress:0.1.0", "recorder-ingress"),
     ):
         completed = run(["docker", "image", "inspect", image], check=False)

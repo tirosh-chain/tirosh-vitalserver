@@ -563,12 +563,157 @@ export function SettingsPage() {
               }
             />
           </label>
+          <label>
+            Hot path storage MiB
+            <input
+              type="number"
+              min="1"
+              value={draft.recorderIngressSendDataMaxPendingMiB}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("recorderIngressSendDataMaxPendingMiB", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            Archive file size MiB
+            <input
+              type="number"
+              min="1"
+              value={draft.recorderIngressRawArchiveMaxFileMiB}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("recorderIngressRawArchiveMaxFileMiB", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            Archive retention
+            <input
+              type="number"
+              min="1"
+              value={draft.recorderIngressRawArchiveMaxFiles}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("recorderIngressRawArchiveMaxFiles", event.target.value)
+              }
+            />
+          </label>
         </div>
         <p className="muted">
           Load control queues recorder send_data and replays payloads to
           VitalServer at a controlled throughput. Throughput is configured in
-          MiB/s. Container memory limits are hard Docker limits configured in
-          MiB. These changes are applied when container services are reconciled.
+          MiB/s. Recorder archives are automatically exported for all connected
+          recorders after files are ready. Container memory limits are hard
+          Docker limits configured in MiB. These changes are applied when
+          container services are reconciled.
+        </p>
+      </Panel>
+
+      <Panel title="Redis Relay">
+        <div className="settings-grid">
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={draft.redisRelayEnabled}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("redisRelayEnabled", event.target.checked)
+              }
+            />
+            Enable relay
+          </label>
+          <label>
+            Target URL
+            <input
+              type="text"
+              value={draft.redisRelayTargetURL}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("redisRelayTargetURL", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            Username
+            <input
+              type="text"
+              value={draft.redisRelayUsername}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("redisRelayUsername", event.target.value)
+              }
+            />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              value={draft.redisRelayPassword}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("redisRelayPassword", event.target.value)
+              }
+            />
+          </label>
+          {draft.redisRelayPasswordConfigured ? (
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={draft.redisRelayClearPassword}
+                disabled={!canControlServices}
+                onChange={(event) =>
+                  updateField("redisRelayClearPassword", event.target.checked)
+                }
+              />
+              Clear saved password
+            </label>
+          ) : null}
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={draft.redisRelayTLS}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField("redisRelayTLS", event.target.checked)
+              }
+            />
+            TLS
+          </label>
+          <label>
+            Data scope
+            <select
+              value={draft.redisRelayScope}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField(
+                  "redisRelayScope",
+                  event.target.value as RuntimeSettingsDraft["redisRelayScope"]
+                )
+              }
+            >
+              <option value="waveform_trend_only">Waveform/trend only</option>
+              <option value="vital_reconstruction">Vital reconstruction</option>
+            </select>
+          </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={draft.redisRelayIncludeRecorderNetworkContext}
+              disabled={!canControlServices}
+              onChange={(event) =>
+                updateField(
+                  "redisRelayIncludeRecorderNetworkContext",
+                  event.target.checked
+                )
+              }
+            />
+            Include recorder network context
+          </label>
+        </div>
+        <p className="muted">
+          Publishes allowlisted VitalServer Redis data to an external Redis
+          target. Use redis:// or rediss:// URLs.
         </p>
       </Panel>
 

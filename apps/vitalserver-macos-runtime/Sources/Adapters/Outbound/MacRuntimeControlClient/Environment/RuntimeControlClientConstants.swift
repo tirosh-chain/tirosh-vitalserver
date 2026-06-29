@@ -64,6 +64,7 @@ enum RuntimeControlClientConstants {
         static let optionRecorderIngressSendDataMode = "--recorder-ingress-send-data-mode"
         static let optionRecorderIngressSendDataReplayBatchSize = "--recorder-ingress-send-data-replay-batch-size"
         static let optionRecorderIngressSendDataReplayMaxMiBPerSecond = "--recorder-ingress-send-data-replay-max-mib-per-second"
+        static let optionRecorderIngressSettingsFile = "--recorder-ingress-settings-file"
         static let optionContainerMemoryLimits = "--container-memory-limits"
         static let optionVitalServerContainerMemoryLimitMiB = "--vitalserver-container-memory-limit-mib"
         static let optionRecorderIngressContainerMemoryLimitMiB = "--recorder-ingress-container-memory-limit-mib"

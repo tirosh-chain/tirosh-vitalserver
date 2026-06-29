@@ -14,7 +14,7 @@ export type SendDataRawArchiveRecoveryResult =
     }
   | {
       ok: false;
-      reason: "request_failed" | "http_failed" | "invalid_response";
+      reason: "not_configured" | "request_failed" | "http_failed" | "invalid_response";
       message: string;
       statusCode?: number;
       response?: unknown;

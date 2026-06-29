@@ -271,6 +271,8 @@ extension RuntimeLifecycleCommand {
                 )
             }
             return .recorderIngressSendDataReplayMaxMiBPerSecond(maxMiBPerSecond)
+        case .recorderIngressSettingsFile:
+            return .recorderIngressSettingsFile(URL(fileURLWithPath: value))
         case .containerMemoryLimitsEnabled:
             guard let enabled = RuntimeBooleanParser.parse(value) else {
                 throw RuntimeLifecycleCommandParseError.missingArgument("--container-memory-limits must be true or false")

@@ -63,6 +63,7 @@ struct GuestRuntimeSettings: Decodable {
         case recorderIngressSendDataMode
         case recorderIngressSendDataReplayBatchSize
         case recorderIngressSendDataReplayMaxMiBPerSecond
+        case recorderIngress
         case containerMemoryLimitsEnabled
         case vitalServerContainerMemoryLimitMiB
         case recorderIngressContainerMemoryLimitMiB
@@ -79,6 +80,7 @@ struct GuestRuntimeSettings: Decodable {
     let recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
     let recorderIngressSendDataReplayBatchSize: Int
     let recorderIngressSendDataReplayMaxMiBPerSecond: Int
+    let recorderIngress: RuntimeRecorderIngressSettings
     let containerMemoryLimitsEnabled: Bool
     let vitalServerContainerMemoryLimitMiB: Int
     let recorderIngressContainerMemoryLimitMiB: Int
@@ -105,6 +107,10 @@ struct GuestRuntimeSettings: Decodable {
             Int.self,
             forKey: .recorderIngressSendDataReplayMaxMiBPerSecond
         ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataReplayMaxMiBPerSecond
+        recorderIngress = try container.decodeIfPresent(
+            RuntimeRecorderIngressSettings.self,
+            forKey: .recorderIngress
+        ) ?? RuntimeRecorderIngressSettings()
         containerMemoryLimitsEnabled = try container.decodeIfPresent(
             Bool.self,
             forKey: .containerMemoryLimitsEnabled
@@ -156,6 +162,7 @@ struct GuestRuntimeSettings: Decodable {
             recorderIngressSendDataMode: recorderIngressSendDataMode,
             recorderIngressSendDataReplayBatchSize: recorderIngressSendDataReplayBatchSize,
             recorderIngressSendDataReplayMaxMiBPerSecond: recorderIngressSendDataReplayMaxMiBPerSecond,
+            recorderIngress: recorderIngress,
             containerMemoryLimitsEnabled: containerMemoryLimitsEnabled,
             vitalServerContainerMemoryLimitMiB: vitalServerContainerMemoryLimitMiB,
             recorderIngressContainerMemoryLimitMiB: recorderIngressContainerMemoryLimitMiB,

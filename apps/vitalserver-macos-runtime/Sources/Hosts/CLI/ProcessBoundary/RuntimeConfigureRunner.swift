@@ -453,6 +453,8 @@ public struct RuntimeConfigureRunner {
             return .recorderIngressSendDataReplayBatchSize(value)
         case .recorderIngressSendDataReplayMaxMiBPerSecond(let value):
             return .recorderIngressSendDataReplayMaxMiBPerSecond(value)
+        case .recorderIngressSettingsFile(let value):
+            return .recorderIngress(try recorderIngressSettings(from: value))
         case .containerMemoryLimitsEnabled(let value):
             return .containerMemoryLimitsEnabled(value)
         case .vitalServerContainerMemoryLimitMiB(let value):
@@ -504,5 +506,10 @@ public struct RuntimeConfigureRunner {
             intervalSeconds: settings.intervalSeconds,
             scanCount: settings.scanCount
         )
+    }
+
+    private func recorderIngressSettings(from url: URL) throws -> RuntimeRecorderIngressSettings {
+        let data = try actions.readSecretFile(url).data(using: .utf8) ?? Data()
+        return try JSONDecoder().decode(RuntimeRecorderIngressSettings.self, from: data)
     }
 }

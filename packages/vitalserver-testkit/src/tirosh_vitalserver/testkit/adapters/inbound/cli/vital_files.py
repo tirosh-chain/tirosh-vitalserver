@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import shutil
+import subprocess
 from pathlib import Path
 
 from tirosh_vitalserver.testkit.adapters.inbound.cli.common import (
@@ -10,9 +12,6 @@ from tirosh_vitalserver.testkit.adapters.inbound.cli.common import (
     add_load_args,
 )
 from tirosh_vitalserver.testkit.adapters.inbound.cli.output import print_summary
-from tirosh_vitalserver.testkit.adapters.outbound.raw_archive_vital_artifact import (
-    RawArchiveVitalFileExporter,
-)
 from tirosh_vitalserver.testkit.adapters.outbound.vitalserver import VitalServerClient
 from tirosh_vitalserver.testkit.application.usecases import (
     assert_transfer_success,
@@ -21,6 +20,14 @@ from tirosh_vitalserver.testkit.application.usecases import (
 from tirosh_vitalserver.testkit.domain.vital_file import (
     assert_vital_filenames,
     iter_vital_files,
+)
+
+RECORDER_RECOVERY_CLI = "vitalserver-recorder-recovery"
+RECORDER_RECOVERY_REQUIRED = (
+    "raw archive .vital recovery requires the "
+    "vitalserver-recorder-recovery CLI. Install "
+    "tirosh-vitalserver-recorder-recovery or run the product "
+    "recorder-recovery service."
 )
 
 
@@ -136,49 +143,54 @@ def run_upload_vital(args: argparse.Namespace) -> int:
 
 
 def run_export_raw_archive_vital(args: argparse.Namespace) -> int:
-    """Export recorder-ingress raw archive JSONL to `.vital` artifacts."""
+    """Delegate raw archive export to the product recovery CLI."""
 
-    exporter = RawArchiveVitalFileExporter()
-    artifacts = exporter.export_raw_archive(args.raw_archive_path, args.output_dir)
-    for artifact in artifacts:
-        print(
-            "exported "
-            f"vrcode={artifact.vrcode} "
-            f"tracks={artifact.track_count} "
-            f"bytes={artifact.size_bytes} "
-            f"path={artifact.path}"
-        )
-    return 0
+    return run_recorder_recovery_cli(
+        [
+            "export-raw-archive-vital",
+            str(args.raw_archive_path),
+            "--output-dir",
+            str(args.output_dir),
+        ]
+    )
 
 
 def run_recover_raw_archive_vital(args: argparse.Namespace) -> int:
-    """Export recorder-ingress raw archive JSONL and upload the generated files."""
+    """Delegate raw archive recovery to the product recovery CLI."""
 
-    exporter = RawArchiveVitalFileExporter()
-    artifacts = exporter.export_raw_archive(args.raw_archive_path, args.output_dir)
-    for artifact in artifacts:
-        print(
-            "exported "
-            f"vrcode={artifact.vrcode} "
-            f"tracks={artifact.track_count} "
-            f"bytes={artifact.size_bytes} "
-            f"path={artifact.path}"
-        )
+    command = [
+        "recover-raw-archive-vital",
+        str(args.raw_archive_path),
+        "--output-dir",
+        str(args.output_dir),
+        "--vitalserver-url",
+        args.vitalserver_url,
+        "--endpoint",
+        args.endpoint,
+        "--timeout",
+        str(args.timeout),
+        "--concurrency",
+        str(args.concurrency),
+        "--repeat",
+        str(args.repeat),
+        "--max-failure-rate",
+        str(args.max_failure_rate),
+    ]
+    if args.vrcode is not None:
+        command.extend(["--vrcode", args.vrcode])
+    if args.skip_filename_check:
+        command.append("--skip-filename-check")
+    return run_recorder_recovery_cli(command)
 
-    payloads = iter_vital_files(args.output_dir)
-    if not args.skip_filename_check:
-        assert_vital_filenames(payloads)
 
-    client = VitalServerClient(args.vitalserver_url, timeout=args.timeout)
-    summary = upload_vital_files(
-        client,
-        payloads,
-        vrcode=args.vrcode,
-        concurrency=args.concurrency,
-        repeat=args.repeat,
-        endpoint=args.endpoint,
+def run_recorder_recovery_cli(arguments: list[str]) -> int:
+    """Run the product recovery CLI as an explicit dev verification wrapper."""
+
+    executable = shutil.which(RECORDER_RECOVERY_CLI)
+    if executable is None:
+        raise RuntimeError(RECORDER_RECOVERY_REQUIRED)
+    completed = subprocess.run(
+        [executable, *arguments],
+        check=False,
     )
-
-    print_summary(summary)
-    assert_transfer_success(summary, max_failure_rate=args.max_failure_rate)
-    return 0
+    return completed.returncode

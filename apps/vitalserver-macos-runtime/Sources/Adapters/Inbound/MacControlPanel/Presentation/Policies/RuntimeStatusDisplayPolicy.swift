@@ -721,6 +721,7 @@ private struct AppRuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusAdv
     var watchdogServiceLabel: String { AppConstants.Labels.watchdogService }
     var vitalServerName: String { GeneratedRelease.vitalServerName }
     var recorderIngressName: String { GeneratedRelease.recorderIngressName }
+    var recorderRecoveryName: String { GeneratedRelease.recorderRecoveryName }
     var hostProxyName: String { GeneratedRelease.hostProxyName }
     var vitalDBObserverLabel: String { AppConstants.Labels.vitalDBObserver }
     var redisRelayLabel: String { AppConstants.Labels.redisRelay }

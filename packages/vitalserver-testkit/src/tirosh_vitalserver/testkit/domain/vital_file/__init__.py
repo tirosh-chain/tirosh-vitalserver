@@ -6,12 +6,6 @@ from tirosh_vitalserver.testkit.domain.vital_file.policy import (
     VITAL_FILENAME_RE,
     assert_vital_filenames,
 )
-from tirosh_vitalserver.testkit.domain.vital_file.raw_archive import (
-    RawArchivePayload,
-    raw_archive_payload_from_record,
-    raw_archive_payloads_from_jsonl_lines,
-    vital_tracks_by_vrcode_from_raw_archive,
-)
 from tirosh_vitalserver.testkit.domain.vital_file.session_recording import (
     VitalSessionMetadata,
     VitalTrack,
@@ -24,7 +18,6 @@ from tirosh_vitalserver.testkit.domain.vital_file.session_recording import (
 __all__ = [
     "VITAL_FILENAME_RE",
     "PayloadFile",
-    "RawArchivePayload",
     "VitalSessionMetadata",
     "VitalTrack",
     "VitalTrackRecord",
@@ -32,8 +25,5 @@ __all__ = [
     "iter_vital_files",
     "metadata_track",
     "playback_time_for_sequence",
-    "raw_archive_payload_from_record",
-    "raw_archive_payloads_from_jsonl_lines",
-    "vital_tracks_by_vrcode_from_raw_archive",
     "vital_tracks_from_recorder_playback",
 ]

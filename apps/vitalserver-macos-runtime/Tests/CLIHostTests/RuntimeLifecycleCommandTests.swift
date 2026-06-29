@@ -67,6 +67,8 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
             "8",
             "--recorder-ingress-send-data-replay-max-mib-per-second",
             "12",
+            "--recorder-ingress-settings-file",
+            "/tmp/recorder-ingress-settings.json",
             "--restart",
         ])
 
@@ -80,6 +82,7 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
                 .recorderIngressSendDataMode(.mirrorSpool),
                 .recorderIngressSendDataReplayBatchSize(8),
                 .recorderIngressSendDataReplayMaxMiBPerSecond(12),
+                .recorderIngressSettingsFile(URL(fileURLWithPath: "/tmp/recorder-ingress-settings.json")),
             ],
             restart: true
         )))

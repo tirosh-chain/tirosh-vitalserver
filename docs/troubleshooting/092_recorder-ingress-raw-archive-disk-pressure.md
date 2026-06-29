@@ -73,7 +73,7 @@ grep RECORDER_INGRESS_RAW_ARCHIVE apps/vitalserver-macos-runtime/Support/Guest/c
 6. Run recovery export/upload for the persisted interval:
 
 ```sh
-uv run vitalserver-testkit recover-raw-archive-vital \
+uv run vitalserver-recorder-recovery recover-raw-archive-vital \
   data/recorder-ingress-raw/send-data-raw.jsonl \
   --output-dir /private/tmp/recorder-ingress-vital-export \
   --vitalserver-url http://127.0.0.1:8080 \

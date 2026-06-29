@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
-from types import SimpleNamespace
-
 import pytest
 from fastapi import HTTPException
 from fastapi.routing import APIRoute
 
 from tests.support import fake_socketio_connector
-from tirosh_vitalserver.testkit.adapters.inbound.api import app as api_app
 from tirosh_vitalserver.testkit.adapters.inbound.api import create_testkit_app
 from tirosh_vitalserver.testkit.application.bed_registry import BedRegistry
 from tirosh_vitalserver.testkit.application.recorder_session import (
@@ -17,7 +13,6 @@ from tirosh_vitalserver.testkit.application.recorder_session import (
 from tirosh_vitalserver.testkit.schemas import (
     CreateBedsRequest,
     DeleteBedsRequest,
-    RecoverRawArchiveVitalRequest,
     RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
 )
@@ -311,78 +306,6 @@ def test_session_endpoint_restarts_stopped_session_on_selected_bed() -> None:
     assert restarted["id"] != first["id"]
     assert restarted["vrcode"] == "VR_REUSE"
     assert restarted["bedRoomNames"] == ("OR-B",)
-
-
-def test_raw_archive_recover_endpoint_exports_and_uploads(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: dict[str, object] = {}
-
-    class FakeExporter:
-        def export_raw_archive(self, raw_archive_path: Path, output_dir: Path):
-            calls["export"] = (raw_archive_path, output_dir)
-            return (
-                SimpleNamespace(
-                    vrcode="VR-1",
-                    path=str(output_dir / "VR-1_260629_010203.vital"),
-                    filename="VR-1_260629_010203.vital",
-                    size_bytes=1234,
-                    created_at=123.0,
-                    track_count=4,
-                ),
-            )
-
-    class FakeClient:
-        def __init__(self, url: str, timeout: float):
-            calls["client"] = (url, timeout)
-
-    def fake_iter_vital_files(path: Path):
-        calls["iter"] = path
-        return (path / "VR-1_260629_010203.vital",)
-
-    def fake_assert_vital_filenames(payloads):
-        calls["filename_check"] = tuple(payloads)
-
-    def fake_upload_vital_files(client, payloads, **kwargs):
-        calls["upload"] = (client, tuple(payloads), kwargs)
-        return SimpleNamespace(
-            elapsed_seconds=0.25,
-            results=(
-                SimpleNamespace(
-                    path=Path("/exports/VR-1_260629_010203.vital"),
-                    bytes_sent=1234,
-                    response=SimpleNamespace(status_code=200, ok=True),
-                    error=None,
-                ),
-            ),
-        )
-
-    monkeypatch.setattr(api_app, "RawArchiveVitalFileExporter", FakeExporter)
-    monkeypatch.setattr(api_app, "VitalServerClient", FakeClient)
-    monkeypatch.setattr(api_app, "iter_vital_files", fake_iter_vital_files)
-    monkeypatch.setattr(api_app, "assert_vital_filenames", fake_assert_vital_filenames)
-    monkeypatch.setattr(api_app, "upload_vital_files", fake_upload_vital_files)
-
-    route = route_for("/raw-archive/recover-vital", "POST")
-    response = route.endpoint(
-        RecoverRawArchiveVitalRequest(
-            rawArchivePath="/raw/send-data-raw.jsonl",
-            outputDir="/exports",
-            vitalserverUrl="http://app",
-            endpoint="/upload",
-            timeout=5.0,
-        )
-    )
-
-    assert calls["export"] == (
-        Path("/raw/send-data-raw.jsonl"),
-        Path("/exports"),
-    )
-    assert calls["client"] == ("http://app", 5.0)
-    assert calls["upload"][2]["endpoint"] == "/upload"
-    assert response["artifacts"][0]["vrcode"] == "VR-1"
-    assert response["upload"]["successfulRequests"] == 1
-    assert response["upload"]["failedRequests"] == 0
 
 
 def route_for(path: str, method: str) -> APIRoute:

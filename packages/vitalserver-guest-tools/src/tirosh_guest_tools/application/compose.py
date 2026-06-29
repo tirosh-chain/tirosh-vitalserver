@@ -5,8 +5,8 @@ import logging
 import os
 import subprocess
 import time
+from contextlib import suppress
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from tirosh_guest_tools.adapters.outbound.runtime.config import load_config
@@ -27,6 +27,7 @@ from tirosh_guest_tools.infrastructure.common import (
     mount_runtime_share,
     mount_vital_files_share,
     output,
+    prepare_container_bind_source_directories,
     read_json,
     run,
 )
@@ -54,11 +55,32 @@ RECORDER_INGRESS_SEND_DATA_MODES = {
 DEFAULT_RECORDER_INGRESS_SEND_DATA_MODE = "spool_and_replay"
 DEFAULT_RECORDER_INGRESS_REPLAY_BATCH_SIZE = 1000
 DEFAULT_RECORDER_INGRESS_REPLAY_MAX_MIB_PER_SECOND = 20
+DEFAULT_RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS = 100000
+DEFAULT_RECORDER_INGRESS_SEND_DATA_MAX_PENDING_MIB = 512
+DEFAULT_RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_MIB = 10
+DEFAULT_RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS = 10000
+DEFAULT_RECORDER_INGRESS_SEND_DATA_REALTIME_MAX_PENDING_ITEMS = 2000
+DEFAULT_RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS = 1000
+DEFAULT_RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS = 3
+DEFAULT_RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS = 5000
+DEFAULT_RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY = 1
+DEFAULT_RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY = 8
+DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_ENABLED = True
+DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILE_MIB = 512
+DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES = 24
+DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED = True
+DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_SECONDS = 300
+DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_SECONDS = 60
+DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_CURSOR_STABLE_SECONDS = 60
+DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_SECONDS = 60
+DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS = 3
+DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_SECONDS = 300
 DEFAULT_CONTAINER_MEMORY_LIMITS_ENABLED = True
 DEFAULT_APP_CONTAINER_MEMORY_LIMIT_MIB = 2048
 DEFAULT_RECORDER_INGRESS_CONTAINER_MEMORY_LIMIT_MIB = 410
 DEFAULT_REDIS_CONTAINER_MEMORY_LIMIT_MIB = 3277
 MIB_BYTES = 1024 * 1024
+MAX_DIAGNOSTIC_OUTPUT_CHARS = 12000
 
 
 @dataclass(frozen=True)
@@ -110,6 +132,34 @@ class ComposeStopTimeoutError(GuestDependencyError):
         }
 
 
+class ComposeCommandError(GuestDependencyError):
+    def __init__(
+        self,
+        *,
+        stage: str,
+        arguments: list[str],
+        returncode: int,
+        stdout: str | None,
+        stderr: str | None,
+        diagnostics: str,
+    ) -> None:
+        command = " ".join(compose_command(arguments))
+        message = (
+            f"docker compose command failed during {stage}: "
+            f"exitCode={returncode} command={command}"
+        )
+        output_sections = compact_output_sections(
+            (
+                ("stdout", stdout),
+                ("stderr", stderr),
+                ("diagnostics", diagnostics),
+            )
+        )
+        if output_sections:
+            message += "\n" + output_sections
+        super().__init__(message, code="guest-compose-command-failed")
+
+
 def run_compose_action(action: ComposeAction | str) -> None:
     action = ComposeAction(action)
     mount_runtime_share()
@@ -117,10 +167,13 @@ def run_compose_action(action: ComposeAction | str) -> None:
     runtime_config = load_runtime_env()
 
     if action == ComposeAction.UP:
+        prepare_container_bind_source_directories()
         start_ordered()
     elif action == ComposeAction.TESTKIT_UP:
+        prepare_container_bind_source_directories()
         start_testkit(runtime_config)
     elif action == ComposeAction.TESTKIT_UP_LOGGED:
+        prepare_container_bind_source_directories()
         start_testkit_logged(runtime_config)
     elif action == ComposeAction.STOP:
         stop_services_in_order()
@@ -178,6 +231,181 @@ def load_recorder_ingress_send_data_env(
     os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_BYTES_PER_SECOND"] = str(
         replay_max_mib_per_second * MIB_BYTES
     )
+    recorder_ingress = recorder_ingress_settings(document, settings_path)
+    max_pending_mib = recorder_ingress_positive_int_setting(
+        recorder_ingress,
+        settings_path,
+        "sendDataMaxPendingMiB",
+        DEFAULT_RECORDER_INGRESS_SEND_DATA_MAX_PENDING_MIB,
+    )
+    max_payload_mib = recorder_ingress_positive_int_setting(
+        recorder_ingress,
+        settings_path,
+        "sendDataMaxPayloadMiB",
+        DEFAULT_RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_MIB,
+    )
+    raw_archive_max_file_mib = recorder_ingress_positive_int_setting(
+        recorder_ingress,
+        settings_path,
+        "rawArchiveMaxFileMiB",
+        DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILE_MIB,
+    )
+    os.environ["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS"] = str(
+        recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "sendDataMaxPendingItems",
+            DEFAULT_RECORDER_INGRESS_SEND_DATA_MAX_PENDING_ITEMS,
+        )
+    )
+    os.environ["RECORDER_INGRESS_SEND_DATA_MAX_PENDING_BYTES"] = str(
+        max_pending_mib * MIB_BYTES
+    )
+    os.environ["RECORDER_INGRESS_SEND_DATA_MAX_PAYLOAD_BYTES"] = str(
+        max_payload_mib * MIB_BYTES
+    )
+    os.environ["RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS"] = str(
+        recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "sendDataReplayedMaxItems",
+            DEFAULT_RECORDER_INGRESS_SEND_DATA_REPLAYED_MAX_ITEMS,
+        )
+    )
+    os.environ["RECORDER_INGRESS_SEND_DATA_REALTIME_MAX_PENDING_ITEMS"] = str(
+        recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "sendDataRealtimeMaxPendingItems",
+            DEFAULT_RECORDER_INGRESS_SEND_DATA_REALTIME_MAX_PENDING_ITEMS,
+        )
+    )
+    os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS"] = str(
+        recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "sendDataReplayIntervalMs",
+            DEFAULT_RECORDER_INGRESS_SEND_DATA_REPLAY_INTERVAL_MS,
+        )
+    )
+    os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS"] = str(
+        recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "sendDataReplayMaxAttempts",
+            DEFAULT_RECORDER_INGRESS_SEND_DATA_REPLAY_MAX_ATTEMPTS,
+        )
+    )
+    os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS"] = str(
+        recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "sendDataReplayTargetTimeoutMs",
+            DEFAULT_RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS,
+        )
+    )
+    adaptive_min_concurrency = recorder_ingress_positive_int_setting(
+        recorder_ingress,
+        settings_path,
+        "sendDataReplayAdaptiveMinConcurrency",
+        DEFAULT_RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY,
+    )
+    adaptive_max_concurrency = recorder_ingress_positive_int_setting(
+        recorder_ingress,
+        settings_path,
+        "sendDataReplayAdaptiveMaxConcurrency",
+        DEFAULT_RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY,
+    )
+    if adaptive_max_concurrency < adaptive_min_concurrency:
+        raise GuestContractError(
+            "runtime settings field is invalid: "
+            f"{settings_path} recorderIngress.sendDataReplayAdaptiveMaxConcurrency",
+            code=(
+                "runtime-settings-recorder-ingress-"
+                "sendDataReplayAdaptiveMaxConcurrency-invalid"
+            ),
+        )
+    os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY"] = str(
+        adaptive_min_concurrency
+    )
+    os.environ["RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY"] = str(
+        adaptive_max_concurrency
+    )
+    os.environ["RECORDER_INGRESS_RAW_ARCHIVE_ENABLED"] = bool_env(
+        recorder_ingress_bool_setting(
+            recorder_ingress,
+            settings_path,
+            "rawArchiveEnabled",
+            DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_ENABLED,
+        )
+    )
+    os.environ["RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILE_BYTES"] = str(
+        raw_archive_max_file_mib * MIB_BYTES
+    )
+    os.environ["RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES"] = str(
+        recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "rawArchiveMaxFiles",
+            DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_MAX_FILES,
+        )
+    )
+    os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED"] = bool_env(
+        recorder_ingress_bool_setting(
+            recorder_ingress,
+            settings_path,
+            "rawArchiveAutoExportEnabled",
+            DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_ENABLED,
+        )
+    )
+    os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_MS"] = str(
+        seconds_to_milliseconds(recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "rawArchiveAutoExportQuietSeconds",
+            DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_QUIET_SECONDS,
+        ))
+    )
+    os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_MS"] = str(
+        seconds_to_milliseconds(recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "rawArchiveAutoExportScanIntervalSeconds",
+            DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_SCAN_INTERVAL_SECONDS,
+        ))
+    )
+    os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_CURSOR_STABLE_MS"] = str(
+        seconds_to_milliseconds(recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "rawArchiveAutoExportCursorStableSeconds",
+            DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_CURSOR_STABLE_SECONDS,
+        ))
+    )
+    os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_MS"] = str(
+        seconds_to_milliseconds(recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "rawArchiveAutoExportRetryDelaySeconds",
+            DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_RETRY_DELAY_SECONDS,
+        ))
+    )
+    os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS"] = str(
+        recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "rawArchiveAutoExportMaxAttempts",
+            DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_MAX_ATTEMPTS,
+        )
+    )
+    os.environ["RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_MS"] = str(
+        seconds_to_milliseconds(recorder_ingress_positive_int_setting(
+            recorder_ingress,
+            settings_path,
+            "rawArchiveAutoExportRequestTimeoutSeconds",
+            DEFAULT_RECORDER_INGRESS_RAW_ARCHIVE_AUTO_EXPORT_REQUEST_TIMEOUT_SECONDS,
+        ))
+    )
 
 
 def write_compose_runtime_limits(
@@ -193,10 +421,8 @@ def write_compose_runtime_limits(
         "runtime-settings-container-memory-limits-enabled-invalid",
     )
     if not enabled:
-        try:
+        with suppress(FileNotFoundError):
             output_path.unlink()
-        except FileNotFoundError:
-            pass
         return
 
     limits = {
@@ -248,6 +474,57 @@ def recorder_ingress_send_data_mode(
     return mode
 
 
+def recorder_ingress_settings(
+    document: dict[str, Any],
+    settings_path: os.PathLike[str] | str,
+) -> dict[str, Any]:
+    value = document.get("recorderIngress", {})
+    if not isinstance(value, dict):
+        raise GuestContractError(
+            f"runtime settings field is invalid: {settings_path} recorderIngress",
+            code="runtime-settings-recorder-ingress-invalid",
+        )
+    return value
+
+
+def recorder_ingress_positive_int_setting(
+    recorder_ingress: dict[str, Any],
+    settings_path: os.PathLike[str] | str,
+    field: str,
+    default: int,
+) -> int:
+    return positive_int_setting(
+        recorder_ingress,
+        settings_path,
+        field,
+        default,
+        f"runtime-settings-recorder-ingress-{field}-invalid",
+    )
+
+
+def recorder_ingress_bool_setting(
+    recorder_ingress: dict[str, Any],
+    settings_path: os.PathLike[str] | str,
+    field: str,
+    default: bool,
+) -> bool:
+    return bool_setting(
+        recorder_ingress,
+        settings_path,
+        field,
+        default,
+        f"runtime-settings-recorder-ingress-{field}-invalid",
+    )
+
+
+def seconds_to_milliseconds(value: int) -> int:
+    return value * 1000
+
+
+def bool_env(value: bool) -> str:
+    return "1" if value else "0"
+
+
 def positive_int_setting(
     document: dict[str, Any],
     settings_path: os.PathLike[str] | str,
@@ -294,6 +571,58 @@ def compose(
         stderr=subprocess.PIPE if capture_output else None,
         timeout_seconds=timeout_seconds,
     )
+
+
+def checked_compose(
+    arguments: list[str],
+    *,
+    stage: str,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return compose(arguments, capture_output=True)
+    except subprocess.CalledProcessError as error:
+        diagnostics = collect_compose_failure_diagnostics()
+        compose_error = ComposeCommandError(
+            stage=stage,
+            arguments=arguments,
+            returncode=error.returncode,
+            stdout=error.stdout,
+            stderr=error.stderr,
+            diagnostics=diagnostics,
+        )
+        logger.error(compose_error.message)
+        raise compose_error from error
+
+
+def collect_compose_failure_diagnostics() -> str:
+    sections: list[tuple[str, str | None]] = []
+    for title, arguments in (
+        ("docker compose ps --all", ["ps", "--all"]),
+        ("docker compose ps --all --format json", ["ps", "--all", "--format", "json"]),
+        ("docker compose logs --tail=200", ["logs", "--tail=200"]),
+    ):
+        try:
+            completed = compose(arguments, check=False, capture_output=True)
+        except Exception as error:
+            sections.append((title, f"diagnostic collection failed: {error}"))
+            continue
+        sections.append((f"{title} stdout", completed.stdout))
+        sections.append((f"{title} stderr", completed.stderr))
+    return compact_output_sections(sections)
+
+
+def compact_output_sections(sections: Any) -> str:
+    rendered: list[str] = []
+    for title, text in sections:
+        if text is None:
+            continue
+        value = text.strip()
+        if not value:
+            continue
+        if len(value) > MAX_DIAGNOSTIC_OUTPUT_CHARS:
+            value = value[-MAX_DIAGNOSTIC_OUTPUT_CHARS:]
+        rendered.append(f"== {title} ==\n{value}")
+    return "\n".join(rendered)
 
 
 def stop_services_in_order() -> None:
@@ -516,28 +845,39 @@ def wait_for_app() -> None:
 
 
 def start_ordered() -> None:
-    compose(["up", "-d", ComposeService.REDIS.value])
+    checked_compose(
+        ["up", "-d", ComposeService.REDIS.value],
+        stage="redis startup",
+    )
     wait_for_redis()
-    compose(
+    checked_compose(
         [
             "up",
             "-d",
             ComposeService.APP.value,
+            ComposeService.RECORDER_RECOVERY.value,
             ComposeService.RECORDER_INGRESS.value,
             ComposeService.VITALDB_OBSERVER.value,
             ComposeService.REDIS_RELAY.value,
             ComposeService.REDIS_UI.value,
             ComposeService.SWAGGER_UI.value,
-        ]
+        ],
+        stage="application service startup",
     )
     wait_for_app()
-    compose(["up", "-d", ComposeService.EDGE.value])
+    checked_compose(
+        ["up", "-d", ComposeService.EDGE.value],
+        stage="edge startup",
+    )
 
 
 def start_testkit(runtime_config: RuntimeConfig) -> None:
     if runtime_config.testkit_enabled:
         load_optional_docker_images()
-        compose(["up", "-d", ComposeService.TESTKIT.value])
+        checked_compose(
+            ["up", "-d", ComposeService.TESTKIT.value],
+            stage="optional testkit startup",
+        )
 
 
 def start_testkit_logged(runtime_config: RuntimeConfig) -> None:

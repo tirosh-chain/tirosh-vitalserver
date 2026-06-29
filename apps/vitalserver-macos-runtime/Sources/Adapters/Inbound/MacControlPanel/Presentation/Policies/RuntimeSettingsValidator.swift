@@ -66,6 +66,9 @@ public struct RuntimeSettingsValidator {
                 "Container memory limits must be within the allowed MiB ranges and total no more than 70% of the VM memory allocation."
             )
         }
+        if !recorderIngressSettingsAreValid(settings.recorderIngress) {
+            return .invalid("Recorder ingress hot/cold path settings must be positive, and replay max concurrency must be at least min concurrency.")
+        }
         if settings.redisRelay.enabled {
             let target = settings.redisRelay.target
             if target.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -158,6 +161,31 @@ public struct RuntimeSettingsValidator {
             maximum: min(AppConstants.SettingsLimits.maximumRedisContainerMemoryLimitMiB, vmMemoryMiB)
         )
         && totalPercent <= AppConstants.SettingsLimits.maximumCombinedContainerMemoryLimitPercent
+    }
+
+    private func recorderIngressSettingsAreValid(_ settings: RuntimeRecorderIngressSettings) -> Bool {
+        let positiveValues = [
+            settings.sendDataMaxPendingItems,
+            settings.sendDataMaxPendingMiB,
+            settings.sendDataMaxPayloadMiB,
+            settings.sendDataReplayedMaxItems,
+            settings.sendDataRealtimeMaxPendingItems,
+            settings.sendDataReplayIntervalMs,
+            settings.sendDataReplayMaxAttempts,
+            settings.sendDataReplayTargetTimeoutMs,
+            settings.sendDataReplayAdaptiveMinConcurrency,
+            settings.sendDataReplayAdaptiveMaxConcurrency,
+            settings.rawArchiveMaxFileMiB,
+            settings.rawArchiveMaxFiles,
+            settings.rawArchiveAutoExportQuietSeconds,
+            settings.rawArchiveAutoExportScanIntervalSeconds,
+            settings.rawArchiveAutoExportCursorStableSeconds,
+            settings.rawArchiveAutoExportRetryDelaySeconds,
+            settings.rawArchiveAutoExportMaxAttempts,
+            settings.rawArchiveAutoExportRequestTimeoutSeconds
+        ]
+        return positiveValues.allSatisfy { $0 > 0 }
+            && settings.sendDataReplayAdaptiveMaxConcurrency >= settings.sendDataReplayAdaptiveMinConcurrency
     }
 
     private func validLimit(_ value: Int, minimum: Int, maximum: Int) -> Bool {

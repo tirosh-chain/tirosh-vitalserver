@@ -1370,6 +1370,7 @@ export interface components {
             redisIpVerifyFailures: number;
             redisIpVerifyMismatches: number;
             throughput?: components["schemas"]["RuntimeRecorderIngressThroughputStatus"];
+            rawArchive?: components["schemas"]["RuntimeRecorderIngressRawArchiveStatus"];
             spool?: components["schemas"]["RuntimeRecorderIngressSpoolStatus"];
             replay?: components["schemas"]["RuntimeRecorderIngressReplayStatus"];
         };
@@ -1384,6 +1385,48 @@ export interface components {
             reason?: string | null;
             message?: string | null;
             occurredAt?: string | null;
+        };
+        RuntimeRecorderIngressRawArchiveStatus: {
+            status?: string | null;
+            path?: string | null;
+            persistedEvents?: number | null;
+            persistedBytes?: number | null;
+            writeFailures?: number | null;
+            lastArchivedAt?: string | null;
+            lastArchiveId?: string | null;
+            lastOffset?: number | null;
+            lastFailure?: components["schemas"]["RuntimeRecorderIngressFailureObservation"];
+            autoExport?: components["schemas"]["RuntimeRecorderIngressRawArchiveAutoExportStatus"];
+        };
+        RuntimeRecorderIngressRawArchiveAutoExportStatus: {
+            status?: string | null;
+            finalizable?: boolean | null;
+            reasons?: string[];
+            archivePath?: string | null;
+            archiveCursor?: number | null;
+            cursorStableForMs?: number | null;
+            lastDecisionAt?: string | null;
+            activeJob?: components["schemas"]["RuntimeRecorderIngressRawArchiveAutoExportJob"];
+            uploadedJobs?: number | null;
+            failedJobs?: number | null;
+            lastResult?: {
+                [key: string]: unknown;
+            } | null;
+            lastFailure?: components["schemas"]["RuntimeRecorderIngressFailureObservation"];
+        };
+        RuntimeRecorderIngressRawArchiveAutoExportJob: {
+            jobId?: string | null;
+            archivePath?: string | null;
+            archiveCursor?: number | null;
+            state?: string | null;
+            attempts?: number | null;
+            maxAttempts?: number | null;
+            createdAt?: string | null;
+            updatedAt?: string | null;
+            startedAt?: string | null;
+            completedAt?: string | null;
+            nextAttemptAt?: string | null;
+            lastFailure?: components["schemas"]["RuntimeRecorderIngressFailureObservation"];
         };
         RuntimeRecorderIngressSpoolStatus: {
             mode?: string | null;
@@ -1428,6 +1471,7 @@ export interface components {
             lastDecision?: string | null;
             lastReason?: string | null;
             lastChangedAt?: string | null;
+            /** @enum {string|null} */
             memoryGuardStatus?: "healthy" | "warm" | "hot" | "critical" | "missing" | "stale" | "invalid" | "failed" | "unavailable" | "disabled" | null;
         };
         RuntimeRecorderConnectionObservation: {
@@ -1485,6 +1529,7 @@ export interface components {
             recorderIngressSendDataReplayBatchSize: number;
             /** @description Maximum recorder send_data replay throughput in MiB/s. */
             recorderIngressSendDataReplayMaxMiBPerSecond: number;
+            recorderIngress: components["schemas"]["RuntimeRecorderIngressSettings"];
             /** @description Whether Docker hard memory limits are applied to selected runtime containers. */
             containerMemoryLimitsEnabled: boolean;
             /** @description VitalServer container hard memory limit in MiB when container memory limits are enabled. */
@@ -1504,7 +1549,48 @@ export interface components {
             backupRetentionCount: number;
             logArchiveRetentionDays: number;
             logArchiveMaximumGiB: number;
+            redisRelay: components["schemas"]["RuntimeRedisRelaySettings"];
             restartAfterSave: boolean;
+        };
+        RuntimeRecorderIngressSettings: {
+            sendDataMaxPendingItems: number;
+            sendDataMaxPendingMiB: number;
+            sendDataMaxPayloadMiB: number;
+            sendDataReplayedMaxItems: number;
+            sendDataRealtimeMaxPendingItems: number;
+            sendDataReplayIntervalMs: number;
+            sendDataReplayMaxAttempts: number;
+            sendDataReplayTargetTimeoutMs: number;
+            sendDataReplayAdaptiveMinConcurrency: number;
+            sendDataReplayAdaptiveMaxConcurrency: number;
+            rawArchiveEnabled: boolean;
+            rawArchiveMaxFileMiB: number;
+            rawArchiveMaxFiles: number;
+            rawArchiveAutoExportEnabled: boolean;
+            rawArchiveAutoExportQuietSeconds: number;
+            rawArchiveAutoExportScanIntervalSeconds: number;
+            rawArchiveAutoExportCursorStableSeconds: number;
+            rawArchiveAutoExportRetryDelaySeconds: number;
+            rawArchiveAutoExportMaxAttempts: number;
+            rawArchiveAutoExportRequestTimeoutSeconds: number;
+        };
+        /** @enum {string} */
+        RuntimeRedisRelayScope: "waveform_trend_only" | "vital_reconstruction";
+        RuntimeRedisRelayTarget: {
+            url: string;
+            username: string;
+            password: string;
+            clearPassword: boolean;
+            passwordConfigured: boolean;
+            tls: boolean;
+        };
+        RuntimeRedisRelaySettings: {
+            enabled: boolean;
+            target: components["schemas"]["RuntimeRedisRelayTarget"];
+            scope: components["schemas"]["RuntimeRedisRelayScope"];
+            includeRecorderNetworkContext: boolean;
+            intervalSeconds: number;
+            scanCount: number;
         };
         RuntimeSettingsReadIssue: {
             source: string;

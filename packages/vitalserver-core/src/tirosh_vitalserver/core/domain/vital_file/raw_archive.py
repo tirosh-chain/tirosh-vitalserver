@@ -10,11 +10,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
-from tirosh_vitalserver.testkit.domain.vital_file.session_recording import (
+from tirosh_vitalserver.core.domain.vital_file.session_recording import (
     VitalTrack,
     collect_frame_tracks,
 )
-from tirosh_vitalserver.testkit.types.json import JsonObject, JsonValue
+from tirosh_vitalserver.core.types.json import JsonObject, JsonValue
 
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 NAN_TOKEN_RE = re.compile(r"\bnan\b")

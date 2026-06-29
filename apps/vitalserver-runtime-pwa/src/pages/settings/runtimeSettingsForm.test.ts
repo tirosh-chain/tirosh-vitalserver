@@ -32,6 +32,19 @@ describe("runtime settings form mapping", () => {
         backupRetentionCount: 7,
         logArchiveRetentionDays: 10,
         logArchiveMaximumGiB: 3,
+        redisRelay: redisRelaySettings({
+          enabled: true,
+          target: {
+            url: "redis://redis.example:6379/0",
+            username: "relay",
+            password: "",
+            clearPassword: false,
+            passwordConfigured: true,
+            tls: true
+          },
+          scope: "waveform_trend_only",
+          includeRecorderNetworkContext: true
+        }),
         startOnBoot: true,
         autoRecoveryEnabled: true,
         preventSystemSleep: true,
@@ -57,6 +70,15 @@ describe("runtime settings form mapping", () => {
       backupRetentionCount: "7",
       logArchiveRetentionDays: "10",
       logArchiveMaximumGiB: "3",
+      redisRelayEnabled: true,
+      redisRelayTargetURL: "redis://redis.example:6379/0",
+      redisRelayUsername: "relay",
+      redisRelayPassword: "",
+      redisRelayClearPassword: false,
+      redisRelayPasswordConfigured: true,
+      redisRelayTLS: true,
+      redisRelayScope: "waveform_trend_only",
+      redisRelayIncludeRecorderNetworkContext: true,
       startOnBoot: true,
       autoRecoveryEnabled: true,
       preventSystemSleep: true,
@@ -127,6 +149,41 @@ describe("runtime settings form mapping", () => {
     });
   });
 
+  it("maps Redis Relay settings into the runtime settings contract", () => {
+    expect(
+      draftToRuntimeSettings(
+        draft({
+          ...draftFromSettings(runtimeSettings()),
+          redisRelayEnabled: true,
+          redisRelayTargetURL: "rediss://relay.example:6380/1",
+          redisRelayUsername: "relay-user",
+          redisRelayPassword: "secret",
+          redisRelayClearPassword: false,
+          redisRelayPasswordConfigured: false,
+          redisRelayTLS: true,
+          redisRelayScope: "waveform_trend_only",
+          redisRelayIncludeRecorderNetworkContext: true
+        }),
+        runtimeSettings(),
+        false
+      ).redisRelay
+    ).toMatchObject({
+      enabled: true,
+      target: {
+        url: "rediss://relay.example:6380/1",
+        username: "relay-user",
+        password: "secret",
+        clearPassword: false,
+        passwordConfigured: false,
+        tls: true
+      },
+      scope: "waveform_trend_only",
+      includeRecorderNetworkContext: true,
+      intervalSeconds: 1,
+      scanCount: 1000
+    });
+  });
+
   it("promotes legacy hidden recorder ingress batch size to the internal guard minimum", () => {
     expect(
       draftToRuntimeSettings(
@@ -135,6 +192,23 @@ describe("runtime settings form mapping", () => {
         false
       ).recorderIngressSendDataReplayBatchSize
     ).toBe(1000);
+  });
+
+  it("keeps recorder archive and auto export enabled as product defaults", () => {
+    expect(
+      draftToRuntimeSettings(
+        draft({
+          ...draftFromSettings(runtimeSettings()),
+          recorderIngressRawArchiveEnabled: false,
+          recorderIngressRawArchiveAutoExportEnabled: false
+        }),
+        runtimeSettings(),
+        false
+      ).recorderIngress
+    ).toMatchObject({
+      rawArchiveEnabled: true,
+      rawArchiveAutoExportEnabled: true
+    });
   });
 
   it("detects custom advertised URL settings", () => {
@@ -206,6 +280,7 @@ function runtimeSettings(overrides = {}) {
     recorderIngressSendDataMode: "spool_and_replay" as const,
     recorderIngressSendDataReplayBatchSize: 1000,
     recorderIngressSendDataReplayMaxMiBPerSecond: 20,
+    recorderIngress: recorderIngressSettings(),
     containerMemoryLimitsEnabled: false,
     vitalServerContainerMemoryLimitMiB: 4096,
     recorderIngressContainerMemoryLimitMiB: 512,
@@ -221,7 +296,53 @@ function runtimeSettings(overrides = {}) {
     backupRetentionCount: 30,
     logArchiveRetentionDays: 14,
     logArchiveMaximumGiB: 1,
+    redisRelay: redisRelaySettings(),
     restartAfterSave: true,
+    ...overrides
+  };
+}
+
+function redisRelaySettings(overrides = {}) {
+  return {
+    enabled: false,
+    target: {
+      url: "redis://redis.example:6379/0",
+      username: "",
+      password: "",
+      clearPassword: false,
+      passwordConfigured: false,
+      tls: false
+    },
+    scope: "vital_reconstruction" as const,
+    includeRecorderNetworkContext: false,
+    intervalSeconds: 1,
+    scanCount: 1000,
+    ...overrides
+  };
+}
+
+function recorderIngressSettings(overrides = {}) {
+  return {
+    sendDataMaxPendingItems: 100000,
+    sendDataMaxPendingMiB: 512,
+    sendDataMaxPayloadMiB: 10,
+    sendDataReplayedMaxItems: 10000,
+    sendDataRealtimeMaxPendingItems: 2000,
+    sendDataReplayIntervalMs: 1000,
+    sendDataReplayMaxAttempts: 3,
+    sendDataReplayTargetTimeoutMs: 5000,
+    sendDataReplayAdaptiveMinConcurrency: 1,
+    sendDataReplayAdaptiveMaxConcurrency: 8,
+    rawArchiveEnabled: true,
+    rawArchiveMaxFileMiB: 512,
+    rawArchiveMaxFiles: 24,
+    rawArchiveAutoExportEnabled: true,
+    rawArchiveAutoExportQuietSeconds: 300,
+    rawArchiveAutoExportScanIntervalSeconds: 60,
+    rawArchiveAutoExportCursorStableSeconds: 60,
+    rawArchiveAutoExportRetryDelaySeconds: 60,
+    rawArchiveAutoExportMaxAttempts: 3,
+    rawArchiveAutoExportRequestTimeoutSeconds: 300,
     ...overrides
   };
 }
@@ -244,6 +365,26 @@ function draft(
     publicPort: "",
     recorderIngressLoadControlEnabled: true,
     recorderIngressSendDataReplayMaxMiBPerSecond: "20",
+    recorderIngressSendDataMaxPendingItems: "100000",
+    recorderIngressSendDataMaxPendingMiB: "512",
+    recorderIngressSendDataMaxPayloadMiB: "10",
+    recorderIngressSendDataReplayedMaxItems: "10000",
+    recorderIngressSendDataRealtimeMaxPendingItems: "2000",
+    recorderIngressSendDataReplayIntervalMs: "1000",
+    recorderIngressSendDataReplayMaxAttempts: "3",
+    recorderIngressSendDataReplayTargetTimeoutMs: "5000",
+    recorderIngressSendDataReplayAdaptiveMinConcurrency: "1",
+    recorderIngressSendDataReplayAdaptiveMaxConcurrency: "8",
+    recorderIngressRawArchiveEnabled: true,
+    recorderIngressRawArchiveMaxFileMiB: "512",
+    recorderIngressRawArchiveMaxFiles: "24",
+    recorderIngressRawArchiveAutoExportEnabled: false,
+    recorderIngressRawArchiveAutoExportQuietSeconds: "300",
+    recorderIngressRawArchiveAutoExportScanIntervalSeconds: "60",
+    recorderIngressRawArchiveAutoExportCursorStableSeconds: "60",
+    recorderIngressRawArchiveAutoExportRetryDelaySeconds: "60",
+    recorderIngressRawArchiveAutoExportMaxAttempts: "3",
+    recorderIngressRawArchiveAutoExportRequestTimeoutSeconds: "300",
     containerMemoryLimitsEnabled: false,
     vitalServerContainerMemoryLimitMiB: "4096",
     recorderIngressContainerMemoryLimitMiB: "512",
@@ -253,6 +394,15 @@ function draft(
     backupRetentionCount: "",
     logArchiveRetentionDays: "",
     logArchiveMaximumGiB: "",
+    redisRelayEnabled: false,
+    redisRelayTargetURL: "redis://redis.example:6379/0",
+    redisRelayUsername: "",
+    redisRelayPassword: "",
+    redisRelayClearPassword: false,
+    redisRelayPasswordConfigured: false,
+    redisRelayTLS: false,
+    redisRelayScope: "vital_reconstruction",
+    redisRelayIncludeRecorderNetworkContext: false,
     startOnBoot: false,
     autoRecoveryEnabled: false,
     preventSystemSleep: false,

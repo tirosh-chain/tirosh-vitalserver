@@ -210,6 +210,54 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         XCTAssertEqual(settings.recorderIngressSendDataReplayMaxMiBPerSecond, 25)
     }
 
+    func testConfigureWritesRecorderIngressSettingsFromFileAndReconcilesWhenRestartIsRequested() throws {
+        let harness = try Harness()
+        let recorderIngressSettingsFile = URL(fileURLWithPath: "/tmp/recorder-ingress-settings.json")
+        harness.fileStore.files[recorderIngressSettingsFile] = Data("""
+        {
+          "sendDataMaxPendingItems": 110000,
+          "sendDataMaxPendingMiB": 640,
+          "sendDataMaxPayloadMiB": 12,
+          "sendDataReplayedMaxItems": 12000,
+          "sendDataRealtimeMaxPendingItems": 2400,
+          "sendDataReplayIntervalMs": 1500,
+          "sendDataReplayMaxAttempts": 4,
+          "sendDataReplayTargetTimeoutMs": 7000,
+          "sendDataReplayAdaptiveMinConcurrency": 2,
+          "sendDataReplayAdaptiveMaxConcurrency": 6,
+          "rawArchiveEnabled": false,
+          "rawArchiveMaxFileMiB": 768,
+          "rawArchiveMaxFiles": 36,
+          "rawArchiveAutoExportEnabled": true,
+          "rawArchiveAutoExportQuietSeconds": 420,
+          "rawArchiveAutoExportScanIntervalSeconds": 90,
+          "rawArchiveAutoExportCursorStableSeconds": 120,
+          "rawArchiveAutoExportRetryDelaySeconds": 180,
+          "rawArchiveAutoExportMaxAttempts": 5,
+          "rawArchiveAutoExportRequestTimeoutSeconds": 600
+        }
+        """.utf8)
+
+        let result = try harness.runner.configure(RuntimeConfigureCommand(
+            changes: [.recorderIngressSettingsFile(recorderIngressSettingsFile)],
+            restart: true
+        ))
+
+        XCTAssertTrue(result.restart)
+        XCTAssertEqual(result.restartRequirement, .containerServices)
+        XCTAssertEqual(harness.reconcileComposeCount, 1)
+
+        let data = try XCTUnwrap(harness.fileStore.files[harness.paths.guestRuntimeSettings])
+        let settings = try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: data)
+        XCTAssertEqual(settings.recorderIngress.sendDataMaxPendingItems, 110_000)
+        XCTAssertEqual(settings.recorderIngress.sendDataMaxPendingMiB, 640)
+        XCTAssertEqual(settings.recorderIngress.sendDataReplayAdaptiveMinConcurrency, 2)
+        XCTAssertEqual(settings.recorderIngress.sendDataReplayAdaptiveMaxConcurrency, 6)
+        XCTAssertFalse(settings.recorderIngress.rawArchiveEnabled)
+        XCTAssertTrue(settings.recorderIngress.rawArchiveAutoExportEnabled)
+        XCTAssertEqual(settings.recorderIngress.rawArchiveAutoExportRequestTimeoutSeconds, 600)
+    }
+
     func testConfigureRejectsInvalidLogArchiveSettings() throws {
         let harness = try Harness()
 

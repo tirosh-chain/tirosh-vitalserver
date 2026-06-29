@@ -5,14 +5,21 @@ import type {
 
 "use strict";
 
-function createTestkitRawArchiveRecoveryExecutor(config): SendDataRawArchiveRecoveryExecutorPort {
+function createRawArchiveRecoveryExecutor(config): SendDataRawArchiveRecoveryExecutorPort {
   const settings = config && config.rawArchive && config.rawArchive.autoExport
     ? config.rawArchive.autoExport
     : {};
-  const recoverUrl = settings.recoverUrl || "http://testkit:18322/raw-archive/recover-vital";
+  const recoverUrl = settings.recoverUrl || "";
 
   return {
     async recover(request: SendDataRawArchiveRecoveryRequest) {
+      if (!recoverUrl) {
+        return {
+          ok: false,
+          reason: "not_configured",
+          message: "raw archive recovery endpoint is not configured",
+        };
+      }
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), request.timeoutMs);
@@ -39,7 +46,16 @@ function createTestkitRawArchiveRecoveryExecutor(config): SendDataRawArchiveReco
           return {
             ok: false,
             reason: "http_failed",
-            message: `testkit raw archive recovery failed with HTTP ${response.status}`,
+            message: `raw archive recovery failed with HTTP ${response.status}`,
+            statusCode: response.status,
+            response: body,
+          };
+        }
+        if (!isRecoveryResponseDocument(body)) {
+          return {
+            ok: false,
+            reason: "invalid_response",
+            message: "raw archive recovery response did not match the recovery result contract",
             statusCode: response.status,
             response: body,
           };
@@ -49,7 +65,7 @@ function createTestkitRawArchiveRecoveryExecutor(config): SendDataRawArchiveReco
         return {
           ok: false,
           reason: "request_failed",
-          message: error && error.message ? error.message : "testkit raw archive recovery request failed",
+          message: error && error.message ? error.message : "raw archive recovery request failed",
         };
       }
     },
@@ -66,4 +82,13 @@ async function responseTextOrJson(response) {
   }
 }
 
-module.exports = { createTestkitRawArchiveRecoveryExecutor };
+function isRecoveryResponseDocument(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!Array.isArray(value.artifacts)) return false;
+  if (!value.upload || typeof value.upload !== "object" || Array.isArray(value.upload)) return false;
+  return Number.isFinite(value.upload.totalRequests)
+    && Number.isFinite(value.upload.successfulRequests)
+    && Number.isFinite(value.upload.failedRequests);
+}
+
+module.exports = { createRawArchiveRecoveryExecutor };

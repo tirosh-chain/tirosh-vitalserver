@@ -45,6 +45,16 @@ def load_docker_images_config(config: TomlTable, root: Path) -> DockerImagesConf
             "recorder_ingress_dockerfile",
             path=path,
         ),
+        recorder_recovery_image=required_string(
+            docker_images,
+            "recorder_recovery_image",
+            path=path,
+        ),
+        recorder_recovery_dockerfile=required_string(
+            docker_images,
+            "recorder_recovery_dockerfile",
+            path=path,
+        ),
         vitaldb_observer_image=required_string(
             docker_images,
             "vitaldb_observer_image",

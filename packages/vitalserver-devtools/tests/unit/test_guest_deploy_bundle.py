@@ -19,6 +19,9 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
     deploy_dir = tmp_path / "vm-home/data/deploy"
     (runtime_dir / "Support/Guest").mkdir(parents=True)
     (runtime_dir / "Support/Guest/bootstrap.sh").write_text("bootstrap\n")
+    (runtime_dir / "Support/Guest/runtime-settings.json").write_text(
+        '{"recorderIngressSendDataMode":"spool_and_replay"}\n'
+    )
     (root / "apps/service").mkdir(parents=True)
     (root / "apps/service/app.py").write_text("service\n")
     wheel_project = root / "packages/guest-tools"
@@ -75,6 +78,7 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
                     destination=Path("docs/openapi.yaml"),
                 ),
             ],
+            optional_includes=[],
         ),
         docker_bundle=docker_bundle,
         optional_docker_bundle=optional_docker_bundle,
@@ -82,6 +86,9 @@ def test_stage_guest_deploy_uses_configured_includes(tmp_path: Path) -> None:
     stage_guest_deploy(plan)
 
     assert (deploy_dir / "bootstrap.sh").read_text() == "bootstrap\n"
+    assert (
+        deploy_dir / "runtime-settings.json"
+    ).read_text() == '{"recorderIngressSendDataMode":"spool_and_replay"}\n'
     assert (deploy_dir / "apps/service/app.py").read_text() == "service\n"
     assert (deploy_dir / "docs/openapi.yaml").read_text() == "openapi\n"
     wheel = deploy_dir / "python-wheels/guest_tools-0.1.0-py3-none-any.whl"

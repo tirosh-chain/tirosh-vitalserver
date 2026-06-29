@@ -152,6 +152,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         case recorderIngressSendDataMode
         case recorderIngressSendDataReplayBatchSize
         case recorderIngressSendDataReplayMaxMiBPerSecond
+        case recorderIngress
         case containerMemoryLimitsEnabled
         case vitalServerContainerMemoryLimitMiB
         case recorderIngressContainerMemoryLimitMiB
@@ -189,6 +190,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
     public var recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode
     public var recorderIngressSendDataReplayBatchSize: Int
     public var recorderIngressSendDataReplayMaxMiBPerSecond: Int
+    public var recorderIngress: RuntimeRecorderIngressSettings
     public var containerMemoryLimitsEnabled: Bool
     public var vitalServerContainerMemoryLimitMiB: Int
     public var recorderIngressContainerMemoryLimitMiB: Int
@@ -226,6 +228,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
         recorderIngressSendDataMode: RuntimeRecorderIngressSendDataMode = RuntimeSettingsInitialValues.recorderIngressSendDataMode,
         recorderIngressSendDataReplayBatchSize: Int = RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize,
         recorderIngressSendDataReplayMaxMiBPerSecond: Int = RuntimeSettingsInitialValues.recorderIngressSendDataReplayMaxMiBPerSecond,
+        recorderIngress: RuntimeRecorderIngressSettings = RuntimeRecorderIngressSettings(),
         containerMemoryLimitsEnabled: Bool = RuntimeSettingsInitialValues.containerMemoryLimitsEnabled,
         vitalServerContainerMemoryLimitMiB: Int = RuntimeSettingsInitialValues.vitalServerContainerMemoryLimitMiB,
         recorderIngressContainerMemoryLimitMiB: Int = RuntimeSettingsInitialValues.recorderIngressContainerMemoryLimitMiB,
@@ -265,6 +268,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
             RuntimeSettingsInitialValues.recorderIngressSendDataReplayBatchSize
         )
         self.recorderIngressSendDataReplayMaxMiBPerSecond = recorderIngressSendDataReplayMaxMiBPerSecond
+        self.recorderIngress = recorderIngress
         self.containerMemoryLimitsEnabled = containerMemoryLimitsEnabled
         self.vitalServerContainerMemoryLimitMiB = vitalServerContainerMemoryLimitMiB
         self.recorderIngressContainerMemoryLimitMiB = recorderIngressContainerMemoryLimitMiB
@@ -330,6 +334,10 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
                 Int.self,
                 forKey: .recorderIngressSendDataReplayMaxMiBPerSecond
             ) ?? RuntimeSettingsInitialValues.recorderIngressSendDataReplayMaxMiBPerSecond,
+            recorderIngress: try container.decodeIfPresent(
+                RuntimeRecorderIngressSettings.self,
+                forKey: .recorderIngress
+            ) ?? RuntimeRecorderIngressSettings(),
             containerMemoryLimitsEnabled: try container.decodeIfPresent(
                 Bool.self,
                 forKey: .containerMemoryLimitsEnabled
@@ -389,6 +397,7 @@ public struct RuntimeSettings: Codable, Equatable, Sendable {
             recorderIngressSendDataReplayMaxMiBPerSecond,
             forKey: .recorderIngressSendDataReplayMaxMiBPerSecond
         )
+        try container.encode(recorderIngress, forKey: .recorderIngress)
         try container.encode(containerMemoryLimitsEnabled, forKey: .containerMemoryLimitsEnabled)
         try container.encode(vitalServerContainerMemoryLimitMiB, forKey: .vitalServerContainerMemoryLimitMiB)
         try container.encode(recorderIngressContainerMemoryLimitMiB, forKey: .recorderIngressContainerMemoryLimitMiB)

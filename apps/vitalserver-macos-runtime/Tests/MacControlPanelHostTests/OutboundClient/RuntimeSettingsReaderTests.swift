@@ -546,12 +546,15 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let arguments = RuntimeCommandFactory.configureRuntimeArguments(
             settings: settings,
-            adminPasswordFile: "/tmp/password"
+            adminPasswordFile: "/tmp/password",
+            recorderIngressSettingsFile: "/tmp/recorder-ingress-settings.json"
         )
 
         XCTAssertEqual(arguments.first, RuntimeControlClientConstants.RuntimeCommand.runtime)
         XCTAssertTrue(arguments.contains(RuntimeControlClientConstants.RuntimeCommand.optionAdminPasswordFile))
         XCTAssertTrue(arguments.contains("/tmp/password"))
+        XCTAssertTrue(arguments.contains(RuntimeControlClientConstants.RuntimeCommand.optionRecorderIngressSettingsFile))
+        XCTAssertTrue(arguments.contains("/tmp/recorder-ingress-settings.json"))
         XCTAssertTrue(arguments.contains(RuntimeControlClientConstants.RuntimeCommand.optionRestart))
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionProxyPort, in: arguments), "18080")
         XCTAssertEqual(value(after: RuntimeControlClientConstants.RuntimeCommand.optionVitalServerURL, in: arguments), "https://vitaldb.tirosh.ai/")
