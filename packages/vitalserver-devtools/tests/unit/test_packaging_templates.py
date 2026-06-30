@@ -414,6 +414,124 @@ esac
     assert "host proxy readiness failed after nginx configuration" in stderr
 
 
+def test_proxy_run_requires_recorder_ingress_health_on_upstream(
+    tmp_path: Path,
+) -> None:
+    root = repo_root()
+    settings = load_macos_release_settings(
+        root / "config/vm-build.toml",
+        root,
+    )
+    packaging = root / "apps/vitalserver-macos-runtime/Support/Packaging"
+    proxy_run = tmp_path / "vitalserver-proxy-run"
+    render_packaging_executable(
+        settings,
+        packaging / "proxy-run.template",
+        proxy_run,
+    )
+
+    vm_home = tmp_path / "vm"
+    nginx_prefix = tmp_path / "nginx"
+    fake_bin = tmp_path / "bin"
+    state_dir = vm_home / "data/run"
+    proxy_template = vm_home / "Support/Proxy/vitalserver.conf.template"
+    state_dir.mkdir(parents=True)
+    proxy_template.parent.mkdir(parents=True)
+    fake_bin.mkdir()
+    (state_dir / "runtime-state.json").write_text(
+        '{"vmIP":"192.168.64.8","guestHTTP":"200"}',
+        encoding="utf-8",
+    )
+    proxy_template.write_text(
+        """
+worker_processes 1;
+pid logs/nginx.pid;
+events { worker_connections 64; }
+http {
+  server {
+    listen ${VITALSERVER_PROXY_PORT};
+    location = /ready { proxy_pass http://${PROXY_UPSTREAM}/ready; }
+    location = /recorder-ingress/health {
+      proxy_pass http://${PROXY_UPSTREAM}/recorder-ingress/health;
+    }
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    fake_nginx = fake_bin / "nginx"
+    fake_nginx.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+prefix=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -p) prefix="$2"; shift 2 ;;
+    -s) exit 0 ;;
+    -t) exit 0 ;;
+    *) shift ;;
+  esac
+done
+mkdir -p "${prefix}/logs"
+sleep 1000 >/dev/null 2>&1 &
+echo "$!" > "${prefix}/logs/nginx.pid"
+""",
+        encoding="utf-8",
+    )
+    fake_curl = fake_bin / "curl"
+    fake_curl.write_text(
+        """#!/usr/bin/env bash
+case "$*" in
+  *192.168.64.8:80/recorder-ingress/health*) exit 22 ;;
+  *) exit 0 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    fake_nginx.chmod(0o755)
+    fake_curl.chmod(0o755)
+
+    stdout_path = tmp_path / "proxy-run.stdout"
+    stderr_path = tmp_path / "proxy-run.stderr"
+    with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open(
+        "w",
+        encoding="utf-8",
+    ) as stderr_file:
+        process = subprocess.Popen(
+            [str(proxy_run)],
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+            env={
+                **os.environ,
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "VITALSERVER_VM_HOME": str(vm_home),
+                "VITALSERVER_NGINX_PREFIX": str(nginx_prefix),
+                "VITALSERVER_NGINX_BIN": str(fake_nginx),
+                "VITALSERVER_PROXY_RELOAD_INTERVAL": "0.1",
+            },
+            start_new_session=True,
+        )
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            if "waiting for VM upstream readiness" in (
+                stderr_path.read_text(encoding="utf-8")
+            ):
+                break
+            time.sleep(0.05)
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.communicate(timeout=5)
+
+    stdout = stdout_path.read_text(encoding="utf-8")
+    stderr = stderr_path.read_text(encoding="utf-8")
+    assert "started proxy:" not in stdout
+    assert "waiting for VM upstream readiness: http://192.168.64.8:80/" in stderr
+
+
 def assert_upload_proxy_streaming(config_text: str) -> None:
     """Assert VitalServer upload endpoints opt into large streaming bodies."""
 
@@ -454,7 +572,10 @@ def location_block(config_text: str, location: str) -> str:
 def assert_recorder_ingress_upload_timeout(compose_text: str) -> None:
     """Assert recorder ingress keeps long uploads and parser waits open."""
 
+    upstream_timeout = (
+        'RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS: '
+        '"${RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS:-3600000}"'
+    )
     assert (
-        'RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS: "${RECORDER_INGRESS_UPSTREAM_TIMEOUT_MS:-3600000}"'
-        in compose_text
+        upstream_timeout in compose_text
     )

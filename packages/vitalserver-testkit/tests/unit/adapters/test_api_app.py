@@ -8,15 +8,24 @@ from tests.support import fake_socketio_connector
 from tirosh_vitalserver.testkit.adapters.inbound.api import create_testkit_app
 from tirosh_vitalserver.testkit.application.bed_registry import BedRegistry
 from tirosh_vitalserver.testkit.application.recorder_session import (
-    PackagedRecordedFrameSourceProvider,
     VirtualRecorderSessionManager,
 )
+from tirosh_vitalserver.testkit.domain.recorder import build_simulated_recorder_payload
 from tirosh_vitalserver.testkit.schemas import (
     CreateBedsRequest,
     DeleteBedsRequest,
     RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
 )
+
+
+class FakeRecordedFrameSourceProvider:
+    def __init__(self) -> None:
+        self.loaded_keys: list[str] = []
+
+    def load_recorded_frame_source(self, key: str) -> dict[str, object]:
+        self.loaded_keys.append(key)
+        return build_simulated_recorder_payload(room_names=("OR-A",))
 
 
 def test_sessions_endpoint_uses_manager_dependency_not_query_parameter() -> None:
@@ -242,28 +251,24 @@ def test_scenarios_endpoint_describes_purpose_centered_scenarios() -> None:
     assert scenarios["bloodbag_transfusion"]["purpose"]
 
 
-def test_real_recorder_samples_endpoint_lists_packaged_fixtures() -> None:
+def test_real_recorder_samples_endpoint_reports_no_packaged_samples() -> None:
     route = route_for("/real-recorder-samples", "GET")
 
     response = route.endpoint()
 
-    scenarios = {
-        scenario["key"]: scenario
-        for scenario in response["scenarios"]
-    }
-    assert response["dataset"] == "testkit-recorder-scenario-fixtures-120s"
-    assert len(scenarios) == 6
-    assert "hemoglobin_oxygenation" in scenarios
-    assert scenarios["hemoglobin_oxygenation"]["title"] == "Hemoglobin oxygenation"
-    assert "payload" not in scenarios["hemoglobin_oxygenation"]
-    assert "source" not in scenarios["hemoglobin_oxygenation"]
+    assert response["dataset"] == "not-distributed"
+    assert response["schemaVersion"] == "recorder-dataset.v1"
+    assert response["state"] == "unavailable"
+    assert response["scenarios"] == []
+    assert "sample data is not distributed" in str(response["reason"])
 
 
 def test_sessions_endpoint_accepts_signal_quality_and_real_sample() -> None:
     route = route_for("/sessions", "POST")
+    frame_source_provider = FakeRecordedFrameSourceProvider()
     manager = VirtualRecorderSessionManager(
         connector=fake_socketio_connector,
-        recorded_frame_source_provider=PackagedRecordedFrameSourceProvider(),
+        recorded_frame_source_provider=frame_source_provider,
     )
     registry = BedRegistry()
     registry.create_beds(room_names=("OR-A",))
@@ -283,6 +288,7 @@ def test_sessions_endpoint_accepts_signal_quality_and_real_sample() -> None:
         assert response["signalQuality"] == "baseline_wander"
         assert response["realSampleKey"] == "startup_monitoring"
         assert manager.wait_session(response["id"], timeout=5)
+        assert frame_source_provider.loaded_keys == ["startup_monitoring"]
     finally:
         manager.delete_session(response["id"])
 
