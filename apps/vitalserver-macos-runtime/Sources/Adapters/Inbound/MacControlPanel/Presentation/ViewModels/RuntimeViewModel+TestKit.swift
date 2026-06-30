@@ -516,7 +516,10 @@ extension RuntimeViewModel {
             return
         }
 
-        let selectedFiles = nativeShell.chooseVitalFiles(prompt: RuntimeTestPanelText.choosingVitalFiles)
+        let selectedFiles = nativeShell.chooseVitalFiles(
+            prompt: RuntimeTestPanelText.choosingVitalFiles,
+            directoryURL: nil
+        )
         guard !selectedFiles.isEmpty else {
             return
         }
@@ -544,7 +547,8 @@ extension RuntimeViewModel {
 
     func chooseVitalFileForTestKitPlayback() {
         let selectedFiles = nativeShell.chooseVitalFiles(
-            prompt: RuntimeTestPanelText.choosingVitalFileForPlayback
+            prompt: RuntimeTestPanelText.choosingVitalFileForPlayback,
+            directoryURL: URL(fileURLWithPath: runtimeSettings.vitalFilesDirectory)
         )
         guard let selectedFile = selectedFiles.first else {
             return

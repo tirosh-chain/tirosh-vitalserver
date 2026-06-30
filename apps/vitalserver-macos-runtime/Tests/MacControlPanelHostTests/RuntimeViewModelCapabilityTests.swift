@@ -1292,6 +1292,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.uploadVitalFilesFromTestTab()
 
         XCTAssertEqual(nativeShell.chooseVitalFilesPrompts, [RuntimeTestPanelText.choosingVitalFiles])
+        XCTAssertEqual(nativeShell.chooseVitalFilesDirectoryURLs, [nil])
         XCTAssertEqual(testKit.vitalUploadRequests.count, 1)
         XCTAssertEqual(testKit.vitalUploadRequests[0].filePaths, [
             "/data/MORC03_260617_120000.vital",
@@ -1301,6 +1302,41 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(testKit.vitalUploadRequests[0].endpoint, "/upload")
         XCTAssertEqual(viewModel.testKitActionMessage, "Uploaded 2/2 .vital files · beds 2 · failed 0")
         XCTAssertEqual(viewModel.testKitActionMessageTone, .neutral)
+    }
+
+    func testPlaybackVitalFilePickerStartsInConfiguredVitalFilesDirectory() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.vitalFileURLs = [
+            URL(fileURLWithPath: "/Users/Shared/VitalServerHelper/vital-files/case.vital")
+        ]
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            initialSettings: RuntimeSettings(
+                vitalFilesDirectory: "/Users/Shared/VitalServerHelper/vital-files"
+            ),
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        viewModel.chooseVitalFileForTestKitPlayback()
+
+        XCTAssertEqual(
+            nativeShell.chooseVitalFilesPrompts,
+            [RuntimeTestPanelText.choosingVitalFileForPlayback]
+        )
+        XCTAssertEqual(
+            nativeShell.chooseVitalFilesDirectoryURLs,
+            [URL(fileURLWithPath: "/Users/Shared/VitalServerHelper/vital-files")]
+        )
+        XCTAssertEqual(
+            viewModel.testKitVitalFilePath,
+            "/Users/Shared/VitalServerHelper/vital-files/case.vital"
+        )
+        XCTAssertEqual(viewModel.testKitRecorderSourceMode, .vitalFile)
     }
 
     func testTestKitActionsReportUnavailableOrInvalidInputs() async {
@@ -2151,6 +2187,7 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     var chooseUpdateBundlePrompts: [String] = []
     var chooseRedisBackupArchivePrompts: [String] = []
     var chooseVitalFilesPrompts: [String] = []
+    var chooseVitalFilesDirectoryURLs: [URL?] = []
     var chooseLogExportDestinationPrompts: [String] = []
     var openedFileURLs: [URL] = []
     var openedWebURLs: [URL] = []
@@ -2201,8 +2238,9 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
         return redisBackupArchiveURL
     }
 
-    func chooseVitalFiles(prompt: String) -> [URL] {
+    func chooseVitalFiles(prompt: String, directoryURL: URL?) -> [URL] {
         chooseVitalFilesPrompts.append(prompt)
+        chooseVitalFilesDirectoryURLs.append(directoryURL)
         return vitalFileURLs
     }
 

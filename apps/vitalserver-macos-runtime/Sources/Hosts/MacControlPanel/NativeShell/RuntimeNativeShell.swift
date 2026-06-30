@@ -56,11 +56,12 @@ struct SystemRuntimeNativeShell: RuntimeNativeShell {
         return panel.url
     }
 
-    func chooseVitalFiles(prompt: String) -> [URL] {
+    func chooseVitalFiles(prompt: String, directoryURL: URL?) -> [URL] {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
+        panel.directoryURL = directoryURL
         panel.allowedContentTypes = [
             UTType(filenameExtension: "vital"),
         ].compactMap { $0 }
