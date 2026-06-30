@@ -22,9 +22,11 @@ from tirosh_vitalserver.testkit.application.ports import (
     SessionVitalFileUploaderPort,
 )
 from tirosh_vitalserver.testkit.application.recorder_session import (
+    PackagedRecordedFrameSourceProvider,
     VirtualRecorderSessionManager,
     default_scenario_catalog,
     deletion_result_to_document,
+    packaged_real_sample_catalog_document,
     scenario_definition_to_document,
     session_snapshot_to_document,
 )
@@ -44,6 +46,7 @@ from tirosh_vitalserver.testkit.schemas.testkit_api import (
     RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
 )
+from tirosh_vitalserver.testkit.types.json import JsonObject
 
 
 def create_testkit_app(
@@ -67,6 +70,7 @@ def create_testkit_app(
         vital_file_exporter=vital_file_exporter,
         vital_file_uploader=vital_file_uploader,
         real_vital_reader=VitalDbRealVitalReader(),
+        recorded_frame_source_provider=PackagedRecordedFrameSourceProvider(),
     )
     beds = bed_registry or BedRegistry(store=bed_registry_store)
 
@@ -269,6 +273,10 @@ def create_testkit_app(
             ]
         }
 
+    @app.get("/real-recorder-samples")
+    def list_real_recorder_samples() -> JsonObject:
+        return packaged_real_sample_catalog_document()
+
     @app.delete("/sessions")
     def delete_sessions(
         manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
@@ -304,6 +312,9 @@ def create_testkit_app(
             ),
             max_messages=request.max_messages,
             scenario=request.scenario.value,
+            signal_quality=request.signal_quality.value,
+            recorder_condition=request.recorder_condition.value,
+            real_sample_key=request.real_sample_key,
         )
         try:
             session_request = request.to_session_request()
@@ -338,6 +349,9 @@ def create_testkit_app(
             recorders=snapshot.request.recorders,
             beds=len(snapshot.request.bed_room_names),
             scenario=snapshot.request.scenario.value,
+            signal_quality=snapshot.request.signal_quality.value,
+            recorder_condition=snapshot.request.recorder_condition.value,
+            real_sample_key=snapshot.request.real_sample_key,
             vrcode=snapshot.request.vrcode,
         )
         return session_snapshot_to_document(snapshot)

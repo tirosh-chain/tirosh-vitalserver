@@ -11,6 +11,9 @@ from tirosh_vitalserver.testkit.domain.bed import (
     require_bed_capacity_for_recorders,
 )
 from tirosh_vitalserver.testkit.domain.recorder import (
+    RecorderFrameRequest,
+    RecorderFrameSource,
+    RecorderFrameSourceKind,
     bed_id_for_room,
     build_realtime_message,
     build_simulated_recorder_payload,
@@ -18,12 +21,14 @@ from tirosh_vitalserver.testkit.domain.recorder import (
     combine_virtual_recorder_rooms,
     generate_simulated_recorder_payload,
     iter_recorder_rooms,
+    materialize_recorder_frame,
     recorder_payload_size_bytes,
     shift_recorder_payload_time,
 )
 from tirosh_vitalserver.testkit.domain.signal import (
     RecorderSignalScenario,
     SignalProfile,
+    SignalQualityProfile,
     profile_for_scenario,
     profile_with_hct_override,
 )
@@ -108,6 +113,81 @@ def test_virtual_recorder_payloads_connect_existing_beds() -> None:
         "BED02",
         "BED03",
     ]
+
+
+def test_virtual_recorder_payloads_project_source_rooms_to_selected_beds() -> None:
+    recorder_payload: JsonObject = {
+        "source-a": {
+            "roomname": "MORC03_230102_133731",
+            "trks": [{"id": 1001}],
+        },
+        "source-b": {
+            "roomname": "MORC03_230106_141003",
+            "trks": [{"id": 1002}],
+        },
+    }
+
+    virtual_payloads = build_virtual_recorder_payloads(
+        recorder_payload,
+        count=2,
+        vrcode="VR",
+        bed_room_names=("OR-A", "OR-B"),
+    )
+    visibility_payload = combine_virtual_recorder_rooms(virtual_payloads)
+    rooms = iter_recorder_rooms(visibility_payload)
+
+    assert [room.payload_key for room in rooms] == ["OR-A", "OR-B"]
+    assert [room.room_name for room in rooms] == ["OR-A", "OR-B"]
+    assert "MORC03_230102_133731" not in visibility_payload["rooms"]
+    assert "MORC03_230106_141003" not in visibility_payload["rooms"]
+
+
+def test_recorded_replay_payload_returns_one_source_window_at_current_time() -> None:
+    recorder_payload: JsonObject = {
+        "vrcode": "VR",
+        "ver": "testkit",
+        "rooms": {
+            "OR-A": {
+                "roomname": "OR-A",
+                "dtstart": 100.0,
+                "dtend": 103.0,
+                "trks": [
+                    {
+                        "type": "num",
+                        "montype": "HR",
+                        "recs": [
+                            {"dt": 100.0, "val": 80},
+                            {"dt": 101.0, "val": 81},
+                            {"dt": 102.0, "val": 82},
+                        ],
+                    }
+                ],
+            }
+        },
+    }
+
+    source = RecorderFrameSource(
+        kind=RecorderFrameSourceKind.RECORDED,
+        payload=recorder_payload,
+    )
+    first = materialize_recorder_frame(
+        source,
+        RecorderFrameRequest(sequence=0, now=1000.0, frame_seconds=1.0),
+    )
+    second = materialize_recorder_frame(
+        source,
+        RecorderFrameRequest(sequence=1, now=1001.0, frame_seconds=1.0),
+    )
+
+    first_room = cast(JsonObject, cast(JsonObject, first["rooms"])["OR-A"])
+    second_room = cast(JsonObject, cast(JsonObject, second["rooms"])["OR-A"])
+    first_track = cast(JsonObject, cast(JsonArray, first_room["trks"])[0])
+    second_track = cast(JsonObject, cast(JsonArray, second_room["trks"])[0])
+
+    assert first_room["dtstart"] == 1000.0
+    assert second_room["dtstart"] == 1001.0
+    assert cast(JsonArray, first_track["recs"]) == [{"dt": 1000.0, "val": 80}]
+    assert cast(JsonArray, second_track["recs"]) == [{"dt": 1001.0, "val": 81}]
 
 
 def test_virtual_recorder_payloads_allow_one_bedroom_for_many_recorders() -> None:
@@ -365,10 +445,46 @@ def test_simulated_hct_override_is_fixed() -> None:
     assert record["val"] == 42.0
 
 
+def test_signal_quality_transform_changes_generated_waveform_only() -> None:
+    payload = build_simulated_recorder_payload(room_names=("OR-A",), now=1000.0)
+    clean = generate_simulated_recorder_payload(
+        payload,
+        now=1000.0,
+        frame_seconds=1.0,
+        sequence=1,
+    )
+    flatline = generate_simulated_recorder_payload(
+        payload,
+        now=1000.0,
+        frame_seconds=1.0,
+        sequence=1,
+        signal_quality=SignalQualityProfile.FLATLINE,
+    )
+
+    clean_room = cast(JsonObject, clean["OR-A"])
+    flatline_room = cast(JsonObject, flatline["OR-A"])
+    clean_tracks = cast(JsonArray, clean_room["trks"])
+    flatline_tracks = cast(JsonArray, flatline_room["trks"])
+    clean_ecg_values = cast(
+        list[float],
+        first_record(require_track(clean_tracks, "ECG"))["val"],
+    )
+    flatline_ecg_values = cast(
+        list[float],
+        first_record(require_track(flatline_tracks, "ECG"))["val"],
+    )
+    clean_hr = first_record(require_track(clean_tracks, "HR"))["val"]
+    flatline_hr = first_record(require_track(flatline_tracks, "HR"))["val"]
+
+    assert any(value != 0 for value in clean_ecg_values)
+    assert set(flatline_ecg_values) == {0.0}
+    assert flatline_hr == clean_hr
+
+
 def test_recorder_signal_scenarios_are_stable_strings() -> None:
     assert RecorderSignalScenario.NORMAL == "normal"
     assert RecorderSignalScenario.TACHYCARDIA == "tachycardia"
-    assert RecorderSignalScenario.DEVICE_DISCONNECT == "device_disconnect"
+    assert RecorderSignalScenario.APNEA == "apnea"
     assert RecorderSignalScenario.HCT_DECREASING == "hct_decreasing"
 
 

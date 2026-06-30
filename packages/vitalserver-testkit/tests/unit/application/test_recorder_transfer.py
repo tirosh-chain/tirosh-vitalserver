@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Mapping
 
 import pytest
 
@@ -26,15 +25,15 @@ from tirosh_vitalserver.testkit.application.usecases.recorder.transfer import (
     stream_virtual_recorder_payloads,
 )
 from tirosh_vitalserver.testkit.domain.recorder import (
+    RecorderFrameSource,
     build_virtual_recorder_payloads,
     iter_recorder_rooms,
 )
 from tirosh_vitalserver.testkit.domain.signal import (
-    DEFAULT_SIGNAL_PROFILE,
     RecorderSignalScenario,
     SignalProfile,
 )
-from tirosh_vitalserver.testkit.types.json import JsonObject, JsonValue
+from tirosh_vitalserver.testkit.types.json import JsonObject
 
 
 def test_stream_virtual_recorder_payloads_streams_each_recorder(
@@ -60,22 +59,20 @@ def test_stream_virtual_recorder_payloads_streams_each_recorder(
 
     def fake_stream_realtime_payload(
         base_url: str,
-        payload: Mapping[str, JsonValue],
+        frame_source: RecorderFrameSource,
         *,
         timeout: float = 30.0,
         interval_seconds: float = 1.0,
         duration_seconds: float | None = None,
         max_messages: int | None = None,
         shift_time: bool = True,
-        generate_frames: bool = True,
-        signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
         stop_event: threading.Event | None = None,
         runtime_state: RecorderRuntimeState | None = None,
         connector: SocketIoConnectorPort,
     ) -> RealtimeStreamResult:
-        rooms = iter_recorder_rooms(payload)
+        rooms = iter_recorder_rooms(frame_source.payload)
         streamed_rooms.extend(room.room_name for room in rooms)
-        streamed_scenarios.append(signal_profile.scenario)
+        streamed_scenarios.append(frame_source.signal_profile.scenario)
 
         return RealtimeStreamResult(
             messages_sent=max_messages or 1,
@@ -136,22 +133,20 @@ def test_stream_virtual_recorder_payloads_stops_peers_after_failure(
 
     def fake_stream_realtime_payload(
         base_url: str,
-        payload: Mapping[str, JsonValue],
+        frame_source: RecorderFrameSource,
         *,
         timeout: float = 30.0,
         interval_seconds: float = 1.0,
         duration_seconds: float | None = None,
         max_messages: int | None = None,
         shift_time: bool = True,
-        generate_frames: bool = True,
-        signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
         stop_event: threading.Event | None = None,
         runtime_state: RecorderRuntimeState | None = None,
         connector: SocketIoConnectorPort,
     ) -> RealtimeStreamResult:
         nonlocal peer_observed_stop
 
-        room_name = iter_recorder_rooms(payload)[0].room_name
+        room_name = iter_recorder_rooms(frame_source.payload)[0].room_name
         if room_name == "BED01":
             return RealtimeStreamResult(
                 messages_sent=0,
@@ -200,15 +195,13 @@ def test_stream_vrecorder_session_registers_lifecycle_by_default(
 
     def fake_stream_realtime_payload(
         base_url: str,
-        payload: Mapping[str, JsonValue],
+        frame_source: RecorderFrameSource,
         *,
         timeout: float = 30.0,
         interval_seconds: float = 1.0,
         duration_seconds: float | None = None,
         max_messages: int | None = None,
         shift_time: bool = True,
-        generate_frames: bool = True,
-        signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
         stop_event: threading.Event | None = None,
         runtime_state: RecorderRuntimeState | None = None,
         connector: SocketIoConnectorPort,

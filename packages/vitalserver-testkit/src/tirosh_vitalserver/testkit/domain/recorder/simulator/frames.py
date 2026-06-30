@@ -13,6 +13,8 @@ from tirosh_vitalserver.testkit.domain.recorder.payloads.wire import (
 from tirosh_vitalserver.testkit.domain.signal import (
     DEFAULT_SIGNAL_PROFILE,
     SignalProfile,
+    SignalQualityProfile,
+    apply_signal_quality,
 )
 from tirosh_vitalserver.testkit.domain.signal.variation import (
     apply_numeric_variation,
@@ -36,6 +38,7 @@ def generate_simulated_recorder_payload(
     frame_seconds: float,
     sequence: int,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
 ) -> JsonObject:
     """Generate a current-time recorder frame from a sample payload schema."""
 
@@ -51,6 +54,7 @@ def generate_simulated_recorder_payload(
             frame_seconds=frame_seconds,
             sequence=sequence,
             signal_profile=signal_profile,
+            signal_quality=signal_quality,
         )
         for key, room in rooms.items()
     }
@@ -74,6 +78,7 @@ def generate_room_frame(
     frame_seconds: float,
     sequence: int,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
 ) -> JsonValue:
     """Generate a current-time frame for one room payload."""
 
@@ -97,6 +102,7 @@ def generate_room_frame(
                 now=now,
                 frame_seconds=frame_seconds,
                 signal_profile=signal_profile,
+                signal_quality=signal_quality,
             )
             for track in tracks
         ]
@@ -110,6 +116,7 @@ def generate_track_frame(
     now: float,
     frame_seconds: float,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
 ) -> JsonValue:
     """Generate current records for one track."""
 
@@ -126,6 +133,7 @@ def generate_track_frame(
                 now,
                 frame_seconds,
                 signal_profile=signal_profile,
+                signal_quality=signal_quality,
             )
         ]
     else:
@@ -142,6 +150,7 @@ def generate_wave_record(
     frame_seconds: float,
     *,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
 ) -> JsonObject:
     """Generate one waveform record from a track seed."""
 
@@ -157,6 +166,7 @@ def generate_wave_record(
                 sample_rate=sample_rate,
                 now=now,
                 signal_profile=signal_profile,
+                signal_quality=signal_quality,
             )
         )
 
@@ -302,6 +312,7 @@ def wave_value(
     sample_rate: float,
     now: float,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
 ) -> float:
     """Generate one simulated waveform sample."""
 
@@ -312,17 +323,30 @@ def wave_value(
     if generator is not None:
         value = generator(sample_time)
 
-        return apply_signal_variation(
+        varied = apply_signal_variation(
             value,
             sample_time=sample_time,
             signal_profile=signal_profile,
+        )
+        return apply_signal_quality(
+            varied,
+            sample_time=sample_time,
+            quality=signal_quality,
+            mindisp=float_value_or_none(track.get("mindisp")),
+            maxdisp=float_value_or_none(track.get("maxdisp")),
         )
 
     base_values = first_record_values(track)
     base = base_values[index % len(base_values)]
     phase = 2 * math.pi * sample_time
 
-    return round(base + math.sin(phase) * 0.01, 4)
+    return apply_signal_quality(
+        round(base + math.sin(phase) * 0.01, 4),
+        sample_time=sample_time,
+        quality=signal_quality,
+        mindisp=float_value_or_none(track.get("mindisp")),
+        maxdisp=float_value_or_none(track.get("maxdisp")),
+    )
 
 
 def waveform_generator(
@@ -363,6 +387,12 @@ def positive_number(value: JsonValue, *, default: float) -> float:
         return float(value)
 
     return default
+
+
+def float_value_or_none(value: JsonValue) -> float | None:
+    """Return a numeric JSON value when present."""
+
+    return float(value) if isinstance(value, int | float) else None
 
 
 def _message_as_json(message: RealtimeRecorderMessagePayload) -> JsonObject:

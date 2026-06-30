@@ -34,6 +34,10 @@ from tirosh_vitalserver.testkit.application.usecases.recorder.sender import (
 from tirosh_vitalserver.testkit.application.usecases.recorder.stream_loop import (
     stream_realtime_payload,
 )
+from tirosh_vitalserver.testkit.domain.recorder import (
+    RecorderFrameSource,
+    RecorderFrameSourceKind,
+)
 from tirosh_vitalserver.testkit.domain.recorder.models import VirtualRecorderPayload
 from tirosh_vitalserver.testkit.domain.recorder.payloads import (
     recorder_payload_size_bytes,
@@ -42,6 +46,7 @@ from tirosh_vitalserver.testkit.domain.recorder.payloads import (
 from tirosh_vitalserver.testkit.domain.signal import (
     DEFAULT_SIGNAL_PROFILE,
     SignalProfile,
+    SignalQualityProfile,
 )
 from tirosh_vitalserver.testkit.schemas.http import HttpResponse
 from tirosh_vitalserver.testkit.types.json import JsonValue
@@ -156,6 +161,7 @@ def stream_virtual_recorder_payloads(
     shift_time: bool = True,
     generate_frames: bool = True,
     default_signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
     signal_profiles: Mapping[int, SignalProfile] | None = None,
     runtime_registry: RecorderRuntimeRegistry | None = None,
     connector: SocketIoConnectorPort,
@@ -174,18 +180,25 @@ def stream_virtual_recorder_payloads(
             executor.submit(
                 stream_realtime_payload,
                 base_url,
-                payload.payload,
+                RecorderFrameSource(
+                    kind=(
+                        RecorderFrameSourceKind.GENERATED
+                        if generate_frames
+                        else RecorderFrameSourceKind.STATIC
+                    ),
+                    payload=payload.payload,
+                    signal_profile=signal_profile_for_index(
+                        index,
+                        default_signal_profile=default_signal_profile,
+                        signal_profiles=signal_profiles,
+                    ),
+                    signal_quality=signal_quality,
+                ),
                 timeout=timeout,
                 interval_seconds=interval_seconds,
                 duration_seconds=duration_seconds,
                 max_messages=max_messages,
                 shift_time=shift_time,
-                generate_frames=generate_frames,
-                signal_profile=signal_profile_for_index(
-                    index,
-                    default_signal_profile=default_signal_profile,
-                    signal_profiles=signal_profiles,
-                ),
                 stop_event=stop_event,
                 runtime_state=(
                     runtime_registry.state_for(

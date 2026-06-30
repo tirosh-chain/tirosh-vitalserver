@@ -39,6 +39,13 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
             recorderCount: 1
         ))
         XCTAssertFalse(policy.canStart(
+            controllerAvailable: true,
+            status: status,
+            isRunningAction: false,
+            selectedBedRoomNames: ["OR-B"],
+            recorderCount: 2
+        ))
+        XCTAssertFalse(policy.canStart(
             controllerAvailable: false,
             status: status,
             isRunningAction: false,
@@ -80,7 +87,8 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
         let request = policy.startRequest(RuntimeTestKitStartInput(
             status: status,
             selectedBedRoomNames: ["OR-A", "OR-B", "OR-C"],
-            scenario: .signalArtifact,
+            scenario: .arrhythmia,
+            signalQuality: .motionArtifact,
             recorderCount: 2,
             vrcode: "  VR_123  ",
             intervalSeconds: 0.01,
@@ -93,6 +101,8 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
         XCTAssertEqual(request.bedroomName, "OR-B")
         XCTAssertEqual(request.bedRoomNames, ["OR-B", "OR-C"])
         XCTAssertEqual(request.recorders, 2)
+        XCTAssertEqual(request.scenario, .arrhythmia)
+        XCTAssertEqual(request.signalQuality, .motionArtifact)
         XCTAssertEqual(request.vrcode, "VR_123")
         XCTAssertEqual(request.intervalSeconds, 0.1)
         XCTAssertEqual(request.window?.durationSeconds, 86_400)
@@ -102,6 +112,21 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
         XCTAssertTrue(request.output.exportVital)
         XCTAssertTrue(request.output.uploadVital)
         XCTAssertEqual(request.output.vitalUploadEndpoint, "/upload")
+
+        let fixtureRequest = policy.startRequest(RuntimeTestKitStartInput(
+            status: status,
+            selectedBedRoomNames: ["OR-B"],
+            scenario: .hemoglobinOxygenation,
+            recorderCount: 1,
+            vrcode: "",
+            intervalSeconds: 1,
+            durationSeconds: 0,
+            maxMessages: 0,
+            shiftTime: true,
+            generateFrames: true
+        ))
+        XCTAssertEqual(fixtureRequest.scenario, .normalMonitoring)
+        XCTAssertEqual(fixtureRequest.realSampleKey, "hemoglobin_oxygenation")
     }
 
     func testSelectionStateKeepsValidSessionAndPrunesUnavailableBeds() {

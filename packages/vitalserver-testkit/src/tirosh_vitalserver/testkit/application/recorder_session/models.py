@@ -12,6 +12,10 @@ from tirosh_vitalserver.testkit.domain.bed.identity import (
     normalize_bed_room_name,
     normalize_bed_room_names,
 )
+from tirosh_vitalserver.testkit.domain.bed.rules import (
+    require_bed_capacity_for_recorders,
+)
+from tirosh_vitalserver.testkit.domain.signal import SignalQualityProfile
 
 
 class VirtualRecorderSessionState(StrEnum):
@@ -53,18 +57,28 @@ class VirtualRecorderVitalUploadStatus(StrEnum):
 
 
 class RecorderTestScenario(StrEnum):
-    """Purpose-centered Test tab scenarios."""
+    """Clinical Test tab scenarios."""
 
     NORMAL_MONITORING = "normal_monitoring"
     TACHYCARDIA = "tachycardia"
+    BRADYCARDIA = "bradycardia"
+    HYPOTENSION = "hypotension"
+    HYPERTENSION = "hypertension"
     DESATURATION = "desaturation"
-    SIGNAL_ARTIFACT = "signal_artifact"
-    DEVICE_DISCONNECT = "device_disconnect"
+    APNEA = "apnea"
+    ARRHYTHMIA = "arrhythmia"
     HCT_DECREASING = "hct_decreasing"
     BLOODBAG_TRANSFUSION = "bloodbag_transfusion"
     PERIOPERATIVE_MONITORING = "perioperative_monitoring"
     SEDATION_MONITORING = "sedation_monitoring"
     FULL_MONITORING_REPLAY = "full_monitoring_replay"
+
+
+class RecorderCondition(StrEnum):
+    """Operational recorder conditions independent from clinical scenario."""
+
+    NORMAL = "normal"
+    DEVICE_DISCONNECT = "device_disconnect"
 
 
 @dataclass(frozen=True)
@@ -120,6 +134,9 @@ class VirtualRecorderSessionRequest:
     output: RecorderSessionOutput = field(default_factory=RecorderSessionOutput)
     vrcode: str | None = None
     version: str = "testkit"
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN
+    recorder_condition: RecorderCondition = RecorderCondition.NORMAL
+    real_sample_key: str | None = None
     interval_seconds: float = 1.0
     max_messages: int | None = None
     shift_time: bool = True
@@ -146,10 +163,16 @@ class VirtualRecorderSessionRequest:
                 raise ValueError(str(exc).replace("room_name", "bedroom_name")) from exc
             object.__setattr__(self, "bedroom_name", bedroom_name)
             object.__setattr__(self, "bed_room_names", (bedroom_name,))
+        require_bed_capacity_for_recorders(
+            bed_count=len(self.bed_room_names),
+            recorder_count=self.recorders,
+        )
         if self.interval_seconds <= 0:
             raise ValueError("interval_seconds must be greater than 0")
         if self.max_messages is not None and self.max_messages < 1:
             raise ValueError("max_messages must be greater than 0")
+        if self.real_sample_key is not None and not self.real_sample_key.strip():
+            raise ValueError("real_sample_key must not be empty")
 
     @property
     def duration_seconds(self) -> float | None:

@@ -8,6 +8,7 @@ import uuid
 from dataclasses import replace
 
 from tirosh_vitalserver.testkit.application.ports import (
+    RecordedFrameSourceProviderPort,
     RecorderManagementPort,
     SessionVitalFileExporterPort,
     SessionVitalFileUploaderPort,
@@ -56,6 +57,7 @@ class VirtualRecorderSessionManager:
         vital_file_exporter: SessionVitalFileExporterPort | None = None,
         vital_file_uploader: SessionVitalFileUploaderPort | None = None,
         real_vital_reader: RealVitalReaderPort | None = None,
+        recorded_frame_source_provider: RecordedFrameSourceProviderPort | None = None,
     ) -> None:
         self._connector = connector
         self._recorder_management = recorder_management
@@ -63,6 +65,7 @@ class VirtualRecorderSessionManager:
         self._vital_file_exporter = vital_file_exporter
         self._vital_file_uploader = vital_file_uploader
         self._real_vital_reader = real_vital_reader
+        self._recorded_frame_source_provider = recorded_frame_source_provider
         self._sessions: dict[str, VirtualRecorderSession] = {}
         self._stored_sessions = load_stored_sessions(session_store)
         self._lock = threading.RLock()
@@ -89,6 +92,7 @@ class VirtualRecorderSessionManager:
                 vital_file_exporter=self._vital_file_exporter,
                 vital_file_uploader=self._vital_file_uploader,
                 real_vital_reader=self._real_vital_reader,
+                recorded_frame_source_provider=self._recorded_frame_source_provider,
                 snapshot_handler=self._save_snapshot,
             )
             self._sessions[session_id] = session
@@ -684,6 +688,11 @@ def restart_request(
     return replace(
         snapshot.request,
         bedroom_name=bedroom_name or snapshot.request.bedroom_name,
+        bed_room_names=(
+            (bedroom_name,)
+            if bedroom_name is not None
+            else snapshot.request.bed_room_names
+        ),
         vrcode=vrcode,
     )
 

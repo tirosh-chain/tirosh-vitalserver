@@ -24,6 +24,9 @@ struct TestKitStartSessionRequest: Encodable {
     let shiftTime: Bool
     let generateFrames: Bool
     let scenario: String
+    let signalQuality: String
+    let recorderCondition: String
+    let realSampleKey: String?
 
     init(
         runtimeRequest: RuntimeTestKitVirtualRecorderStartRequest,
@@ -42,6 +45,9 @@ struct TestKitStartSessionRequest: Encodable {
         shiftTime = runtimeRequest.shiftTime
         generateFrames = runtimeRequest.generateFrames
         scenario = runtimeRequest.scenario.rawValue
+        signalQuality = runtimeRequest.signalQuality.rawValue
+        recorderCondition = runtimeRequest.recorderCondition.rawValue
+        realSampleKey = runtimeRequest.realSampleKey
     }
 
     enum CodingKeys: String, CodingKey {
@@ -58,6 +64,9 @@ struct TestKitStartSessionRequest: Encodable {
         case shiftTime
         case generateFrames
         case scenario
+        case signalQuality
+        case recorderCondition
+        case realSampleKey
     }
 }
 

@@ -20,12 +20,20 @@ from tirosh_vitalserver.testkit.application.results import RealtimeStreamResult
 from tirosh_vitalserver.testkit.application.usecases.recorder.sender import (
     encode_realtime_payload,
 )
-from tirosh_vitalserver.testkit.domain.recorder.simulator.frames import (
-    generate_simulated_recorder_payload,
+from tirosh_vitalserver.testkit.domain.recorder import (
+    DEFAULT_RECORDER_FRAME_POST_POLICY,
+    RecorderFramePostPolicy,
+    RecorderFrameRequest,
+    RecorderFrameSource,
+    RecorderFrameSourceKind,
+    apply_recorder_frame_post_policy,
+    materialize_recorder_frame,
+    recorder_frame_source_uses_current_time,
 )
 from tirosh_vitalserver.testkit.domain.signal import (
     DEFAULT_SIGNAL_PROFILE,
     SignalProfile,
+    SignalQualityProfile,
 )
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
 from tirosh_vitalserver.testkit.types.json import JsonValue
@@ -33,15 +41,16 @@ from tirosh_vitalserver.testkit.types.json import JsonValue
 
 def stream_realtime_payload(
     base_url: str,
-    payload: Mapping[str, JsonValue],
+    frame_source: RecorderFrameSource | Mapping[str, JsonValue],
     *,
     timeout: float = 30.0,
     interval_seconds: float = 1.0,
     duration_seconds: float | None = None,
     max_messages: int | None = None,
     shift_time: bool = True,
-    generate_frames: bool = False,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
+    frame_post_policy: RecorderFramePostPolicy = DEFAULT_RECORDER_FRAME_POST_POLICY,
     stop_event: threading.Event | None = None,
     pause_event: threading.Event | None = None,
     runtime_state: RecorderRuntimeState | None = None,
@@ -60,6 +69,11 @@ def stream_realtime_payload(
     messages_sent = 0
     bytes_sent = 0
     vrcode = runtime_state.vrcode if runtime_state is not None else None
+    source = normalize_frame_source(
+        frame_source,
+        signal_profile=signal_profile,
+        signal_quality=signal_quality,
+    )
 
     try:
         emit_testkit_event(
@@ -69,7 +83,7 @@ def stream_realtime_payload(
             interval_seconds=interval_seconds,
             duration_seconds=duration_seconds,
             max_messages=max_messages,
-            generate_frames=generate_frames,
+            frame_source=source.kind.value,
         )
         client = connector(base_url, timeout=timeout)
         if runtime_state is not None:
@@ -107,15 +121,15 @@ def stream_realtime_payload(
                     break
 
                 frame_payload = next_frame_payload(
-                    payload,
+                    source,
                     interval_seconds=interval_seconds,
                     messages_sent=messages_sent,
-                    generate_frames=generate_frames,
-                    signal_profile=signal_profile,
+                    frame_post_policy=frame_post_policy,
                 )
                 encoded = encode_realtime_payload(
                     frame_payload,
-                    shift_time=shift_time and not generate_frames,
+                    shift_time=shift_time
+                    and not recorder_frame_source_uses_current_time(source),
                 )
                 wait_until_stream_connected(
                     client,
@@ -190,24 +204,41 @@ def validate_stream_options(
 
 
 def next_frame_payload(
-    payload: Mapping[str, JsonValue],
+    frame_source: RecorderFrameSource,
     *,
     interval_seconds: float,
     messages_sent: int,
-    generate_frames: bool,
-    signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    frame_post_policy: RecorderFramePostPolicy = DEFAULT_RECORDER_FRAME_POST_POLICY,
 ) -> Mapping[str, JsonValue]:
     """Return the payload for the next streaming message."""
 
-    if not generate_frames:
-        return payload
+    frame = materialize_recorder_frame(
+        frame_source,
+        RecorderFrameRequest(
+            sequence=messages_sent,
+            now=time.time(),
+            frame_seconds=interval_seconds,
+        ),
+    )
+    return apply_recorder_frame_post_policy(frame, frame_post_policy)
 
-    return generate_simulated_recorder_payload(
-        payload,
-        now=time.time(),
-        frame_seconds=interval_seconds,
-        sequence=messages_sent,
+
+def normalize_frame_source(
+    frame_source: RecorderFrameSource | Mapping[str, JsonValue],
+    *,
+    signal_profile: SignalProfile,
+    signal_quality: SignalQualityProfile,
+) -> RecorderFrameSource:
+    """Return an explicit frame source for legacy static payload callers."""
+
+    if isinstance(frame_source, RecorderFrameSource):
+        return frame_source
+
+    return RecorderFrameSource(
+        kind=RecorderFrameSourceKind.STATIC,
+        payload=frame_source,
         signal_profile=signal_profile,
+        signal_quality=signal_quality,
     )
 
 

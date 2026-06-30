@@ -97,6 +97,39 @@ def default_scenario_catalog(
             signal_profile=RecorderSignalScenario.TACHYCARDIA,
         ),
         generated_scenario(
+            RecorderTestScenario.BRADYCARDIA,
+            title="Bradycardia",
+            situation=(
+                "A stable recorder sends slower ECG rhythm and lower "
+                "heart-rate numeric data."
+            ),
+            purpose=(
+                "Verify low-rate ECG/HR rendering while full monitoring "
+                "remains present."
+            ),
+            tracks=("ECG", "HR", "PLETH", "PLETH_SPO2"),
+            signal_profile=RecorderSignalScenario.BRADYCARDIA,
+        ),
+        generated_scenario(
+            RecorderTestScenario.HYPOTENSION,
+            title="Hypotension",
+            situation="Arterial pressure is lower while other monitors continue.",
+            purpose="Verify arterial waveform and BP numeric handling with low values.",
+            tracks=("ART", "ART_SBP", "ART_DBP", "ART_MBP", "ECG", "PLETH"),
+            signal_profile=RecorderSignalScenario.HYPOTENSION,
+        ),
+        generated_scenario(
+            RecorderTestScenario.HYPERTENSION,
+            title="Hypertension",
+            situation="Arterial pressure is higher while other monitors continue.",
+            purpose=(
+                "Verify arterial waveform and BP numeric handling with high "
+                "values."
+            ),
+            tracks=("ART", "ART_SBP", "ART_DBP", "ART_MBP", "ECG", "PLETH"),
+            signal_profile=RecorderSignalScenario.HYPERTENSION,
+        ),
+        generated_scenario(
             RecorderTestScenario.DESATURATION,
             title="Desaturation",
             situation=(
@@ -111,29 +144,23 @@ def default_scenario_catalog(
             signal_profile=RecorderSignalScenario.DESATURATION,
         ),
         generated_scenario(
-            RecorderTestScenario.SIGNAL_ARTIFACT,
-            title="Signal artifact",
-            situation="Waveform samples include noisy and distorted segments.",
+            RecorderTestScenario.APNEA,
+            title="Apnea",
+            situation="Respiration is absent or severely reduced.",
             purpose=(
-                "Verify ingress, replay, and export resilience when waveform "
-                "quality is poor."
+                "Verify CO2 waveform, ETCO2, and RR behavior under low "
+                "ventilation."
             ),
-            tracks=("ECG", "PLETH", "ART"),
-            signal_profile=RecorderSignalScenario.ARTIFACT,
+            tracks=("CO2", "ETCO2", "RR", "ECG", "PLETH"),
+            signal_profile=RecorderSignalScenario.APNEA,
         ),
         generated_scenario(
-            RecorderTestScenario.DEVICE_DISCONNECT,
-            title="Device disconnect",
-            situation=(
-                "The recorder remains present but monitored values drop to "
-                "disconnected signal states."
-            ),
-            purpose=(
-                "Verify stale/disconnected signal handling without hiding "
-                "partial data."
-            ),
-            tracks=("ECG", "PLETH", "HR", "PLETH_SPO2"),
-            signal_profile=RecorderSignalScenario.DEVICE_DISCONNECT,
+            RecorderTestScenario.ARRHYTHMIA,
+            title="Arrhythmia",
+            situation="Beat timing is irregular while monitoring continues.",
+            purpose="Verify ECG/HR continuity and export under irregular rhythm.",
+            tracks=("ECG", "HR", "PLETH", "ART"),
+            signal_profile=RecorderSignalScenario.ARRHYTHMIA,
         ),
         generated_scenario(
             RecorderTestScenario.HCT_DECREASING,

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Production wrapper and validation workspace for upstream VitalServer."
 requires-python = ">=3.14"
 dependencies = [
+  "jupyter>=1.1.1",
   "pydantic-settings>=2.14.1",
   "tirosh-vitalserver-core",
   "tirosh-vitalserver-devtools",

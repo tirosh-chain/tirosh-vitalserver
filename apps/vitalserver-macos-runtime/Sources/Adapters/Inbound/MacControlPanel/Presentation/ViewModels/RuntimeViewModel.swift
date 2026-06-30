@@ -68,6 +68,8 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var testKitVrcode = RuntimeViewModel.generatedTestKitVrcode()
     @Published var testKitOrphanVrcode = ""
     @Published var testKitScenario = RuntimeTestKitScenario.normalMonitoring
+    @Published var testKitSignalQuality = RuntimeTestKitSignalQuality.clean
+    @Published var testKitRecorderCondition = RuntimeTestKitRecorderCondition.normal
     @Published var testKitRecorderCount = 1
     @Published var testKitBedCount = 1
     @Published var testKitBedPrefix = "testbed"

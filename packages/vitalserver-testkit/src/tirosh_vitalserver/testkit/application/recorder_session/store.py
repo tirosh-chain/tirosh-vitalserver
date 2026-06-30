@@ -10,6 +10,7 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
     RecorderRuntimeSnapshot,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    RecorderCondition,
     RecorderScenarioWindow,
     RecorderSessionOutput,
     RecorderTestScenario,
@@ -23,6 +24,7 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderVitalUploadResult,
     VirtualRecorderVitalUploadStatus,
 )
+from tirosh_vitalserver.testkit.domain.signal import SignalQualityProfile
 
 SESSION_STORE_SCHEMA_VERSION = 3
 
@@ -66,6 +68,14 @@ def session_snapshot_from_record(
 
     request_data = dict(data["request"])
     request_data["scenario"] = RecorderTestScenario(str(request_data["scenario"]))
+    if "signal_quality" in request_data:
+        request_data["signal_quality"] = SignalQualityProfile(
+            str(request_data["signal_quality"])
+        )
+    if "recorder_condition" in request_data:
+        request_data["recorder_condition"] = RecorderCondition(
+            str(request_data["recorder_condition"])
+        )
     if request_data.get("window") is not None:
         request_data["window"] = RecorderScenarioWindow(**request_data["window"])
     if request_data.get("output") is not None:

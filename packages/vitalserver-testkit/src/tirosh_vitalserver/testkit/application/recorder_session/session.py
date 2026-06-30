@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
-import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 
 from tirosh_vitalserver.testkit.application.ports import (
+    RecordedFrameSourceProviderPort,
     SessionVitalFileExporterPort,
     SessionVitalFileUploaderPort,
     SocketIoConnectorPort,
@@ -18,6 +19,7 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
     RecorderRuntimeRegistry,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    RecorderCondition,
     VirtualRecorderSessionRequest,
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
@@ -44,6 +46,7 @@ from tirosh_vitalserver.testkit.application.recorder_session.recording import (
     SessionVitalPlayback,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.scenarios import (
+    RecorderScenarioDefinition,
     RecorderScenarioProvider,
     require_scenario_definition,
     scenario_window_for_request,
@@ -55,6 +58,11 @@ from tirosh_vitalserver.testkit.application.usecases.recorder.real_vital_sample 
 )
 from tirosh_vitalserver.testkit.application.usecases.recorder.stream_loop import (
     stream_realtime_payload,
+)
+from tirosh_vitalserver.testkit.domain.recorder import (
+    RecorderFramePostPolicy,
+    RecorderFrameSource,
+    RecorderFrameSourceKind,
 )
 from tirosh_vitalserver.testkit.domain.recorder.models import (
     VirtualRecorderPayload,
@@ -89,6 +97,7 @@ class VirtualRecorderSession:
         vital_file_exporter: SessionVitalFileExporterPort | None = None,
         vital_file_uploader: SessionVitalFileUploaderPort | None = None,
         real_vital_reader: RealVitalReaderPort | None = None,
+        recorded_frame_source_provider: RecordedFrameSourceProviderPort | None = None,
         snapshot_handler: Callable[
             [VirtualRecorderSessionSnapshot],
             None,
@@ -101,6 +110,7 @@ class VirtualRecorderSession:
         self._vital_file_exporter = vital_file_exporter
         self._vital_file_uploader = vital_file_uploader
         self._real_vital_reader = real_vital_reader
+        self._recorded_frame_source_provider = recorded_frame_source_provider
         self._snapshot_handler = snapshot_handler
         self._runtime_registry = RecorderRuntimeRegistry()
         self._stop_event = threading.Event()
@@ -385,29 +395,40 @@ class VirtualRecorderSession:
             else None
         )
         definition = require_scenario_definition(request.scenario)
-        if definition.provider != RecorderScenarioProvider.GENERATED_PROFILE:
-            signal_profile = DEFAULT_SIGNAL_PROFILE
-            generate_frames = False
-        elif definition.signal_profile is None:
+        frame_source_kind = frame_source_kind_for_request(request, definition)
+        if (
+            frame_source_kind == RecorderFrameSourceKind.GENERATED
+            and definition.signal_profile is None
+        ):
             raise ValueError(
                 f"scenario {request.scenario.value} is missing signal profile"
             )
-        else:
+        if frame_source_kind == RecorderFrameSourceKind.GENERATED:
             signal_profile = profile_for_scenario(definition.signal_profile)
-            generate_frames = request.generate_frames
+        else:
+            signal_profile = DEFAULT_SIGNAL_PROFILE
+
+        frame_post_policy = RecorderFramePostPolicy(
+            disconnected=request.recorder_condition
+            == RecorderCondition.DEVICE_DISCONNECT
+        )
 
         with ThreadPoolExecutor(max_workers=len(self._virtual_payloads)) as executor:
             futures = [
                 executor.submit(
                     stream_realtime_payload,
                     request.target_url,
-                    virtual_payload.payload,
+                    RecorderFrameSource(
+                        kind=frame_source_kind,
+                        payload=virtual_payload.payload,
+                        signal_profile=signal_profile,
+                        signal_quality=request.signal_quality,
+                    ),
                     interval_seconds=request.interval_seconds,
                     duration_seconds=duration_seconds,
                     max_messages=request.max_messages,
                     shift_time=request.shift_time,
-                    generate_frames=generate_frames,
-                    signal_profile=signal_profile,
+                    frame_post_policy=frame_post_policy,
                     stop_event=self._stop_event,
                     pause_event=self._pause_event,
                     runtime_state=self._runtime_registry.state_for(
@@ -598,16 +619,26 @@ class VirtualRecorderSession:
     def _build_virtual_payloads(self) -> tuple[VirtualRecorderPayload, ...]:
         request = self._request
         base_vrcode = request.vrcode or unique_testkit_vrcode()
-        payload = self._scenario_payload(vrcode=base_vrcode)
+        payload = self._source_payload_for_request(vrcode=base_vrcode)
         return build_virtual_recorder_payloads(
             payload,
             count=request.recorders,
             vrcode=base_vrcode,
             version=request.version,
+            bed_room_names=request.bed_room_names,
         )
 
-    def _scenario_payload(self, *, vrcode: str) -> JsonObject:
+    def _source_payload_for_request(self, *, vrcode: str) -> JsonObject:
         request = self._request
+        if request.real_sample_key is not None:
+            if self._recorded_frame_source_provider is None:
+                raise RuntimeError("recorded frame source provider is not configured")
+            return dict(
+                self._recorded_frame_source_provider.load_recorded_frame_source(
+                    request.real_sample_key
+                )
+            )
+
         definition = require_scenario_definition(request.scenario)
         window = scenario_window_for_request(request.window, definition)
 
@@ -660,3 +691,22 @@ def stream_stall_timeout_seconds(request: VirtualRecorderSessionRequest) -> floa
         _STREAM_STALL_GRACE_SECONDS,
         request.interval_seconds * _STREAM_STALL_INTERVAL_MULTIPLIER,
     )
+
+
+def frame_source_kind_for_request(
+    request: VirtualRecorderSessionRequest,
+    definition: RecorderScenarioDefinition,
+) -> RecorderFrameSourceKind:
+    """Return the frame source kind for one session request."""
+
+    if request.real_sample_key is not None:
+        return RecorderFrameSourceKind.RECORDED
+    if definition.provider == RecorderScenarioProvider.VITAL_FILE_WINDOW:
+        return RecorderFrameSourceKind.RECORDED
+    if (
+        definition.provider == RecorderScenarioProvider.GENERATED_PROFILE
+        and request.generate_frames
+    ):
+        return RecorderFrameSourceKind.GENERATED
+
+    return RecorderFrameSourceKind.STATIC

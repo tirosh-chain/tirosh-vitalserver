@@ -183,11 +183,12 @@ reconnect 후 `join_vr`를 다시 보내며, disconnected 상태의 emit은 전�
 않는 것입니다. 예방 원칙은 TestKit 실행 상태와 VitalServer 관측 상태를 별도 SoT로 두고,
 연결 끊김을 messagesSent 증가나 empty error로 숨기지 않는 것입니다.
 
-## Simulated Signal Scenario
+## Clinical Scenario, Signal Quality, and Recorder Condition
 
-testkit은 simulated recorder data를 만들 때 시나리오 이름을 `RecorderSignalScenario`로
-관리합니다. 각 시나리오는 `SignalProfile` preset으로 변환되고, streaming 중 numeric value와
-waveform 생성에 반영됩니다.
+testkit은 generated recorder data를 만들 때 임상 상태, 신호 품질, recorder 운영 조건을
+서로 다른 입력으로 다룹니다. Clinical scenario는 `SignalProfile` preset으로 변환되고,
+streaming 중 numeric value와 waveform 생성에 반영됩니다. Signal quality는 생성된 신호 위에
+적용되는 filter이며, recorder condition은 환자 상태가 아닌 운영 조건입니다.
 
 | Scenario | 의미 | 주로 확인할 것 |
 | --- | --- | --- |
@@ -199,12 +200,15 @@ waveform 생성에 반영됩니다.
 | `desaturation` | 낮은 SpO2 | SpO2 numeric과 trend 표시 |
 | `apnea` | 호흡 정지 또는 심한 저호흡 | CO2 waveform, RR numeric, stale-like 상태 |
 | `arrhythmia` | 불규칙한 beat timing | waveform continuity, renderer 안정성 |
-| `artifact` | noise나 왜곡이 섞인 신호 | renderer/transport resilience |
-| `device_disconnect` | 장비 연결 해제 또는 신호 없음 | stale data, disconnect 상태, Redis key 갱신 |
 | `hct_decreasing` | HCT가 점진적으로 감소하는 lab numeric | PLETH + HCT 기반 bloodbag inference context |
 
-기본은 `normal`로 두고, 특정 bed만 override할 수 있습니다. `index`는 생성된 bed 목록의
-1-based 번호입니다. HCT는 `Lab/HCT` numeric track으로 생성되며, Test 탭/API에서는
+`artifact`는 clinical scenario가 아니라 `signalQuality`로 다룹니다. 지원하는 값은
+`clean`, `noise`, `baseline_wander`, `motion_artifact`, `dropout`, `flatline`,
+`low_amplitude`, `clipping`입니다. 장비 연결 해제는 `recorderCondition=device_disconnect`로
+다룹니다.
+
+기본은 `normal`과 `clean`으로 두고, 특정 bed만 override할 수 있습니다. `index`는 생성된 bed
+목록의 1-based 번호입니다. HCT는 `Lab/HCT` numeric track으로 생성되며, Test 탭/API에서는
 `hct_decreasing` 또는 `bloodbag_transfusion` 같은 목적 중심 scenario로 노출됩니다.
 
 ```toml
@@ -255,7 +259,7 @@ uv run vitalserver-testkit send-recorder \
   .tmp/real-vital-recorder-samples/morc03_bloodbag.json
 ```
 
-지원하는 real sample scenario는 다음과 같습니다.
+지원하는 source extraction mode는 다음과 같습니다.
 
 | Scenario | Track selection |
 | --- | --- |

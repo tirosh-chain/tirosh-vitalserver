@@ -7,11 +7,13 @@ from typing import Self
 from pydantic import ConfigDict, Field, model_validator
 
 from tirosh_vitalserver.testkit.application.recorder_session import (
+    RecorderCondition,
     RecorderScenarioWindow,
     RecorderSessionOutput,
     RecorderTestScenario,
     VirtualRecorderSessionRequest,
 )
+from tirosh_vitalserver.testkit.domain.signal import SignalQualityProfile
 from tirosh_vitalserver.testkit.schemas.base import ExternalSchema
 
 
@@ -113,6 +115,15 @@ class StartVirtualRecordersRequest(ExternalSchema):
     )
     vrcode: str | None = None
     version: str = "testkit"
+    signal_quality: SignalQualityProfile = Field(
+        default=SignalQualityProfile.CLEAN,
+        alias="signalQuality",
+    )
+    recorder_condition: RecorderCondition = Field(
+        default=RecorderCondition.NORMAL,
+        alias="recorderCondition",
+    )
+    real_sample_key: str | None = Field(default=None, alias="realSampleKey")
     interval_seconds: float = Field(default=1.0, alias="intervalSeconds")
     max_messages: int | None = Field(default=None, alias="maxMessages")
     shift_time: bool = Field(default=True, alias="shiftTime")
@@ -131,6 +142,9 @@ class StartVirtualRecordersRequest(ExternalSchema):
             output=self.output.to_domain(),
             vrcode=self.vrcode,
             version=self.version,
+            signal_quality=self.signal_quality,
+            recorder_condition=self.recorder_condition,
+            real_sample_key=self.real_sample_key,
             interval_seconds=self.interval_seconds,
             max_messages=self.max_messages,
             shift_time=self.shift_time,

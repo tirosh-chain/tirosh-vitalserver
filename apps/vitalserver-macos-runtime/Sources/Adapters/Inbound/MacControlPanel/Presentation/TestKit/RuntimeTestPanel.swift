@@ -354,6 +354,20 @@ struct RuntimeTestPanel: View {
             }
             .pickerStyle(.menu)
 
+            Picker("Signal quality", selection: $viewModel.testKitSignalQuality) {
+                ForEach(RuntimeTestKitSignalQuality.allCases, id: \.self) { quality in
+                    Text(displayName(quality)).tag(quality)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("Recorder condition", selection: $viewModel.testKitRecorderCondition) {
+                ForEach(RuntimeTestKitRecorderCondition.allCases, id: \.self) { condition in
+                    Text(displayName(condition)).tag(condition)
+                }
+            }
+            .pickerStyle(.menu)
+
             testKitIntegerStepper(
                 AppConstants.Labels.recorderCount,
                 value: $viewModel.testKitRecorderCount,
@@ -664,6 +678,14 @@ struct RuntimeTestPanel: View {
 
     private func displayName(_ scenario: RuntimeTestKitScenario) -> String {
         displayName(scenario.rawValue)
+    }
+
+    private func displayName(_ quality: RuntimeTestKitSignalQuality) -> String {
+        displayName(quality.rawValue)
+    }
+
+    private func displayName(_ condition: RuntimeTestKitRecorderCondition) -> String {
+        displayName(condition.rawValue)
     }
 
     private func displayName(_ rawValue: String) -> String {

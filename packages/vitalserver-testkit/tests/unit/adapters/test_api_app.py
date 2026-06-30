@@ -8,6 +8,7 @@ from tests.support import fake_socketio_connector
 from tirosh_vitalserver.testkit.adapters.inbound.api import create_testkit_app
 from tirosh_vitalserver.testkit.application.bed_registry import BedRegistry
 from tirosh_vitalserver.testkit.application.recorder_session import (
+    PackagedRecordedFrameSourceProvider,
     VirtualRecorderSessionManager,
 )
 from tirosh_vitalserver.testkit.schemas import (
@@ -229,9 +230,61 @@ def test_scenarios_endpoint_describes_purpose_centered_scenarios() -> None:
         for scenario in response["scenarios"]
     }
     assert "bloodbag_transfusion" in scenarios
+    assert "bradycardia" in scenarios
+    assert "hypotension" in scenarios
+    assert "hypertension" in scenarios
+    assert "apnea" in scenarios
+    assert "arrhythmia" in scenarios
+    assert "signal_artifact" not in scenarios
+    assert "device_disconnect" not in scenarios
     assert scenarios["bloodbag_transfusion"]["title"] == "Bloodbag transfusion"
     assert scenarios["bloodbag_transfusion"]["situation"]
     assert scenarios["bloodbag_transfusion"]["purpose"]
+
+
+def test_real_recorder_samples_endpoint_lists_packaged_fixtures() -> None:
+    route = route_for("/real-recorder-samples", "GET")
+
+    response = route.endpoint()
+
+    scenarios = {
+        scenario["key"]: scenario
+        for scenario in response["scenarios"]
+    }
+    assert response["dataset"] == "testkit-recorder-scenario-fixtures-120s"
+    assert len(scenarios) == 6
+    assert "hemoglobin_oxygenation" in scenarios
+    assert scenarios["hemoglobin_oxygenation"]["title"] == "Hemoglobin oxygenation"
+    assert "payload" not in scenarios["hemoglobin_oxygenation"]
+    assert "source" not in scenarios["hemoglobin_oxygenation"]
+
+
+def test_sessions_endpoint_accepts_signal_quality_and_real_sample() -> None:
+    route = route_for("/sessions", "POST")
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorded_frame_source_provider=PackagedRecordedFrameSourceProvider(),
+    )
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A",))
+
+    response = route.endpoint(
+        StartVirtualRecordersRequest(
+            targetUrl="http://example.test",
+            bedroomName="OR-A",
+            maxMessages=1,
+            signalQuality="baseline_wander",
+            realSampleKey="startup_monitoring",
+        ),
+        manager,
+        registry,
+    )
+    try:
+        assert response["signalQuality"] == "baseline_wander"
+        assert response["realSampleKey"] == "startup_monitoring"
+        assert manager.wait_session(response["id"], timeout=5)
+    finally:
+        manager.delete_session(response["id"])
 
 
 def test_sessions_endpoint_rejects_active_bed_reuse() -> None:

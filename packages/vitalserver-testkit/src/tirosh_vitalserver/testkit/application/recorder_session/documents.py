@@ -37,6 +37,9 @@ def session_snapshot_to_document(
         "shiftTime": request.shift_time,
         "generateFrames": request.generate_frames,
         "scenario": request.scenario.value,
+        "signalQuality": request.signal_quality.value,
+        "recorderCondition": request.recorder_condition.value,
+        "realSampleKey": request.real_sample_key,
         "window": None
         if request.window is None
         else {

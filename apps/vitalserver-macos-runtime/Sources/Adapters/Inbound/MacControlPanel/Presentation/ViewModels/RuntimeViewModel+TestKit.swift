@@ -529,6 +529,8 @@ extension RuntimeViewModel {
             status: testKitStatus,
             selectedBedRoomNames: selectedTestKitBedRoomNames,
             scenario: testKitScenario,
+            signalQuality: testKitSignalQuality,
+            recorderCondition: testKitRecorderCondition,
             recorderCount: testKitRecorderCount,
             vrcode: testKitVrcode,
             intervalSeconds: testKitIntervalSeconds,

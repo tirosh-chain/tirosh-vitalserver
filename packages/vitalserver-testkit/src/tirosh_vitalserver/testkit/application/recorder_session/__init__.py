@@ -9,6 +9,7 @@ from tirosh_vitalserver.testkit.application.recorder_session.manager import (
     VirtualRecorderSessionManager,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    RecorderCondition,
     RecorderScenarioWindow,
     RecorderSessionOutput,
     RecorderTestScenario,
@@ -22,6 +23,12 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderVitalExportStatus,
     VirtualRecorderVitalUploadResult,
     VirtualRecorderVitalUploadStatus,
+)
+from tirosh_vitalserver.testkit.application.recorder_session.real_samples import (
+    PackagedRecordedFrameSourceProvider,
+    load_packaged_real_sample_manifest,
+    load_packaged_real_sample_payload,
+    packaged_real_sample_catalog_document,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.recording import (
     SessionPlaybackEvent,
@@ -44,6 +51,7 @@ from tirosh_vitalserver.testkit.application.recorder_session.store import (
 )
 
 __all__ = [
+    "RecorderCondition",
     "RecorderScenarioDefinition",
     "RecorderScenarioProvider",
     "RecorderScenarioWindow",
@@ -66,8 +74,12 @@ __all__ = [
     "VirtualRecorderVitalExportStatus",
     "VirtualRecorderVitalUploadResult",
     "VirtualRecorderVitalUploadStatus",
+    "PackagedRecordedFrameSourceProvider",
     "default_scenario_catalog",
     "deletion_result_to_document",
+    "load_packaged_real_sample_manifest",
+    "load_packaged_real_sample_payload",
+    "packaged_real_sample_catalog_document",
     "recorder_snapshot_to_document",
     "require_scenario_definition",
     "scenario_definition_to_document",

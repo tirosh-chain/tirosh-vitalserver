@@ -40,7 +40,7 @@ def test_json_file_session_store_round_trips_snapshots(tmp_path: Path) -> None:
             target_url="http://example.test",
             vrcode="VR_STORE",
             recorders=2,
-            bedroom_name="OR-A",
+            bed_room_names=("OR-A", "OR-B"),
             interval_seconds=0.1,
             max_messages=1,
             shift_time=False,

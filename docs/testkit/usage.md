@@ -84,6 +84,62 @@ TESTKIT_CONFIG=config/load-test.toml make testkit-load
 
 기본값은 내부 simulated recorder data를 만들어 Socket.IO `send_data` event로 반복 전송합니다. testkit은 room map payload를 upstream VitalServer가 기대하는 `{vrcode, ver, rooms}` 형태로 감싼 뒤 zlib으로 압축해 보냅니다. 실제 장비에서 캡처한 payload를 재현해야 하면 command의 첫 positional argument나 `config/testkit.toml`의 `[recorder].payload`에 JSON 파일 경로를 지정합니다.
 
+TestKit API와 Test 탭에서 쓰는 recorder session 입력은 세 축으로 분리합니다.
+
+| 축 | 의미 | 예 |
+| --- | --- | --- |
+| `scenario` | 임상적으로 의미 있는 생리 상태 | `normal_monitoring`, `tachycardia`, `hypotension`, `apnea`, `hct_decreasing` |
+| `signalQuality` | 생성된 신호 위에 적용하는 품질 filter | `clean`, `noise`, `baseline_wander`, `motion_artifact`, `dropout`, `flatline`, `low_amplitude`, `clipping` |
+| `recorderCondition` | 환자 상태가 아닌 recorder/장비 운영 조건 | `normal`, `device_disconnect` |
+
+즉 artifact와 disconnect는 clinical scenario가 아닙니다. 신호 품질은 기존 임상 신호에 filter로 적용하고, recorder disconnect는 별도 operational condition으로 지정합니다.
+
+패키지에 포함된 120초 fixture-backed scenario는 TestKit API의 `/real-recorder-samples`에서 조회하고, session 시작 시 내부적으로 `realSampleKey`로 선택합니다. 화면에서는 데이터 출처나 장비명이 아니라 아래 시나리오 이름으로 노출합니다. TestKit은 `data/`를 자동 탐색하지 않으며, 패키지 fixture 또는 명시 manifest만 사용합니다.
+
+TestKit stream은 source 종류를 직접 분기하지 않고 recorder frame source policy를 거칩니다.
+
+- generated source는 signal profile을 seed로 현재 tick frame을 생성합니다.
+- recorded source는 fixture나 `.vital` window의 source timestamp 구간에서 현재 tick에 해당하는 record만 잘라 현재 시간으로 투영합니다.
+- static source는 legacy payload replay처럼 명시 payload를 그대로 보내되, 요청한 경우 timestamp shift만 적용합니다.
+
+Bed identity는 source가 소유하지 않습니다. 세션 request의 `bedRoomNames`가 최종 room key와 `roomname`을 정하고, recorded fixture 안의 원본 room name은 playback source metadata일 뿐 VitalServer에 보낼 bed state가 아닙니다. Recorder condition 같은 후처리도 source와 무관한 frame post policy로 적용합니다.
+
+기본 포함 fixture-backed scenario는 아래 6개입니다.
+
+| Scenario | 목적 |
+| --- | --- |
+| `comprehensive_monitoring` | 넓은 multi-parameter monitoring baseline |
+| `high_density_monitoring` | high track count와 export completeness 검증 |
+| `hemoglobin_oxygenation` | hemoglobin/oxygenation monitoring 검증 |
+| `intermittent_monitoring` | sparse-but-valid monitoring window 검증 |
+| `short_recording_review` | 짧은 recording/export edge case |
+| `startup_monitoring` | stream startup 구간 sparse data 검증 |
+
+로컬 real sample 묶음을 testkit 기준 데이터로 쓸 때는 dataset manifest와 key를 명시합니다. testkit은 `data/`를 자동 탐색하지 않습니다. 어떤 payload를 쓰는지는 호출자가 `--dataset-manifest`와 `--dataset-key`로 제공해야 하며, 이 선택은 positional payload와 동시에 사용할 수 없습니다.
+
+```sh
+uv run vitalserver-testkit list-recorder-dataset \
+  data/real-vital-recorder-samples/testkit-dataset-manifest-120s.json
+```
+
+```sh
+uv run vitalserver-testkit verify-recorder \
+  --vitalserver-url http://localhost \
+  --dataset-manifest data/real-vital-recorder-samples/testkit-dataset-manifest-120s.json \
+  --dataset-key baseline_bx50_primus_high_track
+```
+
+120초 real sample payload는 이미 window 안에 여러 record를 담고 있으므로, lifecycle 검증에서 그대로 재생할 때는 `--replay-sample`과 종료 조건을 함께 둡니다.
+
+```sh
+uv run vitalserver-testkit stream-recorder \
+  --vitalserver-url http://localhost \
+  --dataset-manifest data/real-vital-recorder-samples/testkit-dataset-manifest-120s.json \
+  --dataset-key root_primus_high_track_sphb \
+  --replay-sample \
+  --max-messages 3
+```
+
 제품화 관점에서는 먼저 `verify-recorder`로 “전송된 payload가 VitalServer에서 보이는 상태”까지 확인합니다. 이 명령은 payload를 한 번 전송한 뒤, VitalServer의 UI용 endpoint인 `/vr_devs`에서 bed device metadata가 조회되는지 확인합니다.
 
 ```sh

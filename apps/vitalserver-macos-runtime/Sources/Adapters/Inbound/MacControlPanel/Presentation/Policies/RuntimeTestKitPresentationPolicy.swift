@@ -6,6 +6,8 @@ public struct RuntimeTestKitStartInput {
     public let status: RuntimeTestKitStatus
     public let selectedBedRoomNames: Set<String>
     public let scenario: RuntimeTestKitScenario
+    public let signalQuality: RuntimeTestKitSignalQuality
+    public let recorderCondition: RuntimeTestKitRecorderCondition
     public let recorderCount: Int
     public let vrcode: String
     public let intervalSeconds: Double
@@ -18,6 +20,8 @@ public struct RuntimeTestKitStartInput {
         status: RuntimeTestKitStatus,
         selectedBedRoomNames: Set<String>,
         scenario: RuntimeTestKitScenario,
+        signalQuality: RuntimeTestKitSignalQuality = .clean,
+        recorderCondition: RuntimeTestKitRecorderCondition = .normal,
         recorderCount: Int,
         vrcode: String,
         intervalSeconds: Double,
@@ -29,6 +33,8 @@ public struct RuntimeTestKitStartInput {
         self.status = status
         self.selectedBedRoomNames = selectedBedRoomNames
         self.scenario = scenario
+        self.signalQuality = signalQuality
+        self.recorderCondition = recorderCondition
         self.recorderCount = recorderCount
         self.vrcode = vrcode
         self.intervalSeconds = intervalSeconds
@@ -79,7 +85,7 @@ public struct RuntimeTestKitPresentationPolicy {
             && selectedAvailableBedRoomNames(
                 status: status,
                 selectedBedRoomNames: selectedBedRoomNames
-            ).count >= 1
+            ).count >= normalizedRecorderCount(recorderCount)
     }
 
     public func canStop(
@@ -203,7 +209,7 @@ public struct RuntimeTestKitPresentationPolicy {
         ).prefix(recorderCount))
         let bedroomName = bedRoomNames.first ?? "TestBedroom"
         return RuntimeTestKitVirtualRecorderStartRequest(
-            scenario: input.scenario,
+            scenario: input.scenario.requestScenario,
             recorders: recorderCount,
             bedroomName: bedroomName,
             bedRoomNames: bedRoomNames,
@@ -217,6 +223,9 @@ public struct RuntimeTestKitPresentationPolicy {
             ),
             vrcode: normalizedVrcode(input.vrcode),
             version: "testkit",
+            signalQuality: input.signalQuality,
+            recorderCondition: input.recorderCondition,
+            realSampleKey: input.scenario.realSampleKey,
             intervalSeconds: normalizedIntervalSeconds(input.intervalSeconds),
             maxMessages: normalizedMaxMessages(input.maxMessages),
             shiftTime: input.shiftTime,

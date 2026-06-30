@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "dataset": "testkit-recorder-scenario-fixtures-120s",
+  "sourceGlob": "data/MO*/**/*.vital",
+  "outputDir": "packages/vitalserver-testkit/src/tirosh_vitalserver/testkit/fixtures/real_recorder_samples",
+  "scenario": "full_real",
+  "startOffsetSeconds": 0,
+  "durationSeconds": 120,
+  "totalFiles": 6,
+  "usageNotes": [
+    "These are packaged recommended recorder scenario fixtures, not an implicit scan of local data/.",
+    "Payloads are stored as JSON gzip files and selected by explicit realSampleKey."
+  ],
+  "recommendedSets": {
+    "comprehensive_monitoring": {
+      "source": "data/MORA04_230102/MORA04_230102_112707.vital",
+      "payload": "samples/real_bx50_primus_baseline_high_track.json.gz",
+      "title": "Comprehensive monitoring",
+      "purpose": "Verify dense multi-parameter monitoring with a broad stable signal set.",
+      "payloadTrackCount": 50,
+      "sizeBytes": 2276215,
+      "recordCount": 5894,
+      "sampleCount": 79677,
+      "devices": ["Bx50", "Primus"],
+      "tags": ["real", "bx50", "primus", "high_track_count", "baseline"],
+      "tracks": ["ECG", "PLETH", "ART", "CO2", "SpO2", "BP", "temperature"]
+    },
+    "high_density_monitoring": {
+      "source": "data/MORA04_230102/MORA04_230102_142106.vital",
+      "payload": "samples/real_bx50_primus_max_header.json.gz",
+      "title": "High-density monitoring",
+      "purpose": "Verify high track count payload handling and export completeness.",
+      "payloadTrackCount": 50,
+      "sizeBytes": 2275885,
+      "recordCount": 5894,
+      "sampleCount": 79677,
+      "devices": ["Bx50", "Primus"],
+      "tags": ["real", "bx50", "primus", "high_track_count", "max_header"],
+      "tracks": ["ECG", "PLETH", "ART", "CO2", "SpO2", "BP", "temperature"]
+    },
+    "hemoglobin_oxygenation": {
+      "source": "data/MORC03_230102/MORC03_230102_133731.vital",
+      "payload": "samples/real_root_primus_sphb_high_track.json.gz",
+      "title": "Hemoglobin oxygenation",
+      "purpose": "Verify hemoglobin and oxygenation-related monitoring alongside ventilation data.",
+      "payloadTrackCount": 50,
+      "sizeBytes": 2111124,
+      "recordCount": 5930,
+      "sampleCount": 70987,
+      "devices": ["Primus", "Root"],
+      "tags": ["real", "root", "primus", "sphb", "high_track_count"],
+      "tracks": ["PLETH", "SpO2", "SpHb", "CO2", "ventilation"]
+    },
+    "intermittent_monitoring": {
+      "source": "data/MORC03_230106/MORC03_230106_141003.vital",
+      "payload": "samples/real_root_primus_sparse_window.json.gz",
+      "title": "Intermittent monitoring",
+      "purpose": "Verify sparse-but-valid monitoring windows without treating missing samples as success.",
+      "payloadTrackCount": 31,
+      "sizeBytes": 1726053,
+      "recordCount": 3525,
+      "sampleCount": 61317,
+      "devices": ["Primus", "Root"],
+      "tags": ["real", "root", "primus", "sparse_selected_window"],
+      "tracks": ["PLETH", "SpO2", "SpHb", "CO2"]
+    },
+    "short_recording_review": {
+      "source": "data/MORC03_230106/MORC03_230106_120921.vital",
+      "payload": "samples/real_root_primus_short_file.json.gz",
+      "title": "Short recording review",
+      "purpose": "Verify short recording windows and export edge handling.",
+      "payloadTrackCount": 29,
+      "sizeBytes": 319158,
+      "recordCount": 586,
+      "sampleCount": 11328,
+      "devices": ["Primus", "Root"],
+      "tags": ["real", "root", "primus", "short_file"],
+      "tracks": ["PLETH", "SpO2", "SpHb", "CO2"]
+    },
+    "startup_monitoring": {
+      "source": "data/MORA04_230102/MORA04_230102_074641.vital",
+      "payload": "samples/real_bx50_primus_sparse_startup.json.gz",
+      "title": "Startup monitoring",
+      "purpose": "Verify early sparse startup data before the monitoring stream becomes dense.",
+      "payloadTrackCount": 10,
+      "sizeBytes": 763302,
+      "recordCount": 975,
+      "sampleCount": 29844,
+      "devices": ["Bx50", "Primus"],
+      "tags": ["real", "bx50", "primus", "sparse_selected_window", "startup"],
+      "tracks": ["ECG", "PLETH", "ART", "CO2"]
+    }
+  },
+  "payloads": []
+}

@@ -340,7 +340,7 @@ def test_virtual_recorder_session_can_be_deleted() -> None:
             target_url="http://example.test",
             vrcode="VR_TEST",
             recorders=2,
-            bedroom_name="OR-A",
+            bed_room_names=("OR-A", "OR-B"),
             interval_seconds=1,
             shift_time=False,
         )
@@ -414,7 +414,7 @@ def test_virtual_recorder_delete_keeps_session_when_cleanup_fails() -> None:
             target_url="http://example.test",
             vrcode="VR_FAIL",
             recorders=2,
-            bedroom_name="OR-A",
+            bed_room_names=("OR-A", "OR-B"),
             interval_seconds=1,
             shift_time=False,
         )
@@ -505,14 +505,14 @@ def test_virtual_recorder_session_uses_purpose_scenario() -> None:
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             bedroom_name="OR-A",
-            scenario=RecorderTestScenario.SIGNAL_ARTIFACT,
+            scenario=RecorderTestScenario.ARRHYTHMIA,
             interval_seconds=1,
             max_messages=1,
             shift_time=False,
         )
     )
 
-    assert snapshot.request.scenario == RecorderTestScenario.SIGNAL_ARTIFACT
+    assert snapshot.request.scenario == RecorderTestScenario.ARRHYTHMIA
 
 
 def test_virtual_recorder_session_normalizes_bedroom_name() -> None:
@@ -601,9 +601,8 @@ def test_virtual_recorder_session_allows_reuse_after_session_delete() -> None:
     assert manager.wait_session(second.session_id, timeout=5)
 
 
-def test_virtual_recorder_session_can_run_multiple_recorders_in_one_bedroom() -> None:
-    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
-    snapshot = manager.start_session(
+def test_virtual_recorder_session_rejects_multiple_recorders_in_one_bedroom() -> None:
+    with pytest.raises(ValueError) as exc_info:
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             recorders=2,
@@ -612,17 +611,11 @@ def test_virtual_recorder_session_can_run_multiple_recorders_in_one_bedroom() ->
             max_messages=1,
             shift_time=False,
         )
+
+    assert (
+        str(exc_info.value)
+        == "bed count must be greater than or equal to recorder count"
     )
-
-    assert manager.wait_session(snapshot.session_id, timeout=5)
-
-    completed = manager.get_session(snapshot.session_id)
-    assert completed is not None
-
-    document = session_snapshot_to_document(completed)
-
-    assert document["bedsRequested"] == 1
-    assert document["bedroomName"] == "OR-A"
 
 
 def test_stored_virtual_recorder_session_can_be_deleted_after_restart() -> None:
@@ -638,7 +631,7 @@ def test_stored_virtual_recorder_session_can_be_deleted_after_restart() -> None:
             target_url="http://example.test",
             vrcode="VR_RESTART",
             recorders=2,
-            bedroom_name="OR-A",
+            bed_room_names=("OR-A", "OR-B"),
             interval_seconds=0.1,
             max_messages=1,
             shift_time=False,

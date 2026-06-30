@@ -120,8 +120,8 @@ def test_session_vital_export_uploads_to_vitalserver_success_response(
             VirtualRecorderSessionRequest(
                 target_url=server_url(server),
                 vrcode="VR_UPLOAD",
-                bedroom_name="OR-A",
                 recorders=2,
+                bed_room_names=("OR-A", "OR-B"),
                 interval_seconds=0.1,
                 max_messages=2,
                 shift_time=False,

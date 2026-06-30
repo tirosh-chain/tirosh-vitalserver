@@ -14,14 +14,57 @@ public enum RuntimeTestKitState: String, Codable, Equatable, Sendable {
 public enum RuntimeTestKitScenario: String, Codable, CaseIterable, Equatable, Sendable {
     case normalMonitoring = "normal_monitoring"
     case tachycardia
+    case bradycardia
+    case hypotension
+    case hypertension
     case desaturation
-    case signalArtifact = "signal_artifact"
-    case deviceDisconnect = "device_disconnect"
+    case apnea
+    case arrhythmia
     case hctDecreasing = "hct_decreasing"
     case bloodbagTransfusion = "bloodbag_transfusion"
     case perioperativeMonitoring = "perioperative_monitoring"
     case sedationMonitoring = "sedation_monitoring"
     case fullMonitoringReplay = "full_monitoring_replay"
+    case comprehensiveMonitoring = "comprehensive_monitoring"
+    case highDensityMonitoring = "high_density_monitoring"
+    case hemoglobinOxygenation = "hemoglobin_oxygenation"
+    case intermittentMonitoring = "intermittent_monitoring"
+    case shortRecordingReview = "short_recording_review"
+    case startupMonitoring = "startup_monitoring"
+
+    public var realSampleKey: String? {
+        switch self {
+        case .comprehensiveMonitoring,
+             .highDensityMonitoring,
+             .hemoglobinOxygenation,
+             .intermittentMonitoring,
+             .shortRecordingReview,
+             .startupMonitoring:
+            rawValue
+        default:
+            nil
+        }
+    }
+
+    public var requestScenario: RuntimeTestKitScenario {
+        realSampleKey == nil ? self : .normalMonitoring
+    }
+}
+
+public enum RuntimeTestKitSignalQuality: String, Codable, CaseIterable, Equatable, Sendable {
+    case clean
+    case noise
+    case baselineWander = "baseline_wander"
+    case motionArtifact = "motion_artifact"
+    case dropout
+    case flatline
+    case lowAmplitude = "low_amplitude"
+    case clipping
+}
+
+public enum RuntimeTestKitRecorderCondition: String, Codable, CaseIterable, Equatable, Sendable {
+    case normal
+    case deviceDisconnect = "device_disconnect"
 }
 
 public struct RuntimeTestKitStatus: Codable, Equatable, Sendable {
@@ -193,6 +236,9 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
     public var output: RuntimeTestKitSessionOutput
     public var vrcode: String?
     public var version: String
+    public var signalQuality: RuntimeTestKitSignalQuality
+    public var recorderCondition: RuntimeTestKitRecorderCondition
+    public var realSampleKey: String?
     public var intervalSeconds: Double
     public var maxMessages: Int?
     public var shiftTime: Bool
@@ -207,6 +253,9 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         output: RuntimeTestKitSessionOutput = RuntimeTestKitSessionOutput(),
         vrcode: String? = nil,
         version: String = "testkit",
+        signalQuality: RuntimeTestKitSignalQuality = .clean,
+        recorderCondition: RuntimeTestKitRecorderCondition = .normal,
+        realSampleKey: String? = nil,
         intervalSeconds: Double = 1,
         maxMessages: Int? = nil,
         shiftTime: Bool = true,
@@ -220,6 +269,9 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         self.output = output
         self.vrcode = vrcode
         self.version = version
+        self.signalQuality = signalQuality
+        self.recorderCondition = recorderCondition
+        self.realSampleKey = realSampleKey
         self.intervalSeconds = intervalSeconds
         self.maxMessages = maxMessages
         self.shiftTime = shiftTime
@@ -235,6 +287,9 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         case output
         case vrcode
         case version
+        case signalQuality
+        case recorderCondition
+        case realSampleKey
         case intervalSeconds
         case maxMessages
         case shiftTime
@@ -333,6 +388,9 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
     public var shiftTime: Bool
     public var generateFrames: Bool
     public var scenario: String
+    public var signalQuality: String?
+    public var recorderCondition: String?
+    public var realSampleKey: String?
     public var window: RuntimeTestKitScenarioWindow?
     public var output: RuntimeTestKitSessionOutput?
     public var createdAt: Double?
@@ -361,6 +419,9 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         shiftTime: Bool,
         generateFrames: Bool,
         scenario: String,
+        signalQuality: String? = nil,
+        recorderCondition: String? = nil,
+        realSampleKey: String? = nil,
         window: RuntimeTestKitScenarioWindow? = nil,
         output: RuntimeTestKitSessionOutput? = nil,
         createdAt: Double?,
@@ -388,6 +449,9 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         self.shiftTime = shiftTime
         self.generateFrames = generateFrames
         self.scenario = scenario
+        self.signalQuality = signalQuality
+        self.recorderCondition = recorderCondition
+        self.realSampleKey = realSampleKey
         self.window = window
         self.output = output
         self.createdAt = createdAt
@@ -418,6 +482,9 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         shiftTime = try container.decode(Bool.self, forKey: .shiftTime)
         generateFrames = try container.decode(Bool.self, forKey: .generateFrames)
         scenario = try container.decode(String.self, forKey: .scenario)
+        signalQuality = try container.decodeIfPresent(String.self, forKey: .signalQuality)
+        recorderCondition = try container.decodeIfPresent(String.self, forKey: .recorderCondition)
+        realSampleKey = try container.decodeIfPresent(String.self, forKey: .realSampleKey)
         window = try container.decodeIfPresent(RuntimeTestKitScenarioWindow.self, forKey: .window)
         output = try container.decodeIfPresent(RuntimeTestKitSessionOutput.self, forKey: .output)
         createdAt = try container.decodeIfPresent(Double.self, forKey: .createdAt)
@@ -447,6 +514,9 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         case shiftTime
         case generateFrames
         case scenario
+        case signalQuality
+        case recorderCondition
+        case realSampleKey
         case window
         case output
         case createdAt

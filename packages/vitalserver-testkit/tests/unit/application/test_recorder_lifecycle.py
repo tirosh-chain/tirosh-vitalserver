@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import zlib
+
 from tests.support import FakeSocketIoClient
 from tirosh_vitalserver.testkit.application.recorder_lifecycle import (
     MANAGEMENT_EVENTS,
@@ -10,6 +13,10 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
 )
 from tirosh_vitalserver.testkit.application.usecases.recorder.stream_loop import (
     stream_realtime_payload,
+)
+from tirosh_vitalserver.testkit.domain.recorder import (
+    RecorderFrameSource,
+    RecorderFrameSourceKind,
 )
 from tirosh_vitalserver.testkit.types.json import JsonObject
 
@@ -101,6 +108,65 @@ def test_stream_realtime_payload_records_join_and_send_data() -> None:
     assert snapshot.messages_sent == 1
     assert snapshot.bytes_sent == result.bytes_sent
     assert not client.connected
+
+
+def test_stream_realtime_payload_replays_recorded_frames_in_sequence() -> None:
+    client = FakeSocketIoClient()
+
+    def connector(
+        base_url: str,
+        *,
+        timeout: float = 30.0,
+    ) -> FakeSocketIoClient:
+        return client
+
+    payload: JsonObject = {
+        "vrcode": "VR_TEST",
+        "ver": "testkit",
+        "rooms": {
+            "OR-A": {
+                "roomname": "OR-A",
+                "dtstart": 100.0,
+                "dtend": 100.03,
+                "trks": [
+                    {
+                        "type": "num",
+                        "montype": "HR",
+                        "recs": [
+                            {"dt": 100.0, "val": 80},
+                            {"dt": 100.01, "val": 81},
+                            {"dt": 100.02, "val": 82},
+                        ],
+                    }
+                ],
+            }
+        },
+    }
+
+    result = stream_realtime_payload(
+        "http://example.test",
+        RecorderFrameSource(
+            kind=RecorderFrameSourceKind.RECORDED,
+            payload=payload,
+        ),
+        interval_seconds=0.01,
+        max_messages=2,
+        shift_time=True,
+        connector=connector,
+    )
+
+    sent_payloads = [
+        json.loads(zlib.decompress(data))
+        for event, data in client.emitted
+        if event == "send_data"
+    ]
+    first_record = sent_payloads[0]["rooms"]["OR-A"]["trks"][0]["recs"][0]
+    second_record = sent_payloads[1]["rooms"]["OR-A"]["trks"][0]["recs"][0]
+
+    assert result.error is None
+    assert first_record["val"] == 80
+    assert second_record["val"] == 81
+    assert second_record["dt"] > first_record["dt"]
 
 
 def test_stream_realtime_payload_does_not_count_disconnected_send() -> None:
