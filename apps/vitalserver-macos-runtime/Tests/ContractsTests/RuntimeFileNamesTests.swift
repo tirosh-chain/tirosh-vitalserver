@@ -13,6 +13,7 @@ final class RuntimeFileNamesTests: XCTestCase {
         XCTAssertEqual(RuntimeFileNames.vmLifecycle, "vm-lifecycle.json")
         XCTAssertEqual(RuntimeFileNames.appliedVMConfig, "applied-vm-config.json")
         XCTAssertEqual(RuntimeFileNames.runtimeState, "runtime-state.json")
+        XCTAssertEqual(RuntimeFileNames.serviceStackStatus, "service-stack-status.json")
         XCTAssertEqual(RuntimeFileNames.bootstrapLog, "bootstrap.log")
         XCTAssertEqual(RuntimeFileNames.bootstrapResult, "bootstrap-result.json")
         XCTAssertEqual(RuntimeFileNames.datastoreRepairRequest, "repair-datastore.request")

@@ -817,7 +817,7 @@ Shell
 | Helper app | `Sources/MacRuntimeControlApp/*` | 설치 후 Status/Settings/Update/Logs/About/Advanced/Danger Zone UI, app composition, native shell | rootfs, VM disk, privileged provisioning 포함 |
 | Host runtime adapter | `Sources/MacHostRuntimeAdapter/*` | `RuntimeControlClient` local facade, read worker, command worker, host file/log read, privileged command 조립/실행, log export | SwiftUI presentation, host runtime workflow 내부 단계 |
 | PKG scripts | `Support/Packaging/preinstall`, `postinstall`, `proxy-run`, `uninstall` | installer/launchd/uninstall entrypoint wrapper | 복잡한 provisioning 로직 |
-| guest bootstrap | `Support/Guest/bootstrap.sh`, Guest tools wheel, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state 기록 | macOS launchd/proxy 관리 |
+| guest bootstrap | `Support/Guest/bootstrap.sh`, Guest tools wheel, `prepare-airgap-rootfs.sh`, `compose.yaml` | Linux guest 내부 Docker/Compose 구성, edge nginx container, Docker image load, runtime state/service stack status 기록 | macOS launchd/proxy 관리 |
 
 Shell은 의도적으로 얇게 유지합니다. `postinstall`은 로그를 열고 `VITALSERVER_VM_HOME=/Library/Application Support/VitalServerHelper/vm vitalserver-vm runtime install-provision`만 호출합니다. 설치 정책은 Swift `RuntimeLifecycle`에 둡니다. Runtime readiness 판단은 `postinstall`이 아니라 watchdog, Helper app, `runtime health` command가 담당합니다.
 

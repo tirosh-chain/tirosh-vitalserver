@@ -130,6 +130,7 @@ public enum Constants {
     public enum Runtime {
         public static let vmIPFile = RuntimeFileNames.vmIP
         public static let runtimeStateFile = RuntimeFileNames.runtimeState
+        public static let serviceStackStatusFile = RuntimeFileNames.serviceStackStatus
         public static let bootstrapLogFile = RuntimeFileNames.bootstrapLog
         public static let bootstrapResultFile = RuntimeFileNames.bootstrapResult
         public static let datastoreRepairRequestFile = RuntimeFileNames.datastoreRepairRequest

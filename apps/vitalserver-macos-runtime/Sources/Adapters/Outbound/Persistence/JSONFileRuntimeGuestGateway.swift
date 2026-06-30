@@ -5,6 +5,7 @@ import Errors
 
 public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
     public let runtimeStateURL: URL
+    public let serviceStackStatusURL: URL
     public let bootstrapResultURL: URL
     public let updateActivationRequestURL: URL
     public let updateActivationResultURL: URL
@@ -20,6 +21,7 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
 
     public init(
         runtimeStateURL: URL,
+        serviceStackStatusURL: URL? = nil,
         bootstrapResultURL: URL,
         updateActivationRequestURL: URL,
         updateActivationResultURL: URL,
@@ -34,6 +36,10 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         fileStore: RuntimeFileReading & RuntimeFileWriting = SystemRuntimeFileStore()
     ) {
         self.runtimeStateURL = runtimeStateURL
+        self.serviceStackStatusURL = serviceStackStatusURL
+            ?? runtimeStateURL
+                .deletingLastPathComponent()
+                .appendingPathComponent(RuntimeFileNames.serviceStackStatus)
         self.bootstrapResultURL = bootstrapResultURL
         self.updateActivationRequestURL = updateActivationRequestURL
         self.updateActivationResultURL = updateActivationResultURL
@@ -50,6 +56,10 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
 
     public func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument> {
         decode(GuestRuntimeStateDocument.self, from: runtimeStateURL)
+    }
+
+    public func loadServiceStackStatusDocument() -> RuntimeGuestDocumentLoadResult<ServiceStackStatusDocument> {
+        decode(ServiceStackStatusDocument.self, from: serviceStackStatusURL)
     }
 
     public func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> {

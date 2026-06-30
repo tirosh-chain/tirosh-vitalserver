@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -7,7 +8,13 @@ from pytest import MonkeyPatch
 
 from tirosh_guest_tools.adapters.outbound.runtime import collector, state_writer
 from tirosh_guest_tools.contracts import RuntimeFileName
-from tirosh_guest_tools.domain.runtime_state import ProbeError, RuntimeResourceUsage
+from tirosh_guest_tools.domain.runtime_state import (
+    GuestRuntimeState,
+    ProbeError,
+    RuntimeContainerService,
+    RuntimeHTTPProbeStatus,
+    RuntimeResourceUsage,
+)
 
 
 def test_runtime_state_document_reports_probe_failures(
@@ -41,6 +48,103 @@ def test_runtime_state_document_reports_probe_failures(
 
     assert document["vmIP"] is None
     assert document["probeErrors"] == [{"source": "vmIP", "message": "missing"}]
+
+
+def test_service_stack_status_document_projects_service_stack_fields_only() -> None:
+    app_service = RuntimeContainerService(
+        service="app",
+        container_id="container-1",
+        exit_code=None,
+        error=None,
+        finished_at=None,
+        health="healthy",
+        memory_used_bytes=100,
+        memory_limit_bytes=200,
+        name="vitalserver-app-1",
+        oom_killed=False,
+        restart_count=0,
+        started_at="2026-07-01T00:00:00Z",
+        state="running",
+        uptime_seconds=30,
+    )
+    edge_probe = RuntimeHTTPProbeStatus(status="200")
+    redis_ui_probe = RuntimeHTTPProbeStatus(status="failed", failed=True)
+    state = GuestRuntimeState(
+        updated_at="2026-07-01T00:00:00Z",
+        vm_ip="192.168.64.10",
+        boot_id="boot-1",
+        container_services=(app_service,),
+        cpu_usage_percent=12.5,
+        guest_http=edge_probe,
+        memory=RuntimeResourceUsage(used_bytes=1, total_bytes=2),
+        probe_errors=(ProbeError(source="vitalDBObservation", message="timeout"),),
+        redis_ui_http=redis_ui_probe,
+        system_disk=RuntimeResourceUsage(used_bytes=3, total_bytes=4),
+        disk_health=None,
+        swagger_ui_http=None,
+        vital_files_disk=None,
+        vitaldb_observation={"state": "loaded"},
+    )
+
+    document = state_writer.service_stack_status_document(state).as_json()
+
+    assert document["schemaVersion"] == 1
+    assert document["owner"] == "service-stack"
+    assert document["updatedAt"] == "2026-07-01T00:00:00Z"
+    assert document["bootID"] == "boot-1"
+    assert document["composeServices"] == [app_service.as_json()]
+    assert document["httpProbes"] == {
+        "edge": edge_probe.as_json(),
+        "redisUI": redis_ui_probe.as_json(),
+        "swaggerUI": None,
+    }
+    assert document["vitalDBObservation"] == {"state": "loaded"}
+    assert document["readIssues"] == [
+        {"source": "vitalDBObservation", "message": "timeout"}
+    ]
+    assert "vmIP" not in document
+    assert "cpuUsagePercent" not in document
+    assert "memory" not in document
+    assert "systemDisk" not in document
+
+
+def test_write_runtime_state_can_write_parallel_service_stack_status(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = GuestRuntimeState(
+        updated_at="2026-07-01T00:00:00Z",
+        vm_ip="192.168.64.10",
+        boot_id="boot-1",
+        container_services=(),
+        cpu_usage_percent=None,
+        guest_http=RuntimeHTTPProbeStatus(status="200"),
+        memory=None,
+        probe_errors=(),
+        redis_ui_http=None,
+        system_disk=None,
+        disk_health=None,
+        swagger_ui_http=None,
+        vital_files_disk=None,
+        vitaldb_observation=None,
+    )
+    monkeypatch.setattr(state_writer, "runtime_state_document", lambda **_: state)
+
+    runtime_state = tmp_path / RuntimeFileName.RUNTIME_STATE.value
+    service_stack_status = tmp_path / RuntimeFileName.SERVICE_STACK_STATUS.value
+
+    state_writer.write_runtime_state(
+        runtime_state,
+        service_stack_status=service_stack_status,
+    )
+
+    runtime_document = json.loads(runtime_state.read_text(encoding="utf-8"))
+    service_stack_document = json.loads(
+        service_stack_status.read_text(encoding="utf-8")
+    )
+    assert runtime_document["vmIP"] == "192.168.64.10"
+    assert service_stack_document["owner"] == "service-stack"
+    assert "vmIP" not in service_stack_document
 
 
 def test_http_probe_failure_remains_explicit(
@@ -137,7 +241,7 @@ def test_compose_services_reads_stopped_containers_with_all(
     assert services[0].memory_limit_bytes == 4294967296
 
 
-def test_compose_services_reports_unknown_container_limit_when_no_hard_limit_is_configured(
+def test_compose_services_reports_unknown_limit_when_no_hard_limit_configured(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -167,9 +271,11 @@ def test_compose_services_reports_unknown_container_limit_when_no_hard_limit_is_
 
 
 def test_parse_docker_memory_usage_preserves_missing_values() -> None:
-    assert collector.parse_memory_usage("1.5GiB / 4GiB") == collector.ContainerMemoryStats(
-        used_bytes=1610612736,
-        limit_bytes=4294967296,
+    assert collector.parse_memory_usage(
+        "1.5GiB / 4GiB"
+    ) == collector.ContainerMemoryStats(
+        used_bytes=1_610_612_736,
+        limit_bytes=4_294_967_296,
     )
     assert collector.parse_memory_usage(None) == collector.ContainerMemoryStats(
         used_bytes=None,

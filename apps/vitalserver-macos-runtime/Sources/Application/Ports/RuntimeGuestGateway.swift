@@ -6,6 +6,7 @@ public typealias RuntimeGuestDocumentLoadResult<Document> = Contracts.RuntimeGue
 
 public protocol RuntimeGuestGateway {
     func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>
+    func loadServiceStackStatusDocument() -> RuntimeGuestDocumentLoadResult<ServiceStackStatusDocument>
     func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>
     func removeUpdateActivationResult() throws
     func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws
@@ -26,6 +27,10 @@ public protocol RuntimeGuestGateway {
 }
 
 public extension RuntimeGuestGateway {
+    func loadServiceStackStatusDocument() -> RuntimeGuestDocumentLoadResult<ServiceStackStatusDocument> {
+        .failed("service stack status gateway is unavailable")
+    }
+
     func removeGuestComposeReconcileResult() throws {
         throw RuntimeGuestCapabilityCheckError.missingCapability("reconcile-compose")
     }

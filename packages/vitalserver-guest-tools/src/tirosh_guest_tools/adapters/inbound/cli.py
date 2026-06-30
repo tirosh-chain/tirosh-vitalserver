@@ -19,23 +19,24 @@ from tirosh_guest_tools.adapters.outbound.runtime.config import (
 from tirosh_guest_tools.adapters.outbound.runtime.health import check_runtime_health
 from tirosh_guest_tools.adapters.outbound.runtime.state_writer import (
     write_runtime_state,
+    write_service_stack_status,
 )
 from tirosh_guest_tools.application.bootstrap import run_guest_bootstrap
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.observability import (
     write_guest_observability_snapshot,
 )
-from tirosh_guest_tools.application.redis_backup import (
-    LOG_FILE as REDIS_BACKUP_LOG_FILE,
-)
-from tirosh_guest_tools.application.redis_backup import (
-    run_redis_backup,
-)
 from tirosh_guest_tools.application.reconcile_compose import (
     LOG_FILE as RECONCILE_COMPOSE_LOG_FILE,
 )
 from tirosh_guest_tools.application.reconcile_compose import (
     run_reconcile_compose,
+)
+from tirosh_guest_tools.application.redis_backup import (
+    LOG_FILE as REDIS_BACKUP_LOG_FILE,
+)
+from tirosh_guest_tools.application.redis_backup import (
+    run_redis_backup,
 )
 from tirosh_guest_tools.application.redis_repair import (
     LOG_FILE as REDIS_REPAIR_LOG_FILE,
@@ -150,10 +151,12 @@ def write_runtime_state_command() -> int:
     parser.add_argument("guest_http", nargs="?")
     parser.add_argument("redis_ui_http", nargs="?")
     parser.add_argument("swagger_ui_http", nargs="?")
+    parser.add_argument("--service-stack-status", type=Path)
     args = parser.parse_args()
 
     write_runtime_state(
         args.runtime_state,
+        service_stack_status=args.service_stack_status,
         guest_http=args.guest_http,
         redis_ui_http=args.redis_ui_http,
         swagger_ui_http=args.swagger_ui_http,
@@ -171,6 +174,25 @@ def runtime_state() -> int:
     )
     args = parser.parse_args()
     run_runtime_state_action(args.action)
+    return 0
+
+
+def vitalserver_service_stack_status() -> int:
+    parser = argparse.ArgumentParser(
+        description="Write service-stack status JSON to the shared runtime directory."
+    )
+    parser.add_argument("service_stack_status", type=Path)
+    parser.add_argument("guest_http", nargs="?")
+    parser.add_argument("redis_ui_http", nargs="?")
+    parser.add_argument("swagger_ui_http", nargs="?")
+    args = parser.parse_args()
+
+    write_service_stack_status(
+        args.service_stack_status,
+        guest_http=args.guest_http,
+        redis_ui_http=args.redis_ui_http,
+        swagger_ui_http=args.swagger_ui_http,
+    )
     return 0
 
 
@@ -270,7 +292,9 @@ def vitalserver_redis_restore() -> int:
 
 
 def vitalserver_reconcile_compose() -> int:
-    parser = argparse.ArgumentParser(description="Reconcile VitalServer compose services.")
+    parser = argparse.ArgumentParser(
+        description="Reconcile VitalServer compose services."
+    )
     parser.parse_args()
     configure_logging(SETTINGS.logging, log_file=RECONCILE_COMPOSE_LOG_FILE)
     run_reconcile_compose()

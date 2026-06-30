@@ -193,6 +193,7 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         "tirosh-runtime-env",
         "tirosh-write-runtime-state",
         "tirosh-runtime-state",
+        "tirosh-vitalserver-service-stack-status",
         "tirosh-vitalserver-compose",
         "tirosh-vitalserver-sync-host-time",
         "tirosh-vitalserver-health",

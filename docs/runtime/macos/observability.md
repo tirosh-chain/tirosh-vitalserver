@@ -18,6 +18,7 @@ Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
 | 데이터 | 작성자 | 소비자 | 성격 |
 |---|---|---|---|
 | `vm/data/run/runtime-state.json` | guest `tirosh-runtime-state` | host `RuntimeHealthChecker`, Helper status | guest health/resource 스냅샷 |
+| `vm/data/run/service-stack-status.json` | guest `tirosh-runtime-state` / `tirosh-vitalserver-service-stack-status` | host guest gateway, future Runtime Control API | Linux service stack 상태 계약 |
 | `vm/data/run/guest-observability/latest.json` | guest `tirosh-guest-observed` | Helper Logs, export logs | guest OS 진단 스냅샷 |
 | `vm/data/run/guest-observability/snapshots/*` | guest `tirosh-guest-observe` | Helper Logs, export logs | phase별 one-shot 진단 |
 | `vm/data/run/container-logs.log` | guest `tirosh-guest-container-logs` | Helper Logs, export logs | `docker compose logs --follow` 수집본 |
@@ -43,6 +44,7 @@ Guest/container 쪽은 목적이 다른 자료가 병렬로 있습니다.
 - `vitaldb-observer`는 Redis와 proxy/access log를 읽어 VitalDB observation snapshot을 계산합니다.
 - `vitalserver-redis-relay`는 source Redis 3.2의 allowlisted key를 외부 target Redis로 publish하고, publish 진행과 target 오류를 status payload로 기록합니다.
 - guest `tirosh-runtime-state`는 guest HTTP/resource snapshot을 생성합니다.
+- guest `tirosh-vitalserver-service-stack-status`는 compose service, service HTTP probe, VitalDB observation 같은 Linux service stack 상태를 VM/resource 상태와 분리된 계약으로 생성합니다.
 - guest `tirosh-guest-observed`는 Linux guest OS의 진단 snapshot을 생성합니다.
 - compose service와 container는 stdout/stderr에 raw log를 남깁니다.
 - upstream VitalServer app은 제품 runtime event를 직접 알 필요가 없습니다.
@@ -254,6 +256,7 @@ Runtime Control API
 | Redis List | `vitalserver-recorder-ingress` | command audit event | Yes, capped | 운영 조회/디버깅 |
 | observer stdout | `vitaldb-observer` | 수집 성공/실패 summary | Yes, via container logs | 진단 |
 | `runtime-state.json` | guest runtime-state | VM/container/observer latest snapshot | No | host로 전달 |
+| `service-stack-status.json` | guest runtime-state/service-stack-status | compose service, service HTTP probe, VitalDB observation latest snapshot | No | service stack 상태 계약 |
 | `runtime-status.json` | runtime/watchdog | 최신 제품 상태 | No | UI/API latest status |
 | `runtime-events.jsonl` | runtime/watchdog | 제품 상태 이벤트 | Yes | operational history |
 | `runtime-observability.sqlite` | runtime/watchdog | event index, VitalDB observation history | Yes | Runtime Control API read model |
@@ -326,6 +329,7 @@ Recorder `online` and `stale` are explicit observer states. Consumers must not i
 | VitalDB raw observation | `vitaldb-observer` API snapshot | `vitaldb-observer` container | guest state writer | stateless collector/producer |
 | VitalDB observer diagnostic log | container stdout, `container-logs.log` | `vitaldb-observer` | operator diagnostics | raw diagnostic history, not canonical product history |
 | Runtime state bridge | guest `runtime-state.json` | `tirosh-write-runtime-state` | watchdog/runtime | VM 내부 상태를 host runtime으로 전달하는 bridge |
+| Service stack status bridge | guest `service-stack-status.json` | `tirosh-vitalserver-service-stack-status` | watchdog/runtime, future Runtime Control API | Linux service stack 상태를 host에 전달하는 explicit contract. Host는 missing/invalid/stale을 healthy로 추정하지 않음 |
 | UI display policy | `RuntimeStatusDisplayPolicy`, `RuntimeEventDisplayPolicy` | macOS runtime app | macOS UI | View는 policy 결과를 렌더링만 함 |
 | Runtime Control API contract | OpenAPI + Swift contracts | runtime control boundary | client/UI/testkit/external tools | 외부 연동 계약 SoT |
 | Observer API contract | `docs/api/vitaldb-observer.openapi.yaml` | observer app | guest state writer, future tools | observer 내부 API 계약 |
@@ -339,7 +343,7 @@ Recorder `online` and `stale` are explicit observer states. Consumers must not i
 |---|---|
 | 현재 runtime이 정상인가? | `runtime-status.json`, API `/runtime/status` |
 | 언제 상태가 바뀌었나? | `runtime-observability.sqlite`, fallback `runtime-events.jsonl`, API `/runtime/events` |
-| guest service가 살아 있나? | watchdog이 읽은 `runtime-state.json` + HTTP probe 결과 |
+| guest service가 살아 있나? | watchdog이 읽은 `runtime-state.json` + `service-stack-status.json` + HTTP probe 결과 |
 | container가 무슨 로그를 냈나? | `container-logs.log` |
 | VRecorder command가 어떤 흐름으로 전달됐나? | recorder ingress event log / Redis List |
 | VRecorder/bed/anomaly 최신 관측 결과는? | `runtime-observability.sqlite`, API `RuntimeVitalDBObservationSnapshot` |

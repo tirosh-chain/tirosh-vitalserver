@@ -16,6 +16,7 @@ from tirosh_guest_tools.infrastructure.common import (
 from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 RUNTIME_STATE_FILE = RUNTIME_DIR / RuntimeFileName.RUNTIME_STATE.value
+SERVICE_STACK_STATUS_FILE = RUNTIME_DIR / RuntimeFileName.SERVICE_STACK_STATUS.value
 REDIS_BACKUP_REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.REDIS_BACKUP_REQUEST.value
 
 
@@ -37,7 +38,10 @@ def run_runtime_state_action(action: RuntimeStateAction | str) -> None:
 
 
 def write_current_state() -> None:
-    write_runtime_state(RUNTIME_STATE_FILE)
+    write_runtime_state(
+        RUNTIME_STATE_FILE,
+        service_stack_status=SERVICE_STACK_STATUS_FILE,
+    )
 
 
 def trigger_redis_backup_if_requested() -> None:

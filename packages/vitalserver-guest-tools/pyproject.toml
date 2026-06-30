@@ -13,6 +13,7 @@ tirosh-guest-diagnostics = "tirosh_guest_tools.adapters.inbound.cli:guest_diagno
 tirosh-runtime-env = "tirosh_guest_tools.adapters.inbound.cli:runtime_env"
 tirosh-write-runtime-state = "tirosh_guest_tools.adapters.inbound.cli:write_runtime_state_command"
 tirosh-runtime-state = "tirosh_guest_tools.adapters.inbound.cli:runtime_state"
+tirosh-vitalserver-service-stack-status = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_service_stack_status"
 tirosh-vitalserver-health = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_health"
 tirosh-vitalserver-compose = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_compose"
 tirosh-vitalserver-sync-host-time = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_sync_host_time"

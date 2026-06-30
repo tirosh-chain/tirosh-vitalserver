@@ -203,6 +203,72 @@ final class JSONFileRuntimeGuestGatewayTests: XCTestCase {
         try harness.cleanup()
     }
 
+    func testLoadsServiceStackStatusDocument() throws {
+        let harness = try GuestGatewayHarness()
+        try harness.writeJSON(
+            """
+            {
+              "schemaVersion": 1,
+              "owner": "service-stack",
+              "updatedAt": "2026-07-01T00:00:00Z",
+              "bootID": "boot-1",
+              "capabilities": {
+                "activateUpdate": true,
+                "prepareUpdateShutdown": true,
+                "redisBackup": true,
+                "redisRestore": true,
+                "repairDatastore": true,
+                "reconcileCompose": true
+              },
+              "composeServices": [
+                {
+                  "service": "app",
+                  "containerID": "container-1",
+                  "state": "running",
+                  "health": "healthy",
+                  "memoryUsedBytes": 100,
+                  "memoryLimitBytes": 200
+                }
+              ],
+              "httpProbes": {
+                "edge": {
+                  "status": "200",
+                  "failed": false,
+                  "message": "",
+                  "exitCode": null
+                },
+                "redisUI": null,
+                "swaggerUI": null
+              },
+              "vitalDBObservation": null,
+              "readIssues": [
+                {
+                  "source": "vitalDBObservation",
+                  "message": "timeout"
+                }
+              ]
+            }
+            """,
+            to: harness.serviceStackStatusURL
+        )
+
+        guard case .loaded(let document) = harness.gateway.loadServiceStackStatusDocument() else {
+            return XCTFail("Expected loaded service stack status")
+        }
+
+        XCTAssertEqual(document.schemaVersion, 1)
+        XCTAssertEqual(document.owner, "service-stack")
+        XCTAssertEqual(document.updatedAt, "2026-07-01T00:00:00Z")
+        XCTAssertEqual(document.bootID, "boot-1")
+        XCTAssertEqual(document.composeServices?.first?.service, "app")
+        XCTAssertEqual(document.composeServices?.first?.health, "healthy")
+        XCTAssertEqual(document.httpProbes?.edge?.status, "200")
+        XCTAssertNil(document.vitalDBObservation)
+        XCTAssertEqual(document.readIssues?.first?.source, "vitalDBObservation")
+
+        try harness.cleanup()
+    }
+
     func testClearUpdateShutdownPreparationRemovesRequestAndResult() throws {
         let harness = try GuestGatewayHarness()
         try harness.gateway.writeUpdateShutdownRequest(RuntimeGuestShutdownRequest(
@@ -314,6 +380,7 @@ private struct GuestGatewayURLs {
     let root: URL
 
     var runtimeState: URL { root.appendingPathComponent(RuntimeFileNames.runtimeState) }
+    var serviceStackStatus: URL { root.appendingPathComponent(RuntimeFileNames.serviceStackStatus) }
     var bootstrapResult: URL { root.appendingPathComponent(RuntimeFileNames.bootstrapResult) }
     var updateActivationRequest: URL { root.appendingPathComponent(RuntimeFileNames.updateActivationRequest) }
     var updateActivationResult: URL { root.appendingPathComponent(RuntimeFileNames.updateActivationResult) }
@@ -329,6 +396,7 @@ private struct GuestGatewayURLs {
     func gateway(fileStore: RuntimeFileReading & RuntimeFileWriting) -> JSONFileRuntimeGuestGateway {
         JSONFileRuntimeGuestGateway(
             runtimeStateURL: runtimeState,
+            serviceStackStatusURL: serviceStackStatus,
             bootstrapResultURL: bootstrapResult,
             updateActivationRequestURL: updateActivationRequest,
             updateActivationResultURL: updateActivationResult,
@@ -424,6 +492,7 @@ private final class GuestGatewayFileStore: RuntimeFileReading, RuntimeFileWritin
 private struct GuestGatewayHarness {
     let directory: URL
     let runtimeStateURL: URL
+    let serviceStackStatusURL: URL
     let bootstrapResultURL: URL
     let updateActivationRequestURL: URL
     let updateActivationResultURL: URL
@@ -439,6 +508,7 @@ private struct GuestGatewayHarness {
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         runtimeStateURL = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        serviceStackStatusURL = directory.appendingPathComponent(RuntimeFileNames.serviceStackStatus)
         bootstrapResultURL = directory.appendingPathComponent(RuntimeFileNames.bootstrapResult)
         updateActivationRequestURL = directory.appendingPathComponent(RuntimeFileNames.updateActivationRequest)
         updateActivationResultURL = directory.appendingPathComponent(RuntimeFileNames.updateActivationResult)
@@ -450,6 +520,7 @@ private struct GuestGatewayHarness {
         guestComposeReconcileResultURL = directory.appendingPathComponent(RuntimeFileNames.guestComposeReconcileResult)
         gateway = JSONFileRuntimeGuestGateway(
             runtimeStateURL: runtimeStateURL,
+            serviceStackStatusURL: serviceStackStatusURL,
             bootstrapResultURL: bootstrapResultURL,
             updateActivationRequestURL: updateActivationRequestURL,
             updateActivationResultURL: updateActivationResultURL,

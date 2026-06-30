@@ -124,6 +124,7 @@ public struct RuntimeLifecycleComposition {
         let guestRunDirectory = installedPaths.guestRunDirectory
         return JSONFileRuntimeGuestGateway(
             runtimeStateURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.runtimeStateFile),
+            serviceStackStatusURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.serviceStackStatusFile),
             bootstrapResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.bootstrapResultFile),
             updateActivationRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationRequestFile),
             updateActivationResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationResultFile),

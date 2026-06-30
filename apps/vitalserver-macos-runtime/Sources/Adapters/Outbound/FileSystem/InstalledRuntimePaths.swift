@@ -183,6 +183,10 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.runtimeState)
     }
 
+    public var serviceStackStatus: URL {
+        guestRunDirectory.appendingPathComponent(RuntimeFileNames.serviceStackStatus)
+    }
+
     public var bootstrapLog: URL {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.bootstrapLog)
     }
