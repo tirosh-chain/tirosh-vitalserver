@@ -177,7 +177,7 @@ def projected_record_timestamp(
 def payload_anchor_timestamp(payload: Mapping[str, JsonValue]) -> float | None:
     """Return the earliest explicit timestamp in a recorded payload."""
 
-    timestamps = list(iter_replay_timestamps(payload))
+    timestamps = list(iter_replay_timestamps(dict(payload)))
     return min(timestamps) if timestamps else None
 
 
@@ -188,7 +188,7 @@ def payload_duration_seconds(
 ) -> float:
     """Return the source replay duration using explicit payload timestamps."""
 
-    timestamps = list(iter_replay_timestamps(payload))
+    timestamps = list(iter_replay_timestamps(dict(payload)))
     if not timestamps:
         return 1.0
 

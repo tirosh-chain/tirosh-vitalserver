@@ -596,11 +596,14 @@ def run_export_real_vital_recorder(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
 
-    rooms = payload["rooms"] if isinstance(payload.get("rooms"), dict) else {}
+    payload_rooms = payload.get("rooms")
+    rooms = payload_rooms if isinstance(payload_rooms, dict) else {}
     track_count = 0
     for room in rooms.values():
-        if isinstance(room, dict) and isinstance(room.get("trks"), list):
-            track_count += len(room["trks"])
+        if isinstance(room, dict):
+            tracks = room.get("trks")
+            if isinstance(tracks, list):
+                track_count += len(tracks)
 
     print(f"payload: {args.output}")
     print(f"metadata: {metadata_output}")

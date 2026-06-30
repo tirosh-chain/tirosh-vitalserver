@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import zlib
 
+import pytest
+
 from tests.support import FakeSocketIoClient
 from tirosh_vitalserver.testkit.application.recorder_lifecycle import (
     MANAGEMENT_EVENTS,
@@ -227,10 +229,12 @@ def test_stream_realtime_payload_does_not_count_disconnected_send() -> None:
     assert result.messages_sent == 0
 
 
-def test_sleep_until_frame_time_uses_remaining_schedule_time(monkeypatch) -> None:
+def test_sleep_until_frame_time_uses_remaining_schedule_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client = FakeSocketIoClient()
     sleeps: list[float] = []
-    client.sleep = sleeps.append
+    monkeypatch.setattr(client, "sleep", sleeps.append)
     monkeypatch.setattr(
         "tirosh_vitalserver.testkit.application.usecases.recorder.stream_loop."
         "time.perf_counter",

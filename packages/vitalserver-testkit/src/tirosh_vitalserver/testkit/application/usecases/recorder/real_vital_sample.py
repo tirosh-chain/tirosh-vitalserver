@@ -71,6 +71,20 @@ class SelectedRealVitalTrack:
     output_montype: str
 
 
+@dataclass(frozen=True, slots=True)
+class RealVitalTrackCatalogItem:
+    """One merged source track entry in a real `.vital` catalog."""
+
+    dtname: str
+    dname: str
+    name: str
+    unit: str
+    montype: int
+    srate: float
+    track_type: str
+    files: int
+
+
 def build_real_vital_recorder_payload(
     reader: RealVitalReaderPort,
     path: Path,
@@ -239,7 +253,7 @@ def real_vital_track_catalog(
 ) -> JsonObject:
     """Return a merged source track catalog for real `.vital` files."""
 
-    catalog: dict[str, dict[str, object]] = {}
+    catalog: dict[str, RealVitalTrackCatalogItem] = {}
     files: JsonArray = []
     for path in paths:
         header = reader.header(path)
@@ -252,38 +266,46 @@ def real_vital_track_catalog(
             }
         )
         for track in header.tracks:
-            item = catalog.setdefault(
-                track.dtname,
-                {
-                    "dtname": track.dtname,
-                    "dname": track.dname,
-                    "name": track.name,
-                    "unit": track.unit,
-                    "montype": track.montype,
-                    "srate": track.srate,
-                    "type": "wav" if is_wave_track(track) else "num",
-                    "files": 0,
-                },
+            item = catalog.get(track.dtname)
+            if item is None:
+                item = RealVitalTrackCatalogItem(
+                    dtname=track.dtname,
+                    dname=track.dname,
+                    name=track.name,
+                    unit=track.unit,
+                    montype=track.montype,
+                    srate=track.srate,
+                    track_type="wav" if is_wave_track(track) else "num",
+                    files=0,
+                )
+            catalog[track.dtname] = RealVitalTrackCatalogItem(
+                dtname=item.dtname,
+                dname=item.dname,
+                name=item.name,
+                unit=item.unit,
+                montype=item.montype,
+                srate=item.srate,
+                track_type=item.track_type,
+                files=item.files + 1,
             )
-            item["files"] = int(item["files"]) + 1
 
-    tracks = sorted(catalog.values(), key=lambda item: str(item["dtname"]))
+    tracks = sorted(catalog.values(), key=lambda item: item.dtname)
 
     return {
         "filesScanned": len(paths),
         "uniqueTracks": len(tracks),
-        "waveTracks": sum(1 for track in tracks if track["type"] == "wav"),
-        "numericTracks": sum(1 for track in tracks if track["type"] == "num"),
+        "waveTracks": sum(1 for track in tracks if track.track_type == "wav"),
+        "numericTracks": sum(1 for track in tracks if track.track_type == "num"),
         "tracks": [
             {
-                "dtname": str(track["dtname"]),
-                "dname": str(track["dname"]),
-                "name": str(track["name"]),
-                "unit": str(track["unit"]),
-                "montype": int(track["montype"]),
-                "srate": float(track["srate"]),
-                "type": str(track["type"]),
-                "files": int(track["files"]),
+                "dtname": track.dtname,
+                "dname": track.dname,
+                "name": track.name,
+                "unit": track.unit,
+                "montype": track.montype,
+                "srate": track.srate,
+                "type": track.track_type,
+                "files": track.files,
             }
             for track in tracks
         ],

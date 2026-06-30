@@ -397,15 +397,13 @@ class VirtualRecorderSession:
         )
         definition = require_scenario_definition(request.scenario)
         frame_source_kind = frame_source_kind_for_request(request, definition)
-        if (
-            frame_source_kind == RecorderFrameSourceKind.GENERATED
-            and definition.signal_profile is None
-        ):
-            raise ValueError(
-                f"scenario {request.scenario.value} is missing signal profile"
-            )
         if frame_source_kind == RecorderFrameSourceKind.GENERATED:
-            signal_profile = profile_for_scenario(definition.signal_profile)
+            signal_profile_scenario = definition.signal_profile
+            if signal_profile_scenario is None:
+                raise ValueError(
+                    f"scenario {request.scenario.value} is missing signal profile"
+                )
+            signal_profile = profile_for_scenario(signal_profile_scenario)
         else:
             signal_profile = DEFAULT_SIGNAL_PROFILE
 
@@ -681,15 +679,21 @@ class VirtualRecorderSession:
                 raise ValueError(
                     f"scenario {request.scenario.value} is missing source scenario"
                 )
+            if window is None:
+                raise ValueError(
+                    f"scenario {request.scenario.value} is missing source window"
+                )
+            if window.duration_seconds is None:
+                raise ValueError(
+                    f"scenario {request.scenario.value} is missing window duration"
+                )
             return build_real_vital_recorder_payload(
                 self._real_vital_reader,
                 definition.source_path,
                 scenario=definition.source_scenario,
                 room_name=request.bedroom_name,
-                start_offset_seconds=(
-                    0.0 if window is None else window.start_offset_seconds or 0.0
-                ),
-                duration_seconds=None if window is None else window.duration_seconds,
+                start_offset_seconds=window.start_offset_seconds or 0.0,
+                duration_seconds=int(window.duration_seconds),
                 vrcode=vrcode,
                 version=request.version,
             )

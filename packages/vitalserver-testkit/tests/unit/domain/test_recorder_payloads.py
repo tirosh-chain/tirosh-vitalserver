@@ -138,8 +138,9 @@ def test_virtual_recorder_payloads_project_source_rooms_to_selected_beds() -> No
 
     assert [room.payload_key for room in rooms] == ["OR-A", "OR-B"]
     assert [room.room_name for room in rooms] == ["OR-A", "OR-B"]
-    assert "MORC03_230102_133731" not in visibility_payload["rooms"]
-    assert "MORC03_230106_141003" not in visibility_payload["rooms"]
+    visible_rooms = cast(JsonObject, visibility_payload["rooms"])
+    assert "MORC03_230102_133731" not in visible_rooms
+    assert "MORC03_230106_141003" not in visible_rooms
 
 
 def test_recorded_replay_payload_returns_one_source_window_at_current_time() -> None:
@@ -495,7 +496,7 @@ def test_recorder_signal_scenarios_are_stable_strings() -> None:
 def require_track(tracks: JsonArray, name: str) -> JsonObject:
     for track in tracks:
         if isinstance(track, dict) and track.get("name") == name:
-            return cast(JsonObject, track)
+            return track
 
     raise AssertionError(f"missing track: {name}")
 

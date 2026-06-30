@@ -24,13 +24,14 @@ from tirosh_vitalserver.testkit.schemas import (
     RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
 )
+from tirosh_vitalserver.testkit.types.json import JsonObject
 
 
 class FakeRecordedFrameSourceProvider:
     def __init__(self) -> None:
         self.loaded_keys: list[str] = []
 
-    def load_recorded_frame_source(self, key: str) -> dict[str, object]:
+    def load_recorded_frame_source(self, key: str) -> JsonObject:
         self.loaded_keys.append(key)
         return build_simulated_recorder_payload(room_names=("OR-A",))
 
@@ -238,13 +239,13 @@ def test_sessions_endpoint_accepts_purpose_scenario() -> None:
     registry.create_beds(room_names=("OR-A",))
 
     response = route.endpoint(
-        StartVirtualRecordersRequest(
-            targetUrl="http://example.test",
-            recorderCount=1,
-            bedroomName="OR-A",
-            maxMessages=1,
-            scenario="hct_decreasing",
-        ),
+        StartVirtualRecordersRequest.model_validate({
+            "targetUrl": "http://example.test",
+            "recorderCount": 1,
+            "bedroomName": "OR-A",
+            "maxMessages": 1,
+            "scenario": "hct_decreasing",
+        }),
         manager,
         registry,
     )
@@ -327,13 +328,13 @@ def test_sessions_endpoint_accepts_signal_quality_and_real_sample() -> None:
     registry.create_beds(room_names=("OR-A",))
 
     response = route.endpoint(
-        StartVirtualRecordersRequest(
-            targetUrl="http://example.test",
-            bedroomName="OR-A",
-            maxMessages=1,
-            signalQuality="baseline_wander",
-            realSampleKey="startup_monitoring",
-        ),
+        StartVirtualRecordersRequest.model_validate({
+            "targetUrl": "http://example.test",
+            "bedroomName": "OR-A",
+            "maxMessages": 1,
+            "signalQuality": "baseline_wander",
+            "realSampleKey": "startup_monitoring",
+        }),
         manager,
         registry,
     )
@@ -356,18 +357,18 @@ def test_sessions_endpoint_accepts_vital_file_source() -> None:
     registry.create_beds(room_names=("OR-A",))
 
     response = route.endpoint(
-        StartVirtualRecordersRequest(
-            targetUrl="http://example.test",
-            bedroomName="OR-A",
-            maxMessages=1,
-            source={
+        StartVirtualRecordersRequest.model_validate({
+            "targetUrl": "http://example.test",
+            "bedroomName": "OR-A",
+            "maxMessages": 1,
+            "source": {
                 "type": "vitalFile",
                 "path": "/Users/Shared/VitalServerHelper/vital-files/sample.vital",
                 "scenario": "full_real",
                 "startOffsetSeconds": 1.0,
                 "durationSeconds": 2,
             },
-        ),
+        }),
         manager,
         registry,
     )
@@ -396,18 +397,18 @@ def test_sessions_endpoint_reports_vital_file_source_unavailable() -> None:
 
     with pytest.raises(HTTPException) as exc:
         route.endpoint(
-            StartVirtualRecordersRequest(
-                targetUrl="http://example.test",
-                bedroomName="OR-A",
-                maxMessages=1,
-                source={
+            StartVirtualRecordersRequest.model_validate({
+                "targetUrl": "http://example.test",
+                "bedroomName": "OR-A",
+                "maxMessages": 1,
+                "source": {
                     "type": "vitalFile",
                     "path": "/mnt/tirosh-vital-files/missing.vital",
                     "scenario": "full_real",
                     "startOffsetSeconds": 1.0,
                     "durationSeconds": 2,
                 },
-            ),
+            }),
             manager,
             registry,
         )

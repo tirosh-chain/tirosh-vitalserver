@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -70,7 +72,7 @@ def test_realtime_message_document_converts_to_internal_json_object() -> None:
     assert internal_payload["ver"] == "testkit"
 
 
-def test_recorder_dataset_manifest_selects_recommended_payload(tmp_path) -> None:
+def test_recorder_dataset_manifest_selects_recommended_payload(tmp_path: Path) -> None:
     payload_path = tmp_path / "payload.json"
     manifest_path = tmp_path / "manifest.json"
     payload_path.write_text("{}", encoding="utf-8")
@@ -105,7 +107,7 @@ def test_recorder_dataset_manifest_selects_recommended_payload(tmp_path) -> None
     ) == payload_path
 
 
-def test_recorder_dataset_manifest_rejects_unknown_key(tmp_path) -> None:
+def test_recorder_dataset_manifest_rejects_unknown_key(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(
         """

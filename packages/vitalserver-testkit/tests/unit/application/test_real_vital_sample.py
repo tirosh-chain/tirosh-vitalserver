@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -122,10 +123,15 @@ def test_scenario_metadata_lists_selected_and_derived_tracks() -> None:
     assert metadata["payload"] == "payload.json"
     selected = metadata["selectedTracks"]
     assert isinstance(selected, list)
-    assert [item["sourceTrack"] for item in selected] == ["Root/PLETH", "Root/SPHB"]
+    selected_tracks = cast(list[JsonObject], selected)
     derived = metadata["derivedTracks"]
     assert isinstance(derived, list)
-    assert derived[0]["outputName"] == "HCT"
+    derived_tracks = cast(list[JsonObject], derived)
+    assert [item["sourceTrack"] for item in selected_tracks] == [
+        "Root/PLETH",
+        "Root/SPHB",
+    ]
+    assert derived_tracks[0]["outputName"] == "HCT"
 
 
 def test_periop_full_selects_primus_and_bx50_tracks() -> None:
@@ -166,7 +172,8 @@ def test_real_vital_track_catalog_merges_source_headers() -> None:
     assert catalog["numericTracks"] == 1
     tracks = catalog["tracks"]
     assert isinstance(tracks, list)
-    sphb = next(item for item in tracks if item["dtname"] == "Root/SPHB")
+    catalog_tracks = cast(list[JsonObject], tracks)
+    sphb = next(item for item in catalog_tracks if item["dtname"] == "Root/SPHB")
     assert sphb["files"] == 2
     assert sphb["montype"] == 72
 
