@@ -204,6 +204,18 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.stopRuntimeServices()
     }
 
+    public func startTestKitService() async throws -> RuntimeCommandResult {
+        try await commandWorker.startTestKitService()
+    }
+
+    public func stopTestKitService() async throws -> RuntimeCommandResult {
+        try await commandWorker.stopTestKitService()
+    }
+
+    public func restartTestKitService() async throws -> RuntimeCommandResult {
+        try await commandWorker.restartTestKitService()
+    }
+
     public func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
         try await commandWorker.exportLogs(to: destination)
     }

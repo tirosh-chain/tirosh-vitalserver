@@ -67,6 +67,12 @@ extension RuntimeViewModel {
         )
     }
 
+    var testKitCanControlContainer: Bool {
+        controlClient.capabilities.canControlRuntimeServices
+            && !isRunningTestKitAction
+            && testKitStatus.enabled
+    }
+
     func recordTestKitActionMessage(
         _ value: String,
         tone: RuntimeTestKitActionMessageTone = .neutral
@@ -82,6 +88,30 @@ extension RuntimeViewModel {
             return
         }
         applyTestKitStatus(await testKitController.loadTestKitStatus())
+    }
+
+    func startTestKitContainer() async {
+        await runTestKitContainerAction(
+            progressMessage: RuntimeTestPanelText.startingTestKitContainer,
+            successMessage: RuntimeTestPanelText.startedTestKitContainer,
+            action: { try await self.controlClient.startTestKitService() }
+        )
+    }
+
+    func stopTestKitContainer() async {
+        await runTestKitContainerAction(
+            progressMessage: RuntimeTestPanelText.stoppingTestKitContainer,
+            successMessage: RuntimeTestPanelText.stoppedTestKitContainer,
+            action: { try await self.controlClient.stopTestKitService() }
+        )
+    }
+
+    func restartTestKitContainer() async {
+        await runTestKitContainerAction(
+            progressMessage: RuntimeTestPanelText.restartingTestKitContainer,
+            successMessage: RuntimeTestPanelText.restartedTestKitContainer,
+            action: { try await self.controlClient.restartTestKitService() }
+        )
     }
 
     func createTestKitBeds() async {
@@ -570,6 +600,45 @@ extension RuntimeViewModel {
         let errorMessage = error.localizedDescription
         recordTestKitActionMessage(errorMessage, tone: .failure)
         message = errorMessage
+    }
+
+    private func runTestKitContainerAction(
+        progressMessage: String,
+        successMessage: String,
+        action: @escaping () async throws -> RuntimeCommandResult
+    ) async {
+        guard testKitCanControlContainer else {
+            recordTestKitActionMessage(AppConstants.StatusText.actionUnavailable, tone: .failure)
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+
+        isRunningTestKitAction = true
+        defer { isRunningTestKitAction = false }
+
+        recordTestKitActionMessage(progressMessage)
+        message = progressMessage
+        do {
+            let result = try await action()
+            guard result.exitCode == 0 else {
+                let errorMessage = result.stderr.isEmpty ? result.stdout : result.stderr
+                recordTestKitActionMessage(errorMessage, tone: .failure)
+                message = errorMessage
+                return
+            }
+            if let testKitController {
+                applyTestKitStatus(await testKitController.loadTestKitStatus())
+            }
+            recordTestKitActionMessage(successMessage)
+            message = successMessage
+        } catch {
+            if let testKitController {
+                applyTestKitStatus(await testKitController.loadTestKitStatus())
+            }
+            let errorMessage = error.localizedDescription
+            recordTestKitActionMessage(errorMessage, tone: .failure)
+            message = errorMessage
+        }
     }
 
     private func selectNewlyCreatedBeds(_ beds: [RuntimeTestKitBed], existingRoomNames: Set<String>) {

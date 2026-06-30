@@ -105,6 +105,7 @@ class StartVirtualRecordersRequest(ExternalSchema):
     target_url: str = Field(alias="targetUrl")
     recorders: int = Field(default=1, alias="recorderCount", ge=1)
     bedroom_name: str = Field(default="TestBedroom", alias="bedroomName")
+    bed_room_names: tuple[str, ...] = Field(default=(), alias="bedRoomNames")
     scenario: RecorderTestScenario = RecorderTestScenario.NORMAL_MONITORING
     window: RecorderScenarioWindowRequest | None = None
     output: RecorderSessionOutputRequest = Field(
@@ -124,6 +125,7 @@ class StartVirtualRecordersRequest(ExternalSchema):
             target_url=self.target_url,
             recorders=self.recorders,
             bedroom_name=self.bedroom_name,
+            bed_room_names=self.bed_room_names,
             scenario=self.scenario,
             window=None if self.window is None else self.window.to_domain(),
             output=self.output.to_domain(),

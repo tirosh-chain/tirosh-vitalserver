@@ -125,7 +125,8 @@ public struct JSONFileRuntimeGuestGateway: RuntimeGuestGateway {
         try write(
             GuestComposeReconcileRequestDocument(
                 requestId: request.id,
-                requestedAt: request.requestedAt
+                requestedAt: request.requestedAt,
+                composeAction: request.composeAction.rawValue
             ),
             to: guestComposeReconcileRequestURL
         )
@@ -202,4 +203,5 @@ private struct GuestComposeReconcileRequestDocument: Encodable {
     let requestId: String
     let requestedAt: String
     let operation = "reconcile-compose"
+    let composeAction: String
 }

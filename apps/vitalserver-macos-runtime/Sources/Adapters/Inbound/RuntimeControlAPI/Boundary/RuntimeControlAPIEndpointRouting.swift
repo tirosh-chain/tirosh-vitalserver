@@ -45,6 +45,12 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .post, path: "/runtime/services/start", scope: .runtimeControl)
         case .stopServices:
             return .init(method: .post, path: "/runtime/services/stop", scope: .runtimeControl)
+        case .startTestKitService:
+            return .init(method: .post, path: "/runtime/services/testkit/start", scope: .runtimeControl)
+        case .stopTestKitService:
+            return .init(method: .post, path: "/runtime/services/testkit/stop", scope: .runtimeControl)
+        case .restartTestKitService:
+            return .init(method: .post, path: "/runtime/services/testkit/restart", scope: .runtimeControl)
         case .repairRuntimeServices:
             return .init(method: .post, path: "/runtime/services/repair-runtime", scope: .runtimeControl)
         case .repairProxy:

@@ -771,6 +771,50 @@ def test_compose_services_reports_empty_stdout(monkeypatch: Any) -> None:
     assert "docker compose config --services produced empty stdout" in str(error.value)
 
 
+def test_testkit_stop_compose_action_stops_only_testkit(monkeypatch: Any) -> None:
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(compose, "mount_runtime_share", lambda: None)
+    monkeypatch.setattr(compose, "mount_vital_files_share", lambda: None)
+    monkeypatch.setattr(compose, "load_runtime_env", lambda: object())
+    monkeypatch.setattr(compose, "compose", lambda arguments, **kwargs: calls.append(arguments))
+    monkeypatch.setattr(compose, "run", lambda arguments, **kwargs: calls.append(arguments))
+
+    compose.run_compose_action(ComposeAction.TESTKIT_STOP)
+
+    assert calls == [
+        ["stop", "--timeout", "30", ComposeService.TESTKIT.value],
+        ["sync"],
+    ]
+
+
+def test_testkit_restart_compose_action_recreates_only_testkit(monkeypatch: Any) -> None:
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(compose, "mount_runtime_share", lambda: None)
+    monkeypatch.setattr(compose, "mount_vital_files_share", lambda: None)
+    monkeypatch.setattr(compose, "prepare_container_bind_source_directories", lambda: None)
+    monkeypatch.setattr(compose, "load_optional_docker_images", lambda: None)
+    monkeypatch.setattr(
+        compose,
+        "load_runtime_env",
+        lambda: type("RuntimeConfigStub", (), {"testkit_enabled": True})(),
+    )
+    monkeypatch.setattr(
+        compose,
+        "checked_compose",
+        lambda arguments, **kwargs: calls.append(arguments),
+    )
+    monkeypatch.setattr(compose, "compose", lambda arguments, **kwargs: calls.append(arguments))
+
+    compose.run_compose_action(ComposeAction.TESTKIT_RESTART)
+
+    assert calls == [
+        ["stop", "--timeout", "30", ComposeService.TESTKIT.value],
+        ["up", "-d", ComposeService.TESTKIT.value],
+    ]
+
+
 def test_stop_compose_action_reports_timeout_as_dependency_failure(
     monkeypatch: Any,
 ) -> None:

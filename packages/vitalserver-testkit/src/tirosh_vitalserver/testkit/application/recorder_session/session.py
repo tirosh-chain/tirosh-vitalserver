@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -26,6 +27,7 @@ from tirosh_vitalserver.testkit.application.recorder_session.policy import (
     session_can_pause,
     session_can_resume,
     session_can_stop,
+    session_stream_stall_error,
     vital_state_after_stream_error,
     vital_state_export_failed,
     vital_state_export_ready,
@@ -70,6 +72,9 @@ from tirosh_vitalserver.testkit.domain.signal import (
 )
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
 from tirosh_vitalserver.testkit.types.json import JsonObject
+
+_STREAM_STALL_GRACE_SECONDS = 30.0
+_STREAM_STALL_INTERVAL_MULTIPLIER = 10.0
 
 
 class VirtualRecorderSession:
@@ -233,6 +238,49 @@ class VirtualRecorderSession:
                 vital_state=self._vital_state,
             )
 
+    def refresh_runtime_liveness(
+        self,
+        *,
+        now: float | None = None,
+    ) -> VirtualRecorderSessionSnapshot:
+        """Fail a running session whose send_data heartbeat has stalled."""
+
+        observed_at = time.time() if now is None else now
+        with self._lock:
+            snapshot = self.snapshot()
+            error = session_stream_stall_error(
+                snapshot,
+                now=observed_at,
+                timeout_seconds=stream_stall_timeout_seconds(self._request),
+            )
+            if error is None:
+                return snapshot
+
+            self._error = error
+            self._state = VirtualRecorderSessionState.FAILED
+            self._stopped_at = observed_at
+            self._stop_event.set()
+            self._record_playback_event(
+                SessionPlaybackEventType.STOPPED,
+                observed_at,
+            )
+            self._vital_state = vital_state_after_stream_error(
+                self._vital_state,
+                error,
+            )
+            snapshot = self.snapshot()
+
+        emit_testkit_event(
+            "session.stream_stalled",
+            level=logging.WARNING,
+            session_id=self._session_id,
+            target_url=self._request.target_url,
+            vrcode=self._request.vrcode,
+            error=error,
+        )
+        self._publish_snapshot(snapshot)
+        return snapshot
+
     def _publish_snapshot(
         self,
         snapshot: VirtualRecorderSessionSnapshot | None = None,
@@ -267,17 +315,23 @@ class VirtualRecorderSession:
 
             with self._lock:
                 self._results = results
-                self._error = error
-                self._stopped_at = time.time()
-                self._record_playback_event(
-                    SessionPlaybackEventType.STOPPED,
-                    self._stopped_at,
-                )
-                if error:
+                if (
+                    self._state == VirtualRecorderSessionState.FAILED
+                    and self._error is not None
+                ):
+                    error = self._error
+                else:
+                    self._error = error
+                    self._stopped_at = time.time()
+                    self._record_playback_event(
+                        SessionPlaybackEventType.STOPPED,
+                        self._stopped_at,
+                    )
+                if self._error:
                     self._state = VirtualRecorderSessionState.FAILED
                     self._vital_state = vital_state_after_stream_error(
                         self._vital_state,
-                        error,
+                        self._error,
                     )
                 else:
                     self._state = VirtualRecorderSessionState.STOPPED
@@ -292,10 +346,10 @@ class VirtualRecorderSession:
                 vrcode=self._request.vrcode,
                 messages_sent=sum(result.messages_sent for result in results),
                 bytes_sent=sum(result.bytes_sent for result in results),
-                error=error,
+                error=self._error,
             )
             self._publish_snapshot(snapshot)
-            if error is None:
+            if self._error is None:
                 self._finalize_vital_artifact()
         except Exception as exc:
             with self._lock:
@@ -597,3 +651,12 @@ def first_result_error(results: tuple[RealtimeStreamResult, ...]) -> str | None:
             return result.error
 
     return None
+
+
+def stream_stall_timeout_seconds(request: VirtualRecorderSessionRequest) -> float:
+    """Return the allowed send_data silence for one running session."""
+
+    return max(
+        _STREAM_STALL_GRACE_SECONDS,
+        request.interval_seconds * _STREAM_STALL_INTERVAL_MULTIPLIER,
+    )

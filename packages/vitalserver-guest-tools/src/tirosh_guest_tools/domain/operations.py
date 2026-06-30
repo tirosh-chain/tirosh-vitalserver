@@ -26,6 +26,8 @@ class ComposeAction(StrEnum):
     UP = "up"
     TESTKIT_UP = "testkit-up"
     TESTKIT_UP_LOGGED = "testkit-up-logged"
+    TESTKIT_STOP = "testkit-stop"
+    TESTKIT_RESTART = "testkit-restart"
     STOP = "stop"
 
 

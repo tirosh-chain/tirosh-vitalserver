@@ -188,6 +188,7 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
     public var scenario: RuntimeTestKitScenario
     public var recorders: Int
     public var bedroomName: String
+    public var bedRoomNames: [String]
     public var window: RuntimeTestKitScenarioWindow?
     public var output: RuntimeTestKitSessionOutput
     public var vrcode: String?
@@ -201,6 +202,7 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         scenario: RuntimeTestKitScenario = .normalMonitoring,
         recorders: Int = 1,
         bedroomName: String = "TestBedroom",
+        bedRoomNames: [String] = [],
         window: RuntimeTestKitScenarioWindow? = nil,
         output: RuntimeTestKitSessionOutput = RuntimeTestKitSessionOutput(),
         vrcode: String? = nil,
@@ -213,6 +215,7 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         self.scenario = scenario
         self.recorders = recorders
         self.bedroomName = bedroomName
+        self.bedRoomNames = bedRoomNames
         self.window = window
         self.output = output
         self.vrcode = vrcode
@@ -227,6 +230,7 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         case scenario
         case recorders
         case bedroomName
+        case bedRoomNames
         case window
         case output
         case vrcode
@@ -320,6 +324,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
     public var recordersRequested: Int
     public var bedsRequested: Int
     public var bedroomName: String
+    public var bedRoomNames: [String]
     public var vrcode: String?
     public var version: String
     public var intervalSeconds: Double
@@ -339,7 +344,6 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
     public var cleanupErrors: [RuntimeTestKitCleanupError]
     public var vital: RuntimeTestKitSessionVitalState?
     public var recorders: [RuntimeTestKitRecorder]
-    public var bedRoomNames: [String] { [bedroomName] }
 
     public init(
         id: String,
@@ -348,6 +352,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         recordersRequested: Int,
         bedsRequested: Int = 0,
         bedroomName: String = "TestBedroom",
+        bedRoomNames: [String] = [],
         vrcode: String?,
         version: String,
         intervalSeconds: Double,
@@ -374,6 +379,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         self.recordersRequested = recordersRequested
         self.bedsRequested = bedsRequested
         self.bedroomName = bedroomName
+        self.bedRoomNames = bedRoomNames.isEmpty ? [bedroomName] : bedRoomNames
         self.vrcode = vrcode
         self.version = version
         self.intervalSeconds = intervalSeconds
@@ -403,6 +409,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         recordersRequested = try container.decode(Int.self, forKey: .recordersRequested)
         bedsRequested = try container.decodeIfPresent(Int.self, forKey: .bedsRequested) ?? 0
         bedroomName = try container.decode(String.self, forKey: .bedroomName)
+        bedRoomNames = try container.decodeIfPresent([String].self, forKey: .bedRoomNames) ?? [bedroomName]
         vrcode = try container.decodeIfPresent(String.self, forKey: .vrcode)
         version = try container.decode(String.self, forKey: .version)
         intervalSeconds = try container.decode(Double.self, forKey: .intervalSeconds)
@@ -431,6 +438,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         case recordersRequested
         case bedsRequested
         case bedroomName
+        case bedRoomNames
         case vrcode
         case version
         case intervalSeconds

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -10,6 +11,7 @@ from tirosh_vitalserver.testkit.application.recorder_session import (
     RecorderSessionOutput,
     RecorderTestScenario,
     SessionVitalPlayback,
+    VirtualRecorderSession,
     VirtualRecorderSessionManager,
     VirtualRecorderSessionRequest,
     VirtualRecorderSessionSnapshot,
@@ -17,6 +19,9 @@ from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderVitalArtifact,
     VirtualRecorderVitalUploadResult,
     session_snapshot_to_document,
+)
+from tirosh_vitalserver.testkit.application.recorder_session.session import (
+    stream_stall_timeout_seconds,
 )
 from tirosh_vitalserver.testkit.domain.bed import beds_for_room_names
 
@@ -27,7 +32,7 @@ def test_virtual_recorder_session_runs_to_completion() -> None:
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             recorders=2,
-            bedroom_name="OR-A",
+            bed_room_names=("OR-A", "OR-B"),
             interval_seconds=0.1,
             max_messages=2,
             shift_time=False,
@@ -51,8 +56,9 @@ def test_virtual_recorder_session_runs_to_completion() -> None:
     assert document["state"] == "stopped"
     assert document["targetUrl"] == "http://example.test"
     assert document["recordersRequested"] == 2
-    assert document["bedsRequested"] == 1
+    assert document["bedsRequested"] == 2
     assert document["bedroomName"] == "OR-A"
+    assert document["bedRoomNames"] == ["OR-A", "OR-B"]
     assert document["recorders"][0]["joinSent"] is True
 
 
@@ -80,6 +86,55 @@ def test_virtual_recorder_session_can_stop() -> None:
 
     assert stopped is not None
     assert stopped.state == VirtualRecorderSessionState.STOPPED
+
+
+def test_virtual_recorder_session_marks_stalled_stream_failed() -> None:
+    client = BlockingSocketIoClient()
+    request = VirtualRecorderSessionRequest(
+        target_url="http://example.test",
+        bedroom_name="OR-A",
+        interval_seconds=0.1,
+        shift_time=False,
+    )
+    session = VirtualRecorderSession(
+        session_id="vrecorder-stalled",
+        request=request,
+        connector=lambda base_url, timeout=30.0: client,
+    )
+
+    session.start()
+
+    try:
+        deadline = time.time() + 2
+        snapshot = session.snapshot()
+        while snapshot.messages_sent < 1 and time.time() < deadline:
+            time.sleep(0.01)
+            snapshot = session.snapshot()
+
+        assert snapshot.state == VirtualRecorderSessionState.RUNNING
+        assert snapshot.recorders[0].last_send_data_at is not None
+
+        failed = session.refresh_runtime_liveness(
+            now=(
+                snapshot.recorders[0].last_send_data_at
+                + stream_stall_timeout_seconds(request)
+                + 1
+            ),
+        )
+
+        assert failed.state == VirtualRecorderSessionState.FAILED
+        assert failed.error is not None
+        assert "stream stalled: no send_data" in failed.error
+        assert failed.stopped_at is not None
+    finally:
+        client.release()
+
+    assert session.wait(timeout=2)
+
+    final = session.snapshot()
+    assert final.state == VirtualRecorderSessionState.FAILED
+    assert final.error is not None
+    assert "stream stalled: no send_data" in final.error
 
 
 def test_virtual_recorder_session_exports_and_uploads_playback_window() -> None:
@@ -774,6 +829,19 @@ class FailingSessionStore(InMemorySessionStore):
 class SlowFakeSocketIoClient(FakeSocketIoClient):
     def sleep(self, seconds: float) -> None:
         time.sleep(min(seconds, 0.01))
+
+
+class BlockingSocketIoClient(FakeSocketIoClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self._release = Event()
+
+    def sleep(self, seconds: float) -> None:
+        if seconds >= 0.1:
+            self._release.wait(timeout=2)
+
+    def release(self) -> None:
+        self._release.set()
 
 
 def slow_socketio_connector(

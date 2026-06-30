@@ -91,6 +91,7 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
         ))
 
         XCTAssertEqual(request.bedroomName, "OR-B")
+        XCTAssertEqual(request.bedRoomNames, ["OR-B", "OR-C"])
         XCTAssertEqual(request.recorders, 2)
         XCTAssertEqual(request.vrcode, "VR_123")
         XCTAssertEqual(request.intervalSeconds, 0.1)
@@ -229,8 +230,9 @@ private func testKitSession(
         state: state,
         targetURL: "http://example.test",
         recordersRequested: recordersRequested ?? max(bedRoomNames.count, 1),
-        bedsRequested: 1,
+        bedsRequested: bedRoomNames.count,
         bedroomName: bedRoomNames.first ?? "TestBedroom",
+        bedRoomNames: bedRoomNames,
         vrcode: nil,
         version: "testkit",
         intervalSeconds: 1,

@@ -670,7 +670,11 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         )
         let latestAnomaliesBySubject = Dictionary(grouping: latestObservation.anomalies, by: \.subject)
         let projectedActivityByVrcode = activityBuckets.map(projectedActivityTimelineByVrcode)
+        let recorderIngressActivityByVrcode = recorderIngressActivityByVrcode(containerObservation)
         let redisIPSyncByVrcode = recorderRedisIPSyncByVrcode(containerObservation)
+        for vrcode in recorderIngressActivityByVrcode.keys where builders[vrcode] == nil {
+            builders[vrcode] = RecorderBuilder(vrcode: vrcode)
+        }
 
         let unsortedRecords: [RuntimeVitalRecorderRecord] = builders.values.map { builder in
             let latestRecorder = latestRecorders[builder.vrcode]
@@ -684,6 +688,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
                 currentAnomalies: anomalies,
                 duplicateObservationCount: recorderDuplicateObservationCounts[builder.vrcode, default: 0],
                 activityTimeline: projectedActivityByVrcode?[builder.vrcode],
+                recorderIngressActivity: recorderIngressActivityByVrcode[builder.vrcode],
                 redisIPSync: redisIPSyncByVrcode[builder.vrcode] ?? defaultRecorderRedisIPSync(
                     vrcode: builder.vrcode,
                     containerObservation: containerObservation
@@ -1220,6 +1225,24 @@ private func recorderRedisIPSyncByVrcode(
     )
 }
 
+private func recorderIngressActivityByVrcode(
+    _ containerObservation: RuntimeContainerObservation?
+) -> [String: RuntimeRecorderConnectionObservation] {
+    guard containerObservation?.recorderIngressStatusReadState == .loaded,
+          let ingressRecorders = containerObservation?.recorderIngressStatus?.recorders
+    else {
+        return [:]
+    }
+    return Dictionary(
+        ingressRecorders.map { ($0.vrcode, $0) },
+        uniquingKeysWith: { current, candidate in
+            compareReportedTimestamp(candidate.lastSeenAt, current.lastSeenAt) == .orderedDescending
+                ? candidate
+                : current
+        }
+    )
+}
+
 private func defaultRecorderRedisIPSync(
     vrcode: String,
     containerObservation: RuntimeContainerObservation?
@@ -1277,24 +1300,30 @@ private struct RecorderBuilder {
         currentAnomalies: [VitalDBAnomalyObservation],
         duplicateObservationCount: Int,
         activityTimeline projectedActivityTimeline: [RuntimeVitalRecorderActivityPoint]? = nil,
+        recorderIngressActivity: RuntimeRecorderConnectionObservation? = nil,
         redisIPSync: RuntimeRecorderRedisIPSyncObservation? = nil
     ) -> RuntimeVitalRecorderRecord {
         let presentInLatestObservation = latestRecorder != nil
         let latestAnomaly = latestAnomaly(in: currentAnomalies)
+        let explicitLastSeenAt = maxOptionalTimestamp(
+            presentInLatestObservation ? latestRecorder?.lastSeenAt : lastSeenAt,
+            recorderIngressActivity?.lastSeenAt
+        )
         return RuntimeVitalRecorderRecord(
             vrcode: vrcode,
             status: status(
                 latestRecorder,
+                recorderIngressActivity: recorderIngressActivity,
                 observedAt: latestObservationObservedAt,
                 onlineThresholdSeconds: recorderOnlineThresholdSeconds
             ),
-            lastIP: presentInLatestObservation ? latestRecorder?.ip : lastIP,
+            lastIP: presentInLatestObservation ? latestRecorder?.ip : (lastIP ?? recorderIngressActivity?.selectedIp),
             version: presentInLatestObservation ? latestRecorder?.version : version,
             bedID: presentInLatestObservation ? latestBed?.bedID : bedID,
             bedName: presentInLatestObservation ? latestBed?.name : bedName,
             patientConnected: presentInLatestObservation ? latestBed?.patientConnected : patientConnected,
             firstSeenAt: firstSeenAt,
-            lastSeenAt: presentInLatestObservation ? latestRecorder?.lastSeenAt : lastSeenAt,
+            lastSeenAt: explicitLastSeenAt,
             observationCount: observationCount,
             duplicateObservationCount: duplicateObservationCount,
             currentAnomalyCount: currentAnomalies.count,
@@ -1310,26 +1339,47 @@ private struct RecorderBuilder {
 
     private func status(
         _ recorder: VitalDBRecorderObservation?,
+        recorderIngressActivity: RuntimeRecorderConnectionObservation?,
         observedAt: String,
         onlineThresholdSeconds: Int
     ) -> RuntimeVitalRecorderStatus {
+        let ingressReportsOnline = recorderIngressActivityIsOnline(
+            recorderIngressActivity,
+            observedAt: observedAt,
+            onlineThresholdSeconds: onlineThresholdSeconds
+        )
         guard let recorder else {
-            return .notObserved
+            return ingressReportsOnline == true ? .online : .notObserved
         }
         if recorder.stale {
-            return .stale
+            return ingressReportsOnline == true ? .online : .stale
         }
         guard recorder.online else {
-            return .offline
+            return ingressReportsOnline == true ? .online : .offline
         }
         guard let lastSeenAt = recorder.lastSeenAt,
               let lastSeenDate = iso8601Date(lastSeenAt),
               let observedDate = iso8601Date(observedAt) else {
             return .online
         }
-        return observedDate.timeIntervalSince(lastSeenDate) > Double(max(onlineThresholdSeconds, 0))
-            ? .stale
-            : .online
+        if observedDate.timeIntervalSince(lastSeenDate) > Double(max(onlineThresholdSeconds, 0)) {
+            return ingressReportsOnline == true ? .online : .stale
+        }
+        return .online
+    }
+
+    private func recorderIngressActivityIsOnline(
+        _ recorderIngressActivity: RuntimeRecorderConnectionObservation?,
+        observedAt: String,
+        onlineThresholdSeconds: Int
+    ) -> Bool? {
+        guard let lastSeenAt = recorderIngressActivity?.lastSeenAt,
+              let lastSeenDate = iso8601Date(lastSeenAt),
+              let observedDate = iso8601Date(observedAt)
+        else {
+            return nil
+        }
+        return observedDate.timeIntervalSince(lastSeenDate) <= Double(max(onlineThresholdSeconds, 0))
     }
 
     private func minTimestamp(_ current: String?, _ next: String) -> String {
@@ -1344,6 +1394,13 @@ private struct RecorderBuilder {
             return next
         }
         return Swift.max(current, next)
+    }
+
+    private func maxOptionalTimestamp(_ current: String?, _ next: String?) -> String? {
+        guard let next else {
+            return current
+        }
+        return maxTimestamp(current, next)
     }
 }
 

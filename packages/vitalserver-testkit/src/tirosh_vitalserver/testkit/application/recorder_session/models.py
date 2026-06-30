@@ -10,6 +10,7 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
 )
 from tirosh_vitalserver.testkit.domain.bed.identity import (
     normalize_bed_room_name,
+    normalize_bed_room_names,
 )
 
 
@@ -113,6 +114,7 @@ class VirtualRecorderSessionRequest:
     target_url: str
     recorders: int = 1
     bedroom_name: str = "TestBedroom"
+    bed_room_names: tuple[str, ...] = ()
     scenario: RecorderTestScenario = RecorderTestScenario.NORMAL_MONITORING
     window: RecorderScenarioWindow | None = None
     output: RecorderSessionOutput = field(default_factory=RecorderSessionOutput)
@@ -130,21 +132,24 @@ class VirtualRecorderSessionRequest:
             raise ValueError("target_url is required")
         if self.recorders < 1:
             raise ValueError("recorders must be greater than 0")
-        try:
-            bedroom_name = normalize_bed_room_name(self.bedroom_name)
-        except ValueError as exc:
-            raise ValueError(str(exc).replace("room_name", "bedroom_name")) from exc
-        object.__setattr__(self, "bedroom_name", bedroom_name)
+        if self.bed_room_names:
+            try:
+                bed_room_names = normalize_bed_room_names(self.bed_room_names)
+            except ValueError as exc:
+                raise ValueError(str(exc).replace("room_name", "bedroom_name")) from exc
+            object.__setattr__(self, "bed_room_names", bed_room_names)
+            object.__setattr__(self, "bedroom_name", bed_room_names[0])
+        else:
+            try:
+                bedroom_name = normalize_bed_room_name(self.bedroom_name)
+            except ValueError as exc:
+                raise ValueError(str(exc).replace("room_name", "bedroom_name")) from exc
+            object.__setattr__(self, "bedroom_name", bedroom_name)
+            object.__setattr__(self, "bed_room_names", (bedroom_name,))
         if self.interval_seconds <= 0:
             raise ValueError("interval_seconds must be greater than 0")
         if self.max_messages is not None and self.max_messages < 1:
             raise ValueError("max_messages must be greater than 0")
-
-    @property
-    def bed_room_names(self) -> tuple[str, ...]:
-        """Return the explicit bedroom assigned to this test session."""
-
-        return (self.bedroom_name,)
 
     @property
     def duration_seconds(self) -> float | None:

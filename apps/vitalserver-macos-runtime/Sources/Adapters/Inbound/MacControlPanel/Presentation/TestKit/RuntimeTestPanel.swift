@@ -103,6 +103,10 @@ struct RuntimeTestPanel: View {
 
                 Divider()
 
+                testKitContainerControl
+
+                Divider()
+
                 bedList
 
                 Divider()
@@ -185,6 +189,31 @@ struct RuntimeTestPanel: View {
             Stepper(displayValue, value: value, in: range, step: step)
                 .monospacedDigit()
                 .frame(width: 180, alignment: .trailing)
+        }
+    }
+
+    private var testKitContainerControl: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(RuntimeTestPanelText.testKitContainer)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            HStack(spacing: 8) {
+                Button(AppConstants.Actions.start) {
+                    Task { await viewModel.startTestKitContainer() }
+                }
+                .disabled(!viewModel.testKitCanControlContainer)
+
+                Button(AppConstants.Actions.stop) {
+                    Task { await viewModel.stopTestKitContainer() }
+                }
+                .disabled(!viewModel.testKitCanControlContainer)
+
+                Button(AppConstants.Actions.restart) {
+                    Task { await viewModel.restartTestKitContainer() }
+                }
+                .disabled(!viewModel.testKitCanControlContainer)
+            }
         }
     }
 

@@ -197,14 +197,16 @@ public struct RuntimeTestKitPresentationPolicy {
         _ input: RuntimeTestKitStartInput
     ) -> RuntimeTestKitVirtualRecorderStartRequest {
         let recorderCount = normalizedRecorderCount(input.recorderCount)
-        let bedroomName = selectedAvailableBedRoomNames(
+        let bedRoomNames = Array(selectedAvailableBedRoomNames(
             status: input.status,
             selectedBedRoomNames: input.selectedBedRoomNames
-        ).first ?? "TestBedroom"
+        ).prefix(recorderCount))
+        let bedroomName = bedRoomNames.first ?? "TestBedroom"
         return RuntimeTestKitVirtualRecorderStartRequest(
             scenario: input.scenario,
             recorders: recorderCount,
             bedroomName: bedroomName,
+            bedRoomNames: bedRoomNames,
             window: RuntimeTestKitScenarioWindow(
                 durationSeconds: normalizedDurationSeconds(input.durationSeconds)
             ),

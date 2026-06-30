@@ -904,6 +904,9 @@ final class RuntimeControlAPITests: XCTestCase {
         )))
         let start = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/start")))
         let stop = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/stop")))
+        let startTestKit = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/testkit/start")))
+        let stopTestKit = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/testkit/stop")))
+        let restartTestKit = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/testkit/restart")))
         let repairRuntime = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(method: .post, path: "/runtime/services/repair-runtime")))
         let repairProxy = try await decode(RuntimeControlCommandResponse.self, from: router.route(.init(
             method: .post,
@@ -915,6 +918,9 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(applySettings.result.stdout, "settings 3")
         XCTAssertEqual(start.result.stdout, "start services")
         XCTAssertEqual(stop.result.stdout, "stop services")
+        XCTAssertEqual(startTestKit.result.stdout, "start testkit")
+        XCTAssertEqual(stopTestKit.result.stdout, "stop testkit")
+        XCTAssertEqual(restartTestKit.result.stdout, "restart testkit")
         XCTAssertEqual(repairRuntime.result.stdout, "repair runtime")
         XCTAssertEqual(repairProxy.result.stdout, "repair proxy")
         XCTAssertEqual(repairDatastore.result.stdout, "repair datastore")
@@ -2507,6 +2513,18 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "stop services", stderr: ""))
     }
 
+    func startTestKitService() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "start testkit", stderr: ""))
+    }
+
+    func stopTestKitService() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "stop testkit", stderr: ""))
+    }
+
+    func restartTestKitService() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "restart testkit", stderr: ""))
+    }
+
     func repairRuntimeServices() async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: RuntimeCommandResult(exitCode: 0, stdout: "repair runtime", stderr: ""))
     }
@@ -2913,6 +2931,18 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
 
     func stopRuntimeServices() async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "stop services", stderr: "")
+    }
+
+    func startTestKitService() async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "start testkit", stderr: "")
+    }
+
+    func stopTestKitService() async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "stop testkit", stderr: "")
+    }
+
+    func restartTestKitService() async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "restart testkit", stderr: "")
     }
 
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo {

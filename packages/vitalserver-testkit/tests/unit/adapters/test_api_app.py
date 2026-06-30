@@ -193,6 +193,32 @@ def test_sessions_endpoint_accepts_purpose_scenario() -> None:
         manager.delete_session(response["id"])
 
 
+def test_sessions_endpoint_preserves_selected_bed_room_names() -> None:
+    route = route_for("/sessions", "POST")
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A", "OR-B"))
+
+    response = route.endpoint(
+        StartVirtualRecordersRequest(
+            targetUrl="http://example.test",
+            recorderCount=2,
+            bedRoomNames=("OR-A", "OR-B"),
+            maxMessages=1,
+        ),
+        manager,
+        registry,
+    )
+    try:
+        assert response["recordersRequested"] == 2
+        assert response["bedsRequested"] == 2
+        assert response["bedroomName"] == "OR-A"
+        assert response["bedRoomNames"] == ["OR-A", "OR-B"]
+        assert len(response["recorders"]) == 2
+    finally:
+        manager.delete_session(response["id"])
+
+
 def test_scenarios_endpoint_describes_purpose_centered_scenarios() -> None:
     route = route_for("/scenarios", "GET")
 

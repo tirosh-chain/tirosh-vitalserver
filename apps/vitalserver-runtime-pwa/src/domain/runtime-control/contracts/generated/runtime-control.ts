@@ -238,6 +238,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/services/testkit/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start optional TestKit container
+         * @description Starts only the optional TestKit container through the guest compose reconciler.
+         */
+        post: operations["startTestKitService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/services/testkit/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop optional TestKit container
+         * @description Stops only the optional TestKit container through the guest compose reconciler.
+         */
+        post: operations["stopTestKitService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/services/testkit/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart optional TestKit container
+         * @description Restarts only the optional TestKit container through the guest compose reconciler.
+         */
+        post: operations["restartTestKitService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/services/repair-runtime": {
         parameters: {
             query?: never;
@@ -2204,6 +2264,45 @@ export interface operations {
         };
     };
     stopRuntimeServices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CommandResult"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    startTestKitService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CommandResult"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    stopTestKitService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CommandResult"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    restartTestKitService: {
         parameters: {
             query?: never;
             header?: never;

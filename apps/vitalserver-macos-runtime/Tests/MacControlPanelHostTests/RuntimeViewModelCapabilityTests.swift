@@ -1012,6 +1012,31 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertFalse(viewModel.testKitCanResetBeds)
     }
 
+    func testTestKitContainerControlsAreIndependentOfContainerState() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities(
+            canControlRuntimeServices: true
+        ))
+        let testKit = FakeTestKitController()
+        testKit.status = RuntimeTestKitStatus(enabled: true, state: .stopped)
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.testKitStatus = testKit.status
+
+        XCTAssertTrue(viewModel.testKitCanControlContainer)
+
+        await viewModel.startTestKitContainer()
+        await viewModel.stopTestKitContainer()
+        await viewModel.restartTestKitContainer()
+
+        XCTAssertEqual(client.startTestKitServiceCount, 1)
+        XCTAssertEqual(client.stopTestKitServiceCount, 1)
+        XCTAssertEqual(client.restartTestKitServiceCount, 1)
+    }
+
     func testTestKitStartUsesSelectedBedRoomNames() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let testKit = FakeTestKitController()
@@ -1563,8 +1588,9 @@ private func testKitSession(
         state: state,
         targetURL: "http://example.test",
         recordersRequested: bedRoomNames.count,
-        bedsRequested: 1,
+        bedsRequested: bedRoomNames.count,
         bedroomName: bedRoomNames.first ?? "TestBedroom",
+        bedRoomNames: bedRoomNames,
         vrcode: nil,
         version: "testkit",
         intervalSeconds: 1,
@@ -1781,6 +1807,9 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var createRuntimeDataBackupCount = 0
     var startRuntimeServicesCount = 0
     var stopRuntimeServicesCount = 0
+    var startTestKitServiceCount = 0
+    var stopTestKitServiceCount = 0
+    var restartTestKitServiceCount = 0
     var exportLogsCount = 0
     var loadReleaseInfoCount = 0
     var preferredLogsPathCount = 0
@@ -1967,6 +1996,21 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func stopRuntimeServices() async throws -> RuntimeCommandResult {
         stopRuntimeServicesCount += 1
+        return success()
+    }
+
+    func startTestKitService() async throws -> RuntimeCommandResult {
+        startTestKitServiceCount += 1
+        return success()
+    }
+
+    func stopTestKitService() async throws -> RuntimeCommandResult {
+        stopTestKitServiceCount += 1
+        return success()
+    }
+
+    func restartTestKitService() async throws -> RuntimeCommandResult {
+        restartTestKitServiceCount += 1
         return success()
     }
 

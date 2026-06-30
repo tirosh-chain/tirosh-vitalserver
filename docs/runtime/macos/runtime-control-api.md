@@ -176,6 +176,9 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 | `GET` | `/runtime/install` | installed runtime paths and install metadata |
 | `POST` | `/runtime/services/start` | start runtime services |
 | `POST` | `/runtime/services/stop` | stop runtime services |
+| `POST` | `/runtime/services/testkit/start` | start the optional TestKit container without restarting the runtime |
+| `POST` | `/runtime/services/testkit/stop` | stop the optional TestKit container without stopping the runtime |
+| `POST` | `/runtime/services/testkit/restart` | restart the optional TestKit container without restarting the runtime |
 | `POST` | `/runtime/services/repair-runtime` | repair VM, guest log sync, host proxy, and watchdog services |
 | `POST` | `/runtime/services/repair-proxy` | repair host proxy |
 | `POST` | `/runtime/services/repair-datastore` | repair datastore |

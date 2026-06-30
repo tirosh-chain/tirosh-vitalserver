@@ -427,6 +427,60 @@
         }
       }
     },
+    "/runtime/services/testkit/start": {
+      "post": {
+        "operationId": "startTestKitService",
+        "summary": "Start optional TestKit container",
+        "description": "Starts only the optional TestKit container through the guest compose reconciler.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/services/testkit/stop": {
+      "post": {
+        "operationId": "stopTestKitService",
+        "summary": "Stop optional TestKit container",
+        "description": "Stops only the optional TestKit container through the guest compose reconciler.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/services/testkit/restart": {
+      "post": {
+        "operationId": "restartTestKitService",
+        "summary": "Restart optional TestKit container",
+        "description": "Restarts only the optional TestKit container through the guest compose reconciler.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/services/repair-runtime": {
       "post": {
         "operationId": "repairRuntimeServices",

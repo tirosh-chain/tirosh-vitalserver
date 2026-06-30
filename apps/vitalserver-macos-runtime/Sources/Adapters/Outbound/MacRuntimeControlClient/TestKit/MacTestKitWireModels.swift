@@ -14,6 +14,7 @@ struct TestKitStartSessionRequest: Encodable {
     let targetURL: String
     let recorderCount: Int
     let bedroomName: String
+    let bedRoomNames: [String]
     let window: RuntimeTestKitScenarioWindow?
     let output: RuntimeTestKitSessionOutput
     let vrcode: String?
@@ -31,6 +32,7 @@ struct TestKitStartSessionRequest: Encodable {
         self.targetURL = targetURL
         recorderCount = runtimeRequest.recorders
         bedroomName = runtimeRequest.bedroomName
+        bedRoomNames = runtimeRequest.bedRoomNames
         window = runtimeRequest.window
         output = runtimeRequest.output
         vrcode = runtimeRequest.vrcode
@@ -46,6 +48,7 @@ struct TestKitStartSessionRequest: Encodable {
         case targetURL = "targetUrl"
         case recorderCount
         case bedroomName
+        case bedRoomNames
         case window
         case output
         case vrcode

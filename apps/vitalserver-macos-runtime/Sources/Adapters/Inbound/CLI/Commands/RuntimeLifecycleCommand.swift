@@ -27,6 +27,9 @@ public enum RuntimeLifecycleCommand: Equatable {
     case repairServices
     case startServices
     case stopServices
+    case startTestKit
+    case stopTestKit
+    case restartTestKit
     case uninstall(RuntimeUninstallCommand)
     case help
 }
@@ -100,6 +103,12 @@ extension RuntimeLifecycleCommand {
             return .startServices
         case "stop-services":
             return .stopServices
+        case "testkit-start":
+            return .startTestKit
+        case "testkit-stop":
+            return .stopTestKit
+        case "testkit-restart":
+            return .restartTestKit
         case "uninstall":
             return .uninstall(try parseUninstallCommand(remaining))
         case "-h", "--help", "help":
@@ -135,6 +144,9 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime repair-services
       vitalserver-vm runtime start-services
       vitalserver-vm runtime stop-services
+      vitalserver-vm runtime testkit-start
+      vitalserver-vm runtime testkit-stop
+      vitalserver-vm runtime testkit-restart
       vitalserver-vm runtime uninstall [--clean|--force-clean|--force-clean-uninstaller]
     """
 

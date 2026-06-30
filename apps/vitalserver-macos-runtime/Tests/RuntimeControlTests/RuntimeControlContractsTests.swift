@@ -1323,6 +1323,84 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.summary.staleRecorders, 1)
     }
 
+    func testVitalRecorderHistoryUsesRecentRecorderIngressActivityToKeepSendingRecorderOnline() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:12:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_SENDING",
+                    ip: "192.168.64.20",
+                    lastSeenAt: "2026-05-26T00:00:00Z",
+                    online: true,
+                    stale: true
+                ),
+            ]
+        )
+        let containerObservation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                recorders: [
+                    RuntimeRecorderConnectionObservation(
+                        vrcode: "VR_SENDING",
+                        activeConnections: 1,
+                        selectedIp: "192.168.64.20",
+                        ipSource: "x-forwarded-for",
+                        lastSeenAt: "2026-05-26T00:11:45Z"
+                    ),
+                ]
+            ),
+            containerLogsPresent: false,
+            containerLogsBytes: nil
+        )
+
+        let history = RuntimeVitalRecorderHistory(
+            observations: [observation],
+            containerObservation: containerObservation
+        )
+
+        XCTAssertEqual(history.recorders.first?.status, .online)
+        XCTAssertEqual(history.recorders.first?.lastSeenAt, "2026-05-26T00:11:45Z")
+        XCTAssertEqual(history.summary.onlineRecorders, 1)
+        XCTAssertEqual(history.summary.staleRecorders, 0)
+    }
+
+    func testVitalRecorderHistoryIncludesRecorderObservedOnlyByRecorderIngressActivity() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:12:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60
+        )
+        let containerObservation = RuntimeContainerObservation(
+            recorderIngressHTTP: "200",
+            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                recorders: [
+                    RuntimeRecorderConnectionObservation(
+                        vrcode: "VR_INGRESS_ONLY",
+                        activeConnections: 1,
+                        selectedIp: "192.168.64.21",
+                        ipSource: "socket",
+                        lastSeenAt: "2026-05-26T00:11:30Z"
+                    ),
+                ]
+            ),
+            containerLogsPresent: false,
+            containerLogsBytes: nil
+        )
+
+        let history = RuntimeVitalRecorderHistory(
+            observations: [observation],
+            containerObservation: containerObservation
+        )
+
+        XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_INGRESS_ONLY"])
+        XCTAssertEqual(history.recorders.first?.status, .online)
+        XCTAssertEqual(history.recorders.first?.lastIP, "192.168.64.21")
+        XCTAssertEqual(history.recorders.first?.lastSeenAt, "2026-05-26T00:11:30Z")
+        XCTAssertEqual(history.recorders.first?.presentInLatestObservation, false)
+    }
+
     func testVitalRecorderHistoryMergesRecorderRedisIPSyncFromRecorderIngressStatus() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:12:00Z",

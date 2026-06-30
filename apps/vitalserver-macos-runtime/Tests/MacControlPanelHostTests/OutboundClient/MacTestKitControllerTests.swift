@@ -308,9 +308,11 @@ final class MacTestKitControllerTests: XCTestCase {
             $0.method == "POST" && $0.path == "/sessions"
         })
         let startBody = try JSONSerialization.jsonObject(with: startRequest.body) as? [String: Any]
-        XCTAssertEqual(startBody?["exportVital"] as? Bool, true)
-        XCTAssertEqual(startBody?["uploadVital"] as? Bool, true)
-        XCTAssertEqual(startBody?["vitalUploadEndpoint"] as? String, "/upload")
+        let output = startBody?["output"] as? [String: Any]
+        XCTAssertEqual(output?["exportVital"] as? Bool, true)
+        XCTAssertEqual(output?["uploadVital"] as? Bool, true)
+        XCTAssertEqual(output?["vitalUploadEndpoint"] as? String, "/upload")
+        XCTAssertEqual(startBody?["bedRoomNames"] as? [String], ["OR-1"])
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "DELETE" && $0.path == "/beds" })
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "POST" && $0.path == "/recorders/delete" })
     }
@@ -489,6 +491,7 @@ final class MacTestKitControllerTests: XCTestCase {
             scenario: .normalMonitoring,
             recorders: 1,
             bedroomName: "OR-1",
+            bedRoomNames: ["OR-1"],
             window: nil,
             output: RuntimeTestKitSessionOutput(
                 exportVital: true,
@@ -673,8 +676,9 @@ private func testKitSession(
         state: state,
         targetURL: "http://edge/",
         recordersRequested: bedRoomNames.count,
-        bedsRequested: 1,
+        bedsRequested: bedRoomNames.count,
         bedroomName: bedRoomNames.first ?? "TestBedroom",
+        bedRoomNames: bedRoomNames,
         vrcode: "VR_TEST",
         version: "testkit",
         intervalSeconds: 1,

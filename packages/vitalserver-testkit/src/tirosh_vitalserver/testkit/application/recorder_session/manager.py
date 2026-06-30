@@ -120,7 +120,9 @@ class VirtualRecorderSessionManager:
             sessions = tuple(self._sessions.values())
             stored = dict(self._stored_sessions)
 
-        active_snapshots = tuple(session.snapshot() for session in sessions)
+        active_snapshots = tuple(
+            session.refresh_runtime_liveness() for session in sessions
+        )
         evict_session_ids: list[str] = []
         for session, snapshot in zip(sessions, active_snapshots, strict=True):
             stored[snapshot.session_id] = snapshot
@@ -161,7 +163,7 @@ class VirtualRecorderSessionManager:
             with self._lock:
                 return self._stored_sessions.get(session_id)
 
-        snapshot = session.snapshot()
+        snapshot = session.refresh_runtime_liveness()
         self._save_snapshot(snapshot)
         return snapshot
 
@@ -228,7 +230,7 @@ class VirtualRecorderSessionManager:
         with self._lock:
             snapshot = self._stored_sessions.get(session_id)
             if snapshot is None and session_id in self._sessions:
-                snapshot = self._sessions[session_id].snapshot()
+                snapshot = self._sessions[session_id].refresh_runtime_liveness()
 
         if snapshot is None:
             emit_testkit_event(
@@ -593,7 +595,7 @@ class VirtualRecorderSessionManager:
             self._stored_sessions
         )
         for session_id, session in self._sessions.items():
-            snapshots[session_id] = session.snapshot()
+            snapshots[session_id] = session.refresh_runtime_liveness()
 
         return tuple(
             snapshot
