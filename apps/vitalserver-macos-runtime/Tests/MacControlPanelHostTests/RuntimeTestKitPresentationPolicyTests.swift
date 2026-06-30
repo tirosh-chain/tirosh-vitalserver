@@ -80,8 +80,7 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
         let request = policy.startRequest(RuntimeTestKitStartInput(
             status: status,
             selectedBedRoomNames: ["OR-A", "OR-B", "OR-C"],
-            scenario: .burstTraffic,
-            signalProfile: .artifact,
+            scenario: .signalArtifact,
             recorderCount: 2,
             vrcode: "  VR_123  ",
             intervalSeconds: 0.01,
@@ -91,17 +90,17 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
             generateFrames: false
         ))
 
-        XCTAssertEqual(request.bedRoomNames, ["OR-B", "OR-C"])
+        XCTAssertEqual(request.bedroomName, "OR-B")
         XCTAssertEqual(request.recorders, 2)
         XCTAssertEqual(request.vrcode, "VR_123")
         XCTAssertEqual(request.intervalSeconds, 0.1)
-        XCTAssertEqual(request.durationSeconds, 86_400)
+        XCTAssertEqual(request.window?.durationSeconds, 86_400)
         XCTAssertEqual(request.maxMessages, 1_000_000)
         XCTAssertFalse(request.shiftTime)
         XCTAssertFalse(request.generateFrames)
-        XCTAssertTrue(request.exportVital)
-        XCTAssertTrue(request.uploadVital)
-        XCTAssertEqual(request.vitalUploadEndpoint, "/upload")
+        XCTAssertTrue(request.output.exportVital)
+        XCTAssertTrue(request.output.uploadVital)
+        XCTAssertEqual(request.output.vitalUploadEndpoint, "/upload")
     }
 
     func testSelectionStateKeepsValidSessionAndPrunesUnavailableBeds() {
@@ -230,8 +229,8 @@ private func testKitSession(
         state: state,
         targetURL: "http://example.test",
         recordersRequested: recordersRequested ?? max(bedRoomNames.count, 1),
-        bedsRequested: bedRoomNames.count,
-        bedRoomNames: bedRoomNames,
+        bedsRequested: 1,
+        bedroomName: bedRoomNames.first ?? "TestBedroom",
         vrcode: nil,
         version: "testkit",
         intervalSeconds: 1,
@@ -239,7 +238,7 @@ private func testKitSession(
         maxMessages: nil,
         shiftTime: true,
         generateFrames: true,
-        defaultScenario: "normal",
+        scenario: "normal_monitoring",
         createdAt: nil,
         startedAt: nil,
         stoppedAt: nil,

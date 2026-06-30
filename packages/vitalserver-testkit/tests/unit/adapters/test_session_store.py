@@ -40,7 +40,7 @@ def test_json_file_session_store_round_trips_snapshots(tmp_path: Path) -> None:
             target_url="http://example.test",
             vrcode="VR_STORE",
             recorders=2,
-            bed_room_names=("OR-A", "OR-B"),
+            bedroom_name="OR-A",
             interval_seconds=0.1,
             max_messages=1,
             shift_time=False,
@@ -60,6 +60,7 @@ def test_json_file_session_store_round_trips_snapshots(tmp_path: Path) -> None:
         "VR_STORE-002",
     ]
     assert restored.messages_sent == 2
+    assert restored.request.bedroom_name == "OR-A"
     payload = json.loads((tmp_path / "sessions.json").read_text(encoding="utf-8"))
     assert payload["schema_version"] == SESSION_STORE_SCHEMA_VERSION
 
@@ -78,7 +79,7 @@ def test_json_file_session_store_rejects_missing_session_contract_fields(
             target_url="http://example.test",
             vrcode="VR_STORE",
             recorders=1,
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=0.1,
             max_messages=1,
             shift_time=False,
@@ -88,13 +89,19 @@ def test_json_file_session_store_rejects_missing_session_contract_fields(
     restored = store.load_sessions()[0]
     record = session_snapshot_to_record(restored)
     del record["request"]["scenario"]
-    path.write_text(json.dumps({"sessions": [record]}), encoding="utf-8")
+    path.write_text(
+        json.dumps({
+            "schema_version": SESSION_STORE_SCHEMA_VERSION,
+            "sessions": [record],
+        }),
+        encoding="utf-8",
+    )
 
     with pytest.raises(KeyError, match="scenario"):
         store.load_sessions()
 
 
-def test_json_file_session_store_migrates_legacy_session_without_vital_state(
+def test_json_file_session_store_rejects_missing_vital_state(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "sessions.json"
@@ -108,7 +115,7 @@ def test_json_file_session_store_migrates_legacy_session_without_vital_state(
             target_url="http://example.test",
             vrcode="VR_STORE",
             recorders=1,
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=0.1,
             max_messages=1,
             shift_time=False,
@@ -118,15 +125,19 @@ def test_json_file_session_store_migrates_legacy_session_without_vital_state(
     restored = store.load_sessions()[0]
     record = session_snapshot_to_record(restored)
     del record["vital_state"]
-    path.write_text(json.dumps({"sessions": [record]}), encoding="utf-8")
+    path.write_text(
+        json.dumps({
+            "schema_version": SESSION_STORE_SCHEMA_VERSION,
+            "sessions": [record],
+        }),
+        encoding="utf-8",
+    )
 
-    migrated = store.load_sessions()[0]
-
-    assert migrated.vital_state.export_status == "not-requested"
-    assert migrated.vital_state.upload_status == "not-requested"
+    with pytest.raises(KeyError, match="vital_state"):
+        store.load_sessions()
 
 
-def test_json_file_session_store_loads_legacy_fixture_without_vital_state(
+def test_json_file_session_store_rejects_legacy_fixture_without_schema_version(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "sessions.json"
@@ -136,18 +147,11 @@ def test_json_file_session_store_loads_legacy_fixture_without_vital_state(
     )
     store = JsonFileVirtualRecorderSessionStore(path)
 
-    migrated = store.load_sessions()[0]
-
-    assert migrated.session_id == "legacy-session"
-    assert migrated.vital_state.export_status == "not-requested"
-    assert migrated.vital_state.upload_status == "not-requested"
-    store.save_session(migrated)
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == SESSION_STORE_SCHEMA_VERSION
-    assert payload["sessions"][0]["vital_state"]["export_status"] == "not-requested"
+    with pytest.raises(ValueError, match="schema_version is required"):
+        store.load_sessions()
 
 
-def test_json_file_session_store_rejects_current_schema_missing_vital_state(
+def test_json_file_session_store_rejects_legacy_session_contract_values(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "sessions.json"
@@ -158,7 +162,7 @@ def test_json_file_session_store_rejects_current_schema_missing_vital_state(
     path.write_text(json.dumps(legacy), encoding="utf-8")
     store = JsonFileVirtualRecorderSessionStore(path)
 
-    with pytest.raises(KeyError, match="vital_state"):
+    with pytest.raises(ValueError, match="'normal' is not a valid"):
         store.load_sessions()
 
 
@@ -189,7 +193,7 @@ def test_json_file_session_store_rejects_missing_recorder_contract_fields(
             target_url="http://example.test",
             vrcode="VR_STORE",
             recorders=1,
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=0.1,
             max_messages=1,
             shift_time=False,
@@ -199,7 +203,13 @@ def test_json_file_session_store_rejects_missing_recorder_contract_fields(
     restored = store.load_sessions()[0]
     record = session_snapshot_to_record(restored)
     del record["recorders"][0]["messages_sent"]
-    path.write_text(json.dumps({"sessions": [record]}), encoding="utf-8")
+    path.write_text(
+        json.dumps({
+            "schema_version": SESSION_STORE_SCHEMA_VERSION,
+            "sessions": [record],
+        }),
+        encoding="utf-8",
+    )
 
     with pytest.raises(KeyError, match="messages_sent"):
         store.load_sessions()

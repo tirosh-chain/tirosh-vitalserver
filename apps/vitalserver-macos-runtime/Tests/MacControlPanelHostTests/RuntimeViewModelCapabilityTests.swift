@@ -1043,7 +1043,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.startVirtualRecorderSession()
 
         XCTAssertEqual(testKit.startedRequests.count, 1)
-        XCTAssertEqual(testKit.startedRequests[0].bedRoomNames, ["OR-B"])
+        XCTAssertEqual(testKit.startedRequests[0].bedroomName, "OR-B")
     }
 
     func testTestKitResetBedsRequiresNoActiveSessions() async {
@@ -1563,8 +1563,8 @@ private func testKitSession(
         state: state,
         targetURL: "http://example.test",
         recordersRequested: bedRoomNames.count,
-        bedsRequested: bedRoomNames.count,
-        bedRoomNames: bedRoomNames,
+        bedsRequested: 1,
+        bedroomName: bedRoomNames.first ?? "TestBedroom",
         vrcode: nil,
         version: "testkit",
         intervalSeconds: 1,
@@ -1572,7 +1572,7 @@ private func testKitSession(
         maxMessages: nil,
         shiftTime: true,
         generateFrames: true,
-        defaultScenario: "normal",
+        scenario: "normal_monitoring",
         createdAt: nil,
         startedAt: nil,
         stoppedAt: nil,
@@ -1652,7 +1652,7 @@ private final class FakeTestKitController: RuntimeTestKitControlling, RuntimeTes
         let session = testKitSession(
             id: "session-\(startedRequests.count)",
             state: "running",
-            bedRoomNames: request.bedRoomNames
+            bedRoomNames: [request.bedroomName]
         )
         status.sessions.append(session)
         status.activeSession = session
@@ -1674,12 +1674,12 @@ private final class FakeTestKitController: RuntimeTestKitControlling, RuntimeTes
         return session(for: sessionID, state: "running")
     }
 
-    func restartVirtualRecorders(sessionID: String?, bedRoomNames: [String]) async throws -> RuntimeTestKitSession? {
+    func restartVirtualRecorders(sessionID: String?, bedroomName: String?) async throws -> RuntimeTestKitSession? {
         restartedSessionIDs.append(sessionID)
         let session = testKitSession(
             id: "session-restarted-\(restartedSessionIDs.count)",
             state: "running",
-            bedRoomNames: bedRoomNames
+            bedRoomNames: [bedroomName ?? "TestBedroom"]
         )
         status.sessions.append(session)
         status.activeSession = session

@@ -2647,7 +2647,7 @@ private final class FakeRuntimeTestKitController: RuntimeTestKitControlling {
 
     func restartVirtualRecorders(
         sessionID: String?,
-        bedRoomNames: [String]
+        bedroomName: String?
     ) async throws -> RuntimeTestKitSession? {
         guard let sessionID else {
             return nil
@@ -2677,6 +2677,7 @@ private final class FakeRuntimeTestKitController: RuntimeTestKitControlling {
             state: state,
             targetURL: "http://edge/",
             recordersRequested: 1,
+            bedroomName: "OR-1",
             vrcode: nil,
             version: "testkit",
             intervalSeconds: 1,
@@ -2684,7 +2685,7 @@ private final class FakeRuntimeTestKitController: RuntimeTestKitControlling {
             maxMessages: nil,
             shiftTime: false,
             generateFrames: false,
-            defaultScenario: "normal",
+            scenario: "normal_monitoring",
             createdAt: nil,
             startedAt: nil,
             stoppedAt: nil,

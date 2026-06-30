@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
+from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    RecorderTestScenario,
+)
 from tirosh_vitalserver.testkit.types.json import JsonObject
 
 
@@ -45,4 +47,4 @@ class SessionVitalPlayback:
     stopped_at: float
     interval_seconds: float
     generate_frames: bool
-    default_scenario: RecorderSignalScenario
+    scenario: RecorderTestScenario

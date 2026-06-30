@@ -12,20 +12,16 @@ public enum RuntimeTestKitState: String, Codable, Equatable, Sendable {
 }
 
 public enum RuntimeTestKitScenario: String, Codable, CaseIterable, Equatable, Sendable {
-    case normal
-    case multipleRecorders = "multiple_recorders"
-    case burstTraffic = "burst_traffic"
-    case disconnectReconnect = "disconnect_reconnect"
-    case staleRecorder = "stale_recorder"
-    case signalAnomaly = "signal_anomaly"
-}
-
-public enum RuntimeTestKitSignalProfile: String, Codable, CaseIterable, Equatable, Sendable {
-    case normal
+    case normalMonitoring = "normal_monitoring"
     case tachycardia
     case desaturation
-    case artifact
+    case signalArtifact = "signal_artifact"
     case deviceDisconnect = "device_disconnect"
+    case hctDecreasing = "hct_decreasing"
+    case bloodbagTransfusion = "bloodbag_transfusion"
+    case perioperativeMonitoring = "perioperative_monitoring"
+    case sedationMonitoring = "sedation_monitoring"
+    case fullMonitoringReplay = "full_monitoring_replay"
 }
 
 public struct RuntimeTestKitStatus: Codable, Equatable, Sendable {
@@ -162,69 +158,83 @@ public struct RuntimeTestKitDeleteBedsRequest: Codable, Equatable, Sendable {
     }
 }
 
-public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sendable {
-    public var scenario: RuntimeTestKitScenario
-    public var signalProfile: RuntimeTestKitSignalProfile
-    public var recorders: Int
-    public var bedRoomNames: [String]
-    public var vrcode: String?
-    public var version: String
-    public var intervalSeconds: Double
+public struct RuntimeTestKitScenarioWindow: Codable, Equatable, Sendable {
+    public var startOffsetSeconds: Double?
     public var durationSeconds: Double?
-    public var maxMessages: Int?
-    public var shiftTime: Bool
-    public var generateFrames: Bool
+
+    public init(startOffsetSeconds: Double? = nil, durationSeconds: Double? = nil) {
+        self.startOffsetSeconds = startOffsetSeconds
+        self.durationSeconds = durationSeconds
+    }
+}
+
+public struct RuntimeTestKitSessionOutput: Codable, Equatable, Sendable {
     public var exportVital: Bool
     public var uploadVital: Bool
     public var vitalUploadEndpoint: String
 
     public init(
-        scenario: RuntimeTestKitScenario = .normal,
-        signalProfile: RuntimeTestKitSignalProfile = .normal,
-        recorders: Int = 1,
-        bedRoomNames: [String] = [],
-        vrcode: String? = nil,
-        version: String = "testkit",
-        intervalSeconds: Double = 1,
-        durationSeconds: Double? = nil,
-        maxMessages: Int? = nil,
-        shiftTime: Bool = true,
-        generateFrames: Bool = true,
         exportVital: Bool = false,
         uploadVital: Bool = false,
         vitalUploadEndpoint: String = "/upload"
     ) {
-        self.scenario = scenario
-        self.signalProfile = signalProfile
-        self.recorders = recorders
-        self.bedRoomNames = bedRoomNames
-        self.vrcode = vrcode
-        self.version = version
-        self.intervalSeconds = intervalSeconds
-        self.durationSeconds = durationSeconds
-        self.maxMessages = maxMessages
-        self.shiftTime = shiftTime
-        self.generateFrames = generateFrames
         self.exportVital = exportVital
         self.uploadVital = uploadVital
         self.vitalUploadEndpoint = vitalUploadEndpoint
     }
+}
+
+public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sendable {
+    public var scenario: RuntimeTestKitScenario
+    public var recorders: Int
+    public var bedroomName: String
+    public var window: RuntimeTestKitScenarioWindow?
+    public var output: RuntimeTestKitSessionOutput
+    public var vrcode: String?
+    public var version: String
+    public var intervalSeconds: Double
+    public var maxMessages: Int?
+    public var shiftTime: Bool
+    public var generateFrames: Bool
+
+    public init(
+        scenario: RuntimeTestKitScenario = .normalMonitoring,
+        recorders: Int = 1,
+        bedroomName: String = "TestBedroom",
+        window: RuntimeTestKitScenarioWindow? = nil,
+        output: RuntimeTestKitSessionOutput = RuntimeTestKitSessionOutput(),
+        vrcode: String? = nil,
+        version: String = "testkit",
+        intervalSeconds: Double = 1,
+        maxMessages: Int? = nil,
+        shiftTime: Bool = true,
+        generateFrames: Bool = true
+    ) {
+        self.scenario = scenario
+        self.recorders = recorders
+        self.bedroomName = bedroomName
+        self.window = window
+        self.output = output
+        self.vrcode = vrcode
+        self.version = version
+        self.intervalSeconds = intervalSeconds
+        self.maxMessages = maxMessages
+        self.shiftTime = shiftTime
+        self.generateFrames = generateFrames
+    }
 
     enum CodingKeys: String, CodingKey {
         case scenario
-        case signalProfile
         case recorders
-        case bedRoomNames
+        case bedroomName
+        case window
+        case output
         case vrcode
         case version
         case intervalSeconds
-        case durationSeconds
         case maxMessages
         case shiftTime
         case generateFrames
-        case exportVital
-        case uploadVital
-        case vitalUploadEndpoint
     }
 }
 
@@ -309,7 +319,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
     public var targetURL: String
     public var recordersRequested: Int
     public var bedsRequested: Int
-    public var bedRoomNames: [String]
+    public var bedroomName: String
     public var vrcode: String?
     public var version: String
     public var intervalSeconds: Double
@@ -317,8 +327,9 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
     public var maxMessages: Int?
     public var shiftTime: Bool
     public var generateFrames: Bool
-    public var scenario: String?
-    public var defaultScenario: String
+    public var scenario: String
+    public var window: RuntimeTestKitScenarioWindow?
+    public var output: RuntimeTestKitSessionOutput?
     public var createdAt: Double?
     public var startedAt: Double?
     public var stoppedAt: Double?
@@ -328,6 +339,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
     public var cleanupErrors: [RuntimeTestKitCleanupError]
     public var vital: RuntimeTestKitSessionVitalState?
     public var recorders: [RuntimeTestKitRecorder]
+    public var bedRoomNames: [String] { [bedroomName] }
 
     public init(
         id: String,
@@ -335,7 +347,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         targetURL: String,
         recordersRequested: Int,
         bedsRequested: Int = 0,
-        bedRoomNames: [String] = [],
+        bedroomName: String = "TestBedroom",
         vrcode: String?,
         version: String,
         intervalSeconds: Double,
@@ -343,8 +355,9 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         maxMessages: Int?,
         shiftTime: Bool,
         generateFrames: Bool,
-        scenario: String? = nil,
-        defaultScenario: String,
+        scenario: String,
+        window: RuntimeTestKitScenarioWindow? = nil,
+        output: RuntimeTestKitSessionOutput? = nil,
         createdAt: Double?,
         startedAt: Double?,
         stoppedAt: Double?,
@@ -360,7 +373,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         self.targetURL = targetURL
         self.recordersRequested = recordersRequested
         self.bedsRequested = bedsRequested
-        self.bedRoomNames = bedRoomNames
+        self.bedroomName = bedroomName
         self.vrcode = vrcode
         self.version = version
         self.intervalSeconds = intervalSeconds
@@ -369,7 +382,8 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         self.shiftTime = shiftTime
         self.generateFrames = generateFrames
         self.scenario = scenario
-        self.defaultScenario = defaultScenario
+        self.window = window
+        self.output = output
         self.createdAt = createdAt
         self.startedAt = startedAt
         self.stoppedAt = stoppedAt
@@ -388,7 +402,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         targetURL = try container.decode(String.self, forKey: .targetURL)
         recordersRequested = try container.decode(Int.self, forKey: .recordersRequested)
         bedsRequested = try container.decodeIfPresent(Int.self, forKey: .bedsRequested) ?? 0
-        bedRoomNames = try container.decodeIfPresent([String].self, forKey: .bedRoomNames) ?? []
+        bedroomName = try container.decode(String.self, forKey: .bedroomName)
         vrcode = try container.decodeIfPresent(String.self, forKey: .vrcode)
         version = try container.decode(String.self, forKey: .version)
         intervalSeconds = try container.decode(Double.self, forKey: .intervalSeconds)
@@ -396,8 +410,9 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         maxMessages = try container.decodeIfPresent(Int.self, forKey: .maxMessages)
         shiftTime = try container.decode(Bool.self, forKey: .shiftTime)
         generateFrames = try container.decode(Bool.self, forKey: .generateFrames)
-        scenario = try container.decodeIfPresent(String.self, forKey: .scenario)
-        defaultScenario = try container.decode(String.self, forKey: .defaultScenario)
+        scenario = try container.decode(String.self, forKey: .scenario)
+        window = try container.decodeIfPresent(RuntimeTestKitScenarioWindow.self, forKey: .window)
+        output = try container.decodeIfPresent(RuntimeTestKitSessionOutput.self, forKey: .output)
         createdAt = try container.decodeIfPresent(Double.self, forKey: .createdAt)
         startedAt = try container.decodeIfPresent(Double.self, forKey: .startedAt)
         stoppedAt = try container.decodeIfPresent(Double.self, forKey: .stoppedAt)
@@ -415,7 +430,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         case targetURL = "targetUrl"
         case recordersRequested
         case bedsRequested
-        case bedRoomNames
+        case bedroomName
         case vrcode
         case version
         case intervalSeconds
@@ -424,7 +439,8 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         case shiftTime
         case generateFrames
         case scenario
-        case defaultScenario
+        case window
+        case output
         case createdAt
         case startedAt
         case stoppedAt

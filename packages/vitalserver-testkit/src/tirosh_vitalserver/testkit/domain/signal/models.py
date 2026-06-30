@@ -20,6 +20,8 @@ class SignalProfile:
     systolic_bp_mmhg: float = 118.0
     diastolic_bp_mmhg: float = 66.0
     etco2_mmhg: float = 37.0
+    hct_percent: float = 35.0
+    hct_trend_percent_per_second: float = 0.0
     noise_level: float = 0.006
     drift_level: float = 0.015
     artifact_rate: float = 0.0

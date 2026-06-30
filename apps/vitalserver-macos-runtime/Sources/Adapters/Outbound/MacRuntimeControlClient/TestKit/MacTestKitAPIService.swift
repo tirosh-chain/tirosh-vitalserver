@@ -97,9 +97,9 @@ struct MacTestKitAPIService {
     func restartSession(
         apiBaseURL: String,
         sessionID: String,
-        bedRoomNames: [String]
+        bedroomName: String?
     ) async throws -> RuntimeTestKitSession {
-        let requestBody = TestKitRestartSessionRequest(bedRoomNames: bedRoomNames)
+        let requestBody = TestKitRestartSessionRequest(bedroomName: bedroomName)
         var urlRequest = try apiClient.request(apiBaseURL: apiBaseURL, path: "/sessions/\(sessionID)/restart")
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")

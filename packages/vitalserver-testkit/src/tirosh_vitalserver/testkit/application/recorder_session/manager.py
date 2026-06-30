@@ -17,7 +17,6 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderCleanupError,
     VirtualRecorderDeletionResult,
     VirtualRecorderSessionRequest,
-    VirtualRecorderSessionScenario,
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
     VirtualRecorderVitalUploadStatus,
@@ -35,8 +34,10 @@ from tirosh_vitalserver.testkit.application.recorder_session.session import (
 from tirosh_vitalserver.testkit.application.recorder_session.store import (
     VirtualRecorderSessionStorePort,
 )
+from tirosh_vitalserver.testkit.application.usecases.recorder.real_vital_sample import (
+    RealVitalReaderPort,
+)
 from tirosh_vitalserver.testkit.domain.bed import Bed
-from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 from tirosh_vitalserver.testkit.errors import BedAlreadyAssignedError
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
 
@@ -54,12 +55,14 @@ class VirtualRecorderSessionManager:
         session_store: VirtualRecorderSessionStorePort | None = None,
         vital_file_exporter: SessionVitalFileExporterPort | None = None,
         vital_file_uploader: SessionVitalFileUploaderPort | None = None,
+        real_vital_reader: RealVitalReaderPort | None = None,
     ) -> None:
         self._connector = connector
         self._recorder_management = recorder_management
         self._session_store = session_store
         self._vital_file_exporter = vital_file_exporter
         self._vital_file_uploader = vital_file_uploader
+        self._real_vital_reader = real_vital_reader
         self._sessions: dict[str, VirtualRecorderSession] = {}
         self._stored_sessions = load_stored_sessions(session_store)
         self._lock = threading.RLock()
@@ -70,7 +73,6 @@ class VirtualRecorderSessionManager:
     ) -> VirtualRecorderSessionSnapshot:
         """Create and start a virtual recorder session."""
 
-        request = request_with_scenario_defaults(request)
         with self._lock:
             conflicts = active_bed_room_conflicts(
                 request.bed_room_names,
@@ -86,6 +88,7 @@ class VirtualRecorderSessionManager:
                 connector=self._connector,
                 vital_file_exporter=self._vital_file_exporter,
                 vital_file_uploader=self._vital_file_uploader,
+                real_vital_reader=self._real_vital_reader,
                 snapshot_handler=self._save_snapshot,
             )
             self._sessions[session_id] = session
@@ -97,12 +100,12 @@ class VirtualRecorderSessionManager:
             session_id=session_id,
             target_url=request.target_url,
             recorders=request.recorders,
-            beds=len(request.bed_room_names),
+            bedroom_name=request.bedroom_name,
             vrcode=request.vrcode,
             interval_seconds=request.interval_seconds,
             duration_seconds=request.duration_seconds,
             max_messages=request.max_messages,
-            default_scenario=request.default_scenario.value,
+            scenario=request.scenario.value,
         )
         session.start()
 
@@ -218,9 +221,9 @@ class VirtualRecorderSessionManager:
         self,
         session_id: str,
         *,
-        bed_room_names: tuple[str, ...] = (),
+        bedroom_name: str | None = None,
     ) -> VirtualRecorderSessionSnapshot | None:
-        """Start a new session from a stopped session spec and selected beds."""
+        """Start a new session from a stopped session spec and bedroom."""
 
         with self._lock:
             snapshot = self._stored_sessions.get(session_id)
@@ -238,12 +241,12 @@ class VirtualRecorderSessionManager:
         if session_is_active(snapshot):
             raise ValueError("session must be stopped or failed before restart")
 
-        request = restart_request(snapshot, bed_room_names=bed_room_names)
+        request = restart_request(snapshot, bedroom_name=bedroom_name)
         emit_testkit_event(
             "session.restart.requested",
             session_id=session_id,
             vrcode=request.vrcode,
-            beds=len(request.bed_room_names),
+            bedroom_name=request.bedroom_name,
         )
 
         return self.start_session(request)
@@ -668,7 +671,7 @@ def session_is_active(snapshot: VirtualRecorderSessionSnapshot) -> bool:
 def restart_request(
     snapshot: VirtualRecorderSessionSnapshot,
     *,
-    bed_room_names: tuple[str, ...],
+    bedroom_name: str | None,
 ) -> VirtualRecorderSessionRequest:
     """Return the request used to reconnect a stopped virtual recorder."""
 
@@ -678,7 +681,7 @@ def restart_request(
 
     return replace(
         snapshot.request,
-        bed_room_names=bed_room_names or snapshot.request.bed_room_names,
+        bedroom_name=bedroom_name or snapshot.request.bedroom_name,
         vrcode=vrcode,
     )
 
@@ -700,34 +703,6 @@ def active_bed_room_conflicts(
         for room_name in requested_room_names
         if room_name in active_room_names
     )
-
-
-def request_with_scenario_defaults(
-    request: VirtualRecorderSessionRequest,
-) -> VirtualRecorderSessionRequest:
-    """Apply session-level scenario defaults without hiding explicit controls."""
-
-    match request.scenario:
-        case VirtualRecorderSessionScenario.NORMAL:
-            return request
-        case VirtualRecorderSessionScenario.MULTIPLE_RECORDERS:
-            recorders = max(request.recorders, 5)
-            return replace(request, recorders=recorders)
-        case VirtualRecorderSessionScenario.BURST_TRAFFIC:
-            return replace(request, interval_seconds=min(request.interval_seconds, 0.1))
-        case VirtualRecorderSessionScenario.DISCONNECT_RECONNECT:
-            return replace(request, max_messages=request.max_messages or 3)
-        case VirtualRecorderSessionScenario.STALE_RECORDER:
-            return replace(request, max_messages=request.max_messages or 1)
-        case VirtualRecorderSessionScenario.SIGNAL_ANOMALY:
-            scenario = (
-                RecorderSignalScenario.ARTIFACT
-                if request.default_scenario == RecorderSignalScenario.NORMAL
-                else request.default_scenario
-            )
-            return replace(request, default_scenario=scenario)
-
-
 def snapshot_with_cleanup_errors(
     snapshot: VirtualRecorderSessionSnapshot,
     cleanup_errors: tuple[VirtualRecorderCleanupError, ...],

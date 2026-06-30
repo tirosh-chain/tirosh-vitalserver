@@ -171,9 +171,10 @@ def generate_value_record(
 ) -> JsonObject:
     """Generate one numeric or textual record from a track seed."""
 
-    value = profile_value(track, signal_profile=signal_profile)
+    montype = RecorderTrackMontype.parse(track.get("montype"))
+    value = profile_value(track, now=now, signal_profile=signal_profile)
 
-    if isinstance(value, int | float):
+    if isinstance(value, int | float) and numeric_variation_enabled(montype):
         value = apply_numeric_variation(
             float(value),
             now=now,
@@ -214,9 +215,29 @@ def first_record_value(track: JsonObject) -> JsonValue:
     return first_record.get("val", 0)
 
 
+def first_record_dt(track: JsonObject) -> float | None:
+    """Return the first record timestamp when it is explicitly positive."""
+
+    records = track.get("recs")
+
+    if not isinstance(records, list) or not records:
+        return None
+
+    first_record = records[0]
+    if not isinstance(first_record, dict):
+        return None
+
+    value = first_record.get("dt")
+    if isinstance(value, int | float) and value > 0:
+        return float(value)
+
+    return None
+
+
 def profile_value(
     track: JsonObject,
     *,
+    now: float,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
 ) -> JsonValue:
     """Return the numeric value represented by a signal profile and track."""
@@ -240,8 +261,38 @@ def profile_value(
             signal_profile.diastolic_bp_mmhg
             + (signal_profile.systolic_bp_mmhg - signal_profile.diastolic_bp_mmhg) / 3
         )
+    if montype == RecorderTrackMontype.HCT:
+        return hct_profile_value(
+            track,
+            now=now,
+            signal_profile=signal_profile,
+        )
 
     return first_record_value(track)
+
+
+def hct_profile_value(
+    track: JsonObject,
+    *,
+    now: float,
+    signal_profile: SignalProfile,
+) -> float:
+    """Return HCT percent from the profile and explicit track time base."""
+
+    start_dt = first_record_dt(track)
+    elapsed_seconds = 0.0 if start_dt is None else max(0.0, now - start_dt)
+    value = (
+        signal_profile.hct_percent
+        + signal_profile.hct_trend_percent_per_second * elapsed_seconds
+    )
+
+    return round(min(100.0, max(0.0, value)), 2)
+
+
+def numeric_variation_enabled(montype: RecorderTrackMontype | None) -> bool:
+    """Return whether synthetic transport noise should be applied."""
+
+    return montype != RecorderTrackMontype.HCT
 
 
 def wave_value(

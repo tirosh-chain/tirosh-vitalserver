@@ -42,6 +42,24 @@ status가 `updating` 또는 operation `apply-bundle`처럼 보이면 설정 적�
 - settings apply, update apply, repair는 guest shutdown mechanism을 공유할 수 있지만 operation/status는 caller가 명시적으로 제공합니다.
 - shared worker name이나 log phrase만 보고 operation state를 추정하지 않습니다.
 
+## 2026-06-30 Follow-up: Configure Restart Must Be Watchdog-Protected
+
+### Symptom
+
+Settings에서 VM memory, disk, vital files directory처럼 VM restart가 필요한 값을 변경한 뒤 서비스 컨테이너들은 모두 다시 올라오지만 runtime status가 계속 `recovering` / `configure`에 머뭅니다. 로그에는 `Stopping guest services.`가 반복되고, watchdog이 `missing-vm-ip` 또는 host proxy probe 실패를 근거로 VM restart를 요청할 수 있습니다.
+
+### Cause
+
+Settings restart는 `configure` operation으로 guest shutdown worker를 실행합니다. 하지만 watchdog active-operation guard의 protected operation 목록에 `configure`가 빠져 있으면, watchdog은 `recovering/configure` 상태를 진행 중인 관리 작업으로 보지 않습니다. 그 결과 guest shutdown worker가 service stop 중일 때 watchdog이 VM을 재시작할 수 있고, guest worker는 `prepare-update-shutdown-result.json`을 남기지 못합니다. Host configure command는 shutdown result를 기다리며 `Stopping guest services.` 상태를 계속 쓰게 됩니다.
+
+### Fix Direction
+
+`configure` operation은 VM restart를 동반할 수 있는 관리 작업이므로 watchdog recovery 보호 대상에 포함합니다. Settings restart 중에는 watchdog이 복구를 실행하지 않고 active operation으로 skip해야 합니다.
+
+### Prevention Principle
+
+VM, proxy, guest service를 의도적으로 중단하는 Host-owned operation은 watchdog protected operation 목록에 명시되어야 합니다. Watchdog은 일시적 HTTP/proxy 실패만 보고 진행 중인 configure restart를 장애 복구로 전환하면 안 됩니다.
+
 ## 2026-06-13 Follow-up: Failed Apply Must Not Mutate Local Presentation State
 
 ### Symptom

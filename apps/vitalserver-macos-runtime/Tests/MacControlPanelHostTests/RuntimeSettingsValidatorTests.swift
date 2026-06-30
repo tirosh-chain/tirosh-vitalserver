@@ -237,6 +237,20 @@ final class RuntimeSettingsValidatorTests: XCTestCase {
         )
     }
 
+    func testAllowsRedisContainerMemoryLimitAboveFormerEightGiBCap() {
+        var settings = validSettings()
+        settings.memoryGiB = 48
+        settings.containerMemoryLimitsEnabled = true
+        settings.vitalServerContainerMemoryLimitMiB = 8192
+        settings.recorderIngressContainerMemoryLimitMiB = 4096
+        settings.redisContainerMemoryLimitMiB = 16_384
+
+        XCTAssertEqual(
+            validator.validate(settings, installedSettings: installedSettings()),
+            .valid
+        )
+    }
+
     func testRejectsInvalidRedisRelayTargetWhenRelayIsEnabled() {
         var settings = validSettings()
         settings.redisRelay.enabled = true

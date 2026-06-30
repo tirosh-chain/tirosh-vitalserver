@@ -26,8 +26,8 @@ def session_snapshot_to_document(
         "state": snapshot.state.value,
         "targetUrl": request.target_url,
         "recordersRequested": request.recorders,
-        "bedsRequested": len(request.bed_room_names),
-        "bedRoomNames": request.bed_room_names,
+        "bedsRequested": 1,
+        "bedroomName": request.bedroom_name,
         "vrcode": request.vrcode,
         "version": request.version,
         "intervalSeconds": request.interval_seconds,
@@ -36,7 +36,17 @@ def session_snapshot_to_document(
         "shiftTime": request.shift_time,
         "generateFrames": request.generate_frames,
         "scenario": request.scenario.value,
-        "defaultScenario": request.default_scenario.value,
+        "window": None
+        if request.window is None
+        else {
+            "startOffsetSeconds": request.window.start_offset_seconds,
+            "durationSeconds": request.window.duration_seconds,
+        },
+        "output": {
+            "exportVital": request.output.export_vital,
+            "uploadVital": request.output.upload_vital,
+            "vitalUploadEndpoint": request.output.vital_upload_endpoint,
+        },
         "createdAt": snapshot.created_at,
         "startedAt": snapshot.started_at,
         "stoppedAt": snapshot.stopped_at,

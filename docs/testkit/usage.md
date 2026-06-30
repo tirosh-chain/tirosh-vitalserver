@@ -264,12 +264,18 @@ Helper Test 탭의 기본 모델은 “virtual VRecorder 1대 = TestKit session 
 ```json
 {
   "targetUrl": "http://edge/",
-  "recorders": 1,
-  "bedRoomNames": ["OR-A"],
+  "recorderCount": 1,
+  "bedroomName": "OR-A",
+  "scenario": "normal_monitoring",
+  "window": {
+    "durationSeconds": 20
+  },
+  "output": {
+    "exportVital": true,
+    "uploadVital": true
+  },
   "vrcode": "TEST_VR",
-  "intervalSeconds": 1,
-  "durationSeconds": 0,
-  "defaultScenario": "normal"
+  "intervalSeconds": 1
 }
 ```
 

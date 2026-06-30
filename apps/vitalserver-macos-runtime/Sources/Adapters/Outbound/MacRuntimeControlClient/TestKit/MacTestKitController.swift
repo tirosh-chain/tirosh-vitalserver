@@ -183,14 +183,14 @@ public final class MacTestKitController: RuntimeTestKitControlling, RuntimeTestK
         try await sessionAction(sessionID: sessionID, pathComponent: "resume")
     }
 
-    public func restartVirtualRecorders(sessionID: String?, bedRoomNames: [String]) async throws -> RuntimeTestKitSession? {
+    public func restartVirtualRecorders(sessionID: String?, bedroomName: String?) async throws -> RuntimeTestKitSession? {
         let apiBaseURL = try await requireAPIBaseURL()
         let selectedSessionID = try requireSessionID(sessionID)
 
         let session = try await apiService.restartSession(
             apiBaseURL: apiBaseURL,
             sessionID: selectedSessionID,
-            bedRoomNames: bedRoomNames
+            bedroomName: bedroomName
         )
 
         return session

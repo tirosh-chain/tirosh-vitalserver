@@ -104,6 +104,21 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         XCTAssertEqual(guardPolicy.activeOperation(), .install)
     }
 
+    func testBlocksWatchdogRecoveryDuringConfigureRestart() {
+        let repository = RuntimeStatusRepositorySpy()
+        repository.loaded = status(
+            level: .recovering,
+            operation: .configure,
+            updatedAt: "2026-05-22T00:00:00Z"
+        )
+        let guardPolicy = managedOperationGuard(
+            repository: repository,
+            now: "2026-05-22T00:05:00Z"
+        )
+
+        XCTAssertEqual(guardPolicy.activeOperation(), .configure)
+    }
+
     func testDoesNotBlockWatchdogRecoveryAfterInstallProvisionCompletes() {
         let repository = RuntimeStatusRepositorySpy()
         repository.loaded = status(

@@ -23,6 +23,8 @@ from tirosh_vitalserver.testkit.adapters.outbound.vital_artifact import (
 )
 from tirosh_vitalserver.testkit.adapters.outbound.vitalserver import VitalServerClient
 from tirosh_vitalserver.testkit.application.recorder_session import (
+    RecorderSessionOutput,
+    RecorderTestScenario,
     SessionRecorderPlayback,
     SessionVitalPlayback,
     VirtualRecorderSessionManager,
@@ -33,7 +35,6 @@ from tirosh_vitalserver.testkit.application.recorder_session.recording import (
     SessionPlaybackEvent,
     SessionPlaybackEventType,
 )
-from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 
 
 def test_session_vital_export_writes_vitaldb_readable_file(tmp_path: Path) -> None:
@@ -45,11 +46,11 @@ def test_session_vital_export_writes_vitaldb_readable_file(tmp_path: Path) -> No
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             vrcode="VR_FILE",
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=0.1,
             max_messages=2,
             shift_time=False,
-            export_vital=True,
+            output=RecorderSessionOutput(export_vital=True),
         )
     )
 
@@ -86,6 +87,10 @@ def test_session_vital_export_writes_vitaldb_readable_file(tmp_path: Path) -> No
         track.dname == "OR-A_Demo" and track.records > 0
         for track in webview_tracks
     )
+    assert any(
+        track.dname == "OR-A_Lab" and track.tname == "HCT" and track.records > 0
+        for track in webview_tracks
+    )
 
     montypes = {track.tname: track.montype for track in webview_tracks}
     assert montypes["ECG"] == 1
@@ -99,6 +104,7 @@ def test_session_vital_export_writes_vitaldb_readable_file(tmp_path: Path) -> No
     assert montypes["CO2"] == 13
     assert montypes["RR"] == 14
     assert montypes["ETCO2"] == 15
+    assert montypes["HCT"] == 0
 
 
 def test_session_vital_export_uploads_to_vitalserver_success_response(
@@ -114,13 +120,15 @@ def test_session_vital_export_uploads_to_vitalserver_success_response(
             VirtualRecorderSessionRequest(
                 target_url=server_url(server),
                 vrcode="VR_UPLOAD",
-                bed_room_names=("OR-A", "OR-B"),
+                bedroom_name="OR-A",
                 recorders=2,
                 interval_seconds=0.1,
                 max_messages=2,
                 shift_time=False,
-                export_vital=True,
-                upload_vital=True,
+                output=RecorderSessionOutput(
+                    export_vital=True,
+                    upload_vital=True,
+                ),
             )
         )
 
@@ -157,12 +165,14 @@ def test_session_vital_upload_requires_vitalserver_success_body(
             VirtualRecorderSessionRequest(
                 target_url=server_url(server),
                 vrcode="VR_UPLOAD_FAIL",
-                bed_room_names=("OR-A",),
+                bedroom_name="OR-A",
                 interval_seconds=0.1,
                 max_messages=2,
                 shift_time=False,
-                export_vital=True,
-                upload_vital=True,
+                output=RecorderSessionOutput(
+                    export_vital=True,
+                    upload_vital=True,
+                ),
             )
         )
 
@@ -201,7 +211,7 @@ def test_session_vital_filename_uses_playback_room_name() -> None:
         stopped_at=1001.0,
         interval_seconds=1.0,
         generate_frames=False,
-        default_scenario=RecorderSignalScenario.NORMAL,
+        scenario=RecorderTestScenario.NORMAL_MONITORING,
     )
 
     assert playback_bed_room_name(playback) == "Attached OR"
@@ -228,12 +238,14 @@ def test_session_vital_upload_is_visible_in_live_vitalserver_filelist(
         VirtualRecorderSessionRequest(
             target_url=target_url,
             vrcode=f"VR_{bed_name}",
-            bed_room_names=(bed_name,),
+            bedroom_name=bed_name,
             interval_seconds=0.1,
             max_messages=2,
             shift_time=False,
-            export_vital=True,
-            upload_vital=True,
+            output=RecorderSessionOutput(
+                export_vital=True,
+                upload_vital=True,
+            ),
         )
     )
 

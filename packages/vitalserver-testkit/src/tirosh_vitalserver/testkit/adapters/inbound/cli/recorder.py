@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from tirosh_vitalserver.testkit.adapters.inbound.cli.common import (
@@ -15,6 +16,9 @@ from tirosh_vitalserver.testkit.adapters.inbound.cli.output import (
 )
 from tirosh_vitalserver.testkit.adapters.inbound.http.recorder_status import (
     RecorderStatusServer,
+)
+from tirosh_vitalserver.testkit.adapters.outbound.real_vital import (
+    VitalDbRealVitalReader,
 )
 from tirosh_vitalserver.testkit.adapters.outbound.recorder import (
     connect_socketio,
@@ -35,6 +39,12 @@ from tirosh_vitalserver.testkit.application.usecases import (
     send_virtual_recorder_payloads,
     stream_vrecorder_session,
 )
+from tirosh_vitalserver.testkit.application.usecases.recorder.real_vital_sample import (
+    RealVitalSampleScenario,
+    build_real_vital_recorder_payload,
+    real_vital_sample_metadata,
+    real_vital_track_catalog,
+)
 from tirosh_vitalserver.testkit.application.usecases.recorder.visibility import (
     wait_for_recorder_visibility,
 )
@@ -51,6 +61,7 @@ from tirosh_vitalserver.testkit.domain.signal import (
     RecorderSignalScenario,
     SignalProfile,
     profile_for_scenario,
+    profile_with_hct_override,
 )
 from tirosh_vitalserver.testkit.schemas.payloads import load_recorder_payload
 from tirosh_vitalserver.testkit.types.json import JsonObject
@@ -64,6 +75,8 @@ def add_recorder_parsers(
     add_send_recorder_parser(subparsers)
     add_stream_recorder_parser(subparsers)
     add_verify_recorder_parser(subparsers)
+    add_inspect_real_vital_recorder_parser(subparsers)
+    add_export_real_vital_recorder_parser(subparsers)
 
 
 def add_send_recorder_parser(
@@ -166,6 +179,12 @@ def add_stream_recorder_parser(
         help="Override one 1-based bed index with a signal scenario",
     )
     parser.add_argument(
+        "--hct-percent",
+        type=float,
+        default=None,
+        help="Fixed HCT percent for simulated HCT records",
+    )
+    parser.add_argument(
         "--status-page",
         action="store_true",
         help="Serve a simple VRecorder status page for Network Settings checks",
@@ -228,6 +247,93 @@ def add_verify_recorder_parser(
     )
 
     parser.set_defaults(command=run_verify_recorder)
+
+
+def add_export_real_vital_recorder_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Register the command that exports real `.vital` files to recorder JSON."""
+
+    parser = subparsers.add_parser(
+        "export-real-vital-recorder",
+        help="Extract a scenario recorder payload from a real .vital file",
+        description=(
+            "Extract real monitor tracks from a .vital file into the JSON shape "
+            "accepted by send-recorder and stream-recorder. HCT in the bloodbag "
+            "scenario is derived from Root/SPHB and recorded as derived metadata."
+        ),
+    )
+    parser.add_argument("path", type=Path, help="Source .vital file path")
+    parser.add_argument(
+        "--output",
+        required=True,
+        type=Path,
+        help="Destination recorder payload JSON path",
+    )
+    parser.add_argument(
+        "--scenario",
+        choices=[scenario.value for scenario in RealVitalSampleScenario],
+        default=RealVitalSampleScenario.BASIC_MONITOR.value,
+        help="Track selection scenario",
+    )
+    parser.add_argument(
+        "--room-name",
+        default=None,
+        help="Room name in the generated recorder payload",
+    )
+    parser.add_argument(
+        "--vrcode",
+        default=None,
+        help="VRecorder code in the generated realtime message",
+    )
+    parser.add_argument(
+        "--version",
+        default="real-vital-sample",
+        help="Recorder version value in the generated realtime message",
+    )
+    parser.add_argument(
+        "--start-offset",
+        type=float,
+        default=0.0,
+        help="Seconds after source .vital dtstart to begin extraction",
+    )
+    parser.add_argument(
+        "--duration",
+        type=int,
+        default=20,
+        help="Seconds of recorder records to extract",
+    )
+    parser.add_argument(
+        "--metadata-output",
+        type=Path,
+        default=None,
+        help="Sidecar metadata JSON path. Defaults to OUTPUT.metadata.json",
+    )
+    parser.set_defaults(command=run_export_real_vital_recorder)
+
+
+def add_inspect_real_vital_recorder_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Register the command that scans real `.vital` track catalogs."""
+
+    parser = subparsers.add_parser(
+        "inspect-real-vital-recorder",
+        help="Inspect real .vital files and emit a merged track catalog",
+    )
+    parser.add_argument(
+        "paths",
+        nargs="+",
+        type=Path,
+        help=".vital file or directory paths",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Write catalog JSON to this path instead of stdout",
+    )
+    parser.set_defaults(command=run_inspect_real_vital_recorder)
 
 
 def run_send_recorder(args: argparse.Namespace) -> int:
@@ -304,10 +410,16 @@ def run_stream_recorder(args: argparse.Namespace) -> int:
             max_messages=args.max_messages,
             shift_time=not args.no_shift_time,
             generate_frames=not args.replay_sample,
-            default_signal_profile=profile_for_scenario(
-                RecorderSignalScenario(args.default_scenario),
+            default_signal_profile=profile_with_hct_override(
+                profile_for_scenario(
+                    RecorderSignalScenario(args.default_scenario),
+                ),
+                args.hct_percent,
             ),
-            signal_profiles=parse_bed_signal_profiles(args.bed_scenario),
+            signal_profiles=parse_bed_signal_profiles(
+                args.bed_scenario,
+                hct_percent=args.hct_percent,
+            ),
             runtime_registry=runtime_registry,
             connector=connect_socketio,
         )
@@ -375,6 +487,92 @@ def run_verify_recorder(args: argparse.Namespace) -> int:
         )
 
     return 0
+
+
+def run_inspect_real_vital_recorder(args: argparse.Namespace) -> int:
+    """Inspect real `.vital` files and write a merged track catalog."""
+
+    paths = expand_vital_paths(tuple(args.paths))
+    if not paths:
+        raise ValueError("no .vital files matched")
+
+    catalog = real_vital_track_catalog(VitalDbRealVitalReader(), paths)
+    body = json.dumps(catalog, ensure_ascii=False, indent=2)
+    if args.output is None:
+        print(body)
+    else:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(body, encoding="utf-8")
+        print(f"catalog: {args.output}")
+        print(f"files: {catalog['filesScanned']}")
+        print(f"unique_tracks: {catalog['uniqueTracks']}")
+
+    return 0
+
+
+def run_export_real_vital_recorder(args: argparse.Namespace) -> int:
+    """Export a real `.vital` sample into a recorder JSON payload."""
+
+    reader = VitalDbRealVitalReader()
+    scenario = RealVitalSampleScenario(args.scenario)
+    payload = build_real_vital_recorder_payload(
+        reader,
+        args.path,
+        scenario=scenario,
+        room_name=args.room_name,
+        vrcode=args.vrcode,
+        version=args.version,
+        start_offset_seconds=args.start_offset,
+        duration_seconds=args.duration,
+    )
+    metadata_output = args.metadata_output
+    if metadata_output is None:
+        metadata_output = args.output.with_suffix(args.output.suffix + ".metadata.json")
+    metadata = real_vital_sample_metadata(
+        reader,
+        args.path,
+        scenario=scenario,
+        start_offset_seconds=args.start_offset,
+        duration_seconds=args.duration,
+        payload_path=args.output,
+    )
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    metadata_output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    metadata_output.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    rooms = payload["rooms"] if isinstance(payload.get("rooms"), dict) else {}
+    track_count = 0
+    for room in rooms.values():
+        if isinstance(room, dict) and isinstance(room.get("trks"), list):
+            track_count += len(room["trks"])
+
+    print(f"payload: {args.output}")
+    print(f"metadata: {metadata_output}")
+    print(f"scenario: {scenario.value}")
+    print(f"tracks: {track_count}")
+
+    return 0
+
+
+def expand_vital_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
+    """Return sorted `.vital` files from explicit files and directories."""
+
+    expanded: list[Path] = []
+    for path in paths:
+        if path.is_dir():
+            expanded.extend(sorted(path.rglob("*.vital")))
+        elif path.suffix == ".vital":
+            expanded.append(path)
+
+    return tuple(sorted(dict.fromkeys(expanded)))
 
 
 def add_common_recorder_args(arg_parser: argparse.ArgumentParser) -> None:
@@ -446,10 +644,15 @@ def build_optional_status_server(
 
 def parse_bed_signal_profiles(
     values: list[tuple[int, SignalProfile]],
+    *,
+    hct_percent: float | None = None,
 ) -> dict[int, SignalProfile]:
     """Convert parsed bed scenario options into a profile mapping."""
 
-    return dict(values)
+    return {
+        index: profile_with_hct_override(profile, hct_percent)
+        for index, profile in values
+    }
 
 
 def parse_bed_signal_profile(value: str) -> tuple[int, SignalProfile]:

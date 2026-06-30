@@ -67,8 +67,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var selectedTestKitBedRoomNames: Set<String> = []
     @Published var testKitVrcode = RuntimeViewModel.generatedTestKitVrcode()
     @Published var testKitOrphanVrcode = ""
-    @Published var testKitScenario = RuntimeTestKitScenario.normal
-    @Published var testKitSignalProfile = RuntimeTestKitSignalProfile.normal
+    @Published var testKitScenario = RuntimeTestKitScenario.normalMonitoring
     @Published var testKitRecorderCount = 1
     @Published var testKitBedCount = 1
     @Published var testKitBedPrefix = "testbed"

@@ -136,24 +136,15 @@ def test_bed_registry_create_endpoint_returns_only_created_beds() -> None:
 
 
 def test_sessions_endpoint_rejects_missing_bed_room_names() -> None:
-    route = route_for("/sessions", "POST")
-    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
-    registry = BedRegistry()
+    with pytest.raises(ValueError) as exc_info:
+        StartVirtualRecordersRequest(
+            targetUrl="http://example.test",
+            recorderCount=1,
+            bedroomName=" ",
+            maxMessages=1,
+        ).to_session_request()
 
-    with pytest.raises(HTTPException) as exc_info:
-        route.endpoint(
-            StartVirtualRecordersRequest(
-                targetUrl="http://example.test",
-                recorders=1,
-                bedRoomNames=(),
-                maxMessages=1,
-            ),
-            manager,
-            registry,
-        )
-
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "bed_room_names is required"
+    assert "bedroom_name must not be empty" in str(exc_info.value)
 
 
 def test_sessions_endpoint_requires_registered_bed_room_names() -> None:
@@ -165,8 +156,8 @@ def test_sessions_endpoint_requires_registered_bed_room_names() -> None:
         route.endpoint(
             StartVirtualRecordersRequest(
                 targetUrl="http://example.test",
-                recorders=1,
-                bedRoomNames=("OR-A",),
+                recorderCount=1,
+                bedroomName="OR-A",
                 maxMessages=1,
             ),
             manager,
@@ -177,6 +168,46 @@ def test_sessions_endpoint_requires_registered_bed_room_names() -> None:
     assert exc_info.value.detail == "bed room names are not registered: OR-A"
 
 
+def test_sessions_endpoint_accepts_purpose_scenario() -> None:
+    route = route_for("/sessions", "POST")
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A",))
+
+    response = route.endpoint(
+        StartVirtualRecordersRequest(
+            targetUrl="http://example.test",
+            recorderCount=1,
+            bedroomName="OR-A",
+            maxMessages=1,
+            scenario="hct_decreasing",
+        ),
+        manager,
+        registry,
+    )
+    try:
+        assert response["scenario"] == "hct_decreasing"
+        assert response["bedroomName"] == "OR-A"
+        assert manager.wait_session(response["id"], timeout=5)
+    finally:
+        manager.delete_session(response["id"])
+
+
+def test_scenarios_endpoint_describes_purpose_centered_scenarios() -> None:
+    route = route_for("/scenarios", "GET")
+
+    response = route.endpoint()
+
+    scenarios = {
+        scenario["scenario"]: scenario
+        for scenario in response["scenarios"]
+    }
+    assert "bloodbag_transfusion" in scenarios
+    assert scenarios["bloodbag_transfusion"]["title"] == "Bloodbag transfusion"
+    assert scenarios["bloodbag_transfusion"]["situation"]
+    assert scenarios["bloodbag_transfusion"]["purpose"]
+
+
 def test_sessions_endpoint_rejects_active_bed_reuse() -> None:
     route = route_for("/sessions", "POST")
     manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
@@ -184,12 +215,12 @@ def test_sessions_endpoint_rejects_active_bed_reuse() -> None:
     registry.create_beds(room_names=("OR-A", "OR-B"))
 
     first = route.endpoint(
-        StartVirtualRecordersRequest(
-            targetUrl="http://example.test",
-            recorders=1,
-            bedRoomNames=("OR-A",),
-            intervalSeconds=1,
-        ),
+            StartVirtualRecordersRequest(
+                targetUrl="http://example.test",
+                recorderCount=1,
+                bedroomName="OR-A",
+                intervalSeconds=1,
+            ),
         manager,
         registry,
     )
@@ -198,8 +229,8 @@ def test_sessions_endpoint_rejects_active_bed_reuse() -> None:
             route.endpoint(
                 StartVirtualRecordersRequest(
                     targetUrl="http://example.test",
-                    recorders=1,
-                    bedRoomNames=("OR-A",),
+                    recorderCount=1,
+                    bedroomName="OR-A",
                     intervalSeconds=1,
                 ),
                 manager,
@@ -222,8 +253,8 @@ def test_bed_registry_reset_rejects_active_assignments() -> None:
     first = start_route.endpoint(
         StartVirtualRecordersRequest(
             targetUrl="http://example.test",
-            recorders=1,
-            bedRoomNames=("OR-A",),
+            recorderCount=1,
+            bedroomName="OR-A",
             intervalSeconds=1,
         ),
         manager,
@@ -252,8 +283,8 @@ def test_bed_registry_delete_rejects_active_assignments() -> None:
     first = start_route.endpoint(
         StartVirtualRecordersRequest(
             targetUrl="http://example.test",
-            recorders=1,
-            bedRoomNames=("OR-A",),
+            recorderCount=1,
+            bedroomName="OR-A",
             intervalSeconds=1,
         ),
         manager,
@@ -287,8 +318,8 @@ def test_session_endpoint_restarts_stopped_session_on_selected_bed() -> None:
         StartVirtualRecordersRequest(
             targetUrl="http://example.test",
             vrcode="VR_REUSE",
-            recorders=1,
-            bedRoomNames=("OR-A",),
+            recorderCount=1,
+            bedroomName="OR-A",
             maxMessages=1,
         ),
         manager,
@@ -298,14 +329,14 @@ def test_session_endpoint_restarts_stopped_session_on_selected_bed() -> None:
 
     restarted = restart_route.endpoint(
         first["id"],
-        RestartVirtualRecorderSessionRequest(bedRoomNames=("OR-B",)),
+        RestartVirtualRecorderSessionRequest(bedroomName="OR-B"),
         manager,
         registry,
     )
 
     assert restarted["id"] != first["id"]
     assert restarted["vrcode"] == "VR_REUSE"
-    assert restarted["bedRoomNames"] == ("OR-B",)
+    assert restarted["bedroomName"] == "OR-B"
 
 
 def route_for(path: str, method: str) -> APIRoute:

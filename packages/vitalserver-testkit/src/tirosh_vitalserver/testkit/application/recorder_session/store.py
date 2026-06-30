@@ -10,9 +10,11 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
     RecorderRuntimeSnapshot,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    RecorderScenarioWindow,
+    RecorderSessionOutput,
+    RecorderTestScenario,
     VirtualRecorderCleanupError,
     VirtualRecorderSessionRequest,
-    VirtualRecorderSessionScenario,
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
     VirtualRecorderSessionVitalState,
@@ -21,10 +23,8 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderVitalUploadResult,
     VirtualRecorderVitalUploadStatus,
 )
-from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 
-SESSION_STORE_SCHEMA_VERSION = 2
-LEGACY_SESSION_STORE_SCHEMA_VERSION = 1
+SESSION_STORE_SCHEMA_VERSION = 3
 
 
 class VirtualRecorderSessionStorePort(Protocol):
@@ -47,7 +47,6 @@ def session_snapshot_to_record(
     data = asdict(snapshot)
     data["state"] = snapshot.state.value
     data["request"]["scenario"] = snapshot.request.scenario.value
-    data["request"]["default_scenario"] = snapshot.request.default_scenario.value
     data["vital_state"]["export_status"] = snapshot.vital_state.export_status.value
     data["vital_state"]["upload_status"] = snapshot.vital_state.upload_status.value
     data["recorders"] = [
@@ -66,18 +65,15 @@ def session_snapshot_from_record(
     """Convert a persistent JSON record into a session snapshot."""
 
     request_data = dict(data["request"])
-    request_data["scenario"] = VirtualRecorderSessionScenario(
-        str(request_data["scenario"])
-    )
-    request_data["default_scenario"] = RecorderSignalScenario(
-        str(request_data["default_scenario"])
-    )
+    request_data["scenario"] = RecorderTestScenario(str(request_data["scenario"]))
+    if request_data.get("window") is not None:
+        request_data["window"] = RecorderScenarioWindow(**request_data["window"])
+    if request_data.get("output") is not None:
+        request_data["output"] = RecorderSessionOutput(**request_data["output"])
 
     request = VirtualRecorderSessionRequest(**request_data)
     if "vital_state" in data:
         vital_state = vital_state_from_record(data["vital_state"])
-    elif schema_version == LEGACY_SESSION_STORE_SCHEMA_VERSION:
-        vital_state = VirtualRecorderSessionVitalState.for_request(request)
     else:
         raise KeyError("vital_state")
 

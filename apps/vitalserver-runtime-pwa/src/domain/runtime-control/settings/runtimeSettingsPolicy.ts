@@ -40,10 +40,12 @@ const protectedDirectoryNames = new Set([
   "iCloud Drive"
 ]);
 
+const maximumMemoryMiB = 64 * 1024;
+
 export const containerMemoryLimitRanges = {
   vitalServer: { minMiB: 512, maxMiB: 32_768 },
   recorderIngress: { minMiB: 128, maxMiB: 4_096 },
-  redis: { minMiB: 256, maxMiB: 8_192 },
+  redis: { minMiB: 256, maxMiB: maximumMemoryMiB },
   stepPercent: 1,
   maxCombinedPercent: 70
 } as const;

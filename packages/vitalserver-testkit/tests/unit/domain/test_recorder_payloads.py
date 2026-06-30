@@ -24,6 +24,8 @@ from tirosh_vitalserver.testkit.domain.recorder import (
 from tirosh_vitalserver.testkit.domain.signal import (
     RecorderSignalScenario,
     SignalProfile,
+    profile_for_scenario,
+    profile_with_hct_override,
 )
 from tirosh_vitalserver.testkit.errors import InsufficientBedsForRecordersError
 from tirosh_vitalserver.testkit.types.json import JsonArray, JsonObject
@@ -108,7 +110,7 @@ def test_virtual_recorder_payloads_connect_existing_beds() -> None:
     ]
 
 
-def test_virtual_recorder_payloads_require_a_bed_per_recorder() -> None:
+def test_virtual_recorder_payloads_allow_one_bedroom_for_many_recorders() -> None:
     recorder_payload: JsonObject = {
         "bed-1": {
             "roomname": "BED01",
@@ -116,12 +118,20 @@ def test_virtual_recorder_payloads_require_a_bed_per_recorder() -> None:
         }
     }
 
-    try:
-        build_virtual_recorder_payloads(recorder_payload, count=2, vrcode="VR")
-    except ValueError as exc:
-        assert str(exc) == "bed count must be greater than or equal to recorder count"
-    else:
-        raise AssertionError("expected missing bed validation")
+    virtual_payloads = build_virtual_recorder_payloads(
+        recorder_payload,
+        count=2,
+        vrcode="VR",
+    )
+
+    assert [payload.vrcode for payload in virtual_payloads] == [
+        "VR-001",
+        "VR-002",
+    ]
+    assert [
+        next(iter(iter_recorder_rooms(payload.payload))).room_name
+        for payload in virtual_payloads
+    ] == ["BED01", "BED01"]
 
 
 def test_bed_capacity_rule_rejects_competing_active_recorders() -> None:
@@ -208,6 +218,7 @@ def test_simulated_recorder_payload_is_valid_room_map() -> None:
     recorder = cast(JsonObject, payload["OR-A"])
     tracks = cast(JsonArray, recorder["trks"])
     first_track = cast(JsonObject, tracks[0])
+    hct_track = require_track(tracks, "HCT")
 
     rooms = iter_recorder_rooms(payload)
 
@@ -216,6 +227,11 @@ def test_simulated_recorder_payload_is_valid_room_map() -> None:
     assert first_track["id"] == 1001
     assert first_track["montype"] == "ECG_WAV"
     assert first_track["dname"] == "Demo"
+    assert hct_track["id"] == 2010
+    assert hct_track["type"] == "num"
+    assert hct_track["dname"] == "Lab"
+    assert hct_track["montype"] == "HCT"
+    assert hct_track["unit"] == "%"
     assert recorder_payload_size_bytes(payload) > 0
 
 
@@ -291,10 +307,82 @@ def test_simulated_ecg_waveform_uses_signal_profile_heart_rate() -> None:
     assert 3 <= count_ecg_peaks(values) <= 5
 
 
+def test_simulated_hct_track_uses_default_normal_value() -> None:
+    payload = build_simulated_recorder_payload(room_names=("OR-A",), now=1000.0)
+
+    generated = generate_simulated_recorder_payload(
+        payload,
+        now=2000.0,
+        frame_seconds=1.0,
+        sequence=1,
+    )
+    recorder = cast(JsonObject, generated["OR-A"])
+    tracks = cast(JsonArray, recorder["trks"])
+    hct_track = require_track(tracks, "HCT")
+    record = first_record(hct_track)
+
+    assert record["dt"] == 2000.0
+    assert record["val"] == 35.0
+
+
+def test_simulated_hct_track_supports_decreasing_scenario() -> None:
+    payload = build_simulated_recorder_payload(room_names=("OR-A",), now=1000.0)
+
+    generated = generate_simulated_recorder_payload(
+        payload,
+        now=1600.0,
+        frame_seconds=1.0,
+        sequence=1,
+        signal_profile=profile_for_scenario(RecorderSignalScenario.HCT_DECREASING),
+    )
+    recorder = cast(JsonObject, generated["OR-A"])
+    tracks = cast(JsonArray, recorder["trks"])
+    hct_track = require_track(tracks, "HCT")
+    record = first_record(hct_track)
+
+    assert record["val"] == 30.0
+
+
+def test_simulated_hct_override_is_fixed() -> None:
+    payload = build_simulated_recorder_payload(room_names=("OR-A",), now=1000.0)
+    signal_profile = profile_with_hct_override(
+        profile_for_scenario(RecorderSignalScenario.HCT_DECREASING),
+        42.0,
+    )
+
+    generated = generate_simulated_recorder_payload(
+        payload,
+        now=1600.0,
+        frame_seconds=1.0,
+        sequence=1,
+        signal_profile=signal_profile,
+    )
+    recorder = cast(JsonObject, generated["OR-A"])
+    tracks = cast(JsonArray, recorder["trks"])
+    hct_track = require_track(tracks, "HCT")
+    record = first_record(hct_track)
+
+    assert record["val"] == 42.0
+
+
 def test_recorder_signal_scenarios_are_stable_strings() -> None:
     assert RecorderSignalScenario.NORMAL == "normal"
     assert RecorderSignalScenario.TACHYCARDIA == "tachycardia"
     assert RecorderSignalScenario.DEVICE_DISCONNECT == "device_disconnect"
+    assert RecorderSignalScenario.HCT_DECREASING == "hct_decreasing"
+
+
+def require_track(tracks: JsonArray, name: str) -> JsonObject:
+    for track in tracks:
+        if isinstance(track, dict) and track.get("name") == name:
+            return cast(JsonObject, track)
+
+    raise AssertionError(f"missing track: {name}")
+
+
+def first_record(track: JsonObject) -> JsonObject:
+    records = cast(JsonArray, track["recs"])
+    return cast(JsonObject, records[0])
 
 
 def count_ecg_peaks(values: list[float], *, threshold: float = 0.35) -> int:

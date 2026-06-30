@@ -8,11 +8,9 @@ from enum import StrEnum
 from tirosh_vitalserver.testkit.application.recorder_runtime import (
     RecorderRuntimeSnapshot,
 )
-from tirosh_vitalserver.testkit.domain.bed import (
-    normalize_bed_room_names,
-    require_bed_capacity_for_recorders,
+from tirosh_vitalserver.testkit.domain.bed.identity import (
+    normalize_bed_room_name,
 )
-from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 
 
 class VirtualRecorderSessionState(StrEnum):
@@ -53,15 +51,59 @@ class VirtualRecorderVitalUploadStatus(StrEnum):
     FAILED = "failed"
 
 
-class VirtualRecorderSessionScenario(StrEnum):
-    """Session-level traffic/lifecycle scenario for virtual recorders."""
+class RecorderTestScenario(StrEnum):
+    """Purpose-centered Test tab scenarios."""
 
-    NORMAL = "normal"
-    MULTIPLE_RECORDERS = "multiple_recorders"
-    BURST_TRAFFIC = "burst_traffic"
-    DISCONNECT_RECONNECT = "disconnect_reconnect"
-    STALE_RECORDER = "stale_recorder"
-    SIGNAL_ANOMALY = "signal_anomaly"
+    NORMAL_MONITORING = "normal_monitoring"
+    TACHYCARDIA = "tachycardia"
+    DESATURATION = "desaturation"
+    SIGNAL_ARTIFACT = "signal_artifact"
+    DEVICE_DISCONNECT = "device_disconnect"
+    HCT_DECREASING = "hct_decreasing"
+    BLOODBAG_TRANSFUSION = "bloodbag_transfusion"
+    PERIOPERATIVE_MONITORING = "perioperative_monitoring"
+    SEDATION_MONITORING = "sedation_monitoring"
+    FULL_MONITORING_REPLAY = "full_monitoring_replay"
+
+
+@dataclass(frozen=True)
+class RecorderScenarioWindow:
+    """Explicit finite source window for a recorder test scenario."""
+
+    start_offset_seconds: float | None = None
+    duration_seconds: float | None = None
+
+    def __post_init__(self) -> None:
+        """Validate window timing."""
+
+        if (
+            self.start_offset_seconds is not None
+            and self.start_offset_seconds < 0
+        ):
+            raise ValueError(
+                "window.start_offset_seconds must be greater than or equal to 0"
+            )
+        if self.duration_seconds is not None and self.duration_seconds < 0:
+            raise ValueError(
+                "window.duration_seconds must be greater than or equal to 0"
+            )
+
+
+@dataclass(frozen=True)
+class RecorderSessionOutput:
+    """Explicit output policy for one recorder test session."""
+
+    export_vital: bool = False
+    upload_vital: bool = False
+    vital_upload_endpoint: str = "/upload"
+
+    def __post_init__(self) -> None:
+        """Validate output policy."""
+
+        if self.upload_vital and not self.export_vital:
+            raise ValueError("output.upload_vital requires output.export_vital")
+        if not self.vital_upload_endpoint.strip():
+            raise ValueError("output.vital_upload_endpoint is required")
 
 
 @dataclass(frozen=True)
@@ -70,19 +112,16 @@ class VirtualRecorderSessionRequest:
 
     target_url: str
     recorders: int = 1
-    bed_room_names: tuple[str, ...] = ()
+    bedroom_name: str = "TestBedroom"
+    scenario: RecorderTestScenario = RecorderTestScenario.NORMAL_MONITORING
+    window: RecorderScenarioWindow | None = None
+    output: RecorderSessionOutput = field(default_factory=RecorderSessionOutput)
     vrcode: str | None = None
     version: str = "testkit"
     interval_seconds: float = 1.0
-    duration_seconds: float | None = None
     max_messages: int | None = None
     shift_time: bool = True
     generate_frames: bool = True
-    scenario: VirtualRecorderSessionScenario = VirtualRecorderSessionScenario.NORMAL
-    default_scenario: RecorderSignalScenario = RecorderSignalScenario.NORMAL
-    export_vital: bool = False
-    upload_vital: bool = False
-    vital_upload_endpoint: str = "/upload"
 
     def __post_init__(self) -> None:
         """Validate session options at the application boundary."""
@@ -91,27 +130,45 @@ class VirtualRecorderSessionRequest:
             raise ValueError("target_url is required")
         if self.recorders < 1:
             raise ValueError("recorders must be greater than 0")
-        if not self.bed_room_names:
-            raise ValueError("bed_room_names is required")
         try:
-            bed_room_names = normalize_bed_room_names(self.bed_room_names)
+            bedroom_name = normalize_bed_room_name(self.bedroom_name)
         except ValueError as exc:
-            raise ValueError(str(exc).replace("room_names", "bed_room_names")) from exc
-        object.__setattr__(self, "bed_room_names", bed_room_names)
-        require_bed_capacity_for_recorders(
-            bed_count=len(self.bed_room_names),
-            recorder_count=self.recorders,
-        )
+            raise ValueError(str(exc).replace("room_name", "bedroom_name")) from exc
+        object.__setattr__(self, "bedroom_name", bedroom_name)
         if self.interval_seconds <= 0:
             raise ValueError("interval_seconds must be greater than 0")
-        if self.duration_seconds is not None and self.duration_seconds < 0:
-            raise ValueError("duration_seconds must be greater than or equal to 0")
         if self.max_messages is not None and self.max_messages < 1:
             raise ValueError("max_messages must be greater than 0")
-        if self.upload_vital and not self.export_vital:
-            raise ValueError("upload_vital requires export_vital")
-        if not self.vital_upload_endpoint.strip():
-            raise ValueError("vital_upload_endpoint is required")
+
+    @property
+    def bed_room_names(self) -> tuple[str, ...]:
+        """Return the explicit bedroom assigned to this test session."""
+
+        return (self.bedroom_name,)
+
+    @property
+    def duration_seconds(self) -> float | None:
+        """Return the streaming duration requested by the scenario window."""
+
+        return None if self.window is None else self.window.duration_seconds
+
+    @property
+    def export_vital(self) -> bool:
+        """Return whether the session should export a `.vital` artifact."""
+
+        return self.output.export_vital
+
+    @property
+    def upload_vital(self) -> bool:
+        """Return whether the exported `.vital` artifact should be uploaded."""
+
+        return self.output.upload_vital
+
+    @property
+    def vital_upload_endpoint(self) -> str:
+        """Return the explicit VitalServer upload endpoint."""
+
+        return self.output.vital_upload_endpoint
 
 
 @dataclass(frozen=True)
@@ -159,12 +216,12 @@ class VirtualRecorderSessionVitalState:
         return cls(
             export_status=(
                 VirtualRecorderVitalExportStatus.PENDING
-                if request.export_vital
+                if request.output.export_vital
                 else VirtualRecorderVitalExportStatus.NOT_REQUESTED
             ),
             upload_status=(
                 VirtualRecorderVitalUploadStatus.PENDING
-                if request.upload_vital
+                if request.output.upload_vital
                 else VirtualRecorderVitalUploadStatus.NOT_REQUESTED
             ),
         )

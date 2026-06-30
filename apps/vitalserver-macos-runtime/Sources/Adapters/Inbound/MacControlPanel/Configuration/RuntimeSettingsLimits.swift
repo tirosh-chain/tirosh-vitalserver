@@ -48,7 +48,7 @@ extension AppConstants {
         static let minimumRecorderIngressContainerMemoryLimitMiB = 128
         static let maximumRecorderIngressContainerMemoryLimitMiB = 4_096
         static let minimumRedisContainerMemoryLimitMiB = 256
-        static let maximumRedisContainerMemoryLimitMiB = 8_192
+        static let maximumRedisContainerMemoryLimitMiB = maximumMemoryGiB * 1024
         static let containerMemoryLimitStepMiB = 128
         static let containerMemoryLimitPercentStep = 1
         static let maximumCombinedContainerMemoryLimitPercent = 70

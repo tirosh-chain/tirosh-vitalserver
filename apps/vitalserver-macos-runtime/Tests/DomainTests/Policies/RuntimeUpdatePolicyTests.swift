@@ -100,6 +100,7 @@ final class RuntimeUpdatePreflightPolicyTests: XCTestCase {
 final class RuntimeManagedOperationPolicyTests: XCTestCase {
     func testProtectedOperationsAreCentralizedForWatchdogRecovery() {
         XCTAssertTrue(RuntimeManagedOperationPolicy.isProtectedFromWatchdogRecovery(.applyBundle))
+        XCTAssertTrue(RuntimeManagedOperationPolicy.isProtectedFromWatchdogRecovery(.configure))
         XCTAssertTrue(RuntimeManagedOperationPolicy.isProtectedFromWatchdogRecovery(.prepareUpdateShutdown))
         XCTAssertTrue(RuntimeManagedOperationPolicy.isProtectedFromWatchdogRecovery(.rollback))
         XCTAssertTrue(RuntimeManagedOperationPolicy.isProtectedFromWatchdogRecovery(.repairVMDisk))

@@ -287,7 +287,7 @@ final class MacTestKitControllerTests: XCTestCase {
         let pausedSession = try await controller.pauseVirtualRecorders(sessionID: "session-1")
         let resumedSession = try await controller.resumeVirtualRecorders(sessionID: "session-1")
         let stoppedSession = try await controller.stopVirtualRecorders(sessionID: "session-1")
-        let restartedSession = try await controller.restartVirtualRecorders(sessionID: "session-1", bedRoomNames: ["OR-2"])
+        let restartedSession = try await controller.restartVirtualRecorders(sessionID: "session-1", bedroomName: "OR-2")
         let deletedSession = try await controller.deleteVirtualRecorders(sessionID: "session-2")
         let recorderDeletion = try await controller.deleteVirtualRecorder(vrcode: "VR_ORPHAN")
         let resetStatus = try await controller.resetVirtualRecorders()
@@ -486,20 +486,21 @@ final class MacTestKitControllerTests: XCTestCase {
 
     private func startRequest() -> RuntimeTestKitVirtualRecorderStartRequest {
         RuntimeTestKitVirtualRecorderStartRequest(
-            scenario: .normal,
-            signalProfile: .normal,
+            scenario: .normalMonitoring,
             recorders: 1,
-            bedRoomNames: ["OR-1"],
+            bedroomName: "OR-1",
+            window: nil,
+            output: RuntimeTestKitSessionOutput(
+                exportVital: true,
+                uploadVital: true,
+                vitalUploadEndpoint: "/upload"
+            ),
             vrcode: "VR_TEST",
             version: "testkit",
             intervalSeconds: 1,
-            durationSeconds: nil,
             maxMessages: nil,
             shiftTime: true,
-            generateFrames: true,
-            exportVital: true,
-            uploadVital: true,
-            vitalUploadEndpoint: "/upload"
+            generateFrames: true
         )
     }
 
@@ -672,8 +673,8 @@ private func testKitSession(
         state: state,
         targetURL: "http://edge/",
         recordersRequested: bedRoomNames.count,
-        bedsRequested: bedRoomNames.count,
-        bedRoomNames: bedRoomNames,
+        bedsRequested: 1,
+        bedroomName: bedRoomNames.first ?? "TestBedroom",
         vrcode: "VR_TEST",
         version: "testkit",
         intervalSeconds: 1,
@@ -681,8 +682,7 @@ private func testKitSession(
         maxMessages: nil,
         shiftTime: true,
         generateFrames: true,
-        scenario: RuntimeTestKitScenario.normal.rawValue,
-        defaultScenario: RuntimeTestKitSignalProfile.normal.rawValue,
+        scenario: RuntimeTestKitScenario.normalMonitoring.rawValue,
         createdAt: 1,
         startedAt: 1,
         stoppedAt: nil,

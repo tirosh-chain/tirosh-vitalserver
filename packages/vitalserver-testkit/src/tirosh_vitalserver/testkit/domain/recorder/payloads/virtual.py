@@ -73,9 +73,13 @@ def split_rooms_for_recorders(
     *,
     count: int,
 ) -> tuple[JsonObject, ...]:
-    """Assign existing bed rooms to virtual recorders."""
+    """Assign explicit test bedrooms to virtual recorders."""
 
     room_items = tuple(rooms.items())
+    if len(room_items) == 1 and count > 1:
+        room_name, room = room_items[0]
+        return tuple({room_name: deepcopy(room)} for _ in range(count))
+
     require_bed_capacity_for_recorders(
         bed_count=len(room_items),
         recorder_count=count,

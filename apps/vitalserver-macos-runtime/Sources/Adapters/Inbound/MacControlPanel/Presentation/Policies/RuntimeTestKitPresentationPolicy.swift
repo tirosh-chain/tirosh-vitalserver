@@ -6,7 +6,6 @@ public struct RuntimeTestKitStartInput {
     public let status: RuntimeTestKitStatus
     public let selectedBedRoomNames: Set<String>
     public let scenario: RuntimeTestKitScenario
-    public let signalProfile: RuntimeTestKitSignalProfile
     public let recorderCount: Int
     public let vrcode: String
     public let intervalSeconds: Double
@@ -19,7 +18,6 @@ public struct RuntimeTestKitStartInput {
         status: RuntimeTestKitStatus,
         selectedBedRoomNames: Set<String>,
         scenario: RuntimeTestKitScenario,
-        signalProfile: RuntimeTestKitSignalProfile,
         recorderCount: Int,
         vrcode: String,
         intervalSeconds: Double,
@@ -31,7 +29,6 @@ public struct RuntimeTestKitStartInput {
         self.status = status
         self.selectedBedRoomNames = selectedBedRoomNames
         self.scenario = scenario
-        self.signalProfile = signalProfile
         self.recorderCount = recorderCount
         self.vrcode = vrcode
         self.intervalSeconds = intervalSeconds
@@ -82,7 +79,7 @@ public struct RuntimeTestKitPresentationPolicy {
             && selectedAvailableBedRoomNames(
                 status: status,
                 selectedBedRoomNames: selectedBedRoomNames
-            ).count >= normalizedRecorderCount(recorderCount)
+            ).count >= 1
     }
 
     public func canStop(
@@ -200,24 +197,28 @@ public struct RuntimeTestKitPresentationPolicy {
         _ input: RuntimeTestKitStartInput
     ) -> RuntimeTestKitVirtualRecorderStartRequest {
         let recorderCount = normalizedRecorderCount(input.recorderCount)
+        let bedroomName = selectedAvailableBedRoomNames(
+            status: input.status,
+            selectedBedRoomNames: input.selectedBedRoomNames
+        ).first ?? "TestBedroom"
         return RuntimeTestKitVirtualRecorderStartRequest(
             scenario: input.scenario,
-            signalProfile: input.signalProfile,
             recorders: recorderCount,
-            bedRoomNames: Array(selectedAvailableBedRoomNames(
-                status: input.status,
-                selectedBedRoomNames: input.selectedBedRoomNames
-            ).prefix(recorderCount)),
+            bedroomName: bedroomName,
+            window: RuntimeTestKitScenarioWindow(
+                durationSeconds: normalizedDurationSeconds(input.durationSeconds)
+            ),
+            output: RuntimeTestKitSessionOutput(
+                exportVital: true,
+                uploadVital: true,
+                vitalUploadEndpoint: "/upload"
+            ),
             vrcode: normalizedVrcode(input.vrcode),
             version: "testkit",
             intervalSeconds: normalizedIntervalSeconds(input.intervalSeconds),
-            durationSeconds: normalizedDurationSeconds(input.durationSeconds),
             maxMessages: normalizedMaxMessages(input.maxMessages),
             shiftTime: input.shiftTime,
-            generateFrames: input.generateFrames,
-            exportVital: true,
-            uploadVital: true,
-            vitalUploadEndpoint: "/upload"
+            generateFrames: input.generateFrames
         )
     }
 

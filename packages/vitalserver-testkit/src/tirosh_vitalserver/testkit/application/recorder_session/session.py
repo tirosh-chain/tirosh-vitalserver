@@ -41,13 +41,18 @@ from tirosh_vitalserver.testkit.application.recorder_session.recording import (
     SessionRecorderPlayback,
     SessionVitalPlayback,
 )
+from tirosh_vitalserver.testkit.application.recorder_session.scenarios import (
+    RecorderScenarioProvider,
+    require_scenario_definition,
+    scenario_window_for_request,
+)
 from tirosh_vitalserver.testkit.application.results import RealtimeStreamResult
+from tirosh_vitalserver.testkit.application.usecases.recorder.real_vital_sample import (
+    RealVitalReaderPort,
+    build_real_vital_recorder_payload,
+)
 from tirosh_vitalserver.testkit.application.usecases.recorder.stream_loop import (
     stream_realtime_payload,
-)
-from tirosh_vitalserver.testkit.domain.bed import (
-    Bed,
-    beds_for_room_names,
 )
 from tirosh_vitalserver.testkit.domain.recorder.models import (
     VirtualRecorderPayload,
@@ -59,8 +64,12 @@ from tirosh_vitalserver.testkit.domain.recorder.simulator.templates import (
     build_simulated_recorder_payload,
     unique_testkit_vrcode,
 )
-from tirosh_vitalserver.testkit.domain.signal import profile_for_scenario
+from tirosh_vitalserver.testkit.domain.signal import (
+    DEFAULT_SIGNAL_PROFILE,
+    profile_for_scenario,
+)
 from tirosh_vitalserver.testkit.observability import emit_testkit_event
+from tirosh_vitalserver.testkit.types.json import JsonObject
 
 
 class VirtualRecorderSession:
@@ -74,6 +83,7 @@ class VirtualRecorderSession:
         connector: SocketIoConnectorPort,
         vital_file_exporter: SessionVitalFileExporterPort | None = None,
         vital_file_uploader: SessionVitalFileUploaderPort | None = None,
+        real_vital_reader: RealVitalReaderPort | None = None,
         snapshot_handler: Callable[
             [VirtualRecorderSessionSnapshot],
             None,
@@ -85,6 +95,7 @@ class VirtualRecorderSession:
         self._connector = connector
         self._vital_file_exporter = vital_file_exporter
         self._vital_file_uploader = vital_file_uploader
+        self._real_vital_reader = real_vital_reader
         self._snapshot_handler = snapshot_handler
         self._runtime_registry = RecorderRuntimeRegistry()
         self._stop_event = threading.Event()
@@ -121,6 +132,7 @@ class VirtualRecorderSession:
             target_url=self._request.target_url,
             recorders=self._request.recorders,
             beds=len(self._request.bed_room_names),
+            scenario=self._request.scenario.value,
             vrcode=self._request.vrcode,
         )
         self._thread.start()
@@ -244,6 +256,7 @@ class VirtualRecorderSession:
             target_url=self._request.target_url,
             recorders=self._request.recorders,
             beds=len(self._request.bed_room_names),
+            scenario=self._request.scenario.value,
             vrcode=self._request.vrcode,
         )
         self._publish_snapshot(snapshot)
@@ -317,7 +330,17 @@ class VirtualRecorderSession:
             if request.duration_seconds is not None and request.duration_seconds > 0
             else None
         )
-        signal_profile = profile_for_scenario(request.default_scenario)
+        definition = require_scenario_definition(request.scenario)
+        if definition.provider != RecorderScenarioProvider.GENERATED_PROFILE:
+            signal_profile = DEFAULT_SIGNAL_PROFILE
+            generate_frames = False
+        elif definition.signal_profile is None:
+            raise ValueError(
+                f"scenario {request.scenario.value} is missing signal profile"
+            )
+        else:
+            signal_profile = profile_for_scenario(definition.signal_profile)
+            generate_frames = request.generate_frames
 
         with ThreadPoolExecutor(max_workers=len(self._virtual_payloads)) as executor:
             futures = [
@@ -329,7 +352,7 @@ class VirtualRecorderSession:
                     duration_seconds=duration_seconds,
                     max_messages=request.max_messages,
                     shift_time=request.shift_time,
-                    generate_frames=request.generate_frames,
+                    generate_frames=generate_frames,
                     signal_profile=signal_profile,
                     stop_event=self._stop_event,
                     pause_event=self._pause_event,
@@ -416,7 +439,7 @@ class VirtualRecorderSession:
                 target_url=self._request.target_url,
                 artifact_path=artifact.path,
                 vrcode=self._request.vrcode,
-                endpoint=self._request.vital_upload_endpoint,
+            endpoint=self._request.vital_upload_endpoint,
             )
         except Exception as exc:
             return self._mark_vital_upload_failed(str(exc))
@@ -508,7 +531,7 @@ class VirtualRecorderSession:
             stopped_at=snapshot.stopped_at,
             interval_seconds=self._request.interval_seconds,
             generate_frames=self._request.generate_frames,
-            default_scenario=self._request.default_scenario,
+            scenario=self._request.scenario,
         )
 
     def _record_playback_event(
@@ -520,15 +543,50 @@ class VirtualRecorderSession:
 
     def _build_virtual_payloads(self) -> tuple[VirtualRecorderPayload, ...]:
         request = self._request
-        beds = request_beds(request)
+        base_vrcode = request.vrcode or unique_testkit_vrcode()
+        payload = self._scenario_payload(vrcode=base_vrcode)
         return build_virtual_recorder_payloads(
-            build_simulated_recorder_payload(
-                room_names=tuple(bed.room_name for bed in beds),
-            ),
+            payload,
             count=request.recorders,
-            vrcode=request.vrcode or unique_testkit_vrcode(),
+            vrcode=base_vrcode,
             version=request.version,
         )
+
+    def _scenario_payload(self, *, vrcode: str) -> JsonObject:
+        request = self._request
+        definition = require_scenario_definition(request.scenario)
+        window = scenario_window_for_request(request.window, definition)
+
+        if definition.provider == RecorderScenarioProvider.GENERATED_PROFILE:
+            return build_simulated_recorder_payload(
+                room_names=request.bed_room_names,
+            )
+
+        if definition.provider == RecorderScenarioProvider.VITAL_FILE_WINDOW:
+            if self._real_vital_reader is None:
+                raise RuntimeError("real vital reader is not configured")
+            if definition.source_path is None:
+                raise ValueError(
+                    f"scenario {request.scenario.value} is missing source path"
+                )
+            if definition.source_scenario is None:
+                raise ValueError(
+                    f"scenario {request.scenario.value} is missing source scenario"
+                )
+            return build_real_vital_recorder_payload(
+                self._real_vital_reader,
+                definition.source_path,
+                scenario=definition.source_scenario,
+                room_name=request.bedroom_name,
+                start_offset_seconds=(
+                    0.0 if window is None else window.start_offset_seconds or 0.0
+                ),
+                duration_seconds=None if window is None else window.duration_seconds,
+                vrcode=vrcode,
+                version=request.version,
+            )
+
+        raise ValueError(f"unsupported scenario provider: {definition.provider}")
 
 
 def first_result_error(results: tuple[RealtimeStreamResult, ...]) -> str | None:
@@ -539,9 +597,3 @@ def first_result_error(results: tuple[RealtimeStreamResult, ...]) -> str | None:
             return result.error
 
     return None
-
-
-def request_beds(request: VirtualRecorderSessionRequest) -> tuple[Bed, ...]:
-    """Return explicitly selected beds for a recorder session."""
-
-    return beds_for_room_names(request.bed_room_names)

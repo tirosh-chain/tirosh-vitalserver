@@ -325,13 +325,6 @@ struct RuntimeTestPanel: View {
             }
             .pickerStyle(.menu)
 
-            Picker(AppConstants.Labels.signal, selection: $viewModel.testKitSignalProfile) {
-                ForEach(RuntimeTestKitSignalProfile.allCases, id: \.self) { profile in
-                    Text(displayName(profile)).tag(profile)
-                }
-            }
-            .pickerStyle(.menu)
-
             testKitIntegerStepper(
                 AppConstants.Labels.recorderCount,
                 value: $viewModel.testKitRecorderCount,
@@ -642,10 +635,6 @@ struct RuntimeTestPanel: View {
 
     private func displayName(_ scenario: RuntimeTestKitScenario) -> String {
         displayName(scenario.rawValue)
-    }
-
-    private func displayName(_ profile: RuntimeTestKitSignalProfile) -> String {
-        displayName(profile.rawValue)
     }
 
     private func displayName(_ rawValue: String) -> String {

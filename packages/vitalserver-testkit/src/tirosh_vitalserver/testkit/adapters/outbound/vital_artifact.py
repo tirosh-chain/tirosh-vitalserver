@@ -16,7 +16,14 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
 from tirosh_vitalserver.testkit.application.recorder_session.recording import (
     SessionVitalPlayback,
 )
-from tirosh_vitalserver.testkit.domain.signal import profile_for_scenario
+from tirosh_vitalserver.testkit.application.recorder_session.scenarios import (
+    RecorderScenarioProvider,
+    require_scenario_definition,
+)
+from tirosh_vitalserver.testkit.domain.signal import (
+    DEFAULT_SIGNAL_PROFILE,
+    profile_for_scenario,
+)
 from tirosh_vitalserver.testkit.domain.vital_file import (
     VitalSessionMetadata,
     VitalTrack,
@@ -54,6 +61,18 @@ class VitalDbSessionVitalFileExporter:
         artifact_path = self._artifact_path(snapshot, playback)
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
 
+        definition = require_scenario_definition(playback.scenario)
+        if definition.provider == RecorderScenarioProvider.GENERATED_PROFILE:
+            if definition.signal_profile is None:
+                raise ValueError(
+                    f"scenario {playback.scenario.value} is missing signal profile"
+                )
+            signal_profile = profile_for_scenario(definition.signal_profile)
+            generate_frames = playback.generate_frames
+        else:
+            signal_profile = DEFAULT_SIGNAL_PROFILE
+            generate_frames = False
+
         tracks = vital_tracks_from_recorder_playback(
             tuple(
                 (recorder.vrcode, recorder.payload, recorder.messages_sent)
@@ -61,8 +80,8 @@ class VitalDbSessionVitalFileExporter:
             ),
             started_at=playback.started_at,
             frame_seconds=playback.interval_seconds,
-            generate_frames=playback.generate_frames,
-            signal_profile=profile_for_scenario(playback.default_scenario),
+            generate_frames=generate_frames,
+            signal_profile=signal_profile,
             playback_events=tuple(
                 (event.type.value, event.at)
                 for event in playback.events
@@ -77,7 +96,7 @@ class VitalDbSessionVitalFileExporter:
             bed_room_names=snapshot.request.bed_room_names,
             started_at=playback.started_at,
             stopped_at=playback.stopped_at,
-            default_scenario=playback.default_scenario.value,
+            scenario=playback.scenario.value,
             channels=tuple(track.dtname for track in tracks),
             playback_events=tuple(
                 (event.type.value, event.at)

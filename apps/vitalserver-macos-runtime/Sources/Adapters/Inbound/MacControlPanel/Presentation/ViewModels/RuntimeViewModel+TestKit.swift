@@ -266,13 +266,9 @@ extension RuntimeViewModel {
             recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
             return
         }
-        let requiredBeds = max(session.recordersRequested, 1)
-        let bedRoomNames = Array(selectedAvailableTestKitBedRoomNames.prefix(requiredBeds))
-        guard bedRoomNames.count >= requiredBeds else {
-            let errorMessage = RuntimeTestPanelText.insufficientSelectedBeds(
-                bedRoomNames.count,
-                requiredBeds
-            )
+        let bedroomName = selectedAvailableTestKitBedRoomNames.first
+        guard bedroomName != nil else {
+            let errorMessage = RuntimeTestPanelText.insufficientSelectedBeds(0, 1)
             recordTestKitActionMessage(errorMessage, tone: .failure)
             message = errorMessage
             return
@@ -285,7 +281,7 @@ extension RuntimeViewModel {
         do {
             let restarted = try await testKitController.restartVirtualRecorders(
                 sessionID: session.id,
-                bedRoomNames: bedRoomNames
+                bedroomName: bedroomName
             )
             if let restarted {
                 selectedTestKitSessionID = restarted.id
@@ -503,7 +499,6 @@ extension RuntimeViewModel {
             status: testKitStatus,
             selectedBedRoomNames: selectedTestKitBedRoomNames,
             scenario: testKitScenario,
-            signalProfile: testKitSignalProfile,
             recorderCount: testKitRecorderCount,
             vrcode: testKitVrcode,
             intervalSeconds: testKitIntervalSeconds,
