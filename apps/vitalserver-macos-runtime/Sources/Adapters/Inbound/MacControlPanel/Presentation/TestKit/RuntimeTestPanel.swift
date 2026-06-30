@@ -347,12 +347,55 @@ struct RuntimeTestPanel: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
 
-            Picker(AppConstants.Labels.scenario, selection: $viewModel.testKitScenario) {
-                ForEach(RuntimeTestKitScenario.allCases, id: \.self) { scenario in
-                    Text(displayName(scenario)).tag(scenario)
+            Picker(AppConstants.Labels.recorderSource, selection: $viewModel.testKitRecorderSourceMode) {
+                ForEach(RuntimeTestKitRecorderSourceMode.allCases, id: \.self) { sourceMode in
+                    Text(displayName(sourceMode.rawValue)).tag(sourceMode)
                 }
             }
-            .pickerStyle(.menu)
+            .pickerStyle(.segmented)
+
+            if viewModel.testKitRecorderSourceMode == .generated {
+                Picker(AppConstants.Labels.scenario, selection: $viewModel.testKitScenario) {
+                    ForEach(RuntimeTestKitScenario.allCases, id: \.self) { scenario in
+                        Text(displayName(scenario)).tag(scenario)
+                    }
+                }
+                .pickerStyle(.menu)
+            } else {
+                HStack {
+                    Button(RuntimeTestPanelText.choosingVitalFileForPlayback) {
+                        viewModel.chooseVitalFileForTestKitPlayback()
+                    }
+                    Text(vitalFilePlaybackName(viewModel.testKitVitalFilePath))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Picker("Track preset", selection: $viewModel.testKitVitalFileScenario) {
+                    ForEach(RuntimeTestKitVitalFileScenario.allCases, id: \.self) { scenario in
+                        Text(displayName(scenario.rawValue)).tag(scenario)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                testKitDoubleStepper(
+                    "Start offset",
+                    value: $viewModel.testKitVitalFileStartOffsetSeconds,
+                    range: 0...86_400,
+                    step: 10,
+                    displayValue: secondsText(viewModel.testKitVitalFileStartOffsetSeconds)
+                )
+
+                testKitDoubleStepper(
+                    "Playback duration",
+                    value: $viewModel.testKitVitalFileDurationSeconds,
+                    range: 1...86_400,
+                    step: 10,
+                    displayValue: secondsText(viewModel.testKitVitalFileDurationSeconds)
+                )
+            }
 
             Picker("Signal quality", selection: $viewModel.testKitSignalQuality) {
                 ForEach(RuntimeTestKitSignalQuality.allCases, id: \.self) { quality in
@@ -695,6 +738,13 @@ struct RuntimeTestPanel: View {
                 word.prefix(1).uppercased() + word.dropFirst()
             }
             .joined(separator: " ")
+    }
+
+    private func vitalFilePlaybackName(_ path: String) -> String {
+        guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return RuntimeTestPanelText.chooseVitalFileForPlayback
+        }
+        return URL(fileURLWithPath: path).lastPathComponent
     }
 
     private func secondsText(_ seconds: Double) -> String {

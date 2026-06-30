@@ -35,6 +35,8 @@ enum RuntimeTestPanelText {
     static let orphanCleanupDescription = "Delete a VRecorder that remains in VitalServer even when no TestKit session is available."
     static let manualVitalUploadDescription = "Select local .vital files. TestKit registers beds from filenames, then uploads each file through VitalServer /upload."
     static let choosingVitalFiles = "Choose .vital files"
+    static let choosingVitalFileForPlayback = "Choose .vital file"
+    static let chooseVitalFileForPlayback = "Choose a .vital file before starting playback."
     static let uploadingVitalFiles = "Uploading .vital files..."
     static let missingVrcode = "Enter a VRecorder code to delete."
     static let stopSessionsBeforeResettingBeds = "Stop or delete active TestKit sessions before resetting beds."

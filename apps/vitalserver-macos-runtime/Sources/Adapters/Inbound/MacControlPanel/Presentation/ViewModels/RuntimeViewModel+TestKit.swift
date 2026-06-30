@@ -220,6 +220,13 @@ extension RuntimeViewModel {
             message = errorMessage
             return
         }
+        if testKitRecorderSourceMode == .vitalFile
+            && testKitVitalFilePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let errorMessage = RuntimeTestPanelText.chooseVitalFileForPlayback
+            recordTestKitActionMessage(errorMessage, tone: .failure)
+            message = errorMessage
+            return
+        }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
@@ -524,6 +531,17 @@ extension RuntimeViewModel {
         }
     }
 
+    func chooseVitalFileForTestKitPlayback() {
+        let selectedFiles = nativeShell.chooseVitalFiles(
+            prompt: RuntimeTestPanelText.choosingVitalFileForPlayback
+        )
+        guard let selectedFile = selectedFiles.first else {
+            return
+        }
+        testKitVitalFilePath = selectedFile.path
+        testKitRecorderSourceMode = .vitalFile
+    }
+
     private func testKitStartRequest() -> RuntimeTestKitVirtualRecorderStartRequest {
         testKitPresentationPolicy.startRequest(RuntimeTestKitStartInput(
             status: testKitStatus,
@@ -531,6 +549,11 @@ extension RuntimeViewModel {
             scenario: testKitScenario,
             signalQuality: testKitSignalQuality,
             recorderCondition: testKitRecorderCondition,
+            sourceMode: testKitRecorderSourceMode,
+            vitalFilePath: testKitVitalFilePath,
+            vitalFileScenario: testKitVitalFileScenario,
+            vitalFileStartOffsetSeconds: testKitVitalFileStartOffsetSeconds,
+            vitalFileDurationSeconds: testKitVitalFileDurationSeconds,
             recorderCount: testKitRecorderCount,
             vrcode: testKitVrcode,
             intervalSeconds: testKitIntervalSeconds,

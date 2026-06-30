@@ -12,6 +12,8 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     RecorderCondition,
     RecorderScenarioWindow,
     RecorderSessionOutput,
+    RecorderSource,
+    RecorderSourceType,
     RecorderTestScenario,
     VirtualRecorderCleanupError,
     VirtualRecorderDeletionResult,
@@ -51,11 +53,14 @@ from tirosh_vitalserver.testkit.application.recorder_session.store import (
 )
 
 __all__ = [
+    "PackagedRecordedFrameSourceProvider",
     "RecorderCondition",
     "RecorderScenarioDefinition",
     "RecorderScenarioProvider",
     "RecorderScenarioWindow",
     "RecorderSessionOutput",
+    "RecorderSource",
+    "RecorderSourceType",
     "RecorderTestScenario",
     "SessionPlaybackEvent",
     "SessionPlaybackEventType",
@@ -74,7 +79,6 @@ __all__ = [
     "VirtualRecorderVitalExportStatus",
     "VirtualRecorderVitalUploadResult",
     "VirtualRecorderVitalUploadStatus",
-    "PackagedRecordedFrameSourceProvider",
     "default_scenario_catalog",
     "deletion_result_to_document",
     "load_packaged_real_sample_manifest",

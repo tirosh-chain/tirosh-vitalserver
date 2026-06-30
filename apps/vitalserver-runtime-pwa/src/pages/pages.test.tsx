@@ -1061,12 +1061,60 @@ describe("runtime console pages", () => {
     expect(deleteBeds.mutate).toHaveBeenCalledWith(["OR-1"]);
     expect(resetBeds.mutate).toHaveBeenCalledWith(undefined);
     expect(startSession.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({ bedRoomNames: ["OR-1"], recorders: 1 }),
+      expect.objectContaining({
+        bedRoomNames: ["OR-1"],
+        recorders: 1,
+        source: null,
+        realSampleKey: null
+      }),
       expect.any(Object)
     );
     expect(resetSessions.mutate).toHaveBeenCalledWith(undefined);
     expect(sessionAction.mutate).toHaveBeenCalledWith("session-1");
     expect(deleteOrphan.mutate).toHaveBeenCalledWith("VR_ORPHAN");
+  });
+
+  it("starts TestKit sessions from explicit vital file sources", () => {
+    const startSession = mutation(testKitSession("running"));
+    hooks.useStartTestKitVirtualRecorders.mockReturnValue(startSession);
+
+    renderPage(<TestKitPage />);
+
+    const bedCheckbox = within(screen.getByText("OR-1").closest("label")!).getByRole(
+      "checkbox"
+    );
+    fireEvent.click(bedCheckbox);
+    fireEvent.change(screen.getByLabelText("Source"), {
+      target: { value: "vitalFile" }
+    });
+    fireEvent.change(screen.getByLabelText("Vital file path"), {
+      target: { value: "/Users/Shared/VitalServerHelper/vital-files/case.vital" }
+    });
+    fireEvent.change(screen.getByLabelText("Track preset"), {
+      target: { value: "periop_full" }
+    });
+    fireEvent.change(screen.getByLabelText("Start offset seconds"), {
+      target: { value: "8" }
+    });
+    fireEvent.change(screen.getByLabelText("Playback duration seconds"), {
+      target: { value: "90" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+
+    expect(startSession.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scenario: "normal",
+        source: {
+          type: "vitalFile",
+          path: "/Users/Shared/VitalServerHelper/vital-files/case.vital",
+          scenario: "periop_full",
+          startOffsetSeconds: 8,
+          durationSeconds: 90
+        },
+        realSampleKey: null
+      }),
+      expect.any(Object)
+    );
   });
 
   it("does not turn missing TestKit status into empty beds or sessions", () => {

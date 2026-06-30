@@ -8,6 +8,11 @@ public struct RuntimeTestKitStartInput {
     public let scenario: RuntimeTestKitScenario
     public let signalQuality: RuntimeTestKitSignalQuality
     public let recorderCondition: RuntimeTestKitRecorderCondition
+    public let sourceMode: RuntimeTestKitRecorderSourceMode
+    public let vitalFilePath: String
+    public let vitalFileScenario: RuntimeTestKitVitalFileScenario
+    public let vitalFileStartOffsetSeconds: Double
+    public let vitalFileDurationSeconds: Double
     public let recorderCount: Int
     public let vrcode: String
     public let intervalSeconds: Double
@@ -22,6 +27,11 @@ public struct RuntimeTestKitStartInput {
         scenario: RuntimeTestKitScenario,
         signalQuality: RuntimeTestKitSignalQuality = .clean,
         recorderCondition: RuntimeTestKitRecorderCondition = .normal,
+        sourceMode: RuntimeTestKitRecorderSourceMode = .generated,
+        vitalFilePath: String = "",
+        vitalFileScenario: RuntimeTestKitVitalFileScenario = .basicMonitor,
+        vitalFileStartOffsetSeconds: Double = 0,
+        vitalFileDurationSeconds: Double = 120,
         recorderCount: Int,
         vrcode: String,
         intervalSeconds: Double,
@@ -35,6 +45,11 @@ public struct RuntimeTestKitStartInput {
         self.scenario = scenario
         self.signalQuality = signalQuality
         self.recorderCondition = recorderCondition
+        self.sourceMode = sourceMode
+        self.vitalFilePath = vitalFilePath
+        self.vitalFileScenario = vitalFileScenario
+        self.vitalFileStartOffsetSeconds = vitalFileStartOffsetSeconds
+        self.vitalFileDurationSeconds = vitalFileDurationSeconds
         self.recorderCount = recorderCount
         self.vrcode = vrcode
         self.intervalSeconds = intervalSeconds
@@ -208,14 +223,17 @@ public struct RuntimeTestKitPresentationPolicy {
             selectedBedRoomNames: input.selectedBedRoomNames
         ).prefix(recorderCount))
         let bedroomName = bedRoomNames.first ?? "TestBedroom"
+        let source = recorderSource(input)
         return RuntimeTestKitVirtualRecorderStartRequest(
-            scenario: input.scenario.requestScenario,
+            scenario: source == nil ? input.scenario.requestScenario : .normalMonitoring,
             recorders: recorderCount,
             bedroomName: bedroomName,
             bedRoomNames: bedRoomNames,
-            window: RuntimeTestKitScenarioWindow(
-                durationSeconds: normalizedDurationSeconds(input.durationSeconds)
-            ),
+            window: source == nil
+                ? RuntimeTestKitScenarioWindow(
+                    durationSeconds: normalizedDurationSeconds(input.durationSeconds)
+                )
+                : nil,
             output: RuntimeTestKitSessionOutput(
                 exportVital: true,
                 uploadVital: true,
@@ -225,11 +243,34 @@ public struct RuntimeTestKitPresentationPolicy {
             version: "testkit",
             signalQuality: input.signalQuality,
             recorderCondition: input.recorderCondition,
-            realSampleKey: input.scenario.realSampleKey,
+            source: source,
+            realSampleKey: source == nil ? input.scenario.realSampleKey : nil,
             intervalSeconds: normalizedIntervalSeconds(input.intervalSeconds),
             maxMessages: normalizedMaxMessages(input.maxMessages),
             shiftTime: input.shiftTime,
             generateFrames: input.generateFrames
+        )
+    }
+
+    public func recorderSource(
+        _ input: RuntimeTestKitStartInput
+    ) -> RuntimeTestKitRecorderSource? {
+        guard input.sourceMode == .vitalFile else {
+            return nil
+        }
+        let path = input.vitalFilePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else {
+            return nil
+        }
+        return RuntimeTestKitRecorderSource(
+            path: path,
+            scenario: input.vitalFileScenario,
+            startOffsetSeconds: normalizedVitalFileStartOffsetSeconds(
+                input.vitalFileStartOffsetSeconds
+            ),
+            durationSeconds: normalizedVitalFileDurationSeconds(
+                input.vitalFileDurationSeconds
+            )
         )
     }
 
@@ -252,6 +293,14 @@ public struct RuntimeTestKitPresentationPolicy {
 
     public func normalizedDurationSeconds(_ seconds: Double) -> Double? {
         seconds > 0 ? min(seconds, 86_400) : nil
+    }
+
+    public func normalizedVitalFileStartOffsetSeconds(_ seconds: Double) -> Double {
+        min(max(seconds, 0), 86_400)
+    }
+
+    public func normalizedVitalFileDurationSeconds(_ seconds: Double) -> Int {
+        Int(min(max(seconds, 1), 86_400).rounded())
     }
 
     public func normalizedMaxMessages(_ count: Int) -> Int? {

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi import HTTPException
 from fastapi.routing import APIRoute
@@ -9,6 +11,11 @@ from tirosh_vitalserver.testkit.adapters.inbound.api import create_testkit_app
 from tirosh_vitalserver.testkit.application.bed_registry import BedRegistry
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionManager,
+)
+from tirosh_vitalserver.testkit.application.usecases.recorder.real_vital_sample import (
+    RealVitalFileHeader,
+    RealVitalReaderPort,
+    RealVitalTrackHeader,
 )
 from tirosh_vitalserver.testkit.domain.recorder import build_simulated_recorder_payload
 from tirosh_vitalserver.testkit.schemas import (
@@ -26,6 +33,37 @@ class FakeRecordedFrameSourceProvider:
     def load_recorded_frame_source(self, key: str) -> dict[str, object]:
         self.loaded_keys.append(key)
         return build_simulated_recorder_payload(room_names=("OR-A",))
+
+
+class FakeRealVitalReader(RealVitalReaderPort):
+    def header(self, path: Path) -> RealVitalFileHeader:
+        return RealVitalFileHeader(
+            path=path,
+            dtstart=1000.0,
+            dtend=1010.0,
+            tracks=(
+                RealVitalTrackHeader(
+                    dtname="Root/SPHB",
+                    dname="Root",
+                    name="SPHB",
+                    unit="g/dL",
+                    montype=72,
+                    srate=1.0,
+                    mindisp=0.0,
+                    maxdisp=20.0,
+                ),
+            ),
+        )
+
+    def track_samples(
+        self,
+        path: Path,
+        dtname: str,
+        *,
+        interval_seconds: float,
+    ) -> list[float]:
+        del path, dtname, interval_seconds
+        return [13.1, 13.2]
 
 
 def test_sessions_endpoint_uses_manager_dependency_not_query_parameter() -> None:
@@ -289,6 +327,45 @@ def test_sessions_endpoint_accepts_signal_quality_and_real_sample() -> None:
         assert response["realSampleKey"] == "startup_monitoring"
         assert manager.wait_session(response["id"], timeout=5)
         assert frame_source_provider.loaded_keys == ["startup_monitoring"]
+    finally:
+        manager.delete_session(response["id"])
+
+
+def test_sessions_endpoint_accepts_vital_file_source() -> None:
+    route = route_for("/sessions", "POST")
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        real_vital_reader=FakeRealVitalReader(),
+    )
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A",))
+
+    response = route.endpoint(
+        StartVirtualRecordersRequest(
+            targetUrl="http://example.test",
+            bedroomName="OR-A",
+            maxMessages=1,
+            source={
+                "type": "vitalFile",
+                "path": "/Users/Shared/VitalServerHelper/vital-files/sample.vital",
+                "scenario": "full_real",
+                "startOffsetSeconds": 1.0,
+                "durationSeconds": 2,
+            },
+        ),
+        manager,
+        registry,
+    )
+    try:
+        assert response["source"] == {
+            "type": "vitalFile",
+            "path": "/Users/Shared/VitalServerHelper/vital-files/sample.vital",
+            "scenario": "full_real",
+            "startOffsetSeconds": 1.0,
+            "durationSeconds": 2,
+        }
+        assert response["durationSeconds"] == 2.0
+        assert manager.wait_session(response["id"], timeout=5)
     finally:
         manager.delete_session(response["id"])
 

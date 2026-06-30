@@ -118,6 +118,18 @@ uv run vitalserver-testkit verify-recorder \
   --dataset-key baseline_bx50_primus_high_track
 ```
 
+중간 JSON 파일 없이 로컬 `.vital` 파일을 직접 virtual recorder source로 재생할 수도 있습니다. 이때 파일 path, track preset, source window는 호출자가 명시합니다.
+
+```sh
+uv run vitalserver-testkit stream-recorder \
+  --vitalserver-url http://localhost \
+  --bed-room-name OR-A \
+  --vital-file /Users/Shared/VitalServerHelper/vital-files/case.vital \
+  --vital-scenario full_real \
+  --vital-start-offset 0 \
+  --vital-duration 120
+```
+
 120초 real sample payload는 이미 window 안에 여러 record를 담고 있으므로, lifecycle 검증에서 그대로 재생할 때는 `--replay-sample`과 종료 조건을 함께 둡니다.
 
 ```sh

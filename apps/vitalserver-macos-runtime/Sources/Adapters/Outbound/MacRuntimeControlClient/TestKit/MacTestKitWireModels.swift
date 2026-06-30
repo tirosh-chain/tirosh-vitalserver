@@ -26,6 +26,7 @@ struct TestKitStartSessionRequest: Encodable {
     let scenario: String
     let signalQuality: String
     let recorderCondition: String
+    let source: RuntimeTestKitRecorderSource?
     let realSampleKey: String?
 
     init(
@@ -47,6 +48,7 @@ struct TestKitStartSessionRequest: Encodable {
         scenario = runtimeRequest.scenario.rawValue
         signalQuality = runtimeRequest.signalQuality.rawValue
         recorderCondition = runtimeRequest.recorderCondition.rawValue
+        source = runtimeRequest.source
         realSampleKey = runtimeRequest.realSampleKey
     }
 
@@ -66,6 +68,7 @@ struct TestKitStartSessionRequest: Encodable {
         case scenario
         case signalQuality
         case recorderCondition
+        case source
         case realSampleKey
     }
 }

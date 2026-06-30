@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 
 from tirosh_vitalserver.testkit.application.recorder_runtime import (
     RecorderRuntimeSnapshot,
+)
+from tirosh_vitalserver.testkit.application.usecases.recorder.real_vital_sample import (
+    RealVitalSampleScenario,
 )
 from tirosh_vitalserver.testkit.domain.bed.identity import (
     normalize_bed_room_name,
@@ -81,6 +85,12 @@ class RecorderCondition(StrEnum):
     DEVICE_DISCONNECT = "device_disconnect"
 
 
+class RecorderSourceType(StrEnum):
+    """Explicit recorder source selected for one session."""
+
+    VITAL_FILE = "vitalFile"
+
+
 @dataclass(frozen=True)
 class RecorderScenarioWindow:
     """Explicit finite source window for a recorder test scenario."""
@@ -102,6 +112,36 @@ class RecorderScenarioWindow:
             raise ValueError(
                 "window.duration_seconds must be greater than or equal to 0"
             )
+
+
+@dataclass(frozen=True)
+class RecorderSource:
+    """Explicit external recorder source selected for one session."""
+
+    source_type: RecorderSourceType
+    path: Path | None = None
+    scenario: RealVitalSampleScenario | None = None
+    start_offset_seconds: float = 0.0
+    duration_seconds: int = 120
+
+    def __post_init__(self) -> None:
+        """Validate source-specific contract fields."""
+
+        if self.source_type == RecorderSourceType.VITAL_FILE:
+            if self.path is None:
+                raise ValueError("source.path is required for vitalFile source")
+            if self.scenario is None:
+                raise ValueError("source.scenario is required for vitalFile source")
+            if self.start_offset_seconds < 0:
+                raise ValueError(
+                    "source.start_offset_seconds must be greater than or equal to 0"
+                )
+            if self.duration_seconds < 1:
+                raise ValueError("source.duration_seconds must be greater than 0")
+            object.__setattr__(self, "path", Path(self.path))
+            return
+
+        raise ValueError(f"unsupported recorder source type: {self.source_type}")
 
 
 @dataclass(frozen=True)
@@ -136,6 +176,7 @@ class VirtualRecorderSessionRequest:
     version: str = "testkit"
     signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN
     recorder_condition: RecorderCondition = RecorderCondition.NORMAL
+    source: RecorderSource | None = None
     real_sample_key: str | None = None
     interval_seconds: float = 1.0
     max_messages: int | None = None
@@ -173,12 +214,18 @@ class VirtualRecorderSessionRequest:
             raise ValueError("max_messages must be greater than 0")
         if self.real_sample_key is not None and not self.real_sample_key.strip():
             raise ValueError("real_sample_key must not be empty")
+        if self.source is not None and self.real_sample_key is not None:
+            raise ValueError("source and real_sample_key must not both be set")
 
     @property
     def duration_seconds(self) -> float | None:
         """Return the streaming duration requested by the scenario window."""
 
-        return None if self.window is None else self.window.duration_seconds
+        if self.window is not None:
+            return self.window.duration_seconds
+        if self.source is not None:
+            return float(self.source.duration_seconds)
+        return None
 
     @property
     def export_vital(self) -> bool:

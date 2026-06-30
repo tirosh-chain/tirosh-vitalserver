@@ -112,21 +112,37 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
         XCTAssertTrue(request.output.exportVital)
         XCTAssertTrue(request.output.uploadVital)
         XCTAssertEqual(request.output.vitalUploadEndpoint, "/upload")
+        XCTAssertNil(request.source)
+        XCTAssertNil(request.realSampleKey)
 
-        let fixtureRequest = policy.startRequest(RuntimeTestKitStartInput(
+        let vitalFileRequest = policy.startRequest(RuntimeTestKitStartInput(
             status: status,
             selectedBedRoomNames: ["OR-B"],
-            scenario: .hemoglobinOxygenation,
+            scenario: .arrhythmia,
+            sourceMode: .vitalFile,
+            vitalFilePath: " /Users/Shared/VitalServerHelper/vital-files/case.vital ",
+            vitalFileScenario: .fullReal,
+            vitalFileStartOffsetSeconds: -1,
+            vitalFileDurationSeconds: 121.6,
             recorderCount: 1,
             vrcode: "",
             intervalSeconds: 1,
-            durationSeconds: 0,
+            durationSeconds: 30,
             maxMessages: 0,
             shiftTime: true,
             generateFrames: true
         ))
-        XCTAssertEqual(fixtureRequest.scenario, .normalMonitoring)
-        XCTAssertEqual(fixtureRequest.realSampleKey, "hemoglobin_oxygenation")
+        XCTAssertEqual(vitalFileRequest.scenario, .normalMonitoring)
+        XCTAssertNil(vitalFileRequest.window)
+        XCTAssertNil(vitalFileRequest.realSampleKey)
+        XCTAssertEqual(vitalFileRequest.source?.type, .vitalFile)
+        XCTAssertEqual(
+            vitalFileRequest.source?.path,
+            "/Users/Shared/VitalServerHelper/vital-files/case.vital"
+        )
+        XCTAssertEqual(vitalFileRequest.source?.scenario, .fullReal)
+        XCTAssertEqual(vitalFileRequest.source?.startOffsetSeconds, 0)
+        XCTAssertEqual(vitalFileRequest.source?.durationSeconds, 122)
     }
 
     func testSelectionStateKeepsValidSessionAndPrunesUnavailableBeds() {

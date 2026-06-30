@@ -5534,6 +5534,46 @@
           }
         }
       },
+      "RuntimeTestKitRecorderSource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "path",
+          "scenario",
+          "startOffsetSeconds",
+          "durationSeconds"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "vitalFile"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string",
+            "enum": [
+              "basic_monitor",
+              "periop_full",
+              "bloodbag",
+              "root_sedation",
+              "full_real"
+            ]
+          },
+          "startOffsetSeconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
       "RuntimeTestKitVirtualRecorderStartRequest": {
         "type": "object",
         "additionalProperties": false,
@@ -5623,6 +5663,22 @@
           },
           "vitalUploadEndpoint": {
             "type": "string"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeTestKitRecorderSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "realSampleKey": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -5741,6 +5797,22 @@
           },
           "generateFrames": {
             "type": "boolean"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeTestKitRecorderSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "realSampleKey": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "scenario": {
             "type": [

@@ -20,6 +20,7 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
     RecorderCondition,
+    RecorderSourceType,
     VirtualRecorderSessionRequest,
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
@@ -630,6 +631,28 @@ class VirtualRecorderSession:
 
     def _source_payload_for_request(self, *, vrcode: str) -> JsonObject:
         request = self._request
+        if request.source is not None:
+            if request.source.source_type == RecorderSourceType.VITAL_FILE:
+                if self._real_vital_reader is None:
+                    raise RuntimeError("real vital reader is not configured")
+                if request.source.path is None:
+                    raise ValueError("source.path is required for vitalFile source")
+                if request.source.scenario is None:
+                    raise ValueError("source.scenario is required for vitalFile source")
+                return build_real_vital_recorder_payload(
+                    self._real_vital_reader,
+                    request.source.path,
+                    scenario=request.source.scenario,
+                    room_name=request.bedroom_name,
+                    start_offset_seconds=request.source.start_offset_seconds,
+                    duration_seconds=request.source.duration_seconds,
+                    vrcode=vrcode,
+                    version=request.version,
+                )
+            raise ValueError(
+                f"unsupported recorder source type: {request.source.source_type}"
+            )
+
         if request.real_sample_key is not None:
             if self._recorded_frame_source_provider is None:
                 raise RuntimeError("recorded frame source provider is not configured")
@@ -700,6 +723,11 @@ def frame_source_kind_for_request(
     """Return the frame source kind for one session request."""
 
     if request.real_sample_key is not None:
+        return RecorderFrameSourceKind.RECORDED
+    if (
+        request.source is not None
+        and request.source.source_type == RecorderSourceType.VITAL_FILE
+    ):
         return RecorderFrameSourceKind.RECORDED
     if definition.provider == RecorderScenarioProvider.VITAL_FILE_WINDOW:
         return RecorderFrameSourceKind.RECORDED

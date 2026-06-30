@@ -68,7 +68,7 @@ def default_scenario_catalog(
 ) -> tuple[RecorderScenarioDefinition, ...]:
     """Return the built-in TestKit scenario catalog."""
 
-    root = data_dir or Path(os.environ.get(SCENARIO_DATA_DIR_ENV, "data"))
+    _ = data_dir or Path(os.environ.get(SCENARIO_DATA_DIR_ENV, "data"))
 
     return (
         generated_scenario(
@@ -176,7 +176,7 @@ def default_scenario_catalog(
             tracks=("ECG", "PLETH", "HCT"),
             signal_profile=RecorderSignalScenario.HCT_DECREASING,
         ),
-        vital_file_scenario(
+        generated_scenario(
             RecorderTestScenario.BLOODBAG_TRANSFUSION,
             title="Bloodbag transfusion",
             situation=(
@@ -188,14 +188,9 @@ def default_scenario_catalog(
                 "cold path, and .vital export."
             ),
             tracks=("Root/SPHB", "Root/PLETH", "LabDerived/HCT"),
-            source_path=root / "MORC03_230102" / "MORC03_230102_133133.vital",
-            source_scenario=RealVitalSampleScenario.BLOODBAG,
-            default_window=RecorderScenarioWindow(
-                start_offset_seconds=70,
-                duration_seconds=20,
-            ),
+            signal_profile=RecorderSignalScenario.HCT_DECREASING,
         ),
-        vital_file_scenario(
+        generated_scenario(
             RecorderTestScenario.PERIOPERATIVE_MONITORING,
             title="Perioperative monitoring",
             situation=(
@@ -204,14 +199,9 @@ def default_scenario_catalog(
             ),
             purpose="Verify high-track-count payload handling and export completeness.",
             tracks=("Bx50/ECG_II", "Bx50/ART", "Primus/CO2", "Primus/ETCO2"),
-            source_path=root / "MORA04_230102" / "MORA04_230102_110306.vital",
-            source_scenario=RealVitalSampleScenario.PERIOP_FULL,
-            default_window=RecorderScenarioWindow(
-                start_offset_seconds=0,
-                duration_seconds=20,
-            ),
+            signal_profile=RecorderSignalScenario.NORMAL,
         ),
-        vital_file_scenario(
+        generated_scenario(
             RecorderTestScenario.SEDATION_MONITORING,
             title="Sedation monitoring",
             situation=(
@@ -223,14 +213,9 @@ def default_scenario_catalog(
                 "handling."
             ),
             tracks=("Root/PLETH", "Root/SPHB", "Root/SPO2"),
-            source_path=root / "MORC03_230102" / "MORC03_230102_133133.vital",
-            source_scenario=RealVitalSampleScenario.ROOT_SEDATION,
-            default_window=RecorderScenarioWindow(
-                start_offset_seconds=70,
-                duration_seconds=20,
-            ),
+            signal_profile=RecorderSignalScenario.NORMAL,
         ),
-        vital_file_scenario(
+        generated_scenario(
             RecorderTestScenario.FULL_MONITORING_REPLAY,
             title="Full monitoring replay",
             situation=(
@@ -242,12 +227,7 @@ def default_scenario_catalog(
                 "missing-track visibility."
             ),
             tracks=("all available source tracks",),
-            source_path=root / "MORA04_230102" / "MORA04_230102_110306.vital",
-            source_scenario=RealVitalSampleScenario.FULL_REAL,
-            default_window=RecorderScenarioWindow(
-                start_offset_seconds=0,
-                duration_seconds=20,
-            ),
+            signal_profile=RecorderSignalScenario.NORMAL,
         ),
     )
 

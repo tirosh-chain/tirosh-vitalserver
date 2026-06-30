@@ -103,6 +103,7 @@ def add_send_recorder_parser(
 
     add_optional_recorder_payload_arg(parser)
     add_recorder_dataset_args(parser)
+    add_recorder_vital_file_args(parser)
     add_common_recorder_args(parser)
     parser.add_argument(
         "--http",
@@ -141,6 +142,7 @@ def add_stream_recorder_parser(
 
     add_optional_recorder_payload_arg(parser)
     add_recorder_dataset_args(parser)
+    add_recorder_vital_file_args(parser)
     add_common_recorder_args(parser)
     parser.add_argument(
         "--interval",
@@ -229,6 +231,7 @@ def add_verify_recorder_parser(
 
     add_optional_recorder_payload_arg(parser)
     add_recorder_dataset_args(parser)
+    add_recorder_vital_file_args(parser)
     add_common_recorder_args(parser)
     parser.add_argument(
         "--admin-user-id",
@@ -675,6 +678,35 @@ def add_recorder_dataset_args(arg_parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_recorder_vital_file_args(arg_parser: argparse.ArgumentParser) -> None:
+    """Add explicit `.vital` recorder source arguments."""
+
+    arg_parser.add_argument(
+        "--vital-file",
+        type=Path,
+        default=None,
+        help="Source .vital file to replay directly as recorder data",
+    )
+    arg_parser.add_argument(
+        "--vital-scenario",
+        choices=[scenario.value for scenario in RealVitalSampleScenario],
+        default=RealVitalSampleScenario.BASIC_MONITOR.value,
+        help="Track selection preset for --vital-file",
+    )
+    arg_parser.add_argument(
+        "--vital-start-offset",
+        type=float,
+        default=0.0,
+        help="Seconds after source .vital dtstart to begin playback extraction",
+    )
+    arg_parser.add_argument(
+        "--vital-duration",
+        type=int,
+        default=120,
+        help="Seconds of recorder records to extract from --vital-file",
+    )
+
+
 def assert_stream_success(summary: StreamSummary) -> None:
     """Raise when any recorder stream failed."""
 
@@ -764,6 +796,19 @@ def parse_recorder_signal_scenario(value: str) -> RecorderSignalScenario:
 def load_recorder_payload_or_default(args: argparse.Namespace) -> JsonObject:
     """Load an explicit payload, explicit dataset payload, or generated data."""
 
+    if args.vital_file is not None:
+        recorder_payload_path_from_args(args)
+        return build_real_vital_recorder_payload(
+            VitalDbRealVitalReader(),
+            args.vital_file,
+            scenario=RealVitalSampleScenario(args.vital_scenario),
+            room_name=args.bed_room_name[0] if args.bed_room_name else None,
+            vrcode=args.vrcode,
+            version=args.version,
+            start_offset_seconds=args.vital_start_offset,
+            duration_seconds=args.vital_duration,
+        )
+
     payload_path = recorder_payload_path_from_args(args)
     if payload_path is not None:
         return load_recorder_payload(payload_path)
@@ -795,6 +840,16 @@ def recorder_payload_path_from_args(args: argparse.Namespace) -> Path | None:
 
     if args.payload is not None and args.dataset_manifest is not None:
         raise ValueError("payload and --dataset-manifest must not be used together")
+    if args.vital_file is not None:
+        if args.payload is not None:
+            raise ValueError("payload and --vital-file must not be used together")
+        if args.dataset_manifest is not None:
+            raise ValueError(
+                "--dataset-manifest and --vital-file must not be used together"
+            )
+        if args.dataset_key is not None:
+            raise ValueError("--dataset-key requires --dataset-manifest")
+        return None
     if args.dataset_manifest is None:
         if args.dataset_key is not None:
             raise ValueError("--dataset-key requires --dataset-manifest")
@@ -812,4 +867,8 @@ def recorder_payload_path_from_args(args: argparse.Namespace) -> Path | None:
 def recorder_payload_path_was_provided(args: argparse.Namespace) -> bool:
     """Return whether args explicitly select a recorder payload."""
 
-    return args.payload is not None or args.dataset_manifest is not None
+    return (
+        args.payload is not None
+        or args.dataset_manifest is not None
+        or args.vital_file is not None
+    )

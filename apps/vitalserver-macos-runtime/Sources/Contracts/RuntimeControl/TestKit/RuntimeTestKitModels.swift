@@ -32,22 +32,28 @@ public enum RuntimeTestKitScenario: String, Codable, CaseIterable, Equatable, Se
     case shortRecordingReview = "short_recording_review"
     case startupMonitoring = "startup_monitoring"
 
+    public static let allCases: [RuntimeTestKitScenario] = [
+        .normalMonitoring,
+        .tachycardia,
+        .bradycardia,
+        .hypotension,
+        .hypertension,
+        .desaturation,
+        .apnea,
+        .arrhythmia,
+        .hctDecreasing,
+        .bloodbagTransfusion,
+        .perioperativeMonitoring,
+        .sedationMonitoring,
+        .fullMonitoringReplay
+    ]
+
     public var realSampleKey: String? {
-        switch self {
-        case .comprehensiveMonitoring,
-             .highDensityMonitoring,
-             .hemoglobinOxygenation,
-             .intermittentMonitoring,
-             .shortRecordingReview,
-             .startupMonitoring:
-            rawValue
-        default:
-            nil
-        }
+        nil
     }
 
     public var requestScenario: RuntimeTestKitScenario {
-        realSampleKey == nil ? self : .normalMonitoring
+        self
     }
 }
 
@@ -65,6 +71,45 @@ public enum RuntimeTestKitSignalQuality: String, Codable, CaseIterable, Equatabl
 public enum RuntimeTestKitRecorderCondition: String, Codable, CaseIterable, Equatable, Sendable {
     case normal
     case deviceDisconnect = "device_disconnect"
+}
+
+public enum RuntimeTestKitRecorderSourceMode: String, Codable, CaseIterable, Equatable, Sendable {
+    case generated
+    case vitalFile
+}
+
+public enum RuntimeTestKitVitalFileScenario: String, Codable, CaseIterable, Equatable, Sendable {
+    case basicMonitor = "basic_monitor"
+    case periopFull = "periop_full"
+    case bloodbag
+    case rootSedation = "root_sedation"
+    case fullReal = "full_real"
+}
+
+public enum RuntimeTestKitRecorderSourceType: String, Codable, Equatable, Sendable {
+    case vitalFile
+}
+
+public struct RuntimeTestKitRecorderSource: Codable, Equatable, Sendable {
+    public var type: RuntimeTestKitRecorderSourceType
+    public var path: String
+    public var scenario: RuntimeTestKitVitalFileScenario
+    public var startOffsetSeconds: Double
+    public var durationSeconds: Int
+
+    public init(
+        type: RuntimeTestKitRecorderSourceType = .vitalFile,
+        path: String,
+        scenario: RuntimeTestKitVitalFileScenario,
+        startOffsetSeconds: Double = 0,
+        durationSeconds: Int = 120
+    ) {
+        self.type = type
+        self.path = path
+        self.scenario = scenario
+        self.startOffsetSeconds = startOffsetSeconds
+        self.durationSeconds = durationSeconds
+    }
 }
 
 public struct RuntimeTestKitStatus: Codable, Equatable, Sendable {
@@ -238,6 +283,7 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
     public var version: String
     public var signalQuality: RuntimeTestKitSignalQuality
     public var recorderCondition: RuntimeTestKitRecorderCondition
+    public var source: RuntimeTestKitRecorderSource?
     public var realSampleKey: String?
     public var intervalSeconds: Double
     public var maxMessages: Int?
@@ -255,6 +301,7 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         version: String = "testkit",
         signalQuality: RuntimeTestKitSignalQuality = .clean,
         recorderCondition: RuntimeTestKitRecorderCondition = .normal,
+        source: RuntimeTestKitRecorderSource? = nil,
         realSampleKey: String? = nil,
         intervalSeconds: Double = 1,
         maxMessages: Int? = nil,
@@ -271,6 +318,7 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         self.version = version
         self.signalQuality = signalQuality
         self.recorderCondition = recorderCondition
+        self.source = source
         self.realSampleKey = realSampleKey
         self.intervalSeconds = intervalSeconds
         self.maxMessages = maxMessages
@@ -289,6 +337,7 @@ public struct RuntimeTestKitVirtualRecorderStartRequest: Codable, Equatable, Sen
         case version
         case signalQuality
         case recorderCondition
+        case source
         case realSampleKey
         case intervalSeconds
         case maxMessages
@@ -390,6 +439,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
     public var scenario: String
     public var signalQuality: String?
     public var recorderCondition: String?
+    public var source: RuntimeTestKitRecorderSource?
     public var realSampleKey: String?
     public var window: RuntimeTestKitScenarioWindow?
     public var output: RuntimeTestKitSessionOutput?
@@ -421,6 +471,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         scenario: String,
         signalQuality: String? = nil,
         recorderCondition: String? = nil,
+        source: RuntimeTestKitRecorderSource? = nil,
         realSampleKey: String? = nil,
         window: RuntimeTestKitScenarioWindow? = nil,
         output: RuntimeTestKitSessionOutput? = nil,
@@ -451,6 +502,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         self.scenario = scenario
         self.signalQuality = signalQuality
         self.recorderCondition = recorderCondition
+        self.source = source
         self.realSampleKey = realSampleKey
         self.window = window
         self.output = output
@@ -484,6 +536,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         scenario = try container.decode(String.self, forKey: .scenario)
         signalQuality = try container.decodeIfPresent(String.self, forKey: .signalQuality)
         recorderCondition = try container.decodeIfPresent(String.self, forKey: .recorderCondition)
+        source = try container.decodeIfPresent(RuntimeTestKitRecorderSource.self, forKey: .source)
         realSampleKey = try container.decodeIfPresent(String.self, forKey: .realSampleKey)
         window = try container.decodeIfPresent(RuntimeTestKitScenarioWindow.self, forKey: .window)
         output = try container.decodeIfPresent(RuntimeTestKitSessionOutput.self, forKey: .output)
@@ -516,6 +569,7 @@ public struct RuntimeTestKitSession: Codable, Equatable, Sendable {
         case scenario
         case signalQuality
         case recorderCondition
+        case source
         case realSampleKey
         case window
         case output

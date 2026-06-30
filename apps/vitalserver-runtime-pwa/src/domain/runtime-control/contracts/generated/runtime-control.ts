@@ -1832,6 +1832,15 @@ export interface components {
         RuntimeTestKitDeleteBedsRequest: {
             roomNames: string[];
         };
+        RuntimeTestKitRecorderSource: {
+            /** @enum {string} */
+            type: "vitalFile";
+            path: string;
+            /** @enum {string} */
+            scenario: "basic_monitor" | "periop_full" | "bloodbag" | "root_sedation" | "full_real";
+            startOffsetSeconds: number;
+            durationSeconds: number;
+        };
         RuntimeTestKitVirtualRecorderStartRequest: {
             /** @enum {string} */
             scenario: "normal" | "multiple_recorders" | "burst_traffic" | "disconnect_reconnect" | "stale_recorder" | "signal_anomaly";
@@ -1849,6 +1858,8 @@ export interface components {
             exportVital: boolean;
             uploadVital: boolean;
             vitalUploadEndpoint: string;
+            source?: components["schemas"]["RuntimeTestKitRecorderSource"] | null;
+            realSampleKey?: string | null;
         };
         RuntimeTestKitSessionSelectionRequest: {
             sessionID: string;
@@ -1874,6 +1885,8 @@ export interface components {
             maxMessages?: number | null;
             shiftTime: boolean;
             generateFrames: boolean;
+            source?: components["schemas"]["RuntimeTestKitRecorderSource"] | null;
+            realSampleKey?: string | null;
             scenario?: string | null;
             defaultScenario: string;
             createdAt?: number | null;

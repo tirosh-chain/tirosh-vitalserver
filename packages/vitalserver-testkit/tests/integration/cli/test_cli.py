@@ -24,6 +24,7 @@ def test_cli_subcommand_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert "sample_data.json" not in captured.out
     assert "payload" in captured.out
     assert "--dataset-manifest" in captured.out
+    assert "--vital-file" in captured.out
     assert "Socket.IO" in captured.out
 
 

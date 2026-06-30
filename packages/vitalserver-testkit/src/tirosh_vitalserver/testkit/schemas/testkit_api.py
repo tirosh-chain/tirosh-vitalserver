@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Self
 
 from pydantic import ConfigDict, Field, model_validator
@@ -10,8 +11,13 @@ from tirosh_vitalserver.testkit.application.recorder_session import (
     RecorderCondition,
     RecorderScenarioWindow,
     RecorderSessionOutput,
+    RecorderSource,
+    RecorderSourceType,
     RecorderTestScenario,
     VirtualRecorderSessionRequest,
+)
+from tirosh_vitalserver.testkit.application.usecases.recorder.real_vital_sample import (
+    RealVitalSampleScenario,
 )
 from tirosh_vitalserver.testkit.domain.signal import SignalQualityProfile
 from tirosh_vitalserver.testkit.schemas.base import ExternalSchema
@@ -99,6 +105,29 @@ class RecorderSessionOutputRequest(ExternalSchema):
         )
 
 
+class RecorderSourceRequest(ExternalSchema):
+    """Request body fragment for an explicit recorder source."""
+
+    model_config = ConfigDict(populate_by_name=True, strict=False)
+
+    source_type: RecorderSourceType = Field(alias="type")
+    path: Path | None = None
+    scenario: RealVitalSampleScenario | None = None
+    start_offset_seconds: float = Field(default=0.0, alias="startOffsetSeconds")
+    duration_seconds: int = Field(default=120, alias="durationSeconds")
+
+    def to_domain(self) -> RecorderSource:
+        """Convert external source input into the application contract."""
+
+        return RecorderSource(
+            source_type=self.source_type,
+            path=self.path,
+            scenario=self.scenario,
+            start_offset_seconds=self.start_offset_seconds,
+            duration_seconds=self.duration_seconds,
+        )
+
+
 class StartVirtualRecordersRequest(ExternalSchema):
     """Request body for starting a virtual VRecorder session."""
 
@@ -123,6 +152,7 @@ class StartVirtualRecordersRequest(ExternalSchema):
         default=RecorderCondition.NORMAL,
         alias="recorderCondition",
     )
+    source: RecorderSourceRequest | None = None
     real_sample_key: str | None = Field(default=None, alias="realSampleKey")
     interval_seconds: float = Field(default=1.0, alias="intervalSeconds")
     max_messages: int | None = Field(default=None, alias="maxMessages")
@@ -144,6 +174,7 @@ class StartVirtualRecordersRequest(ExternalSchema):
             version=self.version,
             signal_quality=self.signal_quality,
             recorder_condition=self.recorder_condition,
+            source=None if self.source is None else self.source.to_domain(),
             real_sample_key=self.real_sample_key,
             interval_seconds=self.interval_seconds,
             max_messages=self.max_messages,

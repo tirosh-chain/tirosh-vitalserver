@@ -314,6 +314,9 @@ def create_testkit_app(
             scenario=request.scenario.value,
             signal_quality=request.signal_quality.value,
             recorder_condition=request.recorder_condition.value,
+            source_type=(
+                None if request.source is None else request.source.source_type.value
+            ),
             real_sample_key=request.real_sample_key,
         )
         try:
@@ -340,6 +343,16 @@ def create_testkit_app(
                 error=str(exc),
             )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            emit_testkit_event(
+                "api.session.start.unavailable",
+                level=logging.WARNING,
+                target_url=request.target_url,
+                recorders=request.recorders,
+                bedroom_name=request.bedroom_name,
+                error=str(exc),
+            )
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
         emit_testkit_event(
             "api.session.start.accepted",
@@ -351,6 +364,11 @@ def create_testkit_app(
             scenario=snapshot.request.scenario.value,
             signal_quality=snapshot.request.signal_quality.value,
             recorder_condition=snapshot.request.recorder_condition.value,
+            source_type=(
+                None
+                if snapshot.request.source is None
+                else snapshot.request.source.source_type.value
+            ),
             real_sample_key=snapshot.request.real_sample_key,
             vrcode=snapshot.request.vrcode,
         )

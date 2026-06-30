@@ -967,6 +967,22 @@ const runtimeTestKitSessionVitalStateSchema = z
   })
   .passthrough();
 
+const runtimeTestKitRecorderSourceSchema = z
+  .object({
+    type: z.literal("vitalFile"),
+    path: z.string(),
+    scenario: z.enum([
+      "basic_monitor",
+      "periop_full",
+      "bloodbag",
+      "root_sedation",
+      "full_real"
+    ]),
+    startOffsetSeconds: z.number(),
+    durationSeconds: z.number()
+  })
+  .passthrough();
+
 export const runtimeTestKitSessionSchema = z
   .object({
     id: z.string(),
@@ -982,6 +998,8 @@ export const runtimeTestKitSessionSchema = z
     maxMessages: nullableNumber,
     shiftTime: z.boolean(),
     generateFrames: z.boolean(),
+    source: runtimeTestKitRecorderSourceSchema.nullable().optional(),
+    realSampleKey: nullableString.optional(),
     scenario: nullableString,
     defaultScenario: z.string(),
     createdAt: nullableNumber,

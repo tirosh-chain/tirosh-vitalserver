@@ -70,6 +70,11 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var testKitScenario = RuntimeTestKitScenario.normalMonitoring
     @Published var testKitSignalQuality = RuntimeTestKitSignalQuality.clean
     @Published var testKitRecorderCondition = RuntimeTestKitRecorderCondition.normal
+    @Published var testKitRecorderSourceMode = RuntimeTestKitRecorderSourceMode.generated
+    @Published var testKitVitalFilePath = ""
+    @Published var testKitVitalFileScenario = RuntimeTestKitVitalFileScenario.basicMonitor
+    @Published var testKitVitalFileStartOffsetSeconds = 0.0
+    @Published var testKitVitalFileDurationSeconds = 120.0
     @Published var testKitRecorderCount = 1
     @Published var testKitBedCount = 1
     @Published var testKitBedPrefix = "testbed"

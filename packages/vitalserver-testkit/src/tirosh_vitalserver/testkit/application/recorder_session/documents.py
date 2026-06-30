@@ -9,6 +9,8 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
     RecorderRuntimeSnapshot,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    RecorderSource,
+    RecorderSourceType,
     VirtualRecorderDeletionResult,
     VirtualRecorderSessionSnapshot,
 )
@@ -39,6 +41,7 @@ def session_snapshot_to_document(
         "scenario": request.scenario.value,
         "signalQuality": request.signal_quality.value,
         "recorderCondition": request.recorder_condition.value,
+        "source": recorder_source_to_document(request.source),
         "realSampleKey": request.real_sample_key,
         "window": None
         if request.window is None
@@ -71,6 +74,22 @@ def session_snapshot_to_document(
             for recorder in snapshot.recorders
         ],
     }
+
+
+def recorder_source_to_document(source: RecorderSource | None) -> dict[str, Any] | None:
+    """Convert an explicit recorder source into the public API document."""
+
+    if source is None:
+        return None
+    if source.source_type == RecorderSourceType.VITAL_FILE:
+        return {
+            "type": source.source_type.value,
+            "path": None if source.path is None else str(source.path),
+            "scenario": None if source.scenario is None else source.scenario.value,
+            "startOffsetSeconds": source.start_offset_seconds,
+            "durationSeconds": source.duration_seconds,
+        }
+    raise ValueError(f"unsupported recorder source type: {source.source_type}")
 
 
 def vital_state_to_document(
