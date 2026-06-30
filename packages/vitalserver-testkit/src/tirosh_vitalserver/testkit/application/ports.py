@@ -102,6 +102,12 @@ class RecorderManagementPort(Protocol):
     ) -> None: ...
 
 
+class RecordedFrameSourceProviderPort(Protocol):
+    """Provides recorded recorder payload sources for frame playback."""
+
+    def load_recorded_frame_source(self, key: str) -> Mapping[str, JsonValue]: ...
+
+
 class SessionVitalFileExporterPort(Protocol):
     """Session artifact writer for VitalDB `.vital` files."""
 

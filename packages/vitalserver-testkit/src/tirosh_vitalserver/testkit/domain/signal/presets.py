@@ -82,3 +82,28 @@ def profile_for_scenario(scenario: RecorderSignalScenario) -> SignalProfile:
                 drift_level=0.0,
                 artifact_rate=0.0,
             )
+        case RecorderSignalScenario.HCT_DECREASING:
+            return replace(
+                DEFAULT_SIGNAL_PROFILE,
+                scenario=scenario,
+                hct_percent=35.0,
+                hct_trend_percent_per_second=-(5.0 / 600.0),
+            )
+
+
+def profile_with_hct_override(
+    profile: SignalProfile,
+    hct_percent: float | None,
+) -> SignalProfile:
+    """Return a profile with an explicit fixed HCT value when configured."""
+
+    if hct_percent is None:
+        return profile
+    if hct_percent < 0 or hct_percent > 100:
+        raise ValueError("hct_percent must be between 0 and 100")
+
+    return replace(
+        profile,
+        hct_percent=hct_percent,
+        hct_trend_percent_per_second=0.0,
+    )

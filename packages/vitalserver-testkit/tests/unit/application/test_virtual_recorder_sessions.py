@@ -2,23 +2,28 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from threading import Event
 
 import pytest
 
 from tests.support import FakeSocketIoClient, fake_socketio_connector
 from tirosh_vitalserver.testkit.application.recorder_session import (
+    RecorderSessionOutput,
+    RecorderTestScenario,
     SessionVitalPlayback,
+    VirtualRecorderSession,
     VirtualRecorderSessionManager,
     VirtualRecorderSessionRequest,
-    VirtualRecorderSessionScenario,
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
     VirtualRecorderVitalArtifact,
     VirtualRecorderVitalUploadResult,
     session_snapshot_to_document,
 )
+from tirosh_vitalserver.testkit.application.recorder_session.session import (
+    stream_stall_timeout_seconds,
+)
 from tirosh_vitalserver.testkit.domain.bed import beds_for_room_names
-from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
 
 
 def test_virtual_recorder_session_runs_to_completion() -> None:
@@ -52,6 +57,8 @@ def test_virtual_recorder_session_runs_to_completion() -> None:
     assert document["targetUrl"] == "http://example.test"
     assert document["recordersRequested"] == 2
     assert document["bedsRequested"] == 2
+    assert document["bedroomName"] == "OR-A"
+    assert document["bedRoomNames"] == ["OR-A", "OR-B"]
     assert document["recorders"][0]["joinSent"] is True
 
 
@@ -60,7 +67,7 @@ def test_virtual_recorder_session_can_stop() -> None:
     snapshot = manager.start_session(
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=1,
             shift_time=False,
         )
@@ -81,6 +88,55 @@ def test_virtual_recorder_session_can_stop() -> None:
     assert stopped.state == VirtualRecorderSessionState.STOPPED
 
 
+def test_virtual_recorder_session_marks_stalled_stream_failed() -> None:
+    client = BlockingSocketIoClient()
+    request = VirtualRecorderSessionRequest(
+        target_url="http://example.test",
+        bedroom_name="OR-A",
+        interval_seconds=0.1,
+        shift_time=False,
+    )
+    session = VirtualRecorderSession(
+        session_id="vrecorder-stalled",
+        request=request,
+        connector=lambda base_url, timeout=30.0: client,
+    )
+
+    session.start()
+
+    try:
+        deadline = time.time() + 2
+        snapshot = session.snapshot()
+        while snapshot.messages_sent < 1 and time.time() < deadline:
+            time.sleep(0.01)
+            snapshot = session.snapshot()
+
+        assert snapshot.state == VirtualRecorderSessionState.RUNNING
+        assert snapshot.recorders[0].last_send_data_at is not None
+
+        failed = session.refresh_runtime_liveness(
+            now=(
+                snapshot.recorders[0].last_send_data_at
+                + stream_stall_timeout_seconds(request)
+                + 1
+            ),
+        )
+
+        assert failed.state == VirtualRecorderSessionState.FAILED
+        assert failed.error is not None
+        assert "stream stalled: no send_data" in failed.error
+        assert failed.stopped_at is not None
+    finally:
+        client.release()
+
+    assert session.wait(timeout=2)
+
+    final = session.snapshot()
+    assert final.state == VirtualRecorderSessionState.FAILED
+    assert final.error is not None
+    assert "stream stalled: no send_data" in final.error
+
+
 def test_virtual_recorder_session_exports_and_uploads_playback_window() -> None:
     exporter = FakeVitalExporter()
     uploader = FakeVitalUploader()
@@ -93,12 +149,11 @@ def test_virtual_recorder_session_exports_and_uploads_playback_window() -> None:
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             vrcode="VR_VITAL",
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=0.1,
             max_messages=2,
             shift_time=False,
-            export_vital=True,
-            upload_vital=True,
+            output=RecorderSessionOutput(export_vital=True, upload_vital=True),
         )
     )
 
@@ -136,11 +191,11 @@ def test_virtual_recorder_session_records_pause_resume_playback_events() -> None
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             vrcode="VR_PAUSE",
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=0.05,
             max_messages=50,
             shift_time=False,
-            export_vital=True,
+            output=RecorderSessionOutput(export_vital=True),
         )
     )
 
@@ -175,12 +230,11 @@ def test_virtual_recorder_upload_failure_preserves_artifact_for_retry() -> None:
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             vrcode="VR_RETRY",
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=0.1,
             max_messages=1,
             shift_time=False,
-            export_vital=True,
-            upload_vital=True,
+            output=RecorderSessionOutput(export_vital=True, upload_vital=True),
         )
     )
     assert manager.wait_session(snapshot.session_id, timeout=5)
@@ -205,11 +259,11 @@ def test_virtual_recorder_export_request_reports_missing_exporter() -> None:
     snapshot = manager.start_session(
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=0.1,
             max_messages=1,
             shift_time=False,
-            export_vital=True,
+            output=RecorderSessionOutput(export_vital=True),
         )
     )
 
@@ -226,7 +280,7 @@ def test_virtual_recorder_session_can_pause_and_resume() -> None:
     snapshot = manager.start_session(
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=0.1,
             max_messages=2,
             shift_time=False,
@@ -255,7 +309,7 @@ def test_stopped_virtual_recorder_session_can_restart_on_new_bed() -> None:
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             vrcode="VR_REUSE",
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=0.1,
             max_messages=1,
             shift_time=False,
@@ -265,7 +319,7 @@ def test_stopped_virtual_recorder_session_can_restart_on_new_bed() -> None:
 
     restarted = manager.restart_session(
         snapshot.session_id,
-        bed_room_names=("OR-B",),
+        bedroom_name="OR-B",
     )
 
     assert restarted is not None
@@ -380,7 +434,7 @@ def test_virtual_recorder_delete_reports_missing_cleanup_provider() -> None:
             target_url="http://example.test",
             vrcode="VR_NO_PROVIDER",
             recorders=1,
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=1,
             shift_time=False,
         )
@@ -415,7 +469,7 @@ def test_virtual_recorder_session_save_failure_is_not_event_only() -> None:
         manager.start_session(
             VirtualRecorderSessionRequest(
                 target_url="http://example.test",
-                bed_room_names=("OR-A",),
+                bedroom_name="OR-A",
                 interval_seconds=1,
                 shift_time=False,
             )
@@ -433,7 +487,7 @@ def test_virtual_recorder_session_delete_failure_is_not_event_only() -> None:
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             vrcode="VR_STORE_DELETE",
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=1,
             shift_time=False,
         )
@@ -445,79 +499,42 @@ def test_virtual_recorder_session_delete_failure_is_not_event_only() -> None:
     assert manager.get_session(snapshot.session_id) is not None
 
 
-def test_virtual_recorder_session_applies_session_scenario_defaults() -> None:
+def test_virtual_recorder_session_uses_purpose_scenario() -> None:
     manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
     snapshot = manager.start_session(
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
-            bed_room_names=("OR-A",),
-            scenario=VirtualRecorderSessionScenario.SIGNAL_ANOMALY,
+            bedroom_name="OR-A",
+            scenario=RecorderTestScenario.ARRHYTHMIA,
             interval_seconds=1,
             max_messages=1,
             shift_time=False,
         )
     )
 
-    assert snapshot.request.scenario == VirtualRecorderSessionScenario.SIGNAL_ANOMALY
-    assert snapshot.request.default_scenario == RecorderSignalScenario.ARTIFACT
+    assert snapshot.request.scenario == RecorderTestScenario.ARRHYTHMIA
 
 
-def test_multiple_recorder_scenario_requires_enough_explicit_beds() -> None:
-    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+def test_virtual_recorder_session_normalizes_bedroom_name() -> None:
+    request = VirtualRecorderSessionRequest(
+        target_url="http://example.test",
+        bedroom_name=" OR-A ",
+    )
 
-    try:
-        manager.start_session(
-            VirtualRecorderSessionRequest(
-                target_url="http://example.test",
-                bed_room_names=("OR-A", "OR-B"),
-                scenario=VirtualRecorderSessionScenario.MULTIPLE_RECORDERS,
-                interval_seconds=1,
-                max_messages=1,
-                shift_time=False,
-            )
-        )
-    except ValueError as exc:
-        assert str(exc) == "bed count must be greater than or equal to recorder count"
-    else:
-        raise AssertionError("expected multiple recorder bed validation")
+    assert request.bedroom_name == "OR-A"
+    assert request.bed_room_names == ("OR-A",)
 
 
-def test_virtual_recorder_session_requires_explicit_bed_room_names() -> None:
+def test_virtual_recorder_session_rejects_empty_bedroom_name() -> None:
     try:
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
-            recorders=2,
+            bedroom_name=" ",
         )
     except ValueError as exc:
-        assert str(exc) == "bed_room_names is required"
+        assert str(exc) == "bedroom_name must not be empty"
     else:
         raise AssertionError("expected missing bed validation")
-
-
-def test_virtual_recorder_session_requires_a_bed_per_recorder() -> None:
-    try:
-        VirtualRecorderSessionRequest(
-            target_url="http://example.test",
-            recorders=2,
-            bed_room_names=("OR-A",),
-        )
-    except ValueError as exc:
-        assert str(exc) == "bed count must be greater than or equal to recorder count"
-    else:
-        raise AssertionError("expected bed count validation")
-
-
-def test_virtual_recorder_session_rejects_duplicate_bed_room_names() -> None:
-    try:
-        VirtualRecorderSessionRequest(
-            target_url="http://example.test",
-            recorders=1,
-            bed_room_names=("OR-A", " OR-A "),
-        )
-    except ValueError as exc:
-        assert str(exc) == "bed_room_names must not include duplicate values"
-    else:
-        raise AssertionError("expected duplicate bed validation")
 
 
 def test_virtual_recorder_session_rejects_active_bed_reuse() -> None:
@@ -529,7 +546,7 @@ def test_virtual_recorder_session_rejects_active_bed_reuse() -> None:
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             recorders=1,
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=1,
             shift_time=False,
         )
@@ -541,7 +558,7 @@ def test_virtual_recorder_session_rejects_active_bed_reuse() -> None:
                 VirtualRecorderSessionRequest(
                     target_url="http://example.test",
                     recorders=1,
-                    bed_room_names=("OR-A",),
+                    bedroom_name="OR-A",
                     interval_seconds=1,
                     shift_time=False,
                 )
@@ -563,7 +580,7 @@ def test_virtual_recorder_session_allows_reuse_after_session_delete() -> None:
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             recorders=1,
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=1,
             shift_time=False,
         )
@@ -574,7 +591,7 @@ def test_virtual_recorder_session_allows_reuse_after_session_delete() -> None:
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             recorders=1,
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=0.1,
             max_messages=1,
             shift_time=False,
@@ -584,28 +601,21 @@ def test_virtual_recorder_session_allows_reuse_after_session_delete() -> None:
     assert manager.wait_session(second.session_id, timeout=5)
 
 
-def test_virtual_recorder_session_can_use_existing_bed_room_names() -> None:
-    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
-    snapshot = manager.start_session(
+def test_virtual_recorder_session_rejects_multiple_recorders_in_one_bedroom() -> None:
+    with pytest.raises(ValueError) as exc_info:
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
             recorders=2,
-            bed_room_names=("OR-A", "OR-B"),
+            bedroom_name="OR-A",
             interval_seconds=0.1,
             max_messages=1,
             shift_time=False,
         )
+
+    assert (
+        str(exc_info.value)
+        == "bed count must be greater than or equal to recorder count"
     )
-
-    assert manager.wait_session(snapshot.session_id, timeout=5)
-
-    completed = manager.get_session(snapshot.session_id)
-    assert completed is not None
-
-    document = session_snapshot_to_document(completed)
-
-    assert document["bedsRequested"] == 2
-    assert document["bedRoomNames"] == ("OR-A", "OR-B")
 
 
 def test_stored_virtual_recorder_session_can_be_deleted_after_restart() -> None:
@@ -661,7 +671,7 @@ def test_virtual_recorder_sessions_can_be_reset() -> None:
     first = manager.start_session(
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
             interval_seconds=1,
             shift_time=False,
         )
@@ -669,7 +679,7 @@ def test_virtual_recorder_sessions_can_be_reset() -> None:
     second = manager.start_session(
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
-            bed_room_names=("OR-B",),
+            bedroom_name="OR-B",
             interval_seconds=1,
             shift_time=False,
         )
@@ -812,6 +822,19 @@ class FailingSessionStore(InMemorySessionStore):
 class SlowFakeSocketIoClient(FakeSocketIoClient):
     def sleep(self, seconds: float) -> None:
         time.sleep(min(seconds, 0.01))
+
+
+class BlockingSocketIoClient(FakeSocketIoClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self._release = Event()
+
+    def sleep(self, seconds: float) -> None:
+        if seconds >= 0.1:
+            self._release.wait(timeout=2)
+
+    def release(self) -> None:
+        self._release.set()
 
 
 def slow_socketio_connector(

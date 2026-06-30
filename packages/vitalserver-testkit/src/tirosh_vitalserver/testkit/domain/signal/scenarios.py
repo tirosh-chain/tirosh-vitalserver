@@ -41,3 +41,6 @@ class RecorderSignalScenario(StrEnum):
 
     # Missing signal source, useful for testing stale data and disconnect states.
     DEVICE_DISCONNECT = "device_disconnect"
+
+    # Gradually decreasing hematocrit, useful for bloodbag inference context.
+    HCT_DECREASING = "hct_decreasing"

@@ -102,6 +102,9 @@ public protocol RuntimeControlAPIReadHandler {
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeControlCommandResponse
     func startRuntimeServices() async throws -> RuntimeControlCommandResponse
     func stopRuntimeServices() async throws -> RuntimeControlCommandResponse
+    func startTestKitService() async throws -> RuntimeControlCommandResponse
+    func stopTestKitService() async throws -> RuntimeControlCommandResponse
+    func restartTestKitService() async throws -> RuntimeControlCommandResponse
     func repairRuntimeServices() async throws -> RuntimeControlCommandResponse
     func repairProxy() async throws -> RuntimeControlCommandResponse
     func repairDatastore() async throws -> RuntimeControlCommandResponse

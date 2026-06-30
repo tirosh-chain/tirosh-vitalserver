@@ -67,6 +67,12 @@ extension RuntimeViewModel {
         )
     }
 
+    var testKitCanControlContainer: Bool {
+        controlClient.capabilities.canControlRuntimeServices
+            && !isRunningTestKitAction
+            && testKitStatus.enabled
+    }
+
     func recordTestKitActionMessage(
         _ value: String,
         tone: RuntimeTestKitActionMessageTone = .neutral
@@ -82,6 +88,30 @@ extension RuntimeViewModel {
             return
         }
         applyTestKitStatus(await testKitController.loadTestKitStatus())
+    }
+
+    func startTestKitContainer() async {
+        await runTestKitContainerAction(
+            progressMessage: RuntimeTestPanelText.startingTestKitContainer,
+            successMessage: RuntimeTestPanelText.startedTestKitContainer,
+            action: { try await self.controlClient.startTestKitService() }
+        )
+    }
+
+    func stopTestKitContainer() async {
+        await runTestKitContainerAction(
+            progressMessage: RuntimeTestPanelText.stoppingTestKitContainer,
+            successMessage: RuntimeTestPanelText.stoppedTestKitContainer,
+            action: { try await self.controlClient.stopTestKitService() }
+        )
+    }
+
+    func restartTestKitContainer() async {
+        await runTestKitContainerAction(
+            progressMessage: RuntimeTestPanelText.restartingTestKitContainer,
+            successMessage: RuntimeTestPanelText.restartedTestKitContainer,
+            action: { try await self.controlClient.restartTestKitService() }
+        )
     }
 
     func createTestKitBeds() async {
@@ -190,6 +220,24 @@ extension RuntimeViewModel {
             message = errorMessage
             return
         }
+        if testKitRecorderSourceMode == .vitalFile
+            && testKitVitalFilePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let errorMessage = RuntimeTestPanelText.chooseVitalFileForPlayback
+            recordTestKitActionMessage(errorMessage, tone: .failure)
+            message = errorMessage
+            return
+        }
+        if testKitRecorderSourceMode == .vitalFile,
+           testKitPresentationPolicy.vitalFileGuestPath(
+            hostFilePath: testKitVitalFilePath,
+            hostRootPath: runtimeSettings.vitalFilesDirectory,
+            guestRootPath: RuntimeTestKitVitalFileSourcePath.defaultGuestMountPath
+           ) == nil {
+            let errorMessage = RuntimeTestPanelText.chooseSharedVitalFileForPlayback
+            recordTestKitActionMessage(errorMessage, tone: .failure)
+            message = errorMessage
+            return
+        }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
@@ -266,13 +314,9 @@ extension RuntimeViewModel {
             recordTestKitActionMessage(RuntimeTestPanelText.testKitUnavailable, tone: .failure)
             return
         }
-        let requiredBeds = max(session.recordersRequested, 1)
-        let bedRoomNames = Array(selectedAvailableTestKitBedRoomNames.prefix(requiredBeds))
-        guard bedRoomNames.count >= requiredBeds else {
-            let errorMessage = RuntimeTestPanelText.insufficientSelectedBeds(
-                bedRoomNames.count,
-                requiredBeds
-            )
+        let bedroomName = selectedAvailableTestKitBedRoomNames.first
+        guard bedroomName != nil else {
+            let errorMessage = RuntimeTestPanelText.insufficientSelectedBeds(0, 1)
             recordTestKitActionMessage(errorMessage, tone: .failure)
             message = errorMessage
             return
@@ -285,7 +329,7 @@ extension RuntimeViewModel {
         do {
             let restarted = try await testKitController.restartVirtualRecorders(
                 sessionID: session.id,
-                bedRoomNames: bedRoomNames
+                bedroomName: bedroomName
             )
             if let restarted {
                 selectedTestKitSessionID = restarted.id
@@ -472,7 +516,10 @@ extension RuntimeViewModel {
             return
         }
 
-        let selectedFiles = nativeShell.chooseVitalFiles(prompt: RuntimeTestPanelText.choosingVitalFiles)
+        let selectedFiles = nativeShell.chooseVitalFiles(
+            prompt: RuntimeTestPanelText.choosingVitalFiles,
+            directoryURL: nil
+        )
         guard !selectedFiles.isEmpty else {
             return
         }
@@ -498,12 +545,33 @@ extension RuntimeViewModel {
         }
     }
 
+    func chooseVitalFileForTestKitPlayback() {
+        let selectedFiles = nativeShell.chooseVitalFiles(
+            prompt: RuntimeTestPanelText.choosingVitalFileForPlayback,
+            directoryURL: URL(fileURLWithPath: runtimeSettings.vitalFilesDirectory)
+        )
+        guard let selectedFile = selectedFiles.first else {
+            return
+        }
+        testKitVitalFilePath = selectedFile.path
+        testKitRecorderSourceMode = .vitalFile
+    }
+
     private func testKitStartRequest() -> RuntimeTestKitVirtualRecorderStartRequest {
         testKitPresentationPolicy.startRequest(RuntimeTestKitStartInput(
             status: testKitStatus,
             selectedBedRoomNames: selectedTestKitBedRoomNames,
             scenario: testKitScenario,
-            signalProfile: testKitSignalProfile,
+            signalQuality: testKitSignalQuality,
+            recorderCondition: testKitRecorderCondition,
+            sourceMode: testKitRecorderSourceMode,
+            vitalFilePath: testKitVitalFilePath,
+            vitalFilesDirectoryHostPath: runtimeSettings.vitalFilesDirectory,
+            vitalFilesDirectoryGuestMountPath:
+                RuntimeTestKitVitalFileSourcePath.defaultGuestMountPath,
+            vitalFileScenario: testKitVitalFileScenario,
+            vitalFileStartOffsetSeconds: testKitVitalFileStartOffsetSeconds,
+            vitalFileDurationSeconds: testKitVitalFileDurationSeconds,
             recorderCount: testKitRecorderCount,
             vrcode: testKitVrcode,
             intervalSeconds: testKitIntervalSeconds,
@@ -575,6 +643,45 @@ extension RuntimeViewModel {
         let errorMessage = error.localizedDescription
         recordTestKitActionMessage(errorMessage, tone: .failure)
         message = errorMessage
+    }
+
+    private func runTestKitContainerAction(
+        progressMessage: String,
+        successMessage: String,
+        action: @escaping () async throws -> RuntimeCommandResult
+    ) async {
+        guard testKitCanControlContainer else {
+            recordTestKitActionMessage(AppConstants.StatusText.actionUnavailable, tone: .failure)
+            message = AppConstants.StatusText.actionUnavailable
+            return
+        }
+
+        isRunningTestKitAction = true
+        defer { isRunningTestKitAction = false }
+
+        recordTestKitActionMessage(progressMessage)
+        message = progressMessage
+        do {
+            let result = try await action()
+            guard result.exitCode == 0 else {
+                let errorMessage = result.stderr.isEmpty ? result.stdout : result.stderr
+                recordTestKitActionMessage(errorMessage, tone: .failure)
+                message = errorMessage
+                return
+            }
+            if let testKitController {
+                applyTestKitStatus(await testKitController.loadTestKitStatus())
+            }
+            recordTestKitActionMessage(successMessage)
+            message = successMessage
+        } catch {
+            if let testKitController {
+                applyTestKitStatus(await testKitController.loadTestKitStatus())
+            }
+            let errorMessage = error.localizedDescription
+            recordTestKitActionMessage(errorMessage, tone: .failure)
+            message = errorMessage
+        }
     }
 
     private func selectNewlyCreatedBeds(_ beds: [RuntimeTestKitBed], existingRoomNames: Set<String>) {

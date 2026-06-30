@@ -6,7 +6,15 @@ public struct RuntimeTestKitStartInput {
     public let status: RuntimeTestKitStatus
     public let selectedBedRoomNames: Set<String>
     public let scenario: RuntimeTestKitScenario
-    public let signalProfile: RuntimeTestKitSignalProfile
+    public let signalQuality: RuntimeTestKitSignalQuality
+    public let recorderCondition: RuntimeTestKitRecorderCondition
+    public let sourceMode: RuntimeTestKitRecorderSourceMode
+    public let vitalFilePath: String
+    public let vitalFilesDirectoryHostPath: String
+    public let vitalFilesDirectoryGuestMountPath: String
+    public let vitalFileScenario: RuntimeTestKitVitalFileScenario
+    public let vitalFileStartOffsetSeconds: Double
+    public let vitalFileDurationSeconds: Double
     public let recorderCount: Int
     public let vrcode: String
     public let intervalSeconds: Double
@@ -19,7 +27,16 @@ public struct RuntimeTestKitStartInput {
         status: RuntimeTestKitStatus,
         selectedBedRoomNames: Set<String>,
         scenario: RuntimeTestKitScenario,
-        signalProfile: RuntimeTestKitSignalProfile,
+        signalQuality: RuntimeTestKitSignalQuality = .clean,
+        recorderCondition: RuntimeTestKitRecorderCondition = .normal,
+        sourceMode: RuntimeTestKitRecorderSourceMode = .generated,
+        vitalFilePath: String = "",
+        vitalFilesDirectoryHostPath: String = "",
+        vitalFilesDirectoryGuestMountPath: String =
+            RuntimeTestKitVitalFileSourcePath.defaultGuestMountPath,
+        vitalFileScenario: RuntimeTestKitVitalFileScenario = .basicMonitor,
+        vitalFileStartOffsetSeconds: Double = 0,
+        vitalFileDurationSeconds: Double = 120,
         recorderCount: Int,
         vrcode: String,
         intervalSeconds: Double,
@@ -31,7 +48,15 @@ public struct RuntimeTestKitStartInput {
         self.status = status
         self.selectedBedRoomNames = selectedBedRoomNames
         self.scenario = scenario
-        self.signalProfile = signalProfile
+        self.signalQuality = signalQuality
+        self.recorderCondition = recorderCondition
+        self.sourceMode = sourceMode
+        self.vitalFilePath = vitalFilePath
+        self.vitalFilesDirectoryHostPath = vitalFilesDirectoryHostPath
+        self.vitalFilesDirectoryGuestMountPath = vitalFilesDirectoryGuestMountPath
+        self.vitalFileScenario = vitalFileScenario
+        self.vitalFileStartOffsetSeconds = vitalFileStartOffsetSeconds
+        self.vitalFileDurationSeconds = vitalFileDurationSeconds
         self.recorderCount = recorderCount
         self.vrcode = vrcode
         self.intervalSeconds = intervalSeconds
@@ -200,25 +225,83 @@ public struct RuntimeTestKitPresentationPolicy {
         _ input: RuntimeTestKitStartInput
     ) -> RuntimeTestKitVirtualRecorderStartRequest {
         let recorderCount = normalizedRecorderCount(input.recorderCount)
+        let bedRoomNames = Array(selectedAvailableBedRoomNames(
+            status: input.status,
+            selectedBedRoomNames: input.selectedBedRoomNames
+        ).prefix(recorderCount))
+        let bedroomName = bedRoomNames.first ?? "TestBedroom"
+        let source = recorderSource(input)
         return RuntimeTestKitVirtualRecorderStartRequest(
-            scenario: input.scenario,
-            signalProfile: input.signalProfile,
+            scenario: source == nil ? input.scenario.requestScenario : .normalMonitoring,
             recorders: recorderCount,
-            bedRoomNames: Array(selectedAvailableBedRoomNames(
-                status: input.status,
-                selectedBedRoomNames: input.selectedBedRoomNames
-            ).prefix(recorderCount)),
+            bedroomName: bedroomName,
+            bedRoomNames: bedRoomNames,
+            window: source == nil
+                ? RuntimeTestKitScenarioWindow(
+                    durationSeconds: normalizedDurationSeconds(input.durationSeconds)
+                )
+                : nil,
+            output: RuntimeTestKitSessionOutput(
+                exportVital: true,
+                uploadVital: true,
+                vitalUploadEndpoint: "/upload"
+            ),
             vrcode: normalizedVrcode(input.vrcode),
             version: "testkit",
+            signalQuality: input.signalQuality,
+            recorderCondition: input.recorderCondition,
+            source: source,
+            realSampleKey: source == nil ? input.scenario.realSampleKey : nil,
             intervalSeconds: normalizedIntervalSeconds(input.intervalSeconds),
-            durationSeconds: normalizedDurationSeconds(input.durationSeconds),
             maxMessages: normalizedMaxMessages(input.maxMessages),
             shiftTime: input.shiftTime,
-            generateFrames: input.generateFrames,
-            exportVital: true,
-            uploadVital: true,
-            vitalUploadEndpoint: "/upload"
+            generateFrames: input.generateFrames
         )
+    }
+
+    public func recorderSource(
+        _ input: RuntimeTestKitStartInput
+    ) -> RuntimeTestKitRecorderSource? {
+        guard input.sourceMode == .vitalFile else {
+            return nil
+        }
+        let path = input.vitalFilePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else {
+            return nil
+        }
+        let sourcePath = vitalFileGuestPath(
+            hostFilePath: path,
+            hostRootPath: input.vitalFilesDirectoryHostPath,
+            guestRootPath: input.vitalFilesDirectoryGuestMountPath
+        ) ?? path
+        return RuntimeTestKitRecorderSource(
+            path: sourcePath,
+            scenario: input.vitalFileScenario,
+            startOffsetSeconds: normalizedVitalFileStartOffsetSeconds(
+                input.vitalFileStartOffsetSeconds
+            ),
+            durationSeconds: normalizedVitalFileDurationSeconds(
+                input.vitalFileDurationSeconds
+            )
+        )
+    }
+
+    public func vitalFileGuestPath(
+        hostFilePath: String,
+        hostRootPath: String,
+        guestRootPath: String
+    ) -> String? {
+        let filePath = normalizedAbsolutePath(hostFilePath)
+        let hostRoot = normalizedAbsolutePath(hostRootPath)
+        let guestRoot = normalizedAbsolutePath(guestRootPath)
+        guard !filePath.isEmpty, !hostRoot.isEmpty, !guestRoot.isEmpty else {
+            return nil
+        }
+        guard filePath == hostRoot || filePath.hasPrefix("\(hostRoot)/") else {
+            return nil
+        }
+        let suffix = String(filePath.dropFirst(hostRoot.count))
+        return suffix.isEmpty ? guestRoot : "\(guestRoot)\(suffix)"
     }
 
     public func normalizedRecorderCount(_ count: Int) -> Int {
@@ -242,8 +325,31 @@ public struct RuntimeTestKitPresentationPolicy {
         seconds > 0 ? min(seconds, 86_400) : nil
     }
 
+    public func normalizedVitalFileStartOffsetSeconds(_ seconds: Double) -> Double {
+        min(max(seconds, 0), 86_400)
+    }
+
+    public func normalizedVitalFileDurationSeconds(_ seconds: Double) -> Int {
+        Int(min(max(seconds, 1), 86_400).rounded())
+    }
+
     public func normalizedMaxMessages(_ count: Int) -> Int? {
         count > 0 ? min(count, 1_000_000) : nil
+    }
+
+    public func normalizedAbsolutePath(_ path: String) -> String {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return ""
+        }
+        guard trimmed != "/" else {
+            return trimmed
+        }
+        var output = trimmed
+        while output.count > 1 && output.hasSuffix("/") {
+            output.removeLast()
+        }
+        return output
     }
 
     public func normalizedVrcode(_ vrcode: String) -> String? {

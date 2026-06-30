@@ -13,6 +13,8 @@ from tirosh_vitalserver.testkit.domain.recorder.payloads.wire import (
 from tirosh_vitalserver.testkit.domain.signal import (
     DEFAULT_SIGNAL_PROFILE,
     SignalProfile,
+    SignalQualityProfile,
+    apply_signal_quality,
 )
 from tirosh_vitalserver.testkit.domain.signal.variation import (
     apply_numeric_variation,
@@ -36,6 +38,7 @@ def generate_simulated_recorder_payload(
     frame_seconds: float,
     sequence: int,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
 ) -> JsonObject:
     """Generate a current-time recorder frame from a sample payload schema."""
 
@@ -51,6 +54,7 @@ def generate_simulated_recorder_payload(
             frame_seconds=frame_seconds,
             sequence=sequence,
             signal_profile=signal_profile,
+            signal_quality=signal_quality,
         )
         for key, room in rooms.items()
     }
@@ -74,6 +78,7 @@ def generate_room_frame(
     frame_seconds: float,
     sequence: int,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
 ) -> JsonValue:
     """Generate a current-time frame for one room payload."""
 
@@ -86,6 +91,8 @@ def generate_room_frame(
     generated["dtend"] = now + frame_seconds
     generated["dtserver"] = now + frame_seconds
 
+    if "dtcase" in generated:
+        generated["dtcase"] = now - sequence * frame_seconds
     if "dtapp" in generated:
         generated["dtapp"] = now
 
@@ -97,6 +104,7 @@ def generate_room_frame(
                 now=now,
                 frame_seconds=frame_seconds,
                 signal_profile=signal_profile,
+                signal_quality=signal_quality,
             )
             for track in tracks
         ]
@@ -110,6 +118,7 @@ def generate_track_frame(
     now: float,
     frame_seconds: float,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
 ) -> JsonValue:
     """Generate current records for one track."""
 
@@ -126,6 +135,7 @@ def generate_track_frame(
                 now,
                 frame_seconds,
                 signal_profile=signal_profile,
+                signal_quality=signal_quality,
             )
         ]
     else:
@@ -142,6 +152,7 @@ def generate_wave_record(
     frame_seconds: float,
     *,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
 ) -> JsonObject:
     """Generate one waveform record from a track seed."""
 
@@ -157,6 +168,7 @@ def generate_wave_record(
                 sample_rate=sample_rate,
                 now=now,
                 signal_profile=signal_profile,
+                signal_quality=signal_quality,
             )
         )
 
@@ -171,9 +183,10 @@ def generate_value_record(
 ) -> JsonObject:
     """Generate one numeric or textual record from a track seed."""
 
-    value = profile_value(track, signal_profile=signal_profile)
+    montype = RecorderTrackMontype.parse(track.get("montype"))
+    value = profile_value(track, now=now, signal_profile=signal_profile)
 
-    if isinstance(value, int | float):
+    if isinstance(value, int | float) and numeric_variation_enabled(montype):
         value = apply_numeric_variation(
             float(value),
             now=now,
@@ -214,9 +227,29 @@ def first_record_value(track: JsonObject) -> JsonValue:
     return first_record.get("val", 0)
 
 
+def first_record_dt(track: JsonObject) -> float | None:
+    """Return the first record timestamp when it is explicitly positive."""
+
+    records = track.get("recs")
+
+    if not isinstance(records, list) or not records:
+        return None
+
+    first_record = records[0]
+    if not isinstance(first_record, dict):
+        return None
+
+    value = first_record.get("dt")
+    if isinstance(value, int | float) and value > 0:
+        return float(value)
+
+    return None
+
+
 def profile_value(
     track: JsonObject,
     *,
+    now: float,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
 ) -> JsonValue:
     """Return the numeric value represented by a signal profile and track."""
@@ -240,8 +273,38 @@ def profile_value(
             signal_profile.diastolic_bp_mmhg
             + (signal_profile.systolic_bp_mmhg - signal_profile.diastolic_bp_mmhg) / 3
         )
+    if montype == RecorderTrackMontype.HCT:
+        return hct_profile_value(
+            track,
+            now=now,
+            signal_profile=signal_profile,
+        )
 
     return first_record_value(track)
+
+
+def hct_profile_value(
+    track: JsonObject,
+    *,
+    now: float,
+    signal_profile: SignalProfile,
+) -> float:
+    """Return HCT percent from the profile and explicit track time base."""
+
+    start_dt = first_record_dt(track)
+    elapsed_seconds = 0.0 if start_dt is None else max(0.0, now - start_dt)
+    value = (
+        signal_profile.hct_percent
+        + signal_profile.hct_trend_percent_per_second * elapsed_seconds
+    )
+
+    return round(min(100.0, max(0.0, value)), 2)
+
+
+def numeric_variation_enabled(montype: RecorderTrackMontype | None) -> bool:
+    """Return whether synthetic transport noise should be applied."""
+
+    return montype != RecorderTrackMontype.HCT
 
 
 def wave_value(
@@ -251,6 +314,7 @@ def wave_value(
     sample_rate: float,
     now: float,
     signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
 ) -> float:
     """Generate one simulated waveform sample."""
 
@@ -261,17 +325,30 @@ def wave_value(
     if generator is not None:
         value = generator(sample_time)
 
-        return apply_signal_variation(
+        varied = apply_signal_variation(
             value,
             sample_time=sample_time,
             signal_profile=signal_profile,
+        )
+        return apply_signal_quality(
+            varied,
+            sample_time=sample_time,
+            quality=signal_quality,
+            mindisp=float_value_or_none(track.get("mindisp")),
+            maxdisp=float_value_or_none(track.get("maxdisp")),
         )
 
     base_values = first_record_values(track)
     base = base_values[index % len(base_values)]
     phase = 2 * math.pi * sample_time
 
-    return round(base + math.sin(phase) * 0.01, 4)
+    return apply_signal_quality(
+        round(base + math.sin(phase) * 0.01, 4),
+        sample_time=sample_time,
+        quality=signal_quality,
+        mindisp=float_value_or_none(track.get("mindisp")),
+        maxdisp=float_value_or_none(track.get("maxdisp")),
+    )
 
 
 def waveform_generator(
@@ -312,6 +389,12 @@ def positive_number(value: JsonValue, *, default: float) -> float:
         return float(value)
 
     return default
+
+
+def float_value_or_none(value: JsonValue) -> float | None:
+    """Return a numeric JSON value when present."""
+
+    return float(value) if isinstance(value, int | float) else None
 
 
 def _message_as_json(message: RealtimeRecorderMessagePayload) -> JsonObject:

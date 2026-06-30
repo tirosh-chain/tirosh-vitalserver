@@ -16,6 +16,12 @@ struct RuntimeControlHTTPCommandRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(handler.startRuntimeServices())
         case .stopServices:
             return try await RuntimeControlHTTPResponseFactory.json(handler.stopRuntimeServices())
+        case .startTestKitService:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.startTestKitService())
+        case .stopTestKitService:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.stopTestKitService())
+        case .restartTestKitService:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.restartTestKitService())
         case .repairRuntimeServices:
             return try await RuntimeControlHTTPResponseFactory.json(handler.repairRuntimeServices())
         case .repairProxy:

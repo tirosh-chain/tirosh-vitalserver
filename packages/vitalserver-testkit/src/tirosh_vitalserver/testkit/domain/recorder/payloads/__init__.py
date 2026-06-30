@@ -6,6 +6,9 @@ from tirosh_vitalserver.testkit.domain.recorder.payloads.encoding import (
 from tirosh_vitalserver.testkit.domain.recorder.payloads.realtime import (
     build_realtime_message,
 )
+from tirosh_vitalserver.testkit.domain.recorder.payloads.replay import (
+    replay_recorded_recorder_payload,
+)
 from tirosh_vitalserver.testkit.domain.recorder.payloads.rooms import (
     bed_id_for_room,
     iter_recorder_rooms,
@@ -39,5 +42,6 @@ __all__ = [
     "combine_virtual_recorder_rooms",
     "iter_recorder_rooms",
     "recorder_payload_size_bytes",
+    "replay_recorded_recorder_payload",
     "shift_recorder_payload_time",
 ]

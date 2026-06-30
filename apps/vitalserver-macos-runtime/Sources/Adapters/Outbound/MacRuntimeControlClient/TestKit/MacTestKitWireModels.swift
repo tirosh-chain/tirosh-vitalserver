@@ -12,58 +12,64 @@ struct TestKitBedsResponse: Decodable {
 
 struct TestKitStartSessionRequest: Encodable {
     let targetURL: String
-    let recorders: Int
+    let recorderCount: Int
+    let bedroomName: String
     let bedRoomNames: [String]
+    let window: RuntimeTestKitScenarioWindow?
+    let output: RuntimeTestKitSessionOutput
     let vrcode: String?
     let version: String
     let intervalSeconds: Double
-    let durationSeconds: Double?
     let maxMessages: Int?
     let shiftTime: Bool
     let generateFrames: Bool
     let scenario: String
-    let defaultScenario: String
-    let exportVital: Bool
-    let uploadVital: Bool
-    let vitalUploadEndpoint: String
+    let signalQuality: String
+    let recorderCondition: String
+    let source: RuntimeTestKitRecorderSource?
+    let realSampleKey: String?
 
     init(
         runtimeRequest: RuntimeTestKitVirtualRecorderStartRequest,
         targetURL: String
     ) {
         self.targetURL = targetURL
-        recorders = runtimeRequest.recorders
+        recorderCount = runtimeRequest.recorders
+        bedroomName = runtimeRequest.bedroomName
         bedRoomNames = runtimeRequest.bedRoomNames
+        window = runtimeRequest.window
+        output = runtimeRequest.output
         vrcode = runtimeRequest.vrcode
         version = runtimeRequest.version
         intervalSeconds = runtimeRequest.intervalSeconds
-        durationSeconds = runtimeRequest.durationSeconds
         maxMessages = runtimeRequest.maxMessages
         shiftTime = runtimeRequest.shiftTime
         generateFrames = runtimeRequest.generateFrames
         scenario = runtimeRequest.scenario.rawValue
-        defaultScenario = runtimeRequest.signalProfile.rawValue
-        exportVital = runtimeRequest.exportVital
-        uploadVital = runtimeRequest.uploadVital
-        vitalUploadEndpoint = runtimeRequest.vitalUploadEndpoint
+        signalQuality = runtimeRequest.signalQuality.rawValue
+        recorderCondition = runtimeRequest.recorderCondition.rawValue
+        source = runtimeRequest.source
+        realSampleKey = runtimeRequest.realSampleKey
     }
 
     enum CodingKeys: String, CodingKey {
         case targetURL = "targetUrl"
-        case recorders
+        case recorderCount
+        case bedroomName
         case bedRoomNames
+        case window
+        case output
         case vrcode
         case version
         case intervalSeconds
-        case durationSeconds
         case maxMessages
         case shiftTime
         case generateFrames
         case scenario
-        case defaultScenario
-        case exportVital
-        case uploadVital
-        case vitalUploadEndpoint
+        case signalQuality
+        case recorderCondition
+        case source
+        case realSampleKey
     }
 }
 
@@ -88,5 +94,5 @@ struct TestKitDeleteBedsRequest: Encodable {
 }
 
 struct TestKitRestartSessionRequest: Encodable {
-    let bedRoomNames: [String]
+    let bedroomName: String?
 }

@@ -19,11 +19,11 @@ public struct RuntimeTestKitDeleteRequest: Codable, Equatable, Sendable {
 
 public struct RuntimeTestKitRestartRequest: Codable, Equatable, Sendable {
     public let sessionID: String
-    public let bedRoomNames: [String]
+    public let bedroomName: String?
 
-    public init(sessionID: String, bedRoomNames: [String]) {
+    public init(sessionID: String, bedroomName: String?) {
         self.sessionID = sessionID
-        self.bedRoomNames = bedRoomNames
+        self.bedroomName = bedroomName
     }
 }
 

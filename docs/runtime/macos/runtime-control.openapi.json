@@ -427,6 +427,60 @@
         }
       }
     },
+    "/runtime/services/testkit/start": {
+      "post": {
+        "operationId": "startTestKitService",
+        "summary": "Start optional TestKit container",
+        "description": "Starts only the optional TestKit container through the guest compose reconciler.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/services/testkit/stop": {
+      "post": {
+        "operationId": "stopTestKitService",
+        "summary": "Stop optional TestKit container",
+        "description": "Stops only the optional TestKit container through the guest compose reconciler.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/services/testkit/restart": {
+      "post": {
+        "operationId": "restartTestKitService",
+        "summary": "Restart optional TestKit container",
+        "description": "Restarts only the optional TestKit container through the guest compose reconciler.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localCommand",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/CommandResult"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/services/repair-runtime": {
       "post": {
         "operationId": "repairRuntimeServices",
@@ -5480,6 +5534,46 @@
           }
         }
       },
+      "RuntimeTestKitRecorderSource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "path",
+          "scenario",
+          "startOffsetSeconds",
+          "durationSeconds"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "vitalFile"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "scenario": {
+            "type": "string",
+            "enum": [
+              "basic_monitor",
+              "periop_full",
+              "bloodbag",
+              "root_sedation",
+              "full_real"
+            ]
+          },
+          "startOffsetSeconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
       "RuntimeTestKitVirtualRecorderStartRequest": {
         "type": "object",
         "additionalProperties": false,
@@ -5569,6 +5663,22 @@
           },
           "vitalUploadEndpoint": {
             "type": "string"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeTestKitRecorderSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "realSampleKey": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -5687,6 +5797,22 @@
           },
           "generateFrames": {
             "type": "boolean"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeTestKitRecorderSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "realSampleKey": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "scenario": {
             "type": [

@@ -163,6 +163,15 @@ def build_simulated_room_payload(
                 unit="mmHg",
                 value=83,
             ),
+            make_value_track(
+                track_id=2010,
+                name="HCT",
+                montype=RecorderTrackMontype.HCT,
+                unit="%",
+                value=35.0,
+                now=started_at,
+                device_name="Lab",
+            ),
         ],
         "evts": [],
         "filts": [],
@@ -207,6 +216,7 @@ def make_value_track(
     montype: RecorderTrackMontype,
     unit: str,
     value: int | float,
+    now: float = 0.0,
     device_name: str = "Demo",
 ) -> RecorderTrackPayload:
     """Create a simulated numeric track with one seed record."""
@@ -218,7 +228,7 @@ def make_value_track(
         "dname": device_name,
         "montype": montype.value,
         "unit": unit,
-        "recs": [make_record(dt=0.0, value=value)],
+        "recs": [make_record(dt=now, value=value)],
     }
 
 

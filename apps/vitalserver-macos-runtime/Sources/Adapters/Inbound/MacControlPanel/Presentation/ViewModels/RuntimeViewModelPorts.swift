@@ -37,7 +37,7 @@ public protocol RuntimeNativeShell {
     func chooseDirectory(prompt: String) -> URL?
     func chooseUpdateBundle(prompt: String) -> URL?
     func chooseRedisBackupArchive(prompt: String) -> URL?
-    func chooseVitalFiles(prompt: String) -> [URL]
+    func chooseVitalFiles(prompt: String, directoryURL: URL?) -> [URL]
     func chooseLogExportDestination(defaultName: String, prompt: String) -> URL?
     func logExportDestinationValidationMessage(for url: URL) -> String?
     func pathState(_ url: URL) -> RuntimePathState
@@ -57,7 +57,7 @@ public struct NoopRuntimeNativeShell: RuntimeNativeShell {
     public func chooseDirectory(prompt: String) -> URL? { nil }
     public func chooseUpdateBundle(prompt: String) -> URL? { nil }
     public func chooseRedisBackupArchive(prompt: String) -> URL? { nil }
-    public func chooseVitalFiles(prompt: String) -> [URL] { [] }
+    public func chooseVitalFiles(prompt: String, directoryURL: URL?) -> [URL] { [] }
     public func chooseLogExportDestination(defaultName: String, prompt: String) -> URL? { nil }
     public func logExportDestinationValidationMessage(for url: URL) -> String? { nil }
     public func pathState(_ url: URL) -> RuntimePathState { .inspectFailed("native shell is not configured") }

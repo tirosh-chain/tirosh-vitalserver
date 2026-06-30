@@ -178,6 +178,12 @@ struct RuntimeLifecycle {
             try startServices()
         case .stopServices:
             try stopServices()
+        case .startTestKit:
+            try controlTestKitContainer(composeAction: .testkitUp)
+        case .stopTestKit:
+            try controlTestKitContainer(composeAction: .testkitStop)
+        case .restartTestKit:
+            try controlTestKitContainer(composeAction: .testkitRestart)
         case .uninstall(let command):
             try uninstall(command)
         case .help:

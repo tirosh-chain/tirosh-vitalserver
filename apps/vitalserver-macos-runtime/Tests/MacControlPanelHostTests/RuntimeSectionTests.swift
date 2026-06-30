@@ -194,6 +194,15 @@ private final class HostFakeRuntimeControlClient: RuntimeControlClient, RuntimeH
     func stopRuntimeServices() async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
+    func startTestKitService() async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+    func stopTestKitService() async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
+    func restartTestKitService() async throws -> RuntimeCommandResult {
+        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
+    }
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo {
         RuntimeReleaseInfo(helperVersion: "helper", minimumUpdaterVersion: "1", vitalServerVersion: "runtime", services: [])
     }

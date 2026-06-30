@@ -287,7 +287,7 @@ final class MacTestKitControllerTests: XCTestCase {
         let pausedSession = try await controller.pauseVirtualRecorders(sessionID: "session-1")
         let resumedSession = try await controller.resumeVirtualRecorders(sessionID: "session-1")
         let stoppedSession = try await controller.stopVirtualRecorders(sessionID: "session-1")
-        let restartedSession = try await controller.restartVirtualRecorders(sessionID: "session-1", bedRoomNames: ["OR-2"])
+        let restartedSession = try await controller.restartVirtualRecorders(sessionID: "session-1", bedroomName: "OR-2")
         let deletedSession = try await controller.deleteVirtualRecorders(sessionID: "session-2")
         let recorderDeletion = try await controller.deleteVirtualRecorder(vrcode: "VR_ORPHAN")
         let resetStatus = try await controller.resetVirtualRecorders()
@@ -308,9 +308,16 @@ final class MacTestKitControllerTests: XCTestCase {
             $0.method == "POST" && $0.path == "/sessions"
         })
         let startBody = try JSONSerialization.jsonObject(with: startRequest.body) as? [String: Any]
-        XCTAssertEqual(startBody?["exportVital"] as? Bool, true)
-        XCTAssertEqual(startBody?["uploadVital"] as? Bool, true)
-        XCTAssertEqual(startBody?["vitalUploadEndpoint"] as? String, "/upload")
+        let output = startBody?["output"] as? [String: Any]
+        XCTAssertEqual(output?["exportVital"] as? Bool, true)
+        XCTAssertEqual(output?["uploadVital"] as? Bool, true)
+        XCTAssertEqual(output?["vitalUploadEndpoint"] as? String, "/upload")
+        XCTAssertEqual(startBody?["bedRoomNames"] as? [String], ["OR-1"])
+        XCTAssertEqual(startRequest.timeoutInterval, 60)
+        let restartRequest = try XCTUnwrap(TestKitURLProtocol.requests.first {
+            $0.method == "POST" && $0.path == "/sessions/session-1/restart"
+        })
+        XCTAssertEqual(restartRequest.timeoutInterval, 60)
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "DELETE" && $0.path == "/beds" })
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "POST" && $0.path == "/recorders/delete" })
     }
@@ -359,6 +366,11 @@ final class MacTestKitControllerTests: XCTestCase {
             "POST /upload",
             "POST /upload",
         ])
+        XCTAssertEqual(client.requests.first { $0.method == "POST" && $0.path == "/beds" }?.timeoutInterval, 5)
+        XCTAssertEqual(
+            client.requests.filter { $0.method == "POST" && $0.path == "/upload" }.map(\.timeoutInterval),
+            [60, 60]
+        )
     }
 
     func testMutationReportsInvalidAPIEndpointAsTypedError() async throws {
@@ -486,20 +498,22 @@ final class MacTestKitControllerTests: XCTestCase {
 
     private func startRequest() -> RuntimeTestKitVirtualRecorderStartRequest {
         RuntimeTestKitVirtualRecorderStartRequest(
-            scenario: .normal,
-            signalProfile: .normal,
+            scenario: .normalMonitoring,
             recorders: 1,
+            bedroomName: "OR-1",
             bedRoomNames: ["OR-1"],
+            window: nil,
+            output: RuntimeTestKitSessionOutput(
+                exportVital: true,
+                uploadVital: true,
+                vitalUploadEndpoint: "/upload"
+            ),
             vrcode: "VR_TEST",
             version: "testkit",
             intervalSeconds: 1,
-            durationSeconds: nil,
             maxMessages: nil,
             shiftTime: true,
-            generateFrames: true,
-            exportVital: true,
-            uploadVital: true,
-            vitalUploadEndpoint: "/upload"
+            generateFrames: true
         )
     }
 
@@ -512,6 +526,7 @@ private struct TestKitRequestRecord {
     let method: String
     let path: String
     let body: Data
+    let timeoutInterval: TimeInterval
 }
 
 private struct TestKitSessionsPayload: Encodable {
@@ -556,7 +571,12 @@ private final class FakeMacTestKitHTTPClient: MacTestKitHTTPClient, @unchecked S
         let key = "\(method) \(path)"
         let response = lock.withLock { handlers[key] } ?? Response(statusCode: 404, data: Data("missing mock".utf8))
         lock.withLock {
-            protectedRequests.append(TestKitRequestRecord(method: method, path: path, body: body ?? requestBodyData(request)))
+            protectedRequests.append(TestKitRequestRecord(
+                method: method,
+                path: path,
+                body: body ?? requestBodyData(request),
+                timeoutInterval: request.timeoutInterval
+            ))
         }
         let httpResponse = HTTPURLResponse(
             url: request.url!,
@@ -619,7 +639,12 @@ private final class TestKitURLProtocol: URLProtocol {
         let key = "\(method) \(path)"
         let handler = Self.lock.withLock { Self.handlers[key] }
         Self.lock.withLock {
-            Self.protectedRequests.append(TestKitRequestRecord(method: method, path: path, body: body))
+            Self.protectedRequests.append(TestKitRequestRecord(
+                method: method,
+                path: path,
+                body: body,
+                timeoutInterval: request.timeoutInterval
+            ))
         }
 
         do {
@@ -673,6 +698,7 @@ private func testKitSession(
         targetURL: "http://edge/",
         recordersRequested: bedRoomNames.count,
         bedsRequested: bedRoomNames.count,
+        bedroomName: bedRoomNames.first ?? "TestBedroom",
         bedRoomNames: bedRoomNames,
         vrcode: "VR_TEST",
         version: "testkit",
@@ -681,8 +707,7 @@ private func testKitSession(
         maxMessages: nil,
         shiftTime: true,
         generateFrames: true,
-        scenario: RuntimeTestKitScenario.normal.rawValue,
-        defaultScenario: RuntimeTestKitSignalProfile.normal.rawValue,
+        scenario: RuntimeTestKitScenario.normalMonitoring.rawValue,
         createdAt: 1,
         startedAt: 1,
         stoppedAt: nil,

@@ -4,6 +4,7 @@ The testkit keeps external validation here and converts validated data into
 plain internal objects before handing it to use cases.
 """
 
+import gzip
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -26,7 +27,12 @@ class RecorderPayloadDocument(ExternalSchema):
 
     @classmethod
     def from_json_file(cls, path: str | Path) -> Self:
-        return cls.from_external(json.loads(Path(path).read_text()))
+        payload_path = Path(path)
+        data = payload_path.read_bytes()
+        if payload_path.suffix == ".gz":
+            data = gzip.decompress(data)
+
+        return cls.from_external(json.loads(data))
 
     @field_validator("payload", mode="before")
     @classmethod

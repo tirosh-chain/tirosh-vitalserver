@@ -44,7 +44,7 @@ class VitalSessionMetadata:
     bed_room_names: tuple[str, ...]
     started_at: float | None
     stopped_at: float | None
-    default_scenario: str
+    scenario: str
     channels: tuple[str, ...]
     playback_events: tuple[tuple[str, float], ...]
 
@@ -58,7 +58,7 @@ class VitalSessionMetadata:
                 "bedRoomNames": self.bed_room_names,
                 "startedAt": self.started_at,
                 "stoppedAt": self.stopped_at,
-                "defaultScenario": self.default_scenario,
+                "scenario": self.scenario,
                 "channels": self.channels,
                 "playbackEvents": tuple(
                     {"type": event_type, "at": at}
@@ -330,4 +330,5 @@ VITALSERVER_MONITOR_TYPE_IDS = {
     RecorderTrackMontype.CO2_WAVE: 13,
     RecorderTrackMontype.CO2_RESPIRATORY_RATE: 14,
     RecorderTrackMontype.CO2_CONCENTRATION: 15,
+    RecorderTrackMontype.HCT: 0,
 }

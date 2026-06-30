@@ -12,7 +12,6 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderSessionSnapshot,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.store import (
-    LEGACY_SESSION_STORE_SCHEMA_VERSION,
     SESSION_STORE_SCHEMA_VERSION,
     session_snapshot_from_record,
     session_snapshot_to_record,
@@ -144,10 +143,10 @@ def session_store_schema_version(payload: dict[str, Any]) -> int:
 
     value = payload.get("schema_version")
     if value is None:
-        return LEGACY_SESSION_STORE_SCHEMA_VERSION
+        raise ValueError("session store schema_version is required")
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError("session store schema_version must be an integer")
-    if value < LEGACY_SESSION_STORE_SCHEMA_VERSION:
+    if value < SESSION_STORE_SCHEMA_VERSION:
         raise ValueError("session store schema_version is unsupported")
     if value > SESSION_STORE_SCHEMA_VERSION:
         raise ValueError("session store schema_version is newer than supported")

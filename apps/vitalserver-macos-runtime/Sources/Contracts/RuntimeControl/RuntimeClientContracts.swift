@@ -39,6 +39,9 @@ public protocol RuntimeControlClient {
     func createRedisBackup() async throws -> RuntimeCommandResult
     func startRuntimeServices() async throws -> RuntimeCommandResult
     func stopRuntimeServices() async throws -> RuntimeCommandResult
+    func startTestKitService() async throws -> RuntimeCommandResult
+    func stopTestKitService() async throws -> RuntimeCommandResult
+    func restartTestKitService() async throws -> RuntimeCommandResult
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
     func loadInstallInfo() -> RuntimeInstallInfo
 }

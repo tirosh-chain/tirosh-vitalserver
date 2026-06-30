@@ -152,7 +152,7 @@ private final class FakeNavigationNativeShell: RuntimeNativeShell {
         nil
     }
 
-    func chooseVitalFiles(prompt: String) -> [URL] {
+    func chooseVitalFiles(prompt: String, directoryURL: URL?) -> [URL] {
         []
     }
 

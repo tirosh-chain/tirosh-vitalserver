@@ -23,6 +23,9 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case installInfo
     case startServices
     case stopServices
+    case startTestKitService
+    case stopTestKitService
+    case restartTestKitService
     case repairRuntimeServices
     case repairProxy
     case repairDatastore

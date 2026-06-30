@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    RecorderSessionOutput,
     VirtualRecorderSessionRequest,
     VirtualRecorderSessionState,
     VirtualRecorderSessionVitalState,
@@ -48,9 +49,11 @@ def test_vital_policy_blocks_export_and_upload_after_stream_error() -> None:
     vital_state = VirtualRecorderSessionVitalState.for_request(
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
-            bed_room_names=("OR-A",),
-            export_vital=True,
-            upload_vital=True,
+            bedroom_name="OR-A",
+            output=RecorderSessionOutput(
+                export_vital=True,
+                upload_vital=True,
+            ),
         )
     )
 
@@ -65,7 +68,7 @@ def test_vital_policy_preserves_not_requested_export_after_stream_error() -> Non
     vital_state = VirtualRecorderSessionVitalState.for_request(
         VirtualRecorderSessionRequest(
             target_url="http://example.test",
-            bed_room_names=("OR-A",),
+            bedroom_name="OR-A",
         )
     )
 

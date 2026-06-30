@@ -14,6 +14,7 @@ from tirosh_guest_tools.domain.operations import (
 from tirosh_guest_tools.infrastructure.common import (
     RUNTIME_DIR,
     mount_runtime_share,
+    read_json,
     request_id_from,
     systemctl,
     utc_now,
@@ -35,6 +36,7 @@ def run_reconcile_compose() -> None:
         return
     try:
         request_id = request_id_from(REQUEST_FILE)
+        action = compose_action_from_request(REQUEST_FILE)
     except Exception:
         write_result("", OperationStatus.FAILED, "Compose reconcile request metadata is invalid.")
         REQUEST_FILE.unlink(missing_ok=True)
@@ -43,7 +45,7 @@ def run_reconcile_compose() -> None:
     write_result(request_id, OperationStatus.RUNNING, "Guest compose reconcile started.")
     REQUEST_FILE.unlink(missing_ok=True)
     try:
-        run_compose_action(ComposeAction.UP)
+        run_compose_action(action)
         systemctl("restart", RuntimeService.CONTAINER_LOGS.value, check=False)
         systemctl("restart", RuntimeService.RUNTIME_STATE.value, check=False)
         write_current_state()
@@ -67,6 +69,12 @@ def run_reconcile_compose() -> None:
         "guest compose reconcile completed",
         extra={"fields": {"requestId": request_id}},
     )
+
+
+def compose_action_from_request(path: object) -> ComposeAction:
+    document = read_json(path)
+    action = document.get("composeAction", ComposeAction.UP.value)
+    return ComposeAction(action)
 
 
 def write_result(request_id: str, status: OperationStatus, message: str) -> None:

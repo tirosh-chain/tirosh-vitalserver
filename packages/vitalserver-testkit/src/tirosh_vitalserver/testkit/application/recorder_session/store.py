@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any, Protocol
 
 from tirosh_vitalserver.testkit.application.recorder_runtime import (
@@ -10,9 +11,14 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
     RecorderRuntimeSnapshot,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    RecorderCondition,
+    RecorderScenarioWindow,
+    RecorderSessionOutput,
+    RecorderSource,
+    RecorderSourceType,
+    RecorderTestScenario,
     VirtualRecorderCleanupError,
     VirtualRecorderSessionRequest,
-    VirtualRecorderSessionScenario,
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
     VirtualRecorderSessionVitalState,
@@ -21,10 +27,12 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderVitalUploadResult,
     VirtualRecorderVitalUploadStatus,
 )
-from tirosh_vitalserver.testkit.domain.signal import RecorderSignalScenario
+from tirosh_vitalserver.testkit.application.usecases.recorder.real_vital_sample import (
+    RealVitalSampleScenario,
+)
+from tirosh_vitalserver.testkit.domain.signal import SignalQualityProfile
 
-SESSION_STORE_SCHEMA_VERSION = 2
-LEGACY_SESSION_STORE_SCHEMA_VERSION = 1
+SESSION_STORE_SCHEMA_VERSION = 4
 
 
 class VirtualRecorderSessionStorePort(Protocol):
@@ -47,7 +55,7 @@ def session_snapshot_to_record(
     data = asdict(snapshot)
     data["state"] = snapshot.state.value
     data["request"]["scenario"] = snapshot.request.scenario.value
-    data["request"]["default_scenario"] = snapshot.request.default_scenario.value
+    data["request"]["source"] = recorder_source_to_record(snapshot.request.source)
     data["vital_state"]["export_status"] = snapshot.vital_state.export_status.value
     data["vital_state"]["upload_status"] = snapshot.vital_state.upload_status.value
     data["recorders"] = [
@@ -66,18 +74,25 @@ def session_snapshot_from_record(
     """Convert a persistent JSON record into a session snapshot."""
 
     request_data = dict(data["request"])
-    request_data["scenario"] = VirtualRecorderSessionScenario(
-        str(request_data["scenario"])
-    )
-    request_data["default_scenario"] = RecorderSignalScenario(
-        str(request_data["default_scenario"])
-    )
+    request_data["scenario"] = RecorderTestScenario(str(request_data["scenario"]))
+    if "signal_quality" in request_data:
+        request_data["signal_quality"] = SignalQualityProfile(
+            str(request_data["signal_quality"])
+        )
+    if "recorder_condition" in request_data:
+        request_data["recorder_condition"] = RecorderCondition(
+            str(request_data["recorder_condition"])
+        )
+    if request_data.get("window") is not None:
+        request_data["window"] = RecorderScenarioWindow(**request_data["window"])
+    if request_data.get("output") is not None:
+        request_data["output"] = RecorderSessionOutput(**request_data["output"])
+    if request_data.get("source") is not None:
+        request_data["source"] = recorder_source_from_record(request_data["source"])
 
     request = VirtualRecorderSessionRequest(**request_data)
     if "vital_state" in data:
         vital_state = vital_state_from_record(data["vital_state"])
-    elif schema_version == LEGACY_SESSION_STORE_SCHEMA_VERSION:
-        vital_state = VirtualRecorderSessionVitalState.for_request(request)
     else:
         raise KeyError("vital_state")
 
@@ -105,6 +120,37 @@ def session_snapshot_from_record(
         ),
         vital_state=vital_state,
     )
+
+
+def recorder_source_to_record(source: RecorderSource | None) -> dict[str, Any] | None:
+    """Convert an explicit recorder source to a persisted JSON record."""
+
+    if source is None:
+        return None
+    if source.source_type == RecorderSourceType.VITAL_FILE:
+        return {
+            "type": source.source_type.value,
+            "path": None if source.path is None else str(source.path),
+            "scenario": None if source.scenario is None else source.scenario.value,
+            "start_offset_seconds": source.start_offset_seconds,
+            "duration_seconds": source.duration_seconds,
+        }
+    raise ValueError(f"unsupported recorder source type: {source.source_type}")
+
+
+def recorder_source_from_record(data: dict[str, Any]) -> RecorderSource:
+    """Convert a persisted recorder source record into the application contract."""
+
+    source_type = RecorderSourceType(str(data["type"]))
+    if source_type == RecorderSourceType.VITAL_FILE:
+        return RecorderSource(
+            source_type=source_type,
+            path=Path(str(data["path"])),
+            scenario=RealVitalSampleScenario(str(data["scenario"])),
+            start_offset_seconds=float(data["start_offset_seconds"]),
+            duration_seconds=int(data["duration_seconds"]),
+        )
+    raise ValueError(f"unsupported recorder source type: {source_type}")
 
 
 def vital_state_from_record(data: dict[str, Any]) -> VirtualRecorderSessionVitalState:

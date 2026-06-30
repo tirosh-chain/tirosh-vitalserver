@@ -105,6 +105,8 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-094 | Watchdog이 VitalDB observation 누락 때문에 Compose recovery를 막음 | Runtime health / Watchdog recovery / Guest containers | active | [Watchdog VitalDB Observation Blocks Compose Recovery](094_watchdog-vitaldb-observation-blocks-compose-recovery.md) |
 | TS-095 | Guest Compose 실패의 inner stderr가 공유 진단에 남지 않음 | Guest bootstrap / Runtime health / Diagnostics | active | [Guest Compose Failure Missing Diagnostics](095_guest-compose-failure-missing-diagnostics.md) |
 | TS-096 | Helper Settings가 invalid slider value/range로 SIGTRAP 종료됨 | Runtime health / macOS Helper UI | active | [Helper Settings Slider Crash](096_helper-settings-slider-crash.md) |
+| TS-097 | Recorder ingress 재시작 후 VRecorder가 재접속하지 않는 것처럼 보임 | Runtime health / Recorder streaming / Proxy | implemented | [Recorder reconnect after ingress restart](097_recorder-reconnect-after-ingress-restart.md) |
+| TS-098 | TestKit 전송은 되지만 Operation에 timeout이 남음 | TestKit / macOS Helper UI | active | [TestKit operation timeout after session start](098_testkit-operation-timeout-after-session-start.md) |
 
 ## Follow-up 규칙
 

@@ -44,6 +44,54 @@ def test_container_bind_source_directories_cover_compose_runtime_binds() -> None
     assert runtime_bind_sources == prepared_sources
 
 
+def test_testkit_container_can_read_mounted_vital_files() -> None:
+    compose_path = (
+        Path(__file__).resolve().parents[3]
+        / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    )
+    document = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    services = document.get("services")
+    assert isinstance(services, dict)
+
+    expected_source = "${VITALSERVER_VITAL_FILES_DIR:-/mnt/tirosh-vital-files}"
+    app_bind = bind_volume(
+        services,
+        service="app",
+        target="/opt/vitalserver/vital_files",
+    )
+    testkit_bind = bind_volume(
+        services,
+        service="testkit",
+        target="/mnt/tirosh-vital-files",
+    )
+
+    assert app_bind["source"] == expected_source
+    assert testkit_bind["source"] == expected_source
+    assert testkit_bind["read_only"] is True
+
+
+def bind_volume(
+    services: dict[str, Any],
+    *,
+    service: str,
+    target: str,
+) -> dict[str, Any]:
+    service_document = services.get(service)
+    assert isinstance(service_document, dict)
+    volumes = service_document.get("volumes")
+    assert isinstance(volumes, list)
+    matches = [
+        volume
+        for volume in volumes
+        if isinstance(volume, dict)
+        and volume.get("type") == "bind"
+        and volume.get("target") == target
+    ]
+    assert len(matches) == 1
+    return matches[0]
+
+
 def test_checked_compose_preserves_command_output_and_diagnostics(
     monkeypatch: Any,
 ) -> None:
@@ -769,6 +817,68 @@ def test_compose_services_reports_empty_stdout(monkeypatch: Any) -> None:
 
     assert error.value.code == "guest-compose-services-output-empty"
     assert "docker compose config --services produced empty stdout" in str(error.value)
+
+
+def test_testkit_stop_compose_action_stops_only_testkit(monkeypatch: Any) -> None:
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(compose, "mount_runtime_share", lambda: None)
+    monkeypatch.setattr(compose, "mount_vital_files_share", lambda: None)
+    monkeypatch.setattr(compose, "load_runtime_env", lambda: object())
+    monkeypatch.setattr(
+        compose,
+        "compose",
+        lambda arguments, **kwargs: calls.append(arguments),
+    )
+    monkeypatch.setattr(
+        compose,
+        "run",
+        lambda arguments, **kwargs: calls.append(arguments),
+    )
+
+    compose.run_compose_action(ComposeAction.TESTKIT_STOP)
+
+    assert calls == [
+        ["stop", "--timeout", "30", ComposeService.TESTKIT.value],
+        ["sync"],
+    ]
+
+
+def test_testkit_restart_compose_action_recreates_only_testkit(
+    monkeypatch: Any,
+) -> None:
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(compose, "mount_runtime_share", lambda: None)
+    monkeypatch.setattr(compose, "mount_vital_files_share", lambda: None)
+    monkeypatch.setattr(
+        compose,
+        "prepare_container_bind_source_directories",
+        lambda: None,
+    )
+    monkeypatch.setattr(compose, "load_optional_docker_images", lambda: None)
+    monkeypatch.setattr(
+        compose,
+        "load_runtime_env",
+        lambda: type("RuntimeConfigStub", (), {"testkit_enabled": True})(),
+    )
+    monkeypatch.setattr(
+        compose,
+        "checked_compose",
+        lambda arguments, **kwargs: calls.append(arguments),
+    )
+    monkeypatch.setattr(
+        compose,
+        "compose",
+        lambda arguments, **kwargs: calls.append(arguments),
+    )
+
+    compose.run_compose_action(ComposeAction.TESTKIT_RESTART)
+
+    assert calls == [
+        ["stop", "--timeout", "30", ComposeService.TESTKIT.value],
+        ["up", "-d", ComposeService.TESTKIT.value],
+    ]
 
 
 def test_stop_compose_action_reports_timeout_as_dependency_failure(

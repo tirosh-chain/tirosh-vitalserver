@@ -9,10 +9,15 @@ from tirosh_vitalserver.testkit.application.recorder_session.manager import (
     VirtualRecorderSessionManager,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    RecorderCondition,
+    RecorderScenarioWindow,
+    RecorderSessionOutput,
+    RecorderSource,
+    RecorderSourceType,
+    RecorderTestScenario,
     VirtualRecorderCleanupError,
     VirtualRecorderDeletionResult,
     VirtualRecorderSessionRequest,
-    VirtualRecorderSessionScenario,
     VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
     VirtualRecorderSessionVitalState,
@@ -21,11 +26,24 @@ from tirosh_vitalserver.testkit.application.recorder_session.models import (
     VirtualRecorderVitalUploadResult,
     VirtualRecorderVitalUploadStatus,
 )
+from tirosh_vitalserver.testkit.application.recorder_session.real_samples import (
+    PackagedRecordedFrameSourceProvider,
+    load_packaged_real_sample_manifest,
+    load_packaged_real_sample_payload,
+    packaged_real_sample_catalog_document,
+)
 from tirosh_vitalserver.testkit.application.recorder_session.recording import (
     SessionPlaybackEvent,
     SessionPlaybackEventType,
     SessionRecorderPlayback,
     SessionVitalPlayback,
+)
+from tirosh_vitalserver.testkit.application.recorder_session.scenarios import (
+    RecorderScenarioDefinition,
+    RecorderScenarioProvider,
+    default_scenario_catalog,
+    require_scenario_definition,
+    scenario_definition_to_document,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.session import (
     VirtualRecorderSession,
@@ -35,6 +53,15 @@ from tirosh_vitalserver.testkit.application.recorder_session.store import (
 )
 
 __all__ = [
+    "PackagedRecordedFrameSourceProvider",
+    "RecorderCondition",
+    "RecorderScenarioDefinition",
+    "RecorderScenarioProvider",
+    "RecorderScenarioWindow",
+    "RecorderSessionOutput",
+    "RecorderSource",
+    "RecorderSourceType",
+    "RecorderTestScenario",
     "SessionPlaybackEvent",
     "SessionPlaybackEventType",
     "SessionRecorderPlayback",
@@ -44,7 +71,6 @@ __all__ = [
     "VirtualRecorderSession",
     "VirtualRecorderSessionManager",
     "VirtualRecorderSessionRequest",
-    "VirtualRecorderSessionScenario",
     "VirtualRecorderSessionSnapshot",
     "VirtualRecorderSessionState",
     "VirtualRecorderSessionStorePort",
@@ -53,7 +79,13 @@ __all__ = [
     "VirtualRecorderVitalExportStatus",
     "VirtualRecorderVitalUploadResult",
     "VirtualRecorderVitalUploadStatus",
+    "default_scenario_catalog",
     "deletion_result_to_document",
+    "load_packaged_real_sample_manifest",
+    "load_packaged_real_sample_payload",
+    "packaged_real_sample_catalog_document",
     "recorder_snapshot_to_document",
+    "require_scenario_definition",
+    "scenario_definition_to_document",
     "session_snapshot_to_document",
 ]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from tirosh_vitalserver.testkit.cli import main
@@ -21,7 +23,45 @@ def test_cli_subcommand_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert exc_info.value.code == 0
     assert "sample_data.json" not in captured.out
     assert "payload" in captured.out
+    assert "--dataset-manifest" in captured.out
+    assert "--vital-file" in captured.out
     assert "Socket.IO" in captured.out
+
+
+def test_cli_list_recorder_dataset_prints_recommended_sets(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        """
+        {
+          "schemaVersion": 1,
+          "dataset": "mo-real-vital-recorder-json-120s",
+          "recommendedSets": {
+            "baseline": {
+              "source": "source.vital",
+              "payload": "payload.json",
+              "payloadTrackCount": 50,
+              "recordCount": 5000,
+              "sampleCount": 79000,
+              "devices": ["Bx50", "Primus"],
+              "tags": ["high_track_count"]
+            }
+          },
+          "payloads": []
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    exit_code = main(["list-recorder-dataset", str(manifest)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "dataset: mo-real-vital-recorder-json-120s" in captured.out
+    assert "key=baseline" in captured.out
+    assert "tracks=50" in captured.out
 
 
 def test_cli_serve_help(capsys: pytest.CaptureFixture[str]) -> None:

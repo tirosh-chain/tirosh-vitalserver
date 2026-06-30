@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 
-from tirosh_vitalserver.testkit.domain.bed import require_bed_capacity_for_recorders
+from tirosh_vitalserver.testkit.domain.bed import (
+    normalize_bed_room_names,
+    require_bed_capacity_for_recorders,
+)
 from tirosh_vitalserver.testkit.domain.recorder.models import VirtualRecorderPayload
 from tirosh_vitalserver.testkit.domain.recorder.payloads.realtime import infer_vrcode
 from tirosh_vitalserver.testkit.domain.recorder.payloads.rooms import (
@@ -21,6 +24,7 @@ def build_virtual_recorder_payloads(
     count: int,
     vrcode: str | None = None,
     version: str = "testkit",
+    bed_room_names: tuple[str, ...] = (),
 ) -> tuple[VirtualRecorderPayload, ...]:
     """Create VRecorder payloads connected to existing bed rooms."""
 
@@ -28,7 +32,15 @@ def build_virtual_recorder_payloads(
         raise RecorderCountInvalidError()
 
     rooms = payload_rooms(payload)
-    room_groups = split_rooms_for_recorders(rooms, count=count)
+    room_groups = (
+        project_rooms_to_bed_room_names(rooms, bed_room_names=bed_room_names)
+        if bed_room_names
+        else split_rooms_for_recorders(rooms, count=count)
+    )
+    require_bed_capacity_for_recorders(
+        bed_count=len(room_groups),
+        recorder_count=count,
+    )
     base_vrcode = vrcode or payload_vrcode(payload) or infer_vrcode(rooms)
     virtual_payloads: list[VirtualRecorderPayload] = []
 
@@ -47,6 +59,30 @@ def build_virtual_recorder_payloads(
         )
 
     return tuple(virtual_payloads)
+
+
+def project_rooms_to_bed_room_names(
+    rooms: Mapping[str, JsonValue],
+    *,
+    bed_room_names: tuple[str, ...],
+) -> tuple[JsonObject, ...]:
+    """Return one source room per explicit target bed room name."""
+
+    source_rooms = tuple(rooms.values())
+    if not source_rooms:
+        require_bed_capacity_for_recorders(bed_count=0, recorder_count=1)
+
+    resolved_room_names = normalize_bed_room_names(bed_room_names)
+    projected: list[JsonObject] = []
+    for index, bed_room_name in enumerate(resolved_room_names):
+        source_room = source_rooms[index % len(source_rooms)]
+        if not isinstance(source_room, dict):
+            continue
+        target_room = deepcopy(source_room)
+        target_room["roomname"] = bed_room_name
+        projected.append({bed_room_name: target_room})
+
+    return tuple(projected)
 
 
 def combine_virtual_recorder_rooms(
@@ -73,9 +109,13 @@ def split_rooms_for_recorders(
     *,
     count: int,
 ) -> tuple[JsonObject, ...]:
-    """Assign existing bed rooms to virtual recorders."""
+    """Assign explicit test bedrooms to virtual recorders."""
 
     room_items = tuple(rooms.items())
+    if len(room_items) == 1 and count > 1:
+        room_name, room = room_items[0]
+        return tuple({room_name: deepcopy(room)} for _ in range(count))
+
     require_bed_capacity_for_recorders(
         bed_count=len(room_items),
         recorder_count=count,

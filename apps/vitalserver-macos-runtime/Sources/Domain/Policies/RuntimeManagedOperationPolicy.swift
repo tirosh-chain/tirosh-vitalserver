@@ -3,6 +3,7 @@ import Contracts
 public enum RuntimeManagedOperationPolicy {
     private static let watchdogProtectedOperations: [RuntimeOperation] = [
         .install,
+        .configure,
         .applyBundle,
         .prepareUpdateShutdown,
         .activateGuestUpdate,

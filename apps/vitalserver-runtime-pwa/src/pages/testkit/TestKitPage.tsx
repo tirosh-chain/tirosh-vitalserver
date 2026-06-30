@@ -36,8 +36,14 @@ export function TestKitPage() {
   const [bedPrefix, setBedPrefix] = useState("testbed");
   const [selectedBeds, setSelectedBeds] = useState<string[]>([]);
   const [recorders, setRecorders] = useState(1);
+  const [sourceMode, setSourceMode] = useState<TestKitSourceMode>("generated");
   const [scenario, setScenario] = useState<TestKitScenario>("normal");
   const [signalProfile, setSignalProfile] = useState<TestKitSignalProfile>("normal");
+  const [vitalFilePath, setVitalFilePath] = useState("");
+  const [vitalFileScenario, setVitalFileScenario] =
+    useState<TestKitVitalFileScenario>("full_real");
+  const [vitalStartOffsetSeconds, setVitalStartOffsetSeconds] = useState(0);
+  const [vitalDurationSeconds, setVitalDurationSeconds] = useState(120);
   const [vrcode, setVrcode] = useState(generateVrcode());
   const [intervalSeconds, setIntervalSeconds] = useState(1);
   const [orphanVrcode, setOrphanVrcode] = useState("");
@@ -89,12 +95,24 @@ export function TestKitPage() {
     testKitReady &&
     beds !== null &&
     selectedBeds.length >= recorders &&
+    (sourceMode === "generated" || vitalFilePath.trim().length > 0) &&
     !isBusy;
 
   const start = () => {
+    const source =
+      sourceMode === "vitalFile"
+        ? {
+            type: "vitalFile" as const,
+            path: vitalFilePath.trim(),
+            scenario: vitalFileScenario,
+            startOffsetSeconds: Math.max(0, vitalStartOffsetSeconds),
+            durationSeconds: Math.max(1, Math.trunc(vitalDurationSeconds))
+          }
+        : null;
+
     startSession.mutate(
       {
-        scenario,
+        scenario: source === null ? scenario : "normal",
         signalProfile,
         recorders,
         bedRoomNames: selectedBeds.slice(0, recorders),
@@ -107,7 +125,9 @@ export function TestKitPage() {
         generateFrames: true,
         exportVital: true,
         uploadVital: true,
-        vitalUploadEndpoint: "/upload"
+        vitalUploadEndpoint: "/upload",
+        source,
+        realSampleKey: null
       },
       {
         onSuccess: () => setVrcode(generateVrcode())
@@ -203,39 +223,110 @@ export function TestKitPage() {
       <Panel title="Virtual VRecorder session">
         <div className="settings-grid">
           <label>
-            Scenario
+            Source
             <select
-              value={scenario}
+              value={sourceMode}
               onChange={(event) => {
-                if (isTestKitScenario(event.target.value)) {
-                  setScenario(event.target.value);
+                if (isTestKitSourceMode(event.target.value)) {
+                  setSourceMode(event.target.value);
                 }
               }}
             >
-              {scenarioOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
+              <option value="generated">Generated</option>
+              <option value="vitalFile">Vital file</option>
             </select>
           </label>
-          <label>
-            Signal
-            <select
-              value={signalProfile}
-              onChange={(event) => {
-                if (isTestKitSignalProfile(event.target.value)) {
-                  setSignalProfile(event.target.value);
-                }
-              }}
-            >
-              {signalOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
+          {sourceMode === "generated" ? (
+            <>
+              <label>
+                Generated scenario
+                <select
+                  value={scenario}
+                  onChange={(event) => {
+                    if (isTestKitScenario(event.target.value)) {
+                      setScenario(event.target.value);
+                    }
+                  }}
+                >
+                  {scenarioOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Signal
+                <select
+                  value={signalProfile}
+                  onChange={(event) => {
+                    if (isTestKitSignalProfile(event.target.value)) {
+                      setSignalProfile(event.target.value);
+                    }
+                  }}
+                >
+                  {signalOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="full-width">
+                Vital file path
+                <input
+                  type="text"
+                  value={vitalFilePath}
+                  placeholder="/mnt/tirosh-vital-files/case.vital"
+                  onChange={(event) => setVitalFilePath(event.target.value)}
+                />
+              </label>
+              <label>
+                Track preset
+                <select
+                  value={vitalFileScenario}
+                  onChange={(event) => {
+                    if (isTestKitVitalFileScenario(event.target.value)) {
+                      setVitalFileScenario(event.target.value);
+                    }
+                  }}
+                >
+                  {vitalFileScenarioOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {formatVitalFileScenario(option)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Start offset seconds
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={vitalStartOffsetSeconds}
+                  onChange={(event) =>
+                    setVitalStartOffsetSeconds(Number(event.target.value))
+                  }
+                />
+              </label>
+              <label>
+                Playback duration seconds
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={vitalDurationSeconds}
+                  onChange={(event) =>
+                    setVitalDurationSeconds(Number(event.target.value))
+                  }
+                />
+              </label>
+            </>
+          )}
           <label>
             VRecorders
             <input
@@ -279,6 +370,9 @@ export function TestKitPage() {
         <p className="muted">
           {selectedBeds.length} selected / {recorders} required /{" "}
           {beds === null ? NOT_REPORTED : beds.length} available
+          {sourceMode === "vitalFile" && vitalFilePath.trim().length === 0
+            ? " / vital file path required"
+            : ""}
         </p>
       </Panel>
 
@@ -412,6 +506,7 @@ function SessionRow({
           {session.state} · {session.recordersRequested} recorder(s) ·{" "}
           {formatBytes(session.bytesSent)} · {session.messagesSent} messages
         </span>
+        <span className="muted">{formatSessionSource(session)}</span>
         {session.lastError ? (
           <span className="error-state">{session.lastError}</span>
         ) : null}
@@ -448,6 +543,10 @@ const scenarioOptions = [
 
 type TestKitScenario = (typeof scenarioOptions)[number];
 
+const sourceModeOptions = ["generated", "vitalFile"] as const;
+
+type TestKitSourceMode = (typeof sourceModeOptions)[number];
+
 const signalOptions = [
   "normal",
   "tachycardia",
@@ -458,12 +557,54 @@ const signalOptions = [
 
 type TestKitSignalProfile = (typeof signalOptions)[number];
 
+const vitalFileScenarioOptions = [
+  "basic_monitor",
+  "periop_full",
+  "bloodbag",
+  "root_sedation",
+  "full_real"
+] as const;
+
+type TestKitVitalFileScenario = (typeof vitalFileScenarioOptions)[number];
+
+function isTestKitSourceMode(value: string): value is TestKitSourceMode {
+  return sourceModeOptions.includes(value as TestKitSourceMode);
+}
+
 function isTestKitScenario(value: string): value is TestKitScenario {
   return scenarioOptions.includes(value as TestKitScenario);
 }
 
 function isTestKitSignalProfile(value: string): value is TestKitSignalProfile {
   return signalOptions.includes(value as TestKitSignalProfile);
+}
+
+function isTestKitVitalFileScenario(
+  value: string
+): value is TestKitVitalFileScenario {
+  return vitalFileScenarioOptions.includes(value as TestKitVitalFileScenario);
+}
+
+function formatVitalFileScenario(value: TestKitVitalFileScenario): string {
+  switch (value) {
+    case "basic_monitor":
+      return "Basic monitor";
+    case "periop_full":
+      return "Perioperative full";
+    case "bloodbag":
+      return "Bloodbag transfusion";
+    case "root_sedation":
+      return "Root sedation";
+    case "full_real":
+      return "Full monitor";
+  }
+}
+
+function formatSessionSource(session: RuntimeTestKitSession): string {
+  if (session.source?.type === "vitalFile") {
+    return `source vital file · ${session.source.scenario} · ${session.source.durationSeconds}s`;
+  }
+  return `source generated · ${session.scenario ?? NOT_REPORTED}`;
 }
 
 function formatEnabled(value: boolean | null | undefined): string {

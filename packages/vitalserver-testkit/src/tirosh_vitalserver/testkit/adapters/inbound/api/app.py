@@ -6,6 +6,9 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 
+from tirosh_vitalserver.testkit.adapters.outbound.real_vital import (
+    VitalDbRealVitalReader,
+)
 from tirosh_vitalserver.testkit.adapters.outbound.recorder import (
     SocketIoRecorderManagementClient,
     connect_socketio,
@@ -19,8 +22,12 @@ from tirosh_vitalserver.testkit.application.ports import (
     SessionVitalFileUploaderPort,
 )
 from tirosh_vitalserver.testkit.application.recorder_session import (
+    PackagedRecordedFrameSourceProvider,
     VirtualRecorderSessionManager,
+    default_scenario_catalog,
     deletion_result_to_document,
+    packaged_real_sample_catalog_document,
+    scenario_definition_to_document,
     session_snapshot_to_document,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.store import (
@@ -39,6 +46,7 @@ from tirosh_vitalserver.testkit.schemas.testkit_api import (
     RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
 )
+from tirosh_vitalserver.testkit.types.json import JsonObject
 
 
 def create_testkit_app(
@@ -61,6 +69,8 @@ def create_testkit_app(
         session_store=session_store,
         vital_file_exporter=vital_file_exporter,
         vital_file_uploader=vital_file_uploader,
+        real_vital_reader=VitalDbRealVitalReader(),
+        recorded_frame_source_provider=PackagedRecordedFrameSourceProvider(),
     )
     beds = bed_registry or BedRegistry(store=bed_registry_store)
 
@@ -254,6 +264,19 @@ def create_testkit_app(
             ]
         }
 
+    @app.get("/scenarios")
+    def list_scenarios() -> dict[str, list[dict[str, object]]]:
+        return {
+            "scenarios": [
+                scenario_definition_to_document(definition)
+                for definition in default_scenario_catalog()
+            ]
+        }
+
+    @app.get("/real-recorder-samples")
+    def list_real_recorder_samples() -> JsonObject:
+        return packaged_real_sample_catalog_document()
+
     @app.delete("/sessions")
     def delete_sessions(
         manager: Annotated[VirtualRecorderSessionManager, Depends(get_manager)],
@@ -281,12 +304,20 @@ def create_testkit_app(
             "api.session.start.requested",
             target_url=request.target_url,
             recorders=request.recorders,
-            beds=len(request.bed_room_names),
+            bedroom_name=request.bedroom_name,
             vrcode=request.vrcode,
             interval_seconds=request.interval_seconds,
-            duration_seconds=request.duration_seconds,
+            duration_seconds=(
+                None if request.window is None else request.window.duration_seconds
+            ),
             max_messages=request.max_messages,
-            default_scenario=request.default_scenario.value,
+            scenario=request.scenario.value,
+            signal_quality=request.signal_quality.value,
+            recorder_condition=request.recorder_condition.value,
+            source_type=(
+                None if request.source is None else request.source.source_type.value
+            ),
+            real_sample_key=request.real_sample_key,
         )
         try:
             session_request = request.to_session_request()
@@ -298,7 +329,7 @@ def create_testkit_app(
                 level=logging.WARNING,
                 target_url=request.target_url,
                 recorders=request.recorders,
-                beds=len(request.bed_room_names),
+                bedroom_name=request.bedroom_name,
                 error=str(exc),
             )
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -308,10 +339,20 @@ def create_testkit_app(
                 level=logging.WARNING,
                 target_url=request.target_url,
                 recorders=request.recorders,
-                beds=len(request.bed_room_names),
+                bedroom_name=request.bedroom_name,
                 error=str(exc),
             )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            emit_testkit_event(
+                "api.session.start.unavailable",
+                level=logging.WARNING,
+                target_url=request.target_url,
+                recorders=request.recorders,
+                bedroom_name=request.bedroom_name,
+                error=str(exc),
+            )
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
 
         emit_testkit_event(
             "api.session.start.accepted",
@@ -320,6 +361,15 @@ def create_testkit_app(
             target_url=snapshot.request.target_url,
             recorders=snapshot.request.recorders,
             beds=len(snapshot.request.bed_room_names),
+            scenario=snapshot.request.scenario.value,
+            signal_quality=snapshot.request.signal_quality.value,
+            recorder_condition=snapshot.request.recorder_condition.value,
+            source_type=(
+                None
+                if snapshot.request.source is None
+                else snapshot.request.source.source_type.value
+            ),
+            real_sample_key=snapshot.request.real_sample_key,
             vrcode=snapshot.request.vrcode,
         )
         return session_snapshot_to_document(snapshot)
@@ -472,20 +522,21 @@ def create_testkit_app(
         emit_testkit_event(
             "api.session.restart.requested",
             session_id=session_id,
-            beds=len(request.bed_room_names),
+            bedroom_name=request.bedroom_name,
         )
         try:
-            registry.require_registered_room_names(request.bed_room_names)
+            if request.bedroom_name is not None:
+                registry.require_registered_room_names((request.bedroom_name,))
             snapshot = manager.restart_session(
                 session_id,
-                bed_room_names=request.bed_room_names,
+                bedroom_name=request.bedroom_name,
             )
         except BedAlreadyAssignedError as exc:
             emit_testkit_event(
                 "api.session.restart.conflicted",
                 level=logging.WARNING,
                 session_id=session_id,
-                beds=len(request.bed_room_names),
+                bedroom_name=request.bedroom_name,
                 error=str(exc),
             )
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -494,7 +545,7 @@ def create_testkit_app(
                 "api.session.restart.rejected",
                 level=logging.WARNING,
                 session_id=session_id,
-                beds=len(request.bed_room_names),
+                bedroom_name=request.bedroom_name,
                 error=str(exc),
             )
             raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -84,6 +84,65 @@ TESTKIT_CONFIG=config/load-test.toml make testkit-load
 
 기본값은 내부 simulated recorder data를 만들어 Socket.IO `send_data` event로 반복 전송합니다. testkit은 room map payload를 upstream VitalServer가 기대하는 `{vrcode, ver, rooms}` 형태로 감싼 뒤 zlib으로 압축해 보냅니다. 실제 장비에서 캡처한 payload를 재현해야 하면 command의 첫 positional argument나 `config/testkit.toml`의 `[recorder].payload`에 JSON 파일 경로를 지정합니다.
 
+TestKit API와 Test 탭에서 쓰는 recorder session 입력은 세 축으로 분리합니다.
+
+| 축 | 의미 | 예 |
+| --- | --- | --- |
+| `scenario` | 임상적으로 의미 있는 생리 상태 | `normal_monitoring`, `tachycardia`, `hypotension`, `apnea`, `hct_decreasing` |
+| `signalQuality` | 생성된 신호 위에 적용하는 품질 filter | `clean`, `noise`, `baseline_wander`, `motion_artifact`, `dropout`, `flatline`, `low_amplitude`, `clipping` |
+| `recorderCondition` | 환자 상태가 아닌 recorder/장비 운영 조건 | `normal`, `device_disconnect` |
+
+즉 artifact와 disconnect는 clinical scenario가 아닙니다. 신호 품질은 기존 임상 신호에 filter로 적용하고, recorder disconnect는 별도 operational condition으로 지정합니다.
+
+실제 recorder sample은 환자 정보가 섞일 수 있으므로 TestKit package와 remote branch 최종 결과에 포함하지 않습니다. TestKit API의 `/real-recorder-samples`는 packaged sample이 없다는 명시 상태를 반환하며, 실제 sample을 재현해야 하는 호출자는 로컬 dataset manifest나 payload path를 명시해야 합니다. TestKit은 `data/`를 자동 탐색하지 않습니다.
+
+TestKit stream은 source 종류를 직접 분기하지 않고 recorder frame source policy를 거칩니다.
+
+- generated source는 signal profile을 seed로 현재 tick frame을 생성합니다.
+- recorded source는 명시 manifest payload나 `.vital` window의 source timestamp 구간에서 현재 tick에 해당하는 record만 잘라 현재 시간으로 투영합니다.
+- static source는 legacy payload replay처럼 명시 payload를 그대로 보내되, 요청한 경우 timestamp shift만 적용합니다.
+
+Bed identity는 source가 소유하지 않습니다. 세션 request의 `bedRoomNames`가 최종 room key와 `roomname`을 정하고, recorded fixture 안의 원본 room name은 playback source metadata일 뿐 VitalServer에 보낼 bed state가 아닙니다. Recorder condition 같은 후처리도 source와 무관한 frame post policy로 적용합니다.
+
+로컬 real sample 묶음을 testkit 기준 데이터로 쓸 때는 dataset manifest와 key를 명시합니다. 어떤 payload를 쓰는지는 호출자가 `--dataset-manifest`와 `--dataset-key`로 제공해야 하며, 이 선택은 positional payload와 동시에 사용할 수 없습니다. `.vital`, `data/`, 그리고 testkit fixture export 폴더는 git 추적 대상이 아니어야 합니다.
+
+```sh
+uv run vitalserver-testkit list-recorder-dataset \
+  data/real-vital-recorder-samples/testkit-dataset-manifest-120s.json
+```
+
+```sh
+uv run vitalserver-testkit verify-recorder \
+  --vitalserver-url http://localhost \
+  --dataset-manifest data/real-vital-recorder-samples/testkit-dataset-manifest-120s.json \
+  --dataset-key baseline_bx50_primus_high_track
+```
+
+중간 JSON 파일 없이 로컬 `.vital` 파일을 직접 virtual recorder source로 재생할 수도 있습니다. 이때 파일 path, track preset, source window는 호출자가 명시합니다.
+
+```sh
+uv run vitalserver-testkit stream-recorder \
+  --vitalserver-url http://localhost \
+  --bed-room-name OR-A \
+  --vital-file /Users/Shared/VitalServerHelper/vital-files/case.vital \
+  --vital-scenario full_real \
+  --vital-start-offset 0 \
+  --vital-duration 120
+```
+
+macOS runtime Test 탭에서 선택하는 `.vital` 파일은 Helper Settings의 `Vital files directory` 아래에 있어야 합니다. Helper는 host path를 guest mount path `/mnt/tirosh-vital-files/...`로 변환해 TestKit API에 전달합니다. PWA나 raw TestKit API에서 runtime container를 직접 제어할 때는 TestKit container가 읽을 수 있는 guest path를 명시해야 합니다.
+
+120초 real sample payload는 이미 window 안에 여러 record를 담고 있으므로, lifecycle 검증에서 그대로 재생할 때는 `--replay-sample`과 종료 조건을 함께 둡니다.
+
+```sh
+uv run vitalserver-testkit stream-recorder \
+  --vitalserver-url http://localhost \
+  --dataset-manifest data/real-vital-recorder-samples/testkit-dataset-manifest-120s.json \
+  --dataset-key root_primus_high_track_sphb \
+  --replay-sample \
+  --max-messages 3
+```
+
 제품화 관점에서는 먼저 `verify-recorder`로 “전송된 payload가 VitalServer에서 보이는 상태”까지 확인합니다. 이 명령은 payload를 한 번 전송한 뒤, VitalServer의 UI용 endpoint인 `/vr_devs`에서 bed device metadata가 조회되는지 확인합니다.
 
 ```sh
@@ -234,7 +293,7 @@ uv run vitalserver-testkit serve \
   --port 18322
 ```
 
-위 명령은 local 개발용이다. Dev runtime에서는 `vitalserver-testkit:0.1.1` container가 `0.0.0.0:18322`로 API를 열고, 생성된 virtual VRecorder는 guest compose network 안에서 `http://edge/`를 대상으로 접속한다.
+위 명령은 local 개발용이다. Dev runtime에서는 `vitalserver-testkit:0.1.1` container가 `0.0.0.0:18322`로 API를 열고, 생성된 virtual VRecorder는 guest compose network 안에서 `http://edge/`를 대상으로 접속한다. 이 container는 `/mnt/tirosh-vital-files`를 read-only로 mount해 `.vital` playback source를 읽는다.
 
 API는 bed registry와 session lifecycle을 분리한다.
 
@@ -264,12 +323,18 @@ Helper Test 탭의 기본 모델은 “virtual VRecorder 1대 = TestKit session 
 ```json
 {
   "targetUrl": "http://edge/",
-  "recorders": 1,
-  "bedRoomNames": ["OR-A"],
+  "recorderCount": 1,
+  "bedroomName": "OR-A",
+  "scenario": "normal_monitoring",
+  "window": {
+    "durationSeconds": 20
+  },
+  "output": {
+    "exportVital": true,
+    "uploadVital": true
+  },
   "vrcode": "TEST_VR",
-  "intervalSeconds": 1,
-  "durationSeconds": 0,
-  "defaultScenario": "normal"
+  "intervalSeconds": 1
 }
 ```
 

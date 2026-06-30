@@ -175,6 +175,13 @@ def run_compose_action(action: ComposeAction | str) -> None:
     elif action == ComposeAction.TESTKIT_UP_LOGGED:
         prepare_container_bind_source_directories()
         start_testkit_logged(runtime_config)
+    elif action == ComposeAction.TESTKIT_STOP:
+        stop_testkit()
+        run(["sync"])
+    elif action == ComposeAction.TESTKIT_RESTART:
+        stop_testkit()
+        prepare_container_bind_source_directories()
+        start_testkit_logged(runtime_config)
     elif action == ComposeAction.STOP:
         stop_services_in_order()
         run(["sync"])
@@ -887,3 +894,12 @@ def start_testkit_logged(runtime_config: RuntimeConfig) -> None:
     logger.info("starting optional TestKit service via Docker Compose")
     start_testkit(runtime_config)
     logger.info("optional TestKit service provisioning completed")
+
+
+def stop_testkit() -> None:
+    logger.info("stopping optional TestKit service via Docker Compose")
+    compose(
+        ["stop", "--timeout", "30", ComposeService.TESTKIT.value],
+        timeout_seconds=40,
+    )
+    logger.info("optional TestKit service stopped")

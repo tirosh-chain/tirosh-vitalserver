@@ -129,15 +129,26 @@ extension RuntimeLifecycle {
     }
 
     func reconcileGuestComposeServices() throws {
+        try reconcileGuestComposeServices(composeAction: .up)
+    }
+
+    func controlTestKitContainer(composeAction: RuntimeGuestComposeAction) throws {
+        try reconcileGuestComposeServices(composeAction: composeAction)
+    }
+
+    private func reconcileGuestComposeServices(
+        composeAction: RuntimeGuestComposeAction
+    ) throws {
         try requireGuestCapability(.reconcileCompose)
         try fileStore.createDirectory(at: guestRunDirectory, withIntermediateDirectories: true)
         try guestGateway.removeGuestComposeReconcileResult()
         let request = RuntimeGuestComposeReconcileRequest(
             id: requestIDAction()(),
-            requestedAt: isoTimestamp()
+            requestedAt: isoTimestamp(),
+            composeAction: composeAction
         )
         try guestGateway.writeGuestComposeReconcileRequest(request)
-        log("guest compose reconcile requested requestId=\(request.id)")
+        log("guest compose reconcile requested requestId=\(request.id) action=\(composeAction.rawValue)")
         let deadline = clock.now.addingTimeInterval(300)
         while clock.now < deadline {
             switch guestGateway.loadGuestComposeReconcileResultDocument() {

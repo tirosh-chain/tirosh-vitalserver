@@ -76,7 +76,11 @@ struct MacTestKitAPIService {
             runtimeRequest: request,
             targetURL: configuration.recorderTargetURL
         )
-        var urlRequest = try apiClient.request(apiBaseURL: apiBaseURL, path: "/sessions")
+        var urlRequest = try apiClient.request(
+            apiBaseURL: apiBaseURL,
+            path: "/sessions",
+            timeout: .longRunningCommand
+        )
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = try JSONEncoder().encode(requestBody)
@@ -97,10 +101,14 @@ struct MacTestKitAPIService {
     func restartSession(
         apiBaseURL: String,
         sessionID: String,
-        bedRoomNames: [String]
+        bedroomName: String?
     ) async throws -> RuntimeTestKitSession {
-        let requestBody = TestKitRestartSessionRequest(bedRoomNames: bedRoomNames)
-        var urlRequest = try apiClient.request(apiBaseURL: apiBaseURL, path: "/sessions/\(sessionID)/restart")
+        let requestBody = TestKitRestartSessionRequest(bedroomName: bedroomName)
+        var urlRequest = try apiClient.request(
+            apiBaseURL: apiBaseURL,
+            path: "/sessions/\(sessionID)/restart",
+            timeout: .longRunningCommand
+        )
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = try JSONEncoder().encode(requestBody)
@@ -149,7 +157,8 @@ struct MacTestKitAPIService {
         defer { try? FileManager.default.removeItem(at: bodyFileURL) }
         var request = try apiClient.request(
             apiBaseURL: vitalServerBaseURL,
-            path: endpoint.hasPrefix("/") ? endpoint : "/\(endpoint)"
+            path: endpoint.hasPrefix("/") ? endpoint : "/\(endpoint)",
+            timeout: .longRunningCommand
         )
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")

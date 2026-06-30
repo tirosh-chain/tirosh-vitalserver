@@ -121,6 +121,19 @@ describe("runtime settings policy", () => {
     expect(result.errors).not.toContain("Container memory limits must total no more than 70% of VM memory.");
   });
 
+  it("allows Redis container memory limits above the former 8 GiB cap", () => {
+    const result = validateRuntimeSettings(fullSettings({
+      memoryGiB: 48,
+      containerMemoryLimitsEnabled: true,
+      vitalServerContainerMemoryLimitMiB: 8192,
+      recorderIngressContainerMemoryLimitMiB: 4096,
+      redisContainerMemoryLimitMiB: 16_384
+    }));
+
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
   it("rejects backup times outside HH:mm clock range", () => {
     const result = validateRuntimeSettings(fullSettings({
       backupScheduleTimes: ["24:00", "03:60"]

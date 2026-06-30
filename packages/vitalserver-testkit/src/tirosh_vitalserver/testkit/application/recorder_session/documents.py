@@ -9,6 +9,8 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
     RecorderRuntimeSnapshot,
 )
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    RecorderSource,
+    RecorderSourceType,
     VirtualRecorderDeletionResult,
     VirtualRecorderSessionSnapshot,
 )
@@ -27,7 +29,8 @@ def session_snapshot_to_document(
         "targetUrl": request.target_url,
         "recordersRequested": request.recorders,
         "bedsRequested": len(request.bed_room_names),
-        "bedRoomNames": request.bed_room_names,
+        "bedroomName": request.bedroom_name,
+        "bedRoomNames": list(request.bed_room_names),
         "vrcode": request.vrcode,
         "version": request.version,
         "intervalSeconds": request.interval_seconds,
@@ -36,7 +39,21 @@ def session_snapshot_to_document(
         "shiftTime": request.shift_time,
         "generateFrames": request.generate_frames,
         "scenario": request.scenario.value,
-        "defaultScenario": request.default_scenario.value,
+        "signalQuality": request.signal_quality.value,
+        "recorderCondition": request.recorder_condition.value,
+        "source": recorder_source_to_document(request.source),
+        "realSampleKey": request.real_sample_key,
+        "window": None
+        if request.window is None
+        else {
+            "startOffsetSeconds": request.window.start_offset_seconds,
+            "durationSeconds": request.window.duration_seconds,
+        },
+        "output": {
+            "exportVital": request.output.export_vital,
+            "uploadVital": request.output.upload_vital,
+            "vitalUploadEndpoint": request.output.vital_upload_endpoint,
+        },
         "createdAt": snapshot.created_at,
         "startedAt": snapshot.started_at,
         "stoppedAt": snapshot.stopped_at,
@@ -57,6 +74,22 @@ def session_snapshot_to_document(
             for recorder in snapshot.recorders
         ],
     }
+
+
+def recorder_source_to_document(source: RecorderSource | None) -> dict[str, Any] | None:
+    """Convert an explicit recorder source into the public API document."""
+
+    if source is None:
+        return None
+    if source.source_type == RecorderSourceType.VITAL_FILE:
+        return {
+            "type": source.source_type.value,
+            "path": None if source.path is None else str(source.path),
+            "scenario": None if source.scenario is None else source.scenario.value,
+            "startOffsetSeconds": source.start_offset_seconds,
+            "durationSeconds": source.duration_seconds,
+        }
+    raise ValueError(f"unsupported recorder source type: {source.source_type}")
 
 
 def vital_state_to_document(

@@ -103,6 +103,10 @@ struct RuntimeTestPanel: View {
 
                 Divider()
 
+                testKitContainerControl
+
+                Divider()
+
                 bedList
 
                 Divider()
@@ -185,6 +189,31 @@ struct RuntimeTestPanel: View {
             Stepper(displayValue, value: value, in: range, step: step)
                 .monospacedDigit()
                 .frame(width: 180, alignment: .trailing)
+        }
+    }
+
+    private var testKitContainerControl: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(RuntimeTestPanelText.testKitContainer)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            HStack(spacing: 8) {
+                Button(AppConstants.Actions.start) {
+                    Task { await viewModel.startTestKitContainer() }
+                }
+                .disabled(!viewModel.testKitCanControlContainer)
+
+                Button(AppConstants.Actions.stop) {
+                    Task { await viewModel.stopTestKitContainer() }
+                }
+                .disabled(!viewModel.testKitCanControlContainer)
+
+                Button(AppConstants.Actions.restart) {
+                    Task { await viewModel.restartTestKitContainer() }
+                }
+                .disabled(!viewModel.testKitCanControlContainer)
+            }
         }
     }
 
@@ -318,16 +347,66 @@ struct RuntimeTestPanel: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
 
-            Picker(AppConstants.Labels.scenario, selection: $viewModel.testKitScenario) {
-                ForEach(RuntimeTestKitScenario.allCases, id: \.self) { scenario in
-                    Text(displayName(scenario)).tag(scenario)
+            Picker(AppConstants.Labels.recorderSource, selection: $viewModel.testKitRecorderSourceMode) {
+                ForEach(RuntimeTestKitRecorderSourceMode.allCases, id: \.self) { sourceMode in
+                    Text(displayName(sourceMode.rawValue)).tag(sourceMode)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if viewModel.testKitRecorderSourceMode == .generated {
+                Picker(AppConstants.Labels.scenario, selection: $viewModel.testKitScenario) {
+                    ForEach(RuntimeTestKitScenario.allCases, id: \.self) { scenario in
+                        Text(displayName(scenario)).tag(scenario)
+                    }
+                }
+                .pickerStyle(.menu)
+            } else {
+                HStack {
+                    Button(RuntimeTestPanelText.choosingVitalFileForPlayback) {
+                        viewModel.chooseVitalFileForTestKitPlayback()
+                    }
+                    Text(vitalFilePlaybackName(viewModel.testKitVitalFilePath))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Picker("Track preset", selection: $viewModel.testKitVitalFileScenario) {
+                    ForEach(RuntimeTestKitVitalFileScenario.allCases, id: \.self) { scenario in
+                        Text(displayName(scenario.rawValue)).tag(scenario)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                testKitDoubleStepper(
+                    "Start offset",
+                    value: $viewModel.testKitVitalFileStartOffsetSeconds,
+                    range: 0...86_400,
+                    step: 10,
+                    displayValue: secondsText(viewModel.testKitVitalFileStartOffsetSeconds)
+                )
+
+                testKitDoubleStepper(
+                    "Playback duration",
+                    value: $viewModel.testKitVitalFileDurationSeconds,
+                    range: 1...86_400,
+                    step: 10,
+                    displayValue: secondsText(viewModel.testKitVitalFileDurationSeconds)
+                )
+            }
+
+            Picker("Signal quality", selection: $viewModel.testKitSignalQuality) {
+                ForEach(RuntimeTestKitSignalQuality.allCases, id: \.self) { quality in
+                    Text(displayName(quality)).tag(quality)
                 }
             }
             .pickerStyle(.menu)
 
-            Picker(AppConstants.Labels.signal, selection: $viewModel.testKitSignalProfile) {
-                ForEach(RuntimeTestKitSignalProfile.allCases, id: \.self) { profile in
-                    Text(displayName(profile)).tag(profile)
+            Picker("Recorder condition", selection: $viewModel.testKitRecorderCondition) {
+                ForEach(RuntimeTestKitRecorderCondition.allCases, id: \.self) { condition in
+                    Text(displayName(condition)).tag(condition)
                 }
             }
             .pickerStyle(.menu)
@@ -644,8 +723,12 @@ struct RuntimeTestPanel: View {
         displayName(scenario.rawValue)
     }
 
-    private func displayName(_ profile: RuntimeTestKitSignalProfile) -> String {
-        displayName(profile.rawValue)
+    private func displayName(_ quality: RuntimeTestKitSignalQuality) -> String {
+        displayName(quality.rawValue)
+    }
+
+    private func displayName(_ condition: RuntimeTestKitRecorderCondition) -> String {
+        displayName(condition.rawValue)
     }
 
     private func displayName(_ rawValue: String) -> String {
@@ -655,6 +738,13 @@ struct RuntimeTestPanel: View {
                 word.prefix(1).uppercased() + word.dropFirst()
             }
             .joined(separator: " ")
+    }
+
+    private func vitalFilePlaybackName(_ path: String) -> String {
+        guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return RuntimeTestPanelText.chooseVitalFileForPlayback
+        }
+        return URL(fileURLWithPath: path).lastPathComponent
     }
 
     private func secondsText(_ seconds: Double) -> String {

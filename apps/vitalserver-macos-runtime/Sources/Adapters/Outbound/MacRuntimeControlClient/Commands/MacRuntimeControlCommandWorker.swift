@@ -222,6 +222,21 @@ public actor MacRuntimeControlCommandWorker {
         return await runPrivileged(RuntimeCommandFactory.runtimeServicesCommand(action: .stop))
     }
 
+    public func startTestKitService() async throws -> RuntimeCommandResult {
+        try ensureExecutable(.launcher)
+        return await runPrivileged(RuntimeCommandFactory.testKitServiceCommand(action: .start))
+    }
+
+    public func stopTestKitService() async throws -> RuntimeCommandResult {
+        try ensureExecutable(.launcher)
+        return await runPrivileged(RuntimeCommandFactory.testKitServiceCommand(action: .stop))
+    }
+
+    public func restartTestKitService() async throws -> RuntimeCommandResult {
+        try ensureExecutable(.launcher)
+        return await runPrivileged(RuntimeCommandFactory.testKitServiceCommand(action: .restart))
+    }
+
     public func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
         try await logExporter.exportLogs(to: destination)
     }

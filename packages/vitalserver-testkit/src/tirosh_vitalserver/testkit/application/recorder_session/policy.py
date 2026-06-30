@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from tirosh_vitalserver.testkit.application.recorder_session.models import (
+    VirtualRecorderSessionSnapshot,
     VirtualRecorderSessionState,
     VirtualRecorderSessionVitalState,
     VirtualRecorderVitalArtifact,
@@ -44,6 +45,38 @@ def session_can_resume(state: VirtualRecorderSessionState) -> bool:
     """Return whether resume may transition the session to running."""
 
     return state == VirtualRecorderSessionState.PAUSED
+
+
+def session_stream_stall_error(
+    snapshot: VirtualRecorderSessionSnapshot,
+    *,
+    now: float,
+    timeout_seconds: float,
+) -> str | None:
+    """Return an explicit stream stall error for a running session."""
+
+    if snapshot.state != VirtualRecorderSessionState.RUNNING:
+        return None
+    if timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be greater than 0")
+
+    send_times = tuple(
+        recorder.last_send_data_at
+        for recorder in snapshot.recorders
+        if recorder.last_send_data_at is not None
+    )
+    if not send_times:
+        return None
+
+    stale_since = min(send_times)
+    stalled_seconds = now - stale_since
+    if stalled_seconds <= timeout_seconds:
+        return None
+
+    return (
+        "stream stalled: no send_data for "
+        f"{stalled_seconds:.0f}s (timeout {timeout_seconds:.0f}s)"
+    )
 
 
 def vital_state_after_stream_error(

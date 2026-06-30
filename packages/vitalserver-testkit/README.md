@@ -85,6 +85,7 @@ local 개발 중에 TestKit API만 단독 확인할 때는 같은 command를 hos
 GET  /health
 POST /beds
 GET  /sessions
+GET  /scenarios
 POST /sessions
 GET  /sessions/{id}
 POST /sessions/{id}/stop
@@ -94,12 +95,36 @@ DELETE /sessions
 ```
 
 `POST /beds`는 `{"roomNames":["OR-A"]}`처럼 명시적인 room name을 받거나,
-`{"count":2,"prefix":"OR"}`로 fresh bed identity를 만든다. `POST /sessions`는
-`bedRoomNames` 없이 simulated recorder payload를 만들지 않는다. session 종료 시 명시적인
-playback window(start/end, pause/resume events, interval, sent message count, recorder payload,
-signal scenario)를 기준으로 `.vital` artifact를 생성하고 VitalServer에 업로드하려면 `POST /sessions`에
-`{"exportVital":true,"uploadVital":true}`를 명시한다. streaming frame 전체를 memory에
-누적하지 않으며, `uploadVital`은 `exportVital` 없이는 유효하지 않다.
+`{"count":2,"prefix":"OR"}`로 fresh bed identity를 만든다. `GET /scenarios`는
+Test 탭에서 선택할 목적 중심 scenario catalog를 제공한다. scenario document는
+`scenario`, `title`, `situation`, `purpose`, `defaultBedroomName`, `defaultWindow`,
+`tracks`를 포함하며, source file path나 generator 종류는 API 표면에 노출하지 않는다.
+
+`POST /sessions`는 legacy `bedRoomNames`, `defaultScenario`, `hctPercent`를 받지 않는다.
+하나의 `bedroomName`과 하나의 목적 중심 `scenario`를 명시하고, `.vital` artifact 생성/업로드는
+`output` 객체로 요청한다.
+
+```json
+{
+  "targetUrl": "http://recorder-ingress:8080",
+  "recorderCount": 20,
+  "bedroomName": "TestBedroom",
+  "scenario": "bloodbag_transfusion",
+  "window": {
+    "durationSeconds": 20
+  },
+  "output": {
+    "exportVital": true,
+    "uploadVital": true,
+    "vitalUploadEndpoint": "/upload"
+  }
+}
+```
+
+session 종료 시 명시적인 playback window(start/end, pause/resume events, interval, sent
+message count, recorder payload, scenario)를 기준으로 `.vital` artifact를 생성한다. streaming
+frame 전체를 memory에 누적하지 않으며, `output.uploadVital`은 `output.exportVital` 없이는
+유효하지 않다.
 
 Generated bed는 같은 prefix를 반복해도 구분되도록 짧은 random suffix를 붙인다. 기본 prefix
 `testbed`와 suffix `5f83`은 `testbed5f83`으로 생성되며, 이 이름이 TestKit status,
@@ -158,11 +183,12 @@ reconnect 후 `join_vr`를 다시 보내며, disconnected 상태의 emit은 전�
 않는 것입니다. 예방 원칙은 TestKit 실행 상태와 VitalServer 관측 상태를 별도 SoT로 두고,
 연결 끊김을 messagesSent 증가나 empty error로 숨기지 않는 것입니다.
 
-## Simulated Signal Scenario
+## Clinical Scenario, Signal Quality, and Recorder Condition
 
-testkit은 simulated recorder data를 만들 때 시나리오 이름을 `RecorderSignalScenario`로
-관리합니다. 각 시나리오는 `SignalProfile` preset으로 변환되고, streaming 중 numeric value와
-waveform 생성에 반영됩니다.
+testkit은 generated recorder data를 만들 때 임상 상태, 신호 품질, recorder 운영 조건을
+서로 다른 입력으로 다룹니다. Clinical scenario는 `SignalProfile` preset으로 변환되고,
+streaming 중 numeric value와 waveform 생성에 반영됩니다. Signal quality는 생성된 신호 위에
+적용되는 filter이며, recorder condition은 환자 상태가 아닌 운영 조건입니다.
 
 | Scenario | 의미 | 주로 확인할 것 |
 | --- | --- | --- |
@@ -174,11 +200,16 @@ waveform 생성에 반영됩니다.
 | `desaturation` | 낮은 SpO2 | SpO2 numeric과 trend 표시 |
 | `apnea` | 호흡 정지 또는 심한 저호흡 | CO2 waveform, RR numeric, stale-like 상태 |
 | `arrhythmia` | 불규칙한 beat timing | waveform continuity, renderer 안정성 |
-| `artifact` | noise나 왜곡이 섞인 신호 | renderer/transport resilience |
-| `device_disconnect` | 장비 연결 해제 또는 신호 없음 | stale data, disconnect 상태, Redis key 갱신 |
+| `hct_decreasing` | HCT가 점진적으로 감소하는 lab numeric | PLETH + HCT 기반 bloodbag inference context |
 
-기본은 `normal`로 두고, 특정 bed만 override할 수 있습니다. `index`는 생성된 bed 목록의
-1-based 번호입니다.
+`artifact`는 clinical scenario가 아니라 `signalQuality`로 다룹니다. 지원하는 값은
+`clean`, `noise`, `baseline_wander`, `motion_artifact`, `dropout`, `flatline`,
+`low_amplitude`, `clipping`입니다. 장비 연결 해제는 `recorderCondition=device_disconnect`로
+다룹니다.
+
+기본은 `normal`과 `clean`으로 두고, 특정 bed만 override할 수 있습니다. `index`는 생성된 bed
+목록의 1-based 번호입니다. HCT는 `Lab/HCT` numeric track으로 생성되며, Test 탭/API에서는
+`hct_decreasing` 또는 `bloodbag_transfusion` 같은 목적 중심 scenario로 노출됩니다.
 
 ```toml
 [bed_registry]
@@ -203,6 +234,44 @@ scenario = "tachycardia"
 index = 4
 scenario = "desaturation"
 ```
+
+## Real Vital Recorder Samples
+
+실제 `.vital` 파일에서 recorder payload JSON을 생성할 수 있습니다. 이 경로는 source
+track header와 sample 값을 읽어 payload를 만들며, 값이 없는 source track은 payload event에
+명시하고 제외합니다.
+
+```bash
+uv run vitalserver-testkit export-real-vital-recorder \
+  data/MORC03_230102/MORC03_230102_133133.vital \
+  --scenario bloodbag \
+  --start-offset 70 \
+  --duration 20 \
+  --room-name MORC03_SPHB_SAMPLE \
+  --output .tmp/real-vital-recorder-samples/morc03_bloodbag.json
+```
+
+생성된 JSON은 `send-recorder` 또는 `stream-recorder --replay-sample` 입력으로 사용할 수
+있습니다.
+
+```bash
+uv run vitalserver-testkit send-recorder \
+  .tmp/real-vital-recorder-samples/morc03_bloodbag.json
+```
+
+지원하는 source extraction mode는 다음과 같습니다.
+
+| Scenario | Track selection |
+| --- | --- |
+| `basic_monitor` | Bx50/Primus 주요 ECG, PLETH, ART, CO2, HR, SpO2, BP, BT, CVP, PPV |
+| `periop_full` | Source file의 `Bx50/*`, `Primus/*` track |
+| `bloodbag` | `Root/PLETH`, `Root/SPHB`, Root pulse oximetry context, Primus CO2 context, derived `LabDerived/HCT` |
+| `root_sedation` | Source file의 `Root/*` track |
+| `full_real` | Source file의 모든 track 중 선택 window에 finite sample이 있는 track |
+
+`bloodbag` scenario의 HCT는 source file의 직접 HCT track이 아니라 `Root/SPHB`에서
+`HCT percent = SPHB g/dL * 3.0` 공식으로 파생합니다. 이 사실은 payload event와 metadata
+sidecar에 기록됩니다.
 
 ## Python API
 

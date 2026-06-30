@@ -83,4 +83,39 @@ describe("runtime control request schemas", () => {
       })
     ).toThrow();
   });
+
+  it("accepts explicit TestKit vital file sources", () => {
+    expect(
+      runtimeTestKitVirtualRecorderStartRequestSchema.parse({
+        scenario: "normal",
+        signalProfile: "normal",
+        recorders: 1,
+        bedRoomNames: ["OR-A"],
+        vrcode: null,
+        version: "testkit",
+        intervalSeconds: 1,
+        durationSeconds: null,
+        maxMessages: null,
+        shiftTime: true,
+        generateFrames: true,
+        exportVital: true,
+        uploadVital: true,
+        vitalUploadEndpoint: "/upload",
+        source: {
+          type: "vitalFile",
+          path: "/Users/Shared/VitalServerHelper/vital-files/case.vital",
+          scenario: "full_real",
+          startOffsetSeconds: 0,
+          durationSeconds: 120
+        },
+        realSampleKey: null
+      }).source
+    ).toEqual({
+      type: "vitalFile",
+      path: "/Users/Shared/VitalServerHelper/vital-files/case.vital",
+      scenario: "full_real",
+      startOffsetSeconds: 0,
+      durationSeconds: 120
+    });
+  });
 });

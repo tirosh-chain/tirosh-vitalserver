@@ -138,6 +138,18 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: try await commandClient.stopRuntimeServices())
     }
 
+    func startTestKitService() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.startTestKitService())
+    }
+
+    func stopTestKitService() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.stopTestKitService())
+    }
+
+    func restartTestKitService() async throws -> RuntimeControlCommandResponse {
+        RuntimeControlCommandResponse(result: try await commandClient.restartTestKitService())
+    }
+
     func repairRuntimeServices() async throws -> RuntimeControlCommandResponse {
         RuntimeControlCommandResponse(result: try await commandClient.repairRuntimeServices())
     }

@@ -39,6 +39,13 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
             recorderCount: 1
         ))
         XCTAssertFalse(policy.canStart(
+            controllerAvailable: true,
+            status: status,
+            isRunningAction: false,
+            selectedBedRoomNames: ["OR-B"],
+            recorderCount: 2
+        ))
+        XCTAssertFalse(policy.canStart(
             controllerAvailable: false,
             status: status,
             isRunningAction: false,
@@ -80,8 +87,8 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
         let request = policy.startRequest(RuntimeTestKitStartInput(
             status: status,
             selectedBedRoomNames: ["OR-A", "OR-B", "OR-C"],
-            scenario: .burstTraffic,
-            signalProfile: .artifact,
+            scenario: .arrhythmia,
+            signalQuality: .motionArtifact,
             recorderCount: 2,
             vrcode: "  VR_123  ",
             intervalSeconds: 0.01,
@@ -91,17 +98,77 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
             generateFrames: false
         ))
 
+        XCTAssertEqual(request.bedroomName, "OR-B")
         XCTAssertEqual(request.bedRoomNames, ["OR-B", "OR-C"])
         XCTAssertEqual(request.recorders, 2)
+        XCTAssertEqual(request.scenario, .arrhythmia)
+        XCTAssertEqual(request.signalQuality, .motionArtifact)
         XCTAssertEqual(request.vrcode, "VR_123")
         XCTAssertEqual(request.intervalSeconds, 0.1)
-        XCTAssertEqual(request.durationSeconds, 86_400)
+        XCTAssertEqual(request.window?.durationSeconds, 86_400)
         XCTAssertEqual(request.maxMessages, 1_000_000)
         XCTAssertFalse(request.shiftTime)
         XCTAssertFalse(request.generateFrames)
-        XCTAssertTrue(request.exportVital)
-        XCTAssertTrue(request.uploadVital)
-        XCTAssertEqual(request.vitalUploadEndpoint, "/upload")
+        XCTAssertTrue(request.output.exportVital)
+        XCTAssertTrue(request.output.uploadVital)
+        XCTAssertEqual(request.output.vitalUploadEndpoint, "/upload")
+        XCTAssertNil(request.source)
+        XCTAssertNil(request.realSampleKey)
+
+        let vitalFileRequest = policy.startRequest(RuntimeTestKitStartInput(
+            status: status,
+            selectedBedRoomNames: ["OR-B"],
+            scenario: .arrhythmia,
+            sourceMode: .vitalFile,
+            vitalFilePath: " /Users/Shared/VitalServerHelper/vital-files/case.vital ",
+            vitalFilesDirectoryHostPath: "/Users/Shared/VitalServerHelper/vital-files",
+            vitalFilesDirectoryGuestMountPath: "/mnt/tirosh-vital-files",
+            vitalFileScenario: .fullReal,
+            vitalFileStartOffsetSeconds: -1,
+            vitalFileDurationSeconds: 121.6,
+            recorderCount: 1,
+            vrcode: "",
+            intervalSeconds: 1,
+            durationSeconds: 30,
+            maxMessages: 0,
+            shiftTime: true,
+            generateFrames: true
+        ))
+        XCTAssertEqual(vitalFileRequest.scenario, .normalMonitoring)
+        XCTAssertNil(vitalFileRequest.window)
+        XCTAssertNil(vitalFileRequest.realSampleKey)
+        XCTAssertEqual(vitalFileRequest.source?.type, .vitalFile)
+        XCTAssertEqual(
+            vitalFileRequest.source?.path,
+            "/mnt/tirosh-vital-files/case.vital"
+        )
+        XCTAssertEqual(vitalFileRequest.source?.scenario, .fullReal)
+        XCTAssertEqual(vitalFileRequest.source?.startOffsetSeconds, 0)
+        XCTAssertEqual(vitalFileRequest.source?.durationSeconds, 122)
+    }
+
+    func testVitalFileGuestPathMapsConfiguredHostDirectoryOnly() {
+        XCTAssertEqual(
+            policy.vitalFileGuestPath(
+                hostFilePath: " /Users/Shared/VitalServerHelper/vital-files/case.vital ",
+                hostRootPath: "/Users/Shared/VitalServerHelper/vital-files/",
+                guestRootPath: "/mnt/tirosh-vital-files/"
+            ),
+            "/mnt/tirosh-vital-files/case.vital"
+        )
+        XCTAssertEqual(
+            policy.vitalFileGuestPath(
+                hostFilePath: "/Users/Shared/VitalServerHelper/vital-files/sub/case.vital",
+                hostRootPath: "/Users/Shared/VitalServerHelper/vital-files",
+                guestRootPath: "/mnt/tirosh-vital-files"
+            ),
+            "/mnt/tirosh-vital-files/sub/case.vital"
+        )
+        XCTAssertNil(policy.vitalFileGuestPath(
+            hostFilePath: "/Users/test/Desktop/case.vital",
+            hostRootPath: "/Users/Shared/VitalServerHelper/vital-files",
+            guestRootPath: "/mnt/tirosh-vital-files"
+        ))
     }
 
     func testSelectionStateKeepsValidSessionAndPrunesUnavailableBeds() {
@@ -231,6 +298,7 @@ private func testKitSession(
         targetURL: "http://example.test",
         recordersRequested: recordersRequested ?? max(bedRoomNames.count, 1),
         bedsRequested: bedRoomNames.count,
+        bedroomName: bedRoomNames.first ?? "TestBedroom",
         bedRoomNames: bedRoomNames,
         vrcode: nil,
         version: "testkit",
@@ -239,7 +307,7 @@ private func testKitSession(
         maxMessages: nil,
         shiftTime: true,
         generateFrames: true,
-        defaultScenario: "normal",
+        scenario: "normal_monitoring",
         createdAt: nil,
         startedAt: nil,
         stoppedAt: nil,

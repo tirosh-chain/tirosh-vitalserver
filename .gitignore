@@ -68,4 +68,8 @@ htmlcov/
 
 # VitalServer is managed as a git submodule.
 vendor/vitalserver/
+
+# Recorder source files
+*.vital
 data/
+packages/vitalserver-testkit/src/tirosh_vitalserver/testkit/fixtures/

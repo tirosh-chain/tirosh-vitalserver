@@ -69,7 +69,7 @@ public struct RuntimeTestKitAPIRouter {
                 let restartRequest = try request.decodedBody(RuntimeTestKitRestartRequest.self)
                 return try await jsonResponse(controller.restartVirtualRecorders(
                     sessionID: restartRequest.sessionID,
-                    bedRoomNames: restartRequest.bedRoomNames
+                    bedroomName: restartRequest.bedroomName
                 ))
             case .deleteVirtualRecorders:
                 let deleteRequest = try request.decodedBody(RuntimeTestKitDeleteRequest.self)

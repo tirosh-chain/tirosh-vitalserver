@@ -29,6 +29,20 @@ const fileReferenceSchema = z.object({
   value: nonEmptyString
 });
 
+const runtimeTestKitRecorderSourceSchema = z.object({
+  type: z.literal("vitalFile"),
+  path: nonEmptyString,
+  scenario: z.enum([
+    "basic_monitor",
+    "periop_full",
+    "bloodbag",
+    "root_sedation",
+    "full_real"
+  ]),
+  startOffsetSeconds: z.number().min(0),
+  durationSeconds: z.number().int().min(1)
+});
+
 export const runtimeApplySettingsRequestSchema = z.object({
   settings: runtimeSettingsSchema
 }) satisfies z.ZodType<RuntimeApplySettingsRequest>;
@@ -115,7 +129,9 @@ export const runtimeTestKitVirtualRecorderStartRequestSchema = z
     generateFrames: z.boolean(),
     exportVital: z.boolean(),
     uploadVital: z.boolean(),
-    vitalUploadEndpoint: nonEmptyString
+    vitalUploadEndpoint: nonEmptyString,
+    source: runtimeTestKitRecorderSourceSchema.nullable().optional(),
+    realSampleKey: optionalNullableNonEmptyString
   })
   .refine((request) => request.bedRoomNames.length >= request.recorders, {
     message: "bedRoomNames must include at least one bed per recorder",

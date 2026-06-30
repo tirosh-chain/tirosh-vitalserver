@@ -1012,6 +1012,31 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertFalse(viewModel.testKitCanResetBeds)
     }
 
+    func testTestKitContainerControlsAreIndependentOfContainerState() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities(
+            canControlRuntimeServices: true
+        ))
+        let testKit = FakeTestKitController()
+        testKit.status = RuntimeTestKitStatus(enabled: true, state: .stopped)
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.testKitStatus = testKit.status
+
+        XCTAssertTrue(viewModel.testKitCanControlContainer)
+
+        await viewModel.startTestKitContainer()
+        await viewModel.stopTestKitContainer()
+        await viewModel.restartTestKitContainer()
+
+        XCTAssertEqual(client.startTestKitServiceCount, 1)
+        XCTAssertEqual(client.stopTestKitServiceCount, 1)
+        XCTAssertEqual(client.restartTestKitServiceCount, 1)
+    }
+
     func testTestKitStartUsesSelectedBedRoomNames() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let testKit = FakeTestKitController()
@@ -1043,7 +1068,72 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.startVirtualRecorderSession()
 
         XCTAssertEqual(testKit.startedRequests.count, 1)
-        XCTAssertEqual(testKit.startedRequests[0].bedRoomNames, ["OR-B"])
+        XCTAssertEqual(testKit.startedRequests[0].bedroomName, "OR-B")
+    }
+
+    func testTestKitVitalFilePlaybackUsesGuestMountedPath() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            initialSettings: RuntimeSettings(
+                vitalFilesDirectory: "/Users/Shared/VitalServerHelper/vital-files"
+            ),
+            healthNotifications: NoopHealthNotifications()
+        )
+        let status = RuntimeTestKitStatus(
+            enabled: true,
+            state: .running,
+            beds: [RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b")]
+        )
+        testKit.status = status
+        viewModel.testKitStatus = status
+        viewModel.setTestKitBedSelection("OR-B", selected: true)
+        viewModel.testKitRecorderSourceMode = .vitalFile
+        viewModel.testKitVitalFilePath = "/Users/Shared/VitalServerHelper/vital-files/case.vital"
+
+        await viewModel.startVirtualRecorderSession()
+
+        XCTAssertEqual(testKit.startedRequests.count, 1)
+        XCTAssertEqual(
+            testKit.startedRequests[0].source?.path,
+            "/mnt/tirosh-vital-files/case.vital"
+        )
+    }
+
+    func testTestKitVitalFilePlaybackRejectsUnsharedHostPath() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            initialSettings: RuntimeSettings(
+                vitalFilesDirectory: "/Users/Shared/VitalServerHelper/vital-files"
+            ),
+            healthNotifications: NoopHealthNotifications()
+        )
+        let status = RuntimeTestKitStatus(
+            enabled: true,
+            state: .running,
+            beds: [RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b")]
+        )
+        testKit.status = status
+        viewModel.testKitStatus = status
+        viewModel.setTestKitBedSelection("OR-B", selected: true)
+        viewModel.testKitRecorderSourceMode = .vitalFile
+        viewModel.testKitVitalFilePath = "/Users/test/Desktop/case.vital"
+
+        await viewModel.startVirtualRecorderSession()
+
+        XCTAssertEqual(testKit.startedRequests.count, 0)
+        XCTAssertEqual(
+            viewModel.testKitActionMessage,
+            RuntimeTestPanelText.chooseSharedVitalFileForPlayback
+        )
+        XCTAssertEqual(viewModel.testKitActionMessageTone, .failure)
     }
 
     func testTestKitResetBedsRequiresNoActiveSessions() async {
@@ -1202,6 +1292,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         await viewModel.uploadVitalFilesFromTestTab()
 
         XCTAssertEqual(nativeShell.chooseVitalFilesPrompts, [RuntimeTestPanelText.choosingVitalFiles])
+        XCTAssertEqual(nativeShell.chooseVitalFilesDirectoryURLs, [nil])
         XCTAssertEqual(testKit.vitalUploadRequests.count, 1)
         XCTAssertEqual(testKit.vitalUploadRequests[0].filePaths, [
             "/data/MORC03_260617_120000.vital",
@@ -1211,6 +1302,41 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(testKit.vitalUploadRequests[0].endpoint, "/upload")
         XCTAssertEqual(viewModel.testKitActionMessage, "Uploaded 2/2 .vital files · beds 2 · failed 0")
         XCTAssertEqual(viewModel.testKitActionMessageTone, .neutral)
+    }
+
+    func testPlaybackVitalFilePickerStartsInConfiguredVitalFilesDirectory() {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let nativeShell = FakeRuntimeNativeShell()
+        nativeShell.vitalFileURLs = [
+            URL(fileURLWithPath: "/Users/Shared/VitalServerHelper/vital-files/case.vital")
+        ]
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            initialSettings: RuntimeSettings(
+                vitalFilesDirectory: "/Users/Shared/VitalServerHelper/vital-files"
+            ),
+            healthNotifications: NoopHealthNotifications(),
+            nativeShell: nativeShell
+        )
+
+        viewModel.chooseVitalFileForTestKitPlayback()
+
+        XCTAssertEqual(
+            nativeShell.chooseVitalFilesPrompts,
+            [RuntimeTestPanelText.choosingVitalFileForPlayback]
+        )
+        XCTAssertEqual(
+            nativeShell.chooseVitalFilesDirectoryURLs,
+            [URL(fileURLWithPath: "/Users/Shared/VitalServerHelper/vital-files")]
+        )
+        XCTAssertEqual(
+            viewModel.testKitVitalFilePath,
+            "/Users/Shared/VitalServerHelper/vital-files/case.vital"
+        )
+        XCTAssertEqual(viewModel.testKitRecorderSourceMode, .vitalFile)
     }
 
     func testTestKitActionsReportUnavailableOrInvalidInputs() async {
@@ -1564,6 +1690,7 @@ private func testKitSession(
         targetURL: "http://example.test",
         recordersRequested: bedRoomNames.count,
         bedsRequested: bedRoomNames.count,
+        bedroomName: bedRoomNames.first ?? "TestBedroom",
         bedRoomNames: bedRoomNames,
         vrcode: nil,
         version: "testkit",
@@ -1572,7 +1699,7 @@ private func testKitSession(
         maxMessages: nil,
         shiftTime: true,
         generateFrames: true,
-        defaultScenario: "normal",
+        scenario: "normal_monitoring",
         createdAt: nil,
         startedAt: nil,
         stoppedAt: nil,
@@ -1652,7 +1779,7 @@ private final class FakeTestKitController: RuntimeTestKitControlling, RuntimeTes
         let session = testKitSession(
             id: "session-\(startedRequests.count)",
             state: "running",
-            bedRoomNames: request.bedRoomNames
+            bedRoomNames: [request.bedroomName]
         )
         status.sessions.append(session)
         status.activeSession = session
@@ -1674,12 +1801,12 @@ private final class FakeTestKitController: RuntimeTestKitControlling, RuntimeTes
         return session(for: sessionID, state: "running")
     }
 
-    func restartVirtualRecorders(sessionID: String?, bedRoomNames: [String]) async throws -> RuntimeTestKitSession? {
+    func restartVirtualRecorders(sessionID: String?, bedroomName: String?) async throws -> RuntimeTestKitSession? {
         restartedSessionIDs.append(sessionID)
         let session = testKitSession(
             id: "session-restarted-\(restartedSessionIDs.count)",
             state: "running",
-            bedRoomNames: bedRoomNames
+            bedRoomNames: [bedroomName ?? "TestBedroom"]
         )
         status.sessions.append(session)
         status.activeSession = session
@@ -1781,6 +1908,9 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var createRuntimeDataBackupCount = 0
     var startRuntimeServicesCount = 0
     var stopRuntimeServicesCount = 0
+    var startTestKitServiceCount = 0
+    var stopTestKitServiceCount = 0
+    var restartTestKitServiceCount = 0
     var exportLogsCount = 0
     var loadReleaseInfoCount = 0
     var preferredLogsPathCount = 0
@@ -1970,6 +2100,21 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return success()
     }
 
+    func startTestKitService() async throws -> RuntimeCommandResult {
+        startTestKitServiceCount += 1
+        return success()
+    }
+
+    func stopTestKitService() async throws -> RuntimeCommandResult {
+        stopTestKitServiceCount += 1
+        return success()
+    }
+
+    func restartTestKitService() async throws -> RuntimeCommandResult {
+        restartTestKitServiceCount += 1
+        return success()
+    }
+
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
         exportLogsCount += 1
         exportLogDestinationURLs.append(destination)
@@ -2042,6 +2187,7 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
     var chooseUpdateBundlePrompts: [String] = []
     var chooseRedisBackupArchivePrompts: [String] = []
     var chooseVitalFilesPrompts: [String] = []
+    var chooseVitalFilesDirectoryURLs: [URL?] = []
     var chooseLogExportDestinationPrompts: [String] = []
     var openedFileURLs: [URL] = []
     var openedWebURLs: [URL] = []
@@ -2092,8 +2238,9 @@ private final class FakeRuntimeNativeShell: RuntimeNativeShell {
         return redisBackupArchiveURL
     }
 
-    func chooseVitalFiles(prompt: String) -> [URL] {
+    func chooseVitalFiles(prompt: String, directoryURL: URL?) -> [URL] {
         chooseVitalFilesPrompts.append(prompt)
+        chooseVitalFilesDirectoryURLs.append(directoryURL)
         return vitalFileURLs
     }
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -7,6 +9,9 @@ from tirosh_vitalserver.testkit.schemas import (
     HttpResponse,
     RealtimeMessageDocument,
     RecorderPayloadDocument,
+)
+from tirosh_vitalserver.testkit.schemas.recorder_dataset import (
+    load_recorder_dataset_manifest,
 )
 
 
@@ -65,3 +70,57 @@ def test_realtime_message_document_converts_to_internal_json_object() -> None:
 
     assert internal_payload["vrcode"] == "recorder-code"
     assert internal_payload["ver"] == "testkit"
+
+
+def test_recorder_dataset_manifest_selects_recommended_payload(tmp_path: Path) -> None:
+    payload_path = tmp_path / "payload.json"
+    manifest_path = tmp_path / "manifest.json"
+    payload_path.write_text("{}", encoding="utf-8")
+    manifest_path.write_text(
+        """
+        {
+          "schemaVersion": 1,
+          "dataset": "mo-real-vital-recorder-json-120s",
+          "recommendedSets": {
+            "baseline": {
+              "source": "source.vital",
+              "payload": "payload.json",
+              "payloadTrackCount": 50,
+              "recordCount": 5000,
+              "sampleCount": 79000,
+              "devices": ["Bx50", "Primus"],
+              "tags": ["high_track_count"]
+            }
+          },
+          "payloads": []
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    manifest = load_recorder_dataset_manifest(manifest_path)
+
+    assert manifest.dataset == "mo-real-vital-recorder-json-120s"
+    assert manifest.require_recommended_payload(
+        "baseline",
+        manifest_path=manifest_path,
+    ) == payload_path
+
+
+def test_recorder_dataset_manifest_rejects_unknown_key(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        """
+        {
+          "schemaVersion": 1,
+          "dataset": "mo-real-vital-recorder-json-120s",
+          "recommendedSets": {},
+          "payloads": []
+        }
+        """,
+        encoding="utf-8",
+    )
+    manifest = load_recorder_dataset_manifest(manifest_path)
+
+    with pytest.raises(ValueError, match="unknown dataset key"):
+        manifest.require_recommended_payload("missing", manifest_path=manifest_path)

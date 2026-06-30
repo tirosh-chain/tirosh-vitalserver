@@ -23,6 +23,9 @@ final class RuntimeLifecycleCommandTests: XCTestCase {
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["repair-services"]), .repairServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["start-services"]), .startServices)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["stop-services"]), .stopServices)
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["testkit-start"]), .startTestKit)
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["testkit-stop"]), .stopTestKit)
+        XCTAssertEqual(try RuntimeLifecycleCommand.parse(["testkit-restart"]), .restartTestKit)
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["uninstall"]), .uninstall(RuntimeUninstallCommand(clean: false)))
         XCTAssertEqual(try RuntimeLifecycleCommand.parse(["--help"]), .help)
     }

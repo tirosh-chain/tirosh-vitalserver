@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi import HTTPException
 from fastapi.routing import APIRoute
@@ -10,12 +12,74 @@ from tirosh_vitalserver.testkit.application.bed_registry import BedRegistry
 from tirosh_vitalserver.testkit.application.recorder_session import (
     VirtualRecorderSessionManager,
 )
+from tirosh_vitalserver.testkit.application.usecases.recorder.real_vital_sample import (
+    RealVitalFileHeader,
+    RealVitalReaderPort,
+    RealVitalTrackHeader,
+)
+from tirosh_vitalserver.testkit.domain.recorder import build_simulated_recorder_payload
 from tirosh_vitalserver.testkit.schemas import (
     CreateBedsRequest,
     DeleteBedsRequest,
     RestartVirtualRecorderSessionRequest,
     StartVirtualRecordersRequest,
 )
+from tirosh_vitalserver.testkit.types.json import JsonObject
+
+
+class FakeRecordedFrameSourceProvider:
+    def __init__(self) -> None:
+        self.loaded_keys: list[str] = []
+
+    def load_recorded_frame_source(self, key: str) -> JsonObject:
+        self.loaded_keys.append(key)
+        return build_simulated_recorder_payload(room_names=("OR-A",))
+
+
+class FakeRealVitalReader(RealVitalReaderPort):
+    def header(self, path: Path) -> RealVitalFileHeader:
+        return RealVitalFileHeader(
+            path=path,
+            dtstart=1000.0,
+            dtend=1010.0,
+            tracks=(
+                RealVitalTrackHeader(
+                    dtname="Root/SPHB",
+                    dname="Root",
+                    name="SPHB",
+                    unit="g/dL",
+                    montype=72,
+                    srate=1.0,
+                    mindisp=0.0,
+                    maxdisp=20.0,
+                ),
+            ),
+        )
+
+    def track_samples(
+        self,
+        path: Path,
+        dtname: str,
+        *,
+        interval_seconds: float,
+    ) -> list[float]:
+        del path, dtname, interval_seconds
+        return [13.1, 13.2]
+
+
+class FailingRealVitalReader(RealVitalReaderPort):
+    def header(self, path: Path) -> RealVitalFileHeader:
+        raise RuntimeError(f"real vital file is unavailable: {path}")
+
+    def track_samples(
+        self,
+        path: Path,
+        dtname: str,
+        *,
+        interval_seconds: float,
+    ) -> list[float]:
+        del interval_seconds
+        raise RuntimeError(f"real vital track read failed: {path} track={dtname}")
 
 
 def test_sessions_endpoint_uses_manager_dependency_not_query_parameter() -> None:
@@ -136,24 +200,15 @@ def test_bed_registry_create_endpoint_returns_only_created_beds() -> None:
 
 
 def test_sessions_endpoint_rejects_missing_bed_room_names() -> None:
-    route = route_for("/sessions", "POST")
-    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
-    registry = BedRegistry()
+    with pytest.raises(ValueError) as exc_info:
+        StartVirtualRecordersRequest(
+            targetUrl="http://example.test",
+            recorderCount=1,
+            bedroomName=" ",
+            maxMessages=1,
+        ).to_session_request()
 
-    with pytest.raises(HTTPException) as exc_info:
-        route.endpoint(
-            StartVirtualRecordersRequest(
-                targetUrl="http://example.test",
-                recorders=1,
-                bedRoomNames=(),
-                maxMessages=1,
-            ),
-            manager,
-            registry,
-        )
-
-    assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == "bed_room_names is required"
+    assert "bedroom_name must not be empty" in str(exc_info.value)
 
 
 def test_sessions_endpoint_requires_registered_bed_room_names() -> None:
@@ -165,8 +220,8 @@ def test_sessions_endpoint_requires_registered_bed_room_names() -> None:
         route.endpoint(
             StartVirtualRecordersRequest(
                 targetUrl="http://example.test",
-                recorders=1,
-                bedRoomNames=("OR-A",),
+                recorderCount=1,
+                bedroomName="OR-A",
                 maxMessages=1,
             ),
             manager,
@@ -177,6 +232,191 @@ def test_sessions_endpoint_requires_registered_bed_room_names() -> None:
     assert exc_info.value.detail == "bed room names are not registered: OR-A"
 
 
+def test_sessions_endpoint_accepts_purpose_scenario() -> None:
+    route = route_for("/sessions", "POST")
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A",))
+
+    response = route.endpoint(
+        StartVirtualRecordersRequest.model_validate({
+            "targetUrl": "http://example.test",
+            "recorderCount": 1,
+            "bedroomName": "OR-A",
+            "maxMessages": 1,
+            "scenario": "hct_decreasing",
+        }),
+        manager,
+        registry,
+    )
+    try:
+        assert response["scenario"] == "hct_decreasing"
+        assert response["bedroomName"] == "OR-A"
+        assert manager.wait_session(response["id"], timeout=5)
+    finally:
+        manager.delete_session(response["id"])
+
+
+def test_sessions_endpoint_preserves_selected_bed_room_names() -> None:
+    route = route_for("/sessions", "POST")
+    manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A", "OR-B"))
+
+    response = route.endpoint(
+        StartVirtualRecordersRequest(
+            targetUrl="http://example.test",
+            recorderCount=2,
+            bedRoomNames=("OR-A", "OR-B"),
+            maxMessages=1,
+        ),
+        manager,
+        registry,
+    )
+    try:
+        assert response["recordersRequested"] == 2
+        assert response["bedsRequested"] == 2
+        assert response["bedroomName"] == "OR-A"
+        assert response["bedRoomNames"] == ["OR-A", "OR-B"]
+        assert len(response["recorders"]) == 2
+    finally:
+        manager.delete_session(response["id"])
+
+
+def test_scenarios_endpoint_describes_purpose_centered_scenarios() -> None:
+    route = route_for("/scenarios", "GET")
+
+    response = route.endpoint()
+
+    scenarios = {
+        scenario["scenario"]: scenario
+        for scenario in response["scenarios"]
+    }
+    assert "bloodbag_transfusion" in scenarios
+    assert "bradycardia" in scenarios
+    assert "hypotension" in scenarios
+    assert "hypertension" in scenarios
+    assert "apnea" in scenarios
+    assert "arrhythmia" in scenarios
+    assert "signal_artifact" not in scenarios
+    assert "device_disconnect" not in scenarios
+    assert scenarios["bloodbag_transfusion"]["title"] == "Bloodbag transfusion"
+    assert scenarios["bloodbag_transfusion"]["situation"]
+    assert scenarios["bloodbag_transfusion"]["purpose"]
+
+
+def test_real_recorder_samples_endpoint_reports_no_packaged_samples() -> None:
+    route = route_for("/real-recorder-samples", "GET")
+
+    response = route.endpoint()
+
+    assert response["dataset"] == "not-distributed"
+    assert response["schemaVersion"] == "recorder-dataset.v1"
+    assert response["state"] == "unavailable"
+    assert response["scenarios"] == []
+    assert "sample data is not distributed" in str(response["reason"])
+
+
+def test_sessions_endpoint_accepts_signal_quality_and_real_sample() -> None:
+    route = route_for("/sessions", "POST")
+    frame_source_provider = FakeRecordedFrameSourceProvider()
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        recorded_frame_source_provider=frame_source_provider,
+    )
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A",))
+
+    response = route.endpoint(
+        StartVirtualRecordersRequest.model_validate({
+            "targetUrl": "http://example.test",
+            "bedroomName": "OR-A",
+            "maxMessages": 1,
+            "signalQuality": "baseline_wander",
+            "realSampleKey": "startup_monitoring",
+        }),
+        manager,
+        registry,
+    )
+    try:
+        assert response["signalQuality"] == "baseline_wander"
+        assert response["realSampleKey"] == "startup_monitoring"
+        assert manager.wait_session(response["id"], timeout=5)
+        assert frame_source_provider.loaded_keys == ["startup_monitoring"]
+    finally:
+        manager.delete_session(response["id"])
+
+
+def test_sessions_endpoint_accepts_vital_file_source() -> None:
+    route = route_for("/sessions", "POST")
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        real_vital_reader=FakeRealVitalReader(),
+    )
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A",))
+
+    response = route.endpoint(
+        StartVirtualRecordersRequest.model_validate({
+            "targetUrl": "http://example.test",
+            "bedroomName": "OR-A",
+            "maxMessages": 1,
+            "source": {
+                "type": "vitalFile",
+                "path": "/Users/Shared/VitalServerHelper/vital-files/sample.vital",
+                "scenario": "full_real",
+                "startOffsetSeconds": 1.0,
+                "durationSeconds": 2,
+            },
+        }),
+        manager,
+        registry,
+    )
+    try:
+        assert response["source"] == {
+            "type": "vitalFile",
+            "path": "/Users/Shared/VitalServerHelper/vital-files/sample.vital",
+            "scenario": "full_real",
+            "startOffsetSeconds": 1.0,
+            "durationSeconds": 2,
+        }
+        assert response["durationSeconds"] == 2.0
+        assert manager.wait_session(response["id"], timeout=5)
+    finally:
+        manager.delete_session(response["id"])
+
+
+def test_sessions_endpoint_reports_vital_file_source_unavailable() -> None:
+    route = route_for("/sessions", "POST")
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        real_vital_reader=FailingRealVitalReader(),
+    )
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A",))
+
+    with pytest.raises(HTTPException) as exc:
+        route.endpoint(
+            StartVirtualRecordersRequest.model_validate({
+                "targetUrl": "http://example.test",
+                "bedroomName": "OR-A",
+                "maxMessages": 1,
+                "source": {
+                    "type": "vitalFile",
+                    "path": "/mnt/tirosh-vital-files/missing.vital",
+                    "scenario": "full_real",
+                    "startOffsetSeconds": 1.0,
+                    "durationSeconds": 2,
+                },
+            }),
+            manager,
+            registry,
+        )
+
+    assert exc.value.status_code == 503
+    assert "real vital file is unavailable" in str(exc.value.detail)
+
+
 def test_sessions_endpoint_rejects_active_bed_reuse() -> None:
     route = route_for("/sessions", "POST")
     manager = VirtualRecorderSessionManager(connector=fake_socketio_connector)
@@ -184,12 +424,12 @@ def test_sessions_endpoint_rejects_active_bed_reuse() -> None:
     registry.create_beds(room_names=("OR-A", "OR-B"))
 
     first = route.endpoint(
-        StartVirtualRecordersRequest(
-            targetUrl="http://example.test",
-            recorders=1,
-            bedRoomNames=("OR-A",),
-            intervalSeconds=1,
-        ),
+            StartVirtualRecordersRequest(
+                targetUrl="http://example.test",
+                recorderCount=1,
+                bedroomName="OR-A",
+                intervalSeconds=1,
+            ),
         manager,
         registry,
     )
@@ -198,8 +438,8 @@ def test_sessions_endpoint_rejects_active_bed_reuse() -> None:
             route.endpoint(
                 StartVirtualRecordersRequest(
                     targetUrl="http://example.test",
-                    recorders=1,
-                    bedRoomNames=("OR-A",),
+                    recorderCount=1,
+                    bedroomName="OR-A",
                     intervalSeconds=1,
                 ),
                 manager,
@@ -222,8 +462,8 @@ def test_bed_registry_reset_rejects_active_assignments() -> None:
     first = start_route.endpoint(
         StartVirtualRecordersRequest(
             targetUrl="http://example.test",
-            recorders=1,
-            bedRoomNames=("OR-A",),
+            recorderCount=1,
+            bedroomName="OR-A",
             intervalSeconds=1,
         ),
         manager,
@@ -252,8 +492,8 @@ def test_bed_registry_delete_rejects_active_assignments() -> None:
     first = start_route.endpoint(
         StartVirtualRecordersRequest(
             targetUrl="http://example.test",
-            recorders=1,
-            bedRoomNames=("OR-A",),
+            recorderCount=1,
+            bedroomName="OR-A",
             intervalSeconds=1,
         ),
         manager,
@@ -287,8 +527,8 @@ def test_session_endpoint_restarts_stopped_session_on_selected_bed() -> None:
         StartVirtualRecordersRequest(
             targetUrl="http://example.test",
             vrcode="VR_REUSE",
-            recorders=1,
-            bedRoomNames=("OR-A",),
+            recorderCount=1,
+            bedroomName="OR-A",
             maxMessages=1,
         ),
         manager,
@@ -298,14 +538,14 @@ def test_session_endpoint_restarts_stopped_session_on_selected_bed() -> None:
 
     restarted = restart_route.endpoint(
         first["id"],
-        RestartVirtualRecorderSessionRequest(bedRoomNames=("OR-B",)),
+        RestartVirtualRecorderSessionRequest(bedroomName="OR-B"),
         manager,
         registry,
     )
 
     assert restarted["id"] != first["id"]
     assert restarted["vrcode"] == "VR_REUSE"
-    assert restarted["bedRoomNames"] == ("OR-B",)
+    assert restarted["bedroomName"] == "OR-B"
 
 
 def route_for(path: str, method: str) -> APIRoute:

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import json
+import zlib
+
+import pytest
+
 from tests.support import FakeSocketIoClient
 from tirosh_vitalserver.testkit.application.recorder_lifecycle import (
     MANAGEMENT_EVENTS,
@@ -9,7 +14,12 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
     RecorderRuntimeState,
 )
 from tirosh_vitalserver.testkit.application.usecases.recorder.stream_loop import (
+    sleep_until_frame_time,
     stream_realtime_payload,
+)
+from tirosh_vitalserver.testkit.domain.recorder import (
+    RecorderFrameSource,
+    RecorderFrameSourceKind,
 )
 from tirosh_vitalserver.testkit.types.json import JsonObject
 
@@ -103,6 +113,70 @@ def test_stream_realtime_payload_records_join_and_send_data() -> None:
     assert not client.connected
 
 
+def test_stream_realtime_payload_replays_recorded_frames_in_sequence() -> None:
+    client = FakeSocketIoClient()
+
+    def connector(
+        base_url: str,
+        *,
+        timeout: float = 30.0,
+    ) -> FakeSocketIoClient:
+        return client
+
+    payload: JsonObject = {
+        "vrcode": "VR_TEST",
+        "ver": "testkit",
+        "rooms": {
+            "OR-A": {
+                "roomname": "OR-A",
+                "dtstart": 100.0,
+                "dtend": 100.03,
+                "dtcase": 90.0,
+                "trks": [
+                    {
+                        "type": "num",
+                        "montype": "HR",
+                        "recs": [
+                            {"dt": 100.0, "val": 80},
+                            {"dt": 100.01, "val": 81},
+                            {"dt": 100.02, "val": 82},
+                        ],
+                    }
+                ],
+            }
+        },
+    }
+
+    result = stream_realtime_payload(
+        "http://example.test",
+        RecorderFrameSource(
+            kind=RecorderFrameSourceKind.RECORDED,
+            payload=payload,
+        ),
+        interval_seconds=0.01,
+        max_messages=2,
+        shift_time=True,
+        connector=connector,
+    )
+
+    sent_payloads = [
+        json.loads(zlib.decompress(data))
+        for event, data in client.emitted
+        if event == "send_data"
+    ]
+    first_record = sent_payloads[0]["rooms"]["OR-A"]["trks"][0]["recs"][0]
+    second_record = sent_payloads[1]["rooms"]["OR-A"]["trks"][0]["recs"][0]
+    first_room = sent_payloads[0]["rooms"]["OR-A"]
+    second_room = sent_payloads[1]["rooms"]["OR-A"]
+
+    assert result.error is None
+    assert first_record["val"] == 80
+    assert second_record["val"] == 81
+    assert abs(second_record["dt"] - first_record["dt"] - 0.01) < 0.0001
+    assert first_room["dtcase"] == second_room["dtcase"]
+    assert first_room["dtcase"] != 90.0
+
+
 def test_stream_realtime_payload_does_not_count_disconnected_send() -> None:
     client = FakeSocketIoClient()
 
@@ -153,3 +227,25 @@ def test_stream_realtime_payload_does_not_count_disconnected_send() -> None:
     assert client.emitted == [("join_vr", "VR_TEST")]
     assert snapshot.messages_sent == 0
     assert result.messages_sent == 0
+
+
+def test_sleep_until_frame_time_uses_remaining_schedule_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeSocketIoClient()
+    sleeps: list[float] = []
+    monkeypatch.setattr(client, "sleep", sleeps.append)
+    monkeypatch.setattr(
+        "tirosh_vitalserver.testkit.application.usecases.recorder.stream_loop."
+        "time.perf_counter",
+        lambda: 104.75,
+    )
+
+    sleep_until_frame_time(
+        client,
+        frame_started_perf=100.0,
+        sequence=5,
+        interval_seconds=1.0,
+    )
+
+    assert sleeps == [0.25]

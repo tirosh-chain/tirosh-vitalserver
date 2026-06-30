@@ -16,6 +16,7 @@ from tirosh_vitalserver.testkit.domain.recorder.models import VirtualRecorderPay
 from tirosh_vitalserver.testkit.domain.signal import (
     DEFAULT_SIGNAL_PROFILE,
     SignalProfile,
+    SignalQualityProfile,
 )
 
 
@@ -30,6 +31,7 @@ def stream_vrecorder_session(
     shift_time: bool = True,
     generate_frames: bool = True,
     default_signal_profile: SignalProfile = DEFAULT_SIGNAL_PROFILE,
+    signal_quality: SignalQualityProfile = SignalQualityProfile.CLEAN,
     signal_profiles: Mapping[int, SignalProfile] | None = None,
     runtime_registry: RecorderRuntimeRegistry | None = None,
     connector: SocketIoConnectorPort,
@@ -49,6 +51,7 @@ def stream_vrecorder_session(
         shift_time=shift_time,
         generate_frames=generate_frames,
         default_signal_profile=default_signal_profile,
+        signal_quality=signal_quality,
         signal_profiles=signal_profiles,
         runtime_registry=runtime_registry,
         connector=connector,

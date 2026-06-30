@@ -22,6 +22,7 @@ class RecorderTrackMontype(StrEnum):
     ARTERIAL_SYSTOLIC_BP = "IABP_SBP"
     ARTERIAL_DIASTOLIC_BP = "IABP_DBP"
     ARTERIAL_MEAN_BP = "IABP_MBP"
+    HCT = "HCT"
 
     @classmethod
     def parse(cls, value: JsonValue) -> Self | None:

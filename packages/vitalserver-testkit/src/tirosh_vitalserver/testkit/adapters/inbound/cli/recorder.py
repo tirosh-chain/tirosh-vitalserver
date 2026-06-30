@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from tirosh_vitalserver.testkit.adapters.inbound.cli.common import (
@@ -15,6 +16,9 @@ from tirosh_vitalserver.testkit.adapters.inbound.cli.output import (
 )
 from tirosh_vitalserver.testkit.adapters.inbound.http.recorder_status import (
     RecorderStatusServer,
+)
+from tirosh_vitalserver.testkit.adapters.outbound.real_vital import (
+    VitalDbRealVitalReader,
 )
 from tirosh_vitalserver.testkit.adapters.outbound.recorder import (
     connect_socketio,
@@ -35,6 +39,12 @@ from tirosh_vitalserver.testkit.application.usecases import (
     send_virtual_recorder_payloads,
     stream_vrecorder_session,
 )
+from tirosh_vitalserver.testkit.application.usecases.recorder.real_vital_sample import (
+    RealVitalSampleScenario,
+    build_real_vital_recorder_payload,
+    real_vital_sample_metadata,
+    real_vital_track_catalog,
+)
 from tirosh_vitalserver.testkit.application.usecases.recorder.visibility import (
     wait_for_recorder_visibility,
 )
@@ -51,8 +61,12 @@ from tirosh_vitalserver.testkit.domain.signal import (
     RecorderSignalScenario,
     SignalProfile,
     profile_for_scenario,
+    profile_with_hct_override,
 )
 from tirosh_vitalserver.testkit.schemas.payloads import load_recorder_payload
+from tirosh_vitalserver.testkit.schemas.recorder_dataset import (
+    load_recorder_dataset_manifest,
+)
 from tirosh_vitalserver.testkit.types.json import JsonObject
 
 
@@ -64,6 +78,9 @@ def add_recorder_parsers(
     add_send_recorder_parser(subparsers)
     add_stream_recorder_parser(subparsers)
     add_verify_recorder_parser(subparsers)
+    add_list_recorder_dataset_parser(subparsers)
+    add_inspect_real_vital_recorder_parser(subparsers)
+    add_export_real_vital_recorder_parser(subparsers)
 
 
 def add_send_recorder_parser(
@@ -85,6 +102,8 @@ def add_send_recorder_parser(
     add_load_args(parser)
 
     add_optional_recorder_payload_arg(parser)
+    add_recorder_dataset_args(parser)
+    add_recorder_vital_file_args(parser)
     add_common_recorder_args(parser)
     parser.add_argument(
         "--http",
@@ -122,6 +141,8 @@ def add_stream_recorder_parser(
     add_common_server_args(parser)
 
     add_optional_recorder_payload_arg(parser)
+    add_recorder_dataset_args(parser)
+    add_recorder_vital_file_args(parser)
     add_common_recorder_args(parser)
     parser.add_argument(
         "--interval",
@@ -166,6 +187,12 @@ def add_stream_recorder_parser(
         help="Override one 1-based bed index with a signal scenario",
     )
     parser.add_argument(
+        "--hct-percent",
+        type=float,
+        default=None,
+        help="Fixed HCT percent for simulated HCT records",
+    )
+    parser.add_argument(
         "--status-page",
         action="store_true",
         help="Serve a simple VRecorder status page for Network Settings checks",
@@ -203,6 +230,8 @@ def add_verify_recorder_parser(
     add_common_server_args(parser)
 
     add_optional_recorder_payload_arg(parser)
+    add_recorder_dataset_args(parser)
+    add_recorder_vital_file_args(parser)
     add_common_recorder_args(parser)
     parser.add_argument(
         "--admin-user-id",
@@ -230,14 +259,120 @@ def add_verify_recorder_parser(
     parser.set_defaults(command=run_verify_recorder)
 
 
+def add_list_recorder_dataset_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Register the command that lists recorder dataset manifest entries."""
+
+    parser = subparsers.add_parser(
+        "list-recorder-dataset",
+        help="List recommended payloads from a recorder dataset manifest",
+        description=(
+            "Read an explicit recorder dataset manifest and print its "
+            "recommended payload keys. This command does not infer datasets "
+            "from local data directories."
+        ),
+    )
+    parser.add_argument(
+        "manifest",
+        type=Path,
+        help="Recorder dataset manifest JSON path",
+    )
+    parser.set_defaults(command=run_list_recorder_dataset)
+
+
+def add_export_real_vital_recorder_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Register the command that exports real `.vital` files to recorder JSON."""
+
+    parser = subparsers.add_parser(
+        "export-real-vital-recorder",
+        help="Extract a scenario recorder payload from a real .vital file",
+        description=(
+            "Extract real monitor tracks from a .vital file into the JSON shape "
+            "accepted by send-recorder and stream-recorder. HCT in the bloodbag "
+            "scenario is derived from Root/SPHB and recorded as derived metadata."
+        ),
+    )
+    parser.add_argument("path", type=Path, help="Source .vital file path")
+    parser.add_argument(
+        "--output",
+        required=True,
+        type=Path,
+        help="Destination recorder payload JSON path",
+    )
+    parser.add_argument(
+        "--scenario",
+        choices=[scenario.value for scenario in RealVitalSampleScenario],
+        default=RealVitalSampleScenario.BASIC_MONITOR.value,
+        help="Track selection scenario",
+    )
+    parser.add_argument(
+        "--room-name",
+        default=None,
+        help="Room name in the generated recorder payload",
+    )
+    parser.add_argument(
+        "--vrcode",
+        default=None,
+        help="VRecorder code in the generated realtime message",
+    )
+    parser.add_argument(
+        "--version",
+        default="real-vital-sample",
+        help="Recorder version value in the generated realtime message",
+    )
+    parser.add_argument(
+        "--start-offset",
+        type=float,
+        default=0.0,
+        help="Seconds after source .vital dtstart to begin extraction",
+    )
+    parser.add_argument(
+        "--duration",
+        type=int,
+        default=20,
+        help="Seconds of recorder records to extract",
+    )
+    parser.add_argument(
+        "--metadata-output",
+        type=Path,
+        default=None,
+        help="Sidecar metadata JSON path. Defaults to OUTPUT.metadata.json",
+    )
+    parser.set_defaults(command=run_export_real_vital_recorder)
+
+
+def add_inspect_real_vital_recorder_parser(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Register the command that scans real `.vital` track catalogs."""
+
+    parser = subparsers.add_parser(
+        "inspect-real-vital-recorder",
+        help="Inspect real .vital files and emit a merged track catalog",
+    )
+    parser.add_argument(
+        "paths",
+        nargs="+",
+        type=Path,
+        help=".vital file or directory paths",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Write catalog JSON to this path instead of stdout",
+    )
+    parser.set_defaults(command=run_inspect_real_vital_recorder)
+
+
 def run_send_recorder(args: argparse.Namespace) -> int:
     """Send recorder payloads once or repeatedly and assert transfer success."""
 
-    payload = load_recorder_payload_or_default(
-        args.payload,
-        bed_room_names=tuple(args.bed_room_name),
-    )
-    vrcode = selected_vrcode(args.payload, args.vrcode)
+    payload = load_recorder_payload_or_default(args)
+    vrcode = selected_vrcode(args, args.vrcode)
 
     if args.http:
         client = VitalServerClient(args.vitalserver_url, timeout=args.timeout)
@@ -275,11 +410,8 @@ def run_send_recorder(args: argparse.Namespace) -> int:
 def run_stream_recorder(args: argparse.Namespace) -> int:
     """Stream recorder payloads until duration, message limit, or interrupt."""
 
-    payload = load_recorder_payload_or_default(
-        args.payload,
-        bed_room_names=tuple(args.bed_room_name),
-    )
-    vrcode = selected_vrcode(args.payload, args.vrcode)
+    payload = load_recorder_payload_or_default(args)
+    vrcode = selected_vrcode(args, args.vrcode)
     virtual_payloads = build_virtual_recorder_payloads(
         payload,
         count=args.recorders,
@@ -304,10 +436,16 @@ def run_stream_recorder(args: argparse.Namespace) -> int:
             max_messages=args.max_messages,
             shift_time=not args.no_shift_time,
             generate_frames=not args.replay_sample,
-            default_signal_profile=profile_for_scenario(
-                RecorderSignalScenario(args.default_scenario),
+            default_signal_profile=profile_with_hct_override(
+                profile_for_scenario(
+                    RecorderSignalScenario(args.default_scenario),
+                ),
+                args.hct_percent,
             ),
-            signal_profiles=parse_bed_signal_profiles(args.bed_scenario),
+            signal_profiles=parse_bed_signal_profiles(
+                args.bed_scenario,
+                hct_percent=args.hct_percent,
+            ),
             runtime_registry=runtime_registry,
             connector=connect_socketio,
         )
@@ -327,11 +465,8 @@ def run_stream_recorder(args: argparse.Namespace) -> int:
 def run_verify_recorder(args: argparse.Namespace) -> int:
     """Send recorder data and poll VitalServer until rooms are visible."""
 
-    payload = load_recorder_payload_or_default(
-        args.payload,
-        bed_room_names=tuple(args.bed_room_name),
-    )
-    vrcode = selected_vrcode(args.payload, args.vrcode)
+    payload = load_recorder_payload_or_default(args)
+    vrcode = selected_vrcode(args, args.vrcode)
     client = VitalServerClient(args.vitalserver_url, timeout=args.timeout)
     virtual_payloads = build_virtual_recorder_payloads(
         payload,
@@ -377,6 +512,120 @@ def run_verify_recorder(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_list_recorder_dataset(args: argparse.Namespace) -> int:
+    """Print recommended payload keys from a recorder dataset manifest."""
+
+    manifest = load_recorder_dataset_manifest(args.manifest)
+    print(f"dataset: {manifest.dataset}")
+    print(f"schema_version: {manifest.schemaVersion}")
+    print(f"recommended_sets: {len(manifest.recommendedSets)}")
+
+    for key, item in sorted(manifest.recommendedSets.items()):
+        devices = ",".join(item.devices)
+        tags = ",".join(item.tags)
+        print(
+            "recommended: "
+            f"key={key} "
+            f"tracks={item.payloadTrackCount} "
+            f"records={item.recordCount} "
+            f"samples={item.sampleCount} "
+            f"devices={devices} "
+            f"tags={tags} "
+            f"payload={item.payload}"
+        )
+
+    return 0
+
+
+def run_inspect_real_vital_recorder(args: argparse.Namespace) -> int:
+    """Inspect real `.vital` files and write a merged track catalog."""
+
+    paths = expand_vital_paths(tuple(args.paths))
+    if not paths:
+        raise ValueError("no .vital files matched")
+
+    catalog = real_vital_track_catalog(VitalDbRealVitalReader(), paths)
+    body = json.dumps(catalog, ensure_ascii=False, indent=2)
+    if args.output is None:
+        print(body)
+    else:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(body, encoding="utf-8")
+        print(f"catalog: {args.output}")
+        print(f"files: {catalog['filesScanned']}")
+        print(f"unique_tracks: {catalog['uniqueTracks']}")
+
+    return 0
+
+
+def run_export_real_vital_recorder(args: argparse.Namespace) -> int:
+    """Export a real `.vital` sample into a recorder JSON payload."""
+
+    reader = VitalDbRealVitalReader()
+    scenario = RealVitalSampleScenario(args.scenario)
+    payload = build_real_vital_recorder_payload(
+        reader,
+        args.path,
+        scenario=scenario,
+        room_name=args.room_name,
+        vrcode=args.vrcode,
+        version=args.version,
+        start_offset_seconds=args.start_offset,
+        duration_seconds=args.duration,
+    )
+    metadata_output = args.metadata_output
+    if metadata_output is None:
+        metadata_output = args.output.with_suffix(args.output.suffix + ".metadata.json")
+    metadata = real_vital_sample_metadata(
+        reader,
+        args.path,
+        scenario=scenario,
+        start_offset_seconds=args.start_offset,
+        duration_seconds=args.duration,
+        payload_path=args.output,
+    )
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    metadata_output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    metadata_output.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    payload_rooms = payload.get("rooms")
+    rooms = payload_rooms if isinstance(payload_rooms, dict) else {}
+    track_count = 0
+    for room in rooms.values():
+        if isinstance(room, dict):
+            tracks = room.get("trks")
+            if isinstance(tracks, list):
+                track_count += len(tracks)
+
+    print(f"payload: {args.output}")
+    print(f"metadata: {metadata_output}")
+    print(f"scenario: {scenario.value}")
+    print(f"tracks: {track_count}")
+
+    return 0
+
+
+def expand_vital_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
+    """Return sorted `.vital` files from explicit files and directories."""
+
+    expanded: list[Path] = []
+    for path in paths:
+        if path.is_dir():
+            expanded.extend(sorted(path.rglob("*.vital")))
+        elif path.suffix == ".vital":
+            expanded.append(path)
+
+    return tuple(sorted(dict.fromkeys(expanded)))
+
+
 def add_common_recorder_args(arg_parser: argparse.ArgumentParser) -> None:
     """Add recorder identity and fan-out arguments."""
 
@@ -416,6 +665,51 @@ def add_optional_recorder_payload_arg(arg_parser: argparse.ArgumentParser) -> No
     )
 
 
+def add_recorder_dataset_args(arg_parser: argparse.ArgumentParser) -> None:
+    """Add explicit recorder dataset manifest selection arguments."""
+
+    arg_parser.add_argument(
+        "--dataset-manifest",
+        type=Path,
+        default=None,
+        help="Recorder dataset manifest JSON path",
+    )
+    arg_parser.add_argument(
+        "--dataset-key",
+        default=None,
+        help="Recommended dataset key to load from --dataset-manifest",
+    )
+
+
+def add_recorder_vital_file_args(arg_parser: argparse.ArgumentParser) -> None:
+    """Add explicit `.vital` recorder source arguments."""
+
+    arg_parser.add_argument(
+        "--vital-file",
+        type=Path,
+        default=None,
+        help="Source .vital file to replay directly as recorder data",
+    )
+    arg_parser.add_argument(
+        "--vital-scenario",
+        choices=[scenario.value for scenario in RealVitalSampleScenario],
+        default=RealVitalSampleScenario.BASIC_MONITOR.value,
+        help="Track selection preset for --vital-file",
+    )
+    arg_parser.add_argument(
+        "--vital-start-offset",
+        type=float,
+        default=0.0,
+        help="Seconds after source .vital dtstart to begin playback extraction",
+    )
+    arg_parser.add_argument(
+        "--vital-duration",
+        type=int,
+        default=120,
+        help="Seconds of recorder records to extract from --vital-file",
+    )
+
+
 def assert_stream_success(summary: StreamSummary) -> None:
     """Raise when any recorder stream failed."""
 
@@ -446,10 +740,15 @@ def build_optional_status_server(
 
 def parse_bed_signal_profiles(
     values: list[tuple[int, SignalProfile]],
+    *,
+    hct_percent: float | None = None,
 ) -> dict[int, SignalProfile]:
     """Convert parsed bed scenario options into a profile mapping."""
 
-    return dict(values)
+    return {
+        index: profile_with_hct_override(profile, hct_percent)
+        for index, profile in values
+    }
 
 
 def parse_bed_signal_profile(value: str) -> tuple[int, SignalProfile]:
@@ -497,29 +796,82 @@ def parse_recorder_signal_scenario(value: str) -> RecorderSignalScenario:
         ) from exc
 
 
-def load_recorder_payload_or_default(
-    path: Path | None,
-    *,
-    bed_room_names: tuple[str, ...] = (),
-) -> JsonObject:
-    """Load a recorder payload file or build a simulated one when omitted."""
+def load_recorder_payload_or_default(args: argparse.Namespace) -> JsonObject:
+    """Load an explicit payload, explicit dataset payload, or generated data."""
 
-    if path is None:
-        if not bed_room_names:
-            raise ValueError("bed room names are required when payload is omitted")
-
-        bed_registry = beds_for_room_names(bed_room_names)
-        return build_simulated_recorder_payload(
-            room_names=tuple(bed.room_name for bed in bed_registry),
+    if args.vital_file is not None:
+        recorder_payload_path_from_args(args)
+        return build_real_vital_recorder_payload(
+            VitalDbRealVitalReader(),
+            args.vital_file,
+            scenario=RealVitalSampleScenario(args.vital_scenario),
+            room_name=args.bed_room_name[0] if args.bed_room_name else None,
+            vrcode=args.vrcode,
+            version=args.version,
+            start_offset_seconds=args.vital_start_offset,
+            duration_seconds=args.vital_duration,
         )
 
-    return load_recorder_payload(path)
+    payload_path = recorder_payload_path_from_args(args)
+    if payload_path is not None:
+        return load_recorder_payload(payload_path)
+
+    bed_room_names = tuple(args.bed_room_name)
+    if not bed_room_names:
+        raise ValueError("bed room names are required when payload is omitted")
+
+    bed_registry = beds_for_room_names(bed_room_names)
+    return build_simulated_recorder_payload(
+        room_names=tuple(bed.room_name for bed in bed_registry),
+    )
 
 
-def selected_vrcode(path: Path | None, requested_vrcode: str | None) -> str | None:
+def selected_vrcode(
+    args: argparse.Namespace,
+    requested_vrcode: str | None,
+) -> str | None:
     """Return a fresh default vrcode only for generated testkit payloads."""
 
-    if requested_vrcode is not None or path is not None:
+    if requested_vrcode is not None or recorder_payload_path_was_provided(args):
         return requested_vrcode
 
     return unique_testkit_vrcode()
+
+
+def recorder_payload_path_from_args(args: argparse.Namespace) -> Path | None:
+    """Return the explicit recorder payload path selected by CLI args."""
+
+    if args.payload is not None and args.dataset_manifest is not None:
+        raise ValueError("payload and --dataset-manifest must not be used together")
+    if args.vital_file is not None:
+        if args.payload is not None:
+            raise ValueError("payload and --vital-file must not be used together")
+        if args.dataset_manifest is not None:
+            raise ValueError(
+                "--dataset-manifest and --vital-file must not be used together"
+            )
+        if args.dataset_key is not None:
+            raise ValueError("--dataset-key requires --dataset-manifest")
+        return None
+    if args.dataset_manifest is None:
+        if args.dataset_key is not None:
+            raise ValueError("--dataset-key requires --dataset-manifest")
+        return args.payload
+    if args.dataset_key is None:
+        raise ValueError("--dataset-manifest requires --dataset-key")
+
+    manifest = load_recorder_dataset_manifest(args.dataset_manifest)
+    return manifest.require_recommended_payload(
+        args.dataset_key,
+        manifest_path=args.dataset_manifest,
+    )
+
+
+def recorder_payload_path_was_provided(args: argparse.Namespace) -> bool:
+    """Return whether args explicitly select a recorder payload."""
+
+    return (
+        args.payload is not None
+        or args.dataset_manifest is not None
+        or args.vital_file is not None
+    )

@@ -842,12 +842,11 @@
         count: 1,
         prefix: "testbed"
       });
-      const bedRoomNames = (beds || []).map((bed) => bed.roomName).slice(0, 1);
+      const bedroomName = (beds || [])[0]?.roomName || "TestBedroom";
       const session = await postJSON("/dev/testkit/virtual-recorders/start", {
-        scenario: "normal",
-        signalProfile: "normal",
+        scenario: "normal_monitoring",
         recorders: 1,
-        bedRoomNames,
+        bedroomName,
         version: "testkit",
         intervalSeconds: 1,
         shiftTime: true,
