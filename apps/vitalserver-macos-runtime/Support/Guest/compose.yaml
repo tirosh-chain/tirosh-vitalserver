@@ -314,6 +314,10 @@ services:
         source: testkit-state
         target: /var/lib/vitalserver-testkit
       - type: bind
+        source: ${VITALSERVER_VITAL_FILES_DIR:-/mnt/tirosh-vital-files}
+        target: /mnt/tirosh-vital-files
+        read_only: true
+      - type: bind
         source: /mnt/tirosh/run/recorder-ingress-raw
         target: /var/lib/vitalserver-recorder-ingress/raw
         read_only: true

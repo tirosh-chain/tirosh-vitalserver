@@ -130,6 +130,8 @@ uv run vitalserver-testkit stream-recorder \
   --vital-duration 120
 ```
 
+macOS runtime Test 탭에서 선택하는 `.vital` 파일은 Helper Settings의 `Vital files directory` 아래에 있어야 합니다. Helper는 host path를 guest mount path `/mnt/tirosh-vital-files/...`로 변환해 TestKit API에 전달합니다. PWA나 raw TestKit API에서 runtime container를 직접 제어할 때는 TestKit container가 읽을 수 있는 guest path를 명시해야 합니다.
+
 120초 real sample payload는 이미 window 안에 여러 record를 담고 있으므로, lifecycle 검증에서 그대로 재생할 때는 `--replay-sample`과 종료 조건을 함께 둡니다.
 
 ```sh
@@ -291,7 +293,7 @@ uv run vitalserver-testkit serve \
   --port 18322
 ```
 
-위 명령은 local 개발용이다. Dev runtime에서는 `vitalserver-testkit:0.1.1` container가 `0.0.0.0:18322`로 API를 열고, 생성된 virtual VRecorder는 guest compose network 안에서 `http://edge/`를 대상으로 접속한다.
+위 명령은 local 개발용이다. Dev runtime에서는 `vitalserver-testkit:0.1.1` container가 `0.0.0.0:18322`로 API를 열고, 생성된 virtual VRecorder는 guest compose network 안에서 `http://edge/`를 대상으로 접속한다. 이 container는 `/mnt/tirosh-vital-files`를 read-only로 mount해 `.vital` playback source를 읽는다.
 
 API는 bed registry와 session lifecycle을 분리한다.
 
