@@ -112,6 +112,10 @@ public struct RuntimeTestKitRecorderSource: Codable, Equatable, Sendable {
     }
 }
 
+public enum RuntimeTestKitVitalFileSourcePath {
+    public static let defaultGuestMountPath = "/mnt/tirosh-vital-files"
+}
+
 public struct RuntimeTestKitStatus: Codable, Equatable, Sendable {
     public var enabled: Bool
     public var state: RuntimeTestKitState

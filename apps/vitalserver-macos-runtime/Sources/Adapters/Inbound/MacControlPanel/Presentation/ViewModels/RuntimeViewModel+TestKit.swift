@@ -227,6 +227,17 @@ extension RuntimeViewModel {
             message = errorMessage
             return
         }
+        if testKitRecorderSourceMode == .vitalFile,
+           testKitPresentationPolicy.vitalFileGuestPath(
+            hostFilePath: testKitVitalFilePath,
+            hostRootPath: runtimeSettings.vitalFilesDirectory,
+            guestRootPath: RuntimeTestKitVitalFileSourcePath.defaultGuestMountPath
+           ) == nil {
+            let errorMessage = RuntimeTestPanelText.chooseSharedVitalFileForPlayback
+            recordTestKitActionMessage(errorMessage, tone: .failure)
+            message = errorMessage
+            return
+        }
         isRunningTestKitAction = true
         defer { isRunningTestKitAction = false }
 
@@ -551,6 +562,9 @@ extension RuntimeViewModel {
             recorderCondition: testKitRecorderCondition,
             sourceMode: testKitRecorderSourceMode,
             vitalFilePath: testKitVitalFilePath,
+            vitalFilesDirectoryHostPath: runtimeSettings.vitalFilesDirectory,
+            vitalFilesDirectoryGuestMountPath:
+                RuntimeTestKitVitalFileSourcePath.defaultGuestMountPath,
             vitalFileScenario: testKitVitalFileScenario,
             vitalFileStartOffsetSeconds: testKitVitalFileStartOffsetSeconds,
             vitalFileDurationSeconds: testKitVitalFileDurationSeconds,

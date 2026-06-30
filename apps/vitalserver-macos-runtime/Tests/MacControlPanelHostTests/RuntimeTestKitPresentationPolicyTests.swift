@@ -121,6 +121,8 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
             scenario: .arrhythmia,
             sourceMode: .vitalFile,
             vitalFilePath: " /Users/Shared/VitalServerHelper/vital-files/case.vital ",
+            vitalFilesDirectoryHostPath: "/Users/Shared/VitalServerHelper/vital-files",
+            vitalFilesDirectoryGuestMountPath: "/mnt/tirosh-vital-files",
             vitalFileScenario: .fullReal,
             vitalFileStartOffsetSeconds: -1,
             vitalFileDurationSeconds: 121.6,
@@ -138,11 +140,35 @@ final class RuntimeTestKitPresentationPolicyTests: XCTestCase {
         XCTAssertEqual(vitalFileRequest.source?.type, .vitalFile)
         XCTAssertEqual(
             vitalFileRequest.source?.path,
-            "/Users/Shared/VitalServerHelper/vital-files/case.vital"
+            "/mnt/tirosh-vital-files/case.vital"
         )
         XCTAssertEqual(vitalFileRequest.source?.scenario, .fullReal)
         XCTAssertEqual(vitalFileRequest.source?.startOffsetSeconds, 0)
         XCTAssertEqual(vitalFileRequest.source?.durationSeconds, 122)
+    }
+
+    func testVitalFileGuestPathMapsConfiguredHostDirectoryOnly() {
+        XCTAssertEqual(
+            policy.vitalFileGuestPath(
+                hostFilePath: " /Users/Shared/VitalServerHelper/vital-files/case.vital ",
+                hostRootPath: "/Users/Shared/VitalServerHelper/vital-files/",
+                guestRootPath: "/mnt/tirosh-vital-files/"
+            ),
+            "/mnt/tirosh-vital-files/case.vital"
+        )
+        XCTAssertEqual(
+            policy.vitalFileGuestPath(
+                hostFilePath: "/Users/Shared/VitalServerHelper/vital-files/sub/case.vital",
+                hostRootPath: "/Users/Shared/VitalServerHelper/vital-files",
+                guestRootPath: "/mnt/tirosh-vital-files"
+            ),
+            "/mnt/tirosh-vital-files/sub/case.vital"
+        )
+        XCTAssertNil(policy.vitalFileGuestPath(
+            hostFilePath: "/Users/test/Desktop/case.vital",
+            hostRootPath: "/Users/Shared/VitalServerHelper/vital-files",
+            guestRootPath: "/mnt/tirosh-vital-files"
+        ))
     }
 
     func testSelectionStateKeepsValidSessionAndPrunesUnavailableBeds() {

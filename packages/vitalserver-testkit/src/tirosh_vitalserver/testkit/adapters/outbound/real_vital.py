@@ -18,6 +18,8 @@ class VitalDbRealVitalReader(RealVitalReaderPort):
     def header(self, path: Path) -> RealVitalFileHeader:
         """Return explicit header state from one `.vital` file."""
 
+        if not path.is_file():
+            raise RuntimeError(f"real vital file is unavailable: {path}")
         try:
             from vitaldb import VitalFile
         except ModuleNotFoundError as exc:
@@ -25,7 +27,10 @@ class VitalDbRealVitalReader(RealVitalReaderPort):
                 "vitaldb package is required for real vital samples"
             ) from exc
 
-        vital_file = VitalFile(str(path), header_only=True)
+        try:
+            vital_file = VitalFile(str(path), header_only=True)
+        except Exception as exc:
+            raise RuntimeError(f"real vital file header read failed: {path}") from exc
         tracks = list(vital_file.trks.values())
 
         return RealVitalFileHeader(
@@ -44,6 +49,8 @@ class VitalDbRealVitalReader(RealVitalReaderPort):
     ) -> Any:
         """Return source samples for one track at an explicit interval."""
 
+        if not path.is_file():
+            raise RuntimeError(f"real vital file is unavailable: {path}")
         try:
             from vitaldb import VitalFile
         except ModuleNotFoundError as exc:
@@ -51,9 +58,13 @@ class VitalDbRealVitalReader(RealVitalReaderPort):
                 "vitaldb package is required for real vital samples"
             ) from exc
 
-        vital_file = VitalFile(str(path))
-
-        return vital_file.get_track_samples(dtname, interval_seconds)
+        try:
+            vital_file = VitalFile(str(path))
+            return vital_file.get_track_samples(dtname, interval_seconds)
+        except Exception as exc:
+            raise RuntimeError(
+                f"real vital track read failed: {path} track={dtname}"
+            ) from exc
 
 
 def track_header(track: Any) -> RealVitalTrackHeader:

@@ -280,7 +280,7 @@ export function TestKitPage() {
                 <input
                   type="text"
                   value={vitalFilePath}
-                  placeholder="/Users/Shared/VitalServerHelper/vital-files/case.vital"
+                  placeholder="/mnt/tirosh-vital-files/case.vital"
                   onChange={(event) => setVitalFilePath(event.target.value)}
                 />
               </label>

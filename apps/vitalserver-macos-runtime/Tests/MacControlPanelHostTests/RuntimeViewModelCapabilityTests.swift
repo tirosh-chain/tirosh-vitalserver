@@ -1071,6 +1071,71 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(testKit.startedRequests[0].bedroomName, "OR-B")
     }
 
+    func testTestKitVitalFilePlaybackUsesGuestMountedPath() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            initialSettings: RuntimeSettings(
+                vitalFilesDirectory: "/Users/Shared/VitalServerHelper/vital-files"
+            ),
+            healthNotifications: NoopHealthNotifications()
+        )
+        let status = RuntimeTestKitStatus(
+            enabled: true,
+            state: .running,
+            beds: [RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b")]
+        )
+        testKit.status = status
+        viewModel.testKitStatus = status
+        viewModel.setTestKitBedSelection("OR-B", selected: true)
+        viewModel.testKitRecorderSourceMode = .vitalFile
+        viewModel.testKitVitalFilePath = "/Users/Shared/VitalServerHelper/vital-files/case.vital"
+
+        await viewModel.startVirtualRecorderSession()
+
+        XCTAssertEqual(testKit.startedRequests.count, 1)
+        XCTAssertEqual(
+            testKit.startedRequests[0].source?.path,
+            "/mnt/tirosh-vital-files/case.vital"
+        )
+    }
+
+    func testTestKitVitalFilePlaybackRejectsUnsharedHostPath() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let testKit = FakeTestKitController()
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            testKitController: testKit,
+            initialSettings: RuntimeSettings(
+                vitalFilesDirectory: "/Users/Shared/VitalServerHelper/vital-files"
+            ),
+            healthNotifications: NoopHealthNotifications()
+        )
+        let status = RuntimeTestKitStatus(
+            enabled: true,
+            state: .running,
+            beds: [RuntimeTestKitBed(roomName: "OR-B", bedID: "bed-b")]
+        )
+        testKit.status = status
+        viewModel.testKitStatus = status
+        viewModel.setTestKitBedSelection("OR-B", selected: true)
+        viewModel.testKitRecorderSourceMode = .vitalFile
+        viewModel.testKitVitalFilePath = "/Users/test/Desktop/case.vital"
+
+        await viewModel.startVirtualRecorderSession()
+
+        XCTAssertEqual(testKit.startedRequests.count, 0)
+        XCTAssertEqual(
+            viewModel.testKitActionMessage,
+            RuntimeTestPanelText.chooseSharedVitalFileForPlayback
+        )
+        XCTAssertEqual(viewModel.testKitActionMessageTone, .failure)
+    }
+
     func testTestKitResetBedsRequiresNoActiveSessions() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let testKit = FakeTestKitController()

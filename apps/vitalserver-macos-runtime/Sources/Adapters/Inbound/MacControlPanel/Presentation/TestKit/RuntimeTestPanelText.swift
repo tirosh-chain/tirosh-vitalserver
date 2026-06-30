@@ -37,6 +37,7 @@ enum RuntimeTestPanelText {
     static let choosingVitalFiles = "Choose .vital files"
     static let choosingVitalFileForPlayback = "Choose .vital file"
     static let chooseVitalFileForPlayback = "Choose a .vital file before starting playback."
+    static let chooseSharedVitalFileForPlayback = "Choose a .vital file under the configured vital files directory before starting playback."
     static let uploadingVitalFiles = "Uploading .vital files..."
     static let missingVrcode = "Enter a VRecorder code to delete."
     static let stopSessionsBeforeResettingBeds = "Stop or delete active TestKit sessions before resetting beds."

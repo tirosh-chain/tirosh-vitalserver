@@ -66,6 +66,21 @@ class FakeRealVitalReader(RealVitalReaderPort):
         return [13.1, 13.2]
 
 
+class FailingRealVitalReader(RealVitalReaderPort):
+    def header(self, path: Path) -> RealVitalFileHeader:
+        raise RuntimeError(f"real vital file is unavailable: {path}")
+
+    def track_samples(
+        self,
+        path: Path,
+        dtname: str,
+        *,
+        interval_seconds: float,
+    ) -> list[float]:
+        del interval_seconds
+        raise RuntimeError(f"real vital track read failed: {path} track={dtname}")
+
+
 def test_sessions_endpoint_uses_manager_dependency_not_query_parameter() -> None:
     app = create_testkit_app()
 
@@ -368,6 +383,37 @@ def test_sessions_endpoint_accepts_vital_file_source() -> None:
         assert manager.wait_session(response["id"], timeout=5)
     finally:
         manager.delete_session(response["id"])
+
+
+def test_sessions_endpoint_reports_vital_file_source_unavailable() -> None:
+    route = route_for("/sessions", "POST")
+    manager = VirtualRecorderSessionManager(
+        connector=fake_socketio_connector,
+        real_vital_reader=FailingRealVitalReader(),
+    )
+    registry = BedRegistry()
+    registry.create_beds(room_names=("OR-A",))
+
+    with pytest.raises(HTTPException) as exc:
+        route.endpoint(
+            StartVirtualRecordersRequest(
+                targetUrl="http://example.test",
+                bedroomName="OR-A",
+                maxMessages=1,
+                source={
+                    "type": "vitalFile",
+                    "path": "/mnt/tirosh-vital-files/missing.vital",
+                    "scenario": "full_real",
+                    "startOffsetSeconds": 1.0,
+                    "durationSeconds": 2,
+                },
+            ),
+            manager,
+            registry,
+        )
+
+    assert exc.value.status_code == 503
+    assert "real vital file is unavailable" in str(exc.value.detail)
 
 
 def test_sessions_endpoint_rejects_active_bed_reuse() -> None:
