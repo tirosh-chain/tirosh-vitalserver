@@ -81,6 +81,8 @@ def replay_room_frame(
     replayed["dtstart"] = now
     replayed["dtend"] = now + frame_seconds
     replayed["dtserver"] = now + frame_seconds
+    if "dtcase" in replayed:
+        replayed["dtcase"] = now - sequence * frame_seconds
     if "dtapp" in replayed:
         replayed["dtapp"] = now
 

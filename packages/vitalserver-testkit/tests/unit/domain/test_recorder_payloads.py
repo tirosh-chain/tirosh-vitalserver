@@ -151,6 +151,7 @@ def test_recorded_replay_payload_returns_one_source_window_at_current_time() -> 
                 "roomname": "OR-A",
                 "dtstart": 100.0,
                 "dtend": 103.0,
+                "dtcase": 90.0,
                 "trks": [
                     {
                         "type": "num",
@@ -186,6 +187,8 @@ def test_recorded_replay_payload_returns_one_source_window_at_current_time() -> 
 
     assert first_room["dtstart"] == 1000.0
     assert second_room["dtstart"] == 1001.0
+    assert first_room["dtcase"] == 1000.0
+    assert second_room["dtcase"] == 1000.0
     assert cast(JsonArray, first_track["recs"]) == [{"dt": 1000.0, "val": 80}]
     assert cast(JsonArray, second_track["recs"]) == [{"dt": 1001.0, "val": 81}]
 
@@ -334,6 +337,7 @@ def test_simulated_recorder_frame_generates_current_wave_samples() -> None:
     assert recorder["seqid"] == 7
     assert recorder["dtstart"] == 2000.0
     assert recorder["dtend"] == 2001.0
+    assert recorder["dtcase"] == 1993.0
     assert record["dt"] == 2000.0
     assert len(values) == 100
 

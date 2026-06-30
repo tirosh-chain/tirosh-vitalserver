@@ -91,6 +91,8 @@ def generate_room_frame(
     generated["dtend"] = now + frame_seconds
     generated["dtserver"] = now + frame_seconds
 
+    if "dtcase" in generated:
+        generated["dtcase"] = now - sequence * frame_seconds
     if "dtapp" in generated:
         generated["dtapp"] = now
 

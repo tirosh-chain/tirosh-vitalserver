@@ -128,6 +128,7 @@ def test_stream_realtime_payload_replays_recorded_frames_in_sequence() -> None:
                 "roomname": "OR-A",
                 "dtstart": 100.0,
                 "dtend": 100.03,
+                "dtcase": 90.0,
                 "trks": [
                     {
                         "type": "num",
@@ -162,11 +163,15 @@ def test_stream_realtime_payload_replays_recorded_frames_in_sequence() -> None:
     ]
     first_record = sent_payloads[0]["rooms"]["OR-A"]["trks"][0]["recs"][0]
     second_record = sent_payloads[1]["rooms"]["OR-A"]["trks"][0]["recs"][0]
+    first_room = sent_payloads[0]["rooms"]["OR-A"]
+    second_room = sent_payloads[1]["rooms"]["OR-A"]
 
     assert result.error is None
     assert first_record["val"] == 80
     assert second_record["val"] == 81
-    assert second_record["dt"] > first_record["dt"]
+    assert abs(second_record["dt"] - first_record["dt"] - 0.01) < 0.0001
+    assert first_room["dtcase"] == second_room["dtcase"]
+    assert first_room["dtcase"] != 90.0
 
 
 def test_stream_realtime_payload_does_not_count_disconnected_send() -> None:

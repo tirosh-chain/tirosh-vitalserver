@@ -93,6 +93,7 @@ def stream_realtime_payload(
             target_url=base_url,
             vrcode=vrcode,
         )
+        frame_started_at = time.time()
 
         try:
             while should_continue_stream(
@@ -124,6 +125,7 @@ def stream_realtime_payload(
                     source,
                     interval_seconds=interval_seconds,
                     messages_sent=messages_sent,
+                    now=frame_started_at + messages_sent * interval_seconds,
                     frame_post_policy=frame_post_policy,
                 )
                 encoded = encode_realtime_payload(
@@ -208,15 +210,17 @@ def next_frame_payload(
     *,
     interval_seconds: float,
     messages_sent: int,
+    now: float | None = None,
     frame_post_policy: RecorderFramePostPolicy = DEFAULT_RECORDER_FRAME_POST_POLICY,
 ) -> Mapping[str, JsonValue]:
     """Return the payload for the next streaming message."""
 
+    frame_now = time.time() if now is None else now
     frame = materialize_recorder_frame(
         frame_source,
         RecorderFrameRequest(
             sequence=messages_sent,
-            now=time.time(),
+            now=frame_now,
             frame_seconds=interval_seconds,
         ),
     )
