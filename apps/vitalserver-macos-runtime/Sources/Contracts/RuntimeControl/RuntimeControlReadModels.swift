@@ -1040,6 +1040,7 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
         if let observation {
             let history = RuntimeVitalRecorderHistory(
                 observations: [observation],
+                containerObservation: containerObservation,
                 statusEvaluationTime: statusEvaluationTime
             )
             let latest = history.recorders

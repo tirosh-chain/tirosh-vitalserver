@@ -131,6 +131,8 @@ def test_packaging_templates_render_from_build_config(tmp_path: Path) -> None:
     assert "/Library/Application Support/VitalServerHelper" in rendered
     assert_upload_proxy_streaming(proxy_config_template_text)
     assert_upload_proxy_streaming(guest_edge_config_text)
+    assert_socketio_proxy_timeout(proxy_config_template_text)
+    assert_socketio_proxy_timeout(guest_edge_config_text)
     assert_recorder_ingress_upload_timeout(root_compose_text)
     assert_recorder_ingress_upload_timeout(guest_compose_text)
     assert '"${vm_bin}" runtime install-provision' in postinstall_text
@@ -413,15 +415,40 @@ esac
 
 
 def assert_upload_proxy_streaming(config_text: str) -> None:
-    """Assert only VitalServer upload endpoints opt into large streaming bodies."""
+    """Assert VitalServer upload endpoints opt into large streaming bodies."""
 
     assert "location = /upload {" in config_text
     assert "location = /upload_vital.php {" in config_text
     assert config_text.count("client_max_body_size 0;") == 2
     assert config_text.count("proxy_request_buffering off;") == 2
     assert config_text.count("client_body_timeout 1h;") == 2
-    assert config_text.count("proxy_send_timeout 1h;") == 2
-    assert config_text.count("proxy_read_timeout 1h;") == 2
+    assert config_text.count("proxy_send_timeout 1h;") == 3
+    assert config_text.count("proxy_read_timeout 1h;") == 3
+
+
+def assert_socketio_proxy_timeout(config_text: str) -> None:
+    """Assert VRecorder Socket.IO connections are not cut by nginx defaults."""
+
+    assert "proxy_send_timeout 1h;" in location_block(config_text, "/socket.io/")
+    assert "proxy_read_timeout 1h;" in location_block(config_text, "/socket.io/")
+
+
+def location_block(config_text: str, location: str) -> str:
+    start = config_text.find(f"location {location}")
+    assert start >= 0
+    candidates = [
+        index
+        for index in [
+            config_text.find("\n        location ", start + 1),
+            config_text.find("\n  location ", start + 1),
+        ]
+        if index >= 0
+    ]
+    end = min(candidates) if candidates else config_text.find("\n    }", start + 1)
+    if end < 0:
+        end = config_text.find("\n}", start + 1)
+    assert end >= 0
+    return config_text[start:end]
 
 
 def assert_recorder_ingress_upload_timeout(compose_text: str) -> None:

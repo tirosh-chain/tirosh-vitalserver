@@ -1793,6 +1793,50 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(summary.staleRecorders, 1)
     }
 
+    func testVitalRecorderSummaryUsesRecentRecorderIngressActivityForCurrentRecorderStatus() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:12:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                .init(
+                    vrcode: "VR_RECONNECTED",
+                    ip: "192.168.64.20",
+                    lastSeenAt: "2026-05-26T00:00:00Z",
+                    online: true,
+                    stale: true
+                ),
+            ]
+        )
+        let status = RuntimeStatus(
+            containerObservation: RuntimeContainerObservation(
+                recorderIngressHTTP: "200",
+                recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+                    activeRecorderConnections: 1,
+                    recorders: [
+                        RuntimeRecorderConnectionObservation(
+                            vrcode: "VR_RECONNECTED",
+                            activeConnections: 1,
+                            selectedIp: "192.168.64.20",
+                            lastSeenAt: "2026-05-26T00:11:45Z"
+                        ),
+                    ]
+                ),
+                containerLogsPresent: false,
+                containerLogsBytes: nil
+            )
+        )
+
+        let summary = RuntimeVitalRecorderSummary(status: status, vitalDBObservation: observation)
+
+        XCTAssertEqual(summary.activeConnections, 1)
+        XCTAssertEqual(summary.knownRecorders, 1)
+        XCTAssertEqual(summary.onlineRecorders, 1)
+        XCTAssertEqual(summary.staleRecorders, 0)
+        XCTAssertEqual(summary.latestRecorder?.vrcode, "VR_RECONNECTED")
+        XCTAssertEqual(summary.latestRecorder?.lastSeenAt, "2026-05-26T00:11:45Z")
+    }
+
     func testRuntimeControlOverviewDoesNotFallbackToStatusVitalDBObservation() {
         let staleObservation = VitalDBObservationDocument(
             observedAt: "2026-05-24T00:00:00Z",

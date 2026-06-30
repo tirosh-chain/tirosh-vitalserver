@@ -922,7 +922,11 @@ def check_docker_manifest(*, image: str, platform: str) -> PreflightCheck:
             name=f"docker-manifest:{image}",
             status=PreflightStatus.UNAVAILABLE,
             message="docker manifest inspect timed out",
-            detail=f"image={image} platform={platform}",
+            detail=docker_manifest_unavailable_detail(
+                image=image,
+                platform=platform,
+                reason="timeout",
+            ),
         )
     if result.returncode != 0:
         stderr = result.stderr.strip()
@@ -930,7 +934,11 @@ def check_docker_manifest(*, image: str, platform: str) -> PreflightCheck:
             name=f"docker-manifest:{image}",
             status=PreflightStatus.UNAVAILABLE,
             message="docker image manifest is unavailable",
-            detail=f"image={image} platform={platform} {stderr}".strip(),
+            detail=docker_manifest_unavailable_detail(
+                image=image,
+                platform=platform,
+                reason=stderr,
+            ),
         )
     try:
         document = json.loads(result.stdout)
@@ -953,6 +961,20 @@ def check_docker_manifest(*, image: str, platform: str) -> PreflightCheck:
         status=PreflightStatus.PASSED,
         message="docker image manifest is available",
         detail=f"image={image} platform={platform}",
+    )
+
+
+def docker_manifest_unavailable_detail(
+    *,
+    image: str,
+    platform: str,
+    reason: str,
+) -> str:
+    return (
+        f"image={image} platform={platform} reason={reason}; "
+        f"retry after network/Docker Hub access recovers, or pre-pull with "
+        f"`docker pull --platform {platform} {image}` so preflight can use the "
+        "local image platform check"
     )
 
 
