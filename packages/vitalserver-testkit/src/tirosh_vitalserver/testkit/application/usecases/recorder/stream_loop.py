@@ -94,6 +94,7 @@ def stream_realtime_payload(
             vrcode=vrcode,
         )
         frame_started_at = time.time()
+        frame_started_perf = time.perf_counter()
 
         try:
             while should_continue_stream(
@@ -103,6 +104,7 @@ def stream_realtime_payload(
                 max_messages=max_messages,
                 stop_event=stop_event,
             ):
+                paused = False
                 while stream_is_paused(pause_event) and should_continue_stream(
                     started,
                     messages_sent=messages_sent,
@@ -110,6 +112,7 @@ def stream_realtime_payload(
                     max_messages=max_messages,
                     stop_event=stop_event,
                 ):
+                    paused = True
                     time.sleep(0.2)
 
                 if not should_continue_stream(
@@ -121,6 +124,18 @@ def stream_realtime_payload(
                 ):
                     break
 
+                if paused:
+                    frame_started_at = time.time() - messages_sent * interval_seconds
+                    frame_started_perf = (
+                        time.perf_counter() - messages_sent * interval_seconds
+                    )
+
+                sleep_until_frame_time(
+                    client,
+                    frame_started_perf=frame_started_perf,
+                    sequence=messages_sent,
+                    interval_seconds=interval_seconds,
+                )
                 frame_payload = next_frame_payload(
                     source,
                     interval_seconds=interval_seconds,
@@ -145,15 +160,6 @@ def stream_realtime_payload(
 
                 messages_sent += 1
                 bytes_sent += len(encoded)
-
-                if should_continue_stream(
-                    started,
-                    messages_sent=messages_sent,
-                    duration_seconds=duration_seconds,
-                    max_messages=max_messages,
-                    stop_event=stop_event,
-                ):
-                    client.sleep(interval_seconds)
         finally:
             if client.connected:
                 client.disconnect()
@@ -244,6 +250,21 @@ def normalize_frame_source(
         signal_profile=signal_profile,
         signal_quality=signal_quality,
     )
+
+
+def sleep_until_frame_time(
+    client: SocketIoClientPort,
+    *,
+    frame_started_perf: float,
+    sequence: int,
+    interval_seconds: float,
+) -> None:
+    """Sleep only until the scheduled frame time."""
+
+    target_perf = frame_started_perf + sequence * interval_seconds
+    sleep_seconds = target_perf - time.perf_counter()
+    if sleep_seconds > 0:
+        client.sleep(sleep_seconds)
 
 
 def should_continue_stream(

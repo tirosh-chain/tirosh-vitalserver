@@ -12,6 +12,7 @@ from tirosh_vitalserver.testkit.application.recorder_runtime import (
     RecorderRuntimeState,
 )
 from tirosh_vitalserver.testkit.application.usecases.recorder.stream_loop import (
+    sleep_until_frame_time,
     stream_realtime_payload,
 )
 from tirosh_vitalserver.testkit.domain.recorder import (
@@ -224,3 +225,23 @@ def test_stream_realtime_payload_does_not_count_disconnected_send() -> None:
     assert client.emitted == [("join_vr", "VR_TEST")]
     assert snapshot.messages_sent == 0
     assert result.messages_sent == 0
+
+
+def test_sleep_until_frame_time_uses_remaining_schedule_time(monkeypatch) -> None:
+    client = FakeSocketIoClient()
+    sleeps: list[float] = []
+    client.sleep = sleeps.append
+    monkeypatch.setattr(
+        "tirosh_vitalserver.testkit.application.usecases.recorder.stream_loop."
+        "time.perf_counter",
+        lambda: 104.75,
+    )
+
+    sleep_until_frame_time(
+        client,
+        frame_started_perf=100.0,
+        sequence=5,
+        interval_seconds=1.0,
+    )
+
+    assert sleeps == [0.25]
