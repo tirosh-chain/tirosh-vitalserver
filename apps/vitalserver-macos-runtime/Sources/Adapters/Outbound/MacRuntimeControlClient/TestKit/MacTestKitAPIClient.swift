@@ -4,16 +4,19 @@ import Errors
 struct MacTestKitAPIClient: Sendable {
     private let httpClient: any MacTestKitHTTPClient
     private let healthRead: (@Sendable (String) async -> MacTestKitAPIHealthRead)?
-    private let requestTimeout: TimeInterval
+    private let standardRequestTimeout: TimeInterval
+    private let longRunningRequestTimeout: TimeInterval
 
     init(
         httpClient: any MacTestKitHTTPClient,
         healthRead: (@Sendable (String) async -> MacTestKitAPIHealthRead)?,
-        requestTimeout: TimeInterval = 5
+        standardRequestTimeout: TimeInterval = 5,
+        longRunningRequestTimeout: TimeInterval = 60
     ) {
         self.httpClient = httpClient
         self.healthRead = healthRead
-        self.requestTimeout = requestTimeout
+        self.standardRequestTimeout = standardRequestTimeout
+        self.longRunningRequestTimeout = longRunningRequestTimeout
     }
 
     func health(apiBaseURL: String) async -> MacTestKitAPIHealthRead {
@@ -58,12 +61,22 @@ struct MacTestKitAPIClient: Sendable {
     func request(
         apiBaseURL: String,
         path: String,
-        queryItems: [URLQueryItem] = []
+        queryItems: [URLQueryItem] = [],
+        timeout: MacTestKitAPIRequestTimeout = .standard
     ) throws -> URLRequest {
         URLRequest(
             url: try url(apiBaseURL: apiBaseURL, path: path, queryItems: queryItems),
-            timeoutInterval: requestTimeout
+            timeoutInterval: timeoutInterval(for: timeout)
         )
+    }
+
+    private func timeoutInterval(for timeout: MacTestKitAPIRequestTimeout) -> TimeInterval {
+        switch timeout {
+        case .standard:
+            standardRequestTimeout
+        case .longRunningCommand:
+            longRunningRequestTimeout
+        }
     }
 
     private func url(
@@ -97,7 +110,7 @@ struct MacTestKitAPIClient: Sendable {
         do {
             var request = URLRequest(
                 url: try url(apiBaseURL: apiBaseURL, path: "/health"),
-                timeoutInterval: requestTimeout
+                timeoutInterval: standardRequestTimeout
             )
             request.httpMethod = "GET"
             let (_, response) = try await httpClient.data(for: request)
@@ -112,6 +125,11 @@ struct MacTestKitAPIClient: Sendable {
             return .unreachable(error.localizedDescription)
         }
     }
+}
+
+enum MacTestKitAPIRequestTimeout: Sendable {
+    case standard
+    case longRunningCommand
 }
 
 enum MacTestKitAPIHealthRead: Equatable, Sendable {

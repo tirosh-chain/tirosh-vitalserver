@@ -313,6 +313,11 @@ final class MacTestKitControllerTests: XCTestCase {
         XCTAssertEqual(output?["uploadVital"] as? Bool, true)
         XCTAssertEqual(output?["vitalUploadEndpoint"] as? String, "/upload")
         XCTAssertEqual(startBody?["bedRoomNames"] as? [String], ["OR-1"])
+        XCTAssertEqual(startRequest.timeoutInterval, 60)
+        let restartRequest = try XCTUnwrap(TestKitURLProtocol.requests.first {
+            $0.method == "POST" && $0.path == "/sessions/session-1/restart"
+        })
+        XCTAssertEqual(restartRequest.timeoutInterval, 60)
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "DELETE" && $0.path == "/beds" })
         XCTAssertTrue(TestKitURLProtocol.requests.contains { $0.method == "POST" && $0.path == "/recorders/delete" })
     }
@@ -361,6 +366,11 @@ final class MacTestKitControllerTests: XCTestCase {
             "POST /upload",
             "POST /upload",
         ])
+        XCTAssertEqual(client.requests.first { $0.method == "POST" && $0.path == "/beds" }?.timeoutInterval, 5)
+        XCTAssertEqual(
+            client.requests.filter { $0.method == "POST" && $0.path == "/upload" }.map(\.timeoutInterval),
+            [60, 60]
+        )
     }
 
     func testMutationReportsInvalidAPIEndpointAsTypedError() async throws {
@@ -516,6 +526,7 @@ private struct TestKitRequestRecord {
     let method: String
     let path: String
     let body: Data
+    let timeoutInterval: TimeInterval
 }
 
 private struct TestKitSessionsPayload: Encodable {
@@ -560,7 +571,12 @@ private final class FakeMacTestKitHTTPClient: MacTestKitHTTPClient, @unchecked S
         let key = "\(method) \(path)"
         let response = lock.withLock { handlers[key] } ?? Response(statusCode: 404, data: Data("missing mock".utf8))
         lock.withLock {
-            protectedRequests.append(TestKitRequestRecord(method: method, path: path, body: body ?? requestBodyData(request)))
+            protectedRequests.append(TestKitRequestRecord(
+                method: method,
+                path: path,
+                body: body ?? requestBodyData(request),
+                timeoutInterval: request.timeoutInterval
+            ))
         }
         let httpResponse = HTTPURLResponse(
             url: request.url!,
@@ -623,7 +639,12 @@ private final class TestKitURLProtocol: URLProtocol {
         let key = "\(method) \(path)"
         let handler = Self.lock.withLock { Self.handlers[key] }
         Self.lock.withLock {
-            Self.protectedRequests.append(TestKitRequestRecord(method: method, path: path, body: body))
+            Self.protectedRequests.append(TestKitRequestRecord(
+                method: method,
+                path: path,
+                body: body,
+                timeoutInterval: request.timeoutInterval
+            ))
         }
 
         do {
