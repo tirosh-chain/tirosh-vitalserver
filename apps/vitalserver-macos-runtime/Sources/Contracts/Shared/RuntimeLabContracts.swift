@@ -60,6 +60,48 @@ public struct RuntimeLabScenarioList: Codable, Equatable, Sendable {
     }
 }
 
+public struct RuntimeLabVitalFile: Codable, Equatable, Sendable {
+    public let displayName: String
+    public let relativePath: String
+    public let guestPath: String
+    public let sizeBytes: Int
+    public let modifiedAt: String?
+
+    public init(
+        displayName: String,
+        relativePath: String,
+        guestPath: String,
+        sizeBytes: Int,
+        modifiedAt: String? = nil
+    ) {
+        self.displayName = displayName
+        self.relativePath = relativePath
+        self.guestPath = guestPath
+        self.sizeBytes = sizeBytes
+        self.modifiedAt = modifiedAt
+    }
+}
+
+public struct RuntimeLabVitalFileList: Codable, Equatable, Sendable {
+    public let state: RuntimeLabReadState
+    public let vitalFiles: [RuntimeLabVitalFile]
+    public let readError: String?
+
+    public init(
+        state: RuntimeLabReadState,
+        vitalFiles: [RuntimeLabVitalFile],
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.vitalFiles = vitalFiles
+        self.readError = readError
+    }
+
+    public static func unavailable(readError: String) -> RuntimeLabVitalFileList {
+        RuntimeLabVitalFileList(state: .unavailable, vitalFiles: [], readError: readError)
+    }
+}
+
 public struct RuntimeLabSession: Codable, Equatable, Sendable {
     public let sessionId: String
     public let state: RuntimeLabSessionState
@@ -323,5 +365,83 @@ public struct RuntimeLabVitalFileReplayRequest: Codable, Equatable, Sendable {
         self.vitalFilePath = vitalFilePath
         self.sessionName = sessionName
         self.targetURL = targetURL
+    }
+}
+
+public struct RuntimeLabVitalFileUpload: Codable, Equatable, Sendable {
+    public let filename: String
+    public let endpoint: String
+    public let targetURL: String
+    public let statusCode: Int
+    public let bytesSent: Int
+    public let responseText: String
+    public let ok: Bool
+
+    public init(
+        filename: String,
+        endpoint: String,
+        targetURL: String,
+        statusCode: Int,
+        bytesSent: Int,
+        responseText: String,
+        ok: Bool
+    ) {
+        self.filename = filename
+        self.endpoint = endpoint
+        self.targetURL = targetURL
+        self.statusCode = statusCode
+        self.bytesSent = bytesSent
+        self.responseText = responseText
+        self.ok = ok
+    }
+}
+
+public struct RuntimeLabVitalFileUploadRequest: Codable, Equatable, Sendable {
+    public let vitalFilePath: String
+    public let targetURL: String
+    public let endpoint: String?
+    public let vrcode: String?
+
+    public init(
+        vitalFilePath: String,
+        targetURL: String,
+        endpoint: String? = nil,
+        vrcode: String? = nil
+    ) {
+        self.vitalFilePath = vitalFilePath
+        self.targetURL = targetURL
+        self.endpoint = endpoint
+        self.vrcode = vrcode
+    }
+}
+
+public struct RuntimeLabVitalFileUploadResponse: Codable, Equatable, Sendable {
+    public let state: RuntimeLabReadState
+    public let upload: RuntimeLabVitalFileUpload?
+    public let operationId: String?
+    public let labOperationId: String?
+    public let readError: String?
+
+    public init(
+        state: RuntimeLabReadState,
+        upload: RuntimeLabVitalFileUpload?,
+        operationId: String? = nil,
+        labOperationId: String? = nil,
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.upload = upload
+        self.operationId = operationId
+        self.labOperationId = labOperationId
+        self.readError = readError
+    }
+
+    public static func unavailable(readError: String) -> RuntimeLabVitalFileUploadResponse {
+        RuntimeLabVitalFileUploadResponse(
+            state: .unavailable,
+            upload: nil,
+            operationId: nil,
+            readError: readError
+        )
     }
 }

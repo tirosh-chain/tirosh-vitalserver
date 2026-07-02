@@ -23,6 +23,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     ProductLabDependencyError,
     ProductLabReadModelResult,
     ProductLabSessionResult,
+    ProductLabUploadResult,
     RecorderIngressDependencyError,
     RedisBackupDependencyError,
     RedisRestoreDependencyError,
@@ -87,6 +88,7 @@ class GuestControlUseCases:
             capabilities.extend(
                 [
                     "lab:scenarios",
+                    "lab:vital-files",
                     "lab:beds",
                     "lab:beds:create",
                     "lab:beds:delete",
@@ -100,6 +102,7 @@ class GuestControlUseCases:
                     "lab:sessions:start",
                     "lab:sessions:stop",
                     "lab:vital-files:replay",
+                    "lab:vital-files:upload",
                 ]
             )
 
@@ -291,6 +294,19 @@ class GuestControlUseCases:
         except ProductLabDependencyError as error:
             return _lab_failed_document(error)
 
+    def list_lab_vital_files(self) -> dict[str, object]:
+        if self._product_lab is None:
+            return {
+                "state": "unavailable",
+                "vitalFiles": [],
+                "readError": "Product Lab adapter is unavailable.",
+            }
+
+        try:
+            return self._product_lab.list_vital_files()
+        except ProductLabDependencyError as error:
+            return _lab_read_model_failed_document(error, collection="vitalFiles")
+
     def list_lab_beds(self) -> dict[str, object]:
         if self._product_lab is None:
             return {
@@ -351,6 +367,12 @@ class GuestControlUseCases:
         return self._run_lab_session_operation(
             command=ServiceCommand.LAB_REPLAY_VITAL_FILE,
             action=lambda: self._require_product_lab().replay_vital_file(request),
+        )
+
+    def upload_lab_vital_file(self, request: dict[str, object]) -> dict[str, object]:
+        return self._run_lab_upload_operation(
+            command=ServiceCommand.LAB_UPLOAD_VITAL_FILE,
+            action=lambda: self._require_product_lab().upload_vital_file(request),
         )
 
     def create_lab_beds(self, request: dict[str, object]) -> dict[str, object]:
@@ -855,6 +877,41 @@ class GuestControlUseCases:
             operation=completed,
         )
 
+    def _run_lab_upload_operation(
+        self,
+        *,
+        command: ServiceCommand,
+        action: Callable[[], ProductLabUploadResult],
+    ) -> dict[str, object]:
+        operation = accept_service_operation(
+            operation_id=self._operation_ids.new_operation_id(
+                service="product-lab",
+                command=command.value,
+            ),
+            service="product-lab",
+            command=command,
+            now=self._clock.now(),
+        )
+        self._create_operation(operation)
+
+        running = start_operation(operation, now=self._clock.now())
+        self._save_operation_transition(running)
+
+        try:
+            lab_result = action()
+        except ProductLabDependencyError as error:
+            failed = fail_operation(
+                running,
+                failure=OperationFailure(kind=error.kind, message=error.message),
+                now=self._clock.now(),
+            )
+            self._save_operation_transition(failed)
+            return _lab_upload_failed_document(error, operation=failed)
+
+        completed = finish_operation(running, now=self._clock.now())
+        self._save_operation_transition(completed)
+        return _lab_upload_loaded_document(lab_result, operation=completed)
+
     def _run_vitaldb_read_model_command(
         self,
         *,
@@ -969,6 +1026,34 @@ def _lab_session_loaded_document(
         "labOperationId": lab_result.lab_operation_id,
         "readError": None,
     }
+
+
+def _lab_upload_failed_document(
+    error: ProductLabDependencyError,
+    *,
+    operation: ServiceOperation,
+) -> dict[str, object]:
+    state = "unavailable" if error.kind == "product-lab-unavailable" else "failed"
+    return {
+        "state": state,
+        "upload": None,
+        "operationId": operation.operation_id,
+        "labOperationId": None,
+        "readError": error.message,
+    }
+
+
+def _lab_upload_loaded_document(
+    lab_result: ProductLabUploadResult,
+    *,
+    operation: ServiceOperation,
+) -> dict[str, object]:
+    document = dict(lab_result.document)
+    document["operationId"] = operation.operation_id
+    document["labOperationId"] = lab_result.lab_operation_id
+    if "upload" not in document:
+        document["upload"] = None
+    return document
 
 
 def _lab_read_model_loaded_document(

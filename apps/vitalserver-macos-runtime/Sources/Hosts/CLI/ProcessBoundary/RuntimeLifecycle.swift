@@ -417,7 +417,9 @@ struct RuntimeLifecycle {
 
     func printGuestStackStatus(_ command: RuntimeGuestControlReadCommand) throws {
         do {
-            let gateway = try HTTPRuntimeGuestControlGateway(baseURL: command.guestControlBaseURL)
+            let gateway = try HTTPRuntimeGuestControlGateway(
+                baseURL: try resolvedGuestControlBaseURL(command.guestControlBaseURL)
+            )
             try printJSON(gateway.stackStatus())
         } catch let error as RuntimeGuestControlHTTPGatewayError {
             throw LauncherError.runtimeOperationFailed(error.description)
@@ -429,7 +431,9 @@ struct RuntimeLifecycle {
         action: RuntimeGuestControlServiceCommand
     ) throws {
         do {
-            let gateway = try HTTPRuntimeGuestControlGateway(baseURL: command.guestControlBaseURL)
+            let gateway = try HTTPRuntimeGuestControlGateway(
+                baseURL: try resolvedGuestControlBaseURL(command.guestControlBaseURL)
+            )
             let usecase = RuntimeGuestProductServiceControlUseCase()
             let operation: RuntimeGuestControlServiceOperation
             switch action {
@@ -456,7 +460,9 @@ struct RuntimeLifecycle {
 
     func runLabCommand(_ command: RuntimeLabControlCommand) throws {
         do {
-            let gateway = try HTTPRuntimeGuestControlGateway(baseURL: command.guestControlBaseURL)
+            let gateway = try HTTPRuntimeGuestControlGateway(
+                baseURL: try resolvedGuestControlBaseURL(command.guestControlBaseURL)
+            )
             switch command.action {
             case .scenarios:
                 try printJSON(gateway.labScenarios())
@@ -482,7 +488,9 @@ struct RuntimeLifecycle {
 
     func runVitalDBCommand(_ command: RuntimeVitalDBReadCommand) throws {
         do {
-            let gateway = try HTTPRuntimeGuestControlGateway(baseURL: command.guestControlBaseURL)
+            let gateway = try HTTPRuntimeGuestControlGateway(
+                baseURL: try resolvedGuestControlBaseURL(command.guestControlBaseURL)
+            )
             switch command.action {
             case .observation:
                 try printJSON(gateway.latestVitalDBObservation())

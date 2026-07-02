@@ -15,6 +15,7 @@ class ServiceCommand(StrEnum):
     LAB_START_SESSION = "lab-start-session"
     LAB_STOP_SESSION = "lab-stop-session"
     LAB_REPLAY_VITAL_FILE = "lab-replay-vital-file"
+    LAB_UPLOAD_VITAL_FILE = "lab-upload-vital-file"
     LAB_CREATE_BEDS = "lab-create-beds"
     LAB_DELETE_BEDS = "lab-delete-beds"
     LAB_RESET_BEDS = "lab-reset-beds"
@@ -195,6 +196,12 @@ class ProductLabSessionResult:
 
 @dataclass(frozen=True)
 class ProductLabReadModelResult:
+    document: dict[str, Any]
+    lab_operation_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ProductLabUploadResult:
     document: dict[str, Any]
     lab_operation_id: str | None = None
 

@@ -791,6 +791,37 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/lab/scenarios"])
     }
 
+    func testLabVitalFilesDecodeRuntimeLabCatalog() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "state": "loaded",
+              "vitalFiles": [
+                {
+                  "displayName": "sample.vital",
+                  "relativePath": "MORA04/sample.vital",
+                  "guestPath": "/mnt/tirosh-vital-files/MORA04/sample.vital",
+                  "sizeBytes": 123,
+                  "modifiedAt": "2026-07-01T00:00:00Z"
+                }
+              ],
+              "readError": null
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let catalog = try gateway.labVitalFiles()
+
+        XCTAssertEqual(catalog.state, .loaded)
+        XCTAssertEqual(catalog.vitalFiles.map(\.relativePath), ["MORA04/sample.vital"])
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/lab/vital-files"])
+    }
+
     func testLabBedsAndRecordersDecodeRuntimeLabReadModels() throws {
         let bedsClient = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 200,
@@ -977,6 +1008,36 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(object["sessionName"] as? String, "Replay")
         XCTAssertEqual(object["targetURL"] as? String, "http://edge/")
     }
+
+    func testUploadLabVitalFilePostsRuntimeLabRequest() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 202,
+            body: labVitalFileUploadResponseBody(operationId: "op_upload_1")
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let response = try gateway.uploadLabVitalFile(RuntimeLabVitalFileUploadRequest(
+            vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
+            targetURL: "http://edge/",
+            endpoint: "/upload"
+        ))
+
+        XCTAssertEqual(response.operationId, "op_upload_1")
+        XCTAssertEqual(response.upload?.filename, "sample.vital")
+        XCTAssertEqual(client.requests.map(\.httpMethod), ["POST"])
+        XCTAssertEqual(
+            client.requests.map { $0.url?.absoluteString },
+            ["http://127.0.0.1:18330/v1/lab/vital-files/upload"]
+        )
+        let body = try XCTUnwrap(client.requests.first?.httpBody)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(object["vitalFilePath"] as? String, "/mnt/tirosh-vital-files/sample.vital")
+        XCTAssertEqual(object["targetURL"] as? String, "http://edge/")
+        XCTAssertEqual(object["endpoint"] as? String, "/upload")
+    }
 }
 
 private final class CapturingRuntimeGuestControlHTTPClient: RuntimeGuestControlHTTPClient, @unchecked Sendable {
@@ -1022,6 +1083,26 @@ private func labSessionResponseBody(operationId: String) -> String {
         "targetURL": "http://edge/",
         "createdAt": "2026-07-01T00:00:00+00:00",
         "updatedAt": "2026-07-01T00:00:01+00:00"
+      },
+      "operationId": "\(operationId)",
+      "labOperationId": "lab_\(operationId)",
+      "readError": null
+    }
+    """
+}
+
+private func labVitalFileUploadResponseBody(operationId: String) -> String {
+    """
+    {
+      "state": "loaded",
+      "upload": {
+        "filename": "sample.vital",
+        "endpoint": "/upload",
+        "targetURL": "http://edge/",
+        "statusCode": 200,
+        "bytesSent": 456,
+        "responseText": "success",
+        "ok": true
       },
       "operationId": "\(operationId)",
       "labOperationId": "lab_\(operationId)",

@@ -46,8 +46,6 @@ class GuestControlAPIError(Exception):
 def build_default_usecases() -> GuestControlUseCases:
     operations = PostgresOperationRepository()
     vitaldb_read_model = PostgresVitalDBReadModelRepository()
-    operations.ensure_schema()
-    vitaldb_read_model.ensure_schema()
     return GuestControlUseCases(
         service_control=ComposeGuestControlAdapter(),
         product_lab=ProductLabServiceAdapter(),
@@ -202,6 +200,9 @@ def route_request(
     if method == "GET" and parts == ["v1", "lab", "scenarios"]:
         return HTTPStatus.OK, usecases.list_lab_scenarios()
 
+    if method == "GET" and parts == ["v1", "lab", "vital-files"]:
+        return HTTPStatus.OK, usecases.list_lab_vital_files()
+
     if method == "GET" and parts == ["v1", "lab", "beds"]:
         return HTTPStatus.OK, usecases.list_lab_beds()
 
@@ -254,6 +255,9 @@ def route_request(
 
     if method == "POST" and parts == ["v1", "lab", "vital-files", "replay"]:
         return HTTPStatus.ACCEPTED, usecases.replay_lab_vital_file(_json_body(body))
+
+    if method == "POST" and parts == ["v1", "lab", "vital-files", "upload"]:
+        return HTTPStatus.ACCEPTED, usecases.upload_lab_vital_file(_json_body(body))
 
     if method == "POST" and parts == ["v1", "maintenance", "redis-backup"]:
         return HTTPStatus.ACCEPTED, usecases.create_redis_backup().as_json()

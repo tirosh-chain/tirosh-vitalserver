@@ -13,6 +13,7 @@ extension RuntimeHealthChecker {
         httpProber: RuntimeHTTPProber,
         guestBootstrapResultReader: any RuntimeGuestBootstrapResultReader,
         guestControlGateway: (@Sendable () throws -> any RuntimeGuestControlGateway)? = nil,
+        guestControlGatewayForBaseURL: (@Sendable (String) throws -> any RuntimeGuestControlGateway)? = nil,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self = RuntimeHealthCheckerComposition.make(
@@ -26,6 +27,7 @@ extension RuntimeHealthChecker {
             lsofPath: Constants.Commands.lsof,
             curlPath: Constants.Commands.curl,
             guestControlGateway: guestControlGateway,
+            guestControlGatewayForBaseURL: guestControlGatewayForBaseURL,
             now: now
         )
     }

@@ -67,6 +67,7 @@ class PostgresVitalDBReadModelRepository:
             ) from error
 
     def check_ready(self) -> None:
+        self.ensure_schema()
         _run_vitaldb_psql("SELECT 1;", stage="vitaldb read model readiness")
 
     def latest_observation(self) -> dict[str, Any]:

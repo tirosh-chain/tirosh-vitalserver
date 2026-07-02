@@ -17,6 +17,7 @@ public enum RuntimeHealthCheckerComposition {
         lsofPath: String,
         curlPath: String,
         guestControlGateway: (@Sendable () throws -> any RuntimeGuestControlGateway)? = nil,
+        guestControlGatewayForBaseURL: (@Sendable (String) throws -> any RuntimeGuestControlGateway)? = nil,
         now: @escaping @Sendable () -> Date = Date.init
     ) -> RuntimeHealthChecker {
         return RuntimeHealthChecker(
@@ -32,6 +33,7 @@ public enum RuntimeHealthCheckerComposition {
             httpProber: httpProber,
             guestBootstrapResultReader: guestBootstrapResultReader,
             guestControlGateway: guestControlGateway,
+            guestControlGatewayForBaseURL: guestControlGatewayForBaseURL,
             now: now
         )
     }

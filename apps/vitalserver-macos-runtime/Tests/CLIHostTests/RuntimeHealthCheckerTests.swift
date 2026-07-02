@@ -99,6 +99,59 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertEqual(snapshot.vmDisk, .present)
     }
 
+    func testSnapshotReadsVMIPFromRuntimeStateWhenLegacyVMIPFileIsAbsent() {
+        let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
+        let fileStore = RuntimeFileStoreSpy()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
+        fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.proxyRun)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.Artifacts.rootfsBase)] = Data()
+        fileStore.files[installedPaths.runtimeDirectory.appendingPathComponent(Constants.BootAssets.disk)] = Data()
+        fileStore.files[installedPaths.runtimeState] = Data(#"{"vmIP":"192.168.64.203"}"#.utf8)
+
+        let commandRunner = RuntimeCommandRunnerSpy()
+        commandRunner.results[Constants.Commands.plistBuddy] = RuntimeProcessResult(
+            exitCode: 0,
+            stdout: "80\n",
+            stderr: ""
+        )
+        let serviceManager = RuntimeServiceManagerSpy()
+        serviceManager.states = [.vm: .loaded, .proxy: .loaded, .watchdog: .loaded]
+        let httpProber = RuntimeHTTPProberSpy()
+        httpProber.statuses[Constants.Runtime.proxyHealthURL(port: 80)] = "200"
+        httpProber.statuses[Constants.Runtime.redisUIHealthURL(port: 80)] = "200"
+        httpProber.statuses[Constants.Runtime.swaggerUIHealthURL(port: 80)] = "200"
+
+        let checker = RuntimeHealthChecker(
+            installedPaths: installedPaths,
+            fileStore: fileStore,
+            serviceManager: serviceManager,
+            commandRunner: commandRunner,
+            httpProber: httpProber,
+            guestBootstrapResultReader: RuntimeGuestDocumentReaderSpy(),
+            guestControlGateway: {
+                RuntimeGuestControlGatewaySpy(
+                    services: ["app"],
+                    statuses: ["app": RuntimeGuestControlServiceStatus(
+                        service: "app",
+                        state: "running",
+                        health: "healthy",
+                        observedAt: "2026-07-01T00:00:00Z"
+                    )],
+                    vitalDBObservationRead: RuntimeGuestControlVitalDBObservationRead(
+                        state: .loaded,
+                        observation: healthyVitalDBObservation()
+                    ),
+                    readyStatus: "ready"
+                )
+            }
+        )
+
+        let snapshot = healthSnapshot(from: checker)
+
+        XCTAssertEqual(snapshot.vmIP, "192.168.64.203")
+        XCTAssertFalse(snapshot.failureReasons.contains(RuntimeFailureReason.guestHTTP(RuntimeHTTPStatusText.missingVMIP)))
+    }
+
     func testSnapshotReadsGuestServiceStatusesThroughGuestControlGateway() {
         let fixture = healthyRuntimeFixture(guestHTTP: "200")
         let status = RuntimeGuestControlServiceStatus(

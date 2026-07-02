@@ -64,12 +64,23 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var remoteConsoleHTTP: String?
     @Published var remoteConsoleStartedAt: String?
     @Published var labScenarios = RuntimeLabScenarioList.unavailable(readError: "Product Lab scenarios have not been loaded.")
+    @Published var labVitalFiles = RuntimeLabVitalFileList.unavailable(readError: "Product Lab .vital files have not been loaded.")
+    @Published var labBeds = RuntimeLabBedList.unavailable(readError: "Product Lab beds have not been loaded.")
+    @Published var labRecorders = RuntimeLabRecorderList.unavailable(readError: "Product Lab recorders have not been loaded.")
     @Published var selectedLabScenarioID = ""
+    @Published var selectedLabVitalFileGuestPath = ""
+    @Published var labVitalFileQuery = ""
+    @Published var selectedLabBedID = ""
+    @Published var selectedLabRecorderID = ""
     @Published var labSessionName = ""
     @Published var labRecorderCount = 1
+    @Published var labBedCount = 1
+    @Published var labBedPrefix = "Lab bed"
+    @Published var labTargetURL = "http://edge/"
     @Published var selectedLabSessionID = ""
     @Published var labSessionResponse = RuntimeLabSessionResponse.unavailable(readError: "No Product Lab session has been selected.")
     @Published var labVitalFilePath = ""
+    @Published var labVitalFileUploadResponse = RuntimeLabVitalFileUploadResponse.unavailable(readError: "No .vital file has been uploaded.")
     @Published var isRunningLabAction = false
     @Published var labActionMessage = ""
     @Published var labActionMessageTone = RuntimeLabActionMessageTone.neutral

@@ -47,6 +47,11 @@ struct RuntimeLabPanel: View {
                             .frame(maxWidth: 280)
                         }
                     }
+                    statusRow(RuntimeLabPanelText.labTargetURL) {
+                        TextField(RuntimeLabPanelText.labTargetURL, text: $viewModel.labTargetURL)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 360)
+                    }
                     statusRow(AppConstants.Labels.sessions) {
                         Text(viewModel.selectedLabSessionID.isEmpty ? AppConstants.Values.empty : viewModel.selectedLabSessionID)
                             .fontWeight(.medium)
@@ -74,6 +79,24 @@ struct RuntimeLabPanel: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
+                    if let readError = viewModel.labBeds.readError ?? viewModel.labRecorders.readError,
+                       !readError.isEmpty {
+                        statusRow(AppConstants.Labels.lastError) {
+                            Text(readError)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.red)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    if let readError = viewModel.labVitalFiles.readError,
+                       !readError.isEmpty {
+                        statusRow(AppConstants.Labels.lastError) {
+                            Text(readError)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.red)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                     if !viewModel.labActionMessage.isEmpty {
                         statusRow(AppConstants.Labels.operation) {
                             Text(viewModel.labActionMessage)
@@ -83,6 +106,9 @@ struct RuntimeLabPanel: View {
                         }
                     }
                 }
+
+                labBedManagementSection
+                labRecorderManagementSection
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 12) {
@@ -129,6 +155,24 @@ struct RuntimeLabPanel: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        TextField(RuntimeLabPanelText.vitalFileFilter, text: $viewModel.labVitalFileQuery)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 220)
+
+                        Picker(RuntimeLabPanelText.vitalFileSource, selection: $viewModel.selectedLabVitalFileGuestPath) {
+                            if viewModel.labFilteredVitalFiles.isEmpty {
+                                Text(AppConstants.Values.empty).tag("")
+                            } else {
+                                ForEach(viewModel.labFilteredVitalFiles, id: \.guestPath) { vitalFile in
+                                    Text(vitalFile.relativePath).tag(vitalFile.guestPath)
+                                }
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 360)
+                    }
+
                     HStack {
                         Button(RuntimeLabPanelText.choosingVitalFileForPlayback) {
                             viewModel.chooseVitalFileForProductLabReplay()
@@ -144,6 +188,122 @@ struct RuntimeLabPanel: View {
                         Task { await viewModel.replayVitalFileWithProductLab() }
                     }
                     .disabled(!viewModel.labCanReplayVitalFile)
+
+                    Button("Upload .vital file") {
+                        Task { await viewModel.uploadVitalFileToProductLab() }
+                    }
+                    .disabled(!viewModel.labCanUploadVitalFile)
+
+                    if let upload = viewModel.labVitalFileUploadResponse.upload {
+                        Text("\(upload.filename) · HTTP \(upload.statusCode)")
+                            .font(.caption)
+                            .foregroundStyle(upload.ok ? Color.secondary : Color.red)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+            }
+        }
+    }
+
+    private var labBedManagementSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+            HStack(spacing: 12) {
+                Text(RuntimeLabPanelText.labBedManagement)
+                    .font(.headline)
+                Text("\(viewModel.labBeds.beds.count)")
+                    .foregroundStyle(.secondary)
+                Stepper(
+                    "\(AppConstants.Actions.create): \(viewModel.labBedCount)",
+                    value: $viewModel.labBedCount,
+                    in: 1...200
+                )
+                .frame(width: 160, alignment: .trailing)
+                TextField("Prefix", text: $viewModel.labBedPrefix)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 180)
+            }
+            HStack(spacing: 8) {
+                Picker(RuntimeLabPanelText.labBedManagement, selection: $viewModel.selectedLabBedID) {
+                    if viewModel.labBeds.beds.isEmpty {
+                        Text(AppConstants.Values.empty).tag("")
+                    } else {
+                        ForEach(viewModel.labBeds.beds, id: \.bedId) { bed in
+                            Text("\(bed.name) · \(bed.sessionId)").tag(bed.bedId)
+                        }
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 360)
+
+                Button(AppConstants.Actions.create) {
+                    Task { await viewModel.createProductLabBeds() }
+                }
+                .disabled(!viewModel.labCanCreateBeds)
+
+                Button(AppConstants.Actions.delete) {
+                    Task { await viewModel.deleteSelectedProductLabBed() }
+                }
+                .disabled(!viewModel.labCanDeleteSelectedBed)
+
+                Button("Reset") {
+                    Task { await viewModel.resetProductLabBeds() }
+                }
+                .disabled(viewModel.isRunningLabAction || !viewModel.labCanUseProductLab)
+            }
+        }
+    }
+
+    private var labRecorderManagementSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+            HStack(spacing: 12) {
+                Text(RuntimeLabPanelText.labRecorderManagement)
+                    .font(.headline)
+                Text("\(viewModel.labRecorders.recorders.count)")
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                Picker(RuntimeLabPanelText.labRecorderManagement, selection: $viewModel.selectedLabRecorderID) {
+                    if viewModel.labRecorders.recorders.isEmpty {
+                        Text(AppConstants.Values.empty).tag("")
+                    } else {
+                        ForEach(viewModel.labRecorders.recorders, id: \.recorderId) { recorder in
+                            Text("\(recorder.vrcode) · \(recorder.lastSendState.rawValue)").tag(recorder.recorderId)
+                        }
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 360)
+
+                Button(AppConstants.Actions.create) {
+                    Task { await viewModel.createProductLabRecorderForSelectedBed() }
+                }
+                .disabled(!viewModel.labCanCreateRecorder)
+
+                Button(AppConstants.Actions.delete) {
+                    Task { await viewModel.deleteSelectedProductLabRecorder() }
+                }
+                .disabled(!viewModel.labCanDeleteSelectedRecorder)
+
+                Button("Reset") {
+                    Task { await viewModel.resetProductLabRecorders() }
+                }
+                .disabled(viewModel.isRunningLabAction || !viewModel.labCanUseProductLab)
+            }
+            if let recorder = viewModel.labRecorders.recorders.first(where: { $0.recorderId == viewModel.selectedLabRecorderID }) {
+                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 6) {
+                    statusRow(RuntimeLabPanelText.messagesSent) {
+                        Text(String(recorder.messagesSent))
+                            .fontWeight(.medium)
+                    }
+                    statusRow(RuntimeLabPanelText.lastSend) {
+                        Text(recorder.lastSendError ?? recorder.lastSendState.rawValue)
+                            .fontWeight(.medium)
+                            .foregroundStyle(recorder.lastSendState == .failed ? .red : .secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
         }

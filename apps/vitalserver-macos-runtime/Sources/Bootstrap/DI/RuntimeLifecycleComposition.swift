@@ -61,9 +61,9 @@ public struct RuntimeLifecycleComposition {
             commandRunner: commandRunner,
             httpProber: resolvedHTTPProber,
             guestBootstrapResultReader: resolvedGuestBootstrapResultReader,
-            guestControlGateway: {
+            guestControlGatewayForBaseURL: { baseURL in
                 try HTTPRuntimeGuestControlGateway(
-                    baseURL: RuntimeLifecycleComposition.guestControlAPIBaseURL,
+                    baseURL: baseURL,
                     timeout: RuntimeLifecycleComposition.guestControlAPIStatusReadTimeoutSeconds
                 )
             }
@@ -135,6 +135,5 @@ public struct RuntimeLifecycleComposition {
 }
 
 private extension RuntimeLifecycleComposition {
-    static let guestControlAPIBaseURL = "http://127.0.0.1:18330"
     static let guestControlAPIStatusReadTimeoutSeconds: TimeInterval = 1
 }

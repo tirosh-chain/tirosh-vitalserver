@@ -11,6 +11,7 @@ from vitalserver_lab.execution import (
     LabExecutionEngine,
     LabRecorderSendError,
     LabRecorderSendReceipt,
+    LabVitalFileUploadReceipt,
 )
 from vitalserver_lab.model import (
     DEFAULT_SCENARIOS,
@@ -125,6 +126,30 @@ def test_scenarios_are_served_from_lab_product_api() -> None:
         "baseline-monitoring",
         "respiratory-variation",
         "vital-file-replay",
+    ]
+
+
+def test_vital_files_are_served_from_configured_mount(tmp_path: Path) -> None:
+    nested = tmp_path / "MORA04" / "202301"
+    nested.mkdir(parents=True)
+    vital_file = nested / "sample.vital"
+    vital_file.write_bytes(b"vital")
+    (nested / "ignore.txt").write_text("not vital", encoding="utf-8")
+
+    with running_server(vital_files_mount=tmp_path) as address:
+        response = request(address, "GET", "/lab/vital-files")
+
+    assert response["status"] == 200
+    assert response["body"]["state"] == "loaded"
+    assert response["body"]["readError"] is None
+    assert response["body"]["vitalFiles"] == [
+        {
+            "displayName": "sample.vital",
+            "relativePath": "MORA04/202301/sample.vital",
+            "guestPath": str(vital_file),
+            "sizeBytes": 5,
+            "modifiedAt": response["body"]["vitalFiles"][0]["modifiedAt"],
+        }
     ]
 
 
@@ -493,6 +518,55 @@ def test_replay_vital_file_rejects_unavailable_or_unmounted_source(
     assert accepted["status"] == 202
 
 
+def test_vital_file_upload_sends_mounted_file_to_vitalserver(tmp_path: Path) -> None:
+    vital_file = tmp_path / "MORA04_230102_074641.vital"
+    vital_file.write_bytes(b"vital")
+    uploader = FakeVitalFileUploader()
+
+    with running_server(vital_files_mount=tmp_path, uploader=uploader) as address:
+        response = request(
+            address,
+            "POST",
+            "/lab/vital-files/upload",
+            {
+                "vitalFilePath": str(vital_file),
+                "targetURL": "http://edge/",
+            },
+        )
+
+    assert response["status"] == 202
+    assert response["body"]["state"] == "loaded"
+    assert response["body"]["operationId"] == "lab-vital-file-upload"
+    assert response["body"]["readError"] is None
+    assert response["body"]["upload"]["filename"] == "MORA04_230102_074641.vital"
+    assert response["body"]["upload"]["endpoint"] == "/upload"
+    assert response["body"]["upload"]["targetURL"] == "http://edge/"
+    assert uploader.calls == [
+        {
+            "target_url": "http://edge/",
+            "file_path": vital_file,
+            "endpoint": "/upload",
+            "vrcode": None,
+        }
+    ]
+
+
+def test_vital_file_upload_reports_target_url_as_required(tmp_path: Path) -> None:
+    vital_file = tmp_path / "case.vital"
+    vital_file.write_bytes(b"vital")
+
+    with running_server(vital_files_mount=tmp_path) as address:
+        response = request(
+            address,
+            "POST",
+            "/lab/vital-files/upload",
+            {"vitalFilePath": str(vital_file)},
+        )
+
+    assert response["status"] == 400
+    assert response["body"]["error"] == "targetURL_required"
+
+
 def test_create_session_reports_missing_scenario() -> None:
     with running_server() as address:
         response = request(
@@ -515,10 +589,12 @@ class running_server:
         ids: list[str] | None = None,
         *,
         sender: FakeSender | None = None,
+        uploader: FakeVitalFileUploader | None = None,
         vital_files_mount: Path | None = None,
     ) -> None:
         self.ids = ids or ["lab_session_1"]
         self.sender = sender or FakeSender()
+        self.uploader = uploader or FakeVitalFileUploader()
         self.vital_files_mount = vital_files_mount or Path("/mnt/tirosh-vital-files")
 
     def __enter__(self) -> running_server:
@@ -534,7 +610,10 @@ class running_server:
             vital_files_mount=self.vital_files_mount,
         )
         self.store = InMemoryLabSessionStore(id_factory=lambda: next(counter))
-        self.engine = LabExecutionEngine(sender=self.sender)
+        self.engine = LabExecutionEngine(
+            sender=self.sender,
+            vital_file_uploader=self.uploader,
+        )
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -584,6 +663,37 @@ class FailingSender:
         del target_url
         del payload
         raise LabRecorderSendError("send dependency unavailable")
+
+
+class FakeVitalFileUploader:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def upload(
+        self,
+        *,
+        target_url: str,
+        file_path: Path,
+        endpoint: str,
+        vrcode: str | None = None,
+    ) -> LabVitalFileUploadReceipt:
+        self.calls.append(
+            {
+                "target_url": target_url,
+                "file_path": file_path,
+                "endpoint": endpoint,
+                "vrcode": vrcode,
+            }
+        )
+        return LabVitalFileUploadReceipt(
+            filename=file_path.name,
+            endpoint=endpoint,
+            target_url=target_url,
+            status_code=200,
+            bytes_sent=456,
+            response_text="success",
+            ok=True,
+        )
 
 
 class UnavailableStore:

@@ -8,6 +8,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     OperationEvent,
     ProductLabReadModelResult,
     ProductLabSessionResult,
+    ProductLabUploadResult,
     RedisBackupResult,
     RedisRestoreResult,
     ServiceOperation,
@@ -56,6 +57,9 @@ class ProductLabPort(Protocol):
     def list_scenarios(self) -> dict[str, Any]:
         raise NotImplementedError
 
+    def list_vital_files(self) -> dict[str, Any]:
+        raise NotImplementedError
+
     def list_beds(self) -> dict[str, Any]:
         raise NotImplementedError
 
@@ -75,6 +79,9 @@ class ProductLabPort(Protocol):
         raise NotImplementedError
 
     def replay_vital_file(self, request: dict[str, Any]) -> ProductLabSessionResult:
+        raise NotImplementedError
+
+    def upload_vital_file(self, request: dict[str, Any]) -> ProductLabUploadResult:
         raise NotImplementedError
 
     def create_beds(self, request: dict[str, Any]) -> ProductLabReadModelResult:

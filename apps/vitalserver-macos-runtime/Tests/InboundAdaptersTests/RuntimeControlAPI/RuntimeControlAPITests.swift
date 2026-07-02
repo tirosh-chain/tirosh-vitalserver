@@ -773,10 +773,18 @@ final class RuntimeControlAPITests: XCTestCase {
         let replayRequest = RuntimeLabVitalFileReplayRequest(
             vitalFilePath: "MORA04/202301/230102/sample.vital"
         )
+        let uploadRequest = RuntimeLabVitalFileUploadRequest(
+            vitalFilePath: "MORA04/202301/230102/sample.vital",
+            targetURL: "http://edge/"
+        )
 
         let scenarios = try await decode(
             RuntimeLabScenarioList.self,
             from: router.route(.init(method: .get, path: "/lab/scenarios"))
+        )
+        let vitalFiles = try await decode(
+            RuntimeLabVitalFileList.self,
+            from: router.route(.init(method: .get, path: "/lab/vital-files"))
         )
         let beds = try await decode(
             RuntimeLabBedList.self,
@@ -808,10 +816,17 @@ final class RuntimeControlAPITests: XCTestCase {
             path: "/lab/vital-files/replay",
             body: try JSONEncoder().encode(replayRequest)
         )))
+        let upload = try await decode(RuntimeLabVitalFileUploadResponse.self, from: router.route(.init(
+            method: .post,
+            path: "/lab/vital-files/upload",
+            body: try JSONEncoder().encode(uploadRequest)
+        )))
 
         XCTAssertEqual(scenarios.state, .unavailable)
         XCTAssertEqual(scenarios.scenarios, [])
         XCTAssertEqual(scenarios.readError, "Runtime Lab gateway is unavailable.")
+        XCTAssertEqual(vitalFiles.state, .unavailable)
+        XCTAssertEqual(vitalFiles.vitalFiles, [])
         XCTAssertEqual(beds.state, .unavailable)
         XCTAssertEqual(beds.beds, [])
         XCTAssertEqual(recorders.state, .unavailable)
@@ -821,6 +836,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(start.state, .unavailable)
         XCTAssertEqual(stop.state, .unavailable)
         XCTAssertEqual(replay.state, .unavailable)
+        XCTAssertEqual(upload.state, .unavailable)
     }
 
     @MainActor

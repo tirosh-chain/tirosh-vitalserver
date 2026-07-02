@@ -57,6 +57,7 @@ class PostgresOperationRepository:
         )
 
     def check_ready(self) -> None:
+        self.ensure_schema()
         run_psql("SELECT 1;", stage="guest control operation repository readiness")
 
     def create(self, operation: ServiceOperation) -> None:

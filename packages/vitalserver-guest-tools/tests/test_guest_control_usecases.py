@@ -11,6 +11,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     ProductLabDependencyError,
     ProductLabReadModelResult,
     ProductLabSessionResult,
+    ProductLabUploadResult,
     RecorderIngressDependencyError,
     RedisBackupDependencyError,
     RedisBackupResult,
@@ -164,6 +165,9 @@ class FakeProductLab:
     def list_scenarios(self) -> dict[str, object]:
         return {"state": "loaded", "scenarios": [], "readError": None}
 
+    def list_vital_files(self) -> dict[str, object]:
+        return {"state": "loaded", "vitalFiles": [], "readError": None}
+
     def list_beds(self) -> dict[str, object]:
         return {
             "state": "loaded",
@@ -258,6 +262,25 @@ class FakeProductLab:
 
     def replay_vital_file(self, request: dict[str, object]) -> dict[str, object]:
         raise NotImplementedError(request)
+
+    def upload_vital_file(self, request: dict[str, object]) -> ProductLabUploadResult:
+        return ProductLabUploadResult(
+            document={
+                "state": "loaded",
+                "operationId": "lab-vital-file-upload",
+                "upload": {
+                    "filename": "sample.vital",
+                    "endpoint": "/upload",
+                    "targetURL": request["targetURL"],
+                    "statusCode": 200,
+                    "bytesSent": 456,
+                    "responseText": "success",
+                    "ok": True,
+                },
+                "readError": None,
+            },
+            lab_operation_id="lab-vital-file-upload",
+        )
 
 
 class FakeVitalDBReadModel:
@@ -605,6 +628,7 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         "stack:reconcile",
         "operations:get",
         "lab:scenarios",
+        "lab:vital-files",
         "lab:beds",
         "lab:beds:create",
         "lab:beds:delete",
@@ -618,6 +642,7 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         "lab:sessions:start",
         "lab:sessions:stop",
         "lab:vital-files:replay",
+        "lab:vital-files:upload",
         "maintenance:redis-backup:create",
         "maintenance:redis-restore:create",
         "maintenance:datastore-repair:create",

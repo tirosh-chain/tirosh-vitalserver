@@ -96,6 +96,7 @@ public protocol RuntimeControlAPIReadHandler {
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
     func loadInstallInfo() async throws -> RuntimeInstallInfo
     func loadLabScenarios() async throws -> RuntimeLabScenarioList
+    func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList
     func loadLabBeds() async throws -> RuntimeLabBedList
     func loadLabRecorders() async throws -> RuntimeLabRecorderList
     func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList
@@ -115,6 +116,7 @@ public protocol RuntimeControlAPIReadHandler {
     func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
     func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
     func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse
+    func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse
     func guestStackStatus() async throws -> RuntimeGuestControlStackStatus
     func listGuestServices() async throws -> RuntimeGuestControlServiceList
     func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus
@@ -146,6 +148,10 @@ public protocol RuntimeControlAPIReadHandler {
 public extension RuntimeControlAPIReadHandler {
     func loadLabScenarios() async throws -> RuntimeLabScenarioList {
         RuntimeLabScenarioList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList {
+        RuntimeLabVitalFileList.unavailable(readError: "Runtime Lab gateway is unavailable.")
     }
 
     func loadLabBeds() async throws -> RuntimeLabBedList {
@@ -222,6 +228,10 @@ public extension RuntimeControlAPIReadHandler {
 
     func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
         RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse {
+        RuntimeLabVitalFileUploadResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
     }
 
     func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {

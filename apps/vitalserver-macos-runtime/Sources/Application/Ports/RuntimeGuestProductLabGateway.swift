@@ -2,6 +2,7 @@ import Contracts
 
 public protocol RuntimeGuestProductLabGateway {
     func labScenarios() throws -> RuntimeLabScenarioList
+    func labVitalFiles() throws -> RuntimeLabVitalFileList
     func labBeds() throws -> RuntimeLabBedList
     func labRecorders() throws -> RuntimeLabRecorderList
     func createLabBeds(_ request: RuntimeLabBedCreateRequest) throws -> RuntimeLabBedList
@@ -19,4 +20,7 @@ public protocol RuntimeGuestProductLabGateway {
     func replayLabVitalFile(
         _ request: RuntimeLabVitalFileReplayRequest
     ) throws -> RuntimeLabSessionResponse
+    func uploadLabVitalFile(
+        _ request: RuntimeLabVitalFileUploadRequest
+    ) throws -> RuntimeLabVitalFileUploadResponse
 }

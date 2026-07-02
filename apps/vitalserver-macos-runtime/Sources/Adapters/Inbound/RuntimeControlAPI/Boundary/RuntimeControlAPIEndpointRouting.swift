@@ -55,6 +55,8 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .get, path: "/runtime/install", scope: .runtimeControl)
         case .labScenarios:
             return .init(method: .get, path: "/lab/scenarios", scope: .runtimeControl)
+        case .labVitalFiles:
+            return .init(method: .get, path: "/lab/vital-files", scope: .runtimeControl)
         case .labBeds:
             return .init(method: .get, path: "/lab/beds", scope: .runtimeControl)
         case .createLabBeds:
@@ -81,6 +83,8 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .post, path: "/lab/sessions/{sessionId}/stop", scope: .runtimeControl)
         case .replayLabVitalFile:
             return .init(method: .post, path: "/lab/vital-files/replay", scope: .runtimeControl)
+        case .uploadLabVitalFile:
+            return .init(method: .post, path: "/lab/vital-files/upload", scope: .runtimeControl)
         case .guestStackStatus:
             return .init(method: .get, path: "/runtime/guest/stack/status", scope: .runtimeControl)
         case .guestServices:

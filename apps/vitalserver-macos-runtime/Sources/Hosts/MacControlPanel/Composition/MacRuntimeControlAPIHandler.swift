@@ -95,6 +95,10 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         try await commandClient.loadLabScenarios()
     }
 
+    func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList {
+        try await commandClient.loadLabVitalFiles()
+    }
+
     func loadLabBeds() async throws -> RuntimeLabBedList {
         try await commandClient.loadLabBeds()
     }
@@ -169,6 +173,10 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
 
     func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
         try await commandClient.replayLabVitalFile(request)
+    }
+
+    func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse {
+        try await commandClient.uploadLabVitalFile(request)
     }
 
     func listGuestServices() async throws -> RuntimeGuestControlServiceList {

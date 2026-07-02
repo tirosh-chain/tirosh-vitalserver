@@ -359,6 +359,10 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(RuntimeLabScenarioList.self, method: "GET", path: "/v1/lab/scenarios")
     }
 
+    public func labVitalFiles() throws -> RuntimeLabVitalFileList {
+        try decode(RuntimeLabVitalFileList.self, method: "GET", path: "/v1/lab/vital-files")
+    }
+
     public func labBeds() throws -> RuntimeLabBedList {
         try decode(RuntimeLabBedList.self, method: "GET", path: "/v1/lab/beds")
     }
@@ -457,6 +461,15 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
             RuntimeLabSessionResponse.self,
             method: "POST",
             path: "/v1/lab/vital-files/replay",
+            body: request
+        )
+    }
+
+    public func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) throws -> RuntimeLabVitalFileUploadResponse {
+        try decode(
+            RuntimeLabVitalFileUploadResponse.self,
+            method: "POST",
+            path: "/v1/lab/vital-files/upload",
             body: request
         )
     }

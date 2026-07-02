@@ -61,6 +61,9 @@ struct RuntimeControlHTTPCommandRoutes {
         case .replayLabVitalFile:
             let replayRequest = try request.decodedBody(RuntimeLabVitalFileReplayRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.replayLabVitalFile(replayRequest))
+        case .uploadLabVitalFile:
+            let uploadRequest = try request.decodedBody(RuntimeLabVitalFileUploadRequest.self)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.uploadLabVitalFile(uploadRequest))
         case .startGuestService:
             let controlRequest = try request.decodedBody(RuntimeGuestServiceControlRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.startGuestService(controlRequest))
@@ -139,6 +142,7 @@ struct RuntimeControlHTTPCommandRoutes {
              .health,
              .settings,
              .labScenarios,
+             .labVitalFiles,
              .labBeds,
              .labRecorders,
              .labSession,

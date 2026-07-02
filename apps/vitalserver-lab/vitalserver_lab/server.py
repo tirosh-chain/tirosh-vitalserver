@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from .execution import LabExecutionEngine, VitalServerRecorderPayloadSender
+from .execution import (
+    LabExecutionEngine,
+    LabRecorderSendError,
+    LabVitalFileUploadReceipt,
+    VitalServerRecorderPayloadSender,
+)
 from .model import (
     DEFAULT_SCENARIOS,
     InMemoryLabSessionStore,
@@ -19,6 +25,7 @@ from .model import (
     LabSessionCreateInput,
     LabSessionStore,
     LabSessionStoreUnavailable,
+    LabVitalFile,
     utc_now_iso,
 )
 from .postgres_store import PostgresLabSessionStore
@@ -134,6 +141,21 @@ def route_lab_request(
         return HTTPStatus.OK, {
             "state": "loaded",
             "scenarios": [scenario.as_json() for scenario in scenarios],
+            "readError": None,
+        }
+
+    if method == "GET" and path == "/lab/vital-files":
+        try:
+            vital_files = list_vital_files(settings=settings)
+        except LabRequestError as error:
+            return error.status, {
+                "state": "failed",
+                "vitalFiles": [],
+                "readError": error.message,
+            }
+        return HTTPStatus.OK, {
+            "state": "loaded",
+            "vitalFiles": [vital_file.as_json() for vital_file in vital_files],
             "readError": None,
         }
 
@@ -309,6 +331,34 @@ def route_lab_request(
         return HTTPStatus.ACCEPTED, _session_response(
             session.as_json(),
             operation_id=f"lab-vital-file-replay-{session.session_id}",
+        )
+
+    if method == "POST" and parts == ["lab", "vital-files", "upload"]:
+        operation_id = "lab-vital-file-upload"
+        try:
+            payload = _json_body(body)
+            vital_file_path = string_field(payload, "vitalFilePath")
+            validate_vital_file_path(vital_file_path, settings=settings)
+            target_url = string_field(payload, "targetURL")
+            endpoint = optional_string_field(payload, "endpoint") or "/upload"
+            vrcode = optional_string_field(payload, "vrcode")
+        except LabRequestError as error:
+            return error.status, {"error": error.code, "message": error.message}
+        try:
+            receipt = execution_engine.upload_vital_file(
+                target_url=target_url,
+                file_path=Path(vital_file_path),
+                endpoint=endpoint,
+                vrcode=vrcode,
+            )
+        except LabRecorderSendError as error:
+            return HTTPStatus.BAD_GATEWAY, _vital_file_upload_failure_response(
+                str(error),
+                operation_id=operation_id,
+            )
+        return HTTPStatus.ACCEPTED, _vital_file_upload_response(
+            receipt,
+            operation_id=operation_id,
         )
 
     return HTTPStatus.NOT_FOUND, {"error": "not_found"}
@@ -553,6 +603,51 @@ def validate_vital_file_path(path: str, *, settings: LabSettings) -> None:
         )
 
 
+def list_vital_files(
+    *,
+    settings: LabSettings,
+    maximum_files: int = 1000,
+) -> tuple[LabVitalFile, ...]:
+    mount = settings.vital_files_mount.resolve(strict=False)
+    if not mount.exists():
+        raise LabRequestError(
+            "vitalFilesMount_missing",
+            "Configured vital files mount is not available.",
+            HTTPStatus.NOT_FOUND,
+        )
+    if not mount.is_dir():
+        raise LabRequestError(
+            "vitalFilesMount_not_directory",
+            "Configured vital files mount is not a directory.",
+            HTTPStatus.BAD_REQUEST,
+        )
+
+    vital_files: list[LabVitalFile] = []
+    for candidate in mount.rglob("*.vital"):
+        if len(vital_files) >= maximum_files:
+            break
+        if not candidate.is_file():
+            continue
+        stat = candidate.stat()
+        relative_path = candidate.relative_to(mount).as_posix()
+        vital_files.append(
+            LabVitalFile(
+                display_name=candidate.name,
+                relative_path=relative_path,
+                guest_path=str(candidate),
+                size_bytes=stat.st_size,
+                modified_at=utc_now_iso_from_timestamp(stat.st_mtime),
+            )
+        )
+    return tuple(sorted(vital_files, key=lambda item: item.relative_path.lower()))
+
+
+def utc_now_iso_from_timestamp(timestamp: float) -> str:
+    return datetime.fromtimestamp(timestamp, UTC).replace(
+        microsecond=0
+    ).isoformat().replace("+00:00", "Z")
+
+
 def _session_response(
     session: dict[str, object],
     *,
@@ -579,6 +674,35 @@ def _recorder_list_response(recorders: tuple[object, ...]) -> dict[str, object]:
         "state": "loaded",
         "recorders": [recorder.as_json() for recorder in recorders],
         "readError": None,
+    }
+
+
+def _vital_file_upload_response(
+    receipt: LabVitalFileUploadReceipt,
+    *,
+    operation_id: str,
+) -> dict[str, object]:
+    read_error = None if receipt.ok else (
+        receipt.response_text or f"VitalServer upload failed: status={receipt.status_code}"
+    )
+    return {
+        "state": "loaded" if receipt.ok else "failed",
+        "operationId": operation_id,
+        "upload": receipt.as_json(),
+        "readError": read_error,
+    }
+
+
+def _vital_file_upload_failure_response(
+    message: str,
+    *,
+    operation_id: str,
+) -> dict[str, object]:
+    return {
+        "state": "failed",
+        "operationId": operation_id,
+        "upload": None,
+        "readError": message,
     }
 
 

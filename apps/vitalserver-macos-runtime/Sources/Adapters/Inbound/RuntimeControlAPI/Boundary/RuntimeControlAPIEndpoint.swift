@@ -28,6 +28,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case release
     case installInfo
     case labScenarios
+    case labVitalFiles
     case labBeds
     case createLabBeds
     case deleteLabBeds
@@ -41,6 +42,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case startLabSession
     case stopLabSession
     case replayLabVitalFile
+    case uploadLabVitalFile
     case guestStackStatus
     case guestServices
     case guestServiceStatus

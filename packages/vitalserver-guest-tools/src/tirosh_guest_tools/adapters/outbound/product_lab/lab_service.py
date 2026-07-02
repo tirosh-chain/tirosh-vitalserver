@@ -11,6 +11,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     ProductLabDependencyError,
     ProductLabReadModelResult,
     ProductLabSessionResult,
+    ProductLabUploadResult,
 )
 
 DEFAULT_PRODUCT_LAB_SERVICE_BASE_URL = "http://127.0.0.1:18085"
@@ -40,6 +41,17 @@ class ProductLabServiceAdapter:
         if not isinstance(scenarios, list):
             raise ProductLabDependencyError(
                 "Product Lab service response is missing scenarios.",
+                kind="product-lab-contract-invalid",
+        )
+        return document
+
+    def list_vital_files(self) -> dict[str, Any]:
+        document = self._request_json("GET", "/lab/vital-files")
+        _require_state_document(document, expected_state="loaded")
+        vital_files = document.get("vitalFiles")
+        if not isinstance(vital_files, list):
+            raise ProductLabDependencyError(
+                "Product Lab service response is missing vitalFiles.",
                 kind="product-lab-contract-invalid",
             )
         return document
@@ -95,6 +107,11 @@ class ProductLabServiceAdapter:
     def replay_vital_file(self, request: dict[str, Any]) -> ProductLabSessionResult:
         return _session_from_response(
             self._request_json("POST", "/lab/vital-files/replay", request)
+        )
+
+    def upload_vital_file(self, request: dict[str, Any]) -> ProductLabUploadResult:
+        return _upload_from_response(
+            self._request_json("POST", "/lab/vital-files/upload", request)
         )
 
     def create_beds(self, request: dict[str, Any]) -> ProductLabReadModelResult:
@@ -218,6 +235,26 @@ def _read_model_from_response(
             kind="product-lab-contract-invalid",
         )
     return ProductLabReadModelResult(
+        document=document,
+        lab_operation_id=operation_id,
+    )
+
+
+def _upload_from_response(document: dict[str, Any]) -> ProductLabUploadResult:
+    _require_state_document(document, expected_state="loaded")
+    upload = document.get("upload")
+    if not isinstance(upload, dict):
+        raise ProductLabDependencyError(
+            "Product Lab service response is missing upload.",
+            kind="product-lab-contract-invalid",
+        )
+    operation_id = document.get("operationId")
+    if operation_id is not None and not isinstance(operation_id, str):
+        raise ProductLabDependencyError(
+            "Product Lab service response operationId must be a string or null.",
+            kind="product-lab-contract-invalid",
+        )
+    return ProductLabUploadResult(
         document=document,
         lab_operation_id=operation_id,
     )

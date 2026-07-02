@@ -336,6 +336,25 @@ public actor MacRuntimeControlCommandWorker {
         }.value
     }
 
+    public func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList {
+        let baseURL: String
+        do {
+            baseURL = try guestControlBaseURL()
+        } catch {
+            return RuntimeLabVitalFileList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        }
+        return await Task.detached(priority: .userInitiated) {
+            do {
+                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
+                    baseURL: baseURL
+                )
+                return try gateway.labVitalFiles()
+            } catch {
+                return RuntimeLabVitalFileList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+            }
+        }.value
+    }
+
     public func loadLabBeds() async throws -> RuntimeLabBedList {
         let baseURL: String
         do {
@@ -615,6 +634,25 @@ public actor MacRuntimeControlCommandWorker {
                 return try gateway.replayLabVitalFile(request)
             } catch {
                 return RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+            }
+        }.value
+    }
+
+    public func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse {
+        let baseURL: String
+        do {
+            baseURL = try guestControlBaseURL()
+        } catch {
+            return RuntimeLabVitalFileUploadResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        }
+        return await Task.detached(priority: .userInitiated) {
+            do {
+                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
+                    baseURL: baseURL
+                )
+                return try gateway.uploadLabVitalFile(request)
+            } catch {
+                return RuntimeLabVitalFileUploadResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
             }
         }.value
     }

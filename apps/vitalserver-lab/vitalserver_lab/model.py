@@ -28,6 +28,24 @@ class LabScenario:
 
 
 @dataclass(frozen=True)
+class LabVitalFile:
+    display_name: str
+    relative_path: str
+    guest_path: str
+    size_bytes: int
+    modified_at: str
+
+    def as_json(self) -> dict[str, object]:
+        return {
+            "displayName": self.display_name,
+            "relativePath": self.relative_path,
+            "guestPath": self.guest_path,
+            "sizeBytes": self.size_bytes,
+            "modifiedAt": self.modified_at,
+        }
+
+
+@dataclass(frozen=True)
 class LabSessionCreateInput:
     scenario_id: str
     name: str

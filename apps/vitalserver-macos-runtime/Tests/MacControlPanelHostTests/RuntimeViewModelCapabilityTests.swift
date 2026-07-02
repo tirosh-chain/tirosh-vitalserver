@@ -1006,6 +1006,17 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
                 RuntimeLabScenario(scenarioId: "case-b", name: "Case B", category: "generated"),
             ]
         )
+        client.labVitalFilesToLoad = RuntimeLabVitalFileList(
+            state: .loaded,
+            vitalFiles: [
+                RuntimeLabVitalFile(
+                    displayName: "case.vital",
+                    relativePath: "MORA04/case.vital",
+                    guestPath: "/mnt/tirosh-vital-files/MORA04/case.vital",
+                    sizeBytes: 123
+                )
+            ]
+        )
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
@@ -1016,6 +1027,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
 
         XCTAssertEqual(viewModel.labScenarios.scenarios.count, 2)
         XCTAssertEqual(viewModel.selectedLabScenarioID, "case-a")
+        XCTAssertEqual(viewModel.selectedLabVitalFileGuestPath, "/mnt/tirosh-vital-files/MORA04/case.vital")
         XCTAssertEqual(viewModel.labActionMessage, RuntimeLabPanelText.loadedLabScenarios(2))
     }
 
@@ -1036,7 +1048,8 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             RuntimeLabSessionCreateRequest(
                 scenarioId: "case-a",
                 name: "Morning run",
-                recorderCount: 3
+                recorderCount: 3,
+                targetURL: "http://edge/"
             )
         ])
         XCTAssertEqual(viewModel.selectedLabSessionID, "lab-session-1")
@@ -1061,10 +1074,67 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(client.labReplayRequests, [
             RuntimeLabVitalFileReplayRequest(
                 vitalFilePath: "/mnt/tirosh-vital-files/case.vital",
-                sessionName: "Replay run"
+                sessionName: "Replay run",
+                targetURL: "http://edge/"
             )
         ])
+        XCTAssertEqual(client.labStartedSessionIDs, ["lab-replay-1"])
         XCTAssertEqual(viewModel.selectedLabSessionID, "lab-replay-1")
+    }
+
+    func testProductLabVitalFileUploadUsesGuestMountedPath() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            initialSettings: RuntimeSettings(
+                vitalFilesDirectory: "/Users/Shared/VitalServerHelper/vital-files"
+            ),
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.labVitalFilePath = "/Users/Shared/VitalServerHelper/vital-files/case.vital"
+
+        await viewModel.uploadVitalFileToProductLab()
+
+        XCTAssertEqual(client.labUploadRequests, [
+            RuntimeLabVitalFileUploadRequest(
+                vitalFilePath: "/mnt/tirosh-vital-files/case.vital",
+                targetURL: "http://edge/",
+                endpoint: "/upload"
+            )
+        ])
+        XCTAssertEqual(viewModel.labVitalFileUploadResponse.upload?.filename, "case.vital")
+    }
+
+    func testProductLabBedAndRecorderManagementUseRuntimeControlClient() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+
+        await viewModel.createProductLabBeds()
+        await viewModel.createProductLabRecorderForSelectedBed()
+        await viewModel.deleteSelectedProductLabRecorder()
+        await viewModel.deleteSelectedProductLabBed()
+
+        XCTAssertEqual(client.labCreateBedRequests, [
+            RuntimeLabBedCreateRequest(
+                count: 1,
+                prefix: "Lab bed",
+                targetURL: "http://edge/"
+            )
+        ])
+        XCTAssertEqual(client.labCreateRecorderRequests, [
+            RuntimeLabRecorderCreateRequest(bedIds: ["lab-session-1-bed-1"])
+        ])
+        XCTAssertEqual(client.labDeleteRecorderRequests, [
+            RuntimeLabRecorderDeleteRequest(recorderIds: ["lab-session-1-recorder-1"])
+        ])
+        XCTAssertEqual(client.labDeleteBedRequests, [
+            RuntimeLabBedDeleteRequest(bedIds: ["lab-session-1-bed-1"])
+        ])
     }
 
     func testProductLabCommandsAreBlockedWhenLabCapabilityIsUnavailable() async {
@@ -1381,8 +1451,18 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var releaseInfoLoadError: Error?
     var backupLoadError: Error?
     var labScenariosToLoad = RuntimeLabScenarioList(state: .loaded, scenarios: [])
+    var labVitalFilesToLoad = RuntimeLabVitalFileList(state: .loaded, vitalFiles: [])
+    var labBedsToLoad = RuntimeLabBedList(state: .loaded, beds: [])
+    var labRecordersToLoad = RuntimeLabRecorderList(state: .loaded, recorders: [])
     var labCreateRequests: [RuntimeLabSessionCreateRequest] = []
     var labReplayRequests: [RuntimeLabVitalFileReplayRequest] = []
+    var labUploadRequests: [RuntimeLabVitalFileUploadRequest] = []
+    var labCreateBedRequests: [RuntimeLabBedCreateRequest] = []
+    var labDeleteBedRequests: [RuntimeLabBedDeleteRequest] = []
+    var labResetBedsCount = 0
+    var labCreateRecorderRequests: [RuntimeLabRecorderCreateRequest] = []
+    var labDeleteRecorderRequests: [RuntimeLabRecorderDeleteRequest] = []
+    var labResetRecordersCount = 0
     var labStartedSessionIDs: [String] = []
     var labStoppedSessionIDs: [String] = []
     var hiddenRecorderRequests: [RuntimeVitalDBRecorderVisibilityRequest] = []
@@ -1606,6 +1686,89 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         labScenariosToLoad
     }
 
+    func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList {
+        labVitalFilesToLoad
+    }
+
+    func loadLabBeds() async throws -> RuntimeLabBedList {
+        labBedsToLoad
+    }
+
+    func loadLabRecorders() async throws -> RuntimeLabRecorderList {
+        labRecordersToLoad
+    }
+
+    func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList {
+        labCreateBedRequests.append(request)
+        labBedsToLoad = RuntimeLabBedList(
+            state: .loaded,
+            beds: [
+                RuntimeLabBed(
+                    bedId: "lab-session-1-bed-1",
+                    sessionId: "lab-session-1",
+                    name: request.prefix ?? "Lab bed",
+                    state: .accepted
+                ),
+            ]
+        )
+        labRecordersToLoad = RuntimeLabRecorderList(
+            state: .loaded,
+            recorders: [
+                RuntimeLabRecorder(
+                    recorderId: "lab-session-1-recorder-1",
+                    sessionId: "lab-session-1",
+                    bedId: "lab-session-1-bed-1",
+                    vrcode: "LAB-lab-session-1-1",
+                    state: .accepted
+                ),
+            ]
+        )
+        return labBedsToLoad
+    }
+
+    func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList {
+        labDeleteBedRequests.append(request)
+        labBedsToLoad = RuntimeLabBedList(state: .loaded, beds: [])
+        labRecordersToLoad = RuntimeLabRecorderList(state: .loaded, recorders: [])
+        return labBedsToLoad
+    }
+
+    func resetLabBeds() async throws -> RuntimeLabBedList {
+        labResetBedsCount += 1
+        labBedsToLoad = RuntimeLabBedList(state: .loaded, beds: [])
+        labRecordersToLoad = RuntimeLabRecorderList(state: .loaded, recorders: [])
+        return labBedsToLoad
+    }
+
+    func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) async throws -> RuntimeLabRecorderList {
+        labCreateRecorderRequests.append(request)
+        labRecordersToLoad = RuntimeLabRecorderList(
+            state: .loaded,
+            recorders: [
+                RuntimeLabRecorder(
+                    recorderId: "lab-session-1-recorder-1",
+                    sessionId: "lab-session-1",
+                    bedId: "lab-session-1-bed-1",
+                    vrcode: "LAB-lab-session-1-1",
+                    state: .accepted
+                ),
+            ]
+        )
+        return labRecordersToLoad
+    }
+
+    func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList {
+        labDeleteRecorderRequests.append(request)
+        labRecordersToLoad = RuntimeLabRecorderList(state: .loaded, recorders: [])
+        return labRecordersToLoad
+    }
+
+    func resetLabRecorders() async throws -> RuntimeLabRecorderList {
+        labResetRecordersCount += 1
+        labRecordersToLoad = RuntimeLabRecorderList(state: .loaded, recorders: [])
+        return labRecordersToLoad
+    }
+
     func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse {
         labCreateRequests.append(request)
         return RuntimeLabSessionResponse(
@@ -1678,6 +1841,23 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
                 targetURL: request.targetURL ?? "http://edge/"
             ),
             operationId: "operation-replay"
+        )
+    }
+
+    func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse {
+        labUploadRequests.append(request)
+        return RuntimeLabVitalFileUploadResponse(
+            state: .loaded,
+            upload: RuntimeLabVitalFileUpload(
+                filename: URL(fileURLWithPath: request.vitalFilePath).lastPathComponent,
+                endpoint: request.endpoint ?? "/upload",
+                targetURL: request.targetURL,
+                statusCode: 200,
+                bytesSent: 456,
+                responseText: "success",
+                ok: true
+            ),
+            operationId: "operation-upload"
         )
     }
 

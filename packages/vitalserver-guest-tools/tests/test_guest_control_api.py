@@ -14,6 +14,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     OperationEvent,
     ProductLabReadModelResult,
     ProductLabSessionResult,
+    ProductLabUploadResult,
     RedisBackupResult,
     RedisRestoreResult,
     ServiceOperation,
@@ -156,6 +157,21 @@ class FakeProductLab:
             "readError": None,
         }
 
+    def list_vital_files(self) -> dict[str, object]:
+        return {
+            "state": "loaded",
+            "vitalFiles": [
+                {
+                    "displayName": "sample.vital",
+                    "relativePath": "MORA04/sample.vital",
+                    "guestPath": "/mnt/tirosh-vital-files/MORA04/sample.vital",
+                    "sizeBytes": 123,
+                    "modifiedAt": "2026-07-01T00:00:00Z",
+                }
+            ],
+            "readError": None,
+        }
+
     def list_beds(self) -> dict[str, object]:
         return {
             "state": "loaded",
@@ -245,6 +261,25 @@ class FakeProductLab:
                 name=str(request["vitalFilePath"]),
             ),
             lab_operation_id="lab-vital-file-replay-lab-replay-1",
+        )
+
+    def upload_vital_file(self, request: dict[str, object]) -> ProductLabUploadResult:
+        return ProductLabUploadResult(
+            document={
+                "state": "loaded",
+                "operationId": "lab-vital-file-upload",
+                "upload": {
+                    "filename": "sample.vital",
+                    "endpoint": "/upload",
+                    "targetURL": request["targetURL"],
+                    "statusCode": 200,
+                    "bytesSent": 456,
+                    "responseText": "success",
+                    "ok": True,
+                },
+                "readError": None,
+            },
+            lab_operation_id="lab-vital-file-upload",
         )
 
 
@@ -493,7 +528,7 @@ def usecases() -> GuestControlUseCases:
     )
 
 
-def test_default_usecases_use_postgres_backed_state(
+def test_default_usecases_delay_postgres_schema_until_readiness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     migrations: list[str] = []
@@ -502,9 +537,17 @@ def test_default_usecases_use_postgres_backed_state(
         def ensure_schema(self) -> None:
             migrations.append("operations")
 
+        def check_ready(self) -> None:
+            self.ensure_schema()
+            super().check_ready()
+
     class FakePostgresVitalDB(FakeVitalDBReadModel):
         def ensure_schema(self) -> None:
             migrations.append("vitaldb")
+
+        def check_ready(self) -> None:
+            self.ensure_schema()
+            super().check_ready()
 
     monkeypatch.setattr(
         guest_control_api,
@@ -524,6 +567,8 @@ def test_default_usecases_use_postgres_backed_state(
 
     usecases = guest_control_api.build_default_usecases()
 
+    assert migrations == []
+    assert usecases.readiness()["status"] == "ready"
     assert migrations == ["operations", "vitaldb"]
     operation = usecases.restart_service("app")
     assert operation.operation_id.startswith("op_app_restart_")
@@ -1003,6 +1048,23 @@ def test_lab_scenarios_route_returns_product_lab_contract(
     ]
 
 
+def test_lab_vital_files_route_returns_product_lab_catalog(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, document = route_request(
+        method="GET",
+        path="/v1/lab/vital-files",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.OK
+    assert document["state"] == "loaded"
+    assert document["vitalFiles"][0]["relativePath"] == "MORA04/sample.vital"
+    assert document["vitalFiles"][0]["guestPath"] == (
+        "/mnt/tirosh-vital-files/MORA04/sample.vital"
+    )
+
+
 def test_lab_read_model_routes_return_product_lab_contract(
     usecases: GuestControlUseCases,
 ) -> None:
@@ -1156,6 +1218,29 @@ def test_lab_replay_vital_file_route_uses_explicit_request_body(
     assert document["labOperationId"] == "lab-vital-file-replay-lab-replay-1"
     assert document["session"]["sessionId"] == "lab-replay-1"
     assert document["session"]["name"] == "/mnt/tirosh-vital-files/sample.vital"
+
+
+def test_lab_upload_vital_file_route_uses_explicit_request_body(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, document = route_request(
+        method="POST",
+        path="/v1/lab/vital-files/upload",
+        body=json.dumps(
+            {
+                "vitalFilePath": "/mnt/tirosh-vital-files/sample.vital",
+                "targetURL": "http://edge/",
+            }
+        ).encode("utf-8"),
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.ACCEPTED
+    assert document["state"] == "loaded"
+    assert document["operationId"] == "op_product-lab_lab-upload-vital-file_1"
+    assert document["labOperationId"] == "lab-vital-file-upload"
+    assert document["upload"]["filename"] == "sample.vital"
+    assert document["upload"]["targetURL"] == "http://edge/"
 
 
 def test_latest_vitaldb_observation_route_returns_product_read_model(

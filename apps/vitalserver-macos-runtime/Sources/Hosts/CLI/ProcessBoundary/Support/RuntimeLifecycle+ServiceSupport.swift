@@ -9,15 +9,46 @@ import Workflow
 import Errors
 
 extension RuntimeLifecycle {
-    private static let guestControlAPIBaseURL = "http://127.0.0.1:18330"
-
     func guestControlGateway() throws -> any RuntimeGuestControlGateway {
         if let guestControlGatewayFactory {
             return try guestControlGatewayFactory()
         }
         return try HTTPRuntimeGuestControlGateway(
-            baseURL: Self.guestControlAPIBaseURL
+            baseURL: try defaultGuestControlBaseURL()
         )
+    }
+
+    func resolvedGuestControlBaseURL(_ requestedBaseURL: String) throws -> String {
+        if requestedBaseURL != RuntimeGuestServiceControlCommand.defaultGuestControlBaseURL {
+            return requestedBaseURL
+        }
+        return try defaultGuestControlBaseURL()
+    }
+
+    private func defaultGuestControlBaseURL() throws -> String {
+        guard let vmIP = runtimeStateVMIP() else {
+            throw LauncherError.runtimeOperationFailed(
+                "guest control API is unavailable: \(RuntimeHTTPStatusText.missingVMIP)"
+            )
+        }
+        return "http://\(vmIP):18330"
+    }
+
+    private func runtimeStateVMIP() -> String? {
+        let url = installedPaths.runtimeState
+        guard fileStore.pathState(at: url) == .file else {
+            return nil
+        }
+        do {
+            let document = try JSONDecoder().decode(
+                GuestRuntimeStateDocument.self,
+                from: try fileStore.readData(url)
+            )
+            let trimmed = document.vmIP?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? nil : trimmed
+        } catch {
+            return nil
+        }
     }
 
     func isLaunchdLoaded(_ service: RuntimeManagedService) -> Bool {

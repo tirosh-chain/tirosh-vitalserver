@@ -224,6 +224,10 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.loadLabScenarios()
     }
 
+    public func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList {
+        try await commandWorker.loadLabVitalFiles()
+    }
+
     public func loadLabBeds() async throws -> RuntimeLabBedList {
         try await commandWorker.loadLabBeds()
     }
@@ -298,6 +302,10 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
 
     public func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
         try await commandWorker.replayLabVitalFile(request)
+    }
+
+    public func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse {
+        try await commandWorker.uploadLabVitalFile(request)
     }
 
     public func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
