@@ -20,15 +20,14 @@ extension RuntimeLifecycle {
 
     func runtimeRepairCompositionActions() -> RuntimeRepairCompositionActions {
         RuntimeRepairCompositionActions(
-            requireDatastoreRepairCapability: {
-                try requireGuestCapability(.repairDatastore)
-            },
             requireRedisBackupCapability: {
                 try requireGuestCapability(.redisBackup)
             },
             isVMServiceLoaded: vmServiceLoadedAction(),
             startVMService: startVMServiceAction(),
-            restartVMService: restartVMServiceAction(),
+            runGuestDatastoreRepair: {
+                try repairDatastoreThroughGuestControl()
+            },
             restartProxyService: {
                 try restartOrStartLaunchdService(.proxy)
             },
@@ -37,8 +36,6 @@ extension RuntimeLifecycle {
             },
             waitForHealth: waitForHealth,
             writeStatus: runtimeStatusWriterAction(),
-            requestID: requestIDAction(),
-            timestamp: isoTimestamp,
             backupTimestamp: backupTimestamp,
             requireFreeSpace: { url, minimumBytes, operation in
                 try storageMaintenance().requireFreeSpace(

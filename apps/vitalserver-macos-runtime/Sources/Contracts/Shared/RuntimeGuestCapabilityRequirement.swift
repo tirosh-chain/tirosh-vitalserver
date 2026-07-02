@@ -3,23 +3,24 @@ public enum RuntimeGuestCapabilityRequirement: String, Sendable {
     case activateUpdate = "activate-update"
     case redisBackup = "redis-backup"
     case redisRestore = "redis-restore"
-    case reconcileCompose = "reconcile-compose"
     case repairDatastore = "repair-datastore"
 
-    public func isSupported(by capabilities: GuestRuntimeCapabilities) -> Bool {
+    public var guestControlCapability: String {
         switch self {
         case .prepareUpdateShutdown:
-            return capabilities.prepareUpdateShutdown
+            return "maintenance:update-shutdown:create"
         case .activateUpdate:
-            return capabilities.activateUpdate
+            return "maintenance:update-activation:create"
         case .redisBackup:
-            return capabilities.redisBackup
+            return "maintenance:redis-backup:create"
         case .redisRestore:
-            return capabilities.redisRestore
-        case .reconcileCompose:
-            return capabilities.reconcileCompose
+            return "maintenance:redis-restore:create"
         case .repairDatastore:
-            return capabilities.repairDatastore
+            return "maintenance:datastore-repair:create"
         }
+    }
+
+    public func isSupported(by capabilities: RuntimeGuestControlCapabilities) -> Bool {
+        capabilities.capabilities.contains(guestControlCapability)
     }
 }

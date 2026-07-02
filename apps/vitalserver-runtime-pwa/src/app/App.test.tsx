@@ -8,25 +8,14 @@ import { AppProviders } from "./providers";
 
 describe("App", () => {
   it("renders the console shell, routes, and overflow menu", async () => {
-    renderApp(createGateway({ canUseTestTools: true }));
+    renderApp(createGateway());
 
     expect(screen.getByRole("heading", { name: "VitalServer Helper" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Overall health")).toBeInTheDocument());
 
     fireEvent.click(screen.getByText("More"));
-    expect(screen.getByRole("link", { name: "Test" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Danger Zone" })).toBeInTheDocument();
     expect(screen.getByText("More").closest("details")).toHaveAttribute("open");
-  });
-
-  it("hides TestKit routes when the helper capability is unavailable", async () => {
-    renderApp(createGateway({ canUseTestTools: false }));
-
-    await waitFor(() => expect(screen.getByText("Overall health")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("More"));
-
-    expect(screen.queryByRole("link", { name: "Test" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Danger Zone" })).toBeInTheDocument();
   });
 });
 
@@ -49,9 +38,9 @@ function renderApp(gateway: ReturnType<typeof createGateway>) {
   );
 }
 
-function createGateway(capabilities: { canUseTestTools: boolean }) {
+function createGateway() {
   return {
-    getCapabilities: vi.fn().mockResolvedValue(capabilities),
+    getCapabilities: vi.fn().mockResolvedValue({ canUseLab: true }),
     getOverview: vi.fn().mockResolvedValue({
       settings: {
         readIssues: [],

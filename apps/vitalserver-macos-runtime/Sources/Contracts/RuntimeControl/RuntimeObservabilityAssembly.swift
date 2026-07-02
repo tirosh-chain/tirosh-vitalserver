@@ -2,8 +2,7 @@ import Contracts
 import Foundation
 
 public enum RuntimeVitalDBCurrentObservationSource: String, Equatable, Sendable {
-    case guestRuntimeState
-    case runtimeStatus
+    case guestControlAPI
 }
 
 public struct RuntimeVitalDBCurrentObservationRead: Equatable, Sendable {
@@ -143,7 +142,7 @@ public enum RuntimeVitalDBObservationSnapshotAssembler {
 public enum RuntimeVitalDBRecorderHistoryAssembler {
     public static func makeHistory(
         reads: RuntimeVitalDBRecorderProjectionReads,
-        containerObservation: RuntimeContainerObservation? = nil,
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult? = nil,
         statusEvaluationTime: String? = nil
     ) -> RuntimeVitalRecorderHistory {
         var readErrors: [String] = []
@@ -192,7 +191,7 @@ public enum RuntimeVitalDBRecorderHistoryAssembler {
             activityBuckets: activityBuckets,
             activityHistory: activityHistory,
             readError: RuntimeObservabilityReadError.joined(readErrors),
-            containerObservation: containerObservation,
+            recorderIngressStatusRead: recorderIngressStatusRead,
             statusEvaluationTime: statusEvaluationTime
         )
     }

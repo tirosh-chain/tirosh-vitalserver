@@ -6,7 +6,7 @@ import Errors
 public protocol RuntimeStatusHealthDetailsVocabulary: RuntimeStatusVMStateVocabulary,
     RuntimeStatusHTTPValueVocabulary,
     RuntimeStatusServiceValueVocabulary,
-    RuntimeStatusComposeServiceValueVocabulary {
+    RuntimeStatusContainerStateVocabulary {
     var runtimeInstallationLabel: String { get }
     var vmStateLabel: String { get }
     var vmErrorsLabel: String { get }
@@ -17,6 +17,7 @@ public protocol RuntimeStatusHealthDetailsVocabulary: RuntimeStatusVMStateVocabu
     var hostProxyName: String { get }
     var redisName: String { get }
     var vitalDBObserverLabel: String { get }
+    var guestProductServicesLabel: String { get }
     var recorderIngressQueueLabel: String { get }
     var watchdogLabel: String { get }
     var waitingText: String { get }
@@ -55,19 +56,11 @@ public struct RuntimeStatusHealthDetailItem: Equatable, Sendable {
 }
 
 public struct RuntimeStatusHealthDetailsPolicy {
-    private enum ComposeService: String {
-        case vitalServer = "app"
-        case networkAccess = "edge"
-        case redis = "redis"
-        case vitalDBObserver = "vitaldb-observer"
-    }
-
     private let reachabilityPolicy = RuntimeStatusReachabilityPolicy()
     private let reachabilityLabelPolicy: RuntimeStatusReachabilityLabelPolicy
     private let vmStatePolicy: RuntimeStatusVMStatePolicy
     private let serviceValuePolicy: RuntimeStatusServiceValuePolicy
     private let httpValuePolicy: RuntimeStatusHTTPValuePolicy
-    private let composeServiceValuePolicy: RuntimeStatusComposeServiceValuePolicy
     private let guestReadinessPolicy = RuntimeStatusGuestReadinessPresentationPolicy()
     private let vocabulary: any RuntimeStatusHealthDetailsVocabulary
 
@@ -77,12 +70,11 @@ public struct RuntimeStatusHealthDetailsPolicy {
         self.vmStatePolicy = RuntimeStatusVMStatePolicy(vocabulary: vocabulary)
         self.serviceValuePolicy = RuntimeStatusServiceValuePolicy(vocabulary: vocabulary)
         self.httpValuePolicy = RuntimeStatusHTTPValuePolicy(vocabulary: vocabulary)
-        self.composeServiceValuePolicy = RuntimeStatusComposeServiceValuePolicy(vocabulary: vocabulary)
     }
 
     public func healthDetails(
         status: RuntimeStatus,
-        observation: RuntimeContainerObservation?,
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?,
         now: Date
     ) -> [RuntimeStatusHealthDetailItem] {
         var items = [
@@ -143,7 +135,7 @@ public struct RuntimeStatusHealthDetailsPolicy {
                     status: status,
                     computedValue: httpValuePolicy.httpValue(
                         status.guestHTTP,
-                        uptimeText: uptimeText(for: .vitalServer, observation: observation, now: now)
+                        uptimeText: nil
                     ),
                     waitingText: vocabulary.waitingText,
                     staleText: vocabulary.guestStateStaleText
@@ -156,20 +148,15 @@ public struct RuntimeStatusHealthDetailsPolicy {
                     severity: status.proxyServiceState == .loaded && reachabilityPolicy.isSuccessfulHTTPStatus(status.hostProxyHTTP)
                         ? .healthy
                         : .warning,
-                    uptimeText: uptimeText(for: .networkAccess, observation: observation, now: now)
+                    uptimeText: nil
                 )
             ),
-            RuntimeStatusHealthDetailItem(
-                label: vocabulary.redisName,
-                value: value(composeValue(for: .redis, observation: observation, now: now))
-            ),
-            RuntimeStatusHealthDetailItem(
-                label: vocabulary.vitalDBObserverLabel,
-                value: value(composeValue(for: .vitalDBObserver, observation: observation, now: now))
-            ),
+        ])
+        items.append(contentsOf: guestServiceHealthDetails(status: status))
+        items.append(contentsOf: [
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.recorderIngressQueueLabel,
-                value: recorderIngressQueueValue(observation: observation)
+                value: recorderIngressQueueValue(recorderIngressStatusRead: recorderIngressStatusRead)
             ),
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.watchdogLabel,
@@ -181,19 +168,97 @@ public struct RuntimeStatusHealthDetailsPolicy {
         return items
     }
 
+    private func guestServiceHealthDetails(status: RuntimeStatus) -> [RuntimeStatusHealthDetailItem] {
+        switch status.guestServicesReadState ?? .unavailable {
+        case .unavailable:
+            return [
+                RuntimeStatusHealthDetailItem(
+                    label: vocabulary.guestProductServicesLabel,
+                    value: value(vocabulary.unavailableText, .warning)
+                ),
+            ]
+        case .failed:
+            return [
+                RuntimeStatusHealthDetailItem(
+                    label: vocabulary.guestProductServicesLabel,
+                    value: value(status.guestServicesReadError ?? vocabulary.failedText, .warning)
+                ),
+            ]
+        case .loaded:
+            return orderedGuestServiceStatuses(status)
+                .filter { $0.service != "redis-relay" }
+                .map { serviceStatus in
+                    RuntimeStatusHealthDetailItem(
+                        label: "\(vocabulary.guestProductServicesLabel): \(serviceStatus.service)",
+                        value: RuntimeStatusHealthDetailValue(
+                            text: guestServiceText(serviceStatus),
+                            severity: guestServiceSeverity(serviceStatus),
+                            uptimeText: nil
+                        )
+                    )
+                }
+        }
+    }
+
+    private func orderedGuestServiceStatuses(
+        _ status: RuntimeStatus
+    ) -> [RuntimeGuestControlServiceStatus] {
+        var statusesByService: [String: RuntimeGuestControlServiceStatus] = [:]
+        for serviceStatus in status.guestServiceStatuses where statusesByService[serviceStatus.service] == nil {
+            statusesByService[serviceStatus.service] = serviceStatus
+        }
+        let orderedServices = status.guestServices ?? []
+        var orderedStatuses = orderedServices.compactMap { statusesByService[$0] }
+        let orderedServiceSet = Set(orderedServices)
+        orderedStatuses.append(contentsOf: status.guestServiceStatuses
+            .filter { !orderedServiceSet.contains($0.service) }
+            .sorted { $0.service < $1.service })
+        return orderedStatuses
+    }
+
+    private func guestServiceText(_ serviceStatus: RuntimeGuestControlServiceStatus) -> String {
+        if !serviceStatus.health.isEmpty, serviceStatus.health != "unknown" {
+            return vocabulary.containerHealthText(serviceStatus.health)
+        }
+        if !serviceStatus.state.isEmpty {
+            return vocabulary.containerStateText(serviceStatus.state)
+        }
+        return vocabulary.notReportedText
+    }
+
+    private func guestServiceSeverity(
+        _ serviceStatus: RuntimeGuestControlServiceStatus
+    ) -> RuntimeStatusReachabilityPolicy.Severity {
+        switch serviceStatus.health.lowercased() {
+        case "healthy":
+            return .healthy
+        case "unhealthy":
+            return .warning
+        default:
+            switch serviceStatus.state.lowercased() {
+            case "running":
+                return .healthy
+            case "exited", "dead", "failed":
+                return .warning
+            default:
+                return .neutral
+            }
+        }
+    }
+
     public func recorderIngressQueueValue(
-        observation: RuntimeContainerObservation?
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?
     ) -> RuntimeStatusHealthDetailValue {
-        guard let observation else {
+        guard let recorderIngressStatusRead else {
             return value(vocabulary.notReportedText, .neutral)
         }
-        guard observation.recorderIngressStatusReadState == .loaded else {
+        guard recorderIngressStatusRead.readState == .loaded else {
             return value(
-                vocabulary.recorderIngressStatusReadStateText(observation.recorderIngressStatusReadState),
+                vocabulary.recorderIngressStatusReadStateText(recorderIngressStatusRead.readState),
                 .warning
             )
         }
-        guard let status = observation.recorderIngressStatus else {
+        guard let status = recorderIngressStatusRead.document else {
             return value(vocabulary.notReportedText, .neutral)
         }
         guard status.spool != nil || status.replay != nil else {
@@ -325,26 +390,6 @@ public struct RuntimeStatusHealthDetailsPolicy {
         return formatter.string(fromByteCount: Int64(bytes))
     }
 
-    private func uptimeText(
-        for service: ComposeService,
-        observation: RuntimeContainerObservation?,
-        now: Date
-    ) -> String? {
-        composeServiceValuePolicy.uptimeText(service: service.rawValue, observation: observation, now: now)
-    }
-
-    private func composeValue(
-        for service: ComposeService,
-        observation: RuntimeContainerObservation?,
-        now: Date
-    ) -> RuntimeStatusComposeServiceValue {
-        composeServiceValuePolicy.serviceValue(
-            service: service.rawValue,
-            observation: observation,
-            now: now
-        )
-    }
-
     private func value(
         _ text: String,
         _ severity: RuntimeStatusReachabilityPolicy.Severity
@@ -369,14 +414,6 @@ public struct RuntimeStatusHealthDetailsPolicy {
     }
 
     private func value(_ value: RuntimeStatusHTTPValue) -> RuntimeStatusHealthDetailValue {
-        RuntimeStatusHealthDetailValue(
-            text: value.text,
-            severity: value.severity,
-            uptimeText: value.uptimeText
-        )
-    }
-
-    private func value(_ value: RuntimeStatusComposeServiceValue) -> RuntimeStatusHealthDetailValue {
         RuntimeStatusHealthDetailValue(
             text: value.text,
             severity: value.severity,

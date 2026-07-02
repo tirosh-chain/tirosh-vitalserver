@@ -195,24 +195,12 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateActivationLog)
     }
 
-    public var updateActivationResult: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateActivationResult)
-    }
-
     public var updateShutdownLog: URL {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateShutdownLog)
     }
 
-    public var updateShutdownResult: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.updateShutdownResult)
-    }
-
     public var datastoreRepairLog: URL {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.datastoreRepairLog)
-    }
-
-    public var datastoreRepairResult: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.datastoreRepairResult)
     }
 
     public var centralBootstrapLog: URL {
@@ -233,14 +221,6 @@ public struct InstalledRuntimePaths: Equatable, Sendable {
 
     public var redisBackupLog: URL {
         guestRunDirectory.appendingPathComponent(RuntimeFileNames.redisBackupLog)
-    }
-
-    public var redisRestoreResult: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.redisRestoreResult)
-    }
-
-    public var redisRestoreRequest: URL {
-        guestRunDirectory.appendingPathComponent(RuntimeFileNames.redisRestoreRequest)
     }
 
     public var redisRestoreLog: URL {

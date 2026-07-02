@@ -11,7 +11,6 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     private let hostClient: any RuntimeHostClient
     private let readWorker: MacRuntimeControlReadWorker
     private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
-    private let servesTestTools: Bool
     private let localAPIStatus: RuntimeControlLocalAPIStatusRead
     private let scheduleHelperRelaunch: @MainActor () -> Void
     private let scheduleHelperTermination: @MainActor () -> Void
@@ -21,7 +20,6 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         hostClient: any RuntimeHostClient,
         readWorker: MacRuntimeControlReadWorker,
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
-        servesTestTools: Bool,
         runtimeControlStartedAt: Date = Date(),
         scheduleHelperRelaunch: @escaping @MainActor () -> Void = {},
         scheduleHelperTermination: @escaping @MainActor () -> Void = {}
@@ -30,7 +28,6 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         self.hostClient = hostClient
         self.readWorker = readWorker
         self.localAPISettings = localAPISettings
-        self.servesTestTools = servesTestTools
         self.localAPIStatus = RuntimeControlLocalAPIStatusRead.reachable(
             startedAt: Self.timestamp(runtimeControlStartedAt)
         )
@@ -39,9 +36,7 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
     }
 
     func loadCapabilities() async throws -> RuntimeControlCapabilities {
-        var capabilities = commandClient.capabilities
-        capabilities.canUseTestTools = servesTestTools
-        return capabilities
+        commandClient.capabilities
     }
 
     func loadStatus() async throws -> RuntimeStatus {
@@ -96,6 +91,94 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         await readWorker.loadInstallInfo()
     }
 
+    func loadLabScenarios() async throws -> RuntimeLabScenarioList {
+        try await commandClient.loadLabScenarios()
+    }
+
+    func loadLabBeds() async throws -> RuntimeLabBedList {
+        try await commandClient.loadLabBeds()
+    }
+
+    func loadLabRecorders() async throws -> RuntimeLabRecorderList {
+        try await commandClient.loadLabRecorders()
+    }
+
+    func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList {
+        try await commandClient.createLabBeds(request)
+    }
+
+    func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList {
+        try await commandClient.deleteLabBeds(request)
+    }
+
+    func resetLabBeds() async throws -> RuntimeLabBedList {
+        try await commandClient.resetLabBeds()
+    }
+
+    func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) async throws -> RuntimeLabRecorderList {
+        try await commandClient.createLabRecorders(request)
+    }
+
+    func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList {
+        try await commandClient.deleteLabRecorders(request)
+    }
+
+    func resetLabRecorders() async throws -> RuntimeLabRecorderList {
+        try await commandClient.resetLabRecorders()
+    }
+
+    func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandClient.hideVitalDBRecorders(request)
+    }
+
+    func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandClient.unhideVitalDBRecorders(request)
+    }
+
+    func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandClient.deleteVitalDBRecorders(request)
+    }
+
+    func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandClient.hideVitalDBBeds(request)
+    }
+
+    func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandClient.unhideVitalDBBeds(request)
+    }
+
+    func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandClient.deleteVitalDBBeds(request)
+    }
+
+    func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse {
+        try await commandClient.createLabSession(request)
+    }
+
+    func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await commandClient.loadLabSession(sessionId: sessionId)
+    }
+
+    func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await commandClient.startLabSession(sessionId: sessionId)
+    }
+
+    func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await commandClient.stopLabSession(sessionId: sessionId)
+    }
+
+    func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
+        try await commandClient.replayLabVitalFile(request)
+    }
+
+    func listGuestServices() async throws -> RuntimeGuestControlServiceList {
+        try await commandClient.listGuestServices()
+    }
+
+    func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
+        try await commandClient.guestServiceStatus(service)
+    }
+
     func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse {
         let textResult = await hostClient.loadLogTextResult(
             sourceID: request.source,
@@ -130,44 +213,36 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         return response
     }
 
-    func startRuntimeServices() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.startRuntimeServices())
+    func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandClient.startGuestService(request)
     }
 
-    func stopRuntimeServices() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.stopRuntimeServices())
+    func stopGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandClient.stopGuestService(request)
     }
 
-    func startTestKitService() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.startTestKitService())
-    }
-
-    func stopTestKitService() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.stopTestKitService())
-    }
-
-    func restartTestKitService() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.restartTestKitService())
+    func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandClient.restartGuestService(request)
     }
 
     func repairRuntimeServices() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.repairRuntimeServices())
+        RuntimeControlCommandResponse(result: try await hostClient.repairRuntimeServices())
     }
 
     func repairProxy() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.repairProxy())
+        RuntimeControlCommandResponse(result: try await hostClient.repairProxy())
     }
 
     func repairDatastore() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.repairDatastore())
+        RuntimeControlCommandResponse(result: try await hostClient.repairDatastore())
     }
 
     func repairVMDisk() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.repairVMDisk())
+        RuntimeControlCommandResponse(result: try await hostClient.repairVMDisk())
     }
 
     func createRedisBackup() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await commandClient.createRedisBackup())
+        RuntimeControlCommandResponse(result: try await hostClient.createRedisBackup())
     }
 
     func createRuntimeDataBackup() async throws -> RuntimeControlCommandResponse {

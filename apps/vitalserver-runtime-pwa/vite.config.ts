@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
         "/runtime": settings.runtimeControl.devProxyTarget,
         "/vitaldb": settings.runtimeControl.devProxyTarget,
         "/host": settings.runtimeControl.devProxyTarget,
-        "/dev/testkit": settings.runtimeControl.devProxyTarget
+        "/lab": settings.runtimeControl.devProxyTarget
       }
     },
     preview: {

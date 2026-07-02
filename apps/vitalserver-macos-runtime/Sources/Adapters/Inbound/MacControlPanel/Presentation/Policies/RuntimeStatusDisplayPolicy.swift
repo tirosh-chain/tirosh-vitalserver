@@ -73,12 +73,12 @@ struct RuntimeStatusDisplayPolicy {
         vocabulary: AppRuntimeStatusVitalServerAvailabilityVocabulary()
     )
 
-    func overallHealth(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> StatusValue {
+    func overallHealth(status: RuntimeStatus) -> StatusValue {
         statusValue(overallHealthPolicy.overallHealth(status: status))
     }
 
-    func vitalServerAvailability(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> StatusValue {
-        statusValue(vitalServerAvailabilityPolicy.availability(status: status, observation: observation, now: now))
+    func vitalServerAvailability(status: RuntimeStatus, now: Date = Date()) -> StatusValue {
+        statusValue(vitalServerAvailabilityPolicy.availability(status: status, now: now))
     }
 
     func remoteConsoleAvailability(status: RuntimeStatus, now: Date = Date()) -> StatusValue {
@@ -93,32 +93,44 @@ struct RuntimeStatusDisplayPolicy {
         actionNeededPolicy.actionNeeded(status: status).map(actionNeededItem)
     }
 
-    func healthDetails(status: RuntimeStatus, observation: RuntimeContainerObservation?, now: Date = Date()) -> [HealthItem] {
-        healthDetailsPolicy.healthDetails(status: status, observation: observation, now: now).map(healthItem)
+    func healthDetails(
+        status: RuntimeStatus,
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult? = nil,
+        now: Date = Date()
+    ) -> [HealthItem] {
+        healthDetailsPolicy.healthDetails(
+            status: status,
+            recorderIngressStatusRead: recorderIngressStatusRead,
+            now: now
+        ).map(healthItem)
     }
 
-    func recorderIngressQueue(observation: RuntimeContainerObservation?) -> StatusValue {
-        statusValue(healthDetailsPolicy.recorderIngressQueueValue(observation: observation))
+    func recorderIngressQueue(recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?) -> StatusValue {
+        statusValue(healthDetailsPolicy.recorderIngressQueueValue(
+            recorderIngressStatusRead: recorderIngressStatusRead
+        ))
     }
 
-    func recorderIngressDetails(observation: RuntimeContainerObservation?) -> [HealthItem] {
-        guard let observation else {
+    func recorderIngressDetails(
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?
+    ) -> [HealthItem] {
+        guard let recorderIngressStatusRead else {
             return [
                 healthItem(AppConstants.Labels.recorderIngressReplay, AppConstants.StatusText.notReported, .neutral),
             ]
         }
-        guard observation.recorderIngressStatusReadState == .loaded else {
+        guard recorderIngressStatusRead.readState == .loaded else {
             return [
                 healthItem(
                     AppConstants.Labels.recorderIngressReplay,
                     AppConstants.StatusText.recorderIngressStatusReadState(
-                        observation.recorderIngressStatusReadState
+                        recorderIngressStatusRead.readState
                     ),
                     .warning
                 ),
             ]
         }
-        guard let status = observation.recorderIngressStatus else {
+        guard let status = recorderIngressStatusRead.document else {
             return [
                 healthItem(AppConstants.Labels.recorderIngressReplay, AppConstants.StatusText.notReported, .neutral),
             ]
@@ -192,25 +204,23 @@ struct RuntimeStatusDisplayPolicy {
 
     func advancedServiceHealth(
         status: RuntimeStatus,
-        observation: RuntimeContainerObservation?,
         redisRelaySettings: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings(),
         now: Date = Date()
     ) -> [ServiceHealthItem] {
         advancedServiceHealthPolicy.serviceHealth(
             status: status,
-            observation: observation,
             redisRelaySettings: redisRelaySettings,
             now: now
         ).map(serviceHealthItem)
     }
 
     func recorderSummary(
-        observation: RuntimeContainerObservation?,
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?,
         vitalDBObservation: VitalDBObservationDocument?,
         now: Date = Date()
     ) -> RecorderSummary {
         recorderSummaryPolicy.recorderSummary(
-            observation: observation,
+            recorderIngressStatusRead: recorderIngressStatusRead,
             vitalDBObservation: vitalDBObservation,
             now: now
         )
@@ -620,6 +630,7 @@ private struct AppRuntimeStatusHealthDetailsVocabulary: RuntimeStatusHealthDetai
     var hostProxyName: String { GeneratedRelease.hostProxyName }
     var redisName: String { GeneratedRelease.redisName }
     var vitalDBObserverLabel: String { AppConstants.Labels.vitalDBObserver }
+    var guestProductServicesLabel: String { AppConstants.Labels.guestProductServices }
     var recorderIngressQueueLabel: String { AppConstants.Labels.recorderIngressQueue }
     var watchdogLabel: String { AppConstants.Labels.watchdog }
     var waitingText: String { AppConstants.StatusText.waiting }
@@ -725,6 +736,7 @@ private struct AppRuntimeStatusAdvancedServiceHealthVocabulary: RuntimeStatusAdv
     var hostProxyName: String { GeneratedRelease.hostProxyName }
     var vitalDBObserverLabel: String { AppConstants.Labels.vitalDBObserver }
     var redisRelayLabel: String { AppConstants.Labels.redisRelay }
+    var guestProductServicesLabel: String { AppConstants.Labels.guestProductServices }
     var redisUIName: String { GeneratedRelease.redisUIName }
     var swaggerUIName: String { GeneratedRelease.swaggerUIName }
     var disabledText: String { AppConstants.StatusText.disabled }

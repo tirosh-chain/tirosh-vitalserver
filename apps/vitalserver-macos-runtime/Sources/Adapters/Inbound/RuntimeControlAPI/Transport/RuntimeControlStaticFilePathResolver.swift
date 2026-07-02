@@ -108,6 +108,7 @@ struct RuntimeControlStaticFilePathResolver: Sendable {
         return normalized == RuntimeControlDevConsoleDocument.path
             || normalized.hasPrefix("/runtime/")
             || normalized.hasPrefix("/vitaldb/")
+            || normalized.hasPrefix("/lab/")
             || normalized.hasPrefix("/host/")
             || normalized.hasPrefix("/dev/")
     }

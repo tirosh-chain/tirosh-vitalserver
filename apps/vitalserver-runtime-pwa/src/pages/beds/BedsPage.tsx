@@ -1,6 +1,12 @@
 import { useMemo, useState } from "react";
 
-import { useVitalDBRecorders, useVitalDBRelationships } from "@/console/hooks";
+import {
+  useDeleteVitalDBBeds,
+  useHideVitalDBBeds,
+  useUnhideVitalDBBeds,
+  useVitalDBRecorders,
+  useVitalDBRelationships
+} from "@/console/hooks";
 import type {
   VitalDBBedRecord,
   VitalDBRelationships
@@ -34,7 +40,19 @@ export function BedsPage() {
     [recordersQuery.data]
   );
   const [searchText, setSearchText] = useState("");
-  const beds = allBeds === null ? null : filterBeds(allBeds, searchText);
+  const [showHidden, setShowHidden] = useState(false);
+  const hideBeds = useHideVitalDBBeds();
+  const unhideBeds = useUnhideVitalDBBeds();
+  const deleteBeds = useDeleteVitalDBBeds();
+  const visibleBeds =
+    allBeds === null
+      ? null
+      : allBeds.filter((bed) => showHidden || bed.visibility !== "hidden");
+  const beds = visibleBeds === null ? null : filterBeds(visibleBeds, searchText);
+  const visibilityMutationPending =
+    hideBeds.isPending || unhideBeds.isPending || deleteBeds.isPending;
+  const visibilityMutationError =
+    hideBeds.error ?? unhideBeds.error ?? deleteBeds.error;
   const [selectedBedID, setSelectedBedID] = useState<string | null>(null);
   const selectedBed =
     beds?.find((bed) => bed.bedID === selectedBedID) ??
@@ -55,6 +73,14 @@ export function BedsPage() {
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
             />
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={showHidden}
+                onChange={(event) => setShowHidden(event.target.checked)}
+              />
+              Show hidden
+            </label>
             <button
               type="button"
               disabled={recordersQuery.isFetching}
@@ -81,6 +107,10 @@ export function BedsPage() {
             }
           ]}
         />
+
+        {visibilityMutationError ? (
+          <p className="form-error">{mutationErrorMessage(visibilityMutationError)}</p>
+        ) : null}
 
         {recordersQuery.isPending ? (
           <p className="empty-state">Loading beds...</p>
@@ -134,9 +164,54 @@ export function BedsPage() {
                 render: (bed) => formatLocalDateTimeWithAge(bed.lastSeenAt)
               },
               {
+                key: "visibility",
+                header: "Visibility",
+                render: (bed) => formatVisibility(bed.visibility)
+              },
+              {
                 key: "anomaly",
                 header: "Anomaly",
                 render: (bed) => formatAnomalySummary(bed)
+              },
+              {
+                key: "actions",
+                header: "Actions",
+                render: (bed) => (
+                  <div className="toolbar compact-toolbar">
+                    {bed.visibility === "hidden" ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={visibilityMutationPending}
+                          onClick={() => unhideBeds.mutate({ bedIDs: [bed.bedID] })}
+                        >
+                          Unhide
+                        </button>
+                        {showHidden ? (
+                          <button
+                            type="button"
+                            disabled={visibilityMutationPending}
+                            onClick={() => {
+                              if (window.confirm(`Delete hidden bed ${bed.bedID}?`)) {
+                                deleteBeds.mutate({ bedIDs: [bed.bedID] });
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={visibilityMutationPending}
+                        onClick={() => hideBeds.mutate({ bedIDs: [bed.bedID] })}
+                      >
+                        Hide
+                      </button>
+                    )}
+                  </div>
+                )
               }
             ]}
           />
@@ -252,6 +327,14 @@ function formatAnomalyKind(value: string | null | undefined): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatVisibility(value: VitalDBBedRecord["visibility"]): string {
+  return value === "hidden" ? "Hidden" : "Visible";
+}
+
+function mutationErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function shorten(value: string): string {

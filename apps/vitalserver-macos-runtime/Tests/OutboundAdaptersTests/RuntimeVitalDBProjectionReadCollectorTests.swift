@@ -15,14 +15,14 @@ final class RuntimeVitalDBProjectionReadCollectorTests: XCTestCase {
                 latestObservationError: ProjectionRepositoryStubError("latest denied")
             ),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
-                .loaded(current, source: .guestRuntimeState)
+                .loaded(current, source: .guestControlAPI)
             }
         )
 
         let reads = collector.observationSnapshotReads()
 
         XCTAssertEqual(reads.current.observation, current)
-        XCTAssertEqual(reads.current.source, .guestRuntimeState)
+        XCTAssertEqual(reads.current.source, .guestControlAPI)
         XCTAssertEqual(reads.projected, .failed("latest denied"))
     }
 
@@ -38,7 +38,7 @@ final class RuntimeVitalDBProjectionReadCollectorTests: XCTestCase {
                 activityBucketsError: ProjectionRepositoryStubError("activity denied")
             ),
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
-                .loaded(current, source: .runtimeStatus)
+                .loaded(current, source: .guestControlAPI)
             }
         )
 
@@ -47,6 +47,51 @@ final class RuntimeVitalDBProjectionReadCollectorTests: XCTestCase {
         XCTAssertEqual(reads.observations, .failed("observations denied"))
         XCTAssertEqual(reads.currentObservation.observation, current)
         XCTAssertEqual(reads.activityBuckets, .failed("activity denied"))
+    }
+
+    func testRecorderActivityBucketReadDoesNotLoadObservationRows() {
+        let bucket = VitalDBRecorderActivityBucketRecord(
+            vrcode: "VR_A",
+            bucketStartedAt: "2026-06-01T00:00:00Z",
+            bucketSeconds: 60,
+            messageCount: 3,
+            byteCount: 128,
+            firstObservedAt: "2026-06-01T00:00:00Z",
+            lastObservedAt: "2026-06-01T00:00:59Z"
+        )
+        let collector = RuntimeVitalDBProjectionReadCollector(
+            repository: ProjectionRepositoryStub(
+                observationsError: ProjectionRepositoryStubError("observations denied"),
+                activityBuckets: [bucket]
+            ),
+            currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
+                .unavailable()
+            }
+        )
+
+        let read = collector.recorderActivityBucketListRead(includeActivityBuckets: true)
+
+        switch read {
+        case .loaded(let buckets):
+            XCTAssertEqual(buckets, [bucket])
+        case .notLoaded, .failed:
+            XCTFail("expected loaded activity bucket read")
+        }
+    }
+
+    func testRecorderActivityBucketReadCanSkipActivityRows() {
+        let collector = RuntimeVitalDBProjectionReadCollector(
+            repository: ProjectionRepositoryStub(
+                activityBucketsError: ProjectionRepositoryStubError("activity denied")
+            ),
+            currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
+                .unavailable()
+            }
+        )
+
+        let read = collector.recorderActivityBucketListRead(includeActivityBuckets: false)
+
+        XCTAssertEqual(read, .notLoaded)
     }
 
     func testRelationshipProjectionReadsPreservePartialFailure() {

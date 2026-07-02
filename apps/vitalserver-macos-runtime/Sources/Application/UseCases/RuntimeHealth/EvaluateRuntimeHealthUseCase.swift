@@ -11,14 +11,13 @@ public struct RuntimeHealthObservation {
     public let proxyService: RuntimeServiceState
     public let watchdogService: RuntimeServiceState
     public let vmLifecycle: RuntimeVMLifecycleDocument?
-    public let guestRuntimeState: RuntimeGuestRuntimeStateInput
-    public let loadedGuestRuntimeState: GuestRuntimeStateDocument?
+    public let guestReadiness: RuntimeGuestReadinessInput
     public let proxyPort: Int?
     public let proxyPortReadState: RuntimeProxyPortReadState
     public let hostProxyHTTP: String
     public let redisUIHTTP: String
     public let swaggerUIHTTP: String
-    public let containerObservation: RuntimeObservationInput<RuntimeContainerObservation>
+    public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
     public let vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
     public let reportedVMErrors: [RuntimeVMError]
     public let configurationFailureReasons: [RuntimeFailureReason]
@@ -36,14 +35,13 @@ public struct RuntimeHealthObservation {
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
         vmLifecycle: RuntimeVMLifecycleDocument?,
-        guestRuntimeState: RuntimeGuestRuntimeStateInput,
-        loadedGuestRuntimeState: GuestRuntimeStateDocument?,
+        guestReadiness: RuntimeGuestReadinessInput,
         proxyPort: Int?,
         proxyPortReadState: RuntimeProxyPortReadState,
         hostProxyHTTP: String,
         redisUIHTTP: String,
         swaggerUIHTTP: String,
-        containerObservation: RuntimeObservationInput<RuntimeContainerObservation>,
+        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
         vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>,
         reportedVMErrors: [RuntimeVMError],
         configurationFailureReasons: [RuntimeFailureReason],
@@ -60,14 +58,13 @@ public struct RuntimeHealthObservation {
         self.proxyService = proxyService
         self.watchdogService = watchdogService
         self.vmLifecycle = vmLifecycle
-        self.guestRuntimeState = guestRuntimeState
-        self.loadedGuestRuntimeState = loadedGuestRuntimeState
+        self.guestReadiness = guestReadiness
         self.proxyPort = proxyPort
         self.proxyPortReadState = proxyPortReadState
         self.hostProxyHTTP = hostProxyHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
-        self.containerObservation = containerObservation
+        self.guestServiceStatuses = guestServiceStatuses
         self.vitalDBObservation = vitalDBObservation
         self.reportedVMErrors = reportedVMErrors
         self.configurationFailureReasons = configurationFailureReasons
@@ -78,12 +75,12 @@ public struct RuntimeHealthObservation {
     }
 }
 
-public struct RuntimeGuestRuntimeStateInputPlan: Equatable {
-    public let state: RuntimeGuestRuntimeStateInput
+public struct RuntimeGuestReadinessInputPlan: Equatable {
+    public let state: RuntimeGuestReadinessInput
     public let failureReasons: [RuntimeFailureReason]
 
     public init(
-        state: RuntimeGuestRuntimeStateInput,
+        state: RuntimeGuestReadinessInput,
         failureReasons: [RuntimeFailureReason] = []
     ) {
         self.state = state
@@ -91,33 +88,12 @@ public struct RuntimeGuestRuntimeStateInputPlan: Equatable {
     }
 }
 
-public struct RuntimeComposeServicesReadResult: Equatable {
-    public let state: RuntimeContainerServicesReadState
-    public let services: [RuntimeContainerServiceObservation]
-    public let readError: String?
-
-    public init(
-        state: RuntimeContainerServicesReadState,
-        services: [RuntimeContainerServiceObservation],
-        readError: String?
-    ) {
-        self.state = state
-        self.services = services
-        self.readError = readError
-    }
-}
-
 public struct EvaluateRuntimeHealthUseCase {
     public init() {}
 
     public func observation(from reads: RuntimeHealthObservationReads) -> RuntimeHealthObservation {
-        let guestRuntimeStateReadFailures = guestRuntimeStateReadFailureReasons(
-            reads.guestRuntimeState.readIssue
-        )
-        let guestRuntimeStateInput = guestRuntimeStateInputPlan(
-            freshState: reads.guestRuntimeState.freshState,
-            loadedState: reads.guestRuntimeState.loadedState,
-            readFailureReasons: guestRuntimeStateReadFailures
+        let guestReadinessInput = guestReadinessInputPlan(
+            guestControlReadiness: reads.guestControlReadiness
         )
         let vmLifecycle = vmLifecycleObservation(
             from: reads.vmLifecycleLoadResult,
@@ -133,20 +109,18 @@ public struct EvaluateRuntimeHealthUseCase {
             proxyService: reads.proxyService,
             watchdogService: reads.watchdogService,
             vmLifecycle: vmLifecycle.document,
-            guestRuntimeState: guestRuntimeStateInput.state,
-            loadedGuestRuntimeState: reads.guestRuntimeState.loadedState,
+            guestReadiness: guestReadinessInput.state,
             proxyPort: reads.proxyPortReadState.port,
             proxyPortReadState: reads.proxyPortReadState,
             hostProxyHTTP: httpStatusText(reads.hostProxyHTTP),
             redisUIHTTP: httpStatusText(reads.redisUIHTTP),
             swaggerUIHTTP: httpStatusText(reads.swaggerUIHTTP),
-            containerObservation: .loaded(containerObservation(from: reads)),
-            vitalDBObservation: vitalDBObservation(reads.guestRuntimeState),
-            reportedVMErrors: reportedVMErrors(from: reads.guestRuntimeState.freshState?.diskHealth),
+            guestServiceStatuses: reads.guestServiceStatuses,
+            vitalDBObservation: reads.vitalDBObservation,
+            reportedVMErrors: [],
             configurationFailureReasons: reads.proxyPortReadState.failureReasons
-                + guestRuntimeStateReadFailures
                 + vmLifecycle.failureReasons
-                + guestRuntimeStateInput.failureReasons,
+                + guestReadinessInput.failureReasons,
             proxyPortFailureReasons: proxyPortFailureReasons(reads.proxyListenerObservation),
             guestBootstrapResult: reads.guestBootstrapResult,
             observedAt: reads.observedAt,
@@ -154,87 +128,41 @@ public struct EvaluateRuntimeHealthUseCase {
         )
     }
 
-    public func guestRuntimeStateInputPlan(
-        freshState: GuestRuntimeStateDocument?,
-        loadedState: GuestRuntimeStateDocument?,
-        readFailureReasons: [RuntimeFailureReason]
-    ) -> RuntimeGuestRuntimeStateInputPlan {
-        let assessment = RuntimeGuestRuntimeStatePolicy.inputAssessment(
-            freshState: freshState,
-            loadedState: loadedState,
-            readFailureReasons: readFailureReasons
-        )
-        return RuntimeGuestRuntimeStateInputPlan(
-            state: assessment.state,
-            failureReasons: assessment.failureReasons
-        )
+    public func guestReadinessInputPlan(
+        guestControlReadiness: RuntimeGuestControlReadinessRead = .notReported
+    ) -> RuntimeGuestReadinessInputPlan {
+        switch guestControlReadiness {
+        case .notReported:
+            return RuntimeGuestReadinessInputPlan(state: .notReported)
+        case .loaded(let vmIP, let readiness):
+            return RuntimeGuestReadinessInputPlan(
+                state: .reported(
+                    vmIP: vmIP,
+                    guestHTTP: guestHTTPStatus(readiness)
+                )
+            )
+        case .failed(let vmIP, let message):
+            return RuntimeGuestReadinessInputPlan(
+                state: .reported(
+                    vmIP: vmIP,
+                    guestHTTP: .probeFailed("guestControl=\(message)")
+                )
+            )
+        }
     }
 
-    public func reportedVMErrors(
-        from diskHealth: GuestDiskHealthDocument?
-    ) -> [RuntimeVMError] {
-        RuntimeGuestRuntimeStatePolicy.reportedVMErrors(from: diskHealth)
+    private func guestHTTPStatus(_ readiness: RuntimeGuestControlReadiness) -> RuntimeGuestHTTPStatusInput {
+        if readiness.status == "ready" {
+            return .reportedStatus("200")
+        }
+        if let failureSummary = readiness.failureSummary {
+            return .probeFailed("\(readiness.status):\(failureSummary)")
+        }
+        return .probeFailed(readiness.status)
     }
 
     public func httpStatusText(_ read: RuntimeHTTPProbeResult?) -> String {
         read?.statusText ?? RuntimeHTTPStatusText.missingProxyPort
-    }
-
-    public func composeServicesReadResult(
-        freshState: GuestRuntimeStateDocument?,
-        loadedState: GuestRuntimeStateDocument?,
-        readFailureReasons: [RuntimeFailureReason]
-    ) -> RuntimeComposeServicesReadResult {
-        if let guestState = freshState {
-            if let composeReadError = composeServicesProbeError(guestState) {
-                return RuntimeComposeServicesReadResult(
-                    state: .readFailed,
-                    services: guestState.containerServices ?? [],
-                    readError: composeReadError
-                )
-            }
-            guard let services = guestState.containerServices else {
-                return RuntimeComposeServicesReadResult(
-                    state: .missing,
-                    services: [],
-                    readError: "container-services-missing"
-                )
-            }
-            return RuntimeComposeServicesReadResult(
-                state: .loaded,
-                services: services,
-                readError: nil
-            )
-        }
-        if readFailureReasons.contains(where: \.isGuestRuntimeStateReadFailure)
-            || readFailureReasons.contains(.guestRuntimeStateInvalid) {
-            return RuntimeComposeServicesReadResult(
-                state: .invalid,
-                services: [],
-                readError: "guest-runtime-state-invalid"
-            )
-        }
-        if loadedState != nil {
-            return RuntimeComposeServicesReadResult(
-                state: .stale,
-                services: [],
-                readError: "guest-runtime-state-stale"
-            )
-        }
-        return RuntimeComposeServicesReadResult(
-            state: .missing,
-            services: [],
-            readError: "guest-runtime-state-missing"
-        )
-    }
-
-    private func composeServicesProbeError(_ guestState: GuestRuntimeStateDocument) -> String? {
-        guard let error = guestState.probeErrors?.first(where: { error in
-            error.source == "docker compose ps"
-        }) else {
-            return nil
-        }
-        return "\(error.source): \(error.message)"
     }
 
     public func hostProxyListenerFailureReasons(
@@ -259,20 +187,20 @@ public struct EvaluateRuntimeHealthUseCase {
             proxyService: observation.proxyService,
             watchdogService: observation.watchdogService,
             vmLifecycle: observation.vmLifecycle,
-            guestRuntimeState: observation.guestRuntimeState,
+            guestReadiness: observation.guestReadiness,
             proxyPort: observation.proxyPort,
             proxyPortReadState: observation.proxyPortReadState,
             hostProxyHTTP: observation.hostProxyHTTP,
             redisUIHTTP: observation.redisUIHTTP,
             swaggerUIHTTP: observation.swaggerUIHTTP,
-            containerObservation: observation.containerObservation,
+            guestServiceStatuses: observation.guestServiceStatuses,
             vitalDBObservation: observation.vitalDBObservation,
             reportedVMErrors: observation.reportedVMErrors,
             configurationFailureReasons: observation.configurationFailureReasons,
             proxyPortFailureReasons: observation.proxyPortFailureReasons,
             guestBootstrapAssessment: GuestBootstrapEvaluator.assessCurrentBoot(
                 observation.guestBootstrapResult,
-                guestState: observation.loadedGuestRuntimeState,
+                currentBootID: observation.vmLifecycle?.bootID,
                 now: observation.observedAt,
                 graceSeconds: observation.guestBootstrapFreshnessGraceSeconds
             )
@@ -300,67 +228,6 @@ public struct EvaluateRuntimeHealthUseCase {
             }
             return RuntimeVMLifecycleObservation(document: document, failureReasons: [])
         }
-    }
-
-    private func containerObservation(from reads: RuntimeHealthObservationReads) -> RuntimeContainerObservation {
-        let composeServices = composeServicesReadResult(
-            freshState: reads.guestRuntimeState.freshState,
-            loadedState: reads.guestRuntimeState.loadedState,
-            readFailureReasons: guestRuntimeStateReadFailureReasons(reads.guestRuntimeState.readIssue)
-        )
-        let recorderIngressHTTP: String
-        let recorderIngressStatus: RuntimeRecorderIngressStatusDocument?
-        let recorderIngressStatusReadState: RuntimeRecorderIngressStatusReadState
-        let recorderIngressStatusReadError: String?
-        if let recorderIngressStatusRead = reads.recorderIngressStatus {
-            recorderIngressHTTP = recorderIngressStatusRead.httpStatus
-            recorderIngressStatus = recorderIngressStatusRead.document
-            recorderIngressStatusReadState = recorderIngressStatusRead.readState
-            recorderIngressStatusReadError = recorderIngressStatusRead.readError
-        } else {
-            recorderIngressHTTP = RuntimeHTTPStatusText.missingProxyPort
-            recorderIngressStatus = nil
-            recorderIngressStatusReadState = .skippedMissingProxyPort
-            recorderIngressStatusReadError = RuntimeHTTPStatusText.missingProxyPort
-        }
-        return RuntimeContainerObservation(
-            recorderIngressHTTP: recorderIngressHTTP,
-            recorderIngressStatus: recorderIngressStatus,
-            recorderIngressStatusReadState: recorderIngressStatusReadState,
-            recorderIngressStatusReadError: recorderIngressStatusReadError,
-            runtimeStateUpdatedAt: reads.guestRuntimeState.freshState?.updatedAt,
-            runtimeStateFileUpdatedAt: reads.runtimeStateFileModifiedAt.updatedAt,
-            runtimeStateFileMetadataReadState: reads.runtimeStateFileModifiedAt.readState,
-            runtimeStateFileMetadataError: reads.runtimeStateFileModifiedAt.readError,
-            containerLogsPresent: reads.containerLogsMetadata.present,
-            containerLogsBytes: reads.containerLogsMetadata.bytes,
-            containerLogsUpdatedAt: reads.containerLogsMetadata.updatedAt,
-            containerLogsMetadataError: reads.containerLogsMetadata.error,
-            composeServicesReadState: composeServices.state,
-            composeServices: composeServices.services,
-            composeServicesReadError: composeServices.readError
-        )
-    }
-
-    private func vitalDBObservation(
-        _ observation: RuntimeGuestRuntimeStateObservation
-    ) -> RuntimeObservationInput<VitalDBObservationDocument> {
-        guard let guestState = observation.freshState else {
-            return .notReported
-        }
-        guard let vitalDBObservation = guestState.vitalDBObservation else {
-            return .missing
-        }
-        return .loaded(vitalDBObservation)
-    }
-
-    private func guestRuntimeStateReadFailureReasons(
-        _ issue: RuntimeGuestRuntimeStateReadIssue?
-    ) -> [RuntimeFailureReason] {
-        guard let issue else {
-            return []
-        }
-        return [issue.failureReason]
     }
 
     private func proxyPortFailureReasons(

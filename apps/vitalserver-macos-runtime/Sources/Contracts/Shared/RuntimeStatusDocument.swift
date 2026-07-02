@@ -91,8 +91,6 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
     public let domainErrors: [RuntimeDomainError]?
     public let latestBackup: String?
     public let progress: RuntimeProgressDocument?
-    public let containerObservation: RuntimeContainerObservation?
-    public let vitalDBObservation: VitalDBObservationDocument?
 
     public init(
         schemaVersion: Int? = nil,
@@ -121,9 +119,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         failureReasons: [RuntimeFailureReason],
         domainErrors: [RuntimeDomainError]? = nil,
         latestBackup: String?,
-        progress: RuntimeProgressDocument? = nil,
-        containerObservation: RuntimeContainerObservation? = nil,
-        vitalDBObservation: VitalDBObservationDocument? = nil
+        progress: RuntimeProgressDocument? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.product = product
@@ -152,8 +148,6 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         self.domainErrors = domainErrors ?? (failureReasons.isEmpty ? nil : failureReasons.map(RuntimeDomainError.init))
         self.latestBackup = latestBackup
         self.progress = progress
-        self.containerObservation = containerObservation
-        self.vitalDBObservation = vitalDBObservation
     }
 
     public init(
@@ -182,9 +176,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         vmDisk: RuntimeFileState,
         failureReasons: [RuntimeFailureReason],
         latestBackup: String?,
-        progress: RuntimeProgressDocument? = nil,
-        containerObservation: RuntimeContainerObservation? = nil,
-        vitalDBObservation: VitalDBObservationDocument? = nil
+        progress: RuntimeProgressDocument? = nil
     ) {
         self.init(
             schemaVersion: schemaVersion,
@@ -213,9 +205,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
             failureReasons: failureReasons,
             domainErrors: nil,
             latestBackup: latestBackup,
-            progress: progress,
-            containerObservation: containerObservation,
-            vitalDBObservation: vitalDBObservation
+            progress: progress
         )
     }
 
@@ -246,9 +236,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         failureReasons: [RuntimeFailureReason],
         domainErrors: [RuntimeDomainError]? = nil,
         latestBackup: String?,
-        progress: RuntimeProgressDocument? = nil,
-        containerObservation: RuntimeContainerObservation? = nil,
-        vitalDBObservation: VitalDBObservationDocument? = nil
+        progress: RuntimeProgressDocument? = nil
     ) {
         self.init(
             schemaVersion: schemaVersion,
@@ -277,9 +265,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
             failureReasons: failureReasons,
             domainErrors: domainErrors,
             latestBackup: latestBackup,
-            progress: progress,
-            containerObservation: containerObservation,
-            vitalDBObservation: vitalDBObservation
+            progress: progress
         )
     }
 
@@ -309,9 +295,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
         vmDisk: RuntimeFileState,
         failureReasons: [RuntimeFailureReason],
         latestBackup: String?,
-        progress: RuntimeProgressDocument? = nil,
-        containerObservation: RuntimeContainerObservation? = nil,
-        vitalDBObservation: VitalDBObservationDocument? = nil
+        progress: RuntimeProgressDocument? = nil
     ) {
         self.init(
             schemaVersion: schemaVersion,
@@ -340,9 +324,7 @@ public struct RuntimeStatusDocument: Codable, Equatable, Sendable {
             failureReasons: failureReasons,
             domainErrors: nil,
             latestBackup: latestBackup,
-            progress: progress,
-            containerObservation: containerObservation,
-            vitalDBObservation: vitalDBObservation
+            progress: progress
         )
     }
 }

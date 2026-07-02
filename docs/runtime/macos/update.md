@@ -57,7 +57,7 @@ Manifest에서는 최상위 product version과 component version을 분리합니
 
 | 원칙 | 기준 |
 |---|---|
-| update protocol은 baseline 계약 유지 | `manifest.json`, `activate-update.request`, `runtime-version.json`, status/result JSON은 지금 정의한 필수 필드와 확장 규칙을 유지한다 |
+| update protocol은 baseline 계약 유지 | `manifest.json`, Guest Control maintenance API, `runtime-version.json`, status JSON은 지금 정의한 필수 필드와 확장 규칙을 유지한다 |
 | updater는 보수적으로 변경 | update를 수행하는 host runtime tool과 guest activation script는 일반 runtime보다 더 강한 호환성 기준을 적용한다 |
 | request 필드는 신중히 확장 | 배포 이후 새 필드는 optional 또는 기본값을 가져야 하고, 필수 필드 추가는 bridge/two-phase update 대상이다 |
 | 모르는 필드는 무시 | reader는 알 수 없는 JSON field 때문에 실패하면 안 된다 |
@@ -68,27 +68,23 @@ Manifest에서는 최상위 product version과 component version을 분리합니
 
 ### Update Protocol 계약
 
-아래 파일은 update 호환성의 public contract로 취급합니다.
+아래 계약은 update 호환성의 public contract로 취급합니다.
 
-| 파일 | 생산자 | 소비자 | 호환성 기준 |
+| 계약 | 생산자 | 소비자 | 호환성 기준 |
 |---|---|---|---|
 | `manifest.json` | build tool | host Updater | `schemaVersion`, `channel`, `helperVersion`, `releaseLabel`, artifact 목록, compatibility field를 포함 |
 | `checksums.txt` | build tool | host verifier | artifact path와 sha256/size 검증 기준 |
-| `activate-update.request` | host Updater | guest activation script | `requestId`, `requestedAt`, `operation`, `version`은 baseline 필수 |
-| `activate-update-result.json` | guest activation script | host Updater/Helper UI | `requestId`, `status`, `message`, `updatedAt`은 항상 기록 |
-| `prepare-update-shutdown.request` | host VM state control | guest shutdown worker | `requestId`, `operation`, `version`, `requestedAt`은 baseline 필수. request는 single-shot trigger |
-| `prepare-update-shutdown-result.json` | guest shutdown worker | host VM state control/Updater | `requestId`, `status`, `message`, `updatedAt`, failure `details`를 보존 |
+| `POST /v1/maintenance/update-activation` | Host Updater | Guest Control API | `requestId`, `version`은 baseline 필수. result는 Guest operation document로 보존 |
+| `POST /v1/maintenance/update-shutdown` | host VM state control | Guest Control API | `requestId`, `version`은 baseline 필수. `poweroff-ready`는 Guest operation result로 보존 |
+| `POST /v1/maintenance/guest-poweroff` | host VM state control | Guest Control API | shutdown operation이 `poweroff-ready`인 뒤 별도 poweroff operation으로 실행 |
 | `runtime-status.json` | host Updater/Supervisor | Helper UI | operation/step/status는 enum 계약으로 유지 |
 | `runtime-version.json` | installer/Updater | Helper UI/Updater | 현재 installed component version 표시와 rollback 판단 기준 |
 
-현재 baseline에서 host updater는 아래 형식의 request를 씁니다.
+현재 baseline에서 Host updater는 Guest Control API에 아래 형식의 body를 보냅니다.
 
 ```json
 {
-  "operation": "activate-update",
   "requestId": "2DD1A7A8-1C51-4D6B-8DF1-89C62B7F63B3",
-  "schemaVersion": 2,
-  "requestedAt": "2026-05-22T00:00:00Z",
   "version": "1.2.3"
 }
 ```
@@ -222,8 +218,8 @@ update 단계는 중간 실패 후 재실행이 가능해야 합니다. 이를 �
 | bundle staged | staged bundle path |
 | backup created | `backups/<timestamp>-before-<version>` |
 | artifacts replaced | runtime progress step |
-| guest activation requested | `activate-update.request` |
-| guest activation completed | `activate-update-result.json` status `completed` |
+| guest activation requested | Guest Control `POST /v1/maintenance/update-activation` accepted operation |
+| guest activation completed | Guest Control operation state `completed` |
 | health passed | `runtime-status.json` state `healthy` |
 | update committed | `runtime-version.json` version 갱신 |
 
@@ -231,35 +227,37 @@ update 단계는 중간 실패 후 재실행이 가능해야 합니다. 이를 �
 
 - 이미 staged된 같은 bundle은 검증 후 재사용할 수 있다.
 - 이미 존재하는 backup은 덮어쓰지 않고 새 backup을 만들거나 명시적으로 재사용한다.
-- stale `activate-update-result.json`은 request id 또는 timestamp로 구분한다.
-- stale `activate-update.request`는 새 요청 전 제거하거나 새 request id로 덮어쓴다.
+- stale Guest operation result는 operation id와 request id로 구분한다.
+- old request/result files are historical install evidence only; current update flow must not use them.
 - rollback 중에도 운영 데이터 경로는 삭제하지 않는다.
 
 ### Guest Activation Baseline
 
-게스트 activation script는 update 안정성에서 가장 보수적으로 다룹니다.
+Guest activation은 Guest Control maintenance operation으로 실행합니다. Host는
+`POST /v1/maintenance/update-activation`을 호출하고, Guest operation document를
+polling해서 activation 상태를 확인합니다.
 
 필수 동작:
 
 | 케이스 | 동작 |
 |---|---|
-| `python3` 없음 | 실패하되 명확한 message와 result 기록. 단, 제품 rootfs에는 `python3`를 필수 포함 |
-| `requestId` 없음 | baseline 계약 위반으로 failed result 기록 |
-| `version` 없음 | baseline 계약 위반으로 failed result 기록 |
-| request JSON 파싱 실패 | failed result와 log 기록 |
+| `python3` 없음 | 실패하되 명확한 message와 operation failure 기록. 단, 제품 rootfs에는 `python3`를 필수 포함 |
+| `requestId` 없음 | baseline 계약 위반으로 failed operation 기록 |
+| `version` 없음 | baseline 계약 위반으로 failed operation 기록 |
+| request JSON 파싱 실패 | failed operation과 log 기록 |
 | Docker image bundle 없음 | image load는 skip 가능하되 compose recreate는 정책에 따라 진행 |
-| compose 실패 | failed result와 container log 확인 안내 |
+| compose 실패 | failed operation과 container log 확인 안내 |
 
 구현 기준:
 
 ```text
-activation request reader:
+activation operation input:
   - requestId required
   - version required
   - schemaVersion required
   - operation required
 
-activation result writer:
+activation operation result:
   - schemaVersion always written
   - requestId always written from request
   - status always written
@@ -269,29 +267,31 @@ activation result writer:
 
 ### Guest Update Shutdown Baseline
 
-Product Update가 guest deploy, container image, runtime tool, proxy artifact를 바꿀 때는 VM을 그냥 내리지 않습니다. Host는 먼저 `prepare-update-shutdown.request`를 쓰고, Guest가 명시 result를 남길 때까지 기다린 뒤 VM stop/restart 경로로 진행합니다.
+Product Update가 guest deploy, container image, runtime tool, proxy artifact를 바꿀 때는 VM을 그냥 내리지 않습니다. Host는 먼저 Guest Control `POST /v1/maintenance/update-shutdown`을 호출하고, Guest operation이 `poweroff-ready`를 남길 때까지 기다린 뒤 VM stop/restart 경로로 진행합니다.
 
-이 shutdown request는 update-specific operation입니다. Settings restart, watchdog recovery, service repair가 같은 request를 재사용하거나 stale request를 다시 실행하면 안 됩니다.
+이 shutdown operation은 update-specific operation입니다. Settings restart, watchdog
+recovery, service repair가 같은 operation input을 재사용하거나 stale file artifact를
+다시 실행하면 안 됩니다.
 
 필수 동작:
 
 | 단계 | 기준 |
 |---|---|
-| capability preflight | Host는 Guest가 `prepare-update-shutdown` capability를 보고한 경우에만 request를 쓴다 |
-| request consume | Guest worker는 request를 읽고 `running` result를 기록한 직후 request file을 소비한다 |
+| capability preflight | Host는 Guest가 update shutdown capability를 보고한 경우에만 Guest Control operation을 시작한다 |
+| operation accepted | Guest Control API는 operation id를 반환하고 `accepted` 또는 `running` 상태를 기록한다 |
 | Redis backup | update 전 Redis data backup을 만들고 실패하면 typed failure로 중단한다 |
 | compose stop | service별 명시 순서와 timeout으로 container를 중지한다 |
 | final sync | filesystem sync가 끝난 뒤에만 poweroff request를 진행한다 |
-| poweroff handoff | final sync 직후 `ready`/`poweroff-ready` result를 먼저 durable write하고, 그 다음 `systemctl --no-block poweroff`를 요청한다 |
-| host wait | Host는 result와 VM lifecycle/poweroff wait를 분리해서 관측한다 |
+| poweroff handoff | final sync 직후 Guest Control operation을 `poweroff-ready`로 완료하고, Host가 별도 `guest-poweroff` operation을 요청한다 |
+| host wait | Host는 Guest operation state와 VM lifecycle/poweroff wait를 분리해서 관측한다 |
 
 Compose stop은 whole-stack fallback이 아니라 아래 순서의 명시 operation입니다.
 
 ```text
-testkit -> edge -> swagger-ui -> redis-ui -> recorder-ingress -> vitaldb-observer -> app -> redis
+edge -> swagger-ui -> redis-ui -> lab -> vitaldb-observer -> redis-relay -> recorder-ingress -> recorder-recovery -> app -> postgres -> redis
 ```
 
-기본 stop timeout은 30초입니다. `app`은 90초, `redis`는 60초로 둡니다. timeout이나 dependency failure가 발생하면 Guest는 `prepare-update-shutdown-result.json`에 아래 정보를 남깁니다.
+기본 stop timeout은 30초입니다. `app`은 90초, `redis`는 60초로 둡니다. timeout이나 dependency failure가 발생하면 Guest Control operation failure/result에 아래 정보를 남깁니다.
 
 | field | 의미 |
 |---|---|
@@ -300,7 +300,7 @@ testkit -> edge -> swagger-ui -> redis-ui -> recorder-ingress -> vitaldb-observe
 | `details.serviceStates` | failure snapshot의 compose service state |
 | `details.failureSnapshotPath` | diagnostics/snapshot artifact 경로 |
 
-Host는 이 result를 update failure로 소비해야 합니다. 로그 tail, missing marker, VM process 종료 여부로 Guest shutdown success를 추정하지 않습니다.
+Host는 이 Guest operation을 update failure로 소비해야 합니다. 로그 tail, missing marker, VM process 종료 여부로 Guest shutdown success를 추정하지 않습니다.
 
 Rollback 중 health wait에서 `host-proxy-http-*`, `recorder-ingress-http-failed`, `container-service-*-state-exited` 같은 transient reason이 먼저 보일 수 있습니다. 최종적으로 `hostProxyHTTP=200`과 runtime health가 확인되면 rollback health wait는 성공입니다. 다만 rollback 성공은 update 성공이 아니며, command log와 runtime event에는 update failure와 rollback success가 둘 다 남아야 합니다.
 
@@ -313,8 +313,8 @@ update bundle을 배포 후보로 보려면 아래를 통과해야 합니다.
 | fresh install | clean machine 또는 clean runtime home에서 설치 성공 |
 | same-version apply | 같은 version bundle을 적용해도 깨지지 않음 |
 | previous-version apply | 직전 버전 설치본에서 최신 bundle 적용 성공 |
-| invalid request apply | `requestId` 없는 activation request는 명확한 실패 result를 남김 |
-| update shutdown | `prepare-update-shutdown` capability, request consume, ordered compose stop, poweroff request result 검증 |
+| invalid operation apply | `requestId` 없는 activation operation은 명확한 failure를 남김 |
+| update shutdown | update shutdown capability, operation accepted/running/completed state, ordered compose stop, poweroff handoff 검증 |
 | guest activation | Docker image load와 compose recreate가 수행됨 |
 | health wait | VitalServer, Redis, network access가 ready |
 | rollback | 의도적 실패 bundle에서 update failure와 rollback success가 모두 기록되고 managed backup rollback 성공 |
@@ -562,18 +562,18 @@ guest-side health 재검증
 | 단계 | 목적 |
 |---|---|
 | cloud-init seed refresh | 새 instance-id를 가진 `seed.iso`를 만들어 VM 부팅 시 `bootstrap.sh`가 다시 실행될 수 있게 함 |
-| guest activation request | `/mnt/tirosh/run/activate-update.request`를 만들고, VM 안의 `tirosh-vitalserver-activate-update`가 image load/compose recreate를 수행하게 함 |
+| guest activation request | Guest Control `POST /v1/maintenance/update-activation`으로 VM 안의 activation adapter가 image load/compose recreate를 수행하게 함 |
 
 호환성을 위해 update bundle에도 `001-refresh-cloud-init-seed` migration을 기본 포함합니다. 이유는 중요합니다. 이미 설치된 구버전 Helper가 bundle을 적용하면, 새 Swift apply 로직은 아직 실행될 수 없습니다. 하지만 구버전 apply도 migration은 실행하므로, 이 migration이 `seed.iso`를 갱신해 VM 부팅 시 새 `guest-deploy/bootstrap.sh`가 실행될 수 있게 합니다.
 
-게스트 activation은 아래 결과 파일을 남깁니다.
+게스트 activation은 아래 로그와 Guest operation document를 남깁니다.
 
 ```text
 /mnt/tirosh/run/activate-update.log
-/mnt/tirosh/run/activate-update-result.json
+GET /v1/operations/{operationId}
 ```
 
-호스트 update command는 이 result가 `completed`가 될 때까지 기다린 뒤 runtime health check로 넘어갑니다.
+호스트 update command는 이 operation이 `completed`가 될 때까지 기다린 뒤 runtime health check로 넘어갑니다.
 
 표준 흐름은 아래입니다.
 
@@ -582,8 +582,8 @@ host apply-bundle
   -> replace guest-deploy on shared directory
   -> refresh cloud-init seed when guest deploy changed
   -> restart VM/proxy/watchdog
-  -> run guest activation request
-      -> /mnt/tirosh/run/activate-update.request
+  -> run guest activation operation
+      -> POST /v1/maintenance/update-activation
       -> VM 내부에서 image load
       -> docker compose recreate
       -> runtime-state 갱신

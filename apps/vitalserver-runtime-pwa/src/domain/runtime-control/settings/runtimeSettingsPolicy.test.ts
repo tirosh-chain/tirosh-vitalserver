@@ -206,7 +206,7 @@ describe("runtime settings policy", () => {
     );
   });
 
-  it("reports container reconcile activation for recorder load control changes", () => {
+  it("reports Guest stack reconcile activation for recorder load control changes", () => {
     const runtime = fullSettings();
     const draft = fullSettings({
       recorderIngressSendDataMode: "passthrough" as const,
@@ -218,17 +218,17 @@ describe("runtime settings policy", () => {
 
     expect(decision.requiresActivation).toBe(true);
     expect(decision.requiresVMRestart).toBe(false);
-    expect(decision.requiresContainerServicesReconcile).toBe(true);
-    expect(decision.containerServiceChanges).toEqual([
+    expect(decision.requiresGuestStackReconcile).toBe(true);
+    expect(decision.guestStackChanges).toEqual([
       "Recorder load control",
       "Recorder replay throughput"
     ]);
     expect(decision.message).toBe(
-      "Container services will be reconciled after save. Required by: Recorder load control, Recorder replay throughput."
+      "Guest stack will be reconciled after save. Required by: Recorder load control, Recorder replay throughput."
     );
   });
 
-  it("reports container reconcile activation for container memory limit changes", () => {
+  it("reports Guest stack reconcile activation for container memory limit changes", () => {
     const runtime = fullSettings();
     const draft = fullSettings({
       containerMemoryLimitsEnabled: false,
@@ -240,13 +240,13 @@ describe("runtime settings policy", () => {
 
     expect(decision.requiresActivation).toBe(true);
     expect(decision.requiresVMRestart).toBe(false);
-    expect(decision.requiresContainerServicesReconcile).toBe(true);
-    expect(decision.containerServiceChanges).toEqual([
+    expect(decision.requiresGuestStackReconcile).toBe(true);
+    expect(decision.guestStackChanges).toEqual([
       "VitalServer container memory limit"
     ]);
   });
 
-  it("reports container reconcile activation for Redis Relay changes", () => {
+  it("reports Guest stack reconcile activation for Redis Relay changes", () => {
     const runtime = fullSettings();
     const draft = fullSettings({
       redisRelay: redisRelaySettings({ enabled: true }),
@@ -255,8 +255,8 @@ describe("runtime settings policy", () => {
 
     const decision = runtimeSettingsActivationDecision(draft, runtime);
 
-    expect(decision.requiresContainerServicesReconcile).toBe(true);
-    expect(decision.containerServiceChanges).toEqual(["Redis Relay"]);
+    expect(decision.requiresGuestStackReconcile).toBe(true);
+    expect(decision.guestStackChanges).toEqual(["Redis Relay"]);
   });
 });
 

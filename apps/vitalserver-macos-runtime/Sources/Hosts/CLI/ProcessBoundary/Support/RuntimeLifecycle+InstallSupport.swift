@@ -35,9 +35,6 @@ extension RuntimeLifecycle {
                     installedPaths.vmIPFile,
                     installedPaths.runtimeState,
                     installedPaths.bootstrapResult,
-                    installedPaths.updateActivationResult,
-                    installedPaths.updateShutdownResult,
-                    installedPaths.datastoreRepairResult,
                 ],
                 vitalFilesDirectory: { settings in
                     URL(fileURLWithPath: settings.vitalFilesDirectory)
@@ -89,8 +86,7 @@ extension RuntimeLifecycle {
             adminPassword: adminPassword,
             vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
             redisUiPort: Constants.Guest.redisUIPort,
-            swaggerUiPort: Constants.Guest.swaggerUIPort,
-            testkitEnabled: Constants.testkitContainerIncluded
+            swaggerUiPort: Constants.Guest.swaggerUIPort
         )
     }
 

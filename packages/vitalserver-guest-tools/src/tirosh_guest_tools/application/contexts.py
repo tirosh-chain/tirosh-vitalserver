@@ -14,4 +14,8 @@ class PrepareUpdateShutdownContext:
 @dataclass(frozen=True)
 class RedisBackupOutcome:
     archive: Path
-    request_id: str
+
+
+@dataclass(frozen=True)
+class RedisRestoreOutcome:
+    restored_archive: Path

@@ -14,6 +14,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
     private let fileStore: RuntimeFileStore
     private let storageUsageProvider: RuntimeStorageUsageProviding
     private let runtimeExecutableState: (String) -> RuntimeFileState
+    private let guestControlGateway: @Sendable (String) throws -> any RuntimeGuestControlGateway
     private let runCommand: @Sendable (String, [String]) async -> RuntimeCommandResult
     private let runSyncCommand: @Sendable (String, [String]) -> RuntimeCommandResult
 
@@ -22,6 +23,8 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
         storageUsageProvider: RuntimeStorageUsageProviding? = nil,
         runtimeExecutableState: ((String) -> RuntimeFileState)? = nil,
+        guestControlGateway: (@Sendable () throws -> any RuntimeGuestControlGateway)? = nil,
+        guestControlGatewayForBaseURL: (@Sendable (String) throws -> any RuntimeGuestControlGateway)? = nil,
         runCommand: @escaping @Sendable (String, [String]) async -> RuntimeCommandResult = { command, arguments in
             await ProcessRunner.run(command, arguments: arguments)
         },
@@ -32,6 +35,15 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         self.storageUsageProvider = storageUsageProvider ?? SystemRuntimeStorageUsageProvider(fileStore: fileStore)
         self.runtimeExecutableState = runtimeExecutableState ?? { path in
             fileStore.fileState(atPath: path)
+        }
+        self.guestControlGateway = guestControlGatewayForBaseURL ?? { baseURL in
+            if let guestControlGateway {
+                return try guestControlGateway()
+            }
+            return try HTTPRuntimeGuestControlGateway(
+                baseURL: baseURL,
+                timeout: RuntimeControlClientConstants.Product.guestControlAPIStatusReadTimeoutSeconds
+            )
         }
         self.runCommand = runCommand
         self.runSyncCommand = runSyncCommand
@@ -56,13 +68,34 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
     }
 
     private func guestHTTPRead(vmIP: String?) async -> RuntimeHTTPStatusRead? {
-        guard let vmIP else {
+        guard let vmIP, !vmIP.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
-        return await httpStatus(
-            source: "guestHTTP",
-            url: RuntimeControlClientConstants.Product.guestHealthURL(vmIP: vmIP)
-        )
+        let baseURL = RuntimeControlClientConstants.Product.guestControlAPIBaseURL(vmIP: vmIP)
+        do {
+            let readiness = try guestControlGateway(baseURL).ready()
+            if readiness.status == "ready" {
+                return RuntimeHTTPStatusRead(status: "200", issue: nil)
+            }
+            let message = readiness.failureSummary.map {
+                "\(readiness.status):\($0)"
+            } ?? readiness.status
+            return RuntimeHTTPStatusRead(
+                status: readiness.status,
+                issue: RuntimeStatusReadIssue(
+                    source: "guestHTTP",
+                    message: "guest control readiness failed: \(message)"
+                )
+            )
+        } catch {
+            return RuntimeHTTPStatusRead(
+                status: nil,
+                issue: RuntimeStatusReadIssue(
+                    source: "guestHTTP",
+                    message: runtimeStatusGuestServicesReadErrorDescription(error)
+                )
+            )
+        }
     }
 
     private func hostProxyHTTPRead(proxyPort: Int?) async -> RuntimeHTTPStatusRead? {
@@ -100,10 +133,6 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             url: URL(fileURLWithPath: paths.runtimeStatus),
             fileStore: fileStore
         ).load()
-        let guestStateRead = GuestRuntimeStateDocumentReader(
-            path: paths.runtimeState,
-            fileStore: fileStore
-        ).load()
         let installStateRead = RuntimeInstallStateDocumentReader(
             path: paths.runtimeInstallState,
             fileStore: fileStore
@@ -120,11 +149,29 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
 
         return RuntimeControlStatusAssembler.makeStatus(
             statusRead: statusRead,
-            guestStateRead: guestStateRead,
             installStateRead: installStateRead,
             redisRelayStatusRead: redisRelayStatusRead,
+            guestServicesRead: guestServicesRead(
+                vmIP: statusRead.document?.vmIP
+            ),
             liveDiagnostics: liveDiagnostics
         )
+    }
+
+    private func guestServicesRead(vmIP: String?) -> RuntimeGuestServicesRead {
+        guard let vmIP, !vmIP.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .unavailable
+        }
+        let baseURL = RuntimeControlClientConstants.Product.guestControlAPIBaseURL(vmIP: vmIP)
+        do {
+            let gateway = try guestControlGateway(baseURL)
+            let stackStatus = try gateway.stackStatus()
+            let statuses = stackStatus.services
+            let services = statuses.map(\.service)
+            return .loaded(services: services, statuses: statuses)
+        } catch {
+            return .failed(runtimeStatusGuestServicesReadErrorDescription(error))
+        }
     }
 
     private func httpStatus(source: String, url: String) async -> RuntimeHTTPStatusRead {
@@ -194,4 +241,8 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         )
     }
 
+}
+
+private func runtimeStatusGuestServicesReadErrorDescription(_ error: Error) -> String {
+    return String(describing: error)
 }

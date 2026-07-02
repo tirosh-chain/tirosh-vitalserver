@@ -83,7 +83,7 @@ extension RuntimeLifecycle {
             fileStore: fileStore,
             statusReporter: statusReporter,
             operationLeaseRepository: JSONFileRuntimeOperationLeaseRepository(url: installedPaths.runtimeOperationLease),
-            guestGateway: guestGateway,
+            guestBootstrapResultReader: guestBootstrapResultReader,
             now: { clock.now },
             log: log
         )
@@ -113,8 +113,8 @@ extension RuntimeLifecycle {
                 automaticRecoveryEnabled: {
                     try automaticRecoveryEnabled()
                 },
-                reconcileGuestCompose: {
-                    try reconcileGuestComposeServices()
+                reconcileGuestStack: {
+                    try reconcileGuestStackServicesThroughGuestControl()
                 },
                 restartVMRuntime: {
                     try restartVMRuntimeForWatchdogRecovery()
@@ -206,8 +206,8 @@ extension RuntimeLifecycle {
                 setAutomaticBackupSchedule: { enabled, scheduleTimes in
                     try setAutomaticBackupSchedule(enabled: enabled, scheduleTimes: scheduleTimes)
                 },
-                reconcileGuestComposeServices: {
-                    try reconcileGuestComposeServices()
+                reconcileGuestStackServices: {
+                    try reconcileGuestStackServicesThroughGuestControl()
                 },
                 restartRuntimeServices: {
                     try restartRuntimeAfterSettingsApply()

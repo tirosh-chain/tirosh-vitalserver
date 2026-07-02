@@ -326,6 +326,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
     public let latestAnomalyMessage: String?
     public let latestAnomalyObservedAt: String?
     public let presentInLatestObservation: Bool
+    public let visibility: RuntimeVitalRecordVisibility
     public let activityTimeline: [RuntimeVitalRecorderActivityPoint]?
     public let redisIPSync: RuntimeRecorderRedisIPSyncObservation?
 
@@ -347,6 +348,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         latestAnomalyMessage: String? = nil,
         latestAnomalyObservedAt: String? = nil,
         presentInLatestObservation: Bool = true,
+        visibility: RuntimeVitalRecordVisibility = .visible,
         redisIPSync: RuntimeRecorderRedisIPSyncObservation? = nil
     ) {
         self.init(
@@ -367,6 +369,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
             latestAnomalyMessage: latestAnomalyMessage,
             latestAnomalyObservedAt: latestAnomalyObservedAt,
             presentInLatestObservation: presentInLatestObservation,
+            visibility: visibility,
             activityTimeline: nil,
             redisIPSync: redisIPSync
         )
@@ -390,6 +393,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         latestAnomalyMessage: String?,
         latestAnomalyObservedAt: String?,
         presentInLatestObservation: Bool,
+        visibility: RuntimeVitalRecordVisibility = .visible,
         activityTimeline: [RuntimeVitalRecorderActivityPoint]?,
         redisIPSync: RuntimeRecorderRedisIPSyncObservation? = nil
     ) {
@@ -410,6 +414,7 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         self.latestAnomalyMessage = latestAnomalyMessage
         self.latestAnomalyObservedAt = latestAnomalyObservedAt
         self.presentInLatestObservation = presentInLatestObservation
+        self.visibility = visibility
         self.activityTimeline = activityTimeline
         self.redisIPSync = redisIPSync
     }
@@ -434,6 +439,7 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
     public let latestAnomalySeverity: VitalDBAnomalySeverity?
     public let latestAnomalyMessage: String?
     public let latestAnomalyObservedAt: String?
+    public let visibility: RuntimeVitalRecordVisibility
 
     public init(
         bedID: String,
@@ -452,7 +458,8 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
         latestAnomalyKind: VitalDBAnomalyKind? = nil,
         latestAnomalySeverity: VitalDBAnomalySeverity?,
         latestAnomalyMessage: String? = nil,
-        latestAnomalyObservedAt: String? = nil
+        latestAnomalyObservedAt: String? = nil,
+        visibility: RuntimeVitalRecordVisibility = .visible
     ) {
         self.bedID = bedID
         self.name = name
@@ -471,6 +478,7 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
         self.latestAnomalySeverity = latestAnomalySeverity
         self.latestAnomalyMessage = latestAnomalyMessage
         self.latestAnomalyObservedAt = latestAnomalyObservedAt
+        self.visibility = visibility
     }
 }
 
@@ -487,6 +495,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
     public let beds: [RuntimeVitalBedRecord]
     public let summary: RuntimeVitalRecorderHistorySummary
     public let activityHistory: RuntimeVitalRecorderActivityHistory
+    public let recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?
     public let readError: String?
 
     public init(
@@ -496,6 +505,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         beds: [RuntimeVitalBedRecord] = [],
         summary: RuntimeVitalRecorderHistorySummary? = nil,
         activityHistory: RuntimeVitalRecorderActivityHistory = .notProvided(),
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult? = nil,
         readError: String? = nil
     ) {
         self.state = state ?? Self.defaultState(
@@ -511,6 +521,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             beds: beds
         )
         self.activityHistory = activityHistory
+        self.recorderIngressStatusRead = recorderIngressStatusRead
         self.readError = readError
     }
 
@@ -525,6 +536,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         case beds
         case summary
         case activityHistory
+        case recorderIngressStatusRead
         case readError
     }
 
@@ -539,6 +551,10 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             RuntimeVitalRecorderActivityHistory.self,
             forKey: .activityHistory
         ) ?? .notProvided()
+        recorderIngressStatusRead = try container.decodeIfPresent(
+            RuntimeRecorderIngressStatusReadResult.self,
+            forKey: .recorderIngressStatusRead
+        )
         readError = try container.decodeIfPresent(String.self, forKey: .readError)
         state = try container.decodeIfPresent(RuntimeVitalRecorderHistoryState.self, forKey: .state)
             ?? Self.defaultState(recorders: recorders, beds: beds, readError: readError)
@@ -552,6 +568,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         try container.encode(beds, forKey: .beds)
         try container.encode(summary, forKey: .summary)
         try container.encode(activityHistory, forKey: .activityHistory)
+        try container.encodeIfPresent(recorderIngressStatusRead, forKey: .recorderIngressStatusRead)
         try container.encodeIfPresent(readError, forKey: .readError)
     }
 
@@ -579,13 +596,13 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
 
     public init(
         observations: [VitalDBObservationDocument],
-        containerObservation: RuntimeContainerObservation?,
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?,
         statusEvaluationTime: String? = nil
     ) {
         self.init(
             observations: observations,
             projectedActivityBuckets: nil,
-            containerObservation: containerObservation,
+            recorderIngressStatusRead: recorderIngressStatusRead,
             statusEvaluationTime: statusEvaluationTime
         )
     }
@@ -595,7 +612,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         activityBuckets: [VitalDBRecorderActivityBucketRecord],
         activityHistory: RuntimeVitalRecorderActivityHistory? = nil,
         readError: String? = nil,
-        containerObservation: RuntimeContainerObservation? = nil,
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult? = nil,
         statusEvaluationTime: String? = nil
     ) {
         self.init(
@@ -603,7 +620,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             projectedActivityBuckets: activityBuckets,
             activityHistory: activityHistory,
             readError: readError,
-            containerObservation: containerObservation,
+            recorderIngressStatusRead: recorderIngressStatusRead,
             statusEvaluationTime: statusEvaluationTime
         )
     }
@@ -613,12 +630,16 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         projectedActivityBuckets activityBuckets: [VitalDBRecorderActivityBucketRecord]?,
         activityHistory: RuntimeVitalRecorderActivityHistory? = nil,
         readError: String? = nil,
-        containerObservation: RuntimeContainerObservation? = nil,
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult? = nil,
         statusEvaluationTime: String? = nil
     ) {
         let ordered = observations.sorted { $0.observedAt < $1.observedAt }
         guard let latestObservation = ordered.last else {
-            self.init(activityHistory: activityHistory ?? .notProvided(readError: readError), readError: readError)
+            self.init(
+                activityHistory: activityHistory ?? .notProvided(readError: readError),
+                recorderIngressStatusRead: recorderIngressStatusRead,
+                readError: readError
+            )
             return
         }
         let recorderStatusEvaluationTime = statusEvaluationTime ?? latestObservation.observedAt
@@ -670,8 +691,8 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         )
         let latestAnomaliesBySubject = Dictionary(grouping: latestObservation.anomalies, by: \.subject)
         let projectedActivityByVrcode = activityBuckets.map(projectedActivityTimelineByVrcode)
-        let recorderIngressActivityByVrcode = recorderIngressActivityByVrcode(containerObservation)
-        let redisIPSyncByVrcode = recorderRedisIPSyncByVrcode(containerObservation)
+        let recorderIngressActivityByVrcode = recorderIngressActivityByVrcode(recorderIngressStatusRead)
+        let redisIPSyncByVrcode = recorderRedisIPSyncByVrcode(recorderIngressStatusRead)
         for vrcode in recorderIngressActivityByVrcode.keys where builders[vrcode] == nil {
             builders[vrcode] = RecorderBuilder(vrcode: vrcode)
         }
@@ -691,7 +712,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
                 recorderIngressActivity: recorderIngressActivityByVrcode[builder.vrcode],
                 redisIPSync: redisIPSyncByVrcode[builder.vrcode] ?? defaultRecorderRedisIPSync(
                     vrcode: builder.vrcode,
-                    containerObservation: containerObservation
+                    recorderIngressStatusRead: recorderIngressStatusRead
                 )
             )
         }
@@ -745,6 +766,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
             activityHistory: activityHistory
                 ?? activityBuckets.map { RuntimeVitalRecorderActivityHistory.fromProjection($0) }
                 ?? .notProvided(),
+            recorderIngressStatusRead: recorderIngressStatusRead,
             readError: readError
         )
     }
@@ -833,7 +855,7 @@ public struct RuntimeVitalRecorderActivityHistory: Codable, Equatable, Sendable 
         readError: String? = nil
     ) -> RuntimeVitalRecorderActivityHistory {
         RuntimeVitalRecorderActivityHistory(
-            source: .sqliteProjection,
+            source: .readModelProjection,
             bucketCount: buckets.count,
             earliestBucketStartedAt: buckets.map(\.bucketStartedAt).min(),
             latestBucketStartedAt: buckets.map(\.bucketStartedAt).max(),
@@ -859,7 +881,7 @@ public struct RuntimeVitalRecorderActivityHistory: Codable, Equatable, Sendable 
 }
 
 public enum RuntimeVitalRecorderActivityHistorySource: String, Codable, Equatable, Sendable {
-    case sqliteProjection
+    case readModelProjection
     case unavailable
     case notProvided
 }
@@ -1018,29 +1040,17 @@ public struct RuntimeVitalRecorderSummary: Codable, Equatable, Sendable {
     }
 
     public init(
-        status: RuntimeStatus,
-        vitalDBObservation: VitalDBObservationDocument? = nil,
-        statusEvaluationTime: String? = nil
-    ) {
-        self.init(
-            containerObservation: status.containerObservation,
-            vitalDBObservation: vitalDBObservation,
-            statusEvaluationTime: statusEvaluationTime
-        )
-    }
-
-    public init(
-        containerObservation: RuntimeContainerObservation?,
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?,
         vitalDBObservation: VitalDBObservationDocument?,
         statusEvaluationTime: String? = nil
     ) {
         let observation = vitalDBObservation
-        let activeConnections = containerObservation?.recorderIngressStatus?.activeRecorderConnections
+        let activeConnections = recorderIngressStatusRead?.document?.activeRecorderConnections
 
         if let observation {
             let history = RuntimeVitalRecorderHistory(
                 observations: [observation],
-                containerObservation: containerObservation,
+                recorderIngressStatusRead: recorderIngressStatusRead,
                 statusEvaluationTime: statusEvaluationTime
             )
             let latest = history.recorders
@@ -1210,9 +1220,9 @@ private func projectedActivityTimelineByVrcode(
 }
 
 private func recorderRedisIPSyncByVrcode(
-    _ containerObservation: RuntimeContainerObservation?
+    _ recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?
 ) -> [String: RuntimeRecorderRedisIPSyncObservation] {
-    guard let ingressRecorders = containerObservation?.recorderIngressStatus?.recorders else {
+    guard let ingressRecorders = recorderIngressStatusRead?.document?.recorders else {
         return [:]
     }
     return Dictionary(
@@ -1227,10 +1237,10 @@ private func recorderRedisIPSyncByVrcode(
 }
 
 private func recorderIngressActivityByVrcode(
-    _ containerObservation: RuntimeContainerObservation?
+    _ recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?
 ) -> [String: RuntimeRecorderConnectionObservation] {
-    guard containerObservation?.recorderIngressStatusReadState == .loaded,
-          let ingressRecorders = containerObservation?.recorderIngressStatus?.recorders
+    guard recorderIngressStatusRead?.readState == .loaded,
+          let ingressRecorders = recorderIngressStatusRead?.document?.recorders
     else {
         return [:]
     }
@@ -1246,17 +1256,17 @@ private func recorderIngressActivityByVrcode(
 
 private func defaultRecorderRedisIPSync(
     vrcode: String,
-    containerObservation: RuntimeContainerObservation?
+    recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?
 ) -> RuntimeRecorderRedisIPSyncObservation? {
-    guard let containerObservation else {
+    guard let recorderIngressStatusRead else {
         return nil
     }
-    guard containerObservation.recorderIngressStatusReadState == .loaded else {
+    guard recorderIngressStatusRead.readState == .loaded else {
         return RuntimeRecorderRedisIPSyncObservation(
             status: .unavailable,
             redisKey: "ip_\(vrcode)",
-            lastFailure: containerObservation.recorderIngressStatusReadError
-                ?? "recorder ingress status \(containerObservation.recorderIngressStatusReadState.rawValue)"
+            lastFailure: recorderIngressStatusRead.readError
+                ?? "recorder ingress status \(recorderIngressStatusRead.readState.rawValue)"
         )
     }
     return RuntimeRecorderRedisIPSyncObservation(
@@ -1333,6 +1343,7 @@ private struct RecorderBuilder {
             latestAnomalyMessage: latestAnomaly?.message,
             latestAnomalyObservedAt: latestAnomaly?.observedAt,
             presentInLatestObservation: presentInLatestObservation,
+            visibility: latestRecorder?.visibility ?? .visible,
             activityTimeline: projectedActivityTimeline,
             redisIPSync: redisIPSync
         )
@@ -1460,7 +1471,8 @@ private struct BedBuilder {
             latestAnomalyKind: latestAnomaly?.kind,
             latestAnomalySeverity: latestAnomaly?.severity,
             latestAnomalyMessage: latestAnomaly?.message,
-            latestAnomalyObservedAt: latestAnomaly?.observedAt
+            latestAnomalyObservedAt: latestAnomaly?.observedAt,
+            visibility: latestBed?.visibility ?? .visible
         )
     }
 
@@ -1560,16 +1572,14 @@ public struct RuntimeControlOverview: Codable, Equatable, Sendable {
         vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot? = nil,
         statusEvaluationTime: String? = nil
     ) {
-        var statusWithoutLegacyVitalDBObservation = status
-        statusWithoutLegacyVitalDBObservation.vitalDBObservation = nil
-        self.status = statusWithoutLegacyVitalDBObservation
+        self.status = status
         self.settings = settings
         self.release = release
         self.install = install
         self.vitalDBObservation = vitalDBObservation
         self.vitalDBObservationSnapshot = vitalDBObservationSnapshot ?? .fromOptional(vitalDBObservation)
         self.vitalRecorder = RuntimeVitalRecorderSummary(
-            containerObservation: status.containerObservation,
+            recorderIngressStatusRead: nil,
             vitalDBObservation: vitalDBObservation,
             statusEvaluationTime: statusEvaluationTime
         )

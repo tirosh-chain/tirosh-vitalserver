@@ -12,10 +12,11 @@ public enum RuntimeHealthCheckerComposition {
         serviceManager: RuntimeServiceManager,
         commandRunner: RuntimeCommandRunner,
         httpProber: RuntimeHTTPProber,
-        guestGateway: RuntimeGuestGateway,
+        guestBootstrapResultReader: any RuntimeGuestBootstrapResultReader,
         plistBuddyPath: String,
         lsofPath: String,
         curlPath: String,
+        guestControlGateway: (@Sendable () throws -> any RuntimeGuestControlGateway)? = nil,
         now: @escaping @Sendable () -> Date = Date.init
     ) -> RuntimeHealthChecker {
         return RuntimeHealthChecker(
@@ -29,7 +30,8 @@ public enum RuntimeHealthCheckerComposition {
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: httpProber,
-            guestGateway: guestGateway,
+            guestBootstrapResultReader: guestBootstrapResultReader,
+            guestControlGateway: guestControlGateway,
             now: now
         )
     }
@@ -50,12 +52,10 @@ public enum RuntimeHealthCheckerComposition {
             lsofPath: lsofPath,
             curlPath: curlPath,
             proxyLaunchDaemonPlist: RuntimeManagedServicePaths.launchDaemonPlist(.proxy),
-            runtimeStateStaleAfterSeconds: Constants.Runtime.runtimeStateStaleAfterSeconds,
             watchdogManagedOperationGraceSeconds: Constants.Runtime.watchdogManagedOperationGraceSeconds,
             proxyHealthURL: { Constants.Runtime.proxyHealthURL(port: $0) },
             redisUIHealthURL: { Constants.Runtime.redisUIHealthURL(port: $0) },
-            swaggerUIHealthURL: { Constants.Runtime.swaggerUIHealthURL(port: $0) },
-            recorderIngressStatusURL: { Constants.Runtime.recorderIngressStatusURL(port: $0) }
+            swaggerUIHealthURL: { Constants.Runtime.swaggerUIHealthURL(port: $0) }
         )
     }
 }

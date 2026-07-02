@@ -1,26 +1,20 @@
 import Application
 import Contracts
-import Domain
 import Workflow
 import XCTest
 import Errors
 
 final class RuntimeDatastoreRepairWorkflowTests: XCTestCase {
-    func testRepairRestartsLoadedVMThenRestartsProxyWatchdogAndWritesHealthyStatus() throws {
+    func testRepairRunsGuestOperationThenRestartsProxyWatchdogAndWritesHealthyStatus() throws {
         let harness = DatastoreRepairHarness()
 
         try harness.repair()
 
         XCTAssertEqual(harness.events, [
             "log:datastore repair requested",
-            "capability",
-            "create-dir:/guest/run:true",
-            "remove-result",
             "status:recovering:repair-datastore:datastore repair requested",
-            "request:request-1:2026-05-22T00:00:00Z",
-            "restart-vm",
-            "log:waiting for datastore repair result timeoutSeconds=300.0",
-            "log:datastore repair guest result completed message=done",
+            "guest-repair",
+            "log:datastore repair guest operation completed operationId=datastore-repair-1",
             "restart-proxy",
             "restart-watchdog",
             "wait-health:true:true:true",
@@ -29,195 +23,86 @@ final class RuntimeDatastoreRepairWorkflowTests: XCTestCase {
         ])
     }
 
-    func testRepairStartsVMWhenVMServiceIsNotLoaded() throws {
+    func testRepairStartsVMBeforeGuestOperationWhenVMServiceIsNotLoaded() throws {
         let harness = DatastoreRepairHarness()
         harness.vmLoaded = false
 
         try harness.repair()
 
-        XCTAssertTrue(harness.events.contains("start-vm"))
-        XCTAssertFalse(harness.events.contains("restart-vm"))
-    }
-
-    func testRepairStopsWhenPreviousResultRemovalFails() {
-        let harness = DatastoreRepairHarness()
-        harness.removeResultError = TestDatastoreRepairError.removeResult
-
-        XCTAssertThrowsError(try harness.repair())
-
-        XCTAssertEqual(harness.events, [
+        XCTAssertEqual(harness.events.prefix(4), [
             "log:datastore repair requested",
-            "capability",
-            "create-dir:/guest/run:true",
-            "remove-result",
+            "status:recovering:repair-datastore:datastore repair requested",
+            "start-vm",
+            "guest-repair",
         ])
     }
 
-    func testRepairStopsBeforeWritingRequestWhenCapabilityIsMissing() {
+    func testRepairStopsBeforeAftercareWhenGuestOperationFails() {
         let harness = DatastoreRepairHarness()
-        harness.capabilityError = RepairRuntimeUseCaseError.operationFailed("guest capability missing: repair-datastore")
+        harness.guestRepairError = RepairRuntimeUseCaseError.operationFailed("guest datastore repair failed")
 
         XCTAssertThrowsError(try harness.repair()) { error in
-            XCTAssertEqual(String(describing: error), "guest capability missing: repair-datastore")
+            XCTAssertEqual(error as? RepairRuntimeUseCaseError, .operationFailed("guest datastore repair failed"))
         }
 
         XCTAssertEqual(harness.events, [
             "log:datastore repair requested",
-            "capability",
+            "status:recovering:repair-datastore:datastore repair requested",
+            "guest-repair",
         ])
-    }
-
-    func testRepairStopsBeforeHealthyStatusWhenResultWaitFails() {
-        let harness = DatastoreRepairHarness(results: [
-            .loaded(result(status: .failed, requestId: "request-1", message: "repair failed")),
-        ])
-
-        XCTAssertThrowsError(try harness.repair()) { error in
-            XCTAssertEqual(String(describing: error), "runtime health check failed")
-        }
-
-        XCTAssertTrue(harness.events.contains("log:datastore repair guest result failed message=repair failed"))
         XCTAssertFalse(harness.events.contains("restart-proxy"))
         XCTAssertFalse(harness.events.contains("status:healthy:repair-datastore:datastore repair completed"))
     }
 
-    func testRepairWaitPollsUntilGuestReportsCompleted() throws {
-        let harness = DatastoreRepairHarness(results: [
-            .missing,
-            .loaded(result(status: .running, requestId: "request-1", message: "repairing")),
-            .loaded(result(status: .completed, requestId: "request-1", message: "done")),
-        ])
-
-        try harness.repair()
-
-        XCTAssertTrue(harness.events.contains("sleep"))
-        XCTAssertTrue(harness.events.contains("status:recovering:repair-datastore:waiting for datastore repair guest worker"))
-        XCTAssertTrue(harness.events.contains("log:datastore repair guest result completed message=done"))
-    }
-
-    func testRepairWaitPreservesReadFailureAndTimeoutMeanings() {
-        let readFailure = DatastoreRepairHarness(results: [.failed("permission denied")])
-
-        XCTAssertThrowsError(try readFailure.repair()) { error in
-            XCTAssertEqual(error as? RepairRuntimeUseCaseError, .operationFailed("runtime health check failed"))
-        }
-        XCTAssertTrue(readFailure.events.contains(
-            "log:datastore repair guest result failed message=failed to read datastore repair result: permission denied"
-        ))
-        XCTAssertFalse(readFailure.events.contains("status:recovering:repair-datastore:waiting for datastore repair guest worker"))
-
-        let timeout = DatastoreRepairHarness(
-            waitTimeoutSeconds: 6,
-            results: [.missing, .missing]
-        )
-
-        XCTAssertThrowsError(try timeout.repair()) { error in
-            XCTAssertEqual(error as? RepairRuntimeUseCaseError, .operationFailed("runtime health check failed"))
-        }
-        XCTAssertEqual(timeout.events.filter { $0 == "sleep" }.count, 1)
-        XCTAssertEqual(
-            timeout.events.filter { $0 == "status:recovering:repair-datastore:waiting for datastore repair guest worker" }.count,
-            1
-        )
-    }
-
-    func testRepairWaitProgressStatusWriteFailureIsLoggedWithoutHidingTimeout() {
-        let harness = DatastoreRepairHarness(
-            waitTimeoutSeconds: 6,
-            results: [.missing, .missing]
-        )
+    func testRepairStopsBeforeGuestOperationWhenRecoveringStatusWriteFails() {
+        let harness = DatastoreRepairHarness()
         harness.statusWriteError = TestDatastoreRepairError.statusWrite
 
         XCTAssertThrowsError(try harness.repair()) { error in
-            XCTAssertEqual(error as? RepairRuntimeUseCaseError, .operationFailed("runtime health check failed"))
+            XCTAssertEqual(error as? TestDatastoreRepairError, .statusWrite)
         }
 
-        XCTAssertTrue(harness.events.contains(
-            "log:failed to write runtime status status=recovering operation=repair-datastore error=statusWrite"
-        ))
-        XCTAssertEqual(timeoutSleepCount(harness.events), 1)
-    }
-
-    func testRepairWaitRejectsInvalidTimeoutBeforePollingGuestResult() {
-        let harness = DatastoreRepairHarness(
-            waitTimeoutSeconds: 0,
-            results: [.missing]
-        )
-
-        XCTAssertThrowsError(try harness.repair()) { error in
-            XCTAssertEqual(
-                error as? RepairRuntimeUseCaseError,
-                .operationFailed("invalid datastore repair wait configuration: waitTimeoutSeconds must be positive")
-            )
-        }
-        XCTAssertFalse(harness.events.contains("sleep"))
-        XCTAssertFalse(harness.events.contains("status:recovering:repair-datastore:waiting for datastore repair guest worker"))
+        XCTAssertEqual(harness.events, [
+            "log:datastore repair requested",
+            "status:recovering:repair-datastore:datastore repair requested",
+        ])
     }
 }
 
 private final class DatastoreRepairHarness {
     var events: [String] = []
     var vmLoaded = true
-    var capabilityError: Error?
-    var removeResultError: Error?
+    var guestRepairError: Error?
     var statusWriteError: Error?
-    var waitTimeoutSeconds: Double
-    var results: [RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>]
-
-    init(
-        waitTimeoutSeconds: Double = 300,
-        results: [RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument>] = [
-            .loaded(result(status: .completed, requestId: "request-1", message: "done")),
-        ]
-    ) {
-        self.waitTimeoutSeconds = waitTimeoutSeconds
-        self.results = results
-    }
 
     func repair() throws {
         try RuntimeDatastoreRepairWorkflow().repair(
-            context: RunDatastoreRepairContext(
-                guestRunDirectory: URL(fileURLWithPath: "/guest/run"),
-                waitTimeoutSeconds: waitTimeoutSeconds
-            ),
+            context: RunDatastoreRepairContext(),
             operations: operations
         )
     }
 
     var operations: RunDatastoreRepairOperations {
         RunDatastoreRepairOperations(
-            requireCapability: {
-                self.events.append("capability")
-                if let capabilityError = self.capabilityError {
-                    throw capabilityError
-                }
-            },
-            createDirectory: { url, withIntermediateDirectories in
-                self.events.append("create-dir:\(url.path):\(withIntermediateDirectories)")
-            },
-            removePreviousResult: {
-                self.events.append("remove-result")
-                if let removeResultError = self.removeResultError {
-                    throw removeResultError
-                }
-            },
-            writeRequest: { request in
-                self.events.append("request:\(request.id):\(request.requestedAt)")
-            },
             isVMServiceLoaded: {
                 self.vmLoaded
             },
             startVMService: {
                 self.events.append("start-vm")
             },
-            restartVMService: {
-                self.events.append("restart-vm")
-            },
-            loadResult: {
-                if self.results.count > 1 {
-                    return self.results.removeFirst()
+            runGuestDatastoreRepair: {
+                self.events.append("guest-repair")
+                if let guestRepairError = self.guestRepairError {
+                    throw guestRepairError
                 }
-                return self.results[0]
+                return RuntimeGuestControlServiceOperation(
+                    operationId: "datastore-repair-1",
+                    service: "datastore-repair",
+                    command: .repairDatastore,
+                    state: .completed,
+                    createdAt: "2026-07-01T00:00:00+00:00",
+                    updatedAt: "2026-07-01T00:00:01+00:00"
+                )
             },
             restartProxyService: {
                 self.events.append("restart-proxy")
@@ -229,23 +114,10 @@ private final class DatastoreRepairHarness {
                 self.events.append("wait-health:\(policy.restartVM):\(policy.restartProxy):\(policy.restartWatchdog)")
             },
             writeStatus: { status, operation, message in
-                if let statusWriteError = self.statusWriteError,
-                   status == .recovering,
-                   operation == .repairDatastore,
-                   message == "waiting for datastore repair guest worker" {
+                self.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
+                if let statusWriteError = self.statusWriteError {
                     throw statusWriteError
                 }
-                self.events.append("status:\(status.rawValue):\(operation.rawValue):\(message)")
-            },
-            describeError: { String(describing: $0) },
-            requestID: {
-                "request-1"
-            },
-            timestamp: {
-                "2026-05-22T00:00:00Z"
-            },
-            sleep: {
-                self.events.append("sleep")
             },
             log: { message in
                 self.events.append("log:\(message)")
@@ -254,26 +126,6 @@ private final class DatastoreRepairHarness {
     }
 }
 
-private func result(
-    status: DatastoreRepairStatus,
-    requestId: String,
-    message: String
-) -> DatastoreRepairResultDocument {
-    DatastoreRepairResultDocument(
-        schemaVersion: 1,
-        requestId: requestId,
-        operation: .repairDatastore,
-        status: status,
-        message: message,
-        updatedAt: "2026-05-22T00:00:00Z"
-    )
-}
-
-private enum TestDatastoreRepairError: Error {
-    case removeResult
+private enum TestDatastoreRepairError: Error, Equatable {
     case statusWrite
-}
-
-private func timeoutSleepCount(_ events: [String]) -> Int {
-    events.filter { $0 == "sleep" }.count
 }

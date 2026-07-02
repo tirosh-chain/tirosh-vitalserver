@@ -74,12 +74,6 @@ struct RuntimeStatusPanel: View {
                         .foregroundStyle(.red)
                 }
             }
-            if let guestRuntimeStateError = viewModel.status.guestRuntimeStateError {
-                statusRow(AppConstants.Labels.guestRuntimeState) {
-                    Text(guestRuntimeStateError)
-                        .foregroundStyle(.red)
-                }
-            }
             statusRow(GeneratedRelease.vitalServerName) {
                 vitalServerStatusAndURL
             }
@@ -147,7 +141,7 @@ struct RuntimeStatusPanel: View {
     }
 
     private var overallHealthValue: RuntimeStatusDisplayPolicy.StatusValue {
-        displayPolicy.overallHealth(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
+        displayPolicy.overallHealth(status: viewModel.status)
     }
 
     private var overallHealthColor: Color {
@@ -167,22 +161,26 @@ struct RuntimeStatusPanel: View {
 
     private var recorderSummary: RuntimeStatusDisplayPolicy.RecorderSummary {
         displayPolicy.recorderSummary(
-            observation: viewModel.containerObservation,
+            recorderIngressStatusRead: viewModel.vitalRecorders.recorderIngressStatusRead,
             vitalDBObservation: viewModel.vitalDBObservationSnapshot.observation,
             now: uptimeNow
         )
     }
 
     private var recorderIngressQueueStatus: RuntimeStatusDisplayPolicy.StatusValue {
-        displayPolicy.recorderIngressQueue(observation: viewModel.containerObservation)
+        displayPolicy.recorderIngressQueue(
+            recorderIngressStatusRead: viewModel.vitalRecorders.recorderIngressStatusRead
+        )
     }
 
     private var recorderIngressDetailItems: [RuntimeStatusDisplayPolicy.HealthItem] {
-        displayPolicy.recorderIngressDetails(observation: viewModel.containerObservation)
+        displayPolicy.recorderIngressDetails(
+            recorderIngressStatusRead: viewModel.vitalRecorders.recorderIngressStatusRead
+        )
     }
 
     private var vitalServerAvailability: RuntimeStatusDisplayPolicy.StatusValue {
-        displayPolicy.vitalServerAvailability(status: viewModel.status, observation: viewModel.containerObservation, now: uptimeNow)
+        displayPolicy.vitalServerAvailability(status: viewModel.status, now: uptimeNow)
     }
 
     private var remoteConsoleAvailability: RuntimeStatusDisplayPolicy.StatusValue {

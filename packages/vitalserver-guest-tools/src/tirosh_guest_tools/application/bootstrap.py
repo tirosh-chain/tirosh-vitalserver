@@ -37,7 +37,6 @@ class GuestBootstrapStep(StrEnum):
     WAIT_EDGE_READY = "wait-edge-ready"
     RESTART_RUNTIME_STATE = "restart-runtime-state"
     WRITE_COMPLETED_RESULT = "write-completed-result"
-    START_OPTIONAL_TESTKIT = "start-optional-testkit"
     RUN_RUNTIME_BOOT_SMOKE = "run-runtime-boot-smoke"
 
 
@@ -130,7 +129,6 @@ class GuestBootstrapOperations:
     write_runtime_state_once: Callable[[], None]
     write_edge_diagnostics: Callable[[], None]
     restart_runtime_state: Callable[[], None]
-    start_optional_testkit: Callable[[], None]
     runtime_boot_smoke_enabled: Callable[[Path], bool]
     run_runtime_boot_smoke: Callable[[], None]
 
@@ -239,10 +237,6 @@ class GuestBootstrapWorkflow:
                 self.operations.restart_runtime_state,
             ),
             (GuestBootstrapStep.WRITE_COMPLETED_RESULT, self.write_completed_result),
-            (
-                GuestBootstrapStep.START_OPTIONAL_TESTKIT,
-                self.operations.start_optional_testkit,
-            ),
             (
                 GuestBootstrapStep.RUN_RUNTIME_BOOT_SMOKE,
                 self.run_runtime_boot_smoke_if_requested,

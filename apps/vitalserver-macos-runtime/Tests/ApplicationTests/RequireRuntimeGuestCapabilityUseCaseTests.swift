@@ -6,62 +6,52 @@ final class RequireRuntimeGuestCapabilityUseCaseTests: XCTestCase {
     func testRequirePassesWhenCapabilityIsSupported() throws {
         try RequireRuntimeGuestCapabilityUseCase().require(
             .prepareUpdateShutdown,
-            operations: operations(result: .loaded(supportedState()))
-        )
-        try RequireRuntimeGuestCapabilityUseCase().require(
-            .reconcileCompose,
-            operations: operations(result: .loaded(supportedState()))
+            operations: operations(result: .loaded(supportedCapabilities()))
         )
     }
 
-    func testRequireFailsWhenCapabilityIsMissingFromState() {
+    func testRequireFailsWhenCapabilityIsMissingFromGuestControlCapabilities() {
         XCTAssertThrowsError(try RequireRuntimeGuestCapabilityUseCase().require(
             .prepareUpdateShutdown,
-            operations: operations(result: .loaded(GuestRuntimeStateDocument(
-                vmIP: "192.168.64.2",
-                guestHTTP: nil,
-                redisUIHTTP: nil,
-                swaggerUIHTTP: nil
+            operations: operations(result: .loaded(RuntimeGuestControlCapabilities(
+                schemaVersion: 1,
+                capabilities: ["services:list"]
             )))
         )) { error in
             XCTAssertEqual(String(describing: error), "guest capability missing: prepare-update-shutdown")
         }
     }
 
-    func testRequireFailsWhenRuntimeStateCannotBeLoaded() {
+    func testRequireFailsWhenGuestControlCapabilitiesCannotBeLoaded() {
         XCTAssertThrowsError(try RequireRuntimeGuestCapabilityUseCase().require(
             .activateUpdate,
             operations: operations(result: .failed("permission denied"))
         )) { error in
             XCTAssertEqual(
                 String(describing: error),
-                "failed to read guest runtime state for guest capability activate-update: permission denied"
+                "failed to read guest capabilities for activate-update: permission denied"
             )
         }
     }
 
     private func operations(
-        result: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>
+        result: RuntimeGuestCapabilityReadResult
     ) -> RuntimeGuestCapabilityRequirementOperations {
         RuntimeGuestCapabilityRequirementOperations(
-            loadRuntimeState: { result }
+            loadCapabilities: { result }
         )
     }
 }
 
-private func supportedState() -> GuestRuntimeStateDocument {
-    GuestRuntimeStateDocument(
-        capabilities: GuestRuntimeCapabilities(
-            prepareUpdateShutdown: true,
-            activateUpdate: true,
-            redisBackup: true,
-            redisRestore: true,
-            repairDatastore: true,
-            reconcileCompose: true
-        ),
-        vmIP: "192.168.64.2",
-        guestHTTP: nil,
-        redisUIHTTP: nil,
-        swaggerUIHTTP: nil
+private func supportedCapabilities() -> RuntimeGuestControlCapabilities {
+    RuntimeGuestControlCapabilities(
+        schemaVersion: 1,
+        capabilities: [
+            "maintenance:update-shutdown:create",
+            "maintenance:update-activation:create",
+            "maintenance:redis-backup:create",
+            "maintenance:redis-restore:create",
+            "maintenance:datastore-repair:create",
+        ]
     )
 }

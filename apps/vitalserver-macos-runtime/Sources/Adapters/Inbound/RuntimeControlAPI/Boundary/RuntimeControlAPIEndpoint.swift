@@ -16,16 +16,37 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case vitalDBBeds
     case vitalDBBed
     case vitalDBRelationships
+    case hideVitalDBRecorders
+    case unhideVitalDBRecorders
+    case deleteVitalDBRecorders
+    case hideVitalDBBeds
+    case unhideVitalDBBeds
+    case deleteVitalDBBeds
     case health
     case settings
     case applySettings
     case release
     case installInfo
-    case startServices
-    case stopServices
-    case startTestKitService
-    case stopTestKitService
-    case restartTestKitService
+    case labScenarios
+    case labBeds
+    case createLabBeds
+    case deleteLabBeds
+    case resetLabBeds
+    case labRecorders
+    case createLabRecorders
+    case deleteLabRecorders
+    case resetLabRecorders
+    case createLabSession
+    case labSession
+    case startLabSession
+    case stopLabSession
+    case replayLabVitalFile
+    case guestStackStatus
+    case guestServices
+    case guestServiceStatus
+    case startGuestService
+    case stopGuestService
+    case restartGuestService
     case repairRuntimeServices
     case repairProxy
     case repairDatastore

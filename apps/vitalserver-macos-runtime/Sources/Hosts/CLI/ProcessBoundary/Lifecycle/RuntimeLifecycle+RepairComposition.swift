@@ -32,38 +32,6 @@ extension RuntimeLifecycle {
         )
     }
 
-    func runtimeRedisBackupComposition() -> RuntimeRedisBackupComposition {
-        RuntimeRedisBackupComposition(
-            context: RuntimeRedisBackupCompositionContext(
-                guestRunDirectory: guestRunDirectory,
-                redisBackupsDirectory: installedPaths.redisBackupsDirectory
-            ),
-            operations: RuntimeRedisBackupCompositionOperations(
-                fileStore: fileStore,
-                requireCapability: {
-                    try requireGuestCapability(.redisBackup)
-                },
-                writeRuntimeStatus: { status, operation, message in
-                    try writeRuntimeStatus(status, operation: operation, message: message)
-                },
-                requestID: {
-                    UUID().uuidString
-                },
-                timestamp: isoTimestamp,
-                isVMServiceLoaded: {
-                    isLaunchdLoaded(.vm)
-                },
-                startVMService: {
-                    try startVMServiceForGuestOperation()
-                },
-                sleep: { seconds in
-                    sleeper.sleep(forTimeInterval: seconds)
-                },
-                log: log
-            )
-        )
-    }
-
     func runtimeRollbackComposition() -> RuntimeRollbackComposition {
         RuntimeRollbackComposition.make(
             context: RuntimeRollbackCompositionContext(
@@ -95,17 +63,18 @@ extension RuntimeLifecycle {
                 guestRunDirectory: guestRunDirectory
             ),
             operations: RuntimeGuestActivationCompositionOperations(
-                fileStore: fileStore,
-                guestGateway: guestGateway,
                 requireCapability: {
                     try requireGuestCapability(.activateUpdate)
                 },
+                activateUpdate: { requestID, version in
+                    try activateUpdateThroughGuestControl(
+                        requestID: requestID,
+                        version: version
+                    )
+                },
                 isVMServiceLoaded: vmServiceLoadedAction(),
                 startVMService: startVMServiceAction(),
-                writeStatus: runtimeStatusWriterAction(),
                 requestID: requestIDAction(),
-                timestamp: isoTimestamp,
-                sleep: workflowPollingSleepAction(),
                 log: log
             )
         ).activateIfNeeded(manifest: manifest)
@@ -117,14 +86,23 @@ extension RuntimeLifecycle {
                 guestRunDirectory: guestRunDirectory
             ),
             operations: RuntimeGuestShutdownCompositionOperations(
-                fileStore: fileStore,
-                guestGateway: guestGateway,
                 requireCapability: {
                     try requireGuestCapability(.prepareUpdateShutdown)
                 },
+                prepareUpdateShutdown: { requestID, version in
+                    try prepareUpdateShutdownThroughGuestControl(
+                        requestID: requestID,
+                        version: version
+                    )
+                },
+                loadOperation: { operationID in
+                    try guestControlOperationThroughGuestControl(operationID)
+                },
+                requestGuestPoweroff: {
+                    try requestGuestPoweroffThroughGuestControl()
+                },
                 writeStatus: runtimeStatusWriterAction(),
                 requestID: requestIDAction(),
-                timestamp: isoTimestamp,
                 sleep: workflowPollingSleepAction(),
                 log: log
             )
@@ -134,7 +112,7 @@ extension RuntimeLifecycle {
     func requireGuestCapability(_ capability: RuntimeGuestCapabilityRequirement) throws {
         try RuntimeGuestCapabilityCheckerComposition.require(
             capability,
-            guestGateway: guestGateway
+            guestControlGateway: try guestControlGateway()
         )
     }
 }

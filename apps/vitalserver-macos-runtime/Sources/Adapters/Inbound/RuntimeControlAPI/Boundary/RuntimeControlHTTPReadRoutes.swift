@@ -75,6 +75,24 @@ struct RuntimeControlHTTPReadRoutes {
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadReleaseInfo())
         case .installInfo:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadInstallInfo())
+        case .labScenarios:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadLabScenarios())
+        case .labBeds:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadLabBeds())
+        case .labRecorders:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadLabRecorders())
+        case .labSession:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.loadLabSession(sessionId: try request.runtimeLabSessionID())
+            )
+        case .guestStackStatus:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.guestStackStatus())
+        case .guestServices:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.listGuestServices())
+        case .guestServiceStatus:
+            return try await RuntimeControlHTTPResponseFactory.json(
+                handler.guestServiceStatus(try request.runtimeGuestServiceName())
+            )
         case .logText:
             let logRequest = try request.decodedBody(RuntimeLogTextRequest.self)
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadLogText(request: logRequest))
@@ -92,11 +110,25 @@ struct RuntimeControlHTTPReadRoutes {
         case .runtimeDataBackups:
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadRuntimeDataBackups())
         case .applySettings,
-             .startServices,
-             .stopServices,
-             .startTestKitService,
-             .stopTestKitService,
-             .restartTestKitService,
+             .createLabBeds,
+             .deleteLabBeds,
+             .resetLabBeds,
+             .createLabRecorders,
+             .deleteLabRecorders,
+             .resetLabRecorders,
+             .hideVitalDBRecorders,
+             .unhideVitalDBRecorders,
+             .deleteVitalDBRecorders,
+             .hideVitalDBBeds,
+             .unhideVitalDBBeds,
+             .deleteVitalDBBeds,
+             .createLabSession,
+             .startLabSession,
+             .stopLabSession,
+             .replayLabVitalFile,
+             .startGuestService,
+             .stopGuestService,
+             .restartGuestService,
              .repairRuntimeServices,
              .repairProxy,
              .repairDatastore,

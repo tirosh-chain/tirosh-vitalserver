@@ -1050,35 +1050,12 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         let plan = useCase.plan(manifest: manifest(artifacts: [
             UpdateBundleArtifact(name: "app.tar.gz", type: .appBundle, sha256: "abc", size: 10),
         ]))
-        let request = useCase.request(
-            plan: plan,
-            requestID: "request-1",
-            requestedAt: "2026-06-06T00:00:00Z"
-        )
 
         XCTAssertFalse(plan.requiresActivation)
         XCTAssertEqual(plan.version, "test")
         XCTAssertEqual(plan.skippedLogMessage, "guest update activation not required")
         XCTAssertNil(plan.requestedLogMessage)
         XCTAssertNil(plan.completedLogMessage)
-        XCTAssertNil(request)
-    }
-
-    func testGuestActivationRequestUsesExplicitRequestStateAndPlannedVersion() {
-        let useCase = RuntimeGuestActivationUseCase()
-        let plan = useCase.plan(manifest: manifest(artifacts: [
-            UpdateBundleArtifact(name: "guest-deploy.tar.gz", type: .guestDeploy, sha256: "abc", size: 10),
-        ]))
-
-        let request = useCase.request(
-            plan: plan,
-            requestID: "request-1",
-            requestedAt: "2026-06-06T00:00:00Z"
-        )
-
-        XCTAssertEqual(request?.id, "request-1")
-        XCTAssertEqual(request?.requestedAt, "2026-06-06T00:00:00Z")
-        XCTAssertEqual(request?.version, "test")
     }
 
     func testGuestActivationExecutionPlanKeepsActivationJudgementOutOfWorkflow() {
@@ -1102,100 +1079,18 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         )
     }
 
-    func testGuestActivationRequestAndVMStartPlansUseExplicitInputs() {
+    func testGuestActivationVMStartPlanUsesExplicitInputs() {
         let useCase = RuntimeGuestActivationUseCase()
 
-        let request = useCase.request(
-            version: "1.2.3",
-            requestID: "request-1",
-            requestedAt: "2026-06-06T00:00:00Z"
-        )
-
-        XCTAssertEqual(request.id, "request-1")
-        XCTAssertEqual(request.requestedAt, "2026-06-06T00:00:00Z")
-        XCTAssertEqual(request.version, "1.2.3")
         XCTAssertEqual(useCase.vmStartPlan(isVMServiceLoaded: true), .alreadyLoaded)
         XCTAssertEqual(useCase.vmStartPlan(isVMServiceLoaded: false), .startService)
     }
 
-    func testGuestActivationWaitResultPlanPreservesFailureAndTimeoutWithoutWorkflowJudgement() throws {
-        let useCase = RuntimeGuestActivationUseCase()
-
-        XCTAssertEqual(
-            useCase.waitStartedLogMessage(timeoutSeconds: 900),
-            "waiting for guest update activation result timeoutSeconds=900.0"
-        )
-        XCTAssertEqual(
-            try useCase.waitConfiguration(timeoutSeconds: 180),
-            GuestActivationWaitConfiguration(maxAttempts: 60, progressEveryAttempts: 5)
-        )
-        XCTAssertEqual(
-            try useCase.waitConfiguration(timeoutSeconds: 1),
-            GuestActivationWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 5)
-        )
-        XCTAssertThrowsError(try useCase.waitConfiguration(timeoutSeconds: 0)) { error in
-            XCTAssertEqual(
-                error as? RuntimeGuestUpdateUseCaseError,
-                .operationFailed("invalid guest activation wait configuration: timeoutSeconds must be positive")
-            )
-        }
-        XCTAssertEqual(
-            useCase.requiredRequestMissingFailureMessage(),
-            "guest activation request missing for required activation"
-        )
-        XCTAssertEqual(
-            useCase.waitResultPlan(.completed(message: "done")),
-            RuntimeGuestWaitResultPlan(
-                logMessage: "guest update activation result completed message=done",
-                failureMessage: nil
-            )
-        )
-        XCTAssertEqual(
-            useCase.waitResultExecutionPlan(.completed(message: "done")),
-            .completed(logMessage: "guest update activation result completed message=done")
-        )
-        XCTAssertEqual(
-            useCase.waitResultPlan(.failed(message: "compose failed")),
-            RuntimeGuestWaitResultPlan(
-                logMessage: "guest update activation result failed message=compose failed",
-                failureMessage: "runtime health check failed"
-            )
-        )
-        XCTAssertEqual(
-            useCase.waitResultExecutionPlan(.failed(message: "compose failed")),
-            .failed(
-                logMessage: "guest update activation result failed message=compose failed",
-                failureMessage: "runtime health check failed"
-            )
-        )
-        XCTAssertEqual(
-            useCase.waitResultPlan(.timedOut),
-            RuntimeGuestWaitResultPlan(
-                logMessage: nil,
-                failureMessage: "runtime health check failed"
-            )
-        )
-        XCTAssertEqual(
-            useCase.waitResultExecutionPlan(.timedOut),
-            .failedWithoutLog(failureMessage: "runtime health check failed")
-        )
-    }
-
-    func testGuestShutdownPlanAndRequestUseExplicitVersionRequestState() {
+    func testGuestShutdownPlanUsesExplicitVersionState() {
         let useCase = RuntimeGuestShutdownUseCase()
 
         let plan = useCase.plan(version: "1.2.3")
         let executionPlan = useCase.executionPlan(version: "1.2.3")
-        let request = useCase.request(
-            plan: plan,
-            requestID: "request-1",
-            requestedAt: "2026-06-06T00:00:00Z"
-        )
-        let versionRequest = useCase.request(
-            version: "1.2.3",
-            requestID: "request-2",
-            requestedAt: "2026-06-06T00:00:01Z"
-        )
 
         XCTAssertEqual(plan.version, "1.2.3")
         XCTAssertEqual(plan.requestedLogMessage, "guest update shutdown requested version=1.2.3")
@@ -1208,15 +1103,9 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
                 readyLog: "guest update shutdown ready version=1.2.3"
             )
         )
-        XCTAssertEqual(request.id, "request-1")
-        XCTAssertEqual(request.requestedAt, "2026-06-06T00:00:00Z")
-        XCTAssertEqual(request.version, "1.2.3")
-        XCTAssertEqual(versionRequest.id, "request-2")
-        XCTAssertEqual(versionRequest.requestedAt, "2026-06-06T00:00:01Z")
-        XCTAssertEqual(versionRequest.version, "1.2.3")
     }
 
-    func testGuestShutdownWaitResultPlanPreservesGuestFailureAndTimeoutSeparately() throws {
+    func testGuestShutdownOperationWaitConfigurationUsesExplicitTimeout() throws {
         let useCase = RuntimeGuestShutdownUseCase()
 
         XCTAssertEqual(
@@ -1224,97 +1113,53 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
             "waiting for guest update shutdown result timeoutSeconds=900.0"
         )
         XCTAssertEqual(
-            try useCase.waitConfiguration(timeoutSeconds: 900),
-            GuestShutdownWaitConfiguration(maxAttempts: 300, progressEveryAttempts: 5)
+            try useCase.operationWaitConfiguration(timeoutSeconds: 900),
+            RuntimeGuestOperationWaitConfiguration(maxAttempts: 300, progressEveryAttempts: 5)
         )
         XCTAssertEqual(
-            try useCase.waitConfiguration(timeoutSeconds: 1),
-            GuestShutdownWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 5)
+            try useCase.operationWaitConfiguration(timeoutSeconds: 1),
+            RuntimeGuestOperationWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 5)
         )
-        XCTAssertThrowsError(try useCase.waitConfiguration(timeoutSeconds: 0)) { error in
+        XCTAssertThrowsError(try useCase.operationWaitConfiguration(timeoutSeconds: 0)) { error in
             XCTAssertEqual(
                 error as? RuntimeGuestUpdateUseCaseError,
-                .operationFailed("invalid guest shutdown wait configuration: timeoutSeconds must be positive")
+                .operationFailed("invalid guest operation wait configuration: timeoutSeconds must be positive")
             )
         }
-        XCTAssertEqual(
-            useCase.waitResultPlan(.ready(message: "poweroff requested")),
-            RuntimeGuestWaitResultPlan(
-                logMessage: "guest update shutdown result ready message=poweroff requested",
-                failureMessage: nil
-            )
-        )
-        XCTAssertEqual(
-            useCase.waitResultExecutionPlan(.ready(message: "poweroff requested")),
-            .completed(logMessage: "guest update shutdown result ready message=poweroff requested")
-        )
-        XCTAssertEqual(
-            useCase.waitResultPlan(.failed(message: "backup failed")),
-            RuntimeGuestWaitResultPlan(
-                logMessage: "guest update shutdown result failed message=backup failed",
-                failureMessage: "backup failed"
-            )
-        )
-        XCTAssertEqual(
-            useCase.waitResultExecutionPlan(.failed(message: "backup failed")),
-            .failed(
-                logMessage: "guest update shutdown result failed message=backup failed",
-                failureMessage: "backup failed"
-            )
-        )
-        XCTAssertEqual(
-            useCase.waitResultPlan(.timedOut),
-            RuntimeGuestWaitResultPlan(
-                logMessage: nil,
-                failureMessage: "guest update shutdown timed out"
-            )
-        )
-        XCTAssertEqual(
-            useCase.waitResultExecutionPlan(.timedOut),
-            .failedWithoutLog(failureMessage: "guest update shutdown timed out")
-        )
     }
 
     func testGuestCapabilityDecisionPreservesLoadedMissingAndFailedStateSeparately() {
         let useCase = RequireRuntimeGuestCapabilityUseCase()
-        let supportedState = GuestRuntimeStateDocument(
-            capabilities: GuestRuntimeCapabilities(
-                prepareUpdateShutdown: true,
-                activateUpdate: false,
-                redisBackup: false,
-                redisRestore: false,
-                repairDatastore: false
-            ),
-            vmIP: "192.168.64.2",
-            guestHTTP: nil,
-            redisUIHTTP: nil,
-            swaggerUIHTTP: nil
+        let supportedCapabilities = RuntimeGuestControlCapabilities(
+            schemaVersion: 1,
+            capabilities: [
+                "maintenance:update-shutdown:create",
+            ]
         )
-        let unsupportedState = GuestRuntimeStateDocument(
-            capabilities: nil,
-            vmIP: "192.168.64.2",
-            guestHTTP: nil,
-            redisUIHTTP: nil,
-            swaggerUIHTTP: nil
+        let unsupportedCapabilities = RuntimeGuestControlCapabilities(
+            schemaVersion: 1,
+            capabilities: [
+                "services:list",
+            ]
         )
 
         XCTAssertEqual(
             useCase.guestCapabilityDecision(
-                loadResult: .loaded(supportedState),
+                readResult: .loaded(supportedCapabilities),
                 capability: .prepareUpdateShutdown
             ),
             RuntimeGuestCapabilityDecision(isSupported: true, failure: nil)
         )
         XCTAssertEqual(
             useCase.guestCapabilityRequirementPlan(
-                loadResult: .loaded(supportedState),
+                readResult: .loaded(supportedCapabilities),
                 capability: .prepareUpdateShutdown
             ),
             .supported
         )
         XCTAssertEqual(
             useCase.guestCapabilityDecision(
-                loadResult: .loaded(unsupportedState),
+                readResult: .loaded(unsupportedCapabilities),
                 capability: .prepareUpdateShutdown
             ),
             RuntimeGuestCapabilityDecision(
@@ -1324,29 +1169,19 @@ final class UpdateRuntimeUseCaseTests: XCTestCase {
         )
         XCTAssertEqual(
             useCase.guestCapabilityRequirementPlan(
-                loadResult: .loaded(unsupportedState),
+                readResult: .loaded(unsupportedCapabilities),
                 capability: .prepareUpdateShutdown
             ),
             .failed(.missingCapability("prepare-update-shutdown"))
         )
         XCTAssertEqual(
             useCase.guestCapabilityDecision(
-                loadResult: .missing,
+                readResult: .failed("permission denied"),
                 capability: .activateUpdate
             ),
             RuntimeGuestCapabilityDecision(
                 isSupported: false,
-                failure: .missingRuntimeState("activate-update")
-            )
-        )
-        XCTAssertEqual(
-            useCase.guestCapabilityDecision(
-                loadResult: .failed("permission denied"),
-                capability: .activateUpdate
-            ),
-            RuntimeGuestCapabilityDecision(
-                isSupported: false,
-                failure: .runtimeStateReadFailed(
+                failure: .capabilitiesReadFailed(
                     capability: "activate-update",
                     reason: "permission denied"
                 )

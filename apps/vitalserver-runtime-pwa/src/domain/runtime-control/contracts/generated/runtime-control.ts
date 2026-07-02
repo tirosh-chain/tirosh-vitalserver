@@ -98,6 +98,286 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lab/scenarios": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runtime Lab scenarios
+         * @description Reads product-facing Lab scenarios. Scenario names are product scenarios and do not expose fixture or source file origins.
+         */
+        get: operations["listRuntimeLabScenarios"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/beds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runtime Lab beds
+         * @description Reads the Product Lab bed read model through the Runtime Control boundary.
+         */
+        get: operations["listRuntimeLabBeds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/recorders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runtime Lab recorders
+         * @description Reads the Product Lab recorder read model, including explicit execution send state, through the Runtime Control boundary.
+         */
+        get: operations["listRuntimeLabRecorders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a Runtime Lab session
+         * @description Creates a product Lab session through the Runtime Control boundary.
+         */
+        post: operations["createRuntimeLabSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a Runtime Lab session
+         * @description Reads one product Lab session through the Runtime Control boundary.
+         */
+        get: operations["getRuntimeLabSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/sessions/{sessionId}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a Runtime Lab session
+         * @description Starts one product Lab session through the Runtime Control boundary.
+         */
+        post: operations["startRuntimeLabSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/sessions/{sessionId}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a Runtime Lab session
+         * @description Stops one product Lab session through the Runtime Control boundary.
+         */
+        post: operations["stopRuntimeLabSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/vital-files/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay a vital file through Runtime Lab
+         * @description Starts a Lab replay from a vital file path inside the configured mounted vital files directory.
+         */
+        post: operations["replayRuntimeLabVitalFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/guest/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Guest product services
+         * @description Reads the product service list from the Runtime v2 Guest Control API through the Host Runtime Control boundary.
+         */
+        get: operations["listRuntimeGuestServices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/guest/stack/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Guest product service stack status
+         * @description Reads the product service stack status from the Runtime v2 Guest Control API through the Host Runtime Control boundary.
+         */
+        get: operations["getRuntimeGuestStackStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/guest/services/{service}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Guest product service status
+         * @description Reads one product service status from the Runtime v2 Guest Control API through the Host Runtime Control boundary.
+         */
+        get: operations["getRuntimeGuestServiceStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/guest/services/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a Guest product service
+         * @description Requests a product service start through the Runtime v2 Guest Control API and returns the persisted operation document.
+         */
+        post: operations["startRuntimeGuestService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/guest/services/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a Guest product service
+         * @description Requests a product service stop through the Runtime v2 Guest Control API and returns the persisted operation document.
+         */
+        post: operations["stopRuntimeGuestService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/runtime/guest/services/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart a Guest product service
+         * @description Requests a product service restart through the Runtime v2 Guest Control API and returns the persisted operation document.
+         */
+        post: operations["restartRuntimeGuestService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/events": {
         parameters: {
             query?: never;
@@ -198,100 +478,6 @@ export interface paths {
         get: operations["getRuntimeInstallInfo"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/runtime/services/start": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Start runtime services */
-        post: operations["startRuntimeServices"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/runtime/services/stop": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Stop runtime services */
-        post: operations["stopRuntimeServices"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/runtime/services/testkit/start": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start optional TestKit container
-         * @description Starts only the optional TestKit container through the guest compose reconciler.
-         */
-        post: operations["startTestKitService"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/runtime/services/testkit/stop": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Stop optional TestKit container
-         * @description Stops only the optional TestKit container through the guest compose reconciler.
-         */
-        post: operations["stopTestKitService"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/runtime/services/testkit/restart": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Restart optional TestKit container
-         * @description Restarts only the optional TestKit container through the guest compose reconciler.
-         */
-        post: operations["restartTestKitService"];
         delete?: never;
         options?: never;
         head?: never;
@@ -724,6 +910,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vitaldb/recorders/hide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hide Vital Recorders by vrcode
+         * @description Marks VRecorders hidden in the Guest/Postgres product read model. Hidden recorders are omitted from default UI lists but remain available when explicitly requested by the UI.
+         */
+        post: operations["hideVitalDBRecorders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vitaldb/recorders/unhide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unhide Vital Recorders by vrcode
+         * @description Restores hidden VRecorders to the visible Guest/Postgres product read model.
+         */
+        post: operations["unhideVitalDBRecorders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vitaldb/recorders/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete hidden Vital Recorders by vrcode
+         * @description Tombstones hidden VRecorders in the Guest/Postgres product read model. The command must fail when a requested VRecorder is not already hidden.
+         */
+        post: operations["deleteVitalDBRecorders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/vitaldb/recorders/{vrcode}": {
         parameters: {
             query?: never;
@@ -750,7 +996,7 @@ export interface paths {
         };
         /**
          * Read one Vital Recorder activity chart window
-         * @description Lazy chart window for one VRecorder. The server reads only the selected activity window from the runtime observability SQLite projection.
+         * @description Lazy chart window for one VRecorder. Runtime v2 reads the selected activity window from Guest/Postgres recorder activity read models; Host SQLite is transitional diagnostics only.
          */
         get: operations["getVitalDBRecorderActivity"];
         put?: never;
@@ -781,6 +1027,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vitaldb/beds/hide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hide VitalDB beds by bedID
+         * @description Marks beds hidden in the Guest/Postgres product read model. Hidden beds are omitted from default UI lists but remain available when explicitly requested by the UI.
+         */
+        post: operations["hideVitalDBBeds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vitaldb/beds/unhide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unhide VitalDB beds by bedID
+         * @description Restores hidden beds to the visible Guest/Postgres product read model.
+         */
+        post: operations["unhideVitalDBBeds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vitaldb/beds/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete hidden VitalDB beds by bedID
+         * @description Tombstones hidden beds in the Guest/Postgres product read model. The command must fail when a requested bed is not already hidden.
+         */
+        post: operations["deleteVitalDBBeds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/vitaldb/beds/{bedID}": {
         parameters: {
             query?: never;
@@ -792,225 +1098,6 @@ export interface paths {
         get: operations["getVitalDBBed"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/testkit/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Read TestKit virtual VRecorder status
-         * @description Development-only TestKit status used by the native Test tab and PWA console.
-         */
-        get: operations["getDevTestKitStatus"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/testkit/beds/create": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create TestKit beds
-         * @description Development-only route for registering explicit TestKit bed identities before virtual VRecorders are started.
-         */
-        post: operations["createDevTestKitBeds"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/testkit/beds/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Delete selected TestKit beds
-         * @description Development-only route for deleting selected TestKit bed identities and their matching VitalServer bed records.
-         */
-        post: operations["deleteDevTestKitBeds"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/testkit/beds/reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reset TestKit beds
-         * @description Development-only route for clearing registered TestKit bed identities.
-         */
-        post: operations["resetDevTestKitBeds"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/testkit/virtual-recorders/start": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Start TestKit virtual VRecorders */
-        post: operations["startDevTestKitVirtualRecorders"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/testkit/virtual-recorders/stop": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Stop a TestKit virtual VRecorder session */
-        post: operations["stopDevTestKitVirtualRecorders"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/testkit/virtual-recorders/pause": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Pause TestKit virtual VRecorder data transmission */
-        post: operations["pauseDevTestKitVirtualRecorders"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/testkit/virtual-recorders/resume": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Resume TestKit virtual VRecorder data transmission */
-        post: operations["resumeDevTestKitVirtualRecorders"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/testkit/virtual-recorders/restart": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Restart a stopped TestKit virtual VRecorder session on selected beds */
-        post: operations["restartDevTestKitVirtualRecorders"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/testkit/virtual-recorders/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Delete a TestKit virtual VRecorder session and cleanup VitalServer recorder registrations */
-        post: operations["deleteDevTestKitVirtualRecorders"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/testkit/virtual-recorders/delete-orphan": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Delete one orphan VRecorder registration by vrcode
-         * @description Test-only cleanup route for VRecorders that remain in VitalServer without a managed TestKit session.
-         */
-        post: operations["deleteDevTestKitOrphanVRecorder"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dev/testkit/virtual-recorders/reset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Reset all TestKit virtual VRecorder sessions */
-        post: operations["resetDevTestKitVirtualRecorders"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1031,6 +1118,126 @@ export interface paths {
         get: operations["getVitalDBRelationships"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/beds/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Runtime Lab beds
+         * @description Creates explicit Product Lab beds through the Guest-owned Lab service.
+         */
+        post: operations["createRuntimeLabBeds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/beds/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Runtime Lab beds
+         * @description Deletes explicit Product Lab beds and attached Lab recorders through the Guest-owned Lab service.
+         */
+        post: operations["deleteRuntimeLabBeds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/beds/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Runtime Lab beds
+         * @description Removes all Product Lab beds and attached Lab recorders through the Guest-owned Lab service.
+         */
+        post: operations["resetRuntimeLabBeds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/recorders/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Runtime Lab recorders
+         * @description Creates explicit Product Lab recorders for existing Lab beds.
+         */
+        post: operations["createRuntimeLabRecorders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/recorders/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Runtime Lab recorders
+         * @description Deletes explicit Product Lab recorders by recorder ID, vrcode, or session.
+         */
+        post: operations["deleteRuntimeLabRecorders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/recorders/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Runtime Lab recorders
+         * @description Removes all Product Lab recorders while preserving Lab beds.
+         */
+        post: operations["resetRuntimeLabRecorders"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1086,6 +1293,7 @@ export interface components {
             beds: components["schemas"]["RuntimeVitalBedRecord"][];
             summary: components["schemas"]["RuntimeVitalRecorderHistorySummary"];
             activityHistory: components["schemas"]["RuntimeVitalRecorderActivityHistory"];
+            recorderIngressStatusRead?: components["schemas"]["RuntimeRecorderIngressStatusReadResult"] | null;
             /** @description Recorder history read issue. Present when observation/current/activity projection reads failed and the recorders/beds lists may be incomplete. */
             readError?: string | null;
         };
@@ -1110,8 +1318,14 @@ export interface components {
             latestBucketStartedAt?: string | null;
             readError?: string | null;
         };
+        RuntimeVitalDBRecorderVisibilityRequest: {
+            vrcodes: string[];
+        };
+        RuntimeVitalDBBedVisibilityRequest: {
+            bedIDs: string[];
+        };
         /** @enum {string} */
-        RuntimeVitalRecorderActivityHistorySource: "sqliteProjection" | "unavailable" | "notProvided";
+        RuntimeVitalRecorderActivityHistorySource: "readModelProjection" | "unavailable" | "notProvided";
         /** @enum {string} */
         RuntimeVitalRecorderActivityWindowState: "loaded" | "empty" | "invalidRequest" | "readFailed";
         /**
@@ -1146,6 +1360,7 @@ export interface components {
         RuntimeVitalRecorderRecord: {
             vrcode: string;
             status: components["schemas"]["RuntimeVitalRecorderStatus"];
+            visibility: components["schemas"]["RuntimeVitalRecordVisibility"];
             lastIP?: string | null;
             version?: string | null;
             bedID?: string | null;
@@ -1209,11 +1424,14 @@ export interface components {
         };
         /** @enum {string} */
         RuntimeVitalRecorderStatus: "online" | "stale" | "offline" | "notObserved" | "unknown";
+        /** @enum {string} */
+        RuntimeVitalRecordVisibility: "visible" | "hidden";
         /** @description Aggregated history of one VitalDB bed keyed by bedID. */
         RuntimeVitalBedRecord: {
             bedID: string;
             name?: string | null;
             vrcode?: string | null;
+            visibility: components["schemas"]["RuntimeVitalRecordVisibility"];
             /** @description Explicit status of the VRecorder linked to this bed, or null when no linked recorder record is available. */
             linkedRecorderStatus?: components["schemas"]["RuntimeVitalRecorderStatus"] | null;
             /** @description IP address reported by the VRecorder linked to this bed, or null when no linked recorder record is available. */
@@ -1284,20 +1502,137 @@ export interface components {
         /** @enum {string} */
         VitalDBAnomalySeverity: "info" | "warning" | "critical";
         RuntimeControlCapabilities: {
-            canInstallRuntime?: boolean;
-            canUninstallRuntime?: boolean;
-            canApplyBundle?: boolean;
-            canRollback?: boolean;
-            canEditVMResources?: boolean;
-            canEditNetworkExposure?: boolean;
-            canResetAdminPassword?: boolean;
-            canOpenLocalFiles?: boolean;
-            canStreamLogs?: boolean;
-            canControlRuntimeServices?: boolean;
-            canExportLogs?: boolean;
-            canViewReleaseMetadata?: boolean;
-            canUseTestTools?: boolean;
+            canInstallRuntime: boolean;
+            canUninstallRuntime: boolean;
+            canApplyBundle: boolean;
+            canRollback: boolean;
+            canEditVMResources: boolean;
+            canEditNetworkExposure: boolean;
+            canResetAdminPassword: boolean;
+            canOpenLocalFiles: boolean;
+            canStreamLogs: boolean;
+            canControlRuntimeServices: boolean;
+            canControlGuestServices: boolean;
+            canExportLogs: boolean;
+            canViewReleaseMetadata: boolean;
+            canUseLab: boolean;
         };
+        RuntimeGuestControlServiceList: {
+            services: string[];
+        };
+        RuntimeGuestControlStackStatus: {
+            state: string;
+            observedAt: string;
+            services: components["schemas"]["RuntimeGuestControlServiceStatus"][];
+        };
+        /** @enum {string} */
+        RuntimeLabReadState: "loaded" | "unavailable" | "failed";
+        /** @enum {string} */
+        RuntimeLabSessionState: "accepted" | "running" | "stopping" | "stopped" | "failed" | "unavailable";
+        RuntimeLabScenario: {
+            scenarioId: string;
+            name: string;
+            category: string;
+            description?: string | null;
+        };
+        RuntimeLabScenarioList: {
+            state: components["schemas"]["RuntimeLabReadState"];
+            scenarios: components["schemas"]["RuntimeLabScenario"][];
+            readError?: string | null;
+        };
+        RuntimeLabBed: {
+            bedId: string;
+            sessionId: string;
+            name: string;
+            state: components["schemas"]["RuntimeLabSessionState"];
+            createdAt?: string | null;
+            updatedAt?: string | null;
+        };
+        RuntimeLabBedList: {
+            state: components["schemas"]["RuntimeLabReadState"];
+            beds: components["schemas"]["RuntimeLabBed"][];
+            readError?: string | null;
+        };
+        /** @enum {string} */
+        RuntimeLabRecorderSendState: "notAttempted" | "skipped" | "sent" | "failed";
+        RuntimeLabRecorder: {
+            recorderId: string;
+            sessionId: string;
+            bedId: string;
+            vrcode: string;
+            state: components["schemas"]["RuntimeLabSessionState"];
+            createdAt?: string | null;
+            updatedAt?: string | null;
+            messagesSent: number;
+            lastSendState: components["schemas"]["RuntimeLabRecorderSendState"];
+            lastSendAt?: string | null;
+            lastSendError?: string | null;
+        };
+        RuntimeLabRecorderList: {
+            state: components["schemas"]["RuntimeLabReadState"];
+            recorders: components["schemas"]["RuntimeLabRecorder"][];
+            readError?: string | null;
+        };
+        RuntimeLabSession: {
+            sessionId: string;
+            state: components["schemas"]["RuntimeLabSessionState"];
+            scenarioId: string;
+            name?: string | null;
+            recorderCount: number;
+            targetURL: string | null;
+            createdAt?: string | null;
+            updatedAt?: string | null;
+        };
+        RuntimeLabSessionResponse: {
+            state: components["schemas"]["RuntimeLabReadState"];
+            session?: components["schemas"]["RuntimeLabSession"] | null;
+            operationId?: string | null;
+            labOperationId?: string | null;
+            readError?: string | null;
+        };
+        RuntimeLabSessionCreateRequest: {
+            scenarioId: string;
+            name?: string | null;
+            /** @default 1 */
+            recorderCount: number;
+            targetURL?: string | null;
+        };
+        RuntimeLabVitalFileReplayRequest: {
+            vitalFilePath: string;
+            sessionName?: string | null;
+            targetURL?: string | null;
+        };
+        RuntimeGuestControlServiceStatus: {
+            service: string;
+            state: string;
+            health: string;
+            observedAt: string;
+            container?: string | null;
+            exitCode?: number | null;
+        };
+        RuntimeGuestServiceRestartRequest: {
+            service: string;
+            /** @description Optional development override for the Guest Control API base URL. */
+            guestControlBaseURL?: string | null;
+        };
+        RuntimeGuestControlServiceOperation: {
+            operationId: string;
+            service: string;
+            /** @enum {string} */
+            command: "start" | "stop" | "restart" | "reconcile";
+            /** @enum {string} */
+            state: "accepted" | "running" | "completed" | "failed" | "cancelled";
+            createdAt: string;
+            updatedAt: string;
+            failure?: components["schemas"]["RuntimeGuestControlOperationFailure"] | null;
+        };
+        RuntimeGuestControlOperationFailure: {
+            kind: string;
+            message: string;
+            evidencePath?: string | null;
+        };
+        /** @enum {string} */
+        RuntimeGuestServicesReadState: "unavailable" | "loaded" | "failed";
         RuntimeStatus: {
             runtimeInstalled?: boolean;
             vmServiceLoaded?: boolean;
@@ -1327,11 +1662,15 @@ export interface components {
             runtimeControlStartedAt?: string | null;
             redisUIHTTP?: string | null;
             swaggerUIHTTP?: string | null;
+            /** @description Guest Control API service read state. loaded, failed, and unavailable are distinct. */
+            guestServicesReadState?: components["schemas"]["RuntimeGuestServicesReadState"] | null;
+            guestServices?: string[] | null;
+            guestServiceStatuses?: components["schemas"]["RuntimeGuestControlServiceStatus"][];
+            guestServicesReadError?: string | null;
             cpuUsagePercent?: number | null;
             memory?: components["schemas"]["ResourceUsage"];
             systemDisk?: components["schemas"]["ResourceUsage"];
             dataStorage?: components["schemas"]["ResourceUsage"];
-            guestRuntimeStateError?: string | null;
             dataDirectoryStats?: components["schemas"]["RuntimeDataDirectoryStats"] | null;
             dataDirectoryStatsError?: string | null;
             proxyPort?: number;
@@ -1339,8 +1678,6 @@ export interface components {
             progress?: {
                 [key: string]: unknown;
             } | null;
-            containerObservation?: components["schemas"]["RuntimeContainerObservation"] | null;
-            vitalDBObservation?: components["schemas"]["VitalDBObservationDocument"] | null;
         } & {
             [key: string]: unknown;
         };
@@ -1367,7 +1704,6 @@ export interface components {
             vmErrors?: components["schemas"]["RuntimeVMError"][] | null;
             failureReasons: string[];
             domainErrors?: components["schemas"]["RuntimeDomainError"][] | null;
-            containerObservation?: components["schemas"]["RuntimeContainerObservation"] | null;
             progress?: {
                 [key: string]: unknown;
             } | null;
@@ -1389,30 +1725,14 @@ export interface components {
             /** @enum {string} */
             severity?: "warning" | "critical";
             /** @enum {string} */
-            recoveryAction?: "installRuntime" | "restartVMService" | "restartProxyService" | "restartWatchdogService" | "waitForGuest" | "restartGuestAgent" | "repairGuestBootstrap" | "restartContainerServices" | "repairProxyConfiguration" | "freeProxyPort" | "inspectVitalDBObservation" | "backupAndRecreateVM" | "fixConfiguration" | "freeHostResources" | "inspectLogs";
+            recoveryAction?: "installRuntime" | "restartVMService" | "restartProxyService" | "restartWatchdogService" | "waitForGuest" | "restartGuestAgent" | "repairGuestBootstrap" | "reconcileGuestStack" | "repairProxyConfiguration" | "freeProxyPort" | "inspectVitalDBObservation" | "backupAndRecreateVM" | "fixConfiguration" | "freeHostResources" | "inspectLogs";
         };
         /** @enum {string} */
-        RuntimeRecorderIngressStatusReadState: "notRead" | "loaded" | "skippedMissingProxyPort" | "commandFailed" | "emptyResponse" | "outputInvalid" | "invalidResponse" | "readFailed";
-        /** @enum {string} */
-        RuntimeFileMetadataReadState: "notRead" | "loaded" | "readFailed";
-        /** @enum {string} */
-        RuntimeContainerServicesReadState: "loaded" | "missing" | "invalid" | "stale" | "read-failed";
-        RuntimeContainerObservation: {
-            recorderIngressHTTP: string;
-            recorderIngressStatus?: components["schemas"]["RuntimeRecorderIngressStatusDocument"] | null;
-            recorderIngressStatusReadState: components["schemas"]["RuntimeRecorderIngressStatusReadState"];
-            recorderIngressStatusReadError?: string | null;
-            runtimeStateUpdatedAt?: string | null;
-            runtimeStateFileUpdatedAt?: string | null;
-            runtimeStateFileMetadataReadState: components["schemas"]["RuntimeFileMetadataReadState"];
-            runtimeStateFileMetadataError?: string | null;
-            containerLogsPresent: boolean;
-            containerLogsBytes?: number | null;
-            containerLogsUpdatedAt?: string | null;
-            containerLogsMetadataError?: string | null;
-            composeServices: components["schemas"]["RuntimeContainerServiceObservation"][];
-            composeServicesReadState: components["schemas"]["RuntimeContainerServicesReadState"];
-            composeServicesReadError?: string | null;
+        RuntimeRecorderIngressStatusReadState: "notRead" | "loaded" | "commandFailed" | "emptyResponse" | "outputInvalid" | "invalidResponse" | "readFailed";
+        RuntimeRecorderIngressStatusReadResult: {
+            readState: components["schemas"]["RuntimeRecorderIngressStatusReadState"];
+            document?: components["schemas"]["RuntimeRecorderIngressStatusDocument"] | null;
+            readError?: string | null;
         };
         RuntimeRecorderIngressStatusDocument: {
             startedAt?: string | null;
@@ -1541,22 +1861,6 @@ export interface components {
             ipSource?: string | null;
             lastSeenAt?: string | null;
             redisIpSync?: components["schemas"]["RuntimeRecorderRedisIPSyncObservation"] | null;
-        };
-        RuntimeContainerServiceObservation: {
-            service: string;
-            containerID?: string | null;
-            name?: string | null;
-            state?: string | null;
-            health?: string | null;
-            exitCode?: number | null;
-            error?: string | null;
-            finishedAt?: string | null;
-            memoryUsedBytes?: number | null;
-            memoryLimitBytes?: number | null;
-            oomKilled?: boolean | null;
-            restartCount?: number | null;
-            startedAt?: string | null;
-            uptimeSeconds?: number | null;
         };
         /** @enum {string} */
         RuntimeState: "installing" | "initializing" | "updating" | "recovering" | "healthy" | "degraded" | "critical";
@@ -1762,6 +2066,7 @@ export interface components {
             config?: string | null;
             online: boolean;
             stale: boolean;
+            visibility?: components["schemas"]["RuntimeVitalRecordVisibility"];
             activity?: components["schemas"]["VitalDBRecorderActivityObservation"] | null;
         };
         /** @description Recent VRecorder send_data activity summarized from the recorder ingress Redis list. */
@@ -1790,6 +2095,7 @@ export interface components {
             lastSeenAt?: string | null;
             patientConnected?: boolean | null;
             online: boolean;
+            visibility?: components["schemas"]["RuntimeVitalRecordVisibility"];
         };
         VitalDBRawBedScopedObservation: {
             bedID?: string;
@@ -1805,147 +2111,6 @@ export interface components {
             upstreamResponseTime?: string | null;
             websocketHandshake?: boolean;
         };
-        RuntimeTestKitStatus: {
-            enabled: boolean;
-            /** @enum {string} */
-            state: "disabled" | "stopped" | "starting" | "running" | "paused" | "stopping" | "failed";
-            serviceName?: string | null;
-            apiBaseURL?: string | null;
-            recorderTargetURL?: string | null;
-            /** Format: date-time */
-            startedAt?: string | null;
-            activeSession?: components["schemas"]["RuntimeTestKitSession"] | null;
-            sessions: components["schemas"]["RuntimeTestKitSession"][];
-            beds: components["schemas"]["RuntimeTestKitBed"][];
-            lastError?: string | null;
-        };
-        RuntimeTestKitBed: {
-            roomName: string;
-            bedId: string;
-        };
-        RuntimeTestKitCreateBedsRequest: {
-            count?: number | null;
-            roomNames: string[];
-            prefix: string;
-            adminUserId: string;
-        };
-        RuntimeTestKitDeleteBedsRequest: {
-            roomNames: string[];
-        };
-        RuntimeTestKitRecorderSource: {
-            /** @enum {string} */
-            type: "vitalFile";
-            path: string;
-            /** @enum {string} */
-            scenario: "basic_monitor" | "periop_full" | "bloodbag" | "root_sedation" | "full_real";
-            startOffsetSeconds: number;
-            durationSeconds: number;
-        };
-        RuntimeTestKitVirtualRecorderStartRequest: {
-            /** @enum {string} */
-            scenario: "normal" | "multiple_recorders" | "burst_traffic" | "disconnect_reconnect" | "stale_recorder" | "signal_anomaly";
-            /** @enum {string} */
-            signalProfile: "normal" | "tachycardia" | "desaturation" | "artifact" | "device_disconnect";
-            recorders: number;
-            bedRoomNames: string[];
-            vrcode?: string | null;
-            version: string;
-            intervalSeconds: number;
-            durationSeconds?: number | null;
-            maxMessages?: number | null;
-            shiftTime: boolean;
-            generateFrames: boolean;
-            exportVital: boolean;
-            uploadVital: boolean;
-            vitalUploadEndpoint: string;
-            source?: components["schemas"]["RuntimeTestKitRecorderSource"] | null;
-            realSampleKey?: string | null;
-        };
-        RuntimeTestKitSessionSelectionRequest: {
-            sessionID: string;
-        };
-        RuntimeTestKitRestartRequest: {
-            sessionID: string;
-            bedRoomNames: string[];
-        };
-        RuntimeTestKitRecorderDeletionRequest: {
-            vrcode: string;
-        };
-        RuntimeTestKitSession: {
-            id: string;
-            state: string;
-            targetUrl: string;
-            recordersRequested: number;
-            bedsRequested: number;
-            bedRoomNames: string[];
-            vrcode?: string | null;
-            version: string;
-            intervalSeconds: number;
-            durationSeconds?: number | null;
-            maxMessages?: number | null;
-            shiftTime: boolean;
-            generateFrames: boolean;
-            source?: components["schemas"]["RuntimeTestKitRecorderSource"] | null;
-            realSampleKey?: string | null;
-            scenario?: string | null;
-            defaultScenario: string;
-            createdAt?: number | null;
-            startedAt?: number | null;
-            stoppedAt?: number | null;
-            messagesSent: number;
-            bytesSent: number;
-            lastError?: string | null;
-            cleanupErrors: components["schemas"]["RuntimeTestKitCleanupError"][];
-            vital: components["schemas"]["RuntimeTestKitSessionVitalState"];
-            recorders: components["schemas"]["RuntimeTestKitRecorder"][];
-        };
-        RuntimeTestKitSessionVitalState: {
-            exportStatus: string;
-            uploadStatus: string;
-            exportError?: string | null;
-            uploadError?: string | null;
-            artifact?: components["schemas"]["RuntimeTestKitSessionVitalArtifact"] | null;
-            uploadResult?: components["schemas"]["RuntimeTestKitSessionVitalUploadResult"] | null;
-        };
-        RuntimeTestKitSessionVitalArtifact: {
-            path: string;
-            filename: string;
-            sizeBytes: number;
-            createdAt: number;
-            format: string;
-            retentionPolicy: string;
-        };
-        RuntimeTestKitSessionVitalUploadResult: {
-            statusCode: number;
-            ok: boolean;
-            elapsedSeconds: number;
-            uploadedAt: number;
-            responseText: string;
-            error?: string | null;
-        };
-        RuntimeTestKitCleanupError: {
-            vrcode: string;
-            targetUrl: string;
-            error: string;
-        };
-        RuntimeTestKitRecorderDeletion: {
-            vrcode: string;
-            targetUrl: string;
-            deleted: boolean;
-            error?: string | null;
-        };
-        RuntimeTestKitRecorder: {
-            vrcode: string;
-            baseUrl: string;
-            localIp?: string | null;
-            connected: boolean;
-            joinSent: boolean;
-            joinedAt?: number | null;
-            lastReconnectAt?: number | null;
-            lastSendDataAt?: number | null;
-            messagesSent: number;
-            bytesSent: number;
-        };
         VitalDBAnomalyObservation: {
             id: string;
             /** @enum {string} */
@@ -1955,6 +2120,26 @@ export interface components {
             observedAt: string;
             subject: string;
             message: string;
+        };
+        RuntimeLabBedCreateRequest: {
+            count?: number | null;
+            roomNames?: string[];
+            prefix?: string | null;
+            targetURL?: string | null;
+        };
+        RuntimeLabBedDeleteRequest: {
+            bedIds?: string[];
+            roomNames?: string[];
+            sessionId?: string | null;
+        };
+        RuntimeLabRecorderCreateRequest: {
+            bedIds?: string[];
+            sessionId?: string | null;
+        };
+        RuntimeLabRecorderDeleteRequest: {
+            recorderIds?: string[];
+            vrcodes?: string[];
+            sessionId?: string | null;
         };
     };
     responses: {
@@ -2103,6 +2288,328 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listRuntimeLabScenarios: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab scenario list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabScenarioList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listRuntimeLabBeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab bed list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabBedList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listRuntimeLabRecorders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab recorder list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabRecorderList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createRuntimeLabSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeLabSessionCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Runtime Lab session response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabSessionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getRuntimeLabSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab session response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabSessionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    startRuntimeLabSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab session response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabSessionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    stopRuntimeLabSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab session response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabSessionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    replayRuntimeLabVitalFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeLabVitalFileReplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Runtime Lab session response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabSessionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listRuntimeGuestServices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Guest product service list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeGuestControlServiceList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getRuntimeGuestStackStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Guest product service stack status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeGuestControlStackStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getRuntimeGuestServiceStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Guest product service status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeGuestControlServiceStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    startRuntimeGuestService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeGuestServiceRestartRequest"];
+            };
+        };
+        responses: {
+            /** @description Guest product service operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeGuestControlServiceOperation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    stopRuntimeGuestService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeGuestServiceRestartRequest"];
+            };
+        };
+        responses: {
+            /** @description Guest product service operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeGuestControlServiceOperation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    restartRuntimeGuestService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeGuestServiceRestartRequest"];
+            };
+        };
+        responses: {
+            /** @description Guest product service operation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeGuestControlServiceOperation"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -2260,71 +2767,6 @@ export interface operations {
                     "application/json": components["schemas"]["RuntimeInstallInfo"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    startRuntimeServices: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["CommandResult"];
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    stopRuntimeServices: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["CommandResult"];
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    startTestKitService: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["CommandResult"];
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    stopTestKitService: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["CommandResult"];
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    restartTestKitService: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: components["responses"]["CommandResult"];
             401: components["responses"]["Unauthorized"];
         };
     };
@@ -2790,6 +3232,81 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    hideVitalDBRecorders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeVitalDBRecorderVisibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Vital Recorder history after the hide command. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeVitalRecorderHistory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    unhideVitalDBRecorders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeVitalDBRecorderVisibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Vital Recorder history after the unhide command. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeVitalRecorderHistory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    deleteVitalDBRecorders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeVitalDBRecorderVisibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Vital Recorder history after the delete command. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeVitalRecorderHistory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     getVitalDBRecorder: {
         parameters: {
             query?: never;
@@ -2861,6 +3378,81 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    hideVitalDBBeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeVitalDBBedVisibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Vital Recorder history after the bed hide command. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeVitalRecorderHistory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    unhideVitalDBBeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeVitalDBBedVisibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Vital Recorder history after the bed unhide command. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeVitalRecorderHistory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    deleteVitalDBBeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeVitalDBBedVisibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description Vital Recorder history after the bed delete command. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeVitalRecorderHistory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     getVitalDBBed: {
         parameters: {
             query?: never;
@@ -2884,294 +3476,6 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
-    getDevTestKitStatus: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description TestKit status */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RuntimeTestKitStatus"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    createDevTestKitBeds: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RuntimeTestKitCreateBedsRequest"];
-            };
-        };
-        responses: {
-            /** @description Registered TestKit beds. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RuntimeTestKitBed"][];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    deleteDevTestKitBeds: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RuntimeTestKitDeleteBedsRequest"];
-            };
-        };
-        responses: {
-            /** @description Deleted TestKit beds. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RuntimeTestKitBed"][];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    resetDevTestKitBeds: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Deleted TestKit beds. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RuntimeTestKitBed"][];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    startDevTestKitVirtualRecorders: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RuntimeTestKitVirtualRecorderStartRequest"];
-            };
-        };
-        responses: {
-            /** @description Started TestKit session */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RuntimeTestKitSession"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    stopDevTestKitVirtualRecorders: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["RuntimeTestKitSessionSelectionRequest"];
-            };
-        };
-        responses: {
-            /** @description Stopped TestKit session or null when no session was selected. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RuntimeTestKitSession"] | null;
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    pauseDevTestKitVirtualRecorders: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["RuntimeTestKitSessionSelectionRequest"];
-            };
-        };
-        responses: {
-            /** @description Paused TestKit session or null when no session was selected. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RuntimeTestKitSession"] | null;
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    resumeDevTestKitVirtualRecorders: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["RuntimeTestKitSessionSelectionRequest"];
-            };
-        };
-        responses: {
-            /** @description Resumed TestKit session or null when no session was selected. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RuntimeTestKitSession"] | null;
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    restartDevTestKitVirtualRecorders: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RuntimeTestKitRestartRequest"];
-            };
-        };
-        responses: {
-            /** @description Restarted TestKit session or null when no session was selected. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RuntimeTestKitSession"] | null;
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    deleteDevTestKitVirtualRecorders: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["RuntimeTestKitSessionSelectionRequest"];
-            };
-        };
-        responses: {
-            /** @description Deleted TestKit session or a cleanup-failed session that remains retryable. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RuntimeTestKitSession"] | null;
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    deleteDevTestKitOrphanVRecorder: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RuntimeTestKitRecorderDeletionRequest"];
-            };
-        };
-        responses: {
-            /** @description Direct VRecorder deletion result. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RuntimeTestKitRecorderDeletion"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    resetDevTestKitVirtualRecorders: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Updated TestKit status */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RuntimeTestKitStatus"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
     getVitalDBRelationships: {
         parameters: {
             query?: never;
@@ -3188,6 +3492,148 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuntimeVitalRelationshipHistory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createRuntimeLabBeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeLabBedCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Runtime Lab bed list after creation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabBedList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    deleteRuntimeLabBeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeLabBedDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Runtime Lab bed list after deletion */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabBedList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    resetRuntimeLabBeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab bed list after reset */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabBedList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createRuntimeLabRecorders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeLabRecorderCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Runtime Lab recorder list after creation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabRecorderList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    deleteRuntimeLabRecorders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeLabRecorderDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Runtime Lab recorder list after deletion */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabRecorderList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    resetRuntimeLabRecorders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab recorder list after reset */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabRecorderList"];
                 };
             };
             401: components["responses"]["Unauthorized"];

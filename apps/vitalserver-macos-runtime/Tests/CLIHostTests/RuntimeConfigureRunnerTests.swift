@@ -187,8 +187,8 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         ))
 
         XCTAssertTrue(result.restart)
-        XCTAssertEqual(result.restartRequirement, .containerServices)
-        XCTAssertEqual(harness.reconcileComposeCount, 1)
+        XCTAssertEqual(result.restartRequirement, .guestStack)
+        XCTAssertEqual(harness.reconcileGuestStackCount, 1)
         XCTAssertEqual(harness.restartCount, 0)
     }
 
@@ -201,8 +201,8 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         ))
 
         XCTAssertTrue(result.restart)
-        XCTAssertEqual(result.restartRequirement, .containerServices)
-        XCTAssertEqual(harness.reconcileComposeCount, 1)
+        XCTAssertEqual(result.restartRequirement, .guestStack)
+        XCTAssertEqual(harness.reconcileGuestStackCount, 1)
         XCTAssertEqual(harness.restartCount, 0)
 
         let data = try XCTUnwrap(harness.fileStore.files[harness.paths.guestRuntimeSettings])
@@ -244,8 +244,8 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         ))
 
         XCTAssertTrue(result.restart)
-        XCTAssertEqual(result.restartRequirement, .containerServices)
-        XCTAssertEqual(harness.reconcileComposeCount, 1)
+        XCTAssertEqual(result.restartRequirement, .guestStack)
+        XCTAssertEqual(harness.reconcileGuestStackCount, 1)
 
         let data = try XCTUnwrap(harness.fileStore.files[harness.paths.guestRuntimeSettings])
         let settings = try JSONDecoder().decode(GuestRuntimeSettingsDocument.self, from: data)
@@ -372,7 +372,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
         var startOnBootValues: [Bool] = []
         var systemSleepPreventionValues: [Bool] = []
         var automaticBackupSchedules: [(enabled: Bool, scheduleTimes: [String])] = []
-        var reconcileComposeCount = 0
+        var reconcileGuestStackCount = 0
         var restartCount = 0
         var runner: RuntimeConfigureRunner!
 
@@ -429,8 +429,8 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                     setAutomaticBackupSchedule: { [weak self] enabled, scheduleTimes in
                         self?.automaticBackupSchedules.append((enabled: enabled, scheduleTimes: scheduleTimes))
                     },
-                    reconcileGuestComposeServices: { [weak self] in
-                        self?.reconcileComposeCount += 1
+                    reconcileGuestStackServices: { [weak self] in
+                        self?.reconcileGuestStackCount += 1
                     },
                     restartRuntimeServices: { [weak self] in
                         self?.restartCount += 1
@@ -457,8 +457,7 @@ final class RuntimeConfigureRunnerTests: XCTestCase {
                 adminPassword: Constants.Guest.defaultAdminPassword,
                 vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
                 redisUiPort: Constants.Guest.redisUIPort,
-                swaggerUiPort: Constants.Guest.swaggerUIPort,
-                testkitEnabled: Constants.testkitContainerIncluded
+                swaggerUiPort: Constants.Guest.swaggerUIPort
             )
         }
     }

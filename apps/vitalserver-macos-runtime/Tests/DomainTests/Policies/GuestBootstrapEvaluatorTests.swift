@@ -63,14 +63,7 @@ final class GuestBootstrapEvaluatorTests: XCTestCase {
     func testCurrentBootAssessmentRejectsBootstrapResultFromDifferentBoot() {
         let assessment: GuestBootstrapAssessment = GuestBootstrapEvaluator.assessCurrentBoot(
             .loaded(result(status: .failed, reasonCodes: [.guestBootstrapFailed], bootID: "old-boot")),
-            guestState: GuestRuntimeStateDocument(
-                vmIP: "192.168.64.2",
-                updatedAt: "2026-05-21T12:35:00Z",
-                bootID: "current-boot",
-                guestHTTP: "200",
-                redisUIHTTP: "200",
-                swaggerUIHTTP: "200"
-            ),
+            currentBootID: "current-boot",
             now: date("2026-05-21T12:35:00Z"),
             graceSeconds: 60
         )
@@ -81,13 +74,7 @@ final class GuestBootstrapEvaluatorTests: XCTestCase {
     func testCurrentBootAssessmentAllowsFreshBootstrapResultWhenGuestBootIDIsMissing() {
         let assessment: GuestBootstrapAssessment = GuestBootstrapEvaluator.assessCurrentBoot(
             .loaded(result(status: .failed, reasonCodes: [.guestBootstrapFailed], bootID: "boot-1")),
-            guestState: GuestRuntimeStateDocument(
-                vmIP: "192.168.64.2",
-                updatedAt: "2026-05-21T12:35:00Z",
-                guestHTTP: "200",
-                redisUIHTTP: "200",
-                swaggerUIHTTP: "200"
-            ),
+            currentBootID: nil,
             now: date("2026-05-21T12:35:00Z"),
             graceSeconds: 60
         )
@@ -98,13 +85,7 @@ final class GuestBootstrapEvaluatorTests: XCTestCase {
     func testCurrentBootAssessmentRejectsStaleBootstrapResultWhenGuestBootIDIsMissing() {
         let assessment: GuestBootstrapAssessment = GuestBootstrapEvaluator.assessCurrentBoot(
             .loaded(result(status: .failed, reasonCodes: [.guestBootstrapFailed], bootID: "boot-1")),
-            guestState: GuestRuntimeStateDocument(
-                vmIP: "192.168.64.2",
-                updatedAt: "2026-05-21T12:35:00Z",
-                guestHTTP: "200",
-                redisUIHTTP: "200",
-                swaggerUIHTTP: "200"
-            ),
+            currentBootID: nil,
             now: date("2026-05-21T12:40:00Z"),
             graceSeconds: 60
         )

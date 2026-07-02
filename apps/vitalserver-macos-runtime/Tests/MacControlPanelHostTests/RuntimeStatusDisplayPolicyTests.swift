@@ -79,25 +79,14 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200",
             redisUIHTTP: "503"
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(service: "app", uptimeSeconds: 3_661),
-                RuntimeContainerServiceObservation(service: "edge", uptimeSeconds: 60),
-                RuntimeContainerServiceObservation(service: "redis", state: "running", health: "healthy", uptimeSeconds: 5),
-            ]
-        )
+        let recorderIngressStatusRead = recorderIngressStatusRead()
 
-        let items = policy.healthDetails(status: status, observation: observation)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
 
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "01:01:01")
-        XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.value.uptimeText, "00:01:00")
-        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.text, AppConstants.StatusText.healthy)
-        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.severity, .healthy)
-        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.uptimeText, "00:00:05")
+        XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
+        XCTAssertNil(item(GeneratedRelease.hostProxyName, in: items)?.value.uptimeText)
+        XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: items)?.value.text, AppConstants.StatusText.unavailable)
+        XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: items)?.value.severity, .warning)
     }
 
     func testOverallHealthDoesNotDisplayUptime() {
@@ -115,17 +104,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestHTTP: "200",
             hostProxyHTTP: "200"
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(service: "app", uptimeSeconds: 3_661),
-            ]
-        )
-
-        let value = policy.overallHealth(status: status, observation: observation)
+        let value = policy.overallHealth(status: status)
 
         XCTAssertEqual(value.text, AppConstants.StatusText.healthy)
         XCTAssertNil(value.uptimeText)
@@ -143,8 +122,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: nil
         )
 
-        let overall = policy.overallHealth(status: status, observation: nil)
-        let vitalServer = policy.vitalServerAvailability(status: status, observation: nil)
+        let overall = policy.overallHealth(status: status)
+        let vitalServer = policy.vitalServerAvailability(status: status)
 
         XCTAssertEqual(overall.text, AppConstants.StatusText.updating)
         XCTAssertEqual(overall.severity, .warning)
@@ -174,8 +153,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             )
         )
 
-        let overall = policy.overallHealth(status: status, observation: nil)
-        let vitalServer = policy.vitalServerAvailability(status: status, observation: nil)
+        let overall = policy.overallHealth(status: status)
+        let vitalServer = policy.vitalServerAvailability(status: status)
 
         XCTAssertEqual(overall.text, AppConstants.StatusText.installing)
         XCTAssertEqual(overall.severity, .warning)
@@ -203,16 +182,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             redisUIHTTP: "503",
             swaggerUIHTTP: nil
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "000",
-            recorderIngressStatus: nil,
-            containerLogsPresent: false,
-            containerLogsBytes: 0,
-            composeServices: []
-        )
-
         let vmHealth = policy.advancedVMHealth(status: status)
-        let serviceHealth = policy.advancedServiceHealth(status: status, observation: observation)
+        let serviceHealth = policy.advancedServiceHealth(status: status)
 
         XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, AppConstants.StatusText.stopped)
         XCTAssertNil(item(AppConstants.Labels.vmService, in: serviceHealth))
@@ -220,7 +191,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.watchdogService, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
-        XCTAssertEqual(item(AppConstants.Labels.vitalDBObserver, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
         XCTAssertEqual(item(GeneratedRelease.redisUIName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
     }
 
@@ -245,16 +216,16 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             swaggerUIHTTP: nil
         )
 
-        let overall = policy.overallHealth(status: status, observation: nil)
-        let vitalServer = policy.vitalServerAvailability(status: status, observation: nil)
-        let serviceHealth = policy.advancedServiceHealth(status: status, observation: nil)
+        let overall = policy.overallHealth(status: status)
+        let vitalServer = policy.vitalServerAvailability(status: status)
+        let serviceHealth = policy.advancedServiceHealth(status: status)
 
         XCTAssertEqual(overall.text, AppConstants.StatusText.recovering)
         XCTAssertEqual(vitalServer.text, AppConstants.StatusText.recovering)
         XCTAssertEqual(item(AppConstants.Labels.proxyService, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
-        XCTAssertEqual(item(AppConstants.Labels.vitalDBObserver, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
+        XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
         XCTAssertEqual(item(GeneratedRelease.redisUIName, in: serviceHealth)?.value.text, AppConstants.StatusText.recovering)
     }
 
@@ -288,16 +259,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                 updatedAt: "2026-06-08T00:00:00Z"
             )
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "000",
-            recorderIngressStatus: nil,
-            containerLogsPresent: false,
-            containerLogsBytes: 0,
-            composeServices: []
-        )
-
         let vmHealth = policy.advancedVMHealth(status: status)
-        let serviceHealth = policy.advancedServiceHealth(status: status, observation: observation)
+        let serviceHealth = policy.advancedServiceHealth(status: status)
 
         XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, AppConstants.StatusText.installing)
         XCTAssertNil(item(AppConstants.Labels.vmService, in: serviceHealth))
@@ -305,7 +268,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.watchdogService, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
-        XCTAssertEqual(item(AppConstants.Labels.vitalDBObserver, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
+        XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
         XCTAssertEqual(item(GeneratedRelease.redisUIName, in: serviceHealth)?.value.text, AppConstants.StatusText.installing)
     }
 
@@ -335,18 +298,10 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             redisUIHTTP: "503",
             swaggerUIHTTP: nil
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "000",
-            recorderIngressStatus: nil,
-            containerLogsPresent: false,
-            containerLogsBytes: 0,
-            composeServices: []
-        )
-
-        let overall = policy.overallHealth(status: status, observation: observation)
-        let vitalServer = policy.vitalServerAvailability(status: status, observation: observation)
+        let overall = policy.overallHealth(status: status)
+        let vitalServer = policy.vitalServerAvailability(status: status)
         let vmHealth = policy.advancedVMHealth(status: status)
-        let serviceHealth = policy.advancedServiceHealth(status: status, observation: observation)
+        let serviceHealth = policy.advancedServiceHealth(status: status)
 
         XCTAssertEqual(overall.text, AppConstants.StatusText.initializing)
         XCTAssertEqual(vitalServer.text, AppConstants.StatusText.initializing)
@@ -367,7 +322,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
 
         let vmHealth = policy.advancedVMHealth(status: status)
-        let serviceHealth = policy.advancedServiceHealth(status: status, observation: nil)
+        let serviceHealth = policy.advancedServiceHealth(status: status)
 
         XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, "Permission denied")
         XCTAssertNil(item(AppConstants.Labels.vmService, in: serviceHealth))
@@ -386,7 +341,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
 
-        let value = policy.overallHealth(status: status, observation: nil)
+        let value = policy.overallHealth(status: status)
 
         XCTAssertEqual(value.text, AppConstants.StatusText.unknown)
         XCTAssertEqual(value.severity, .neutral)
@@ -487,7 +442,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
 
         let action = policy.actionNeeded(status: status)
-        let details = policy.healthDetails(status: status, observation: nil)
+        let details = policy.healthDetails(status: status)
 
         XCTAssertEqual(action?.recommendedAction, AppConstants.Actions.openLogs)
         XCTAssertEqual(item(AppConstants.Labels.statusReadIssues, in: details)?.value.text, "hostProxyHTTP: exitCode=28 stderr=timeout")
@@ -505,18 +460,10 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestHTTP: "200",
             hostProxyHTTP: "200"
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(service: "redis", state: "running", health: "healthy"),
-            ]
-        )
+        let recorderIngressStatusRead = recorderIngressStatusRead()
 
-        let summary = policy.vitalServerAvailability(status: status, observation: observation)
-        let details = policy.healthDetails(status: status, observation: observation)
+        let summary = policy.vitalServerAvailability(status: status)
+        let details = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(summary.text, AppConstants.StatusText.reachable)
         XCTAssertEqual(item(AppConstants.Labels.runtimeInstallation, in: details)?.value.text, AppConstants.StatusText.installed)
@@ -524,7 +471,53 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.vmState, in: details)?.value.severity, .healthy)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: details)?.value.text, AppConstants.StatusText.reachable)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: details)?.value.text, AppConstants.StatusText.reachable)
-        XCTAssertEqual(item(GeneratedRelease.redisName, in: details)?.value.text, AppConstants.StatusText.healthy)
+        XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: details)?.value.text, AppConstants.StatusText.unavailable)
+    }
+
+    func testHealthDetailsShowsGuestControlServiceStatusesWhenLoaded() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            runtimeState: .healthy,
+            vmState: .running,
+            guestHTTP: "200",
+            hostProxyHTTP: "200",
+            guestServicesReadState: .loaded,
+            guestServices: ["redis", "vitaldb-observer", "redis-relay"],
+            guestServiceStatuses: [
+                RuntimeGuestControlServiceStatus(
+                    service: "redis",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+                RuntimeGuestControlServiceStatus(
+                    service: "vitaldb-observer",
+                    state: "exited",
+                    health: "unknown",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+                RuntimeGuestControlServiceStatus(
+                    service: "redis-relay",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+            ]
+        )
+
+        let details = policy.healthDetails(status: status)
+
+        XCTAssertEqual(item("\(AppConstants.Labels.guestProductServices): redis", in: details)?.value.text, AppConstants.StatusText.healthy)
+        XCTAssertEqual(item("\(AppConstants.Labels.guestProductServices): redis", in: details)?.value.severity, .healthy)
+        XCTAssertEqual(
+            item("\(AppConstants.Labels.guestProductServices): vitaldb-observer", in: details)?.value.text,
+            AppConstants.StatusText.containerState("exited")
+        )
+        XCTAssertEqual(
+            item("\(AppConstants.Labels.guestProductServices): vitaldb-observer", in: details)?.value.severity,
+            .warning
+        )
+        XCTAssertNil(item("\(AppConstants.Labels.guestProductServices): redis-relay", in: details))
     }
 
     func testHealthDetailsDisplaysExplicitRuntimeInstallationState() {
@@ -534,7 +527,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             vmServiceState: .notLoaded
         )
 
-        let details = policy.healthDetails(status: status, observation: nil)
+        let details = policy.healthDetails(status: status)
         let installation = item(AppConstants.Labels.runtimeInstallation, in: details)?.value
 
         XCTAssertEqual(installation?.text, "Present but not executable")
@@ -548,8 +541,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
 
-        let overall = policy.overallHealth(status: status, observation: nil)
-        let vitalServer = policy.vitalServerAvailability(status: status, observation: nil)
+        let overall = policy.overallHealth(status: status)
+        let vitalServer = policy.vitalServerAvailability(status: status)
         let actionNeeded = policy.actionNeeded(status: status)
 
         XCTAssertEqual(overall.text, "Present but not executable")
@@ -584,7 +577,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             )
         )
 
-        let overall = policy.overallHealth(status: status, observation: nil)
+        let overall = policy.overallHealth(status: status)
 
         XCTAssertEqual(overall.text, AppConstants.StatusText.recovering)
         XCTAssertEqual(overall.severity, RuntimeStatusDisplayPolicy.Severity.warning)
@@ -600,24 +593,12 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestHTTP: "200",
             hostProxyHTTP: "200"
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(
-                    service: "app",
-                    startedAt: "2026-05-26T04:35:35.123456789Z",
-                    uptimeSeconds: 1
-                ),
-            ]
-        )
+        let recorderIngressStatusRead = recorderIngressStatusRead()
         let now = ISO8601DateFormatter().date(from: "2026-05-26T04:35:40Z")!
 
-        let items = policy.healthDetails(status: status, observation: observation, now: now)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead, now: now)
 
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:01")
+        XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
     }
 
     func testUptimeTicksExplicitSecondsFromHostObservedAtForDisplay() {
@@ -630,26 +611,11 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestHTTP: "200",
             hostProxyHTTP: "200"
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            runtimeStateUpdatedAt: "2025-02-21T21:19:33Z",
-            runtimeStateFileUpdatedAt: "2026-06-13T00:00:00Z",
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(
-                    service: "app",
-                    startedAt: "2025-02-21T21:19:33.326442446Z",
-                    uptimeSeconds: 45
-                ),
-            ]
-        )
         let now = ISO8601DateFormatter().date(from: "2026-06-13T00:00:05Z")!
 
-        let items = policy.advancedServiceHealth(status: status, observation: observation, now: now)
+        let items = policy.advancedServiceHealth(status: status, now: now)
 
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:50")
+        XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
     }
 
     func testUptimeDoesNotTickExplicitSecondsFromStaleGuestUpdatedAtWhenHostObservedAtIsMissing() {
@@ -662,25 +628,11 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestHTTP: "200",
             hostProxyHTTP: "200"
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            runtimeStateUpdatedAt: "2025-02-21T21:19:33Z",
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(
-                    service: "app",
-                    startedAt: "2025-02-21T21:19:33.326442446Z",
-                    uptimeSeconds: 45
-                ),
-            ]
-        )
         let now = ISO8601DateFormatter().date(from: "2026-06-13T00:00:00Z")!
 
-        let items = policy.advancedServiceHealth(status: status, observation: observation, now: now)
+        let items = policy.advancedServiceHealth(status: status, now: now)
 
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:45")
+        XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
     }
 
     func testUptimeUsesDockerStartedAtWithNanosecondFractionWhenExplicitSecondsAreMissing() {
@@ -693,23 +645,12 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestHTTP: "200",
             hostProxyHTTP: "200"
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(
-                    service: "app",
-                    startedAt: "2026-05-26T04:35:35.123456789Z"
-                ),
-            ]
-        )
+        let recorderIngressStatusRead = recorderIngressStatusRead()
         let now = ISO8601DateFormatter().date(from: "2026-05-26T04:35:40Z")!
 
-        let items = policy.healthDetails(status: status, observation: observation, now: now)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead, now: now)
 
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:04")
+        XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
     }
 
     func testUptimeUsesExplicitSecondsWhenStartedAtIsMissing() {
@@ -722,21 +663,12 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestHTTP: "200",
             hostProxyHTTP: "200"
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            runtimeStateUpdatedAt: "2026-05-26T04:35:35Z",
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(service: "app", uptimeSeconds: 10),
-            ]
-        )
+        let recorderIngressStatusRead = recorderIngressStatusRead()
         let now = ISO8601DateFormatter().date(from: "2026-05-26T04:35:40Z")!
 
-        let items = policy.healthDetails(status: status, observation: observation, now: now)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead, now: now)
 
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:10")
+        XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
     }
 
     func testUptimeDisplaysDaysBeforeClockDuration() {
@@ -749,19 +681,11 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestHTTP: "200",
             hostProxyHTTP: "200"
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(service: "app", uptimeSeconds: 183_845),
-            ]
-        )
+        let recorderIngressStatusRead = recorderIngressStatusRead()
 
-        let items = policy.healthDetails(status: status, observation: observation)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
 
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "2d 03:04:05")
+        XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
     }
 
     func testAdvancedServiceHealthOwnsLabelsActionsAndHTTPStatusDisplay() {
@@ -782,31 +706,14 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             redisUIHTTP: "200",
             swaggerUIHTTP: "200"
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(service: "app", uptimeSeconds: 1),
-                RuntimeContainerServiceObservation(service: "edge", uptimeSeconds: 2),
-                RuntimeContainerServiceObservation(service: "recorder-ingress", uptimeSeconds: 5),
-                RuntimeContainerServiceObservation(service: "recorder-recovery", uptimeSeconds: 6),
-                RuntimeContainerServiceObservation(service: "redis-ui", uptimeSeconds: 3),
-                RuntimeContainerServiceObservation(service: "swagger-ui", uptimeSeconds: 4),
-            ]
-        )
-
-        let items = policy.advancedServiceHealth(status: status, observation: observation)
+        let items = policy.advancedServiceHealth(status: status)
 
         XCTAssertEqual(items.map(\.label), [
             AppConstants.Labels.proxyService,
             AppConstants.Labels.guestLogSyncService,
             AppConstants.Labels.sleepPreventionService,
             AppConstants.Labels.watchdogService,
-            AppConstants.Labels.vitalDBObserver,
-            GeneratedRelease.recorderIngressName,
-            GeneratedRelease.recorderRecoveryName,
+            AppConstants.Labels.guestProductServices,
             AppConstants.Labels.redisRelay,
             GeneratedRelease.vitalServerName,
             GeneratedRelease.hostProxyName,
@@ -814,9 +721,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             GeneratedRelease.swaggerUIName,
         ])
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.action, .openVitalServer)
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText, "00:00:01")
-        XCTAssertEqual(item(GeneratedRelease.recorderIngressName, in: items)?.value.uptimeText, "00:00:05")
-        XCTAssertEqual(item(GeneratedRelease.recorderRecoveryName, in: items)?.value.uptimeText, "00:00:06")
+        XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
+        XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: items)?.value.text, AppConstants.StatusText.unavailable)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.value.text, AppConstants.StatusText.unavailable)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: items)?.httpStatus, "503")
         XCTAssertEqual(item(AppConstants.Labels.guestLogSyncService, in: items)?.value.text, AppConstants.StatusText.running)
@@ -825,6 +731,101 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.severity, .neutral)
         XCTAssertEqual(item(GeneratedRelease.redisUIName, in: items)?.action, .openRedisUI)
         XCTAssertEqual(item(GeneratedRelease.swaggerUIName, in: items)?.action, .openSwagger)
+    }
+
+    func testAdvancedServiceHealthShowsGuestControlServiceStatusesWhenLoaded() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            guestServicesReadState: .loaded,
+            guestServices: ["app", "recorder-ingress"],
+            guestServiceStatuses: [
+                RuntimeGuestControlServiceStatus(
+                    service: "recorder-ingress",
+                    state: "running",
+                    health: "unhealthy",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+                RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+            ]
+        )
+        let items = policy.advancedServiceHealth(status: status)
+
+        let appLabel = "\(AppConstants.Labels.guestProductServices): app"
+        let recorderIngressLabel = "\(AppConstants.Labels.guestProductServices): recorder-ingress"
+        let app = item(appLabel, in: items)
+        let recorderIngress = item(recorderIngressLabel, in: items)
+        XCTAssertEqual(app?.value.text, AppConstants.StatusText.healthy)
+        XCTAssertEqual(app?.value.severity, .healthy)
+        XCTAssertEqual(recorderIngress?.value.text, AppConstants.StatusText.containerHealth("unhealthy"))
+        XCTAssertEqual(recorderIngress?.value.severity, .warning)
+        XCTAssertLessThan(
+            items.firstIndex { $0.label == appLabel } ?? Int.max,
+            items.firstIndex { $0.label == recorderIngressLabel } ?? Int.max
+        )
+        XCTAssertNil(item(AppConstants.Labels.vitalDBObserver, in: items))
+        XCTAssertNil(item(GeneratedRelease.recorderRecoveryName, in: items))
+    }
+
+    func testAdvancedServiceHealthUsesGuestControlStatusForRedisRelayWithoutDuplicateGuestServiceItem() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            guestServicesReadState: .loaded,
+            guestServices: ["app", "redis-relay"],
+            guestServiceStatuses: [
+                RuntimeGuestControlServiceStatus(
+                    service: "redis-relay",
+                    state: "running",
+                    health: "unhealthy",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+                RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+            ],
+            redisRelayStatus: RuntimeRedisRelayStatus(
+                observedAt: "2026-06-18T00:00:00Z",
+                enabled: true,
+                state: "failed",
+                scope: "vital_reconstruction",
+                lastError: "legacy status file should not own service liveness"
+            )
+        )
+        let items = policy.advancedServiceHealth(
+            status: status,
+            redisRelaySettings: RuntimeRedisRelaySettings(enabled: true)
+        )
+
+        XCTAssertEqual(
+            item(AppConstants.Labels.redisRelay, in: items)?.value.text,
+            AppConstants.StatusText.containerHealth("unhealthy")
+        )
+        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.severity, .warning)
+        XCTAssertNil(item("\(AppConstants.Labels.guestProductServices): redis-relay", in: items))
+        XCTAssertEqual(item("\(AppConstants.Labels.guestProductServices): app", in: items)?.value.text, AppConstants.StatusText.healthy)
+    }
+
+    func testAdvancedServiceHealthShowsGuestControlReadFailureSeparately() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            guestServicesReadState: .failed,
+            guestServicesReadError: "guest control api timed out"
+        )
+        let items = policy.advancedServiceHealth(status: status)
+
+        let guestServices = item(AppConstants.Labels.guestProductServices, in: items)
+        XCTAssertEqual(guestServices?.value.text, "guest control api timed out")
+        XCTAssertEqual(guestServices?.value.severity, .warning)
+        XCTAssertNil(item("\(AppConstants.Labels.guestProductServices): app", in: items))
+        XCTAssertNil(item(AppConstants.Labels.vitalDBObserver, in: items))
+        XCTAssertNil(item(GeneratedRelease.recorderIngressName, in: items))
     }
 
     func testAdvancedServiceHealthShowsRedisRelayHealthyWhenEnabledAndHealthy() {
@@ -838,30 +839,14 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             )
         )
         let settings = RuntimeRedisRelaySettings(enabled: true)
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(
-                    service: "redis-relay",
-                    state: "running",
-                    health: "healthy",
-                    uptimeSeconds: 65
-                ),
-            ]
-        )
-
         let items = policy.advancedServiceHealth(
             status: status,
-            observation: observation,
             redisRelaySettings: settings
         )
 
-        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.text, AppConstants.StatusText.healthy)
+        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.text, AppConstants.StatusText.running)
         XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.severity, .healthy)
-        XCTAssertEqual(item(AppConstants.Labels.redisRelay, in: items)?.value.uptimeText, "00:01:05")
+        XCTAssertNil(item(AppConstants.Labels.redisRelay, in: items)?.value.uptimeText)
     }
 
     func testAdvancedServiceHealthShowsRedisRelayDisabledFromSettingsBeforeStaleStatus() {
@@ -877,7 +862,6 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
         let items = policy.advancedServiceHealth(
             status: status,
-            observation: nil,
             redisRelaySettings: RuntimeRedisRelaySettings(enabled: false)
         )
 
@@ -897,24 +881,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             )
         )
         let settings = RuntimeRedisRelaySettings(enabled: true)
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(
-                    service: "redis-relay",
-                    state: "running",
-                    health: "healthy",
-                    uptimeSeconds: 65
-                ),
-            ]
-        )
-
         let items = policy.advancedServiceHealth(
             status: status,
-            observation: observation,
             redisRelaySettings: settings
         )
 
@@ -937,7 +905,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
 
         let vmItems = policy.advancedVMHealth(status: status)
-        let serviceItems = policy.advancedServiceHealth(status: status, observation: nil)
+        let serviceItems = policy.advancedServiceHealth(status: status)
 
         XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmItems)?.value.text, "Permission denied")
         XCTAssertNil(item(AppConstants.Labels.vmService, in: serviceItems))
@@ -957,9 +925,9 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: nil
         )
 
-        let healthDetails = policy.healthDetails(status: status, observation: nil)
+        let healthDetails = policy.healthDetails(status: status)
         let vmHealth = policy.advancedVMHealth(status: status)
-        let serviceHealth = policy.advancedServiceHealth(status: status, observation: nil)
+        let serviceHealth = policy.advancedServiceHealth(status: status)
 
         XCTAssertEqual(item(AppConstants.Labels.watchdog, in: healthDetails)?.value.text, AppConstants.StatusText.unavailable)
         XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, AppConstants.StatusText.unavailable)
@@ -990,7 +958,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
 
         let vmItems = policy.advancedVMHealth(status: status)
-        let serviceItems = policy.advancedServiceHealth(status: status, observation: nil)
+        let serviceItems = policy.advancedServiceHealth(status: status)
 
         XCTAssertEqual(item(AppConstants.Labels.vmState, in: vmItems)?.value.text, AppConstants.StatusText.failed)
         XCTAssertEqual(item(AppConstants.Labels.vmState, in: vmItems)?.value.severity, .critical)
@@ -1003,7 +971,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceItems)?.value.text, AppConstants.StatusText.reachable)
     }
 
-    func testInitialGuestStateStaleDisplaysAsWaitingDuringVMStart() {
+    func testRuntimeStateStaleDoesNotDriveGuestReadinessWaitingPresentation() {
         let status = RuntimeStatus(
             runtimeInstalled: true,
             vmServiceLoaded: true,
@@ -1025,19 +993,19 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             failureReasons: [.guestRuntimeStateStale]
         )
 
-        let details = policy.healthDetails(status: status, observation: nil)
+        let details = policy.healthDetails(status: status)
         let vmItems = policy.advancedVMHealth(status: status)
-        let serviceItems = policy.advancedServiceHealth(status: status, observation: nil)
+        let serviceItems = policy.advancedServiceHealth(status: status)
 
-        XCTAssertEqual(item(AppConstants.Labels.vmIPAddress, in: details)?.value.text, AppConstants.StatusText.guestStateStale)
+        XCTAssertEqual(item(AppConstants.Labels.vmIPAddress, in: details)?.value.text, AppConstants.StatusText.waiting)
         XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: details)?.value.text, "Guest runtime state stale")
-        XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: details)?.value.severity, .warning)
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: details)?.value.text, AppConstants.StatusText.guestStateStale)
+        XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: details)?.value.severity, .critical)
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: details)?.value.text, AppConstants.StatusText.waiting)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: details)?.value.severity, .warning)
-        XCTAssertEqual(item(AppConstants.Labels.vmIPAddress, in: vmItems)?.value.text, AppConstants.StatusText.guestStateStale)
+        XCTAssertEqual(item(AppConstants.Labels.vmIPAddress, in: vmItems)?.value.text, AppConstants.StatusText.waiting)
         XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: vmItems)?.value.text, "Guest runtime state stale")
-        XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: vmItems)?.value.severity, .warning)
-        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceItems)?.value.text, AppConstants.StatusText.guestStateStale)
+        XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: vmItems)?.value.severity, .critical)
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceItems)?.value.text, AppConstants.StatusText.waiting)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceItems)?.value.severity, .warning)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceItems)?.httpStatus, RuntimeHTTPStatusText.missingVMIP)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceItems)?.value.text, AppConstants.StatusText.reachable)
@@ -1059,9 +1027,9 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             failureReasons: [.guestRuntimeStateStale]
         )
 
-        let details = policy.healthDetails(status: status, observation: nil)
+        let details = policy.healthDetails(status: status)
         let vmItems = policy.advancedVMHealth(status: status)
-        let serviceItems = policy.advancedServiceHealth(status: status, observation: nil)
+        let serviceItems = policy.advancedServiceHealth(status: status)
 
         XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: details)?.value.severity, .critical)
         XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: vmItems)?.value.severity, .critical)
@@ -1088,7 +1056,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             vmErrors: [.runtimeStateStale, .diskAttachmentInvalid, .guestDiskIO, .guestHTTP("failed")]
         )
 
-        let items = policy.healthDetails(status: status, observation: nil)
+        let items = policy.healthDetails(status: status)
 
         XCTAssertEqual(
             item(AppConstants.Labels.vmErrors, in: items)?.value.text,
@@ -1106,7 +1074,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             failureReasons: [.hostProxyHTTP("503"), .guestRuntimeStateStale]
         )
 
-        let items = policy.healthDetails(status: status, observation: nil)
+        let items = policy.healthDetails(status: status)
 
         XCTAssertEqual(
             item(AppConstants.Labels.failureReasons, in: items)?.value.text,
@@ -1116,9 +1084,10 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
     }
 
     func testRecorderSummaryOwnsRecorderDisplayText() {
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+        let recorderIngressStatusRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .loaded,
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
                 activeRecorderConnections: 2,
                 recorders: [
                     RuntimeRecorderConnectionObservation(
@@ -1135,8 +1104,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     ),
                 ]
             ),
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+            readError: nil
         )
 
         let vitalDBObservation = VitalDBObservationDocument(
@@ -1180,13 +1148,13 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
 
         let summary = policy.recorderSummary(
-            observation: observation,
+            recorderIngressStatusRead: recorderIngressStatusRead,
             vitalDBObservation: vitalDBObservation,
             now: ISO8601DateFormatter().date(from: "2026-05-24T02:00:00Z")!
         )
 
         XCTAssertEqual(summary.activeConnections, "2")
-        XCTAssertEqual(summary.knownRecorders, "2")
+        XCTAssertEqual(summary.knownRecorders, "4")
         XCTAssertEqual(summary.onlineRecorders, "1")
         XCTAssertEqual(summary.staleRecorders, "1")
         XCTAssertEqual(summary.knownBeds, "1")
@@ -1211,7 +1179,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
 
         let summary = policy.recorderSummary(
-            observation: nil,
+            recorderIngressStatusRead: nil,
             vitalDBObservation: vitalDBObservation
         )
 
@@ -1234,7 +1202,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
 
         let summary = policy.recorderSummary(
-            observation: nil,
+            recorderIngressStatusRead: nil,
             vitalDBObservation: vitalDBObservation,
             now: ISO8601DateFormatter().date(from: "2026-05-24T02:10:00Z")!
         )
@@ -1252,12 +1220,12 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
 
-        let value = policy.vitalServerAvailability(status: status, observation: nil, now: now)
+        let value = policy.vitalServerAvailability(status: status, now: now)
 
         XCTAssertNil(value.uptimeText)
     }
 
-    func testComposeServiceMissingAndRunningWithoutHealthAreNotHealthyFallbacks() {
+    func testGuestProductServicesAreUnavailableWithoutGuestServiceRead() {
         let status = RuntimeStatus(
             runtimeInstalled: true,
             vmServiceLoaded: true,
@@ -1266,29 +1234,18 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestHTTP: "200",
             hostProxyHTTP: "200"
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServices: [
-                RuntimeContainerServiceObservation(service: "redis", state: "running", health: nil),
-            ]
-        )
+        let recorderIngressStatusRead = recorderIngressStatusRead()
 
-        let items = policy.healthDetails(status: status, observation: observation)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
 
-        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.text, AppConstants.StatusText.running)
-        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.severity, .warning)
-        XCTAssertEqual(item(AppConstants.Labels.vitalDBObserver, in: items)?.value.text, AppConstants.StatusText.notReported)
-        XCTAssertEqual(item(AppConstants.Labels.vitalDBObserver, in: items)?.value.severity, .neutral)
+        XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: items)?.value.text, AppConstants.StatusText.unavailable)
+        XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: items)?.value.severity, .warning)
     }
 
     func testRecorderIngressQueueDisplaysHealthyStatus() {
         let status = healthyRuntimeStatus()
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+        let recorderIngressStatusRead = recorderIngressStatusRead(
+            document: RuntimeRecorderIngressStatusDocument(
                 spool: RuntimeRecorderIngressSpoolStatus(
                     status: "ready",
                     rejectedEvents: 0,
@@ -1303,41 +1260,40 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     retryableFailures: 0,
                     deadLetteredEvents: 0
                 )
-            ),
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+            )
         )
 
-        let items = policy.healthDetails(status: status, observation: observation)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, "healthy, 0 pending")
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .healthy)
     }
 
     func testRecorderIngressQueueStatusValueIsAvailableForStatusPanel() {
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+        let recorderIngressStatusRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .loaded,
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
                 spool: RuntimeRecorderIngressSpoolStatus(
                     status: "ready",
                     pendingItems: 7
                 ),
                 replay: RuntimeRecorderIngressReplayStatus(status: "replaying")
             ),
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+            readError: nil
         )
 
-        let value = policy.recorderIngressQueue(observation: observation)
+        let value = policy.recorderIngressQueue(recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(value.text, "draining, 7 pending")
         XCTAssertEqual(value.severity, .warning)
     }
 
     func testRecorderIngressDetailsDisplayOperationalRows() {
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+        let recorderIngressStatusRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .loaded,
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
                 activeWebSockets: 3,
                 activeRecorderConnections: 2,
                 throughput: RuntimeRecorderIngressThroughputStatus(
@@ -1371,11 +1327,10 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     )
                 )
             ),
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+            readError: nil
         )
 
-        let items = policy.recorderIngressDetails(observation: observation)
+        let items = policy.recorderIngressDetails(recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressConnections, in: items)?.value.text, "2 active / 3 WebSockets")
         XCTAssertEqual(item(AppConstants.Labels.queue, in: items)?.value.text, "128 pending / 24 MB")
@@ -1404,14 +1359,11 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
     }
 
     func testRecorderIngressDetailsDoNotDefaultMissingQueueFieldsToZero() {
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 2),
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+        let recorderIngressStatusRead = recorderIngressStatusRead(
+            document: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 2)
         )
 
-        let items = policy.recorderIngressDetails(observation: observation)
+        let items = policy.recorderIngressDetails(recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressConnections, in: items)?.value.text, "2 active / 0 WebSockets")
         XCTAssertEqual(item(AppConstants.Labels.queue, in: items)?.value.text, AppConstants.StatusText.notReported)
@@ -1428,9 +1380,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
     func testRecorderIngressQueueDisplaysDrainingBacklog() {
         let status = healthyRuntimeStatus()
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+        let recorderIngressStatusRead = recorderIngressStatusRead(
+            document: RuntimeRecorderIngressStatusDocument(
                 spool: RuntimeRecorderIngressSpoolStatus(
                     status: "ready",
                     rejectedEvents: 0,
@@ -1445,12 +1396,10 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     deadLetteredEvents: 0,
                     replayLagSeconds: 12
                 )
-            ),
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+            )
         )
 
-        let items = policy.healthDetails(status: status, observation: observation)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(
             item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text,
@@ -1460,9 +1409,10 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
     }
 
     func testRecorderIngressQueueDisplaysMirrorSpoolAsMirroringNotDraining() {
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+        let recorderIngressStatusRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .loaded,
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
                 spool: RuntimeRecorderIngressSpoolStatus(
                     mode: "mirror_spool",
                     status: "ready",
@@ -1479,12 +1429,11 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     deadLetteredEvents: 0
                 )
             ),
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+            readError: nil
         )
 
-        let summary = policy.recorderIngressQueue(observation: observation)
-        let details = policy.recorderIngressDetails(observation: observation)
+        let summary = policy.recorderIngressQueue(recorderIngressStatusRead: recorderIngressStatusRead)
+        let details = policy.recorderIngressDetails(recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(
             summary.text,
@@ -1499,9 +1448,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
     func testRecorderIngressQueueDisplaysFailureEvidence() {
         let status = healthyRuntimeStatus()
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+        let recorderIngressStatusRead = recorderIngressStatusRead(
+            document: RuntimeRecorderIngressStatusDocument(
                 spool: RuntimeRecorderIngressSpoolStatus(
                     status: "ready",
                     rejectedEvents: 2,
@@ -1513,12 +1461,10 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     deadLetteredEvents: 0,
                     lastFailure: RuntimeRecorderIngressFailureObservation(reason: "upstream_timeout")
                 )
-            ),
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+            )
         )
 
-        let items = policy.healthDetails(status: status, observation: observation)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(
             item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text,
@@ -1529,9 +1475,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
     func testRecorderIngressQueueDisplaysCriticalDeadLetters() {
         let status = healthyRuntimeStatus()
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+        let recorderIngressStatusRead = recorderIngressStatusRead(
+            document: RuntimeRecorderIngressStatusDocument(
                 spool: RuntimeRecorderIngressSpoolStatus(
                     status: "ready",
                     writeFailures: 0,
@@ -1542,12 +1487,10 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     deadLetteredEvents: 3,
                     lastFailure: RuntimeRecorderIngressFailureObservation(reason: "invalid_payload")
                 )
-            ),
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+            )
         )
 
-        let items = policy.healthDetails(status: status, observation: observation)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(
             item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text,
@@ -1558,14 +1501,11 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
     func testRecorderIngressQueueDoesNotDefaultMissingQueueStateToZero() {
         let status = healthyRuntimeStatus()
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 2),
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+        let recorderIngressStatusRead = recorderIngressStatusRead(
+            document: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 2)
         )
 
-        let items = policy.healthDetails(status: status, observation: observation)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, AppConstants.StatusText.notReported)
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .neutral)
@@ -1573,38 +1513,32 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
     func testRecorderIngressQueueDisplaysStatusReadFailureAsNotReady() {
         let status = healthyRuntimeStatus()
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "failed",
-            recorderIngressStatus: nil,
-            recorderIngressStatusReadState: .commandFailed,
-            recorderIngressStatusReadError: "curl failed",
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+        let recorderIngressStatusRead = recorderIngressStatusRead(
+            readState: .commandFailed,
+            httpStatus: "failed",
+            readError: "curl failed"
         )
 
-        let items = policy.healthDetails(status: status, observation: observation)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, AppConstants.StatusText.notReady)
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .warning)
     }
 
     func testRecorderIngressDetailsDisplaysStatusReadFailureAsNotReady() {
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "failed",
-            recorderIngressStatus: nil,
-            recorderIngressStatusReadState: .commandFailed,
-            recorderIngressStatusReadError: "command-failed-7 exitCode=7 stderr=curl failed",
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+        let recorderIngressStatusRead = recorderIngressStatusRead(
+            readState: .commandFailed,
+            httpStatus: "failed",
+            readError: "command-failed-7 exitCode=7 stderr=curl failed"
         )
 
-        let items = policy.recorderIngressDetails(observation: observation)
+        let items = policy.recorderIngressDetails(recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.text, AppConstants.StatusText.notReady)
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressReplay, in: items)?.value.severity, .warning)
     }
 
-    func testComposeServicesReadFailureIsDisplayedInsteadOfMissingServiceFallback() {
+    func testGuestProductServicesStayUnavailableWhenGuestServiceReadIsMissing() {
         let status = RuntimeStatus(
             runtimeInstalled: true,
             vmServiceLoaded: true,
@@ -1613,34 +1547,24 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestHTTP: "200",
             hostProxyHTTP: "200"
         )
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: nil,
-            containerLogsPresent: true,
-            containerLogsBytes: 1,
-            composeServicesReadState: .invalid,
-            composeServices: [],
-            composeServicesReadError: "guest-runtime-state-invalid"
-        )
+        let recorderIngressStatusRead = recorderIngressStatusRead()
 
-        let items = policy.healthDetails(status: status, observation: observation)
+        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
 
-        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.text, "guest-runtime-state-invalid")
-        XCTAssertEqual(item(GeneratedRelease.redisName, in: items)?.value.severity, .warning)
-        XCTAssertEqual(item(AppConstants.Labels.vitalDBObserver, in: items)?.value.text, "guest-runtime-state-invalid")
-        XCTAssertEqual(item(AppConstants.Labels.vitalDBObserver, in: items)?.value.severity, .warning)
+        XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: items)?.value.text, AppConstants.StatusText.unavailable)
+        XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: items)?.value.severity, .warning)
     }
 
     func testRecorderSummaryDoesNotDisplayUnavailableObservationMetricsAsZero() {
-        let observation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 2),
-            containerLogsPresent: true,
-            containerLogsBytes: 1
+        let recorderIngressStatusRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .loaded,
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 2),
+            readError: nil
         )
 
         let summary = policy.recorderSummary(
-            observation: observation,
+            recorderIngressStatusRead: recorderIngressStatusRead,
             vitalDBObservation: nil
         )
 
@@ -1662,6 +1586,20 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             watchdogServiceLoaded: true,
             guestHTTP: "200",
             hostProxyHTTP: "200"
+        )
+    }
+
+    private func recorderIngressStatusRead(
+        readState: RuntimeRecorderIngressStatusReadState = .loaded,
+        httpStatus: String = "200",
+        document: RuntimeRecorderIngressStatusDocument? = nil,
+        readError: String? = nil
+    ) -> RuntimeRecorderIngressStatusReadResult {
+        RuntimeRecorderIngressStatusReadResult(
+            readState: readState,
+            httpStatus: httpStatus,
+            document: document,
+            readError: readError
         )
     }
 

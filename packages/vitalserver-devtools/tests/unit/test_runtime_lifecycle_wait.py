@@ -273,6 +273,30 @@ def test_wait_for_runtime_boot_smoke_accepts_passed_manifest(tmp_path, capsys):
     assert "runId=runtime-run-test" in captured.out
 
 
+def test_wait_for_runtime_boot_smoke_accepts_passed_manifest_without_retired_stage(
+    tmp_path,
+    capsys,
+):
+    write_runtime_boot_smoke_manifest(
+        tmp_path,
+        run_id="runtime-run-test",
+        stage_statuses={"command-dispatch": ("missing", "")},
+    )
+
+    result = wait_for_runtime_boot_smoke(
+        RuntimeWaitInput(
+            config=tmp_path / "config.toml",
+            vm_home=tmp_path,
+            timeout=1,
+            expected_run_id="runtime-run-test",
+        )
+    )
+
+    assert result == 0
+    captured = capsys.readouterr()
+    assert "SUCCESS: runtime boot smoke passed" in captured.out
+
+
 def test_wait_for_runtime_boot_smoke_rejects_failed_stage(tmp_path):
     write_runtime_boot_smoke_manifest(
         tmp_path,
@@ -294,6 +318,34 @@ def test_wait_for_runtime_boot_smoke_rejects_failed_stage(tmp_path):
     assert "runId=runtime-run-test" in message
     assert "runtime-boot-smoke-manifest.json" in message
     assert "Check VM launcher log" in message
+
+
+def test_wait_for_runtime_boot_smoke_rejects_failed_guest_control_stage(tmp_path):
+    write_runtime_boot_smoke_manifest(
+        tmp_path,
+        run_id="runtime-run-test",
+        stage_statuses={
+            "guest-control-api": (
+                "failed",
+                "runtime HTTP JSON request failed: timed out",
+            ),
+            "disk-health": ("missing", ""),
+        },
+    )
+
+    with pytest.raises(SystemExit) as error:
+        wait_for_runtime_boot_smoke(
+            RuntimeWaitInput(
+                config=tmp_path / "config.toml",
+                vm_home=tmp_path,
+                timeout=1,
+                expected_run_id="runtime-run-test",
+            )
+        )
+    message = str(error.value)
+    assert "runtime boot smoke stage failed" in message
+    assert "name=guest-control-api" in message
+    assert "timed out" in message
 
 
 def test_wait_for_runtime_boot_smoke_rejects_stale_run_id(tmp_path):
@@ -838,13 +890,17 @@ def write_runtime_boot_smoke_manifest(
         "bootstrap-result",
         "runtime-state",
         "systemd-units",
+        "runtime-data",
         "http",
         "compose-services",
+        "guest-control-api",
         "disk-health",
         "capabilities",
         "command-dispatch",
         "feature-readiness",
     ):
+        if stage_statuses.get(name, ("", ""))[0] == "missing":
+            continue
         status, message = stage_statuses.get(name, ("passed", f"{name} passed"))
         stages.append(
             {
@@ -861,7 +917,12 @@ def write_runtime_boot_smoke_manifest(
             {
                 "schemaVersion": 1,
                 "runId": run_id,
-                "status": "failed" if stage_statuses else "passed",
+                "status": "failed"
+                if any(
+                    status in {"failed", "timeout", "cleanup-failed"}
+                    for status, _ in stage_statuses.values()
+                )
+                else "passed",
                 "stages": stages,
             }
         ),

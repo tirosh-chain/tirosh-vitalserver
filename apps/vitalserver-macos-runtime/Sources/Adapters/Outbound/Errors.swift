@@ -32,33 +32,6 @@ public enum JSONLRuntimeEventRepositoryError: Error, Equatable, Sendable, Custom
 }
 
 
-public enum MacTestKitControllerError: LocalizedError, Equatable {
-    case apiEndpointUnavailable(String)
-    case apiUnavailable(String)
-    case invalidResponse
-    case invalidRequestURL(String)
-    case missingSessionID
-    case requestFailed(String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .apiEndpointUnavailable(let message):
-            return message
-        case .apiUnavailable(let apiBaseURL):
-            return "TestKit container API is not reachable at \(apiBaseURL)."
-        case .invalidResponse:
-            return "TestKit API returned an invalid response."
-        case .invalidRequestURL(let message):
-            return message
-        case .missingSessionID:
-            return "TestKit session ID is required."
-        case .requestFailed(let message):
-            return message
-        }
-    }
-}
-
-
 public enum ProcessStateError: Error, CustomStringConvertible, Equatable {
     case runtimeOperationFailed(String)
 
@@ -197,6 +170,7 @@ public enum RuntimeClientError: LocalizedError {
     case uninstallerNotExecutable(path: String, state: String)
     case invalidBackupDeletionTarget(path: String, backupsRoot: String)
     case logExportFailed(String)
+    case guestControlUnavailable(String)
 
     public var errorDescription: String? {
         switch self {
@@ -217,6 +191,8 @@ public enum RuntimeClientError: LocalizedError {
         case .logExportFailed(let output):
             let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? "Log export failed." : trimmed
+        case .guestControlUnavailable(let reason):
+            return "Guest Control API is unavailable. \(reason)"
         }
     }
 }
@@ -538,16 +514,16 @@ public enum RuntimeInstallSettingsCleanupError: Error, CustomStringConvertible, 
 }
 
 
-public enum JSONFileRuntimeGuestGatewayError: Error, CustomStringConvertible, Equatable {
+public enum JSONFileRuntimeGuestDocumentReaderError: Error, CustomStringConvertible, Equatable {
     case pathInspectionFailed(path: String, reason: String)
     case unexpectedPathState(path: String, state: String)
 
     public var description: String {
         switch self {
         case .pathInspectionFailed(let path, let reason):
-            return "runtime guest gateway path inspection failed: \(path) reason=\(reason)"
+            return "runtime guest document reader path inspection failed: \(path) reason=\(reason)"
         case .unexpectedPathState(let path, let state):
-            return "runtime guest gateway path state is unexpected: \(path) state=\(state)"
+            return "runtime guest document reader path state is unexpected: \(path) state=\(state)"
         }
     }
 }

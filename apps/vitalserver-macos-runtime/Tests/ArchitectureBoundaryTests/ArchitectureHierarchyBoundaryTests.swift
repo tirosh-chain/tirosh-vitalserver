@@ -23,7 +23,6 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         let required = [
             "Contracts/Shared",
             "Contracts/RuntimeControl",
-            "Contracts/RuntimeControl/TestKit",
             "Domain/Models",
             "Domain/Policies",
             "Domain/StateMachines",
@@ -43,12 +42,10 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Adapters/Inbound/RuntimeControlAPI/Boundary",
             "Adapters/Inbound/RuntimeControlAPI/Transport",
             "Adapters/Inbound/RuntimeControlAPI/DevConsole",
-            "Adapters/Inbound/RuntimeControlAPI/TestKit",
             "Adapters/Inbound/MacControlPanel/Configuration",
             "Adapters/Inbound/MacControlPanel/Generated",
             "Adapters/Inbound/MacControlPanel/Presentation",
             "Adapters/Inbound/MacControlPanel/Presentation/Copy",
-            "Adapters/Inbound/MacControlPanel/Presentation/TestKit",
             "Adapters/Outbound/FileSystem",
             "Adapters/Outbound/Persistence",
             "Adapters/Outbound/ObservabilityStore",
@@ -66,7 +63,6 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Adapters/Outbound/MacRuntimeControlClient/Logs",
             "Adapters/Outbound/MacRuntimeControlClient/Reads",
             "Adapters/Outbound/MacRuntimeControlClient/Settings",
-            "Adapters/Outbound/MacRuntimeControlClient/TestKit",
             "Bootstrap/DI",
             "Bootstrap/Composition",
             "Hosts/CLI/Entrypoint",
@@ -164,7 +160,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
-    func testRuntimeControlAPITestKitKeepsRouterEndpointAndRequestsSplit() throws {
+    func testRuntimeControlAPITestKitHTTPAdapterIsRemovedFromRuntimeControlAPI() throws {
         let testKitRoot = packageRoot()
             .appendingPathComponent("Sources/Adapters/Inbound/RuntimeControlAPI/TestKit")
         let router = testKitRoot.appendingPathComponent("RuntimeTestKitAPIRouter.swift")
@@ -172,17 +168,169 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         let requests = testKitRoot.appendingPathComponent("RuntimeTestKitAPIRequests.swift")
 
         for file in [router, endpoint, requests] {
-            XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), "\(file.lastPathComponent) must exist")
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: file.path),
+                "\(file.lastPathComponent) must not reintroduce the removed TestKit Runtime Control API surface"
+            )
+        }
+    }
+
+    func testProductLabGuestGatewayUsesDedicatedApplicationPort() throws {
+        let root = packageRoot()
+        let labGateway = root
+            .appendingPathComponent("Sources/Application/Ports/RuntimeGuestProductLabGateway.swift")
+        let serviceGatewayText = try String(
+            contentsOf: root.appendingPathComponent("Sources/Application/Ports/RuntimeGuestControlGateway.swift"),
+            encoding: .utf8
+        )
+        let httpGatewayText = try String(
+            contentsOf: root.appendingPathComponent("Sources/Adapters/Outbound/GuestControl/HTTPRuntimeGuestControlGateway.swift"),
+            encoding: .utf8
+        )
+        let commandWorkerText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Adapters/Outbound/MacRuntimeControlClient/Commands/MacRuntimeControlCommandWorker.swift"
+            ),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: labGateway.path),
+            "Product Lab Guest API consumption should have an explicit application port"
+        )
+        XCTAssertFalse(
+            serviceGatewayText.contains("RuntimeLab"),
+            "Service/stack Guest Control port must not absorb Product Lab contracts"
+        )
+        XCTAssertTrue(
+            httpGatewayText.contains("RuntimeGuestProductLabGateway"),
+            "HTTP Guest Control adapter should implement the Product Lab gateway port"
+        )
+        XCTAssertTrue(
+            commandWorkerText.contains("any RuntimeGuestProductLabGateway"),
+            "Host command worker should consume Product Lab through the application port"
+        )
+    }
+
+    func testProductLabContractsLiveInSharedContracts() throws {
+        let root = packageRoot()
+        let sharedContract = root
+            .appendingPathComponent("Sources/Contracts/Shared/RuntimeLabContracts.swift")
+        let runtimeControlContract = root
+            .appendingPathComponent("Sources/Contracts/RuntimeControl/RuntimeLabContracts.swift")
+        let labGateway = root
+            .appendingPathComponent("Sources/Application/Ports/RuntimeGuestProductLabGateway.swift")
+        let labGatewayText = try String(contentsOf: labGateway, encoding: .utf8)
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: sharedContract.path),
+            "Product Lab DTOs should live in the inward Shared Contracts target"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: runtimeControlContract.path),
+            "Product Lab DTOs must not live in the outward RuntimeControl API contract target"
+        )
+        XCTAssertFalse(
+            labGatewayText.contains("import RuntimeControl"),
+            "Application Product Lab port must not import the outward RuntimeControl target"
+        )
+    }
+
+    func testRuntimeGuestDocumentReadersStayReadOnlyAndRoleSpecific() throws {
+        let root = packageRoot()
+        let readersText = try String(
+            contentsOf: root.appendingPathComponent("Sources/Application/Ports/RuntimeGuestDocumentReaders.swift"),
+            encoding: .utf8
+        )
+        let fileReaderText = try String(
+            contentsOf: root.appendingPathComponent(
+                "Sources/Adapters/Outbound/Persistence/JSONFileRuntimeGuestDocumentReader.swift"
+            ),
+            encoding: .utf8
+        )
+        let fileNamesText = try String(
+            contentsOf: root.appendingPathComponent("Sources/Contracts/Shared/RuntimeFileNames.swift"),
+            encoding: .utf8
+        )
+        let combinedText = [readersText, fileReaderText, fileNamesText].joined(separator: "\n")
+
+        for token in [
+            "reconcile-compose",
+            "reconcileCompose",
+            "ReconcileCompose",
+            "reconcileGuestCompose",
+            "writeUpdateActivationRequest",
+            "writeUpdateShutdownRequest",
+            "loadUpdateActivationResultDocument",
+            "loadUpdateShutdownResultDocument",
+            "removeUpdateActivationResult",
+            "removeUpdateShutdownResult",
+            "clearUpdateShutdownPreparation",
+            "writeDatastoreRepairRequest",
+            "loadDatastoreRepairResultDocument",
+            "removeDatastoreRepairResult",
+            "writeRedisRestoreRequest",
+            "loadRedisRestoreResultDocument",
+            "removeRedisRestoreResult",
+            "TestKit",
+            "testkit",
+            "writeService",
+            "loadService",
+            "writeStack",
+            "loadStack",
+            "typealias RuntimeGuestDocumentReader",
+        ] {
+            XCTAssertFalse(
+                combinedText.contains(token),
+                "Runtime guest document readers must stay read-only and must not reintroduce service/stack command files: \(token)"
+            )
         }
 
-        let routerText = try String(contentsOf: router, encoding: .utf8)
-        let endpointText = try String(contentsOf: endpoint, encoding: .utf8)
-        let requestsText = try String(contentsOf: requests, encoding: .utf8)
+        for token in [
+            "RuntimeGuestBootstrapResultReader",
+            "RuntimeGuestRuntimeStateDiagnosticsReader",
+            "loadRuntimeStateDiagnosticsDocument",
+            "loadBootstrapResultDocument",
+        ] {
+            XCTAssertTrue(
+                readersText.contains(token),
+                "Runtime guest document readers should expose role-specific bootstrap and diagnostics reads: \(token)"
+            )
+        }
+    }
 
-        XCTAssertFalse(routerText.contains("public enum RuntimeTestKitAPIEndpoint"))
-        XCTAssertFalse(routerText.contains("public struct RuntimeTestKitStopRequest"))
-        XCTAssertFalse(endpointText.contains("controller."))
-        XCTAssertFalse(requestsText.contains(#""/dev/testkit/"#))
+    func testVitalDBCurrentObservationProviderDoesNotReadRuntimeStateOrStatusFiles() throws {
+        let providerText = try String(
+            contentsOf: packageRoot().appendingPathComponent(
+                "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeVitalDBCurrentObservationProvider.swift"
+            ),
+            encoding: .utf8
+        )
+
+        for token in [
+            "GuestRuntimeStateVitalDBObservationReader",
+            "RuntimeStatusVitalDBObservationReader",
+            "JSONFileRuntimeStatusRepository",
+            "GuestRuntimeStateDocument",
+            "RuntimeStatusDocument",
+            "runtimeStatePath",
+            "runtimeStatusPath",
+            "pathState(",
+            "readData(",
+        ] {
+            XCTAssertFalse(
+                providerText.contains(token),
+                "Latest VitalDB observation must not use runtime-state or runtime-status files as the live current source: \(token)"
+            )
+        }
+        XCTAssertTrue(
+            providerText.contains("latestVitalDBObservation"),
+            "Live current observation provider should consume Guest Control API read model"
+        )
+        XCTAssertTrue(
+            providerText.contains("guestControl="),
+            "Live current observation provider should preserve Guest Control API read failures explicitly"
+        )
     }
 
     func testRuntimeControlHTTPPollingConsumesExplicitClock() throws {
@@ -267,11 +415,6 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
                 .appendingPathComponent("Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlAPIErrorResponse.swift"),
             encoding: .utf8
         )
-        let testKitRouterText = try String(
-            contentsOf: root
-                .appendingPathComponent("Sources/Adapters/Inbound/RuntimeControlAPI/TestKit/RuntimeTestKitAPIRouter.swift"),
-            encoding: .utf8
-        )
         let hostErrorsText = try String(
             contentsOf: root.appendingPathComponent("Sources/Hosts/MacControlPanel/Errors.swift"),
             encoding: .utf8
@@ -284,14 +427,6 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         XCTAssertFalse(
             executorText.contains("code: .handlerFailed"),
             "Runtime Control route executor must not collapse every handler error to handlerFailed"
-        )
-        XCTAssertTrue(
-            testKitRouterText.contains("RuntimeControlHTTPErrorResponseMapper.response(for: error)"),
-            "Runtime Control TestKit router must share the typed HTTP error mapper"
-        )
-        XCTAssertFalse(
-            testKitRouterText.contains("code: .handlerFailed"),
-            "Runtime Control TestKit router must not maintain a second generic handlerFailed mapping"
         )
         XCTAssertTrue(
             errorResponseText.contains("case .hostAffordanceUnavailable"),
@@ -353,82 +488,38 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "MacRuntimeControlClient root must only group capability folders, not own source files: \(rootSwiftFiles.map(\.lastPathComponent))"
         )
 
-        let testKitController = clientRoot.appendingPathComponent("TestKit/MacTestKitController.swift")
-        let controllerText = try String(contentsOf: testKitController, encoding: .utf8)
-        XCTAssertFalse(controllerText.contains("public enum MacTestKitAPIEndpointSource"))
-        XCTAssertFalse(controllerText.contains("struct TestKitStartSessionRequest"))
-        XCTAssertFalse(controllerText.contains("MacTestKitAvailabilityPolicy"))
-        XCTAssertFalse(
-            controllerText.contains("activeSessionID"),
-            "Outbound TestKit adapter must not own selected session state; callers must pass explicit session IDs"
-        )
-        XCTAssertFalse(
-            controllerText.contains("private var lastError"),
-            "Outbound TestKit adapter must report errors in explicit return values or throws, not cache hidden error state"
-        )
-        XCTAssertTrue(
-            controllerText.contains("RuntimeTestKitSessionStatePolicy.preferredActiveSession(from: sessions)"),
-            "Outbound TestKit adapter should delegate active-session selection to the RuntimeControl contract policy"
-        )
-        XCTAssertFalse(
-            controllerText.contains("[\"running\", \"paused\", \"starting\", \"stopping\"]"),
-            "Outbound TestKit adapter must not own TestKit session-state semantics"
-        )
         XCTAssertFalse(
             FileManager.default.fileExists(
-                atPath: clientRoot.appendingPathComponent("TestKit/MacTestKitAvailabilityPolicy.swift").path
-            )
+                atPath: clientRoot.appendingPathComponent("TestKit").path
+            ),
+            "MacRuntimeControlClient must not keep the removed TestKit outbound adapter folder"
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             FileManager.default.fileExists(
                 atPath: packageRoot()
-                    .appendingPathComponent("Sources/Contracts/RuntimeControl/TestKit/RuntimeTestKitAvailabilityPolicy.swift")
+                    .appendingPathComponent("Sources/Contracts/RuntimeControl/TestKit")
                     .path
-            )
-        )
-        XCTAssertTrue(
-            FileManager.default.fileExists(
-                atPath: clientRoot.appendingPathComponent("TestKit/MacTestKitControllerConfiguration.swift").path
-            )
-        )
-        XCTAssertTrue(
-            FileManager.default.fileExists(
-                atPath: clientRoot.appendingPathComponent("TestKit/MacTestKitWireModels.swift").path
-            )
+            ),
+            "RuntimeControl contracts must not keep removed TestKit product contracts"
         )
     }
 
-    func testRuntimeTestPanelDoesNotInterpretSessionStateStrings() throws {
+    func testRuntimeLabPanelDoesNotReferenceTransitionalTestKitSurface() throws {
         let panel = packageRoot()
-            .appendingPathComponent("Sources/Adapters/Inbound/MacControlPanel/Presentation/TestKit/RuntimeTestPanel.swift")
+            .appendingPathComponent("Sources/Adapters/Inbound/MacControlPanel/Presentation/Lab/RuntimeLabPanel.swift")
         let text = try String(contentsOf: panel, encoding: .utf8)
 
         for token in [
-            "session.state.lowercased()",
-            "[\"stopped\", \"failed\"]",
-            "case \"running\"",
-            "case \"paused\"",
-            "case \"stopped\", \"failed\"",
-            "testKitActionMessage.lowercased()",
-            "message.contains(\"error\")",
-            "message.contains(\"failed\")",
-            "message.contains(\"unavailable\")",
-            "message.contains(\"not reachable\")",
+            "TestKit",
+            "testKit",
+            "testkit",
+            "RuntimeTestKit",
         ] {
             XCTAssertFalse(
                 text.contains(token),
-                "RuntimeTestPanel must render explicit presentation decisions, not interpret TestKit state or action message strings: \(token)"
+                "RuntimeLabPanel must not render or depend on transitional TestKit implementation surface: \(token)"
             )
         }
-
-        XCTAssertTrue(
-            text.contains("viewModel.testKitSessionControlState(session)"),
-            "RuntimeTestPanel should render the session control state supplied by presentation policy."
-        )
-        XCTAssertTrue(
-            text.contains("viewModel.testKitActionMessageTone"),
-            "RuntimeTestPanel should render explicit action message tone instead of deriving tone from message text."
-        )
     }
 
     func testOutboundAdaptersDoNotForceUnwrapExternalURLConstruction() throws {
@@ -772,7 +863,6 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
 
         for fileName in [
             "MacRuntimeControlClientWorkerTests.swift",
-            "MacTestKitControllerTests.swift",
             "ProcessRunnerTests.swift",
             "RuntimeActionEnvironmentTests.swift",
             "RuntimeCommandFactoryTests.swift",
@@ -1167,7 +1257,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         let forbiddenTokens = [
             "RuntimeHealthObservation(",
             "RuntimeContainerObservation(",
-            "RuntimeGuestRuntimeStateInputPlan",
+            "RuntimeGuestReadinessInputPlan",
             "RuntimeComposeServicesReadResult",
             "reportedVMErrors",
             "hostProxyListenerFailureReasons",
@@ -1220,11 +1310,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "public struct RuntimeRecorderIngressStatusReadResult",
             "public enum RuntimeRecorderIngressStatusReadState",
             "public struct RuntimeHostProxyListenerObservation",
-            "public struct RuntimeGuestRuntimeStateObservation",
             "public struct RuntimeContainerLogsMetadata",
-            "public struct RuntimeFileModifiedAtReadResult",
-            "public enum RuntimeFileMetadataReadState",
-            "public enum RuntimeGuestRuntimeStateReadIssue",
         ] {
             XCTAssertFalse(
                 useCaseText.contains(token),
@@ -1233,14 +1319,10 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         }
     }
 
-    func testRuntimeStateFileMetadataReadStateStaysExplicit() throws {
+    func testRuntimeStateFileMetadataReadIsNotCurrentHealthInput() throws {
         let root = packageRoot()
         let contractsText = try String(
             contentsOf: root.appendingPathComponent("Sources/Contracts/Shared/RuntimeHealthObservationReads.swift"),
-            encoding: .utf8
-        )
-        let containerObservationText = try String(
-            contentsOf: root.appendingPathComponent("Sources/Contracts/Shared/RuntimeContainerObservation.swift"),
             encoding: .utf8
         )
         let checkerText = try String(
@@ -1248,24 +1330,15 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(
-            contractsText.contains("public enum RuntimeFileMetadataReadState")
-                && contractsText.contains("case notRead")
-                && contractsText.contains("public let readState: RuntimeFileMetadataReadState"),
-            "Runtime file metadata reads must preserve notRead/loaded/readFailed explicitly"
-        )
-        XCTAssertTrue(
-            containerObservationText.contains("runtimeStateFileMetadataReadState"),
-            "Runtime container observation must carry runtime state file metadata read state to API/UI consumers"
-        )
-        XCTAssertTrue(
-            checkerText.contains("return .notRead()"),
-            "RuntimeHealthChecker must report skipped runtime-state metadata reads explicitly"
-        )
+        XCTAssertFalse(contractsText.contains("RuntimeFileModifiedAtReadResult"))
+        XCTAssertFalse(contractsText.contains("RuntimeFileMetadataReadState"))
+        XCTAssertFalse(contractsText.contains("runtimeStateFileModifiedAt"))
         XCTAssertFalse(
-            checkerText.contains("RuntimeFileModifiedAtReadResult(updatedAt: nil, readError: nil)"),
-            "RuntimeHealthChecker must not represent skipped metadata reads as nil updatedAt and nil error only"
+            contractsText.contains("public struct RuntimeContainerObservation"),
+            "Runtime file metadata read state must stay in explicit read contracts, not in RuntimeContainerObservation"
         )
+        XCTAssertFalse(checkerText.contains("RuntimeFileModifiedAtReader"))
+        XCTAssertFalse(checkerText.contains("runtimeStateFileModifiedAt"))
     }
 
     func testRecorderIngressStatusReadStateStaysExplicit() throws {
@@ -1274,13 +1347,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             contentsOf: root.appendingPathComponent("Sources/Contracts/Shared/RuntimeHealthObservationReads.swift"),
             encoding: .utf8
         )
-        let containerObservationText = try String(
-            contentsOf: root.appendingPathComponent("Sources/Contracts/Shared/RuntimeContainerObservation.swift"),
-            encoding: .utf8
-        )
-        let readerText = try String(
-            contentsOf: root.appendingPathComponent("Sources/Adapters/Outbound/Health/RuntimeRecorderIngressStatusReader.swift"),
-            encoding: .utf8
+        let removedHostReaderPath = root.appendingPathComponent(
+            "Sources/Adapters/Outbound/Health/RuntimeRecorderIngressStatusReader.swift"
         )
 
         XCTAssertTrue(
@@ -1290,17 +1358,17 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
                 && contractsText.contains("public let readState: RuntimeRecorderIngressStatusReadState"),
             "Recorder ingress status reads must preserve command/decode/empty/output failures explicitly"
         )
-        XCTAssertTrue(
-            containerObservationText.contains("recorderIngressStatusReadState"),
-            "Runtime container observation must carry recorder ingress read state to API/UI consumers"
+        XCTAssertFalse(
+            contractsText.contains("public struct RuntimeContainerObservation"),
+            "Recorder ingress read state must stay in explicit read contracts, not in RuntimeContainerObservation"
         )
         XCTAssertFalse(
-            readerText.contains(#"httpStatus: "failed""#),
-            "Recorder ingress reader must not encode command failure as an invented HTTP status string only"
+            FileManager.default.fileExists(atPath: removedHostReaderPath.path),
+            "Host must not keep a proxy-curl recorder ingress status reader; Guest Control API owns this read"
         )
     }
 
-    func testContainerServicesReadStateDoesNotInferFromReadErrorText() throws {
+    func testContainerObservationContractIsRemovedFromProductionContracts() throws {
         let containerObservationText = try String(
             contentsOf: packageRoot().appendingPathComponent(
                 "Sources/Contracts/Shared/RuntimeContainerObservation.swift"
@@ -1308,11 +1376,15 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(
-            containerObservationText.contains("composeServicesReadState"),
-            "Runtime container observation must carry compose services read state explicitly"
+        XCTAssertFalse(
+            containerObservationText.contains("public struct RuntimeContainerObservation"),
+            "RuntimeContainerObservation must not remain as a production contract"
         )
         for token in [
+            "composeServices",
+            "composeServicesReadState",
+            "composeServicesReadError",
+            "RuntimeContainerServicesReadState",
             #"readError.contains("stale")"#,
             #"readError.contains("invalid")"#,
             #"readError.contains("missing")"#,
@@ -1320,7 +1392,28 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         ] {
             XCTAssertFalse(
                 containerObservationText.contains(token),
-                "Compose services read state must not be inferred from read error text: \(token)"
+                "Container diagnostics contracts must not expose compose service state as product contract: \(token)"
+            )
+        }
+    }
+
+    func testRuntimeHealthUseCaseDoesNotPromoteRuntimeStateContainerServices() throws {
+        let useCaseText = try String(
+            contentsOf: packageRoot().appendingPathComponent(
+                "Sources/Application/UseCases/RuntimeHealth/EvaluateRuntimeHealthUseCase.swift"
+            ),
+            encoding: .utf8
+        )
+
+        for token in [
+            "containerServices",
+            "services: services",
+            "services: guestState.containerServices",
+            "services: guestState.containerServices ?? []",
+        ] {
+            XCTAssertFalse(
+                useCaseText.contains(token),
+                "Host must not promote runtime-state containerServices into current compose service observations: \(token)"
             )
         }
     }
@@ -1376,34 +1469,13 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
-    func testGuestRuntimeStateReaderReportsReadIssuesWithoutDomainFailureReasons() throws {
+    func testGuestRuntimeStateObservationReaderIsRemovedFromHealthPath() throws {
         let file = packageRoot()
             .appendingPathComponent("Sources/Adapters/Outbound/Health/RuntimeGuestRuntimeStateObservationReader.swift")
-        let text = try String(contentsOf: file, encoding: .utf8)
 
         XCTAssertFalse(
-            text.contains("RuntimeFailureReason"),
-            "Guest runtime state reader must report read issues, not domain failure reason types"
-        )
-        XCTAssertFalse(
-            text.contains(".guestRuntimeStateInvalid"),
-            "Guest runtime state invalid judgement belongs in Application/Domain policy, not the outbound reader"
-        )
-        XCTAssertTrue(
-            text.contains("RuntimeGuestRuntimeStateObservationAssembler.loadFailed(message)"),
-            "Guest runtime state load failure must stay explicit before observation assembly"
-        )
-        XCTAssertTrue(
-            text.contains("RuntimeGuestRuntimeStateObservationAssembler.metadataReadFailed"),
-            "Guest runtime state metadata failure must stay explicit before observation assembly"
-        )
-        XCTAssertFalse(
-            text.contains("timeIntervalSince"),
-            "Guest runtime state freshness policy must not live in the outbound reader"
-        )
-        XCTAssertTrue(
-            text.contains("RuntimeGuestRuntimeStateObservationAssembler.loaded"),
-            "Guest runtime state reader should delegate freshness observation assembly to Contracts"
+            FileManager.default.fileExists(atPath: file.path),
+            "Runtime health must not read runtime-state.json through a GuestRuntimeState observation reader"
         )
     }
 
@@ -1662,23 +1734,34 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
-    func testTestKitInputPolicyLivesInPresentationPoliciesNotViewModels() throws {
+    func testMacControlPanelProductPresentationDoesNotOwnTestKitSurface() throws {
         let root = packageRoot()
-        XCTAssertTrue(
-            FileManager.default.fileExists(
-                atPath: root.appendingPathComponent(
-                    "Sources/Adapters/Inbound/MacControlPanel/Presentation/Policies/RuntimeTestKitPresentationPolicy.swift"
-                ).path
-            ),
-            "Test Kit input and action availability policy should live with presentation policies"
+        let forbidden = [
+            "Sources/Adapters/Inbound/MacControlPanel/Presentation/Policies/RuntimeTestKitPresentationPolicy.swift",
+            "Sources/Adapters/Inbound/MacControlPanel/Presentation/ViewModels/RuntimeViewModel+TestKit.swift",
+            "Sources/Adapters/Inbound/MacControlPanel/Presentation/ViewModels/RuntimeViewModelTestKitStatePolicy.swift",
+        ]
+
+        for path in forbidden {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path),
+                "\(path) must not reintroduce the removed TestKit product presentation surface"
+            )
+        }
+
+        let testKitPresentationRoot = root.appendingPathComponent(
+            "Sources/Adapters/Inbound/MacControlPanel/Presentation/TestKit"
         )
-        XCTAssertFalse(
-            FileManager.default.fileExists(
-                atPath: root.appendingPathComponent(
-                    "Sources/Adapters/Inbound/MacControlPanel/Presentation/ViewModels/RuntimeViewModelTestKitStatePolicy.swift"
-                ).path
-            ),
-            "ViewModels should own UI state and action flow, not Test Kit input policy types"
+        let residualFiles = ((try? FileManager.default.contentsOfDirectory(
+            at: testKitPresentationRoot,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []).filter { url in
+            ((try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true)
+        }
+        XCTAssertTrue(
+            residualFiles.isEmpty,
+            "TestKit product presentation files must not remain under MacControlPanel: \(residualFiles.map(\.lastPathComponent))"
         )
     }
 
@@ -2083,6 +2166,57 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
+    func testRuntimeStatusAssemblyDoesNotPromoteRuntimeStateContainerServicesToProductStatus() throws {
+        let root = packageRoot()
+        let runtimeControlAssembly = try String(
+            contentsOf: root.appendingPathComponent("Sources/Contracts/RuntimeControl/RuntimeStatusAssembly.swift"),
+            encoding: .utf8
+        )
+
+        for token in [
+            "guestState?.containerServices",
+            "containerMemoryUsage(",
+            "service: \"app\"",
+            "service: \"recorder-ingress\"",
+            "service: \"redis\"",
+        ] {
+            XCTAssertFalse(
+                runtimeControlAssembly.contains(token),
+                "RuntimeStatusAssembly must not turn runtime-state containerServices into current product status: \(token)"
+            )
+        }
+    }
+
+    func testRuntimeStatusReaderUsesGuestControlForProductServices() throws {
+        let readerText = try String(
+            contentsOf: packageRoot().appendingPathComponent(
+                "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeStatusReader.swift"
+            ),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(
+            readerText.contains("gateway.stackStatus()"),
+            "RuntimeStatusReader should read product service liveness from Guest Control API"
+        )
+        XCTAssertTrue(
+            readerText.contains("RuntimeGuestServicesRead"),
+            "RuntimeStatusReader should preserve Guest service read state explicitly"
+        )
+        for token in [
+            "containerServices",
+            "composeServices",
+            "service-stack-status",
+            "serviceStackStatus",
+            "runtime-state.json",
+        ] {
+            XCTAssertFalse(
+                readerText.contains(token),
+                "RuntimeStatusReader must not use v1 file/container payloads as product service state: \(token)"
+            )
+        }
+    }
+
     func testRuntimeObservabilityProjectionAssemblyDoesNotLiveInOutboundReader() throws {
         let root = packageRoot()
         let reader = root
@@ -2099,13 +2233,27 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
                 "RuntimeObservabilityReader should collect projection reads and delegate read-model assembly: \(token)"
             )
         }
-        XCTAssertTrue(
+        XCTAssertFalse(
             readerText.contains("RuntimeVitalDBProjectionReadCollector"),
-            "RuntimeObservabilityReader should delegate projection read collection to a dedicated Outbound collector"
+            "RuntimeObservabilityReader must not directly own Host SQLite projection collection"
+        )
+        XCTAssertFalse(
+            readerText.contains("RuntimeVitalDBHostDiagnosticsProjectionReader"),
+            "RuntimeObservabilityReader must not depend on Host SQLite diagnostics projection"
         )
 
-        let collector = root
-            .appendingPathComponent("Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeVitalDBProjectionReadCollector.swift")
+        let diagnosticsReader = root.appendingPathComponent(
+            "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeVitalDBHostDiagnosticsProjectionReader.swift"
+        )
+        let diagnosticsReaderText = try String(contentsOf: diagnosticsReader, encoding: .utf8)
+        XCTAssertTrue(
+            diagnosticsReaderText.contains("RuntimeVitalDBProjectionReadCollector"),
+            "Host SQLite projection collection should live behind an explicit diagnostics reader"
+        )
+
+        let collector = root.appendingPathComponent(
+            "Sources/Adapters/Outbound/MacRuntimeControlClient/Reads/RuntimeVitalDBProjectionReadCollector.swift"
+        )
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: collector.path),
             "Outbound projection reads should be collected behind an explicit collector boundary"
@@ -2119,7 +2267,6 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "assignmentsReadFailed",
             "eventsReadFailed",
             ".partiallyLoaded",
-            ".readFailed",
             "joinedReadError",
         ] {
             XCTAssertFalse(
@@ -2470,39 +2617,6 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
-    func testTestKitEndpointResolutionDoesNotCollapseFailureReasonToNil() throws {
-        let root = packageRoot()
-        let configurationText = try String(
-            contentsOf: root.appendingPathComponent(
-                "Sources/Adapters/Outbound/MacRuntimeControlClient/TestKit/MacTestKitControllerConfiguration.swift"
-            ),
-            encoding: .utf8
-        )
-        let controllerText = try String(
-            contentsOf: root.appendingPathComponent(
-                "Sources/Adapters/Outbound/MacRuntimeControlClient/TestKit/MacTestKitController.swift"
-            ),
-            encoding: .utf8
-        )
-
-        XCTAssertTrue(
-            configurationText.contains("enum MacTestKitAPIEndpointResolution"),
-            "TestKit endpoint resolution must carry explicit availability and failure reason"
-        )
-        XCTAssertTrue(
-            configurationText.contains("case unavailable(String)"),
-            "TestKit endpoint resolution must not collapse missing endpoint state into nil"
-        )
-        XCTAssertFalse(
-            configurationText.contains("func baseURL(from status: RuntimeStatus) -> String?"),
-            "TestKit endpoint source should return a typed resolution, not optional URL text"
-        )
-        XCTAssertFalse(
-            controllerText.contains("unavailableDescription"),
-            "Controller should consume endpoint resolution reason instead of reconstructing it separately"
-        )
-    }
-
     func testRecorderActivityDisplayDoesNotHideInvalidTimestampsAsOldSamples() throws {
         let file = packageRoot()
             .appendingPathComponent("Sources/Adapters/Inbound/MacControlPanel/Presentation/Views/RuntimeRecorderActivityChartDataBuilder.swift")
@@ -2524,12 +2638,8 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         let text = try String(contentsOf: file, encoding: .utf8)
 
         XCTAssertFalse(
-            text.contains("events.events.first { $0.containerObservation != nil }?.containerObservation"),
-            "Runtime event payloads are historical observations; ViewModel refresh must not promote them to current container state"
-        )
-        XCTAssertTrue(
-            text.contains("containerObservation: statusContainerObservation"),
-            "Current container observation must come from the explicit status refresh input"
+            text.contains("containerObservation"),
+            "Runtime event refresh must not carry container observation; current product state must come from explicit product/read-model contracts"
         )
     }
 
@@ -3018,7 +3128,6 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
             "Sources/Application/UseCases/RepairRuntime/RepairRuntimeSharedPlans.swift",
             "Sources/Application/UseCases/RepairRuntime/RuntimeVMDiskRepairUseCase.swift",
             "Sources/Application/UseCases/RepairRuntime/RuntimeDatastoreRepairUseCase.swift",
-            "Sources/Application/UseCases/RepairRuntime/RuntimeRedisBackupUseCase.swift",
         ]
 
         for path in requiredFiles {
@@ -3416,27 +3525,13 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         )
     }
 
-    func testRuntimeRedisBackupExecutionBelongsInWorkflow() throws {
+    func testRuntimeRedisBackupFileWorkflowIsRemoved() throws {
         let root = packageRoot()
-        XCTAssertTrue(
-            FileManager.default.fileExists(
-                atPath: root.appendingPathComponent(
-                    "Sources/Workflow/RuntimeRepairLifecycle/RuntimeRedisBackupWorkflow.swift"
-                ).path
-            ),
-            "Redis backup request/wait/status orchestration belongs in Workflow"
-        )
-
-        XCTAssertFalse(
-            FileManager.default.fileExists(
-                atPath: root.appendingPathComponent(
-                    "Sources/Bootstrap/Composition/RuntimeRedisBackupComposition.swift"
-                ).path
-            ),
-            "Redis backup concrete execution must not live in Bootstrap composition"
-        )
-
         let forbiddenFiles = [
+            "Sources/Application/UseCases/RepairRuntime/RuntimeRedisBackupUseCase.swift",
+            "Sources/Adapters/Outbound/Persistence/RedisBackupResultReader.swift",
+            "Sources/Hosts/CLI/ProcessBoundary/RuntimeRedisBackupComposition.swift",
+            "Sources/Workflow/RuntimeRepairLifecycle/RuntimeRedisBackupWorkflow.swift",
             "Sources/Application/UseCases/RepairRuntime/RuntimeRedisBackupWorkflow.swift",
             "Sources/Errors/Definitions/RuntimeRedisBackupWorkflowError.swift",
         ]
@@ -3444,7 +3539,7 @@ final class ArchitectureHierarchyBoundaryTests: XCTestCase {
         for path in forbiddenFiles {
             XCTAssertFalse(
                 FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path),
-                "\(path) must not own redis backup execution or workflow-specific errors"
+                "\(path) must not preserve the v1 Redis backup request/result file workflow"
             )
         }
     }

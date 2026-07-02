@@ -24,10 +24,10 @@
 | Observability | `/observability` | `Implemented` | observation pipeline, runtime events period/type/limit filtering 제공 |
 | Recorders | `/recorders` | `Implemented` | VRecorder list/detail/activity chart/relationship history 제공 |
 | Beds | `/beds` | `Implemented` | bed list/detail/relationship history 제공 |
+| Lab | `/lab` | `Implemented` | Product Lab scenario/session/`.vital` replay를 `/lab/*`로 제공 |
 | Logs | `/logs` | `Implemented` | source/line/live stream/read/export controls 제공 |
 | Advanced | `/advanced` | `Capability gated` | Swift Advanced 구조에 맞춰 diagnostics, VM health, service health, recovery operations, advanced network, admin operations 제공 |
 | Danger Zone | `/danger-zone` | `Capability gated` | Swift Danger Zone 구조에 맞춰 update backup 삭제, VitalServer backup 삭제, destructive operations 제공 |
-| Test | `/test` | `Capability gated` | TestKit capability가 있을 때만 virtual recorder controls 제공 |
 
 ## Function Parity
 
@@ -37,7 +37,7 @@
 | Runtime status stream | `Implemented` | `/runtime/overview/stream`, `/runtime/status/stream` | polling fallback은 query layer 책임 |
 | Runtime events | `Implemented` | `/runtime/events` | 최신순, period/type/limit filter |
 | Runtime settings read/apply | `Implemented` | `/runtime/settings` | domain policy로 validation |
-| Runtime service start/stop | `Capability gated` | `/runtime/services/start`, `/runtime/services/stop` | confirmation 필요 |
+| Runtime service start/stop | `Removed from PWA` | native Host CLI maintenance only | PWA controls product services through Guest service operations |
 | Runtime repair | `Capability gated` | `/runtime/services/repair-*` | Advanced에서 제공 |
 | Rollback backup list/delete | `Capability gated` | `/host/backups`, `DELETE /host/backups/update` | update backup 삭제는 Danger Zone에서 명시 action으로 제공 |
 | VitalServer backup list/create/restore/delete | `Capability gated` | `/runtime/data/backups`, `/host/backups/vitalserver-helper` | create/restore는 Advanced, delete는 Danger Zone에서 제공 |
@@ -48,7 +48,8 @@
 | VRecorder activity chart | `Needs migration` | `/vitaldb/recorders/{vrcode}/activity` | lazy 12-hour window query로 이동 필요 |
 | Bed history | `Implemented` | `/vitaldb/beds` | bed identity는 `bedID` |
 | Relationship history | `Implemented` | `/vitaldb/relationships` | recorder/bed detail에 assignments/events 최대 8개씩 표시 |
-| TestKit virtual recorder | `Capability gated` | `/dev/testkit/*` | test-enabled build only |
+| Product Lab virtual recorder | `Implemented` | `/lab/*` | product route; TestKit은 container implementation detail |
+| TestKit diagnostics | `Removed from product surface` | More/Advanced diagnostics only | `/dev/testkit/*` must not be a product route |
 | Authentication/session | `Deferred` | planned runtime auth/session contract | 별도 이슈에서 독립 진행 |
 | Online update | `Deferred` | planned update source contract | 인증/session 이후 재검토 |
 
@@ -88,5 +89,5 @@ PWA는 Swift에 없는 fallback state를 만들지 않습니다. Runtime setting
 - Swift UI에 보이는 runtime 정보가 PWA route에서도 같은 의미로 제공되는가?
 - unavailable 기능이 조용히 사라지지 않고 capability/host affordance로 설명되는가?
 - command는 confirmation과 result display를 갖는가?
-- TestKit 기능이 product route나 runtime status 의미를 오염시키지 않는가?
+- Product Lab 기능이 `/lab/*` 계약만 사용하고 TestKit implementation state를 product state로 승격하지 않는가?
 - PWA-only UX가 Runtime Control API 계약 밖의 임시 state에 의존하지 않는가?

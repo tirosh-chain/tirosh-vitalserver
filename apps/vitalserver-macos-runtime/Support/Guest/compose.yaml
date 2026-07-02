@@ -1,4 +1,23 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      POSTGRES_DB: vitalserver
+      POSTGRES_USER: vitalserver
+      POSTGRES_PASSWORD: "${VITALSERVER_POSTGRES_PASSWORD:-vitalserver}"
+    expose:
+      - "5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vitalserver -d vitalserver"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
   redis:
     image: redis:3.2.12-alpine
     security_opt:
@@ -100,7 +119,7 @@ services:
     build:
       context: .
       dockerfile: apps/vitalserver-recorder-recovery/Dockerfile
-    image: vitalserver-recorder-recovery:0.1.0
+    image: vitalserver-recorder-recovery:0.2.0
     security_opt:
       - seccomp=unconfined
     depends_on:
@@ -129,7 +148,7 @@ services:
     build:
       context: .
       dockerfile: apps/vitalserver-recorder-ingress/Dockerfile
-    image: vitalserver-recorder-ingress:0.1.0
+    image: vitalserver-recorder-ingress:0.2.0
     security_opt:
       - seccomp=unconfined
     depends_on:
@@ -198,8 +217,6 @@ services:
       RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY: "${RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_CONCURRENCY:-1}"
       RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY: "${RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MAX_CONCURRENCY:-8}"
       RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS: "${RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS:-5000}"
-      RECORDER_INGRESS_RUNTIME_STATE_PATH: "${RECORDER_INGRESS_RUNTIME_STATE_PATH:-/run/tirosh/runtime/runtime-state.json}"
-      RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS: "${RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS:-15000}"
     volumes:
       - type: volume
         source: audit-logs
@@ -213,10 +230,6 @@ services:
       - type: bind
         source: /mnt/tirosh/run/recorder-ingress-recovery
         target: /var/lib/vitalserver-recorder-ingress/recovery
-      - type: bind
-        source: /mnt/tirosh/run
-        target: /run/tirosh/runtime
-        read_only: true
     healthcheck:
       test:
         - CMD-SHELL
@@ -231,7 +244,7 @@ services:
     build:
       context: .
       dockerfile: apps/vitaldb-observer/Dockerfile
-    image: vitaldb-observer:0.1.0
+    image: vitaldb-observer:0.2.0
     security_opt:
       - seccomp=unconfined
     depends_on:
@@ -266,7 +279,7 @@ services:
     build:
       context: .
       dockerfile: apps/vitalserver-redis-relay/Dockerfile
-    image: vitalserver-redis-relay:0.1.0
+    image: vitalserver-redis-relay:0.2.0
     security_opt:
       - seccomp=unconfined
     depends_on:
@@ -297,47 +310,36 @@ services:
       retries: 30
     restart: unless-stopped
 
-  testkit:
+  lab:
     build:
       context: .
-      dockerfile: packages/vitalserver-testkit/Dockerfile
-    image: vitalserver-testkit:0.1.1
+      dockerfile: apps/vitalserver-lab/Dockerfile
+    image: vitalserver-lab:0.2.0
     security_opt:
       - seccomp=unconfined
     depends_on:
-      edge:
+      postgres:
         condition: service_healthy
     ports:
-      - "18322:18322"
+      - "127.0.0.1:18085:8080"
     volumes:
-      - type: volume
-        source: testkit-state
-        target: /var/lib/vitalserver-testkit
       - type: bind
         source: ${VITALSERVER_VITAL_FILES_DIR:-/mnt/tirosh-vital-files}
         target: /mnt/tirosh-vital-files
         read_only: true
-      - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-raw
-        target: /var/lib/vitalserver-recorder-ingress/raw
-        read_only: true
-      - type: bind
-        source: /mnt/tirosh/run/recorder-ingress-recovery
-        target: /var/lib/vitalserver-recorder-ingress/recovery
-    command:
-      - vitalserver-testkit
-      - serve
-      - --config
-      - "/opt/vitalserver-testkit/config/testkit.toml"
-      - --host
-      - "0.0.0.0"
-      - --port
-      - "18322"
+    environment:
+      VITALSERVER_LAB_HOST: "${VITALSERVER_LAB_HOST:-0.0.0.0}"
+      VITALSERVER_LAB_PORT: "${VITALSERVER_LAB_PORT:-8080}"
+      VITALSERVER_LAB_SERVICE_NAME: "${VITALSERVER_LAB_SERVICE_NAME:-vitalserver-lab}"
+      VITALSERVER_LAB_SESSION_STORE: "postgres"
+      VITALSERVER_LAB_DATABASE_URL: "postgresql://vitalserver@postgres:5432/vitalserver"
+      VITALSERVER_LAB_VITAL_FILES_MOUNT: "/mnt/tirosh-vital-files"
+      PGPASSWORD: "${VITALSERVER_POSTGRES_PASSWORD:-vitalserver}"
     healthcheck:
       test:
         - CMD-SHELL
         - >-
-          python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:18322/health', timeout=3).status == 200 else 1)"
+          python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/ready', timeout=3).status == 200 else 1)"
       interval: 10s
       timeout: 5s
       retries: 30
@@ -425,8 +427,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres-data:
   redis-data:
   vital-tmp-files:
   audit-logs:
   edge-logs:
-  testkit-state:

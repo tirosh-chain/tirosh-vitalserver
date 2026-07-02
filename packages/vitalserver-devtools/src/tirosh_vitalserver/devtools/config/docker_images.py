@@ -75,14 +75,14 @@ def load_docker_images_config(config: TomlTable, root: Path) -> DockerImagesConf
             "redis_relay_dockerfile",
             path=path,
         ),
-        testkit_image=required_string(
+        lab_image=required_string(
             docker_images,
-            "testkit_image",
+            "lab_image",
             path=path,
         ),
-        testkit_dockerfile=required_string(
+        lab_dockerfile=required_string(
             docker_images,
-            "testkit_dockerfile",
+            "lab_dockerfile",
             path=path,
         ),
     )

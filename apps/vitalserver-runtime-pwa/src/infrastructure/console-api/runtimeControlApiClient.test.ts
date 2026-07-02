@@ -73,11 +73,11 @@ describe("RuntimeControlApiClient", () => {
 
   it("keeps absent JSON bodies distinct from explicit JSON command payloads", async () => {
     const { client, requests } = clientWithResponses({
-      "/runtime/services/start": commandResponse(),
+      "/runtime/redis/backups": commandResponse(),
       "/runtime/services/repair-proxy": commandResponse()
     });
 
-    await client.startRuntimeServices();
+    await client.createRedisBackup();
     await client.repairProxy(18080);
 
     expect(requests[0]?.init.body).toBeUndefined();
@@ -104,36 +104,82 @@ describe("RuntimeControlApiClient", () => {
   });
 
   it("covers read endpoints and host affordance endpoints", async () => {
-    const session = testKitSession();
     const { client } = clientWithResponses({
       "/runtime/capabilities": fullCapabilities(),
       "/runtime/overview": fullRuntimeOverview(),
       "/runtime/status": { runtimeState: "healthy" },
       "/runtime/settings": fullSettings({ proxyPort: 80 }),
+      "/lab/scenarios": {
+        state: "loaded",
+        scenarios: [{ scenarioId: "baseline", name: "Baseline", category: "generated" }],
+        readError: null
+      },
+      "/lab/beds": {
+        state: "loaded",
+        beds: [
+          {
+            bedId: "lab-1-bed-1",
+            sessionId: "lab-1",
+            name: "OR-A",
+            state: "running",
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00"
+          }
+        ],
+        readError: null
+      },
+      "/lab/recorders": {
+        state: "loaded",
+        recorders: [
+          {
+            recorderId: "lab-1-recorder-1",
+            sessionId: "lab-1",
+            bedId: "lab-1-bed-1",
+            vrcode: "LAB-lab-1-1",
+            state: "running",
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00",
+            messagesSent: 1,
+            lastSendState: "sent",
+            lastSendAt: "2026-07-01T00:00:01+00:00",
+            lastSendError: null
+          }
+        ],
+        readError: null
+      },
+      "/lab/sessions": labSessionResponse(),
+      "/lab/sessions/lab-1": labSessionResponse(),
+      "/lab/sessions/lab-1/start": labSessionResponse(),
+      "/lab/sessions/lab-1/stop": labSessionResponse(),
+      "/lab/vital-files/replay": labSessionResponse(),
+      "/runtime/guest/stack/status": {
+        state: "loaded",
+        observedAt: "2026-07-01T00:00:00+00:00",
+        services: [
+          {
+            service: "app",
+            state: "running",
+            health: "healthy",
+            observedAt: "2026-07-01T00:00:00+00:00"
+          }
+        ]
+      },
+      "/runtime/guest/services/start": guestServiceOperation("start"),
+      "/runtime/guest/services/stop": guestServiceOperation("stop"),
+      "/runtime/guest/services/restart": guestServiceOperation("restart"),
       "/vitaldb/recorders": fullVitalRecorderHistory(),
+      "/vitaldb/recorders/hide": fullVitalRecorderHistory(),
+      "/vitaldb/recorders/unhide": fullVitalRecorderHistory(),
+      "/vitaldb/recorders/delete": fullVitalRecorderHistory(),
       "/vitaldb/beds": [],
+      "/vitaldb/beds/hide": fullVitalRecorderHistory(),
+      "/vitaldb/beds/unhide": fullVitalRecorderHistory(),
+      "/vitaldb/beds/delete": fullVitalRecorderHistory(),
       "/vitaldb/relationships": {
         state: "loaded",
         assignments: [],
         events: [],
         readError: null
-      },
-      "/dev/testkit/status": testKitStatus(),
-      "/dev/testkit/beds/create": [{ roomName: "OR-A", bedId: "bed-a" }],
-      "/dev/testkit/beds/delete": [{ roomName: "OR-A", bedId: "bed-a" }],
-      "/dev/testkit/beds/reset": [],
-      "/dev/testkit/virtual-recorders/start": session,
-      "/dev/testkit/virtual-recorders/stop": session,
-      "/dev/testkit/virtual-recorders/pause": session,
-      "/dev/testkit/virtual-recorders/resume": session,
-      "/dev/testkit/virtual-recorders/restart": session,
-      "/dev/testkit/virtual-recorders/delete": session,
-      "/dev/testkit/virtual-recorders/reset": testKitStatus(),
-      "/dev/testkit/virtual-recorders/delete-orphan": {
-        vrcode: "VR_A",
-        targetUrl: "http://edge/",
-        deleted: true,
-        error: null
       },
       "/host/logs/read": { text: "log" },
       "/host/logs/export": { destination: "file:///tmp/logs.zip" },
@@ -150,32 +196,50 @@ describe("RuntimeControlApiClient", () => {
       "/host/backups/vitalserver-helper/restore": commandResponse(),
       "/runtime/redis/backups": commandResponse(),
       "/runtime/data/backups": commandResponse(),
-      "/runtime/services/start": commandResponse(),
-      "/runtime/services/stop": commandResponse(),
       "/runtime/services/repair-runtime": commandResponse(),
       "/runtime/services/repair-datastore": commandResponse(),
       "/runtime/services/repair-vm-disk": commandResponse()
     });
 
-    await expect(client.getCapabilities()).resolves.toMatchObject({ canUseTestTools: true });
+    await expect(client.getCapabilities()).resolves.toMatchObject({ canUseLab: true });
     await expect(client.getOverview()).resolves.toMatchObject({ status: { runtimeState: "healthy" } });
     await expect(client.getStatus()).resolves.toMatchObject({ runtimeState: "healthy" });
     await expect(client.getSettings()).resolves.toMatchObject({ proxyPort: 80 });
+    await expect(client.getLabScenarios()).resolves.toMatchObject({ state: "loaded" });
+    await expect(client.getLabBeds()).resolves.toMatchObject({ beds: [{ name: "OR-A" }] });
+    await expect(client.getLabRecorders()).resolves.toMatchObject({
+      recorders: [{ vrcode: "LAB-lab-1-1", messagesSent: 1, lastSendState: "sent" }]
+    });
+    await expect(client.createLabSession({
+      scenarioId: "baseline",
+      name: "Lab A",
+      recorderCount: 2,
+      targetURL: null
+    })).resolves.toMatchObject({ session: { sessionId: "lab-1" } });
+    await expect(client.getLabSession("lab-1")).resolves.toMatchObject({ session: { sessionId: "lab-1" } });
+    await expect(client.startLabSession("lab-1")).resolves.toMatchObject({ session: { state: "accepted" } });
+    await expect(client.stopLabSession("lab-1")).resolves.toMatchObject({ session: { state: "accepted" } });
+    await expect(client.replayLabVitalFile({
+      vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
+      sessionName: "Replay",
+      targetURL: null
+    })).resolves.toMatchObject({ session: { sessionId: "lab-1" } });
+    await expect(client.getGuestStackStatus()).resolves.toMatchObject({
+      state: "loaded",
+      services: [{ service: "app" }]
+    });
+    await expect(client.startGuestService({ service: "app" })).resolves.toMatchObject({ command: "start" });
+    await expect(client.stopGuestService({ service: "app" })).resolves.toMatchObject({ command: "stop" });
+    await expect(client.restartGuestService({ service: "app" })).resolves.toMatchObject({ command: "restart" });
     await expect(client.getRecorders()).resolves.toMatchObject({ recorders: [] });
+    await expect(client.hideRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
+    await expect(client.unhideRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
+    await expect(client.deleteRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
     await expect(client.getBeds()).resolves.toEqual([]);
+    await expect(client.hideBeds({ bedIDs: ["bed-a"] })).resolves.toMatchObject({ beds: [] });
+    await expect(client.unhideBeds({ bedIDs: ["bed-a"] })).resolves.toMatchObject({ beds: [] });
+    await expect(client.deleteBeds({ bedIDs: ["bed-a"] })).resolves.toMatchObject({ beds: [] });
     await expect(client.getRelationships()).resolves.toMatchObject({ assignments: [] });
-    await expect(client.getTestKitStatus()).resolves.toMatchObject({ enabled: true });
-    await expect(client.createTestKitBeds({ count: 1, roomNames: [], prefix: "OR", adminUserId: "admin" })).resolves.toHaveLength(1);
-    await expect(client.deleteTestKitBeds({ roomNames: ["OR-A"] })).resolves.toHaveLength(1);
-    await expect(client.resetTestKitBeds()).resolves.toEqual([]);
-    await expect(client.startTestKitVirtualRecorders(testKitStartRequest())).resolves.toMatchObject({ id: "s1" });
-    await expect(client.stopTestKitVirtualRecorders({ sessionID: "s1" })).resolves.toMatchObject({ id: "s1" });
-    await expect(client.pauseTestKitVirtualRecorders({ sessionID: "s1" })).resolves.toMatchObject({ id: "s1" });
-    await expect(client.resumeTestKitVirtualRecorders({ sessionID: "s1" })).resolves.toMatchObject({ id: "s1" });
-    await expect(client.restartTestKitVirtualRecorders({ sessionID: "s1", bedRoomNames: ["OR-A"] })).resolves.toMatchObject({ id: "s1" });
-    await expect(client.deleteTestKitVirtualRecorders({ sessionID: "s1" })).resolves.toMatchObject({ id: "s1" });
-    await expect(client.resetTestKitVirtualRecorders()).resolves.toMatchObject({ enabled: true });
-    await expect(client.deleteTestKitOrphanVRecorder({ vrcode: "VR_A" })).resolves.toMatchObject({ deleted: true });
     await expect(client.readLogs({ source: "containers", helperMessage: "", lineLimit: 100 })).resolves.toEqual({ text: "log" });
     await expect(client.exportLogs({ destination: { kind: "localPath", value: "/tmp/logs.zip" } })).resolves.toEqual({ destination: "file:///tmp/logs.zip" });
     await expect(client.summarizeUpdateBundle({ bundle: { kind: "localPath", value: "/tmp/u.zip" } })).resolves.toEqual({ summary: "ok" });
@@ -191,8 +255,6 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.restoreRuntimeDataBackup({ backup: { kind: "localPath", value: "/tmp/runtime-data" } })).resolves.toEqual(commandResponse());
     await expect(client.createRedisBackup()).resolves.toEqual(commandResponse());
     await expect(client.createRuntimeDataBackup()).resolves.toEqual(commandResponse());
-    await expect(client.startRuntimeServices()).resolves.toEqual(commandResponse());
-    await expect(client.stopRuntimeServices()).resolves.toEqual(commandResponse());
     await expect(client.repairRuntime()).resolves.toEqual(commandResponse());
     await expect(client.repairDatastore()).resolves.toEqual(commandResponse());
     await expect(client.repairVMDisk()).resolves.toEqual(commandResponse());
@@ -216,11 +278,6 @@ describe("RuntimeControlApiClient", () => {
   it("throws API, contract, and network errors", async () => {
     const api = clientWithResponses({ "/runtime/status": { message: "nope" } }, 500);
     await expect(api.client.getStatus()).rejects.toBeInstanceOf(RuntimeControlAPIError);
-
-    const contract = clientWithResponses({ "/dev/testkit/status": { enabled: true } });
-    await expect(contract.client.getTestKitStatus()).rejects.toBeInstanceOf(
-      RuntimeControlContractError
-    );
 
     const logContract = clientWithResponses({ "/host/logs/read": {} });
     await expect(
@@ -324,9 +381,10 @@ function fullCapabilities() {
     canOpenLocalFiles: true,
     canStreamLogs: true,
     canControlRuntimeServices: true,
+    canControlGuestServices: true,
     canExportLogs: true,
     canViewReleaseMetadata: true,
-    canUseTestTools: true
+    canUseLab: true
   };
 }
 
@@ -442,6 +500,37 @@ function commandResponse() {
   return { result: { exitCode: 0, stdout: "ok", stderr: "" } };
 }
 
+function guestServiceOperation(command: "start" | "stop" | "restart") {
+  return {
+    operationId: `${command}-app`,
+    service: "app",
+    command,
+    state: "completed" as const,
+    createdAt: "2026-07-01T00:00:00+00:00",
+    updatedAt: "2026-07-01T00:00:01+00:00",
+    failure: null
+  };
+}
+
+function labSessionResponse() {
+  return {
+    state: "loaded" as const,
+    operationId: "op-1",
+    labOperationId: "lab-op-1",
+    readError: null,
+    session: {
+      sessionId: "lab-1",
+      state: "accepted" as const,
+      scenarioId: "baseline",
+      name: "Lab A",
+      recorderCount: 2,
+      targetURL: "http://edge/",
+      createdAt: null,
+      updatedAt: null
+    }
+  };
+}
+
 function fullVitalRecorderHistory() {
   return {
     updatedAt: null,
@@ -467,75 +556,5 @@ function fullVitalRecorderHistory() {
       readError: null
     },
     readError: null
-  };
-}
-
-function testKitStartRequest() {
-  return {
-    scenario: "normal" as const,
-    signalProfile: "normal" as const,
-    recorders: 1,
-    bedRoomNames: ["OR-A"],
-    vrcode: "VR_A",
-    version: "testkit",
-    intervalSeconds: 1,
-    durationSeconds: null,
-    maxMessages: null,
-    shiftTime: true,
-    generateFrames: true,
-    exportVital: true,
-    uploadVital: true,
-    vitalUploadEndpoint: "/upload"
-  };
-}
-
-function testKitStatus() {
-  return {
-    enabled: true,
-    state: "running",
-    serviceName: "testkit",
-    apiBaseURL: "http://testkit.local",
-    recorderTargetURL: "http://edge/",
-    startedAt: null,
-    activeSession: null,
-    sessions: [],
-    beds: [],
-    lastError: null
-  };
-}
-
-function testKitSession() {
-  return {
-    id: "s1",
-    state: "running",
-    targetUrl: "http://edge/",
-    recordersRequested: 1,
-    bedsRequested: 1,
-    bedRoomNames: ["OR-A"],
-    vrcode: "VR_A",
-    version: "testkit",
-    intervalSeconds: 1,
-    durationSeconds: null,
-    maxMessages: null,
-    shiftTime: true,
-    generateFrames: true,
-    scenario: "normal",
-    defaultScenario: "normal",
-    createdAt: null,
-    startedAt: null,
-    stoppedAt: null,
-    messagesSent: 0,
-    bytesSent: 0,
-    lastError: null,
-    cleanupErrors: [],
-    vital: {
-      exportStatus: "not-requested",
-      uploadStatus: "not-requested",
-      exportError: null,
-      uploadError: null,
-      artifact: null,
-      uploadResult: null
-    },
-    recorders: []
   };
 }

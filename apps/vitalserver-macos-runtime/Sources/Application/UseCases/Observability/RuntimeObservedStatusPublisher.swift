@@ -1,5 +1,4 @@
 import Contracts
-import Errors
 
 public struct RuntimeObservedStatusPublisher {
     public let writeStatus: (
@@ -8,7 +7,6 @@ public struct RuntimeObservedStatusPublisher {
         String,
         RuntimeProgressDocument?
     ) throws -> RuntimeHealthSnapshot
-    public let projectObservation: (VitalDBObservationDocument) -> Void
 
     public init(
         writeStatus: @escaping (
@@ -16,11 +14,9 @@ public struct RuntimeObservedStatusPublisher {
             RuntimeOperation,
             String,
             RuntimeProgressDocument?
-        ) throws -> RuntimeHealthSnapshot,
-        projectObservation: @escaping (VitalDBObservationDocument) -> Void
+        ) throws -> RuntimeHealthSnapshot
     ) {
         self.writeStatus = writeStatus
-        self.projectObservation = projectObservation
     }
 
     public func publishStatus(
@@ -29,9 +25,6 @@ public struct RuntimeObservedStatusPublisher {
         message: String,
         progress: RuntimeProgressDocument? = nil
     ) throws {
-        let snapshot = try writeStatus(status, operation, message, progress)
-        if let observation = snapshot.vitalDBObservation {
-            projectObservation(observation)
-        }
+        _ = try writeStatus(status, operation, message, progress)
     }
 }

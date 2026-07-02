@@ -6,6 +6,7 @@ import Domain
 import OutboundAdapters
 import InboundAdapters
 import Errors
+import RuntimeControl
 import Workflow
 
 struct RuntimeLifecycle {
@@ -19,7 +20,8 @@ struct RuntimeLifecycle {
     let statusReporter: RuntimeStatusReporter
     let healthChecker: RuntimeHealthChecker
     let serviceController: RuntimeServiceController
-    let guestGateway: RuntimeGuestGateway
+    let guestBootstrapResultReader: any RuntimeGuestBootstrapResultReader
+    let guestControlGatewayFactory: (() throws -> any RuntimeGuestControlGateway)?
     let fileStore: RuntimeFileStore
 
     init(
@@ -30,7 +32,8 @@ struct RuntimeLifecycle {
         httpProber: RuntimeHTTPProber? = nil,
         serviceManager: RuntimeServiceManager? = nil,
         runtimeStatusRepository: RuntimeStatusRepository? = nil,
-        guestGateway: RuntimeGuestGateway? = nil,
+        guestBootstrapResultReader: (any RuntimeGuestBootstrapResultReader)? = nil,
+        guestControlGatewayFactory: (() throws -> any RuntimeGuestControlGateway)? = nil,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore()
     ) {
         let lifecycleLog: (String) -> Void = { message in
@@ -44,7 +47,7 @@ struct RuntimeLifecycle {
             httpProber: httpProber,
             serviceManager: serviceManager,
             runtimeStatusRepository: runtimeStatusRepository,
-            guestGateway: guestGateway,
+            guestBootstrapResultReader: guestBootstrapResultReader,
             fileStore: fileStore,
             plistBuddyPath: Constants.Commands.plistBuddy,
             lsofPath: Constants.Commands.lsof,
@@ -89,7 +92,8 @@ struct RuntimeLifecycle {
         self.httpProber = container.httpProber
         self.fileStore = container.fileStore
         self.statusReporter = container.statusReporter
-        self.guestGateway = container.guestGateway
+        self.guestBootstrapResultReader = container.guestBootstrapResultReader
+        self.guestControlGatewayFactory = guestControlGatewayFactory
         self.healthChecker = container.healthChecker
         self.serviceController = container.serviceController
     }
@@ -178,12 +182,18 @@ struct RuntimeLifecycle {
             try startServices()
         case .stopServices:
             try stopServices()
-        case .startTestKit:
-            try controlTestKitContainer(composeAction: .testkitUp)
-        case .stopTestKit:
-            try controlTestKitContainer(composeAction: .testkitStop)
-        case .restartTestKit:
-            try controlTestKitContainer(composeAction: .testkitRestart)
+        case .guestStackStatus(let command):
+            try printGuestStackStatus(command)
+        case .guestServiceStart(let command):
+            try startGuestService(command)
+        case .guestServiceStop(let command):
+            try stopGuestService(command)
+        case .guestServiceRestart(let command):
+            try restartGuestService(command)
+        case .vitalDB(let command):
+            try runVitalDBCommand(command)
+        case .lab(let command):
+            try runLabCommand(command)
         case .uninstall(let command):
             try uninstall(command)
         case .help:
@@ -272,8 +282,8 @@ struct RuntimeLifecycle {
         switch requirement {
         case .none:
             return "runtime configuration updated"
-        case .containerServices:
-            return "runtime configuration updated; container services reconcile required"
+        case .guestStack:
+            return "runtime configuration updated; guest stack reconcile required"
         case .vmRuntime:
             return "runtime configuration updated; VM runtime restart required"
         }
@@ -301,14 +311,11 @@ struct RuntimeLifecycle {
     }
 
     func createRedisBackup() throws {
-        do {
-            let result = try runtimeRedisBackupComposition().createBackup()
-            print(result.message)
-            if let archive = result.archive, !archive.isEmpty {
-                print("archive: \(archive)")
-            }
-        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
-            throw LauncherError.runtimeOperationFailed(message)
+        let operation = try createRedisBackupThroughGuestControl()
+        print("redis backup completed")
+        print("operation: \(operation.operationId)")
+        if let archive = operation.result?.archive, !archive.isEmpty {
+            print("archive: \(archive)")
         }
     }
 
@@ -317,8 +324,6 @@ struct RuntimeLifecycle {
             let backup = try runtimeDataBackupComposition().createBackup()
             print("runtime data backup completed")
             print("backup: \(backup.path)")
-        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
-            throw LauncherError.runtimeOperationFailed(message)
         } catch let error as RuntimeDataBackupStoreError {
             throw LauncherError.runtimeOperationFailed(error.description)
         }
@@ -328,22 +333,25 @@ struct RuntimeLifecycle {
         do {
             let result = try runtimeDataBackupComposition().createAutomaticBackup()
             print(result)
-        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
-            throw LauncherError.runtimeOperationFailed(message)
         } catch let error as RuntimeDataBackupStoreError {
             throw LauncherError.runtimeOperationFailed(error.description)
         }
     }
 
     func restoreRedisBackup(_ archive: URL) throws {
-        do {
-            try runtimeDataBackupComposition().restoreRedisBackup(archive)
-            print("redis restore completed")
-            print("archive: \(archive.path)")
-        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
-            throw LauncherError.runtimeOperationFailed(message)
-        } catch let error as RuntimeDataBackupStoreError {
-            throw LauncherError.runtimeOperationFailed(error.description)
+        let stagedRedisArchive = try runtimeDataBackupComposition()
+            .stageRedisArchiveForGuestRestore(archive)
+        defer {
+            try? fileStore.removeItem(at: stagedRedisArchive.hostURL)
+        }
+        let operation = try restoreRedisBackupThroughGuestControl(
+            guestArchivePath: stagedRedisArchive.guestPath
+        )
+        print("redis restore completed")
+        print("operation: \(operation.operationId)")
+        if let restoredArchive = operation.result?.restoredArchive,
+           !restoredArchive.isEmpty {
+            print("archive: \(restoredArchive)")
         }
     }
 
@@ -365,9 +373,6 @@ struct RuntimeLifecycle {
             )
             print("runtime data restore completed")
             print("backup: \(backup.path)")
-        } catch RuntimeRedisBackupUseCaseError.operationFailed(let message) {
-            publishRuntimeDataRestoreFailure(step: step, backup: backup, message: message)
-            throw LauncherError.runtimeOperationFailed(message)
         } catch let error as RuntimeDataBackupStoreError {
             publishRuntimeDataRestoreFailure(step: step, backup: backup, message: error.description)
             throw LauncherError.runtimeOperationFailed(error.description)
@@ -396,6 +401,110 @@ struct RuntimeLifecycle {
 
     func stopServices() throws {
         try runtimeServiceControlRunner().run(.stopAll)
+    }
+
+    func restartGuestService(_ command: RuntimeGuestServiceControlCommand) throws {
+        try runGuestServiceCommand(command, action: .restart)
+    }
+
+    func startGuestService(_ command: RuntimeGuestServiceControlCommand) throws {
+        try runGuestServiceCommand(command, action: .start)
+    }
+
+    func stopGuestService(_ command: RuntimeGuestServiceControlCommand) throws {
+        try runGuestServiceCommand(command, action: .stop)
+    }
+
+    func printGuestStackStatus(_ command: RuntimeGuestControlReadCommand) throws {
+        do {
+            let gateway = try HTTPRuntimeGuestControlGateway(baseURL: command.guestControlBaseURL)
+            try printJSON(gateway.stackStatus())
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    private func runGuestServiceCommand(
+        _ command: RuntimeGuestServiceControlCommand,
+        action: RuntimeGuestControlServiceCommand
+    ) throws {
+        do {
+            let gateway = try HTTPRuntimeGuestControlGateway(baseURL: command.guestControlBaseURL)
+            let usecase = RuntimeGuestProductServiceControlUseCase()
+            let operation: RuntimeGuestControlServiceOperation
+            switch action {
+            case .start:
+                operation = try usecase.startService(command.service, gateway: gateway)
+            case .stop:
+                operation = try usecase.stopService(command.service, gateway: gateway)
+            case .restart:
+                operation = try usecase.restartService(command.service, gateway: gateway)
+            case .reconcile:
+                operation = try usecase.reconcileServices(gateway: gateway)
+            case .redisBackup, .redisRestore, .repairDatastore, .updateActivation, .updateShutdown, .requestGuestPoweroff:
+                throw LauncherError.runtimeOperationFailed(
+                    "guest service command does not accept maintenance command action=\(action.rawValue)"
+                )
+            }
+            try printJSON(operation)
+        } catch RuntimeServiceControlError.operationFailed(let message) {
+            throw LauncherError.runtimeOperationFailed(message)
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func runLabCommand(_ command: RuntimeLabControlCommand) throws {
+        do {
+            let gateway = try HTTPRuntimeGuestControlGateway(baseURL: command.guestControlBaseURL)
+            switch command.action {
+            case .scenarios:
+                try printJSON(gateway.labScenarios())
+            case .beds:
+                try printJSON(gateway.labBeds())
+            case .recorders:
+                try printJSON(gateway.labRecorders())
+            case .createSession(let request):
+                try printJSON(gateway.createLabSession(request))
+            case .getSession(let sessionId):
+                try printJSON(gateway.labSession(sessionId))
+            case .startSession(let sessionId):
+                try printJSON(gateway.startLabSession(sessionId))
+            case .stopSession(let sessionId):
+                try printJSON(gateway.stopLabSession(sessionId))
+            case .replayVitalFile(let request):
+                try printJSON(gateway.replayLabVitalFile(request))
+            }
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    func runVitalDBCommand(_ command: RuntimeVitalDBReadCommand) throws {
+        do {
+            let gateway = try HTTPRuntimeGuestControlGateway(baseURL: command.guestControlBaseURL)
+            switch command.action {
+            case .observation:
+                try printJSON(gateway.latestVitalDBObservation())
+            case .recorders:
+                try printJSON(gateway.vitalDBRecorders())
+            case .recorderActivity(let vrcode):
+                try printJSON(gateway.vitalDBRecorderActivity(vrcode))
+            case .beds:
+                try printJSON(gateway.vitalDBBeds())
+            case .relationships:
+                try printJSON(gateway.vitalDBRelationships())
+            }
+        } catch let error as RuntimeGuestControlHTTPGatewayError {
+            throw LauncherError.runtimeOperationFailed(error.description)
+        }
+    }
+
+    private func printJSON<T: Encodable>(_ value: T) throws {
+        let data = try JSONEncoder.pretty.encode(value)
+        if let text = String(data: data, encoding: .utf8) {
+            print(text)
+        }
     }
 
     func uninstall(_ command: RuntimeUninstallCommand) throws {

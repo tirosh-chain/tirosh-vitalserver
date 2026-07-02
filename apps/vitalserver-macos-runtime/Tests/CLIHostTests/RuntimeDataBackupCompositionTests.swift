@@ -7,33 +7,22 @@ import OutboundAdapters
 import XCTest
 
 final class RuntimeDataBackupCompositionTests: XCTestCase {
-    func testCreateBackupMapsGuestRedisArchivePathToHostSharedDataPath() throws {
+    func testCreateBackupMapsGuestControlRedisArchivePathToHostSharedDataPath() throws {
         let fileStore = RuntimeFileStoreSpy()
         let productRoot = URL(fileURLWithPath: "/product")
         let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
-        let requestURL = installedPaths.guestRunDirectory
-            .appendingPathComponent(Constants.Runtime.redisBackupRequestFile)
-        let resultURL = installedPaths.guestRunDirectory
-            .appendingPathComponent(Constants.Runtime.redisBackupResultFile)
+        let legacyRequestURL = installedPaths.guestRunDirectory
+            .appendingPathComponent("redis-backup.request")
         let hostRedisArchive = installedPaths.redisBackupsDirectory
             .appendingPathComponent("redis-20260610T094159Z.tar.gz")
         let guestRedisArchive = "/mnt/tirosh/backups/redis/redis-20260610T094159Z.tar.gz"
+        let guestControlGateway = RuntimeDataBackupGuestControlGateway(
+            backupArchive: guestRedisArchive
+        )
 
         try writeRequiredRuntimeDataBackupSources(installedPaths, fileStore: fileStore)
         fileStore.files[hostRedisArchive] = Data("redis-archive".utf8)
 
-        let sleeper = RuntimeDataBackupResultSleeper {
-            guard let requestData = fileStore.files[requestURL],
-                  let request = try? JSONDecoder().decode(RedisBackupRequestDocument.self, from: requestData) else {
-                return
-            }
-            fileStore.files[resultURL] = try? JSONEncoder().encode(RedisBackupResultDocument(
-                requestId: request.requestId,
-                status: .completed,
-                message: "Redis backup completed.",
-                archive: guestRedisArchive
-            ))
-        }
         let lifecycle = RuntimeLifecycle(
             paths: LauncherPaths(
                 home: installedPaths.runtimeHome,
@@ -42,10 +31,11 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
                 pidFile: installedPaths.pidFile
             ),
             clock: RuntimeDataBackupFixedClock(),
-            sleeper: sleeper,
+            sleeper: RuntimeDataBackupResultSleeper {},
             commandRunner: RuntimeDataBackupCommandRunner(),
             serviceManager: RuntimeDataBackupServiceManager(),
-            guestGateway: RuntimeDataBackupGuestGateway(),
+            guestBootstrapResultReader: RuntimeDataBackupGuestDocumentReader(),
+            guestControlGatewayFactory: { guestControlGateway },
             fileStore: fileStore
         )
 
@@ -58,14 +48,16 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
 
         XCTAssertEqual(try fileStore.readData(archivedRedis), Data("redis-archive".utf8))
         XCTAssertEqual(manifest.artifacts.first { $0.id == .redisData }?.sourcePath, hostRedisArchive.path)
+        XCTAssertNil(fileStore.files[legacyRequestURL])
+        XCTAssertEqual(guestControlGateway.createdBackups, 1)
     }
 
-    func testAutomaticBackupRejectsInvalidRetentionBeforeGuestRedisRequest() throws {
+    func testAutomaticBackupRejectsInvalidRetentionBeforeGuestControlOperation() throws {
         let fileStore = RuntimeFileStoreSpy()
         let productRoot = URL(fileURLWithPath: "/product")
         let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
-        let requestURL = installedPaths.guestRunDirectory
-            .appendingPathComponent(Constants.Runtime.redisBackupRequestFile)
+        let legacyRequestURL = installedPaths.guestRunDirectory
+            .appendingPathComponent("redis-backup.request")
         fileStore.files[installedPaths.guestRuntimeSettings] = try JSONEncoder().encode(
             GuestRuntimeSettingsDocument(
                 vitalServerURL: "https://vitalserver.example",
@@ -88,14 +80,19 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
             sleeper: RuntimeDataBackupResultSleeper {},
             commandRunner: RuntimeDataBackupCommandRunner(),
             serviceManager: RuntimeDataBackupServiceManager(),
-            guestGateway: RuntimeDataBackupGuestGateway(),
+            guestBootstrapResultReader: RuntimeDataBackupGuestDocumentReader(),
+            guestControlGatewayFactory: {
+                RuntimeDataBackupGuestControlGateway(
+                    backupArchive: "/mnt/tirosh/backups/redis/unused.tar.gz"
+                )
+            },
             fileStore: fileStore
         )
 
         XCTAssertThrowsError(try lifecycle.runtimeDataBackupComposition().createAutomaticBackup()) { error in
             XCTAssertTrue(String(describing: error).contains("automatic backup retention is invalid value=0"))
         }
-        XCTAssertNil(fileStore.files[requestURL])
+        XCTAssertNil(fileStore.files[legacyRequestURL])
     }
 
     func testAutomaticBackupCreatesHelperBackupAndPrunesOldestArchives() throws {
@@ -103,13 +100,14 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
         let productRoot = temporaryProductRoot()
         defer { try? FileManager.default.removeItem(at: productRoot) }
         let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
-        let requestURL = installedPaths.guestRunDirectory
-            .appendingPathComponent(Constants.Runtime.redisBackupRequestFile)
-        let resultURL = installedPaths.guestRunDirectory
-            .appendingPathComponent(Constants.Runtime.redisBackupResultFile)
+        let legacyRequestURL = installedPaths.guestRunDirectory
+            .appendingPathComponent("redis-backup.request")
         let hostRedisArchive = installedPaths.redisBackupsDirectory
             .appendingPathComponent("redis-20260610T094159Z.tar.gz")
         let guestRedisArchive = "/mnt/tirosh/backups/redis/redis-20260610T094159Z.tar.gz"
+        let guestControlGateway = RuntimeDataBackupGuestControlGateway(
+            backupArchive: guestRedisArchive
+        )
         let backupRoot = installedPaths.vitalServerHelperBackupsDirectory
         let oldest = backupRoot.appendingPathComponent("20260608T031500Z-automatic")
         let middle = backupRoot.appendingPathComponent("20260609T031500Z-automatic")
@@ -125,18 +123,6 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
         fileStore.files[hostRedisArchive] = Data("redis-archive".utf8)
         fileStore.directories.formUnion([backupRoot, oldest, middle, newestExisting])
 
-        let sleeper = RuntimeDataBackupResultSleeper {
-            guard let requestData = fileStore.files[requestURL],
-                  let request = try? JSONDecoder().decode(RedisBackupRequestDocument.self, from: requestData) else {
-                return
-            }
-            fileStore.files[resultURL] = try? JSONEncoder().encode(RedisBackupResultDocument(
-                requestId: request.requestId,
-                status: .completed,
-                message: "Redis backup completed.",
-                archive: guestRedisArchive
-            ))
-        }
         let lifecycle = RuntimeLifecycle(
             paths: LauncherPaths(
                 home: installedPaths.runtimeHome,
@@ -145,10 +131,11 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
                 pidFile: installedPaths.pidFile
             ),
             clock: RuntimeDataBackupFixedClock(),
-            sleeper: sleeper,
+            sleeper: RuntimeDataBackupResultSleeper {},
             commandRunner: RuntimeDataBackupCommandRunner(),
             serviceManager: RuntimeDataBackupServiceManager(),
-            guestGateway: RuntimeDataBackupGuestGateway(),
+            guestBootstrapResultReader: RuntimeDataBackupGuestDocumentReader(),
+            guestControlGatewayFactory: { guestControlGateway },
             fileStore: fileStore
         )
 
@@ -161,14 +148,16 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
         XCTAssertFalse(fileStore.directories.contains(oldest))
         XCTAssertFalse(fileStore.directories.contains(middle))
         XCTAssertTrue(fileStore.directories.contains(newestExisting))
+        XCTAssertNil(fileStore.files[legacyRequestURL])
+        XCTAssertEqual(guestControlGateway.createdBackups, 1)
     }
 
-    func testAutomaticBackupSkipsWhenDisabledWithoutGuestRedisRequest() throws {
+    func testAutomaticBackupSkipsWhenDisabledWithoutGuestControlOperation() throws {
         let fileStore = RuntimeFileStoreSpy()
         let productRoot = URL(fileURLWithPath: "/product")
         let installedPaths = InstalledRuntimePaths(productRoot: productRoot)
-        let requestURL = installedPaths.guestRunDirectory
-            .appendingPathComponent(Constants.Runtime.redisBackupRequestFile)
+        let legacyRequestURL = installedPaths.guestRunDirectory
+            .appendingPathComponent("redis-backup.request")
         try writeGuestRuntimeSettings(
             installedPaths,
             fileStore: fileStore,
@@ -186,14 +175,19 @@ final class RuntimeDataBackupCompositionTests: XCTestCase {
             sleeper: RuntimeDataBackupResultSleeper {},
             commandRunner: RuntimeDataBackupCommandRunner(),
             serviceManager: RuntimeDataBackupServiceManager(),
-            guestGateway: RuntimeDataBackupGuestGateway(),
+            guestBootstrapResultReader: RuntimeDataBackupGuestDocumentReader(),
+            guestControlGatewayFactory: {
+                RuntimeDataBackupGuestControlGateway(
+                    backupArchive: "/mnt/tirosh/backups/redis/unused.tar.gz"
+                )
+            },
             fileStore: fileStore
         )
 
         let message = try lifecycle.runtimeDataBackupComposition().createAutomaticBackup()
 
         XCTAssertEqual(message, "automatic backup skipped: disabled")
-        XCTAssertNil(fileStore.files[requestURL])
+        XCTAssertNil(fileStore.files[legacyRequestURL])
     }
 
     private func writeRequiredRuntimeDataBackupSources(
@@ -288,32 +282,96 @@ private struct RuntimeDataBackupServiceManager: RuntimeServiceManager {
     }
 }
 
-private struct RuntimeDataBackupGuestGateway: RuntimeGuestGateway {
-    func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument> {
-        .loaded(GuestRuntimeStateDocument(
-            capabilities: GuestRuntimeCapabilities(
-                prepareUpdateShutdown: true,
-                activateUpdate: true,
-                redisBackup: true,
-                redisRestore: true,
-                repairDatastore: true
-            ),
-            vmIP: "192.168.64.2",
-            guestHTTP: nil,
-            redisUIHTTP: nil,
-            swaggerUIHTTP: nil
-        ))
+private final class RuntimeDataBackupGuestControlGateway: RuntimeGuestControlGateway {
+    private let backupArchive: String
+    private(set) var createdBackups = 0
+    private(set) var restoredArchives: [String] = []
+
+    init(backupArchive: String) {
+        self.backupArchive = backupArchive
     }
 
+    func listServices() throws -> RuntimeGuestControlServiceList {
+        RuntimeGuestControlServiceList(services: [])
+    }
+
+    func stackStatus() throws -> RuntimeGuestControlStackStatus {
+        RuntimeGuestControlStackStatus(
+            state: "loaded",
+            observedAt: "2026-06-10T09:42:00Z",
+            services: []
+        )
+    }
+
+    func serviceStatus(_ service: String) throws -> RuntimeGuestControlServiceStatus {
+        RuntimeGuestControlServiceStatus(
+            service: service,
+            state: "running",
+            health: "healthy",
+            observedAt: "2026-06-10T09:42:00Z"
+        )
+    }
+
+    func startService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        serviceOperation(service: service, command: .start)
+    }
+
+    func stopService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        serviceOperation(service: service, command: .stop)
+    }
+
+    func restartService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        serviceOperation(service: service, command: .restart)
+    }
+
+    func reconcileServices() throws -> RuntimeGuestControlServiceOperation {
+        serviceOperation(service: "guest-stack", command: .reconcile)
+    }
+
+    func createRedisBackup() throws -> RuntimeGuestControlServiceOperation {
+        createdBackups += 1
+        return serviceOperation(
+            service: "redis-backup",
+            command: .redisBackup,
+            result: RuntimeGuestControlOperationResult(archive: backupArchive)
+        )
+    }
+
+    func restoreRedisBackup(archive: String) throws -> RuntimeGuestControlServiceOperation {
+        restoredArchives.append(archive)
+        return serviceOperation(
+            service: "redis-restore",
+            command: .redisRestore,
+            result: RuntimeGuestControlOperationResult(restoredArchive: archive)
+        )
+    }
+
+    func operation(_ operationId: String) throws -> RuntimeGuestControlServiceOperation {
+        serviceOperation(operationId: operationId)
+    }
+
+    func latestVitalDBObservation() throws -> RuntimeGuestControlVitalDBObservationRead {
+        RuntimeGuestControlVitalDBObservationRead(state: .unavailable)
+    }
+
+    private func serviceOperation(
+        operationId: String = "guest-control-operation-1",
+        service: String = "app",
+        command: RuntimeGuestControlServiceCommand = .restart,
+        result: RuntimeGuestControlOperationResult? = nil
+    ) -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: operationId,
+            service: service,
+            command: command,
+            state: .completed,
+            createdAt: "2026-06-10T09:42:00Z",
+            updatedAt: "2026-06-10T09:42:01Z",
+            result: result
+        )
+    }
+}
+
+private struct RuntimeDataBackupGuestDocumentReader: RuntimeGuestBootstrapResultReader {
     func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> { .missing }
-    func removeUpdateActivationResult() throws {}
-    func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws {}
-    func loadUpdateActivationResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument> { .missing }
-    func removeUpdateShutdownResult() throws {}
-    func clearUpdateShutdownPreparation() throws {}
-    func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {}
-    func loadUpdateShutdownResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument> { .missing }
-    func removeDatastoreRepairResult() throws {}
-    func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws {}
-    func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> { .missing }
 }

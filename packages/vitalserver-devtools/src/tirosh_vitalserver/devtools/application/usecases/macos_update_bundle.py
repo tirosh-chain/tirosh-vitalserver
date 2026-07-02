@@ -108,7 +108,7 @@ def build_update_bundle(input: ReleaseUpdateBundleInput) -> int:
         bundle_path=settings.docker_bundle,
         platform=input.docker_platform,
         compression_threads=input.compression_threads,
-        include_optional="testkit" in release.optional_container_services,
+        include_optional=False,
     )
 
     deploy_dir = settings.update_artifact_dir / "deploy"
@@ -127,7 +127,7 @@ def build_update_bundle(input: ReleaseUpdateBundleInput) -> int:
             config=settings.guest_deploy,
             docker_bundle=settings.docker_bundle,
             optional_docker_bundle=optional_docker_bundle,
-            include_optional="testkit" in release.optional_container_services,
+            include_optional=False,
         ),
     )
     rootfs_base = resolve_path(root, input.rootfs_base) if input.rootfs_base else None

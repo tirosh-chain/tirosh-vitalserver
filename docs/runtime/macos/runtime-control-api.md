@@ -14,7 +14,7 @@ OpenAPI contract는 [`runtime-control.openapi.json`](./runtime-control.openapi.j
 
 ## Local Server
 
-macOS Helper app composition은 Runtime Control API server를 TestKit/dev console 노출 여부와 분리해서 조립합니다. PWA가 사용할 `/runtime/*`, `/vitaldb/*`, `/host/*` API는 stable/dev profile 모두에서 같은 local server를 통해 제공될 수 있어야 합니다. `/dev/runtime-control` 확인 화면과 `/dev/testkit/*` route만 `distribution.profile=dev` 또는 test-enabled build 뒤에 둡니다. Stable/PWA용 인증은 현재 transitional token에서 pairing/session token 정책으로 교체해야 합니다.
+macOS Helper app composition은 Runtime Control API server를 dev console 노출 여부와 분리해서 조립합니다. PWA가 사용할 `/runtime/*`, `/vitaldb/*`, `/lab/*`, `/host/*` API는 stable/dev profile 모두에서 같은 local server를 통해 제공될 수 있어야 합니다. `/dev/runtime-control` 확인 화면은 dev profile 뒤에 두고, Lab 기능은 `/lab/*` product API만 사용합니다. Stable/PWA용 인증은 현재 transitional token에서 pairing/session token 정책으로 교체해야 합니다.
 
 | 항목 | 값 |
 |---|---|
@@ -29,9 +29,16 @@ Local server는 Runtime Control PWA static assets, read-only runtime endpoint, P
 http://127.0.0.1:18321/
 ```
 
-PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/*`, `/host/*`, `/dev/*` API 요청은 기존 Runtime Control API authorization 정책을 따릅니다.
+PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/*`, `/lab/*`, `/host/*`, `/dev/*` API 요청은 기존 Runtime Control API authorization 정책을 따릅니다.
 
-`GET /runtime/capabilities`는 PWA route와 command availability의 source of truth입니다. TestKit 관련 `/dev/testkit/*` route는 test-enabled build에서만 노출되며, PWA는 `canUseTestTools=true`일 때만 Test 탭을 보여줍니다.
+`GET /runtime/capabilities`는 PWA route와 command availability의 source of truth입니다. Lab 기능은 product API인 `/lab/*`를 통해 노출되며, 구현 세부 도구 이름이나 fixture/source 경로를 PWA contract에 노출하지 않습니다.
+
+Capability meaning is split by owner. `canControlRuntimeServices` gates Host
+maintenance actions such as settings activation, recovery, backup/restore, and
+VM/proxy/watchdog lifecycle work. `canControlGuestServices` gates product
+service start/stop/restart actions that go through Guest Control API. Browser
+and Swift product surfaces must not use the Host maintenance capability as
+permission for Guest product service control.
 
 | Method | Path |
 |---|---|
@@ -40,6 +47,12 @@ PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/
 | `GET` | `/runtime/overview/stream` |
 | `GET` | `/runtime/status` |
 | `GET` | `/runtime/status/stream` |
+| `GET` | `/runtime/guest/stack/status` |
+| `GET` | `/runtime/guest/services` |
+| `GET` | `/runtime/guest/services/{service}/status` |
+| `POST` | `/runtime/guest/services/start` |
+| `POST` | `/runtime/guest/services/stop` |
+| `POST` | `/runtime/guest/services/restart` |
 | `GET` | `/runtime/events` |
 | `GET` | `/runtime/events/stream` |
 | `GET` | `/vitaldb/observations/latest` |
@@ -50,6 +63,14 @@ PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/
 | `GET` | `/vitaldb/beds` |
 | `GET` | `/vitaldb/beds/{bedID}` |
 | `GET` | `/vitaldb/relationships` |
+| `GET` | `/lab/scenarios` |
+| `GET` | `/lab/beds` |
+| `GET` | `/lab/recorders` |
+| `POST` | `/lab/sessions` |
+| `GET` | `/lab/sessions/{sessionId}` |
+| `POST` | `/lab/sessions/{sessionId}/start` |
+| `POST` | `/lab/sessions/{sessionId}/stop` |
+| `POST` | `/lab/vital-files/replay` |
 | `POST` | `/runtime/health` |
 | `GET` | `/runtime/settings` |
 | `GET` | `/runtime/release` |
@@ -63,11 +84,77 @@ PWA static file 요청은 token 없이 처리합니다. `/runtime/*`, `/vitaldb/
 | `POST` | `/host/logs/read` |
 | `GET` | `/host/logs/stream` |
 
-TestKit route와 browser 확인용 dev console은 test-enabled build에서만 노출됩니다.
+Runtime Lab은 `/lab/*` product route로 노출됩니다. Legacy `/dev/testkit/*` Runtime Control routes are removed from the product API surface; browser diagnostics should use product Lab contracts or explicit More/Advanced diagnostics instead.
 
 Automatic VitalServer backup은 별도 HTTP command route가 아니라 Settings contract로 제어됩니다. `automaticBackupEnabled`, `backupScheduleTimes`, `backupRetentionCount`를 저장하면 Host configure command가 macOS launchd job `ai.tirosh.vitalserver.helper.automatic-backup`을 갱신합니다. Job은 `runtime automatic-backup`을 실행하며, 생성 대상은 Redis-only archive가 아니라 VitalServer backup입니다.
 
 Runtime log archive retention도 Settings contract로 제어됩니다. `logArchiveRetentionDays`와 `logArchiveMaximumGiB`는 Guest runtime settings가 아니라 Host-owned `/Library/Application Support/VitalServerHelper/runtime-control-settings.json`에 저장됩니다. 이 값은 central log collector가 `/Library/Application Support/VitalServerHelper/logs/archive/YYYY-MM-DD` 관리 archive directory를 prune할 때 사용하며, VM runtime restart requirement를 만들지 않습니다.
+
+## Guest Product Service Control
+
+Runtime v2 exposes product service status and start/stop/restart through Guest Control API. Runtime Control API is the Host-facing consumer boundary; clients must not read Guest Compose files or infer product service state from `runtime-state.json`.
+
+| Method | Path | 계약 |
+|---|---|---|
+| `GET` | `/runtime/guest/stack/status` | read the Guest-owned product service stack status document |
+| `GET` | `/runtime/guest/services` | list Guest-owned product services available for control |
+| `GET` | `/runtime/guest/services/{service}/status` | read one Guest product service status document |
+| `POST` | `/runtime/guest/services/start` | request start of one Guest product service and return the persisted operation document |
+| `POST` | `/runtime/guest/services/stop` | request stop of one Guest product service and return the persisted operation document |
+| `POST` | `/runtime/guest/services/restart` | request restart of one Guest product service and return the persisted operation document |
+
+`RuntimeStatus.guestServicesReadState` carries the status reader result for UI/status snapshots. `loaded`, `failed`, and `unavailable` remain distinct. `failed` preserves `guestServicesReadError`; clients must not treat failed reads as an empty service list.
+
+Whole-stack runtime start/stop is not exposed through Runtime Control HTTP API.
+`vitalserver-vm runtime start-services` and `vitalserver-vm runtime stop-services`
+remain native Host maintenance commands for Host launchd runtime services such
+as VM, host proxy, guest log sync, and watchdog. Product service control must
+use `/runtime/guest/services/*` so the Guest remains the service owner and the
+Host remains an API consumer.
+
+## VitalDB Read Models
+
+Runtime VitalDB read models are exposed to local automation through Guest
+Control API. These commands print the Guest contract JSON and do not read Host
+SQLite, `runtime-state.json`, `runtime-status.json`, logs, or recorder-ingress
+diagnostics directly.
+
+| Command | 계약 |
+|---|---|
+| `vitalserver-vm runtime vitaldb-observation [--guest-control-url <url>]` | read the latest Guest-owned VitalDB observation document |
+| `vitalserver-vm runtime vitaldb-recorders [--guest-control-url <url>]` | read the Guest-owned VitalDB recorder read model |
+| `vitalserver-vm runtime vitaldb-beds [--guest-control-url <url>]` | read the Guest-owned VitalDB bed read model |
+| `vitalserver-vm runtime vitaldb-relationships [--guest-control-url <url>]` | read the Guest-owned VitalDB relationship history read model |
+
+## Product Lab
+
+Runtime Lab is the product-facing boundary for virtual recorder scenarios and `.vital` replay. It replaces the idea that sample playback belongs to a dev-only TestKit API. The Host-facing API calls Guest Control `/v1/lab/*`, and Guest Control may mediate simulator/TestKit internals as product implementation details without exposing them as Runtime Control API routes.
+
+| Method | Path | 계약 |
+|---|---|---|
+| `GET` | `/lab/scenarios` | list product lab scenarios available for virtual recorder sessions |
+| `GET` | `/lab/beds` | list Product Lab bed read model |
+| `GET` | `/lab/recorders` | list Product Lab recorder read model with execution send state |
+| `POST` | `/lab/sessions` | create a Product Lab virtual recorder session |
+| `GET` | `/lab/sessions/{sessionId}` | read one Product Lab session state |
+| `POST` | `/lab/sessions/{sessionId}/start` | start one Product Lab session |
+| `POST` | `/lab/sessions/{sessionId}/stop` | stop one Product Lab session |
+| `POST` | `/lab/vital-files/replay` | create a virtual recorder session from a configured `.vital` file path |
+
+`RuntimeLabScenarioList.state` and `RuntimeLabSessionResponse.state` preserve `loaded`, `failed`, and `unavailable` as different meanings. The API must not convert a missing Lab backend, Product Lab HTTP failure, or invalid Lab response into an empty scenario list or a successful stopped session. Command-style Lab requests also preserve the Guest operation id when Guest Control accepts the command.
+
+The runtime CLI exposes the same Product Lab boundary for local automation and field diagnostics. CLI commands call Guest Control API and print the returned contract JSON; they do not inspect Lab files, TestKit files, or container internals directly.
+
+| Command | 계약 |
+|---|---|
+| `vitalserver-vm runtime lab-scenarios [--guest-control-url <url>]` | list Product Lab scenarios |
+| `vitalserver-vm runtime lab-beds [--guest-control-url <url>]` | list Product Lab bed read model |
+| `vitalserver-vm runtime lab-recorders [--guest-control-url <url>]` | list Product Lab recorder read model with execution send state |
+| `vitalserver-vm runtime lab-session-create <scenario-id> [--name <name>] [--recorder-count <count>] [--target-url <url>] [--guest-control-url <url>]` | create a virtual recorder session |
+| `vitalserver-vm runtime lab-session-get <session-id> [--guest-control-url <url>]` | read one Lab session |
+| `vitalserver-vm runtime lab-session-start <session-id> [--guest-control-url <url>]` | start one Lab session |
+| `vitalserver-vm runtime lab-session-stop <session-id> [--guest-control-url <url>]` | stop one Lab session |
+| `vitalserver-vm runtime lab-vital-replay <vital-file-path> [--session-name <name>] [--target-url <url>] [--guest-control-url <url>]` | create a `.vital` replay session |
 
 ## Status Vocabulary
 
@@ -121,23 +208,23 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 
 `GET /host/logs/stream`은 long-lived SSE 연결입니다. 서버는 선택한 host log text가 바뀔 때 `runtime-log` frame을 보냅니다. 각 frame의 `id` 값은 `runtime-log-<source>`, `data` 값은 JSON encoded `RuntimeLogTextResponse`입니다. Query는 `source`, `lineLimit`, `helperMessage`를 지원합니다. `source=helperMessage`는 현재 UI message 값을 재전송하지 않고 host의 append-only `tirosh-vitalserver-helper-message.log`를 읽습니다. `/host/logs/read` body는 `source`, `helperMessage`, `lineLimit`를 모두 보내야 하며 legacy helper message 값이 없으면 `helperMessage: null`을 보냅니다. field absence와 explicit null/empty string은 다른 request state로 보존합니다.
 
-`GET /vitaldb/observations/latest`는 watchdog/runtime observability SQLite에 저장된 최신 `VitalDBObservationDocument`를 반환합니다. 이 payload는 `vitaldb-observer` container가 계산한 recorder/bed/device/filter/proxy/anomaly snapshot과 최근 `send_data` 활동량 summary를 guest runtime-state 경로로 전달하고, watchdog이 runtime observability SoT에 저장한 결과입니다. `recorders[].activity`는 recorder ingress Redis List에서 계산한 windowed metric이며 message count, byte count, room count, first/last activity, 초당 message/byte rate를 포함합니다. `readIssues`는 observer가 source를 읽거나 파싱하는 중 발견한 문제를 보존합니다. 관련 `readIssues`가 있는 빈 배열/빈 activity는 실제 관측값 0이 아니라 부분 관측 실패일 수 있습니다.
+`GET /vitaldb/observations/latest`는 최신 `VitalDBObservationDocument`를 반환하는 Runtime Control API 표면입니다. v2 TO-BE에서는 이 read가 Host 파일이나 Host SQLite projection에서 오지 않고 Guest/Product API의 `GET /v1/vitaldb/observations/latest`를 소비해야 합니다. Guest endpoint는 `state`, `observation`, `readError`를 보존하며, default Guest composition은 `PostgresVitalDBReadModelRepository`를 통해 `vitaldb_observation_snapshots` JSONB read model을 읽습니다. Guest `tirosh-runtime-state` writer는 VitalDB Observer의 explicit observation document를 수집한 뒤 이 Postgres read model에 저장합니다. Read model adapter가 없거나 table이 비어 있으면 빈 성공이나 inferred empty observation 대신 `state=unavailable`, `observation=null`을 반환합니다. Host `runtime-observability.sqlite` projection은 명시 diagnostics/migration mode에서만 읽을 수 있으며, guest `runtime-state.json`이나 Host `runtime-status.json`의 embedded current observation은 product read source로 사용하지 않습니다.
 
 `GET /vitaldb/observations/stream`은 long-lived SSE 연결입니다. 서버는 최신 VitalDB observation payload가 바뀔 때 `vitaldb-observed` frame을 보냅니다. 각 frame의 `id` 값은 `vitaldb-observation`, `data` 값은 JSON encoded `RuntimeVitalDBObservationSnapshot`입니다. Stream payload는 `/runtime/overview`의 `vitalDBObservationSnapshot`과 같은 read state/readError contract를 유지합니다. 따라서 최신 observation이 없거나 read가 실패한 상태를 `null` observation으로만 축소하지 않습니다.
 
-`GET /runtime/overview`는 `vitalDBObservationSnapshot`에 최신 observation read 상태를 함께 싣습니다. `state`는 `loaded`, `unavailable`, `failed` 중 하나이며, `observation`이 `null`일 때 단순 미관측인지 read failure인지 구분하기 위한 API-facing metadata입니다. `/vitaldb/observations/latest` 자체는 기존 호환성을 위해 `VitalDBObservationDocument` 또는 `null` payload를 유지합니다. 최신 observation 선택 정책은 명시적입니다. reader는 guest `runtime-state.json`의 current observation을 가장 신선한 source로 우선하고, 없으면 `runtime-status.json`의 current observation을 사용하며, 둘 다 없을 때만 `runtime-observability.sqlite` projection의 latest snapshot을 사용합니다. current source read issue는 projection fallback을 쓰더라도 `readError`에 보존합니다. durable history/relationship/activity read model은 SQLite projection을 source로 유지합니다.
+`GET /runtime/overview`는 `vitalDBObservationSnapshot`에 최신 observation read 상태를 함께 싣습니다. `state`는 `loaded`, `unavailable`, `failed` 중 하나이며, `observation`이 `null`일 때 단순 미관측인지 read failure인지 구분하기 위한 API-facing metadata입니다. `/vitaldb/observations/latest` 자체는 기존 호환성을 위해 `VitalDBObservationDocument` 또는 `null` payload를 유지합니다. 최신 observation 선택 정책은 명시적입니다. Runtime v2 path는 guest `runtime-state.json`이나 Host `runtime-status.json`의 embedded current observation을 product read source로 사용하지 않습니다. Host current observation provider consumes Guest Control API `GET /v1/vitaldb/observations/latest` and preserves Guest read failures as `guestControl=...` read issues. Host `runtime-observability.sqlite` projection is disabled for live product reads unless a caller explicitly opts into diagnostics/migration projection mode.
 
-`GET /vitaldb/recorders`는 runtime observability SQLite에 저장된 VitalDB observation snapshot들을 `vrcode` 기준으로 집계한 `RuntimeVitalRecorderHistory`를 반환합니다. `vrcode`는 recorder identity key이며, IP는 마지막 관측 주소일 뿐 identity로 쓰지 않습니다. 이 read model은 접속했었던 VRecorder 목록, last IP, version, bed, first/last seen, latest status, current anomaly count, `activityTimeline`을 PWA/SwiftUI가 바로 표시할 수 있게 정리한 결과입니다. `activityTimeline`은 snapshot history에서 vrcode별 `recorders[].activity`를 시간순으로 모은 recorder activity point list입니다. 각 point는 해당 시각의 message count, byte count, room count를 담아 활동 차트를 그리기 위한 값입니다. `activityHistory.source`는 `sqliteProjection`, `unavailable`, `notProvided` 중 하나입니다. `sqliteProjection`의 empty timeline은 activity bucket projection을 읽었지만 해당 recorder activity가 없었다는 뜻이고, `notProvided`는 caller가 activity projection을 제공하지 않은 construction path입니다. `readError`가 있으면 observation/current/activity projection read가 실패해 `recorders`, `beds`, `activityHistory`가 incomplete일 수 있습니다. 이 상태는 관측된 recorder가 없다는 의미와 구분해야 합니다.
+`GET /vitaldb/recorders`는 `vrcode` 기준으로 집계한 `RuntimeVitalRecorderHistory`를 반환합니다. `vrcode`는 recorder identity key이며, IP는 마지막 관측 주소일 뿐 identity로 쓰지 않습니다. Live v2 path는 Guest/Product API의 `GET /v1/vitaldb/recorders`와 `GET /v1/vitaldb/beds`를 우선 소비하며, Guest read가 unavailable/failed이면 Host SQLite observation snapshot을 recorder/bed product state로 읽거나 승격하지 않습니다. Guest endpoint는 `state`, `recorders`, `observedAt`, `ready`, `recorderOnlineThresholdSeconds`, `readError`를 보존하며, default Guest composition은 `PostgresVitalDBReadModelRepository`를 통해 최신 `vitaldb_observation_snapshots` JSONB read model의 `recorders` 배열과 observation metadata를 읽습니다. Empty `recorders`는 loaded empty collection이고, adapter 없음, empty table, dependency failure, malformed collection은 다른 read state로 보존해야 합니다. Host는 `ready`나 recorder stale threshold를 추정하지 않고 Guest가 제공한 값을 사용합니다. `activityTimeline`은 snapshot history에서 vrcode별 `recorders[].activity`를 시간순으로 모은 recorder activity point list입니다. 각 point는 해당 시각의 message count, byte count, room count를 담아 활동 차트를 그리기 위한 값입니다. `activityHistory.source`는 `readModelProjection`, `unavailable`, `notProvided` 중 하나입니다. `readModelProjection`의 empty timeline은 Guest/Postgres read model projection을 읽었지만 해당 recorder activity가 없었다는 뜻이고, `notProvided`는 caller가 activity projection을 제공하지 않은 construction path입니다. `readError`가 있으면 Guest read 또는 activity projection read가 실패해 `recorders`, `beds`, `activityHistory`가 incomplete일 수 있습니다. 이 상태는 관측된 recorder가 없다는 의미와 구분해야 합니다.
 
 `GET /vitaldb/recorders/{vrcode}`는 같은 history read model에서 특정 `vrcode`의 recorder record 하나를 반환합니다. 관측 이력이 없으면 `null`을 반환합니다.
 
-`GET /vitaldb/recorders/{vrcode}/activity`는 recorder activity chart용 lazy window read model입니다. Query는 `bucketSeconds=60|300`, `period=last15Minutes|lastHour|last6Hours|last12Hours|all`, `pageIndex=<non-negative integer>`를 지원합니다. `period=all`일 때 page 하나는 12시간이며, `pageIndex`가 없으면 최신 page를 반환합니다. 서버는 SQLite에서 해당 `vrcode`의 first/latest bucket boundary를 먼저 읽고, 선택된 window의 `since/until` 범위만 조회합니다. UI는 응답의 `page.count`, `page.index`, `page.windowStartedAt`, `page.windowEndedAt`, `buckets`만 표시하고 전체 history gap을 브라우저나 SwiftUI 메모리에서 materialize하면 안 됩니다.
+`GET /vitaldb/recorders/{vrcode}/activity`는 recorder activity chart용 lazy window read model입니다. Query는 `bucketSeconds=60|300`, `period=last15Minutes|lastHour|last6Hours|last12Hours|all`, `pageIndex=<non-negative integer>`를 지원합니다. `period=all`일 때 page 하나는 12시간이며, `pageIndex`가 없으면 최신 page를 반환합니다. Runtime v2 server는 Guest Control API의 `GET /v1/vitaldb/recorders/{vrcode}/activity`를 소비하고, Guest/Postgres read model에서 해당 `vrcode`의 first/latest bucket boundary와 선택된 window의 `since/until` 범위만 조회합니다. Host SQLite projection은 Guest provider가 없는 transitional diagnostics path일 뿐 product state owner가 아닙니다. UI는 응답의 `page.count`, `page.index`, `page.windowStartedAt`, `page.windowEndedAt`, `buckets`만 표시하고 전체 history gap을 브라우저나 SwiftUI 메모리에서 materialize하면 안 됩니다.
 
 `RuntimeVitalRecorderActivityWindow.state`는 `loaded`, `empty`, `invalidRequest`, `readFailed` 중 하나입니다. `empty`는 read가 성공했지만 해당 recorder/window에 activity bucket이 없다는 뜻이며, `readFailed`와 구분해야 합니다. `invalidRequest`는 query contract 위반입니다. Missing bucket은 선택된 window 안에서만 zero-count display bucket으로 채울 수 있고, window 밖의 missing history를 activity state로 추정하지 않습니다.
 
-`GET /vitaldb/beds`는 runtime observability SQLite에 저장된 VitalDB observation snapshot들을 `bedID` 기준으로 집계한 `RuntimeVitalBedRecord` 배열을 반환합니다. Bed 탭/PWA는 recorder history payload에 포함된 `beds` 필드에 의존하지 않고 이 route를 우선 사용합니다. `GET /vitaldb/beds/{bedID}`는 특정 bed record 하나를 반환하고, 관측 이력이 없으면 `null`을 반환합니다.
+`GET /vitaldb/beds`는 `bedID` 기준으로 집계한 `RuntimeVitalBedRecord` 배열을 반환합니다. Bed 탭/PWA는 recorder history payload에 포함된 `beds` 필드에 의존하지 않고 이 route를 우선 사용합니다. Live v2 path는 Guest/Product API의 `GET /v1/vitaldb/beds`를 우선 소비하며, Guest read가 unavailable/failed이면 Host SQLite observation snapshot을 bed product state로 승격하지 않습니다. Guest endpoint는 `state`, `beds`, `observedAt`, `ready`, `recorderOnlineThresholdSeconds`, `readError`를 보존하며, loaded empty beds와 read-model unavailable/failed/invalid 상태를 구분합니다. Host는 recorder read와 bed read의 metadata가 일치할 때만 하나의 current observation으로 조립하고, 불일치하면 explicit read issue로 남깁니다. `GET /vitaldb/beds/{bedID}`는 특정 bed record 하나를 반환하고, 관측 이력이 없으면 `null`을 반환합니다.
 
-`GET /vitaldb/relationships`는 bed/VRecorder assignment와 relationship event projection을 반환합니다. `readError`가 있으면 assignment projection 또는 relationship event projection 일부가 실패한 상태이며, empty `assignments`/`events`를 정상적인 무관측 상태로 해석하면 안 됩니다.
+`GET /vitaldb/relationships`는 bed/VRecorder assignment와 relationship event history를 반환합니다. Live v2 path는 Guest/Product API의 `GET /v1/vitaldb/relationships`를 소비하며, Host SQLite relationship projection을 product state로 승격하지 않습니다. Guest endpoint는 `state`, `assignments`, `events`, `readError`를 보존하고, default Guest composition은 `PostgresVitalDBReadModelRepository`를 통해 `vitaldb_relationship_history_snapshots` JSONB read model을 읽습니다. Guest `tirosh-runtime-state` writer는 최신 VitalDB observation의 explicit bed-vrcode 관계와 이전 Guest/Postgres relationship snapshot을 domain policy에 넘겨 다음 relationship history snapshot을 저장합니다. 이 projection은 unchanged assignment update, unlinked assignment close, handoff event, duplicate assignment, unlinked bed, unlinked recorder, stale link를 명시 입력에서만 계산합니다. Empty previous history는 schema가 존재하고 snapshot row가 없을 때의 초기 상태일 뿐이며, invalid previous document나 dependency failure는 성공으로 변환하지 않습니다. Observer read issue가 있으면 `partiallyLoaded`와 explicit `readError`로 보존합니다. Read model adapter가 없거나 table이 비어 있으면 empty success 대신 `state=unavailable`과 explicit `readError`를 반환합니다. Transitional projection tests can still exercise the SQLite relationship assembler directly, but live Runtime Control consumers should treat Guest/Postgres as the relationship owner. `readError`가 있으면 assignment/history read가 실패했거나 부분 로드된 상태이며, empty `assignments`/`events`를 정상적인 무관측 상태로 해석하면 안 됩니다.
 
 `distribution.profile`이 `dev`인 build에서는 macOS Helper가 실행 중일 때 `http://127.0.0.1:18321/dev/runtime-control`에서 브라우저용 Runtime Control API console을 열 수 있습니다. Stable build는 local API server는 유지하되 이 dev console route는 제공하지 않습니다. 이 화면은 product PWA가 아니라 API/SSE 동작 확인용 loopback dev tool이며, status snapshot, status stream, event stream, log stream을 같은 origin에서 호출합니다.
 
@@ -159,6 +246,12 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 | `GET` | `/runtime/overview/stream` | SSE PWA status screen aggregate subscription |
 | `GET` | `/runtime/status` | runtime status read model |
 | `GET` | `/runtime/status/stream` | SSE runtime status snapshot subscription |
+| `GET` | `/runtime/guest/stack/status` | Guest product service stack status through Guest Control API |
+| `GET` | `/runtime/guest/services` | Guest product service list through Guest Control API |
+| `GET` | `/runtime/guest/services/{service}/status` | Guest product service status through Guest Control API |
+| `POST` | `/runtime/guest/services/start` | Guest product service start through Guest Control API |
+| `POST` | `/runtime/guest/services/stop` | Guest product service stop through Guest Control API |
+| `POST` | `/runtime/guest/services/restart` | Guest product service restart through Guest Control API |
 | `GET` | `/runtime/events` | runtime status/progress event history |
 | `GET` | `/runtime/events/stream` | SSE runtime status/progress event subscription |
 | `GET` | `/vitaldb/observations/latest` | latest VitalDB recorder/bed/anomaly observation snapshot |
@@ -168,17 +261,26 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 | `GET` | `/vitaldb/recorders/{vrcode}/activity` | lazy VRecorder activity chart window |
 | `GET` | `/vitaldb/beds` | bed history aggregated by bedID |
 | `GET` | `/vitaldb/beds/{bedID}` | one bed history record by bedID |
-| `GET` | `/vitaldb/relationships` | VRecorder-bed assignment and relationship event history |
+| `GET` | `/vitaldb/relationships` | Guest/Postgres-owned VRecorder-bed assignment and relationship event history |
+| `GET` | `/lab/scenarios` | Product Lab scenario list |
+| `GET` | `/lab/beds` | Product Lab bed read model |
+| `GET` | `/lab/recorders` | Product Lab recorder read model |
+| `POST` | `/lab/sessions` | create Product Lab virtual recorder session |
+| `GET` | `/lab/sessions/{sessionId}` | Product Lab session state |
+| `POST` | `/lab/sessions/{sessionId}/start` | start Product Lab session |
+| `POST` | `/lab/sessions/{sessionId}/stop` | stop Product Lab session |
+| `POST` | `/lab/vital-files/replay` | create Product Lab `.vital` replay session |
 | `POST` | `/runtime/health` | active health refresh |
 | `GET` | `/runtime/settings` | current runtime settings |
 | `PUT` | `/runtime/settings` | apply runtime settings |
 | `GET` | `/runtime/release` | helper/release/component metadata |
 | `GET` | `/runtime/install` | installed runtime paths and install metadata |
-| `POST` | `/runtime/services/start` | start runtime services |
-| `POST` | `/runtime/services/stop` | stop runtime services |
-| `POST` | `/runtime/services/testkit/start` | start the optional TestKit container without restarting the runtime |
-| `POST` | `/runtime/services/testkit/stop` | stop the optional TestKit container without stopping the runtime |
-| `POST` | `/runtime/services/testkit/restart` | restart the optional TestKit container without restarting the runtime |
+| `GET` | `/runtime/guest/stack/status` | read the Guest-owned service stack status through Guest Control API |
+| `GET` | `/runtime/guest/services` | list Guest-owned compose services |
+| `GET` | `/runtime/guest/services/{service}/status` | read one Guest-owned service status through Guest Control API |
+| `POST` | `/runtime/guest/services/start` | start one Guest-owned service through Guest Control API |
+| `POST` | `/runtime/guest/services/stop` | stop one Guest-owned service through Guest Control API |
+| `POST` | `/runtime/guest/services/restart` | restart one Guest-owned service through Guest Control API |
 | `POST` | `/runtime/services/repair-runtime` | repair VM, guest log sync, host proxy, and watchdog services |
 | `POST` | `/runtime/services/repair-proxy` | repair host proxy |
 | `POST` | `/runtime/services/repair-datastore` | repair datastore |
@@ -211,8 +313,8 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 
 | Access | 의미 | 현재 route |
 |---|---|---|
-| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/overview`, `GET /runtime/overview/stream`, `GET /runtime/status`, `GET /runtime/status/stream`, `GET /runtime/events`, `GET /runtime/events/stream`, `GET /vitaldb/observations/latest`, `GET /vitaldb/observations/stream`, `GET /vitaldb/recorders`, `GET /vitaldb/recorders/{vrcode}`, `GET /vitaldb/beds`, `GET /vitaldb/beds/{bedID}`, `GET /vitaldb/relationships`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
-| `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, Redis backup create/list/restore, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
+| `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/overview`, `GET /runtime/overview/stream`, `GET /runtime/status`, `GET /runtime/status/stream`, `GET /runtime/guest/stack/status`, `GET /runtime/guest/services`, `GET /runtime/guest/services/{service}/status`, `GET /runtime/events`, `GET /runtime/events/stream`, `GET /vitaldb/observations/latest`, `GET /vitaldb/observations/stream`, `GET /vitaldb/recorders`, `GET /vitaldb/recorders/{vrcode}`, `GET /vitaldb/beds`, `GET /vitaldb/beds/{bedID}`, `GET /vitaldb/relationships`, `GET /lab/scenarios`, `GET /lab/beds`, `GET /lab/recorders`, `GET /lab/sessions/{sessionId}`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
+| `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, Product Lab session commands, Redis backup create/list/restore, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
 | `nativeShellOnly` | 브라우저 endpoint만으로는 UX나 보안 경계가 충분하지 않아 native shell mediation이 필요함 | `POST /host/logs/export` |
 
 Portable `/runtime/*` route는 `RuntimeControlFileReference`를 사용하지 않습니다. 파일, update bundle, backup, log export destination처럼 host resource를 가리키는 값은 `/host/*` affordance에서만 `RuntimeControlFileReference`로 표현합니다.

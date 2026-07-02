@@ -74,11 +74,11 @@ PWA는 특정 제품명보다 viewport width를 기준으로 설계합니다.
 - Capability가 없는 command는 숨기기보다 비활성화와 이유 표시를 우선합니다.
 - Dangerous command는 confirmation 없이 실행하지 않습니다.
 
-### TestKit
+### Lab
 
-- TestKit은 product route가 아니라 test-enabled route입니다.
-- Mobile에서는 조작성이 떨어지므로 핵심 create/start/pause/stop/delete flow가 우선입니다.
-- Bed setup과 virtual recorder session control은 한 화면 안에서 관계가 드러나야 합니다.
+- Lab은 product route입니다.
+- Mobile에서는 scenario 선택, session create/start/stop, `.vital` replay flow가 우선입니다.
+- TestKit container controls나 implementation diagnostics는 Lab primary flow와 섞지 않고 More/Diagnostics 성격으로 분리합니다.
 
 ## Verification Checklist
 

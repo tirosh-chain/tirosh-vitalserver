@@ -11,7 +11,8 @@ extension RuntimeHealthChecker {
         serviceManager: RuntimeServiceManager,
         commandRunner: RuntimeCommandRunner,
         httpProber: RuntimeHTTPProber,
-        guestGateway: RuntimeGuestGateway,
+        guestBootstrapResultReader: any RuntimeGuestBootstrapResultReader,
+        guestControlGateway: (@Sendable () throws -> any RuntimeGuestControlGateway)? = nil,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self = RuntimeHealthCheckerComposition.make(
@@ -20,10 +21,11 @@ extension RuntimeHealthChecker {
             serviceManager: serviceManager,
             commandRunner: commandRunner,
             httpProber: httpProber,
-            guestGateway: guestGateway,
+            guestBootstrapResultReader: guestBootstrapResultReader,
             plistBuddyPath: Constants.Commands.plistBuddy,
             lsofPath: Constants.Commands.lsof,
             curlPath: Constants.Commands.curl,
+            guestControlGateway: guestControlGateway,
             now: now
         )
     }

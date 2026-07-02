@@ -89,7 +89,11 @@ function loadConfig(env) {
         maxBytesPerSecond: replayMaxBytesPerSecond,
         targetTimeoutMs: numberEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_TARGET_TIMEOUT_MS", 5000),
         adaptive: {
-          enabled: booleanEnv(env, "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_ENABLED", true),
+          enabled: booleanEnv(
+            env,
+            "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_ENABLED",
+            false
+          ),
           minBytesPerSecond: numberEnv(
             env,
             "RECORDER_INGRESS_SEND_DATA_REPLAY_ADAPTIVE_MIN_BYTES_PER_SECOND",
@@ -124,8 +128,7 @@ function loadConfig(env) {
       },
     },
     memoryGuard: {
-      runtimeStatePath: env.RECORDER_INGRESS_RUNTIME_STATE_PATH || "/run/tirosh/runtime/runtime-state.json",
-      maxAgeMs: numberEnv(env, "RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS", 15000),
+      enabled: false,
     },
     failureLog: {
       enabled: env.RECORDER_INGRESS_FAILURE_LOG_ENABLED !== "0",

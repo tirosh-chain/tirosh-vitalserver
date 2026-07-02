@@ -43,8 +43,6 @@ public extension AppConstants {
         public static let deleteVRecorder = "Delete VRecorder"
         public static let uploadVitalFiles = "Upload .vital Files"
         public static let reset = "Reset"
-        public static let startRuntimeServices = "Start Runtime Services"
-        public static let stopRuntimeServices = "Stop Runtime Services"
         public static let restartVMRuntime = "Restart VM Runtime"
         public static let startUpdate = "Start Update"
         public static let startRollback = "Start Rollback"

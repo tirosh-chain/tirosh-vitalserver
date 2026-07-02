@@ -38,8 +38,8 @@ def docker_image_bundle_build_plan(
         vitaldb_observer_dockerfile=docker_config.vitaldb_observer_dockerfile,
         redis_relay_image=docker_config.redis_relay_image,
         redis_relay_dockerfile=docker_config.redis_relay_dockerfile,
-        testkit_image=docker_config.testkit_image,
-        testkit_dockerfile=docker_config.testkit_dockerfile,
+        lab_image=docker_config.lab_image,
+        lab_dockerfile=docker_config.lab_dockerfile,
     )
     return DockerImageBundleBuildPlan(
         image_plan=image_plan,

@@ -5,25 +5,15 @@ import logging
 from tirosh_guest_tools.application.compose import run_compose_action
 from tirosh_guest_tools.application.runtime_state import write_current_state
 from tirosh_guest_tools.contracts import ComposeService, RuntimeFileName
-from tirosh_guest_tools.domain.operations import (
-    ComposeAction,
-    GuestOperationResult,
-    OperationName,
-    OperationStatus,
-)
+from tirosh_guest_tools.domain.operations import ComposeAction
 from tirosh_guest_tools.infrastructure.common import (
     PROJECT_NAME,
     RUNTIME_DIR,
     compose_command,
     mount_runtime_share,
-    request_id_from,
     run,
-    utc_now,
-    write_json,
 )
 
-REQUEST_FILE = RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_REQUEST.value
-RESULT_FILE = RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_RESULT.value
 LOG_FILE = RUNTIME_DIR / RuntimeFileName.REPAIR_DATASTORE_LOG.value
 REDIS_VOLUME = f"{PROJECT_NAME}_redis-data"
 logger = logging.getLogger(__name__)
@@ -32,63 +22,12 @@ logger = logging.getLogger(__name__)
 def run_repair_datastore() -> None:
     mount_runtime_share()
     logger.info("datastore repair started")
-    if not REQUEST_FILE.is_file():
-        logger.info("request file is missing; exiting")
-        write_result("", OperationStatus.SKIPPED, "request file is missing")
-        return
-    try:
-        request_id = request_id_from(REQUEST_FILE)
-    except Exception:
-        write_result(
-            "",
-            OperationStatus.FAILED,
-            "Datastore repair request metadata is invalid.",
-        )
-        REQUEST_FILE.unlink(missing_ok=True)
-        logger.exception("datastore repair request metadata is invalid")
-        raise
-    write_result(
-        request_id,
-        OperationStatus.RUNNING,
-        "Datastore repair is running.",
-    )
-    REQUEST_FILE.unlink(missing_ok=True)
     try:
         restart_runtime_compose()
     except Exception:
-        write_result(
-            request_id,
-            OperationStatus.FAILED,
-            "Datastore repair failed. See repair-datastore.log.",
-        )
-        logger.exception(
-            "datastore repair failed",
-            extra={"fields": {"requestId": request_id}},
-        )
+        logger.exception("datastore repair failed")
         raise
-    write_result(
-        request_id,
-        OperationStatus.COMPLETED,
-        "Redis append-only file checked and VitalServer services restarted.",
-    )
-    logger.info(
-        "datastore repair completed",
-        extra={"fields": {"requestId": request_id}},
-    )
-
-
-def write_result(request_id: str, status: OperationStatus, message: str) -> None:
-    write_json(
-        RESULT_FILE,
-        GuestOperationResult(
-            operation=OperationName.REPAIR_DATASTORE,
-            request_id=request_id,
-            schema_version=2,
-            message=message,
-            status=status,
-            updated_at=utc_now(),
-        ).as_json(),
-    )
+    logger.info("datastore repair completed")
 
 
 def restart_runtime_compose() -> None:

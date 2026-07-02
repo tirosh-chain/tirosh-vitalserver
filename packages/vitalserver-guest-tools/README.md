@@ -65,8 +65,8 @@ dictionaries directly.
 Inbound adapters translate external triggers into package behavior.
 
 - `adapters/inbound/cli.py`: console script entrypoints.
-- `adapters/inbound/request_file_poller.py`: watches Host-written request
-  files and dispatches the matching systemd service.
+- Guest command request-file polling has been removed from the v2 runtime.
+  Guest commands should be exposed through Guest Control API operations.
 - `adapters/inbound/observability_daemon.py`: daemon loop started by systemd
   for periodic guest observability snapshots.
 

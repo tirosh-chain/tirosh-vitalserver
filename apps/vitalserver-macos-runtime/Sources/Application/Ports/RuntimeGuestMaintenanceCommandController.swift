@@ -1,0 +1,32 @@
+import Contracts
+
+public protocol RuntimeGuestMaintenanceCommandControlling: Sendable {
+    func createRedisBackup(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation
+
+    func restoreRedisBackup(
+        archive: String,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation
+
+    func repairDatastore(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation
+
+    func activateUpdate(
+        requestId: String,
+        version: String,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation
+
+    func prepareUpdateShutdown(
+        requestId: String,
+        version: String,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation
+
+    func requestGuestPoweroff(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation
+}

@@ -201,18 +201,18 @@ public struct RuntimeWatchdogRunner {
             .recoveryPlanned
         )
 
-        if let composeReconcileEventMessage = plan.composeReconcileEventMessage {
+        if let guestStackReconcileEventMessage = plan.guestStackReconcileEventMessage {
             operations.recordObservedEvent(
                 .recovering,
                 .watchdog,
-                composeReconcileEventMessage,
+                guestStackReconcileEventMessage,
                 initial,
                 .serviceRestartDispatched
             )
             do {
-                try operations.reconcileGuestCompose()
+                try operations.reconcileGuestStack()
             } catch {
-                let failurePlan = useCase.composeReconcileFailurePlan(error: error)
+                let failurePlan = useCase.guestStackReconcileFailurePlan(error: error)
                 try writeCommandFailure(failurePlan, snapshot: initial, operations: operations, log: log, printLine: printLine)
                 return
             }
@@ -287,7 +287,7 @@ public struct RuntimeWatchdogActions {
     public let healthSnapshot: () -> RuntimeHealthSnapshot
     public let proxyLivenessHTTP: (Int?) -> String
     public let automaticRecoveryEnabled: () throws -> Bool
-    public let reconcileGuestCompose: () throws -> Void
+    public let reconcileGuestStack: () throws -> Void
     public let restartVMRuntime: () throws -> Void
     public let restartService: (RuntimeManagedService) throws -> Void
     public let writeRuntimeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
@@ -313,7 +313,7 @@ public struct RuntimeWatchdogActions {
         healthSnapshot: @escaping () -> RuntimeHealthSnapshot,
         proxyLivenessHTTP: @escaping (Int?) -> String,
         automaticRecoveryEnabled: @escaping () throws -> Bool,
-        reconcileGuestCompose: @escaping () throws -> Void,
+        reconcileGuestStack: @escaping () throws -> Void,
         restartVMRuntime: @escaping () throws -> Void,
         restartService: @escaping (RuntimeManagedService) throws -> Void,
         writeRuntimeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
@@ -338,7 +338,7 @@ public struct RuntimeWatchdogActions {
         self.healthSnapshot = healthSnapshot
         self.proxyLivenessHTTP = proxyLivenessHTTP
         self.automaticRecoveryEnabled = automaticRecoveryEnabled
-        self.reconcileGuestCompose = reconcileGuestCompose
+        self.reconcileGuestStack = reconcileGuestStack
         self.restartVMRuntime = restartVMRuntime
         self.restartService = restartService
         self.writeRuntimeStatus = writeRuntimeStatus

@@ -79,34 +79,39 @@ Guest clock은 Host-owned `host-time.json` contract에서 동기화합니다. Gu
 
 UI나 observer는 timestamp를 현재 시간으로 보정하지 않습니다. 시간이 틀리면 Host/Guest time contract 문제로 보고 failure reason과 logs를 확인합니다.
 
-### 3-2. Guest shutdown result
+### 3-2. Guest Control shutdown operation
 
-Update나 VM restart가 Guest shutdown preparation을 요구하면 Host는 request를 쓰고 Guest의 typed result를 기다립니다. request가 남아 있거나 log가 없다는 사실만으로 pending/success를 추정하지 않습니다.
+Update나 VM restart가 Guest shutdown preparation을 요구하면 Host는 Guest Control maintenance API로
+operation을 요청하고 Guest의 typed operation state를 기다립니다. operation read가 없거나 log가 없다는
+사실만으로 pending/success를 추정하지 않습니다.
 
 | 상태            | 의미                                                       |
 | --------------- | ---------------------------------------------------------- |
-| request missing | Host가 아직 operation을 요청하지 않았거나 cleanup이 끝남   |
-| result missing  | Guest worker가 실행되지 않았거나 result를 쓰기 전에 실패함 |
-| result failed   | Guest가 실패 reason과 details를 명시적으로 보고함          |
-| result stale    | requestId 또는 updatedAt이 현재 operation과 맞지 않음      |
-| result ready    | Guest가 shutdown preparation과 poweroff request를 완료함   |
+| accepted        | Guest Control API가 operation id를 발급함                  |
+| running         | Guest adapter가 shutdown preparation을 실행 중임           |
+| failed          | Guest가 실패 reason과 details를 명시적으로 보고함          |
+| unavailable     | Guest Control API 또는 operation repository를 읽을 수 없음 |
+| ready           | Guest가 shutdown preparation과 poweroff request를 완료함   |
 
-`prepare-update-shutdown-result.json`의 failure details에는 실패 service, 남은 service 목록, service state snapshot, snapshot path가 포함될 수 있습니다. Host와 UI는 이 details를 표시하거나 전달하고, 로그를 해석해서 다른 상태로 바꾸지 않습니다.
+Guest shutdown operation failure details에는 실패 service, 남은 service 목록, service state snapshot,
+snapshot path가 포함될 수 있습니다. Host와 UI는 이 details를 표시하거나 전달하고, 로그를 해석해서 다른
+상태로 바꾸지 않습니다.
 
-### 3-3. Guest compose reconcile result
+### 3-3. Guest Control stack reconcile operation
 
 Settings apply나 watchdog recovery가 VM 자체를 재시작할 필요 없이 Guest compose service 묶음만
-다시 맞추면 되는 경우 Host는 `reconcile-compose.request`를 쓰고 Guest의 typed result를 기다립니다.
-이 계약은 VM restart의 대체 경로이지, VM boundary 실패를 숨기는 fallback이 아닙니다.
+다시 맞추면 되는 경우 Host는 Guest Control API로 stack reconcile operation을 요청하고 typed operation
+state를 기다립니다. 이 계약은 VM restart의 대체 경로이지, VM boundary 실패를 숨기는 fallback이
+아닙니다.
 
 | 상태 | 의미 |
 |---|---|
-| capability missing | Guest가 compose reconcile contract를 제공하지 않음 |
-| request missing | Host가 아직 reconcile을 요청하지 않았거나 cleanup이 끝남 |
-| result missing | Guest worker가 실행되지 않았거나 result를 쓰기 전에 실패함 |
-| result failed | Guest가 compose reconcile 실패 reason을 명시적으로 보고함 |
-| result stale | requestId 또는 updatedAt이 현재 operation과 맞지 않음 |
-| result completed | Guest compose reconcile이 완료됨 |
+| capability missing | Guest가 stack reconcile capability를 제공하지 않음 |
+| accepted | Guest Control API가 operation id를 발급함 |
+| running | Guest adapter가 compose reconcile을 실행 중임 |
+| failed | Guest가 compose reconcile 실패 reason을 명시적으로 보고함 |
+| unavailable | Guest Control API 또는 operation repository를 읽을 수 없음 |
+| completed | Guest compose reconcile이 완료됨 |
 
 Watchdog은 Guest HTTP unhealthy 또는 critical container service unhealthy처럼 VM process/IP boundary가
 유지된 문제에서 compose reconcile을 먼저 선택합니다. VM IP missing, VM service not loaded, expired
@@ -162,7 +167,7 @@ Recorder가 보이지 않는다고 해서 곧바로 missing으로 만들지 않�
 | 영역                    | 상태를 말하는 쪽                        |
 | ----------------------- | --------------------------------------- |
 | Recorder/Bed 관측       | Recorder Observer / runtime 조회용 상태 |
-| `.vital` file discovery | 지원 예정 file reader / testkit policy  |
+| `.vital` file discovery | Product Lab / Guest Control file policy |
 | runtime service health  | Host runtime / watchdog                 |
 | guest service state     | guest tools                             |
 | 화면 표시               | PWA / Helper app presentation           |

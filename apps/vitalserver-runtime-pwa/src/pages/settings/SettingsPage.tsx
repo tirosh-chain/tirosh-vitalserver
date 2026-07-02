@@ -67,7 +67,7 @@ export function SettingsPage() {
         settings.data &&
         customAdvertisedURL !== undefined
       ) {
-        return enableContainerReconcileActivationWhenNeeded(
+        return enableGuestStackReconcileActivationWhenNeeded(
           normalized,
           settings.data,
           customAdvertisedURL
@@ -250,7 +250,7 @@ export function SettingsPage() {
         Math.max(Math.round(nextPercent), percentRange.min),
         allowedUpper
       );
-      return enableContainerReconcileActivationWhenNeeded(normalizeContainerMemoryLimitDraft({
+      return enableGuestStackReconcileActivationWhenNeeded(normalizeContainerMemoryLimitDraft({
         ...current,
         [field]: String(containerMemoryLimitMiB(percent, range, vmMiB))
       }, vmMiB), settings.data, customAdvertisedURL);
@@ -606,7 +606,7 @@ export function SettingsPage() {
           MiB/s. Recorder archives are automatically exported for all connected
           recorders after files are ready. Container memory limits are hard
           Docker limits configured in MiB. These changes are applied when
-          container services are reconciled.
+          the Guest stack is reconciled.
         </p>
       </Panel>
 
@@ -918,10 +918,10 @@ export function SettingsPage() {
                 {activationDecision.vmRestartChanges.join(", ")}.
               </p>
             ) : null}
-            {activationDecision.requiresContainerServicesReconcile ? (
+            {activationDecision.requiresGuestStackReconcile ? (
               <p className="muted">
-                Requires container reconcile. Required by:{" "}
-                {activationDecision.containerServiceChanges.join(", ")}.
+                Requires Guest stack reconcile. Required by:{" "}
+                {activationDecision.guestStackChanges.join(", ")}.
               </p>
             ) : null}
           </>
@@ -980,7 +980,7 @@ function normalizeContainerMemoryLimitDraft(
   return next;
 }
 
-function enableContainerReconcileActivationWhenNeeded(
+function enableGuestStackReconcileActivationWhenNeeded(
   draft: RuntimeSettingsDraft,
   runtime: Parameters<typeof draftToRuntimeSettings>[1],
   customAdvertisedURL: boolean
@@ -988,7 +988,7 @@ function enableContainerReconcileActivationWhenNeeded(
   const candidate = draftToRuntimeSettings(draft, runtime, customAdvertisedURL);
   const decision = runtimeSettingsActivationDecision(candidate, runtime);
   if (
-    decision.requiresContainerServicesReconcile &&
+    decision.requiresGuestStackReconcile &&
     !decision.requiresVMRestart
   ) {
     return { ...draft, restartAfterSave: true };

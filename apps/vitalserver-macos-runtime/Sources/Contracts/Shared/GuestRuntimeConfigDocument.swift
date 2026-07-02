@@ -13,7 +13,6 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
     public var vitalFilesDirectory: String
     public var redisUiPort: Int
     public var swaggerUiPort: Int
-    public var testkitEnabled: Bool
 
     enum CodingKeys: String, CodingKey {
         case vitalserverHttpPort
@@ -28,7 +27,6 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
         case vitalFilesDirectory
         case redisUiPort
         case swaggerUiPort
-        case testkitEnabled
     }
 
     public init(
@@ -43,8 +41,7 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
         adminPassword: String,
         vitalFilesDirectory: String,
         redisUiPort: Int,
-        swaggerUiPort: Int,
-        testkitEnabled: Bool
+        swaggerUiPort: Int
     ) {
         self.vitalserverHttpPort = vitalserverHttpPort
         self.redisHost = redisHost
@@ -58,7 +55,6 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
         self.vitalFilesDirectory = vitalFilesDirectory
         self.redisUiPort = redisUiPort
         self.swaggerUiPort = swaggerUiPort
-        self.testkitEnabled = testkitEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -67,7 +63,7 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
         self.redisHost = try container.decode(String.self, forKey: .redisHost)
         self.redisPort = try container.decode(Int.self, forKey: .redisPort)
         self.trustProxy = try container.decode(Bool.self, forKey: .trustProxy)
-        let publicHost = try container.decode(String.self, forKey: .publicHost)
+        let publicHost = try Self.decodeNonEmptyString(from: container, forKey: .publicHost)
         let publicPort = try container.decode(Int.self, forKey: .publicPort)
         self.publicHost = publicHost
         self.publicPort = publicPort
@@ -78,14 +74,25 @@ public struct GuestRuntimeConfigDocument: Codable, Equatable, Sendable {
         self.vitalFilesDirectory = try container.decode(String.self, forKey: .vitalFilesDirectory)
         self.redisUiPort = try container.decode(Int.self, forKey: .redisUiPort)
         self.swaggerUiPort = try container.decode(Int.self, forKey: .swaggerUiPort)
-        self.testkitEnabled = try container.decode(
-            Bool.self,
-            forKey: .testkitEnabled
-        )
     }
 
     private static func legacyVitalServerURL(publicHost: String, publicPort: Int) -> String {
         "http://\(publicHost):\(publicPort)/"
+    }
+
+    private static func decodeNonEmptyString(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) throws -> String {
+        let value = try container.decode(String.self, forKey: key)
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw DecodingError.dataCorruptedError(
+                forKey: key,
+                in: container,
+                debugDescription: "\(key.rawValue) must be a non-empty string"
+            )
+        }
+        return value
     }
 }
 

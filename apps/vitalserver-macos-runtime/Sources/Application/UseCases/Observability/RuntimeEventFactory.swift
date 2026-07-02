@@ -45,7 +45,6 @@ public struct RuntimeEventFactory {
                 status: status,
                 snapshot: healthSnapshot
             ),
-            containerObservation: healthSnapshot.containerObservation,
             vitalDBObservation: healthSnapshot.vitalDBObservation,
             progress: progress
         )
@@ -71,8 +70,6 @@ public struct RuntimeEventFactory {
             vmState: statusDocument.vmState,
             vmErrors: statusDocument.vmErrors,
             failureReasons: statusDocument.failureReasons,
-            containerObservation: statusDocument.containerObservation,
-            vitalDBObservation: statusDocument.vitalDBObservation,
             progress: progress
         )
     }

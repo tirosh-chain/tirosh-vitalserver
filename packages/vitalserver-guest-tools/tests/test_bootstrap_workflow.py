@@ -152,7 +152,6 @@ def fake_operations(events: list[str]) -> GuestBootstrapOperations:
         write_runtime_state_once=lambda: events.append("write-runtime-state"),
         write_edge_diagnostics=lambda: events.append("write-edge-diagnostics"),
         restart_runtime_state=lambda: events.append("restart-runtime-state"),
-        start_optional_testkit=lambda: events.append("start-optional-testkit"),
         runtime_boot_smoke_enabled=lambda _: False,
         run_runtime_boot_smoke=lambda: events.append("run-runtime-boot-smoke"),
     )

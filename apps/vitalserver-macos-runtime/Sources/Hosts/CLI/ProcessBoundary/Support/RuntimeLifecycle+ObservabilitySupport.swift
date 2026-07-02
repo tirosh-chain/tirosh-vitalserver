@@ -120,24 +120,6 @@ extension RuntimeLifecycle {
         )
     }
 
-    func vitalDBObservationProjector() -> RuntimeVitalDBObservationProjector {
-        let relationshipProjection = PlanVitalDBRelationshipProjectionUseCase()
-        let store = SQLiteRuntimeObservabilityStore(
-            url: installedPaths.runtimeObservabilityDB,
-            relationshipProjectionPlanner: relationshipProjection.projectionPlan
-        )
-        return RuntimeVitalDBObservationProjector(
-            appendObservation: { observation in
-                try SQLiteVitalDBObservationRepository(store: store).append(observation)
-            },
-            log: log
-        )
-    }
-
-    func projectVitalDBObservationBestEffort(_ observation: VitalDBObservationDocument) {
-        vitalDBObservationProjector().projectBestEffort(observation)
-    }
-
     func runtimeHealthSnapshot() -> RuntimeHealthSnapshot {
         let useCase = EvaluateRuntimeHealthUseCase()
         return useCase.snapshot(observation: useCase.observation(from: healthChecker.observationReads()))
@@ -164,9 +146,6 @@ extension RuntimeLifecycle {
                     message: message,
                     progress: progress
                 )
-            },
-            projectObservation: { observation in
-                projectVitalDBObservationBestEffort(observation)
             }
         )
     }

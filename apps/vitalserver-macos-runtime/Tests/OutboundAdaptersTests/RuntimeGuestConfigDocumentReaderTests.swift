@@ -69,8 +69,7 @@ final class RuntimeGuestConfigDocumentReaderTests: XCTestCase {
           "adminPassword": "admin",
           "vitalFilesDirectory": "/mnt/tirosh-vital-files",
           "redisUiPort": 18081,
-          "swaggerUiPort": 18082,
-          "testkitEnabled": false
+          "swaggerUiPort": 18082
         }
         """
         let fileStore = FileReaderStub(files: [url: Data(legacyJSON.utf8)])
@@ -94,8 +93,7 @@ final class RuntimeGuestConfigDocumentReaderTests: XCTestCase {
             adminPassword: "admin",
             vitalFilesDirectory: "/mnt/tirosh-vital-files",
             redisUiPort: 18081,
-            swaggerUiPort: 18082,
-            testkitEnabled: false
+            swaggerUiPort: 18082
         )
     }
 }

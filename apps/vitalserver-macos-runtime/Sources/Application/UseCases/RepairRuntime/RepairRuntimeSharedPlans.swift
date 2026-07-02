@@ -35,16 +35,6 @@ public struct RepairRuntimeLoggedStatusPlan: Equatable, Sendable {
     }
 }
 
-public struct RepairRuntimeWaitResultPlan: Equatable, Sendable {
-    public let logMessage: String?
-    public let failureMessage: String?
-
-    public init(logMessage: String?, failureMessage: String?) {
-        self.logMessage = logMessage
-        self.failureMessage = failureMessage
-    }
-}
-
 public struct RepairRuntimeFailureStatusPlan: Equatable, Sendable {
     public let status: RuntimeStatusLevel
     public let operation: RuntimeOperation

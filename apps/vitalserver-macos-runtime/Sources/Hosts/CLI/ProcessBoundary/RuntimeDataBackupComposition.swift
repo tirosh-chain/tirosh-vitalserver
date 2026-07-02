@@ -58,8 +58,9 @@ struct RuntimeDataBackupComposition {
     }
 
     private func createBackup(reason: String) throws -> URL {
-        let redisBackup = try redisBackupCompositionWithoutStatusMutation().createBackup()
-        guard let archive = redisBackup.archive, !archive.isEmpty else {
+        let operation = try lifecycle.createRedisBackupThroughGuestControl()
+        guard let archive = operation.result?.archive?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !archive.isEmpty else {
             throw LauncherError.runtimeOperationFailed("runtime data backup requires a redis archive")
         }
         let redisArchive = try hostSharedDataURL(forGuestArchivePath: archive)
@@ -124,7 +125,10 @@ struct RuntimeDataBackupComposition {
             try? lifecycle.fileStore.removeItem(at: stagedRedisArchive.hostURL)
         }
         try restoreStartOnBootState(restore.startOnBootState)
-        try restoreRedisArchive(stagedRedisArchive.guestPath)
+        let operation = try lifecycle.restoreRedisBackupThroughGuestControl(
+            guestArchivePath: stagedRedisArchive.guestPath
+        )
+        try requireRestoredArchiveResult(operation)
         lifecycle.log("runtime data backup restored backup=\(backup.path)")
     }
 
@@ -133,38 +137,11 @@ struct RuntimeDataBackupComposition {
         defer {
             try? lifecycle.fileStore.removeItem(at: stagedRedisArchive.hostURL)
         }
-        try restoreRedisArchive(stagedRedisArchive.guestPath)
-        lifecycle.log("redis backup restored archive=\(archive.path)")
-    }
-
-    private func redisBackupCompositionWithoutStatusMutation() -> RuntimeRedisBackupComposition {
-        RuntimeRedisBackupComposition(
-            context: RuntimeRedisBackupCompositionContext(
-                guestRunDirectory: lifecycle.guestRunDirectory,
-                redisBackupsDirectory: lifecycle.installedPaths.redisBackupsDirectory
-            ),
-            operations: RuntimeRedisBackupCompositionOperations(
-                fileStore: lifecycle.fileStore,
-                requireCapability: {
-                    try lifecycle.requireGuestCapability(.redisBackup)
-                },
-                writeRuntimeStatus: { _, _, _ in },
-                requestID: {
-                    UUID().uuidString
-                },
-                timestamp: lifecycle.isoTimestamp,
-                isVMServiceLoaded: {
-                    lifecycle.isLaunchdLoaded(.vm)
-                },
-                startVMService: {
-                    try lifecycle.startVMServiceForGuestOperation()
-                },
-                sleep: { seconds in
-                    lifecycle.sleeper.sleep(forTimeInterval: seconds)
-                },
-                log: lifecycle.log
-            )
+        let operation = try lifecycle.restoreRedisBackupThroughGuestControl(
+            guestArchivePath: stagedRedisArchive.guestPath
         )
+        try requireRestoredArchiveResult(operation)
+        lifecycle.log("redis backup restored archive=\(archive.path)")
     }
 
     private func runtimeDataBackupStore() -> RuntimeDataBackupStore {
@@ -192,7 +169,7 @@ struct RuntimeDataBackupComposition {
         )
     }
 
-    private func stageRedisArchiveForGuestRestore(_ archive: URL) throws -> (hostURL: URL, guestPath: String) {
+    func stageRedisArchiveForGuestRestore(_ archive: URL) throws -> (hostURL: URL, guestPath: String) {
         let fileName = "redis-restore-\(lifecycle.backupTimestamp()).tar.gz"
         let destination = lifecycle.installedPaths.redisBackupsDirectory.appendingPathComponent(fileName)
         try removeFileIfPresent(destination, label: "redis restore staging archive")
@@ -205,20 +182,11 @@ struct RuntimeDataBackupComposition {
         return (destination, "/mnt/tirosh\(relative)")
     }
 
-    private func restoreRedisArchive(_ guestArchivePath: String) throws {
-        try lifecycle.requireGuestCapability(.redisRestore)
-        try lifecycle.writeHostTimeContract()
-        try lifecycle.guestGateway.removeRedisRestoreResult()
-        let requestID = UUID().uuidString
-        try lifecycle.guestGateway.writeRedisRestoreRequest(RedisRestoreRequestDocument(
-            requestId: requestID,
-            requestedAt: lifecycle.isoTimestamp(),
-            archive: guestArchivePath
-        ))
-        if !lifecycle.isLaunchdLoaded(.vm) {
-            try lifecycle.startVMServiceForGuestOperation()
+    private func requireRestoredArchiveResult(_ operation: RuntimeGuestControlServiceOperation) throws {
+        guard let restoredArchive = operation.result?.restoredArchive?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !restoredArchive.isEmpty else {
+            throw LauncherError.runtimeOperationFailed("runtime data restore requires a restored redis archive")
         }
-        try waitForRedisRestoreResult(requestID: requestID)
     }
 
     private func hostSharedDataURL(forGuestArchivePath archive: String) throws -> URL {
@@ -240,34 +208,6 @@ struct RuntimeDataBackupComposition {
         return components.reduce(lifecycle.installedPaths.dataDirectory) { url, component in
             url.appendingPathComponent(component)
         }
-    }
-
-    private func waitForRedisRestoreResult(requestID: String) throws {
-        let pollInterval = 3.0
-        let attempts = Int(ceil(Constants.Runtime.redisBackupWaitTimeoutSeconds / pollInterval))
-        for attempt in 0..<attempts {
-            switch lifecycle.guestGateway.loadRedisRestoreResultDocument() {
-            case .loaded(let result):
-                if let resultRequestID = result.requestId, resultRequestID != requestID {
-                    throw LauncherError.runtimeOperationFailed("stale redis restore result ignored")
-                }
-                if result.status == .completed {
-                    lifecycle.log(result.message ?? "redis restore completed")
-                    return
-                }
-                if result.status == .failed {
-                    throw LauncherError.runtimeOperationFailed(result.message ?? "redis restore failed")
-                }
-            case .missing:
-                break
-            case .failed(let message):
-                throw LauncherError.runtimeOperationFailed("failed to read redis restore result: \(message)")
-            }
-            if attempt < attempts - 1 {
-                lifecycle.sleeper.sleep(forTimeInterval: pollInterval)
-            }
-        }
-        throw LauncherError.runtimeOperationFailed("redis restore timed out")
     }
 
     private func restoreStartOnBootState(_ document: RuntimeDataBackupStartOnBootStateDocument) throws {

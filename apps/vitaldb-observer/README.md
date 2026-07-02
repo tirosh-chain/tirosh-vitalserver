@@ -24,15 +24,16 @@ configured access logs, or malformed bed JSON. Empty `recorders`, `beds`,
 `proxyConnections`, or activity summaries mean observed empty data only when no
 related `readIssues` are present.
 
-The final read model SoT is the macOS runtime observability SQLite file. The guest
-`tirosh-runtime-state` service writes `runtime-state.json` through
-`tirosh-write-runtime-state`, and watchdog stores the embedded observation in
-`runtime-observability.sqlite`.
+The final product read model SoT is the Guest/Postgres VitalDB read model. The
+guest `tirosh-runtime-state` service collects the observer snapshot and writes
+explicit read-model documents through the Guest-owned persistence path. Host
+SQLite can remain as diagnostics or migration evidence only; it must not be the
+live product observation source.
 
 Observer stdout logs are raw diagnostics, not the product observation history SoT.
 The guest container log collector can capture them in `container-logs.log`, while
-watchdog/runtime stores the canonical observation history in
-`runtime-observability.sqlite`.
+Runtime Control consumers read the canonical observation history through Guest
+Control API and the Guest/Postgres read model.
 
 Diagnostic events:
 
@@ -56,8 +57,8 @@ use Runtime Control API:
 
 | Method | Path | Meaning |
 |---|---|---|
-| `GET` | `/vitaldb/observations/latest` | latest observation stored by watchdog/runtime |
-| `GET` | `/vitaldb/observations/stream` | long-lived SSE stream of the runtime read model |
+| `GET` | `/vitaldb/observations/latest` | latest Guest/Postgres-backed observation read model |
+| `GET` | `/vitaldb/observations/stream` | long-lived stream of the runtime read model |
 
 OpenAPI for this container is maintained at
 `docs/openapi/vitaldb-observer.openapi.yaml`. Runtime Control API OpenAPI is

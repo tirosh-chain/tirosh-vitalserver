@@ -5,25 +5,23 @@ public enum RuntimeSection: CaseIterable, Equatable, Identifiable {
     case status
     case recorders
     case beds
+    case lab
     case observability
     case log
     case settings
     case update
     case info
     case advanced
-    case test
     case dangerZone
 
     public var id: Self { self }
 
     public static func visibleSections(testEnabled: Bool) -> [RuntimeSection] {
-        allCases.filter { section in
-            section != .test || testEnabled
-        }
+        allCases
     }
 
     public static func primarySections(testEnabled: Bool) -> [RuntimeSection] {
-        [.status, .recorders, .beds, .observability, .log, .settings, .update]
+        [.status, .recorders, .beds, .lab, .settings, .update]
             .filter { visibleSections(testEnabled: testEnabled).contains($0) }
     }
 
@@ -33,7 +31,7 @@ public enum RuntimeSection: CaseIterable, Equatable, Identifiable {
     }
 
     public static func overflowSections(testEnabled: Bool) -> [RuntimeSection] {
-        [.info, .dangerZone, .test]
+        [.observability, .log, .info, .dangerZone]
             .filter { visibleSections(testEnabled: testEnabled).contains($0) }
     }
 
@@ -45,7 +43,7 @@ public enum RuntimeSection: CaseIterable, Equatable, Identifiable {
         switch self {
         case .advanced, .dangerZone:
             return true
-        case .status, .recorders, .beds, .observability, .log, .settings, .update, .info, .test:
+        case .status, .recorders, .beds, .observability, .log, .settings, .update, .info, .lab:
             return false
         }
     }
@@ -86,8 +84,8 @@ extension RuntimeSection {
             return AppConstants.Labels.sectionUpdate
         case .observability:
             return AppConstants.Labels.sectionObservability
-        case .test:
-            return AppConstants.Labels.sectionTest
+        case .lab:
+            return AppConstants.Labels.sectionLab
         case .log:
             return AppConstants.Labels.sectionLog
         case .info:

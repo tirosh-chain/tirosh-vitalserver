@@ -15,7 +15,8 @@ PWA owns browser runtime control presentation. Runtime Control API owns runtime 
 | Operations | Runtime command routes | command availability, confirmation, result 표시 |
 | VRecorder | `/vitaldb/recorders`, `/vitaldb/recorders/{vrcode}/activity`, `/vitaldb/relationships` | recorder list/detail/activity chart 표시 |
 | Bed | `/vitaldb/beds`, `/vitaldb/relationships` | bed list/detail/relation 표시 |
-| TestKit | `/dev/testkit/*` | test-enabled build에서만 virtual recorder controls 표시 |
+| Product Lab | `/lab/*` | virtual recorder scenario와 `.vital` replay session 표시/제어 |
+| Diagnostics | More/Advanced product diagnostics | logs, API catalog, support evidence 표시 |
 | Capability | `GET /runtime/capabilities` | route visibility와 command availability 결정 |
 
 ## Layering
@@ -86,17 +87,18 @@ Schema는 OpenAPI type보다 보수적으로 동작할 수 있습니다. 특히 
 PWA는 native Helper와 달리 host OS 권한을 직접 갖지 않습니다. 따라서 기능 노출은 `runtime/capabilities`를 기준으로 합니다.
 
 - `canControlRuntime=false`: start/stop/repair/uninstall 같은 command를 비활성화합니다.
-- `canUseTestTools=false`: Test 탭과 `/dev/testkit/*` 의존 UI를 숨깁니다.
+- Product Lab route는 제품 기능으로 취급하고 `/lab/*` 계약을 사용합니다.
+- `canUseLab=false`: Product Lab route는 유지하되 Lab command affordance를 disabled/unavailable로 표시합니다. 테스트/진단 전용 implementation surface는 More/Advanced diagnostics로 분리합니다.
 - host file path 기반 기능은 PWA에서 직접 열지 않고 API가 제공하는 download/export endpoint 또는 native shell affordance로 분리합니다.
 
-## Test Boundary
+## Product Lab Boundary
 
-TestKit은 제품 runtime 검증을 위한 도구입니다. 제품 PWA의 기본 정보 구조를 오염시키지 않도록 아래 규칙을 지킵니다.
+Product Lab은 virtual recorder scenario와 `.vital` replay의 제품 경계입니다. TestKit은 현재 구현 adapter일 수 있지만 PWA는 TestKit container API를 제품 route로 직접 호출하지 않습니다.
 
-- TestKit UI는 test capability가 있을 때만 route에 추가합니다.
-- TestKit API contract와 product runtime API contract를 혼합하지 않습니다.
+- Lab UI는 `/lab/scenarios`, `/lab/sessions`, `/lab/vital-files/replay` 계약을 사용합니다.
+- TestKit API contract와 Product Lab contract를 혼합하지 않습니다.
 - TestKit 상태는 runtime status/observability의 product state로 승격하지 않습니다.
-- virtual VRecorder/bed 관리 기능은 Test 탭 안에서 닫힌 경계로 유지합니다.
+- Legacy `/dev/testkit/*` routes are not product routes. If implementation diagnostics are needed, they should be explicit More/Advanced diagnostics and must not drive Product Lab state.
 
 ## Verification
 

@@ -6,39 +6,35 @@ import Workflow
 import Errors
 
 public struct RuntimeGuestShutdownCompositionContext {
-    let guestRunDirectory: URL
-
-    public init(guestRunDirectory: URL) {
-        self.guestRunDirectory = guestRunDirectory
-    }
+    public init(guestRunDirectory _: URL) {}
 }
 
 public struct RuntimeGuestShutdownCompositionOperations {
-    let fileStore: RuntimeFileStore
-    let guestGateway: RuntimeGuestGateway
     let requireCapability: () throws -> Void
+    let prepareUpdateShutdown: (String, String) throws -> RuntimeGuestControlServiceOperation
+    let loadOperation: (String) throws -> RuntimeGuestControlServiceOperation
+    let requestGuestPoweroff: () throws -> RuntimeGuestControlServiceOperation
     let writeStatus: (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void
     let requestID: () -> String
-    let timestamp: () -> String
     let sleep: () -> Void
     let log: (String) -> Void
 
     public init(
-        fileStore: RuntimeFileStore,
-        guestGateway: RuntimeGuestGateway,
         requireCapability: @escaping () throws -> Void,
+        prepareUpdateShutdown: @escaping (String, String) throws -> RuntimeGuestControlServiceOperation,
+        loadOperation: @escaping (String) throws -> RuntimeGuestControlServiceOperation,
+        requestGuestPoweroff: @escaping () throws -> RuntimeGuestControlServiceOperation,
         writeStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) throws -> Void,
         requestID: @escaping () -> String,
-        timestamp: @escaping () -> String,
         sleep: @escaping () -> Void,
         log: @escaping (String) -> Void
     ) {
-        self.fileStore = fileStore
-        self.guestGateway = guestGateway
         self.requireCapability = requireCapability
+        self.prepareUpdateShutdown = prepareUpdateShutdown
+        self.loadOperation = loadOperation
+        self.requestGuestPoweroff = requestGuestPoweroff
         self.writeStatus = writeStatus
         self.requestID = requestID
-        self.timestamp = timestamp
         self.sleep = sleep
         self.log = log
     }
@@ -68,19 +64,16 @@ public struct RuntimeGuestShutdownComposition {
         try RuntimeGuestShutdownWorkflow().prepareForUpdate(
             version: version,
             context: RuntimeGuestShutdownWorkflowContext(
-                guestRunDirectory: context.guestRunDirectory,
+                guestRunDirectory: URL(fileURLWithPath: "/"),
                 waitTimeoutSeconds: Constants.Runtime.updateShutdownWaitTimeoutSeconds,
                 progressStatus: progressStatus,
                 progressOperation: progressOperation
             ),
             actions: RuntimeGuestShutdownWorkflowActions(
                 requireCapability: operations.requireCapability,
-                createGuestRunDirectory: { directory in
-                    try operations.fileStore.createDirectory(at: directory, withIntermediateDirectories: true)
-                },
-                removeShutdownResult: operations.guestGateway.removeUpdateShutdownResult,
-                writeShutdownRequest: operations.guestGateway.writeUpdateShutdownRequest,
-                loadShutdownResult: operations.guestGateway.loadUpdateShutdownResultDocument,
+                prepareUpdateShutdown: operations.prepareUpdateShutdown,
+                loadOperation: operations.loadOperation,
+                requestGuestPoweroff: operations.requestGuestPoweroff,
                 writeProgressStatus: { status, operation, message in
                     writeRuntimeStatusBestEffort(
                         status,
@@ -92,7 +85,6 @@ public struct RuntimeGuestShutdownComposition {
                     )
                 },
                 requestID: operations.requestID,
-                timestamp: operations.timestamp,
                 sleep: operations.sleep,
                 log: operations.log
             )

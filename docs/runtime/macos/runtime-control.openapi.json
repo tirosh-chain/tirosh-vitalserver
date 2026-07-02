@@ -147,6 +147,446 @@
         }
       }
     },
+    "/lab/scenarios": {
+      "get": {
+        "operationId": "listRuntimeLabScenarios",
+        "summary": "List Runtime Lab scenarios",
+        "description": "Reads product-facing Lab scenarios. Scenario names are product scenarios and do not expose fixture or source file origins.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Runtime Lab scenario list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabScenarioList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/lab/beds": {
+      "get": {
+        "operationId": "listRuntimeLabBeds",
+        "summary": "List Runtime Lab beds",
+        "description": "Reads the Product Lab bed read model through the Runtime Control boundary.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Runtime Lab bed list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabBedList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/lab/recorders": {
+      "get": {
+        "operationId": "listRuntimeLabRecorders",
+        "summary": "List Runtime Lab recorders",
+        "description": "Reads the Product Lab recorder read model, including explicit execution send state, through the Runtime Control boundary.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Runtime Lab recorder list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabRecorderList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/lab/sessions": {
+      "post": {
+        "operationId": "createRuntimeLabSession",
+        "summary": "Create a Runtime Lab session",
+        "description": "Creates a product Lab session through the Runtime Control boundary.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeLabSessionCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Runtime Lab session response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/lab/sessions/{sessionId}": {
+      "get": {
+        "operationId": "getRuntimeLabSession",
+        "summary": "Read a Runtime Lab session",
+        "description": "Reads one product Lab session through the Runtime Control boundary.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runtime Lab session response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/lab/sessions/{sessionId}/start": {
+      "post": {
+        "operationId": "startRuntimeLabSession",
+        "summary": "Start a Runtime Lab session",
+        "description": "Starts one product Lab session through the Runtime Control boundary.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runtime Lab session response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/lab/sessions/{sessionId}/stop": {
+      "post": {
+        "operationId": "stopRuntimeLabSession",
+        "summary": "Stop a Runtime Lab session",
+        "description": "Stops one product Lab session through the Runtime Control boundary.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runtime Lab session response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/lab/vital-files/replay": {
+      "post": {
+        "operationId": "replayRuntimeLabVitalFile",
+        "summary": "Replay a vital file through Runtime Lab",
+        "description": "Starts a Lab replay from a vital file path inside the configured mounted vital files directory.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeLabVitalFileReplayRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Runtime Lab session response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/guest/services": {
+      "get": {
+        "operationId": "listRuntimeGuestServices",
+        "summary": "List Guest product services",
+        "description": "Reads the product service list from the Runtime v2 Guest Control API through the Host Runtime Control boundary.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Guest product service list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeGuestControlServiceList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/guest/stack/status": {
+      "get": {
+        "operationId": "getRuntimeGuestStackStatus",
+        "summary": "Read Guest product service stack status",
+        "description": "Reads the product service stack status from the Runtime v2 Guest Control API through the Host Runtime Control boundary.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Guest product service stack status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeGuestControlStackStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/guest/services/{service}/status": {
+      "get": {
+        "operationId": "getRuntimeGuestServiceStatus",
+        "summary": "Read Guest product service status",
+        "description": "Reads one product service status from the Runtime v2 Guest Control API through the Host Runtime Control boundary.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "parameters": [
+          {
+            "name": "service",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Guest product service status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeGuestControlServiceStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/guest/services/start": {
+      "post": {
+        "operationId": "startRuntimeGuestService",
+        "summary": "Start a Guest product service",
+        "description": "Requests a product service start through the Runtime v2 Guest Control API and returns the persisted operation document.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeGuestServiceRestartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Guest product service operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeGuestControlServiceOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/guest/services/stop": {
+      "post": {
+        "operationId": "stopRuntimeGuestService",
+        "summary": "Stop a Guest product service",
+        "description": "Requests a product service stop through the Runtime v2 Guest Control API and returns the persisted operation document.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeGuestServiceRestartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Guest product service operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeGuestControlServiceOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/runtime/guest/services/restart": {
+      "post": {
+        "operationId": "restartRuntimeGuestService",
+        "summary": "Restart a Guest product service",
+        "description": "Requests a product service restart through the Runtime v2 Guest Control API and returns the persisted operation document.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeGuestServiceRestartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Guest product service operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeGuestControlServiceOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/events": {
       "get": {
         "operationId": "getRuntimeEvents",
@@ -386,94 +826,6 @@
                 }
               }
             }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/runtime/services/start": {
-      "post": {
-        "operationId": "startRuntimeServices",
-        "summary": "Start runtime services",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "localCommand",
-        "x-runtime-control-access": "localServerMediated",
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/CommandResult"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/runtime/services/stop": {
-      "post": {
-        "operationId": "stopRuntimeServices",
-        "summary": "Stop runtime services",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "localCommand",
-        "x-runtime-control-access": "localServerMediated",
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/CommandResult"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/runtime/services/testkit/start": {
-      "post": {
-        "operationId": "startTestKitService",
-        "summary": "Start optional TestKit container",
-        "description": "Starts only the optional TestKit container through the guest compose reconciler.",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "localCommand",
-        "x-runtime-control-access": "localServerMediated",
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/CommandResult"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/runtime/services/testkit/stop": {
-      "post": {
-        "operationId": "stopTestKitService",
-        "summary": "Stop optional TestKit container",
-        "description": "Stops only the optional TestKit container through the guest compose reconciler.",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "localCommand",
-        "x-runtime-control-access": "localServerMediated",
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/CommandResult"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/runtime/services/testkit/restart": {
-      "post": {
-        "operationId": "restartTestKitService",
-        "summary": "Restart optional TestKit container",
-        "description": "Restarts only the optional TestKit container through the guest compose reconciler.",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "localCommand",
-        "x-runtime-control-access": "localServerMediated",
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/CommandResult"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -1162,6 +1514,111 @@
         }
       }
     },
+    "/vitaldb/recorders/hide": {
+      "post": {
+        "operationId": "hideVitalDBRecorders",
+        "summary": "Hide Vital Recorders by vrcode",
+        "description": "Marks VRecorders hidden in the Guest/Postgres product read model. Hidden recorders are omitted from default UI lists but remain available when explicitly requested by the UI.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeVitalDBRecorderVisibilityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Vital Recorder history after the hide command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVitalRecorderHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vitaldb/recorders/unhide": {
+      "post": {
+        "operationId": "unhideVitalDBRecorders",
+        "summary": "Unhide Vital Recorders by vrcode",
+        "description": "Restores hidden VRecorders to the visible Guest/Postgres product read model.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeVitalDBRecorderVisibilityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Vital Recorder history after the unhide command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVitalRecorderHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vitaldb/recorders/delete": {
+      "post": {
+        "operationId": "deleteVitalDBRecorders",
+        "summary": "Delete hidden Vital Recorders by vrcode",
+        "description": "Tombstones hidden VRecorders in the Guest/Postgres product read model. The command must fail when a requested VRecorder is not already hidden.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeVitalDBRecorderVisibilityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Vital Recorder history after the delete command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVitalRecorderHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/vitaldb/recorders/{vrcode}": {
       "get": {
         "operationId": "getVitalDBRecorder",
@@ -1207,7 +1664,7 @@
       "get": {
         "operationId": "getVitalDBRecorderActivity",
         "summary": "Read one Vital Recorder activity chart window",
-        "description": "Lazy chart window for one VRecorder. The server reads only the selected activity window from the runtime observability SQLite projection.",
+        "description": "Lazy chart window for one VRecorder. Runtime v2 reads the selected activity window from Guest/Postgres recorder activity read models; Host SQLite is transitional diagnostics only.",
         "x-runtime-control-scope": "runtimeControl",
         "x-runtime-control-implementation": "readOnlyLocal",
         "x-runtime-control-access": "browserSafe",
@@ -1296,6 +1753,111 @@
         }
       }
     },
+    "/vitaldb/beds/hide": {
+      "post": {
+        "operationId": "hideVitalDBBeds",
+        "summary": "Hide VitalDB beds by bedID",
+        "description": "Marks beds hidden in the Guest/Postgres product read model. Hidden beds are omitted from default UI lists but remain available when explicitly requested by the UI.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeVitalDBBedVisibilityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Vital Recorder history after the bed hide command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVitalRecorderHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vitaldb/beds/unhide": {
+      "post": {
+        "operationId": "unhideVitalDBBeds",
+        "summary": "Unhide VitalDB beds by bedID",
+        "description": "Restores hidden beds to the visible Guest/Postgres product read model.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeVitalDBBedVisibilityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Vital Recorder history after the bed unhide command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVitalRecorderHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/vitaldb/beds/delete": {
+      "post": {
+        "operationId": "deleteVitalDBBeds",
+        "summary": "Delete hidden VitalDB beds by bedID",
+        "description": "Tombstones hidden beds in the Guest/Postgres product read model. The command must fail when a requested bed is not already hidden.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeVitalDBBedVisibilityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Vital Recorder history after the bed delete command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeVitalRecorderHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/vitaldb/beds/{bedID}": {
       "get": {
         "operationId": "getVitalDBBed",
@@ -1337,433 +1899,6 @@
         }
       }
     },
-    "/dev/testkit/status": {
-      "get": {
-        "operationId": "getDevTestKitStatus",
-        "summary": "Read TestKit virtual VRecorder status",
-        "description": "Development-only TestKit status used by the native Test tab and PWA console.",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "testOnlyLocal",
-        "x-runtime-control-access": "browserSafe",
-        "responses": {
-          "200": {
-            "description": "TestKit status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeTestKitStatus"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/dev/testkit/beds/create": {
-      "post": {
-        "operationId": "createDevTestKitBeds",
-        "summary": "Create TestKit beds",
-        "description": "Development-only route for registering explicit TestKit bed identities before virtual VRecorders are started.",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "testOnlyLocal",
-        "x-runtime-control-access": "operatorOnly",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeTestKitCreateBedsRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Registered TestKit beds.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/RuntimeTestKitBed"
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/dev/testkit/beds/delete": {
-      "post": {
-        "operationId": "deleteDevTestKitBeds",
-        "summary": "Delete selected TestKit beds",
-        "description": "Development-only route for deleting selected TestKit bed identities and their matching VitalServer bed records.",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "testOnlyLocal",
-        "x-runtime-control-access": "operatorOnly",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeTestKitDeleteBedsRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Deleted TestKit beds.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/RuntimeTestKitBed"
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/dev/testkit/beds/reset": {
-      "post": {
-        "operationId": "resetDevTestKitBeds",
-        "summary": "Reset TestKit beds",
-        "description": "Development-only route for clearing registered TestKit bed identities.",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "testOnlyLocal",
-        "x-runtime-control-access": "operatorOnly",
-        "responses": {
-          "200": {
-            "description": "Deleted TestKit beds.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/RuntimeTestKitBed"
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/dev/testkit/virtual-recorders/start": {
-      "post": {
-        "operationId": "startDevTestKitVirtualRecorders",
-        "summary": "Start TestKit virtual VRecorders",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "testOnlyLocal",
-        "x-runtime-control-access": "operatorOnly",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeTestKitVirtualRecorderStartRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Started TestKit session",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeTestKitSession"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/dev/testkit/virtual-recorders/stop": {
-      "post": {
-        "operationId": "stopDevTestKitVirtualRecorders",
-        "summary": "Stop a TestKit virtual VRecorder session",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "testOnlyLocal",
-        "x-runtime-control-access": "operatorOnly",
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeTestKitSessionSelectionRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Stopped TestKit session or null when no session was selected.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/RuntimeTestKitSession"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/dev/testkit/virtual-recorders/pause": {
-      "post": {
-        "operationId": "pauseDevTestKitVirtualRecorders",
-        "summary": "Pause TestKit virtual VRecorder data transmission",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "testOnlyLocal",
-        "x-runtime-control-access": "operatorOnly",
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeTestKitSessionSelectionRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Paused TestKit session or null when no session was selected.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/RuntimeTestKitSession"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/dev/testkit/virtual-recorders/resume": {
-      "post": {
-        "operationId": "resumeDevTestKitVirtualRecorders",
-        "summary": "Resume TestKit virtual VRecorder data transmission",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "testOnlyLocal",
-        "x-runtime-control-access": "operatorOnly",
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeTestKitSessionSelectionRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Resumed TestKit session or null when no session was selected.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/RuntimeTestKitSession"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/dev/testkit/virtual-recorders/restart": {
-      "post": {
-        "operationId": "restartDevTestKitVirtualRecorders",
-        "summary": "Restart a stopped TestKit virtual VRecorder session on selected beds",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "testOnlyLocal",
-        "x-runtime-control-access": "operatorOnly",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeTestKitRestartRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Restarted TestKit session or null when no session was selected.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/RuntimeTestKitSession"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/dev/testkit/virtual-recorders/delete": {
-      "post": {
-        "operationId": "deleteDevTestKitVirtualRecorders",
-        "summary": "Delete a TestKit virtual VRecorder session and cleanup VitalServer recorder registrations",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "testOnlyLocal",
-        "x-runtime-control-access": "operatorOnly",
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeTestKitSessionSelectionRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Deleted TestKit session or a cleanup-failed session that remains retryable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/RuntimeTestKitSession"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/dev/testkit/virtual-recorders/delete-orphan": {
-      "post": {
-        "operationId": "deleteDevTestKitOrphanVRecorder",
-        "summary": "Delete one orphan VRecorder registration by vrcode",
-        "description": "Test-only cleanup route for VRecorders that remain in VitalServer without a managed TestKit session.",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "testOnlyLocal",
-        "x-runtime-control-access": "operatorOnly",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RuntimeTestKitRecorderDeletionRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Direct VRecorder deletion result.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeTestKitRecorderDeletion"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/dev/testkit/virtual-recorders/reset": {
-      "post": {
-        "operationId": "resetDevTestKitVirtualRecorders",
-        "summary": "Reset all TestKit virtual VRecorder sessions",
-        "x-runtime-control-scope": "runtimeControl",
-        "x-runtime-control-implementation": "testOnlyLocal",
-        "x-runtime-control-access": "operatorOnly",
-        "responses": {
-          "200": {
-            "description": "Updated TestKit status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeTestKitStatus"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
     "/vitaldb/relationships": {
       "get": {
         "operationId": "getVitalDBRelationships",
@@ -1779,6 +1914,196 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RuntimeVitalRelationshipHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/lab/beds/create": {
+      "post": {
+        "operationId": "createRuntimeLabBeds",
+        "summary": "Create Runtime Lab beds",
+        "description": "Creates explicit Product Lab beds through the Guest-owned Lab service.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Runtime Lab bed list after creation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabBedList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeLabBedCreateRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lab/beds/delete": {
+      "post": {
+        "operationId": "deleteRuntimeLabBeds",
+        "summary": "Delete Runtime Lab beds",
+        "description": "Deletes explicit Product Lab beds and attached Lab recorders through the Guest-owned Lab service.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Runtime Lab bed list after deletion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabBedList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeLabBedDeleteRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lab/beds/reset": {
+      "post": {
+        "operationId": "resetRuntimeLabBeds",
+        "summary": "Reset Runtime Lab beds",
+        "description": "Removes all Product Lab beds and attached Lab recorders through the Guest-owned Lab service.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Runtime Lab bed list after reset",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabBedList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/lab/recorders/create": {
+      "post": {
+        "operationId": "createRuntimeLabRecorders",
+        "summary": "Create Runtime Lab recorders",
+        "description": "Creates explicit Product Lab recorders for existing Lab beds.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Runtime Lab recorder list after creation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabRecorderList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeLabRecorderCreateRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lab/recorders/delete": {
+      "post": {
+        "operationId": "deleteRuntimeLabRecorders",
+        "summary": "Delete Runtime Lab recorders",
+        "description": "Deletes explicit Product Lab recorders by recorder ID, vrcode, or session.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Runtime Lab recorder list after deletion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabRecorderList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeLabRecorderDeleteRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lab/recorders/reset": {
+      "post": {
+        "operationId": "resetRuntimeLabRecorders",
+        "summary": "Reset Runtime Lab recorders",
+        "description": "Removes all Product Lab recorders while preserving Lab beds.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "responses": {
+          "200": {
+            "description": "Runtime Lab recorder list after reset",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabRecorderList"
                 }
               }
             }
@@ -2078,6 +2403,16 @@
           "activityHistory": {
             "$ref": "#/components/schemas/RuntimeVitalRecorderActivityHistory"
           },
+          "recorderIngressStatusRead": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeRecorderIngressStatusReadResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "readError": {
             "type": [
               "string",
@@ -2181,10 +2516,44 @@
           }
         }
       },
+      "RuntimeVitalDBRecorderVisibilityRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vrcodes"
+        ],
+        "properties": {
+          "vrcodes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "RuntimeVitalDBBedVisibilityRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "bedIDs"
+        ],
+        "properties": {
+          "bedIDs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
       "RuntimeVitalRecorderActivityHistorySource": {
         "type": "string",
         "enum": [
-          "sqliteProjection",
+          "readModelProjection",
           "unavailable",
           "notProvided"
         ]
@@ -2332,6 +2701,7 @@
         "required": [
           "vrcode",
           "status",
+          "visibility",
           "observationCount",
           "duplicateObservationCount",
           "currentAnomalyCount",
@@ -2343,6 +2713,9 @@
           },
           "status": {
             "$ref": "#/components/schemas/RuntimeVitalRecorderStatus"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/RuntimeVitalRecordVisibility"
           },
           "lastIP": {
             "type": [
@@ -2627,12 +3000,20 @@
           "unknown"
         ]
       },
+      "RuntimeVitalRecordVisibility": {
+        "type": "string",
+        "enum": [
+          "visible",
+          "hidden"
+        ]
+      },
       "RuntimeVitalBedRecord": {
         "type": "object",
         "additionalProperties": false,
         "description": "Aggregated history of one VitalDB bed keyed by bedID.",
         "required": [
           "bedID",
+          "visibility",
           "status",
           "observationCount",
           "duplicateObservationCount",
@@ -2653,6 +3034,9 @@
               "string",
               "null"
             ]
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/RuntimeVitalRecordVisibility"
           },
           "linkedRecorderStatus": {
             "oneOf": [
@@ -2965,6 +3349,22 @@
       "RuntimeControlCapabilities": {
         "type": "object",
         "additionalProperties": false,
+        "required": [
+          "canInstallRuntime",
+          "canUninstallRuntime",
+          "canApplyBundle",
+          "canRollback",
+          "canEditVMResources",
+          "canEditNetworkExposure",
+          "canResetAdminPassword",
+          "canOpenLocalFiles",
+          "canStreamLogs",
+          "canControlRuntimeServices",
+          "canControlGuestServices",
+          "canExportLogs",
+          "canViewReleaseMetadata",
+          "canUseLab"
+        ],
         "properties": {
           "canInstallRuntime": {
             "type": "boolean"
@@ -2996,16 +3396,566 @@
           "canControlRuntimeServices": {
             "type": "boolean"
           },
+          "canControlGuestServices": {
+            "type": "boolean"
+          },
           "canExportLogs": {
             "type": "boolean"
           },
           "canViewReleaseMetadata": {
             "type": "boolean"
           },
-          "canUseTestTools": {
+          "canUseLab": {
             "type": "boolean"
           }
         }
+      },
+      "RuntimeGuestControlServiceList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "services"
+        ],
+        "properties": {
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RuntimeGuestControlStackStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "observedAt",
+          "services"
+        ],
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string"
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeGuestControlServiceStatus"
+            }
+          }
+        }
+      },
+      "RuntimeLabReadState": {
+        "type": "string",
+        "enum": [
+          "loaded",
+          "unavailable",
+          "failed"
+        ]
+      },
+      "RuntimeLabSessionState": {
+        "type": "string",
+        "enum": [
+          "accepted",
+          "running",
+          "stopping",
+          "stopped",
+          "failed",
+          "unavailable"
+        ]
+      },
+      "RuntimeLabScenario": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scenarioId",
+          "name",
+          "category"
+        ],
+        "properties": {
+          "scenarioId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabScenarioList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "scenarios"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeLabReadState"
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeLabScenario"
+            }
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabBed": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "bedId",
+          "sessionId",
+          "name",
+          "state"
+        ],
+        "properties": {
+          "bedId": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RuntimeLabSessionState"
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabBedList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "beds"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeLabReadState"
+          },
+          "beds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeLabBed"
+            }
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabRecorderSendState": {
+        "type": "string",
+        "enum": [
+          "notAttempted",
+          "skipped",
+          "sent",
+          "failed"
+        ]
+      },
+      "RuntimeLabRecorder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "recorderId",
+          "sessionId",
+          "bedId",
+          "vrcode",
+          "state",
+          "messagesSent",
+          "lastSendState"
+        ],
+        "properties": {
+          "recorderId": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "bedId": {
+            "type": "string"
+          },
+          "vrcode": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RuntimeLabSessionState"
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "messagesSent": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastSendState": {
+            "$ref": "#/components/schemas/RuntimeLabRecorderSendState"
+          },
+          "lastSendAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSendError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabRecorderList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "recorders"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeLabReadState"
+          },
+          "recorders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeLabRecorder"
+            }
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sessionId",
+          "state",
+          "scenarioId",
+          "recorderCount",
+          "targetURL"
+        ],
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RuntimeLabSessionState"
+          },
+          "scenarioId": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recorderCount": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "targetURL": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabSessionResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeLabReadState"
+          },
+          "session": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeLabSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "operationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "labOperationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabSessionCreateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "scenarioId"
+        ],
+        "properties": {
+          "scenarioId": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recorderCount": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "targetURL": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabVitalFileReplayRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vitalFilePath"
+        ],
+        "properties": {
+          "vitalFilePath": {
+            "type": "string"
+          },
+          "sessionName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "targetURL": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeGuestControlServiceStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "service",
+          "state",
+          "health",
+          "observedAt"
+        ],
+        "properties": {
+          "service": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "health": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string"
+          },
+          "container": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exitCode": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeGuestServiceRestartRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "service"
+        ],
+        "properties": {
+          "service": {
+            "type": "string"
+          },
+          "guestControlBaseURL": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional development override for the Guest Control API base URL."
+          }
+        }
+      },
+      "RuntimeGuestControlServiceOperation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "operationId",
+          "service",
+          "command",
+          "state",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "operationId": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string",
+            "enum": [
+              "start",
+              "stop",
+              "restart",
+              "reconcile"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "failure": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeGuestControlOperationFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeGuestControlOperationFailure": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "message"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "evidencePath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeGuestServicesReadState": {
+        "type": "string",
+        "enum": [
+          "unavailable",
+          "loaded",
+          "failed"
+        ]
       },
       "RuntimeStatus": {
         "type": "object",
@@ -3136,6 +4086,38 @@
               "null"
             ]
           },
+          "guestServicesReadState": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeGuestServicesReadState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Guest Control API service read state. loaded, failed, and unavailable are distinct."
+          },
+          "guestServices": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "guestServiceStatuses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeGuestControlServiceStatus"
+            }
+          },
+          "guestServicesReadError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "cpuUsagePercent": {
             "type": [
               "number",
@@ -3150,12 +4132,6 @@
           },
           "dataStorage": {
             "$ref": "#/components/schemas/ResourceUsage"
-          },
-          "guestRuntimeStateError": {
-            "type": [
-              "string",
-              "null"
-            ]
           },
           "dataDirectoryStats": {
             "oneOf": [
@@ -3188,26 +4164,6 @@
               "null"
             ],
             "additionalProperties": true
-          },
-          "containerObservation": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeContainerObservation"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "vitalDBObservation": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/VitalDBObservationDocument"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         }
       },
@@ -3318,16 +4274,6 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeDomainError"
             }
-          },
-          "containerObservation": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeContainerObservation"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "progress": {
             "type": [
@@ -3441,7 +4387,7 @@
               "waitForGuest",
               "restartGuestAgent",
               "repairGuestBootstrap",
-              "restartContainerServices",
+              "reconcileGuestStack",
               "repairProxyConfiguration",
               "freeProxyPort",
               "inspectVitalDBObservation",
@@ -3458,7 +4404,6 @@
         "enum": [
           "notRead",
           "loaded",
-          "skippedMissingProxyPort",
           "commandFailed",
           "emptyResponse",
           "outputInvalid",
@@ -3466,40 +4411,17 @@
           "readFailed"
         ]
       },
-      "RuntimeFileMetadataReadState": {
-        "type": "string",
-        "enum": [
-          "notRead",
-          "loaded",
-          "readFailed"
-        ]
-      },
-      "RuntimeContainerServicesReadState": {
-        "type": "string",
-        "enum": [
-          "loaded",
-          "missing",
-          "invalid",
-          "stale",
-          "read-failed"
-        ]
-      },
-      "RuntimeContainerObservation": {
+      "RuntimeRecorderIngressStatusReadResult": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "recorderIngressHTTP",
-          "recorderIngressStatusReadState",
-          "runtimeStateFileMetadataReadState",
-          "containerLogsPresent",
-          "composeServicesReadState",
-          "composeServices"
+          "readState"
         ],
         "properties": {
-          "recorderIngressHTTP": {
-            "type": "string"
+          "readState": {
+            "$ref": "#/components/schemas/RuntimeRecorderIngressStatusReadState"
           },
-          "recorderIngressStatus": {
+          "document": {
             "oneOf": [
               {
                 "$ref": "#/components/schemas/RuntimeRecorderIngressStatusDocument"
@@ -3509,68 +4431,7 @@
               }
             ]
           },
-          "recorderIngressStatusReadState": {
-            "$ref": "#/components/schemas/RuntimeRecorderIngressStatusReadState"
-          },
-          "recorderIngressStatusReadError": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "runtimeStateUpdatedAt": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "runtimeStateFileUpdatedAt": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "runtimeStateFileMetadataReadState": {
-            "$ref": "#/components/schemas/RuntimeFileMetadataReadState"
-          },
-          "runtimeStateFileMetadataError": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "containerLogsPresent": {
-            "type": "boolean"
-          },
-          "containerLogsBytes": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0
-          },
-          "containerLogsUpdatedAt": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "containerLogsMetadataError": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "composeServices": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeContainerServiceObservation"
-            }
-          },
-          "composeServicesReadState": {
-            "$ref": "#/components/schemas/RuntimeContainerServicesReadState"
-          },
-          "composeServicesReadError": {
+          "readError": {
             "type": [
               "string",
               "null"
@@ -4278,100 +5139,6 @@
                 "type": "null"
               }
             ]
-          }
-        }
-      },
-      "RuntimeContainerServiceObservation": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "service"
-        ],
-        "properties": {
-          "service": {
-            "type": "string"
-          },
-          "containerID": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "name": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "state": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "health": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "exitCode": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "finishedAt": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "memoryUsedBytes": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0
-          },
-          "memoryLimitBytes": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0
-          },
-          "oomKilled": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "restartCount": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0
-          },
-          "startedAt": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "uptimeSeconds": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 0
           }
         }
       },
@@ -5190,6 +5957,9 @@
           "stale": {
             "type": "boolean"
           },
+          "visibility": {
+            "$ref": "#/components/schemas/RuntimeVitalRecordVisibility"
+          },
           "activity": {
             "anyOf": [
               {
@@ -5329,6 +6099,9 @@
           },
           "online": {
             "type": "boolean"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/RuntimeVitalRecordVisibility"
           }
         }
       },
@@ -5392,700 +6165,6 @@
           }
         }
       },
-      "RuntimeTestKitStatus": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "enabled",
-          "state",
-          "sessions",
-          "beds"
-        ],
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "state": {
-            "type": "string",
-            "enum": [
-              "disabled",
-              "stopped",
-              "starting",
-              "running",
-              "paused",
-              "stopping",
-              "failed"
-            ]
-          },
-          "serviceName": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "apiBaseURL": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "recorderTargetURL": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "startedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
-          "activeSession": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeTestKitSession"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "sessions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeTestKitSession"
-            }
-          },
-          "beds": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeTestKitBed"
-            }
-          },
-          "lastError": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "RuntimeTestKitBed": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "roomName",
-          "bedId"
-        ],
-        "properties": {
-          "roomName": {
-            "type": "string"
-          },
-          "bedId": {
-            "type": "string"
-          }
-        }
-      },
-      "RuntimeTestKitCreateBedsRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "roomNames",
-          "prefix",
-          "adminUserId"
-        ],
-        "properties": {
-          "count": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 1
-          },
-          "roomNames": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "prefix": {
-            "type": "string"
-          },
-          "adminUserId": {
-            "type": "string"
-          }
-        }
-      },
-      "RuntimeTestKitDeleteBedsRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "roomNames"
-        ],
-        "properties": {
-          "roomNames": {
-            "type": "array",
-            "minItems": 1,
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "RuntimeTestKitRecorderSource": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "type",
-          "path",
-          "scenario",
-          "startOffsetSeconds",
-          "durationSeconds"
-        ],
-        "properties": {
-          "type": {
-            "type": "string",
-            "enum": [
-              "vitalFile"
-            ]
-          },
-          "path": {
-            "type": "string"
-          },
-          "scenario": {
-            "type": "string",
-            "enum": [
-              "basic_monitor",
-              "periop_full",
-              "bloodbag",
-              "root_sedation",
-              "full_real"
-            ]
-          },
-          "startOffsetSeconds": {
-            "type": "number",
-            "minimum": 0
-          },
-          "durationSeconds": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "RuntimeTestKitVirtualRecorderStartRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "scenario",
-          "signalProfile",
-          "recorders",
-          "bedRoomNames",
-          "version",
-          "intervalSeconds",
-          "shiftTime",
-          "generateFrames",
-          "exportVital",
-          "uploadVital",
-          "vitalUploadEndpoint"
-        ],
-        "properties": {
-          "scenario": {
-            "type": "string",
-            "enum": [
-              "normal",
-              "multiple_recorders",
-              "burst_traffic",
-              "disconnect_reconnect",
-              "stale_recorder",
-              "signal_anomaly"
-            ]
-          },
-          "signalProfile": {
-            "type": "string",
-            "enum": [
-              "normal",
-              "tachycardia",
-              "desaturation",
-              "artifact",
-              "device_disconnect"
-            ]
-          },
-          "recorders": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "bedRoomNames": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "vrcode": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "version": {
-            "type": "string"
-          },
-          "intervalSeconds": {
-            "type": "number",
-            "exclusiveMinimum": 0
-          },
-          "durationSeconds": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "minimum": 0
-          },
-          "maxMessages": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "minimum": 1
-          },
-          "shiftTime": {
-            "type": "boolean"
-          },
-          "generateFrames": {
-            "type": "boolean"
-          },
-          "exportVital": {
-            "type": "boolean"
-          },
-          "uploadVital": {
-            "type": "boolean"
-          },
-          "vitalUploadEndpoint": {
-            "type": "string"
-          },
-          "source": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeTestKitRecorderSource"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "realSampleKey": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "RuntimeTestKitSessionSelectionRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "sessionID"
-        ],
-        "properties": {
-          "sessionID": {
-            "type": "string"
-          }
-        }
-      },
-      "RuntimeTestKitRestartRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "sessionID",
-          "bedRoomNames"
-        ],
-        "properties": {
-          "sessionID": {
-            "type": "string"
-          },
-          "bedRoomNames": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "RuntimeTestKitRecorderDeletionRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "vrcode"
-        ],
-        "properties": {
-          "vrcode": {
-            "type": "string"
-          }
-        }
-      },
-      "RuntimeTestKitSession": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "state",
-          "targetUrl",
-          "recordersRequested",
-          "bedsRequested",
-          "bedRoomNames",
-          "version",
-          "intervalSeconds",
-          "shiftTime",
-          "generateFrames",
-          "defaultScenario",
-          "messagesSent",
-          "bytesSent",
-          "cleanupErrors",
-          "vital",
-          "recorders"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "state": {
-            "type": "string"
-          },
-          "targetUrl": {
-            "type": "string"
-          },
-          "recordersRequested": {
-            "type": "integer"
-          },
-          "bedsRequested": {
-            "type": "integer"
-          },
-          "bedRoomNames": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "vrcode": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "version": {
-            "type": "string"
-          },
-          "intervalSeconds": {
-            "type": "number"
-          },
-          "durationSeconds": {
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "maxMessages": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "shiftTime": {
-            "type": "boolean"
-          },
-          "generateFrames": {
-            "type": "boolean"
-          },
-          "source": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeTestKitRecorderSource"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "realSampleKey": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "scenario": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "defaultScenario": {
-            "type": "string"
-          },
-          "createdAt": {
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "startedAt": {
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "stoppedAt": {
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "messagesSent": {
-            "type": "integer"
-          },
-          "bytesSent": {
-            "type": "integer"
-          },
-          "lastError": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "cleanupErrors": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeTestKitCleanupError"
-            }
-          },
-          "vital": {
-            "$ref": "#/components/schemas/RuntimeTestKitSessionVitalState"
-          },
-          "recorders": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeTestKitRecorder"
-            }
-          }
-        }
-      },
-      "RuntimeTestKitSessionVitalState": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "exportStatus",
-          "uploadStatus"
-        ],
-        "properties": {
-          "exportStatus": {
-            "type": "string"
-          },
-          "uploadStatus": {
-            "type": "string"
-          },
-          "exportError": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "uploadError": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "artifact": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeTestKitSessionVitalArtifact"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "uploadResult": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeTestKitSessionVitalUploadResult"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        }
-      },
-      "RuntimeTestKitSessionVitalArtifact": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "path",
-          "filename",
-          "sizeBytes",
-          "createdAt",
-          "format",
-          "retentionPolicy"
-        ],
-        "properties": {
-          "path": {
-            "type": "string"
-          },
-          "filename": {
-            "type": "string"
-          },
-          "sizeBytes": {
-            "type": "integer"
-          },
-          "createdAt": {
-            "type": "number"
-          },
-          "format": {
-            "type": "string"
-          },
-          "retentionPolicy": {
-            "type": "string"
-          }
-        }
-      },
-      "RuntimeTestKitSessionVitalUploadResult": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "statusCode",
-          "ok",
-          "elapsedSeconds",
-          "uploadedAt",
-          "responseText"
-        ],
-        "properties": {
-          "statusCode": {
-            "type": "integer"
-          },
-          "ok": {
-            "type": "boolean"
-          },
-          "elapsedSeconds": {
-            "type": "number"
-          },
-          "uploadedAt": {
-            "type": "number"
-          },
-          "responseText": {
-            "type": "string"
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "RuntimeTestKitCleanupError": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "vrcode",
-          "targetUrl",
-          "error"
-        ],
-        "properties": {
-          "vrcode": {
-            "type": "string"
-          },
-          "targetUrl": {
-            "type": "string"
-          },
-          "error": {
-            "type": "string"
-          }
-        }
-      },
-      "RuntimeTestKitRecorderDeletion": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "vrcode",
-          "targetUrl",
-          "deleted"
-        ],
-        "properties": {
-          "vrcode": {
-            "type": "string"
-          },
-          "targetUrl": {
-            "type": "string"
-          },
-          "deleted": {
-            "type": "boolean"
-          },
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "RuntimeTestKitRecorder": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "vrcode",
-          "baseUrl",
-          "connected",
-          "joinSent",
-          "messagesSent",
-          "bytesSent"
-        ],
-        "properties": {
-          "vrcode": {
-            "type": "string"
-          },
-          "baseUrl": {
-            "type": "string"
-          },
-          "localIp": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "connected": {
-            "type": "boolean"
-          },
-          "joinSent": {
-            "type": "boolean"
-          },
-          "joinedAt": {
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "lastReconnectAt": {
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "lastSendDataAt": {
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "messagesSent": {
-            "type": "integer"
-          },
-          "bytesSent": {
-            "type": "integer"
-          }
-        }
-      },
       "VitalDBAnomalyObservation": {
         "type": "object",
         "additionalProperties": false,
@@ -6127,6 +6206,103 @@
           },
           "message": {
             "type": "string"
+          }
+        }
+      },
+      "RuntimeLabBedCreateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "roomNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "prefix": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "targetURL": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabBedDeleteRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bedIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "roomNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sessionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabRecorderCreateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bedIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sessionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabRecorderDeleteRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "recorderIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "vrcodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sessionId": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       }

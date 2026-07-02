@@ -8,22 +8,22 @@ final class RuntimeReleaseInfoGeneratedTests: XCTestCase {
     func testGeneratedReleaseInfoUsesGeneratedServiceDisplayNames() {
         let services = RuntimeReleaseInfo.generated.services
 
-        var expectedNames = [
+        let expectedNames = [
             GeneratedRelease.vitalServerName,
             GeneratedRelease.recorderIngressName,
             GeneratedRelease.recorderRecoveryName,
             GeneratedRelease.vitalDBObserverName,
             GeneratedRelease.redisRelayName,
+            GeneratedRelease.labName,
             GeneratedRelease.redisName,
+            GeneratedRelease.postgresName,
             GeneratedRelease.redisUIName,
             GeneratedRelease.swaggerUIName,
             GeneratedRelease.guestEdgeName,
             GeneratedRelease.hostProxyName,
         ]
-        if GeneratedRelease.testkitContainerIncluded {
-            expectedNames.append(GeneratedRelease.testkitName)
-        }
 
         XCTAssertEqual(services.map(\.name), expectedNames)
+        XCTAssertFalse(services.map(\.image).contains { $0.contains("testkit") })
     }
 }

@@ -61,6 +61,98 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         client.loadInstallInfo()
     }
 
+    public func loadLabScenarios() async throws -> RuntimeLabScenarioList {
+        try await client.loadLabScenarios()
+    }
+
+    public func loadLabBeds() async throws -> RuntimeLabBedList {
+        try await client.loadLabBeds()
+    }
+
+    public func loadLabRecorders() async throws -> RuntimeLabRecorderList {
+        try await client.loadLabRecorders()
+    }
+
+    public func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList {
+        try await client.createLabBeds(request)
+    }
+
+    public func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList {
+        try await client.deleteLabBeds(request)
+    }
+
+    public func resetLabBeds() async throws -> RuntimeLabBedList {
+        try await client.resetLabBeds()
+    }
+
+    public func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) async throws -> RuntimeLabRecorderList {
+        try await client.createLabRecorders(request)
+    }
+
+    public func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList {
+        try await client.deleteLabRecorders(request)
+    }
+
+    public func resetLabRecorders() async throws -> RuntimeLabRecorderList {
+        try await client.resetLabRecorders()
+    }
+
+    public func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await client.hideVitalDBRecorders(request)
+    }
+
+    public func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await client.unhideVitalDBRecorders(request)
+    }
+
+    public func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await client.deleteVitalDBRecorders(request)
+    }
+
+    public func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await client.hideVitalDBBeds(request)
+    }
+
+    public func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await client.unhideVitalDBBeds(request)
+    }
+
+    public func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await client.deleteVitalDBBeds(request)
+    }
+
+    public func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse {
+        try await client.createLabSession(request)
+    }
+
+    public func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await client.loadLabSession(sessionId: sessionId)
+    }
+
+    public func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await client.startLabSession(sessionId: sessionId)
+    }
+
+    public func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await client.stopLabSession(sessionId: sessionId)
+    }
+
+    public func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
+        try await client.replayLabVitalFile(request)
+    }
+
+    public func guestStackStatus() async throws -> RuntimeGuestControlStackStatus {
+        try await client.guestStackStatus()
+    }
+
+    public func listGuestServices() async throws -> RuntimeGuestControlServiceList {
+        try await client.listGuestServices()
+    }
+
+    public func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
+        try await client.guestServiceStatus(service)
+    }
+
     public func loadLogText(request: RuntimeLogTextRequest) async throws -> RuntimeLogTextResponse {
         guard let hostClient else {
             throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
@@ -102,44 +194,51 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         RuntimeControlCommandResponse(result: try await client.applySettings(settings))
     }
 
-    public func startRuntimeServices() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.startRuntimeServices())
+    public func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        try await client.startGuestService(request)
     }
 
-    public func stopRuntimeServices() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.stopRuntimeServices())
+    public func stopGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        try await client.stopGuestService(request)
     }
 
-    public func startTestKitService() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.startTestKitService())
-    }
-
-    public func stopTestKitService() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.stopTestKitService())
-    }
-
-    public func restartTestKitService() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.restartTestKitService())
+    public func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation {
+        try await client.restartGuestService(request)
     }
 
     public func repairRuntimeServices() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.repairRuntimeServices())
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeControlCommandResponse(result: try await hostClient.repairRuntimeServices())
     }
 
     public func repairProxy() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.repairProxy())
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeControlCommandResponse(result: try await hostClient.repairProxy())
     }
 
     public func repairDatastore() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.repairDatastore())
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeControlCommandResponse(result: try await hostClient.repairDatastore())
     }
 
     public func repairVMDisk() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.repairVMDisk())
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeControlCommandResponse(result: try await hostClient.repairVMDisk())
     }
 
     public func createRedisBackup() async throws -> RuntimeControlCommandResponse {
-        RuntimeControlCommandResponse(result: try await client.createRedisBackup())
+        guard let hostClient else {
+            throw RuntimeControlAPIReadHandlerError.hostAffordanceUnavailable
+        }
+        return RuntimeControlCommandResponse(result: try await hostClient.createRedisBackup())
     }
 
     public func createRuntimeDataBackup() async throws -> RuntimeControlCommandResponse {

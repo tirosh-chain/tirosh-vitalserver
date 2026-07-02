@@ -7,6 +7,7 @@ struct RuntimeBedsPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
     @State private var searchText = ""
     @State private var selectedBedID: String?
+    @State private var showingHiddenBeds = false
     private let displayPolicy = RuntimeVitalRecorderDisplayPolicy()
 
     var body: some View {
@@ -24,6 +25,8 @@ struct RuntimeBedsPanel: View {
                     .font(.headline)
                 Spacer()
                 bedSearchField
+                Toggle("Show hidden", isOn: $showingHiddenBeds)
+                    .toggleStyle(.switch)
                 refreshButton
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -31,6 +34,8 @@ struct RuntimeBedsPanel: View {
                     .font(.headline)
                 HStack {
                     bedSearchField
+                    Toggle("Show hidden", isOn: $showingHiddenBeds)
+                        .toggleStyle(.switch)
                     refreshButton
                     Spacer()
                 }
@@ -55,6 +60,7 @@ struct RuntimeBedsPanel: View {
     private var bedList: some View {
         VStack(alignment: .leading, spacing: 10) {
             summaryMetrics
+            visibilityActionMessage
             if filteredBeds.isEmpty {
                 Text(AppConstants.StatusText.noBedData)
                     .foregroundStyle(.secondary)
@@ -71,7 +77,7 @@ struct RuntimeBedsPanel: View {
                             bedRow(bed)
                         }
                     }
-                    .frame(minWidth: 900, alignment: .leading)
+                    .frame(minWidth: 1080, alignment: .leading)
                     .background(Color(nsColor: .textBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
@@ -121,10 +127,13 @@ struct RuntimeBedsPanel: View {
 
     private var filteredBeds: [RuntimeVitalBedRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let beds = showingHiddenBeds
+            ? viewModel.vitalRecorders.beds
+            : viewModel.vitalRecorders.beds.filter { $0.visibility != .hidden }
         guard !query.isEmpty else {
-            return viewModel.vitalRecorders.beds
+            return beds
         }
-        return viewModel.vitalRecorders.beds.filter { bed in
+        return beds.filter { bed in
             [
                 bed.bedID,
                 bed.name,
@@ -137,7 +146,7 @@ struct RuntimeBedsPanel: View {
 
     private var selectedBed: RuntimeVitalBedRecord? {
         if let selectedBedID,
-           let bed = viewModel.vitalRecorders.beds.first(where: { $0.bedID == selectedBedID }) {
+           let bed = filteredBeds.first(where: { $0.bedID == selectedBedID }) {
             return bed
         }
         return filteredBeds.first
@@ -150,32 +159,77 @@ struct RuntimeBedsPanel: View {
             tableHeader("VRecorder", minWidth: 140)
             tableHeader(AppConstants.Labels.recorderStatus, minWidth: 90)
             tableHeader(AppConstants.Labels.recorderLastSeen, minWidth: 220)
+            tableHeader("Visibility", minWidth: 80)
             tableHeader(AppConstants.Labels.anomaly, minWidth: 130)
+            tableHeader("Actions", minWidth: 160)
         }
         .padding(10)
     }
 
     private func bedRow(_ bed: RuntimeVitalBedRecord) -> some View {
-        Button {
-            selectedBedID = bed.bedID
-        } label: {
-            HStack(spacing: 12) {
-                tableValue(bed.bedID, minWidth: 160, weight: .semibold)
-                tableValue(reportedText(bed.name, missing: "Bed name not reported"), minWidth: 140)
-                tableValue(reportedText(bed.vrcode, missing: "VRecorder not reported"), minWidth: 140)
-                Text(statusLabel(bed.status))
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(statusColor(bed.status))
-                    .frame(minWidth: 90, alignment: .leading)
-                tableValue(viewModel.presentationFormatter.systemTimeTextWithAge(bed.lastSeenAt), minWidth: 220)
-                tableValue(bedAnomalyText(bed), minWidth: 130)
+        HStack(spacing: 12) {
+            Button {
+                selectedBedID = bed.bedID
+            } label: {
+                HStack(spacing: 12) {
+                    tableValue(bed.bedID, minWidth: 160, weight: .semibold)
+                    tableValue(reportedText(bed.name, missing: "Bed name not reported"), minWidth: 140)
+                    tableValue(reportedText(bed.vrcode, missing: "VRecorder not reported"), minWidth: 140)
+                    Text(statusLabel(bed.status))
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(statusColor(bed.status))
+                        .frame(minWidth: 90, alignment: .leading)
+                    tableValue(viewModel.presentationFormatter.systemTimeTextWithAge(bed.lastSeenAt), minWidth: 220)
+                    tableValue(visibilityText(bed.visibility), minWidth: 80)
+                    tableValue(bedAnomalyText(bed), minWidth: 130)
+                }
+                .contentShape(Rectangle())
             }
-            .padding(10)
-            .contentShape(Rectangle())
-            .background(selectedBed?.bedID == bed.bedID ? Color.accentColor.opacity(0.10) : Color.clear)
+            .buttonStyle(.plain)
+            bedActionButtons(bed)
         }
-        .buttonStyle(.plain)
+        .padding(10)
+        .background(selectedBed?.bedID == bed.bedID ? Color.accentColor.opacity(0.10) : Color.clear)
+    }
+
+    private var visibilityActionMessage: some View {
+        Group {
+            if !viewModel.vitalDBVisibilityActionMessage.isEmpty {
+                Text(viewModel.vitalDBVisibilityActionMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func bedActionButtons(_ bed: RuntimeVitalBedRecord) -> some View {
+        HStack(spacing: 6) {
+            if bed.visibility == .hidden {
+                Button("Unhide") {
+                    Task {
+                        await viewModel.unhideVitalDBBed(bedID: bed.bedID)
+                    }
+                }
+                .disabled(viewModel.isRunningVitalDBVisibilityAction)
+                if showingHiddenBeds {
+                    Button("Delete") {
+                        Task {
+                            await viewModel.deleteVitalDBBed(bedID: bed.bedID)
+                        }
+                    }
+                    .disabled(viewModel.isRunningVitalDBVisibilityAction)
+                }
+            } else {
+                Button("Hide") {
+                    Task {
+                        await viewModel.hideVitalDBBed(bedID: bed.bedID)
+                    }
+                }
+                .disabled(viewModel.isRunningVitalDBVisibilityAction)
+            }
+        }
+        .frame(minWidth: 160, alignment: .leading)
     }
 
     private func selectedBedSummary(_ bed: RuntimeVitalBedRecord) -> some View {
@@ -207,6 +261,7 @@ struct RuntimeBedsPanel: View {
             detailRow("Bed ID", bed.bedID)
             detailRow("Name", reportedText(bed.name, missing: "Bed name not reported"))
             detailRow("VRecorder", reportedText(bed.vrcode, missing: "VRecorder not reported"))
+            detailRow("Visibility", visibilityText(bed.visibility))
             detailRow(
                 "VRecorder status",
                 linkedRecorderStatusText(bed)
@@ -384,6 +439,15 @@ struct RuntimeBedsPanel: View {
 
     private func statusLabel(_ status: RuntimeVitalBedStatus) -> String {
         displayPolicy.statusText(status)
+    }
+
+    private func visibilityText(_ visibility: RuntimeVitalRecordVisibility) -> String {
+        switch visibility {
+        case .visible:
+            return "Visible"
+        case .hidden:
+            return "Hidden"
+        }
     }
 
     private func patientText(_ connected: Bool?) -> String {

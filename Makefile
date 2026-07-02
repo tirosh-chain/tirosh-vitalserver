@@ -10,7 +10,7 @@ DOCS_PORT_MAX ?= 8100
 
 COMPOSE_ENV_FILE ?=
 TESTKIT_CONFIG ?= config/testkit.toml
-TESTKIT_VERSION ?= 0.1.1
+TESTKIT_VERSION ?= 0.2.0
 TESTKIT_RELEASE_TAG ?= testkit-v$(TESTKIT_VERSION)
 TESTKIT_RELEASE_DIR ?= .tmp/testkit-release
 
@@ -27,6 +27,7 @@ VITALSERVER_TRUST_PROXY ?= 1
 COMPOSE := $(strip $(DOCKER_COMPOSE) $(if $(COMPOSE_ENV_FILE),--env-file $(COMPOSE_ENV_FILE),))
 TESTKIT_RUNNER ?= $(if $(wildcard .venv/bin/python),.venv/bin/python scripts/test_vitalserver.py,$(shell if command -v "$(UV)" >/dev/null 2>&1; then printf "%s" "$(UV) run python scripts/test_vitalserver.py"; else printf "%s" "$(PYTHON) scripts/test_vitalserver.py"; fi))
 TESTKIT := $(TESTKIT_RUNNER) --config $(TESTKIT_CONFIG)
+PYTEST_RUNNER ?= $(if $(wildcard .venv/bin/python),.venv/bin/python -m pytest,$(DEVTOOLS_RUNNER) python-tool --uv "$(UV)" -- pytest)
 E2E_LOOP_COUNT ?= 0
 E2E_LOOP_INTERVAL ?= 10
 CHAOS_LOOP_COUNT ?= 5
@@ -53,7 +54,7 @@ include make/vm.mk
 	dist/install/dev dist/install/dev/verified dist/installed/health dist/installed/smoke dist/uninstall/dev \
 	runtime/up runtime/up-bridged runtime/down runtime/status runtime/health \
 	runtime/prepare runtime/ip runtime/proxy/start runtime/clean \
-	runtime/interfaces runtime/network/shared runtime/network/bridged runtime/e2e/smoke \
+	runtime/interfaces runtime/network/shared runtime/network/bridged runtime/e2e/smoke runtime/proof/smoke runtime/proof/no-v1-service-state runtime/proof/python-focused runtime/proof/swift-focused runtime/proof/http-e2e runtime/proof/review runtime/proof/acceptance \
 	runtime/permission/audit runtime/chaos runtime/chaos/loop runtime/coverage e2e/smoke e2e/local e2e/local/loop \
 	docs/build docs/serve \
 	devtools/version-source devtools/build devtools/app devtools/nginx/artifact devtools/nginx/bundle \
@@ -122,6 +123,29 @@ runtime/interfaces: internal/vm/interfaces
 runtime/network/shared: internal/vm/network/shared
 runtime/network/bridged: internal/vm/network/bridged
 runtime/e2e/smoke: internal/vm/e2e/smoke
+runtime/proof/smoke:
+	$(MAKE) internal/vm/golden-rootfs/runtime-smoke VM_RELEASE_FILE="$(VM_DEV_RELEASE_FILE)"
+runtime/proof/no-v1-service-state:
+	$(PYTHON) scripts/runtime_no_v1_service_state.py
+runtime/proof/python-focused:
+	$(PYTEST_RUNNER) apps/vitalserver-lab/tests \
+		packages/vitalserver-guest-tools/tests/test_guest_control_api.py \
+		packages/vitalserver-guest-tools/tests/test_guest_control_usecases.py \
+		packages/vitalserver-guest-tools/tests/test_guest_control_domain.py \
+		packages/vitalserver-guest-tools/tests/test_guest_control_postgres_repository.py \
+		packages/vitalserver-guest-tools/tests/test_product_lab_service_adapter.py \
+		packages/vitalserver-guest-tools/tests/test_recorder_ingress_status_adapter.py \
+		packages/vitalserver-guest-tools/tests/test_redis_backup_maintenance_adapter.py \
+		packages/vitalserver-devtools/tests/unit/test_macos_release_plans.py \
+		packages/vitalserver-devtools/tests/unit/test_release_manifest.py \
+		packages/vitalserver-devtools/tests/unit/test_guest_image_usecases.py \
+		packages/vitalserver-devtools/tests/unit/test_rootfs_base.py \
+		packages/vitalserver-devtools/tests/unit/test_runtime_lifecycle_wait.py
+runtime/proof/swift-focused:
+	CLANG_MODULE_CACHE_PATH="$(VM_CLANG_MODULE_CACHE)" swift test --package-path "$(VM_SWIFT_PACKAGE_DIR)" --filter "$(VM_RUNTIME_PROOF_SWIFT_FOCUSED_FILTER)"
+runtime/proof/http-e2e: runtime/e2e/smoke
+runtime/proof/review: runtime/proof/no-v1-service-state runtime/proof/python-focused pwa/check pwa/test pwa/build
+runtime/proof/acceptance: runtime/proof/review runtime/proof/swift-focused runtime/proof/http-e2e runtime/proof/smoke
 runtime/permission/audit:
 	$(PYTHON) scripts/runtime_permission_audit.py $(RUNTIME_PERMISSION_AUDIT_ARGS)
 runtime/chaos:
@@ -197,9 +221,9 @@ help:
 	@printf "COMMON TARGETS\n"
 	@printf "  dev/doctor      Check local developer tools and repository setup\n"
 	@printf "  dev/bootstrap   Prepare .env, submodules, proxy config, and optional Python env\n"
-	@printf "  compose/up      Start the Compose productization sandbox through host proxy\n"
+	@printf "  compose/up      Start the Compose development sandbox through host proxy\n"
 	@printf "  compose/open    Open VitalServer in browser\n"
-	@printf "  testkit/smoke   Run bounded productization smoke scenario\n"
+	@printf "  testkit/smoke   Run bounded dev verification smoke scenario\n"
 	@printf "  runtime/up      Start local macOS VM runtime and host proxy\n"
 	@printf "  runtime/health  Check runtime IP, guest HTTP, and host proxy reachability\n"
 	@printf "  pwa/check       Typecheck Runtime Control PWA\n"
@@ -226,7 +250,7 @@ help:
 
 help/compose:
 	@printf "NAME\n"
-	@printf "  tirosh-vitalserver-compose - Compose productization sandbox, Swagger, and testkit targets\n"
+	@printf "  tirosh-vitalserver-compose - Compose development sandbox, Swagger, and dev testkit targets\n"
 	@printf "\n"
 	@printf "SYNOPSIS\n"
 	@printf "  make compose/{up|open|ps|logs|shell|restart|down|rebuild|build|config|clean/volumes|clean}\n"
@@ -250,7 +274,7 @@ help/compose:
 	@printf "  compose/clean          Remove proxy runtime, containers, volumes, orphans, and local images\n"
 	@printf "\n"
 	@printf "VERIFY TARGETS\n"
-	@printf "  testkit/smoke          Run bounded productization smoke scenario\n"
+	@printf "  testkit/smoke          Run bounded dev verification smoke scenario\n"
 	@printf "  testkit/verify         Send sample data and verify UI-visible state\n"
 	@printf "  testkit/health         Check VitalServer health with testkit\n"
 	@printf "  testkit/load           Run finite load scenario\n"
@@ -352,7 +376,7 @@ help/runtime:
 	@printf "  tirosh-vitalserver-runtime - direct local macOS VM runtime lifecycle targets\n"
 	@printf "\n"
 	@printf "SYNOPSIS\n"
-	@printf "  make runtime/{up|status|health|down|ip|prepare|up-bridged|clean|e2e/smoke|coverage}\n"
+	@printf "  make runtime/{up|status|health|down|ip|prepare|up-bridged|clean|e2e/smoke|v2/smoke|v2/no-v1-service-state|v2/python-focused|v2/swift-focused|v2/http-e2e|v2/review|v2/acceptance|coverage}\n"
 	@printf "  make runtime/{interfaces|network/shared|network/bridged}\n"
 	@printf "  make runtime/{proxy/start|chaos|chaos/loop|permission/audit}\n"
 	@printf "\n"
@@ -365,6 +389,14 @@ help/runtime:
 	@printf "  runtime/prepare               Download assets and stage guest deployment bundle\n"
 	@printf "  runtime/proxy/start           Start host proxy for a runtime endpoint\n"
 	@printf "  runtime/e2e/smoke             Run local Runtime Control HTTP smoke test\n"
+	@printf "  runtime/proof/smoke              Build dev golden runtime and prove Guest Control/Product Lab boot smoke\n"
+	@printf "  runtime/proof/no-v1-service-state\n"
+	@printf "                                Static proof that product service state does not use v1 files\n"
+	@printf "  runtime/proof/python-focused     Run focused Python Runtime v2 product/package tests\n"
+	@printf "  runtime/proof/swift-focused      Run focused Swift Host-side Runtime v2 acceptance tests\n"
+	@printf "  runtime/proof/http-e2e           Run Runtime Control HTTP E2E smoke test\n"
+	@printf "  runtime/proof/review             Run static, Python, and PWA Runtime v2 review gates\n"
+	@printf "  runtime/proof/acceptance         Run review, Swift focused, HTTP E2E, and VM smoke Runtime v2 gates\n"
 	@printf "  runtime/up-bridged            Prepare and start local runtime on bridged LAN\n"
 	@printf "  runtime/clean                 Remove runtime state, keep shared data\n"
 	@printf "  runtime/chaos                 Run deterministic macOS runtime chaos scenarios\n"

@@ -14,7 +14,7 @@ public struct RuntimeRecoveryInput: Equatable {
     public let guestHTTP: String
     public let hostProxyReadinessHTTP: String
     public let hostProxyLivenessHTTP: String
-    public let containerObservation: RuntimeObservationInput<RuntimeContainerObservation>
+    public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
 
     public init(
         vmExecutable: RuntimeFileState,
@@ -29,7 +29,7 @@ public struct RuntimeRecoveryInput: Equatable {
         guestHTTP: String,
         hostProxyReadinessHTTP: String,
         hostProxyLivenessHTTP: String,
-        containerObservation: RuntimeObservationInput<RuntimeContainerObservation>
+        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported
     ) {
         self.vmExecutable = vmExecutable
         self.proxyExecutable = proxyExecutable
@@ -43,7 +43,7 @@ public struct RuntimeRecoveryInput: Equatable {
         self.guestHTTP = guestHTTP
         self.hostProxyReadinessHTTP = hostProxyReadinessHTTP
         self.hostProxyLivenessHTTP = hostProxyLivenessHTTP
-        self.containerObservation = containerObservation
+        self.guestServiceStatuses = guestServiceStatuses
     }
 }
 
@@ -52,7 +52,7 @@ public struct RuntimeRecoveryPlan: Equatable, Sendable {
     public let restartVM: Bool
     public let restartGuestLogSync: Bool
     public let restartProxy: Bool
-    public let reconcileGuestCompose: Bool
+    public let reconcileGuestStack: Bool
     public let actionReasons: [RuntimeRecoveryActionReason]
     public let blockers: [String]
 
@@ -61,7 +61,7 @@ public struct RuntimeRecoveryPlan: Equatable, Sendable {
         restartVM: Bool,
         restartGuestLogSync: Bool,
         restartProxy: Bool,
-        reconcileGuestCompose: Bool = false,
+        reconcileGuestStack: Bool = false,
         actionReasons: [RuntimeRecoveryActionReason] = [],
         blockers: [String] = []
     ) {
@@ -69,7 +69,7 @@ public struct RuntimeRecoveryPlan: Equatable, Sendable {
         self.restartVM = restartVM
         self.restartGuestLogSync = restartGuestLogSync
         self.restartProxy = restartProxy
-        self.reconcileGuestCompose = reconcileGuestCompose
+        self.reconcileGuestStack = reconcileGuestStack
         self.actionReasons = actionReasons
         self.blockers = blockers
     }
@@ -83,7 +83,7 @@ public enum RuntimeRecoveryActionReason: Equatable, Sendable {
     case vmServiceNotLoaded(String)
     case missingVMIP
     case guestHTTPUnhealthy(String)
-    case containerFailureRequiresComposeReconcile
+    case guestServiceFailureRequiresReconcile
     case vmRestartRequiresProxyRestart
     case proxyServiceNotLoaded(String)
     case hostProxyLivenessUnhealthy(String)
@@ -97,8 +97,8 @@ public enum RuntimeRecoveryActionReason: Equatable, Sendable {
             "missing-vm-ip"
         case .guestHTTPUnhealthy(let status):
             "guest-http-unhealthy-\(runtimeRecoveryFailureToken(status))"
-        case .containerFailureRequiresComposeReconcile:
-            "container-failure-requires-compose-reconcile"
+        case .guestServiceFailureRequiresReconcile:
+            "guest-service-failure-requires-reconcile"
         case .vmRestartRequiresProxyRestart:
             "vm-restart-requires-proxy-restart"
         case .proxyServiceNotLoaded(let state):
@@ -141,21 +141,21 @@ public enum RuntimeRecoveryPlanner {
         let hostProxyLivenessHTTP = classifyHTTPStatus(input.hostProxyLivenessHTTP)
 
         let waitingForGuest = input.vmLifecycle?.isWaitingForGuest(at: input.now) ?? false
-        let containerFailureRequiresComposeReconcile = RuntimeObservationHealthPolicy.requiresGuestComposeReconcile(
-            containerObservation: input.containerObservation
+        let guestServiceFailureRequiresReconcile = RuntimeObservationHealthPolicy.requiresGuestStackReconcile(
+            guestServiceStatuses: input.guestServiceStatuses
         )
 
-        let composeReconcileReasons = guestComposeReconcileReasons(
+        let guestStackReconcileReasons = guestStackReconcileReasons(
             input: input,
             guestHTTP: guestHTTP,
             waitingForGuest: waitingForGuest,
-            containerFailureRequiresComposeReconcile: containerFailureRequiresComposeReconcile
+            guestServiceFailureRequiresReconcile: guestServiceFailureRequiresReconcile
         )
         let vmRestartReasons = vmRestartReasons(
             input: input,
             guestHTTP: guestHTTP,
             waitingForGuest: waitingForGuest,
-            containerFailureRequiresComposeReconcile: containerFailureRequiresComposeReconcile
+            guestServiceFailureRequiresReconcile: guestServiceFailureRequiresReconcile
         )
         let proxyRestartReasons = proxyRestartReasons(
             input: input,
@@ -170,8 +170,8 @@ public enum RuntimeRecoveryPlanner {
             restartVM: !vmRestartReasons.isEmpty,
             restartGuestLogSync: !vmRestartReasons.isEmpty,
             restartProxy: !proxyRestartReasons.isEmpty,
-            reconcileGuestCompose: !composeReconcileReasons.isEmpty,
-            actionReasons: composeReconcileReasons + vmRestartReasons + proxyRestartReasons
+            reconcileGuestStack: !guestStackReconcileReasons.isEmpty,
+            actionReasons: guestStackReconcileReasons + vmRestartReasons + proxyRestartReasons
         )
     }
 
@@ -224,25 +224,25 @@ public enum RuntimeRecoveryPlanner {
         let hostProxyReadinessHTTP = classifyHTTPStatus(input.hostProxyReadinessHTTP)
         let hostProxyLivenessHTTP = classifyHTTPStatus(input.hostProxyLivenessHTTP)
         let waitingForGuest = input.vmLifecycle?.isWaitingForGuest(at: input.now) ?? false
-        let containerFailureRequiresComposeReconcile = RuntimeObservationHealthPolicy.requiresGuestComposeReconcile(
-            containerObservation: input.containerObservation
+        let guestServiceFailureRequiresReconcile = RuntimeObservationHealthPolicy.requiresGuestStackReconcile(
+            guestServiceStatuses: input.guestServiceStatuses
         )
-        let guestComposeReconcileReasons = guestComposeReconcileReasons(
+        let guestStackReconcileReasons = guestStackReconcileReasons(
             input: input,
             guestHTTP: guestHTTP,
             waitingForGuest: waitingForGuest,
-            containerFailureRequiresComposeReconcile: containerFailureRequiresComposeReconcile
+            guestServiceFailureRequiresReconcile: guestServiceFailureRequiresReconcile
         )
         let canPlanVMRestart = input.vmService == .loaded
             && input.vmLifecycle != nil
             && !waitingForGuest
             && input.vmIP == nil
-        let canPlanGuestComposeReconcile = !guestComposeReconcileReasons.isEmpty
+        let canPlanGuestStackReconcile = !guestStackReconcileReasons.isEmpty
 
-        if case .readFailed(let status) = guestHTTP, !canPlanGuestComposeReconcile {
+        if case .readFailed(let status) = guestHTTP, !canPlanGuestStackReconcile {
             blockers.append("recovery-blocked-guest-http-read-failed-\(runtimeRecoveryFailureToken(status))")
         }
-        if !canPlanVMRestart && !canPlanGuestComposeReconcile {
+        if !canPlanVMRestart && !canPlanGuestStackReconcile {
             if case .readFailed(let status) = hostProxyReadinessHTTP {
                 blockers.append("recovery-blocked-host-proxy-readiness-http-read-failed-\(runtimeRecoveryFailureToken(status))")
             }
@@ -260,11 +260,11 @@ public enum RuntimeRecoveryPlanner {
         return blockers
     }
 
-    private static func guestComposeReconcileReasons(
+    private static func guestStackReconcileReasons(
         input: RuntimeRecoveryInput,
         guestHTTP: RuntimeRecoveryHTTPStatus,
         waitingForGuest: Bool,
-        containerFailureRequiresComposeReconcile: Bool
+        guestServiceFailureRequiresReconcile: Bool
     ) -> [RuntimeRecoveryActionReason] {
         guard !waitingForGuest, input.vmService == .loaded, input.vmIP != nil else {
             return []
@@ -274,8 +274,8 @@ public enum RuntimeRecoveryPlanner {
         if !guestHTTP.isSuccessful, !guestHTTP.isReadFailure {
             reasons.append(.guestHTTPUnhealthy(input.guestHTTP))
         }
-        if containerFailureRequiresComposeReconcile {
-            reasons.append(.containerFailureRequiresComposeReconcile)
+        if guestServiceFailureRequiresReconcile {
+            reasons.append(.guestServiceFailureRequiresReconcile)
         }
         return reasons
     }
@@ -284,7 +284,7 @@ public enum RuntimeRecoveryPlanner {
         input: RuntimeRecoveryInput,
         guestHTTP: RuntimeRecoveryHTTPStatus,
         waitingForGuest: Bool,
-        containerFailureRequiresComposeReconcile _: Bool
+        guestServiceFailureRequiresReconcile _: Bool
     ) -> [RuntimeRecoveryActionReason] {
         guard !waitingForGuest else {
             return []

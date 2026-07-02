@@ -423,9 +423,10 @@ function capabilities(overrides = {}) {
     canOpenLocalFiles: true,
     canStreamLogs: true,
     canControlRuntimeServices: true,
+    canControlGuestServices: true,
     canExportLogs: true,
     canViewReleaseMetadata: true,
-    canUseTestTools: true,
+    canUseLab: true,
     ...overrides
   };
 }

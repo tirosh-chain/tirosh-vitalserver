@@ -86,6 +86,11 @@ final class RuntimeOperationReportingUseCaseTests: XCTestCase {
             guestHTTP: "200",
             redisUIHTTP: "200",
             swaggerUIHTTP: "200",
+            vitalDBObservation: VitalDBObservationDocument(
+                observedAt: "2026-05-30T00:00:00Z",
+                ready: true,
+                recorderOnlineThresholdSeconds: 30
+            ),
             failureReasons: []
         )
     }

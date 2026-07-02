@@ -59,38 +59,23 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var vitalRecorders = RuntimeVitalRecorderHistory()
     @Published var recorderActivityWindows: [String: RuntimeVitalRecorderActivityWindow] = [:]
     @Published var vitalRelationships = RuntimeVitalRelationshipHistory()
-    @Published var containerObservation: RuntimeContainerObservation?
+    @Published var isRunningVitalDBVisibilityAction = false
+    @Published var vitalDBVisibilityActionMessage = ""
     @Published var remoteConsoleHTTP: String?
     @Published var remoteConsoleStartedAt: String?
-    @Published var testKitStatus = RuntimeTestKitStatus(enabled: false, state: .disabled)
-    @Published var selectedTestKitSessionID = ""
-    @Published var selectedTestKitBedRoomNames: Set<String> = []
-    @Published var testKitVrcode = RuntimeViewModel.generatedTestKitVrcode()
-    @Published var testKitOrphanVrcode = ""
-    @Published var testKitScenario = RuntimeTestKitScenario.normalMonitoring
-    @Published var testKitSignalQuality = RuntimeTestKitSignalQuality.clean
-    @Published var testKitRecorderCondition = RuntimeTestKitRecorderCondition.normal
-    @Published var testKitRecorderSourceMode = RuntimeTestKitRecorderSourceMode.generated
-    @Published var testKitVitalFilePath = ""
-    @Published var testKitVitalFileScenario = RuntimeTestKitVitalFileScenario.basicMonitor
-    @Published var testKitVitalFileStartOffsetSeconds = 0.0
-    @Published var testKitVitalFileDurationSeconds = 120.0
-    @Published var testKitRecorderCount = 1
-    @Published var testKitBedCount = 1
-    @Published var testKitBedPrefix = "testbed"
-    @Published var testKitAppendRandomBedSuffix = true
-    @Published var testKitIntervalSeconds = 1.0
-    @Published var testKitDurationSeconds = 0.0
-    @Published var testKitMaxMessages = 0
-    @Published var testKitShiftTime = true
-    @Published var testKitGenerateFrames = true
-    @Published var isRunningTestKitAction = false
-    @Published var testKitActionMessage = ""
-    @Published var testKitActionMessageTone = RuntimeTestKitActionMessageTone.neutral
+    @Published var labScenarios = RuntimeLabScenarioList.unavailable(readError: "Product Lab scenarios have not been loaded.")
+    @Published var selectedLabScenarioID = ""
+    @Published var labSessionName = ""
+    @Published var labRecorderCount = 1
+    @Published var selectedLabSessionID = ""
+    @Published var labSessionResponse = RuntimeLabSessionResponse.unavailable(readError: "No Product Lab session has been selected.")
+    @Published var labVitalFilePath = ""
+    @Published var isRunningLabAction = false
+    @Published var labActionMessage = ""
+    @Published var labActionMessageTone = RuntimeLabActionMessageTone.neutral
 
     let controlClient: any RuntimeControlClient
     let hostClient: any RuntimeHostClient
-    let testKitController: (any RuntimeTestKitControlling)?
     private let localAPISettings: (any RuntimeControlLocalAPISettingsApplying)?
     private let snapshots: RuntimePresentationSnapshotLoader
     private let statusRefresher: RuntimeStatusRefresher
@@ -102,7 +87,6 @@ public final class RuntimeViewModel: ObservableObject {
     let backupSelectionPolicy = RuntimeBackupSelectionPolicy()
     let presentationFormatter = RuntimePresentationFormatter()
     let updateBundleVerifier = RuntimeUpdateBundleVerifier()
-    let testKitPresentationPolicy = RuntimeTestKitPresentationPolicy()
     let navigationCoordinator = RuntimeNavigationCoordinator()
     private let settingsValidator = RuntimeSettingsValidator()
     private let vitalFilesDirectoryPolicy = RuntimeVitalFilesDirectoryPolicy()
@@ -110,7 +94,6 @@ public final class RuntimeViewModel: ObservableObject {
     public init(
         controlClient: any RuntimeControlClient,
         hostClient: any RuntimeHostClient,
-        testKitController: (any RuntimeTestKitControlling)? = nil,
         snapshotReader: (any RuntimeViewModelSnapshotReading)? = nil,
         initialSettings: RuntimeSettings? = nil,
         initialStatus: RuntimeStatus? = nil,
@@ -121,7 +104,6 @@ public final class RuntimeViewModel: ObservableObject {
     ) {
         self.controlClient = controlClient
         self.hostClient = hostClient
-        self.testKitController = testKitController
         self.localAPISettings = localAPISettings
         self.helperMessageLog = helperMessageLog
         let loadedSettings = initialSettings ?? controlClient.loadSettings()
@@ -139,7 +121,6 @@ public final class RuntimeViewModel: ObservableObject {
         self.savedSettings = displaySettings
         self.settings = displaySettings
         self.status = resolvedStatus
-        self.containerObservation = resolvedStatus.containerObservation
         let snapshots = RuntimePresentationSnapshotLoader(
             controlClient: controlClient,
             hostClient: hostClient,
@@ -257,12 +238,10 @@ public final class RuntimeViewModel: ObservableObject {
         let refreshed = await observabilityRefresher.refreshRuntimeEvents(
             limit: runtimeEventLimit,
             periodRawValue: runtimeEventPeriod,
-            filterRawValue: runtimeEventFilter,
-            statusContainerObservation: status.containerObservation
+            filterRawValue: runtimeEventFilter
         )
         runtimeEvents = refreshed.events
         runtimeEventsLast24HoursCount = refreshed.last24HoursCount
-        containerObservation = refreshed.containerObservation
     }
 
     func refreshVitalRecorders() async {
@@ -283,6 +262,57 @@ public final class RuntimeViewModel: ObservableObject {
         query: RuntimeVitalRecorderActivityWindowQuery
     ) -> RuntimeVitalRecorderActivityWindow? {
         recorderActivityWindows[recorderActivityWindowKey(query)]
+    }
+
+    func hideVitalDBRecorder(vrcode: String) async {
+        await runVitalDBVisibilityAction(successMessage: "VRecorder hidden.") {
+            try await controlClient.hideVitalDBRecorders(.init(vrcodes: [vrcode]))
+        }
+    }
+
+    func unhideVitalDBRecorder(vrcode: String) async {
+        await runVitalDBVisibilityAction(successMessage: "VRecorder visible.") {
+            try await controlClient.unhideVitalDBRecorders(.init(vrcodes: [vrcode]))
+        }
+    }
+
+    func deleteVitalDBRecorder(vrcode: String) async {
+        await runVitalDBVisibilityAction(successMessage: "Hidden VRecorder deleted.") {
+            try await controlClient.deleteVitalDBRecorders(.init(vrcodes: [vrcode]))
+        }
+    }
+
+    func hideVitalDBBed(bedID: String) async {
+        await runVitalDBVisibilityAction(successMessage: "Bed hidden.") {
+            try await controlClient.hideVitalDBBeds(.init(bedIDs: [bedID]))
+        }
+    }
+
+    func unhideVitalDBBed(bedID: String) async {
+        await runVitalDBVisibilityAction(successMessage: "Bed visible.") {
+            try await controlClient.unhideVitalDBBeds(.init(bedIDs: [bedID]))
+        }
+    }
+
+    func deleteVitalDBBed(bedID: String) async {
+        await runVitalDBVisibilityAction(successMessage: "Hidden bed deleted.") {
+            try await controlClient.deleteVitalDBBeds(.init(bedIDs: [bedID]))
+        }
+    }
+
+    private func runVitalDBVisibilityAction(
+        successMessage: String,
+        action: () async throws -> RuntimeVitalRecorderHistory
+    ) async {
+        isRunningVitalDBVisibilityAction = true
+        vitalDBVisibilityActionMessage = "Updating VitalDB visibility..."
+        defer { isRunningVitalDBVisibilityAction = false }
+        do {
+            vitalRecorders = try await action()
+            vitalDBVisibilityActionMessage = successMessage
+        } catch {
+            vitalDBVisibilityActionMessage = error.localizedDescription
+        }
     }
 
     private func recorderActivityWindowKey(_ query: RuntimeVitalRecorderActivityWindowQuery) -> String {
@@ -384,7 +414,7 @@ public final class RuntimeViewModel: ObservableObject {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.proxyRepairRunning,
             successMessage: AppConstants.StatusText.proxyRepairCompleted,
-            action: { try await self.controlClient.repairProxy() }
+            action: { try await self.hostClient.repairProxy() }
         )
         await refreshHealthStatus()
     }
@@ -399,7 +429,7 @@ public final class RuntimeViewModel: ObservableObject {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.datastoreRepairRunning,
             successMessage: AppConstants.StatusText.datastoreRepairCompleted,
-            action: { try await self.controlClient.repairDatastore() }
+            action: { try await self.hostClient.repairDatastore() }
         )
         await refreshHealthStatus()
     }
@@ -414,7 +444,7 @@ public final class RuntimeViewModel: ObservableObject {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.vmDiskRepairRunning,
             successMessage: AppConstants.StatusText.vmDiskRepairCompleted,
-            action: { try await self.controlClient.repairVMDisk() }
+            action: { try await self.hostClient.repairVMDisk() }
         )
         await refreshHealthStatus()
     }
@@ -429,7 +459,7 @@ public final class RuntimeViewModel: ObservableObject {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.runtimeServicesRepairRunning,
             successMessage: AppConstants.StatusText.runtimeServicesRepaired,
-            action: { try await self.controlClient.repairRuntimeServices() }
+            action: { try await self.hostClient.repairRuntimeServices() }
         )
         await refreshHealthStatus()
     }
@@ -444,37 +474,7 @@ public final class RuntimeViewModel: ObservableObject {
             waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
             runningMessage: AppConstants.StatusText.restartVMRuntimeRunning,
             successMessage: AppConstants.StatusText.restartVMRuntimeCompleted,
-            action: { try await self.controlClient.repairRuntimeServices() }
-        )
-        await refresh()
-    }
-
-    func startRuntimeServices() async {
-        guard controlClient.capabilities.canControlRuntimeServices else {
-            message = AppConstants.StatusText.actionUnavailable
-            return
-        }
-        _ = await runClientAction(
-            preparingMessage: AppConstants.StatusText.runtimeServicesStartPreparing,
-            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
-            runningMessage: AppConstants.StatusText.runtimeServicesStartRunning,
-            successMessage: AppConstants.StatusText.runtimeServicesStarted,
-            action: { try await self.controlClient.startRuntimeServices() }
-        )
-        await refreshHealthStatus()
-    }
-
-    func stopRuntimeServices() async {
-        guard controlClient.capabilities.canControlRuntimeServices else {
-            message = AppConstants.StatusText.actionUnavailable
-            return
-        }
-        _ = await runClientAction(
-            preparingMessage: AppConstants.StatusText.runtimeServicesStopPreparing,
-            waitingMessage: AppConstants.StatusText.uninstallWaitingForPrivilege,
-            runningMessage: AppConstants.StatusText.runtimeServicesStopRunning,
-            successMessage: AppConstants.StatusText.runtimeServicesStopped,
-            action: { try await self.controlClient.stopRuntimeServices() }
+            action: { try await self.hostClient.repairRuntimeServices() }
         )
         await refresh()
     }
@@ -656,7 +656,6 @@ public final class RuntimeViewModel: ObservableObject {
 private extension RuntimeViewModel {
     func applyStatusRefreshResult(_ result: RuntimeStatusRefreshResult) {
         status = result.status
-        containerObservation = result.status.containerObservation
         if let selectedLogSource = result.selectedLogSource {
             self.selectedLogSource = selectedLogSource
         }

@@ -196,24 +196,108 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.createRuntimeDataBackup()
     }
 
-    public func startRuntimeServices() async throws -> RuntimeCommandResult {
-        try await commandWorker.startRuntimeServices()
+    public func listGuestServices() async throws -> RuntimeGuestControlServiceList {
+        try await commandWorker.listGuestServices()
     }
 
-    public func stopRuntimeServices() async throws -> RuntimeCommandResult {
-        try await commandWorker.stopRuntimeServices()
+    public func guestStackStatus() async throws -> RuntimeGuestControlStackStatus {
+        try await commandWorker.guestStackStatus()
     }
 
-    public func startTestKitService() async throws -> RuntimeCommandResult {
-        try await commandWorker.startTestKitService()
+    public func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
+        try await commandWorker.guestServiceStatus(service)
     }
 
-    public func stopTestKitService() async throws -> RuntimeCommandResult {
-        try await commandWorker.stopTestKitService()
+    public func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandWorker.startGuestService(request)
     }
 
-    public func restartTestKitService() async throws -> RuntimeCommandResult {
-        try await commandWorker.restartTestKitService()
+    public func stopGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandWorker.stopGuestService(request)
+    }
+
+    public func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation {
+        try await commandWorker.restartGuestService(request)
+    }
+
+    public func loadLabScenarios() async throws -> RuntimeLabScenarioList {
+        try await commandWorker.loadLabScenarios()
+    }
+
+    public func loadLabBeds() async throws -> RuntimeLabBedList {
+        try await commandWorker.loadLabBeds()
+    }
+
+    public func loadLabRecorders() async throws -> RuntimeLabRecorderList {
+        try await commandWorker.loadLabRecorders()
+    }
+
+    public func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList {
+        try await commandWorker.createLabBeds(request)
+    }
+
+    public func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList {
+        try await commandWorker.deleteLabBeds(request)
+    }
+
+    public func resetLabBeds() async throws -> RuntimeLabBedList {
+        try await commandWorker.resetLabBeds()
+    }
+
+    public func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) async throws -> RuntimeLabRecorderList {
+        try await commandWorker.createLabRecorders(request)
+    }
+
+    public func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList {
+        try await commandWorker.deleteLabRecorders(request)
+    }
+
+    public func resetLabRecorders() async throws -> RuntimeLabRecorderList {
+        try await commandWorker.resetLabRecorders()
+    }
+
+    public func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandWorker.hideVitalDBRecorders(request)
+    }
+
+    public func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandWorker.unhideVitalDBRecorders(request)
+    }
+
+    public func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandWorker.deleteVitalDBRecorders(request)
+    }
+
+    public func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandWorker.hideVitalDBBeds(request)
+    }
+
+    public func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandWorker.unhideVitalDBBeds(request)
+    }
+
+    public func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+        try await commandWorker.deleteVitalDBBeds(request)
+    }
+
+    public func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse {
+        try await commandWorker.createLabSession(request)
+    }
+
+    public func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await commandWorker.loadLabSession(sessionId: sessionId)
+    }
+
+    public func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await commandWorker.startLabSession(sessionId: sessionId)
+    }
+
+    public func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        try await commandWorker.stopLabSession(sessionId: sessionId)
+    }
+
+    public func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
+        try await commandWorker.replayLabVitalFile(request)
     }
 
     public func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {

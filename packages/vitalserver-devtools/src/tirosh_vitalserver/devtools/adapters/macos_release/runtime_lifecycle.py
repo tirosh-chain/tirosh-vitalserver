@@ -101,8 +101,10 @@ RUNTIME_BOOT_SMOKE_REQUIRED_STAGES = (
     "bootstrap-result",
     "runtime-state",
     "systemd-units",
+    "runtime-data",
     "http",
     "compose-services",
+    "guest-control-api",
     "disk-health",
     "capabilities",
     "command-dispatch",
@@ -1548,6 +1550,35 @@ def inspect_runtime_boot_smoke_manifest(
                 f"error: runtime boot smoke manifest is missing stages: {manifest}"
             ),
         }
+    for stage in stages:
+        if not isinstance(stage, dict):
+            return {
+                "ready": False,
+                "terminal": True,
+                "message": (
+                    "error: runtime boot smoke manifest stage is invalid: "
+                    f"{manifest}"
+                ),
+            }
+        stage_status = stage.get("status")
+        if stage_status in {"failed", "timeout", "cleanup-failed"}:
+            return {
+                "ready": False,
+                "terminal": True,
+                "message": (
+                    "error: runtime boot smoke stage failed while waiting: "
+                    f"name={stage.get('name')} status={stage_status} "
+                    f"runId={run_id} manifest={manifest} "
+                    f"message={stage.get('message')}"
+                ),
+            }
+    if status == "passed":
+        return {
+            "ready": True,
+            "terminal": False,
+            "runId": run_id,
+            "message": "runtime boot smoke passed",
+        }
     for stage_name in RUNTIME_BOOT_SMOKE_REQUIRED_STAGES:
         stage = rootfs_stage(stages, stage_name)
         if stage is None:
@@ -1577,13 +1608,6 @@ def inspect_runtime_boot_smoke_manifest(
                 f"waiting for runtime boot smoke stage: "
                 f"{stage_name} status={stage_status}"
             ),
-        }
-    if status == "passed":
-        return {
-            "ready": True,
-            "terminal": False,
-            "runId": run_id,
-            "message": "runtime boot smoke passed",
         }
     if status == "failed":
         return {

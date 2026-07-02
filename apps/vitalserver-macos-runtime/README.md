@@ -50,7 +50,7 @@ Browser / VRecorder
 | 개발용 설치물을 지우고 싶다 | `make dist/uninstall/dev` |
 | VM을 직접 띄워 PoC를 확인하고 싶다 | `make runtime/up` |
 
-세부 문서는 [macOS Runtime Overview](../../docs/macos-runtime/overview.md)를 진입점으로 봅니다.
+세부 문서는 [macOS Runtime Overview](../../docs/runtime/macos/overview.md)를 진입점으로 봅니다.
 
 ## 관측 SoT
 
@@ -58,18 +58,17 @@ runtime 상태와 VitalDB 관측값은 아래 흐름으로 정규화합니다.
 
 ```text
 vitaldb-observer
-  -> guest runtime-state.json
-  -> watchdog/runtime
-  -> runtime-status.json
-  -> runtime-events.jsonl
-  -> runtime-observability.sqlite
+  -> Guest/Postgres VitalDB read model
+  -> Guest Control API /v1/vitaldb/*
   -> Runtime Control API /runtime/*, /vitaldb/*
 ```
 
 `vitaldb-observer`는 Redis와 proxy/access log를 읽는 stateless collector입니다. 최종 observation
-source of truth는 watchdog/runtime이 관리하는 `runtime-observability.sqlite`입니다. UI와 Runtime
-Control API는 observer container를 직접 조회하지 않고 runtime read model을 기준으로 응답합니다.
-전체 owner map은 [Runtime observability model](../../docs/macos-runtime/observability.md#source-of-truth-map)을
+source of truth는 Guest/Postgres read model입니다. Host `runtime-status.json`과
+`runtime-observability.sqlite`는 Host runtime state, event index, diagnostics evidence에만
+사용하고 product VitalDB read source로 승격하지 않습니다. UI와 Runtime Control API는 observer
+container를 직접 조회하지 않고 Guest Control API read model을 기준으로 응답합니다.
+전체 owner map은 [Runtime observability model](../../docs/runtime/macos/observability.md#source-of-truth-map)을
 봅니다.
 
 ## 사용자 시나리오
@@ -207,7 +206,7 @@ apps/vitalserver-macos-runtime/release.json
 apps/vitalserver-macos-runtime/release-dev.json
 ```
 
-`release.json`은 stable channel SoT이고, `release-dev.json`은 내부 dev channel SoT입니다. `*-release` target은 `release.json`을 사용하고 현재 repository branch가 `main`일 때만 실행됩니다. `*-dev` target은 `release-dev.json`을 사용하며 branch 제약을 두지 않습니다. Manifest field 정책과 dev/test exposure 정책은 [packaging 문서](../../docs/macos-runtime/packaging.md#버전-source-of-truth)를 기준으로 관리합니다.
+`release.json`은 stable channel SoT이고, `release-dev.json`은 내부 dev channel SoT입니다. `*-release` target은 `release.json`을 사용하고 현재 repository branch가 `main`일 때만 실행됩니다. `*-dev` target은 `release-dev.json`을 사용하며 branch 제약을 두지 않습니다. Manifest field 정책과 dev/test exposure 정책은 [packaging 문서](../../docs/runtime/macos/packaging.md#버전-source-of-truth)를 기준으로 관리합니다.
 
 `VitalServer Helper`는 최상위 product release입니다. 플랫폼별 UI/VM provider 구현은 같은 Helper release 아래의 variant로 보고, 세부 변경 범위는 Helper UI, Updater, Supervisor, VM Driver, Service Stack, VM Image, VitalServer component version으로 설명합니다.
 
@@ -277,11 +276,11 @@ Update bundle manifest는 `schemaVersion: 3`, `channel`, `helperVersion`, `relea
 
 | 문서 | 볼 때 |
 |---|---|
-| [macOS Runtime Overview](../../docs/macos-runtime/overview.md) | 문서군 전체 지도와 시나리오 |
-| [Architecture](../../docs/macos-runtime/architecture.md) | As-is/To-be 구조와 책임 경계 |
-| [Runtime Control API](../../docs/macos-runtime/runtime-control-api.md) | PWA 직전 Runtime Control API 계약, OpenAPI, local read-only server 경계 |
-| [Runtime Observability](../../docs/macos-runtime/observability.md) | runtime status/event/VitalDB observation SoT와 SQLite read model |
-| [Packaging and Update](../../docs/macos-runtime/packaging.md) | PKG/DMG/update bundle 계약 |
-| [Runtime](../../docs/macos-runtime/runtime.md) | VM boot, cloud-init, guest bootstrap, network/identity |
+| [macOS Runtime Overview](../../docs/runtime/macos/overview.md) | 문서군 전체 지도와 시나리오 |
+| [Architecture](../../docs/runtime/macos/architecture.md) | As-is/To-be 구조와 책임 경계 |
+| [Runtime Control API](../../docs/runtime/macos/runtime-control-api.md) | Runtime Control API 계약, OpenAPI, local server 경계 |
+| [Runtime Observability](../../docs/runtime/macos/observability.md) | runtime status/event, Guest/Postgres read model, diagnostics 경계 |
+| [Packaging and Update](../../docs/runtime/macos/packaging.md) | PKG/DMG/update bundle 계약 |
+| [Runtime](../../docs/runtime/macos/runtime.md) | VM boot, cloud-init, guest bootstrap, network/identity |
 | [Troubleshooting](../../docs/troubleshooting.md) | 502, stale pid, disk full, update failure, install cleanup 등 |
 | [macOS host proxy ADR](../../docs/adr/0001-macos-host-proxy-for-vrecorder-ip.md) | host proxy가 필요한 이유 |

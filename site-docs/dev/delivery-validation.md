@@ -143,8 +143,8 @@ Testkit은 실제 Recorder 장비를 항상 연결할 수 없는 상황에서 �
 | 범위 | 확인하는 것 |
 |---|---|
 | unit test | 상태 판단 규칙, contract, parser, formatter |
-| integration test | observer, testkit, API client, package plan |
-| testkit smoke | simulated recorder와 Vital Server 연결 |
+| integration test | observer, Product Lab/dev testkit, API client, package plan |
+| testkit smoke | dev simulated recorder와 Vital Server 연결 |
 | testkit load | 반복 `send_data` 처리와 저장 흐름 |
 | runtime chaos | permission, update, observability failure injection |
 | Health Check scenario | VR observed, missing, stale 상태 |
@@ -188,7 +188,7 @@ VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 �
 | Settings apply 후 restart | Configure restart policy가 VM runtime restart requirement를 판단한 뒤, 필요할 때만 Guest shutdown 준비 후 poweroff 관측을 거쳐 restart |
 | Product update stop plan | update shutdown-stop port를 통해 VM owner가 stop 순서를 실행 |
 | rollback/service-control | service start/stop wrapper가 VM owner를 통과 |
-| watchdog recovery | Guest compose 문제는 reconcile request/result contract를 먼저 사용하고, VM boundary 문제만 watchdog 전용 restart intent로 VM owner를 통과 |
+| watchdog recovery | Guest product service 문제는 Guest Control stack reconcile operation을 먼저 사용하고, VM boundary 문제만 watchdog 전용 restart intent로 VM owner를 통과 |
 | repair/VM disk replacement | repair intent 또는 best-effort result를 통해 실패 의미를 보존 |
 | Helper UI clean uninstall | `--clean` 사용. graceful stop 실패 시 cleanup 진행을 위해 force stop으로 전환하되 fresh install readiness를 성공으로 추정하지 않음 |
 | Reset for Reinstall | `--force-clean-uninstaller` 사용. fresh install blocker 제거와 readiness 검증을 recovery contract로 수행 |
@@ -197,26 +197,26 @@ VM runtime 상태를 바꾸는 새 코드나 수정은 먼저 아래 기준을 �
 missing, launchd loaded/running mismatch, progress `missing-marker`처럼 서로 다른 상태가 서로
 섞이지 않는지 확인합니다.
 
-Product update shutdown에서 `prepare-update-shutdown.request`가 남아 있고
-`prepare-update-shutdown-result.json`이 없는 상태는 정상 pending으로 보지 않습니다. Guest command
-poller가 unit `failed` 또는 dispatch failure를 명시 result로 기록해야 하며, Host는 이 typed
-failure를 받아 update를 실패로 전환해야 합니다. VM kernel panic이 뒤따라 보이더라도 먼저
-guest shutdown service가 explicit result를 남겼는지 확인합니다.
+Product update shutdown에서 Guest Control update-shutdown operation이 accepted 상태 이후 progress나
+failure 없이 사라지면 정상 pending으로 보지 않습니다. Guest Control API는 operation read에서
+`running`, `failed`, `ready`, `unavailable`을 구분해 보고해야 하며, Host는 typed failure를 받아 update를
+실패로 전환해야 합니다. VM kernel panic이 뒤따라 보이더라도 먼저 Guest operation이 explicit state를
+남겼는지 확인합니다.
 
-`prepare-update-shutdown-result.json`이 `running` 상태에서 "Redis backup completed. Stopping guest
-services." 메시지로 오래 머무르면 Guest worker가 Redis 백업 이후 runtime compose stop 단계에서
-멈춘 것입니다. Docker Compose stop의 container grace timeout은 subprocess 자체의 완료를 보장하지
-않으므로 Guest command는 별도 command timeout을 가져야 합니다. Timeout은 Host가 추측해서 넘기지
-말고 Guest dependency failure result로 기록되어야 rollback/force-stop 경로가 명시적으로 실행됩니다.
-Update shutdown 기준 compose stop grace timeout은 일반 service stop보다 길게 둡니다. TestKit,
-observer, websocket, Redis save처럼 dev/runtime 부하가 있는 상태에서 20초 수준의 stop timeout은
+Guest Control update-shutdown operation이 `running` 상태에서 "Redis backup completed. Stopping guest
+services." 단계로 오래 머무르면 Guest adapter가 Redis 백업 이후 runtime compose stop 단계에서 멈춘
+것입니다. Docker Compose stop의 container grace timeout은 subprocess 자체의 완료를 보장하지 않으므로
+Guest operation은 별도 command timeout을 가져야 합니다. Timeout은 Host가 추측해서 넘기지 말고 Guest
+dependency failure operation state로 기록되어야 rollback/force-stop 경로가 명시적으로 실행됩니다.
+Update shutdown 기준 compose stop grace timeout은 일반 service stop보다 길게 둡니다. Product Lab,
+dev testkit, observer, websocket, Redis save처럼 dev/runtime 부하가 있는 상태에서 20초 수준의 stop timeout은
 정상 종료 중인 컨테이너를 실패로 오인할 수 있습니다.
 Host가 update activation/shutdown 결과를 기다리는 전체 타임아웃은 Guest 측 종료·활성화 단계 최대
 실행 시간보다 작아서는 안 됩니다. 현재는 Host와 Guest 경계의 명시적 실패를 보존하기 위해
 activation/shutdown 대기 상한을 900초로 맞추었고, 타임아웃이 터지기 전에 Guest는 반드시
 `failed` 또는 `failed` 단계 reason code를 남겨야 합니다.
 Guest는 final sync와 `systemctl --no-block poweroff` 요청이 성공한 뒤에만
-`ready`/`poweroff-requested` result를 기록해야 합니다. Poweroff 요청 전에 ready를 먼저 쓰면 Host가
+`ready`/`poweroff-requested` operation state를 기록해야 합니다. Poweroff 요청 전에 ready를 먼저 쓰면 Host가
 실제 요청 실패나 sync hang을 성공 상태로 오해할 수 있습니다.
 Guest가 poweroff target에 도달했더라도 VM process가 종료되지 않을 수 있습니다. `Failed to execute
 shutdown binary`, VM lifecycle `stopping`, `guest-runtime-state-stale`이 함께 보이면 Host는 guest
@@ -263,14 +263,15 @@ compose start, container log start 같은 순서와 guard는 workflow 테스트�
 Docker, mount, filesystem, curl, JSON write 구현은 `infrastructure/bootstrap_operations.py`가
 명시 operations로 제공합니다. application bootstrap code가 infrastructure module을 직접 import하거나
 concrete command를 조립하기 시작하면 같은 경계 붕괴가 재발한 것입니다.
-Guest shutdown request는 single-shot trigger입니다. Worker는 request를 로드하고 `running/starting`
-result를 기록한 직후 request file을 소비해야 합니다. 성공 끝까지 request를 남겨두면 poweroff 또는
-process termination 중 worker가 사라졌을 때 같은 request가 다음 VM boot에서 다시 dispatch되고,
+Guest maintenance operation은 single-shot command입니다. Guest Control API는 command를 accepted
+operation document로 만들고, 이후 worker/adapter가 같은 command를 VM reboot 뒤 다시 실행하지 않도록
+operation identity와 terminal state를 보존해야 합니다. 성공 끝까지 trigger를 재사용 가능한 파일로 남겨두면
+poweroff 또는 process termination 중 worker가 사라졌을 때 같은 작업이 다음 VM boot에서 다시 dispatch되고,
 Settings restart나 watchdog recovery가 update shutdown 경로로 오염될 수 있습니다.
-이 규칙은 `prepare-update-shutdown`에만 한정하지 않습니다. `activate-update`, datastore repair,
-Redis backup, Redis restore처럼 Guest command request file로 dispatch되는 작업은 모두 worker가
-`running` result를 쓴 직후 request를 소비해야 합니다. Invalid request도 failed result를 남긴 뒤
-소비해서 같은 invalid trigger가 반복 실행되지 않게 합니다.
+이 규칙은 update shutdown에만 한정하지 않습니다. update activation, datastore repair, Redis backup,
+Redis restore처럼 Guest Control maintenance API로 dispatch되는 작업은 모두 accepted/running/failed/ready
+operation state를 남기고, invalid command도 failed operation으로 보존해서 같은 invalid trigger가 반복
+실행되지 않게 합니다.
 
 Host의 mutating runtime operation은 `runtime-operation-lease.json`을 source of truth로 사용합니다.
 Lease acquire, heartbeat, release는 파일 lock으로 보호되어야 하며, `missing`을 읽은 뒤 atomic write만
@@ -279,7 +280,7 @@ lease를 덮을 수 있기 때문입니다. Lock 실패는 busy/failed state로 
 추정하고 다음 단계로 진행하면 안 됩니다.
 
 Lock은 state를 대신하지 않습니다. Lock은 같은 owner 영역의 동시 write를 막는 장치이고, operation
-상태는 lease document, request/result document, workflow state document로 명시되어야 합니다. UI나
+상태는 lease document, Guest Control operation document, workflow state document로 명시되어야 합니다. UI나
 watchdog은 lock 파일, pid file, progress marker를 source of truth로 사용하지 말고 typed document를
 읽어야 합니다.
 JSONL event append처럼 read-modify-write로 보이는 기록도 lock 대상입니다. Event 유실은 operation
@@ -299,11 +300,11 @@ command success가 확인되기 전에는 failed draft를 현재 상태로 승�
 
 Settings apply의 activation은 한 종류가 아닙니다. CPU, memory, disk, network, Vital files directory처럼
 VM boundary가 바뀌는 설정은 VM runtime restart를 요구합니다. Redis Relay처럼 guest compose service
-묶음만 바뀌는 설정은 VM을 재시작하지 않고 Guest compose reconcile request/result contract로 적용해야
-합니다. Host는 `reconcile-compose.request`를 쓰고 Guest가 `reconcile-compose-result.json`으로 완료
-또는 실패를 보고할 때까지 bounded wait합니다. Guest capability가 없거나 result가 missing/failed이면
-성공으로 추정하지 않습니다. Settings UI는 이 차이를 `Change activation`으로 표시하고, container
-reconcile을 VM restart처럼 설명하면 안 됩니다.
+묶음만 바뀌는 설정은 VM을 재시작하지 않고 Guest Control stack reconcile operation으로 적용해야
+합니다. Host는 Guest Control API로 reconcile command를 accepted시키고, `/v1/operations/{operationId}`
+read가 완료 또는 실패를 보고할 때까지 bounded wait합니다. Guest capability가 없거나 operation read가
+unavailable/failed이면 성공으로 추정하지 않습니다. Settings UI는 이 차이를 `Change activation`으로
+표시하고, container reconcile을 VM restart처럼 설명하면 안 됩니다.
 
 Host는 VM runtime start가 성공했을 때 실제 start에 사용한 VM config를 applied VM config snapshot으로
 기록하고, Settings read contract는 saved config와 applied config를 함께 제공해야 합니다. Vital files
@@ -437,7 +438,7 @@ runtime chaos까지 모두 대신하지는 않습니다.
 
 ### 5-2. Runtime과 recorder 경로
 
-recorder activity, Health Check, runtime 상태 표시를 바꿨다면 testkit을 함께 봅니다.
+recorder activity, Health Check, runtime 상태 표시를 바꿨다면 Product Lab 경로와 dev testkit 검증을 함께 봅니다.
 
 ```sh
 make testkit/smoke
@@ -597,7 +598,7 @@ Pull request는 변경 목적과 검증 근거가 함께 보여야 합니다. �
   start/stop sequencing을 직접 소유하지 않습니다.
 - Watchdog recovery는 failure boundary에 맞는 가장 낮은 activation을 먼저 선택합니다. Guest HTTP
   unhealthy 또는 critical container service unhealthy처럼 VM process/IP boundary가 유지된 문제는
-  Guest compose reconcile request/result contract로 복구합니다. VM IP missing, VM service not loaded,
+  Guest Control stack reconcile operation으로 복구합니다. VM IP missing, VM service not loaded,
   expired bootstrapping처럼 Host/VM boundary가 깨진 경우만 VM runtime restart로 승격합니다. HTTP probe
   read failure는 compose reconcile이나 VM restart로 추정하지 말고 typed blocker로 남깁니다.
 - Guest filesystem 또는 disk I/O 장애는 proxy/HTTP failure보다 상위의 guest storage 상태로 남깁니다.
@@ -632,7 +633,7 @@ release 전에는 “결과물을 만들었다”와 “현장에 전달해도 �
 | package build 성공 | 전달할 DMG, PKG, bundle을 만들 수 있음 |
 | update bundle verify 성공 | update manifest, checksum, bundle 구성이 맞음 |
 | installed health 성공 | 설치된 runtime이 host proxy, VM, guest HTTP를 확인할 수 있음 |
-| testkit smoke 성공 | simulated recorder가 기본 수집 경로를 통과함 |
+| testkit smoke 성공 | dev simulated recorder가 기본 수집 경로를 통과함 |
 | 주요 실패 패턴 재발 없음 | 이전에 기록한 update, 권한, contract, observability 문제가 다시 나타나지 않음 |
 
 ### 8-1. 실패를 보고할 때

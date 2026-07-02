@@ -213,35 +213,35 @@ struct RuntimeSettingsPanel: View {
         }
         .onChange(of: viewModel.settings.recorderIngressSendDataReplayMaxMiBPerSecond) {
             clampReplayThroughput()
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.recorderIngressSendDataMode) {
             normalizeRecorderLoadControlMode()
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.recorderIngress) {
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.containerMemoryLimitsEnabled) {
             if viewModel.settings.containerMemoryLimitsEnabled {
                 normalizeContainerMemoryLimitTotal()
             }
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.vitalServerContainerMemoryLimitMiB) {
             clampContainerMemoryLimits()
             normalizeContainerMemoryLimitTotal()
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.recorderIngressContainerMemoryLimitMiB) {
             clampContainerMemoryLimits()
             normalizeContainerMemoryLimitTotal()
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.redisContainerMemoryLimitMiB) {
             clampContainerMemoryLimits()
             normalizeContainerMemoryLimitTotal()
-            enableContainerReconcileActivationWhenNeeded()
+            enableGuestStackReconcileActivationWhenNeeded()
         }
         .onChange(of: viewModel.settings.proxyPort) {
             viewModel.syncAdvertisedURLWithProxyIfNeeded()
@@ -317,9 +317,9 @@ struct RuntimeSettingsPanel: View {
         viewModel.settings.recorderIngress.rawArchiveAutoExportEnabled = true
     }
 
-    private func enableContainerReconcileActivationWhenNeeded() {
+    private func enableGuestStackReconcileActivationWhenNeeded() {
         let decision = restartNoticePolicy.decision(draft: viewModel.settings, runtime: viewModel.runtimeSettings)
-        if decision.requiresContainerServicesReconcile && !decision.requiresRestart {
+        if decision.requiresGuestStackReconcile && !decision.requiresRestart {
             viewModel.settings.restartAfterSave = true
         }
     }
@@ -505,7 +505,7 @@ struct RuntimeSettingsPanel: View {
                 requiresRestart
                     ? AppConstants.Labels.requiresVMRestart
                     : requiresActivation
-                        ? AppConstants.Labels.requiresContainerReconcile
+                        ? AppConstants.Labels.requiresGuestStackReconcile
                         : AppConstants.StatusText.noVMRuntimeRestartRequired,
                 systemImage: requiresActivation
                     ? "arrow.clockwise.circle.fill"

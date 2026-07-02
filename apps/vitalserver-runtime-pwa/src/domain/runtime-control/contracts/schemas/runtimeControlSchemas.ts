@@ -42,6 +42,7 @@ const bedStatusSchema = z.enum([
   "notObserved",
   "unknown"
 ]);
+const vitalDBRecordVisibilitySchema = z.enum(["visible", "hidden"]);
 const relationshipEventTypeSchema = z.enum([
   "handoff",
   "duplicateAssignment",
@@ -105,15 +106,6 @@ const recorderIngressMemoryGuardStatusSchema = z.enum([
   "unavailable",
   "disabled"
 ]);
-const testKitStateSchema = z.enum([
-  "disabled",
-  "stopped",
-  "starting",
-  "running",
-  "paused",
-  "stopping",
-  "failed"
-]);
 const vitalRecorderSummarySourceSchema = z.enum([
   "vitalDBObservation",
   "unavailable"
@@ -123,6 +115,47 @@ const vitalDBObservationReadStateSchema = z.enum([
   "unavailable",
   "failed"
 ]);
+const runtimeGuestServicesReadStateSchema = z.enum([
+  "unavailable",
+  "loaded",
+  "failed"
+]);
+const runtimeGuestControlServiceStatusSchema = z
+  .object({
+    service: z.string(),
+    state: z.string(),
+    health: z.string(),
+    observedAt: z.string(),
+    container: nullableString,
+    exitCode: nullableNumber
+  })
+  .passthrough();
+export const runtimeGuestControlStackStatusSchema = z
+  .object({
+    state: z.string(),
+    observedAt: z.string(),
+    services: z.array(runtimeGuestControlServiceStatusSchema)
+  })
+  .passthrough();
+export const runtimeGuestControlServiceOperationSchema = z
+  .object({
+    operationId: z.string(),
+    service: z.string(),
+    command: z.enum(["start", "stop", "restart", "reconcile"]),
+    state: z.enum(["accepted", "running", "completed", "failed", "cancelled"]),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    failure: z
+      .object({
+        kind: z.string(),
+        message: z.string(),
+        evidencePath: nullableString
+      })
+      .passthrough()
+      .nullable()
+      .optional()
+  })
+  .passthrough();
 
 export const runtimeCommandResponseSchema = z
   .object({
@@ -149,9 +182,10 @@ export const runtimeCapabilitiesSchema = z
     canOpenLocalFiles: z.boolean(),
     canStreamLogs: z.boolean(),
     canControlRuntimeServices: z.boolean(),
+    canControlGuestServices: z.boolean(),
     canExportLogs: z.boolean(),
     canViewReleaseMetadata: z.boolean(),
-    canUseTestTools: z.boolean()
+    canUseLab: z.boolean()
   })
   .passthrough();
 
@@ -260,7 +294,7 @@ const runtimeDomainErrorSchema = z
         "waitForGuest",
         "restartGuestAgent",
         "repairGuestBootstrap",
-        "restartContainerServices",
+        "reconcileGuestStack",
         "repairProxyConfiguration",
         "freeProxyPort",
         "inspectVitalDBObservation",
@@ -428,24 +462,9 @@ const runtimeRecorderIngressStatusDocumentSchema = z
   })
   .passthrough();
 
-const runtimeContainerServiceObservationSchema = z
-  .object({
-    service: z.string(),
-    name: nullableString,
-    state: nullableString,
-    health: nullableString,
-    exitCode: nullableNumber,
-    memoryUsedBytes: nullableNumber,
-    memoryLimitBytes: nullableNumber,
-    startedAt: nullableString,
-    uptimeSeconds: nullableNumber
-  })
-  .passthrough();
-
 const runtimeRecorderIngressStatusReadStateSchema = z.enum([
   "notRead",
   "loaded",
-  "skippedMissingProxyPort",
   "commandFailed",
   "emptyResponse",
   "outputInvalid",
@@ -453,37 +472,11 @@ const runtimeRecorderIngressStatusReadStateSchema = z.enum([
   "readFailed"
 ]);
 
-const runtimeFileMetadataReadStateSchema = z.enum([
-  "notRead",
-  "loaded",
-  "readFailed"
-]);
-
-const runtimeContainerServicesReadStateSchema = z.enum([
-  "loaded",
-  "missing",
-  "invalid",
-  "stale",
-  "read-failed"
-]);
-
-const runtimeContainerObservationSchema = z
+const runtimeRecorderIngressStatusReadResultSchema = z
   .object({
-    recorderIngressHTTP: z.string(),
-    recorderIngressStatus: runtimeRecorderIngressStatusDocumentSchema.nullable().optional(),
-    recorderIngressStatusReadState: runtimeRecorderIngressStatusReadStateSchema,
-    recorderIngressStatusReadError: nullableString,
-    runtimeStateUpdatedAt: nullableString,
-    runtimeStateFileUpdatedAt: nullableString,
-    runtimeStateFileMetadataReadState: runtimeFileMetadataReadStateSchema,
-    runtimeStateFileMetadataError: nullableString,
-    containerLogsPresent: z.boolean(),
-    containerLogsBytes: nullableNumber,
-    containerLogsUpdatedAt: nullableString,
-    containerLogsMetadataError: nullableString,
-    composeServices: z.array(runtimeContainerServiceObservationSchema),
-    composeServicesReadState: runtimeContainerServicesReadStateSchema,
-    composeServicesReadError: nullableString
+    readState: runtimeRecorderIngressStatusReadStateSchema,
+    document: runtimeRecorderIngressStatusDocumentSchema.nullable().optional(),
+    readError: nullableString
   })
   .passthrough();
 
@@ -521,6 +514,7 @@ const vitalDBRecorderObservationSchema = z
     config: nullableString,
     online: z.boolean(),
     stale: z.boolean(),
+    visibility: vitalDBRecordVisibilitySchema.optional(),
     activity: vitalDBRecorderActivityObservationSchema.nullable().optional()
   })
   .passthrough();
@@ -532,7 +526,8 @@ const vitalDBBedObservationSchema = z
     vrcode: nullableString,
     lastSeenAt: nullableString,
     patientConnected: nullableBoolean,
-    online: z.boolean()
+    online: z.boolean(),
+    visibility: vitalDBRecordVisibilitySchema.optional()
   })
   .passthrough();
 
@@ -624,14 +619,18 @@ export const runtimeStatusSchema = z
     memory: resourceUsageSchema.optional(),
     systemDisk: resourceUsageSchema.optional(),
     dataStorage: resourceUsageSchema.optional(),
-    guestRuntimeStateError: nullableString,
+    guestServicesReadState: runtimeGuestServicesReadStateSchema.nullable().optional(),
+    guestServices: z.array(z.string()).nullable().optional(),
+    guestServiceStatuses: z
+      .array(runtimeGuestControlServiceStatusSchema)
+      .nullable()
+      .optional(),
+    guestServicesReadError: nullableString,
     dataDirectoryStats: runtimeDataDirectoryStatsSchema.nullable().optional(),
     dataDirectoryStatsError: nullableString,
     proxyPort: z.number().optional(),
     failureReasons: z.array(z.string()).optional(),
-    progress: unknownRecord.nullable().optional(),
-    containerObservation: runtimeContainerObservationSchema.nullable().optional(),
-    vitalDBObservation: vitalDBObservationSchema.nullable().optional()
+    progress: unknownRecord.nullable().optional()
   })
   .passthrough();
 
@@ -716,7 +715,6 @@ export const runtimeEventDocumentSchema = z
     vmErrors: z.array(z.string()).nullable().optional(),
     failureReasons: z.array(z.string()),
     domainErrors: z.array(runtimeDomainErrorSchema).nullable().optional(),
-    containerObservation: runtimeContainerObservationSchema.nullable().optional(),
     progress: unknownRecord.nullable().optional(),
     vitalDBObservation: vitalDBObservationSchema.nullable().optional()
   })
@@ -753,6 +751,33 @@ const recorderActivityPointSchema = z
   })
   .passthrough();
 
+const recorderRedisIPSyncStatusSchema = z.enum([
+  "unknown",
+  "unavailable",
+  "disabled",
+  "pending",
+  "written",
+  "correcting",
+  "corrected",
+  "verified",
+  "mismatch",
+  "write_failed",
+  "verify_failed"
+]);
+
+const recorderRedisIPSyncObservationSchema = z
+  .object({
+    status: recorderRedisIPSyncStatusSchema,
+    redisKey: nullableString.optional(),
+    selectedIp: nullableString.optional(),
+    ipSource: nullableString.optional(),
+    redisValue: nullableString.optional(),
+    lastWriteAt: nullableString.optional(),
+    lastVerifiedAt: nullableString.optional(),
+    lastFailure: nullableString.optional()
+  })
+  .passthrough();
+
 const vitalDBRecorderRecordSchema = z
   .object({
     vrcode: z.string(),
@@ -772,7 +797,9 @@ const vitalDBRecorderRecordSchema = z
     latestAnomalyMessage: nullableString.optional(),
     latestAnomalyObservedAt: nullableString.optional(),
     presentInLatestObservation: z.boolean(),
-    activityTimeline: z.array(recorderActivityPointSchema).optional()
+    visibility: vitalDBRecordVisibilitySchema,
+    activityTimeline: z.array(recorderActivityPointSchema).optional(),
+    redisIPSync: recorderRedisIPSyncObservationSchema.nullable().optional()
   })
   .passthrough();
 
@@ -794,7 +821,8 @@ const vitalDBBedRecordSchema = z
     latestAnomalyKind: vitalDBAnomalyKindSchema.nullable().optional(),
     latestAnomalySeverity: anomalySeveritySchema.nullable().optional(),
     latestAnomalyMessage: nullableString.optional(),
-    latestAnomalyObservedAt: nullableString.optional()
+    latestAnomalyObservedAt: nullableString.optional(),
+    visibility: vitalDBRecordVisibilitySchema
   })
   .passthrough();
 
@@ -814,7 +842,7 @@ const vitalDBRecorderHistorySummarySchema = z
   .passthrough();
 
 const recorderActivityHistorySourceSchema = z.enum([
-  "sqliteProjection",
+  "readModelProjection",
   "unavailable",
   "notProvided"
 ]);
@@ -836,6 +864,9 @@ export const vitalDBRecordersSchema = z
     beds: z.array(vitalDBBedRecordSchema),
     summary: vitalDBRecorderHistorySummarySchema,
     activityHistory: recorderActivityHistorySchema,
+    recorderIngressStatusRead: runtimeRecorderIngressStatusReadResultSchema
+      .nullable()
+      .optional(),
     readError: nullableString
   })
   .passthrough();
@@ -904,141 +935,103 @@ function isBlank(value: string | null | undefined): boolean {
   return value == null || value.trim().length === 0;
 }
 
-const runtimeTestKitBedSchema = z
+const runtimeLabReadStateSchema = z.enum(["loaded", "unavailable", "failed"]);
+
+const runtimeLabSessionStateSchema = z.enum([
+  "accepted",
+  "running",
+  "stopping",
+  "stopped",
+  "failed",
+  "unavailable"
+]);
+
+const runtimeLabRecorderSendStateSchema = z.enum([
+  "notAttempted",
+  "skipped",
+  "sent",
+  "failed"
+]);
+
+const runtimeLabScenarioSchema = z
   .object({
-    roomName: z.string(),
-    bedId: z.string()
+    scenarioId: z.string(),
+    name: z.string(),
+    category: z.string(),
+    description: nullableString
   })
   .passthrough();
 
-const runtimeTestKitCleanupErrorSchema = z
+const runtimeLabSessionSchema = z
   .object({
-    vrcode: z.string(),
-    targetUrl: z.string(),
-    error: z.string()
+    sessionId: z.string(),
+    state: runtimeLabSessionStateSchema,
+    scenarioId: z.string(),
+    name: nullableString,
+    recorderCount: z.number(),
+    targetURL: z.string().nullable(),
+    createdAt: nullableString,
+    updatedAt: nullableString
   })
   .passthrough();
 
-const runtimeTestKitRecorderSchema = z
+const runtimeLabBedSchema = z
   .object({
+    bedId: z.string(),
+    sessionId: z.string(),
+    name: z.string(),
+    state: runtimeLabSessionStateSchema,
+    createdAt: nullableString,
+    updatedAt: nullableString
+  })
+  .passthrough();
+
+const runtimeLabRecorderSchema = z
+  .object({
+    recorderId: z.string(),
+    sessionId: z.string(),
+    bedId: z.string(),
     vrcode: z.string(),
-    baseUrl: z.string(),
-    localIp: nullableString,
-    connected: z.boolean(),
-    joinSent: z.boolean(),
-    joinedAt: nullableNumber,
-    lastReconnectAt: nullableNumber,
-    lastSendDataAt: nullableNumber,
+    state: runtimeLabSessionStateSchema,
+    createdAt: nullableString,
+    updatedAt: nullableString,
     messagesSent: z.number(),
-    bytesSent: z.number()
+    lastSendState: runtimeLabRecorderSendStateSchema,
+    lastSendAt: nullableString,
+    lastSendError: nullableString
   })
   .passthrough();
 
-const runtimeTestKitSessionVitalArtifactSchema = z
+export const runtimeLabScenarioListSchema = z
   .object({
-    path: z.string(),
-    filename: z.string(),
-    sizeBytes: z.number(),
-    createdAt: z.number(),
-    format: z.string(),
-    retentionPolicy: z.string()
+    state: runtimeLabReadStateSchema,
+    scenarios: z.array(runtimeLabScenarioSchema),
+    readError: nullableString
   })
   .passthrough();
 
-const runtimeTestKitSessionVitalUploadResultSchema = z
+export const runtimeLabBedListSchema = z
   .object({
-    statusCode: z.number(),
-    ok: z.boolean(),
-    elapsedSeconds: z.number(),
-    uploadedAt: z.number(),
-    responseText: z.string(),
-    error: nullableString
+    state: runtimeLabReadStateSchema,
+    beds: z.array(runtimeLabBedSchema),
+    readError: nullableString
   })
   .passthrough();
 
-const runtimeTestKitSessionVitalStateSchema = z
+export const runtimeLabRecorderListSchema = z
   .object({
-    exportStatus: z.string(),
-    uploadStatus: z.string(),
-    exportError: nullableString,
-    uploadError: nullableString,
-    artifact: runtimeTestKitSessionVitalArtifactSchema.nullable(),
-    uploadResult: runtimeTestKitSessionVitalUploadResultSchema.nullable()
+    state: runtimeLabReadStateSchema,
+    recorders: z.array(runtimeLabRecorderSchema),
+    readError: nullableString
   })
   .passthrough();
 
-const runtimeTestKitRecorderSourceSchema = z
+export const runtimeLabSessionResponseSchema = z
   .object({
-    type: z.literal("vitalFile"),
-    path: z.string(),
-    scenario: z.enum([
-      "basic_monitor",
-      "periop_full",
-      "bloodbag",
-      "root_sedation",
-      "full_real"
-    ]),
-    startOffsetSeconds: z.number(),
-    durationSeconds: z.number()
-  })
-  .passthrough();
-
-export const runtimeTestKitSessionSchema = z
-  .object({
-    id: z.string(),
-    state: z.string(),
-    targetUrl: z.string(),
-    recordersRequested: z.number(),
-    bedsRequested: z.number(),
-    bedRoomNames: z.array(z.string()),
-    vrcode: nullableString,
-    version: z.string(),
-    intervalSeconds: z.number(),
-    durationSeconds: nullableNumber,
-    maxMessages: nullableNumber,
-    shiftTime: z.boolean(),
-    generateFrames: z.boolean(),
-    source: runtimeTestKitRecorderSourceSchema.nullable().optional(),
-    realSampleKey: nullableString.optional(),
-    scenario: nullableString,
-    defaultScenario: z.string(),
-    createdAt: nullableNumber,
-    startedAt: nullableNumber,
-    stoppedAt: nullableNumber,
-    messagesSent: z.number(),
-    bytesSent: z.number(),
-    lastError: nullableString,
-    cleanupErrors: z.array(runtimeTestKitCleanupErrorSchema),
-    vital: runtimeTestKitSessionVitalStateSchema,
-    recorders: z.array(runtimeTestKitRecorderSchema)
-  })
-  .passthrough();
-
-export const runtimeTestKitStatusSchema = z
-  .object({
-    enabled: z.boolean(),
-    state: testKitStateSchema,
-    serviceName: nullableString,
-    apiBaseURL: nullableString,
-    recorderTargetURL: nullableString,
-    startedAt: nullableString,
-    activeSession: runtimeTestKitSessionSchema.nullable().optional(),
-    sessions: z.array(runtimeTestKitSessionSchema),
-    beds: z.array(runtimeTestKitBedSchema),
-    lastError: nullableString
-  })
-  .passthrough();
-
-export const runtimeTestKitBedListSchema = z.array(runtimeTestKitBedSchema);
-
-export const runtimeTestKitSessionOrNullSchema =
-  runtimeTestKitSessionSchema.nullable();
-
-export const runtimeTestKitRecorderDeletionSchema = z
-  .object({
-    vrcode: z.string(),
-    targetUrl: z.string(),
-    deleted: z.boolean(),
-    error: nullableString
+    state: runtimeLabReadStateSchema,
+    session: runtimeLabSessionSchema.nullable().optional(),
+    operationId: nullableString,
+    labOperationId: nullableString,
+    readError: nullableString
   })
   .passthrough();

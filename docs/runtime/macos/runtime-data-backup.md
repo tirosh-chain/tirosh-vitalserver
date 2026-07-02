@@ -40,7 +40,7 @@ Redis-only backup/restore는 고급 repair 기능입니다. Surgical recovery나
 
 | Artifact | Owner | Restore 대상 |
 |---|---|---|
-| `redis-data` | Guest | 명시적인 guest `redis-restore` request/result를 통한 Redis Docker volume |
+| `redis-data` | Guest | Guest Control `redis-restore` maintenance operation을 통한 Redis Docker volume |
 | `runtime-vm-config` | Host | 설치된 VM config document |
 | `guest-runtime-config` | Host | 배포된 guest runtime config document |
 | `guest-runtime-settings` | Host | runtime settings document |
@@ -109,17 +109,17 @@ Restore compatibility version은 backup unit 전체의 restore 계약이며 prod
 
 Backup creation은 manifest를 마지막에 씁니다. Restore는 missing, duplicated, non-archived, unchecked, size-mismatched, checksum-mismatched, path-escaping, compatibility-incompatible artifact를 거부해야 합니다.
 
-Missing backup directory, decode failure, permission failure, guest capability failure, guest result read failure는 operation failure입니다. Empty backup list나 successful restore로 바꾸면 안 됩니다.
+Missing backup directory, decode failure, permission failure, Guest Control capability failure, Guest Control operation read failure는 operation failure입니다. Empty backup list나 successful restore로 바꾸면 안 됩니다.
 
 ## 5. Redis restore 책임
 
 ### 5-1. Guest-owned restore
 
-Redis restore는 Guest-owned입니다. Host는 선택한 archive를 shared runtime data directory에 staging하고 `redis-restore.request`를 씁니다. Guest command poller는 `tirosh-vitalserver-redis-restore.service`를 dispatch하고, 이 service는 archive를 검증하고 Docker Compose를 stop한 뒤 Redis volume contents를 교체하고 Compose를 start한 다음 `redis-restore-result.json`을 씁니다.
+Redis restore는 Guest-owned입니다. Host는 선택한 archive를 shared runtime data directory에 staging하고 Guest Control API `POST /v1/maintenance/redis-restore`에 guest mount path를 전달합니다. Guest Control API는 operation document를 만들고, archive 검증, Docker Compose stop, Redis volume 교체, Compose start를 Guest 내부 adapter로 실행한 뒤 operation result를 Guest/Postgres에 기록합니다.
 
 ### 5-2. Capability failure
 
-`redisRestore` capability를 보고하지 않는 오래된 Guest는 runtime data restore를 완료할 수 없습니다. Host는 Redis volume internals를 추정하지 말고 capability failure를 명시적으로 보고해야 합니다.
+`maintenance:redis-restore:create` capability를 보고하지 않는 Guest는 runtime data restore를 완료할 수 없습니다. Host는 Redis volume internals를 추정하지 말고 Guest Control capability failure를 명시적으로 보고해야 합니다.
 
 ## 6. Troubleshooting
 
@@ -131,7 +131,7 @@ Redis restore는 Guest-owned입니다. Host는 선택한 archive를 shared runti
 required runtime data backup artifact is missing id=redis-data path=/mnt/tirosh/backups/redis/<archive>.tar.gz
 ```
 
-원인: Guest의 `redis-backup-result.json`은 guest mount namespace 기준 archive path (`/mnt/tirosh/...`)를 보고합니다. Host backup store는 macOS filesystem을 읽으므로, archiving 전에 이 path를 명시적인 shared data directory contract를 통해 변환해야 합니다.
+원인: Guest Control Redis backup operation result는 guest mount namespace 기준 archive path (`/mnt/tirosh/...`)를 보고합니다. Host backup store는 macOS filesystem을 읽으므로, archiving 전에 이 path를 명시적인 shared data directory contract를 통해 변환해야 합니다.
 
 수정 방향: Redis archive를 `RuntimeDataBackupStore.createBackup`에 넘기기 전에 `/mnt/tirosh/<relative>`를 `<installed data directory>/<relative>`로 변환합니다.
 

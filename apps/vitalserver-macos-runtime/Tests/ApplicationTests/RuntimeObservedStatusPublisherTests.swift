@@ -1,42 +1,58 @@
 import Contracts
 import Application
 import XCTest
-import Errors
 
 final class RuntimeObservedStatusPublisherTests: XCTestCase {
-    func testPublishStatusProjectsReturnedVitalDBObservation() throws {
+    func testPublishStatusWritesStatusWithoutProjectingReturnedVitalDBObservation() throws {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-30T00:00:00Z",
             ready: true,
             recorderOnlineThresholdSeconds: 30
         )
-        var projected: [VitalDBObservationDocument] = []
+        var writeCalls = 0
         let publisher = RuntimeObservedStatusPublisher(
             writeStatus: { status, operation, message, progress in
+                writeCalls += 1
                 XCTAssertEqual(status, .healthy)
                 XCTAssertEqual(operation, .health)
                 XCTAssertEqual(message, "runtime healthy")
                 XCTAssertNil(progress)
                 return self.runtimeHealthSnapshot(vitalDBObservation: observation)
-            },
-            projectObservation: { projected.append($0) }
+            }
         )
 
         try publisher.publishStatus(.healthy, operation: .health, message: "runtime healthy")
 
-        XCTAssertEqual(projected, [observation])
+        XCTAssertEqual(writeCalls, 1)
     }
 
-    func testPublishStatusDoesNotProjectWhenSnapshotHasNoVitalDBObservation() throws {
-        var projected: [VitalDBObservationDocument] = []
+    func testPublishStatusPassesProgressToWriter() throws {
+        let progress = RuntimeProgressDocument(
+            operation: .watchdog,
+            phase: .running,
+            step: .startRuntimeServices,
+            stepStatus: .started,
+            message: "checking runtime",
+            reasonCodes: [],
+            startedAt: nil,
+            updatedAt: "2026-07-01T00:00:00Z"
+        )
+        var receivedProgress: RuntimeProgressDocument?
         let publisher = RuntimeObservedStatusPublisher(
-            writeStatus: { _, _, _, _ in self.runtimeHealthSnapshot(vitalDBObservation: nil) },
-            projectObservation: { projected.append($0) }
+            writeStatus: { _, _, _, progress in
+                receivedProgress = progress
+                return self.runtimeHealthSnapshot(vitalDBObservation: nil)
+            }
         )
 
-        try publisher.publishStatus(.degraded, operation: .watchdog, message: "runtime degraded")
+        try publisher.publishStatus(
+            .degraded,
+            operation: .watchdog,
+            message: "runtime degraded",
+            progress: progress
+        )
 
-        XCTAssertTrue(projected.isEmpty)
+        XCTAssertEqual(receivedProgress, progress)
     }
 
     private func runtimeHealthSnapshot(

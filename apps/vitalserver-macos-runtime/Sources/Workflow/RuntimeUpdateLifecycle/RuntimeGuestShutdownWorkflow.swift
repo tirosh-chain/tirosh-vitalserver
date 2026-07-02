@@ -5,18 +5,16 @@ import Foundation
 import Errors
 
 public struct RuntimeGuestShutdownWorkflowContext: Equatable, Sendable {
-    public let guestRunDirectory: URL
     public let waitTimeoutSeconds: Double
     public let progressStatus: RuntimeStatusLevel
     public let progressOperation: RuntimeOperation
 
     public init(
-        guestRunDirectory: URL,
+        guestRunDirectory _: URL,
         waitTimeoutSeconds: Double,
         progressStatus: RuntimeStatusLevel = .updating,
         progressOperation: RuntimeOperation = .applyBundle
     ) {
-        self.guestRunDirectory = guestRunDirectory
         self.waitTimeoutSeconds = waitTimeoutSeconds
         self.progressStatus = progressStatus
         self.progressOperation = progressOperation
@@ -25,36 +23,30 @@ public struct RuntimeGuestShutdownWorkflowContext: Equatable, Sendable {
 
 public struct RuntimeGuestShutdownWorkflowActions {
     public let requireCapability: () throws -> Void
-    public let createGuestRunDirectory: (URL) throws -> Void
-    public let removeShutdownResult: () throws -> Void
-    public let writeShutdownRequest: (RuntimeGuestShutdownRequest) throws -> Void
-    public let loadShutdownResult: () -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>
+    public let prepareUpdateShutdown: (String, String) throws -> RuntimeGuestControlServiceOperation
+    public let loadOperation: (String) throws -> RuntimeGuestControlServiceOperation
+    public let requestGuestPoweroff: () throws -> RuntimeGuestControlServiceOperation
     public let writeProgressStatus: (RuntimeStatusLevel, RuntimeOperation, String) -> Void
     public let requestID: () -> String
-    public let timestamp: () -> String
     public let sleep: () -> Void
     public let log: (String) -> Void
 
     public init(
         requireCapability: @escaping () throws -> Void,
-        createGuestRunDirectory: @escaping (URL) throws -> Void,
-        removeShutdownResult: @escaping () throws -> Void,
-        writeShutdownRequest: @escaping (RuntimeGuestShutdownRequest) throws -> Void,
-        loadShutdownResult: @escaping () -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument>,
+        prepareUpdateShutdown: @escaping (String, String) throws -> RuntimeGuestControlServiceOperation,
+        loadOperation: @escaping (String) throws -> RuntimeGuestControlServiceOperation,
+        requestGuestPoweroff: @escaping () throws -> RuntimeGuestControlServiceOperation,
         writeProgressStatus: @escaping (RuntimeStatusLevel, RuntimeOperation, String) -> Void,
         requestID: @escaping () -> String,
-        timestamp: @escaping () -> String,
         sleep: @escaping () -> Void,
         log: @escaping (String) -> Void
     ) {
         self.requireCapability = requireCapability
-        self.createGuestRunDirectory = createGuestRunDirectory
-        self.removeShutdownResult = removeShutdownResult
-        self.writeShutdownRequest = writeShutdownRequest
-        self.loadShutdownResult = loadShutdownResult
+        self.prepareUpdateShutdown = prepareUpdateShutdown
+        self.loadOperation = loadOperation
+        self.requestGuestPoweroff = requestGuestPoweroff
         self.writeProgressStatus = writeProgressStatus
         self.requestID = requestID
-        self.timestamp = timestamp
         self.sleep = sleep
         self.log = log
     }
@@ -84,79 +76,76 @@ public struct RuntimeGuestShutdownWorkflow {
         case .prepare(let version, let requestLog, let readyLog):
             actions.log(requestLog)
             try actions.requireCapability()
-            try actions.createGuestRunDirectory(context.guestRunDirectory)
-            try actions.removeShutdownResult()
-            let request = useCase.request(
-                version: version,
-                requestID: actions.requestID(),
-                requestedAt: actions.timestamp()
+            let operation = try actions.prepareUpdateShutdown(
+                actions.requestID(),
+                version
             )
-            try actions.writeShutdownRequest(request)
-            try waitForShutdownReady(request, context: context, actions: actions)
+            try waitForShutdownReady(operation, context: context, actions: actions)
+            let poweroff = try actions.requestGuestPoweroff()
+            actions.log("guest poweroff requested operationId=\(poweroff.operationId)")
             actions.log(readyLog)
         }
     }
 
     private func waitForShutdownReady(
-        _ request: RuntimeGuestShutdownRequest,
+        _ operation: RuntimeGuestControlServiceOperation,
         context: RuntimeGuestShutdownWorkflowContext,
         actions: RuntimeGuestShutdownWorkflowActions
     ) throws {
         actions.log(useCase.waitStartedLogMessage(
             timeoutSeconds: context.waitTimeoutSeconds
         ))
-        let configuration = try useCase.waitConfiguration(
+        let configuration = try useCase.operationWaitConfiguration(
             timeoutSeconds: context.waitTimeoutSeconds
         )
+        var current = operation
         for attempt in 0..<configuration.maxAttempts {
-            let outcome = GuestShutdownWaiter.evaluateAttempt(
-                expectedRequestId: request.id,
-                configuration: configuration,
-                attempt: attempt,
-                loadResult: actions.loadShutdownResult()
-            )
-            switch outcome {
-            case .ready(let message):
-                try executeWaitResultPlan(
-                    useCase.waitResultExecutionPlan(.ready(message: message)),
-                    actions: actions
-                )
+            switch current.state {
+            case .completed:
+                try validatePoweroffReady(current)
+                actions.log("guest update shutdown operation completed operationId=\(current.operationId)")
                 return
-            case .failed(let message):
-                try executeWaitResultPlan(
-                    useCase.waitResultExecutionPlan(.failed(message: message)),
-                    actions: actions
+            case .failed:
+                throw RuntimeGuestUpdateUseCaseError.operationFailed(
+                    operationFailureMessage(current)
                 )
-                return
-            case .waiting(let message, let shouldPublishProgress):
+            case .accepted, .running:
+                let message = "guest update shutdown operation \(current.state.rawValue)"
+                let shouldPublishProgress = attempt % configuration.progressEveryAttempts == 0
                 if shouldPublishProgress {
                     actions.log(message)
                     actions.writeProgressStatus(context.progressStatus, context.progressOperation, message)
                 }
                 if attempt < configuration.maxAttempts - 1 {
                     actions.sleep()
+                    current = try actions.loadOperation(operation.operationId)
                 }
+            case .cancelled:
+                throw RuntimeGuestUpdateUseCaseError.operationFailed(
+                    "guest update shutdown operation cancelled operationId=\(current.operationId)"
+                )
             }
         }
 
-        try executeWaitResultPlan(
-            useCase.waitResultExecutionPlan(.timedOut),
-            actions: actions
-        )
+        throw RuntimeGuestUpdateUseCaseError.operationFailed("guest update shutdown timed out")
     }
 
-    private func executeWaitResultPlan(
-        _ plan: RuntimeGuestWaitResultExecutionPlan,
-        actions: RuntimeGuestShutdownWorkflowActions
+    private func validatePoweroffReady(
+        _ operation: RuntimeGuestControlServiceOperation
     ) throws {
-        switch plan {
-        case .completed(let logMessage):
-            actions.log(logMessage)
-        case .failed(let logMessage, let failureMessage):
-            actions.log(logMessage)
-            throw RuntimeGuestUpdateUseCaseError.operationFailed(failureMessage)
-        case .failedWithoutLog(let failureMessage):
-            throw RuntimeGuestUpdateUseCaseError.operationFailed(failureMessage)
+        guard operation.result?.shutdownPhase == "poweroff-ready" else {
+            throw RuntimeGuestUpdateUseCaseError.operationFailed(
+                "guest update shutdown completed without poweroff-ready operationId=\(operation.operationId)"
+            )
         }
+    }
+
+    private func operationFailureMessage(
+        _ operation: RuntimeGuestControlServiceOperation
+    ) -> String {
+        guard let failure = operation.failure else {
+            return "guest update shutdown failed operationId=\(operation.operationId)"
+        }
+        return "guest update shutdown failed operationId=\(operation.operationId) kind=\(failure.kind) reason=\(failure.message)"
     }
 }

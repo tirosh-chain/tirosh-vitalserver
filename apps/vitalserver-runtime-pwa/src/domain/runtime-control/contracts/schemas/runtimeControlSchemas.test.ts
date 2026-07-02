@@ -61,29 +61,19 @@ describe("runtime control contract schemas", () => {
     });
   });
 
-  it("accepts container log metadata read errors in overview responses", () => {
+  it("accepts overview status responses without container observation", () => {
     expect(
       runtimeOverviewSchema.parse(
         fullRuntimeOverview({
           status: {
-            containerObservation: {
-              recorderIngressHTTP: "HTTP 200",
-              recorderIngressStatus: null,
-              recorderIngressStatusReadState: "loaded",
-              runtimeStateFileMetadataReadState: "readFailed",
-              containerLogsPresent: true,
-              containerLogsBytes: null,
-              containerLogsUpdatedAt: null,
-              containerLogsMetadataError: "size-read-failed,mtime-read-failed",
-              composeServicesReadState: "loaded",
-              composeServices: []
-            }
+            runtimeState: "healthy",
+            statusMessage: "loaded"
           }
         })
-      ).status?.containerObservation
+      ).status
     ).toMatchObject({
-      containerLogsPresent: true,
-      containerLogsMetadataError: "size-read-failed,mtime-read-failed"
+      runtimeState: "healthy",
+      statusMessage: "loaded"
     });
   });
 
@@ -217,78 +207,6 @@ describe("runtime control contract schemas", () => {
         vrcode: "VR_TEST"
       }
     });
-  });
-
-  it("requires explicit container observation owner fields", () => {
-    expect(() =>
-      runtimeOverviewSchema.parse({
-        status: {
-          containerObservation: {
-            recorderIngressHTTP: "HTTP 200"
-          }
-        }
-      })
-    ).toThrow();
-
-    expect(
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          status: {
-            containerObservation: fullContainerObservation()
-          }
-        })
-      ).status?.containerObservation
-    ).toMatchObject({
-      recorderIngressHTTP: "HTTP 200",
-      recorderIngressStatusReadState: "loaded",
-      runtimeStateFileMetadataReadState: "notRead",
-      containerLogsPresent: false,
-      composeServicesReadState: "loaded",
-      composeServices: []
-    });
-  });
-
-  it("requires known recorder ingress memory guard status values", () => {
-    expect(
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          status: {
-            containerObservation: {
-              ...fullContainerObservation(),
-              recorderIngressStatus: fullRecorderIngressStatusDocument("healthy")
-            }
-          }
-        })
-      ).status?.containerObservation?.recorderIngressStatus?.replay?.adaptive
-        ?.memoryGuardStatus
-    ).toBe("healthy");
-
-    expect(
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          status: {
-            containerObservation: {
-              ...fullContainerObservation(),
-              recorderIngressStatus: fullRecorderIngressStatusDocument(null)
-            }
-          }
-        })
-      ).status?.containerObservation?.recorderIngressStatus?.replay?.adaptive
-        ?.memoryGuardStatus
-    ).toBeNull();
-
-    expect(() =>
-      runtimeOverviewSchema.parse(
-        fullRuntimeOverview({
-          status: {
-            containerObservation: {
-              ...fullContainerObservation(),
-              recorderIngressStatus: fullRecorderIngressStatusDocument("not-ready")
-            }
-          }
-        })
-      )
-    ).toThrow();
   });
 
   it("requires complete VitalDB recorder activity observations", () => {
@@ -559,6 +477,7 @@ describe("runtime control contract schemas", () => {
           {
             vrcode: "VR_TEST",
             status: "online",
+            visibility: "visible",
             observationCount: 1,
             duplicateObservationCount: 0,
             currentAnomalyCount: 0,
@@ -577,6 +496,7 @@ describe("runtime control contract schemas", () => {
           {
             vrcode: "VR_TEST",
             status: "online",
+            visibility: "visible",
             observationCount: 1,
             duplicateObservationCount: 0,
             currentAnomalyCount: 0,
@@ -616,6 +536,7 @@ describe("runtime control contract schemas", () => {
         {
           vrcode: "VR_HISTORY",
           status: "notObserved",
+          visibility: "visible",
           observationCount: 1,
           duplicateObservationCount: 1,
           currentAnomalyCount: 0,
@@ -626,6 +547,7 @@ describe("runtime control contract schemas", () => {
         {
           bedID: "bed-history",
           status: "notObserved",
+          visibility: "visible",
           observationCount: 1,
           duplicateObservationCount: 2,
           currentAnomalyCount: 0
@@ -660,6 +582,7 @@ describe("runtime control contract schemas", () => {
     ).toMatchObject({
       bedID: "bed-1",
       status: "online",
+      visibility: "visible",
       observationCount: 1,
       duplicateObservationCount: 0,
       currentAnomalyCount: 0
@@ -687,10 +610,51 @@ describe("runtime control contract schemas", () => {
     ).toMatchObject({
       vrcode: "VR_TEST",
       status: "online",
+      visibility: "visible",
       observationCount: 1,
       duplicateObservationCount: 0,
       currentAnomalyCount: 0,
       presentInLatestObservation: true
+    });
+  });
+
+  it("requires explicit VitalDB read model visibility", () => {
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        recorders: [
+          fullVitalRecorderRecord({
+            visibility: undefined
+          })
+        ]
+      }))
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        beds: [
+          fullVitalBedRecord({
+            visibility: undefined
+          })
+        ]
+      }))
+    ).toThrow();
+
+    expect(
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        recorders: [
+          fullVitalRecorderRecord({
+            visibility: "hidden"
+          })
+        ],
+        beds: [
+          fullVitalBedRecord({
+            visibility: "hidden"
+          })
+        ]
+      }))
+    ).toMatchObject({
+      recorders: [{ visibility: "hidden" }],
+      beds: [{ visibility: "hidden" }]
     });
   });
 
@@ -706,7 +670,7 @@ describe("runtime control contract schemas", () => {
         recorders: [],
         beds: [],
         activityHistory: {
-          source: "sqliteProjection"
+          source: "readModelProjection"
         }
       })
     ).toThrow();
@@ -773,7 +737,7 @@ describe("runtime control contract schemas", () => {
   it("requires the complete runtime capability contract", () => {
     expect(() =>
       runtimeCapabilitiesSchema.parse({
-        canUseTestTools: true
+        canUseLab: true
       })
     ).toThrow();
 
@@ -822,9 +786,10 @@ function fullCapabilities() {
     canOpenLocalFiles: true,
     canStreamLogs: true,
     canControlRuntimeServices: true,
+    canControlGuestServices: true,
     canExportLogs: true,
     canViewReleaseMetadata: true,
-    canUseTestTools: true
+    canUseLab: true
   };
 }
 
@@ -933,75 +898,6 @@ function fullRecorderIngressSettings() {
     rawArchiveAutoExportRetryDelaySeconds: 60,
     rawArchiveAutoExportMaxAttempts: 3,
     rawArchiveAutoExportRequestTimeoutSeconds: 300
-  };
-}
-
-function fullContainerObservation() {
-  return {
-    recorderIngressHTTP: "HTTP 200",
-    recorderIngressStatus: null,
-    recorderIngressStatusReadState: "loaded",
-    recorderIngressStatusReadError: null,
-    runtimeStateUpdatedAt: null,
-    runtimeStateFileUpdatedAt: null,
-    runtimeStateFileMetadataReadState: "notRead",
-    runtimeStateFileMetadataError: null,
-    containerLogsPresent: false,
-    containerLogsBytes: null,
-    containerLogsUpdatedAt: null,
-    containerLogsMetadataError: null,
-    composeServices: [],
-    composeServicesReadState: "loaded",
-    composeServicesReadError: null
-  };
-}
-
-function fullRecorderIngressStatusDocument(memoryGuardStatus: string | null) {
-  return {
-    startedAt: "2026-06-25T00:00:00Z",
-    uptimeSeconds: 30,
-    activeWebSockets: 1,
-    activeRecorderConnections: 1,
-    recorders: [],
-    httpRequests: 10,
-    socketIoEventsSeen: 20,
-    socketIoParseFailures: 0,
-    auditWriteFailures: 0,
-    auditFileWriteFailures: 0,
-    auditStdoutWriteFailures: 0,
-    redisIpWriteFailures: 0,
-    redisIpVerifyFailures: 0,
-    throughput: null,
-    spool: null,
-    replay: {
-      status: "replaying",
-      pendingItems: 1,
-      inFlightItems: 1,
-      replayedEvents: 10,
-      retryableFailures: 0,
-      deadLetteredEvents: 0,
-      replayLagSeconds: 0,
-      maxBytesPerSecond: 20 * 1024 * 1024,
-      configuredMaxBytesPerSecond: 20 * 1024 * 1024,
-      adaptive: {
-        enabled: true,
-        minBytesPerSecond: 1024 * 1024,
-        maxBytesPerSecond: 20 * 1024 * 1024,
-        currentMaxBytesPerSecond: 20 * 1024 * 1024,
-        minItemsPerTick: 50,
-        maxItemsPerTick: 1000,
-        currentItemsPerTick: 1000,
-        minConcurrency: 1,
-        maxConcurrency: 8,
-        currentConcurrency: 8,
-        lastDecision: "keep",
-        lastReason: "steady",
-        lastChangedAt: "2026-06-25T00:00:01Z",
-        memoryGuardStatus
-      },
-      lastReplayAt: "2026-06-25T00:00:02Z",
-      lastFailure: null
-    }
   };
 }
 
@@ -1139,6 +1035,7 @@ function fullVitalRecorderRecord(overrides: Record<string, unknown> = {}) {
   return {
     vrcode: "VR_TEST",
     status: "online",
+    visibility: "visible",
     lastIP: null,
     version: null,
     bedID: null,
@@ -1161,6 +1058,7 @@ function fullVitalBedRecord(overrides: Record<string, unknown> = {}) {
     name: null,
     vrcode: null,
     status: "online",
+    visibility: "visible",
     patientConnected: null,
     firstSeenAt: null,
     lastSeenAt: null,

@@ -1,7 +1,7 @@
 [project]
 name = "tirosh-vitalserver-testkit"
 version = "0.1.1"
-description = "Validation and transfer helpers for productionizing VitalServer."
+description = "Dev-only smoke/load tooling for VitalServer validation."
 requires-python = ">=3.14"
 dependencies = [
   "fastapi>=0.115,<1",

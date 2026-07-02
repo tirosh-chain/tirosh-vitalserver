@@ -27,9 +27,12 @@ public enum RuntimeLifecycleCommand: Equatable {
     case repairServices
     case startServices
     case stopServices
-    case startTestKit
-    case stopTestKit
-    case restartTestKit
+    case guestStackStatus(RuntimeGuestControlReadCommand)
+    case guestServiceStart(RuntimeGuestServiceControlCommand)
+    case guestServiceStop(RuntimeGuestServiceControlCommand)
+    case guestServiceRestart(RuntimeGuestServiceControlCommand)
+    case vitalDB(RuntimeVitalDBReadCommand)
+    case lab(RuntimeLabControlCommand)
     case uninstall(RuntimeUninstallCommand)
     case help
 }
@@ -103,12 +106,64 @@ extension RuntimeLifecycleCommand {
             return .startServices
         case "stop-services":
             return .stopServices
-        case "testkit-start":
-            return .startTestKit
-        case "testkit-stop":
-            return .stopTestKit
-        case "testkit-restart":
-            return .restartTestKit
+        case "guest-stack-status":
+            return .guestStackStatus(try parseGuestControlReadCommand(
+                remaining,
+                usage: "usage: vitalserver-vm runtime guest-stack-status [--guest-control-url <url>]"
+            ))
+        case "guest-service-start":
+            return .guestServiceStart(try parseGuestServiceControlCommand(
+                remaining,
+                usage: "usage: vitalserver-vm runtime guest-service-start <service> [--guest-control-url <url>]"
+            ))
+        case "guest-service-stop":
+            return .guestServiceStop(try parseGuestServiceControlCommand(
+                remaining,
+                usage: "usage: vitalserver-vm runtime guest-service-stop <service> [--guest-control-url <url>]"
+            ))
+        case "guest-service-restart":
+            return .guestServiceRestart(try parseGuestServiceControlCommand(
+                remaining,
+                usage: "usage: vitalserver-vm runtime guest-service-restart <service> [--guest-control-url <url>]"
+            ))
+        case "vitaldb-observation":
+            return .vitalDB(try RuntimeVitalDBReadCommand.parseObservationCommand(remaining))
+        case "vitaldb-recorders":
+            return .vitalDB(try RuntimeVitalDBReadCommand.parseRecordersCommand(remaining))
+        case "vitaldb-recorder-activity":
+            return .vitalDB(try RuntimeVitalDBReadCommand.parseRecorderActivityCommand(remaining))
+        case "vitaldb-beds":
+            return .vitalDB(try RuntimeVitalDBReadCommand.parseBedsCommand(remaining))
+        case "vitaldb-relationships":
+            return .vitalDB(try RuntimeVitalDBReadCommand.parseRelationshipsCommand(remaining))
+        case "lab-scenarios":
+            return .lab(try RuntimeLabControlCommand.parseScenariosCommand(remaining))
+        case "lab-beds":
+            return .lab(try RuntimeLabControlCommand.parseBedsCommand(remaining))
+        case "lab-recorders":
+            return .lab(try RuntimeLabControlCommand.parseRecordersCommand(remaining))
+        case "lab-session-create":
+            return .lab(try RuntimeLabControlCommand.parseSessionCreateCommand(remaining))
+        case "lab-session-get":
+            return .lab(try RuntimeLabControlCommand.parseSessionIDCommand(
+                remaining,
+                action: RuntimeLabControlAction.getSession,
+                usage: "usage: vitalserver-vm runtime lab-session-get <session-id> [--guest-control-url <url>]"
+            ))
+        case "lab-session-start":
+            return .lab(try RuntimeLabControlCommand.parseSessionIDCommand(
+                remaining,
+                action: RuntimeLabControlAction.startSession,
+                usage: "usage: vitalserver-vm runtime lab-session-start <session-id> [--guest-control-url <url>]"
+            ))
+        case "lab-session-stop":
+            return .lab(try RuntimeLabControlCommand.parseSessionIDCommand(
+                remaining,
+                action: RuntimeLabControlAction.stopSession,
+                usage: "usage: vitalserver-vm runtime lab-session-stop <session-id> [--guest-control-url <url>]"
+            ))
+        case "lab-vital-replay":
+            return .lab(try RuntimeLabControlCommand.parseVitalReplayCommand(remaining))
         case "uninstall":
             return .uninstall(try parseUninstallCommand(remaining))
         case "-h", "--help", "help":
@@ -144,9 +199,23 @@ extension RuntimeLifecycleCommand {
       vitalserver-vm runtime repair-services
       vitalserver-vm runtime start-services
       vitalserver-vm runtime stop-services
-      vitalserver-vm runtime testkit-start
-      vitalserver-vm runtime testkit-stop
-      vitalserver-vm runtime testkit-restart
+      vitalserver-vm runtime guest-stack-status [--guest-control-url <url>]
+      vitalserver-vm runtime guest-service-start <service> [--guest-control-url <url>]
+      vitalserver-vm runtime guest-service-stop <service> [--guest-control-url <url>]
+      vitalserver-vm runtime guest-service-restart <service> [--guest-control-url <url>]
+      vitalserver-vm runtime vitaldb-observation [--guest-control-url <url>]
+      vitalserver-vm runtime vitaldb-recorders [--guest-control-url <url>]
+      vitalserver-vm runtime vitaldb-recorder-activity <vrcode> [--guest-control-url <url>]
+      vitalserver-vm runtime vitaldb-beds [--guest-control-url <url>]
+      vitalserver-vm runtime vitaldb-relationships [--guest-control-url <url>]
+      vitalserver-vm runtime lab-scenarios [--guest-control-url <url>]
+      vitalserver-vm runtime lab-beds [--guest-control-url <url>]
+      vitalserver-vm runtime lab-recorders [--guest-control-url <url>]
+      vitalserver-vm runtime lab-session-create <scenario-id> [--name <name>] [--recorder-count <count>] [--target-url <url>] [--guest-control-url <url>]
+      vitalserver-vm runtime lab-session-get <session-id> [--guest-control-url <url>]
+      vitalserver-vm runtime lab-session-start <session-id> [--guest-control-url <url>]
+      vitalserver-vm runtime lab-session-stop <session-id> [--guest-control-url <url>]
+      vitalserver-vm runtime lab-vital-replay <vital-file-path> [--session-name <name>] [--target-url <url>] [--guest-control-url <url>]
       vitalserver-vm runtime uninstall [--clean|--force-clean|--force-clean-uninstaller]
     """
 
@@ -184,6 +253,56 @@ extension RuntimeLifecycleCommand {
             }
         }
         return RuntimeUninstallCommand(clean: clean, forceClean: forceClean)
+    }
+
+    private static func parseGuestServiceControlCommand(
+        _ arguments: [String],
+        usage: String
+    ) throws -> RuntimeGuestServiceControlCommand {
+        guard let service = arguments.first, !service.isEmpty else {
+            throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+        }
+        var remaining = Array(arguments.dropFirst())
+        var guestControlBaseURL = RuntimeGuestServiceControlCommand.defaultGuestControlBaseURL
+        while !remaining.isEmpty {
+            let key = remaining.removeFirst()
+            switch key {
+            case "--guest-control-url":
+                guard let value = remaining.first, !value.isEmpty else {
+                    throw RuntimeLifecycleCommandParseError.missingArgument("missing value for --guest-control-url")
+                }
+                remaining.removeFirst()
+                guestControlBaseURL = value
+            default:
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+        }
+        return RuntimeGuestServiceControlCommand(
+            service: service,
+            guestControlBaseURL: guestControlBaseURL
+        )
+    }
+
+    private static func parseGuestControlReadCommand(
+        _ arguments: [String],
+        usage: String
+    ) throws -> RuntimeGuestControlReadCommand {
+        var remaining = arguments
+        var guestControlBaseURL = RuntimeGuestServiceControlCommand.defaultGuestControlBaseURL
+        while !remaining.isEmpty {
+            let key = remaining.removeFirst()
+            switch key {
+            case "--guest-control-url":
+                guard let value = remaining.first, !value.isEmpty else {
+                    throw RuntimeLifecycleCommandParseError.missingArgument("missing value for --guest-control-url")
+                }
+                remaining.removeFirst()
+                guestControlBaseURL = value
+            default:
+                throw RuntimeLifecycleCommandParseError.missingArgument(usage)
+            }
+        }
+        return RuntimeGuestControlReadCommand(guestControlBaseURL: guestControlBaseURL)
     }
 
     private static func parseConfigureCommand(_ arguments: [String]) throws -> RuntimeConfigureCommand {

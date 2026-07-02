@@ -114,7 +114,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
     func testObservationSourceIssueBlocksAutomaticRecovery() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(
-                failureReasons: [.vitalDBObservationMissing]
+                failureReasons: [.guestServiceObservationMissing]
             ),
             hostProxyLivenessHTTP: "204",
             automaticRecoveryEnabled: true
@@ -122,11 +122,11 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             decision,
-            .unrecoverable(reason: "vitaldb-observation-missing")
+            .unrecoverable(reason: "guest-service-observation-missing")
         )
     }
 
-    func testVitalDBObservationMissingDoesNotBlockContainerRecoveryPlan() {
+    func testLegacyContainerFailureDoesNotCreateRecoveryPlanWhenGuestServiceObservationIsMissing() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(
                 vmLifecycle: RuntimeVMLifecycleDocument(
@@ -137,25 +137,12 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
                 ),
                 hostProxyHTTP: "failed",
                 guestHTTP: "failed",
-                containerObservation: RuntimeContainerObservation(
-                    recorderIngressHTTP: "failed",
-                    recorderIngressStatus: nil,
-                    containerLogsPresent: true,
-                    containerLogsBytes: 1024,
-                    composeServices: [
-                        RuntimeContainerServiceObservation(
-                            service: "app",
-                            state: "created"
-                        ),
-                    ]
-                ),
                 failureReasons: [
                     .guestHTTPProbeFailed("failed"),
                     .vmLifecycleDocumentStale,
                     .hostProxyHTTP("failed"),
                     .recorderIngressHTTP("failed"),
-                    .containerService(service: "app", state: "created"),
-                    .vitalDBObservationMissing,
+                    .guestServiceObservationMissing,
                 ]
             ),
             hostProxyLivenessHTTP: "failed",
@@ -164,28 +151,15 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             decision,
-            .recover(
-                reason: "guest-http-probe-failed-failed, vm-lifecycle-document-stale, host-proxy-http-failed, recorder-ingress-http-failed, container-service-app-state-created, vitaldb-observation-missing",
-                plan: RuntimeRecoveryPlan(
-                    canRecover: true,
-                    restartVM: false,
-                    restartGuestLogSync: false,
-                    restartProxy: true,
-                    reconcileGuestCompose: true,
-                    actionReasons: [
-                        .containerFailureRequiresComposeReconcile,
-                        .hostProxyLivenessUnhealthy("failed"),
-                    ]
-                )
-            )
+            .unrecoverable(reason: "guest-service-observation-missing")
         )
     }
 
-    func testNonStaleContainerObservationReadIssueBlocksAutomaticRecovery() {
+    func testGuestServiceObservationReadIssueBlocksAutomaticRecovery() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(
                 vmLifecycle: runningLifecycle(),
-                failureReasons: [.containerObservationReadFailed("guest-runtime-state-invalid")]
+                failureReasons: [.guestServiceObservationReadFailed("guest-control-timeout")]
             ),
             hostProxyLivenessHTTP: "204",
             automaticRecoveryEnabled: true
@@ -193,7 +167,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
 
         XCTAssertEqual(
             decision,
-            .unrecoverable(reason: "container-observation-read-failed-guest-runtime-state-invalid")
+            .unrecoverable(reason: "guest-service-observation-read-failed-guest-control-timeout")
         )
     }
 
@@ -228,7 +202,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
                     restartVM: false,
                     restartGuestLogSync: false,
                     restartProxy: false,
-                    reconcileGuestCompose: true,
+                    reconcileGuestStack: true,
                     actionReasons: [
                         .guestHTTPUnhealthy("503"),
                     ]
@@ -280,27 +254,17 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         )
     }
 
-    func testStaleGuestRuntimeStateContainerObservationCanRecoverWithVMAndProxyRestart() {
+    func testStaleGuestRuntimeStateCanRecoverWithVMAndProxyRestart() {
         let decision = RuntimeWatchdogRecoveryPolicy.decision(
             snapshot: healthSnapshot(
                 vmLifecycle: runningLifecycle(),
                 vmIP: nil,
                 hostProxyHTTP: "http-probe-command-failed exitCode=7",
                 guestHTTP: RuntimeHTTPStatusText.missingVMIP,
-                containerObservation: RuntimeContainerObservation(
-                    recorderIngressHTTP: "failed",
-                    recorderIngressStatus: nil,
-                    recorderIngressStatusReadError: "failed",
-                    containerLogsPresent: true,
-                    containerLogsBytes: 128,
-                    composeServicesReadState: .stale,
-                    composeServicesReadError: "guest-runtime-state-stale"
-                ),
                 failureReasons: [
                     .guestRuntimeStateStale,
                     .hostProxyHTTP("http-probe-command-failed exitCode=7"),
                     .recorderIngressHTTP("failed"),
-                    .containerObservationReadFailed("guest-runtime-state-stale"),
                 ]
             ),
             hostProxyLivenessHTTP: "failed",
@@ -310,7 +274,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
         XCTAssertEqual(
             decision,
             .recover(
-                reason: "guest-runtime-state-stale, host-proxy-http-http-probe-command-failed exitCode=7, recorder-ingress-http-failed, container-observation-read-failed-guest-runtime-state-stale",
+                reason: "guest-runtime-state-stale, host-proxy-http-http-probe-command-failed exitCode=7, recorder-ingress-http-failed",
                 plan: RuntimeRecoveryPlan(
                     canRecover: true,
                     restartVM: true,
@@ -346,7 +310,7 @@ final class RuntimeWatchdogRecoveryPolicyTests: XCTestCase {
                     restartVM: false,
                     restartGuestLogSync: false,
                     restartProxy: false,
-                    reconcileGuestCompose: true,
+                    reconcileGuestStack: true,
                     actionReasons: [
                         .guestHTTPUnhealthy("503"),
                     ]
@@ -437,7 +401,6 @@ private func healthSnapshot(
     guestHTTP: String = "200",
     redisUIHTTP: String = "200",
     swaggerUIHTTP: String = "200",
-    containerObservation: RuntimeContainerObservation? = nil,
     failureReasons: [RuntimeFailureReason] = []
 ) -> RuntimeHealthSnapshot {
     RuntimeHealthSnapshot(
@@ -457,7 +420,6 @@ private func healthSnapshot(
         guestHTTP: guestHTTP,
         redisUIHTTP: redisUIHTTP,
         swaggerUIHTTP: swaggerUIHTTP,
-        containerObservation: containerObservation,
         failureReasons: failureReasons
     )
 }

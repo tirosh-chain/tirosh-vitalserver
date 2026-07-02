@@ -26,10 +26,11 @@ Remote Console PWA, 관측 sidecar, packaging/update 도구, 검증 도구를 �
 ### 1-2. Boundaries
 
 - 제품 사용의 중심 표면은 macOS Swift Helper app입니다.
-- Host runtime이 process, filesystem, update, recovery state를 소유합니다.
-- Swift Helper app과 Remote Console PWA는 Runtime Control API의 같은 상태 계약을 소비합니다.
+- Host runtime은 VM lifecycle, host proxy, native shell, install/update, recovery orchestration을 소유합니다.
+- Guest/Container runtime은 product service control, operation state, Lab API, Postgres-backed read model을 소유합니다.
+- Swift Helper app과 Remote Console PWA는 Runtime Control API와 Guest/Product API 기반 상태 계약을 소비합니다.
 - VitalServer core 변경은 최소화하고, 운영 보강은 sidecar, observer, Host runtime 계층에서 다룹니다.
-- Compose는 제품 실행 방식이 아니라 개발/검증 sandbox입니다.
+- repository root Compose는 개발/검증 sandbox입니다. 설치 runtime의 product service stack은 Linux Guest 안에서 Guest Control API가 제어합니다.
 - missing, invalid, failed, stale, empty state는 서로 다른 의미로 유지합니다.
 
 ## 2. Development
@@ -65,7 +66,7 @@ make runtime/up           # local macOS VM runtime과 host proxy 실행
 make runtime/health       # local runtime health 확인
 
 make pwa/check            # Runtime Control PWA typecheck
-make testkit/smoke        # bounded productization smoke scenario
+make testkit/smoke        # bounded dev verification smoke scenario
 
 make docs/serve           # MkDocs site local preview
 make docs/build           # MkDocs site build
@@ -80,12 +81,13 @@ apps/
   vitalserver/                VitalServer core runtime wrapper
   vitalserver-recorder-ingress/    VRecorder command/IP/activity audit sidecar
   vitaldb-observer/           recorder/bed/proxy/anomaly observation collector
+  vitalserver-lab/            Product Lab scenarios, virtual recorder, .vital replay
   vitalserver-macos-runtime/  macOS Helper app, HostCLI, Runtime Control API, packaging
   vitalserver-runtime-pwa/    Remote Console PWA
 packages/
   vitalserver-devtools/       local build/proxy/runtime/package tools
-  vitalserver-guest-tools/    guest observability/diagnostics tools
-  vitalserver-testkit/        productization smoke and data-flow validation tools
+  vitalserver-guest-tools/    Guest Control API, service operations, diagnostics tools
+  vitalserver-testkit/        dev/load-test smoke and data-flow validation tools
 docs/                         detailed design, ADR, API, troubleshooting source
 site-docs/                    public documentation source
 vendor/vitalserver/           git submodule: vitaldb/vitalserver

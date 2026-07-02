@@ -24,7 +24,7 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
     let httpStatusCode: (String) -> String
     let proxyLivenessURL: (Int) -> String
     let automaticRecoveryEnabled: () throws -> Bool
-    let reconcileGuestCompose: () throws -> Void
+    let reconcileGuestStack: () throws -> Void
     let restartVMRuntime: () throws -> Void
     let restartService: (RuntimeManagedService) throws -> Void
     let createLogsDirectory: () -> RuntimeBestEffortOperationResult
@@ -59,7 +59,7 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
         httpStatusCode: @escaping (String) -> String,
         proxyLivenessURL: @escaping (Int) -> String,
         automaticRecoveryEnabled: @escaping () throws -> Bool,
-        reconcileGuestCompose: @escaping () throws -> Void,
+        reconcileGuestStack: @escaping () throws -> Void,
         restartVMRuntime: @escaping () throws -> Void,
         restartService: @escaping (RuntimeManagedService) throws -> Void,
         createLogsDirectory: @escaping () -> RuntimeBestEffortOperationResult,
@@ -93,7 +93,7 @@ public struct RuntimeWatchdogRunnerCompositionOperations {
         self.httpStatusCode = httpStatusCode
         self.proxyLivenessURL = proxyLivenessURL
         self.automaticRecoveryEnabled = automaticRecoveryEnabled
-        self.reconcileGuestCompose = reconcileGuestCompose
+        self.reconcileGuestStack = reconcileGuestStack
         self.restartVMRuntime = restartVMRuntime
         self.restartService = restartService
         self.createLogsDirectory = createLogsDirectory
@@ -138,7 +138,7 @@ public struct RuntimeWatchdogRunnerComposition {
                     return operations.httpStatusCode(operations.proxyLivenessURL(port))
                 },
                 automaticRecoveryEnabled: operations.automaticRecoveryEnabled,
-                reconcileGuestCompose: operations.reconcileGuestCompose,
+                reconcileGuestStack: operations.reconcileGuestStack,
                 restartVMRuntime: operations.restartVMRuntime,
                 restartService: operations.restartService,
                 writeRuntimeStatus: operations.writeRuntimeStatus,

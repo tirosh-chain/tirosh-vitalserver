@@ -17,23 +17,30 @@ import type {
   RuntimeCommandResponse,
   RuntimeExportLogsRequest,
   RuntimeEventHistory,
+  RuntimeGuestControlServiceOperation,
+  RuntimeGuestControlStackStatus,
+  RuntimeGuestServiceControlRequest,
+  RuntimeLabBedCreateRequest,
+  RuntimeLabBedDeleteRequest,
+  RuntimeLabBedList,
+  RuntimeLabRecorderCreateRequest,
+  RuntimeLabRecorderDeleteRequest,
+  RuntimeLabRecorderList,
+  RuntimeLabScenarioList,
+  RuntimeLabSessionCreateRequest,
+  RuntimeLabSessionResponse,
+  RuntimeLabVitalFileReplayRequest,
   RuntimeLogExportResult,
   RuntimeLogTextRequest,
   RuntimeLogTextResponse,
   RuntimeSettings,
   RuntimeStatus,
-  RuntimeTestKitCreateBedsRequest,
-  RuntimeTestKitDeleteBedsRequest,
-  RuntimeTestKitRecorderDeletionRequest,
-  RuntimeTestKitRestartRequest,
-  RuntimeTestKitSession,
-  RuntimeTestKitSessionSelectionRequest,
-  RuntimeTestKitStatus,
-  RuntimeTestKitVirtualRecorderStartRequest,
   RuntimeUninstallRequest,
   RuntimeUpdateBundleRequest,
   RuntimeUpdateBundleSummaryResponse,
+  VitalDBBedVisibilityRequest,
   VitalDBBeds,
+  VitalDBRecorderVisibilityRequest,
   VitalDBRecorders,
   VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
@@ -42,16 +49,17 @@ import {
   runtimeCapabilitiesSchema,
   runtimeCommandResponseSchema,
   runtimeEventHistorySchema,
+  runtimeGuestControlStackStatusSchema,
+  runtimeGuestControlServiceOperationSchema,
+  runtimeLabBedListSchema,
+  runtimeLabRecorderListSchema,
+  runtimeLabScenarioListSchema,
+  runtimeLabSessionResponseSchema,
   runtimeLogExportResultSchema,
   runtimeLogTextResponseSchema,
   runtimeOverviewSchema,
   runtimeSettingsSchema,
   runtimeStatusSchema,
-  runtimeTestKitBedListSchema,
-  runtimeTestKitRecorderDeletionSchema,
-  runtimeTestKitSessionOrNullSchema,
-  runtimeTestKitSessionSchema,
-  runtimeTestKitStatusSchema,
   runtimeUpdateBundleSummaryResponseSchema,
   vitalDBBedsSchema,
   vitalDBRecordersSchema,
@@ -98,26 +106,126 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.get("/runtime/settings", runtimeSettingsSchema);
   }
 
+  getLabScenarios(): Promise<RuntimeLabScenarioList> {
+    return this.get("/lab/scenarios", runtimeLabScenarioListSchema);
+  }
+
+  getLabBeds(): Promise<RuntimeLabBedList> {
+    return this.get("/lab/beds", runtimeLabBedListSchema);
+  }
+
+  getLabRecorders(): Promise<RuntimeLabRecorderList> {
+    return this.get("/lab/recorders", runtimeLabRecorderListSchema);
+  }
+
+  createLabBeds(request: RuntimeLabBedCreateRequest): Promise<RuntimeLabBedList> {
+    return this.post("/lab/beds/create", request, runtimeLabBedListSchema);
+  }
+
+  deleteLabBeds(request: RuntimeLabBedDeleteRequest): Promise<RuntimeLabBedList> {
+    return this.post("/lab/beds/delete", request, runtimeLabBedListSchema);
+  }
+
+  resetLabBeds(): Promise<RuntimeLabBedList> {
+    return this.post("/lab/beds/reset", undefined, runtimeLabBedListSchema);
+  }
+
+  createLabRecorders(
+    request: RuntimeLabRecorderCreateRequest
+  ): Promise<RuntimeLabRecorderList> {
+    return this.post("/lab/recorders/create", request, runtimeLabRecorderListSchema);
+  }
+
+  deleteLabRecorders(
+    request: RuntimeLabRecorderDeleteRequest
+  ): Promise<RuntimeLabRecorderList> {
+    return this.post("/lab/recorders/delete", request, runtimeLabRecorderListSchema);
+  }
+
+  resetLabRecorders(): Promise<RuntimeLabRecorderList> {
+    return this.post("/lab/recorders/reset", undefined, runtimeLabRecorderListSchema);
+  }
+
+  createLabSession(
+    request: RuntimeLabSessionCreateRequest
+  ): Promise<RuntimeLabSessionResponse> {
+    return this.post("/lab/sessions", request, runtimeLabSessionResponseSchema);
+  }
+
+  getLabSession(sessionId: string): Promise<RuntimeLabSessionResponse> {
+    return this.get(
+      labSessionPath(sessionId),
+      runtimeLabSessionResponseSchema
+    );
+  }
+
+  startLabSession(sessionId: string): Promise<RuntimeLabSessionResponse> {
+    return this.post(
+      `${labSessionPath(sessionId)}/start`,
+      undefined,
+      runtimeLabSessionResponseSchema
+    );
+  }
+
+  stopLabSession(sessionId: string): Promise<RuntimeLabSessionResponse> {
+    return this.post(
+      `${labSessionPath(sessionId)}/stop`,
+      undefined,
+      runtimeLabSessionResponseSchema
+    );
+  }
+
+  replayLabVitalFile(
+    request: RuntimeLabVitalFileReplayRequest
+  ): Promise<RuntimeLabSessionResponse> {
+    return this.post(
+      "/lab/vital-files/replay",
+      request,
+      runtimeLabSessionResponseSchema
+    );
+  }
+
+  getGuestStackStatus(): Promise<RuntimeGuestControlStackStatus> {
+    return this.get(
+      "/runtime/guest/stack/status",
+      runtimeGuestControlStackStatusSchema
+    );
+  }
+
+  startGuestService(
+    request: RuntimeGuestServiceControlRequest
+  ): Promise<RuntimeGuestControlServiceOperation> {
+    return this.post(
+      "/runtime/guest/services/start",
+      request,
+      runtimeGuestControlServiceOperationSchema
+    );
+  }
+
+  stopGuestService(
+    request: RuntimeGuestServiceControlRequest
+  ): Promise<RuntimeGuestControlServiceOperation> {
+    return this.post(
+      "/runtime/guest/services/stop",
+      request,
+      runtimeGuestControlServiceOperationSchema
+    );
+  }
+
+  restartGuestService(
+    request: RuntimeGuestServiceControlRequest
+  ): Promise<RuntimeGuestControlServiceOperation> {
+    return this.post(
+      "/runtime/guest/services/restart",
+      request,
+      runtimeGuestControlServiceOperationSchema
+    );
+  }
+
   applySettings(
     request: RuntimeApplySettingsRequest
   ): Promise<RuntimeCommandResponse> {
     return this.put("/runtime/settings", request, runtimeCommandResponseSchema);
-  }
-
-  startRuntimeServices(): Promise<RuntimeCommandResponse> {
-    return this.post(
-      "/runtime/services/start",
-      undefined,
-      runtimeCommandResponseSchema
-    );
-  }
-
-  stopRuntimeServices(): Promise<RuntimeCommandResponse> {
-    return this.post(
-      "/runtime/services/stop",
-      undefined,
-      runtimeCommandResponseSchema
-    );
   }
 
   uninstallRuntime(
@@ -144,118 +252,36 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.get("/vitaldb/recorders", vitalDBRecordersSchema);
   }
 
+  hideRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders> {
+    return this.post("/vitaldb/recorders/hide", request, vitalDBRecordersSchema);
+  }
+
+  unhideRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders> {
+    return this.post("/vitaldb/recorders/unhide", request, vitalDBRecordersSchema);
+  }
+
+  deleteRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders> {
+    return this.post("/vitaldb/recorders/delete", request, vitalDBRecordersSchema);
+  }
+
   getBeds(): Promise<VitalDBBeds> {
     return this.get("/vitaldb/beds", vitalDBBedsSchema);
   }
 
+  hideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBRecorders> {
+    return this.post("/vitaldb/beds/hide", request, vitalDBRecordersSchema);
+  }
+
+  unhideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBRecorders> {
+    return this.post("/vitaldb/beds/unhide", request, vitalDBRecordersSchema);
+  }
+
+  deleteBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBRecorders> {
+    return this.post("/vitaldb/beds/delete", request, vitalDBRecordersSchema);
+  }
+
   getRelationships(): Promise<VitalDBRelationships> {
     return this.get("/vitaldb/relationships", vitalDBRelationshipsSchema);
-  }
-
-  getTestKitStatus(): Promise<RuntimeTestKitStatus> {
-    return this.get("/dev/testkit/status", runtimeTestKitStatusSchema);
-  }
-
-  createTestKitBeds(request: RuntimeTestKitCreateBedsRequest) {
-    return this.post(
-      "/dev/testkit/beds/create",
-      request,
-      runtimeTestKitBedListSchema
-    );
-  }
-
-  deleteTestKitBeds(request: RuntimeTestKitDeleteBedsRequest) {
-    return this.post(
-      "/dev/testkit/beds/delete",
-      request,
-      runtimeTestKitBedListSchema
-    );
-  }
-
-  resetTestKitBeds() {
-    return this.post(
-      "/dev/testkit/beds/reset",
-      undefined,
-      runtimeTestKitBedListSchema
-    );
-  }
-
-  startTestKitVirtualRecorders(
-    request: RuntimeTestKitVirtualRecorderStartRequest
-  ): Promise<RuntimeTestKitSession> {
-    return this.post(
-      "/dev/testkit/virtual-recorders/start",
-      request,
-      runtimeTestKitSessionSchema
-    );
-  }
-
-  stopTestKitVirtualRecorders(
-    request: RuntimeTestKitSessionSelectionRequest
-  ): Promise<RuntimeTestKitSession | null> {
-    return this.post(
-      "/dev/testkit/virtual-recorders/stop",
-      request,
-      runtimeTestKitSessionOrNullSchema
-    );
-  }
-
-  pauseTestKitVirtualRecorders(
-    request: RuntimeTestKitSessionSelectionRequest
-  ): Promise<RuntimeTestKitSession | null> {
-    return this.post(
-      "/dev/testkit/virtual-recorders/pause",
-      request,
-      runtimeTestKitSessionOrNullSchema
-    );
-  }
-
-  resumeTestKitVirtualRecorders(
-    request: RuntimeTestKitSessionSelectionRequest
-  ): Promise<RuntimeTestKitSession | null> {
-    return this.post(
-      "/dev/testkit/virtual-recorders/resume",
-      request,
-      runtimeTestKitSessionOrNullSchema
-    );
-  }
-
-  restartTestKitVirtualRecorders(
-    request: RuntimeTestKitRestartRequest
-  ): Promise<RuntimeTestKitSession | null> {
-    return this.post(
-      "/dev/testkit/virtual-recorders/restart",
-      request,
-      runtimeTestKitSessionOrNullSchema
-    );
-  }
-
-  deleteTestKitVirtualRecorders(
-    request: RuntimeTestKitSessionSelectionRequest
-  ): Promise<RuntimeTestKitSession | null> {
-    return this.post(
-      "/dev/testkit/virtual-recorders/delete",
-      request,
-      runtimeTestKitSessionOrNullSchema
-    );
-  }
-
-  resetTestKitVirtualRecorders(): Promise<RuntimeTestKitStatus> {
-    return this.post(
-      "/dev/testkit/virtual-recorders/reset",
-      undefined,
-      runtimeTestKitStatusSchema
-    );
-  }
-
-  deleteTestKitOrphanVRecorder(
-    request: RuntimeTestKitRecorderDeletionRequest
-  ) {
-    return this.post(
-      "/dev/testkit/virtual-recorders/delete-orphan",
-      request,
-      runtimeTestKitRecorderDeletionSchema
-    );
   }
 
   readLogs(request: RuntimeLogTextRequest): Promise<RuntimeLogTextResponse> {
@@ -559,6 +585,10 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
 function trimTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function labSessionPath(sessionId: string): string {
+  return `/lab/sessions/${encodeURIComponent(sessionId)}`;
 }
 
 function runtimeEventQueryParameters(

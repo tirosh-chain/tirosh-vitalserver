@@ -22,7 +22,7 @@ public struct RuntimeManagedOperationGuardComposition {
         fileStore: RuntimeFileStore,
         statusReporter: RuntimeStatusReporter,
         operationLeaseRepository: RuntimeOperationLeaseRepository,
-        guestGateway: RuntimeGuestGateway,
+        guestBootstrapResultReader: any RuntimeGuestBootstrapResultReader,
         now: @escaping () -> Date,
         log: @escaping (String) -> Void
     ) -> RuntimeManagedOperationGuardComposition {
@@ -33,7 +33,7 @@ public struct RuntimeManagedOperationGuardComposition {
                 loadStatus: statusReporter.loadStatusResult,
                 activeGuestBootstrap: {
                     activeGuestBootstrap(
-                        guestGateway: guestGateway,
+                        guestBootstrapResultReader: guestBootstrapResultReader,
                         vmLifecycle: RuntimeVMLifecycleStore(
                             url: installedPaths.vmLifecycle,
                             fileStore: fileStore
@@ -55,24 +55,17 @@ public struct RuntimeManagedOperationGuardComposition {
     }
 
     private static func activeGuestBootstrap(
-        guestGateway: RuntimeGuestGateway,
+        guestBootstrapResultReader: any RuntimeGuestBootstrapResultReader,
         vmLifecycle: RuntimeGuestDocumentLoadResult<RuntimeVMLifecycleDocument>,
         log: (String) -> Void
     ) -> RuntimeGuestBootstrapOperation? {
-        guard case .loaded(let bootstrapResult) = guestGateway.loadBootstrapResultDocument(),
+        guard case .loaded(let bootstrapResult) = guestBootstrapResultReader.loadBootstrapResultDocument(),
               bootstrapResult.status == .running
         else {
             return nil
         }
         guard let bootstrapBootID = bootstrapResult.bootID, !bootstrapBootID.isEmpty else {
             log("watchdog guest bootstrap guard ignored result without bootID")
-            return nil
-        }
-        if case .loaded(let runtimeState) = guestGateway.loadRuntimeStateDocument(),
-           let runtimeBootID = runtimeState.bootID,
-           !runtimeBootID.isEmpty,
-           runtimeBootID != bootstrapBootID {
-            log("watchdog guest bootstrap guard ignored stale result bootID=\(bootstrapBootID) runtimeBootID=\(runtimeBootID)")
             return nil
         }
         let lifecycle: RuntimeVMLifecycleDocument
@@ -84,6 +77,12 @@ public struct RuntimeManagedOperationGuardComposition {
             return nil
         case .failed(let reason):
             log("watchdog guest bootstrap guard ignored VM lifecycle read failure operation=\((bootstrapResult.operation ?? .install).rawValue) error=\(reason)")
+            return nil
+        }
+        if let lifecycleBootID = lifecycle.bootID,
+           !lifecycleBootID.isEmpty,
+           lifecycleBootID != bootstrapBootID {
+            log("watchdog guest bootstrap guard ignored stale result bootID=\(bootstrapBootID) lifecycleBootID=\(lifecycleBootID)")
             return nil
         }
         let updatedAt = bootstrapResult.updatedAt.flatMap {

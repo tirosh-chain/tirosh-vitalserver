@@ -70,9 +70,7 @@ public enum RuntimeStatusDocumentBuilder {
                 snapshot: input.healthSnapshot
             ),
             latestBackup: input.latestBackup,
-            progress: input.progress,
-            containerObservation: input.healthSnapshot.containerObservation,
-            vitalDBObservation: input.healthSnapshot.vitalDBObservation
+            progress: input.progress
         )
     }
 }

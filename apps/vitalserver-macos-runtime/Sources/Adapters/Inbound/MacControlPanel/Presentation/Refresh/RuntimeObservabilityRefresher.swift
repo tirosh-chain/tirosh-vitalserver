@@ -14,16 +14,13 @@ public protocol RuntimeObservabilitySnapshotLoading {
 public struct RuntimeEventRefreshResult {
     public let events: RuntimeEventHistory
     public let last24HoursCount: Int
-    public let containerObservation: RuntimeContainerObservation?
 
     public init(
         events: RuntimeEventHistory,
-        last24HoursCount: Int,
-        containerObservation: RuntimeContainerObservation?
+        last24HoursCount: Int
     ) {
         self.events = events
         self.last24HoursCount = last24HoursCount
-        self.containerObservation = containerObservation
     }
 }
 
@@ -59,8 +56,7 @@ public struct RuntimeObservabilityRefresher {
     public func refreshRuntimeEvents(
         limit: Int,
         periodRawValue: String,
-        filterRawValue: String,
-        statusContainerObservation: RuntimeContainerObservation?
+        filterRawValue: String
     ) async -> RuntimeEventRefreshResult {
         let currentTime = now()
         let events = await snapshots.loadRuntimeEvents(
@@ -78,8 +74,7 @@ public struct RuntimeObservabilityRefresher {
         )
         return RuntimeEventRefreshResult(
             events: events,
-            last24HoursCount: last24Hours.matchingCount ?? last24Hours.events.count,
-            containerObservation: statusContainerObservation
+            last24HoursCount: last24Hours.matchingCount ?? last24Hours.events.count
         )
     }
 

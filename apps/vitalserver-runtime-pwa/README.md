@@ -59,7 +59,7 @@ VITE_QUERY_STALE_TIME_MS=1000
 - `VITE_RUNTIME_CONTROL_API_BASE_URL`: 브라우저에서 직접 호출할 API base URL입니다.
   비워두면 same-origin을 사용합니다.
 - `VITE_RUNTIME_CONTROL_DEV_PROXY_TARGET`: Vite dev server가 `/runtime`, `/vitaldb`,
-  `/host`, `/dev/testkit` 요청을 넘길 대상입니다.
+  `/lab`, `/host` 요청을 넘길 대상입니다.
 - `VITE_RUNTIME_CONTROL_DEFAULT_PORT`: Status 화면에서 Remote Console link를
   만들 때 쓰는 fallback port입니다.
 - `VITE_RUNTIME_CONTROL_DEFAULT_PROXY_PORT`: VitalServer link를 만들 때 쓰는 fallback proxy port입니다.

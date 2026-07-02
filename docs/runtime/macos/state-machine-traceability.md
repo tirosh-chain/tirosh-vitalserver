@@ -40,10 +40,10 @@
 |---|---|---|---|---|---|
 | Install | Host runtime | `RuntimeInstallStateDocument` | Domain `RuntimeInstallTransitionPolicy`, Domain `RuntimeOperationPlan` | `Workflow/RuntimeInstallLifecycle`, `HostCLI install` | `DomainRuntimeInstallTransitionPolicyTests`, `RuntimeInstallTransitionPolicyTests`, `RuntimeInstallWorkflowTests` |
 | Uninstall | Host runtime | `RuntimeUninstallStateDocument` | Domain `RuntimeUninstallTransitionPolicy`, Domain `RuntimeUninstallReadinessPolicy` | `Workflow/RuntimeUninstallLifecycle`, `HostCLI uninstall` | `DomainRuntimeUninstallTransitionPolicyTests`, `RuntimeUninstallTransitionPolicyTests`, `RuntimeUninstallWorkflowTests` |
-| Product update | Host updater + guest activation result | `runtime-status.json`, `activate-update.request`, `activate-update-result.json`, `runtime-version.json` | update preflight and compatibility policies | `apply-bundle`, `/host/update-bundles/*` | update preflight, bundle verifier, activation result tests |
+| Product update | Host updater + Guest Control maintenance operations | `runtime-status.json`, Guest operation documents, `runtime-version.json` | update preflight and compatibility policies | `apply-bundle`, `/host/update-bundles/*`, `/v1/maintenance/update-activation`, `/v1/maintenance/update-shutdown` | update preflight, bundle verifier, Guest Control operation tests |
 | Watchdog recovery | Host watchdog | `runtime-status.json`, `runtime-events.jsonl`, health snapshot inputs | Domain `RuntimeWatchdogRecoveryPolicy`, health policies | Workflow `RuntimeWatchdogRunner`, `/runtime/status`, `/runtime/events` | recovery policy and observability tests |
-| Guest operation result | Guest operation script | guest request/result JSON documents | guest activation/shutdown/datastore evaluators | Host guest gateway readers | guest evaluator and result gateway tests |
-| Vital Recorder read model | VitalDB observer + host observability projection | latest observation snapshot, SQLite projection | recorder summary/history construction policy | `/vitaldb/recorders`, `/runtime/overview` | RuntimeControl contract tests, PWA schema tests |
+| Guest maintenance operation | Guest Control API | Guest operation documents | Guest Control maintenance usecases | `/v1/maintenance/*`, `/v1/operations/{operationId}` | Guest Control API/usecase tests |
+| Vital Recorder read model | Guest/Postgres read model fed by VitalDB observer evidence | Guest Control VitalDB read-model documents | recorder summary/history construction policy | `/vitaldb/recorders`, `/runtime/overview` | RuntimeControl contract tests, PWA schema tests |
 | Log collection/export | Host log collector/exporter | raw logs, helper message log, JSONL, SQLite sidecars | no domain transition policy | `/host/logs/read`, `/host/logs/export` | log collector/exporter tests |
 
 ## Required Flow Details
@@ -114,7 +114,7 @@ Invariants:
 
 - Bundle verification must pass before staging or replacing artifacts.
 - `manifest.json`, `checksums.txt`, and artifact sha256/size mismatches block apply.
-- `activate-update-result.json` must match the active request id before guest activation is accepted.
+- Guest update operation documents must match the active operation id before activation or shutdown is accepted.
 - Update/rollback is a protected operation; watchdog must not restart VM/proxy during the protected window.
 - Rollback must preserve mutable runtime data.
 
@@ -122,8 +122,8 @@ Diagnostics:
 
 - update command log.
 - `runtime-status.json` operation/progress.
-- `activate-update.request`.
-- `activate-update-result.json`.
+- Guest Control operation id.
+- Guest Control operation document.
 - managed backup metadata.
 - runtime events.
 
@@ -162,7 +162,8 @@ Diagnostics:
 Owner:
 
 - `vitaldb-observer` owns Redis/proxy/access-log observation snapshot.
-- Host observability projection owns SQLite read model.
+- Guest/Postgres owns the product read model exposed through Guest Control API.
+- Host SQLite can exist only as explicit diagnostics or migration evidence.
 - Runtime Control owns API response shape.
 
 Invariants:
@@ -179,7 +180,8 @@ Diagnostics:
 - `/runtime/overview`.
 - `/runtime/events`.
 - vitaldb-observer stdout/container logs.
-- runtime observability SQLite.
+- Guest Control VitalDB read-model documents.
+- Host runtime observability SQLite only when explicitly collected as diagnostics evidence.
 
 ### Log Collection And Export
 

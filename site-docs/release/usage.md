@@ -154,7 +154,7 @@ restart 안내가 아직 반영되지 않은 VM runtime 변경을 표시합니�
 `.vital` 파일 저장 위치는 이 `Vital files directory` 하나가 SoT입니다. My Files 목록은 같은 파일
 저장소를 읽되, 조회 대상은 VitalServer upload endpoint가 Redis에 생성한 filelist index를 기준으로
 결정됩니다. 운영자가 `.vital` 파일을 My Files에서 보이게 하려면 storage directory에 직접 복사하지 말고
-Helper Test 탭의 `Manual .vital upload` 또는 VitalServer `/upload` 경로를 사용해야 합니다.
+Helper Product Lab의 `.vital` replay/upload 흐름 또는 VitalServer `/upload` 경로를 사용해야 합니다.
 
 ### 3-2. Redis relay 설정
 

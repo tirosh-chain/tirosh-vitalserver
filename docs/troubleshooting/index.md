@@ -107,6 +107,7 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-096 | Helper Settings가 invalid slider value/range로 SIGTRAP 종료됨 | Runtime health / macOS Helper UI | active | [Helper Settings Slider Crash](096_helper-settings-slider-crash.md) |
 | TS-097 | Recorder ingress 재시작 후 VRecorder가 재접속하지 않는 것처럼 보임 | Runtime health / Recorder streaming / Proxy | implemented | [Recorder reconnect after ingress restart](097_recorder-reconnect-after-ingress-restart.md) |
 | TS-098 | TestKit 전송은 되지만 Operation에 timeout이 남음 | TestKit / macOS Helper UI | active | [TestKit operation timeout after session start](098_testkit-operation-timeout-after-session-start.md) |
+| TS-099 | Runtime v2 acceptance가 sandbox 환경 제약으로 완료되지 않음 | Runtime v2 acceptance / Local development | active | [Runtime v2 acceptance is blocked by local environment restrictions](099_runtime-acceptance-environment-blockers.md) |
 
 ## Follow-up 규칙
 

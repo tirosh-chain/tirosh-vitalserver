@@ -61,6 +61,131 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded, .unknown("maintenance"))
     }
 
+    func testGuestControlStackStatusRoundTripsThroughJSON() throws {
+        let status = RuntimeGuestControlStackStatus(
+            state: "loaded",
+            observedAt: "2026-07-01T00:00:00+00:00",
+            services: [
+                RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00+00:00",
+                    container: "vitalserver-app-1",
+                    exitCode: 0
+                ),
+                RuntimeGuestControlServiceStatus(
+                    service: "redis",
+                    state: "absent",
+                    health: "not_reported",
+                    observedAt: "2026-07-01T00:00:00+00:00"
+                ),
+            ]
+        )
+
+        let encoded = try JSONEncoder().encode(status)
+        let decoded = try JSONDecoder().decode(RuntimeGuestControlStackStatus.self, from: encoded)
+
+        XCTAssertEqual(decoded, status)
+        XCTAssertEqual(decoded.services.map(\.service), ["app", "redis"])
+        XCTAssertEqual(decoded.services.first?.container, "vitalserver-app-1")
+        XCTAssertEqual(decoded.services.last?.state, "absent")
+    }
+
+    func testGuestControlVitalDBObservationReadRoundTripsThroughJSON() throws {
+        let read = RuntimeGuestControlVitalDBObservationRead(
+            state: .loaded,
+            observation: VitalDBObservationDocument(
+                observedAt: "2026-07-01T00:00:00+00:00",
+                ready: true,
+                recorderOnlineThresholdSeconds: 60
+            ),
+            readError: nil
+        )
+
+        let encoded = try JSONEncoder().encode(read)
+        let decoded = try JSONDecoder().decode(
+            RuntimeGuestControlVitalDBObservationRead.self,
+            from: encoded
+        )
+
+        XCTAssertEqual(decoded, read)
+        XCTAssertEqual(decoded.state, .loaded)
+        XCTAssertEqual(decoded.observation?.observedAt, "2026-07-01T00:00:00+00:00")
+    }
+
+    func testGuestControlVitalDBRecorderAndBedReadsRoundTripThroughJSON() throws {
+        let recorderRead = RuntimeGuestControlVitalDBRecorderRead(
+            state: .loaded,
+            recorders: [
+                VitalDBRecorderObservation(vrcode: "VR-001", online: true),
+            ],
+            observedAt: "2026-07-01T00:00:00+00:00",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60
+        )
+        let bedRead = RuntimeGuestControlVitalDBBedRead(
+            state: .loaded,
+            beds: [
+                VitalDBBedObservation(
+                    bedID: "bed-a",
+                    name: "OR-A",
+                    vrcode: "VR-001",
+                    online: true
+                ),
+            ],
+            observedAt: "2026-07-01T00:00:00+00:00",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60
+        )
+
+        let recorderData = try JSONEncoder().encode(recorderRead)
+        let bedData = try JSONEncoder().encode(bedRead)
+
+        XCTAssertEqual(
+            try JSONDecoder().decode(RuntimeGuestControlVitalDBRecorderRead.self, from: recorderData),
+            recorderRead
+        )
+        XCTAssertEqual(
+            try JSONDecoder().decode(RuntimeGuestControlVitalDBBedRead.self, from: bedData),
+            bedRead
+        )
+    }
+
+    func testGuestControlVitalDBRelationshipReadRoundTripsThroughJSON() throws {
+        let read = RuntimeGuestControlVitalDBRelationshipRead(
+            state: .partiallyLoaded,
+            assignments: [
+                RuntimeVitalBedAssignmentRecord(
+                    assignmentID: "assignment-1",
+                    bedID: "bed-a",
+                    bedName: "OR-A",
+                    vrcode: "VR-001",
+                    startedAt: "2026-07-01T00:00:00+00:00",
+                    endedAt: nil,
+                    lastSeenAt: "2026-07-01T00:00:05+00:00",
+                    lastObservedAt: "2026-07-01T00:00:05+00:00",
+                    status: .online,
+                    patientConnected: true,
+                    observationCount: 2
+                ),
+            ],
+            events: [],
+            readError: "events unavailable"
+        )
+
+        let encoded = try JSONEncoder().encode(read)
+        let decoded = try JSONDecoder().decode(
+            RuntimeGuestControlVitalDBRelationshipRead.self,
+            from: encoded
+        )
+
+        XCTAssertEqual(decoded, read)
+        XCTAssertEqual(decoded.state, .partiallyLoaded)
+        XCTAssertEqual(decoded.assignments.map(\.assignmentID), ["assignment-1"])
+        XCTAssertEqual(decoded.readError, "events unavailable")
+    }
+
     func testRuntimeStatusUsesTypedOperationAndRoundTripsThroughJSON() throws {
         let status = RuntimeStatus(
             runtimeInstalled: true,
@@ -524,34 +649,6 @@ final class RuntimeControlContractsTests: XCTestCase {
         )))
     }
 
-    func testRuntimeTestKitSessionStatePolicyPreservesActiveAndTerminalMeanings() {
-        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive(" running "))
-        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("PAUSED"))
-        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("starting"))
-        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("stopping"))
-        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("finalizing-vital"))
-        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isActive("uploading"))
-        XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isActive("stopped"))
-        XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isActive("uploaded"))
-        XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isActive("failed"))
-
-        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isTerminal(" stopped "))
-        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isTerminal("FAILED"))
-        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isTerminal("vital-ready"))
-        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isTerminal("uploaded"))
-        XCTAssertTrue(RuntimeTestKitSessionStatePolicy.isTerminal("upload-failed"))
-        XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isTerminal("running"))
-        XCTAssertFalse(RuntimeTestKitSessionStatePolicy.isTerminal("uploading"))
-
-        let sessions = [
-            runtimeTestKitSession(id: "done", state: "stopped"),
-            runtimeTestKitSession(id: "active", state: "paused"),
-            runtimeTestKitSession(id: "later", state: "running"),
-        ]
-
-        XCTAssertEqual(RuntimeTestKitSessionStatePolicy.preferredActiveSession(from: sessions)?.id, "active")
-    }
-
     func testReadinessDoesNotInferServiceStateFromLegacyLoadedBools() {
         let status = RuntimeStatus(
             runtimeInstalled: true,
@@ -863,104 +960,6 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decodedLaunchFailure.executionIssue, launchFailure.executionIssue)
         XCTAssertEqual(legacy.outputIssues, [])
         XCTAssertEqual(legacy.executionIssue, nil)
-    }
-
-    func testRuntimeTestKitStatusPreservesReadIssuesAndDecodesLegacyPayload() throws {
-        let status = RuntimeTestKitStatus(
-            enabled: true,
-            state: .failed,
-            lastError: "TestKit failed",
-            readIssues: [
-                RuntimeTestKitReadIssue(source: "containerAPI", message: "read failed"),
-            ]
-        )
-
-        let encoded = try JSONEncoder().encode(status)
-        let decoded = try JSONDecoder().decode(RuntimeTestKitStatus.self, from: encoded)
-        let legacy = try JSONDecoder().decode(RuntimeTestKitStatus.self, from: Data("""
-        {
-          "enabled": true,
-          "state": "running",
-          "sessions": [],
-          "beds": []
-        }
-        """.utf8))
-
-        XCTAssertEqual(decoded.readIssues, status.readIssues)
-        XCTAssertEqual(legacy.readIssues, [])
-    }
-
-    func testRuntimeTestKitAvailabilityPolicyPreservesMissingServiceObservationAsReadIssues() {
-        let message = RuntimeTestKitAvailabilityPolicy.unavailableMessage(
-            for: nil,
-            serviceName: "testkit",
-            apiBaseURL: "http://127.0.0.1:18322",
-            healthIssue: "connection refused"
-        )
-        let issues = RuntimeTestKitAvailabilityPolicy.unavailableReadIssues(
-            for: nil,
-            serviceName: "testkit",
-            message: message,
-            healthIssue: "connection refused"
-        )
-
-        XCTAssertEqual(RuntimeTestKitAvailabilityPolicy.unavailableState(for: nil), .stopped)
-        XCTAssertEqual(
-            message,
-            "TestKit container is not running. TestKit is optional and does not affect VitalServer. Health check: connection refused."
-        )
-        XCTAssertEqual(issues, [
-            RuntimeTestKitReadIssue(source: "testKitAPI", message: message),
-            RuntimeTestKitReadIssue(source: "testKitAPI.health", message: "connection refused"),
-            RuntimeTestKitReadIssue(
-                source: "containerService",
-                message: "TestKit container service observation is missing for testkit."
-            ),
-        ])
-    }
-
-    func testRuntimeTestKitAvailabilityPolicyMapsExplicitContainerStateWithoutIO() {
-        let service = RuntimeContainerServiceObservation(
-            service: "testkit",
-            state: "running",
-            health: nil
-        )
-        let status = RuntimeStatus(
-            containerObservation: RuntimeContainerObservation(
-                recorderIngressHTTP: "200",
-                recorderIngressStatus: nil,
-                containerLogsPresent: true,
-                containerLogsBytes: 128,
-                composeServices: [service]
-            )
-        )
-        let selected = RuntimeTestKitAvailabilityPolicy.service(in: status, serviceName: "testkit")
-        let message = RuntimeTestKitAvailabilityPolicy.unavailableMessage(
-            for: selected,
-            serviceName: "testkit",
-            apiBaseURL: "http://127.0.0.1:18322",
-            healthIssue: nil
-        )
-        let issues = RuntimeTestKitAvailabilityPolicy.unavailableReadIssues(
-            for: selected,
-            serviceName: "testkit",
-            message: message,
-            healthIssue: nil
-        )
-
-        XCTAssertEqual(selected, service)
-        XCTAssertEqual(RuntimeTestKitAvailabilityPolicy.unavailableState(for: selected), .starting)
-        XCTAssertEqual(
-            message,
-            "TestKit container API is not reachable at http://127.0.0.1:18322. Container state: running, health: not reported."
-        )
-        XCTAssertEqual(issues, [
-            RuntimeTestKitReadIssue(source: "testKitAPI", message: message),
-            RuntimeTestKitReadIssue(
-                source: "containerService.health",
-                message: "TestKit container service health is not reported for testkit."
-            ),
-        ])
     }
 
     func testVitalDBObservationSnapshotPreservesUnavailableState() throws {
@@ -1338,9 +1337,10 @@ final class RuntimeControlContractsTests: XCTestCase {
                 ),
             ]
         )
-        let containerObservation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+        let ingressRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .loaded,
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
                 recorders: [
                     RuntimeRecorderConnectionObservation(
                         vrcode: "VR_SENDING",
@@ -1351,13 +1351,12 @@ final class RuntimeControlContractsTests: XCTestCase {
                     ),
                 ]
             ),
-            containerLogsPresent: false,
-            containerLogsBytes: nil
+            readError: nil
         )
 
         let history = RuntimeVitalRecorderHistory(
             observations: [observation],
-            containerObservation: containerObservation
+            recorderIngressStatusRead: ingressRead
         )
 
         XCTAssertEqual(history.recorders.first?.status, .online)
@@ -1366,15 +1365,88 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.summary.staleRecorders, 0)
     }
 
+    func testVitalRecorderHistoryUsesExplicitRecorderIngressStatusReadWithoutContainerObservation() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:12:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_SENDING",
+                    ip: "192.168.64.20",
+                    lastSeenAt: "2026-05-26T00:00:00Z",
+                    online: true,
+                    stale: true
+                ),
+            ]
+        )
+        let ingressRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .loaded,
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
+                recorders: [
+                    RuntimeRecorderConnectionObservation(
+                        vrcode: "VR_SENDING",
+                        activeConnections: 1,
+                        selectedIp: "192.168.64.20",
+                        ipSource: "x-forwarded-for",
+                        lastSeenAt: "2026-05-26T00:11:45Z"
+                    ),
+                ]
+            ),
+            readError: nil
+        )
+
+        let history = RuntimeVitalRecorderHistory(
+            observations: [observation],
+            recorderIngressStatusRead: ingressRead
+        )
+
+        XCTAssertEqual(history.recorders.first?.status, .online)
+        XCTAssertEqual(history.recorders.first?.lastSeenAt, "2026-05-26T00:11:45Z")
+        XCTAssertEqual(history.summary.onlineRecorders, 1)
+        XCTAssertEqual(history.summary.staleRecorders, 0)
+    }
+
+    func testVitalRecorderHistoryCodablePreservesRecorderIngressStatusRead() throws {
+        let ingressRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .loaded,
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
+                activeRecorderConnections: 1,
+                recorders: [
+                    RuntimeRecorderConnectionObservation(
+                        vrcode: "VR_CONTRACT",
+                        activeConnections: 1,
+                        selectedIp: "192.168.64.22",
+                        ipSource: "x-forwarded-for",
+                        lastSeenAt: "2026-05-26T00:11:45Z"
+                    ),
+                ]
+            ),
+            readError: nil
+        )
+        let history = RuntimeVitalRecorderHistory(
+            observations: [],
+            recorderIngressStatusRead: ingressRead
+        )
+
+        let data = try JSONEncoder().encode(history)
+        let decoded = try JSONDecoder().decode(RuntimeVitalRecorderHistory.self, from: data)
+
+        XCTAssertEqual(decoded.recorderIngressStatusRead, ingressRead)
+    }
+
     func testVitalRecorderHistoryIncludesRecorderObservedOnlyByRecorderIngressActivity() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:12:00Z",
             ready: true,
             recorderOnlineThresholdSeconds: 60
         )
-        let containerObservation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+        let ingressRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .loaded,
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
                 recorders: [
                     RuntimeRecorderConnectionObservation(
                         vrcode: "VR_INGRESS_ONLY",
@@ -1385,13 +1457,12 @@ final class RuntimeControlContractsTests: XCTestCase {
                     ),
                 ]
             ),
-            containerLogsPresent: false,
-            containerLogsBytes: nil
+            readError: nil
         )
 
         let history = RuntimeVitalRecorderHistory(
             observations: [observation],
-            containerObservation: containerObservation
+            recorderIngressStatusRead: ingressRead
         )
 
         XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_INGRESS_ONLY"])
@@ -1421,9 +1492,10 @@ final class RuntimeControlContractsTests: XCTestCase {
                 ),
             ]
         )
-        let containerObservation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
+        let ingressRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .loaded,
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
                 recorders: [
                     RuntimeRecorderConnectionObservation(
                         vrcode: "VR_A",
@@ -1442,13 +1514,12 @@ final class RuntimeControlContractsTests: XCTestCase {
                     ),
                 ]
             ),
-            containerLogsPresent: false,
-            containerLogsBytes: nil
+            readError: nil
         )
 
         let history = RuntimeVitalRecorderHistory(
             observations: [observation],
-            containerObservation: containerObservation
+            recorderIngressStatusRead: ingressRead
         )
 
         XCTAssertEqual(history.recorders.first { $0.vrcode == "VR_A" }?.redisIPSync?.status, .verified)
@@ -1472,18 +1543,16 @@ final class RuntimeControlContractsTests: XCTestCase {
                 ),
             ]
         )
-        let containerObservation = RuntimeContainerObservation(
-            recorderIngressHTTP: RuntimeHTTPStatusText.failed,
-            recorderIngressStatus: nil,
-            recorderIngressStatusReadState: .commandFailed,
-            recorderIngressStatusReadError: "curl failed",
-            containerLogsPresent: false,
-            containerLogsBytes: nil
+        let ingressRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .commandFailed,
+            httpStatus: RuntimeHTTPStatusText.failed,
+            document: nil,
+            readError: "curl failed"
         )
 
         let history = RuntimeVitalRecorderHistory(
             observations: [observation],
-            containerObservation: containerObservation
+            recorderIngressStatusRead: ingressRead
         )
 
         XCTAssertEqual(history.recorders.first?.redisIPSync?.status, .unavailable)
@@ -1585,7 +1654,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(activity?.first?.messageCount, 3)
         XCTAssertEqual(activity?.first?.byteCount, 900)
         XCTAssertEqual(activity?.first?.buckets.first?.bucketStartedAt, "2026-05-26T00:01:00Z")
-        XCTAssertEqual(history.activityHistory.source, .sqliteProjection)
+        XCTAssertEqual(history.activityHistory.source, .readModelProjection)
         XCTAssertEqual(history.activityHistory.bucketCount, 1)
         XCTAssertEqual(history.activityHistory.latestBucketStartedAt, "2026-05-26T00:01:00Z")
     }
@@ -1612,7 +1681,10 @@ final class RuntimeControlContractsTests: XCTestCase {
         )
 
         let history = RuntimeVitalRecorderHistory(observations: [observation])
-        let summary = RuntimeVitalRecorderSummary(status: RuntimeStatus(), vitalDBObservation: observation)
+        let summary = RuntimeVitalRecorderSummary(
+            recorderIngressStatusRead: nil,
+            vitalDBObservation: observation
+        )
 
         XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_UTC", "VR_OFFSET"])
         XCTAssertEqual(summary.latestRecorder?.vrcode, "VR_UTC")
@@ -1758,7 +1830,10 @@ final class RuntimeControlContractsTests: XCTestCase {
             ]
         )
 
-        let summary = RuntimeVitalRecorderSummary(status: RuntimeStatus(), vitalDBObservation: observation)
+        let summary = RuntimeVitalRecorderSummary(
+            recorderIngressStatusRead: nil,
+            vitalDBObservation: observation
+        )
 
         XCTAssertEqual(summary.knownRecorders, 2)
         XCTAssertEqual(summary.onlineRecorders, 1)
@@ -1783,7 +1858,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         )
 
         let summary = RuntimeVitalRecorderSummary(
-            status: RuntimeStatus(),
+            recorderIngressStatusRead: nil,
             vitalDBObservation: observation,
             statusEvaluationTime: "2026-05-26T00:20:00Z"
         )
@@ -1808,26 +1883,26 @@ final class RuntimeControlContractsTests: XCTestCase {
                 ),
             ]
         )
-        let status = RuntimeStatus(
-            containerObservation: RuntimeContainerObservation(
-                recorderIngressHTTP: "200",
-                recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
-                    activeRecorderConnections: 1,
-                    recorders: [
-                        RuntimeRecorderConnectionObservation(
-                            vrcode: "VR_RECONNECTED",
-                            activeConnections: 1,
-                            selectedIp: "192.168.64.20",
-                            lastSeenAt: "2026-05-26T00:11:45Z"
-                        ),
-                    ]
-                ),
-                containerLogsPresent: false,
-                containerLogsBytes: nil
-            )
+        let recorderIngressStatusRead = RuntimeRecorderIngressStatusReadResult(
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
+                activeRecorderConnections: 1,
+                recorders: [
+                    RuntimeRecorderConnectionObservation(
+                        vrcode: "VR_RECONNECTED",
+                        activeConnections: 1,
+                        selectedIp: "192.168.64.20",
+                        lastSeenAt: "2026-05-26T00:11:45Z"
+                    ),
+                ]
+            ),
+            readError: nil
         )
 
-        let summary = RuntimeVitalRecorderSummary(status: status, vitalDBObservation: observation)
+        let summary = RuntimeVitalRecorderSummary(
+            recorderIngressStatusRead: recorderIngressStatusRead,
+            vitalDBObservation: observation
+        )
 
         XCTAssertEqual(summary.activeConnections, 1)
         XCTAssertEqual(summary.knownRecorders, 1)
@@ -1835,6 +1910,35 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(summary.staleRecorders, 0)
         XCTAssertEqual(summary.latestRecorder?.vrcode, "VR_RECONNECTED")
         XCTAssertEqual(summary.latestRecorder?.lastSeenAt, "2026-05-26T00:11:45Z")
+    }
+
+    func testVitalRecorderSummaryRequiresExplicitRecorderIngressStatusRead() {
+        let observation = VitalDBObservationDocument(
+            observedAt: "2026-05-26T00:12:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                .init(
+                    vrcode: "VR_RECONNECTED",
+                    ip: "192.168.64.20",
+                    lastSeenAt: "2026-05-26T00:00:00Z",
+                    online: true,
+                    stale: true
+                ),
+            ]
+        )
+
+        let summary = RuntimeVitalRecorderSummary(
+            recorderIngressStatusRead: nil,
+            vitalDBObservation: observation
+        )
+
+        XCTAssertNil(summary.activeConnections)
+        XCTAssertEqual(summary.knownRecorders, 1)
+        XCTAssertEqual(summary.onlineRecorders, 0)
+        XCTAssertEqual(summary.staleRecorders, 1)
+        XCTAssertEqual(summary.latestRecorder?.vrcode, "VR_RECONNECTED")
+        XCTAssertEqual(summary.latestRecorder?.lastSeenAt, "2026-05-26T00:00:00Z")
     }
 
     func testRuntimeControlOverviewDoesNotFallbackToStatusVitalDBObservation() {
@@ -1854,13 +1958,7 @@ final class RuntimeControlContractsTests: XCTestCase {
                 VitalDBRecorderObservation(vrcode: "FRESH", ip: "192.168.64.11", online: true),
             ]
         )
-        var status = RuntimeStatus(vitalDBObservation: staleObservation)
-        status.containerObservation = RuntimeContainerObservation(
-            recorderIngressHTTP: "200",
-            recorderIngressStatus: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 1),
-            containerLogsPresent: false,
-            containerLogsBytes: nil
-        )
+        let status = RuntimeStatus()
 
         let unavailableOverview = RuntimeControlOverview(
             status: status,
@@ -1880,43 +1978,41 @@ final class RuntimeControlContractsTests: XCTestCase {
         )
 
         XCTAssertNil(unavailableOverview.vitalDBObservation)
-        XCTAssertNil(unavailableOverview.status.vitalDBObservation)
         XCTAssertEqual(unavailableOverview.vitalDBObservationSnapshot.state, .unavailable)
         XCTAssertEqual(unavailableOverview.vitalRecorder.source, .unavailable)
         XCTAssertNil(unavailableOverview.vitalRecorder.knownRecorders)
-        XCTAssertEqual(unavailableOverview.vitalRecorder.activeConnections, 1)
-        XCTAssertNil(loadedOverview.status.vitalDBObservation)
+        XCTAssertNil(unavailableOverview.vitalRecorder.activeConnections)
         XCTAssertEqual(loadedOverview.vitalDBObservation?.recorders.map(\.vrcode), ["FRESH"])
         XCTAssertEqual(loadedOverview.vitalRecorder.latestRecorder?.vrcode, "FRESH")
     }
 
     func testVitalRecorderSummaryDoesNotInferRecorderStateFromRecorderIngressConnections() {
-        let status = RuntimeStatus(
-            containerObservation: RuntimeContainerObservation(
-                recorderIngressHTTP: "200",
-                recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
-                    activeRecorderConnections: 2,
-                    recorders: [
-                        RuntimeRecorderConnectionObservation(
-                            vrcode: "VR_A",
-                            activeConnections: 1,
-                            selectedIp: "192.168.64.10",
-                            lastSeenAt: "2026-05-26T00:01:00Z"
-                        ),
-                        RuntimeRecorderConnectionObservation(
-                            vrcode: "VR_B",
-                            activeConnections: 1,
-                            selectedIp: "192.168.64.11",
-                            lastSeenAt: "2026-05-26T00:01:30Z"
-                        ),
-                    ]
-                ),
-                containerLogsPresent: false,
-                containerLogsBytes: nil
-            )
+        let recorderIngressStatusRead = RuntimeRecorderIngressStatusReadResult(
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
+                activeRecorderConnections: 2,
+                recorders: [
+                    RuntimeRecorderConnectionObservation(
+                        vrcode: "VR_A",
+                        activeConnections: 1,
+                        selectedIp: "192.168.64.10",
+                        lastSeenAt: "2026-05-26T00:01:00Z"
+                    ),
+                    RuntimeRecorderConnectionObservation(
+                        vrcode: "VR_B",
+                        activeConnections: 1,
+                        selectedIp: "192.168.64.11",
+                        lastSeenAt: "2026-05-26T00:01:30Z"
+                    ),
+                ]
+            ),
+            readError: nil
         )
 
-        let summary = RuntimeVitalRecorderSummary(status: status)
+        let summary = RuntimeVitalRecorderSummary(
+            recorderIngressStatusRead: recorderIngressStatusRead,
+            vitalDBObservation: nil
+        )
 
         XCTAssertEqual(summary.source, .unavailable)
         XCTAssertEqual(summary.activeConnections, 2)
@@ -1929,8 +2025,28 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertNil(summary.latestRecorder)
     }
 
+    func testVitalRecorderSummaryWithoutExplicitInputsIsUnavailable() {
+        let summary = RuntimeVitalRecorderSummary(
+            recorderIngressStatusRead: nil,
+            vitalDBObservation: nil
+        )
+
+        XCTAssertEqual(summary.source, .unavailable)
+        XCTAssertNil(summary.activeConnections)
+        XCTAssertNil(summary.knownRecorders)
+        XCTAssertNil(summary.onlineRecorders)
+        XCTAssertNil(summary.staleRecorders)
+        XCTAssertNil(summary.knownBeds)
+        XCTAssertNil(summary.recorderAnomalies)
+        XCTAssertNil(summary.observedAt)
+        XCTAssertNil(summary.latestRecorder)
+    }
+
     func testVitalRecorderSummaryDoesNotDefaultMissingRecorderIngressConnectionsToZero() {
-        let summary = RuntimeVitalRecorderSummary(status: RuntimeStatus())
+        let summary = RuntimeVitalRecorderSummary(
+            recorderIngressStatusRead: nil,
+            vitalDBObservation: nil
+        )
 
         XCTAssertEqual(summary.source, .unavailable)
         XCTAssertNil(summary.activeConnections)
@@ -1969,30 +2085,4 @@ private func activityPointPayload(missing field: String) -> String {
         .map { "\"\($0.0)\": \($0.1)" }
         .joined(separator: ",")
     return "{\(body)}"
-}
-
-private func runtimeTestKitSession(id: String, state: String) -> RuntimeTestKitSession {
-    RuntimeTestKitSession(
-        id: id,
-        state: state,
-        targetURL: "http://testkit.example.test",
-        recordersRequested: 1,
-        bedsRequested: 1,
-        bedroomName: "OR-1",
-        vrcode: nil,
-        version: "testkit",
-        intervalSeconds: 1,
-        durationSeconds: nil,
-        maxMessages: nil,
-        shiftTime: true,
-        generateFrames: true,
-        scenario: "normal_monitoring",
-        createdAt: nil,
-        startedAt: nil,
-        stoppedAt: nil,
-        messagesSent: 0,
-        bytesSent: 0,
-        lastError: nil,
-        recorders: []
-    )
 }

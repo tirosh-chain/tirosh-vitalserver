@@ -9,7 +9,7 @@ Vital Server Helper 공개와 배포를 위해 작성할 문서 체계입니다.
 | 문서군 | 주 독자 | 문서의 역할 |
 |---|---|---|
 | `site-docs/release/` | 연구 과제 관계자, 병원 IT 담당자, 병원 운영자, 도입 검토자 | 공개 배포 대상 서비스가 무엇을 제공하고 병원 현장에서 어떻게 설치/운영되는지 설명 |
-| `site-docs/dev/` | 오픈소스 contributor, repository 개발자, packaging/release 담당자, runtime/API/testkit 유지보수자 | 서비스 경계, package 책임, Health Check 계약, build/release/test 절차 설명 |
+| `site-docs/dev/` | 오픈소스 contributor, repository 개발자, packaging/release 담당자, runtime/API/Product Lab/dev testkit 유지보수자 | 서비스 경계, package 책임, Health Check 계약, build/release/test 절차 설명 |
 
 release 문서는 내부 구현을 설명하지 않습니다. 사용자가 필요한 설치, 운영, 장애 확인, 지원 모드만 다룹니다.
 
@@ -123,13 +123,13 @@ dev 문서군은 repository 유지보수자가 release 문서를 실제 구현�
 
 `dev/package-map.md`는 app/package/infra/docs 경계, package별 owner, 외부 공개 여부를 설명합니다.
 
-`dev/architecture.md`는 Mac hardware appliance, Host/Guest, macOS host proxy, Linux VM, Runtime Control API, PWA, observer/testkit 관계를 설명합니다. OS보다 하드웨어 운영 특성이 Mac 선택의 주된 근거임을 명시하고, server-class 요구에는 전통적인 server/industrial PC가 더 타당할 수 있음을 경계로 둡니다.
+`dev/architecture.md`는 Mac hardware appliance, Host/Guest, macOS host proxy, Linux VM, Runtime Control API, PWA, observer/Product Lab/dev testkit 검증 관계를 설명합니다. OS보다 하드웨어 운영 특성이 Mac 선택의 주된 근거임을 명시하고, server-class 요구에는 전통적인 server/industrial PC가 더 타당할 수 있음을 경계로 둡니다.
 
 `dev/health-check-contract.md`는 VR observed/missing/stale/read-failed, `.vital` file found/invalid/decode-failed/permission-failed, empty와 missing 구분을 고정합니다.
 
 `dev/api-contracts.md`는 Runtime Control API, VitalDB Observer API, Recorder Ingress API, OpenAPI source 위치를 설명합니다.
 
-`dev/build-and-release.md`는 `make dist/dmg/release`, `make dist/update/release`, `make install-testkit-release`, artifact 위치를 설명합니다.
+`dev/build-and-release.md`는 `make dist/dmg/release`, `make dist/update/release`, dev-only `make testkit/install-release`, artifact 위치를 설명합니다.
 
 `dev/testing.md`는 unit/integration test, testkit smoke/load, runtime chaos, Health Check 시나리오를 설명합니다.
 
@@ -161,7 +161,7 @@ Linux VM의 핵심 문장:
 | 강점 | 설명 방향 |
 |---|---|
 | backend service appliance 운영체제 | Linux를 desktop OS가 아니라 VitalServer backend stack을 고정하는 guest runtime으로 설명 |
-| container/service 생태계 | Docker/Compose, nginx, Redis, Node service, sidecar, observer, testkit을 같은 guest 기준으로 묶기 쉽다는 점을 설명 |
+| container/service 생태계 | Docker/Compose, nginx, Redis, Node service, sidecar, observer, Product Lab을 같은 guest 기준으로 묶기 쉽다는 점을 설명 |
 | headless service 운영 | systemd, journald, timer, log collection, file permission, mount, network namespace 같은 service 운영 모델이 명확하다는 점을 설명 |
 | image/update 재현성 | golden rootfs, cloud-init, Docker image bundle, offline update bundle 같은 appliance 배포 모델과 잘 맞는다는 점을 설명 |
 | upstream 보정 단일화 | upstream의 Windows path, Windows installer, Redis host, CPU-count assumption 같은 전제를 각 host별로 고치지 않고 Linux guest wrapper/preload에서 흡수한다는 점을 설명 |
@@ -192,9 +192,10 @@ Linux VM의 핵심 문장:
 | `apps/vitalserver` | release에서는 "VitalServer service"로 노출 | upstream VitalServer wrapper와 runtime shim |
 | `apps/vitalserver-macos-runtime` | release 핵심 노출 | macOS Helper app, host runtime, VM orchestration, packaging |
 | `apps/vitalserver-runtime-pwa` | release에서는 "Runtime Control UI"로 제한 노출 | browser/PWA 기반 runtime control surface |
+| `apps/vitalserver-lab` | release에서는 "Product Lab"으로 제한 노출 | Product Lab scenario, session, virtual recorder, `.vital` replay API |
 | `apps/vitaldb-observer` | release에서는 Health Check 내부 collector로 간접 노출 | Redis/proxy 기반 VitalDB observation snapshot 생성 |
 | `apps/vitalserver-recorder-ingress` | release에서는 command audit 기능으로 제한 노출 | VRecorder command/audit event sidecar |
-| `packages/vitalserver-testkit` | release에서는 검증 도구로 제한 노출 | simulated recorder, `.vital` upload, smoke/load validation |
+| `packages/vitalserver-testkit` | dev 문서에만 dev/load 검증 도구로 노출 | simulated recorder, `.vital` upload, smoke/load validation. release runtime에는 포함하지 않음 |
 | `packages/vitalserver-devtools` | dev 전용 | build machine packaging, VM/update bundle tooling |
 | `packages/vitalserver-guest-tools` | dev 전용 | Linux guest-side runtime state, update, logs, repair commands |
 | `infra/macos-nginx` | dev 중심, release installation에서 간접 설명 | Mac host proxy config and launchd template |
@@ -288,6 +289,6 @@ dev 문서군은 아래 기준을 만족해야 합니다.
 - Linux VM이 upstream Linux compatibility 때문이 아니라 Windows-oriented upstream을 제품용 Linux guest service stack으로 정규화하기 위한 계층임을 설명한다.
 - Linux guest의 service runtime 강점과 macOS/Linux/Windows host platform별 software 강점과 책임을 구분한다.
 - PWA가 host별 native UI 중복을 피하고 local/remote Runtime Control UI를 통합하기 위한 primary UI임을 설명한다.
-- Health Check 계약이 Host/Guest/runtime/observer/testkit 책임 경계를 넘지 않는다.
+- Health Check 계약이 Host/Guest/runtime/observer/Product Lab/dev testkit 책임 경계를 넘지 않는다.
 - `.vital` sanity check 실패가 empty success로 변환되지 않는다는 원칙을 문서화한다.
 - build, release, test 명령이 현재 repository의 Make target과 package 경계에 맞는다.

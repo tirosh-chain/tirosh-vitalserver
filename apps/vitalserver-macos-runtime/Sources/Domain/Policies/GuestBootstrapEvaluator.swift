@@ -12,7 +12,7 @@ public enum GuestBootstrapAssessment: Equatable {
 public enum GuestBootstrapEvaluator {
     public static func assessCurrentBoot(
         _ result: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>,
-        guestState: GuestRuntimeStateDocument?,
+        currentBootID: String?,
         now: Date,
         graceSeconds: TimeInterval
     ) -> GuestBootstrapAssessment {
@@ -22,7 +22,7 @@ public enum GuestBootstrapEvaluator {
         case .loaded(let document):
             guard resultBelongsToCurrentBoot(
                 document,
-                guestState: guestState,
+                currentBootID: currentBootID,
                 now: now,
                 graceSeconds: graceSeconds
             ) else {
@@ -63,17 +63,17 @@ public enum GuestBootstrapEvaluator {
 
     private static func resultBelongsToCurrentBoot(
         _ result: GuestBootstrapResultDocument,
-        guestState: GuestRuntimeStateDocument?,
+        currentBootID: String?,
         now: Date,
         graceSeconds: TimeInterval
     ) -> Bool {
         guard let bootstrapBootID = nonEmpty(result.bootID) else {
             return false
         }
-        guard let guestBootID = nonEmpty(guestState?.bootID) else {
+        guard let currentBootID = nonEmpty(currentBootID) else {
             return isFresh(result, now: now, graceSeconds: graceSeconds)
         }
-        return bootstrapBootID == guestBootID
+        return bootstrapBootID == currentBootID
     }
 
     private static func isFresh(

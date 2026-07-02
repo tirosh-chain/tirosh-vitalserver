@@ -276,8 +276,6 @@
         <h2>Runtime Commands</h2>
         <div class="actions">
           <button id="healthCheck">Health check</button>
-          <button id="startServices">Start services</button>
-          <button id="stopServices">Stop services</button>
           <button id="repairRuntime">Repair runtime</button>
           <button id="repairProxy">Repair proxy</button>
           <button id="repairDatastore">Repair datastore</button>
@@ -350,14 +348,11 @@
           <div id="runtimeEventMetrics"></div>
         </section>
         <section>
-          <h2>TestKit</h2>
-          <div id="testKitMetrics"></div>
+          <h2>Runtime Lab</h2>
+          <div id="labMetrics"></div>
           <div class="actions">
-            <button id="refreshTestKit">Refresh TestKit</button>
-            <button id="startTestKit">Start 1 recorder</button>
-            <button id="stopTestKit">Stop</button>
-            <button id="deleteTestKit">Delete active</button>
-            <button id="resetTestKit">Reset</button>
+            <button id="refreshLab">Refresh Lab</button>
+            <button id="createLabSession">Create 1 recorder</button>
           </div>
         </section>
       </div>
@@ -404,6 +399,7 @@
     const streams = new Map();
     let latestStatus = null;
     let latestSettings = {};
+    let latestVitalDBObservation = null;
     let latestEvents = [];
     const $ = (id) => document.getElementById(id);
     $("baseUrl").value = window.location.origin;
@@ -468,7 +464,7 @@
     }
 
     async function refreshStatus() {
-      const [overview, status, settings, install, release, vitalDBObservation, vitalRecorders, vitalBeds, vitalRelationships, backups, redisBackups, runtimeEvents, testKitStatus] = await Promise.all([
+      const [overview, status, settings, install, release, vitalDBObservation, vitalRecorders, vitalBeds, vitalRelationships, backups, redisBackups, runtimeEvents, labScenarios] = await Promise.all([
         getJSON("/runtime/overview"),
         getJSON("/runtime/status"),
         getJSON("/runtime/settings"),
@@ -481,13 +477,14 @@
         getJSON("/host/backups"),
         getJSON("/host/backups/redis"),
         getJSON("/runtime/events?limit=50"),
-        getJSON("/dev/testkit/status")
+        getJSON("/lab/scenarios")
       ]);
       latestStatus = status;
       latestSettings = settings || {};
+      latestVitalDBObservation = vitalDBObservation || null;
       replaceRuntimeEvents(runtimeEvents && runtimeEvents.events);
       renderOverview(overview);
-      renderStatus(latestStatus, latestSettings);
+      renderStatus(latestStatus, latestSettings, latestVitalDBObservation);
       renderAdvancedStatus(latestStatus);
       renderInstall(install);
       renderSettings(settings);
@@ -498,7 +495,7 @@
       renderObservability(latestStatus, vitalDBObservation);
       renderRuntimeEvents();
       renderBackups(backups, redisBackups);
-      renderTestKit(testKitStatus);
+      renderLab(labScenarios);
       append("statusStream", "snapshot", status);
     }
 
@@ -527,9 +524,8 @@
       $("overviewMetrics").innerHTML = metricsHTML(values);
     }
 
-    function renderStatus(status, settings = {}) {
+    function renderStatus(status, settings = {}, observation = null) {
       const action = actionNeeded(status);
-      const observation = status.vitalDBObservation;
       const recorders = (observation && observation.recorders) || [];
       const beds = (observation && observation.beds) || [];
       const values = [
@@ -733,44 +729,21 @@
       $("runtimeEventMetrics").innerHTML = `<div class="event-list list">${rows}</div>`;
     }
 
-    function renderTestKit(status) {
-      if (!status) {
-        $("testKitMetrics").innerHTML = emptyText("No TestKit status");
+    function renderLab(response) {
+      if (!response) {
+        $("labMetrics").innerHTML = emptyText("No Lab scenario response");
         return;
       }
-      const session = status.activeSession;
-      const sessions = status.sessions || [];
-      const beds = status.beds || [];
+      const scenarios = response.scenarios || [];
       const values = [
-        ["enabled", status.enabled],
-        ["state", status.state],
-        ["service", status.serviceName],
-        ["API", status.apiBaseURL],
-        ["recorder target", status.recorderTargetURL],
-        ["started", formatDate(status.startedAt)],
-        ["beds", beds.length],
-        ["sessions", sessions.length],
-        ["active session", session && session.id],
-        ["session state", session && session.state],
-        ["messages", session && session.messagesSent],
-        ["bytes", session && formatBytes(session.bytesSent)],
-        ["last error", status.lastError]
+        ["state", response.state],
+        ["scenarios", scenarios.length],
+        ["read error", response.readError]
       ];
-      const sessionList = sessions.slice(0, 16).map((candidate) => (
-        `<div class="list-item"><strong>${escapeHtml(candidate.id || "-")} · ${escapeHtml(candidate.state || "-")}</strong><span>${escapeHtml(testKitSessionRecorderText(candidate))} · ${escapeHtml(candidate.messagesSent || 0)} messages · ${escapeHtml(formatBytes(candidate.bytesSent || 0))}</span></div>`
+      const scenarioList = scenarios.slice(0, 16).map((scenario) => (
+        `<div class="list-item"><strong>${escapeHtml(scenario.name || scenario.scenarioId || "-")}</strong><span>${escapeHtml(scenario.scenarioId || "-")} · ${escapeHtml(scenario.category || "-")}</span></div>`
       )).join("");
-      const bedList = beds.slice(0, 16).map((bed) => (
-        `<div class="list-item"><strong>${escapeHtml(bed.roomName || "-")}</strong><span>${escapeHtml(bed.bedId || "-")}</span></div>`
-      )).join("");
-      $("testKitMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Beds</div><div class="list">${bedList || emptyText("No TestKit beds")}</div><div class="subtle">Sessions</div><div class="list">${sessionList || emptyText("No virtual recorder sessions")}</div>`;
-    }
-
-    function testKitSessionRecorderText(session) {
-      const recorders = session.recorders || [];
-      if (recorders.length === 0) {
-        return session.vrcode || "no recorder";
-      }
-      return recorders.map((recorder) => `${recorder.vrcode || "-"} ${recorder.connected ? "connected" : "disconnected"}`).join(", ");
+      $("labMetrics").innerHTML = `${metricsHTML(values)}<div class="subtle">Scenarios</div><div class="list">${scenarioList || emptyText("No Lab scenarios")}</div>`;
     }
 
     function localPathReference(value) {
@@ -833,45 +806,24 @@
       append("statusStream", "logs-exported", result);
     }
 
-    async function refreshTestKit() {
-      renderTestKit(await getJSON("/dev/testkit/status"));
+    async function refreshLab() {
+      renderLab(await getJSON("/lab/scenarios"));
     }
 
-    async function startTestKit() {
-      const beds = await postJSON("/dev/testkit/beds/create", {
-        count: 1,
-        prefix: "testbed"
+    async function createLabSession() {
+      const scenarios = await getJSON("/lab/scenarios");
+      const scenario = (scenarios.scenarios || [])[0];
+      if (!scenario) {
+        throw new Error("No Lab scenario is available.");
+      }
+      const session = await postJSON("/lab/sessions", {
+        scenarioId: scenario.scenarioId,
+        name: "Dev Console Lab",
+        recorderCount: 1,
+        targetURL: null
       });
-      const bedroomName = (beds || [])[0]?.roomName || "TestBedroom";
-      const session = await postJSON("/dev/testkit/virtual-recorders/start", {
-        scenario: "normal_monitoring",
-        recorders: 1,
-        bedroomName,
-        version: "testkit",
-        intervalSeconds: 1,
-        shiftTime: true,
-        generateFrames: true
-      });
-      await refreshTestKit();
-      append("statusStream", "testkit-started", session);
-    }
-
-    async function stopTestKit() {
-      const session = await postJSON("/dev/testkit/virtual-recorders/stop", null);
-      await refreshTestKit();
-      append("statusStream", "testkit-stopped", session || { stopped: false });
-    }
-
-    async function deleteTestKit() {
-      const session = await postJSON("/dev/testkit/virtual-recorders/delete", null);
-      await refreshTestKit();
-      append("statusStream", "testkit-deleted", session || { deleted: false });
-    }
-
-    async function resetTestKit() {
-      const status = await postJSON("/dev/testkit/virtual-recorders/reset", null);
-      renderTestKit(status);
-      append("statusStream", "testkit-reset", status);
+      await refreshLab();
+      append("statusStream", "lab-session-created", session);
     }
 
     function replaceRuntimeEvents(events = []) {
@@ -888,7 +840,7 @@
       }
       renderRuntimeEvents();
       if (latestStatus) {
-        renderObservability(latestStatus, latestStatus.vitalDBObservation);
+        renderObservability(latestStatus, latestVitalDBObservation);
       }
     }
 
@@ -999,9 +951,9 @@
       if (outputId === "statusStream" && parsed.data) {
         try {
           latestStatus = JSON.parse(parsed.data);
-          renderStatus(latestStatus, latestSettings);
+          renderStatus(latestStatus, latestSettings, latestVitalDBObservation);
           renderAdvancedStatus(latestStatus);
-          renderObservability(latestStatus, latestStatus.vitalDBObservation);
+          renderObservability(latestStatus, latestVitalDBObservation);
         } catch (_) {}
       }
       if (outputId === "overviewStream" && parsed.data) {
@@ -1009,11 +961,12 @@
           const overview = JSON.parse(parsed.data);
           latestStatus = overview.status || latestStatus;
           latestSettings = overview.settings || latestSettings;
+          latestVitalDBObservation = overview.vitalDBObservation || null;
           renderOverview(overview);
-          renderStatus(latestStatus, latestSettings);
+          renderStatus(latestStatus, latestSettings, latestVitalDBObservation);
           renderAdvancedStatus(latestStatus);
           renderVitalDBObservation(overview.vitalDBObservation);
-          renderObservability(latestStatus, overview.vitalDBObservation);
+          renderObservability(latestStatus, latestVitalDBObservation);
         } catch (_) {}
       }
       if (outputId === "eventStream" && data && typeof data === "object") {
@@ -1022,9 +975,11 @@
       if (outputId === "vitalDBStream" && parsed.data) {
         try {
           const observation = JSON.parse(parsed.data);
+          latestVitalDBObservation = observation || null;
           renderVitalDBObservation(observation);
           if (latestStatus) {
-            renderObservability(latestStatus, observation);
+            renderStatus(latestStatus, latestSettings, latestVitalDBObservation);
+            renderObservability(latestStatus, latestVitalDBObservation);
           }
         } catch (_) {}
       }
@@ -1203,8 +1158,6 @@
 
     $("refresh").addEventListener("click", () => refreshStatus().catch((error) => append("statusStream", "error", { message: error.message })));
     $("healthCheck").addEventListener("click", () => runRuntimeCommand("health-check", () => postJSON("/runtime/health", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
-    $("startServices").addEventListener("click", () => runRuntimeCommand("services-started", () => postJSON("/runtime/services/start", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
-    $("stopServices").addEventListener("click", () => confirm("Stop runtime services?") && runRuntimeCommand("services-stopped", () => postJSON("/runtime/services/stop", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
     $("repairRuntime").addEventListener("click", () => runRuntimeCommand("runtime-repaired", () => postJSON("/runtime/services/repair-runtime", null)).catch((error) => append("statusStream", "command-error", { message: error.message })));
     $("repairProxy").addEventListener("click", () => {
       runRuntimeCommand("proxy-repaired", () => postJSON("/runtime/services/repair-proxy", null))
@@ -1219,11 +1172,8 @@
     $("rollbackBackup").addEventListener("click", () => rollbackSelectedBackup().catch((error) => append("statusStream", "backup-error", { message: error.message })));
     $("deleteBackup").addEventListener("click", () => deleteSelectedBackup().catch((error) => append("statusStream", "backup-error", { message: error.message })));
     $("exportLogs").addEventListener("click", () => exportRuntimeLogs().catch((error) => append("statusStream", "logs-error", { message: error.message })));
-    $("refreshTestKit").addEventListener("click", () => refreshTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
-    $("startTestKit").addEventListener("click", () => startTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
-    $("stopTestKit").addEventListener("click", () => stopTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
-    $("deleteTestKit").addEventListener("click", () => deleteTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
-    $("resetTestKit").addEventListener("click", () => resetTestKit().catch((error) => append("statusStream", "testkit-error", { message: error.message })));
+    $("refreshLab").addEventListener("click", () => refreshLab().catch((error) => append("statusStream", "lab-error", { message: error.message })));
+    $("createLabSession").addEventListener("click", () => createLabSession().catch((error) => append("statusStream", "lab-error", { message: error.message })));
     $("connectAll").addEventListener("click", connectAll);
     $("disconnectAll").addEventListener("click", disconnectAll);
     function reconnectLogs() {
@@ -1237,7 +1187,7 @@
     setInterval(() => {
       $("clock").textContent = new Date().toLocaleString();
       if (latestStatus) {
-        renderStatus(latestStatus, latestSettings);
+        renderStatus(latestStatus, latestSettings, latestVitalDBObservation);
       }
     }, 1000);
     refreshStatus().catch((error) => append("statusStream", "error", { message: error.message }));

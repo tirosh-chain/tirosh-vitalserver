@@ -8,11 +8,12 @@ import Errors
 @testable import OutboundAdapters
 
 final class RuntimeSectionTests: XCTestCase {
-    func testStableRuntimeSectionsHideTestTab() {
+    func testStableRuntimeSectionsShowProductLab() {
         XCTAssertEqual(RuntimeSection.visibleSections(testEnabled: false).map(\.title), [
             AppConstants.Labels.sectionStatus,
             AppConstants.Labels.sectionRecorders,
             AppConstants.Labels.sectionBeds,
+            AppConstants.Labels.sectionLab,
             AppConstants.Labels.sectionObservability,
             AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionSettings,
@@ -23,18 +24,18 @@ final class RuntimeSectionTests: XCTestCase {
         ])
     }
 
-    func testTestkitRuntimeSectionsIncludeTestTabBeforeDangerZone() {
+    func testTestEnabledRuntimeSectionsKeepSameProductNavigation() {
         XCTAssertEqual(RuntimeSection.visibleSections(testEnabled: true).map(\.title), [
             AppConstants.Labels.sectionStatus,
             AppConstants.Labels.sectionRecorders,
             AppConstants.Labels.sectionBeds,
+            AppConstants.Labels.sectionLab,
             AppConstants.Labels.sectionObservability,
             AppConstants.Labels.sectionLog,
             AppConstants.Labels.sectionSettings,
             AppConstants.Labels.sectionUpdate,
             AppConstants.Labels.sectionInfo,
             AppConstants.Labels.sectionAdvanced,
-            AppConstants.Labels.sectionTest,
             AppConstants.Labels.sectionDangerZone,
         ])
     }
@@ -44,17 +45,16 @@ final class RuntimeSectionTests: XCTestCase {
             .status,
             .recorders,
             .beds,
-            .observability,
-            .log,
+            .lab,
             .settings,
             .update,
         ])
         XCTAssertEqual(RuntimeSection.utilitySections(testEnabled: true), [.advanced])
-        XCTAssertEqual(RuntimeSection.overflowSections(testEnabled: true), [.info, .dangerZone, .test])
+        XCTAssertEqual(RuntimeSection.overflowSections(testEnabled: true), [.observability, .log, .info, .dangerZone])
     }
 
-    func testStableRuntimeSectionOverflowHidesTestTab() {
-        XCTAssertEqual(RuntimeSection.overflowSections(testEnabled: false), [.info, .dangerZone])
+    func testStableRuntimeSectionOverflowMovesDiagnosticsOutOfPrimaryNavigation() {
+        XCTAssertEqual(RuntimeSection.overflowSections(testEnabled: false), [.observability, .log, .info, .dangerZone])
         XCTAssertTrue(RuntimeSection.sectionIsInOverflow(.dangerZone, testEnabled: false))
         XCTAssertFalse(RuntimeSection.sectionIsInOverflow(.advanced, testEnabled: false))
     }
@@ -128,10 +128,10 @@ final class RuntimeSectionTests: XCTestCase {
     }
 
     @MainActor
-    func testRuntimeControlAPIServerIsIndependentFromTestTools() {
+    func testRuntimeControlAPIServerIsIndependentFromDevConsole() {
         XCTAssertTrue(MacRuntimeControlEnvironment.shouldStartRuntimeControlAPIServer())
-        XCTAssertFalse(MacRuntimeControlEnvironment.shouldServeRuntimeControlTestTools(testEnabled: false))
-        XCTAssertTrue(MacRuntimeControlEnvironment.shouldServeRuntimeControlTestTools(testEnabled: true))
+        XCTAssertFalse(MacRuntimeControlEnvironment.shouldServeRuntimeControlDevConsole(testEnabled: false))
+        XCTAssertTrue(MacRuntimeControlEnvironment.shouldServeRuntimeControlDevConsole(testEnabled: true))
     }
 
     @MainActor
@@ -154,8 +154,7 @@ final class RuntimeSectionTests: XCTestCase {
                 fileReader: HostStubFileReader(),
                 settingsReader: HostStubSettingsReader()
             ),
-            localAPISettings: RuntimeControlLocalAPISettingsCoordinator(store: localAPISettingsStore),
-            servesTestTools: false
+            localAPISettings: RuntimeControlLocalAPISettingsCoordinator(store: localAPISettingsStore)
         )
     }
 }
@@ -186,21 +185,6 @@ private final class HostFakeRuntimeControlClient: RuntimeControlClient, RuntimeH
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
     func createRedisBackup() async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
-    }
-    func startRuntimeServices() async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
-    }
-    func stopRuntimeServices() async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
-    }
-    func startTestKitService() async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
-    }
-    func stopTestKitService() async throws -> RuntimeCommandResult {
-        RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
-    }
-    func restartTestKitService() async throws -> RuntimeCommandResult {
         RuntimeCommandResult(exitCode: 0, stdout: "", stderr: "")
     }
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo {

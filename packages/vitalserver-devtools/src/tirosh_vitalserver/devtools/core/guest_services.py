@@ -66,8 +66,8 @@ class DockerImagePlan:
     vitaldb_observer_dockerfile: Path
     redis_relay_image: str
     redis_relay_dockerfile: Path
-    testkit_image: str
-    testkit_dockerfile: Path
+    lab_image: str
+    lab_dockerfile: Path
 
 
 @dataclass(frozen=True)
@@ -86,8 +86,8 @@ class DockerImagesConfig:
     vitaldb_observer_dockerfile: str
     redis_relay_image: str
     redis_relay_dockerfile: str
-    testkit_image: str
-    testkit_dockerfile: str
+    lab_image: str
+    lab_dockerfile: str
 
 
 @dataclass(frozen=True)
@@ -191,8 +191,8 @@ def docker_image_plan(
     vitaldb_observer_dockerfile: str,
     redis_relay_image: str,
     redis_relay_dockerfile: str,
-    testkit_image: str,
-    testkit_dockerfile: str,
+    lab_image: str,
+    lab_dockerfile: str,
 ) -> DockerImagePlan:
     if not images:
         raise DomainError("error: guest.docker_images.images must not be empty")
@@ -202,7 +202,7 @@ def docker_image_plan(
         recorder_recovery_image,
         vitaldb_observer_image,
         redis_relay_image,
-        testkit_image,
+        lab_image,
     }
     return DockerImagePlan(
         build_context=root,
@@ -219,8 +219,8 @@ def docker_image_plan(
         vitaldb_observer_dockerfile=root / vitaldb_observer_dockerfile,
         redis_relay_image=redis_relay_image,
         redis_relay_dockerfile=root / redis_relay_dockerfile,
-        testkit_image=testkit_image,
-        testkit_dockerfile=root / testkit_dockerfile,
+        lab_image=lab_image,
+        lab_dockerfile=root / lab_dockerfile,
     )
 
 

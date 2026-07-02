@@ -30,7 +30,6 @@ public struct RuntimeControlLocalHTTPServerConfiguration: Equatable, Sendable {
 public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
     private let configuration: RuntimeControlLocalHTTPServerConfiguration
     private let router: RuntimeControlAPIRouter
-    private let testKitRouter: RuntimeTestKitAPIRouter?
     private let staticFileResponder: RuntimeControlStaticFileResponder?
     private let corsPolicy = RuntimeControlLocalHTTPCORSPolicy()
     private let stateHandler: (@Sendable (RuntimeControlLocalHTTPServerState) -> Void)?
@@ -43,7 +42,10 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
 
     public var activePort: UInt16? {
         syncOnQueue {
-            listener?.port?.rawValue
+            guard let rawValue = listener?.port?.rawValue, rawValue != 0 else {
+                return nil
+            }
+            return rawValue
         }
     }
 
@@ -51,13 +53,11 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
     public init(
         configuration: RuntimeControlLocalHTTPServerConfiguration,
         router: RuntimeControlAPIRouter,
-        testKitRouter: RuntimeTestKitAPIRouter? = nil,
         stateHandler: (@Sendable (RuntimeControlLocalHTTPServerState) -> Void)? = nil,
         queue: DispatchQueue = DispatchQueue(label: "tirosh.runtime-control.local-http")
     ) {
         self.configuration = configuration
         self.router = router
-        self.testKitRouter = testKitRouter
         self.staticFileResponder = configuration.staticFileDirectory.map {
             RuntimeControlStaticFileResponder(rootDirectory: $0)
         }
@@ -214,12 +214,7 @@ public final class RuntimeControlLocalHTTPServer: @unchecked Sendable {
             return
         }
 
-        Task { @MainActor [router, testKitRouter] in
-            if let testKitRouter,
-               let result = await testKitRouter.routeResult(request) {
-                self.send(result, for: request, on: connection)
-                return
-            }
+        Task { @MainActor [router] in
             let result = await router.routeResult(request)
             self.send(result, for: request, on: connection)
         }

@@ -216,8 +216,8 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
                     postWriteEffects.append("log-archive-maximum-gib:\(gib)")
                 case .writeRedisRelayConfiguration(let settings):
                     postWriteEffects.append("redis-relay:\(settings.enabled):\(settings.target.url)")
-                case .reconcileGuestComposeServices:
-                    postWriteEffects.append("reconcile-compose")
+                case .reconcileGuestStackServices:
+                    postWriteEffects.append("guest-stack-reconcile")
                 case .restartRuntimeServices:
                     postWriteEffects.append("restart")
                 }
@@ -245,8 +245,7 @@ final class RunConfigureRuntimeUseCaseTests: XCTestCase {
             adminPassword: "admin",
             vitalFilesDirectory: "/mnt/old",
             redisUiPort: 18081,
-            swaggerUiPort: 18082,
-            testkitEnabled: false
+            swaggerUiPort: 18082
         )
         var guestSettings = GuestRuntimeSettingsDocument(
             vitalServerURL: "",

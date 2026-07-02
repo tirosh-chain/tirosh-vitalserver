@@ -55,7 +55,7 @@ extension RuntimeViewModel {
             runningMessage: AppConstants.StatusText.redisBackupRunning,
             successMessage: AppConstants.StatusText.redisBackupCompleted,
             refreshCommandLog: false,
-            action: { try await self.controlClient.createRedisBackup() }
+            action: { try await self.hostClient.createRedisBackup() }
         ).isSuccess
         if didCreateBackup {
             await refresh()

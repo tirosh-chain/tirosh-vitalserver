@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,26 +12,6 @@ class ProbeError:
 
     def as_json(self) -> dict[str, str]:
         return {"source": self.source, "message": self.message}
-
-
-@dataclass(frozen=True)
-class RuntimeCapabilities:
-    activate_update: bool = True
-    prepare_update_shutdown: bool = True
-    redis_backup: bool = True
-    redis_restore: bool = True
-    reconcile_compose: bool = True
-    repair_datastore: bool = True
-
-    def as_json(self) -> dict[str, bool]:
-        return {
-            "activateUpdate": self.activate_update,
-            "prepareUpdateShutdown": self.prepare_update_shutdown,
-            "redisBackup": self.redis_backup,
-            "redisRestore": self.redis_restore,
-            "reconcileCompose": self.reconcile_compose,
-            "repairDatastore": self.repair_datastore,
-        }
 
 
 @dataclass(frozen=True)
@@ -57,42 +37,6 @@ class RuntimeDiskHealth:
             "kernelErrors": (
                 None if self.kernel_errors is None else list(self.kernel_errors)
             ),
-        }
-
-
-@dataclass(frozen=True)
-class RuntimeContainerService:
-    service: str
-    container_id: str | None
-    exit_code: int | None
-    error: str | None
-    finished_at: str | None
-    health: str | None
-    memory_used_bytes: int | None
-    memory_limit_bytes: int | None
-    name: str | None
-    oom_killed: bool | None
-    restart_count: int | None
-    started_at: str | None
-    state: str | None
-    uptime_seconds: int | None
-
-    def as_json(self) -> dict[str, object]:
-        return {
-            "containerID": self.container_id,
-            "exitCode": self.exit_code,
-            "error": self.error,
-            "finishedAt": self.finished_at,
-            "health": self.health,
-            "memoryUsedBytes": self.memory_used_bytes,
-            "memoryLimitBytes": self.memory_limit_bytes,
-            "name": self.name,
-            "oomKilled": self.oom_killed,
-            "restartCount": self.restart_count,
-            "service": self.service,
-            "startedAt": self.started_at,
-            "state": self.state,
-            "uptimeSeconds": self.uptime_seconds,
         }
 
 
@@ -126,7 +70,6 @@ class GuestRuntimeState:
     updated_at: str
     vm_ip: str | None
     boot_id: str | None
-    container_services: Sequence[RuntimeContainerService] | None
     cpu_usage_percent: float | None
     guest_http: RuntimeHTTPProbeStatus | None
     memory: RuntimeResourceUsage | None
@@ -136,20 +79,12 @@ class GuestRuntimeState:
     disk_health: RuntimeDiskHealth | None
     swagger_ui_http: RuntimeHTTPProbeStatus | None
     vital_files_disk: RuntimeResourceUsage | None
-    vitaldb_observation: Mapping[str, object] | None
-    capabilities: RuntimeCapabilities = RuntimeCapabilities()
 
     def as_json(self) -> dict[str, Any]:
         return {
-            "capabilities": self.capabilities.as_json(),
             "schemaVersion": 1,
             "vmIP": self.vm_ip,
             "bootID": self.boot_id,
-            "containerServices": (
-                None
-                if self.container_services is None
-                else [service.as_json() for service in self.container_services]
-            ),
             "cpuUsagePercent": self.cpu_usage_percent,
             "guestHTTP": http_status_text(self.guest_http),
             "httpProbes": {
@@ -174,11 +109,6 @@ class GuestRuntimeState:
                 None
                 if self.vital_files_disk is None
                 else self.vital_files_disk.as_json()
-            ),
-            "vitalDBObservation": (
-                None
-                if self.vitaldb_observation is None
-                else dict(self.vitaldb_observation)
             ),
         }
 

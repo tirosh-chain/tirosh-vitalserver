@@ -53,14 +53,14 @@ npm --prefix apps/vitalserver-runtime-pwa run dev
 | `/runtime/*` | runtime control API |
 | `/vitaldb/*` | VitalDB observability API |
 | `/host/*` | host affordance API |
-| `/dev/*` | dev/test-enabled route only |
+| `/dev/runtime-control` | browser diagnostics page only |
 
 ## Capability and Profile
 
 PWA route visibility is capability-driven.
 
 - Stable build에서도 PWA static assets와 product API는 제공할 수 있어야 합니다.
-- `/dev/runtime-control`과 `/dev/testkit/*`는 dev/test-enabled profile에만 둡니다.
+- `/dev/runtime-control`은 browser diagnostics page로만 둡니다. Product Lab은 `/lab/*`를 사용하고 `/dev/testkit/*`는 stable/product profile에 노출하지 않습니다.
 - PWA는 `GET /runtime/capabilities`를 source of truth로 사용합니다.
 
 ## Update Bundle Impact
@@ -77,5 +77,5 @@ PWA 변경은 product update bundle로 반영될 수 있습니다.
 - `dist/`에 외부 URL 의존 asset이 없는지 확인
 - `dist/index.html`에 `registerSW.js`가 주입되지 않는지 확인
 - Runtime Control API OpenAPI와 generated type이 최신인지 확인
-- Stable profile에서 TestKit route가 노출되지 않는지 확인
+- Stable profile에서 `/dev/testkit/*` route가 노출되지 않는지 확인
 - Air-gapped package/update bundle에 PWA dist가 포함되는지 확인

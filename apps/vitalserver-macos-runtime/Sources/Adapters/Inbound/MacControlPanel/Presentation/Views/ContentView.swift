@@ -18,8 +18,6 @@ public struct ContentView: View {
     @State private var showingRepairVMDiskConfirmation = false
     @State private var showingRepairRuntimeServicesConfirmation = false
     @State private var showingRestartVMRuntimeConfirmation = false
-    @State private var showingStartServicesConfirmation = false
-    @State private var showingStopServicesConfirmation = false
     @State private var showingUninstallConfirmation = false
     @State private var showingCleanUninstallConfirmation = false
     @State private var showingApplySettingsConfirmation = false
@@ -148,22 +146,6 @@ public struct ContentView: View {
             }
         } message: {
             Text(AppConstants.StatusText.restartVMRuntimeConfirmation)
-        }
-        .alert(AppConstants.Actions.startRuntimeServices, isPresented: $showingStartServicesConfirmation) {
-            Button(AppConstants.Actions.cancel, role: .cancel) {}
-            Button(AppConstants.Actions.startRuntimeServices) {
-                Task { await viewModel.startRuntimeServices() }
-            }
-        } message: {
-            Text(AppConstants.StatusText.startRuntimeServicesConfirmation)
-        }
-        .alert(AppConstants.Actions.stopRuntimeServices, isPresented: $showingStopServicesConfirmation) {
-            Button(AppConstants.Actions.cancel, role: .cancel) {}
-            Button(AppConstants.Actions.stopRuntimeServices, role: .destructive) {
-                Task { await viewModel.stopRuntimeServices() }
-            }
-        } message: {
-            Text(AppConstants.StatusText.stopRuntimeServicesConfirmation)
         }
         .alert(AppConstants.Actions.standardUninstall, isPresented: $showingUninstallConfirmation) {
             Button(AppConstants.Actions.cancel, role: .cancel) {}
@@ -337,12 +319,10 @@ public struct ContentView: View {
                 showingRepairDatastoreConfirmation: $showingRepairDatastoreConfirmation,
                 showingRepairVMDiskConfirmation: $showingRepairVMDiskConfirmation,
                 showingRepairRuntimeServicesConfirmation: $showingRepairRuntimeServicesConfirmation,
-                showingStartServicesConfirmation: $showingStartServicesConfirmation,
-                showingStopServicesConfirmation: $showingStopServicesConfirmation,
                 hoveredServiceLink: $hoveredServiceLink
             )
-        case .test:
-            RuntimeTestPanel(viewModel: viewModel)
+        case .lab:
+            RuntimeLabPanel(viewModel: viewModel)
         case .dangerZone:
             RuntimeDangerZonePanel(
                 viewModel: viewModel,

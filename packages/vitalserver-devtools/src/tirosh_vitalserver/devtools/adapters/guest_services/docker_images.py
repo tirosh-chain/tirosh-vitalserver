@@ -63,11 +63,11 @@ def build_docker_image_bundle(
             dockerfile=plan.redis_relay_dockerfile,
             context=plan.build_context,
         )
-    if plan.testkit_image in plan.images:
+    if plan.lab_image in plan.images:
         run_docker_build(
             platform=plan.platform,
-            image=plan.testkit_image,
-            dockerfile=plan.testkit_dockerfile,
+            image=plan.lab_image,
+            dockerfile=plan.lab_dockerfile,
             context=plan.build_context,
         )
 

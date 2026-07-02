@@ -7,7 +7,7 @@ import Errors
 final class RuntimeEventDisplayPolicyTests: XCTestCase {
     private let policy = RuntimeEventDisplayPolicy()
 
-    func testEventItemOwnsRecorderIngressDetailTextAndStatusSeverity() {
+    func testEventItemOwnsStatusSeverityAndHealthDetails() {
         let event = RuntimeEventDocument(
             id: "event-1",
             eventType: .recorderIngressObserved,
@@ -21,18 +21,6 @@ final class RuntimeEventDisplayPolicyTests: XCTestCase {
             vmState: .stale,
             vmErrors: [.runtimeStateStale],
             failureReasons: [],
-            containerObservation: RuntimeContainerObservation(
-                recorderIngressHTTP: "200",
-                recorderIngressStatus: RuntimeRecorderIngressStatusDocument(
-                    activeRecorderConnections: 3,
-                    recorders: [
-                        RuntimeRecorderConnectionObservation(vrcode: "VR_A", activeConnections: 1),
-                        RuntimeRecorderConnectionObservation(vrcode: "VR_B", activeConnections: 2),
-                    ]
-                ),
-                containerLogsPresent: true,
-                containerLogsBytes: 1
-            ),
             progress: nil
         )
 
@@ -45,7 +33,7 @@ final class RuntimeEventDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item.operation, "watchdog")
         XCTAssertEqual(
             item.detailText,
-            "VM state: Stale, VM errors: Guest runtime state stale, Active recorder connections: 3, Known recorders: 2"
+            "VM state: Stale, VM errors: Guest runtime state stale"
         )
     }
 

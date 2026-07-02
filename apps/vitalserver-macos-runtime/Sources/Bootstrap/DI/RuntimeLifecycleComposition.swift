@@ -4,6 +4,7 @@ import Contracts
 import OutboundAdapters
 import InboundAdapters
 import Errors
+import RuntimeControl
 
 public struct RuntimeLifecycleComposition {
     public let httpProber: RuntimeHTTPProber
@@ -11,7 +12,7 @@ public struct RuntimeLifecycleComposition {
     public let statusReporter: RuntimeStatusReporter
     public let healthChecker: RuntimeHealthChecker
     public let serviceController: RuntimeServiceController
-    public let guestGateway: RuntimeGuestGateway
+    public let guestBootstrapResultReader: any RuntimeGuestBootstrapResultReader
 
     public static func resolve(
         paths: LauncherPaths,
@@ -20,7 +21,7 @@ public struct RuntimeLifecycleComposition {
         httpProber: RuntimeHTTPProber?,
         serviceManager: RuntimeServiceManager?,
         runtimeStatusRepository: RuntimeStatusRepository?,
-        guestGateway: RuntimeGuestGateway?,
+        guestBootstrapResultReader: (any RuntimeGuestBootstrapResultReader)?,
         fileStore: RuntimeFileStore,
         plistBuddyPath: String,
         lsofPath: String,
@@ -46,7 +47,8 @@ public struct RuntimeLifecycleComposition {
             makeStatusDocument: statusDocumentUseCase.build,
             makeProgressDocument: statusDocumentUseCase.progressUpdate
         )
-        let resolvedGuestGateway = guestGateway ?? makeGuestGateway(installedPaths: installedPaths)
+        let defaultGuestDocumentReader = makeGuestDocumentReader(installedPaths: installedPaths)
+        let resolvedGuestBootstrapResultReader = guestBootstrapResultReader ?? defaultGuestDocumentReader
         let healthChecker = RuntimeHealthChecker(
             context: healthCheckerContext(
                 installedPaths: installedPaths,
@@ -58,7 +60,13 @@ public struct RuntimeLifecycleComposition {
             serviceManager: resolvedServiceManager,
             commandRunner: commandRunner,
             httpProber: resolvedHTTPProber,
-            guestGateway: resolvedGuestGateway
+            guestBootstrapResultReader: resolvedGuestBootstrapResultReader,
+            guestControlGateway: {
+                try HTTPRuntimeGuestControlGateway(
+                    baseURL: RuntimeLifecycleComposition.guestControlAPIBaseURL,
+                    timeout: RuntimeLifecycleComposition.guestControlAPIStatusReadTimeoutSeconds
+                )
+            }
         )
         let serviceStopWaiter = RuntimeServiceStopWaiter(
             serviceState: { service in
@@ -91,7 +99,7 @@ public struct RuntimeLifecycleComposition {
             statusReporter: statusReporter,
             healthChecker: healthChecker,
             serviceController: serviceController,
-            guestGateway: resolvedGuestGateway
+            guestBootstrapResultReader: resolvedGuestBootstrapResultReader
         )
     }
 
@@ -111,30 +119,22 @@ public struct RuntimeLifecycleComposition {
             lsofPath: lsofPath,
             curlPath: curlPath,
             proxyLaunchDaemonPlist: RuntimeManagedServicePaths.launchDaemonPlist(.proxy),
-            runtimeStateStaleAfterSeconds: Constants.Runtime.runtimeStateStaleAfterSeconds,
             watchdogManagedOperationGraceSeconds: Constants.Runtime.watchdogManagedOperationGraceSeconds,
             proxyHealthURL: { Constants.Runtime.proxyHealthURL(port: $0) },
             redisUIHealthURL: { Constants.Runtime.redisUIHealthURL(port: $0) },
-            swaggerUIHealthURL: { Constants.Runtime.swaggerUIHealthURL(port: $0) },
-            recorderIngressStatusURL: { Constants.Runtime.recorderIngressStatusURL(port: $0) }
+            swaggerUIHealthURL: { Constants.Runtime.swaggerUIHealthURL(port: $0) }
         )
     }
 
-    private static func makeGuestGateway(installedPaths: InstalledRuntimePaths) -> RuntimeGuestGateway {
+    private static func makeGuestDocumentReader(installedPaths: InstalledRuntimePaths) -> JSONFileRuntimeGuestDocumentReader {
         let guestRunDirectory = installedPaths.guestRunDirectory
-        return JSONFileRuntimeGuestGateway(
-            runtimeStateURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.runtimeStateFile),
-            bootstrapResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.bootstrapResultFile),
-            updateActivationRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationRequestFile),
-            updateActivationResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateActivationResultFile),
-            updateShutdownRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateShutdownRequestFile),
-            updateShutdownResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.updateShutdownResultFile),
-            datastoreRepairRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairRequestFile),
-            datastoreRepairResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.datastoreRepairResultFile),
-            guestComposeReconcileRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.guestComposeReconcileRequestFile),
-            guestComposeReconcileResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.guestComposeReconcileResultFile),
-            redisRestoreRequestURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.redisRestoreRequestFile),
-            redisRestoreResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.redisRestoreResultFile)
+        return JSONFileRuntimeGuestDocumentReader(
+            bootstrapResultURL: guestRunDirectory.appendingPathComponent(Constants.Runtime.bootstrapResultFile)
         )
     }
+}
+
+private extension RuntimeLifecycleComposition {
+    static let guestControlAPIBaseURL = "http://127.0.0.1:18330"
+    static let guestControlAPIStatusReadTimeoutSeconds: TimeInterval = 1
 }

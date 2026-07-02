@@ -16,22 +16,6 @@ public struct RuntimeStatusDocumentRead {
     }
 }
 
-public struct GuestRuntimeStateRead {
-    public let document: GuestRuntimeStateDocument?
-    public let error: String?
-    public let issue: RuntimeStatusReadIssue?
-
-    public init(
-        document: GuestRuntimeStateDocument?,
-        error: String?,
-        issue: RuntimeStatusReadIssue?
-    ) {
-        self.document = document
-        self.error = error
-        self.issue = issue
-    }
-}
-
 public struct RuntimeInstallStateRead {
     public let document: RuntimeInstallStateDocument?
     public let error: String?
@@ -62,6 +46,12 @@ public struct RuntimeRedisRelayStatusRead {
         self.error = error
         self.issue = issue
     }
+}
+
+public enum RuntimeGuestServicesRead: Equatable, Sendable {
+    case unavailable
+    case loaded(services: [String], statuses: [RuntimeGuestControlServiceStatus])
+    case failed(String)
 }
 
 public struct RuntimeHTTPStatusRead: Equatable, Sendable {
@@ -407,20 +397,16 @@ public enum RuntimeDataDirectoryMetricsAssembler {
 public enum RuntimeControlStatusAssembler {
     public static func makeStatus(
         statusRead: RuntimeStatusDocumentRead,
-        guestStateRead: GuestRuntimeStateRead,
         installStateRead: RuntimeInstallStateRead = RuntimeInstallStateRead(document: nil, error: nil, issue: nil),
         redisRelayStatusRead: RuntimeRedisRelayStatusRead = RuntimeRedisRelayStatusRead(
             document: nil,
             error: nil,
             issue: nil
         ),
+        guestServicesRead: RuntimeGuestServicesRead = .unavailable,
         liveDiagnostics: RuntimeLiveDiagnostics
     ) -> RuntimeStatus {
         let document = statusRead.document
-        let guestState = guestStateRead.document
-        let containerObservation = document?.containerObservation
-        let containerServices = guestState?.containerServices ?? []
-        let startedAt = containerObservation?.composeServices.first { $0.service == "app" }?.startedAt
         let proxyPortIssue = document.flatMap { document -> RuntimeStatusReadIssue? in
             document.proxyPort == nil
                 ? RuntimeStatusReadIssue(
@@ -431,7 +417,7 @@ public enum RuntimeControlStatusAssembler {
         }
         let readIssues = liveDiagnostics.readIssues
             + [liveDiagnostics.runtimeInstallationIssue].compactMap { $0 }
-            + [statusRead.issue, guestStateRead.issue, installStateRead.issue, redisRelayStatusRead.issue]
+            + [statusRead.issue, installStateRead.issue, redisRelayStatusRead.issue]
                 .compactMap { $0 }
             + [proxyPortIssue].compactMap { $0 }
         let vmService = liveDiagnostics.vmService
@@ -466,7 +452,7 @@ public enum RuntimeControlStatusAssembler {
             installStateDocumentError: installStateRead.error,
             readIssues: readIssues,
             updatedAt: document?.updatedAt,
-            startedAt: startedAt,
+            startedAt: nil,
             runtimeVersion: document?.runtimeVersion,
             latestBackup: document?.latestBackup,
             vmState: document?.vmState,
@@ -476,36 +462,62 @@ public enum RuntimeControlStatusAssembler {
             hostProxyHTTP: document?.hostProxyHTTP,
             redisUIHTTP: document?.redisUIHTTP,
             swaggerUIHTTP: document?.swaggerUIHTTP,
-            cpuUsagePercent: guestState?.cpuUsagePercent,
-            memory: guestState?.memory,
-            vitalServerMemory: containerMemoryUsage(service: "app", services: containerServices),
-            recorderIngressMemory: containerMemoryUsage(service: "recorder-ingress", services: containerServices),
-            redisMemory: containerMemoryUsage(service: "redis", services: containerServices),
-            systemDisk: guestState?.systemDisk,
-            dataStorage: guestState?.vitalFilesDisk,
-            guestRuntimeStateError: guestStateRead.error,
+            guestServicesReadState: guestServicesRead.state,
+            guestServices: guestServicesRead.services,
+            guestServiceStatuses: guestServicesRead.statuses,
+            guestServicesReadError: guestServicesRead.error,
+            cpuUsagePercent: nil,
+            memory: nil,
+            vitalServerMemory: nil,
+            recorderIngressMemory: nil,
+            redisMemory: nil,
+            systemDisk: nil,
+            dataStorage: nil,
             proxyPort: document?.proxyPort,
             proxyPortReadState: document?.proxyPortReadState,
             failureReasons: document?.failureReasons ?? [],
             progress: document?.progress,
-            containerObservation: containerObservation,
-            vitalDBObservation: document?.vitalDBObservation,
             redisRelayStatus: redisRelayStatusRead.document
         )
     }
+}
 
-    private static func containerMemoryUsage(
-        service: String,
-        services: [RuntimeContainerServiceObservation]
-    ) -> RuntimeContainerMemoryUsage? {
-        guard let container = services.first(where: { $0.service == service }),
-              let usedBytes = container.memoryUsedBytes
-        else {
+private extension RuntimeGuestServicesRead {
+    var state: RuntimeGuestServicesReadState {
+        switch self {
+        case .unavailable:
+            return .unavailable
+        case .loaded:
+            return .loaded
+        case .failed:
+            return .failed
+        }
+    }
+
+    var services: [String]? {
+        switch self {
+        case .loaded(let services, _):
+            return services
+        case .unavailable, .failed:
             return nil
         }
-        return RuntimeContainerMemoryUsage(
-            usedBytes: Int64(usedBytes),
-            limitBytes: container.memoryLimitBytes.map(Int64.init)
-        )
+    }
+
+    var statuses: [RuntimeGuestControlServiceStatus] {
+        switch self {
+        case .loaded(_, let statuses):
+            return statuses
+        case .unavailable, .failed:
+            return []
+        }
+    }
+
+    var error: String? {
+        switch self {
+        case .failed(let message):
+            return message
+        case .unavailable, .loaded:
+            return nil
+        }
     }
 }

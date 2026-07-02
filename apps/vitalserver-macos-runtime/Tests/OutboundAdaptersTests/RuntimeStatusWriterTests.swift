@@ -6,7 +6,7 @@ import XCTest
 import Errors
 
 final class RuntimeStatusWriterTests: XCTestCase {
-    func testWriteStatusWritesDocumentAndReturnsSnapshotForExplicitProjection() throws {
+    func testWriteStatusReturnsSnapshotWhileStatusDocumentOmitsVitalDBObservation() throws {
         let repository = RuntimeStatusWriterRepositorySpy()
         let observation = vitalDBObservation()
         let snapshot = healthSnapshot(vitalDBObservation: observation)
@@ -35,7 +35,6 @@ final class RuntimeStatusWriterTests: XCTestCase {
 
         XCTAssertEqual(returnedSnapshot, snapshot)
         XCTAssertEqual(repository.saved?.status, .healthy)
-        XCTAssertEqual(repository.saved?.vitalDBObservation, observation)
     }
 
     func testWriteStatusPropagatesLatestBackupReadFailure() {

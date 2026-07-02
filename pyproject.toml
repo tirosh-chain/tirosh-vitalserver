@@ -1,6 +1,6 @@
 [project]
 name = "tirosh-vitalserver"
-version = "0.1.0"
+version = "0.2.0"
 description = "Production wrapper and validation workspace for upstream VitalServer."
 requires-python = ">=3.14"
 dependencies = [
@@ -51,6 +51,7 @@ src = [
   "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/tests",
   "apps/vitaldb-observer",
+  "apps/vitalserver-lab",
   "apps/vitalserver-redis-relay",
   "scripts",
 ]
@@ -93,6 +94,7 @@ known-first-party = [
   "tirosh_vitalserver",
   "tirosh_guest_tools",
   "vitaldb_observer",
+  "vitalserver_lab",
 ]
 
 [tool.mypy]
@@ -111,6 +113,7 @@ files = [
   "packages/vitalserver-testkit/src",
   "packages/vitalserver-testkit/tests",
   "apps/vitaldb-observer",
+  "apps/vitalserver-lab",
   "apps/vitalserver-redis-relay",
   "scripts",
 ]
@@ -122,6 +125,7 @@ mypy_path = [
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
   "apps/vitaldb-observer",
+  "apps/vitalserver-lab",
   "apps/vitalserver-redis-relay",
 ]
 namespace_packages = true
@@ -142,6 +146,7 @@ pythonpath = [
   "packages/vitalserver-guest-tools/src",
   "packages/vitalserver-testkit/src",
   "apps/vitaldb-observer",
+  "apps/vitalserver-lab",
   "apps/vitalserver-redis-relay",
 ]
 testpaths = [
@@ -151,5 +156,6 @@ testpaths = [
   "packages/vitalserver-guest-tools/tests",
   "packages/vitalserver-testkit/tests",
   "apps/vitaldb-observer/tests",
+  "apps/vitalserver-lab/tests",
   "apps/vitalserver-redis-relay/tests",
 ]

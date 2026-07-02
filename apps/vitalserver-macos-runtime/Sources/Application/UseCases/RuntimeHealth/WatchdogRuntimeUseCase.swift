@@ -82,7 +82,7 @@ public struct WatchdogRuntimeRecoveryExecutionPlan: Equatable, Sendable {
     public let startedStatusMessage: String
     public let planLogMessage: String
     public let plannedEventMessage: String
-    public let composeReconcileEventMessage: String?
+    public let guestStackReconcileEventMessage: String?
     public let vmRestartEventMessage: String?
     public let proxyRestartEventMessage: String?
 
@@ -93,7 +93,7 @@ public struct WatchdogRuntimeRecoveryExecutionPlan: Equatable, Sendable {
         startedStatusMessage: String,
         planLogMessage: String,
         plannedEventMessage: String,
-        composeReconcileEventMessage: String?,
+        guestStackReconcileEventMessage: String?,
         vmRestartEventMessage: String?,
         proxyRestartEventMessage: String?
     ) {
@@ -103,7 +103,7 @@ public struct WatchdogRuntimeRecoveryExecutionPlan: Equatable, Sendable {
         self.startedStatusMessage = startedStatusMessage
         self.planLogMessage = planLogMessage
         self.plannedEventMessage = plannedEventMessage
-        self.composeReconcileEventMessage = composeReconcileEventMessage
+        self.guestStackReconcileEventMessage = guestStackReconcileEventMessage
         self.vmRestartEventMessage = vmRestartEventMessage
         self.proxyRestartEventMessage = proxyRestartEventMessage
     }
@@ -403,10 +403,10 @@ public struct WatchdogRuntimeUseCase {
         )
     }
 
-    public func composeReconcileFailurePlan(error: Error) -> WatchdogRuntimeCommandFailurePlan {
+    public func guestStackReconcileFailurePlan(error: Error) -> WatchdogRuntimeCommandFailurePlan {
         WatchdogRuntimeCommandFailurePlan(
             status: .critical,
-            message: "watchdog guest compose reconcile failed: \(error.localizedDescription)",
+            message: "watchdog guest stack reconcile failed: \(error.localizedDescription)",
             eventType: .runtimeCommandFailed,
             printMessage: "watchdog: critical"
         )
@@ -515,9 +515,9 @@ public struct WatchdogRuntimeUseCase {
             recoveryPlan: recoveryPlan,
             detectedLogMessage: "watchdog detected unhealthy runtime reasons=\(reason)",
             startedStatusMessage: "watchdog recovery started: \(reason)",
-            planLogMessage: "watchdog recovery plan compose=\(recoveryPlan.reconcileGuestCompose) vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) actionReasons=\(actionReasons) hostProxyHealth=\(hostProxyLivenessHTTP) hostProxyReady=\(snapshot.hostProxyHTTP) guestReady=\(snapshot.guestHTTP)",
-            plannedEventMessage: "watchdog recovery planned compose=\(recoveryPlan.reconcileGuestCompose) vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) reasons=\(actionReasons)",
-            composeReconcileEventMessage: recoveryPlan.reconcileGuestCompose ? "watchdog compose reconcile dispatched services=guest-compose" : nil,
+            planLogMessage: "watchdog recovery plan guestStack=\(recoveryPlan.reconcileGuestStack) vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) actionReasons=\(actionReasons) hostProxyHealth=\(hostProxyLivenessHTTP) hostProxyReady=\(snapshot.hostProxyHTTP) guestReady=\(snapshot.guestHTTP)",
+            plannedEventMessage: "watchdog recovery planned guestStack=\(recoveryPlan.reconcileGuestStack) vm=\(recoveryPlan.restartVM) proxy=\(recoveryPlan.restartProxy) reasons=\(actionReasons)",
+            guestStackReconcileEventMessage: recoveryPlan.reconcileGuestStack ? "watchdog guest stack reconcile dispatched operation=guest-stack" : nil,
             vmRestartEventMessage: recoveryPlan.restartVM ? "watchdog restart dispatched services=vm,guest-log-sync" : nil,
             proxyRestartEventMessage: recoveryPlan.restartProxy ? "watchdog restart dispatched services=proxy" : nil
         )

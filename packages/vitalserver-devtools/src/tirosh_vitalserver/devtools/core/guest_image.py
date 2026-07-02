@@ -179,7 +179,10 @@ def runtime_data_disk_plan(
 ) -> RuntimeDataDiskPlan:
     runtime_dir = vm_home / "runtime"
     disk = runtime_config.runtime_data_disk
-    require_ext_filesystem_label(disk.filesystem_label, "guest.runtime_data.filesystem_label")
+    require_ext_filesystem_label(
+        disk.filesystem_label,
+        "guest.runtime_data.filesystem_label",
+    )
     return RuntimeDataDiskPlan(
         config_path=config_path,
         vm_home=vm_home,

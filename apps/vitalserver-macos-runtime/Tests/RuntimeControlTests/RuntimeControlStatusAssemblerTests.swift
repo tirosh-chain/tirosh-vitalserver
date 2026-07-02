@@ -4,38 +4,10 @@ import XCTest
 import Errors
 
 final class RuntimeControlStatusAssemblerTests: XCTestCase {
-    func testMakeStatusBuildsRuntimeControlReadModelFromExplicitReads() {
+    func testMakeStatusDoesNotPublishGuestRuntimeStateResourceFields() {
         let status = RuntimeControlStatusAssembler.makeStatus(
             statusRead: RuntimeStatusDocumentRead(
                 document: statusDocument(proxyPort: 19090),
-                error: nil,
-                issue: nil
-            ),
-            guestStateRead: GuestRuntimeStateRead(
-                document: GuestRuntimeStateDocument(
-                    vmIP: "192.168.64.2",
-                    updatedAt: "2026-06-01T00:00:01Z",
-                    guestHTTP: "200",
-                    redisUIHTTP: "200",
-                    swaggerUIHTTP: "200",
-                    cpuUsagePercent: 12.5,
-                    containerServices: [
-                        RuntimeContainerServiceObservation(
-                            service: "app",
-                            memoryUsedBytes: 1_073_741_824,
-                            memoryLimitBytes: 4_294_967_296
-                        ),
-                        RuntimeContainerServiceObservation(
-                            service: "recorder-ingress",
-                            memoryUsedBytes: 134_217_728
-                        ),
-                        RuntimeContainerServiceObservation(
-                            service: "redis",
-                            memoryUsedBytes: 67_108_864,
-                            memoryLimitBytes: 536_870_912
-                        ),
-                    ]
-                ),
                 error: nil,
                 issue: nil
             ),
@@ -48,15 +20,86 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         XCTAssertEqual(status.proxyServiceStateSource, RuntimeServiceStateSource.liveLaunchd)
         XCTAssertEqual(status.runtimeState, RuntimeState.healthy)
         XCTAssertEqual(status.operation, RuntimeOperation.health)
-        XCTAssertEqual(status.startedAt, "2026-06-01T00:00:00Z")
-        XCTAssertEqual(status.cpuUsagePercent, 12.5)
-        XCTAssertEqual(status.vitalServerMemory, RuntimeContainerMemoryUsage(usedBytes: 1_073_741_824, limitBytes: 4_294_967_296))
-        XCTAssertEqual(status.vitalServerMemory?.percent, 25)
-        XCTAssertEqual(status.recorderIngressMemory, RuntimeContainerMemoryUsage(usedBytes: 134_217_728))
-        XCTAssertNil(status.recorderIngressMemory?.percent)
-        XCTAssertEqual(status.redisMemory?.percent, 12.5)
+        XCTAssertNil(status.startedAt)
+        XCTAssertNil(status.cpuUsagePercent)
+        XCTAssertNil(status.memory)
+        XCTAssertNil(status.systemDisk)
+        XCTAssertNil(status.dataStorage)
+        XCTAssertNil(status.vitalServerMemory)
+        XCTAssertNil(status.recorderIngressMemory)
+        XCTAssertNil(status.redisMemory)
         XCTAssertEqual(status.proxyPort, 19090)
         XCTAssertEqual(status.readIssues, [RuntimeStatusReadIssue]())
+    }
+
+    func testMakeStatusPreservesGuestServicesReadWithoutMixingItWithFileReadIssues() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            statusRead: RuntimeStatusDocumentRead(
+                document: statusDocument(proxyPort: 19090),
+                error: nil,
+                issue: nil
+            ),
+            guestServicesRead: .loaded(
+                services: ["app", "postgres"],
+                statuses: [
+                    RuntimeGuestControlServiceStatus(
+                        service: "app",
+                        state: "running",
+                        health: "healthy",
+                        observedAt: "2026-07-01T00:00:00+00:00",
+                        container: "vitalserver-app-1"
+                    ),
+                    RuntimeGuestControlServiceStatus(
+                        service: "postgres",
+                        state: "running",
+                        health: "healthy",
+                        observedAt: "2026-07-01T00:00:00+00:00"
+                    ),
+                ]
+            ),
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.guestServicesReadState, .loaded)
+        XCTAssertEqual(status.guestServices, ["app", "postgres"])
+        XCTAssertEqual(status.guestServiceStatuses.map(\.service), ["app", "postgres"])
+        XCTAssertNil(status.guestServicesReadError)
+        XCTAssertEqual(status.readIssues, [])
+    }
+
+    func testMakeStatusPreservesGuestServicesReadFailureSeparately() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            statusRead: RuntimeStatusDocumentRead(
+                document: statusDocument(proxyPort: 19090),
+                error: nil,
+                issue: nil
+            ),
+            guestServicesRead: .failed("guest control API timed out"),
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.guestServicesReadState, .failed)
+        XCTAssertNil(status.guestServices)
+        XCTAssertEqual(status.guestServiceStatuses, [])
+        XCTAssertEqual(status.guestServicesReadError, "guest control API timed out")
+        XCTAssertEqual(status.readIssues, [])
+    }
+
+    func testMakeStatusDoesNotPublishContainerObservationAsProductStatus() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            statusRead: RuntimeStatusDocumentRead(
+                document: statusDocument(proxyPort: 19090),
+                error: nil,
+                issue: nil
+            ),
+            guestServicesRead: .unavailable,
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.guestServicesReadState, .unavailable)
+        XCTAssertNil(status.guestServices)
+        XCTAssertEqual(status.guestServiceStatuses, [])
+        XCTAssertNil(status.guestServicesReadError)
     }
 
     func testMakeStatusPreservesMissingProxyPortAsExplicitReadIssue() {
@@ -66,7 +109,6 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
                 error: nil,
                 issue: nil
             ),
-            guestStateRead: GuestRuntimeStateRead(document: nil, error: nil, issue: nil),
             liveDiagnostics: liveDiagnostics()
         )
 
@@ -317,7 +359,6 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
                 error: nil,
                 issue: nil
             ),
-            guestStateRead: GuestRuntimeStateRead(document: nil, error: nil, issue: nil),
             redisRelayStatusRead: RuntimeRedisRelayStatusRead(
                 document: redisRelayStatus,
                 error: nil,
@@ -354,24 +395,7 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
             rootfsBase: .present,
             vmDisk: .present,
             failureReasons: [],
-            latestBackup: nil,
-            containerObservation: RuntimeContainerObservation(
-                recorderIngressHTTP: "200",
-                recorderIngressStatus: nil,
-                recorderIngressStatusReadError: nil,
-                runtimeStateUpdatedAt: nil,
-                runtimeStateFileUpdatedAt: nil,
-                runtimeStateFileMetadataError: nil,
-                containerLogsPresent: false,
-                containerLogsBytes: nil,
-                containerLogsUpdatedAt: nil,
-                containerLogsMetadataError: nil,
-                composeServicesReadState: .loaded,
-                composeServices: [
-                    RuntimeContainerServiceObservation(service: "app", startedAt: "2026-06-01T00:00:00Z"),
-                ],
-                composeServicesReadError: nil
-            )
+            latestBackup: nil
         )
     }
 

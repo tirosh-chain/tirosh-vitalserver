@@ -44,7 +44,7 @@ def test_container_bind_source_directories_cover_compose_runtime_binds() -> None
     assert runtime_bind_sources == prepared_sources
 
 
-def test_testkit_container_can_read_mounted_vital_files() -> None:
+def test_lab_container_can_read_mounted_vital_files() -> None:
     compose_path = (
         Path(__file__).resolve().parents[3]
         / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
@@ -60,15 +60,60 @@ def test_testkit_container_can_read_mounted_vital_files() -> None:
         service="app",
         target="/opt/vitalserver/vital_files",
     )
-    testkit_bind = bind_volume(
+    lab_bind = bind_volume(
         services,
-        service="testkit",
+        service="lab",
         target="/mnt/tirosh-vital-files",
     )
 
     assert app_bind["source"] == expected_source
-    assert testkit_bind["source"] == expected_source
-    assert testkit_bind["read_only"] is True
+    assert lab_bind["source"] == expected_source
+    assert lab_bind["read_only"] is True
+
+
+def test_runtime_compose_includes_postgres_service() -> None:
+    compose_path = (
+        Path(__file__).resolve().parents[3]
+        / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    )
+    document = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    services = document.get("services")
+    assert isinstance(services, dict)
+    volumes = document.get("volumes")
+    assert isinstance(volumes, dict)
+
+    postgres = services.get("postgres")
+    assert isinstance(postgres, dict)
+    assert postgres["image"] == "postgres:16-alpine"
+    assert postgres["environment"]["POSTGRES_DB"] == "vitalserver"
+    assert "postgres-data" in volumes
+
+
+def test_runtime_compose_includes_lab_product_service() -> None:
+    compose_path = (
+        Path(__file__).resolve().parents[3]
+        / "apps/vitalserver-macos-runtime/Support/Guest/compose.yaml"
+    )
+    document = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    services = document.get("services")
+    assert isinstance(services, dict)
+
+    lab = services.get("lab")
+    assert isinstance(lab, dict)
+    assert lab["image"] == "vitalserver-lab:0.2.0"
+    assert lab["build"]["dockerfile"] == "apps/vitalserver-lab/Dockerfile"
+    assert lab["depends_on"]["postgres"]["condition"] == "service_healthy"
+    assert lab["ports"] == ["127.0.0.1:18085:8080"]
+    assert lab["environment"]["VITALSERVER_LAB_SESSION_STORE"] == "postgres"
+    assert lab["environment"]["VITALSERVER_LAB_DATABASE_URL"] == (
+        "postgresql://vitalserver@postgres:5432/vitalserver"
+    )
+    assert lab["environment"]["PGPASSWORD"] == (
+        "${VITALSERVER_POSTGRES_PASSWORD:-vitalserver}"
+    )
+    assert lab["restart"] == "unless-stopped"
 
 
 def bind_volume(
@@ -687,17 +732,54 @@ def test_stop_compose_action_stops_services_in_explicit_order(monkeypatch: Any) 
 
     assert events == [
         "compose:config --services:timeout=None",
-        "compose:stop --timeout 30 testkit:timeout=40",
         "compose:stop --timeout 30 edge:timeout=40",
         "compose:stop --timeout 30 swagger-ui:timeout=40",
         "compose:stop --timeout 30 redis-ui:timeout=40",
         "compose:stop --timeout 30 recorder-ingress:timeout=40",
         "compose:stop --timeout 30 vitaldb-observer:timeout=40",
         "compose:stop --timeout 30 redis-relay:timeout=40",
+        "compose:stop --timeout 30 lab:timeout=40",
         "compose:stop --timeout 90 app:timeout=100",
+        "compose:stop --timeout 60 postgres:timeout=70",
         "compose:stop --timeout 60 redis:timeout=70",
         "sync",
     ]
+
+
+def test_start_ordered_starts_postgres_before_product_services(
+    monkeypatch: Any,
+) -> None:
+    events: list[str] = []
+
+    def checked_compose_stub(arguments: list[str], *, stage: str) -> None:
+        events.append("checked-compose:" + " ".join(arguments) + f":stage={stage}")
+
+    monkeypatch.setattr(compose, "checked_compose", checked_compose_stub)
+    monkeypatch.setattr(
+        compose,
+        "wait_for_postgres",
+        lambda: events.append("wait-for-postgres"),
+    )
+    monkeypatch.setattr(
+        compose,
+        "wait_for_redis",
+        lambda: events.append("wait-for-redis"),
+    )
+    monkeypatch.setattr(compose, "wait_for_app", lambda: events.append("wait-for-app"))
+
+    compose.start_ordered()
+
+    assert events[:4] == [
+        "checked-compose:up -d postgres:stage=postgres startup",
+        "wait-for-postgres",
+        "checked-compose:up -d redis:stage=redis startup",
+        "wait-for-redis",
+    ]
+    assert (
+        "checked-compose:up -d app recorder-recovery recorder-ingress "
+        "vitaldb-observer redis-relay lab redis-ui swagger-ui"
+        ":stage=application service startup"
+    ) in events
 
 
 def test_up_compose_action_prepares_recorder_ingress_bind_sources(
@@ -817,68 +899,6 @@ def test_compose_services_reports_empty_stdout(monkeypatch: Any) -> None:
 
     assert error.value.code == "guest-compose-services-output-empty"
     assert "docker compose config --services produced empty stdout" in str(error.value)
-
-
-def test_testkit_stop_compose_action_stops_only_testkit(monkeypatch: Any) -> None:
-    calls: list[list[str]] = []
-
-    monkeypatch.setattr(compose, "mount_runtime_share", lambda: None)
-    monkeypatch.setattr(compose, "mount_vital_files_share", lambda: None)
-    monkeypatch.setattr(compose, "load_runtime_env", lambda: object())
-    monkeypatch.setattr(
-        compose,
-        "compose",
-        lambda arguments, **kwargs: calls.append(arguments),
-    )
-    monkeypatch.setattr(
-        compose,
-        "run",
-        lambda arguments, **kwargs: calls.append(arguments),
-    )
-
-    compose.run_compose_action(ComposeAction.TESTKIT_STOP)
-
-    assert calls == [
-        ["stop", "--timeout", "30", ComposeService.TESTKIT.value],
-        ["sync"],
-    ]
-
-
-def test_testkit_restart_compose_action_recreates_only_testkit(
-    monkeypatch: Any,
-) -> None:
-    calls: list[list[str]] = []
-
-    monkeypatch.setattr(compose, "mount_runtime_share", lambda: None)
-    monkeypatch.setattr(compose, "mount_vital_files_share", lambda: None)
-    monkeypatch.setattr(
-        compose,
-        "prepare_container_bind_source_directories",
-        lambda: None,
-    )
-    monkeypatch.setattr(compose, "load_optional_docker_images", lambda: None)
-    monkeypatch.setattr(
-        compose,
-        "load_runtime_env",
-        lambda: type("RuntimeConfigStub", (), {"testkit_enabled": True})(),
-    )
-    monkeypatch.setattr(
-        compose,
-        "checked_compose",
-        lambda arguments, **kwargs: calls.append(arguments),
-    )
-    monkeypatch.setattr(
-        compose,
-        "compose",
-        lambda arguments, **kwargs: calls.append(arguments),
-    )
-
-    compose.run_compose_action(ComposeAction.TESTKIT_RESTART)
-
-    assert calls == [
-        ["stop", "--timeout", "30", ComposeService.TESTKIT.value],
-        ["up", "-d", ComposeService.TESTKIT.value],
-    ]
 
 
 def test_stop_compose_action_reports_timeout_as_dependency_failure(

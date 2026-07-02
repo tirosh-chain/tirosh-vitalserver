@@ -4,22 +4,31 @@ import Errors
 import Bootstrap
 
 final class GuestCommandDispatcherSupportTests: XCTestCase {
-    func testGuestCommandPollerDispatchesAllHostWrittenRequests() throws {
-        let poller = try readGuestToolsFile("adapters/inbound/request_file_poller.py")
+    func testGuestCommandPollerIsNotInstalled() throws {
+        let guestToolsDirectory = try guestToolsDirectory()
+        let supportDirectory = try guestSupportDirectory()
 
-        XCTAssertTrue(poller.contains("SETTINGS.intervals.command_poll_seconds"))
-        XCTAssertTrue(poller.contains("RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST"))
-        XCTAssertTrue(poller.contains("RuntimeService.PREPARE_UPDATE_SHUTDOWN"))
-        XCTAssertTrue(poller.contains("RuntimeFileName.ACTIVATE_UPDATE_REQUEST"))
-        XCTAssertTrue(poller.contains("RuntimeService.ACTIVATE_UPDATE"))
-        XCTAssertTrue(poller.contains("RuntimeFileName.REPAIR_DATASTORE_REQUEST"))
-        XCTAssertTrue(poller.contains("RuntimeService.REPAIR_DATASTORE"))
-        XCTAssertTrue(poller.contains("RuntimeFileName.REDIS_BACKUP_REQUEST"))
-        XCTAssertTrue(poller.contains("RuntimeService.REDIS_BACKUP"))
-        XCTAssertTrue(poller.contains("RuntimeFileName.RECONCILE_COMPOSE_REQUEST"))
-        XCTAssertTrue(poller.contains("RuntimeService.RECONCILE_COMPOSE"))
-        XCTAssertTrue(poller.contains("\"start\", \"--no-block\""))
-        XCTAssertFalse(poller.contains("PathExists="))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: guestToolsDirectory
+                    .appendingPathComponent("adapters/inbound/request_file_poller.py")
+                    .path
+            )
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: supportDirectory
+                    .appendingPathComponent("bin/tirosh-vitalserver-command-poller")
+                    .path
+            )
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: supportDirectory
+                    .appendingPathComponent("systemd/tirosh-vitalserver-command-poller.service")
+                    .path
+            )
+        )
     }
 
     func testBootstrapInstallsWrappersAndExplicitSystemdFiles() throws {
@@ -36,12 +45,14 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(bootstrap.contains("docker "))
         XCTAssertTrue(workflow.contains("class GuestBootstrapWorkflow"))
         XCTAssertFalse(workflow.contains("from tirosh_guest_tools.infrastructure"))
-        XCTAssertTrue(operations.contains("RuntimeService.COMMAND_POLLER.value"))
+        XCTAssertTrue(operations.contains("RuntimeService.GUEST_CONTROL_API.value"))
         XCTAssertTrue(operations.contains("systemctl(\"enable\", service)"))
         XCTAssertTrue(workflow.contains("def start_guest_background_services(self)"))
-        XCTAssertTrue(operations.contains("systemctl(\"start\", RuntimeService.COMMAND_POLLER.value)"))
-        XCTAssertTrue(operations.contains("\"tirosh-vitalserver-command-poller\""))
-        XCTAssertTrue(operations.contains("\"tirosh-vitalserver-command-poller.service\""))
+        XCTAssertTrue(operations.contains("systemctl(\"start\", RuntimeService.GUEST_CONTROL_API.value)"))
+        XCTAssertTrue(operations.contains("\"tirosh-vitalserver-guest-control-api\""))
+        XCTAssertTrue(operations.contains("\"tirosh-vitalserver-guest-control-api.service\""))
+        XCTAssertFalse(operations.contains("COMMAND_POLLER"))
+        XCTAssertFalse(operations.contains("command-poller"))
         XCTAssertTrue(operations.contains("\"tirosh-vitalserver-sync-host-time\""))
         XCTAssertTrue(operations.contains("\"tirosh-vitalserver-sync-host-time.service\""))
         let observabilityUnit = try readGuestSupportFile(
@@ -120,11 +131,11 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
 
         XCTAssertEqual(
             compose.components(separatedBy: "seccomp=unconfined").count - 1,
-            10
+            12
         )
     }
 
-    func testRecorderIngressMountsRuntimeStateReadOnlyForMemoryGuard() throws {
+    func testRecorderIngressDoesNotMountRuntimeStateForMemoryGuard() throws {
         let compose = try readGuestSupportFile("compose.yaml")
         guard let serviceStart = compose.range(of: "  recorder-ingress:") else {
             XCTFail("recorder-ingress service is missing")
@@ -139,12 +150,11 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         }
         let recorderIngress = String(compose[serviceStart.lowerBound..<nextService.lowerBound])
 
-        XCTAssertTrue(recorderIngress.contains("RECORDER_INGRESS_RUNTIME_STATE_PATH: \"${RECORDER_INGRESS_RUNTIME_STATE_PATH:-/run/tirosh/runtime/runtime-state.json}\""))
+        XCTAssertFalse(recorderIngress.contains("RECORDER_INGRESS_RUNTIME_STATE_PATH"))
+        XCTAssertFalse(recorderIngress.contains("RECORDER_INGRESS_RUNTIME_STATE_MAX_AGE_MS"))
         XCTAssertTrue(recorderIngress.contains("RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH: \"${RECORDER_INGRESS_REDIS_MAX_QUEUE_LENGTH:-50000}\""))
         XCTAssertTrue(recorderIngress.contains("RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS: \"${RECORDER_INGRESS_REDIS_RETRY_MAX_ATTEMPTS:-3}\""))
-        XCTAssertTrue(recorderIngress.contains("source: /mnt/tirosh/run"))
-        XCTAssertTrue(recorderIngress.contains("target: /run/tirosh/runtime"))
-        XCTAssertTrue(recorderIngress.contains("read_only: true"))
+        XCTAssertFalse(recorderIngress.contains("target: /run/tirosh/runtime"))
     }
 
     func testDockerRuntimeSmokeRunsWithoutUnsupportedBPFJITSysctlGuard() throws {
@@ -289,7 +299,8 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_RUNTIME_BOOT_SMOKE"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_RUNTIME_DATA_PREPARE"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_ACTIVATE_UPDATE"))
-        XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_RECONCILE_COMPOSE"))
+        XCTAssertFalse(systemInstall.contains("RuntimeCommand.VITALSERVER_RECONCILE_COMPOSE"))
+        XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_GUEST_CONTROL_API"))
         XCTAssertTrue(systemInstall.contains("RuntimeCommand.VITALSERVER_BOOTSTRAP"))
         let activationUseCase = try readGuestToolsFile("application/update_activation.py")
         let shutdownUseCase = try readGuestToolsFile("application/update_shutdown.py")
@@ -303,24 +314,32 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         let wrapper = try readGuestSupportFile("bin/tirosh-vitalserver-compose")
         let syncHostTimeWrapper = try readGuestSupportFile("bin/tirosh-vitalserver-sync-host-time")
         let runtimeBootSmokeWrapper = try readGuestSupportFile("bin/tirosh-vitalserver-runtime-boot-smoke")
+        let guestControlAPIWrapper = try readGuestSupportFile("bin/tirosh-vitalserver-guest-control-api")
         let service = try readGuestSupportFile("systemd/tirosh-vitalserver-compose.service")
         let syncHostTimeService = try readGuestSupportFile("systemd/tirosh-vitalserver-sync-host-time.service")
         let activationService = try readGuestSupportFile("systemd/tirosh-vitalserver-activate-update.service")
-        let testkitService = try readGuestSupportFile("systemd/tirosh-vitalserver-testkit.service")
+        let guestControlAPIService = try readGuestSupportFile("systemd/tirosh-vitalserver-guest-control-api.service")
         XCTAssertTrue(wrapper.contains("exec /opt/tirosh/guest-tools/venv/bin/"))
         XCTAssertTrue(syncHostTimeWrapper.contains("tirosh-vitalserver-sync-host-time"))
         XCTAssertTrue(runtimeBootSmokeWrapper.contains("tirosh-vitalserver-runtime-boot-smoke"))
+        XCTAssertTrue(guestControlAPIWrapper.contains("tirosh-vitalserver-guest-control-api"))
         XCTAssertTrue(service.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-compose up"))
         XCTAssertTrue(service.contains("TimeoutStopSec=150"))
         XCTAssertTrue(syncHostTimeService.contains("Before=docker.service"))
         XCTAssertTrue(syncHostTimeService.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-sync-host-time"))
+        XCTAssertTrue(guestControlAPIService.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-guest-control-api"))
         XCTAssertTrue(
             activationService.contains(
-                "Conflicts=tirosh-vitalserver-compose.service tirosh-vitalserver-testkit.service"
+                "Conflicts=tirosh-vitalserver-compose.service"
             )
         )
-        XCTAssertTrue(testkitService.contains("After=docker.service network-online.target tirosh-vitalserver-compose.service"))
-        XCTAssertFalse(testkitService.contains("Wants=network-online.target tirosh-vitalserver-compose.service"))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: guestSupport
+                    .appendingPathComponent("systemd/tirosh-vitalserver-testkit.service")
+                    .path
+            )
+        )
         XCTAssertFalse(FileManager.default.fileExists(atPath: guestSupport.appendingPathComponent("guest-tools.toml").path))
         XCTAssertTrue(
             FileManager.default.fileExists(

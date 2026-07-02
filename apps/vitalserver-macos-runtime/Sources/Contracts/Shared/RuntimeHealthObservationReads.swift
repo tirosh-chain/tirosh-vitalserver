@@ -1,61 +1,5 @@
 import Foundation
 
-public struct RuntimeGuestRuntimeStateObservation {
-    public let loadedState: GuestRuntimeStateDocument?
-    public let freshState: GuestRuntimeStateDocument?
-    public let isFresh: Bool
-    public let readIssue: RuntimeGuestRuntimeStateReadIssue?
-
-    public var isPresent: Bool {
-        loadedState != nil
-    }
-
-    public init(
-        loadedState: GuestRuntimeStateDocument?,
-        freshState: GuestRuntimeStateDocument?,
-        isFresh: Bool,
-        readIssue: RuntimeGuestRuntimeStateReadIssue? = nil
-    ) {
-        self.loadedState = loadedState
-        self.freshState = freshState
-        self.isFresh = isFresh
-        self.readIssue = readIssue
-    }
-}
-
-public enum RuntimeGuestRuntimeStateReadIssue: Equatable, Sendable {
-    case loadFailed(String)
-    case metadataReadFailed(String)
-}
-
-public extension RuntimeGuestRuntimeStateReadIssue {
-    var failureReason: RuntimeFailureReason {
-        switch self {
-        case .loadFailed(let message):
-            return .guestRuntimeStateLoadFailed(Self.failureToken(message))
-        case .metadataReadFailed(let message):
-            return .guestRuntimeStateMetadataReadFailed(Self.failureToken(message))
-        }
-    }
-
-    private static func failureToken(_ value: String) -> String {
-        value
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .unicodeScalars
-            .map { scalar in
-                CharacterSet.alphanumerics.contains(scalar)
-                    || scalar == "-"
-                    || scalar == "_"
-                    || scalar == "."
-                    ? Character(scalar)
-                    : "_"
-            }
-            .prefix(80)
-            .map(String.init)
-            .joined()
-    }
-}
-
 public struct RuntimeContainerLogsMetadata {
     public let present: Bool
     public let bytes: UInt64?
@@ -70,52 +14,15 @@ public struct RuntimeContainerLogsMetadata {
     }
 }
 
-public enum RuntimeFileMetadataReadState: String, Codable, Equatable, Sendable {
-    case notRead
-    case loaded
-    case readFailed
-}
-
-public struct RuntimeFileModifiedAtReadResult {
-    public let readState: RuntimeFileMetadataReadState
-    public let updatedAt: String?
-    public let readError: String?
-
-    public init(
-        readState: RuntimeFileMetadataReadState? = nil,
-        updatedAt: String?,
-        readError: String?
-    ) {
-        self.readState = readState ?? RuntimeFileModifiedAtReadResult.readState(
-            updatedAt: updatedAt,
-            readError: readError
-        )
-        self.updatedAt = updatedAt
-        self.readError = readError
-    }
-
-    public static func notRead() -> RuntimeFileModifiedAtReadResult {
-        RuntimeFileModifiedAtReadResult(readState: .notRead, updatedAt: nil, readError: nil)
-    }
-
-    private static func readState(
-        updatedAt: String?,
-        readError: String?
-    ) -> RuntimeFileMetadataReadState {
-        if readError != nil {
-            return .readFailed
-        }
-        if updatedAt != nil {
-            return .loaded
-        }
-        return .notRead
-    }
+public enum RuntimeGuestControlReadinessRead: Equatable, Sendable {
+    case notReported
+    case loaded(vmIP: String?, readiness: RuntimeGuestControlReadiness)
+    case failed(vmIP: String?, message: String)
 }
 
 public enum RuntimeRecorderIngressStatusReadState: String, Codable, Equatable, Sendable {
     case notRead
     case loaded
-    case skippedMissingProxyPort
     case commandFailed
     case emptyResponse
     case outputInvalid
@@ -123,7 +30,7 @@ public enum RuntimeRecorderIngressStatusReadState: String, Codable, Equatable, S
     case readFailed
 }
 
-public struct RuntimeRecorderIngressStatusReadResult {
+public struct RuntimeRecorderIngressStatusReadResult: Codable, Equatable, Sendable {
     public let readState: RuntimeRecorderIngressStatusReadState
     public let httpStatus: String
     public let document: RuntimeRecorderIngressStatusDocument?
@@ -155,9 +62,6 @@ public struct RuntimeRecorderIngressStatusReadResult {
         }
         guard let readError, !readError.isEmpty else {
             return .notRead
-        }
-        if readError == RuntimeHTTPStatusText.missingProxyPort {
-            return .skippedMissingProxyPort
         }
         if readError.hasPrefix("command-failed") {
             return .commandFailed
@@ -200,16 +104,17 @@ public struct RuntimeHealthObservationReads {
     public let proxyService: RuntimeServiceState
     public let watchdogService: RuntimeServiceState
     public let vmLifecycleLoadResult: RuntimeGuestDocumentLoadResult<RuntimeVMLifecycleDocument>
-    public let guestRuntimeState: RuntimeGuestRuntimeStateObservation
+    public let guestControlReadiness: RuntimeGuestControlReadinessRead
     public let proxyPortReadState: RuntimeProxyPortReadState
     public let hostProxyHTTP: RuntimeHTTPProbeResult?
     public let redisUIHTTP: RuntimeHTTPProbeResult?
     public let swaggerUIHTTP: RuntimeHTTPProbeResult?
     public let recorderIngressStatus: RuntimeRecorderIngressStatusReadResult?
-    public let runtimeStateFileModifiedAt: RuntimeFileModifiedAtReadResult
+    public let vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
     public let containerLogsMetadata: RuntimeContainerLogsMetadata
     public let proxyListenerObservation: RuntimeHostProxyListenerObservation?
     public let guestBootstrapResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>
+    public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
     public let observedAt: Date
     public let guestBootstrapFreshnessGraceSeconds: TimeInterval
 
@@ -222,16 +127,17 @@ public struct RuntimeHealthObservationReads {
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
         vmLifecycleLoadResult: RuntimeGuestDocumentLoadResult<RuntimeVMLifecycleDocument>,
-        guestRuntimeState: RuntimeGuestRuntimeStateObservation,
+        guestControlReadiness: RuntimeGuestControlReadinessRead = .notReported,
         proxyPortReadState: RuntimeProxyPortReadState,
         hostProxyHTTP: RuntimeHTTPProbeResult?,
         redisUIHTTP: RuntimeHTTPProbeResult?,
         swaggerUIHTTP: RuntimeHTTPProbeResult?,
         recorderIngressStatus: RuntimeRecorderIngressStatusReadResult?,
-        runtimeStateFileModifiedAt: RuntimeFileModifiedAtReadResult,
+        vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument> = .notReported,
         containerLogsMetadata: RuntimeContainerLogsMetadata,
         proxyListenerObservation: RuntimeHostProxyListenerObservation?,
         guestBootstrapResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>,
+        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
         observedAt: Date,
         guestBootstrapFreshnessGraceSeconds: TimeInterval
     ) {
@@ -243,16 +149,17 @@ public struct RuntimeHealthObservationReads {
         self.proxyService = proxyService
         self.watchdogService = watchdogService
         self.vmLifecycleLoadResult = vmLifecycleLoadResult
-        self.guestRuntimeState = guestRuntimeState
+        self.guestControlReadiness = guestControlReadiness
         self.proxyPortReadState = proxyPortReadState
         self.hostProxyHTTP = hostProxyHTTP
         self.redisUIHTTP = redisUIHTTP
         self.swaggerUIHTTP = swaggerUIHTTP
         self.recorderIngressStatus = recorderIngressStatus
-        self.runtimeStateFileModifiedAt = runtimeStateFileModifiedAt
+        self.vitalDBObservation = vitalDBObservation
         self.containerLogsMetadata = containerLogsMetadata
         self.proxyListenerObservation = proxyListenerObservation
         self.guestBootstrapResult = guestBootstrapResult
+        self.guestServiceStatuses = guestServiceStatuses
         self.observedAt = observedAt
         self.guestBootstrapFreshnessGraceSeconds = guestBootstrapFreshnessGraceSeconds
     }

@@ -54,7 +54,7 @@ final class RuntimeSettingsRestartNoticePolicyTests: XCTestCase {
         )
     }
 
-    func testReportsRedisRelayChangeAsContainerServicesReconcileRequired() {
+    func testReportsRedisRelayChangeAsGuestStackReconcileRequired() {
         var draft = RuntimeSettings()
         draft.redisRelay.enabled = true
         draft.restartAfterSave = true
@@ -62,17 +62,17 @@ final class RuntimeSettingsRestartNoticePolicyTests: XCTestCase {
         let decision = policy.decision(draft: draft, runtime: RuntimeSettings())
 
         XCTAssertFalse(decision.requiresRestart)
-        XCTAssertTrue(decision.requiresContainerServicesReconcile)
+        XCTAssertTrue(decision.requiresGuestStackReconcile)
         XCTAssertTrue(decision.requiresActivation)
         XCTAssertEqual(decision.requiredChanges, [])
-        XCTAssertEqual(decision.containerServiceChanges, [AppConstants.Labels.redisRelay])
+        XCTAssertEqual(decision.guestStackChanges, [AppConstants.Labels.redisRelay])
         XCTAssertEqual(
             decision.message,
-            AppConstants.StatusText.containerServicesWillReconcileAfterSave(requiredBy: AppConstants.Labels.redisRelay)
+            AppConstants.StatusText.guestStackWillReconcileAfterSave(requiredBy: AppConstants.Labels.redisRelay)
         )
     }
 
-    func testReportsRecorderIngressModeChangeAsContainerServicesReconcileRequired() {
+    func testReportsRecorderIngressModeChangeAsGuestStackReconcileRequired() {
         var draft = RuntimeSettings()
         draft.recorderIngressSendDataMode = .passthrough
         draft.recorderIngressSendDataReplayBatchSize = 8
@@ -82,16 +82,16 @@ final class RuntimeSettingsRestartNoticePolicyTests: XCTestCase {
         let decision = policy.decision(draft: draft, runtime: RuntimeSettings())
 
         XCTAssertFalse(decision.requiresRestart)
-        XCTAssertTrue(decision.requiresContainerServicesReconcile)
+        XCTAssertTrue(decision.requiresGuestStackReconcile)
         XCTAssertTrue(decision.requiresActivation)
         XCTAssertEqual(decision.requiredChanges, [])
-        XCTAssertEqual(decision.containerServiceChanges, [
+        XCTAssertEqual(decision.guestStackChanges, [
             AppConstants.Labels.recorderIngressLoadControl,
             AppConstants.Labels.recorderIngressMaxReplayThroughput,
         ])
         XCTAssertEqual(
             decision.message,
-            AppConstants.StatusText.containerServicesWillReconcileAfterSave(
+            AppConstants.StatusText.guestStackWillReconcileAfterSave(
                 requiredBy: [
                     AppConstants.Labels.recorderIngressLoadControl,
                     AppConstants.Labels.recorderIngressMaxReplayThroughput,

@@ -42,6 +42,31 @@ from tirosh_vitalserver.devtools.core.preflight import PreflightStatus
 from tirosh_vitalserver.devtools.core.release_manifest import ReleaseManifest
 
 
+def runtime_product_minimal_compose(
+    *,
+    include_lab: bool = True,
+    include_testkit: bool = False,
+) -> str:
+    services = {
+        "postgres": "postgres:16-alpine",
+        "redis": "redis:3.2.12-alpine",
+        "app": "vitalserver:2.3.4",
+        "recorder-recovery": "vitalserver-recorder-recovery:0.2.0",
+        "recorder-ingress": "vitalserver-recorder-ingress:0.2.0",
+        "vitaldb-observer": "vitaldb-observer:0.2.0",
+        "redis-relay": "vitalserver-redis-relay:0.2.0",
+        "edge": "nginx:1.24-alpine",
+    }
+    if include_lab:
+        services["lab"] = "vitalserver-lab:0.2.0"
+    if include_testkit:
+        services["testkit"] = "vitalserver-testkit:0.2.0"
+    lines = ["services:"]
+    for service, image in services.items():
+        lines.extend([f"  {service}:", f"    image: {image}"])
+    return "\n".join(lines) + "\n"
+
+
 def test_package_clean_plan_allows_managed_build_paths() -> None:
     root = repo_root()
     settings = load_macos_release_settings(root / "config/vm-build.toml", root)
@@ -105,12 +130,108 @@ def test_guest_compose_contract_accepts_release_declared_services() -> None:
     )
 
     assert not [check for check in checks if check.blocks]
-    assert any(check.name == "guest-compose-image:recorder-recovery" for check in checks)
-    assert any(check.name == "guest-compose-dockerfile:recorder-recovery" for check in checks)
-    assert any(check.name == "guest-compose-deploy:recorder-recovery" for check in checks)
+    assert any(
+        check.name == "guest-compose-image:recorder-recovery" for check in checks
+    )
+    assert any(
+        check.name == "guest-compose-dockerfile:recorder-recovery"
+        for check in checks
+    )
+    assert any(
+        check.name == "guest-compose-deploy:recorder-recovery" for check in checks
+    )
+    assert any(
+        check.name == "guest-compose-product-services"
+        and check.status == PreflightStatus.PASSED
+        for check in checks
+    )
+    assert any(check.name == "guest-compose-image:postgres" for check in checks)
+    assert any(check.name == "guest-compose-image:lab" for check in checks)
     assert any(check.name == "guest-compose-image:redis-relay" for check in checks)
     assert any(check.name == "guest-compose-deploy:redis-relay" for check in checks)
     assert not any(check.name.endswith(":testkit") for check in checks)
+
+
+def test_guest_compose_contract_rejects_missing_runtime_product_service(
+    tmp_path: Path,
+) -> None:
+    root = repo_root()
+    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
+    build_config = load_config(root / "config/vm-build.toml")
+    docker_config = load_docker_images_config(build_config, root)
+    plan = docker_image_bundle_build_plan(
+        root=root,
+        docker_config=docker_config,
+        bundle_path=settings.docker_bundle,
+        platform=None,
+        compression_threads=None,
+    )
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text(
+        runtime_product_minimal_compose(include_lab=False),
+        encoding="utf-8",
+    )
+
+    checks = macos_package.guest_compose_contract_preflight_checks(
+        root=root,
+        compose_path=compose_path,
+        plan=plan.image_plan,
+        known_images=set(docker_config.images) | set(docker_config.optional_images),
+        deploy_include_sources=[
+            include.source for include in settings.guest_deploy.includes
+        ],
+        optional_images=set(docker_config.optional_images),
+        include_optional=False,
+    )
+
+    runtime_product = next(
+        check
+        for check in checks
+        if check.name == "guest-compose-product-services"
+    )
+    assert runtime_product.status == PreflightStatus.INVALID
+    assert "lab" in runtime_product.detail
+
+
+def test_guest_compose_contract_rejects_testkit_runtime_service(
+    tmp_path: Path,
+) -> None:
+    root = repo_root()
+    settings = load_macos_release_settings(root / "config/vm-build.toml", root)
+    build_config = load_config(root / "config/vm-build.toml")
+    docker_config = load_docker_images_config(build_config, root)
+    plan = docker_image_bundle_build_plan(
+        root=root,
+        docker_config=docker_config,
+        bundle_path=settings.docker_bundle,
+        platform=None,
+        compression_threads=None,
+    )
+    compose_path = tmp_path / "compose.yaml"
+    compose_path.write_text(
+        runtime_product_minimal_compose(include_testkit=True),
+        encoding="utf-8",
+    )
+
+    checks = macos_package.guest_compose_contract_preflight_checks(
+        root=root,
+        compose_path=compose_path,
+        plan=plan.image_plan,
+        known_images=set(docker_config.images) | set(docker_config.optional_images),
+        deploy_include_sources=[
+            include.source for include in settings.guest_deploy.includes
+        ],
+        optional_images=set(docker_config.optional_images),
+        include_optional=False,
+    )
+
+    runtime_product = next(
+        check
+        for check in checks
+        if check.name == "guest-compose-product-services"
+    )
+    assert runtime_product.status == PreflightStatus.INVALID
+    assert "testkit" in runtime_product.detail
 
 
 def test_guest_compose_contract_rejects_missing_redis_relay_deploy_include() -> None:
@@ -1008,17 +1129,25 @@ def test_install_pkg_reports_sudo_failure_without_traceback(
     release_file = tmp_path / "release-dev.json"
     release_file.write_text(
         json.dumps(
-            {
-                "channel": "dev",
-                "helperVersion": "1.2.3",
-                "releaseLabel": "1.2.3-dev",
-                "minUpdaterVersion": "1.0.0",
-                "vitalServerVersion": "2.3.4",
-                "targetPlatform": "macos-arm64",
-            }
-        ),
-        encoding="utf-8",
-    )
+                {
+                    "channel": "dev",
+                    "helperVersion": "1.2.3",
+                    "releaseLabel": "1.2.3-dev",
+                    "minUpdaterVersion": "1.0.0",
+                    "vitalServerVersion": "2.3.4",
+                    "targetPlatform": "macos-arm64",
+                    "services": {
+                        "lab": {
+                            "image": "vitalserver-lab:0.2.0",
+                        },
+                        "postgres": {
+                            "image": "postgres:16-alpine",
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
     pkg_output = tmp_path / "dist/VitalServerHelper-1.2.3-dev.pkg"
     pkg_output.parent.mkdir(exist_ok=True)
     pkg_output.write_text("pkg", encoding="utf-8")

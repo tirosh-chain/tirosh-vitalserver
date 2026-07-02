@@ -1,4 +1,4 @@
-"""Run common VitalServer productization checks with the testkit CLI."""
+"""Run common VitalServer developer verification checks with the testkit CLI."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ class BedRegistryConfig(StrictConfig):
 
 
 class VitalServerCheckConfig(BaseSettings):
-    """File-backed configuration for VitalServer productization checks."""
+    """File-backed configuration for VitalServer developer verification checks."""
 
     model_config = SettingsConfigDict(extra="forbid", frozen=True)
 

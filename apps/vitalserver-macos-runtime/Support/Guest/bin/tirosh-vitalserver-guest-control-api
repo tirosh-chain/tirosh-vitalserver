@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /opt/tirosh/guest-tools/venv/bin/tirosh-vitalserver-guest-control-api "$@"

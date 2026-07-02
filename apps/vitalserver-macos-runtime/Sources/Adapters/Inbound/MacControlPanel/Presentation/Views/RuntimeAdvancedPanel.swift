@@ -1,6 +1,13 @@
 import SwiftUI
+import Contracts
 import RuntimeControl
 import Errors
+
+private struct RuntimeAPICatalogItem: Identifiable {
+    var id: String { label }
+    let label: String
+    let url: String
+}
 
 struct RuntimeAdvancedPanel: View {
     @ObservedObject var viewModel: RuntimeViewModel
@@ -12,12 +19,11 @@ struct RuntimeAdvancedPanel: View {
     @Binding var showingRepairDatastoreConfirmation: Bool
     @Binding var showingRepairVMDiskConfirmation: Bool
     @Binding var showingRepairRuntimeServicesConfirmation: Bool
-    @Binding var showingStartServicesConfirmation: Bool
-    @Binding var showingStopServicesConfirmation: Bool
     @Binding var hoveredServiceLink: String?
     @State private var uptimeNow = Date()
     @State private var showingVMHealth = true
     @State private var showingServiceHealth = true
+    @State private var showingAPICatalog = true
     @State private var showingRecoveryOperations = false
     @State private var showingAdvancedRepairTools = false
     @State private var showingNetworkOverrides = false
@@ -36,11 +42,10 @@ struct RuntimeAdvancedPanel: View {
         showingRepairDatastoreConfirmation: Binding<Bool>,
         showingRepairVMDiskConfirmation: Binding<Bool>,
         showingRepairRuntimeServicesConfirmation: Binding<Bool>,
-        showingStartServicesConfirmation: Binding<Bool>,
-        showingStopServicesConfirmation: Binding<Bool>,
         hoveredServiceLink: Binding<String?>,
         showingVMHealth: Bool = true,
         showingServiceHealth: Bool = true,
+        showingAPICatalog: Bool = true,
         showingRecoveryOperations: Bool = false,
         showingAdvancedRepairTools: Bool = false,
         showingNetworkOverrides: Bool = false,
@@ -56,11 +61,10 @@ struct RuntimeAdvancedPanel: View {
         self._showingRepairDatastoreConfirmation = showingRepairDatastoreConfirmation
         self._showingRepairVMDiskConfirmation = showingRepairVMDiskConfirmation
         self._showingRepairRuntimeServicesConfirmation = showingRepairRuntimeServicesConfirmation
-        self._showingStartServicesConfirmation = showingStartServicesConfirmation
-        self._showingStopServicesConfirmation = showingStopServicesConfirmation
         self._hoveredServiceLink = hoveredServiceLink
         self._showingVMHealth = State(initialValue: showingVMHealth)
         self._showingServiceHealth = State(initialValue: showingServiceHealth)
+        self._showingAPICatalog = State(initialValue: showingAPICatalog)
         self._showingRecoveryOperations = State(initialValue: showingRecoveryOperations)
         self._showingAdvancedRepairTools = State(initialValue: showingAdvancedRepairTools)
         self._showingNetworkOverrides = State(initialValue: showingNetworkOverrides)
@@ -81,6 +85,7 @@ struct RuntimeAdvancedPanel: View {
                 diagnosticsCard
                 vmHealthCard
                 serviceHealthCard
+                apiCatalogCard
                 recoveryOperationsCard
                 networkOverridesCard
                 redisRelayCard
@@ -145,10 +150,55 @@ struct RuntimeAdvancedPanel: View {
     private var serviceHealthItems: [RuntimeStatusDisplayPolicy.ServiceHealthItem] {
         displayPolicy.advancedServiceHealth(
             status: viewModel.status,
-            observation: viewModel.containerObservation,
             redisRelaySettings: viewModel.runtimeSettings.redisRelay,
             now: uptimeNow
         )
+    }
+
+    private var apiCatalogCard: some View {
+        advancedDisclosureCard(AppConstants.Labels.sectionAPICatalog, isExpanded: $showingAPICatalog) {
+            if let proxyPort = viewModel.status.proxyPort {
+                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 10) {
+                    ForEach(apiCatalogItems(proxyPort: proxyPort)) { item in
+                        statusRow(item.label) {
+                            Button(item.url) {
+                                viewModel.openExternalURL(item.url)
+                            }
+                            .buttonStyle(.link)
+                            .textSelection(.enabled)
+                        }
+                    }
+                }
+            } else {
+                Text(RuntimeHTTPStatusText.missingProxyPort)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func apiCatalogItems(proxyPort: Int) -> [RuntimeAPICatalogItem] {
+        [
+            RuntimeAPICatalogItem(
+                label: "Swagger UI",
+                url: AppConstants.Product.swaggerURL(proxyPort: proxyPort)
+            ),
+            RuntimeAPICatalogItem(
+                label: "VitalServer API",
+                url: AppConstants.Product.vitalServerOpenAPIURL(proxyPort: proxyPort)
+            ),
+            RuntimeAPICatalogItem(
+                label: "Runtime Control API",
+                url: AppConstants.Product.runtimeControlOpenAPIURL(proxyPort: proxyPort)
+            ),
+            RuntimeAPICatalogItem(
+                label: "Recorder Ingress API",
+                url: AppConstants.Product.recorderIngressOpenAPIURL(proxyPort: proxyPort)
+            ),
+            RuntimeAPICatalogItem(
+                label: "VitalDB Observer API",
+                url: AppConstants.Product.vitalDBObserverOpenAPIURL(proxyPort: proxyPort)
+            )
+        ]
     }
 
     private var recoveryOperationsCard: some View {
@@ -478,36 +528,6 @@ struct RuntimeAdvancedPanel: View {
                     }
                 }
                 applyActionRow
-                Divider()
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(AppConstants.Labels.runtimeServiceControlHelp)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
-                        Button(AppConstants.Actions.startRuntimeServices) {
-                            showingStartServicesConfirmation = true
-                        }
-                        .disabled(
-                            !actionAvailabilityPolicy.canControlRuntimeServices(
-                                status: viewModel.status,
-                                capabilities: viewModel.capabilities,
-                                isBusy: viewModel.isBusy
-                            )
-                        )
-
-                        Button(AppConstants.Actions.stopRuntimeServices) {
-                            showingStopServicesConfirmation = true
-                        }
-                        .disabled(
-                            !actionAvailabilityPolicy.canControlRuntimeServices(
-                                status: viewModel.status,
-                                capabilities: viewModel.capabilities,
-                                isBusy: viewModel.isBusy
-                            )
-                        )
-                    }
-                }
             }
         }
     }

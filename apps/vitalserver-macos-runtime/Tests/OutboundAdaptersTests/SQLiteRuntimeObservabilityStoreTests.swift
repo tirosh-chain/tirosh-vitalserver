@@ -887,7 +887,6 @@ final class SQLiteRuntimeObservabilityStoreTests: XCTestCase {
             message: "message",
             runtimeVersion: "0.1.0",
             failureReasons: [],
-            containerObservation: nil,
             progress: nil
         )
     }

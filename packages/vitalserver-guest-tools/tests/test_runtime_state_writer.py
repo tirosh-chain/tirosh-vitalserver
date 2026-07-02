@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pytest import MonkeyPatch
 
 from tirosh_guest_tools.adapters.outbound.runtime import collector, state_writer
-from tirosh_guest_tools.contracts import RuntimeFileName
-from tirosh_guest_tools.domain.runtime_state import ProbeError, RuntimeResourceUsage
+from tirosh_guest_tools.domain.runtime_state import (
+    GuestRuntimeState,
+    ProbeError,
+    RuntimeResourceUsage,
+)
 
 
 def test_runtime_state_document_reports_probe_failures(
@@ -19,7 +23,6 @@ def test_runtime_state_document_reports_probe_failures(
 
     monkeypatch.setattr(collector, "first_non_loopback_ip", missing_ip)
     monkeypatch.setattr(collector, "boot_id", lambda errors: "boot-1")
-    monkeypatch.setattr(collector, "compose_services", lambda errors: [])
     monkeypatch.setattr(collector, "cpu_usage_percent", lambda errors: 10.0)
     monkeypatch.setattr(
         collector,
@@ -31,8 +34,6 @@ def test_runtime_state_document_reports_probe_failures(
         "disk_usage",
         lambda path, errors: RuntimeResourceUsage(used_bytes=1, total_bytes=2),
     )
-    monkeypatch.setattr(collector, "vitaldb_observation", lambda errors: None)
-
     document = state_writer.runtime_state_document(
         guest_http="200",
         redis_ui_http="200",
@@ -41,6 +42,189 @@ def test_runtime_state_document_reports_probe_failures(
 
     assert document["vmIP"] is None
     assert document["probeErrors"] == [{"source": "vmIP", "message": "missing"}]
+
+
+def test_write_runtime_state_document_updates_vitaldb_postgres_read_models(
+    tmp_path: Path,
+) -> None:
+    writer = VitalDBReadModelWriterSpy()
+    state = GuestRuntimeState(
+        updated_at="2026-07-01T00:00:01+00:00",
+        vm_ip="192.168.64.2",
+        boot_id="boot-1",
+        cpu_usage_percent=10.0,
+        guest_http=None,
+        memory=None,
+        probe_errors=[],
+        redis_ui_http=None,
+        system_disk=None,
+        disk_health=None,
+        swagger_ui_http=None,
+        vital_files_disk=None,
+    )
+    observation = {
+        "observedAt": "2026-07-01T00:00:00+00:00",
+        "recorders": [
+            {
+                "vrcode": "VR-001",
+                "online": True,
+                "stale": False,
+            }
+        ],
+        "beds": [
+            {
+                "bedID": "bed-a",
+                "name": "OR-A",
+                "vrcode": "VR-001",
+                "lastSeenAt": "2026-07-01T00:00:00+00:00",
+                "patientConnected": True,
+                "online": True,
+            }
+        ],
+        "readIssues": [],
+    }
+
+    state_writer.write_runtime_state_document(
+        tmp_path / "runtime-state.json",
+        state,
+        vitaldb_read_model=writer,
+        vitaldb_observation=observation,
+    )
+
+    assert writer.schema_ensured is True
+    assert writer.observation == observation
+    assert writer.observation_observed_at == datetime(2026, 7, 1, tzinfo=UTC)
+    assert writer.relationship_history == {
+        "state": "loaded",
+        "assignments": [
+            {
+                "assignmentID": (
+                    "assignment:bed-a:VR-001:2026-07-01T00:00:00+00:00"
+                ),
+                "bedID": "bed-a",
+                "bedName": "OR-A",
+                "vrcode": "VR-001",
+                "startedAt": "2026-07-01T00:00:00+00:00",
+                "endedAt": None,
+                "lastSeenAt": "2026-07-01T00:00:00+00:00",
+                "lastObservedAt": "2026-07-01T00:00:00+00:00",
+                "status": "online",
+                "patientConnected": True,
+                "observationCount": 1,
+            }
+        ],
+        "events": [],
+        "readError": None,
+    }
+    assert writer.relationship_observed_at == datetime(2026, 7, 1, tzinfo=UTC)
+
+
+def test_write_runtime_state_document_uses_previous_relationship_history(
+    tmp_path: Path,
+) -> None:
+    writer = VitalDBReadModelWriterSpy(
+        previous_relationship_history={
+            "state": "loaded",
+            "assignments": [
+                {
+                    "assignmentID": (
+                        "assignment:bed-a:VR-001:2026-07-01T00:00:00+00:00"
+                    ),
+                    "bedID": "bed-a",
+                    "bedName": "OR-A",
+                    "vrcode": "VR-001",
+                    "startedAt": "2026-07-01T00:00:00+00:00",
+                    "endedAt": None,
+                    "lastSeenAt": "2026-07-01T00:00:00+00:00",
+                    "lastObservedAt": "2026-07-01T00:00:00+00:00",
+                    "status": "online",
+                    "patientConnected": True,
+                    "observationCount": 1,
+                }
+            ],
+            "events": [],
+            "readError": None,
+        }
+    )
+    state = GuestRuntimeState(
+        updated_at="2026-07-01T00:01:01+00:00",
+        vm_ip="192.168.64.2",
+        boot_id="boot-1",
+        cpu_usage_percent=10.0,
+        guest_http=None,
+        memory=None,
+        probe_errors=[],
+        redis_ui_http=None,
+        system_disk=None,
+        disk_health=None,
+        swagger_ui_http=None,
+        vital_files_disk=None,
+    )
+    observation = {
+        "observedAt": "2026-07-01T00:01:00+00:00",
+        "recorders": [
+            {
+                "vrcode": "VR-001",
+                "online": True,
+                "stale": False,
+            }
+        ],
+        "beds": [
+            {
+                "bedID": "bed-a",
+                "name": "OR-A",
+                "vrcode": "VR-001",
+                "lastSeenAt": "2026-07-01T00:01:00+00:00",
+                "patientConnected": True,
+                "online": True,
+            }
+        ],
+        "readIssues": [],
+    }
+
+    state_writer.write_runtime_state_document(
+        tmp_path / "runtime-state.json",
+        state,
+        vitaldb_read_model=writer,
+        vitaldb_observation=observation,
+    )
+
+    assert writer.previous_relationship_history_read is True
+    assert writer.relationship_history is not None
+    assert writer.relationship_history["assignments"][0]["startedAt"] == (
+        "2026-07-01T00:00:00+00:00"
+    )
+    assert writer.relationship_history["assignments"][0]["observationCount"] == 2
+
+
+def test_write_runtime_state_document_skips_vitaldb_read_models_without_observation(
+    tmp_path: Path,
+) -> None:
+    writer = VitalDBReadModelWriterSpy()
+    state = GuestRuntimeState(
+        updated_at="2026-07-01T00:00:01+00:00",
+        vm_ip="192.168.64.2",
+        boot_id="boot-1",
+        cpu_usage_percent=10.0,
+        guest_http=None,
+        memory=None,
+        probe_errors=[],
+        redis_ui_http=None,
+        system_disk=None,
+        disk_health=None,
+        swagger_ui_http=None,
+        vital_files_disk=None,
+    )
+
+    state_writer.write_runtime_state_document(
+        tmp_path / "runtime-state.json",
+        state,
+        vitaldb_read_model=writer,
+    )
+
+    assert writer.schema_ensured is False
+    assert writer.observation is None
+    assert writer.relationship_history is None
 
 
 def test_http_probe_failure_remains_explicit(
@@ -75,153 +259,41 @@ def test_http_probe_failure_remains_explicit(
     ]
 
 
-def test_compose_services_reads_stopped_containers_with_all(
-    monkeypatch: MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    (tmp_path / RuntimeFileName.COMPOSE.value).write_text("services: {}\n")
-    monkeypatch.setattr(collector, "DEPLOY_DIR", tmp_path)
-    commands: list[list[str]] = []
+class VitalDBReadModelWriterSpy:
+    def __init__(
+        self,
+        *,
+        previous_relationship_history: dict[str, object] | None = None,
+    ) -> None:
+        self.schema_ensured = False
+        self.observation: dict[str, object] | None = None
+        self.observation_observed_at: datetime | None = None
+        self.relationship_history: dict[str, object] | None = None
+        self.relationship_observed_at: datetime | None = None
+        self._previous_relationship_history = previous_relationship_history
+        self.previous_relationship_history_read = False
 
-    def check_output(command: list[str], **kwargs: object) -> str:
-        commands.append(command)
-        if command[:2] == ["docker", "stats"]:
-            return (
-                '{"ID":"container-1","Name":"vitalserver-app-1",'
-                '"MemUsage":"512MiB / 4GiB"}\n'
-            )
-        if command[:2] == ["docker", "inspect"]:
-            return (
-                "[{"
-                '"Id":"container-1",'
-                '"RestartCount":2,'
-                '"State":{'
-                '"StartedAt":"2026-06-11T00:00:00Z",'
-                '"FinishedAt":"2026-06-12T00:00:00Z",'
-                '"OOMKilled":true,'
-                '"Error":"container oom killed"'
-                "},"
-                '"HostConfig":{"Memory":4294967296}'
-                "}]"
-            )
-        return (
-            '{"Service":"app","Name":"vitalserver-app-1",'
-            '"State":"exited","Health":"","ExitCode":0,"ID":"container-1"}'
-        )
+    def ensure_schema(self) -> None:
+        self.schema_ensured = True
 
-    monkeypatch.setattr(collector.subprocess, "check_output", check_output)
+    def previous_relationship_history(self) -> dict[str, object] | None:
+        self.previous_relationship_history_read = True
+        return self._previous_relationship_history
 
-    services = collector.compose_services([])
+    def save_latest_observation(
+        self,
+        observation: dict[str, object],
+        *,
+        observed_at: datetime,
+    ) -> None:
+        self.observation = observation
+        self.observation_observed_at = observed_at
 
-    assert commands[0] == [
-        "docker",
-        "compose",
-        "--project-name",
-        collector.PROJECT_NAME,
-        "-f",
-        str(tmp_path / RuntimeFileName.COMPOSE.value),
-        "ps",
-        "--all",
-        "--format",
-        "json",
-    ]
-    assert services is not None
-    assert services[0].service == "app"
-    assert services[0].state == "exited"
-    assert services[0].container_id == "container-1"
-    assert services[0].restart_count == 2
-    assert services[0].oom_killed is True
-    assert services[0].finished_at == "2026-06-12T00:00:00Z"
-    assert services[0].error == "container oom killed"
-    assert services[0].memory_used_bytes == 536870912
-    assert services[0].memory_limit_bytes == 4294967296
-
-
-def test_compose_services_reports_unknown_container_limit_when_no_hard_limit_is_configured(
-    monkeypatch: MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    (tmp_path / RuntimeFileName.COMPOSE.value).write_text("services: {}\n")
-    monkeypatch.setattr(collector, "DEPLOY_DIR", tmp_path)
-
-    def check_output(command: list[str], **kwargs: object) -> str:
-        if command[:2] == ["docker", "stats"]:
-            return (
-                '{"ID":"container-1","Name":"vitalserver-app-1",'
-                '"MemUsage":"512MiB / 4GiB"}\n'
-            )
-        if command[:2] == ["docker", "inspect"]:
-            return '[{"Id":"container-1","HostConfig":{"Memory":0}}]'
-        return (
-            '{"Service":"app","Name":"vitalserver-app-1",'
-            '"State":"running","Health":"","ExitCode":0,"ID":"container-1"}'
-        )
-
-    monkeypatch.setattr(collector.subprocess, "check_output", check_output)
-
-    services = collector.compose_services([])
-
-    assert services is not None
-    assert services[0].memory_used_bytes == 536870912
-    assert services[0].memory_limit_bytes is None
-
-
-def test_parse_docker_memory_usage_preserves_missing_values() -> None:
-    assert collector.parse_memory_usage("1.5GiB / 4GiB") == collector.ContainerMemoryStats(
-        used_bytes=1610612736,
-        limit_bytes=4294967296,
-    )
-    assert collector.parse_memory_usage(None) == collector.ContainerMemoryStats(
-        used_bytes=None,
-        limit_bytes=None,
-    )
-
-
-def test_compose_services_reports_inspect_failure(
-    monkeypatch: MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    (tmp_path / RuntimeFileName.COMPOSE.value).write_text("services: {}\n")
-    monkeypatch.setattr(collector, "DEPLOY_DIR", tmp_path)
-
-    def check_output(command: list[str], **kwargs: object) -> str:
-        if command[:2] == ["docker", "inspect"]:
-            raise subprocess.CalledProcessError(1, command)
-        return (
-            '{"Service":"app","Name":"vitalserver-app-1",'
-            '"State":"exited","Health":"","ExitCode":137,"ID":"container-1"}'
-        )
-
-    monkeypatch.setattr(collector.subprocess, "check_output", check_output)
-    probe_errors: list[ProbeError] = []
-
-    services = collector.compose_services(probe_errors)
-
-    assert services is not None
-    assert services[0].service == "app"
-    assert services[0].container_id == "container-1"
-    assert services[0].oom_killed is None
-    assert len(probe_errors) == 1
-    assert probe_errors[0].source == "docker inspect container-1"
-    assert "returned non-zero exit status 1" in probe_errors[0].message
-
-
-def test_compose_services_empty_output_is_probe_failure(
-    monkeypatch: MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    (tmp_path / RuntimeFileName.COMPOSE.value).write_text("services: {}\n")
-    monkeypatch.setattr(collector, "DEPLOY_DIR", tmp_path)
-    monkeypatch.setattr(
-        collector.subprocess,
-        "check_output",
-        lambda *args, **kwargs: "",
-    )
-    probe_errors: list[ProbeError] = []
-
-    services = collector.compose_services(probe_errors)
-
-    assert services is None
-    assert probe_errors == [
-        ProbeError(source="docker compose ps", message="no service documents reported")
-    ]
+    def save_relationship_history(
+        self,
+        relationship_history: dict[str, object],
+        *,
+        observed_at: datetime,
+    ) -> None:
+        self.relationship_history = relationship_history
+        self.relationship_observed_at = observed_at

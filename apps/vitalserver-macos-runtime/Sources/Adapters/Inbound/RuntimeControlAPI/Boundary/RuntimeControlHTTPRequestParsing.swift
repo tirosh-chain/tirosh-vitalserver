@@ -215,6 +215,38 @@ public extension RuntimeControlHTTPRequest {
         }
         return decoded
     }
+
+    func runtimeGuestServiceName() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count == 5,
+              components[0] == "runtime",
+              components[1] == "guest",
+              components[2] == "services",
+              let decoded = String(components[3]).removingPercentEncoding,
+              !decoded.isEmpty,
+              components[4] == "status"
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("service")
+        }
+        return decoded
+    }
+
+    func runtimeLabSessionID() throws -> String {
+        let components = RuntimeControlAPIEndpoint
+            .normalizedPathForRequest(path)
+            .split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count >= 3,
+              components[0] == "lab",
+              components[1] == "sessions",
+              let decoded = String(components[2]).removingPercentEncoding,
+              !decoded.isEmpty
+        else {
+            throw RuntimeControlHTTPQueryError.invalidPathParameter("sessionId")
+        }
+        return decoded
+    }
 }
 
 private extension String {

@@ -80,18 +80,18 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
             return XCTFail("expected recovery execution plan")
         }
         XCTAssertEqual(plan.reason, "host-proxy-http-502, guest-http-503")
-        XCTAssertTrue(plan.recoveryPlan.reconcileGuestCompose)
+        XCTAssertTrue(plan.recoveryPlan.reconcileGuestStack)
         XCTAssertFalse(plan.recoveryPlan.restartVM)
         XCTAssertFalse(plan.recoveryPlan.restartProxy)
         XCTAssertEqual(
-            plan.composeReconcileEventMessage,
-            "watchdog compose reconcile dispatched services=guest-compose"
+            plan.guestStackReconcileEventMessage,
+            "watchdog guest stack reconcile dispatched operation=guest-stack"
         )
         XCTAssertNil(plan.vmRestartEventMessage)
         XCTAssertNil(plan.proxyRestartEventMessage)
         XCTAssertEqual(
             plan.plannedEventMessage,
-            "watchdog recovery planned compose=true vm=false proxy=false reasons=guest-http-unhealthy-503"
+            "watchdog recovery planned guestStack=true vm=false proxy=false reasons=guest-http-unhealthy-503"
         )
     }
 
@@ -112,10 +112,10 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         guard case .recover(let plan) = decision else {
             return XCTFail("expected recovery execution plan")
         }
-        XCTAssertFalse(plan.recoveryPlan.reconcileGuestCompose)
+        XCTAssertFalse(plan.recoveryPlan.reconcileGuestStack)
         XCTAssertTrue(plan.recoveryPlan.restartVM)
         XCTAssertTrue(plan.recoveryPlan.restartProxy)
-        XCTAssertNil(plan.composeReconcileEventMessage)
+        XCTAssertNil(plan.guestStackReconcileEventMessage)
         XCTAssertEqual(
             plan.vmRestartEventMessage,
             "watchdog restart dispatched services=vm,guest-log-sync"
@@ -123,7 +123,7 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.proxyRestartEventMessage, "watchdog restart dispatched services=proxy")
         XCTAssertEqual(
             plan.plannedEventMessage,
-            "watchdog recovery planned compose=false vm=true proxy=true reasons=missing-vm-ip,guest-http-unhealthy-missing-vm-ip,vm-restart-requires-proxy-restart"
+            "watchdog recovery planned guestStack=false vm=true proxy=true reasons=missing-vm-ip,guest-http-unhealthy-missing-vm-ip,vm-restart-requires-proxy-restart"
         )
     }
 

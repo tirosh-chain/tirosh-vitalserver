@@ -9,28 +9,37 @@
 
 ## Symptom
 
-`helper-message.log` or Status details repeatedly show:
+Older helper builds could show a stale Guest runtime-state condition as a
+container-observation blocker:
 
 ```text
-watchdog cannot recover missing installed artifacts: container-observation-read-failed-guest-runtime-state-stale
-Failure reasons: Guest runtime state stale, Host proxy HTTP failed, Recorder ingress HTTP failed, Container observation read failed (Guest Runtime State Stale)
+watchdog cannot recover missing installed artifacts
+Failure reasons: Guest runtime state stale, Host proxy HTTP failed, Recorder ingress HTTP failed
 ```
 
-The wording suggests missing installed files, but the reported blocker is stale guest runtime-state observation.
+The wording suggested missing installed files, but the real condition was stale
+Guest runtime state.
 
 ## Cause
 
-`runtime-state.json` can be present but stale when the guest agent or VM stops updating it. Health evaluation correctly preserves that state as `guest-runtime-state-stale` and derives `container-observation-read-failed-guest-runtime-state-stale` for the compose-services read.
+`runtime-state.json` can be present but stale when the guest agent or VM stops
+updating it. The old health path also derived a container observation read
+failure from that stale document and then treated the derived diagnostic failure
+as the blocker.
 
-The watchdog recovery policy treated every `containerObservationReadFailed` as an observation-source issue before it reached the recovery planner. That made a stale guest-runtime-state condition terminal, even though the recovery planner can handle it with VM, guest-log-sync, and proxy restart actions when lifecycle and services are available.
+The v2 policy keeps the primary state explicit. Stale Guest runtime state remains
+`guest-runtime-state-stale`, while container observation stays diagnostics
+evidence and does not create typed Host failure reasons.
 
 ## Fix Direction
 
-- Keep real observation-source failures unrecoverable.
-- Do not classify `container-observation-read-failed-guest-runtime-state-stale` as missing installed artifacts.
-- Let stale guest runtime-state derived container observation failures reach the recovery planner.
-- Preserve the failure reason in status/events; only change the recovery decision.
+- Keep Guest runtime-state failures as Guest agent failures.
+- Do not derive Host recovery blockers from container observation read failures.
+- Let stale Guest runtime-state reach the recovery planner directly.
+- Keep container observation as diagnostics evidence only.
 
 ## Prevention
 
-Watchdog policy tests must cover derived failure reasons, not only primary failure reasons. A primary `guest-runtime-state-stale` plus derived `container-observation-read-failed-guest-runtime-state-stale` should produce a recovery plan when VM lifecycle and service state are explicit and recoverable.
+Watchdog policy tests must cover primary failure reasons, not only derived
+diagnostics. A primary `guest-runtime-state-stale` should produce a recovery
+plan when VM lifecycle and service state are explicit and recoverable.

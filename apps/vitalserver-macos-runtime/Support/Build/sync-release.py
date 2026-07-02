@@ -81,10 +81,23 @@ def validate_release_policy(release):
         raise SystemExit(
             "release field must be a list: bundle.optionalContainerServices"
         )
+    if "testkit" in optional_services:
+        raise SystemExit(
+            "release field bundle.optionalContainerServices must not include "
+            "testkit; Lab is the product service"
+        )
+    if isinstance(release.get("services"), dict) and "testkit" in release["services"]:
+        raise SystemExit(
+            "release field services must not include testkit; Lab is the "
+            "product service"
+        )
     for service in optional_services:
         require_field(release, f"services.{service}.displayName")
         require_field(release, f"services.{service}.image")
         require_field(release, f"services.{service}.version")
+    require_field(release, "services.lab.displayName")
+    require_field(release, "services.lab.image")
+    require_field(release, "services.lab.version")
 
 
 def sync_swift(root, release, release_file):
@@ -94,16 +107,14 @@ def sync_swift(root, release, release_file):
     release_label = require_field(release, "releaseLabel")
     distribution_profile = require_field(release, "distribution.profile")
     test_enabled = distribution_profile == "dev"
-    testkit_container_included = "testkit" in require_field(
-        release, "bundle.optionalContainerServices"
-    )
     vitalserver = require_service(release, "vitalServer")
     recorder_ingress = require_service(release, "recorderIngress")
     recorder_recovery = require_service(release, "recorderRecovery")
     vitaldb_observer = require_service(release, "vitalDBObserver")
     redis_relay = require_service(release, "redisRelay")
-    testkit = require_service(release, "testkit")
+    lab = require_service(release, "lab")
     redis = require_service(release, "redis")
+    postgres = require_service(release, "postgres")
     redis_ui = require_service(release, "redisUI")
     swagger_ui = require_service(release, "swaggerUI")
     guest_edge = require_service(release, "guestEdge")
@@ -119,8 +130,9 @@ def sync_swift(root, release, release_file):
         "services.vitalDBObserver.displayName",
     )
     redis_relay_name = require_field(release, "services.redisRelay.displayName")
-    testkit_name = require_field(release, "services.testkit.displayName")
+    lab_name = require_field(release, "services.lab.displayName")
     redis_name = require_field(release, "services.redis.displayName")
+    postgres_name = require_field(release, "services.postgres.displayName")
     redis_ui_name = require_field(release, "services.redisUI.displayName")
     swagger_ui_name = require_field(release, "services.swaggerUI.displayName")
     guest_edge_name = require_field(release, "services.guestEdge.displayName")
@@ -138,7 +150,6 @@ public extension Constants {{
     static let launcherChannel = UpdateBundleChannel(
         rawValue: {swift_string(release_channel)}
     )
-    static let testkitContainerIncluded = {str(testkit_container_included).lower()}
 }}
 """,
     )
@@ -154,7 +165,6 @@ public enum GeneratedRelease {{
     public static let channel = {swift_string(release_channel)}
     public static let releaseLabel = {swift_string(release_label)}
     public static let testEnabled = {str(test_enabled).lower()}
-    public static let testkitContainerIncluded = {str(testkit_container_included).lower()}
     public static let minUpdaterVersion = {swift_string(min_updater_version)}
     public static let vitalServerVersion = {swift_string(release["vitalServerVersion"])}
     public static let vitalServerName = {swift_string(vitalserver_name)}
@@ -162,8 +172,9 @@ public enum GeneratedRelease {{
     public static let recorderRecoveryName = {swift_string(recorder_recovery_name)}
     public static let vitalDBObserverName = {swift_string(vitaldb_observer_name)}
     public static let redisRelayName = {swift_string(redis_relay_name)}
-    public static let testkitName = {swift_string(testkit_name)}
+    public static let labName = {swift_string(lab_name)}
     public static let redisName = {swift_string(redis_name)}
+    public static let postgresName = {swift_string(postgres_name)}
     public static let redisUIName = {swift_string(redis_ui_name)}
     public static let swaggerUIName = {swift_string(swagger_ui_name)}
     public static let guestEdgeName = {swift_string(guest_edge_name)}
@@ -173,8 +184,9 @@ public enum GeneratedRelease {{
     public static let recorderRecoveryImage = {swift_string(recorder_recovery["image"])}
     public static let vitalDBObserverImage = {swift_string(vitaldb_observer["image"])}
     public static let redisRelayImage = {swift_string(redis_relay["image"])}
-    public static let testkitImage = {swift_string(testkit["image"])}
+    public static let labImage = {swift_string(lab["image"])}
     public static let redisImage = {swift_string(redis["image"])}
+    public static let postgresImage = {swift_string(postgres["image"])}
     public static let redisUIImage = {swift_string(redis_ui["image"])}
     public static let swaggerUIImage = {swift_string(swagger_ui["image"])}
     public static let guestEdgeImage = {swift_string(guest_edge["image"])}
@@ -183,12 +195,98 @@ public enum GeneratedRelease {{
     public static let recorderRecoveryVersion = {swift_string(recorder_recovery["version"])}
     public static let vitalDBObserverVersion = {swift_string(vitaldb_observer["version"])}
     public static let redisRelayVersion = {swift_string(redis_relay["version"])}
-    public static let testkitVersion = {swift_string(testkit["version"])}
+    public static let labVersion = {swift_string(lab["version"])}
     public static let redisVersion = {swift_string(redis["version"])}
+    public static let postgresVersion = {swift_string(postgres["version"])}
     public static let redisUIVersion = {swift_string(redis_ui["version"])}
     public static let swaggerUIVersion = {swift_string(swagger_ui["version"])}
     public static let guestEdgeVersion = {swift_string(guest_edge["version"])}
     public static let hostProxyVersion = {swift_string(host_proxy["version"])}
+}}
+""",
+    )
+    write_if_changed(
+        root
+        / "Sources/Adapters/Inbound/MacControlPanel/Generated"
+        / "RuntimeReleaseInfo+Generated.swift",
+        f"""// Generated from {release_file.name} by make vm-version-source.
+// Do not edit this file directly.
+
+import Foundation
+import RuntimeControl
+import Errors
+
+public extension RuntimeReleaseInfo {{
+    static var generated: RuntimeReleaseInfo {{
+        let services = [
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.vitalServerName,
+                image: GeneratedRelease.vitalServerImage,
+                version: GeneratedRelease.vitalServerVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.recorderIngressName,
+                image: GeneratedRelease.recorderIngressImage,
+                version: GeneratedRelease.recorderIngressVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.recorderRecoveryName,
+                image: GeneratedRelease.recorderRecoveryImage,
+                version: GeneratedRelease.recorderRecoveryVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.vitalDBObserverName,
+                image: GeneratedRelease.vitalDBObserverImage,
+                version: GeneratedRelease.vitalDBObserverVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.redisRelayName,
+                image: GeneratedRelease.redisRelayImage,
+                version: GeneratedRelease.redisRelayVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.labName,
+                image: GeneratedRelease.labImage,
+                version: GeneratedRelease.labVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.redisName,
+                image: GeneratedRelease.redisImage,
+                version: GeneratedRelease.redisVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.postgresName,
+                image: GeneratedRelease.postgresImage,
+                version: GeneratedRelease.postgresVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.redisUIName,
+                image: GeneratedRelease.redisUIImage,
+                version: GeneratedRelease.redisUIVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.swaggerUIName,
+                image: GeneratedRelease.swaggerUIImage,
+                version: GeneratedRelease.swaggerUIVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.guestEdgeName,
+                image: GeneratedRelease.guestEdgeImage,
+                version: GeneratedRelease.guestEdgeVersion
+            ),
+            RuntimeBundledServiceInfo(
+                name: GeneratedRelease.hostProxyName,
+                image: GeneratedRelease.hostProxyImage,
+                version: GeneratedRelease.hostProxyVersion
+            ),
+        ]
+        return RuntimeReleaseInfo(
+            helperVersion: GeneratedRelease.helperVersion,
+            minimumUpdaterVersion: GeneratedRelease.minUpdaterVersion,
+            vitalServerVersion: GeneratedRelease.vitalServerVersion,
+            services: services
+        )
+    }}
 }}
 """,
     )
@@ -202,13 +300,15 @@ def sync_compose(root, release):
     recorder_recovery = require_service(release, "recorderRecovery")
     vitaldb_observer = require_service(release, "vitalDBObserver")
     redis_relay = require_service(release, "redisRelay")
-    testkit = require_service(release, "testkit")
+    lab = require_service(release, "lab")
     redis = require_service(release, "redis")
+    postgres = require_service(release, "postgres")
     redis_ui = require_service(release, "redisUI")
     swagger_ui = require_service(release, "swaggerUI")
     guest_edge = require_service(release, "guestEdge")
     replacements = {
         r"image: redis:[^\n]+": f"image: {redis['image']}",
+        r"image: postgres:[^\n]+": f"image: {postgres['image']}",
         r"image: vitalserver:[^\n]+": f"image: {vitalserver['image']}",
         r"image: vitalserver-recorder-ingress:[^\n]+": (
             f"image: {recorder_ingress['image']}"
@@ -220,7 +320,7 @@ def sync_compose(root, release):
         r"image: vitalserver-redis-relay:[^\n]+": (
             f"image: {redis_relay['image']}"
         ),
-        r"image: vitalserver-testkit:[^\n]+": f"image: {testkit['image']}",
+        r"image: vitalserver-lab:[^\n]+": f"image: {lab['image']}",
         r"image: ghcr\.io/joeferner/redis-commander:[^\n]+": (
             f"image: {redis_ui['image']}"
         ),
@@ -242,8 +342,9 @@ def sync_build_config(root, release):
     recorder_recovery = require_service(release, "recorderRecovery")
     vitaldb_observer = require_service(release, "vitalDBObserver")
     redis_relay = require_service(release, "redisRelay")
-    testkit = require_service(release, "testkit")
+    lab = require_service(release, "lab")
     redis = require_service(release, "redis")
+    postgres = require_service(release, "postgres")
     redis_ui = require_service(release, "redisUI")
     swagger_ui = require_service(release, "swaggerUI")
     guest_edge = require_service(release, "guestEdge")
@@ -253,7 +354,7 @@ def sync_build_config(root, release):
         r'\n  "vitalserver-recorder-recovery:[^"]+"': f'\n  "{recorder_recovery["image"]}"',
         r'\n  "vitaldb-observer:[^"]+"': f'\n  "{vitaldb_observer["image"]}"',
         r'\n  "vitalserver-redis-relay:[^"]+"': f'\n  "{redis_relay["image"]}"',
-        r'\n  "vitalserver-testkit:[^"]+"': f'\n  "{testkit["image"]}"',
+        r'\n  "vitalserver-lab:[^"]+"': f'\n  "{lab["image"]}"',
         r'recorder_ingress_image = "vitalserver-recorder-ingress:[^"]+"': (
             f'recorder_ingress_image = "{recorder_ingress["image"]}"'
         ),
@@ -266,10 +367,11 @@ def sync_build_config(root, release):
         r'redis_relay_image = "vitalserver-redis-relay:[^"]+"': (
             f'redis_relay_image = "{redis_relay["image"]}"'
         ),
-        r'testkit_image = "vitalserver-testkit:[^"]+"': (
-            f'testkit_image = "{testkit["image"]}"'
+        r'lab_image = "vitalserver-lab:[^"]+"': (
+            f'lab_image = "{lab["image"]}"'
         ),
         r'"redis:[^"]+"': f'"{redis["image"]}"',
+        r'"postgres:[^"]+"': f'"{postgres["image"]}"',
         r'"ghcr\.io/joeferner/redis-commander:[^"]+"': (
             f'"{redis_ui["image"]}"'
         ),
@@ -287,9 +389,6 @@ def sync_build_config(root, release):
 
 
 def sync_guest_scripts(root, release):
-    testkit_container_included = "testkit" in require_field(
-        release, "bundle.optionalContainerServices"
-    )
     bootstrap_operations = (
         root.parent.parent
         / "packages/vitalserver-guest-tools/src/tirosh_guest_tools/infrastructure"
@@ -310,15 +409,6 @@ def sync_guest_scripts(root, release):
         content,
     )
     write_if_changed(bootstrap_operations, content)
-
-    runtime_config = root / "Support/Guest/runtime-config.json"
-    content = runtime_config.read_text(encoding="utf-8")
-    content = replace(
-        r'"testkitEnabled": (true|false),',
-        f'"testkitEnabled": {str(testkit_container_included).lower()},',
-        content,
-    )
-    write_if_changed(runtime_config, content)
 
     repair_datastore = (
         root.parent.parent

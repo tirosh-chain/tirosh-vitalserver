@@ -26,7 +26,10 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
             productRoot: "/Library/Application Support/VitalServerHelper",
             runtimeHome: "/Library/Application Support/VitalServerHelper/vm",
             runtimeVersion: "0.1.4",
-            healthSnapshot: snapshot(failureReasons: [.guestHTTP("failed")]),
+            healthSnapshot: snapshot(
+                failureReasons: [.guestHTTP("failed")],
+                vitalDBObservation: vitalDBObservation()
+            ),
             latestBackup: "/Library/Application Support/VitalServerHelper/backups/backup",
             progress: progress
         ))
@@ -90,7 +93,7 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
                 .guestRuntimeStateMissing,
                 .hostProxyHTTP("failed"),
                 .recorderIngressHTTP("failed"),
-                .containerObservationMissing,
+                .guestServiceObservationMissing,
             ]),
             latestBackup: nil
         ))
@@ -100,7 +103,10 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
         XCTAssertNil(document.domainErrors)
     }
 
-    private func snapshot(failureReasons: [RuntimeFailureReason]) -> RuntimeHealthSnapshot {
+    private func snapshot(
+        failureReasons: [RuntimeFailureReason],
+        vitalDBObservation: VitalDBObservationDocument? = nil
+    ) -> RuntimeHealthSnapshot {
         RuntimeHealthSnapshot(
             vmExecutable: .executable,
             proxyExecutable: .executable,
@@ -118,7 +124,16 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
             guestHTTP: failureReasons.isEmpty ? "200" : "failed",
             redisUIHTTP: "200",
             swaggerUIHTTP: "200",
+            vitalDBObservation: vitalDBObservation,
             failureReasons: failureReasons
+        )
+    }
+
+    private func vitalDBObservation() -> VitalDBObservationDocument {
+        VitalDBObservationDocument(
+            observedAt: "2026-05-30T00:00:00Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 30
         )
     }
 }

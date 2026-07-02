@@ -1,6 +1,6 @@
 [project]
 name = "tirosh-vitalserver-guest-tools"
-version = "0.1.0"
+version = "0.2.0"
 description = "Guest-side tools for Tirosh VitalServer runtime."
 requires-python = ">=3.11"
 dependencies = []
@@ -20,10 +20,9 @@ tirosh-vitalserver-bootstrap = "tirosh_guest_tools.adapters.inbound.cli:vitalser
 tirosh-vitalserver-rootfs-smoke = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_rootfs_smoke"
 tirosh-vitalserver-runtime-boot-smoke = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_runtime_boot_smoke"
 tirosh-vitalserver-runtime-data-prepare = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_runtime_data_prepare"
-tirosh-vitalserver-command-poller = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_command_poller"
+tirosh-vitalserver-guest-control-api = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_guest_control_api"
 tirosh-vitalserver-redis-backup = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_redis_backup"
 tirosh-vitalserver-redis-restore = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_redis_restore"
-tirosh-vitalserver-reconcile-compose = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_reconcile_compose"
 tirosh-vitalserver-repair-datastore = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_repair_datastore"
 tirosh-vitalserver-activate-update = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_activate_update"
 tirosh-vitalserver-prepare-update-shutdown = "tirosh_guest_tools.adapters.inbound.cli:vitalserver_prepare_update_shutdown"

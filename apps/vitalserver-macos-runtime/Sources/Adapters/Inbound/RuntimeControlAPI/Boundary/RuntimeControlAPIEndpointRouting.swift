@@ -31,6 +31,18 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .get, path: "/vitaldb/beds/{bedID}", scope: .runtimeControl)
         case .vitalDBRelationships:
             return .init(method: .get, path: "/vitaldb/relationships", scope: .runtimeControl)
+        case .hideVitalDBRecorders:
+            return .init(method: .post, path: "/vitaldb/recorders/hide", scope: .runtimeControl)
+        case .unhideVitalDBRecorders:
+            return .init(method: .post, path: "/vitaldb/recorders/unhide", scope: .runtimeControl)
+        case .deleteVitalDBRecorders:
+            return .init(method: .post, path: "/vitaldb/recorders/delete", scope: .runtimeControl)
+        case .hideVitalDBBeds:
+            return .init(method: .post, path: "/vitaldb/beds/hide", scope: .runtimeControl)
+        case .unhideVitalDBBeds:
+            return .init(method: .post, path: "/vitaldb/beds/unhide", scope: .runtimeControl)
+        case .deleteVitalDBBeds:
+            return .init(method: .post, path: "/vitaldb/beds/delete", scope: .runtimeControl)
         case .health:
             return .init(method: .post, path: "/runtime/health", scope: .runtimeControl)
         case .settings:
@@ -41,16 +53,46 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .get, path: "/runtime/release", scope: .runtimeControl)
         case .installInfo:
             return .init(method: .get, path: "/runtime/install", scope: .runtimeControl)
-        case .startServices:
-            return .init(method: .post, path: "/runtime/services/start", scope: .runtimeControl)
-        case .stopServices:
-            return .init(method: .post, path: "/runtime/services/stop", scope: .runtimeControl)
-        case .startTestKitService:
-            return .init(method: .post, path: "/runtime/services/testkit/start", scope: .runtimeControl)
-        case .stopTestKitService:
-            return .init(method: .post, path: "/runtime/services/testkit/stop", scope: .runtimeControl)
-        case .restartTestKitService:
-            return .init(method: .post, path: "/runtime/services/testkit/restart", scope: .runtimeControl)
+        case .labScenarios:
+            return .init(method: .get, path: "/lab/scenarios", scope: .runtimeControl)
+        case .labBeds:
+            return .init(method: .get, path: "/lab/beds", scope: .runtimeControl)
+        case .createLabBeds:
+            return .init(method: .post, path: "/lab/beds/create", scope: .runtimeControl)
+        case .deleteLabBeds:
+            return .init(method: .post, path: "/lab/beds/delete", scope: .runtimeControl)
+        case .resetLabBeds:
+            return .init(method: .post, path: "/lab/beds/reset", scope: .runtimeControl)
+        case .labRecorders:
+            return .init(method: .get, path: "/lab/recorders", scope: .runtimeControl)
+        case .createLabRecorders:
+            return .init(method: .post, path: "/lab/recorders/create", scope: .runtimeControl)
+        case .deleteLabRecorders:
+            return .init(method: .post, path: "/lab/recorders/delete", scope: .runtimeControl)
+        case .resetLabRecorders:
+            return .init(method: .post, path: "/lab/recorders/reset", scope: .runtimeControl)
+        case .createLabSession:
+            return .init(method: .post, path: "/lab/sessions", scope: .runtimeControl)
+        case .labSession:
+            return .init(method: .get, path: "/lab/sessions/{sessionId}", scope: .runtimeControl)
+        case .startLabSession:
+            return .init(method: .post, path: "/lab/sessions/{sessionId}/start", scope: .runtimeControl)
+        case .stopLabSession:
+            return .init(method: .post, path: "/lab/sessions/{sessionId}/stop", scope: .runtimeControl)
+        case .replayLabVitalFile:
+            return .init(method: .post, path: "/lab/vital-files/replay", scope: .runtimeControl)
+        case .guestStackStatus:
+            return .init(method: .get, path: "/runtime/guest/stack/status", scope: .runtimeControl)
+        case .guestServices:
+            return .init(method: .get, path: "/runtime/guest/services", scope: .runtimeControl)
+        case .guestServiceStatus:
+            return .init(method: .get, path: "/runtime/guest/services/{service}/status", scope: .runtimeControl)
+        case .startGuestService:
+            return .init(method: .post, path: "/runtime/guest/services/start", scope: .runtimeControl)
+        case .stopGuestService:
+            return .init(method: .post, path: "/runtime/guest/services/stop", scope: .runtimeControl)
+        case .restartGuestService:
+            return .init(method: .post, path: "/runtime/guest/services/restart", scope: .runtimeControl)
         case .repairRuntimeServices:
             return .init(method: .post, path: "/runtime/services/repair-runtime", scope: .runtimeControl)
         case .repairProxy:
@@ -135,6 +177,34 @@ public extension RuntimeControlAPIEndpoint {
                 && components[0] == "vitaldb"
                 && components[1] == "beds"
                 && !components[2].isEmpty
+        case .guestServiceStatus:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 5
+                && components[0] == "runtime"
+                && components[1] == "guest"
+                && components[2] == "services"
+                && !components[3].isEmpty
+                && components[4] == "status"
+        case .labSession:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 3
+                && components[0] == "lab"
+                && components[1] == "sessions"
+                && !components[2].isEmpty
+        case .startLabSession:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 4
+                && components[0] == "lab"
+                && components[1] == "sessions"
+                && !components[2].isEmpty
+                && components[3] == "start"
+        case .stopLabSession:
+            let components = path.split(separator: "/", omittingEmptySubsequences: true)
+            return components.count == 4
+                && components[0] == "lab"
+                && components[1] == "sessions"
+                && !components[2].isEmpty
+                && components[3] == "stop"
         default:
             return route.path == path
         }

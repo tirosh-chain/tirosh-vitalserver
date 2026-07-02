@@ -185,7 +185,6 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
     public let vmErrors: [RuntimeVMError]?
     public let failureReasons: [RuntimeFailureReason]
     public let domainErrors: [RuntimeDomainError]?
-    public let containerObservation: RuntimeContainerObservation?
     public let vitalDBObservation: VitalDBObservationDocument?
     public let progress: RuntimeProgressDocument?
 
@@ -205,7 +204,6 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         vmErrors: [RuntimeVMError]? = nil,
         failureReasons: [RuntimeFailureReason],
         domainErrors: [RuntimeDomainError]? = nil,
-        containerObservation: RuntimeContainerObservation? = nil,
         vitalDBObservation: VitalDBObservationDocument? = nil,
         progress: RuntimeProgressDocument?
     ) {
@@ -224,7 +222,6 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         self.vmErrors = vmErrors
         self.failureReasons = failureReasons
         self.domainErrors = domainErrors ?? (failureReasons.isEmpty ? nil : failureReasons.map(RuntimeDomainError.init))
-        self.containerObservation = containerObservation
         self.vitalDBObservation = vitalDBObservation
         self.progress = progress
     }
@@ -244,7 +241,6 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
         vmState: RuntimeVMState? = nil,
         vmErrors: [RuntimeVMError]? = nil,
         failureReasons: [RuntimeFailureReason],
-        containerObservation: RuntimeContainerObservation? = nil,
         vitalDBObservation: VitalDBObservationDocument? = nil,
         progress: RuntimeProgressDocument?
     ) {
@@ -264,7 +260,6 @@ public struct RuntimeEventDocument: Codable, Equatable, Sendable {
             vmErrors: vmErrors,
             failureReasons: failureReasons,
             domainErrors: nil,
-            containerObservation: containerObservation,
             vitalDBObservation: vitalDBObservation,
             progress: progress
         )

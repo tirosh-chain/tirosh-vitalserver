@@ -8,8 +8,8 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
         let snapshot = RuntimeVitalDBObservationSnapshotAssembler.makeSnapshot(
             currentObservation: .loaded(
                 currentObservation,
-                source: .guestRuntimeState,
-                readIssues: ["runtimeState=stale-before-current-read"]
+                source: .guestControlAPI,
+                readIssues: ["guestControl=stale-before-current-read"]
             ),
             projectedObservation: .failed("sqlite projection unavailable")
         )
@@ -18,20 +18,20 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
         XCTAssertEqual(snapshot.observation?.observedAt, "2026-06-01T00:00:10Z")
         XCTAssertEqual(
             snapshot.readError,
-            "projection=sqlite projection unavailable;runtimeState=stale-before-current-read"
+            "projection=sqlite projection unavailable;guestControl=stale-before-current-read"
         )
     }
 
     func testObservationSnapshotAssemblerUsesProjectionWhenCurrentObservationIsUnavailable() {
         let projectedObservation = observation("2026-06-01T00:00:01Z", vrcode: "VR_PROJECTED")
         let snapshot = RuntimeVitalDBObservationSnapshotAssembler.makeSnapshot(
-            currentObservation: .unavailable(readIssues: ["runtimeState=missing", "runtimeStatus=missing"]),
+            currentObservation: .unavailable(readIssues: ["guestControl=missing"]),
             projectedObservation: .loaded(projectedObservation)
         )
 
         XCTAssertEqual(snapshot.state, .loaded)
         XCTAssertEqual(snapshot.observation?.observedAt, "2026-06-01T00:00:01Z")
-        XCTAssertEqual(snapshot.readError, "runtimeState=missing;runtimeStatus=missing")
+        XCTAssertEqual(snapshot.readError, "guestControl=missing")
     }
 
     func testRecorderHistoryAssemblerPreservesObservationAndActivityProjectionFailuresWithCurrentObservation() {
@@ -41,8 +41,8 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
                 observations: .failed("observations unavailable"),
                 currentObservation: .loaded(
                     currentObservation,
-                    source: .runtimeStatus,
-                    readIssues: ["runtimeState=missing"]
+                    source: .guestControlAPI,
+                    readIssues: ["guestControl=missing"]
                 ),
                 activityBuckets: .failed("activity unavailable")
             )
@@ -54,7 +54,7 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
         XCTAssertEqual(history.activityHistory.source, .unavailable)
         XCTAssertEqual(
             history.readError,
-            "observations=observations unavailable;currentObservation=runtimeState=missing;activityBuckets=activity unavailable"
+            "observations=observations unavailable;currentObservation=guestControl=missing;activityBuckets=activity unavailable"
         )
         XCTAssertEqual(history.activityHistory.readError, history.readError)
     }
@@ -66,7 +66,7 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
                 observations: .loaded([]),
                 currentObservation: .loaded(
                     currentObservation,
-                    source: .runtimeStatus,
+                    source: .guestControlAPI,
                     readIssues: []
                 ),
                 activityBuckets: .notLoaded
@@ -78,6 +78,56 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
         XCTAssertNil(history.recorders.first?.activityTimeline)
         XCTAssertEqual(history.activityHistory.source, .notProvided)
         XCTAssertNil(history.readError)
+    }
+
+    func testRecorderHistoryAssemblerUsesExplicitRecorderIngressStatusRead() {
+        let currentObservation = VitalDBObservationDocument(
+            observedAt: "2026-06-01T00:00:10Z",
+            ready: true,
+            recorderOnlineThresholdSeconds: 60,
+            recorders: [
+                VitalDBRecorderObservation(
+                    vrcode: "VR_CURRENT",
+                    ip: "192.168.64.20",
+                    lastSeenAt: "2026-06-01T00:00:00Z",
+                    online: true,
+                    stale: true
+                ),
+            ]
+        )
+        let ingressRead = RuntimeRecorderIngressStatusReadResult(
+            readState: .loaded,
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(
+                recorders: [
+                    RuntimeRecorderConnectionObservation(
+                        vrcode: "VR_CURRENT",
+                        activeConnections: 1,
+                        selectedIp: "192.168.64.20",
+                        ipSource: "x-forwarded-for",
+                        lastSeenAt: "2026-06-01T00:00:09Z"
+                    ),
+                ]
+            ),
+            readError: nil
+        )
+
+        let history = RuntimeVitalDBRecorderHistoryAssembler.makeHistory(
+            reads: RuntimeVitalDBRecorderProjectionReads(
+                observations: .loaded([]),
+                currentObservation: .loaded(
+                    currentObservation,
+                    source: .guestControlAPI,
+                    readIssues: []
+                ),
+                activityBuckets: .notLoaded
+            ),
+            recorderIngressStatusRead: ingressRead
+        )
+
+        XCTAssertEqual(history.recorders.first?.status, .online)
+        XCTAssertEqual(history.recorders.first?.lastSeenAt, "2026-06-01T00:00:09Z")
+        XCTAssertEqual(history.summary.onlineRecorders, 1)
     }
 
     func testRecorderActivityWindowAssemblerFillsOnlyRequestedAllPage() {

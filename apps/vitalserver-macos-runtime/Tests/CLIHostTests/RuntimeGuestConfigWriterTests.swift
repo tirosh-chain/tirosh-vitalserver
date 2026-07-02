@@ -78,8 +78,7 @@ final class RuntimeGuestConfigWriterTests: XCTestCase {
             adminPassword: adminPassword,
             vitalFilesDirectory: Constants.Defaults.vitalFilesDirectoryGuestMountPath,
             redisUiPort: Constants.Guest.redisUIPort,
-            swaggerUiPort: Constants.Guest.swaggerUIPort,
-            testkitEnabled: Constants.testkitContainerIncluded
+            swaggerUiPort: Constants.Guest.swaggerUIPort
         )
     }
 }

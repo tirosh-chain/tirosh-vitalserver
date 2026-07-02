@@ -60,7 +60,6 @@ final class RuntimeChaosScenarioTests: XCTestCase {
             message: "ready",
             runtimeVersion: "1.2.3",
             failureReasons: [],
-            containerObservation: nil,
             progress: nil
         )
         let encoder = JSONEncoder()

@@ -4,43 +4,25 @@ import type {
   RuntimeApplySettingsRequest,
   RuntimeBackupRequest,
   RuntimeExportLogsRequest,
+  RuntimeLabBedCreateRequest,
+  RuntimeLabBedDeleteRequest,
+  RuntimeLabRecorderCreateRequest,
+  RuntimeLabRecorderDeleteRequest,
+  RuntimeLabSessionCreateRequest,
+  RuntimeLabVitalFileReplayRequest,
+  RuntimeGuestServiceControlRequest,
   RuntimeLogTextRequest,
-  RuntimeTestKitCreateBedsRequest,
-  RuntimeTestKitDeleteBedsRequest,
-  RuntimeTestKitRecorderDeletionRequest,
-  RuntimeTestKitRestartRequest,
-  RuntimeTestKitSessionSelectionRequest,
-  RuntimeTestKitVirtualRecorderStartRequest,
   RuntimeUninstallRequest,
-  RuntimeUpdateBundleRequest
+  RuntimeUpdateBundleRequest,
+  VitalDBBedVisibilityRequest,
+  VitalDBRecorderVisibilityRequest
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { runtimeSettingsSchema } from "./runtimeControlSchemas";
 
 const nonEmptyString = z.string().trim().min(1);
-const optionalNullableNonEmptyString = z
-  .string()
-  .trim()
-  .min(1)
-  .nullable()
-  .optional();
-
 const fileReferenceSchema = z.object({
   kind: z.enum(["localPath", "uploadedArtifact", "remoteURL"]),
   value: nonEmptyString
-});
-
-const runtimeTestKitRecorderSourceSchema = z.object({
-  type: z.literal("vitalFile"),
-  path: nonEmptyString,
-  scenario: z.enum([
-    "basic_monitor",
-    "periop_full",
-    "bloodbag",
-    "root_sedation",
-    "full_real"
-  ]),
-  startOffsetSeconds: z.number().min(0),
-  durationSeconds: z.number().int().min(1)
 });
 
 export const runtimeApplySettingsRequestSchema = z.object({
@@ -85,68 +67,54 @@ export const runtimeRepairProxyRequestSchema = z.object({
   proxyPort: z.number().int().min(1).max(65_535)
 });
 
-export const runtimeTestKitCreateBedsRequestSchema = z
-  .object({
-    count: z.number().int().min(1).max(500).nullable().optional(),
-    roomNames: z.array(nonEmptyString),
-    prefix: nonEmptyString,
-    adminUserId: nonEmptyString
-  })
-  .refine((request) => request.count != null || request.roomNames.length > 0, {
-    message: "count or roomNames is required",
-    path: ["count"]
-  }) satisfies z.ZodType<RuntimeTestKitCreateBedsRequest>;
+export const runtimeLabSessionIdSchema = nonEmptyString;
 
-export const runtimeTestKitDeleteBedsRequestSchema = z.object({
-  roomNames: z.array(nonEmptyString).min(1)
-}) satisfies z.ZodType<RuntimeTestKitDeleteBedsRequest>;
+export const runtimeLabSessionCreateRequestSchema = z.object({
+  scenarioId: nonEmptyString,
+  name: z.string().trim().min(1).nullable().optional(),
+  recorderCount: z.number().int().min(1).max(500),
+  targetURL: z.string().trim().min(1).nullable().optional()
+}) satisfies z.ZodType<RuntimeLabSessionCreateRequest>;
 
-export const runtimeTestKitVirtualRecorderStartRequestSchema = z
-  .object({
-    scenario: z.enum([
-      "normal",
-      "multiple_recorders",
-      "burst_traffic",
-      "disconnect_reconnect",
-      "stale_recorder",
-      "signal_anomaly"
-    ]),
-    signalProfile: z.enum([
-      "normal",
-      "tachycardia",
-      "desaturation",
-      "artifact",
-      "device_disconnect"
-    ]),
-    recorders: z.number().int().min(1).max(500),
-    bedRoomNames: z.array(nonEmptyString).min(1),
-    vrcode: optionalNullableNonEmptyString,
-    version: nonEmptyString,
-    intervalSeconds: z.number().positive(),
-    durationSeconds: z.number().positive().nullable().optional(),
-    maxMessages: z.number().int().positive().nullable().optional(),
-    shiftTime: z.boolean(),
-    generateFrames: z.boolean(),
-    exportVital: z.boolean(),
-    uploadVital: z.boolean(),
-    vitalUploadEndpoint: nonEmptyString,
-    source: runtimeTestKitRecorderSourceSchema.nullable().optional(),
-    realSampleKey: optionalNullableNonEmptyString
-  })
-  .refine((request) => request.bedRoomNames.length >= request.recorders, {
-    message: "bedRoomNames must include at least one bed per recorder",
-    path: ["bedRoomNames"]
-  }) satisfies z.ZodType<RuntimeTestKitVirtualRecorderStartRequest>;
+export const runtimeLabBedCreateRequestSchema = z.object({
+  count: z.number().int().min(1).max(500).nullable().optional(),
+  roomNames: z.array(nonEmptyString).optional(),
+  prefix: z.string().trim().min(1).nullable().optional(),
+  targetURL: z.string().trim().min(1).nullable().optional()
+}) satisfies z.ZodType<RuntimeLabBedCreateRequest>;
 
-export const runtimeTestKitSessionSelectionRequestSchema = z.object({
-  sessionID: nonEmptyString
-}) satisfies z.ZodType<RuntimeTestKitSessionSelectionRequest>;
+export const runtimeLabBedDeleteRequestSchema = z.object({
+  bedIds: z.array(nonEmptyString).optional(),
+  roomNames: z.array(nonEmptyString).optional(),
+  sessionId: z.string().trim().min(1).nullable().optional()
+}) satisfies z.ZodType<RuntimeLabBedDeleteRequest>;
 
-export const runtimeTestKitRestartRequestSchema = z.object({
-  sessionID: nonEmptyString,
-  bedRoomNames: z.array(nonEmptyString).min(1)
-}) satisfies z.ZodType<RuntimeTestKitRestartRequest>;
+export const runtimeLabRecorderCreateRequestSchema = z.object({
+  bedIds: z.array(nonEmptyString).optional(),
+  sessionId: z.string().trim().min(1).nullable().optional()
+}) satisfies z.ZodType<RuntimeLabRecorderCreateRequest>;
 
-export const runtimeTestKitRecorderDeletionRequestSchema = z.object({
-  vrcode: nonEmptyString
-}) satisfies z.ZodType<RuntimeTestKitRecorderDeletionRequest>;
+export const runtimeLabRecorderDeleteRequestSchema = z.object({
+  recorderIds: z.array(nonEmptyString).optional(),
+  vrcodes: z.array(nonEmptyString).optional(),
+  sessionId: z.string().trim().min(1).nullable().optional()
+}) satisfies z.ZodType<RuntimeLabRecorderDeleteRequest>;
+
+export const runtimeLabVitalFileReplayRequestSchema = z.object({
+  vitalFilePath: nonEmptyString,
+  sessionName: z.string().trim().min(1).nullable().optional(),
+  targetURL: z.string().trim().min(1).nullable().optional()
+}) satisfies z.ZodType<RuntimeLabVitalFileReplayRequest>;
+
+export const vitalDBRecorderVisibilityRequestSchema = z.object({
+  vrcodes: z.array(nonEmptyString).min(1)
+}) satisfies z.ZodType<VitalDBRecorderVisibilityRequest>;
+
+export const vitalDBBedVisibilityRequestSchema = z.object({
+  bedIDs: z.array(nonEmptyString).min(1)
+}) satisfies z.ZodType<VitalDBBedVisibilityRequest>;
+
+export const runtimeGuestServiceControlRequestSchema = z.object({
+  service: nonEmptyString,
+  guestControlBaseURL: z.string().trim().min(1).nullable().optional()
+}) satisfies z.ZodType<RuntimeGuestServiceControlRequest>;

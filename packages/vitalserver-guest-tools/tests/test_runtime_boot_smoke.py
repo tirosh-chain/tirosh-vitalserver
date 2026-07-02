@@ -5,6 +5,7 @@ import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -13,6 +14,7 @@ from tirosh_guest_tools.application.runtime_boot_smoke import (
     RUNTIME_BOOT_SMOKE_MANIFEST,
     RuntimeBootSmokeContext,
     RuntimeBootSmokeOperations,
+    RuntimeBootSmokeRun,
     default_context,
     run_runtime_boot_smoke,
 )
@@ -41,10 +43,75 @@ def test_runtime_boot_smoke_writes_manifest_for_success(tmp_path: Path) -> None:
     )
     assert stage_status(document, "http") == "passed"
     assert stage_status(document, "compose-services") == "passed"
+    assert stage_status(document, "guest-control-api") == "passed"
+    guest_control_operation = stage_details(document, "guest-control-api")["operation"]
+    assert isinstance(guest_control_operation, dict)
+    assert guest_control_operation["operationId"] == "op_app_restart_smoke"
+    reconcile_operation = stage_details(document, "guest-control-api")[
+        "reconcileOperation"
+    ]
+    assert isinstance(reconcile_operation, dict)
+    assert reconcile_operation["operationId"] == "op_stack_reconcile_smoke"
+    lab_scenarios = stage_details(document, "guest-control-api")["labScenarios"]
+    assert lab_scenarios == {
+        "state": "loaded",
+        "scenarios": [
+            {
+                "scenarioId": "normal_monitoring",
+                "name": "Normal monitoring",
+            }
+        ],
+    }
+    lab_session_operations = stage_details(
+        document,
+        "guest-control-api",
+    )["labSessionOperations"]
+    assert isinstance(lab_session_operations, dict)
+    assert lab_session_operations["scenarioId"] == "normal_monitoring"
+    assert lab_session_operations["sessionId"] == "lab-session-1"
+    assert lab_session_operations["operationIds"] == [
+        "op_lab_create_smoke",
+        "op_lab_start_smoke",
+        "op_lab_stop_smoke",
+        "op_lab_replay_smoke",
+    ]
     assert stage_status(document, "disk-health") == "passed"
     assert stage_status(document, "capabilities") == "passed"
-    assert stage_status(document, "command-dispatch") == "passed"
+    assert stage_status(document, "runtime-share") == "passed"
     assert stage_status(document, "feature-readiness") == "passed"
+
+
+def test_runtime_boot_smoke_uses_operation_timeout_for_guest_restart(
+    tmp_path: Path,
+) -> None:
+    context = runtime_boot_context(tmp_path)
+    write_valid_runtime_documents(context)
+    observed_timeouts: list[tuple[str, str, float]] = []
+    guest_control_http_json = fake_guest_control_http_json(
+        observed_timeouts=observed_timeouts,
+    )
+
+    run_runtime_boot_smoke(
+        context=context,
+        operations=fake_operations(http_json=guest_control_http_json),
+    )
+
+    restart_requests = [
+        timeout
+        for method, url, timeout in observed_timeouts
+        if method == "POST" and url.endswith("/v1/services/app/restart")
+    ]
+    assert restart_requests == [
+        runtime_boot_smoke.GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
+    ]
+    reconcile_requests = [
+        timeout
+        for method, url, timeout in observed_timeouts
+        if method == "POST" and url.endswith("/v1/stack/reconcile")
+    ]
+    assert reconcile_requests == [
+        runtime_boot_smoke.GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
+    ]
 
 
 @pytest.mark.parametrize(
@@ -92,39 +159,9 @@ def test_runtime_boot_smoke_writes_manifest_for_success(tmp_path: Path) -> None:
         (
             lambda context: update_json(
                 context.runtime_dir / "runtime-state.json",
-                {"capabilities": {}},
-            ),
-            "runtime capability is not available",
-        ),
-        (
-            lambda context: update_json(
-                context.runtime_dir / "runtime-state.json",
                 {"diskHealth": {"rootFilesystemReadOnly": True, "kernelErrors": []}},
             ),
             "root filesystem is not explicitly writable",
-        ),
-        (
-            lambda context: update_json(
-                context.runtime_dir / "runtime-state.json",
-                {"vitalDBObservation": []},
-            ),
-            "vitalDBObservation must be object or null",
-        ),
-        (
-            lambda context: update_runtime_service(
-                context,
-                "app",
-                {"uptimeSeconds": None},
-            ),
-            "compose service uptime is invalid for runtime smoke",
-        ),
-        (
-            lambda context: update_runtime_service(
-                context,
-                "app",
-                {"uptimeSeconds": 41_126_400},
-            ),
-            "compose service uptime is invalid for runtime smoke",
         ),
     ],
 )
@@ -187,49 +224,40 @@ def test_runtime_boot_smoke_rejects_unready_http(tmp_path: Path) -> None:
     assert "runtime HTTP endpoint is not ready" in failed_stage_message(document)
 
 
-def test_runtime_boot_smoke_rejects_stale_request_file(tmp_path: Path) -> None:
+def test_runtime_boot_smoke_rejects_unready_guest_control_api(
+    tmp_path: Path,
+) -> None:
     context = runtime_boot_context(tmp_path)
     write_valid_runtime_documents(context)
-    (context.runtime_dir / "redis-backup.request").write_text("{}", encoding="utf-8")
 
-    with pytest.raises(SystemExit):
-        run_runtime_boot_smoke(context=context, operations=fake_operations())
-
-    document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
-    assert "stale guest command requests exist" in failed_stage_message(document)
-
-
-def test_runtime_boot_smoke_rejects_failed_dev_testkit_service(tmp_path: Path) -> None:
-    context = runtime_boot_context(tmp_path, dev_build=True)
-    write_valid_runtime_documents(context, testkit_enabled=True)
+    def failing_http_json(
+        method: str,
+        url: str,
+        timeout_seconds: float,
+        body: dict[str, Any] | None,
+        ) -> dict[str, Any]:
+            del method
+            del timeout_seconds
+            del body
+            if url.endswith("/v1/stack/status"):
+                return {
+                    "state": "loaded",
+                    "observedAt": timestamp(NOW),
+                    "services": default_stack_status_services(),
+                }
+            if url.endswith("/ready"):
+                return {"status": "starting"}
+            raise AssertionError(f"unexpected URL after failed ready probe: {url}")
 
     with pytest.raises(SystemExit):
         run_runtime_boot_smoke(
             context=context,
-            operations=fake_operations(
-                service_results={"tirosh-vitalserver-testkit.service": "failed"},
-            ),
+            operations=fake_operations(http_json=failing_http_json),
         )
 
     document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
-    assert "testkit service failed for dev build" in failed_stage_message(document)
-
-
-def test_runtime_boot_smoke_accepts_inactive_successful_dev_testkit_oneshot(
-    tmp_path: Path,
-) -> None:
-    context = runtime_boot_context(tmp_path, dev_build=True)
-    write_valid_runtime_documents(context, testkit_enabled=True)
-
-    run_runtime_boot_smoke(
-        context=context,
-        operations=fake_operations(
-            inactive_service="tirosh-vitalserver-testkit.service",
-        ),
-    )
-
-    document = json.loads(context.manifest_path.read_text(encoding="utf-8"))
-    assert document["status"] == "passed"
+    assert stage_status(document, "guest-control-api") == "failed"
+    assert "guest control API is not ready" in failed_stage_message(document)
 
 
 @pytest.mark.parametrize("health", [None, "", "starting", "unhealthy"])
@@ -239,13 +267,18 @@ def test_runtime_boot_smoke_rejects_service_without_explicit_healthy_status(
 ) -> None:
     context = runtime_boot_context(tmp_path)
     write_valid_runtime_documents(context)
-    state_path = context.runtime_dir / "runtime-state.json"
-    document = read_json(state_path)
-    document["containerServices"][0]["health"] = health
-    write_json(state_path, document)
+    stack_services = default_stack_status_services()
+    stack_services[0]["health"] = health
 
     with pytest.raises(SystemExit):
-        run_runtime_boot_smoke(context=context, operations=fake_operations())
+        run_runtime_boot_smoke(
+            context=context,
+            operations=fake_operations(
+                http_json=fake_guest_control_http_json(
+                    stack_services=stack_services,
+                ),
+            ),
+        )
 
     manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
     assert "compose services are not ready" in failed_stage_message(manifest)
@@ -256,19 +289,20 @@ def test_runtime_boot_smoke_waits_for_compose_service_to_become_healthy(
 ) -> None:
     context = runtime_boot_context(tmp_path, compose_ready_timeout_seconds=10)
     write_valid_runtime_documents(context)
-    state_path = context.runtime_dir / "runtime-state.json"
-    document = read_json(state_path)
-    document["containerServices"][0]["health"] = "starting"
-    write_json(state_path, document)
+    stack_services = default_stack_status_services()
+    stack_services[0]["health"] = "starting"
 
     def mark_healthy(seconds: float) -> None:
-        refreshed = read_json(state_path)
-        refreshed["containerServices"][0]["health"] = "healthy"
-        write_json(state_path, refreshed)
+        stack_services[0]["health"] = "healthy"
 
     run_runtime_boot_smoke(
         context=context,
-        operations=fake_operations(sleep=mark_healthy),
+        operations=fake_operations(
+            http_json=fake_guest_control_http_json(
+                stack_services=stack_services,
+            ),
+            sleep=mark_healthy,
+        ),
     )
 
     manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
@@ -282,29 +316,33 @@ def test_runtime_boot_smoke_waits_for_missing_compose_service_to_appear(
     context = runtime_boot_context(
         tmp_path,
         compose_ready_timeout_seconds=10,
-        dev_build=True,
     )
     write_valid_runtime_documents(context)
-    state_path = context.runtime_dir / "runtime-state.json"
+    stack_services = [
+        service
+        for service in default_stack_status_services()
+        if service["service"] != "lab"
+    ]
 
-    def add_testkit(seconds: float) -> None:
-        refreshed = read_json(state_path)
-        refreshed["containerServices"].append(
+    def add_lab(seconds: float) -> None:
+        stack_services.append(
             {
-                "service": "testkit",
+                "service": "lab",
                 "exitCode": 0,
                 "health": "healthy",
-                "name": "testkit-1",
-                "startedAt": timestamp(NOW),
+                "observedAt": timestamp(NOW),
                 "state": "running",
-                "uptimeSeconds": 1,
             }
         )
-        write_json(state_path, refreshed)
 
     run_runtime_boot_smoke(
         context=context,
-        operations=fake_operations(sleep=add_testkit),
+        operations=fake_operations(
+            http_json=fake_guest_control_http_json(
+                stack_services=stack_services,
+            ),
+            sleep=add_lab,
+        ),
     )
 
     manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
@@ -312,46 +350,101 @@ def test_runtime_boot_smoke_waits_for_missing_compose_service_to_appear(
     assert stage_status(manifest, "compose-services") == "passed"
 
 
-def test_runtime_boot_smoke_uses_fresh_runtime_state_after_compose_wait(
+def test_runtime_boot_smoke_uses_guest_control_capabilities_after_compose_wait(
     tmp_path: Path,
 ) -> None:
     context = runtime_boot_context(tmp_path, compose_ready_timeout_seconds=10)
     write_valid_runtime_documents(context)
-    state_path = context.runtime_dir / "runtime-state.json"
-    document = read_json(state_path)
-    document["containerServices"][0]["health"] = "starting"
-    write_json(state_path, document)
+    stack_services = default_stack_status_services()
+    stack_services[0]["health"] = "starting"
+    capabilities = default_guest_control_capabilities()
 
     def mark_healthy_and_remove_capability(seconds: float) -> None:
-        refreshed = read_json(state_path)
-        refreshed["containerServices"][0]["health"] = "healthy"
-        refreshed["capabilities"].pop("redisBackup")
-        write_json(state_path, refreshed)
+        stack_services[0]["health"] = "healthy"
+        capabilities.remove("maintenance:redis-backup:create")
 
     with pytest.raises(SystemExit):
         run_runtime_boot_smoke(
             context=context,
-            operations=fake_operations(sleep=mark_healthy_and_remove_capability),
+            operations=fake_operations(
+                http_json=fake_guest_control_http_json(
+                    stack_services=stack_services,
+                    capabilities=capabilities,
+                ),
+                sleep=mark_healthy_and_remove_capability,
+            ),
         )
 
     manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
     assert stage_status(manifest, "compose-services") == "passed"
-    assert stage_status(manifest, "capabilities") == "failed"
-    assert "runtime capability is not available" in failed_stage_message(manifest)
+    assert stage_status(manifest, "guest-control-api") == "failed"
+    assert "guest control API capability is missing" in failed_stage_message(manifest)
 
 
-def test_runtime_boot_smoke_rejects_missing_compose_service_after_timeout(
+def test_lab_replay_smoke_file_prepare_uses_runtime_run_contract(
     tmp_path: Path,
 ) -> None:
-    context = runtime_boot_context(tmp_path, dev_build=True)
+    context = runtime_boot_context(tmp_path)
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    def run(
+        arguments: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append((arguments, {"check": check, "capture_output": capture_output}))
+        return subprocess.CompletedProcess(arguments, 0, "", "")
+
+    operations = fake_operations()
+    strict_operations = RuntimeBootSmokeOperations(
+        mount_runtime_share=operations.mount_runtime_share,
+        read_json=operations.read_json,
+        write_json=operations.write_json,
+        run=run,
+        http_status=operations.http_status,
+        http_json=operations.http_json,
+        now=operations.now,
+        sleep=operations.sleep,
+    )
+    active_run = RuntimeBootSmokeRun(
+        context=context,
+        operations=strict_operations,
+    )
+
+    path = runtime_boot_smoke.prepare_lab_replay_smoke_vital_file(active_run)
+
+    assert path == runtime_boot_smoke.LAB_REPLAY_SMOKE_VITAL_FILE
+    assert calls
+    assert calls[0][1] == {"check": False, "capture_output": True}
+
+
+def test_runtime_boot_smoke_rejects_missing_product_lab_service_after_timeout(
+    tmp_path: Path,
+) -> None:
+    context = runtime_boot_context(tmp_path)
     write_valid_runtime_documents(context)
+    stack_services = [
+        service
+        for service in default_stack_status_services()
+        if service["service"] != "lab"
+    ]
 
     with pytest.raises(SystemExit):
-        run_runtime_boot_smoke(context=context, operations=fake_operations())
+        run_runtime_boot_smoke(
+            context=context,
+            operations=fake_operations(
+                http_json=fake_guest_control_http_json(
+                    stack_services=stack_services,
+                ),
+            ),
+        )
 
     manifest = json.loads(context.manifest_path.read_text(encoding="utf-8"))
-    assert "runtime state is missing compose services" in failed_stage_message(manifest)
-    assert "testkit" in failed_stage_message(manifest)
+    assert "guest control stack status is missing services" in failed_stage_message(
+        manifest
+    )
+    assert "lab" in failed_stage_message(manifest)
 
 
 def test_runtime_boot_smoke_cli_is_registered() -> None:
@@ -376,7 +469,7 @@ def test_runtime_boot_smoke_default_context_reads_explicit_metadata(
     context = default_context()
 
     assert context.run_id == "explicit-run"
-    assert context.dev_build is True
+    assert context.dev_build is False
     assert context.manifest_path == runtime_dir / RUNTIME_BOOT_SMOKE_MANIFEST
 
 
@@ -400,13 +493,6 @@ def test_runtime_boot_smoke_default_context_reads_explicit_metadata(
                 encoding="utf-8",
             ),
             "runtime config must be a JSON object",
-        ),
-        (
-            lambda deploy_dir: update_json(
-                deploy_dir / "runtime-config.json",
-                {"testkitEnabled": None},
-            ),
-            "runtime config testkitEnabled must be an explicit boolean",
         ),
         (
             lambda deploy_dir: (
@@ -478,8 +564,6 @@ def runtime_boot_context(
 
 def write_valid_runtime_documents(
     context: RuntimeBootSmokeContext,
-    *,
-    testkit_enabled: bool = False,
 ) -> None:
     write_json(
         context.runtime_dir / "bootstrap-result.json",
@@ -493,28 +577,6 @@ def write_valid_runtime_documents(
             "updatedAt": timestamp(NOW),
         },
     )
-    services = [
-        {
-            "service": name,
-            "exitCode": 0,
-            "health": "healthy",
-            "name": f"{name}-1",
-            "startedAt": timestamp(NOW),
-            "state": "running",
-            "uptimeSeconds": 10,
-        }
-        for name in (
-            "redis",
-            "app",
-            "recorder-ingress",
-            "vitaldb-observer",
-            "redis-relay",
-            "redis-ui",
-            "swagger-ui",
-            "edge",
-            *(("testkit",) if testkit_enabled else ()),
-        )
-    ]
     write_json(
         context.runtime_dir / "runtime-state.json",
         {
@@ -523,25 +585,15 @@ def write_valid_runtime_documents(
             "vmIP": "192.168.64.2",
             "updatedAt": timestamp(NOW),
             "probeErrors": [],
-            "containerServices": services,
             "diskHealth": {
                 "rootFilesystemReadOnly": False,
                 "kernelErrors": [],
-            },
-            "capabilities": {
-                "prepareUpdateShutdown": True,
-                "activateUpdate": True,
-                "redisBackup": True,
-                "redisRestore": True,
-                "reconcileCompose": True,
-                "repairDatastore": True,
             },
             "httpProbes": {
                 "guestHTTP": {"status": "200"},
                 "redisUIHTTP": {"status": "200"},
                 "swaggerUIHTTP": {"status": "200"},
             },
-            "vitalDBObservation": {},
         },
     )
     write_json(
@@ -549,7 +601,6 @@ def write_valid_runtime_documents(
         {
             "publicHost": "127.0.0.1",
             "publicPort": 18080,
-            "testkitEnabled": testkit_enabled,
             "vitalFilesDirectory": "/mnt/tirosh-vital-files",
         },
     )
@@ -572,7 +623,9 @@ def write_default_context_documents(deploy_dir: Path, *, run_id: str) -> None:
     write_json(
         deploy_dir / "runtime-config.json",
         {
-            "testkitEnabled": True,
+            "publicHost": "127.0.0.1",
+            "publicPort": 18080,
+            "vitalFilesDirectory": "/mnt/tirosh-vital-files",
         },
     )
     write_json(
@@ -586,18 +639,52 @@ def write_default_context_documents(deploy_dir: Path, *, run_id: str) -> None:
     )
 
 
-def update_runtime_service(
-    context: RuntimeBootSmokeContext,
-    service_name: str,
-    changes: dict[str, object],
-) -> None:
-    path = context.runtime_dir / "runtime-state.json"
-    document = read_json(path)
-    services = document["containerServices"]
-    for service in services:
-        if service["service"] == service_name:
-            service.update(changes)
-    write_json(path, document)
+def default_stack_status_services() -> list[dict[str, Any]]:
+    return [
+        {
+            "service": name,
+            "state": "running",
+            "health": "healthy",
+            "observedAt": timestamp(NOW),
+            "exitCode": 0,
+        }
+        for name in (
+            "postgres",
+            "redis",
+            "app",
+            "recorder-ingress",
+            "vitaldb-observer",
+            "redis-relay",
+            "lab",
+            "redis-ui",
+            "swagger-ui",
+            "edge",
+        )
+    ]
+
+
+def default_guest_control_capabilities() -> list[str]:
+    return [
+        "services:list",
+        "services:status",
+        "services:start",
+        "services:stop",
+        "services:restart",
+        "stack:reconcile",
+        "lab:scenarios",
+        "lab:sessions:create",
+        "lab:sessions:get",
+        "lab:sessions:start",
+        "lab:sessions:stop",
+        "lab:vital-files:replay",
+        "recorder-ingress:status:get",
+        "operations:get",
+        "maintenance:redis-backup:create",
+        "maintenance:redis-restore:create",
+        "maintenance:datastore-repair:create",
+        "maintenance:update-activation:create",
+        "maintenance:update-shutdown:create",
+    ]
 
 
 def fake_operations(
@@ -605,6 +692,10 @@ def fake_operations(
     inactive_service: str | None = None,
     service_results: dict[str, str] | None = None,
     http_status: Callable[[str, float], int] | None = None,
+    http_json: Callable[
+        [str, str, float, dict[str, Any] | None],
+        dict[str, Any],
+    ] | None = None,
     sleep: Callable[[float], None] | None = None,
     docker_root: str = "/mnt/runtime/docker",
 ) -> RuntimeBootSmokeOperations:
@@ -658,9 +749,168 @@ def fake_operations(
         write_json=write_json,
         run=run,
         http_status=http_status or (lambda url, timeout_seconds: 200),
+        http_json=http_json or fake_guest_control_http_json(),
         now=lambda: NOW,
         sleep=sleep or (lambda seconds: None),
     )
+
+
+def fake_guest_control_http_json(
+    *,
+    stack_services: list[dict[str, Any]] | None = None,
+    capabilities: list[str] | None = None,
+    observed_timeouts: list[tuple[str, str, float]] | None = None,
+) -> Callable[[str, str, float, dict[str, Any] | None], dict[str, Any]]:
+    operations: dict[str, dict[str, Any]] = {}
+    stack_services = (
+        stack_services
+        if stack_services is not None
+        else default_stack_status_services()
+    )
+    capabilities = (
+        capabilities
+        if capabilities is not None
+        else default_guest_control_capabilities()
+    )
+
+    def request(
+        method: str,
+        url: str,
+        timeout_seconds: float,
+        body: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        if observed_timeouts is not None:
+            observed_timeouts.append((method, url, timeout_seconds))
+        if method == "GET" and url.endswith("/ready"):
+            return {"status": "ready"}
+        if method == "GET" and url.endswith("/v1/capabilities"):
+            return {
+                "schemaVersion": 1,
+                "capabilities": capabilities,
+            }
+        if method == "GET" and url.endswith("/v1/services"):
+            return {"services": ["postgres", "redis", "app", "edge"]}
+        if method == "GET" and url.endswith("/v1/services/app/status"):
+            return {
+                "service": "app",
+                "state": "running",
+                "health": "healthy",
+            }
+        if method == "GET" and url.endswith("/v1/stack/status"):
+            return {
+                "state": "loaded",
+                "observedAt": timestamp(NOW),
+                "services": stack_services,
+            }
+        if method == "GET" and url.endswith("/v1/recorder-ingress/status"):
+            return {
+                "readState": "loaded",
+                "httpStatus": "200",
+                "readError": None,
+                "document": {
+                    "startedAt": "2026-06-11T12:00:00Z",
+                    "uptimeSeconds": 12,
+                    "activeRecorderConnections": 1,
+                    "recorders": [
+                        {
+                            "vrcode": "VR_SMOKE",
+                            "remoteAddress": "192.0.2.10",
+                            "connectedAt": "2026-06-11T12:00:01Z",
+                        }
+                    ],
+                },
+            }
+        if method == "GET" and url.endswith("/v1/lab/scenarios"):
+            return {
+                "state": "loaded",
+                "scenarios": [
+                    {
+                        "scenarioId": "normal_monitoring",
+                        "name": "Normal monitoring",
+                    }
+                ],
+            }
+        if method == "POST" and url.endswith("/v1/lab/sessions"):
+            assert body == {
+                "scenarioId": "normal_monitoring",
+                "name": "RuntimeBootSmokeLab",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+            }
+            return lab_session_response(
+                operation_id="op_lab_create_smoke",
+                state="accepted",
+            )
+        if method == "GET" and url.endswith("/v1/lab/sessions/lab-session-1"):
+            return lab_session_response(operation_id=None, state="accepted")
+        if method == "POST" and url.endswith("/v1/lab/sessions/lab-session-1/start"):
+            return lab_session_response(
+                operation_id="op_lab_start_smoke",
+                state="running",
+            )
+        if method == "POST" and url.endswith("/v1/lab/sessions/lab-session-1/stop"):
+            return lab_session_response(
+                operation_id="op_lab_stop_smoke",
+                state="stopped",
+            )
+        if method == "POST" and url.endswith("/v1/lab/vital-files/replay"):
+            assert body == {
+                "vitalFilePath": (
+                    "/mnt/tirosh-vital-files/runtime-boot-smoke-replay.vital"
+                ),
+                "sessionName": "RuntimeBootSmokeReplay",
+                "targetURL": "http://edge/",
+            }
+            return lab_session_response(
+                operation_id="op_lab_replay_smoke",
+                state="accepted",
+            )
+        if method == "POST" and url.endswith("/v1/services/app/restart"):
+            operation = {
+                "operationId": "op_app_restart_smoke",
+                "service": "app",
+                "command": "restart",
+                "state": "completed",
+            }
+            operations["op_app_restart_smoke"] = operation
+            return operation
+        if method == "POST" and url.endswith("/v1/stack/reconcile"):
+            operation = {
+                "operationId": "op_stack_reconcile_smoke",
+                "service": "guest-stack",
+                "command": "reconcile",
+                "state": "completed",
+            }
+            operations["op_stack_reconcile_smoke"] = operation
+            return operation
+        if method == "GET" and "/v1/operations/" in url:
+            operation_id = url.rsplit("/", 1)[-1]
+            return operations[operation_id]
+        raise AssertionError(f"unexpected guest control request: {method} {url}")
+
+    return request
+
+
+def lab_session_response(
+    *,
+    operation_id: str | None,
+    state: str,
+) -> dict[str, Any]:
+    return {
+        "state": "loaded",
+        "operationId": operation_id,
+        "readError": None,
+        "session": {
+            "sessionId": "lab-session-1",
+            "state": state,
+            "scenarioId": "normal_monitoring",
+            "name": "RuntimeBootSmokeLab",
+            "recorderCount": 1,
+            "targetURL": "http://edge/",
+            "createdAt": "2026-06-11T12:00:00Z",
+            "updatedAt": "2026-06-11T12:00:00Z",
+        },
+    }
 
 
 def update_json(path: Path, patch: dict[str, object]) -> None:

@@ -35,14 +35,15 @@ from tirosh_guest_tools.infrastructure.common import (
 logger = logging.getLogger(__name__)
 COMPOSE_STOP_COMMAND_TIMEOUT_BUFFER_SECONDS = 10
 ORDERED_STOP_POLICIES = (
-    (ComposeService.TESTKIT, 30),
     (ComposeService.EDGE, 30),
     (ComposeService.SWAGGER_UI, 30),
     (ComposeService.REDIS_UI, 30),
     (ComposeService.RECORDER_INGRESS, 30),
     (ComposeService.VITALDB_OBSERVER, 30),
     (ComposeService.REDIS_RELAY, 30),
+    (ComposeService.LAB, 30),
     (ComposeService.APP, 90),
+    (ComposeService.POSTGRES, 60),
     (ComposeService.REDIS, 60),
 )
 RUNNING_STATES = {"running", "restarting", "removing", "paused"}
@@ -164,24 +165,11 @@ def run_compose_action(action: ComposeAction | str) -> None:
     action = ComposeAction(action)
     mount_runtime_share()
     mount_vital_files_share()
-    runtime_config = load_runtime_env()
+    load_runtime_env()
 
     if action == ComposeAction.UP:
         prepare_container_bind_source_directories()
         start_ordered()
-    elif action == ComposeAction.TESTKIT_UP:
-        prepare_container_bind_source_directories()
-        start_testkit(runtime_config)
-    elif action == ComposeAction.TESTKIT_UP_LOGGED:
-        prepare_container_bind_source_directories()
-        start_testkit_logged(runtime_config)
-    elif action == ComposeAction.TESTKIT_STOP:
-        stop_testkit()
-        run(["sync"])
-    elif action == ComposeAction.TESTKIT_RESTART:
-        stop_testkit()
-        prepare_container_bind_source_directories()
-        start_testkit_logged(runtime_config)
     elif action == ComposeAction.STOP:
         stop_services_in_order()
         run(["sync"])
@@ -830,6 +818,31 @@ def wait_for_redis() -> None:
     raise SystemExit(1)
 
 
+def wait_for_postgres() -> None:
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        completed = compose(
+            [
+                "exec",
+                "-T",
+                ComposeService.POSTGRES.value,
+                "pg_isready",
+                "-U",
+                "vitalserver",
+                "-d",
+                "vitalserver",
+            ],
+            check=False,
+        )
+        if completed.returncode == 0:
+            return
+        time.sleep(2)
+    logger.error("postgres did not become ready")
+    compose(["ps"], check=False)
+    compose(["logs", ComposeService.POSTGRES.value, "--tail=100"], check=False)
+    raise SystemExit(1)
+
+
 def wait_for_app() -> None:
     script = (
         "require('http').get('http://127.0.0.1/check', "
@@ -853,6 +866,11 @@ def wait_for_app() -> None:
 
 def start_ordered() -> None:
     checked_compose(
+        ["up", "-d", ComposeService.POSTGRES.value],
+        stage="postgres startup",
+    )
+    wait_for_postgres()
+    checked_compose(
         ["up", "-d", ComposeService.REDIS.value],
         stage="redis startup",
     )
@@ -866,6 +884,7 @@ def start_ordered() -> None:
             ComposeService.RECORDER_INGRESS.value,
             ComposeService.VITALDB_OBSERVER.value,
             ComposeService.REDIS_RELAY.value,
+            ComposeService.LAB.value,
             ComposeService.REDIS_UI.value,
             ComposeService.SWAGGER_UI.value,
         ],
@@ -876,30 +895,3 @@ def start_ordered() -> None:
         ["up", "-d", ComposeService.EDGE.value],
         stage="edge startup",
     )
-
-
-def start_testkit(runtime_config: RuntimeConfig) -> None:
-    if runtime_config.testkit_enabled:
-        load_optional_docker_images()
-        checked_compose(
-            ["up", "-d", ComposeService.TESTKIT.value],
-            stage="optional testkit startup",
-        )
-
-
-def start_testkit_logged(runtime_config: RuntimeConfig) -> None:
-    if not runtime_config.testkit_enabled:
-        logger.info("optional TestKit service is disabled")
-        return
-    logger.info("starting optional TestKit service via Docker Compose")
-    start_testkit(runtime_config)
-    logger.info("optional TestKit service provisioning completed")
-
-
-def stop_testkit() -> None:
-    logger.info("stopping optional TestKit service via Docker Compose")
-    compose(
-        ["stop", "--timeout", "30", ComposeService.TESTKIT.value],
-        timeout_seconds=40,
-    )
-    logger.info("optional TestKit service stopped")

@@ -109,11 +109,13 @@ npm --prefix apps/vitalserver-runtime-pwa run dev
 - `/logs` toolbar remains sticky while scrolling
 - `/recorders` switches to card layout on mobile width
 - `/settings` validation prevents invalid resource values
-- `/test` is hidden when `canUseTestTools=false`
+- `/lab` remains visible as a product route and uses `/lab/*`
+- `/test` is not a product route; test/diagnostics-only surfaces live under More/Advanced
 
 ## Regression Notes
 
 - PWA는 native-only host affordance를 직접 수행하지 않습니다.
-- TestKit 기능은 dev/test capability가 없으면 route에서 사라져야 합니다.
+- Product Lab은 `/dev/testkit/*`가 아니라 `/lab/*` Runtime Control 계약을 사용해야 합니다.
+- TestKit 기능은 product route가 아니며 dev/load 검증 도구로만 남아야 합니다.
 - Runtime API가 unavailable일 때 page는 crash 대신 `ErrorState`를 보여야 합니다.
 - Service worker는 runtime API stale cache를 보여주면 안 됩니다.

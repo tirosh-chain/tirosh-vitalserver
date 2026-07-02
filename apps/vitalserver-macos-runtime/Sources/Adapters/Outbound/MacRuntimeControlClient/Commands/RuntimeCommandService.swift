@@ -161,39 +161,12 @@ enum RuntimeCommandFactory {
         )
     }
 
-    static func testKitServiceCommand(action: RuntimeTestKitServiceAction) -> String {
-        shellCommand(
-            executable: RuntimeControlClientConstants.Paths.launcher,
-            arguments: [
-                RuntimeControlClientConstants.RuntimeCommand.runtime,
-                action.runtimeCommand,
-            ]
-        )
-    }
-
     static func commandWithLog(_ shellCommand: String) -> String {
         RuntimeShellCommandFactory.commandWithLog(shellCommand)
     }
 
     static func appleScriptEscaped(_ value: String) -> String {
         RuntimeShellCommandFactory.appleScriptEscaped(value)
-    }
-}
-
-enum RuntimeTestKitServiceAction {
-    case start
-    case stop
-    case restart
-
-    var runtimeCommand: String {
-        switch self {
-        case .start:
-            return RuntimeControlClientConstants.RuntimeCommand.startTestKit
-        case .stop:
-            return RuntimeControlClientConstants.RuntimeCommand.stopTestKit
-        case .restart:
-            return RuntimeControlClientConstants.RuntimeCommand.restartTestKit
-        }
     }
 }
 

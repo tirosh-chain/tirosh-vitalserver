@@ -10,10 +10,13 @@
 Fresh install completes provisioning, but the runtime becomes `critical` shortly after first start. The helper message can report:
 
 ```text
-watchdog cannot recover missing installed artifacts: container-observation-missing
+watchdog cannot recover missing installed artifacts
 ```
 
-`runtime-status.json` can show `vm-runtime-state-missing`, stale VM lifecycle, failed host proxy HTTP, and missing container observation while the VM launchd service is still running.
+`runtime-status.json` can show `vm-runtime-state-missing`, stale VM lifecycle,
+and failed host proxy HTTP while the VM launchd service is still running. Older
+builds could also report missing container observation, but v2 keeps container
+observation as diagnostics evidence instead of a typed Host failure reason.
 
 After the metadata is present, the next visible failure can be Docker image load failing with:
 

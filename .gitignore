@@ -30,6 +30,12 @@ node_modules/
 
 # Swift / Xcode
 .swiftpm/
+.swift-cache/
+.swift-module-cache/
+.swift-clang-module-cache/
+.swift-home/
+apps/vitalserver-macos-runtime/.build-runtime-check/
+apps/vitalserver-macos-runtime/apps/
 DerivedData/
 xcuserdata/
 *.xcuserstate

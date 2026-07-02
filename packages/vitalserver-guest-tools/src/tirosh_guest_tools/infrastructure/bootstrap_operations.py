@@ -73,7 +73,6 @@ def default_bootstrap_operations() -> GuestBootstrapOperations:
         write_runtime_state_once=write_initial_runtime_state,
         write_edge_diagnostics=write_edge_diagnostics,
         restart_runtime_state=restart_runtime_state,
-        start_optional_testkit=start_optional_testkit,
         runtime_boot_smoke_enabled=runtime_boot_smoke_enabled,
         run_runtime_boot_smoke=run_runtime_boot_smoke,
     )
@@ -202,26 +201,18 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         "tirosh-vitalserver-diagnostics",
         "tirosh-vitalserver-redis-backup",
         "tirosh-vitalserver-redis-restore",
-        "tirosh-vitalserver-reconcile-compose",
         "tirosh-vitalserver-repair-datastore",
         "tirosh-vitalserver-activate-update",
         "tirosh-vitalserver-prepare-update-shutdown",
-        "tirosh-vitalserver-command-poller",
+        "tirosh-vitalserver-guest-control-api",
     )
     service_files = (
         "tirosh-guest-observability.service",
         "tirosh-runtime-state.service",
         "tirosh-vitalserver-compose.service",
         "tirosh-vitalserver-sync-host-time.service",
-        "tirosh-vitalserver-testkit.service",
         "tirosh-vitalserver-container-logs.service",
-        "tirosh-vitalserver-redis-backup.service",
-        "tirosh-vitalserver-redis-restore.service",
-        "tirosh-vitalserver-reconcile-compose.service",
-        "tirosh-vitalserver-repair-datastore.service",
-        "tirosh-vitalserver-activate-update.service",
-        "tirosh-vitalserver-prepare-update-shutdown.service",
-        "tirosh-vitalserver-command-poller.service",
+        "tirosh-vitalserver-guest-control-api.service",
     )
     run(["install", "-d", "-m", "0755", "/etc/tirosh"])
     for name in command_names:
@@ -251,16 +242,14 @@ def install_runtime_files(context: GuestBootstrapContext) -> None:
         "tirosh-vitalserver-redis-restore.path",
         "tirosh-vitalserver-repair-datastore.path",
         "tirosh-vitalserver-activate-update.path",
-        "tirosh-vitalserver-prepare-update-shutdown.path",
     ):
         systemctl("disable", "--now", service, check=False)
     for service in (
         RuntimeService.RUNTIME_STATE.value,
         RuntimeService.SYNC_HOST_TIME.value,
         RuntimeService.COMPOSE.value,
-        RuntimeService.TESTKIT.value,
         RuntimeService.CONTAINER_LOGS.value,
-        RuntimeService.COMMAND_POLLER.value,
+        RuntimeService.GUEST_CONTROL_API.value,
         "tirosh-guest-observability.service",
     ):
         systemctl("enable", service)
@@ -280,7 +269,7 @@ def start_avahi() -> None:
 
 
 def start_guest_background_services() -> None:
-    systemctl("start", RuntimeService.COMMAND_POLLER.value)
+    systemctl("start", RuntimeService.GUEST_CONTROL_API.value)
     systemctl("start", "tirosh-guest-observability.service")
 
 
@@ -337,7 +326,7 @@ def build_missing_images() -> None:
     for image, service in (
         ("vitalserver:2.3.4", "app"),
         ("vitalserver-recorder-recovery:0.1.0", "recorder-recovery"),
-        ("vitalserver-recorder-ingress:0.1.0", "recorder-ingress"),
+        ("vitalserver-recorder-ingress:0.2.0", "recorder-ingress"),
     ):
         completed = run(["docker", "image", "inspect", image], check=False)
         if completed.returncode != 0:
@@ -395,10 +384,6 @@ def write_edge_diagnostics() -> None:
 
 def restart_runtime_state() -> None:
     systemctl("restart", RuntimeService.RUNTIME_STATE.value)
-
-
-def start_optional_testkit() -> None:
-    run(["/usr/local/bin/tirosh-vitalserver-compose", "testkit-up-logged"])
 
 
 def runtime_boot_smoke_enabled(deploy_dir: Path) -> bool:

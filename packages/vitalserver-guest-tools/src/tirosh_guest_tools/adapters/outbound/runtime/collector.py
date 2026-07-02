@@ -7,44 +7,23 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from tirosh_guest_tools.adapters.outbound.runtime.probes import append_probe_error
-from tirosh_guest_tools.contracts import RuntimeFileName
 from tirosh_guest_tools.domain.runtime_state import (
     GuestRuntimeState,
     ProbeError,
-    RuntimeContainerService,
     RuntimeDiskHealth,
     RuntimeHTTPProbeStatus,
     RuntimeResourceUsage,
 )
-from tirosh_guest_tools.infrastructure.common import DEPLOY_DIR, PROJECT_NAME
 from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 VITALDB_OBSERVER_ENDPOINT = SETTINGS.observability.vitaldb_observer_url
 GUEST_READY_URL = "http://127.0.0.1/ready"
 REDIS_UI_URL = "http://127.0.0.1/redis-ui/"
 SWAGGER_UI_URL = "http://127.0.0.1/swagger/"
-
-
-@dataclass(frozen=True)
-class ContainerInspection:
-    container_id: str | None
-    error: str | None
-    finished_at: str | None
-    memory_limit_bytes: int | None
-    oom_killed: bool | None
-    restart_count: int | None
-    started_at: str | None
-
-
-@dataclass(frozen=True)
-class ContainerMemoryStats:
-    used_bytes: int | None
-    limit_bytes: int | None
 
 
 def collect_runtime_state(
@@ -58,7 +37,6 @@ def collect_runtime_state(
         updated_at=datetime.now(UTC).isoformat(),
         vm_ip=first_non_loopback_ip(probe_errors),
         boot_id=boot_id(probe_errors),
-        container_services=compose_services(probe_errors),
         cpu_usage_percent=cpu_usage_percent(probe_errors),
         guest_http=runtime_http_status(
             guest_http,
@@ -83,7 +61,6 @@ def collect_runtime_state(
             probe_errors,
         ),
         vital_files_disk=disk_usage("/mnt/tirosh-vital-files", probe_errors),
-        vitaldb_observation=vitaldb_observation(probe_errors),
     )
 
 
@@ -302,298 +279,3 @@ def vitaldb_observation(probe_errors: list[ProbeError]) -> dict[str, object] | N
         append_probe_error(probe_errors, "vitalDBObservation", "expected JSON object")
         return None
     return value
-
-
-def compose_services(
-    probe_errors: list[ProbeError],
-) -> list[RuntimeContainerService] | None:
-    compose_path = DEPLOY_DIR / RuntimeFileName.COMPOSE.value
-    if not compose_path.is_file():
-        append_probe_error(probe_errors, str(compose_path), "missing")
-        return None
-    command = [
-        "docker",
-        "compose",
-        "--project-name",
-        PROJECT_NAME,
-        "-f",
-        str(compose_path),
-        "ps",
-        "--all",
-        "--format",
-        "json",
-    ]
-    try:
-        output = subprocess.check_output(command, stderr=subprocess.DEVNULL, text=True)
-    except (OSError, subprocess.CalledProcessError) as error:
-        append_probe_error(probe_errors, "docker compose ps", error)
-        return None
-    documents = parse_compose_documents(output)
-    if not documents:
-        append_probe_error(
-            probe_errors,
-            "docker compose ps",
-            "no service documents reported",
-        )
-        return None
-    services: list[RuntimeContainerService] = []
-    now = datetime.now(UTC)
-    memory_stats = container_memory_stats(probe_errors)
-    for item in documents:
-        service = string_value(item.get("Service")) or string_value(item.get("Name"))
-        if service is None:
-            continue
-        inspection = container_inspection(item, probe_errors)
-        identifier = container_id(item, inspection)
-        memory = memory_stats_for(item, identifier, memory_stats)
-        started_at = None if inspection is None else inspection.started_at
-        services.append(
-            RuntimeContainerService(
-                service=service,
-                container_id=identifier,
-                exit_code=normalized_exit_code(item.get("ExitCode")),
-                error=None if inspection is None else inspection.error,
-                finished_at=None if inspection is None else inspection.finished_at,
-                health=string_value(item.get("Health")),
-                memory_used_bytes=None if memory is None else memory.used_bytes,
-                memory_limit_bytes=None if inspection is None else inspection.memory_limit_bytes,
-                name=string_value(item.get("Name")),
-                oom_killed=None if inspection is None else inspection.oom_killed,
-                restart_count=None if inspection is None else inspection.restart_count,
-                started_at=started_at,
-                state=string_value(item.get("State")),
-                uptime_seconds=uptime_seconds(started_at, now),
-            )
-        )
-    return services
-
-
-def container_memory_stats(
-    probe_errors: list[ProbeError],
-) -> dict[str, ContainerMemoryStats]:
-    try:
-        output = subprocess.check_output(
-            ["docker", "stats", "--no-stream", "--format", "{{json .}}"],
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError) as error:
-        append_probe_error(probe_errors, "docker stats", error)
-        return {}
-
-    stats: dict[str, ContainerMemoryStats] = {}
-    for line in output.splitlines():
-        try:
-            document = json.loads(line)
-        except json.JSONDecodeError as error:
-            append_probe_error(probe_errors, "docker stats", error)
-            continue
-        if not isinstance(document, dict):
-            append_probe_error(probe_errors, "docker stats", "expected JSON object")
-            continue
-        memory = parse_memory_usage(string_value(document.get("MemUsage")))
-        for key in (
-            string_value(document.get("ID")),
-            string_value(document.get("Container")),
-            string_value(document.get("Name")),
-        ):
-            if key:
-                stats[key] = memory
-    return stats
-
-
-def memory_stats_for(
-    item: dict[str, object],
-    container_identifier: str | None,
-    stats: dict[str, ContainerMemoryStats],
-) -> ContainerMemoryStats | None:
-    for key in (
-        container_identifier,
-        string_value(item.get("ID")),
-        string_value(item.get("Name")),
-    ):
-        if key and key in stats:
-            return stats[key]
-    return None
-
-
-def parse_memory_usage(value: str | None) -> ContainerMemoryStats:
-    if value is None:
-        return ContainerMemoryStats(used_bytes=None, limit_bytes=None)
-    used_text, separator, limit_text = value.partition("/")
-    return ContainerMemoryStats(
-        used_bytes=parse_docker_size(used_text.strip()),
-        limit_bytes=parse_docker_size(limit_text.strip()) if separator else None,
-    )
-
-
-def parse_docker_size(value: str | None) -> int | None:
-    if not value:
-        return None
-    compact = value.strip().replace(" ", "")
-    units = {
-        "b": 1,
-        "kb": 1000,
-        "mb": 1000**2,
-        "gb": 1000**3,
-        "tb": 1000**4,
-        "kib": 1024,
-        "mib": 1024**2,
-        "gib": 1024**3,
-        "tib": 1024**4,
-    }
-    lower = compact.lower()
-    for suffix, multiplier in sorted(units.items(), key=lambda item: len(item[0]), reverse=True):
-        if lower.endswith(suffix):
-            number = lower[: -len(suffix)]
-            try:
-                return int(float(number) * multiplier)
-            except ValueError:
-                return None
-    try:
-        return int(float(lower))
-    except ValueError:
-        return None
-
-
-def parse_compose_documents(output: str) -> list[dict[str, object]]:
-    try:
-        parsed = json.loads(output)
-        if isinstance(parsed, list):
-            return [item for item in parsed if isinstance(item, dict)]
-        if isinstance(parsed, dict):
-            return [parsed]
-    except json.JSONDecodeError:
-        pass
-    documents: list[dict[str, object]] = []
-    for line in output.splitlines():
-        try:
-            parsed_line = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed_line, dict):
-            documents.append(parsed_line)
-    return documents
-
-
-def normalized_exit_code(value: object) -> int | None:
-    if value in (None, ""):
-        return None
-    if not isinstance(value, str | int | float | bytes | bytearray):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def string_value(value: object) -> str | None:
-    if value is None:
-        return None
-    return str(value)
-
-
-def container_inspection(
-    item: dict[str, object],
-    probe_errors: list[ProbeError],
-) -> ContainerInspection | None:
-    identifier = string_value(item.get("ID")) or string_value(item.get("Name"))
-    if identifier is None:
-        append_probe_error(
-            probe_errors,
-            "docker inspect",
-            "missing container identifier",
-        )
-        return None
-    try:
-        output = subprocess.check_output(
-            ["docker", "inspect", identifier],
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError) as error:
-        append_probe_error(probe_errors, f"docker inspect {identifier}", error)
-        return None
-    try:
-        documents = json.loads(output)
-    except json.JSONDecodeError as error:
-        append_probe_error(probe_errors, f"docker inspect {identifier}", error)
-        return None
-    if not isinstance(documents, list) or not documents:
-        append_probe_error(
-            probe_errors,
-            f"docker inspect {identifier}",
-            "expected non-empty JSON list",
-        )
-        return None
-    document = documents[0]
-    if not isinstance(document, dict):
-        append_probe_error(
-            probe_errors,
-            f"docker inspect {identifier}",
-            "expected JSON object",
-        )
-        return None
-    state = document.get("State")
-    host_config = document.get("HostConfig")
-    state_document = state if isinstance(state, dict) else {}
-    host_config_document = host_config if isinstance(host_config, dict) else {}
-    return ContainerInspection(
-        container_id=string_value(document.get("Id")),
-        error=string_value(state_document.get("Error")),
-        finished_at=timestamp_value(state_document.get("FinishedAt")),
-        memory_limit_bytes=explicit_memory_limit_bytes(host_config_document.get("Memory")),
-        oom_killed=bool_value(state_document.get("OOMKilled")),
-        restart_count=normalized_integer(document.get("RestartCount")),
-        started_at=timestamp_value(state_document.get("StartedAt")),
-    )
-
-
-def container_id(
-    item: dict[str, object],
-    inspection: ContainerInspection | None,
-) -> str | None:
-    if inspection is not None and inspection.container_id is not None:
-        return inspection.container_id
-    return string_value(item.get("ID"))
-
-
-def timestamp_value(value: object) -> str | None:
-    text = string_value(value)
-    if not text or text.startswith("0001-01-01"):
-        return None
-    return text
-
-
-def normalized_integer(value: object) -> int | None:
-    if value in (None, ""):
-        return None
-    if not isinstance(value, str | int | float | bytes | bytearray):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def explicit_memory_limit_bytes(value: object) -> int | None:
-    limit = normalized_integer(value)
-    if limit is None or limit <= 0:
-        return None
-    return limit
-
-
-def bool_value(value: object) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    return None
-
-
-def uptime_seconds(started_at: str | None, now: datetime) -> int | None:
-    if not started_at:
-        return None
-    try:
-        started = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return max(int((now - started).total_seconds()), 0)

@@ -15,7 +15,6 @@ def test_runtime_state_document_reports_disk_health() -> None:
         updated_at="2026-06-04T00:00:00Z",
         vm_ip=None,
         boot_id=None,
-        container_services=None,
         cpu_usage_percent=None,
         guest_http=None,
         memory=None,
@@ -28,7 +27,6 @@ def test_runtime_state_document_reports_disk_health() -> None:
         ),
         swagger_ui_http=None,
         vital_files_disk=None,
-        vitaldb_observation=None,
     ).as_json()
 
     assert document["diskHealth"] == {
@@ -47,7 +45,11 @@ def test_root_filesystem_read_only_reads_proc_mounts(
         "/dev/vda1 / ext4 ro,relatime,errors=remount-ro 0 0\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(collector, "Path", lambda value: mounts if value == "/proc/mounts" else Path(value))
+    monkeypatch.setattr(
+        collector,
+        "Path",
+        lambda value: mounts if value == "/proc/mounts" else Path(value),
+    )
 
     assert collector.root_filesystem_read_only([]) is True
 

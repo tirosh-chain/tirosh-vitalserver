@@ -58,9 +58,9 @@ test("config enables bounded spool and replay by default", () => {
       batchSize: 1000,
       maxAttempts: 3,
       maxBytesPerSecond: 20 * MIB,
-      targetTimeoutMs: 5000,
-      adaptive: {
-        enabled: true,
+        targetTimeoutMs: 5000,
+        adaptive: {
+        enabled: false,
         minBytesPerSecond: 1 * MIB,
         maxBytesPerSecond: 20 * MIB,
         minItemsPerTick: 50,
@@ -71,8 +71,7 @@ test("config enables bounded spool and replay by default", () => {
     },
   });
   assert.deepStrictEqual(loadConfig({}).memoryGuard, {
-    runtimeStatePath: "/run/tirosh/runtime/runtime-state.json",
-    maxAgeMs: 15000,
+    enabled: false,
   });
   assert.deepStrictEqual(loadConfig({}).failureLog, {
     enabled: true,
@@ -180,7 +179,7 @@ test("config supports explicit send_data passthrough mode", () => {
       maxBytesPerSecond: 20 * MIB,
       targetTimeoutMs: 5000,
       adaptive: {
-        enabled: true,
+        enabled: false,
         minBytesPerSecond: 1 * MIB,
         maxBytesPerSecond: 20 * MIB,
         minItemsPerTick: 50,

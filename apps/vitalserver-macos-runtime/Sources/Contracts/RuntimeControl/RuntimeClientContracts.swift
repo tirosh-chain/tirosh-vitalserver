@@ -2,6 +2,17 @@ import Foundation
 import Contracts
 import Errors
 
+public enum RuntimeControlClientUnsupportedError: LocalizedError, Equatable {
+    case unavailable(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unavailable(let capability):
+            return "runtime control client capability is unavailable: \(capability)"
+        }
+    }
+}
+
 public enum RuntimeUninstallMode: String, Codable, Equatable, Sendable {
     case standard
     case clean
@@ -32,16 +43,32 @@ public protocol RuntimeControlClient {
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
     func uninstallRuntime(mode: RuntimeUninstallMode) async throws -> RuntimeCommandResult
     func applySettings(_ settings: RuntimeSettings) async throws -> RuntimeCommandResult
-    func repairProxy() async throws -> RuntimeCommandResult
-    func repairDatastore() async throws -> RuntimeCommandResult
-    func repairVMDisk() async throws -> RuntimeCommandResult
-    func repairRuntimeServices() async throws -> RuntimeCommandResult
-    func createRedisBackup() async throws -> RuntimeCommandResult
-    func startRuntimeServices() async throws -> RuntimeCommandResult
-    func stopRuntimeServices() async throws -> RuntimeCommandResult
-    func startTestKitService() async throws -> RuntimeCommandResult
-    func stopTestKitService() async throws -> RuntimeCommandResult
-    func restartTestKitService() async throws -> RuntimeCommandResult
+    func loadLabScenarios() async throws -> RuntimeLabScenarioList
+    func loadLabBeds() async throws -> RuntimeLabBedList
+    func loadLabRecorders() async throws -> RuntimeLabRecorderList
+    func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList
+    func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList
+    func resetLabBeds() async throws -> RuntimeLabBedList
+    func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) async throws -> RuntimeLabRecorderList
+    func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList
+    func resetLabRecorders() async throws -> RuntimeLabRecorderList
+    func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse
+    func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
+    func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
+    func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
+    func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse
+    func guestStackStatus() async throws -> RuntimeGuestControlStackStatus
+    func listGuestServices() async throws -> RuntimeGuestControlServiceList
+    func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus
+    func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation
+    func stopGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation
+    func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation
     func loadReleaseInfo() async throws -> RuntimeReleaseInfo
     func loadInstallInfo() -> RuntimeInstallInfo
 }
@@ -60,6 +87,122 @@ public extension RuntimeControlClient {
             records: [],
             readError: "recorder activity window reader is unavailable"
         )
+    }
+
+    func hideVitalDBRecorders(
+        _ request: RuntimeVitalDBRecorderVisibilityRequest
+    ) async throws -> RuntimeVitalRecorderHistory {
+        throw RuntimeControlClientUnsupportedError.unavailable("vitaldb-recorders-hide")
+    }
+
+    func unhideVitalDBRecorders(
+        _ request: RuntimeVitalDBRecorderVisibilityRequest
+    ) async throws -> RuntimeVitalRecorderHistory {
+        throw RuntimeControlClientUnsupportedError.unavailable("vitaldb-recorders-unhide")
+    }
+
+    func deleteVitalDBRecorders(
+        _ request: RuntimeVitalDBRecorderVisibilityRequest
+    ) async throws -> RuntimeVitalRecorderHistory {
+        throw RuntimeControlClientUnsupportedError.unavailable("vitaldb-recorders-delete")
+    }
+
+    func hideVitalDBBeds(
+        _ request: RuntimeVitalDBBedVisibilityRequest
+    ) async throws -> RuntimeVitalRecorderHistory {
+        throw RuntimeControlClientUnsupportedError.unavailable("vitaldb-beds-hide")
+    }
+
+    func unhideVitalDBBeds(
+        _ request: RuntimeVitalDBBedVisibilityRequest
+    ) async throws -> RuntimeVitalRecorderHistory {
+        throw RuntimeControlClientUnsupportedError.unavailable("vitaldb-beds-unhide")
+    }
+
+    func deleteVitalDBBeds(
+        _ request: RuntimeVitalDBBedVisibilityRequest
+    ) async throws -> RuntimeVitalRecorderHistory {
+        throw RuntimeControlClientUnsupportedError.unavailable("vitaldb-beds-delete")
+    }
+
+    func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeControlClientUnsupportedError.unavailable("guest-service-start")
+    }
+
+    func stopGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeControlClientUnsupportedError.unavailable("guest-service-stop")
+    }
+
+    func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeControlClientUnsupportedError.unavailable("guest-service-restart")
+    }
+
+    func listGuestServices() async throws -> RuntimeGuestControlServiceList {
+        throw RuntimeControlClientUnsupportedError.unavailable("guest-services-list")
+    }
+
+    func guestStackStatus() async throws -> RuntimeGuestControlStackStatus {
+        throw RuntimeControlClientUnsupportedError.unavailable("guest-stack-status")
+    }
+
+    func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
+        throw RuntimeControlClientUnsupportedError.unavailable("guest-service-status")
+    }
+
+    func loadLabScenarios() async throws -> RuntimeLabScenarioList {
+        RuntimeLabScenarioList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func loadLabBeds() async throws -> RuntimeLabBedList {
+        RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func loadLabRecorders() async throws -> RuntimeLabRecorderList {
+        RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList {
+        RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList {
+        RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func resetLabBeds() async throws -> RuntimeLabBedList {
+        RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) async throws -> RuntimeLabRecorderList {
+        RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList {
+        RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func resetLabRecorders() async throws -> RuntimeLabRecorderList {
+        RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
+    }
+
+    func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
+        RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway is unavailable.")
     }
 }
 
@@ -85,6 +228,11 @@ public protocol RuntimeHostClient {
     func loadLogTextResult(sourceID: RuntimeLogSource, lineLimit: Int) async -> RuntimeHostTextReadResult
     func preferredLogsPath() -> String
     func vitalFileFolders(root: String) throws -> [VitalFilesFolder]
+    func repairProxy() async throws -> RuntimeCommandResult
+    func repairDatastore() async throws -> RuntimeCommandResult
+    func repairVMDisk() async throws -> RuntimeCommandResult
+    func repairRuntimeServices() async throws -> RuntimeCommandResult
+    func createRedisBackup() async throws -> RuntimeCommandResult
     func verifyUpdateBundle(url: URL) async throws -> RuntimeCommandResult
     func applyUpdateBundle(url: URL) async throws -> RuntimeCommandResult
     func rollbackRuntime(backupURL: URL) async throws -> RuntimeCommandResult

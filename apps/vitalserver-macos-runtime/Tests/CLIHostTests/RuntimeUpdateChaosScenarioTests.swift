@@ -104,11 +104,11 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
     func testGuestCapabilityReadChaosPreservesReadFailureReason() {
         XCTAssertThrowsError(try RuntimeGuestCapabilityCheckerComposition.require(
             .prepareUpdateShutdown,
-            guestGateway: RuntimeUpdateChaosGuestGateway(result: .failed("permission denied"))
+            guestControlGateway: RuntimeUpdateChaosGuestControlGateway(result: .failed("permission denied"))
         )) { error in
             XCTAssertEqual(
                 String(describing: error),
-                "failed to read guest runtime state for guest capability prepare-update-shutdown: permission denied"
+                "failed to read guest capabilities for prepare-update-shutdown: permission denied"
             )
         }
     }
@@ -323,48 +323,6 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
         XCTAssertEqual(progressEvents.last?.stepStatus, .failed)
         XCTAssertEqual(statuses.last?.level, .recovering)
         XCTAssertEqual(statuses.last?.operation, .rollback)
-    }
-
-    func testGuestResultChaosSeparatesInvalidResultFromTimeout() {
-        let invalidResult = GuestActivationWaiter.evaluateAttempt(
-            expectedRequestId: "request-current",
-            configuration: GuestActivationWaitConfiguration(maxAttempts: 1, progressEveryAttempts: 1),
-            attempt: 0,
-            loadResult: .loaded(GuestUpdateActivationResultDocument(
-                    schemaVersion: 2,
-                    requestId: "request-stale",
-                    operation: .activateGuestUpdate,
-                    status: .completed,
-                    message: "stale success",
-                    updatedAt: "2026-05-31T00:00:00Z"
-            ))
-        )
-        var progressMessages: [String] = []
-        var sleepCount = 0
-        let configuration = GuestActivationWaitConfiguration(maxAttempts: 2, progressEveryAttempts: 1)
-        for attempt in 0..<configuration.maxAttempts {
-            let outcome = GuestActivationWaiter.evaluateAttempt(
-                expectedRequestId: "request-current",
-                configuration: configuration,
-                attempt: attempt,
-                loadResult: .missing
-            )
-            if case .waiting(let message, let shouldPublishProgress) = outcome {
-                if shouldPublishProgress {
-                    progressMessages.append(message)
-                }
-                if attempt < configuration.maxAttempts - 1 {
-                    sleepCount += 1
-                }
-            }
-        }
-
-        XCTAssertEqual(invalidResult, .failed(message: "guest update activation result does not match the current request"))
-        XCTAssertEqual(progressMessages, [
-            "waiting for guest update activation worker",
-            "waiting for guest update activation worker",
-        ])
-        XCTAssertEqual(sleepCount, 1)
     }
 
     func testRollbackPreflightChaosStopsWhenRestoreArtifactIsMissing() {
@@ -677,28 +635,67 @@ final class RuntimeUpdateChaosScenarioTests: XCTestCase {
     }
 }
 
-private final class RuntimeUpdateChaosGuestGateway: RuntimeGuestGateway {
-    let result: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>
+private final class RuntimeUpdateChaosGuestControlGateway: RuntimeGuestControlGateway {
+    let result: RuntimeGuestCapabilityReadResult
 
-    init(result: RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument>) {
+    init(result: RuntimeGuestCapabilityReadResult) {
         self.result = result
     }
 
-    func loadRuntimeStateDocument() -> RuntimeGuestDocumentLoadResult<GuestRuntimeStateDocument> {
-        result
+    func capabilities() throws -> RuntimeGuestControlCapabilities {
+        switch result {
+        case .loaded(let capabilities):
+            return capabilities
+        case .failed(let message):
+            throw RuntimeUpdateChaosGuestControlGatewayError(message)
+        }
     }
 
-    func loadBootstrapResultDocument() -> RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument> { .missing }
-    func removeUpdateActivationResult() throws {}
-    func writeUpdateActivationRequest(_ request: RuntimeGuestActivationRequest) throws {}
-    func loadUpdateActivationResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateActivationResultDocument> { .missing }
-    func removeUpdateShutdownResult() throws {}
-    func clearUpdateShutdownPreparation() throws {}
-    func writeUpdateShutdownRequest(_ request: RuntimeGuestShutdownRequest) throws {}
-    func loadUpdateShutdownResultDocument() -> RuntimeGuestDocumentLoadResult<GuestUpdateShutdownResultDocument> { .missing }
-    func removeDatastoreRepairResult() throws {}
-    func writeDatastoreRepairRequest(_ request: RuntimeDatastoreRepairRequest) throws {}
-    func loadDatastoreRepairResultDocument() -> RuntimeGuestDocumentLoadResult<DatastoreRepairResultDocument> { .missing }
+    func listServices() throws -> RuntimeGuestControlServiceList {
+        throw RuntimeUpdateChaosGuestControlGatewayError("unexpected listServices")
+    }
+
+    func stackStatus() throws -> RuntimeGuestControlStackStatus {
+        throw RuntimeUpdateChaosGuestControlGatewayError("unexpected stackStatus")
+    }
+
+    func serviceStatus(_ service: String) throws -> RuntimeGuestControlServiceStatus {
+        throw RuntimeUpdateChaosGuestControlGatewayError("unexpected serviceStatus \(service)")
+    }
+
+    func startService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeUpdateChaosGuestControlGatewayError("unexpected startService \(service)")
+    }
+
+    func stopService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeUpdateChaosGuestControlGatewayError("unexpected stopService \(service)")
+    }
+
+    func restartService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeUpdateChaosGuestControlGatewayError("unexpected restartService \(service)")
+    }
+
+    func reconcileServices() throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeUpdateChaosGuestControlGatewayError("unexpected reconcileServices")
+    }
+
+    func operation(_ operationId: String) throws -> RuntimeGuestControlServiceOperation {
+        throw RuntimeUpdateChaosGuestControlGatewayError("unexpected operation \(operationId)")
+    }
+
+    func latestVitalDBObservation() throws -> RuntimeGuestControlVitalDBObservationRead {
+        throw RuntimeUpdateChaosGuestControlGatewayError("unexpected latestVitalDBObservation")
+    }
+}
+
+private struct RuntimeUpdateChaosGuestControlGatewayError: Error, CustomStringConvertible {
+    let message: String
+
+    init(_ message: String) {
+        self.message = message
+    }
+
+    var description: String { message }
 }
 
 private enum RuntimeChaosError: Error, CustomStringConvertible {

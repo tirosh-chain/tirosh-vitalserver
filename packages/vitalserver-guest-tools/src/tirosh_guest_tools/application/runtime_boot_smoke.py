@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from tirosh_guest_tools.application.runtime_boot_smoke_manifest import (
     RUNTIME_BOOT_SMOKE_MANIFEST,
@@ -42,60 +43,50 @@ RUNTIME_STATE_SCHEMA_VERSION = 1
 MAX_RUNTIME_STATE_AGE_SECONDS = 180
 COMPOSE_READY_TIMEOUT_SECONDS = 120.0
 COMPOSE_READY_POLL_SECONDS = 2.0
-MAX_RUNTIME_SMOKE_SERVICE_UPTIME_SECONDS = 86_400
 HTTP_TIMEOUT_SECONDS = 5.0
+GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS = 60.0
 SYSTEMD_TIMEOUT_SECONDS = 10.0
+GUEST_CONTROL_API_BASE_URL = "http://127.0.0.1:18330"
+LAB_REPLAY_SMOKE_VITAL_FILE = "/mnt/tirosh-vital-files/runtime-boot-smoke-replay.vital"
 
 REQUIRED_SYSTEMD_UNITS = (
     "docker.service",
     RuntimeService.RUNTIME_STATE.value,
     RuntimeService.COMPOSE.value,
     "tirosh-guest-observability.service",
-    RuntimeService.COMMAND_POLLER.value,
+    RuntimeService.GUEST_CONTROL_API.value,
 )
 
-REQUIRED_CAPABILITIES = (
-    "prepareUpdateShutdown",
-    "activateUpdate",
-    "redisBackup",
-    "redisRestore",
-    "reconcileCompose",
-    "repairDatastore",
-)
-
-REQUIRED_REQUEST_RESULT_PAIRS = (
-    (
-        RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.value,
-        RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_RESULT.value,
-    ),
-    (
-        RuntimeFileName.ACTIVATE_UPDATE_REQUEST.value,
-        RuntimeFileName.ACTIVATE_UPDATE_RESULT.value,
-    ),
-    (
-        RuntimeFileName.REDIS_BACKUP_REQUEST.value,
-        RuntimeFileName.REDIS_BACKUP_RESULT.value,
-    ),
-    (
-        RuntimeFileName.REDIS_RESTORE_REQUEST.value,
-        RuntimeFileName.REDIS_RESTORE_RESULT.value,
-    ),
-    (
-        RuntimeFileName.RECONCILE_COMPOSE_REQUEST.value,
-        RuntimeFileName.RECONCILE_COMPOSE_RESULT.value,
-    ),
-    (
-        RuntimeFileName.REPAIR_DATASTORE_REQUEST.value,
-        RuntimeFileName.REPAIR_DATASTORE_RESULT.value,
-    ),
+REQUIRED_GUEST_CONTROL_CAPABILITIES = (
+    "services:list",
+    "services:status",
+    "services:start",
+    "services:stop",
+    "services:restart",
+    "stack:reconcile",
+    "lab:scenarios",
+    "lab:sessions:create",
+    "lab:sessions:get",
+    "lab:sessions:start",
+    "lab:sessions:stop",
+    "lab:vital-files:replay",
+    "recorder-ingress:status:get",
+    "operations:get",
+    "maintenance:redis-backup:create",
+    "maintenance:redis-restore:create",
+    "maintenance:datastore-repair:create",
+    "maintenance:update-activation:create",
+    "maintenance:update-shutdown:create",
 )
 
 BASE_REQUIRED_COMPOSE_SERVICES = (
+    ComposeService.POSTGRES.value,
     ComposeService.REDIS.value,
     ComposeService.APP.value,
     ComposeService.RECORDER_INGRESS.value,
     ComposeService.VITALDB_OBSERVER.value,
     ComposeService.REDIS_RELAY.value,
+    ComposeService.LAB.value,
     ComposeService.REDIS_UI.value,
     ComposeService.SWAGGER_UI.value,
     ComposeService.EDGE.value,
@@ -113,7 +104,7 @@ class RuntimeBootSmokeStageFailed(RuntimeError):
 
 
 def default_context() -> RuntimeBootSmokeContext:
-    runtime_config = read_required_json_object(
+    read_required_json_object(
         DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value,
         "runtime config",
     )
@@ -130,9 +121,6 @@ def default_context() -> RuntimeBootSmokeContext:
         smoke_metadata.get("runId"),
         "runtime boot smoke runId",
     )
-    testkit_enabled = runtime_config.get(RuntimeConfigKey.TESTKIT_ENABLED.value)
-    if not isinstance(testkit_enabled, bool):
-        raise RuntimeError("runtime config testkitEnabled must be an explicit boolean")
     return RuntimeBootSmokeContext(
         runtime_dir=RUNTIME_DIR,
         deploy_dir=DEPLOY_DIR,
@@ -140,7 +128,7 @@ def default_context() -> RuntimeBootSmokeContext:
         run_id=run_id,
         max_runtime_state_age_seconds=MAX_RUNTIME_STATE_AGE_SECONDS,
         compose_ready_timeout_seconds=COMPOSE_READY_TIMEOUT_SECONDS,
-        dev_build=testkit_enabled is True,
+        dev_build=False,
     )
 
 
@@ -151,6 +139,7 @@ def default_operations() -> RuntimeBootSmokeOperations:
         write_json=write_json,
         run=run_command,
         http_status=http_status,
+        http_json=http_json,
         now=lambda: datetime.now(UTC),
         sleep=time.sleep,
     )
@@ -204,18 +193,23 @@ def run_runtime_boot_smoke(
         )
         execute_stage(
             run,
+            "guest-control-api",
+            validate_guest_control_api,
+        )
+        execute_stage(
+            run,
             "disk-health",
             lambda active_run: validate_disk_health(active_run, bootstrap_result),
         )
         execute_stage(
             run,
             "capabilities",
-            lambda active_run: validate_capabilities(active_run, bootstrap_result),
+            validate_capabilities,
         )
         execute_stage(
             run,
-            "command-dispatch",
-            validate_command_dispatch,
+            "runtime-share",
+            validate_runtime_share,
         )
         execute_stage(
             run,
@@ -353,7 +347,7 @@ def validate_runtime_state(
 
 
 def validate_systemd_units(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]]:
-    units = []
+    units: list[dict[str, Any]] = []
     for service in REQUIRED_SYSTEMD_UNITS:
         active_state = systemd_active_state(run, service)
         units.append({"service": service, "activeState": active_state})
@@ -361,22 +355,6 @@ def validate_systemd_units(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any
             raise RuntimeError(
                 f"required systemd unit is not active: "
                 f"service={service} activeState={active_state}"
-            )
-    if run.context.dev_build:
-        active_state = systemd_active_state(run, RuntimeService.TESTKIT.value)
-        result = systemd_result(run, RuntimeService.TESTKIT.value)
-        units.append(
-            {
-                "service": RuntimeService.TESTKIT.value,
-                "activeState": active_state,
-                "result": result,
-                "requiredForDevBuild": True,
-            }
-        )
-        if result != "success":
-            raise RuntimeError(
-                "testkit service failed for dev build: "
-                f"activeState={active_state} result={result}"
             )
     return "required systemd units are active", {"units": units}
 
@@ -392,6 +370,355 @@ def validate_http(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]]:
         if not 200 <= status < 300:
             raise RuntimeError(f"runtime HTTP endpoint is not ready: {url} {status}")
     return "runtime HTTP endpoints are ready", {"endpoints": endpoints}
+
+
+def validate_guest_control_api(
+    run: RuntimeBootSmokeRun,
+) -> tuple[str, dict[str, Any]]:
+    ready = run.operations.http_json(
+        "GET",
+        f"{GUEST_CONTROL_API_BASE_URL}/ready",
+        HTTP_TIMEOUT_SECONDS,
+        None,
+    )
+    require_equal(ready.get("status"), "ready", "guest control API is not ready")
+
+    capabilities = run.operations.http_json(
+        "GET",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/capabilities",
+        HTTP_TIMEOUT_SECONDS,
+        None,
+    )
+    capability_values = list_value(capabilities.get("capabilities"))
+    require_guest_control_capabilities(capability_values)
+
+    services = run.operations.http_json(
+        "GET",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/services",
+        HTTP_TIMEOUT_SECONDS,
+        None,
+    )
+    service_values = list_value(services.get("services"))
+    for service in (ComposeService.POSTGRES.value, ComposeService.APP.value):
+        if service not in service_values:
+            raise RuntimeError(f"guest control API service is missing: {service}")
+
+    app_status = run.operations.http_json(
+        "GET",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/services/{ComposeService.APP.value}/status",
+        HTTP_TIMEOUT_SECONDS,
+        None,
+    )
+    require_equal(
+        app_status.get("service"),
+        ComposeService.APP.value,
+        "guest control API app status service mismatch",
+    )
+    require_non_empty_string(app_status.get("state"), "guest control API app state")
+
+    recorder_ingress_status = run.operations.http_json(
+        "GET",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/recorder-ingress/status",
+        HTTP_TIMEOUT_SECONDS,
+        None,
+    )
+    require_equal(
+        recorder_ingress_status.get("readState"),
+        "loaded",
+        "guest control API recorder-ingress status read is not loaded",
+    )
+    require_equal(
+        recorder_ingress_status.get("readError"),
+        None,
+        "guest control API recorder-ingress status read has an error",
+    )
+    recorder_ingress_document = recorder_ingress_status.get("document")
+    if not isinstance(recorder_ingress_document, dict):
+        raise RuntimeError(
+            "guest control API recorder-ingress status document is invalid"
+        )
+    require_non_empty_string(
+        recorder_ingress_document.get("startedAt"),
+        "guest control API recorder-ingress startedAt",
+    )
+
+    restart = run.operations.http_json(
+        "POST",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/services/{ComposeService.APP.value}/restart",
+        GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
+        None,
+    )
+    operation_id = require_non_empty_string(
+        restart.get("operationId"),
+        "guest control API restart operationId",
+    )
+    require_equal(
+        restart.get("state"),
+        "completed",
+        "guest control API restart operation did not complete",
+    )
+
+    operation = run.operations.http_json(
+        "GET",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/operations/{operation_id}",
+        HTTP_TIMEOUT_SECONDS,
+        None,
+    )
+    require_equal(
+        operation.get("operationId"),
+        operation_id,
+        "guest control API operation read returned the wrong operation",
+    )
+    require_equal(
+        operation.get("state"),
+        "completed",
+        "guest control API persisted operation is not completed",
+    )
+
+    reconcile = run.operations.http_json(
+        "POST",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/stack/reconcile",
+        GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
+        None,
+    )
+    reconcile_operation_id = require_non_empty_string(
+        reconcile.get("operationId"),
+        "guest control API stack reconcile operationId",
+    )
+    require_equal(
+        reconcile.get("service"),
+        "guest-stack",
+        "guest control API stack reconcile service mismatch",
+    )
+    require_equal(
+        reconcile.get("command"),
+        "reconcile",
+        "guest control API stack reconcile command mismatch",
+    )
+    require_equal(
+        reconcile.get("state"),
+        "completed",
+        "guest control API stack reconcile operation did not complete",
+    )
+
+    reconcile_operation = run.operations.http_json(
+        "GET",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/operations/{reconcile_operation_id}",
+        HTTP_TIMEOUT_SECONDS,
+        None,
+    )
+    require_equal(
+        reconcile_operation.get("operationId"),
+        reconcile_operation_id,
+        "guest control API stack reconcile operation read returned the wrong operation",
+    )
+    require_equal(
+        reconcile_operation.get("state"),
+        "completed",
+        "guest control API persisted stack reconcile operation is not completed",
+    )
+    lab_scenarios = run.operations.http_json(
+        "GET",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/lab/scenarios",
+        HTTP_TIMEOUT_SECONDS,
+        None,
+    )
+    require_equal(
+        lab_scenarios.get("state"),
+        "loaded",
+        "guest control API Product Lab scenarios are not loaded",
+    )
+    scenarios = list_value(lab_scenarios.get("scenarios"))
+    if not scenarios:
+        raise RuntimeError("guest control API Product Lab scenarios are empty")
+    first_scenario = scenarios[0]
+    if not isinstance(first_scenario, dict):
+        raise RuntimeError("guest control API Product Lab scenario is invalid")
+    scenario_id = require_non_empty_string(
+        first_scenario.get("scenarioId"),
+        "guest control API Product Lab scenarioId",
+    )
+    lab_session_operations = validate_product_lab_session_operations(
+        run,
+        scenario_id,
+    )
+
+    return (
+        "guest control API is ready and persists service and Lab operations",
+        {
+            "ready": ready,
+            "capabilities": capability_values,
+            "services": service_values,
+            "appStatus": app_status,
+            "recorderIngressStatus": recorder_ingress_status,
+            "operation": operation,
+            "reconcileOperation": reconcile_operation,
+            "labScenarios": lab_scenarios,
+            "labSessionOperations": lab_session_operations,
+        },
+    )
+
+
+def validate_product_lab_session_operations(
+    run: RuntimeBootSmokeRun,
+    scenario_id: str,
+) -> dict[str, Any]:
+    create = run.operations.http_json(
+        "POST",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/lab/sessions",
+        GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
+        {
+            "scenarioId": scenario_id,
+            "name": "RuntimeBootSmokeLab",
+            "recorderCount": 1,
+            "targetURL": "http://edge/",
+        },
+    )
+    session_id = validate_lab_session_response(
+        create,
+        subject="guest control API Product Lab create session",
+        expected_state=None,
+    )
+    create_operation_id = require_non_empty_string(
+        create.get("operationId"),
+        "guest control API Product Lab create operationId",
+    )
+    session_path_segment = quote(session_id, safe="")
+
+    read = run.operations.http_json(
+        "GET",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/lab/sessions/{session_path_segment}",
+        HTTP_TIMEOUT_SECONDS,
+        None,
+    )
+    read_session_id = validate_lab_session_response(
+        read,
+        subject="guest control API Product Lab read session",
+        expected_state=None,
+    )
+    if read_session_id != session_id:
+        raise RuntimeError(
+            "guest control API Product Lab read returned wrong session: "
+            f"expected={session_id} actual={read_session_id}"
+        )
+
+    start = run.operations.http_json(
+        "POST",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/lab/sessions/{session_path_segment}/start",
+        GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
+        None,
+    )
+    validate_lab_session_response(
+        start,
+        subject="guest control API Product Lab start session",
+        expected_state="running",
+    )
+    start_operation_id = require_non_empty_string(
+        start.get("operationId"),
+        "guest control API Product Lab start operationId",
+    )
+
+    stop = run.operations.http_json(
+        "POST",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/lab/sessions/{session_path_segment}/stop",
+        GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
+        None,
+    )
+    validate_lab_session_response(
+        stop,
+        subject="guest control API Product Lab stop session",
+        expected_state="stopped",
+    )
+    stop_operation_id = require_non_empty_string(
+        stop.get("operationId"),
+        "guest control API Product Lab stop operationId",
+    )
+    replay_vital_file_path = prepare_lab_replay_smoke_vital_file(run)
+    replay = run.operations.http_json(
+        "POST",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/lab/vital-files/replay",
+        GUEST_CONTROL_OPERATION_TIMEOUT_SECONDS,
+        {
+            "vitalFilePath": replay_vital_file_path,
+            "sessionName": "RuntimeBootSmokeReplay",
+            "targetURL": "http://edge/",
+        },
+    )
+    replay_session_id = validate_lab_session_response(
+        replay,
+        subject="guest control API Product Lab replay vital file",
+        expected_state=None,
+    )
+    replay_operation_id = require_non_empty_string(
+        replay.get("operationId"),
+        "guest control API Product Lab replay operationId",
+    )
+
+    return {
+        "scenarioId": scenario_id,
+        "sessionId": session_id,
+        "replaySessionId": replay_session_id,
+        "create": create,
+        "read": read,
+        "start": start,
+        "stop": stop,
+        "replay": replay,
+        "operationIds": [
+            create_operation_id,
+            start_operation_id,
+            stop_operation_id,
+            replay_operation_id,
+        ],
+    }
+
+
+def prepare_lab_replay_smoke_vital_file(run: RuntimeBootSmokeRun) -> str:
+    path = LAB_REPLAY_SMOKE_VITAL_FILE
+    script = (
+        "from pathlib import Path; "
+        f"path = Path({path!r}); "
+        "path.parent.mkdir(parents=True, exist_ok=True); "
+        "path.write_bytes(b'runtime boot smoke vital replay placeholder\\n')"
+    )
+    completed = run.operations.run(
+        ["python3", "-c", script],
+        check=False,
+        capture_output=True,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "failed to prepare Product Lab replay .vital smoke file: "
+            f"exitCode={completed.returncode} stdout={completed.stdout!r} "
+            f"stderr={completed.stderr!r}"
+        )
+    return path
+
+
+def validate_lab_session_response(
+    document: dict[str, Any],
+    *,
+    subject: str,
+    expected_state: str | None,
+) -> str:
+    require_equal(
+        document.get("state"),
+        "loaded",
+        f"{subject} response is not loaded",
+    )
+    session = document.get("session")
+    if not isinstance(session, dict):
+        raise RuntimeError(f"{subject} response is missing session")
+    session_id = require_non_empty_string(
+        session.get("sessionId"),
+        f"{subject} sessionId",
+    )
+    if expected_state is not None:
+        require_equal(
+            session.get("state"),
+            expected_state,
+            f"{subject} state mismatch",
+        )
+    return session_id
 
 
 def validate_runtime_data(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]]:
@@ -471,33 +798,33 @@ def validate_compose_services(
     run: RuntimeBootSmokeRun,
     bootstrap_result: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
+    del bootstrap_result
     expected = expected_compose_service_requirements(run.context.dev_build)
     deadline = time.monotonic() + run.context.compose_ready_timeout_seconds
-    document = read_current_runtime_state_document(run, bootstrap_result)
     while True:
-        observed = observed_compose_services(document)
+        stack_status = read_guest_control_stack_status(run)
+        observed = observed_stack_services(stack_status)
         missing = missing_compose_services(expected, observed)
         if missing:
             if time.monotonic() >= deadline:
                 raise RuntimeError(
-                    f"runtime state is missing compose services: {missing}"
+                    f"guest control stack status is missing services: {missing}"
                 )
             run.operations.sleep(COMPOSE_READY_POLL_SECONDS)
-            document = read_current_runtime_state_document(run, bootstrap_result)
             continue
         unhealthy = unhealthy_compose_services(expected, observed)
         if not unhealthy:
-            invalid_uptime = invalid_compose_service_uptime(expected, observed)
-            if invalid_uptime:
-                raise RuntimeError(
-                    "compose service uptime is invalid for runtime smoke: "
-                    f"{invalid_uptime}"
-                )
-            return "required compose services are ready", {"services": observed}
+            return (
+                "required compose services are ready",
+                {
+                    "source": "guest-control-api",
+                    "stackStatus": stack_status,
+                    "services": observed,
+                },
+            )
         if time.monotonic() >= deadline:
             raise RuntimeError(f"compose services are not ready: {unhealthy}")
         run.operations.sleep(COMPOSE_READY_POLL_SECONDS)
-        document = read_current_runtime_state_document(run, bootstrap_result)
 
 
 def validate_disk_health(
@@ -519,52 +846,40 @@ def validate_disk_health(
     return "disk health is clean", {"diskHealth": disk_health}
 
 
-def validate_capabilities(
-    run: RuntimeBootSmokeRun,
-    bootstrap_result: dict[str, Any],
-) -> tuple[str, dict[str, Any]]:
-    document = read_current_runtime_state_document(run, bootstrap_result)
-    capabilities = document.get("capabilities")
-    if not isinstance(capabilities, dict):
-        raise RuntimeError("runtime state capabilities is missing")
-    for capability in REQUIRED_CAPABILITIES:
-        value = capabilities.get(capability)
-        if value is not True:
+def validate_capabilities(run: RuntimeBootSmokeRun) -> tuple[str, dict[str, Any]]:
+    document = run.operations.http_json(
+        "GET",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/capabilities",
+        HTTP_TIMEOUT_SECONDS,
+        None,
+    )
+    capabilities = list_value(document.get("capabilities"))
+    require_guest_control_capabilities(capabilities)
+    return (
+        "guest control capabilities are available",
+        {"source": "guest-control-api", "capabilities": capabilities},
+    )
+
+
+def require_guest_control_capabilities(capabilities: list[Any]) -> None:
+    for capability in REQUIRED_GUEST_CONTROL_CAPABILITIES:
+        if capability not in capabilities:
             raise RuntimeError(
-                f"runtime capability is not available: {capability}={value}"
+                f"guest control API capability is missing: {capability}"
             )
-    return "runtime capabilities are available", {"capabilities": capabilities}
 
 
-def validate_command_dispatch(
+def validate_runtime_share(
     run: RuntimeBootSmokeRun,
 ) -> tuple[str, dict[str, Any]]:
-    stale_requests = []
-    for request_name, result_name in REQUIRED_REQUEST_RESULT_PAIRS:
-        request_path = run.context.runtime_dir / request_name
-        result_path = run.context.runtime_dir / result_name
-        if request_path.exists() and not result_path.exists():
-            stale_requests.append(
-                {
-                    "request": str(request_path),
-                    "missingResult": str(result_path),
-                }
-            )
-    if stale_requests:
-        raise RuntimeError(f"stale guest command requests exist: {stale_requests}")
     write_probe = run.context.runtime_dir / ".runtime-boot-smoke-write-check"
     write_probe.write_text(run.context.run_id, encoding="utf-8")
     if write_probe.read_text(encoding="utf-8") != run.context.run_id:
         raise RuntimeError("runtime directory write probe could not be verified")
     write_probe.unlink()
     return (
-        "guest command dispatch paths are available",
-        {
-            "requestResultPairs": [
-                {"request": request, "result": result}
-                for request, result in REQUIRED_REQUEST_RESULT_PAIRS
-            ]
-        },
+        "runtime share is writable",
+        {"writeProbe": str(write_probe)},
     )
 
 
@@ -584,9 +899,6 @@ def validate_feature_readiness(
     missing_config = [key for key in required_config_keys if key not in runtime_config]
     if missing_config:
         raise RuntimeError(f"runtime config is missing keys: {missing_config}")
-    vitaldb_observation = document.get("vitalDBObservation")
-    if vitaldb_observation is not None and not isinstance(vitaldb_observation, dict):
-        raise RuntimeError("vitalDBObservation must be object or null")
     http_probes = document.get("httpProbes")
     if not isinstance(http_probes, dict):
         raise RuntimeError("runtime state httpProbes is missing")
@@ -602,16 +914,13 @@ def validate_feature_readiness(
         {
             "runtimeConfigKeys": required_config_keys,
             "httpProbes": http_probes,
-            "vitalDBObservationStatus": (
-                "available" if isinstance(vitaldb_observation, dict) else "unavailable"
-            ),
             "scenarioSmokeRequired": [
                 "settings-apply",
                 "update-apply",
                 "redis-backup-restore",
                 "runtime-data-backup-restore",
                 "observability-event-append",
-                "testkit-recorder-flow",
+                "product-lab-recorder-flow",
                 "export-logs",
                 "clean-uninstall-reset",
             ],
@@ -664,19 +973,38 @@ def read_current_runtime_state_document(
 def expected_compose_service_requirements(
     dev_build: bool,
 ) -> tuple[ComposeServiceRequirement, ...]:
+    del dev_build
     expected = [
         ComposeServiceRequirement(name=name)
         for name in BASE_REQUIRED_COMPOSE_SERVICES
     ]
-    if dev_build:
-        expected.append(ComposeServiceRequirement(name=ComposeService.TESTKIT.value))
     return tuple(expected)
 
 
-def observed_compose_services(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    services = document.get("containerServices")
+def read_guest_control_stack_status(run: RuntimeBootSmokeRun) -> dict[str, Any]:
+    document = run.operations.http_json(
+        "GET",
+        f"{GUEST_CONTROL_API_BASE_URL}/v1/stack/status",
+        HTTP_TIMEOUT_SECONDS,
+        None,
+    )
+    require_equal(
+        document.get("state"),
+        "loaded",
+        "guest control API stack status is not loaded",
+    )
+    observed_at = require_non_empty_string(
+        document.get("observedAt"),
+        "guest control API stack status observedAt",
+    )
+    document_age_seconds(observed_at, run.operations.now())
+    return document
+
+
+def observed_stack_services(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    services = document.get("services")
     if not isinstance(services, list) or not services:
-        raise RuntimeError("runtime state containerServices is missing or empty")
+        raise RuntimeError("guest control API stack status services are missing")
     observed: dict[str, dict[str, Any]] = {}
     for service in services:
         if not isinstance(service, dict):
@@ -717,27 +1045,6 @@ def missing_compose_services(
         for requirement in expected
         if requirement.name not in observed_names
     )
-
-
-def invalid_compose_service_uptime(
-    expected: tuple[ComposeServiceRequirement, ...],
-    observed: dict[str, dict[str, Any]],
-) -> list[dict[str, Any]]:
-    invalid: list[dict[str, Any]] = []
-    for requirement in sorted(expected, key=lambda item: item.name):
-        uptime_seconds = observed[requirement.name].get("uptimeSeconds")
-        if (
-            not isinstance(uptime_seconds, int)
-            or uptime_seconds < 0
-            or uptime_seconds > MAX_RUNTIME_SMOKE_SERVICE_UPTIME_SECONDS
-        ):
-            invalid.append(
-                {
-                    "service": requirement.name,
-                    "uptimeSeconds": uptime_seconds,
-                }
-            )
-    return invalid
 
 
 def service_is_ready(
@@ -782,6 +1089,45 @@ def http_status(url: str, timeout_seconds: float) -> int:
         return error.code
     except (OSError, TimeoutError, urllib.error.URLError) as error:
         raise RuntimeError(f"HTTP probe failed: {url}: {error}") from error
+
+
+def http_json(
+    method: str,
+    url: str,
+    timeout_seconds: float,
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = body if body is not None else ({} if method == "POST" else None)
+    request = urllib.request.Request(
+        url,
+        data=None if payload is None else json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            payload = response.read().decode("utf-8")
+    except urllib.error.HTTPError as error:
+        payload = error.read().decode("utf-8")
+        raise RuntimeError(
+            f"runtime HTTP JSON request failed: {method} {url} "
+            f"status={error.code} body={payload}"
+        ) from error
+    except (OSError, TimeoutError, urllib.error.URLError) as error:
+        raise RuntimeError(
+            f"runtime HTTP JSON request failed: {method} {url}: {error}"
+        ) from error
+    try:
+        document = json.loads(payload)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            f"runtime HTTP JSON response is invalid: {method} {url}: {error}"
+        ) from error
+    if not isinstance(document, dict):
+        raise RuntimeError(
+            f"runtime HTTP JSON response must be an object: {method} {url}"
+        )
+    return document
 
 
 def read_required_json_object(path: Path, subject: str) -> dict[str, Any]:

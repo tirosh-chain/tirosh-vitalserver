@@ -76,7 +76,7 @@ systemctl is-active docker
 systemctl is-active tirosh-runtime-state.service
 systemctl is-active tirosh-vitalserver-compose.service
 systemctl is-active tirosh-guest-observability.service
-systemctl is-active tirosh-vitalserver-command-poller.service
+systemctl is-active tirosh-vitalserver-guest-control-api.service
 curl -fsS -I --max-time 5 http://127.0.0.1/ready
 curl -fsS -I --max-time 5 http://127.0.0.1/health
 tirosh-runtime-state once
@@ -91,7 +91,7 @@ tirosh-runtime-state once
 3. `runtime-state.json`이 없거나 invalid면 runtime-state writer/service 문제로 분리합니다.
 4. systemd service가 inactive/failed이면 edge HTTP 결과만으로 정상 boot로 보지 않습니다.
 5. launcher log의 kernel panic/Oops/RCU stall은 TS-069와 같은 terminal guest failure로 처리합니다.
-6. dev build에서 `testkit`만 누락된 runtime boot smoke 실패가 나오면 같은 run의 manifest timestamp와 최신 `runtime-state.json`을 비교합니다. testkit이 몇 초 뒤 등장했다면 late-ready service를 readiness window 동안 재조회해야 하는 검증 race입니다.
+6. dev build에서 Product Lab 또는 다른 required product service만 누락된 runtime boot smoke 실패가 나오면 같은 run의 manifest timestamp와 Guest Control `/v1/stack/status` 응답을 비교합니다. 해당 service가 몇 초 뒤 등장했다면 late-ready service를 readiness window 동안 재조회해야 하는 검증 race입니다.
 
 ## Prevention
 
@@ -150,12 +150,12 @@ Runtime boot smoke는 최소 아래를 통과해야 합니다.
 | `runtime-state.json` | schema valid, fresh `updatedAt`, non-empty `bootID` |
 | VM IP | non-loopback `vmIP` present |
 | HTTP | `/ready` and `/health` return 2xx |
-| systemd | docker, runtime-state, compose, observability, command-poller active |
-| compose services | expected service set reported; no exited/restarting required service |
-| late-ready compose services | expected service가 runtime-state에 아직 없으면 readiness window 동안 재조회 |
+| systemd | docker, runtime-state, compose, observability, Guest Control API active |
+| product stack services | Guest Control `/v1/stack/status` reports the expected service set; no exited/restarting required service |
+| late-ready product services | expected service가 Guest Control stack status에 아직 없으면 readiness window 동안 재조회 |
 | disk health | root filesystem not read-only; no kernel disk error lines |
 | capabilities | `prepareUpdateShutdown`, `activateUpdate`, `redisBackup`, `redisRestore`, `repairDatastore` are explicit booleans |
-| command dispatch | command poller service active; request/result directory writable; no stale request files |
+| Guest operations | Guest Control API ready; service operations return explicit operation documents; runtime share writable |
 | backup read models | host, Redis-only, VitalServer backup lists distinguish missing/error/empty |
 | VitalServer backup root | missing directory is reported as unavailable, not empty success |
 | settings read contract | saved config and applied VM config snapshot are both present when applicable |
@@ -184,8 +184,7 @@ P0 negative validation은 실제 VM 또는 command-level integration으로 반�
 | guest HTTP unavailable | block/stop edge | runtime smoke rejects `/ready` or `/health` failure |
 | disk health read-only | inject diskHealth rootFilesystemReadOnly=true | runtime smoke rejects storage failure |
 | capability missing | remove `capabilities` from runtime-state | runtime smoke rejects incomplete feature contract |
-| command poller inactive | stop `tirosh-vitalserver-command-poller.service` | runtime smoke rejects command dispatch unavailable |
-| stale request file exists | leave backup/update/repair request without matching result | runtime smoke rejects stale dispatch trigger |
+| Guest Control API inactive | stop `tirosh-vitalserver-guest-control-api.service` | runtime smoke rejects Guest Control unavailable |
 | VitalServer backup root missing | remove VitalServer backup directory | runtime smoke reports unavailable, not empty list |
 | backup list decode failure | write invalid backup metadata | runtime smoke rejects read model corruption |
 | settings applied snapshot missing | remove applied VM config snapshot | runtime smoke rejects Settings/Status mismatch risk |
@@ -246,7 +245,7 @@ P1 negative validation:
    - `observability-read`
    - `recorder-observation-read`
    - `testkit-availability`
-   - `command-dispatch-readiness`
+   - `guest-control-operation-readiness`
 6. Add tests before VM target wiring.
    - unit tests for bootstrap/runtime-state validators
    - unit tests for capability/read-model validators
@@ -270,9 +269,10 @@ P1 negative validation:
   - `systemd-units`
   - `http`
   - `compose-services`
+  - `guest-control-api`
   - `disk-health`
   - `capabilities`
-  - `command-dispatch`
+  - `runtime-share`
   - `feature-readiness`
 
 Implemented command-level negative coverage:

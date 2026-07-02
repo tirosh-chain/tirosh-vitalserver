@@ -397,7 +397,7 @@ def test_require_rootfs_artifact_manifest_rejects_checksum_mismatch(
     ))
     output.write_bytes(b"x" * output.stat().st_size)
 
-    with pytest.raises(SystemExit, match="artifact.sha256"):
+    with pytest.raises(SystemExit, match=r"artifact\.sha256"):
         require_rootfs_artifact_manifest(
             output,
             source,
@@ -567,7 +567,9 @@ def write_ready_marker(
     if identity_cleanup is True:
         document["identityCleanup"] = {
             "status": "passed",
-            "proof": str(source.parent.parent / "data/run/rootfs-identity-cleanup.json"),
+            "proof": str(
+                source.parent.parent / "data/run/rootfs-identity-cleanup.json"
+            ),
         }
     elif isinstance(identity_cleanup, dict):
         document["identityCleanup"] = identity_cleanup

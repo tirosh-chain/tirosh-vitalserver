@@ -6,8 +6,6 @@ public protocol RuntimeEventDisplayVocabulary {
     var vmStateLabel: String { get }
     var vmErrorsLabel: String { get }
     var failureReasonsLabel: String { get }
-    var activeRecorderConnectionsLabel: String { get }
-    var knownRecordersLabel: String { get }
     var onlineRecordersLabel: String { get }
     var staleRecordersLabel: String { get }
     var recorderAnomaliesLabel: String { get }
@@ -86,10 +84,6 @@ public struct RuntimeEventDisplayPolicy {
         if !event.failureReasons.isEmpty {
             details.append("\(vocabulary.failureReasonsLabel): \(event.failureReasons.map(vocabulary.domainErrorText).joined(separator: ", "))")
         }
-        if let observation = event.containerObservation?.recorderIngressStatus {
-            details.append("\(vocabulary.activeRecorderConnectionsLabel): \(observation.activeRecorderConnections)")
-            details.append("\(vocabulary.knownRecordersLabel): \(observation.recorders.count)")
-        }
         if let observation = event.vitalDBObservation {
             let onlineCount = observation.recorders.filter(\.online).count
             let staleCount = observation.recorders.filter(\.stale).count
@@ -119,8 +113,6 @@ struct AppRuntimeEventDisplayVocabulary: RuntimeEventDisplayVocabulary {
     var vmStateLabel: String { AppConstants.Labels.vmState }
     var vmErrorsLabel: String { AppConstants.Labels.vmErrors }
     var failureReasonsLabel: String { AppConstants.Labels.failureReasons }
-    var activeRecorderConnectionsLabel: String { AppConstants.Labels.activeRecorderConnections }
-    var knownRecordersLabel: String { AppConstants.Labels.knownRecorders }
     var onlineRecordersLabel: String { AppConstants.Labels.onlineRecorders }
     var staleRecordersLabel: String { AppConstants.Labels.staleRecorders }
     var recorderAnomaliesLabel: String { AppConstants.Labels.recorderAnomalies }

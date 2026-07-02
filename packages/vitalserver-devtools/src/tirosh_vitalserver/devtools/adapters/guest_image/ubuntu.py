@@ -119,7 +119,8 @@ def validate_qcow2_image(path: Path, *, label: str) -> None:
     virtual_size = info.get("virtual-size")
     if image_format != "qcow2":
         raise SystemExit(
-            f"error: invalid {label}: {path}: expected qcow2 image, got {image_format!r}"
+            f"error: invalid {label}: {path}: expected qcow2 image, "
+            f"got {image_format!r}"
         )
     if not isinstance(virtual_size, int) or virtual_size <= 0:
         raise SystemExit(
@@ -139,7 +140,8 @@ def validate_raw_disk_image(path: Path, *, min_virtual_size: int) -> None:
     virtual_size = info.get("virtual-size")
     if image_format != "raw":
         raise SystemExit(
-            f"error: invalid raw rootfs disk: {path}: expected raw image, got {image_format!r}"
+            f"error: invalid raw rootfs disk: {path}: expected raw image, "
+            f"got {image_format!r}"
         )
     if not isinstance(virtual_size, int) or virtual_size < min_virtual_size:
         raise SystemExit(
@@ -156,7 +158,9 @@ def qemu_image_info(path: Path, *, label: str) -> dict[str, object]:
             f"error: invalid {label}: qemu-img info failed for {path}: {error}"
         ) from error
     if not isinstance(info, dict):
-        raise SystemExit(f"error: invalid {label}: qemu-img info is not an object: {path}")
+        raise SystemExit(
+            f"error: invalid {label}: qemu-img info is not an object: {path}"
+        )
     return info
 
 

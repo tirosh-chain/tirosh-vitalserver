@@ -1,0 +1,14 @@
+[Unit]
+Description=Tirosh VitalServer Guest Control API
+After=docker.service network-online.target tirosh-vitalserver-compose.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tirosh-vitalserver-guest-control-api --host 0.0.0.0 --port 18330
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -61,23 +61,6 @@ public struct RuntimeInstallStepExecutionError: Error, Equatable, CustomStringCo
     }
 }
 
-
-public enum RuntimeRedisBackupUseCaseError: Error, Equatable, CustomStringConvertible, LocalizedError {
-    case operationFailed(String)
-
-    public var description: String {
-        switch self {
-        case .operationFailed(let message):
-            return message
-        }
-    }
-
-    public var errorDescription: String? {
-        description
-    }
-}
-
-
 public struct RuntimeUninstallFileRemovalExecutionError: Error {
     public let underlyingError: Error
     public let blockers: [String]

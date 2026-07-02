@@ -203,7 +203,7 @@ public struct ConfigureRuntimeResult: Equatable, Sendable {
 
 public enum ConfigureRuntimeRestartRequirement: String, Equatable, Sendable {
     case none
-    case containerServices
+    case guestStack
     case vmRuntime
 
     public var requiresRestart: Bool {
@@ -222,7 +222,7 @@ public enum ConfigureRuntimeEffect: Equatable, Sendable {
     case setLogArchiveRetentionDays(Int)
     case setLogArchiveMaximumGiB(Int)
     case writeRedisRelayConfiguration(ConfigureRuntimeRedisRelaySettings)
-    case reconcileGuestComposeServices
+    case reconcileGuestStackServices
     case restartRuntimeServices
 }
 
@@ -296,7 +296,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                      .setLogArchiveRetentionDays,
                      .setLogArchiveMaximumGiB,
                      .writeRedisRelayConfiguration,
-                     .reconcileGuestComposeServices,
+                     .reconcileGuestStackServices,
                      .restartRuntimeServices:
                     return false
                 }
@@ -308,7 +308,7 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
                      .setLogArchiveRetentionDays,
                      .setLogArchiveMaximumGiB,
                      .writeRedisRelayConfiguration,
-                     .reconcileGuestComposeServices,
+                     .reconcileGuestStackServices,
                      .restartRuntimeServices:
                     return true
                 case .createDirectory,
@@ -410,10 +410,10 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
             return .vmRuntime
         }
         if changes.contains(where: \.changesRedisRelay) {
-            return .containerServices
+            return .guestStack
         }
         if changes.contains(where: \.changesRecorderIngressSendDataConfig) {
-            return .containerServices
+            return .guestStack
         }
         return .none
     }
@@ -424,8 +424,8 @@ public struct ConfigureRuntimeUseCase<VMConfig: ConfigureRuntimeMutableVMRuntime
         switch requirement {
         case .none:
             return nil
-        case .containerServices:
-            return .reconcileGuestComposeServices
+        case .guestStack:
+            return .reconcileGuestStackServices
         case .vmRuntime:
             return .restartRuntimeServices
         }

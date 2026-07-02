@@ -612,6 +612,150 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertNil(status.dataDirectoryStatsError)
     }
 
+    func testStatusReaderLoadsGuestServicesThroughGuestStackStatus() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        try writeRuntimeStatusDocument(
+            runtimeStatus,
+            extraFields: """
+              "vmIP": "192.168.64.2",
+            """
+        )
+        let gateway = FakeRuntimeGuestControlGateway(
+            services: ["app", "postgres"],
+            statuses: [
+                "app": RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00+00:00"
+                ),
+                "postgres": RuntimeGuestControlServiceStatus(
+                    service: "postgres",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00+00:00"
+                ),
+            ]
+        )
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: runtimeStatus.path
+            ),
+            guestControlGateway: { gateway }
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.guestServicesReadState, .loaded)
+        XCTAssertEqual(status.guestServices, ["app", "postgres"])
+        XCTAssertEqual(status.guestServiceStatuses.map(\.service), ["app", "postgres"])
+        XCTAssertNil(status.guestServicesReadError)
+        XCTAssertEqual(gateway.stackStatusCount, 1)
+        XCTAssertEqual(gateway.listServicesCount, 0)
+        XCTAssertEqual(gateway.statusRequests, [])
+    }
+
+    func testStatusReaderPreservesGuestStackStatusReadFailure() throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        try writeRuntimeStatusDocument(
+            runtimeStatus,
+            extraFields: """
+              "vmIP": "192.168.64.2",
+            """
+        )
+        let gateway = FakeRuntimeGuestControlGateway(
+            services: ["app"],
+            statuses: [:],
+            stackStatusFailure: RuntimeGuestControlGatewayTestError(message: "stack status timed out")
+        )
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: runtimeStatus.path
+            ),
+            guestControlGateway: { gateway }
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.guestServicesReadState, .failed)
+        XCTAssertNil(status.guestServices)
+        XCTAssertEqual(status.guestServiceStatuses, [])
+        XCTAssertTrue(status.guestServicesReadError?.contains("stack status timed out") == true)
+    }
+
+    func testStatusReaderDoesNotReadGuestServicesWhenVMIPIsMissing() throws {
+        let directory = try temporaryDirectory()
+        let gateway = FakeRuntimeGuestControlGateway(
+            services: ["app"],
+            statuses: [
+                "app": RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00+00:00"
+                ),
+            ]
+        )
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            guestControlGateway: { gateway }
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.guestServicesReadState, .unavailable)
+        XCTAssertNil(status.guestServices)
+        XCTAssertEqual(status.guestServiceStatuses, [])
+        XCTAssertNil(status.guestServicesReadError)
+        XCTAssertEqual(gateway.listServicesCount, 0)
+        XCTAssertEqual(gateway.stackStatusCount, 0)
+        XCTAssertEqual(gateway.statusRequests, [])
+    }
+
+    func testStatusReaderDoesNotUseRuntimeStateVMIPForGuestServices() throws {
+        let directory = try temporaryDirectory()
+        let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
+        try #"{"vmIP":"192.168.64.2","guestHTTP":"200"}"#.write(to: runtimeState, atomically: true, encoding: .utf8)
+        let gateway = FakeRuntimeGuestControlGateway(
+            services: ["app"],
+            statuses: [
+                "app": RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00+00:00"
+                ),
+            ]
+        )
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: runtimeState.path,
+                runtimeStatus: directory.appendingPathComponent(RuntimeFileNames.runtimeStatus).path
+            ),
+            guestControlGateway: { gateway }
+        )
+
+        let status = reader.loadStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.guestServicesReadState, .unavailable)
+        XCTAssertEqual(gateway.stackStatusCount, 0)
+    }
+
     func testStatusReaderReportsDataDirectoryStatsReadFailure() throws {
         let directory = try temporaryDirectory()
         let dataDirectory = directory.appendingPathComponent("vital-files", isDirectory: true)
@@ -769,7 +913,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertNil(status.dataStorageError)
     }
 
-    func testStatusReaderReportsMissingRuntimeDocumentsAsReadIssues() throws {
+    func testStatusReaderReportsMissingRuntimeStatusDocumentAsReadIssue() throws {
         let directory = try temporaryDirectory()
         let reader = SystemRuntimeStatusReader(
             paths: RuntimePaths(
@@ -782,12 +926,11 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let status = reader.loadStatus(settings: RuntimeSettings())
 
-        XCTAssertEqual(status.readIssues.map(\.source), ["runtimeStatus", "guestRuntimeState"])
+        XCTAssertEqual(status.readIssues.map(\.source), ["runtimeStatus"])
         XCTAssertNil(status.statusDocumentError)
-        XCTAssertNil(status.guestRuntimeStateError)
     }
 
-    func testStatusReaderPreservesGuestRuntimeStateInspectionFailure() throws {
+    func testStatusReaderIgnoresGuestRuntimeStateInspectionFailure() throws {
         let directory = try temporaryDirectory()
         let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
         let reader = SystemRuntimeStatusReader(
@@ -804,14 +947,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let status = reader.loadStatus(settings: RuntimeSettings())
 
-        XCTAssertEqual(
-            status.guestRuntimeStateError,
-            "guest runtime state path inspection failed path=\(runtimeState.path) reason=permission denied"
-        )
-        XCTAssertTrue(status.readIssues.contains {
-            $0.source == "guestRuntimeState"
-                && $0.message == status.guestRuntimeStateError
-        })
+        XCTAssertFalse(status.readIssues.contains { $0.source == "guestRuntimeState" })
     }
 
     func testStatusReaderPreservesRuntimeStatusInspectionFailure() throws {
@@ -841,7 +977,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         })
     }
 
-    func testStatusReaderPreservesUnexpectedGuestRuntimeStatePathState() throws {
+    func testStatusReaderIgnoresUnexpectedGuestRuntimeStatePathState() throws {
         let directory = try temporaryDirectory()
         let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
         let reader = SystemRuntimeStatusReader(
@@ -858,14 +994,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let status = reader.loadStatus(settings: RuntimeSettings())
 
-        XCTAssertEqual(
-            status.guestRuntimeStateError,
-            "guest runtime state path state is unexpected path=\(runtimeState.path) state=directory"
-        )
-        XCTAssertTrue(status.readIssues.contains {
-            $0.source == "guestRuntimeState"
-                && $0.message == status.guestRuntimeStateError
-        })
+        XCTAssertFalse(status.readIssues.contains { $0.source == "guestRuntimeState" })
     }
 
     func testStatusReaderPreservesRuntimeLauncherInspectionFailure() throws {
@@ -1058,7 +1187,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertTrue(status.readIssues.contains { $0.source == "runtimeInstallState" })
     }
 
-    func testStatusReaderReportsGuestRuntimeStateReadFailure() throws {
+    func testStatusReaderIgnoresGuestRuntimeStateReadFailure() throws {
         let directory = try temporaryDirectory()
         let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
         try Data("not-json".utf8).write(to: runtimeState)
@@ -1076,8 +1205,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         XCTAssertNil(status.memory)
         XCTAssertNil(status.systemDisk)
-        XCTAssertNotNil(status.guestRuntimeStateError)
-        XCTAssertTrue(status.readIssues.contains { $0.source == "guestRuntimeState" })
+        XCTAssertFalse(status.readIssues.contains { $0.source == "guestRuntimeState" })
     }
 
     func testStatusReaderDoesNotInferVMStateOrErrorsWhenStatusDocumentDoesNotProvideThem() throws {
@@ -1207,6 +1335,15 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                 runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
                 runtimeStatus: runtimeStatus.path
             ),
+            guestControlGateway: {
+                FakeRuntimeGuestControlGateway(
+                    services: [],
+                    statuses: [:],
+                    readinessFailure: RuntimeGuestControlGatewayTestError(
+                        message: "guest control timed out"
+                    )
+                )
+            },
             runCommand: { _, _ in
                 RuntimeCommandResult(exitCode: 28, stdout: "", stderr: "Operation timed out")
             },
@@ -1223,7 +1360,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertNil(status.swaggerUIHTTP)
         XCTAssertTrue(status.readIssues.contains {
             $0.source == "guestHTTP"
-                && $0.message == "exitCode=28 stderr=Operation timed out"
+                && $0.message.contains("guest control timed out")
         })
         XCTAssertTrue(status.readIssues.contains {
             $0.source == "hostProxyHTTP"
@@ -1231,7 +1368,62 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         })
     }
 
-    func testObservabilityReaderUsesStatusObservationForVitalRecordersWhenSQLiteIsEmpty() throws {
+    func testHealthStatusPreservesGuestControlReadinessDependencyFailure() async throws {
+        let directory = try temporaryDirectory()
+        let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
+        try writeRuntimeStatusDocument(
+            runtimeStatus,
+            extraFields: """
+              "vmService": "loaded",
+              "proxyService": "loaded",
+              "watchdogService": "loaded",
+              "vmIP": "192.168.64.33",
+              "proxyPort": 19090,
+            """
+        )
+        let gateway = FakeRuntimeGuestControlGateway(
+            services: [],
+            statuses: [:],
+            readiness: RuntimeGuestControlReadiness(
+                status: "unavailable",
+                dependencies: [
+                    RuntimeGuestControlReadinessDependency(
+                        name: "operationRepository",
+                        role: "required",
+                        state: "failed",
+                        kind: "postgresCommandFailed",
+                        message: "postgres command failed during readiness"
+                    )
+                ]
+            )
+        )
+        let reader = SystemRuntimeStatusReader(
+            paths: RuntimePaths(
+                launcher: directory.appendingPathComponent("launcher").path,
+                uninstaller: directory.appendingPathComponent("uninstaller").path,
+                runtimeState: directory.appendingPathComponent(RuntimeFileNames.runtimeState).path,
+                runtimeStatus: runtimeStatus.path
+            ),
+            guestControlGateway: { gateway },
+            runCommand: { _, _ in
+                RuntimeCommandResult(exitCode: 0, stdout: "200", stderr: "")
+            },
+            runSyncCommand: { _, _ in
+                RuntimeCommandResult(exitCode: 1, stdout: "", stderr: "Could not find service")
+            }
+        )
+
+        let status = await reader.loadHealthStatus(settings: RuntimeSettings())
+
+        XCTAssertEqual(status.guestHTTP, "unavailable")
+        XCTAssertTrue(status.readIssues.contains {
+            $0.source == "guestHTTP"
+                && $0.message.contains("postgresCommandFailed")
+                && $0.message.contains("operationRepository")
+        })
+    }
+
+    func testObservabilityReaderDoesNotUseStatusObservationForVitalRecordersWhenSQLiteIsEmpty() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
         try """
@@ -1288,12 +1480,12 @@ final class RuntimeSettingsReaderTests: XCTestCase {
 
         let history = reader.loadVitalDBRecorders()
 
-        XCTAssertEqual(history.updatedAt, "2099-05-26T00:01:00Z")
-        XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_STATUS"])
-        XCTAssertEqual(history.recorders.first?.status, .online)
+        XCTAssertNil(history.updatedAt)
+        XCTAssertEqual(history.recorders, [])
+        XCTAssertTrue(history.readError?.contains("currentObservation=guestControl=") == true)
     }
 
-    func testObservabilityReaderUsesGuestRuntimeStateAsCurrentObservation() throws {
+    func testObservabilityReaderDoesNotUseGuestRuntimeStateAsCurrentObservation() throws {
         let directory = try temporaryDirectory()
         let runtimeStatus = directory.appendingPathComponent(RuntimeFileNames.runtimeStatus)
         let runtimeState = directory.appendingPathComponent(RuntimeFileNames.runtimeState)
@@ -1383,10 +1575,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         let status = statusReader.loadStatus(settings: RuntimeSettings())
         let history = observabilityReader.loadVitalDBRecorders()
 
-        XCTAssertEqual(status.vitalDBObservation?.observedAt, "2099-05-26T00:01:00Z")
-        XCTAssertEqual(history.updatedAt, "2099-05-26T00:01:05Z")
-        XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_FRESH_GUEST"])
-        XCTAssertEqual(history.recorders.first?.status, .online)
+        XCTAssertEqual(status.runtimeState, .healthy)
+        XCTAssertNil(history.updatedAt)
+        XCTAssertEqual(history.recorders, [])
+        XCTAssertTrue(history.readError?.contains("currentObservation=guestControl=") == true)
     }
 
     func testObservabilityReaderReportsVitalRelationshipReadFailure() throws {
@@ -1405,9 +1597,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(history.state, .readFailed)
         XCTAssertEqual(history.assignments, [])
         XCTAssertEqual(history.events, [])
-        XCTAssertNotNil(history.readError)
-        XCTAssertTrue(history.readError?.contains("assignments=") == true)
-        XCTAssertTrue(history.readError?.contains("events=") == true)
+        XCTAssertTrue(history.readError?.contains("guestControl=") == true)
+        XCTAssertFalse(history.readError?.contains("not-sqlite") == true)
     }
 
     func testObservabilityReaderDoesNotCreateSQLiteProjectionWhenReadingEvents() throws {
@@ -1515,7 +1706,6 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             message: "message",
             runtimeVersion: "0.1.0",
             failureReasons: [],
-            containerObservation: nil,
             progress: nil
         )
     }
@@ -1532,6 +1722,9 @@ final class RuntimeSettingsReaderTests: XCTestCase {
           "productRoot": "/tmp/product",
           "runtimeHome": "/tmp/vm",
           "runtimeVersion": "1.0.0",
+          "vmService": "loaded",
+          "proxyService": "loaded",
+          "watchdogService": "loaded",
           "proxyPort": 19090,
           "hostProxyHTTP": "200",
           "guestHTTP": "200",
@@ -1793,5 +1986,136 @@ private final class SettingsReadFailureFileStore: RuntimeFileStore {
     func recursiveRegularFileSize(at url: URL, skipsHiddenFiles: Bool) throws -> UInt64 { 0 }
     func fileSystemAttributes(forPath path: String) throws -> RuntimeFileSystemAttributes {
         RuntimeFileSystemAttributes(freeBytes: 1)
+    }
+}
+
+private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, @unchecked Sendable {
+    private let services: [String]
+    private let statuses: [String: RuntimeGuestControlServiceStatus]
+    private let statusFailures: [String: Error]
+    private let stackStatusFailure: Error?
+    private let readiness: RuntimeGuestControlReadiness
+    private let readinessFailure: Error?
+    private(set) var readyCount = 0
+    private(set) var listServicesCount = 0
+    private(set) var stackStatusCount = 0
+    private(set) var statusRequests: [String] = []
+
+    init(
+        services: [String],
+        statuses: [String: RuntimeGuestControlServiceStatus],
+        statusFailures: [String: Error] = [:],
+        stackStatusFailure: Error? = nil,
+        readiness: RuntimeGuestControlReadiness = RuntimeGuestControlReadiness(
+            status: "ready"
+        ),
+        readinessFailure: Error? = nil
+    ) {
+        self.services = services
+        self.statuses = statuses
+        self.statusFailures = statusFailures
+        self.stackStatusFailure = stackStatusFailure
+        self.readiness = readiness
+        self.readinessFailure = readinessFailure
+    }
+
+    func ready() throws -> RuntimeGuestControlReadiness {
+        readyCount += 1
+        if let readinessFailure {
+            throw readinessFailure
+        }
+        return readiness
+    }
+
+    func listServices() throws -> RuntimeGuestControlServiceList {
+        listServicesCount += 1
+        return RuntimeGuestControlServiceList(services: services)
+    }
+
+    func stackStatus() throws -> RuntimeGuestControlStackStatus {
+        stackStatusCount += 1
+        if let stackStatusFailure {
+            throw stackStatusFailure
+        }
+        return RuntimeGuestControlStackStatus(
+            state: "loaded",
+            observedAt: "2026-07-01T00:00:00+00:00",
+            services: services.map { service in
+                statuses[service] ?? RuntimeGuestControlServiceStatus(
+                    service: service,
+                    state: "absent",
+                    health: "not_reported",
+                    observedAt: "2026-07-01T00:00:00+00:00"
+                )
+            }
+        )
+    }
+
+    func serviceStatus(_ service: String) throws -> RuntimeGuestControlServiceStatus {
+        statusRequests.append(service)
+        if let failure = statusFailures[service] {
+            throw failure
+        }
+        guard let status = statuses[service] else {
+            throw RuntimeGuestControlGatewayTestError(message: "missing status for service \(service)")
+        }
+        return status
+    }
+
+    func startService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        serviceOperation(service: service, command: .start)
+    }
+
+    func stopService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        serviceOperation(service: service, command: .stop)
+    }
+
+    func restartService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
+        serviceOperation(service: service, command: .restart)
+    }
+
+    func reconcileServices() throws -> RuntimeGuestControlServiceOperation {
+        serviceOperation(service: "guest-stack", command: .reconcile)
+    }
+
+    private func serviceOperation(
+        service: String,
+        command: RuntimeGuestControlServiceCommand
+    ) -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: "\(command.rawValue)-\(service)",
+            service: service,
+            command: command,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00"
+        )
+    }
+
+    func operation(_ operationId: String) throws -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: operationId,
+            service: "app",
+            command: .restart,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00"
+        )
+    }
+
+    func latestVitalDBObservation() throws -> RuntimeGuestControlVitalDBObservationRead {
+        RuntimeGuestControlVitalDBObservationRead(
+            state: .unavailable,
+            observation: nil,
+            readError: "not provided by service-status test gateway"
+        )
+    }
+}
+
+private struct RuntimeGuestControlGatewayTestError: Error, CustomStringConvertible {
+    let message: String
+
+    var description: String {
+        message
     }
 }

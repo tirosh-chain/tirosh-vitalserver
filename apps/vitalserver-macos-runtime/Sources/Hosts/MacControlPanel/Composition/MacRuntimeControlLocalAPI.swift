@@ -34,10 +34,9 @@ enum MacRuntimeControlLocalAPI {
     static func make(
         client: MacRuntimeControlClient,
         readWorker: MacRuntimeControlReadWorker,
-        testKitController: any RuntimeTestKitControlling,
         port: Int,
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
-        servesTestTools: Bool = GeneratedRelease.testEnabled,
+        servesDevConsole: Bool = GeneratedRelease.testEnabled,
         startedAt: Date = Date(),
         stateHandler: (@Sendable (RuntimeControlLocalHTTPServerState) -> Void)? = nil,
         scheduleHelperRelaunch: @escaping @MainActor () -> Void = {},
@@ -48,7 +47,6 @@ enum MacRuntimeControlLocalAPI {
             hostClient: client,
             readWorker: readWorker,
             localAPISettings: localAPISettings,
-            servesTestTools: servesTestTools,
             runtimeControlStartedAt: startedAt,
             scheduleHelperRelaunch: scheduleHelperRelaunch,
             scheduleHelperTermination: scheduleHelperTermination
@@ -57,21 +55,14 @@ enum MacRuntimeControlLocalAPI {
             handler: apiHandler,
             authorization: RuntimeControlAPIAuthorization(token: RuntimeControlLocalAPIConstants.token)
         )
-        let testKitRouter = servesTestTools
-            ? RuntimeTestKitAPIRouter(
-                controller: testKitController,
-                authorization: RuntimeControlAPIAuthorization(token: RuntimeControlLocalAPIConstants.token)
-            )
-            : nil
         return RuntimeControlLocalHTTPServer(
             configuration: RuntimeControlLocalHTTPServerConfiguration(
                 port: RuntimeControlLocalAPIConstants.validatedPort(port),
-                servesDevConsole: servesTestTools,
+                servesDevConsole: servesDevConsole,
                 staticFileDirectory: Bundle.main.resourceURL?
                     .appendingPathComponent(RuntimeControlLocalAPIConstants.pwaResourceDirectory, isDirectory: true)
             ),
             router: apiRouter,
-            testKitRouter: testKitRouter,
             stateHandler: stateHandler
         )
     }

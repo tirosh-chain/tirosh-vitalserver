@@ -32,6 +32,10 @@ class RuntimeBootSmokeOperations:
     write_json: Callable[[Path, dict[str, Any]], None]
     run: Callable[..., subprocess.CompletedProcess[str]]
     http_status: Callable[[str, float], int]
+    http_json: Callable[
+        [str, str, float, dict[str, Any] | None],
+        dict[str, Any],
+    ]
     now: Callable[[], datetime]
     sleep: Callable[[float], None]
 

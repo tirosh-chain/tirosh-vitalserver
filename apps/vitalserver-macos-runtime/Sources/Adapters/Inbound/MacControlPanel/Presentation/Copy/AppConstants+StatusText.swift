@@ -79,19 +79,13 @@ public extension AppConstants {
         public static func logExportDestinationInspectionFailed(_ message: String) -> String {
             "Could not inspect log export destination: \(message)"
         }
-        public static let runtimeServicesStartPreparing = "Preparing runtime service start..."
-        public static let runtimeServicesStartRunning = "Starting runtime services..."
-        public static let runtimeServicesStarted = "Runtime services started."
-        public static let runtimeServicesStopPreparing = "Preparing runtime service stop..."
-        public static let runtimeServicesStopRunning = "Stopping runtime services..."
-        public static let runtimeServicesStopped = "Runtime services stopped."
         public static let restartVMRuntimePreparing = "Preparing VM runtime restart..."
         public static let restartVMRuntimeRunning = "Restarting VM runtime..."
         public static let restartVMRuntimeCompleted = "VM runtime restarted."
         public static let settingsApplyPreparing = "Preparing runtime settings..."
         public static let settingsApplyRunning = "Applying runtime settings..."
         public static let settingsApplied = "Runtime settings applied."
-        public static let applySettingsConfirmation = "Apply these settings to the installed runtime?\n\nThis may update launchd services, rewrite runtime configuration, reconcile container services when required, and restart the VM runtime only when a changed setting requires it and activation after save is enabled."
+        public static let applySettingsConfirmation = "Apply these settings to the installed runtime?\n\nThis may update launchd services, rewrite runtime configuration, reconcile Guest stack when required, and restart the VM runtime only when a changed setting requires it and activation after save is enabled."
         public static let restartVMRuntimeConfirmation = "Restart the VM runtime now?\n\nVitalServer may be briefly unavailable. Saved VM settings that are waiting for restart become active after the runtime starts again."
         public static let noRuntimeActivationRequired = "No runtime activation required for these changes."
         public static let noVMRuntimeRestartRequired = noRuntimeActivationRequired
@@ -101,11 +95,11 @@ public extension AppConstants {
         public static func vmRuntimeRestartRequiredButDisabled(requiredBy: String) -> String {
             "Saved changes will not become active until the VM runtime restarts. Required by: \(requiredBy)."
         }
-        public static func containerServicesWillReconcileAfterSave(requiredBy: String) -> String {
-            "Container services will be reconciled after save. Required by: \(requiredBy)."
+        public static func guestStackWillReconcileAfterSave(requiredBy: String) -> String {
+            "Guest stack will be reconciled after save. Required by: \(requiredBy)."
         }
-        public static func containerServicesReconcileRequiredButDisabled(requiredBy: String) -> String {
-            "Saved changes will not become active until container services are reconciled. Required by: \(requiredBy)."
+        public static func guestStackReconcileRequiredButDisabled(requiredBy: String) -> String {
+            "Saved changes will not become active until the Guest stack is reconciled. Required by: \(requiredBy)."
         }
         public static let updateBundleApplied = "Update bundle applied."
         public static let updateBundleAppliedRelaunching = "Update bundle applied. Relaunching VitalServer Helper..."
@@ -195,8 +189,6 @@ public extension AppConstants {
         public static let repairDatastoreConfirmation = "Checks and repairs the Redis append-only file inside the VM, then restarts VitalServer containers and host services. Use this only when diagnostics or support identifies Redis datastore corruption. Redis creates a timestamped backup before fixing a damaged AOF file. Repair can truncate the corrupted tail of the AOF; use Redis backups for full data recovery."
         public static let repairVMDiskConfirmation = "Creates a Redis backup first, then archives the current VM disk, recreates it from the installed base image, and restarts runtime services. If the current VM cannot create a Redis backup, repair continues because the old VM disk is archived before replacement. Vital files stored in the configured host directory are preserved."
         public static let repairRuntimeServicesConfirmation = "Restarts the VM runtime services, guest log sync, host proxy, and watchdog. VitalServer may be briefly unavailable while runtime repair runs."
-        public static let startRuntimeServicesConfirmation = "Starts the VM, host proxy, and watchdog services, then waits for VitalServer to become healthy."
-        public static let stopRuntimeServicesConfirmation = "Stops the watchdog, host proxy, and VM services. VitalServer will be unavailable until runtime services are started again."
         public static let standardUninstallConfirmation = "Creates a Redis backup first, then removes the Helper app, runtime services, tools, VM disk, and package receipt. Logs, backups, Redis backups, and Vital files are preserved. If Redis backup creation fails, uninstall is stopped."
         public static let cleanUninstallConfirmation = "Removes the Helper app, runtime services, tools, VM disk, logs, backups, Redis backups, package receipt, and configured Vital files directory."
         public static let deleteBackupConfirmation = "Delete the selected update backup? This cannot be undone. VitalServer backups are not deleted."
@@ -298,7 +290,6 @@ public extension AppConstants {
             case .loaded:
                 return ready
             case .notRead,
-                 .skippedMissingProxyPort,
                  .commandFailed,
                  .emptyResponse,
                  .outputInvalid,
@@ -393,16 +384,14 @@ public extension AppConstants {
                 return "Recorder ingress HTTP \(status)"
             case .containerService(let service, let state):
                 return "Container \(service) \(titleCasedStatus(state))"
-            case .containerObservationMissing:
-                return "Container observation missing"
-            case .containerObservationReadFailed(let message):
-                return "Container observation read failed (\(titleCasedStatus(message)))"
+            case .guestService(let service, let state):
+                return "Guest service \(service) \(titleCasedStatus(state))"
+            case .guestServiceObservationMissing:
+                return "Guest service observation missing"
+            case .guestServiceObservationReadFailed(let message):
+                return "Guest service observation read failed (\(titleCasedStatus(message)))"
             case .vitalDBAnomaly(let kind, let subject):
                 return "VitalDB anomaly \(titleCasedStatus(kind)) on \(subject)"
-            case .vitalDBObservationMissing:
-                return "VitalDB observation missing"
-            case .vitalDBObservationReadFailed(let message):
-                return "VitalDB observation read failed (\(titleCasedStatus(message)))"
             case .proxyPortInUse(let port, let listeners):
                 return "Host proxy port \(port) in use by \(listeners)"
             case .guestBootstrapResultMissing:
@@ -477,8 +466,6 @@ public extension AppConstants {
                 return "Container \(service) exited with \(exitCode)"
             case .containerRestartLoop(let service):
                 return "Container \(service) restart loop"
-            case .vitalDBObservationStale:
-                return "VitalDB observation stale"
             case .unknown(let rawValue):
                 return titleCasedStatus(rawValue)
             }
@@ -500,8 +487,8 @@ public extension AppConstants {
                 return "Restart guest agent"
             case .repairGuestBootstrap:
                 return "Repair guest bootstrap"
-            case .restartContainerServices:
-                return "Restart container services"
+            case .reconcileGuestStack:
+                return "Reconcile Guest stack"
             case .repairProxyConfiguration:
                 return "Repair proxy configuration"
             case .freeProxyPort:

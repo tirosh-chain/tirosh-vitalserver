@@ -2,7 +2,7 @@ import Contracts
 import Foundation
 
 public enum RuntimeObservationHealthPolicy {
-    private static let criticalContainerServices: Set<String> = [
+    private static let criticalGuestServices: Set<String> = [
         "redis",
         "app",
         "recorder-recovery",
@@ -12,114 +12,64 @@ public enum RuntimeObservationHealthPolicy {
     ]
 
     public static func failureReasons(
-        containerObservation: RuntimeObservationInput<RuntimeContainerObservation>,
-        vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
+        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported
     ) -> [RuntimeFailureReason] {
         var reasons: [RuntimeFailureReason] = []
-        reasons.append(contentsOf: containerFailureReasons(containerObservation))
-        reasons.append(contentsOf: vitalDBFailureReasons(vitalDBObservation))
+        reasons.append(contentsOf: serviceFailureReasons(guestServiceStatuses))
         return reasons
     }
 
-    public static func requiresGuestComposeReconcile(
-        containerObservation: RuntimeObservationInput<RuntimeContainerObservation>
+    public static func requiresGuestStackReconcile(
+        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported
     ) -> Bool {
-        guard case .loaded(let observation) = containerObservation else {
+        switch guestServiceStatuses {
+        case .loaded(let statuses):
+            return !guestServiceFailureReasons(statuses).isEmpty
+        case .notReported, .missing, .readFailed:
             return false
         }
-        return !containerFailureReasons(observation).isEmpty
     }
 
-    private static func containerFailureReasons(
-        _ input: RuntimeObservationInput<RuntimeContainerObservation>
+    private static func serviceFailureReasons(
+        _ guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
     ) -> [RuntimeFailureReason] {
-        switch input {
+        switch guestServiceStatuses {
+        case .loaded(let statuses):
+            return guestServiceFailureReasons(statuses)
+        case .missing:
+            return [.guestServiceObservationMissing]
+        case .readFailed(let message):
+            return [.guestServiceObservationReadFailed(failureToken(message))]
         case .notReported:
             return []
-        case .missing:
-            return [.containerObservationMissing]
-        case .readFailed(let message):
-            return [.containerObservationReadFailed(failureToken(message))]
-        case .loaded(let observation):
-            return containerFailureReasons(observation)
         }
     }
 
-    private static func containerFailureReasons(
-        _ observation: RuntimeContainerObservation
+    private static func guestServiceFailureReasons(
+        _ statuses: [RuntimeGuestControlServiceStatus]
     ) -> [RuntimeFailureReason] {
-        switch observation.composeServicesReadState {
-        case .loaded:
-            break
-        case .missing:
-            return [.containerObservationMissing]
-        case .invalid, .stale, .readFailed:
-            return [.containerObservationReadFailed(
-                failureToken(observation.composeServicesReadError ?? observation.composeServicesReadState.rawValue)
-            )]
-        }
-
-        return observation.composeServices.compactMap { service in
-            guard criticalContainerServices.contains(service.service),
-                  let failureState = containerFailureState(service) else {
+        statuses.compactMap { status in
+            guard criticalGuestServices.contains(status.service),
+                  let failureState = guestServiceFailureState(status) else {
                 return nil
             }
-            return .containerService(service: service.service, state: failureState)
+            return .guestService(service: status.service, state: failureState)
         }
     }
 
-    private static func containerFailureState(
-        _ service: RuntimeContainerServiceObservation
+    private static func guestServiceFailureState(
+        _ status: RuntimeGuestControlServiceStatus
     ) -> String? {
-        if let state = service.state, state != "running" {
-            return normalizedState(state)
+        if status.state != "running" {
+            return normalizedState(status.state)
         }
-        if let exitCode = service.exitCode, exitCode != 0 {
+        if let exitCode = status.exitCode, exitCode != 0 {
             return "exit-\(exitCode)"
         }
-        if RuntimeHealthClassificationPolicy.isFailingContainerHealth(service.health),
-           let health = service.health {
-            return normalizedState(health)
+        if RuntimeHealthClassificationPolicy.isFailingContainerHealth(status.health) {
+            return normalizedState(status.health)
         }
         return nil
-    }
-
-    private static func vitalDBFailureReasons(
-        _ input: RuntimeObservationInput<VitalDBObservationDocument>
-    ) -> [RuntimeFailureReason] {
-        switch input {
-        case .notReported:
-            return []
-        case .missing:
-            return [.vitalDBObservationMissing]
-        case .readFailed(let message):
-            return [.vitalDBObservationReadFailed(failureToken(message))]
-        case .loaded(let observation):
-            return vitalDBFailureReasons(observation)
-        }
-    }
-
-    private static func vitalDBFailureReasons(
-        _ observation: VitalDBObservationDocument
-    ) -> [RuntimeFailureReason] {
-        var reasons: [RuntimeFailureReason] = []
-        if !observation.ready {
-            reasons.append(.vitalDBAnomaly(
-                kind: "observer-unhealthy",
-                subject: failureToken(observation.source)
-            ))
-        }
-
-        for anomaly in observation.anomalies where isRuntimeCriticalVitalDBAnomaly(anomaly) {
-            let reason = RuntimeFailureReason.vitalDBAnomaly(
-                kind: failureToken(anomaly.kind.rawValue),
-                subject: failureToken(anomaly.subject)
-            )
-            if !reasons.map(\.rawValue).contains(reason.rawValue) {
-                reasons.append(reason)
-            }
-        }
-        return reasons
     }
 
     public static func isRuntimeHealthAnomaly(_ anomaly: VitalDBAnomalyObservation) -> Bool {

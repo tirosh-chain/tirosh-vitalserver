@@ -1,3 +1,4 @@
+import Application
 import Contracts
 import Foundation
 import RuntimeControl
@@ -64,7 +65,9 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let commandWorker = MacRuntimeControlCommandWorker(
             privilegedCommandRunner: runner,
             actionEnvironment: environment,
-            logExporter: exporter
+            logExporter: exporter,
+            guestMaintenanceController: AdapterFakeGuestMaintenanceController(),
+            guestControlBaseURLOverride: "http://127.0.0.1:18330"
         )
         let releaseInfo = RuntimeReleaseInfo(
             helperVersion: "helper",
@@ -117,6 +120,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         _ = try await client.applySettings(settings)
         _ = try await client.applyUpdateBundle(url: URL(fileURLWithPath: "/bundle"))
         _ = try await client.rollbackRuntime(backupURL: URL(fileURLWithPath: "/backup"))
+        _ = try await client.restoreRedisBackup(backupURL: URL(fileURLWithPath: "/redis/latest"))
         _ = try await client.deleteBackup(
             url: URL(fileURLWithPath: "\(RuntimeControlClientConstants.Paths.backups)/20260522-before-0.1.3")
         )
@@ -125,15 +129,13 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         _ = try await client.repairVMDisk()
         _ = try await client.repairRuntimeServices()
         _ = try await client.createRedisBackup()
-        _ = try await client.startRuntimeServices()
-        _ = try await client.stopRuntimeServices()
 
         XCTAssertEqual(environment.removedTemporaryFiles.map(\.path), [
             "/tmp/admin-password",
             "/tmp/recorder-ingress-settings.json",
             "/tmp/redis-relay-settings.json",
         ])
-        XCTAssertEqual(runner.shellCommands.count, 12)
+        XCTAssertEqual(runner.shellCommands.count, 8)
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--clean") })
         XCTAssertFalse(runner.shellCommands.contains { $0.contains("--force-clean-uninstaller") })
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--admin-password-file") })
@@ -513,5 +515,105 @@ private final class AdapterFakeActionEnvironment: RuntimeActionEnvironment, @unc
 private final class AdapterFakeLogExporter: RuntimeLogExporting, @unchecked Sendable {
     func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
         RuntimeLogExportResult(destination: destination)
+    }
+}
+
+private struct AdapterFakeGuestMaintenanceController: RuntimeGuestMaintenanceCommandControlling {
+    func createRedisBackup(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: "redis-backup-1",
+            service: "redis-backup",
+            command: .redisBackup,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00",
+            result: RuntimeGuestControlOperationResult(
+                archive: "/mnt/tirosh-runtime/backups/redis/redis-20260701.tar.gz"
+            )
+        )
+    }
+
+    func restoreRedisBackup(
+        archive: String,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: "redis-restore-1",
+            service: "redis-restore",
+            command: .redisRestore,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00",
+            result: RuntimeGuestControlOperationResult(
+                restoredArchive: archive
+            )
+        )
+    }
+
+    func repairDatastore(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: "datastore-repair-1",
+            service: "datastore-repair",
+            command: .repairDatastore,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00"
+        )
+    }
+
+    func activateUpdate(
+        requestId: String,
+        version: String,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: "update-activation-1",
+            service: "update-activation",
+            command: .updateActivation,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00",
+            result: RuntimeGuestControlOperationResult(
+                requestId: requestId,
+                version: version
+            )
+        )
+    }
+
+    func prepareUpdateShutdown(
+        requestId: String,
+        version: String,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: "update-shutdown-1",
+            service: "update-shutdown",
+            command: .updateShutdown,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00",
+            result: RuntimeGuestControlOperationResult(
+                requestId: requestId,
+                version: version,
+                shutdownPhase: "poweroff-ready"
+            )
+        )
+    }
+
+    func requestGuestPoweroff(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        RuntimeGuestControlServiceOperation(
+            operationId: "guest-poweroff-1",
+            service: "guest-poweroff",
+            command: .requestGuestPoweroff,
+            state: .completed,
+            createdAt: "2026-07-01T00:00:00+00:00",
+            updatedAt: "2026-07-01T00:00:01+00:00"
+        )
     }
 }

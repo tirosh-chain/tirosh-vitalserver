@@ -8,7 +8,6 @@ const { createSendDataFailureLogWriter } = require("../adapters/outbound/file/se
 const { createSendDataRawArchiveExportJobStore } = require("../adapters/outbound/file/send-data-raw-archive-export-job-store");
 const { createSendDataRawArchiveWriter } = require("../adapters/outbound/file/send-data-raw-archive-writer");
 const { createRawArchiveRecoveryExecutor } = require("../adapters/outbound/http/raw-archive-recovery-executor");
-const { createRuntimeStateMemoryGuardReader } = require("../adapters/outbound/file/runtime-state-memory-guard-reader");
 const { createRedisAuditEventStore } = require("../adapters/outbound/redis/audit-event-store");
 const { createRedisClient } = require("../adapters/outbound/redis/client");
 const { createRedisSendDataSpoolStore } = require("../adapters/outbound/redis/send-data-spool-store");
@@ -50,7 +49,7 @@ function createRecorderIngressServer(config) {
     config: config.spool,
     failureSink: sendDataFailureLog,
     metrics,
-    memoryGuard: createRuntimeStateMemoryGuardReader(config.memoryGuard),
+    memoryGuard: undefined,
     spoolStore: sendDataSpoolStore,
     replayTarget: createSocketIoSendDataReplayTarget(config),
   });

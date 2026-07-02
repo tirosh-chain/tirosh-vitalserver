@@ -170,16 +170,11 @@ def release_package_preflight_report(
             bundle_path=settings.docker_bundle,
             platform=input.docker_platform,
             compression_threads=input.compression_threads,
-            include_optional="testkit" in release.optional_container_services,
+            include_optional=False,
             compose_path=settings.runtime_dir / "Support/Guest/compose.yaml",
             deploy_include_sources=[
                 include.source for include in settings.guest_deploy.includes
-            ]
-            + (
-                [include.source for include in settings.guest_deploy.optional_includes]
-                if "testkit" in release.optional_container_services
-                else []
-            ),
+            ],
         )
     )
     return PreflightReport(name=f"release-{output_kind}", checks=tuple(checks))
@@ -723,6 +718,7 @@ def guest_compose_contract_preflight_checks(
         ]
 
     checks: list[PreflightCheck] = []
+    checks.append(check_runtime_proof_compose_services(references))
     dockerfiles_by_image = dockerfile_contracts_by_image(plan)
     for reference in references:
         checks.append(
@@ -749,6 +745,42 @@ def guest_compose_contract_preflight_checks(
     return checks
 
 
+REQUIRED_RUNTIME_PRODUCT_COMPOSE_SERVICES = frozenset(
+    {
+        "postgres",
+        "redis",
+        "app",
+        "recorder-recovery",
+        "recorder-ingress",
+        "vitaldb-observer",
+        "redis-relay",
+        "lab",
+        "edge",
+    }
+)
+
+
+def check_runtime_proof_compose_services(
+    references: tuple[ComposeServiceImageReference, ...],
+) -> PreflightCheck:
+    services = {reference.service for reference in references}
+    missing = sorted(REQUIRED_RUNTIME_PRODUCT_COMPOSE_SERVICES - services)
+    forbidden = sorted(service for service in services if service == "testkit")
+    if missing or forbidden:
+        return PreflightCheck(
+            name="guest-compose-product-services",
+            status=PreflightStatus.INVALID,
+            message="guest compose does not match Runtime v2 product stack",
+            detail=f"missing={missing} forbidden={forbidden}",
+        )
+    return PreflightCheck(
+        name="guest-compose-product-services",
+        status=PreflightStatus.PASSED,
+        message="guest compose declares Runtime v2 product services",
+        detail=",".join(sorted(services)),
+    )
+
+
 def dockerfile_contracts_by_image(plan: DockerImagePlan) -> dict[str, Path]:
     return {
         plan.app_image: plan.app_dockerfile,
@@ -756,7 +788,7 @@ def dockerfile_contracts_by_image(plan: DockerImagePlan) -> dict[str, Path]:
         plan.recorder_recovery_image: plan.recorder_recovery_dockerfile,
         plan.vitaldb_observer_image: plan.vitaldb_observer_dockerfile,
         plan.redis_relay_image: plan.redis_relay_dockerfile,
-        plan.testkit_image: plan.testkit_dockerfile,
+        plan.lab_image: plan.lab_dockerfile,
     }
 
 
@@ -876,11 +908,11 @@ def docker_image_plan_preflight_checks(plan: DockerImagePlan) -> list[PreflightC
                 "dockerfile:redis-relay",
             )
         )
-    if plan.testkit_image in plan.images:
+    if plan.lab_image in plan.images:
         checks.append(
             check_required_file(
-                plan.testkit_dockerfile,
-                "dockerfile:testkit",
+                plan.lab_dockerfile,
+                "dockerfile:lab",
             )
         )
     if not docker_tool.blocks:
@@ -1181,7 +1213,7 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
         bundle_path=settings.docker_bundle,
         platform=input.docker_platform,
         compression_threads=input.compression_threads,
-        include_optional="testkit" in release.optional_container_services,
+        include_optional=False,
     )
     package_vm_home = settings.pkg_root / settings_install_home(settings).strip("/")
 
@@ -1207,7 +1239,7 @@ def prepare_package_context(input: ReleasePackageInput) -> PackageContext:
             config=settings.guest_deploy,
             docker_bundle=settings.docker_bundle,
             optional_docker_bundle=optional_docker_bundle,
-            include_optional="testkit" in release.optional_container_services,
+            include_optional=False,
         ),
         rootfs_input_metadata_plan=RootfsInputMetadataPlan(
             deploy_dir=package_vm_home / "data/deploy",

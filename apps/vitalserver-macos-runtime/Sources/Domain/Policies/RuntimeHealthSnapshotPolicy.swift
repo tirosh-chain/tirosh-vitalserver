@@ -33,8 +33,7 @@ public enum RuntimeHealthSnapshotPolicy {
 
     private static func hasCriticalObservationFailure(_ snapshot: RuntimeHealthSnapshot) -> Bool {
         !RuntimeObservationHealthPolicy.failureReasons(
-            containerObservation: snapshot.containerObservation.map(RuntimeObservationInput.loaded) ?? .notReported,
-            vitalDBObservation: snapshot.vitalDBObservation.map(RuntimeObservationInput.loaded) ?? .notReported
+            guestServiceStatuses: snapshot.guestServiceStatuses
         ).isEmpty
     }
 

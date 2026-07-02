@@ -4,13 +4,17 @@ import Contracts
 public enum RuntimeGuestCapabilityCheckerComposition {
     public static func require(
         _ capability: RuntimeGuestCapabilityRequirement,
-        guestGateway: RuntimeGuestGateway
+        guestControlGateway: RuntimeGuestControlGateway
     ) throws {
         try RequireRuntimeGuestCapabilityUseCase().require(
             capability,
             operations: RuntimeGuestCapabilityRequirementOperations(
-                loadRuntimeState: {
-                    guestGateway.loadRuntimeStateDocument()
+                loadCapabilities: {
+                    do {
+                        return .loaded(try guestControlGateway.capabilities())
+                    } catch {
+                        return .failed(String(describing: error))
+                    }
                 }
             )
         )

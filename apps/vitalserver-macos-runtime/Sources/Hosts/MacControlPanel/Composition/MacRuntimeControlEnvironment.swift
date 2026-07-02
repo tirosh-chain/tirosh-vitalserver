@@ -1,4 +1,5 @@
 import Foundation
+import Application
 import InboundAdapters
 import OutboundAdapters
 import RuntimeControl
@@ -9,9 +10,8 @@ final class MacRuntimeControlEnvironment: ObservableObject {
     let viewModel: RuntimeViewModel
     private let client: MacRuntimeControlClient
     private let readWorker: MacRuntimeControlReadWorker
-    private let testKitController: any RuntimeTestKitControlling
     private let localAPISettings: RuntimeControlLocalAPISettingsCoordinator
-    private let servesTestTools: Bool
+    private let servesDevConsole: Bool
     private var apiServer: RuntimeControlLocalHTTPServer?
     private var restartAPIServerTask: Task<Void, Never>?
     private var retryAPIServerTask: Task<Void, Never>?
@@ -25,16 +25,14 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         viewModel: RuntimeViewModel,
         client: MacRuntimeControlClient,
         readWorker: MacRuntimeControlReadWorker,
-        testKitController: any RuntimeTestKitControlling,
         localAPISettings: RuntimeControlLocalAPISettingsCoordinator,
-        servesTestTools: Bool
+        servesDevConsole: Bool
     ) {
         self.viewModel = viewModel
         self.client = client
         self.readWorker = readWorker
-        self.testKitController = testKitController
         self.localAPISettings = localAPISettings
-        self.servesTestTools = servesTestTools
+        self.servesDevConsole = servesDevConsole
         self.localAPISettings.onPortChanged = { [weak self] port in
             self?.scheduleAPIServerRestart(port: port)
         }
@@ -51,23 +49,16 @@ final class MacRuntimeControlEnvironment: ObservableObject {
 
     static func live() -> MacRuntimeControlEnvironment {
         let readWorker = MacRuntimeControlReadWorker(releaseInfo: .generated)
-        let commandWorker = MacRuntimeControlCommandWorker()
+        let commandWorker = MacRuntimeControlCommandWorker(
+            guestProductServiceController: RuntimeGuestProductServiceControlUseCase()
+        )
         let client = MacRuntimeControlClient(releaseInfo: .generated, commandWorker: commandWorker)
         let localAPISettings = RuntimeControlLocalAPISettingsCoordinator(
             store: UserDefaultsRuntimeControlLocalAPISettingsStore.shared
         )
-        let testKitController = MacTestKitController(
-            configuration: MacTestKitControllerConfiguration(
-                enabled: GeneratedRelease.testEnabled && GeneratedRelease.testkitContainerIncluded
-            ),
-            statusProvider: {
-                await readWorker.loadStatus(settings: RuntimeSettings())
-            }
-        )
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
-            testKitController: testKitController,
             snapshotReader: readWorker,
             localAPISettings: localAPISettings,
             healthNotifications: HealthNotificationCenter(),
@@ -78,9 +69,8 @@ final class MacRuntimeControlEnvironment: ObservableObject {
             viewModel: viewModel,
             client: client,
             readWorker: readWorker,
-            testKitController: testKitController,
             localAPISettings: localAPISettings,
-            servesTestTools: GeneratedRelease.testEnabled
+            servesDevConsole: GeneratedRelease.testEnabled
         )
     }
 
@@ -88,7 +78,7 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         true
     }
 
-    static func shouldServeRuntimeControlTestTools(testEnabled: Bool) -> Bool {
+    static func shouldServeRuntimeControlDevConsole(testEnabled: Bool) -> Bool {
         testEnabled
     }
 
@@ -148,10 +138,9 @@ final class MacRuntimeControlEnvironment: ObservableObject {
         MacRuntimeControlLocalAPI.make(
             client: client,
             readWorker: readWorker,
-            testKitController: testKitController,
             port: port,
             localAPISettings: localAPISettings,
-            servesTestTools: servesTestTools,
+            servesDevConsole: servesDevConsole,
             startedAt: startedAt,
             stateHandler: { [weak self] state in
                 Task { @MainActor [weak self] in

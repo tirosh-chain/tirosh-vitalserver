@@ -27,23 +27,17 @@ public struct RuntimeStatusVitalServerAvailabilityValue: Equatable, Sendable {
 }
 
 public struct RuntimeStatusVitalServerAvailabilityPolicy {
-    private let appComposeService = "app"
     private let reachabilityPolicy = RuntimeStatusReachabilityPolicy()
     private let labelPolicy: RuntimeStatusReachabilityLabelPolicy
-    private let composeServiceValuePolicy: RuntimeStatusComposeServiceValuePolicy
     private let vocabulary: any RuntimeStatusVitalServerAvailabilityVocabulary
 
     public init(vocabulary: any RuntimeStatusVitalServerAvailabilityVocabulary) {
         self.vocabulary = vocabulary
         self.labelPolicy = RuntimeStatusReachabilityLabelPolicy(vocabulary: vocabulary)
-        self.composeServiceValuePolicy = RuntimeStatusComposeServiceValuePolicy(
-            vocabulary: RuntimeStatusVitalServerAvailabilityComposeVocabulary()
-        )
     }
 
     public func availability(
         status: RuntimeStatus,
-        observation: RuntimeContainerObservation?,
         now: Date
     ) -> RuntimeStatusVitalServerAvailabilityValue {
         let text: String
@@ -63,11 +57,7 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
         return RuntimeStatusVitalServerAvailabilityValue(
             text: text,
             severity: availabilitySeverity(status),
-            uptimeText: composeServiceValuePolicy.uptimeText(
-                service: appComposeService,
-                observation: observation,
-                now: now
-            )
+            uptimeText: nil
         )
     }
 
@@ -82,17 +72,5 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
             return .critical
         }
         return reachabilityPolicy.httpSeverity(status.hostProxyHTTP)
-    }
-}
-
-private struct RuntimeStatusVitalServerAvailabilityComposeVocabulary: RuntimeStatusComposeServiceValueVocabulary {
-    var notReportedText: String { "" }
-
-    func containerHealthText(_ health: String) -> String {
-        health
-    }
-
-    func containerStateText(_ state: String) -> String {
-        state
     }
 }

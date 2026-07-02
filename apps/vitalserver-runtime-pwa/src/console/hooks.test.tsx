@@ -10,23 +10,29 @@ import {
   useApplyUpdateBundle,
   useCreateRedisBackup,
   useCreateRuntimeDataBackup,
-  useCreateTestKitBeds,
   useDeleteHostBackup,
   useDeleteRuntimeDataBackup,
+  useDeleteVitalDBBeds,
+  useDeleteVitalDBRecorders,
   useDeleteUpdateBackup,
-  useDeleteTestKitBeds,
-  useDeleteTestKitOrphanVRecorder,
   useExportHostLogs,
   useHostBackups,
   useHostLogs,
+  useHideVitalDBBeds,
+  useHideVitalDBRecorders,
+  useLabBeds,
+  useCreateLabSession,
+  useLabRecorders,
+  useLabScenarios,
+  useLabSession,
+  useReplayLabVitalFile,
   useRedisBackups,
   useRepairDatastore,
   useRepairProxy,
   useRepairRuntime,
   useRepairVMDisk,
-  useResetTestKitBeds,
-  useResetTestKitVirtualRecorders,
-  useRestartTestKitVirtualRecorders,
+  useRestartGuestService,
+  useStartLabSession,
   useRollbackBackup,
   useRestoreRuntimeDataBackup,
   useRuntimeCapabilities,
@@ -34,12 +40,12 @@ import {
   useRuntimeEvents,
   useRuntimeOverview,
   useRuntimeSettings,
-  useSessionTestKitAction,
-  useStartRuntimeServices,
-  useStartTestKitVirtualRecorders,
-  useStopRuntimeServices,
+  useStartGuestService,
+  useStopGuestService,
+  useStopLabSession,
   useSummarizeUpdateBundle,
-  useTestKitStatus,
+  useUnhideVitalDBBeds,
+  useUnhideVitalDBRecorders,
   useUninstallRuntime,
   useVerifyUpdateBundle,
   useVitalDBBeds,
@@ -62,7 +68,9 @@ describe("console hooks", () => {
     await expectQuery(useVitalDBRecorders, wrapper, gateway.getRecorders);
     await expectQuery(useVitalDBBeds, wrapper, gateway.getBeds);
     await expectQuery(useVitalDBRelationships, wrapper, gateway.getRelationships);
-    await expectQuery(useTestKitStatus, wrapper, gateway.getTestKitStatus);
+    await expectQuery(useLabScenarios, wrapper, gateway.getLabScenarios);
+    await expectQuery(useLabBeds, wrapper, gateway.getLabBeds);
+    await expectQuery(useLabRecorders, wrapper, gateway.getLabRecorders);
     await expectQuery(useHostBackups, wrapper, gateway.listHostBackups);
     await expectQuery(useRedisBackups, wrapper, gateway.listRedisBackups);
     await expectQuery(useRuntimeDataBackups, wrapper, gateway.listRuntimeDataBackups);
@@ -88,6 +96,12 @@ describe("console hooks", () => {
       helperMessage: null,
       lineLimit: 100
     });
+
+    const labSession = renderHook(() => useLabSession("lab-1"), { wrapper });
+    await waitFor(() =>
+      expect(labSession.result.current.data).toEqual(labSessionResponse())
+    );
+    expect(gateway.getLabSession).toHaveBeenCalledWith("lab-1");
   });
 
   it("runs runtime, update, backup, and repair mutations through the gateway", async () => {
@@ -150,69 +164,72 @@ describe("console hooks", () => {
     await mutateHook(() => useRepairProxy(), 18444, wrapper);
     await mutateHook(() => useRepairDatastore(), undefined, wrapper);
     await mutateHook(() => useRepairVMDisk(), undefined, wrapper);
-    await mutateHook(() => useStartRuntimeServices(), undefined, wrapper);
-    await mutateHook(() => useStopRuntimeServices(), undefined, wrapper);
+    await mutateHook(() => useStartGuestService(), "app", wrapper);
+    await mutateHook(() => useStopGuestService(), "app", wrapper);
+    await mutateHook(() => useRestartGuestService(), "app", wrapper);
     await mutateHook(() => useUninstallRuntime(), true, wrapper);
     expect(gateway.repairProxy).toHaveBeenCalledWith(18444);
+    expect(gateway.startGuestService).toHaveBeenCalledWith({ service: "app" });
+    expect(gateway.stopGuestService).toHaveBeenCalledWith({ service: "app" });
+    expect(gateway.restartGuestService).toHaveBeenCalledWith({ service: "app" });
     expect(gateway.uninstallRuntime).toHaveBeenCalledWith({ mode: "clean" });
+
+    await mutateHook(() => useHideVitalDBRecorders(), { vrcodes: ["VR_A"] }, wrapper);
+    await mutateHook(() => useUnhideVitalDBRecorders(), { vrcodes: ["VR_A"] }, wrapper);
+    await mutateHook(() => useDeleteVitalDBRecorders(), { vrcodes: ["VR_A"] }, wrapper);
+    await mutateHook(() => useHideVitalDBBeds(), { bedIDs: ["bed-a"] }, wrapper);
+    await mutateHook(() => useUnhideVitalDBBeds(), { bedIDs: ["bed-a"] }, wrapper);
+    await mutateHook(() => useDeleteVitalDBBeds(), { bedIDs: ["bed-a"] }, wrapper);
+    expect(gateway.hideRecorders).toHaveBeenCalledWith({ vrcodes: ["VR_A"] });
+    expect(gateway.unhideRecorders).toHaveBeenCalledWith({ vrcodes: ["VR_A"] });
+    expect(gateway.deleteRecorders).toHaveBeenCalledWith({ vrcodes: ["VR_A"] });
+    expect(gateway.hideBeds).toHaveBeenCalledWith({ bedIDs: ["bed-a"] });
+    expect(gateway.unhideBeds).toHaveBeenCalledWith({ bedIDs: ["bed-a"] });
+    expect(gateway.deleteBeds).toHaveBeenCalledWith({ bedIDs: ["bed-a"] });
   });
 
-  it("runs TestKit mutations with decoded request payloads", async () => {
+  it("runs Product Lab mutations with decoded request payloads", async () => {
     const gateway = createGateway();
     const wrapper = createWrapper(gateway);
 
     await mutateHook(
-      () => useCreateTestKitBeds(),
-      { count: 2, prefix: "OR", roomNames: ["OR-1"] },
+      () => useCreateLabSession(),
+      {
+        scenarioId: "baseline",
+        name: "Lab A",
+        recorderCount: 2,
+        targetURL: null
+      },
       wrapper
     );
-    expect(gateway.createTestKitBeds).toHaveBeenCalledWith({
-      count: 2,
-      prefix: "OR",
-      roomNames: ["OR-1"],
-      adminUserId: "admin"
+    expect(gateway.createLabSession).toHaveBeenCalledWith({
+      scenarioId: "baseline",
+      name: "Lab A",
+      recorderCount: 2,
+      targetURL: null
     });
 
-    await mutateHook(() => useDeleteTestKitBeds(), ["OR-1"], wrapper);
-    await mutateHook(() => useResetTestKitBeds(), undefined, wrapper);
-    expect(gateway.deleteTestKitBeds).toHaveBeenCalledWith({ roomNames: ["OR-1"] });
-    expect(gateway.resetTestKitBeds).toHaveBeenCalled();
-
-    await mutateHook(() => useStartTestKitVirtualRecorders(), testKitStart(), wrapper);
-    expect(gateway.startTestKitVirtualRecorders).toHaveBeenCalledWith(testKitStart());
-
-    for (const action of ["stop", "pause", "resume", "delete"] as const) {
-      await mutateHook(() => useSessionTestKitAction(action), "session-1", wrapper);
-    }
-    expect(gateway.stopTestKitVirtualRecorders).toHaveBeenCalledWith({
-      sessionID: "session-1"
-    });
-    expect(gateway.pauseTestKitVirtualRecorders).toHaveBeenCalledWith({
-      sessionID: "session-1"
-    });
-    expect(gateway.resumeTestKitVirtualRecorders).toHaveBeenCalledWith({
-      sessionID: "session-1"
-    });
-    expect(gateway.deleteTestKitVirtualRecorders).toHaveBeenCalledWith({
-      sessionID: "session-1"
-    });
+    await mutateHook(() => useStartLabSession(), "lab-1", wrapper);
+    await mutateHook(() => useStopLabSession(), "lab-1", wrapper);
+    expect(gateway.startLabSession).toHaveBeenCalledWith("lab-1");
+    expect(gateway.stopLabSession).toHaveBeenCalledWith("lab-1");
 
     await mutateHook(
-      () => useRestartTestKitVirtualRecorders(),
-      { sessionID: "session-1", bedRoomNames: ["OR-1"] },
+      () => useReplayLabVitalFile(),
+      {
+        vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
+        sessionName: "Replay",
+        targetURL: null
+      },
       wrapper
     );
-    await mutateHook(() => useResetTestKitVirtualRecorders(), undefined, wrapper);
-    await mutateHook(() => useDeleteTestKitOrphanVRecorder(), "VR_A", wrapper);
-    expect(gateway.restartTestKitVirtualRecorders).toHaveBeenCalledWith({
-      sessionID: "session-1",
-      bedRoomNames: ["OR-1"]
-    });
-    expect(gateway.resetTestKitVirtualRecorders).toHaveBeenCalled();
-    expect(gateway.deleteTestKitOrphanVRecorder).toHaveBeenCalledWith({
-      vrcode: "VR_A"
+    expect(gateway.replayLabVitalFile).toHaveBeenCalledWith({
+      vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
+      sessionName: "Replay",
+      targetURL: null
     });
   });
+
 });
 
 async function expectQuery(
@@ -261,13 +278,32 @@ function createGateway(): GatewayMock {
     applyUpdateBundle: vi.fn().mockResolvedValue(commandResult),
     createRedisBackup: vi.fn().mockResolvedValue(commandResult),
     createRuntimeDataBackup: vi.fn().mockResolvedValue(commandResult),
-    createTestKitBeds: vi.fn().mockResolvedValue([]),
+    createLabBeds: vi.fn().mockResolvedValue({
+      state: "loaded",
+      beds: [],
+      readError: null
+    }),
+    createLabRecorders: vi.fn().mockResolvedValue({
+      state: "loaded",
+      recorders: [],
+      readError: null
+    }),
+    createLabSession: vi.fn().mockResolvedValue(labSessionResponse()),
+    deleteLabBeds: vi.fn().mockResolvedValue({
+      state: "loaded",
+      beds: [],
+      readError: null
+    }),
+    deleteLabRecorders: vi.fn().mockResolvedValue({
+      state: "loaded",
+      recorders: [],
+      readError: null
+    }),
     deleteHostBackup: vi.fn().mockResolvedValue(commandResult),
+    deleteBeds: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
+    deleteRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
     deleteRuntimeDataBackup: vi.fn().mockResolvedValue(commandResult),
     deleteUpdateBackup: vi.fn().mockResolvedValue(commandResult),
-    deleteTestKitBeds: vi.fn().mockResolvedValue([]),
-    deleteTestKitOrphanVRecorder: vi.fn().mockResolvedValue({ deleted: true }),
-    deleteTestKitVirtualRecorders: vi.fn().mockResolvedValue(testKitSession()),
     exportLogs: vi.fn().mockResolvedValue({ destination: "file:///tmp/logs.zip" }),
     getBeds: vi.fn().mockResolvedValue([]),
     getCapabilities: vi.fn().mockResolvedValue(fullCapabilities()),
@@ -279,32 +315,63 @@ function createGateway(): GatewayMock {
       events: [],
       readError: null
     }),
+    hideBeds: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
+    hideRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
     getRuntimeEvents: vi.fn().mockResolvedValue({ events: [] }),
+    getGuestStackStatus: vi.fn().mockResolvedValue({
+      state: "loaded",
+      observedAt: "2026-07-01T00:00:00+00:00",
+      services: []
+    }),
+    getLabScenarios: vi.fn().mockResolvedValue({
+      state: "loaded",
+      scenarios: [{ scenarioId: "baseline", name: "Baseline", category: "generated" }],
+      readError: null
+    }),
+    getLabBeds: vi.fn().mockResolvedValue({
+      state: "loaded",
+      beds: [],
+      readError: null
+    }),
+    getLabRecorders: vi.fn().mockResolvedValue({
+      state: "loaded",
+      recorders: [],
+      readError: null
+    }),
+    getLabSession: vi.fn().mockResolvedValue(labSessionResponse()),
     getSettings: vi.fn().mockResolvedValue(fullSettings({ proxyPort: 18080 })),
     getStatus: vi.fn().mockResolvedValue({ runtimeState: "healthy" }),
-    getTestKitStatus: vi.fn().mockResolvedValue({ enabled: true, sessions: [], beds: [] }),
     listHostBackups: vi.fn().mockResolvedValue([]),
     listRedisBackups: vi.fn().mockResolvedValue([]),
     listRuntimeDataBackups: vi.fn().mockResolvedValue([]),
-    pauseTestKitVirtualRecorders: vi.fn().mockResolvedValue(testKitSession()),
     readLogs: vi.fn().mockResolvedValue({ text: "logs" }),
     repairDatastore: command,
     repairProxy: vi.fn().mockResolvedValue(commandResult),
     repairRuntime: command,
     repairVMDisk: command,
-    resetTestKitBeds: vi.fn().mockResolvedValue([]),
-    resetTestKitVirtualRecorders: vi.fn().mockResolvedValue({ enabled: true }),
-    restartTestKitVirtualRecorders: vi.fn().mockResolvedValue(testKitSession()),
     restoreRedisBackup: vi.fn().mockResolvedValue(commandResult),
     restoreRuntimeDataBackup: vi.fn().mockResolvedValue(commandResult),
     rollbackBackup: vi.fn().mockResolvedValue(commandResult),
-    resumeTestKitVirtualRecorders: vi.fn().mockResolvedValue(testKitSession()),
-    startRuntimeServices: command,
-    startTestKitVirtualRecorders: vi.fn().mockResolvedValue(testKitSession()),
-    stopRuntimeServices: command,
-    stopTestKitVirtualRecorders: vi.fn().mockResolvedValue(testKitSession()),
+    replayLabVitalFile: vi.fn().mockResolvedValue(labSessionResponse()),
+    resetLabBeds: vi.fn().mockResolvedValue({
+      state: "loaded",
+      beds: [],
+      readError: null
+    }),
+    resetLabRecorders: vi.fn().mockResolvedValue({
+      state: "loaded",
+      recorders: [],
+      readError: null
+    }),
+    restartGuestService: vi.fn().mockResolvedValue(guestServiceOperation("restart")),
+    startGuestService: vi.fn().mockResolvedValue(guestServiceOperation("start")),
+    startLabSession: vi.fn().mockResolvedValue(labSessionResponse()),
+    stopGuestService: vi.fn().mockResolvedValue(guestServiceOperation("stop")),
+    stopLabSession: vi.fn().mockResolvedValue(labSessionResponse()),
     summarizeUpdateBundle: vi.fn().mockResolvedValue({ summary: "ok" }),
     uninstallRuntime: vi.fn().mockResolvedValue(commandResult),
+    unhideBeds: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
+    unhideRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
     verifyUpdateBundle: vi.fn().mockResolvedValue(commandResult)
   };
 }
@@ -321,9 +388,10 @@ function fullCapabilities() {
     canOpenLocalFiles: true,
     canStreamLogs: true,
     canControlRuntimeServices: true,
+    canControlGuestServices: true,
     canExportLogs: true,
     canViewReleaseMetadata: true,
-    canUseTestTools: true
+    canUseLab: true
   };
 }
 
@@ -415,6 +483,37 @@ function recorderIngressSettings() {
 
 const commandResult = { result: { exitCode: 0, stdout: "ok", stderr: "" } };
 
+function guestServiceOperation(command: "start" | "stop" | "restart") {
+  return {
+    operationId: `${command}-app`,
+    service: "app",
+    command,
+    state: "completed" as const,
+    createdAt: "2026-07-01T00:00:00+00:00",
+    updatedAt: "2026-07-01T00:00:01+00:00",
+    failure: null
+  };
+}
+
+function labSessionResponse() {
+  return {
+    state: "loaded" as const,
+    operationId: "op-1",
+    labOperationId: "lab-op-1",
+    readError: null,
+    session: {
+      sessionId: "lab-1",
+      state: "accepted" as const,
+      scenarioId: "baseline",
+      name: "Lab A",
+      recorderCount: 2,
+      targetURL: "http://edge/",
+      createdAt: null,
+      updatedAt: null
+    }
+  };
+}
+
 function fullVitalRecorderHistory() {
   return {
     updatedAt: null,
@@ -440,60 +539,5 @@ function fullVitalRecorderHistory() {
       readError: null
     },
     readError: null
-  };
-}
-
-function testKitStart() {
-  return {
-    scenario: "normal" as const,
-    signalProfile: "normal" as const,
-    recorders: 1,
-    bedRoomNames: ["OR-1"],
-    vrcode: "VR_A",
-    version: "testkit",
-    intervalSeconds: 1,
-    durationSeconds: null,
-    maxMessages: null,
-    shiftTime: true,
-    generateFrames: true,
-    exportVital: true,
-    uploadVital: true,
-    vitalUploadEndpoint: "/upload"
-  };
-}
-
-function testKitSession() {
-  return {
-    id: "session-1",
-    state: "running",
-    targetUrl: "http://edge/",
-    recordersRequested: 1,
-    bedsRequested: 1,
-    bedRoomNames: ["OR-1"],
-    vrcode: "VR_A",
-    version: "testkit",
-    intervalSeconds: 1,
-    durationSeconds: null,
-    maxMessages: null,
-    shiftTime: true,
-    generateFrames: true,
-    scenario: "normal",
-    defaultScenario: "normal",
-    createdAt: null,
-    startedAt: null,
-    stoppedAt: null,
-    messagesSent: 0,
-    bytesSent: 0,
-    lastError: null,
-    cleanupErrors: [],
-    vital: {
-      exportStatus: "not-requested",
-      uploadStatus: "not-requested",
-      exportError: null,
-      uploadError: null,
-      artifact: null,
-      uploadResult: null
-    },
-    recorders: []
   };
 }

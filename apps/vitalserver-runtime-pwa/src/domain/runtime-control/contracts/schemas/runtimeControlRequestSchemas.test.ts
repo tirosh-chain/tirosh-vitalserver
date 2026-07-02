@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   runtimeRepairProxyRequestSchema,
-  runtimeTestKitCreateBedsRequestSchema,
-  runtimeTestKitVirtualRecorderStartRequestSchema,
   runtimeLogTextRequestSchema,
   runtimeUninstallRequestSchema,
-  runtimeUpdateBundleRequestSchema
+  runtimeUpdateBundleRequestSchema,
+  vitalDBBedVisibilityRequestSchema,
+  vitalDBRecorderVisibilityRequestSchema
 } from "./runtimeControlRequestSchemas";
 
 describe("runtime control request schemas", () => {
@@ -46,76 +46,32 @@ describe("runtime control request schemas", () => {
     ).toThrow();
   });
 
-  it("requires TestKit bed defaults that Swift encodes from native UI", () => {
+  it("requires non-empty VitalDB visibility command identity lists", () => {
     expect(() =>
-      runtimeTestKitCreateBedsRequestSchema.parse({
-        count: 1,
-        prefix: "testbed"
+      vitalDBRecorderVisibilityRequestSchema.parse({
+        vrcodes: []
       })
     ).toThrow();
-  });
-
-  it("requires either a TestKit bed count or explicit room names", () => {
     expect(() =>
-      runtimeTestKitCreateBedsRequestSchema.parse({
-        count: null,
-        roomNames: [],
-        prefix: "testbed",
-        adminUserId: "admin"
+      vitalDBBedVisibilityRequestSchema.parse({
+        bedIDs: []
       })
     ).toThrow();
-  });
 
-  it("requires enough beds for TestKit VRecorders", () => {
-    expect(() =>
-      runtimeTestKitVirtualRecorderStartRequestSchema.parse({
-        scenario: "normal",
-        signalProfile: "normal",
-        recorders: 2,
-        bedRoomNames: ["bed-1"],
-        vrcode: null,
-        version: "testkit",
-        intervalSeconds: 1,
-        durationSeconds: null,
-        maxMessages: null,
-        shiftTime: true,
-        generateFrames: true
-      })
-    ).toThrow();
-  });
-
-  it("accepts explicit TestKit vital file sources", () => {
     expect(
-      runtimeTestKitVirtualRecorderStartRequestSchema.parse({
-        scenario: "normal",
-        signalProfile: "normal",
-        recorders: 1,
-        bedRoomNames: ["OR-A"],
-        vrcode: null,
-        version: "testkit",
-        intervalSeconds: 1,
-        durationSeconds: null,
-        maxMessages: null,
-        shiftTime: true,
-        generateFrames: true,
-        exportVital: true,
-        uploadVital: true,
-        vitalUploadEndpoint: "/upload",
-        source: {
-          type: "vitalFile",
-          path: "/Users/Shared/VitalServerHelper/vital-files/case.vital",
-          scenario: "full_real",
-          startOffsetSeconds: 0,
-          durationSeconds: 120
-        },
-        realSampleKey: null
-      }).source
+      vitalDBRecorderVisibilityRequestSchema.parse({
+        vrcodes: ["VR_A"]
+      })
     ).toEqual({
-      type: "vitalFile",
-      path: "/Users/Shared/VitalServerHelper/vital-files/case.vital",
-      scenario: "full_real",
-      startOffsetSeconds: 0,
-      durationSeconds: 120
+      vrcodes: ["VR_A"]
+    });
+    expect(
+      vitalDBBedVisibilityRequestSchema.parse({
+        bedIDs: ["bed-a"]
+      })
+    ).toEqual({
+      bedIDs: ["bed-a"]
     });
   });
+
 });

@@ -5,13 +5,6 @@
   "guestHTTP": "200",
   "redisUIHTTP": "200",
   "swaggerUIHTTP": "200",
-  "capabilities": {
-    "prepareUpdateShutdown": true,
-    "activateUpdate": true,
-    "redisBackup": true,
-    "redisRestore": true,
-    "repairDatastore": true
-  },
   "cpuUsagePercent": 12.5,
   "memory": {
     "usedBytes": 2147483648,

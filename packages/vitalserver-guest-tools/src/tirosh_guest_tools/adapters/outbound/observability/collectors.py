@@ -169,10 +169,6 @@ def collect_runtime_files(
     files = [
         RUNTIME_DIR / RuntimeFileName.RUNTIME_STATE.value,
         RUNTIME_DIR / RuntimeFileName.BOOTSTRAP_RESULT.value,
-        RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_REQUEST.value,
-        RUNTIME_DIR / RuntimeFileName.ACTIVATE_UPDATE_RESULT.value,
-        RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_REQUEST.value,
-        RUNTIME_DIR / RuntimeFileName.PREPARE_UPDATE_SHUTDOWN_RESULT.value,
         DEPLOY_DIR / RuntimeFileName.RUNTIME_CONFIG.value,
     ]
     return {str(path): file_state(path, errors) for path in files}

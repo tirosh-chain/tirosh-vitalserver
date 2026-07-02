@@ -4,6 +4,7 @@ import {
   useApplyRuntimeSettings,
   useCreateRedisBackup,
   useCreateRuntimeDataBackup,
+  useGuestStackStatus,
   useHostBackups,
   useRedisBackups,
   useRepairDatastore,
@@ -14,8 +15,9 @@ import {
   useRuntimeCapabilities,
   useRuntimeSettings,
   useRuntimeOverview,
-  useStartRuntimeServices,
-  useStopRuntimeServices,
+  useRestartGuestService,
+  useStartGuestService,
+  useStopGuestService,
   useRollbackBackup,
   useRestoreRuntimeDataBackup
 } from "@/console/hooks";
@@ -26,6 +28,8 @@ import {
 import type {
   RuntimeSettings,
   RuntimeControlOverview,
+  RuntimeGuestControlStackStatus,
+  RuntimeGuestControlServiceOperation,
   RuntimeBackup
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { validateRuntimeSettings } from "@/domain/runtime-control/settings/runtimeSettingsPolicy";
@@ -49,6 +53,7 @@ export function AdvancedPage() {
   const appSettings = useAppSettings();
   const overview = useRuntimeOverview();
   const capabilities = useRuntimeCapabilities();
+  const guestStackStatus = useGuestStackStatus();
   const hostBackups = useHostBackups();
   const redisBackups = useRedisBackups();
   const runtimeDataBackups = useRuntimeDataBackups();
@@ -58,8 +63,9 @@ export function AdvancedPage() {
   const createRedisBackup = useCreateRedisBackup();
   const createRuntimeDataBackup = useCreateRuntimeDataBackup();
   const restoreRuntimeDataBackup = useRestoreRuntimeDataBackup();
-  const startServices = useStartRuntimeServices();
-  const stopServices = useStopRuntimeServices();
+  const startGuestService = useStartGuestService();
+  const stopGuestService = useStopGuestService();
+  const restartGuestService = useRestartGuestService();
   const repairRuntime = useRepairRuntime();
   const repairProxy = useRepairProxy();
   const repairDatastore = useRepairDatastore();
@@ -98,13 +104,11 @@ export function AdvancedPage() {
     capabilities.data?.canEditNetworkExposure === true;
   const canResetAdminPassword =
     capabilities.data?.canResetAdminPassword === true;
-  const canControlServices =
-    capabilities.data?.canControlRuntimeServices === true;
+  const canControlGuestServices =
+    capabilities.data?.canControlGuestServices === true;
 
   const latestCommand = useMemo(
     () =>
-      startServices.data ??
-      stopServices.data ??
       repairRuntime.data ??
       repairProxy.data ??
       repairDatastore.data ??
@@ -123,15 +127,14 @@ export function AdvancedPage() {
       repairRuntime.data,
       applySettings.data,
       rollbackBackup.data,
-      startServices.data,
-      stopServices.data,
       restoreRuntimeDataBackup.data
     ]
   );
 
   const latestError =
-    startServices.error ??
-    stopServices.error ??
+    startGuestService.error ??
+    stopGuestService.error ??
+    restartGuestService.error ??
     repairRuntime.error ??
     repairProxy.error ??
     repairDatastore.error ??
@@ -141,6 +144,10 @@ export function AdvancedPage() {
     createRuntimeDataBackup.error ??
     restoreRuntimeDataBackup.error ??
     createRedisBackup.error;
+  const latestGuestServiceOperation =
+    startGuestService.data ??
+    stopGuestService.data ??
+    restartGuestService.data;
   const configuredProxyPort =
     parseOptionalNumber(proxyPort) ??
     overview.data?.settings?.proxyPort ??
@@ -202,6 +209,23 @@ export function AdvancedPage() {
 
       <Panel title="Service health">
         <ServiceHealth overview={overview.data} />
+        <GuestServiceControls
+          stackStatus={guestStackStatus.data}
+          stackStatusError={guestStackStatus.isError ? guestStackStatus.error : null}
+          disabled={!canControlGuestServices}
+          isPending={
+            startGuestService.isPending ||
+            stopGuestService.isPending ||
+            restartGuestService.isPending
+          }
+          onStart={(service) => startGuestService.mutate(service)}
+          onStop={(service) => stopGuestService.mutate(service)}
+          onRestart={(service) => restartGuestService.mutate(service)}
+        />
+      </Panel>
+
+      <Panel title="API catalog">
+        <APICatalog overview={overview.data} />
       </Panel>
 
       <Panel title="Recovery operations">
@@ -475,34 +499,17 @@ export function AdvancedPage() {
             Apply Settings
           </ConfirmButton>
         </div>
-
-        <div className="subsection">
-          <h3>Runtime service controls</h3>
-          <p className="muted">
-            Starts or stops the VM, host proxy, and watchdog together. Use Stop
-            for planned maintenance, then Start to bring VitalServer back online.
-          </p>
-          <div className="action-row">
-            <ConfirmButton
-              confirmMessage="Starts the VM, host proxy, and watchdog services, then waits for VitalServer to become healthy."
-              disabled={startServices.isPending || !canControlServices}
-              onClick={() => startServices.mutate()}
-            >
-              Start Runtime Services
-            </ConfirmButton>
-            <ConfirmButton
-              confirmMessage="Stops the watchdog, host proxy, and VM services. VitalServer will be unavailable until runtime services are started again."
-              disabled={stopServices.isPending || !canControlServices}
-              onClick={() => stopServices.mutate()}
-            >
-              Stop Runtime Services
-            </ConfirmButton>
-          </div>
-        </div>
       </Panel>
 
       <Panel title="Operation result">
-        <CommandResult result={latestCommand} error={latestError} />
+        {latestGuestServiceOperation ? (
+          <GuestServiceOperationResult
+            operation={latestGuestServiceOperation}
+            error={latestError}
+          />
+        ) : (
+          <CommandResult result={latestCommand} error={latestError} />
+        )}
       </Panel>
     </div>
   );
@@ -529,14 +536,6 @@ function Diagnostics({ overview }: { overview: RuntimeControlOverview | undefine
               {
                 label: "Status document",
                 value: `Read failed: ${status.statusDocumentError}`
-              }
-            ]
-          : []),
-        ...(status?.guestRuntimeStateError
-          ? [
-              {
-                label: "Guest runtime state",
-                value: `Read failed: ${status.guestRuntimeStateError}`
               }
             ]
           : []),
@@ -616,10 +615,6 @@ function VMHealth({ overview }: { overview: RuntimeControlOverview | undefined }
 
 function ServiceHealth({ overview }: { overview: RuntimeControlOverview | undefined }) {
   const status = overview?.status;
-  const composeServices = status?.containerObservation?.composeServices ?? [];
-  const observerService = composeServices.find(
-    (service) => service.service === "vitaldb-observer"
-  );
   const services = [
     {
       label: "Proxy service",
@@ -652,11 +647,6 @@ function ServiceHealth({ overview }: { overview: RuntimeControlOverview | undefi
       healthy: null
     },
     {
-      label: "VitalDB Observer",
-      value: formatComposeService(observerService),
-      healthy: composeServiceHealthy(observerService)
-    },
-    {
       label: "Redis UI",
       value: formatHTTPStatus(status?.redisUIHTTP),
       healthy: null
@@ -679,6 +669,179 @@ function ServiceHealth({ overview }: { overview: RuntimeControlOverview | undefi
         )
       }))}
     />
+  );
+}
+
+function APICatalog({ overview }: { overview: RuntimeControlOverview | undefined }) {
+  const proxyPort = overview?.status?.proxyPort ?? overview?.settings?.proxyPort;
+  if (!proxyPort) {
+    return (
+      <p className="muted">
+        API links are unavailable until the Host proxy port is reported.
+      </p>
+    );
+  }
+
+  const baseURL = `http://127.0.0.1:${proxyPort}`;
+  const rows = [
+    {
+      label: "Swagger UI",
+      value: `${baseURL}/swagger/`
+    },
+    {
+      label: "VitalServer API",
+      value: `${baseURL}/swagger/docs/openapi.yaml`
+    },
+    {
+      label: "Runtime Control API",
+      value: `${baseURL}/swagger/docs/macos-runtime/runtime-control.openapi.json`
+    },
+    {
+      label: "Recorder Ingress API",
+      value: `${baseURL}/swagger/docs/openapi/recorder-ingress.openapi.yaml`
+    },
+    {
+      label: "VitalDB Observer API",
+      value: `${baseURL}/swagger/docs/openapi/vitaldb-observer.openapi.yaml`
+    }
+  ];
+
+  return (
+    <KeyValueRows
+      rows={rows.map((row) => ({
+        label: row.label,
+        value: (
+          <a href={row.value} target="_blank" rel="noreferrer">
+            {row.value}
+          </a>
+        )
+      }))}
+    />
+  );
+}
+
+function GuestServiceControls({
+  stackStatus,
+  stackStatusError,
+  disabled,
+  isPending,
+  onStart,
+  onStop,
+  onRestart
+}: {
+  stackStatus: RuntimeGuestControlStackStatus | undefined;
+  stackStatusError: Error | null;
+  disabled: boolean;
+  isPending: boolean;
+  onStart: (service: string) => void;
+  onStop: (service: string) => void;
+  onRestart: (service: string) => void;
+}) {
+  const statuses = stackStatus?.services ?? [];
+  const knownServices = statuses
+    .map((serviceStatus) => serviceStatus.service)
+    .sort();
+  const stackStatusIssue =
+    stackStatus && stackStatus.state !== "loaded"
+      ? `Guest stack status is ${stackStatus.state}.`
+      : "";
+  const guestServicesReadError = stackStatusError?.message ?? stackStatusIssue;
+  const guestServicesReadFailed =
+    stackStatusError !== null || stackStatusIssue.length > 0;
+
+  if (knownServices.length === 0 && !guestServicesReadFailed) {
+    return null;
+  }
+
+  return (
+    <div className="subsection">
+      <h3>Product service controls</h3>
+      {knownServices.length > 0 ? (
+        <DataTable
+          rows={knownServices.map((service) => {
+            const serviceStatus = statuses.find(
+              (candidate) => candidate.service === service
+            );
+            return {
+              id: service,
+              service,
+              state: serviceStatus?.state ?? NOT_REPORTED,
+              health: serviceStatus?.health ?? NOT_REPORTED
+            };
+          })}
+          getRowKey={(row) => row.id}
+          columns={[
+            { key: "service", header: "Service", render: (row) => row.service },
+            { key: "state", header: "State", render: (row) => row.state },
+            { key: "health", header: "Health", render: (row) => row.health },
+            {
+              key: "actions",
+              header: "Actions",
+              render: (row) => (
+                <div className="action-row compact">
+                  <ConfirmButton
+                    confirmMessage={`Start Guest service ${row.service}?`}
+                    disabled={disabled || isPending}
+                    onClick={() => onStart(row.service)}
+                  >
+                    Start
+                  </ConfirmButton>
+                  <ConfirmButton
+                    confirmMessage={`Stop Guest service ${row.service}?`}
+                    disabled={disabled || isPending}
+                    onClick={() => onStop(row.service)}
+                  >
+                    Stop
+                  </ConfirmButton>
+                  <ConfirmButton
+                    confirmMessage={`Restart Guest service ${row.service}?`}
+                    disabled={disabled || isPending}
+                    onClick={() => onRestart(row.service)}
+                  >
+                    Restart
+                  </ConfirmButton>
+                </div>
+              )
+            }
+          ]}
+          emptyText="No Guest services are reported."
+        />
+      ) : null}
+      {guestServicesReadFailed ? (
+        <ErrorState
+          title="Failed to read Guest services"
+          error={new Error(guestServicesReadError)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function GuestServiceOperationResult({
+  operation,
+  error
+}: {
+  operation: RuntimeGuestControlServiceOperation;
+  error: Error | null;
+}) {
+  if (error) {
+    return <ErrorState error={error} />;
+  }
+
+  return (
+    <pre className="command-output">
+      {[
+        `operationId: ${operation.operationId}`,
+        `service: ${operation.service}`,
+        `command: ${operation.command}`,
+        `state: ${operation.state}`,
+        operation.failure
+          ? `failure: ${operation.failure.kind} ${operation.failure.message}`
+          : ""
+      ]
+        .filter(Boolean)
+        .join("\n")}
+    </pre>
   );
 }
 
@@ -752,48 +915,6 @@ function formatServiceLoaded(value: boolean | null | undefined): string {
     return NOT_REPORTED;
   }
   return value ? "Running" : "Stopped";
-}
-
-function formatComposeService(
-  service:
-    | {
-        state?: string | null;
-        health?: string | null;
-      }
-    | undefined
-): string {
-  const health = service?.health?.trim();
-  if (health) {
-    return health.charAt(0).toUpperCase() + health.slice(1);
-  }
-  const state = service?.state?.trim();
-  if (state) {
-    return state.charAt(0).toUpperCase() + state.slice(1);
-  }
-  return NOT_REPORTED;
-}
-
-function composeServiceHealthy(
-  service:
-    | {
-        state?: string | null;
-        health?: string | null;
-      }
-    | undefined
-): boolean | null {
-  if (!service) {
-    return null;
-  }
-  if (service.health === "healthy") {
-    return true;
-  }
-  if (service.health) {
-    return false;
-  }
-  if (service.state === "running") {
-    return true;
-  }
-  return false;
 }
 
 function updatedRuntimeSettings(

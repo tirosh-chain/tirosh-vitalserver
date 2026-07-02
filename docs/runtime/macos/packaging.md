@@ -42,7 +42,7 @@ apps/vitalserver-macos-runtime/release-dev.json
 
 `release.json`은 stable channel, `release-dev.json`은 내부 dev channel SoT입니다. `*-release` target은 `release.json`을 사용하고 현재 repository branch가 `main`일 때만 실행됩니다. `*-dev` target은 `release-dev.json`을 사용하며 branch 제약을 두지 않습니다.
 
-Release manifest는 build input이고, Test 탭/API 구현의 세부 contract는 소유하지 않습니다. Runtime 전체 SoT map은 [Runtime observability model](observability.md#source-of-truth-map)에 정리합니다. Packaging 관점에서는 release manifest가 artifact identity와 service catalog를 소유하고, `vm-build.toml`이 build/deploy 경로와 Docker image bundle 구성을 소유합니다.
+Release manifest는 build input이고, Product Lab/API 구현의 세부 contract는 소유하지 않습니다. Runtime 전체 SoT map은 [Runtime observability model](observability.md#source-of-truth-map)에 정리합니다. Packaging 관점에서는 release manifest가 artifact identity와 service catalog를 소유하고, `vm-build.toml`이 build/deploy 경로와 Docker image bundle 구성을 소유합니다.
 
 | Field | Owner | 의미 |
 |---|---|---|
@@ -50,12 +50,12 @@ Release manifest는 build input이고, Test 탭/API 구현의 세부 contract는
 | `helperVersion` | release manifest | Apple/pkg-safe numeric Helper product version |
 | `releaseLabel` | release manifest | package/DMG/update bundle/staging/backup/installed version 표시에 쓰는 artifact identity |
 | `targetPlatform` | release manifest | 이 release artifact/update bundle을 적용할 수 있는 단일 platform variant |
-| `distribution.profile` | release manifest | stable/dev build profile. Test 탭과 local browser console은 `dev`에서만 노출 |
+| `distribution.profile` | release manifest | stable/dev build profile. Local browser diagnostics console은 `dev`에서만 노출 |
 | `distribution.audience` | release manifest | artifact의 intended audience 설명 |
 | `services.*` | release manifest | bundled service image, version, display name |
 | `bundle.optionalContainerServices` | release manifest | 이번 package/update bundle에 포함할 선택 container service 목록 |
 
-`bundle.optionalContainerServices`는 Testkit API처럼 컨테이너로 제공되는 선택 서비스를 포함할지 여부만 표현합니다. 선택 서비스의 image/version/display name은 `services.<name>`에 둡니다. Test 탭의 route, API shape, 화면 정책은 release manifest가 아니라 Test 탭/API 구현이 소유합니다.
+`bundle.optionalContainerServices`는 dev-only 선택 container service를 포함할지 여부만 표현합니다. Runtime v2 product stack의 Product Lab과 Postgres는 선택 TestKit service가 아니라 `services.lab`, `services.postgres`, Guest compose, packaging preflight가 함께 검증하는 product dependency입니다. Lab route, API shape, 화면 정책은 release manifest가 아니라 Runtime Control `/lab/*`, Guest Control `/v1/lab/*`, `apps/vitalserver-lab` 구현이 소유합니다.
 
 Runtime Control PWA는 package/update bundle에 static asset으로 포함됩니다. `make devtools/app`, `make dist/pkg/*`, `make dist/dmg/*`, `make dist/update/*`는 `make pwa/build`를 먼저 실행합니다. 빌드 머신에서는 packaging 전에 한 번 `make pwa/install`을 실행해야 하며, 현장 Mac에는 npm/Vite나 registry 접근이 필요하지 않습니다.
 
@@ -89,8 +89,8 @@ Runtime smoke는 Host가 제공한 explicit deploy contract도 검증합니다. 
 | `http` | guest HTTP와 host proxy path가 응답 |
 | `compose-services` | expected compose services가 running/healthy contract를 보고 |
 | `disk-health` | guest disk/mount/runtime data shape가 명시 상태로 확인 |
-| `capabilities` | update shutdown, command dispatch 등 Guest capability가 보고 |
-| `command-dispatch` | request/result command dispatch 경로가 동작 |
+| `capabilities` | update shutdown, maintenance operation, product service control 등 Guest capability가 보고 |
+| `guest-control-operations` | Guest Control service/maintenance operation path가 동작 |
 | `feature-readiness` | backup, observability, runtime control feature readiness가 명시 상태로 확인 |
 
 성공 로그는 `Golden disk runtime boot smoke passed`처럼 명시적인 최종 pass line을 남겨야 합니다. 중간에 `No VM launcher process is running` 같은 cleanup line이 있어도 최종 pass line이 없으면 성공으로 해석하지 않습니다.
@@ -116,16 +116,16 @@ Hotfix, service-only update, updater bridge update는 별도 kind가 아니라 `
 
 ## Bundled observer services
 
-기본 Service Stack에는 VitalServer app, Redis, recorder ingress, edge/nginx, Redis UI, Swagger UI와 함께 `vitaldb-observer` container가 포함됩니다. `vitaldb-observer`는 Redis와 proxy/access log를 읽어 recorder/bed/anomaly snapshot을 계산하지만, 자체 SQLite를 소유하지 않습니다. 최종 observation SoT는 watchdog/runtime observability SQLite입니다.
+기본 Service Stack에는 VitalServer app, Redis, recorder ingress, edge/nginx, Redis UI, Swagger UI와 함께 `vitaldb-observer` container가 포함됩니다. `vitaldb-observer`는 Redis와 proxy/access log를 읽어 recorder/bed/anomaly snapshot을 계산하지만, 자체 SQLite를 소유하지 않습니다. Runtime v2의 최종 observation/read-model SoT는 Guest/Postgres이며, Host runtime observability SQLite는 transitional diagnostics 또는 migration evidence로만 남습니다.
 
 ```text
 vitaldb-observer
   -> /health
   -> /ready
   -> /api/v1/observations
-  -> guest runtime-state.json
-  -> watchdog
-  -> runtime-observability.sqlite
+  -> Guest Control VitalDB writer
+  -> Postgres read model
+  -> Guest Control API /v1/vitaldb/*
   -> Runtime Control API /vitaldb/*
 ```
 
@@ -417,8 +417,8 @@ make dist/troubleshooting/release
 | install provisioning | PKG `postinstall` | `vitalserver-vm runtime install-provision` | installed payload, optional `/private/tmp/tirosh-vitalserver-install.json` | `vm-disk.img`, `vm-config.json`, `seed.iso`, permissions, launchd services, degraded runtime status until health is observed |
 | runtime status | RuntimeLifecycle | `runtime-status.json` | health/install/update/rollback result | Helper/watchdog-readable status |
 | VM launch | launchd | `vitalserver-vm start` | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `runtime/vm-config.json` | Virtualization.framework VM process |
-| watchdog | launchd | `vitalserver-vm runtime watchdog` | runtime files, launchd state, guest runtime state, HTTP health | runtime status update, VM/proxy kickstart |
-| host proxy | launchd | `vitalserver-proxy-run` | `vm/data/run/runtime-state.json`, legacy `vm-ip`, proxy template, nginx binary | rendered host nginx config, nginx process |
+| watchdog | launchd | `vitalserver-vm runtime watchdog` | runtime files, launchd state, VM/bootstrap evidence, Guest Control readiness, HTTP health | runtime status update, VM/proxy kickstart |
+| host proxy | launchd | `vitalserver-proxy-run` | VM/proxy discovery evidence, proxy template, nginx binary | rendered host nginx config, nginx process |
 | guest bootstrap | cloud-init | `bootstrap.sh`, Guest tools wheel | VirtioFS mounts, `runtime-config.json`, Docker bundle | Docker Compose stack, edge nginx container, runtime state marker |
 | update verification | operator/Helper | `vitalserver-vm runtime verify-bundle` | bundle tarball | manifest/checksum validation |
 | update apply | operator/Helper | `vitalserver-vm runtime apply-bundle` | verified bundle tarball | staged bundle, backup, artifact replacement, migrations, health check |
@@ -743,7 +743,7 @@ sudo /usr/local/bin/vitalserver-vm runtime apply-bundle /path/to/update-bundle-<
 sudo /usr/local/bin/vitalserver-vm runtime rollback
 ```
 
-`apply-bundle`은 mutable `vm-disk.img`를 보존하고, replaceable artifact만 backup/rollback 대상으로 삼습니다. 적용 전 backup을 만들고 VM/proxy를 중지한 뒤 artifact를 교체하고 executable migration을 순서대로 실행합니다. 새 runtime은 `guest-deploy`가 포함된 update에서 cloud-init seed를 갱신하고 guest activation request를 생성해 VM 내부 Docker image load와 compose recreate를 수행합니다. 기존에 서비스가 실행 중이었다면 재시작 후 health check를 통과해야 성공 처리합니다. migration 또는 health check 실패 시 `rollback`으로 직전 backup을 복원합니다.
+`apply-bundle`은 mutable `vm-disk.img`를 보존하고, replaceable artifact만 backup/rollback 대상으로 삼습니다. 적용 전 backup을 만들고 VM/proxy를 중지한 뒤 artifact를 교체하고 executable migration을 순서대로 실행합니다. 새 runtime은 `guest-deploy`가 포함된 update에서 cloud-init seed를 갱신하고 Guest Control update activation operation을 생성해 VM 내부 Docker image load와 compose recreate를 수행합니다. 기존에 서비스가 실행 중이었다면 재시작 후 health check를 통과해야 성공 처리합니다. migration 또는 health check 실패 시 `rollback`으로 직전 backup을 복원합니다.
 
 지원 artifact type:
 
@@ -764,9 +764,9 @@ apply-bundle
   -> guest-deploy 교체
   -> 기본 migration으로 seed.iso 갱신
   -> VM 재시작 시 bootstrap.sh 재실행
-  -> 새 runtime이면 activate-update.request 생성
+  -> 새 runtime이면 Guest Control update activation operation 생성
   -> VM 내부에서 Docker image load + compose recreate
-  -> runtime-state.json 갱신
+  -> Guest Control stack status와 bootstrap result 갱신
 ```
 
 따라서 `bootstrap.sh` 같은 guest deploy 수정은 새 update bundle을 만들면 포함됩니다. 이미 설치된 현장에서는 해당 bundle을 적용해야 실제 `/Library/Application Support/VitalServerHelper/vm/data/deploy`와 VM 내부 runtime에 반영됩니다.

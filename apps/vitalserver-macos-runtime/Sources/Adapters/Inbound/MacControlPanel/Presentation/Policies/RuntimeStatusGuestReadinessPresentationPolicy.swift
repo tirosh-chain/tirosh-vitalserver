@@ -9,8 +9,6 @@ public struct RuntimeStatusGuestReadinessPresentationPolicy {
             return false
         }
         return status.guestHTTP == RuntimeHTTPStatusText.missingVMIP
-            || status.failureReasons.contains(.guestRuntimeStateStale)
-            || status.vmErrors?.contains(.runtimeStateStale) == true
     }
 
     public func vmErrorSeverity(
@@ -56,19 +54,14 @@ public struct RuntimeStatusGuestReadinessPresentationPolicy {
     public func pendingGuestStateText(
         status: RuntimeStatus,
         waitingText: String,
-        staleText: String
+        staleText _: String
     ) -> String {
-        guard status.failureReasons.contains(.guestRuntimeStateStale)
-            || status.vmErrors?.contains(.runtimeStateStale) == true
-        else {
-            return waitingText
-        }
-        return staleText
+        waitingText
     }
 
     private func isInitialGuestStateError(_ error: RuntimeVMError) -> Bool {
         switch error {
-        case .runtimeStateMissing, .runtimeStateStale, .missingIPAddress:
+        case .missingIPAddress:
             return true
         case .guestHTTP(let status):
             return status == RuntimeHTTPStatusText.missingVMIP

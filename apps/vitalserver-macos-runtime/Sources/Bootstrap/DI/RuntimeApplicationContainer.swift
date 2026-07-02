@@ -15,7 +15,7 @@ public struct RuntimeApplicationContainer {
     public let statusReporter: RuntimeStatusReporter
     public let healthChecker: RuntimeHealthChecker
     public let serviceController: RuntimeServiceController
-    public let guestGateway: RuntimeGuestGateway
+    public let guestBootstrapResultReader: any RuntimeGuestBootstrapResultReader
     public let fileStore: RuntimeFileStore
 
     public init(
@@ -26,7 +26,7 @@ public struct RuntimeApplicationContainer {
         httpProber: RuntimeHTTPProber? = nil,
         serviceManager: RuntimeServiceManager? = nil,
         runtimeStatusRepository: RuntimeStatusRepository? = nil,
-        guestGateway: RuntimeGuestGateway? = nil,
+        guestBootstrapResultReader: (any RuntimeGuestBootstrapResultReader)? = nil,
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
         plistBuddyPath: String,
         lsofPath: String,
@@ -44,7 +44,7 @@ public struct RuntimeApplicationContainer {
             httpProber: httpProber,
             serviceManager: serviceManager,
             runtimeStatusRepository: runtimeStatusRepository,
-            guestGateway: guestGateway,
+            guestBootstrapResultReader: guestBootstrapResultReader,
             fileStore: fileStore,
             plistBuddyPath: plistBuddyPath,
             lsofPath: lsofPath,
@@ -65,7 +65,7 @@ public struct RuntimeApplicationContainer {
         self.statusReporter = composition.statusReporter
         self.healthChecker = composition.healthChecker
         self.serviceController = composition.serviceController
-        self.guestGateway = composition.guestGateway
+        self.guestBootstrapResultReader = composition.guestBootstrapResultReader
         self.fileStore = fileStore
     }
 }

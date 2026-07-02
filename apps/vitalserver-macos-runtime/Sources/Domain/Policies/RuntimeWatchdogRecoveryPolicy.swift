@@ -35,7 +35,7 @@ public enum RuntimeWatchdogRecoveryPolicy {
         }
         if let observationSourceIssue = observationSourceIssue(
             snapshot.failureReasons,
-            containerObservation: snapshot.containerObservation.map(RuntimeObservationInput.loaded) ?? .notReported
+            guestServiceStatuses: snapshot.guestServiceStatuses
         ) {
             return .unrecoverable(reason: observationSourceIssue.rawValue)
         }
@@ -56,7 +56,7 @@ public enum RuntimeWatchdogRecoveryPolicy {
             guestHTTP: snapshot.guestHTTP,
             hostProxyReadinessHTTP: snapshot.hostProxyHTTP,
             hostProxyLivenessHTTP: hostProxyLivenessHTTP,
-            containerObservation: snapshot.containerObservation.map(RuntimeObservationInput.loaded) ?? .notReported
+            guestServiceStatuses: snapshot.guestServiceStatuses
         ))
 
         guard plan.canRecover else {
@@ -115,17 +115,16 @@ public enum RuntimeWatchdogRecoveryPolicy {
 
     private static func observationSourceIssue(
         _ reasons: [RuntimeFailureReason],
-        containerObservation: RuntimeObservationInput<RuntimeContainerObservation>
+        guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
     ) -> RuntimeFailureReason? {
-        if RuntimeObservationHealthPolicy.requiresGuestComposeReconcile(containerObservation: containerObservation) {
+        if RuntimeObservationHealthPolicy.requiresGuestStackReconcile(
+            guestServiceStatuses: guestServiceStatuses
+        ) {
             return nil
         }
         return reasons.first { reason in
             switch reason {
-            case .containerObservationReadFailed:
-                return !reason.isContainerObservationReadFailureFromStaleGuestRuntimeState
-            case .containerObservationMissing,
-                 .vitalDBObservationMissing, .vitalDBObservationReadFailed:
+            case .guestServiceObservationMissing, .guestServiceObservationReadFailed:
                 return true
             default:
                 return false

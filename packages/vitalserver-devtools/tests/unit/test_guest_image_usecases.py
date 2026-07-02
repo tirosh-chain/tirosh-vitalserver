@@ -20,9 +20,9 @@ from tirosh_vitalserver.devtools.config.guest_image import (
 )
 from tirosh_vitalserver.devtools.core.errors import DomainError
 from tirosh_vitalserver.devtools.core.guest_image import (
+    GuestRuntimeConfig,
     RuntimeDataDiskConfig,
     UbuntuBootAssetPlan,
-    GuestRuntimeConfig,
     runtime_data_disk_plan,
     ubuntu_boot_asset_plan,
     ubuntu_download_cache_key,
@@ -184,7 +184,7 @@ def test_default_ubuntu_image_config_uses_pinned_noble_release_source() -> None:
 
 
 def test_ubuntu_image_config_rejects_invalid_apt_snapshot() -> None:
-    with pytest.raises(DomainError, match="unsupported guest.ubuntu.apt_snapshot"):
+    with pytest.raises(DomainError, match=r"unsupported guest\.ubuntu\.apt_snapshot"):
         load_ubuntu_image_config(
             {
                 "guest": {

@@ -24,6 +24,13 @@ enum RuntimeControlClientConstants {
         static func guestHealthURL(vmIP: String) -> String {
             "http://\(vmIP)/ready"
         }
+
+        static func guestControlAPIBaseURL(vmIP: String) -> String {
+            "http://\(vmIP):18330"
+        }
+
+        static let localGuestControlAPIBaseURL = "http://127.0.0.1:18330"
+        static let guestControlAPIStatusReadTimeoutSeconds: TimeInterval = 1
     }
 
     enum StatusText {
@@ -49,9 +56,6 @@ enum RuntimeControlClientConstants {
         static let repairServices = "repair-services"
         static let startServices = "start-services"
         static let stopServices = "stop-services"
-        static let startTestKit = "testkit-start"
-        static let stopTestKit = "testkit-stop"
-        static let restartTestKit = "testkit-restart"
         static let boolTrue = "true"
         static let boolFalse = "false"
         static let optionCPU = "--cpu"

@@ -2296,12 +2296,12 @@ source = { editable = "packages/vitalserver-core" }
 
 [[package]]
 name = "tirosh-vitalserver-devtools"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/vitalserver-devtools" }
 
 [[package]]
 name = "tirosh-vitalserver-guest-tools"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/vitalserver-guest-tools" }
 
 [[package]]

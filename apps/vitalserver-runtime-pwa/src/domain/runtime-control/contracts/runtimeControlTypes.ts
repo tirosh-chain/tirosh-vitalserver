@@ -1,8 +1,11 @@
 import type { components, paths } from "./generated/runtime-control";
 import {
+  runtimeLabBedListSchema,
+  runtimeLabRecorderListSchema,
   runtimeEventHistorySchema,
   runtimeOverviewSchema,
   runtimeStatusSchema,
+  vitalDBRecordersSchema,
   vitalDBRelationshipsSchema
 } from "./schemas/runtimeControlSchemas";
 import type { z } from "zod";
@@ -11,6 +14,54 @@ export type RuntimeControlOverview = z.infer<typeof runtimeOverviewSchema>;
 
 export type RuntimeControlCapabilities =
   paths["/runtime/capabilities"]["get"]["responses"]["200"]["content"]["application/json"];
+
+export type RuntimeLabScenarioList =
+  paths["/lab/scenarios"]["get"]["responses"]["200"]["content"]["application/json"];
+
+export type RuntimeLabScenario = RuntimeLabScenarioList["scenarios"][number];
+
+export type RuntimeLabBedList = z.infer<typeof runtimeLabBedListSchema>;
+
+export type RuntimeLabBed = RuntimeLabBedList["beds"][number];
+
+export type RuntimeLabBedCreateRequest =
+  paths["/lab/beds/create"]["post"]["requestBody"]["content"]["application/json"];
+
+export type RuntimeLabBedDeleteRequest =
+  paths["/lab/beds/delete"]["post"]["requestBody"]["content"]["application/json"];
+
+export type RuntimeLabRecorderList = z.infer<typeof runtimeLabRecorderListSchema>;
+
+export type RuntimeLabRecorder = RuntimeLabRecorderList["recorders"][number];
+
+export type RuntimeLabRecorderCreateRequest =
+  paths["/lab/recorders/create"]["post"]["requestBody"]["content"]["application/json"];
+
+export type RuntimeLabRecorderDeleteRequest =
+  paths["/lab/recorders/delete"]["post"]["requestBody"]["content"]["application/json"];
+
+export type RuntimeLabSessionResponse =
+  paths["/lab/sessions"]["post"]["responses"]["200"]["content"]["application/json"];
+
+export type RuntimeLabSession = NonNullable<RuntimeLabSessionResponse["session"]>;
+
+export type RuntimeLabSessionCreateRequest =
+  paths["/lab/sessions"]["post"]["requestBody"]["content"]["application/json"];
+
+export type RuntimeLabVitalFileReplayRequest =
+  paths["/lab/vital-files/replay"]["post"]["requestBody"]["content"]["application/json"];
+
+export type RuntimeGuestServiceControlRequest =
+  components["schemas"]["RuntimeGuestServiceRestartRequest"];
+
+export type RuntimeGuestControlServiceOperation =
+  components["schemas"]["RuntimeGuestControlServiceOperation"];
+
+export type RuntimeGuestControlStackStatus =
+  components["schemas"]["RuntimeGuestControlStackStatus"];
+
+export type RuntimeGuestControlServiceStatus =
+  components["schemas"]["RuntimeGuestControlServiceStatus"];
 
 export type RuntimeStatus = z.infer<typeof runtimeStatusSchema>;
 
@@ -64,46 +115,24 @@ export type RuntimeExportLogsRequest =
 export type RuntimeLogExportResult =
   paths["/host/logs/export"]["post"]["responses"]["200"]["content"]["application/json"];
 
-export type RuntimeTestKitStatus =
-  paths["/dev/testkit/status"]["get"]["responses"]["200"]["content"]["application/json"];
-
-export type RuntimeTestKitBed =
-  paths["/dev/testkit/beds/create"]["post"]["responses"]["200"]["content"]["application/json"][number];
-
-export type RuntimeTestKitSession =
-  paths["/dev/testkit/virtual-recorders/start"]["post"]["responses"]["200"]["content"]["application/json"];
-
-export type RuntimeTestKitCreateBedsRequest =
-  paths["/dev/testkit/beds/create"]["post"]["requestBody"]["content"]["application/json"];
-
-export type RuntimeTestKitDeleteBedsRequest =
-  paths["/dev/testkit/beds/delete"]["post"]["requestBody"]["content"]["application/json"];
-
-export type RuntimeTestKitVirtualRecorderStartRequest =
-  paths["/dev/testkit/virtual-recorders/start"]["post"]["requestBody"]["content"]["application/json"];
-
-export type RuntimeTestKitSessionSelectionRequest =
-  NonNullable<
-    paths["/dev/testkit/virtual-recorders/stop"]["post"]["requestBody"]
-  >["content"]["application/json"];
-
-export type RuntimeTestKitRestartRequest =
-  paths["/dev/testkit/virtual-recorders/restart"]["post"]["requestBody"]["content"]["application/json"];
-
-export type RuntimeTestKitRecorderDeletionRequest =
-  paths["/dev/testkit/virtual-recorders/delete-orphan"]["post"]["requestBody"]["content"]["application/json"];
-
-export type VitalDBRecorders =
-  paths["/vitaldb/recorders"]["get"]["responses"]["200"]["content"]["application/json"];
+export type VitalDBRecorders = z.infer<typeof vitalDBRecordersSchema>;
 
 export type VitalDBRecorderRecord = NonNullable<
   VitalDBRecorders["recorders"]
 >[number];
 
+export type VitalDBRecorderVisibilityRequest = {
+  vrcodes: string[];
+};
+
 export type VitalDBBeds =
   paths["/vitaldb/beds"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type VitalDBBedRecord = VitalDBBeds[number];
+
+export type VitalDBBedVisibilityRequest = {
+  bedIDs: string[];
+};
 
 export type VitalDBRelationships = z.infer<typeof vitalDBRelationshipsSchema>;
 

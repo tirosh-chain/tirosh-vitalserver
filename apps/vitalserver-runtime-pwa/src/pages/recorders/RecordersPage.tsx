@@ -1,6 +1,12 @@
 import { useMemo, useState } from "react";
 
-import { useVitalDBRecorders, useVitalDBRelationships } from "@/console/hooks";
+import {
+  useDeleteVitalDBRecorders,
+  useHideVitalDBRecorders,
+  useUnhideVitalDBRecorders,
+  useVitalDBRecorders,
+  useVitalDBRelationships
+} from "@/console/hooks";
 import type {
   VitalDBRecorderRecord,
   VitalDBRecorders,
@@ -37,17 +43,31 @@ export function RecordersPage() {
   );
   const [searchText, setSearchText] = useState("");
   const [showHistory, setShowHistory] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const [selectedVrcode, setSelectedVrcode] = useState<string | null>(null);
+  const hideRecorders = useHideVitalDBRecorders();
+  const unhideRecorders = useUnhideVitalDBRecorders();
+  const deleteRecorders = useDeleteVitalDBRecorders();
   const visibleRecorders = allRecorders === null
     ? null
-    : showHistory
-      ? allRecorders
-      : allRecorders.filter(
-          (recorder) => recorder.presentInLatestObservation === true
-        );
+    : allRecorders.filter((recorder) => {
+        if (!showHistory && recorder.presentInLatestObservation !== true) {
+          return false;
+        }
+        if (!showHidden && recorder.visibility === "hidden") {
+          return false;
+        }
+        return true;
+      });
   const recorders = visibleRecorders === null
     ? null
     : filterRecorders(visibleRecorders, searchText);
+  const visibilityMutationPending =
+    hideRecorders.isPending ||
+    unhideRecorders.isPending ||
+    deleteRecorders.isPending;
+  const visibilityMutationError =
+    hideRecorders.error ?? unhideRecorders.error ?? deleteRecorders.error;
   const selectedRecorder =
     recorders?.find((recorder) => recorder.vrcode === selectedVrcode) ??
     recorders?.[0] ??
@@ -73,6 +93,14 @@ export function RecordersPage() {
                 onChange={(event) => setShowHistory(event.target.checked)}
               />
               History
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={showHidden}
+                onChange={(event) => setShowHidden(event.target.checked)}
+              />
+              Show hidden
             </label>
             <button
               type="button"
@@ -109,6 +137,10 @@ export function RecordersPage() {
             }
           ]}
         />
+
+        {visibilityMutationError ? (
+          <p className="form-error">{mutationErrorMessage(visibilityMutationError)}</p>
+        ) : null}
 
         {recordersQuery.isPending ? (
           <p className="empty-state">Loading VRecorders...</p>
@@ -170,9 +202,64 @@ export function RecordersPage() {
                 render: (recorder) => formatLocalDateTimeWithAge(recorder.lastSeenAt)
               },
               {
+                key: "visibility",
+                header: "Visibility",
+                render: (recorder) => formatVisibility(recorder.visibility)
+              },
+              {
                 key: "anomaly",
                 header: "Anomaly",
                 render: (recorder) => formatAnomalySummary(recorder)
+              },
+              {
+                key: "actions",
+                header: "Actions",
+                render: (recorder) => (
+                  <div className="toolbar compact-toolbar">
+                    {recorder.visibility === "hidden" ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={visibilityMutationPending}
+                          onClick={() =>
+                            unhideRecorders.mutate({ vrcodes: [recorder.vrcode] })
+                          }
+                        >
+                          Unhide
+                        </button>
+                        {showHidden ? (
+                          <button
+                            type="button"
+                            disabled={visibilityMutationPending}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Delete hidden VRecorder ${recorder.vrcode}?`
+                                )
+                              ) {
+                                deleteRecorders.mutate({
+                                  vrcodes: [recorder.vrcode]
+                                });
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={visibilityMutationPending}
+                        onClick={() =>
+                          hideRecorders.mutate({ vrcodes: [recorder.vrcode] })
+                        }
+                      >
+                        Hide
+                      </button>
+                    )}
+                  </div>
+                )
               }
             ]}
           />
@@ -366,6 +453,14 @@ function formatAnomalyKind(value: string | null | undefined): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatVisibility(value: VitalDBRecorderRecord["visibility"]): string {
+  return value === "hidden" ? "Hidden" : "Visible";
+}
+
+function mutationErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function sortByLastSeen(

@@ -10,23 +10,35 @@ const hooks = vi.hoisted(() => ({
   useApplyUpdateBundle: vi.fn(),
   useCreateRedisBackup: vi.fn(),
   useCreateRuntimeDataBackup: vi.fn(),
-  useCreateTestKitBeds: vi.fn(),
   useDeleteHostBackup: vi.fn(),
   useDeleteRuntimeDataBackup: vi.fn(),
+  useDeleteVitalDBBeds: vi.fn(),
+  useDeleteVitalDBRecorders: vi.fn(),
   useDeleteUpdateBackup: vi.fn(),
-  useDeleteTestKitBeds: vi.fn(),
-  useDeleteTestKitOrphanVRecorder: vi.fn(),
   useExportHostLogs: vi.fn(),
+  useCreateLabBeds: vi.fn(),
+  useCreateLabRecorders: vi.fn(),
+  useCreateLabSession: vi.fn(),
+  useDeleteLabBeds: vi.fn(),
+  useDeleteLabRecorders: vi.fn(),
+  useGuestStackStatus: vi.fn(),
+  useHideVitalDBBeds: vi.fn(),
+  useHideVitalDBRecorders: vi.fn(),
   useHostBackups: vi.fn(),
   useHostLogs: vi.fn(),
+  useLabBeds: vi.fn(),
+  useLabRecorders: vi.fn(),
+  useLabScenarios: vi.fn(),
+  useLabSession: vi.fn(),
+  useReplayLabVitalFile: vi.fn(),
+  useResetLabBeds: vi.fn(),
+  useResetLabRecorders: vi.fn(),
   useRedisBackups: vi.fn(),
   useRepairDatastore: vi.fn(),
   useRepairProxy: vi.fn(),
   useRepairRuntime: vi.fn(),
   useRepairVMDisk: vi.fn(),
-  useResetTestKitBeds: vi.fn(),
-  useResetTestKitVirtualRecorders: vi.fn(),
-  useRestartTestKitVirtualRecorders: vi.fn(),
+  useRestartGuestService: vi.fn(),
   useRollbackBackup: vi.fn(),
   useRestoreRuntimeDataBackup: vi.fn(),
   useRuntimeCapabilities: vi.fn(),
@@ -34,12 +46,13 @@ const hooks = vi.hoisted(() => ({
   useRuntimeEvents: vi.fn(),
   useRuntimeOverview: vi.fn(),
   useRuntimeSettings: vi.fn(),
-  useSessionTestKitAction: vi.fn(),
-  useStartRuntimeServices: vi.fn(),
-  useStartTestKitVirtualRecorders: vi.fn(),
-  useStopRuntimeServices: vi.fn(),
+  useStartLabSession: vi.fn(),
+  useStartGuestService: vi.fn(),
+  useStopGuestService: vi.fn(),
+  useStopLabSession: vi.fn(),
   useSummarizeUpdateBundle: vi.fn(),
-  useTestKitStatus: vi.fn(),
+  useUnhideVitalDBBeds: vi.fn(),
+  useUnhideVitalDBRecorders: vi.fn(),
   useVerifyUpdateBundle: vi.fn(),
   useVitalDBBeds: vi.fn(),
   useVitalDBRelationships: vi.fn(),
@@ -52,12 +65,12 @@ vi.mock("@/console/hooks", () => hooks);
 import { AdvancedPage } from "./advanced/AdvancedPage";
 import { BedsPage } from "./beds/BedsPage";
 import { DangerZonePage } from "./danger-zone/DangerZonePage";
+import { LabPage } from "./lab/LabPage";
 import { LogsPage } from "./logs/LogsPage";
 import { ObservabilityPage } from "./observability/ObservabilityPage";
 import { RecordersPage } from "./recorders/RecordersPage";
 import { SettingsPage } from "./settings/SettingsPage";
 import { StatusPage } from "./status/StatusPage";
-import { TestKitPage } from "./testkit/TestKitPage";
 import { UpdatePage } from "./update/UpdatePage";
 
 const commandResult = { result: { exitCode: 0, stdout: "ok", stderr: "" } };
@@ -132,7 +145,15 @@ afterEach(() => {
 });
 
 describe("runtime console pages", () => {
-  it("renders status metrics from the overview document", () => {
+  it("renders status metrics without using container observation as recorder ingress source", () => {
+    const baseOverview = overview();
+    hooks.useRuntimeOverview.mockReturnValue(
+      query({
+        ...baseOverview,
+        status: baseOverview.status
+      })
+    );
+
     renderPage(<StatusPage />);
 
     expect(screen.getByText("Overall health")).toBeInTheDocument();
@@ -154,7 +175,10 @@ describe("runtime console pages", () => {
     expect(
       screen.getByText("5.0 MiB/s, adaptive 1.0 MiB/s-10.0 MiB/s, guard unavailable, 500 items/tick, concurrency 8")
     ).toBeInTheDocument();
-    expect(screen.getByText("100.0 MiB / 512.0 MiB")).toBeInTheDocument();
+    expect(screen.queryByText("VitalServer memory")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recorder ingress memory")).not.toBeInTheDocument();
+    expect(screen.queryByText("Redis memory")).not.toBeInTheDocument();
+    expect(screen.queryByText("100.0 MiB / 512.0 MiB")).not.toBeInTheDocument();
     expect(screen.getByText(/2.0 KiB \/ 4.0 KiB/)).toBeInTheDocument();
   });
 
@@ -915,8 +939,9 @@ describe("runtime console pages", () => {
     const createRedisBackup = pendingMutation();
     const createRuntimeDataBackup = pendingMutation();
     const restoreRuntimeDataBackup = pendingMutation();
-    const start = pendingMutation();
-    const stop = pendingMutation();
+    const startGuestService = pendingMutation();
+    const stopGuestService = pendingMutation();
+    const restartGuestService = pendingMutation();
     const repairRuntime = pendingMutation();
     const repairDatastore = pendingMutation();
     const repairVMDisk = pendingMutation();
@@ -926,8 +951,9 @@ describe("runtime console pages", () => {
     hooks.useCreateRedisBackup.mockReturnValue(createRedisBackup);
     hooks.useCreateRuntimeDataBackup.mockReturnValue(createRuntimeDataBackup);
     hooks.useRestoreRuntimeDataBackup.mockReturnValue(restoreRuntimeDataBackup);
-    hooks.useStartRuntimeServices.mockReturnValue(start);
-    hooks.useStopRuntimeServices.mockReturnValue(stop);
+    hooks.useStartGuestService.mockReturnValue(startGuestService);
+    hooks.useStopGuestService.mockReturnValue(stopGuestService);
+    hooks.useRestartGuestService.mockReturnValue(restartGuestService);
     hooks.useRepairRuntime.mockReturnValue(repairRuntime);
     hooks.useRepairDatastore.mockReturnValue(repairDatastore);
     hooks.useRepairVMDisk.mockReturnValue(repairVMDisk);
@@ -939,9 +965,18 @@ describe("runtime console pages", () => {
     expect(screen.getByText("Advanced network")).toBeInTheDocument();
     expect(screen.getByText("Admin operations")).toBeInTheDocument();
     expect(screen.getByText("Sleep prevention service")).toBeInTheDocument();
-    expect(screen.getByText("VitalDB Observer")).toBeInTheDocument();
     expect(screen.getByText("Redis UI")).toBeInTheDocument();
-    expect(screen.getByText("Swagger UI")).toBeInTheDocument();
+    expect(screen.getAllByText("Swagger UI")).toHaveLength(2);
+    expect(screen.getByText("API catalog")).toBeInTheDocument();
+    expect(screen.getByText("VitalServer API")).toBeInTheDocument();
+    expect(screen.getByText("Runtime Control API")).toBeInTheDocument();
+    expect(screen.getByText("Recorder Ingress API")).toBeInTheDocument();
+    expect(screen.getByText("VitalDB Observer API")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", {
+        name: "http://127.0.0.1:18080/swagger/docs/macos-runtime/runtime-control.openapi.json"
+      })
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("VitalServer URL"), {
       target: { value: "http://127.0.0.1:18080/" }
@@ -952,8 +987,6 @@ describe("runtime console pages", () => {
       target: { value: "new-admin-password" }
     });
     fireEvent.click(screen.getAllByRole("button", { name: "Apply Settings" })[1]);
-    fireEvent.click(screen.getByRole("button", { name: "Start Runtime Services" }));
-    fireEvent.click(screen.getByRole("button", { name: "Stop Runtime Services" }));
     fireEvent.click(screen.getByRole("row", { name: /backup-a/ }));
     fireEvent.click(screen.getByRole("button", { name: "Rollback" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Redis-only Backup" }));
@@ -967,6 +1000,9 @@ describe("runtime console pages", () => {
       target: { value: "18444" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Repair Proxy" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Start" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Stop" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Restart" })[0]);
 
     expect(applySettings.mutate).toHaveBeenNthCalledWith(1, {
       settings: expect.objectContaining({
@@ -980,8 +1016,6 @@ describe("runtime console pages", () => {
         adminPassword: "new-admin-password"
       })
     });
-    expect(start.mutate).toHaveBeenCalled();
-    expect(stop.mutate).toHaveBeenCalled();
     expect(rollback.mutate).toHaveBeenCalledWith("/tmp/backup-a");
     expect(createRedisBackup.mutate).toHaveBeenCalledWith("");
     expect(createRuntimeDataBackup.mutate).toHaveBeenCalledWith("");
@@ -990,6 +1024,55 @@ describe("runtime console pages", () => {
     expect(repairDatastore.mutate).toHaveBeenCalled();
     expect(repairVMDisk.mutate).toHaveBeenCalled();
     expect(repairProxy.mutate).toHaveBeenCalledWith(18444);
+    expect(startGuestService.mutate).toHaveBeenCalledWith("app");
+    expect(stopGuestService.mutate).toHaveBeenCalledWith("app");
+    expect(restartGuestService.mutate).toHaveBeenCalledWith("app");
+  });
+
+  it("shows Guest service read failures without falling back to compose observations", () => {
+    hooks.useGuestStackStatus.mockReturnValue(
+      failedQuery(new Error("guest control api timed out"))
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(screen.getByText("Product service controls")).toBeInTheDocument();
+    expect(screen.getByText("Failed to read Guest services")).toBeInTheDocument();
+    expect(screen.getByText("guest control api timed out")).toBeInTheDocument();
+    expect(screen.queryByText("VitalDB Observer")).not.toBeInTheDocument();
+  });
+
+  it("shows non-loaded Guest stack status without treating it as an empty service list", () => {
+    hooks.useGuestStackStatus.mockReturnValue(
+      query({
+        state: "failed",
+        observedAt: "2026-05-31T01:00:00Z",
+        services: []
+      })
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(screen.getByText("Product service controls")).toBeInTheDocument();
+    expect(screen.getByText("Failed to read Guest services")).toBeInTheDocument();
+    expect(screen.getByText("Guest stack status is failed.")).toBeInTheDocument();
+    expect(screen.queryByText("No Guest services are reported.")).not.toBeInTheDocument();
+  });
+
+  it("gates Guest service actions with Guest service control capability", () => {
+    hooks.useRuntimeCapabilities.mockReturnValue(
+      query({
+        ...capabilities(),
+        canControlRuntimeServices: true,
+        canControlGuestServices: false
+      })
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(screen.getAllByRole("button", { name: "Start" })[0]).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Stop" })[0]).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Restart" })[0]).toBeDisabled();
   });
 
   it("deletes explicit backup types and keeps gated uninstall flow in danger zone", () => {
@@ -1018,121 +1101,75 @@ describe("runtime console pages", () => {
     expect(uninstall.mutate).toHaveBeenCalledWith(true);
   });
 
-  it("manages TestKit beds, sessions, and orphan cleanup", () => {
-    const createBeds = pendingMutation();
-    const deleteBeds = pendingMutation();
-    const resetBeds = pendingMutation();
-    const startSession = mutation(testKitSession("running"));
-    const resetSessions = pendingMutation();
-    const deleteOrphan = pendingMutation();
-    const sessionAction = pendingMutation();
-    hooks.useCreateTestKitBeds.mockReturnValue(createBeds);
-    hooks.useDeleteTestKitBeds.mockReturnValue(deleteBeds);
-    hooks.useResetTestKitBeds.mockReturnValue(resetBeds);
-    hooks.useStartTestKitVirtualRecorders.mockReturnValue(startSession);
-    hooks.useResetTestKitVirtualRecorders.mockReturnValue(resetSessions);
-    hooks.useDeleteTestKitOrphanVRecorder.mockReturnValue(deleteOrphan);
-    hooks.useSessionTestKitAction.mockReturnValue(sessionAction);
+  it("manages Product Lab scenarios, sessions, and vital file replay", () => {
+    const createLabSession = mutation(labSessionResponse("accepted"));
+    const startLabSession = mutation(labSessionResponse("running"));
+    const stopLabSession = mutation(labSessionResponse("stopped"));
+    const replayLabVitalFile = mutation(labSessionResponse("accepted"));
+    hooks.useCreateLabSession.mockReturnValue(createLabSession);
+    hooks.useStartLabSession.mockReturnValue(startLabSession);
+    hooks.useStopLabSession.mockReturnValue(stopLabSession);
+    hooks.useReplayLabVitalFile.mockReturnValue(replayLabVitalFile);
 
-    renderPage(<TestKitPage />);
+    renderPage(<LabPage />);
 
-    const bedCheckbox = within(screen.getByText("OR-1").closest("label")!).getByRole(
-      "checkbox"
-    );
-    fireEvent.click(bedCheckbox);
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete selected" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    fireEvent.change(screen.getByLabelText("Recorders"), {
+      target: { value: "2" }
+    });
+    fireEvent.change(screen.getAllByLabelText("Session name")[0]!, {
+      target: { value: "Case review" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create session" }));
     fireEvent.click(screen.getByRole("button", { name: "Start" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reset sessions" }));
-    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
-    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    fireEvent.change(screen.getByLabelText("Orphan VRecorder code"), {
-      target: { value: "VR_ORPHAN" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Delete VRecorder" }));
-
-    expect(createBeds.mutate).toHaveBeenCalledWith({
-      count: 1,
-      prefix: "testbed"
-    });
-    expect(deleteBeds.mutate).toHaveBeenCalledWith(["OR-1"]);
-    expect(resetBeds.mutate).toHaveBeenCalledWith(undefined);
-    expect(startSession.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        bedRoomNames: ["OR-1"],
-        recorders: 1,
-        source: null,
-        realSampleKey: null
-      }),
-      expect.any(Object)
-    );
-    expect(resetSessions.mutate).toHaveBeenCalledWith(undefined);
-    expect(sessionAction.mutate).toHaveBeenCalledWith("session-1");
-    expect(deleteOrphan.mutate).toHaveBeenCalledWith("VR_ORPHAN");
-  });
-
-  it("starts TestKit sessions from explicit vital file sources", () => {
-    const startSession = mutation(testKitSession("running"));
-    hooks.useStartTestKitVirtualRecorders.mockReturnValue(startSession);
-
-    renderPage(<TestKitPage />);
-
-    const bedCheckbox = within(screen.getByText("OR-1").closest("label")!).getByRole(
-      "checkbox"
-    );
-    fireEvent.click(bedCheckbox);
-    fireEvent.change(screen.getByLabelText("Source"), {
-      target: { value: "vitalFile" }
-    });
     fireEvent.change(screen.getByLabelText("Vital file path"), {
-      target: { value: "/Users/Shared/VitalServerHelper/vital-files/case.vital" }
+      target: { value: "/mnt/tirosh-vital-files/case.vital" }
     });
-    fireEvent.change(screen.getByLabelText("Track preset"), {
-      target: { value: "periop_full" }
-    });
-    fireEvent.change(screen.getByLabelText("Start offset seconds"), {
-      target: { value: "8" }
-    });
-    fireEvent.change(screen.getByLabelText("Playback duration seconds"), {
-      target: { value: "90" }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    fireEvent.click(screen.getByRole("button", { name: "Replay" }));
 
-    expect(startSession.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        scenario: "normal",
-        source: {
-          type: "vitalFile",
-          path: "/Users/Shared/VitalServerHelper/vital-files/case.vital",
-          scenario: "periop_full",
-          startOffsetSeconds: 8,
-          durationSeconds: 90
-        },
-        realSampleKey: null
-      }),
+    expect(createLabSession.mutate).toHaveBeenCalledWith(
+      {
+        scenarioId: "baseline",
+        name: "Case review",
+        recorderCount: 2,
+        targetURL: null
+      },
+      expect.any(Object)
+    );
+    expect(startLabSession.mutate).toHaveBeenCalledWith("lab-1", expect.any(Object));
+    expect(stopLabSession.mutate).toHaveBeenCalledWith("lab-1", expect.any(Object));
+    expect(replayLabVitalFile.mutate).toHaveBeenCalledWith(
+      {
+        vitalFilePath: "/mnt/tirosh-vital-files/case.vital",
+        sessionName: "Vital file replay",
+        targetURL: null
+      },
       expect.any(Object)
     );
   });
 
-  it("does not turn missing TestKit status into empty beds or sessions", () => {
-    hooks.useTestKitStatus.mockReturnValue(query(undefined));
+  it("keeps Product Lab visible but disables Lab commands when Lab capability is unavailable", () => {
+    hooks.useRuntimeCapabilities.mockReturnValue(
+      query({
+        ...capabilities(),
+        canUseLab: false
+      })
+    );
 
-    renderPage(<TestKitPage />);
+    renderPage(<LabPage />);
 
-    expect(screen.getAllByText("Not reported").length).toBeGreaterThanOrEqual(5);
-    expect(screen.getByText("TestKit bed state is not reported.")).toBeInTheDocument();
-    expect(screen.getByText("TestKit session state is not reported.")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Create beds before starting VRecorders.")
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("No virtual recorder sessions.")
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("Product Lab")).toBeInTheDocument();
+    expect(screen.getByText("false")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create session" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create beds" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create recorders" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Vital file path"), {
+      target: { value: "/mnt/tirosh-vital-files/case.vital" }
+    });
+    expect(screen.getByRole("button", { name: "Replay" })).toBeDisabled();
   });
 
   it("shows page-level query errors", () => {
@@ -1154,6 +1191,7 @@ describe("runtime console pages", () => {
 function setupDefaultHooks() {
   hooks.useRuntimeCapabilities.mockReturnValue(query(capabilities()));
   hooks.useRuntimeOverview.mockReturnValue(query(overview()));
+  hooks.useGuestStackStatus.mockReturnValue(query(guestStackStatus()));
   hooks.useRuntimeSettings.mockReturnValue(query(settings()));
   hooks.useVitalDBRecorders.mockReturnValue(query(recorders()));
   hooks.useVitalDBBeds.mockReturnValue(query(beds()));
@@ -1163,40 +1201,98 @@ function setupDefaultHooks() {
   hooks.useHostBackups.mockReturnValue(query([{ path: "/tmp/backup-a", sizeBytes: 2048 }]));
   hooks.useRedisBackups.mockReturnValue(query([{ path: "/tmp/redis-a", sizeBytes: 1024 }]));
   hooks.useRuntimeDataBackups.mockReturnValue(query([{ path: "/tmp/runtime-data-a", sizeBytes: 4096 }]));
-  hooks.useTestKitStatus.mockReturnValue(query(testKitStatus()));
+  hooks.useLabScenarios.mockReturnValue(query({
+    state: "loaded",
+    scenarios: [
+      {
+        scenarioId: "baseline",
+        name: "Baseline monitor",
+        category: "generated",
+        description: "Stable generated vitals"
+      }
+    ],
+    readError: null
+  }));
+  hooks.useLabBeds.mockReturnValue(query({
+    state: "loaded",
+    beds: [],
+    readError: null
+  }));
+  hooks.useLabRecorders.mockReturnValue(query({
+    state: "loaded",
+    recorders: [],
+    readError: null
+  }));
+  hooks.useLabSession.mockReturnValue(query(labSessionResponse("accepted")));
 
   for (const mock of [
     hooks.useApplyRuntimeSettings,
     hooks.useApplyUpdateBundle,
     hooks.useCreateRedisBackup,
     hooks.useCreateRuntimeDataBackup,
-    hooks.useCreateTestKitBeds,
+    hooks.useCreateLabBeds,
+    hooks.useCreateLabRecorders,
+    hooks.useCreateLabSession,
+    hooks.useDeleteLabBeds,
+    hooks.useDeleteLabRecorders,
     hooks.useDeleteHostBackup,
     hooks.useDeleteRuntimeDataBackup,
+    hooks.useDeleteVitalDBBeds,
+    hooks.useDeleteVitalDBRecorders,
     hooks.useDeleteUpdateBackup,
-    hooks.useDeleteTestKitBeds,
-    hooks.useDeleteTestKitOrphanVRecorder,
     hooks.useExportHostLogs,
+    hooks.useHideVitalDBBeds,
+    hooks.useHideVitalDBRecorders,
     hooks.useRepairDatastore,
     hooks.useRepairProxy,
     hooks.useRepairRuntime,
     hooks.useRepairVMDisk,
-    hooks.useResetTestKitBeds,
-    hooks.useResetTestKitVirtualRecorders,
-    hooks.useRestartTestKitVirtualRecorders,
+    hooks.useRestartGuestService,
     hooks.useRollbackBackup,
     hooks.useRestoreRuntimeDataBackup,
-    hooks.useStartRuntimeServices,
-    hooks.useStartTestKitVirtualRecorders,
-    hooks.useStopRuntimeServices,
+    hooks.useReplayLabVitalFile,
+    hooks.useResetLabBeds,
+    hooks.useResetLabRecorders,
+    hooks.useStartLabSession,
+    hooks.useStartGuestService,
+    hooks.useStopGuestService,
+    hooks.useStopLabSession,
     hooks.useSummarizeUpdateBundle,
+    hooks.useUnhideVitalDBBeds,
+    hooks.useUnhideVitalDBRecorders,
     hooks.useUninstallRuntime,
     hooks.useVerifyUpdateBundle
   ]) {
     mock.mockReturnValue(pendingMutation());
   }
 
-  hooks.useSessionTestKitAction.mockImplementation(() => pendingMutation());
+}
+
+function guestStackStatus() {
+  return {
+    state: "loaded",
+    observedAt: "2026-05-31T01:00:00Z",
+    services: [
+      {
+        service: "app",
+        state: "running",
+        health: "healthy",
+        source: {
+          kind: "compose",
+          observedAt: "2026-05-31T01:00:00Z"
+        }
+      },
+      {
+        service: "recorder-ingress",
+        state: "running",
+        health: "healthy",
+        source: {
+          kind: "compose",
+          observedAt: "2026-05-31T01:00:00Z"
+        }
+      }
+    ]
+  };
 }
 
 function capabilities() {
@@ -1211,9 +1307,10 @@ function capabilities() {
     canOpenLocalFiles: true,
     canStreamLogs: true,
     canControlRuntimeServices: true,
+    canControlGuestServices: true,
     canExportLogs: true,
     canViewReleaseMetadata: true,
-    canUseTestTools: true,
+    canUseLab: true,
     canApplySettings: true,
     canApplyRuntimeSettings: true,
     canControlRecovery: true,
@@ -1271,130 +1368,6 @@ function overview() {
       memory: { usedBytes: 2048, totalBytes: 4096 },
       systemDisk: { availableBytes: 8192, totalBytes: 16384 },
       dataStorage: { usedBytes: 1024, totalBytes: 2048 },
-      containerObservation: {
-        recorderIngressHTTP: "HTTP 200",
-        recorderIngressStatus: {
-          activeWebSockets: 3,
-          activeRecorderConnections: 2,
-          recorders: [],
-          httpRequests: 4,
-          socketIoEventsSeen: 5,
-          socketIoParseFailures: 0,
-          auditWriteFailures: 0,
-          auditFileWriteFailures: 0,
-          auditStdoutWriteFailures: 0,
-          redisIpWriteFailures: 0,
-          redisIpVerifyFailures: 0,
-          redisIpVerifyMismatches: 0,
-          throughput: {
-            windowSeconds: 10,
-            observedBytesPerSecond: 2097152,
-            spooledBytesPerSecond: 2097152,
-            replayedBytesPerSecond: 1048576,
-            queueGrowthBytesPerSecond: 1048576
-          },
-          spool: {
-            mode: "spool_and_replay",
-            status: "draining",
-            storage: "redis",
-            acceptedEvents: 10,
-            spooledEvents: 9,
-            rejectedEvents: 0,
-            writeFailures: 0,
-            pendingItems: 5,
-            pendingBytes: 9216,
-            oldestPendingAgeSeconds: 34,
-            lastAcceptedAt: "2026-05-31T01:00:00Z",
-            lastSpooledAt: "2026-05-31T01:00:00Z",
-            lastFailure: null
-          },
-          replay: {
-            status: "replaying",
-            pendingItems: 5,
-            inFlightItems: 1,
-            replayedEvents: 4,
-            retryableFailures: 0,
-            deadLetteredEvents: 0,
-            replayLagSeconds: 12,
-            maxBytesPerSecond: 5242880,
-            configuredMaxBytesPerSecond: 10485760,
-            adaptive: {
-              enabled: true,
-              minBytesPerSecond: 1048576,
-              maxBytesPerSecond: 10485760,
-              currentMaxBytesPerSecond: 5242880,
-              minItemsPerTick: 50,
-              maxItemsPerTick: 1000,
-              currentItemsPerTick: 500,
-              minConcurrency: 1,
-              maxConcurrency: 8,
-              currentConcurrency: 8,
-              lastDecision: "increase",
-              lastReason: "queue_growth",
-              lastChangedAt: "2026-05-31T01:00:00Z",
-              memoryGuardStatus: "unavailable"
-            },
-            lastReplayAt: "2026-05-31T01:00:00Z",
-            lastFailure: null
-          }
-        },
-        recorderIngressStatusReadState: "loaded",
-        recorderIngressStatusReadError: null,
-        runtimeStateUpdatedAt: null,
-        runtimeStateFileUpdatedAt: null,
-        runtimeStateFileMetadataReadState: "notRead",
-        runtimeStateFileMetadataError: null,
-        containerLogsPresent: true,
-        containerLogsBytes: null,
-        containerLogsUpdatedAt: null,
-        containerLogsMetadataError: null,
-        composeServicesReadState: "loaded",
-        composeServices: [
-          {
-            service: "app",
-            name: "vitalserver-app-1",
-            state: "running",
-            health: "healthy",
-            memoryUsedBytes: 104857600,
-            memoryLimitBytes: 536870912,
-            exitCode: null,
-            startedAt: "2026-05-31T00:00:00Z",
-            uptimeSeconds: 3600
-          },
-          {
-            service: "recorder-ingress",
-            name: "recorder-ingress-1",
-            state: "running",
-            health: "healthy",
-            memoryUsedBytes: 20971520,
-            memoryLimitBytes: 134217728,
-            exitCode: null,
-            startedAt: "2026-05-31T00:00:00Z",
-            uptimeSeconds: 3600
-          },
-          {
-            service: "redis",
-            name: "redis-1",
-            state: "running",
-            health: "healthy",
-            memoryUsedBytes: 31457280,
-            memoryLimitBytes: null,
-            exitCode: null,
-            startedAt: "2026-05-31T00:00:00Z",
-            uptimeSeconds: 3600
-          },
-          {
-            service: "vitaldb-observer",
-            name: "vitaldb-observer-1",
-            state: "running",
-            health: "healthy",
-            exitCode: null,
-            startedAt: "2026-05-31T00:00:00Z",
-            uptimeSeconds: 3600
-          }
-        ],
-        composeServicesReadError: null
-      },
       failureReasons: []
     },
     vitalDBObservation,
@@ -1523,6 +1496,7 @@ function recorders() {
         latestAnomalyMessage: "Recorder activity is stale.",
         latestAnomalyObservedAt: "2026-05-31T01:00:00Z",
         presentInLatestObservation: true,
+        visibility: "visible",
         redisIPSync: {
           status: "verified",
           redisKey: "ip_VR_A",
@@ -1566,6 +1540,75 @@ function recorders() {
       earliestBucketStartedAt: null,
       latestBucketStartedAt: null,
       readError: null
+    },
+    recorderIngressStatusRead: {
+      readState: "loaded",
+      readError: null,
+      document: {
+        activeWebSockets: 3,
+        activeRecorderConnections: 2,
+        recorders: [],
+        httpRequests: 4,
+        socketIoEventsSeen: 5,
+        socketIoParseFailures: 0,
+        auditWriteFailures: 0,
+        auditFileWriteFailures: 0,
+        auditStdoutWriteFailures: 0,
+        redisIpWriteFailures: 0,
+        redisIpVerifyFailures: 0,
+        redisIpVerifyMismatches: 0,
+        throughput: {
+          windowSeconds: 10,
+          observedBytesPerSecond: 2097152,
+          spooledBytesPerSecond: 2097152,
+          replayedBytesPerSecond: 1048576,
+          queueGrowthBytesPerSecond: 1048576
+        },
+        spool: {
+          mode: "spool_and_replay",
+          status: "draining",
+          storage: "redis",
+          acceptedEvents: 10,
+          spooledEvents: 9,
+          rejectedEvents: 0,
+          writeFailures: 0,
+          pendingItems: 5,
+          pendingBytes: 9216,
+          oldestPendingAgeSeconds: 34,
+          lastAcceptedAt: "2026-05-31T01:00:00Z",
+          lastSpooledAt: "2026-05-31T01:00:00Z",
+          lastFailure: null
+        },
+        replay: {
+          status: "replaying",
+          pendingItems: 5,
+          inFlightItems: 1,
+          replayedEvents: 4,
+          retryableFailures: 0,
+          deadLetteredEvents: 0,
+          replayLagSeconds: 12,
+          maxBytesPerSecond: 5242880,
+          configuredMaxBytesPerSecond: 10485760,
+          adaptive: {
+            enabled: true,
+            minBytesPerSecond: 1048576,
+            maxBytesPerSecond: 10485760,
+            currentMaxBytesPerSecond: 5242880,
+            minItemsPerTick: 50,
+            maxItemsPerTick: 1000,
+            currentItemsPerTick: 500,
+            minConcurrency: 1,
+            maxConcurrency: 8,
+            currentConcurrency: 8,
+            lastDecision: "increase",
+            lastReason: "queue_growth",
+            lastChangedAt: "2026-05-31T01:00:00Z",
+            memoryGuardStatus: "unavailable"
+          },
+          lastReplayAt: "2026-05-31T01:00:00Z",
+          lastFailure: null
+        }
+      }
     }
   };
 }
@@ -1600,7 +1643,7 @@ function recordersWithLongActivity() {
       }
     ],
     activityHistory: {
-      source: "sqliteProjection",
+      source: "readModelProjection",
       bucketCount: 156,
       earliestBucketStartedAt: "2026-05-31T00:00:00.000Z",
       latestBucketStartedAt: "2026-05-31T12:55:00.000Z",
@@ -1628,7 +1671,8 @@ function beds() {
       latestAnomalyKind: "offline",
       latestAnomalySeverity: "warning",
       latestAnomalyMessage: "Bed link is offline.",
-      latestAnomalyObservedAt: "2026-05-31T01:00:00Z"
+      latestAnomalyObservedAt: "2026-05-31T01:00:00Z",
+      visibility: "visible"
     }
   ];
 }
@@ -1698,53 +1742,23 @@ function events() {
   };
 }
 
-function testKitStatus() {
+function labSessionResponse(
+  state: "accepted" | "running" | "stopping" | "stopped"
+) {
   return {
-    enabled: true,
-    state: "running",
-    serviceName: "testkit",
-    apiBaseURL: "http://testkit.local",
-    recorderTargetURL: "http://edge/",
-    startedAt: "2026-05-31T00:00:00Z",
-    activeSession: null,
-    sessions: [testKitSession("running")],
-    beds: [{ roomName: "OR-1", bedId: "bed-1" }],
-    lastError: null
-  };
-}
-
-function testKitSession(state: string) {
-  return {
-    id: "session-1",
-    state,
-    targetUrl: "http://edge/",
-    recordersRequested: 1,
-    bedsRequested: 1,
-    bedRoomNames: ["OR-1"],
-    vrcode: "VR_A",
-    version: "testkit",
-    intervalSeconds: 1,
-    durationSeconds: null,
-    maxMessages: null,
-    shiftTime: true,
-    generateFrames: true,
-    scenario: "normal",
-    defaultScenario: "normal",
-    createdAt: "2026-05-31T00:00:00Z",
-    startedAt: "2026-05-31T00:00:00Z",
-    stoppedAt: null,
-    messagesSent: 5,
-    bytesSent: 2048,
-    lastError: null,
-    cleanupErrors: [],
-    vital: {
-      exportStatus: "not-requested",
-      uploadStatus: "not-requested",
-      exportError: null,
-      uploadError: null,
-      artifact: null,
-      uploadResult: null
-    },
-    recorders: []
+    state: "loaded" as const,
+    operationId: "op-1",
+    labOperationId: "lab-op-1",
+    readError: null,
+    session: {
+      sessionId: "lab-1",
+      state,
+      scenarioId: "baseline",
+      name: "Case review",
+      recorderCount: 2,
+      targetURL: "http://edge/",
+      createdAt: "2026-05-31T00:00:00Z",
+      updatedAt: "2026-05-31T00:00:00Z"
+    }
   };
 }

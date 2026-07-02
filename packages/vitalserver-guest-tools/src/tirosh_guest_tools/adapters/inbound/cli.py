@@ -3,11 +3,17 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from tirosh_guest_tools.adapters.inbound.guest_control_api import (
+    DEFAULT_HOST as GUEST_CONTROL_API_DEFAULT_HOST,
+)
+from tirosh_guest_tools.adapters.inbound.guest_control_api import (
+    DEFAULT_PORT as GUEST_CONTROL_API_DEFAULT_PORT,
+)
+from tirosh_guest_tools.adapters.inbound.guest_control_api import (
+    serve_guest_control_api,
+)
 from tirosh_guest_tools.adapters.inbound.observability_daemon import (
     run_observability_daemon,
-)
-from tirosh_guest_tools.adapters.inbound.request_file_poller import (
-    run_request_file_poller,
 )
 from tirosh_guest_tools.adapters.outbound.observability.container_logs import (
     run_container_log_action,
@@ -31,12 +37,6 @@ from tirosh_guest_tools.application.redis_backup import (
 from tirosh_guest_tools.application.redis_backup import (
     run_redis_backup,
 )
-from tirosh_guest_tools.application.reconcile_compose import (
-    LOG_FILE as RECONCILE_COMPOSE_LOG_FILE,
-)
-from tirosh_guest_tools.application.reconcile_compose import (
-    run_reconcile_compose,
-)
 from tirosh_guest_tools.application.redis_repair import (
     LOG_FILE as REDIS_REPAIR_LOG_FILE,
 )
@@ -47,7 +47,7 @@ from tirosh_guest_tools.application.redis_restore import (
     LOG_FILE as REDIS_RESTORE_LOG_FILE,
 )
 from tirosh_guest_tools.application.redis_restore import (
-    run_redis_restore,
+    restore_redis_archive,
 )
 from tirosh_guest_tools.application.rootfs_smoke import run_rootfs_smoke
 from tirosh_guest_tools.application.runtime_boot_smoke import run_runtime_boot_smoke
@@ -63,7 +63,7 @@ from tirosh_guest_tools.application.update_shutdown import (
     LOG_FILE as PREPARE_UPDATE_SHUTDOWN_LOG_FILE,
 )
 from tirosh_guest_tools.application.update_shutdown import (
-    run_prepare_update_shutdown,
+    run_prepare_update_shutdown_for_request,
 )
 from tirosh_guest_tools.domain.operations import (
     ComposeAction,
@@ -246,10 +246,13 @@ def vitalserver_runtime_data_prepare() -> int:
     return 0
 
 
-def vitalserver_command_poller() -> int:
-    parser = argparse.ArgumentParser(description="Dispatch guest command requests.")
-    parser.parse_args()
-    run_request_file_poller()
+def vitalserver_guest_control_api() -> int:
+    parser = argparse.ArgumentParser(description="Run the Guest Control API.")
+    parser.add_argument("--host", default=GUEST_CONTROL_API_DEFAULT_HOST)
+    parser.add_argument("--port", type=int, default=GUEST_CONTROL_API_DEFAULT_PORT)
+    args = parser.parse_args()
+    configure_logging(SETTINGS.logging)
+    serve_guest_control_api(host=args.host, port=args.port)
     return 0
 
 
@@ -263,17 +266,10 @@ def vitalserver_redis_backup() -> int:
 
 def vitalserver_redis_restore() -> int:
     parser = argparse.ArgumentParser(description="Restore the Redis Docker volume.")
-    parser.parse_args()
+    parser.add_argument("--archive", required=True)
+    args = parser.parse_args()
     configure_logging(SETTINGS.logging, log_file=REDIS_RESTORE_LOG_FILE)
-    run_redis_restore()
-    return 0
-
-
-def vitalserver_reconcile_compose() -> int:
-    parser = argparse.ArgumentParser(description="Reconcile VitalServer compose services.")
-    parser.parse_args()
-    configure_logging(SETTINGS.logging, log_file=RECONCILE_COMPOSE_LOG_FILE)
-    run_reconcile_compose()
+    restore_redis_archive(Path(args.archive))
     return 0
 
 
@@ -295,9 +291,14 @@ def vitalserver_activate_update() -> int:
 
 def vitalserver_prepare_update_shutdown() -> int:
     parser = argparse.ArgumentParser(description="Prepare guest for update shutdown.")
-    parser.parse_args()
+    parser.add_argument("--request-id", required=True)
+    parser.add_argument("--version", required=True)
+    args = parser.parse_args()
     configure_logging(SETTINGS.logging, log_file=PREPARE_UPDATE_SHUTDOWN_LOG_FILE)
-    run_prepare_update_shutdown()
+    run_prepare_update_shutdown_for_request(
+        request_id=args.request_id,
+        version=args.version,
+    )
     return 0
 
 

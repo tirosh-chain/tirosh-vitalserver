@@ -137,9 +137,7 @@ public struct BuildRuntimeStatusDocumentUseCase {
                 reasonCodes: input.reasonCodes,
                 startedAt: nil,
                 updatedAt: input.updatedAt
-            ),
-            containerObservation: input.current.containerObservation,
-            vitalDBObservation: input.current.vitalDBObservation
+            )
         )
     }
 }
