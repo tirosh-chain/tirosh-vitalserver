@@ -11,6 +11,7 @@ from tirosh_guest_tools.adapters.inbound.guest_control_api import route_request
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
 from tirosh_guest_tools.domain.guest_control.models import (
     GuestControlDependencyError,
+    GuestServiceResource,
     OperationEvent,
     ProductLabReadModelResult,
     ProductLabSessionResult,
@@ -50,6 +51,7 @@ class FakeOperations:
         self.saved: list[ServiceOperation] = []
         self.events: list[OperationEvent] = []
         self.status_snapshots: list[ServiceStatus] = []
+        self.service_resources: dict[str, GuestServiceResource] = {}
 
     def check_ready(self) -> None:
         if self.ready_failure is not None:
@@ -66,6 +68,12 @@ class FakeOperations:
 
     def save_service_status_snapshot(self, status: ServiceStatus) -> None:
         self.status_snapshots.append(status)
+
+    def save_guest_service_resource(self, resource: GuestServiceResource) -> None:
+        self.service_resources[resource.service] = resource
+
+    def get_guest_service_resource(self, service: str) -> GuestServiceResource | None:
+        return self.service_resources.get(service)
 
     def get(self, operation_id: str) -> ServiceOperation | None:
         return next(
@@ -205,19 +213,27 @@ class FakeProductLab:
         return ProductLabReadModelResult(document=self.list_beds())
 
     def delete_beds(self, request: dict[str, object]) -> ProductLabReadModelResult:
-        return ProductLabReadModelResult(document={"state": "loaded", "beds": [], "readError": None})
+        return ProductLabReadModelResult(
+            document={"state": "loaded", "beds": [], "readError": None}
+        )
 
     def reset_beds(self) -> ProductLabReadModelResult:
-        return ProductLabReadModelResult(document={"state": "loaded", "beds": [], "readError": None})
+        return ProductLabReadModelResult(
+            document={"state": "loaded", "beds": [], "readError": None}
+        )
 
     def create_recorders(self, request: dict[str, object]) -> ProductLabReadModelResult:
         return ProductLabReadModelResult(document=self.list_recorders())
 
     def delete_recorders(self, request: dict[str, object]) -> ProductLabReadModelResult:
-        return ProductLabReadModelResult(document={"state": "loaded", "recorders": [], "readError": None})
+        return ProductLabReadModelResult(
+            document={"state": "loaded", "recorders": [], "readError": None}
+        )
 
     def reset_recorders(self) -> ProductLabReadModelResult:
-        return ProductLabReadModelResult(document={"state": "loaded", "recorders": [], "readError": None})
+        return ProductLabReadModelResult(
+            document={"state": "loaded", "recorders": [], "readError": None}
+        )
 
     def create_session(self, request: dict[str, object]) -> ProductLabSessionResult:
         return ProductLabSessionResult(
@@ -716,6 +732,9 @@ def test_capabilities_route_omits_unconfigured_adapter_capabilities() -> None:
         "services:list",
         "stack:status",
         "services:status",
+        "services:resource:get",
+        "services:spec:update",
+        "services:reconcile",
         "services:start",
         "services:stop",
         "services:restart",
@@ -769,6 +788,38 @@ def test_restart_route_returns_operation_document(
     assert document["service"] == "app"
     assert document["command"] == "restart"
     assert document["state"] == "completed"
+
+
+def test_guest_service_resource_routes_return_controller_resource(
+    usecases: GuestControlUseCases,
+) -> None:
+    spec_status, spec_document = route_request(
+        method="PUT",
+        path="/v1/services/app/spec",
+        body=json.dumps({"desiredState": "stopped"}).encode("utf-8"),
+        usecases=usecases,
+    )
+    reconcile_status, reconcile_document = route_request(
+        method="POST",
+        path="/v1/services/app/reconcile",
+        usecases=usecases,
+    )
+    resource_status, resource_document = route_request(
+        method="GET",
+        path="/v1/services/app/resource",
+        usecases=usecases,
+    )
+
+    assert spec_status == HTTPStatus.OK
+    assert spec_document["spec"]["desiredState"] == "stopped"
+    assert reconcile_status == HTTPStatus.ACCEPTED
+    assert reconcile_document["command"] == "reconcile"
+    assert reconcile_document["result"]["effect"] == "stop"
+    assert resource_status == HTTPStatus.OK
+    assert resource_document["service"] == "app"
+    assert resource_document["spec"]["state"] == "configured"
+    assert resource_document["status"]["state"] == "loaded"
+    assert resource_document["lastOperationId"] == "op_app_reconcile_1"
 
 
 def test_restart_route_preserves_failed_operation_document() -> None:

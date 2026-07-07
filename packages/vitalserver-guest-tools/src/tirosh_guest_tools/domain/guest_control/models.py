@@ -32,6 +32,21 @@ class ServiceCommand(StrEnum):
     REQUEST_GUEST_POWEROFF = "request-guest-poweroff"
 
 
+class GuestServiceDesiredState(StrEnum):
+    RUNNING = "running"
+    STOPPED = "stopped"
+
+
+class GuestServiceSpecState(StrEnum):
+    CONFIGURED = "configured"
+    MISSING = "missing"
+
+
+class GuestServiceStatusReadState(StrEnum):
+    LOADED = "loaded"
+    FAILED = "failed"
+
+
 class OperationState(StrEnum):
     ACCEPTED = "accepted"
     RUNNING = "running"
@@ -71,6 +86,114 @@ class ServiceStatus:
         if self.memory is not None:
             document["memory"] = self.memory.as_json()
         return document
+
+
+@dataclass(frozen=True)
+class GuestServiceSpec:
+    state: GuestServiceSpecState
+    desired_state: GuestServiceDesiredState | None = None
+    updated_at: datetime | None = None
+
+    @staticmethod
+    def missing() -> GuestServiceSpec:
+        return GuestServiceSpec(state=GuestServiceSpecState.MISSING)
+
+    @staticmethod
+    def configured(
+        *,
+        desired_state: GuestServiceDesiredState,
+        updated_at: datetime,
+    ) -> GuestServiceSpec:
+        return GuestServiceSpec(
+            state=GuestServiceSpecState.CONFIGURED,
+            desired_state=desired_state,
+            updated_at=updated_at,
+        )
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "state": self.state.value,
+            "desiredState": (
+                self.desired_state.value if self.desired_state is not None else None
+            ),
+            "updatedAt": self.updated_at.isoformat()
+            if self.updated_at is not None
+            else None,
+        }
+
+
+@dataclass(frozen=True)
+class GuestServiceStatusRead:
+    state: GuestServiceStatusReadState
+    service_status: ServiceStatus | None = None
+    failure: OperationFailure | None = None
+
+    @staticmethod
+    def loaded(service_status: ServiceStatus) -> GuestServiceStatusRead:
+        return GuestServiceStatusRead(
+            state=GuestServiceStatusReadState.LOADED,
+            service_status=service_status,
+        )
+
+    @staticmethod
+    def failed(failure: OperationFailure) -> GuestServiceStatusRead:
+        return GuestServiceStatusRead(
+            state=GuestServiceStatusReadState.FAILED,
+            failure=failure,
+        )
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "state": self.state.value,
+            "observedState": self.service_status.state
+            if self.service_status is not None
+            else None,
+            "observedAt": self.service_status.observed_at.isoformat()
+            if self.service_status is not None
+            else None,
+            "serviceStatus": self.service_status.as_json()
+            if self.service_status is not None
+            else None,
+            "readError": self.failure.as_json() if self.failure is not None else None,
+        }
+
+
+@dataclass(frozen=True)
+class GuestServiceCondition:
+    type: str
+    status: str
+    reason: str
+    message: str
+    observed_at: datetime
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "type": self.type,
+            "status": self.status,
+            "reason": self.reason,
+            "message": self.message,
+            "observedAt": self.observed_at.isoformat(),
+        }
+
+
+@dataclass(frozen=True)
+class GuestServiceResource:
+    service: str
+    spec: GuestServiceSpec
+    status: GuestServiceStatusRead
+    conditions: list[GuestServiceCondition]
+    last_operation_id: str | None = None
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "service": self.service,
+            "spec": self.spec.as_json(),
+            "status": self.status.as_json(),
+            "conditions": [
+                condition.as_json() for condition in self.conditions
+            ],
+            "lastOperationId": self.last_operation_id,
+        }
 
 
 @dataclass(frozen=True)

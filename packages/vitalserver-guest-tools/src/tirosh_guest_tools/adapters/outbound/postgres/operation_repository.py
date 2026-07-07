@@ -9,6 +9,13 @@ from tirosh_guest_tools.application import compose as compose_app
 from tirosh_guest_tools.contracts import ComposeService
 from tirosh_guest_tools.domain.guest_control.models import (
     GuestControlDependencyError,
+    GuestServiceCondition,
+    GuestServiceDesiredState,
+    GuestServiceResource,
+    GuestServiceSpec,
+    GuestServiceSpecState,
+    GuestServiceStatusRead,
+    GuestServiceStatusReadState,
     OperationEvent,
     OperationFailure,
     OperationState,
@@ -46,6 +53,13 @@ CREATE TABLE IF NOT EXISTS service_status_snapshots (
 );
 CREATE INDEX IF NOT EXISTS service_status_snapshots_observed_at_idx
     ON service_status_snapshots (observed_at);
+CREATE TABLE IF NOT EXISTS guest_service_resources (
+    service text PRIMARY KEY,
+    document jsonb NOT NULL,
+    updated_at timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS guest_service_resources_updated_at_idx
+    ON guest_service_resources (updated_at);
 """
 
 
@@ -115,6 +129,58 @@ class PostgresOperationRepository:
             "observed_at = EXCLUDED.observed_at;"
         )
         run_psql(sql, stage="guest control service status snapshot save")
+
+    def save_guest_service_resource(self, resource: GuestServiceResource) -> None:
+        document = resource.as_json()
+        updated_at = resource.spec.updated_at
+        for condition in resource.conditions:
+            if updated_at is None or condition.observed_at > updated_at:
+                updated_at = condition.observed_at
+        if resource.status.service_status is not None and (
+            updated_at is None
+            or resource.status.service_status.observed_at > updated_at
+        ):
+            updated_at = resource.status.service_status.observed_at
+        if updated_at is None:
+            raise GuestControlDependencyError(
+                "guest service resource is missing explicit update time",
+                kind="guestServiceResourceInvalid",
+            )
+        sql = (
+            "INSERT INTO guest_service_resources "
+            "(service, document, updated_at) VALUES ("
+            f"{sql_literal(resource.service)}, "
+            f"{jsonb_literal(document)}, "
+            f"{sql_literal(updated_at.isoformat())}::timestamptz"
+            ") ON CONFLICT (service) DO UPDATE SET "
+            "document = EXCLUDED.document, "
+            "updated_at = EXCLUDED.updated_at;"
+        )
+        run_psql(sql, stage="guest service resource save")
+
+    def get_guest_service_resource(self, service: str) -> GuestServiceResource | None:
+        sql = (
+            "SELECT document::text FROM guest_service_resources "
+            f"WHERE service = {sql_literal(service)};"
+        )
+        completed = run_psql(sql, stage="guest service resource read")
+        stdout = completed.stdout or ""
+        text = stdout.strip()
+        if not text:
+            return None
+        try:
+            document = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise GuestControlDependencyError(
+                "postgres guest service resource document is invalid JSON",
+                kind="guestServiceResourceDocumentInvalid",
+            ) from error
+        if not isinstance(document, dict):
+            raise GuestControlDependencyError(
+                "postgres guest service resource document is not an object",
+                kind="guestServiceResourceDocumentInvalid",
+            )
+        return guest_service_resource_from_json(document)
 
     def get(self, operation_id: str) -> ServiceOperation | None:
         sql = (
@@ -239,6 +305,107 @@ def operation_from_json(document: dict[str, Any]) -> ServiceOperation:
     )
 
 
+def guest_service_resource_from_json(document: dict[str, Any]) -> GuestServiceResource:
+    service = required_string(document, "service")
+    spec_document = required_object(document, "spec")
+    status_document = required_object(document, "status")
+    conditions_value = document.get("conditions")
+    if not isinstance(conditions_value, list):
+        raise GuestControlDependencyError(
+            "postgres guest service resource document field is invalid: conditions",
+            kind="guestServiceResourceDocumentInvalid",
+        )
+    last_operation_id = document.get("lastOperationId")
+    if last_operation_id is not None and not isinstance(last_operation_id, str):
+        raise GuestControlDependencyError(
+            "postgres guest service resource document field is invalid: "
+            "lastOperationId",
+            kind="guestServiceResourceDocumentInvalid",
+        )
+    conditions: list[GuestServiceCondition] = []
+    for condition in conditions_value:
+        if not isinstance(condition, dict):
+            raise GuestControlDependencyError(
+                "postgres guest service resource condition is invalid",
+                kind="guestServiceResourceDocumentInvalid",
+            )
+        conditions.append(guest_service_condition_from_json(condition))
+    return GuestServiceResource(
+        service=service,
+        spec=guest_service_spec_from_json(spec_document),
+        status=guest_service_status_read_from_json(status_document),
+        conditions=conditions,
+        last_operation_id=last_operation_id,
+    )
+
+
+def guest_service_spec_from_json(document: dict[str, Any]) -> GuestServiceSpec:
+    state = GuestServiceSpecState(required_string(document, "state"))
+    desired_state_value = document.get("desiredState")
+    updated_at_value = document.get("updatedAt")
+    desired_state = (
+        GuestServiceDesiredState(desired_state_value)
+        if isinstance(desired_state_value, str)
+        else None
+    )
+    updated_at = (
+        datetime.fromisoformat(updated_at_value)
+        if isinstance(updated_at_value, str)
+        else None
+    )
+    return GuestServiceSpec(
+        state=state,
+        desired_state=desired_state,
+        updated_at=updated_at,
+    )
+
+
+def guest_service_status_read_from_json(
+    document: dict[str, Any],
+) -> GuestServiceStatusRead:
+    state = GuestServiceStatusReadState(required_string(document, "state"))
+    failure = document.get("readError")
+    service_status_document = document.get("serviceStatus")
+    return GuestServiceStatusRead(
+        state=state,
+        service_status=service_status_from_json(service_status_document)
+        if isinstance(service_status_document, dict)
+        else None,
+        failure=operation_failure_from_json(failure)
+        if isinstance(failure, dict)
+        else None,
+    )
+
+
+def guest_service_condition_from_json(
+    document: dict[str, Any],
+) -> GuestServiceCondition:
+    return GuestServiceCondition(
+        type=required_string(document, "type"),
+        status=required_string(document, "status"),
+        reason=required_string(document, "reason"),
+        message=required_string(document, "message"),
+        observed_at=datetime.fromisoformat(required_string(document, "observedAt")),
+    )
+
+
+def service_status_from_json(document: dict[str, Any]) -> ServiceStatus:
+    exit_code = document.get("exitCode")
+    if exit_code is not None and not isinstance(exit_code, int):
+        raise GuestControlDependencyError(
+            "postgres guest service resource status exitCode is invalid",
+            kind="guestServiceResourceDocumentInvalid",
+        )
+    return ServiceStatus(
+        service=required_string(document, "service"),
+        state=required_string(document, "state"),
+        health=required_string(document, "health"),
+        observed_at=datetime.fromisoformat(required_string(document, "observedAt")),
+        container=string_or_empty(document.get("container")),
+        exit_code=exit_code,
+    )
+
+
 def operation_failure_from_json(document: dict[str, Any]) -> OperationFailure:
     return OperationFailure(
         kind=required_string(document, "kind"),
@@ -253,6 +420,16 @@ def required_string(document: dict[str, Any], field: str) -> str:
         raise GuestControlDependencyError(
             f"postgres service operation document field is invalid: {field}",
             kind="postgresOperationDocumentInvalid",
+        )
+    return value
+
+
+def required_object(document: dict[str, Any], field: str) -> dict[str, Any]:
+    value = document.get(field)
+    if not isinstance(value, dict):
+        raise GuestControlDependencyError(
+            f"postgres document field is invalid: {field}",
+            kind="postgresDocumentInvalid",
         )
     return value
 

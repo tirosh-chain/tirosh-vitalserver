@@ -14,6 +14,11 @@ from tirosh_guest_tools.adapters.outbound.postgres import (
 from tirosh_guest_tools.application import compose as compose_app
 from tirosh_guest_tools.domain.guest_control.models import (
     GuestControlDependencyError,
+    GuestServiceCondition,
+    GuestServiceDesiredState,
+    GuestServiceResource,
+    GuestServiceSpec,
+    GuestServiceStatusRead,
     OperationEvent,
     OperationState,
     ServiceCommand,
@@ -58,6 +63,7 @@ def test_postgres_repository_runs_schema_migration(monkeypatch: Any) -> None:
     assert "CREATE TABLE IF NOT EXISTS service_operations" in commands[1]
     assert "CREATE TABLE IF NOT EXISTS service_operation_events" in commands[1]
     assert "CREATE TABLE IF NOT EXISTS service_status_snapshots" in commands[1]
+    assert "CREATE TABLE IF NOT EXISTS guest_service_resources" in commands[1]
     assert commands[2] == "SELECT pg_advisory_unlock(66060002000);"
 
 
@@ -171,6 +177,68 @@ def test_postgres_repository_saves_service_status_snapshot(monkeypatch: Any) -> 
     assert "INSERT INTO service_status_snapshots" in saved_sql[0]
     assert "ON CONFLICT (service) DO UPDATE" in saved_sql[0]
     assert "'app'" in saved_sql[0]
+
+
+def test_postgres_repository_persists_and_reads_guest_service_resource(
+    monkeypatch: Any,
+) -> None:
+    saved_sql: list[str] = []
+    resource = GuestServiceResource(
+        service="app",
+        spec=GuestServiceSpec.configured(
+            desired_state=GuestServiceDesiredState.RUNNING,
+            updated_at=datetime(2026, 7, 1, tzinfo=UTC),
+        ),
+        status=GuestServiceStatusRead.loaded(
+            ServiceStatus(
+                service="app",
+                state="running",
+                health="healthy",
+                observed_at=datetime(2026, 7, 1, 0, 0, 1, tzinfo=UTC),
+            )
+        ),
+        conditions=[
+            GuestServiceCondition(
+                type="Reconciled",
+                status="true",
+                reason="DesiredStateObserved",
+                message="Guest service already matches desired state.",
+                observed_at=datetime(2026, 7, 1, 0, 0, 2, tzinfo=UTC),
+            )
+        ],
+        last_operation_id="op_app_start_1",
+    )
+
+    def fake_compose(
+        arguments: list[str],
+        *,
+        check: bool = True,
+        timeout_seconds: float | None = None,
+        capture_output: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        del check
+        del timeout_seconds
+        assert capture_output is True
+        saved_sql.append(arguments[-1])
+        if arguments[-1].startswith("SELECT"):
+            return subprocess.CompletedProcess(
+                arguments,
+                0,
+                stdout=json.dumps(resource.as_json(), sort_keys=True),
+                stderr="",
+            )
+        return subprocess.CompletedProcess(arguments, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(compose_app, "compose", fake_compose)
+
+    repository = PostgresOperationRepository()
+    repository.save_guest_service_resource(resource)
+    loaded = repository.get_guest_service_resource("app")
+
+    assert loaded == resource
+    assert "INSERT INTO guest_service_resources" in saved_sql[0]
+    assert "ON CONFLICT (service) DO UPDATE" in saved_sql[0]
+    assert "SELECT document::text FROM guest_service_resources" in saved_sql[1]
 
 
 def test_postgres_repository_reports_psql_failure(monkeypatch: Any) -> None:

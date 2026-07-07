@@ -53,6 +53,7 @@ def main() -> int:
         check_guest_control_lab_boundary_does_not_name_testkit(),
         check_guest_control_default_state_is_postgres_backed(),
         check_guest_service_operations_persist_status_snapshots(),
+        check_guest_service_control_is_controller_owned_resource(),
         check_runtime_config_does_not_enable_testkit(),
         check_product_packaging_uses_lab_not_testkit(),
         check_vitaldb_read_models_do_not_name_host_sqlite_as_source(),
@@ -2400,6 +2401,114 @@ def check_guest_service_operations_persist_status_snapshots() -> CheckResult:
         True,
         "Guest service operations persist explicit service status snapshots "
         "through the operation repository after successful commands",
+    )
+
+
+def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
+    models_path = (
+        GUEST_TOOLS
+        / "src/tirosh_guest_tools/domain/guest_control/models.py"
+    )
+    policy_path = (
+        GUEST_TOOLS
+        / "src/tirosh_guest_tools/domain/guest_control"
+        / "service_reconcile_policy.py"
+    )
+    usecases_path = (
+        GUEST_TOOLS
+        / "src/tirosh_guest_tools/application/guest_control/usecases.py"
+    )
+    repository_path = (
+        GUEST_TOOLS
+        / "src/tirosh_guest_tools/adapters/outbound/postgres"
+        / "operation_repository.py"
+    )
+    api_path = (
+        GUEST_TOOLS
+        / "src/tirosh_guest_tools/adapters/inbound/guest_control_api.py"
+    )
+    tests_path = GUEST_TOOLS / "tests/test_guest_control_usecases.py"
+    policy_tests_path = (
+        GUEST_TOOLS / "tests/test_guest_service_reconcile_policy.py"
+    )
+    required = {
+        relative(models_path): [
+            "class GuestServiceDesiredState",
+            "class GuestServiceSpec",
+            "class GuestServiceStatusRead",
+            "class GuestServiceCondition",
+            "class GuestServiceResource",
+        ],
+        relative(policy_path): [
+            "def reconcile_guest_service(",
+            "GuestServiceReconcileDecision",
+            "GuestServiceReconcileEffect",
+            "requested_command == ServiceCommand.RESTART",
+        ],
+        relative(usecases_path): [
+            "def get_guest_service_resource(",
+            "def update_guest_service_spec(",
+            "def reconcile_guest_service(",
+            "self._save_guest_service_spec(",
+            "reconcile_guest_service(",
+            "self._operations.save_guest_service_resource(resource)",
+        ],
+        relative(repository_path): [
+            "CREATE TABLE IF NOT EXISTS guest_service_resources",
+            "def save_guest_service_resource(",
+            "def get_guest_service_resource(",
+            "guest_service_resource_from_json",
+        ],
+        relative(api_path): [
+            'parts[3] == "resource"',
+            'parts[3] == "spec"',
+            'parts[3] == "reconcile"',
+            "def do_PUT(self) -> None:",
+        ],
+        relative(tests_path): [
+            "test_guest_service_resource_preserves_missing_spec_and_loaded_status",
+            "test_guest_service_spec_update_persists_desired_state",
+            "test_reconcile_guest_service_without_spec_is_blocked",
+        ],
+        relative(policy_tests_path): [
+            "test_reconcile_blocks_missing_spec",
+            "test_reconcile_blocks_failed_status_read",
+            "test_reconcile_noops_when_desired_running_is_observed",
+            "test_reconcile_restarts_when_restart_is_requested",
+        ],
+    }
+    texts = {path: read(ROOT / path) for path in required}
+    missing = {
+        path: [token for token in tokens if token not in texts[path]]
+        for path, tokens in required.items()
+        if any(token not in texts[path] for token in tokens)
+    }
+    forbidden = {
+        relative(policy_path): [
+            "compose",
+            "subprocess",
+            "Postgres",
+            "open(",
+            "Path(",
+        ],
+    }
+    present = [
+        f"{path}:{token}"
+        for path, tokens in forbidden.items()
+        for token in tokens
+        if token in texts[path]
+    ]
+    if missing or present:
+        return CheckResult(
+            "guest-service-control-controller-owned-resource",
+            False,
+            f"missing={missing} forbidden_present={present}",
+        )
+    return CheckResult(
+        "guest-service-control-controller-owned-resource",
+        True,
+        "Guest service control exposes resource/spec/reconcile contracts, "
+        "stores resource state in Postgres, and keeps reconcile policy pure",
     )
 
 

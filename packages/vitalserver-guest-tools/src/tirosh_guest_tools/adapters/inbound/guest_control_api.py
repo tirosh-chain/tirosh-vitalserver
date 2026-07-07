@@ -73,6 +73,9 @@ def make_handler(usecases: GuestControlUseCases) -> type[BaseHTTPRequestHandler]
         def do_POST(self) -> None:
             self._handle_request("POST")
 
+        def do_PUT(self) -> None:
+            self._handle_request("PUT")
+
         def log_message(self, format: str, *args: Any) -> None:
             del format
             del args
@@ -180,6 +183,35 @@ def route_request(
         and parts[3] == "status"
     ):
         return HTTPStatus.OK, usecases.get_service_status(parts[2]).as_json()
+
+    if (
+        method == "GET"
+        and len(parts) == 4
+        and parts[:2] == ["v1", "services"]
+        and parts[3] == "resource"
+    ):
+        return HTTPStatus.OK, usecases.get_guest_service_resource(parts[2])
+
+    if (
+        method == "PUT"
+        and len(parts) == 4
+        and parts[:2] == ["v1", "services"]
+        and parts[3] == "spec"
+    ):
+        return HTTPStatus.OK, usecases.update_guest_service_spec(
+            parts[2],
+            _json_body(body),
+        )
+
+    if (
+        method == "POST"
+        and len(parts) == 4
+        and parts[:2] == ["v1", "services"]
+        and parts[3] == "reconcile"
+    ):
+        return HTTPStatus.ACCEPTED, usecases.reconcile_guest_service(
+            parts[2]
+        ).as_json()
 
     if (
         method == "POST"

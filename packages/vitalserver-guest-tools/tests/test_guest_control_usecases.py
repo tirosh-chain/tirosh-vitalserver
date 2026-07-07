@@ -6,6 +6,7 @@ from tirosh_guest_tools.application.guest_control.usecases import GuestControlUs
 from tirosh_guest_tools.domain.guest_control.models import (
     DatastoreRepairDependencyError,
     GuestControlDependencyError,
+    GuestServiceResource,
     OperationEvent,
     OperationState,
     ProductLabDependencyError,
@@ -54,6 +55,7 @@ class FakeOperations:
         self.saved: list[ServiceOperation] = []
         self.events: list[OperationEvent] = []
         self.status_snapshots: list[ServiceStatus] = []
+        self.service_resources: dict[str, GuestServiceResource] = {}
 
     def check_ready(self) -> None:
         if self.ready_failure is not None:
@@ -70,6 +72,12 @@ class FakeOperations:
 
     def save_service_status_snapshot(self, status: ServiceStatus) -> None:
         self.status_snapshots.append(status)
+
+    def save_guest_service_resource(self, resource: GuestServiceResource) -> None:
+        self.service_resources[resource.service] = resource
+
+    def get_guest_service_resource(self, service: str) -> GuestServiceResource | None:
+        return self.service_resources.get(service)
 
     def get(self, operation_id: str) -> ServiceOperation | None:
         return next(
@@ -201,19 +209,27 @@ class FakeProductLab:
         return ProductLabReadModelResult(document=self.list_beds())
 
     def delete_beds(self, request: dict[str, object]) -> ProductLabReadModelResult:
-        return ProductLabReadModelResult(document={"state": "loaded", "beds": [], "readError": None})
+        return ProductLabReadModelResult(
+            document={"state": "loaded", "beds": [], "readError": None}
+        )
 
     def reset_beds(self) -> ProductLabReadModelResult:
-        return ProductLabReadModelResult(document={"state": "loaded", "beds": [], "readError": None})
+        return ProductLabReadModelResult(
+            document={"state": "loaded", "beds": [], "readError": None}
+        )
 
     def create_recorders(self, request: dict[str, object]) -> ProductLabReadModelResult:
         return ProductLabReadModelResult(document=self.list_recorders())
 
     def delete_recorders(self, request: dict[str, object]) -> ProductLabReadModelResult:
-        return ProductLabReadModelResult(document={"state": "loaded", "recorders": [], "readError": None})
+        return ProductLabReadModelResult(
+            document={"state": "loaded", "recorders": [], "readError": None}
+        )
 
     def reset_recorders(self) -> ProductLabReadModelResult:
-        return ProductLabReadModelResult(document={"state": "loaded", "recorders": [], "readError": None})
+        return ProductLabReadModelResult(
+            document={"state": "loaded", "recorders": [], "readError": None}
+        )
 
     def create_session(
         self,
@@ -622,6 +638,9 @@ def test_capabilities_include_only_configured_adapter_features() -> None:
         "services:list",
         "stack:status",
         "services:status",
+        "services:resource:get",
+        "services:spec:update",
+        "services:reconcile",
         "services:start",
         "services:stop",
         "services:restart",
@@ -677,10 +696,13 @@ def test_capabilities_omit_unconfigured_adapter_features() -> None:
     assert document == {
         "schemaVersion": 1,
         "capabilities": [
-            "services:list",
-            "stack:status",
-            "services:status",
-            "services:start",
+                "services:list",
+                "stack:status",
+                "services:status",
+                "services:resource:get",
+                "services:spec:update",
+                "services:reconcile",
+                "services:start",
             "services:stop",
             "services:restart",
             "stack:reconcile",
@@ -768,7 +790,13 @@ def test_start_service_persists_operation_transitions() -> None:
 
     assert operation.state == OperationState.COMPLETED
     assert operation.command == ServiceCommand.START
-    assert service_control.started == ["app"]
+    assert operation.result == {
+        "effect": "none",
+        "command": None,
+        "reason": "DesiredStateObserved",
+        "message": "Guest service already matches desired running state.",
+    }
+    assert service_control.started == []
     assert [saved.state for saved in operations.saved] == [
         OperationState.ACCEPTED,
         OperationState.RUNNING,
@@ -780,6 +808,48 @@ def test_start_service_persists_operation_transitions() -> None:
         OperationState.COMPLETED,
     ]
     assert usecases.get_operation("op_app_start_1") == operation
+    resource = operations.service_resources["app"]
+    assert resource.spec.as_json()["desiredState"] == "running"
+    assert resource.last_operation_id == "op_app_start_1"
+
+
+def test_guest_service_resource_preserves_missing_spec_and_loaded_status() -> None:
+    operations = FakeOperations()
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    document = usecases.get_guest_service_resource("app")
+
+    assert document["spec"]["state"] == "missing"
+    assert document["spec"]["desiredState"] is None
+    assert document["status"]["state"] == "loaded"
+    assert document["status"]["observedState"] == "running"
+    assert operations.service_resources["app"].spec.as_json()["state"] == "missing"
+
+
+def test_guest_service_spec_update_persists_desired_state() -> None:
+    operations = FakeOperations()
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    document = usecases.update_guest_service_spec(
+        "app",
+        {"desiredState": "stopped"},
+    )
+
+    assert document["spec"]["state"] == "configured"
+    assert document["spec"]["desiredState"] == "stopped"
+    assert operations.service_resources["app"].spec.as_json()["desiredState"] == (
+        "stopped"
+    )
 
 
 def test_get_service_status_persists_status_snapshot() -> None:
@@ -838,8 +908,17 @@ def test_stop_service_persists_operation_transitions() -> None:
         OperationState.RUNNING,
         OperationState.COMPLETED,
     ]
-    assert [status.service for status in operations.status_snapshots] == ["app"]
+    assert [status.service for status in operations.status_snapshots] == [
+        "app",
+        "app",
+    ]
     assert usecases.get_operation("op_app_stop_1") == operation
+    assert operation.result == {
+        "effect": "stop",
+        "command": "stop",
+        "reason": "StopRequired",
+        "message": "Guest service must be stopped to match desired state.",
+    }
 
 
 def test_restart_service_persists_operation_transitions() -> None:
@@ -867,8 +946,17 @@ def test_restart_service_persists_operation_transitions() -> None:
         OperationState.RUNNING,
         OperationState.COMPLETED,
     ]
-    assert [status.service for status in operations.status_snapshots] == ["app"]
+    assert [status.service for status in operations.status_snapshots] == [
+        "app",
+        "app",
+    ]
     assert usecases.get_operation("op_app_restart_1") == operation
+    assert operation.result == {
+        "effect": "restart",
+        "command": "restart",
+        "reason": "RestartRequested",
+        "message": "Guest service restart was explicitly requested.",
+    }
 
 
 def test_restart_service_failure_is_persisted_as_failed_operation() -> None:
@@ -885,6 +973,7 @@ def test_restart_service_failure_is_persisted_as_failed_operation() -> None:
     assert operation.state == OperationState.FAILED
     assert operation.failure is not None
     assert operation.failure.kind == "guest-compose-command-failed"
+    assert operations.status_snapshots != []
     assert [saved.state for saved in operations.saved] == [
         OperationState.ACCEPTED,
         OperationState.RUNNING,
@@ -895,7 +984,7 @@ def test_restart_service_failure_is_persisted_as_failed_operation() -> None:
         OperationState.RUNNING,
         OperationState.FAILED,
     ]
-    assert operations.status_snapshots == []
+    assert [status.service for status in operations.status_snapshots] == ["app"]
 
 
 def test_restart_service_status_snapshot_failure_is_persisted_as_failed_operation(
@@ -912,15 +1001,34 @@ def test_restart_service_status_snapshot_failure_is_persisted_as_failed_operatio
     operation = usecases.restart_service("app")
 
     assert operation.state == OperationState.FAILED
-    assert service_control.restarted == ["app"]
+    assert service_control.restarted == []
     assert operation.failure is not None
-    assert operation.failure.kind == "guest-stack-status-read-failed"
+    assert operation.failure.kind == "guestServiceReconcileBlocked"
     assert [saved.state for saved in operations.saved] == [
         OperationState.ACCEPTED,
         OperationState.RUNNING,
         OperationState.FAILED,
     ]
     assert operations.status_snapshots == []
+
+
+def test_reconcile_guest_service_without_spec_is_blocked() -> None:
+    operations = FakeOperations()
+    service_control = FakeServiceControl()
+    usecases = GuestControlUseCases(
+        service_control=service_control,
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    operation = usecases.reconcile_guest_service("app")
+
+    assert operation.state == OperationState.FAILED
+    assert operation.failure is not None
+    assert operation.failure.kind == "guestServiceReconcileBlocked"
+    assert service_control.started == []
+    assert operations.service_resources["app"].conditions[0].reason == "SpecMissing"
 
 
 def test_reconcile_services_persists_operation_transitions() -> None:

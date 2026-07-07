@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Protocol
 
 from tirosh_guest_tools.domain.guest_control.models import (
+    GuestServiceResource,
     OperationEvent,
     ProductLabReadModelResult,
     ProductLabSessionResult,
@@ -198,6 +199,12 @@ class OperationRepository(Protocol):
         raise NotImplementedError
 
     def save_service_status_snapshot(self, status: ServiceStatus) -> None:
+        raise NotImplementedError
+
+    def save_guest_service_resource(self, resource: GuestServiceResource) -> None:
+        raise NotImplementedError
+
+    def get_guest_service_resource(self, service: str) -> GuestServiceResource | None:
         raise NotImplementedError
 
     def get(self, operation_id: str) -> ServiceOperation | None:
