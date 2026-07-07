@@ -7,6 +7,7 @@ from enum import StrEnum
 from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceCondition,
     GuestServiceDesiredState,
+    GuestServiceObservedState,
     GuestServiceSpec,
     GuestServiceSpecState,
     GuestServiceStatusRead,
@@ -84,11 +85,9 @@ def reconcile_guest_service(
             now=now,
         )
 
-    observed_state = (
-        status.service_status.state if status.service_status is not None else "unknown"
-    )
+    observed_state = status.observed_state or GuestServiceObservedState.UNKNOWN
     if spec.desired_state == GuestServiceDesiredState.RUNNING:
-        if observed_state == "running":
+        if observed_state == GuestServiceObservedState.RUNNING:
             return _noop(
                 reason="DesiredStateObserved",
                 message="Guest service already matches desired running state.",
@@ -102,7 +101,10 @@ def reconcile_guest_service(
             now=now,
         )
 
-    if observed_state in {"exited", "stopped"}:
+    if observed_state in {
+        GuestServiceObservedState.EXITED,
+        GuestServiceObservedState.STOPPED,
+    }:
         return _noop(
             reason="DesiredStateObserved",
             message="Guest service already matches desired stopped state.",

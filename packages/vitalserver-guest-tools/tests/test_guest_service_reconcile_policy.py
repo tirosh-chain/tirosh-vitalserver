@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceDesiredState,
+    GuestServiceObservedState,
     GuestServiceSpec,
     GuestServiceStatusRead,
     OperationFailure,
@@ -21,7 +22,10 @@ NOW = datetime(2026, 7, 1, tzinfo=UTC)
 def test_reconcile_blocks_missing_spec() -> None:
     decision = reconcile_guest_service(
         spec=GuestServiceSpec.missing(),
-        status=GuestServiceStatusRead.loaded(_service_status("running")),
+        status=GuestServiceStatusRead.loaded(
+            _service_status("running"),
+            observed_state=GuestServiceObservedState.RUNNING,
+        ),
         requested_command=None,
         now=NOW,
     )
@@ -53,7 +57,10 @@ def test_reconcile_noops_when_desired_running_is_observed() -> None:
             desired_state=GuestServiceDesiredState.RUNNING,
             updated_at=NOW,
         ),
-        status=GuestServiceStatusRead.loaded(_service_status("running")),
+        status=GuestServiceStatusRead.loaded(
+            _service_status("running"),
+            observed_state=GuestServiceObservedState.RUNNING,
+        ),
         requested_command=ServiceCommand.START,
         now=NOW,
     )
@@ -69,7 +76,10 @@ def test_reconcile_starts_when_desired_running_is_not_observed() -> None:
             desired_state=GuestServiceDesiredState.RUNNING,
             updated_at=NOW,
         ),
-        status=GuestServiceStatusRead.loaded(_service_status("exited")),
+        status=GuestServiceStatusRead.loaded(
+            _service_status("exited"),
+            observed_state=GuestServiceObservedState.EXITED,
+        ),
         requested_command=None,
         now=NOW,
     )
@@ -84,7 +94,10 @@ def test_reconcile_stops_when_desired_stopped_is_not_observed() -> None:
             desired_state=GuestServiceDesiredState.STOPPED,
             updated_at=NOW,
         ),
-        status=GuestServiceStatusRead.loaded(_service_status("running")),
+        status=GuestServiceStatusRead.loaded(
+            _service_status("running"),
+            observed_state=GuestServiceObservedState.RUNNING,
+        ),
         requested_command=ServiceCommand.STOP,
         now=NOW,
     )
@@ -99,7 +112,10 @@ def test_reconcile_restarts_when_restart_is_requested() -> None:
             desired_state=GuestServiceDesiredState.RUNNING,
             updated_at=NOW,
         ),
-        status=GuestServiceStatusRead.loaded(_service_status("running")),
+        status=GuestServiceStatusRead.loaded(
+            _service_status("running"),
+            observed_state=GuestServiceObservedState.RUNNING,
+        ),
         requested_command=ServiceCommand.RESTART,
         now=NOW,
     )

@@ -108,6 +108,15 @@ def make_handler(usecases: GuestControlUseCases) -> type[BaseHTTPRequestHandler]
                 )
                 return
             except GuestControlDependencyError as error:
+                if error.kind == "guestServiceSpecInvalid":
+                    self._write_json(
+                        HTTPStatus.BAD_REQUEST,
+                        {
+                            "detail": error.message,
+                            "code": error.kind,
+                        },
+                    )
+                    return
                 self._write_json(
                     HTTPStatus.SERVICE_UNAVAILABLE,
                     {
@@ -202,6 +211,14 @@ def route_request(
             parts[2],
             _json_body(body),
         )
+
+    if (
+        method == "POST"
+        and len(parts) == 4
+        and parts[:2] == ["v1", "services"]
+        and parts[3] == "observe"
+    ):
+        return HTTPStatus.ACCEPTED, usecases.observe_guest_service(parts[2])
 
     if (
         method == "POST"

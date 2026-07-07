@@ -2443,14 +2443,17 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
             "def reconcile_guest_service(",
             "GuestServiceReconcileDecision",
             "GuestServiceReconcileEffect",
+            "GuestServiceObservedState",
             "requested_command == ServiceCommand.RESTART",
         ],
         relative(usecases_path): [
             "def get_guest_service_resource(",
+            "def observe_guest_service(",
             "def update_guest_service_spec(",
             "def reconcile_guest_service(",
             "self._save_guest_service_spec(",
             "reconcile_guest_service(",
+            "_guest_service_observed_state(",
             "self._operations.save_guest_service_resource(resource)",
         ],
         relative(repository_path): [
@@ -2462,11 +2465,15 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
         relative(api_path): [
             'parts[3] == "resource"',
             'parts[3] == "spec"',
+            'parts[3] == "observe"',
             'parts[3] == "reconcile"',
             "def do_PUT(self) -> None:",
         ],
         relative(tests_path): [
-            "test_guest_service_resource_preserves_missing_spec_and_loaded_status",
+            "test_guest_service_resource_get_is_side_effect_free",
+            "test_observe_guest_service_reads_and_persists_loaded_status",
+            "test_guest_service_controller_rejects_unknown_service",
+            "test_guest_service_spec_update_rejects_invalid_desired_state",
             "test_guest_service_spec_update_persists_desired_state",
             "test_reconcile_guest_service_without_spec_is_blocked",
         ],
@@ -2507,8 +2514,8 @@ def check_guest_service_control_is_controller_owned_resource() -> CheckResult:
     return CheckResult(
         "guest-service-control-controller-owned-resource",
         True,
-        "Guest service control exposes resource/spec/reconcile contracts, "
-        "stores resource state in Postgres, and keeps reconcile policy pure",
+        "Guest service control exposes resource/spec/observe/reconcile contracts, "
+        "stores explicit resource state in Postgres, and keeps reconcile policy pure",
     )
 
 

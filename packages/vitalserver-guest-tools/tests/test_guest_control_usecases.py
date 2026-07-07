@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from tirosh_guest_tools.application.guest_control.usecases import GuestControlUseCases
 from tirosh_guest_tools.domain.guest_control.models import (
     DatastoreRepairDependencyError,
     GuestControlDependencyError,
+    GuestServiceDesiredState,
     GuestServiceResource,
+    GuestServiceSpec,
+    GuestServiceStatusRead,
     OperationEvent,
+    OperationFailure,
     OperationState,
     ProductLabDependencyError,
     ProductLabReadModelResult,
@@ -19,6 +25,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     RedisRestoreDependencyError,
     RedisRestoreResult,
     ServiceCommand,
+    ServiceNotFoundError,
     ServiceOperation,
     ServiceStatus,
     StackStatus,
@@ -96,18 +103,22 @@ class FakeServiceControl:
         *,
         fail_command: str | None = None,
         fail_status: bool = False,
+        services: list[str] | None = None,
     ) -> None:
         self.fail_command = fail_command
         self.fail_status = fail_status
+        self.services = services or ["app", "redis"]
         self.started: list[str] = []
         self.stopped: list[str] = []
         self.restarted: list[str] = []
         self.reconciled = 0
 
     def list_services(self) -> list[str]:
-        return ["app", "redis"]
+        return self.services
 
     def get_service_status(self, service: str) -> ServiceStatus:
+        if service not in self.services:
+            raise ServiceNotFoundError(service, available_services=self.services)
         if self.fail_status:
             raise GuestControlDependencyError(
                 "compose status read failed",
@@ -813,8 +824,24 @@ def test_start_service_persists_operation_transitions() -> None:
     assert resource.last_operation_id == "op_app_start_1"
 
 
-def test_guest_service_resource_preserves_missing_spec_and_loaded_status() -> None:
+def test_guest_service_resource_get_is_side_effect_free() -> None:
     operations = FakeOperations()
+    operations.save_guest_service_resource(
+        GuestServiceResource(
+            service="app",
+            spec=GuestServiceSpec.configured(
+                desired_state=GuestServiceDesiredState.RUNNING,
+                updated_at=datetime(2026, 7, 1, tzinfo=UTC),
+            ),
+            status=GuestServiceStatusRead.failed(
+                OperationFailure(
+                    kind="notObserved",
+                    message="not observed",
+                )
+            ),
+            conditions=[],
+        )
+    )
     usecases = GuestControlUseCases(
         service_control=FakeServiceControl(),
         operations=operations,
@@ -824,11 +851,29 @@ def test_guest_service_resource_preserves_missing_spec_and_loaded_status() -> No
 
     document = usecases.get_guest_service_resource("app")
 
+    assert document["spec"]["state"] == "configured"
+    assert document["spec"]["desiredState"] == "running"
+    assert operations.status_snapshots == []
+
+
+def test_observe_guest_service_reads_and_persists_loaded_status() -> None:
+    operations = FakeOperations()
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    document = usecases.observe_guest_service("app")
+
     assert document["spec"]["state"] == "missing"
-    assert document["spec"]["desiredState"] is None
     assert document["status"]["state"] == "loaded"
     assert document["status"]["observedState"] == "running"
-    assert operations.service_resources["app"].spec.as_json()["state"] == "missing"
+    assert operations.status_snapshots[0].service == "app"
+    assert operations.service_resources["app"].status.as_json()["observedState"] == (
+        "running"
+    )
 
 
 def test_guest_service_spec_update_persists_desired_state() -> None:
@@ -850,6 +895,51 @@ def test_guest_service_spec_update_persists_desired_state() -> None:
     assert operations.service_resources["app"].spec.as_json()["desiredState"] == (
         "stopped"
     )
+
+
+def test_guest_service_spec_update_rejects_invalid_desired_state() -> None:
+    operations = FakeOperations()
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        usecases.update_guest_service_spec(
+            "app",
+            {"desiredState": "paused"},
+        )
+
+    assert error.value.kind == "guestServiceSpecInvalid"
+    assert operations.service_resources == {}
+
+
+def test_guest_service_controller_rejects_unknown_service() -> None:
+    operations = FakeOperations()
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(services=["app"]),
+        operations=operations,
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    with pytest.raises(ServiceNotFoundError) as get_error:
+        usecases.get_guest_service_resource("redis")
+    with pytest.raises(ServiceNotFoundError) as observe_error:
+        usecases.observe_guest_service("redis")
+    with pytest.raises(ServiceNotFoundError) as spec_error:
+        usecases.update_guest_service_spec("redis", {"desiredState": "running"})
+    with pytest.raises(ServiceNotFoundError) as reconcile_error:
+        usecases.reconcile_guest_service("redis")
+
+    assert get_error.value.available_services == ["app"]
+    assert observe_error.value.available_services == ["app"]
+    assert spec_error.value.available_services == ["app"]
+    assert reconcile_error.value.available_services == ["app"]
+    assert operations.service_resources == {}
+    assert operations.saved == []
 
 
 def test_get_service_status_persists_status_snapshot() -> None:

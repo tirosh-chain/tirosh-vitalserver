@@ -20,6 +20,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestControlDependencyError,
     GuestServiceCondition,
     GuestServiceDesiredState,
+    GuestServiceObservedState,
     GuestServiceResource,
     GuestServiceSpec,
     GuestServiceStatusRead,
@@ -33,6 +34,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     RedisBackupDependencyError,
     RedisRestoreDependencyError,
     ServiceCommand,
+    ServiceNotFoundError,
     ServiceOperation,
     ServiceStatus,
     StackStatus,
@@ -202,32 +204,40 @@ class GuestControlUseCases:
         return status
 
     def get_guest_service_resource(self, service: str) -> dict[str, object]:
+        self._ensure_guest_service_exists(service)
+        return self._load_guest_service_resource(service).as_json()
+
+    def observe_guest_service(self, service: str) -> dict[str, object]:
+        self._ensure_guest_service_exists(service)
         resource = self._load_guest_service_resource(service)
         status_read = self._read_guest_service_status(service)
-        resource = GuestServiceResource(
+        if status_read.service_status is not None:
+            self._operations.save_service_status_snapshot(status_read.service_status)
+        observed = GuestServiceResource(
             service=service,
             spec=resource.spec,
             status=status_read,
             conditions=resource.conditions,
             last_operation_id=resource.last_operation_id,
         )
-        if status_read.service_status is not None:
-            self._operations.save_service_status_snapshot(status_read.service_status)
-        self._operations.save_guest_service_resource(resource)
-        return resource.as_json()
+        self._operations.save_guest_service_resource(observed)
+        return observed.as_json()
 
     def update_guest_service_spec(
         self,
         service: str,
         request: dict[str, object],
     ) -> dict[str, object]:
+        self._ensure_guest_service_exists(service)
         desired_state_value = request.get("desiredState")
         if not isinstance(desired_state_value, str):
             raise GuestControlDependencyError(
                 "guest service desiredState is required",
                 kind="guestServiceSpecInvalid",
             )
-        desired_state = GuestServiceDesiredState(desired_state_value)
+        desired_state = self._guest_service_desired_state_from_request(
+            desired_state_value
+        )
         spec = GuestServiceSpec.configured(
             desired_state=desired_state,
             updated_at=self._clock.now(),
@@ -360,6 +370,7 @@ class GuestControlUseCases:
         *,
         desired_state: GuestServiceDesiredState,
     ) -> None:
+        self._ensure_guest_service_exists(service)
         previous = self._load_guest_service_resource(service)
         spec = GuestServiceSpec.configured(
             desired_state=desired_state,
@@ -402,6 +413,8 @@ class GuestControlUseCases:
     def _read_guest_service_status(self, service: str) -> GuestServiceStatusRead:
         try:
             status = self._service_control.get_service_status(service)
+        except ServiceNotFoundError:
+            raise
         except GuestControlDependencyError as error:
             return GuestServiceStatusRead.failed(
                 OperationFailure(
@@ -409,7 +422,10 @@ class GuestControlUseCases:
                     message=error.message,
                 )
             )
-        return GuestServiceStatusRead.loaded(status)
+        return GuestServiceStatusRead.loaded(
+            status,
+            observed_state=_guest_service_observed_state(status.state),
+        )
 
     def _run_guest_service_reconcile_operation(
         self,
@@ -418,6 +434,7 @@ class GuestControlUseCases:
         command: ServiceCommand,
         requested_command: ServiceCommand | None,
     ) -> ServiceOperation:
+        self._ensure_guest_service_exists(service)
         operation = accept_service_operation(
             operation_id=self._operation_ids.new_operation_id(
                 service=service,
@@ -535,6 +552,26 @@ class GuestControlUseCases:
             f"guest service reconcile effect is not executable: {effect.value}",
             kind="guestServiceReconcileEffectInvalid",
         )
+
+    def _ensure_guest_service_exists(self, service: str) -> None:
+        available_services = self._service_control.list_services()
+        if service not in available_services:
+            raise ServiceNotFoundError(
+                service,
+                available_services=available_services,
+            )
+
+    def _guest_service_desired_state_from_request(
+        self,
+        value: str,
+    ) -> GuestServiceDesiredState:
+        try:
+            return GuestServiceDesiredState(value)
+        except ValueError as error:
+            raise GuestControlDependencyError(
+                "guest service desiredState must be running or stopped",
+                kind="guestServiceSpecInvalid",
+            ) from error
 
     def list_lab_scenarios(self) -> dict[str, object]:
         if self._product_lab is None:
@@ -1237,6 +1274,18 @@ def _guest_service_condition(
         message=message,
         observed_at=observed_at,
     )
+
+
+def _guest_service_observed_state(state: str) -> GuestServiceObservedState:
+    if state == "running":
+        return GuestServiceObservedState.RUNNING
+    if state == "stopped":
+        return GuestServiceObservedState.STOPPED
+    if state == "exited":
+        return GuestServiceObservedState.EXITED
+    if state == "absent":
+        return GuestServiceObservedState.ABSENT
+    return GuestServiceObservedState.UNKNOWN
 
 
 def _lab_failed_document(error: ProductLabDependencyError) -> dict[str, object]:

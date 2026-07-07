@@ -47,6 +47,14 @@ class GuestServiceStatusReadState(StrEnum):
     FAILED = "failed"
 
 
+class GuestServiceObservedState(StrEnum):
+    RUNNING = "running"
+    STOPPED = "stopped"
+    EXITED = "exited"
+    ABSENT = "absent"
+    UNKNOWN = "unknown"
+
+
 class OperationState(StrEnum):
     ACCEPTED = "accepted"
     RUNNING = "running"
@@ -125,13 +133,19 @@ class GuestServiceSpec:
 @dataclass(frozen=True)
 class GuestServiceStatusRead:
     state: GuestServiceStatusReadState
+    observed_state: GuestServiceObservedState | None = None
     service_status: ServiceStatus | None = None
     failure: OperationFailure | None = None
 
     @staticmethod
-    def loaded(service_status: ServiceStatus) -> GuestServiceStatusRead:
+    def loaded(
+        service_status: ServiceStatus,
+        *,
+        observed_state: GuestServiceObservedState,
+    ) -> GuestServiceStatusRead:
         return GuestServiceStatusRead(
             state=GuestServiceStatusReadState.LOADED,
+            observed_state=observed_state,
             service_status=service_status,
         )
 
@@ -145,8 +159,8 @@ class GuestServiceStatusRead:
     def as_json(self) -> dict[str, Any]:
         return {
             "state": self.state.value,
-            "observedState": self.service_status.state
-            if self.service_status is not None
+            "observedState": self.observed_state.value
+            if self.observed_state is not None
             else None,
             "observedAt": self.service_status.observed_at.isoformat()
             if self.service_status is not None

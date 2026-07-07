@@ -11,6 +11,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestControlDependencyError,
     GuestServiceCondition,
     GuestServiceDesiredState,
+    GuestServiceObservedState,
     GuestServiceResource,
     GuestServiceSpec,
     GuestServiceSpecState,
@@ -340,19 +341,38 @@ def guest_service_resource_from_json(document: dict[str, Any]) -> GuestServiceRe
 
 
 def guest_service_spec_from_json(document: dict[str, Any]) -> GuestServiceSpec:
-    state = GuestServiceSpecState(required_string(document, "state"))
+    try:
+        state = GuestServiceSpecState(required_string(document, "state"))
+    except ValueError as error:
+        raise GuestControlDependencyError(
+            "postgres guest service resource spec state is invalid",
+            kind="guestServiceResourceDocumentInvalid",
+        ) from error
     desired_state_value = document.get("desiredState")
     updated_at_value = document.get("updatedAt")
-    desired_state = (
-        GuestServiceDesiredState(desired_state_value)
-        if isinstance(desired_state_value, str)
-        else None
-    )
-    updated_at = (
-        datetime.fromisoformat(updated_at_value)
-        if isinstance(updated_at_value, str)
-        else None
-    )
+    try:
+        desired_state = (
+            GuestServiceDesiredState(desired_state_value)
+            if isinstance(desired_state_value, str)
+            else None
+        )
+        updated_at = (
+            datetime.fromisoformat(updated_at_value)
+            if isinstance(updated_at_value, str)
+            else None
+        )
+    except (ValueError, TypeError) as error:
+        raise GuestControlDependencyError(
+            "postgres guest service resource spec document is invalid",
+            kind="guestServiceResourceDocumentInvalid",
+        ) from error
+    if state == GuestServiceSpecState.CONFIGURED and (
+        desired_state is None or updated_at is None
+    ):
+        raise GuestControlDependencyError(
+            "postgres guest service resource configured spec is incomplete",
+            kind="guestServiceResourceDocumentInvalid",
+        )
     return GuestServiceSpec(
         state=state,
         desired_state=desired_state,
@@ -363,11 +383,42 @@ def guest_service_spec_from_json(document: dict[str, Any]) -> GuestServiceSpec:
 def guest_service_status_read_from_json(
     document: dict[str, Any],
 ) -> GuestServiceStatusRead:
-    state = GuestServiceStatusReadState(required_string(document, "state"))
+    try:
+        state = GuestServiceStatusReadState(required_string(document, "state"))
+    except ValueError as error:
+        raise GuestControlDependencyError(
+            "postgres guest service resource status state is invalid",
+            kind="guestServiceResourceDocumentInvalid",
+        ) from error
+    observed_state_value = document.get("observedState")
+    try:
+        observed_state = (
+            GuestServiceObservedState(observed_state_value)
+            if isinstance(observed_state_value, str)
+            else None
+        )
+    except ValueError as error:
+        raise GuestControlDependencyError(
+            "postgres guest service resource observed state is invalid",
+            kind="guestServiceResourceDocumentInvalid",
+        ) from error
     failure = document.get("readError")
     service_status_document = document.get("serviceStatus")
+    if state == GuestServiceStatusReadState.LOADED and (
+        observed_state is None or not isinstance(service_status_document, dict)
+    ):
+        raise GuestControlDependencyError(
+            "postgres guest service resource loaded status is incomplete",
+            kind="guestServiceResourceDocumentInvalid",
+        )
+    if state == GuestServiceStatusReadState.FAILED and not isinstance(failure, dict):
+        raise GuestControlDependencyError(
+            "postgres guest service resource failed status is incomplete",
+            kind="guestServiceResourceDocumentInvalid",
+        )
     return GuestServiceStatusRead(
         state=state,
+        observed_state=observed_state,
         service_status=service_status_from_json(service_status_document)
         if isinstance(service_status_document, dict)
         else None,
@@ -380,12 +431,19 @@ def guest_service_status_read_from_json(
 def guest_service_condition_from_json(
     document: dict[str, Any],
 ) -> GuestServiceCondition:
+    try:
+        observed_at = datetime.fromisoformat(required_string(document, "observedAt"))
+    except ValueError as error:
+        raise GuestControlDependencyError(
+            "postgres guest service resource condition observedAt is invalid",
+            kind="guestServiceResourceDocumentInvalid",
+        ) from error
     return GuestServiceCondition(
         type=required_string(document, "type"),
         status=required_string(document, "status"),
         reason=required_string(document, "reason"),
         message=required_string(document, "message"),
-        observed_at=datetime.fromisoformat(required_string(document, "observedAt")),
+        observed_at=observed_at,
     )
 
 
@@ -396,11 +454,18 @@ def service_status_from_json(document: dict[str, Any]) -> ServiceStatus:
             "postgres guest service resource status exitCode is invalid",
             kind="guestServiceResourceDocumentInvalid",
         )
+    try:
+        observed_at = datetime.fromisoformat(required_string(document, "observedAt"))
+    except ValueError as error:
+        raise GuestControlDependencyError(
+            "postgres guest service resource status observedAt is invalid",
+            kind="guestServiceResourceDocumentInvalid",
+        ) from error
     return ServiceStatus(
         service=required_string(document, "service"),
         state=required_string(document, "state"),
         health=required_string(document, "health"),
-        observed_at=datetime.fromisoformat(required_string(document, "observedAt")),
+        observed_at=observed_at,
         container=string_or_empty(document.get("container")),
         exit_code=exit_code,
     )

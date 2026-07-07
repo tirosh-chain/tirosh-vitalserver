@@ -16,6 +16,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestControlDependencyError,
     GuestServiceCondition,
     GuestServiceDesiredState,
+    GuestServiceObservedState,
     GuestServiceResource,
     GuestServiceSpec,
     GuestServiceStatusRead,
@@ -195,7 +196,8 @@ def test_postgres_repository_persists_and_reads_guest_service_resource(
                 state="running",
                 health="healthy",
                 observed_at=datetime(2026, 7, 1, 0, 0, 1, tzinfo=UTC),
-            )
+            ),
+            observed_state=GuestServiceObservedState.RUNNING,
         ),
         conditions=[
             GuestServiceCondition(
@@ -239,6 +241,56 @@ def test_postgres_repository_persists_and_reads_guest_service_resource(
     assert "INSERT INTO guest_service_resources" in saved_sql[0]
     assert "ON CONFLICT (service) DO UPDATE" in saved_sql[0]
     assert "SELECT document::text FROM guest_service_resources" in saved_sql[1]
+
+
+def test_postgres_repository_rejects_invalid_guest_service_resource_document(
+    monkeypatch: Any,
+) -> None:
+    document = {
+        "service": "app",
+        "spec": {
+            "state": "configured",
+            "desiredState": "running",
+            "updatedAt": "2026-07-01T00:00:00+00:00",
+        },
+        "status": {
+            "state": "loaded",
+            "observedState": "paused",
+            "serviceStatus": {
+                "service": "app",
+                "state": "running",
+                "health": "healthy",
+                "observedAt": "2026-07-01T00:00:00+00:00",
+            },
+            "readError": None,
+        },
+        "conditions": [],
+        "lastOperationId": None,
+    }
+
+    def fake_compose(
+        arguments: list[str],
+        *,
+        check: bool = True,
+        timeout_seconds: float | None = None,
+        capture_output: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        del check
+        del timeout_seconds
+        assert capture_output is True
+        return subprocess.CompletedProcess(
+            arguments,
+            0,
+            stdout=json.dumps(document, sort_keys=True),
+            stderr="",
+        )
+
+    monkeypatch.setattr(compose_app, "compose", fake_compose)
+
+    with pytest.raises(GuestControlDependencyError) as error:
+        PostgresOperationRepository().get_guest_service_resource("app")
+
+    assert error.value.kind == "guestServiceResourceDocumentInvalid"
 
 
 def test_postgres_repository_reports_psql_failure(monkeypatch: Any) -> None:

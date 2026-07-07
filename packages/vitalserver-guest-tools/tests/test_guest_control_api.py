@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
+from io import BytesIO
 
 import pytest
 
@@ -18,6 +19,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     ProductLabUploadResult,
     RedisBackupResult,
     RedisRestoreResult,
+    ServiceNotFoundError,
     ServiceOperation,
     ServiceStatus,
     StackStatus,
@@ -87,17 +89,25 @@ class FakeOperations:
 
 
 class FakeServiceControl:
-    def __init__(self, *, fail_command: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        fail_command: str | None = None,
+        services: list[str] | None = None,
+    ) -> None:
         self.started: list[str] = []
         self.stopped: list[str] = []
         self.restarted: list[str] = []
         self.reconciled = 0
         self.fail_command = fail_command
+        self.services = services or ["app", "redis"]
 
     def list_services(self) -> list[str]:
-        return ["app", "redis"]
+        return self.services
 
     def get_service_status(self, service: str) -> ServiceStatus:
+        if service not in self.services:
+            raise ServiceNotFoundError(service, available_services=self.services)
         return ServiceStatus(
             service=service,
             state="running",
@@ -148,6 +158,34 @@ class FakeServiceControl:
                 f"docker compose {command} failed",
                 kind="guest-compose-command-failed",
             )
+
+
+def handle_with_test_handler(
+    *,
+    method: str,
+    path: str,
+    body: bytes,
+    usecases: GuestControlUseCases,
+) -> tuple[HTTPStatus, dict[str, object]]:
+    handler_type = guest_control_api.make_handler(usecases)
+    handler = object.__new__(handler_type)
+    captured: dict[str, int] = {}
+    handler.path = path
+    handler.headers = {"Content-Length": str(len(body))}
+    handler.rfile = BytesIO(body)
+    handler.wfile = BytesIO()
+    handler.send_response = lambda status_code: captured.__setitem__(
+        "status",
+        status_code,
+    )
+    handler.send_header = lambda key, value: None
+    handler.end_headers = lambda: None
+
+    handler._handle_request(method)
+
+    return HTTPStatus(captured["status"]), json.loads(
+        handler.wfile.getvalue().decode("utf-8")
+    )
 
 
 class FakeProductLab:
@@ -819,7 +857,69 @@ def test_guest_service_resource_routes_return_controller_resource(
     assert resource_document["service"] == "app"
     assert resource_document["spec"]["state"] == "configured"
     assert resource_document["status"]["state"] == "loaded"
+    assert resource_document["status"]["observedState"] == "running"
     assert resource_document["lastOperationId"] == "op_app_reconcile_1"
+
+
+def test_guest_service_observe_route_returns_observed_resource(
+    usecases: GuestControlUseCases,
+) -> None:
+    status, document = route_request(
+        method="POST",
+        path="/v1/services/app/observe",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.ACCEPTED
+    assert document["service"] == "app"
+    assert document["spec"]["state"] == "missing"
+    assert document["status"]["state"] == "loaded"
+    assert document["status"]["observedState"] == "running"
+
+
+def test_guest_service_spec_invalid_request_returns_bad_request() -> None:
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    status, document = handle_with_test_handler(
+        method="PUT",
+        path="/v1/services/app/spec",
+        body=json.dumps({"desiredState": "paused"}).encode("utf-8"),
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.BAD_REQUEST
+    assert document == {
+        "code": "guestServiceSpecInvalid",
+        "detail": "guest service desiredState must be running or stopped",
+    }
+
+
+def test_guest_service_unknown_service_returns_not_found() -> None:
+    usecases = GuestControlUseCases(
+        service_control=FakeServiceControl(services=["app"]),
+        operations=FakeOperations(),
+        operation_ids=FakeOperationIds(),
+        clock=FakeClock(),
+    )
+
+    status, document = handle_with_test_handler(
+        method="GET",
+        path="/v1/services/redis/resource",
+        body=b"",
+        usecases=usecases,
+    )
+
+    assert status == HTTPStatus.NOT_FOUND
+    assert document == {
+        "availableServices": ["app"],
+        "code": "serviceNotFound",
+        "detail": "compose service is not available: redis",
+    }
 
 
 def test_restart_route_preserves_failed_operation_document() -> None:
