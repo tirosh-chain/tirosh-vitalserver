@@ -166,6 +166,9 @@ private final class HostFakeRuntimeControlClient: RuntimeControlClient, RuntimeH
 
     func loadSettings() -> RuntimeSettings { RuntimeSettings() }
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus { RuntimeStatus() }
+    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState {
+        RuntimeOperationState(activeOperation: nil, runtimeStatusUpdatedAt: status.updatedAt, install: .unavailable())
+    }
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus { RuntimeStatus() }
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory { RuntimeEventHistory(events: []) }
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory { RuntimeEventHistory(events: []) }

@@ -10,6 +10,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
 
     private let releaseInfo: RuntimeReleaseInfo
     private let statusReader: RuntimeStatusReading
+    private let operationStateReader: RuntimeOperationStateReading
     private let observabilityReader: RuntimeObservabilityReading
     private let fileReader: RuntimeHostFileReading
     private let settingsReader: RuntimeSettingsReading
@@ -22,6 +23,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         self.init(
             releaseInfo: releaseInfo,
             statusReader: SystemRuntimeStatusReader(paths: paths),
+            operationStateReader: SystemRuntimeOperationStateReader.live(paths: paths),
             observabilityReader: SystemRuntimeObservabilityReader.live(paths: paths),
             fileReader: SystemRuntimeHostFileReader(),
             settingsReader: SystemRuntimeSettingsReader(),
@@ -37,6 +39,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         self.init(
             releaseInfo: releaseInfo,
             statusReader: SystemRuntimeStatusReader(paths: paths),
+            operationStateReader: SystemRuntimeOperationStateReader.live(paths: paths),
             observabilityReader: SystemRuntimeObservabilityReader.live(paths: paths),
             fileReader: SystemRuntimeHostFileReader(),
             settingsReader: SystemRuntimeSettingsReader(),
@@ -47,6 +50,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     init(
         releaseInfo: RuntimeReleaseInfo,
         statusReader: RuntimeStatusReading = SystemRuntimeStatusReader(paths: RuntimePaths()),
+        operationStateReader: RuntimeOperationStateReading = SystemRuntimeOperationStateReader.live(paths: RuntimePaths()),
         observabilityReader: RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimePaths()),
         fileReader: RuntimeHostFileReading = SystemRuntimeHostFileReader(),
         settingsReader: RuntimeSettingsReading = SystemRuntimeSettingsReader(),
@@ -54,6 +58,7 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
     ) {
         self.releaseInfo = releaseInfo
         self.statusReader = statusReader
+        self.operationStateReader = operationStateReader
         self.observabilityReader = observabilityReader
         self.fileReader = fileReader
         self.settingsReader = settingsReader
@@ -66,6 +71,10 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
 
     public func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
         statusReader.loadStatus(settings: settings)
+    }
+
+    public func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState {
+        operationStateReader.loadOperationState(status: status)
     }
 
     public func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {

@@ -70,6 +70,13 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
         case redisRelay = "redis-relay"
     }
 
+    private struct OperationPresentationState {
+        let installInProgress: Bool
+        let initializationInProgress: Bool
+        let recoveryInProgress: Bool
+        let updateInProgress: Bool
+    }
+
     private let serviceValuePolicy: RuntimeStatusServiceValuePolicy
     private let httpValuePolicy: RuntimeStatusHTTPValuePolicy
     private let guestReadinessPolicy = RuntimeStatusGuestReadinessPresentationPolicy()
@@ -83,101 +90,121 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
 
     public func serviceHealth(
         status: RuntimeStatus,
+        operationState: RuntimeOperationState,
         redisRelaySettings: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings(),
         now: Date
     ) -> [RuntimeStatusAdvancedServiceHealthItem] {
-        let installInProgress = RuntimeActiveOperationPolicy.isInstallInProgress(status)
-        let initializationInProgress = RuntimeActiveOperationPolicy.isInitializationInProgress(status)
-        let recoveryInProgress = RuntimeActiveOperationPolicy.isRecoveryInProgress(status)
-        let updateInProgress = RuntimeActiveOperationPolicy.isUpdateInProgress(status)
+        let operation = operationState.operationForPresentation
+        return serviceHealth(
+            status: status,
+            redisRelaySettings: redisRelaySettings,
+            operationState: OperationPresentationState(
+                installInProgress: RuntimeActiveOperationPolicy.isInstallOperation(operation),
+                initializationInProgress: RuntimeActiveOperationPolicy.isInitializationInProgress(status),
+                recoveryInProgress: RuntimeActiveOperationPolicy.isRecoveryInProgress(status, operation: operation),
+                updateInProgress: RuntimeActiveOperationPolicy.isUpdateInProgress(status, operation: operation)
+            ),
+            runtimeOperationState: operationState,
+            now: now
+        )
+    }
+
+    private func serviceHealth(
+        status: RuntimeStatus,
+        redisRelaySettings: RuntimeRedisRelaySettings,
+        operationState: OperationPresentationState,
+        runtimeOperationState: RuntimeOperationState,
+        now _: Date
+    ) -> [RuntimeStatusAdvancedServiceHealthItem] {
         var items = [
             serviceStateItem(
                 vocabulary.proxyServiceLabel,
                 state: status.proxyServiceState,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
             serviceStateItem(
                 vocabulary.guestLogSyncServiceLabel,
                 state: status.guestLogSyncServiceState,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
             serviceStateItem(
                 vocabulary.sleepPreventionServiceLabel,
                 state: status.sleepPreventionServiceState,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
             serviceStateItem(
                 vocabulary.watchdogServiceLabel,
                 state: status.watchdogServiceState,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
             redisRelayItem(
                 status: status,
                 settings: redisRelaySettings,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
             vitalServerItem(
                 status: status,
+                runtimeOperationState: runtimeOperationState,
                 vocabulary.vitalServerName,
                 uptimeText: nil,
                 action: .openVitalServer,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
             httpServiceItem(
                 vocabulary.hostProxyName,
                 httpStatus: status.hostProxyHTTP,
                 uptimeText: nil,
                 action: .openVitalServer,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
             httpServiceItem(
                 vocabulary.redisUIName,
                 httpStatus: status.redisUIHTTP,
                 uptimeText: nil,
                 action: .openRedisUI,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
             httpServiceItem(
                 vocabulary.swaggerUIName,
                 httpStatus: status.swaggerUIHTTP,
                 uptimeText: nil,
                 action: .openSwagger,
-                installInProgress: installInProgress,
-                initializationInProgress: initializationInProgress,
-                recoveryInProgress: recoveryInProgress,
-                updateInProgress: updateInProgress
+                installInProgress: operationState.installInProgress,
+                initializationInProgress: operationState.initializationInProgress,
+                recoveryInProgress: operationState.recoveryInProgress,
+                updateInProgress: operationState.updateInProgress
             ),
         ]
         items.insert(contentsOf: guestServiceItems(
             status: status,
-            installInProgress: installInProgress,
-            initializationInProgress: initializationInProgress,
-            recoveryInProgress: recoveryInProgress,
-            updateInProgress: updateInProgress
+            installInProgress: operationState.installInProgress,
+            initializationInProgress: operationState.initializationInProgress,
+            recoveryInProgress: operationState.recoveryInProgress,
+            updateInProgress: operationState.updateInProgress
         ), at: 4)
         return items
     }
@@ -358,6 +385,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
 
     private func vitalServerItem(
         status: RuntimeStatus,
+        runtimeOperationState: RuntimeOperationState,
         _ label: String,
         uptimeText: String?,
         action: RuntimeStatusServiceActionID,
@@ -374,14 +402,16 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
             recoveryInProgress: recoveryInProgress,
             updateInProgress: updateInProgress
         )
+        let guestHTTPValue = guestReadinessPolicy.guestHTTPValue(
+            status: status,
+            operationState: runtimeOperationState,
+            computedValue: computedValue,
+            waitingText: vocabulary.waitingText,
+            staleText: vocabulary.guestStateStaleText
+        )
         return RuntimeStatusAdvancedServiceHealthItem(
             label: label,
-            value: value(guestReadinessPolicy.guestHTTPValue(
-                status: status,
-                computedValue: computedValue,
-                waitingText: vocabulary.waitingText,
-                staleText: vocabulary.guestStateStaleText
-            )),
+            value: value(guestHTTPValue),
             httpStatus: status.guestHTTP,
             action: action
         )

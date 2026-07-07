@@ -6,6 +6,7 @@ import Errors
 public protocol RuntimeViewModelSnapshotReading: Sendable {
     func loadSettings() async -> RuntimeSettings
     func loadStatus(settings: RuntimeSettings) async -> RuntimeStatus
+    func loadOperationState(status: RuntimeStatus) async -> RuntimeOperationState
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
     func loadRuntimeEvents(query: RuntimeEventQuery) async -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() async -> RuntimeVitalDBObservationSnapshot

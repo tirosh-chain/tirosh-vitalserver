@@ -42,7 +42,7 @@ extension RuntimeBackup {
         case .directory:
             break
         case .missing:
-            return []
+            throw RuntimeBackupListError.unexpectedPathState(path: directory.path, state: directoryState.rawValue)
         case .inspectFailed(let reason):
             throw RuntimeBackupListError.pathInspectionFailed(path: directory.path, reason: reason)
         case .file, .other, .unknown:

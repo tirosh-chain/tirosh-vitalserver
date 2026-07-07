@@ -147,4 +147,44 @@ public struct RuntimeInstallStateDocument: Codable, Equatable, Sendable {
         self.message = message
         self.blockers = blockers
     }
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case state
+        case mode
+        case currentStep
+        case updatedAt
+        case message
+        case blockers
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        self.state = try container.decode(RuntimeInstallState.self, forKey: .state)
+        self.mode = try container.decode(RuntimeInstallMode.self, forKey: .mode)
+        self.currentStep = try container.decodeIfPresent(RuntimeWorkflowStep.self, forKey: .currentStep)
+        self.updatedAt = try container.decode(String.self, forKey: .updatedAt)
+        self.message = try container.decodeIfPresent(String.self, forKey: .message)
+        self.blockers = try container.decodeIfPresent([String].self, forKey: .blockers) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(state, forKey: .state)
+        try container.encode(mode, forKey: .mode)
+        if let currentStep {
+            try container.encode(currentStep, forKey: .currentStep)
+        } else {
+            try container.encodeNil(forKey: .currentStep)
+        }
+        try container.encode(updatedAt, forKey: .updatedAt)
+        if let message {
+            try container.encode(message, forKey: .message)
+        } else {
+            try container.encodeNil(forKey: .message)
+        }
+        try container.encode(blockers, forKey: .blockers)
+    }
 }

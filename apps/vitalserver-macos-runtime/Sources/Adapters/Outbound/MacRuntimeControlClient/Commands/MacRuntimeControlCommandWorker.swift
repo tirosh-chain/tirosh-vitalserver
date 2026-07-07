@@ -148,12 +148,11 @@ public actor MacRuntimeControlCommandWorker {
         let controller = guestMaintenanceController
         let archive = backupURL.path
         return try await runGuestControlCommand { gateway in
-            RuntimeCommandResult(
-                guestControlOperation: try controller.restoreRedisBackup(
-                    archive: archive,
-                    gateway: gateway
-                )
+            let operation = try controller.restoreRedisBackup(
+                archive: archive,
+                gateway: gateway
             )
+            return RuntimeCommandResult(guestControlOperation: operation)
         }
     }
 
@@ -181,9 +180,8 @@ public actor MacRuntimeControlCommandWorker {
     public func repairDatastore() async throws -> RuntimeCommandResult {
         let controller = guestMaintenanceController
         return try await runGuestControlCommand { gateway in
-            RuntimeCommandResult(
-                guestControlOperation: try controller.repairDatastore(gateway: gateway)
-            )
+            let operation = try controller.repairDatastore(gateway: gateway)
+            return RuntimeCommandResult(guestControlOperation: operation)
         }
     }
 
@@ -223,9 +221,8 @@ public actor MacRuntimeControlCommandWorker {
     public func createRedisBackup() async throws -> RuntimeCommandResult {
         let controller = guestMaintenanceController
         return try await runGuestControlCommand { gateway in
-            RuntimeCommandResult(
-                guestControlOperation: try controller.createRedisBackup(gateway: gateway)
-            )
+            let operation = try controller.createRedisBackup(gateway: gateway)
+            return RuntimeCommandResult(guestControlOperation: operation)
         }
     }
 

@@ -413,14 +413,17 @@ final class RuntimeFileReaderTests: XCTestCase {
         XCTAssertThrowsError(try RuntimeBackup.loadRedisBackups(fileStore: fileStore))
     }
 
-    func testRuntimeDataBackupListTreatsMissingManagedDirectoryAsEmpty() throws {
+    func testRuntimeDataBackupListReportsMissingManagedDirectoryDistinctFromEmpty() throws {
         let fileStore = PathStateRuntimeFileStore(pathStates: [
             RuntimeControlClientConstants.Paths.runtimeDataBackups: .missing,
         ])
 
-        let backups = try RuntimeBackup.loadRuntimeDataBackups(fileStore: fileStore)
-
-        XCTAssertEqual(backups, [])
+        XCTAssertThrowsError(try RuntimeBackup.loadRuntimeDataBackups(fileStore: fileStore)) { error in
+            XCTAssertEqual(
+                error as? RuntimeBackupListError,
+                .unexpectedPathState(path: RuntimeControlClientConstants.Paths.runtimeDataBackups, state: "missing")
+            )
+        }
     }
 
     func testRuntimeDataBackupListIncludesAutomaticBackupDirectories() throws {

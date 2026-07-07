@@ -77,6 +77,45 @@ public struct RuntimeRecorderIngressStatusReadResult: Codable, Equatable, Sendab
         }
         return .readFailed
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case readState
+        case httpStatus
+        case document
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let httpStatus = try container.decodeIfPresent(String.self, forKey: .httpStatus) ?? ""
+        let document = try container.decodeIfPresent(RuntimeRecorderIngressStatusDocument.self, forKey: .document)
+        let readError = try container.decodeIfPresent(String.self, forKey: .readError)
+        self.init(
+            readState: try container.decodeIfPresent(
+                RuntimeRecorderIngressStatusReadState.self,
+                forKey: .readState
+            ),
+            httpStatus: httpStatus,
+            document: document,
+            readError: readError
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(readState, forKey: .readState)
+        try container.encode(httpStatus, forKey: .httpStatus)
+        if let document {
+            try container.encode(document, forKey: .document)
+        } else {
+            try container.encodeNil(forKey: .document)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
 }
 
 public struct RuntimeHostProxyListenerObservation {

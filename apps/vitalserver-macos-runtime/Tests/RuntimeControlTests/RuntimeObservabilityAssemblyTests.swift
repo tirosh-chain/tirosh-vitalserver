@@ -80,7 +80,7 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
         XCTAssertNil(history.readError)
     }
 
-    func testRecorderHistoryAssemblerUsesExplicitRecorderIngressStatusRead() {
+    func testRecorderHistoryAssemblerUsesExplicitRecorderIngressStatusReadWithoutOverridingVitalDBState() {
         let currentObservation = VitalDBObservationDocument(
             observedAt: "2026-06-01T00:00:10Z",
             ready: true,
@@ -125,9 +125,11 @@ final class RuntimeObservabilityAssemblyTests: XCTestCase {
             recorderIngressStatusRead: ingressRead
         )
 
-        XCTAssertEqual(history.recorders.first?.status, .online)
-        XCTAssertEqual(history.recorders.first?.lastSeenAt, "2026-06-01T00:00:09Z")
-        XCTAssertEqual(history.summary.onlineRecorders, 1)
+        XCTAssertEqual(history.recorders.first?.status, .stale)
+        XCTAssertEqual(history.recorders.first?.lastSeenAt, "2026-06-01T00:00:00Z")
+        XCTAssertEqual(history.recorderIngressStatusRead?.readState, .loaded)
+        XCTAssertEqual(history.summary.onlineRecorders, 0)
+        XCTAssertEqual(history.summary.staleRecorders, 1)
     }
 
     func testRecorderActivityWindowAssemblerFillsOnlyRequestedAllPage() {

@@ -3,6 +3,7 @@ import {
   runtimeLabBedListSchema,
   runtimeLabRecorderListSchema,
   runtimeEventHistorySchema,
+  runtimeOperationStateSchema,
   runtimeOverviewSchema,
   runtimeStatusSchema,
   vitalDBRecordersSchema,
@@ -64,6 +65,8 @@ export type RuntimeGuestControlServiceStatus =
   components["schemas"]["RuntimeGuestControlServiceStatus"];
 
 export type RuntimeStatus = z.infer<typeof runtimeStatusSchema>;
+
+export type RuntimeOperationState = z.infer<typeof runtimeOperationStateSchema>;
 
 export type RuntimeSettings =
   paths["/runtime/settings"]["get"]["responses"]["200"]["content"]["application/json"];

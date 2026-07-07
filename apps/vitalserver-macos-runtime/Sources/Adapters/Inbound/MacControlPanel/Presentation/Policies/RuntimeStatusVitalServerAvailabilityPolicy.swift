@@ -38,16 +38,20 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
 
     public func availability(
         status: RuntimeStatus,
+        operationState: RuntimeOperationState,
         now: Date
     ) -> RuntimeStatusVitalServerAvailabilityValue {
         let text: String
-        if RuntimeActiveOperationPolicy.isInstallInProgress(status) {
+        if let operation = operationState.operationForPresentation,
+           RuntimeActiveOperationPolicy.isInstallOperation(operation) {
             text = vocabulary.installingText
         } else if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
             text = vocabulary.initializingText
-        } else if RuntimeActiveOperationPolicy.isRecoveryInProgress(status) {
+        } else if let operation = operationState.operationForPresentation,
+                  RuntimeActiveOperationPolicy.isRecoveryInProgress(status, operation: operation) {
             text = vocabulary.recoveringText
-        } else if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
+        } else if let operation = operationState.operationForPresentation,
+                  RuntimeActiveOperationPolicy.isUpdateInProgress(status, operation: operation) {
             text = vocabulary.updatingText
         } else if !status.effectiveRuntimeInstallationState.isExecutable {
             text = vocabulary.unavailableText
@@ -56,16 +60,22 @@ public struct RuntimeStatusVitalServerAvailabilityPolicy {
         }
         return RuntimeStatusVitalServerAvailabilityValue(
             text: text,
-            severity: availabilitySeverity(status),
+            severity: availabilitySeverity(status, operationState: operationState),
             uptimeText: nil
         )
     }
 
-    private func availabilitySeverity(_ status: RuntimeStatus) -> RuntimeStatusReachabilityPolicy.Severity {
-        if RuntimeActiveOperationPolicy.isInstallInProgress(status) ||
-            RuntimeActiveOperationPolicy.isInitializationInProgress(status) ||
-            RuntimeActiveOperationPolicy.isRecoveryInProgress(status) ||
-            RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
+    private func availabilitySeverity(
+        _ status: RuntimeStatus,
+        operationState: RuntimeOperationState
+    ) -> RuntimeStatusReachabilityPolicy.Severity {
+        if let operation = operationState.operationForPresentation,
+           RuntimeActiveOperationPolicy.isInstallOperation(operation) ||
+            RuntimeActiveOperationPolicy.isRecoveryInProgress(status, operation: operation) ||
+            RuntimeActiveOperationPolicy.isUpdateInProgress(status, operation: operation) {
+            return .warning
+        }
+        if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
             return .warning
         }
         if !status.effectiveRuntimeInstallationState.isExecutable {

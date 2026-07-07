@@ -169,7 +169,8 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
             currentStatus: .loaded(status(
                 level: .initializing,
                 operation: .install,
-                updatedAt: "2026-05-22T00:00:00Z"
+                updatedAt: "2026-05-22T00:00:00Z",
+                progress: progress(operation: .install, phase: .running)
             ))
         )
 
@@ -197,6 +198,29 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
                     level: .initializing,
                     operation: .applyBundle,
                     updatedAt: "2026-05-22T00:00:00Z"
+                ))
+            ).status,
+            .degraded
+        )
+        XCTAssertEqual(
+            useCase.observedStatusPlan(
+                deferred,
+                currentStatus: .loaded(status(
+                    level: .initializing,
+                    operation: .install,
+                    updatedAt: "2026-05-22T00:00:00Z"
+                ))
+            ).status,
+            .degraded
+        )
+        XCTAssertEqual(
+            useCase.observedStatusPlan(
+                deferred,
+                currentStatus: .loaded(status(
+                    level: .initializing,
+                    operation: .install,
+                    updatedAt: "2026-05-22T00:00:00Z",
+                    progress: progress(operation: .install, phase: .completed)
                 ))
             ).status,
             .degraded
@@ -234,7 +258,7 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         XCTAssertEqual(plan.printMessage, "watchdog: critical")
     }
 
-    func testStatusManagedOperationGuardPlanBlocksFreshProtectedOperation() {
+    func testStatusManagedOperationGuardPlanDoesNotInferOperationFromStatusDocument() {
         let useCase = WatchdogRuntimeUseCase()
 
         let plan = useCase.statusManagedOperationGuardPlan(
@@ -243,7 +267,7 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
             graceSeconds: 1_800
         )
 
-        XCTAssertEqual(plan.activeOperation, .applyBundle)
+        XCTAssertNil(plan.activeOperation)
         XCTAssertNil(plan.logMessage)
     }
 
@@ -260,7 +284,7 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         XCTAssertNil(plan.logMessage)
     }
 
-    func testStatusManagedOperationGuardPlanDoesNotHideInvalidOrStaleState() {
+    func testStatusManagedOperationGuardPlanDoesNotTreatInvalidOrStaleStatusAsOperationState() {
         let useCase = WatchdogRuntimeUseCase()
 
         let invalid = useCase.statusManagedOperationGuardPlan(
@@ -275,15 +299,9 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
         )
 
         XCTAssertNil(invalid.activeOperation)
-        XCTAssertEqual(
-            invalid.logMessage,
-            "watchdog active operation guard ignored invalid updatedAt operation=rollback updatedAt=not-a-date"
-        )
+        XCTAssertNil(invalid.logMessage)
         XCTAssertNil(stale.activeOperation)
-        XCTAssertEqual(
-            stale.logMessage,
-            "watchdog active operation guard expired operation=rollback ageSeconds=1860"
-        )
+        XCTAssertNil(stale.logMessage)
     }
 
     func testGuestBootstrapGuardDoesNotBlockAfterVMLifecycleDeadline() {
@@ -353,7 +371,7 @@ final class WatchdogRuntimeUseCaseTests: XCTestCase {
             graceSeconds: 1_800
         )
 
-        XCTAssertEqual(loaded.activeOperation, .applyBundle)
+        XCTAssertNil(loaded.activeOperation)
         XCTAssertNil(loaded.logMessage)
         XCTAssertNil(missing.activeOperation)
         XCTAssertNil(missing.logMessage)
@@ -433,7 +451,8 @@ private func runningLifecycle() -> RuntimeVMLifecycleDocument {
 private func status(
     level: RuntimeStatusLevel,
     operation: RuntimeOperation,
-    updatedAt: String
+    updatedAt: String,
+    progress: RuntimeProgressDocument? = nil
 ) -> RuntimeStatusDocument {
     RuntimeStatusDocument(
         product: "VitalServerHelper",
@@ -456,7 +475,24 @@ private func status(
         rootfsBase: .present,
         vmDisk: .present,
         failureReasons: [],
-        latestBackup: nil
+        latestBackup: nil,
+        progress: progress
+    )
+}
+
+private func progress(
+    operation: RuntimeOperation,
+    phase: RuntimeProgressPhase
+) -> RuntimeProgressDocument {
+    RuntimeProgressDocument(
+        operation: operation,
+        phase: phase,
+        step: nil,
+        stepStatus: nil,
+        message: "progress",
+        reasonCodes: [],
+        startedAt: nil,
+        updatedAt: "2026-05-22T00:00:00Z"
     )
 }
 

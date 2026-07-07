@@ -112,12 +112,8 @@ public struct RuntimePresentationFormatter {
         vocabulary.operationText(operation?.rawValue)
     }
 
-    public func activeOperationText(_ status: RuntimeStatus) -> String {
-        if let progress = status.progress,
-           !RuntimeActiveOperationPolicy.isTerminal(progress.phase) {
-            return operationText(progress.operation)
-        }
-        return operationText(status.operation)
+    public func activeOperationText(_ operationState: RuntimeOperationState) -> String {
+        operationText(operationState.operationForPresentation)
     }
 
     public func progressDisplayMessage(_ status: RuntimeStatus) -> String? {
@@ -131,21 +127,27 @@ public struct RuntimePresentationFormatter {
         return progress.message.isEmpty ? nil : progress.message
     }
 
-    public func updateOperationInProgress(_ status: RuntimeStatus) -> Bool {
-        RuntimeActiveOperationPolicy.isUpdateInProgress(status)
+    public func updateOperationInProgress(_ operationState: RuntimeOperationState) -> Bool {
+        RuntimeActiveOperationPolicy.isUpdateOperation(operationState.operationForPresentation)
     }
 
-    public func updateOperationDisplayMessage(_ status: RuntimeStatus) -> String? {
-        guard updateOperationInProgress(status) else {
+    public func updateOperationDisplayMessage(
+        _ status: RuntimeStatus,
+        operationState: RuntimeOperationState
+    ) -> String? {
+        guard updateOperationInProgress(operationState) else {
             return nil
         }
-        if let progressMessage = progressDisplayMessage(status) {
+        if let progress = status.progress,
+           RuntimeActiveOperationPolicy.isUpdateOperation(progress.operation),
+           !RuntimeActiveOperationPolicy.isTerminal(progress.phase),
+           let progressMessage = progressDisplayMessage(status) {
             return progressMessage
         }
         if let statusMessage = status.statusMessage, !statusMessage.isEmpty {
             return statusMessage
         }
-        if let operation = status.operation {
+        if let operation = operationState.operationForPresentation {
             return "\(operationText(operation)) in progress"
         }
         return vocabulary.updateBundleApplyingText

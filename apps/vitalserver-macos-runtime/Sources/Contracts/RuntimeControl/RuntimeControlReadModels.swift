@@ -40,6 +40,16 @@ public struct RuntimeLogSourceOption: Codable, Identifiable, Sendable {
     }
 }
 
+private extension KeyedEncodingContainer {
+    mutating func encodeExplicitOptional<T: Encodable>(_ value: T?, forKey key: Key) throws {
+        if let value {
+            try encode(value, forKey: key)
+        } else {
+            try encodeNil(forKey: key)
+        }
+    }
+}
+
 public struct VitalFilesFolder: Codable, Identifiable, Sendable {
     public var id: String { path }
     public let name: String
@@ -48,6 +58,250 @@ public struct VitalFilesFolder: Codable, Identifiable, Sendable {
     public init(name: String, path: String) {
         self.name = name
         self.path = path
+    }
+}
+
+public enum RuntimeOperationResourceReadState: String, Codable, Equatable, Sendable {
+    case loaded
+    case unavailable
+    case failed
+    case stale
+}
+
+public struct RuntimeInstallOperationState: Codable, Equatable, Sendable {
+    public let state: RuntimeOperationResourceReadState
+    public let document: RuntimeInstallStateDocument?
+    public let readError: String?
+
+    public init(
+        state: RuntimeOperationResourceReadState,
+        document: RuntimeInstallStateDocument? = nil,
+        readError: String? = nil
+    ) {
+        self.state = state
+        self.document = document
+        self.readError = readError
+    }
+
+    public static func loaded(_ document: RuntimeInstallStateDocument) -> Self {
+        Self(state: .loaded, document: document)
+    }
+
+    public static func unavailable(readError: String? = nil) -> Self {
+        Self(state: .unavailable, readError: readError)
+    }
+
+    public static func failed(readError: String) -> Self {
+        Self(state: .failed, readError: readError)
+    }
+
+    public static func fromRuntimeStatusInstallRead(_ status: RuntimeStatus) -> Self {
+        if let document = status.installStateDocument {
+            return .loaded(document)
+        }
+        if let error = status.installStateDocumentError {
+            return .failed(readError: error)
+        }
+        return .unavailable()
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case state
+        case document
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.state = try container.decode(RuntimeOperationResourceReadState.self, forKey: .state)
+        self.document = try container.decodeIfPresent(RuntimeInstallStateDocument.self, forKey: .document)
+        self.readError = try container.decodeIfPresent(String.self, forKey: .readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        if let document {
+            try container.encode(document, forKey: .document)
+        } else {
+            try container.encodeNil(forKey: .document)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
+}
+
+public struct RuntimeOperationLeaseState: Codable, Equatable, Sendable {
+    public let state: RuntimeOperationResourceReadState
+    public let document: RuntimeOperationLeaseDocument?
+    public let readError: String?
+    public let staleReason: String?
+
+    public init(
+        state: RuntimeOperationResourceReadState,
+        document: RuntimeOperationLeaseDocument? = nil,
+        readError: String? = nil,
+        staleReason: String? = nil
+    ) {
+        self.state = state
+        self.document = document
+        self.readError = readError
+        self.staleReason = staleReason
+    }
+
+    public static func loaded(_ document: RuntimeOperationLeaseDocument) -> Self {
+        Self(state: .loaded, document: document)
+    }
+
+    public static func unavailable(readError: String? = nil) -> Self {
+        Self(state: .unavailable, readError: readError)
+    }
+
+    public static func failed(readError: String) -> Self {
+        Self(state: .failed, readError: readError)
+    }
+
+    public static func stale(_ document: RuntimeOperationLeaseDocument, staleReason: String) -> Self {
+        Self(state: .stale, document: document, staleReason: staleReason)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case state
+        case document
+        case readError
+        case staleReason
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.state = try container.decode(RuntimeOperationResourceReadState.self, forKey: .state)
+        self.document = try container.decodeIfPresent(RuntimeOperationLeaseDocument.self, forKey: .document)
+        self.readError = try container.decodeIfPresent(String.self, forKey: .readError)
+        self.staleReason = try container.decodeIfPresent(String.self, forKey: .staleReason)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        if let document {
+            try container.encode(document, forKey: .document)
+        } else {
+            try container.encodeNil(forKey: .document)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+        if let staleReason {
+            try container.encode(staleReason, forKey: .staleReason)
+        } else {
+            try container.encodeNil(forKey: .staleReason)
+        }
+    }
+}
+
+public struct RuntimeOperationState: Codable, Equatable, Sendable {
+    public let activeOperation: RuntimeOperation?
+    public let runtimeStatusUpdatedAt: String?
+    public let install: RuntimeInstallOperationState
+    public let lease: RuntimeOperationLeaseState
+
+    public init(
+        activeOperation: RuntimeOperation?,
+        runtimeStatusUpdatedAt: String?,
+        install: RuntimeInstallOperationState,
+        lease: RuntimeOperationLeaseState = .unavailable()
+    ) {
+        self.activeOperation = activeOperation ?? Self.resolvedActiveOperation(
+            install: install,
+            lease: lease
+        )
+        self.runtimeStatusUpdatedAt = runtimeStatusUpdatedAt
+        self.install = install
+        self.lease = lease
+    }
+
+    public var operationForPresentation: RuntimeOperation? {
+        activeOperation
+    }
+
+    public var hasActiveOperation: Bool {
+        activeOperation != nil
+    }
+
+    private static func resolvedActiveOperation(
+        install: RuntimeInstallOperationState,
+        lease: RuntimeOperationLeaseState
+    ) -> RuntimeOperation? {
+        if install.inProgress {
+            return .install
+        }
+        if lease.state == .loaded {
+            return lease.document?.operation
+        }
+        return nil
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case activeOperation
+        case runtimeStatusUpdatedAt
+        case install
+        case lease
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let activeOperation = try container.decodeIfPresent(RuntimeOperation.self, forKey: .activeOperation)
+        let runtimeStatusUpdatedAt = try container.decodeIfPresent(String.self, forKey: .runtimeStatusUpdatedAt)
+        let install = try container.decode(RuntimeInstallOperationState.self, forKey: .install)
+        let lease = try container.decodeIfPresent(RuntimeOperationLeaseState.self, forKey: .lease) ?? .unavailable()
+        self.init(
+            activeOperation: activeOperation,
+            runtimeStatusUpdatedAt: runtimeStatusUpdatedAt,
+            install: install,
+            lease: lease
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if let activeOperation {
+            try container.encode(activeOperation, forKey: .activeOperation)
+        } else {
+            try container.encodeNil(forKey: .activeOperation)
+        }
+        if let runtimeStatusUpdatedAt {
+            try container.encode(runtimeStatusUpdatedAt, forKey: .runtimeStatusUpdatedAt)
+        } else {
+            try container.encodeNil(forKey: .runtimeStatusUpdatedAt)
+        }
+        try container.encode(install, forKey: .install)
+        try container.encode(lease, forKey: .lease)
+    }
+}
+
+private extension RuntimeInstallOperationState {
+    var inProgress: Bool {
+        guard state == .loaded, let document else {
+            return false
+        }
+        switch document.state {
+        case .preflightBlocked, .provisionPayloadBlocked, .completed, .failed:
+            return false
+        case .started,
+             .settingsLoaded,
+             .preflightVerified,
+             .provisionPayloadVerified,
+             .stepStarted,
+             .stepCompleted,
+             .provisioned,
+             .unknown:
+            return true
+        }
     }
 }
 
@@ -418,6 +672,88 @@ public struct RuntimeVitalRecorderRecord: Codable, Equatable, Identifiable, Send
         self.activityTimeline = activityTimeline
         self.redisIPSync = redisIPSync
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case vrcode
+        case status
+        case lastIP
+        case version
+        case bedID
+        case bedName
+        case patientConnected
+        case firstSeenAt
+        case lastSeenAt
+        case observationCount
+        case duplicateObservationCount
+        case currentAnomalyCount
+        case latestAnomalyKind
+        case latestAnomalySeverity
+        case latestAnomalyMessage
+        case latestAnomalyObservedAt
+        case presentInLatestObservation
+        case visibility
+        case activityTimeline
+        case redisIPSync
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            vrcode: try container.decode(String.self, forKey: .vrcode),
+            status: try container.decode(RuntimeVitalRecorderStatus.self, forKey: .status),
+            lastIP: try container.decodeIfPresent(String.self, forKey: .lastIP),
+            version: try container.decodeIfPresent(String.self, forKey: .version),
+            bedID: try container.decodeIfPresent(String.self, forKey: .bedID),
+            bedName: try container.decodeIfPresent(String.self, forKey: .bedName),
+            patientConnected: try container.decodeIfPresent(Bool.self, forKey: .patientConnected),
+            firstSeenAt: try container.decodeIfPresent(String.self, forKey: .firstSeenAt),
+            lastSeenAt: try container.decodeIfPresent(String.self, forKey: .lastSeenAt),
+            observationCount: try container.decode(Int.self, forKey: .observationCount),
+            duplicateObservationCount: try container.decode(Int.self, forKey: .duplicateObservationCount),
+            currentAnomalyCount: try container.decode(Int.self, forKey: .currentAnomalyCount),
+            latestAnomalyKind: try container.decodeIfPresent(VitalDBAnomalyKind.self, forKey: .latestAnomalyKind),
+            latestAnomalySeverity: try container.decodeIfPresent(
+                VitalDBAnomalySeverity.self,
+                forKey: .latestAnomalySeverity
+            ),
+            latestAnomalyMessage: try container.decodeIfPresent(String.self, forKey: .latestAnomalyMessage),
+            latestAnomalyObservedAt: try container.decodeIfPresent(String.self, forKey: .latestAnomalyObservedAt),
+            presentInLatestObservation: try container.decode(Bool.self, forKey: .presentInLatestObservation),
+            visibility: try container.decode(RuntimeVitalRecordVisibility.self, forKey: .visibility),
+            activityTimeline: try container.decodeIfPresent(
+                [RuntimeVitalRecorderActivityPoint].self,
+                forKey: .activityTimeline
+            ),
+            redisIPSync: try container.decodeIfPresent(
+                RuntimeRecorderRedisIPSyncObservation.self,
+                forKey: .redisIPSync
+            )
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(vrcode, forKey: .vrcode)
+        try container.encode(status, forKey: .status)
+        try container.encodeExplicitOptional(lastIP, forKey: .lastIP)
+        try container.encodeExplicitOptional(version, forKey: .version)
+        try container.encodeExplicitOptional(bedID, forKey: .bedID)
+        try container.encodeExplicitOptional(bedName, forKey: .bedName)
+        try container.encodeExplicitOptional(patientConnected, forKey: .patientConnected)
+        try container.encodeExplicitOptional(firstSeenAt, forKey: .firstSeenAt)
+        try container.encodeExplicitOptional(lastSeenAt, forKey: .lastSeenAt)
+        try container.encode(observationCount, forKey: .observationCount)
+        try container.encode(duplicateObservationCount, forKey: .duplicateObservationCount)
+        try container.encode(currentAnomalyCount, forKey: .currentAnomalyCount)
+        try container.encodeExplicitOptional(latestAnomalyKind, forKey: .latestAnomalyKind)
+        try container.encodeExplicitOptional(latestAnomalySeverity, forKey: .latestAnomalySeverity)
+        try container.encodeExplicitOptional(latestAnomalyMessage, forKey: .latestAnomalyMessage)
+        try container.encodeExplicitOptional(latestAnomalyObservedAt, forKey: .latestAnomalyObservedAt)
+        try container.encode(presentInLatestObservation, forKey: .presentInLatestObservation)
+        try container.encode(visibility, forKey: .visibility)
+        try container.encodeExplicitOptional(activityTimeline, forKey: .activityTimeline)
+        try container.encodeExplicitOptional(redisIPSync, forKey: .redisIPSync)
+    }
 }
 
 public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable {
@@ -479,6 +815,79 @@ public struct RuntimeVitalBedRecord: Codable, Equatable, Identifiable, Sendable 
         self.latestAnomalyMessage = latestAnomalyMessage
         self.latestAnomalyObservedAt = latestAnomalyObservedAt
         self.visibility = visibility
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case bedID
+        case name
+        case vrcode
+        case linkedRecorderStatus
+        case linkedRecorderIP
+        case linkedRecorderLastSeenAt
+        case status
+        case patientConnected
+        case firstSeenAt
+        case lastSeenAt
+        case observationCount
+        case duplicateObservationCount
+        case currentAnomalyCount
+        case latestAnomalyKind
+        case latestAnomalySeverity
+        case latestAnomalyMessage
+        case latestAnomalyObservedAt
+        case visibility
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            bedID: try container.decode(String.self, forKey: .bedID),
+            name: try container.decodeIfPresent(String.self, forKey: .name),
+            vrcode: try container.decodeIfPresent(String.self, forKey: .vrcode),
+            linkedRecorderStatus: try container.decodeIfPresent(
+                RuntimeVitalRecorderStatus.self,
+                forKey: .linkedRecorderStatus
+            ),
+            linkedRecorderIP: try container.decodeIfPresent(String.self, forKey: .linkedRecorderIP),
+            linkedRecorderLastSeenAt: try container.decodeIfPresent(String.self, forKey: .linkedRecorderLastSeenAt),
+            status: try container.decode(RuntimeVitalBedStatus.self, forKey: .status),
+            patientConnected: try container.decodeIfPresent(Bool.self, forKey: .patientConnected),
+            firstSeenAt: try container.decodeIfPresent(String.self, forKey: .firstSeenAt),
+            lastSeenAt: try container.decodeIfPresent(String.self, forKey: .lastSeenAt),
+            observationCount: try container.decode(Int.self, forKey: .observationCount),
+            duplicateObservationCount: try container.decode(Int.self, forKey: .duplicateObservationCount),
+            currentAnomalyCount: try container.decode(Int.self, forKey: .currentAnomalyCount),
+            latestAnomalyKind: try container.decodeIfPresent(VitalDBAnomalyKind.self, forKey: .latestAnomalyKind),
+            latestAnomalySeverity: try container.decodeIfPresent(
+                VitalDBAnomalySeverity.self,
+                forKey: .latestAnomalySeverity
+            ),
+            latestAnomalyMessage: try container.decodeIfPresent(String.self, forKey: .latestAnomalyMessage),
+            latestAnomalyObservedAt: try container.decodeIfPresent(String.self, forKey: .latestAnomalyObservedAt),
+            visibility: try container.decode(RuntimeVitalRecordVisibility.self, forKey: .visibility)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(bedID, forKey: .bedID)
+        try container.encodeExplicitOptional(name, forKey: .name)
+        try container.encodeExplicitOptional(vrcode, forKey: .vrcode)
+        try container.encodeExplicitOptional(linkedRecorderStatus, forKey: .linkedRecorderStatus)
+        try container.encodeExplicitOptional(linkedRecorderIP, forKey: .linkedRecorderIP)
+        try container.encodeExplicitOptional(linkedRecorderLastSeenAt, forKey: .linkedRecorderLastSeenAt)
+        try container.encode(status, forKey: .status)
+        try container.encodeExplicitOptional(patientConnected, forKey: .patientConnected)
+        try container.encodeExplicitOptional(firstSeenAt, forKey: .firstSeenAt)
+        try container.encodeExplicitOptional(lastSeenAt, forKey: .lastSeenAt)
+        try container.encode(observationCount, forKey: .observationCount)
+        try container.encode(duplicateObservationCount, forKey: .duplicateObservationCount)
+        try container.encode(currentAnomalyCount, forKey: .currentAnomalyCount)
+        try container.encodeExplicitOptional(latestAnomalyKind, forKey: .latestAnomalyKind)
+        try container.encodeExplicitOptional(latestAnomalySeverity, forKey: .latestAnomalySeverity)
+        try container.encodeExplicitOptional(latestAnomalyMessage, forKey: .latestAnomalyMessage)
+        try container.encodeExplicitOptional(latestAnomalyObservedAt, forKey: .latestAnomalyObservedAt)
+        try container.encode(visibility, forKey: .visibility)
     }
 }
 
@@ -563,13 +972,25 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(state, forKey: .state)
-        try container.encodeIfPresent(updatedAt, forKey: .updatedAt)
+        if let updatedAt {
+            try container.encode(updatedAt, forKey: .updatedAt)
+        } else {
+            try container.encodeNil(forKey: .updatedAt)
+        }
         try container.encode(recorders, forKey: .recorders)
         try container.encode(beds, forKey: .beds)
         try container.encode(summary, forKey: .summary)
         try container.encode(activityHistory, forKey: .activityHistory)
-        try container.encodeIfPresent(recorderIngressStatusRead, forKey: .recorderIngressStatusRead)
-        try container.encodeIfPresent(readError, forKey: .readError)
+        if let recorderIngressStatusRead {
+            try container.encode(recorderIngressStatusRead, forKey: .recorderIngressStatusRead)
+        } else {
+            try container.encodeNil(forKey: .recorderIngressStatusRead)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
     }
 
     private static func defaultState(
@@ -691,11 +1112,7 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
         )
         let latestAnomaliesBySubject = Dictionary(grouping: latestObservation.anomalies, by: \.subject)
         let projectedActivityByVrcode = activityBuckets.map(projectedActivityTimelineByVrcode)
-        let recorderIngressActivityByVrcode = recorderIngressActivityByVrcode(recorderIngressStatusRead)
         let redisIPSyncByVrcode = recorderRedisIPSyncByVrcode(recorderIngressStatusRead)
-        for vrcode in recorderIngressActivityByVrcode.keys where builders[vrcode] == nil {
-            builders[vrcode] = RecorderBuilder(vrcode: vrcode)
-        }
 
         let unsortedRecords: [RuntimeVitalRecorderRecord] = builders.values.map { builder in
             let latestRecorder = latestRecorders[builder.vrcode]
@@ -709,7 +1126,6 @@ public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
                 currentAnomalies: anomalies,
                 duplicateObservationCount: recorderDuplicateObservationCounts[builder.vrcode, default: 0],
                 activityTimeline: projectedActivityByVrcode?[builder.vrcode],
-                recorderIngressActivity: recorderIngressActivityByVrcode[builder.vrcode],
                 redisIPSync: redisIPSyncByVrcode[builder.vrcode] ?? defaultRecorderRedisIPSync(
                     vrcode: builder.vrcode,
                     recorderIngressStatusRead: recorderIngressStatusRead
@@ -878,6 +1294,44 @@ public struct RuntimeVitalRecorderActivityHistory: Codable, Equatable, Sendable 
             readError: readError
         )
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case source
+        case bucketCount
+        case earliestBucketStartedAt
+        case latestBucketStartedAt
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        source = try container.decode(RuntimeVitalRecorderActivityHistorySource.self, forKey: .source)
+        bucketCount = try container.decode(Int.self, forKey: .bucketCount)
+        earliestBucketStartedAt = try container.decodeIfPresent(String.self, forKey: .earliestBucketStartedAt)
+        latestBucketStartedAt = try container.decodeIfPresent(String.self, forKey: .latestBucketStartedAt)
+        readError = try container.decodeIfPresent(String.self, forKey: .readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(source, forKey: .source)
+        try container.encode(bucketCount, forKey: .bucketCount)
+        if let earliestBucketStartedAt {
+            try container.encode(earliestBucketStartedAt, forKey: .earliestBucketStartedAt)
+        } else {
+            try container.encodeNil(forKey: .earliestBucketStartedAt)
+        }
+        if let latestBucketStartedAt {
+            try container.encode(latestBucketStartedAt, forKey: .latestBucketStartedAt)
+        } else {
+            try container.encodeNil(forKey: .latestBucketStartedAt)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
 }
 
 public enum RuntimeVitalRecorderActivityHistorySource: String, Codable, Equatable, Sendable {
@@ -979,6 +1433,54 @@ public struct RuntimeVitalRecorderActivityWindowPage: Codable, Equatable, Sendab
         self.firstBucketStartedAt = firstBucketStartedAt
         self.latestBucketStartedAt = latestBucketStartedAt
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case index
+        case count
+        case windowSeconds
+        case windowStartedAt
+        case windowEndedAt
+        case firstBucketStartedAt
+        case latestBucketStartedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        index = try container.decode(Int.self, forKey: .index)
+        count = try container.decode(Int.self, forKey: .count)
+        windowSeconds = try container.decode(Int.self, forKey: .windowSeconds)
+        windowStartedAt = try container.decodeIfPresent(String.self, forKey: .windowStartedAt)
+        windowEndedAt = try container.decodeIfPresent(String.self, forKey: .windowEndedAt)
+        firstBucketStartedAt = try container.decodeIfPresent(String.self, forKey: .firstBucketStartedAt)
+        latestBucketStartedAt = try container.decodeIfPresent(String.self, forKey: .latestBucketStartedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(index, forKey: .index)
+        try container.encode(count, forKey: .count)
+        try container.encode(windowSeconds, forKey: .windowSeconds)
+        if let windowStartedAt {
+            try container.encode(windowStartedAt, forKey: .windowStartedAt)
+        } else {
+            try container.encodeNil(forKey: .windowStartedAt)
+        }
+        if let windowEndedAt {
+            try container.encode(windowEndedAt, forKey: .windowEndedAt)
+        } else {
+            try container.encodeNil(forKey: .windowEndedAt)
+        }
+        if let firstBucketStartedAt {
+            try container.encode(firstBucketStartedAt, forKey: .firstBucketStartedAt)
+        } else {
+            try container.encodeNil(forKey: .firstBucketStartedAt)
+        }
+        if let latestBucketStartedAt {
+            try container.encode(latestBucketStartedAt, forKey: .latestBucketStartedAt)
+        } else {
+            try container.encodeNil(forKey: .latestBucketStartedAt)
+        }
+    }
 }
 
 public struct RuntimeVitalRecorderActivityWindow: Codable, Equatable, Sendable {
@@ -1003,6 +1505,43 @@ public struct RuntimeVitalRecorderActivityWindow: Codable, Equatable, Sendable {
         self.buckets = buckets
         self.latestSampleAt = latestSampleAt
         self.readError = readError
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case state
+        case query
+        case page
+        case buckets
+        case latestSampleAt
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        state = try container.decode(RuntimeVitalRecorderActivityWindowState.self, forKey: .state)
+        query = try container.decode(RuntimeVitalRecorderActivityWindowQuery.self, forKey: .query)
+        page = try container.decode(RuntimeVitalRecorderActivityWindowPage.self, forKey: .page)
+        buckets = try container.decode([VitalDBRecorderActivityBucket].self, forKey: .buckets)
+        latestSampleAt = try container.decodeIfPresent(String.self, forKey: .latestSampleAt)
+        readError = try container.decodeIfPresent(String.self, forKey: .readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        try container.encode(query, forKey: .query)
+        try container.encode(page, forKey: .page)
+        try container.encode(buckets, forKey: .buckets)
+        if let latestSampleAt {
+            try container.encode(latestSampleAt, forKey: .latestSampleAt)
+        } else {
+            try container.encodeNil(forKey: .latestSampleAt)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
     }
 }
 
@@ -1236,24 +1775,6 @@ private func recorderRedisIPSyncByVrcode(
     )
 }
 
-private func recorderIngressActivityByVrcode(
-    _ recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?
-) -> [String: RuntimeRecorderConnectionObservation] {
-    guard recorderIngressStatusRead?.readState == .loaded,
-          let ingressRecorders = recorderIngressStatusRead?.document?.recorders
-    else {
-        return [:]
-    }
-    return Dictionary(
-        ingressRecorders.map { ($0.vrcode, $0) },
-        uniquingKeysWith: { current, candidate in
-            compareReportedTimestamp(candidate.lastSeenAt, current.lastSeenAt) == .orderedDescending
-                ? candidate
-                : current
-        }
-    )
-}
-
 private func defaultRecorderRedisIPSync(
     vrcode: String,
     recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?
@@ -1311,30 +1832,24 @@ private struct RecorderBuilder {
         currentAnomalies: [VitalDBAnomalyObservation],
         duplicateObservationCount: Int,
         activityTimeline projectedActivityTimeline: [RuntimeVitalRecorderActivityPoint]? = nil,
-        recorderIngressActivity: RuntimeRecorderConnectionObservation? = nil,
         redisIPSync: RuntimeRecorderRedisIPSyncObservation? = nil
     ) -> RuntimeVitalRecorderRecord {
         let presentInLatestObservation = latestRecorder != nil
         let latestAnomaly = latestAnomaly(in: currentAnomalies)
-        let explicitLastSeenAt = maxOptionalTimestamp(
-            presentInLatestObservation ? latestRecorder?.lastSeenAt : lastSeenAt,
-            recorderIngressActivity?.lastSeenAt
-        )
         return RuntimeVitalRecorderRecord(
             vrcode: vrcode,
             status: status(
                 latestRecorder,
-                recorderIngressActivity: recorderIngressActivity,
                 observedAt: latestObservationObservedAt,
                 onlineThresholdSeconds: recorderOnlineThresholdSeconds
             ),
-            lastIP: presentInLatestObservation ? latestRecorder?.ip : (lastIP ?? recorderIngressActivity?.selectedIp),
+            lastIP: presentInLatestObservation ? latestRecorder?.ip : lastIP,
             version: presentInLatestObservation ? latestRecorder?.version : version,
             bedID: presentInLatestObservation ? latestBed?.bedID : bedID,
             bedName: presentInLatestObservation ? latestBed?.name : bedName,
             patientConnected: presentInLatestObservation ? latestBed?.patientConnected : patientConnected,
             firstSeenAt: firstSeenAt,
-            lastSeenAt: explicitLastSeenAt,
+            lastSeenAt: presentInLatestObservation ? latestRecorder?.lastSeenAt : lastSeenAt,
             observationCount: observationCount,
             duplicateObservationCount: duplicateObservationCount,
             currentAnomalyCount: currentAnomalies.count,
@@ -1351,23 +1866,17 @@ private struct RecorderBuilder {
 
     private func status(
         _ recorder: VitalDBRecorderObservation?,
-        recorderIngressActivity: RuntimeRecorderConnectionObservation?,
         observedAt: String,
         onlineThresholdSeconds: Int
     ) -> RuntimeVitalRecorderStatus {
-        let ingressReportsOnline = recorderIngressActivityIsOnline(
-            recorderIngressActivity,
-            observedAt: observedAt,
-            onlineThresholdSeconds: onlineThresholdSeconds
-        )
         guard let recorder else {
-            return ingressReportsOnline == true ? .online : .notObserved
+            return .notObserved
         }
         if recorder.stale {
-            return ingressReportsOnline == true ? .online : .stale
+            return .stale
         }
         guard recorder.online else {
-            return ingressReportsOnline == true ? .online : .offline
+            return .offline
         }
         guard let lastSeenAt = recorder.lastSeenAt,
               let lastSeenDate = iso8601Date(lastSeenAt),
@@ -1375,23 +1884,9 @@ private struct RecorderBuilder {
             return .online
         }
         if observedDate.timeIntervalSince(lastSeenDate) > Double(max(onlineThresholdSeconds, 0)) {
-            return ingressReportsOnline == true ? .online : .stale
+            return .stale
         }
         return .online
-    }
-
-    private func recorderIngressActivityIsOnline(
-        _ recorderIngressActivity: RuntimeRecorderConnectionObservation?,
-        observedAt: String,
-        onlineThresholdSeconds: Int
-    ) -> Bool? {
-        guard let lastSeenAt = recorderIngressActivity?.lastSeenAt,
-              let lastSeenDate = iso8601Date(lastSeenAt),
-              let observedDate = iso8601Date(observedAt)
-        else {
-            return nil
-        }
-        return observedDate.timeIntervalSince(lastSeenDate) <= Double(max(onlineThresholdSeconds, 0))
     }
 
     private func minTimestamp(_ current: String?, _ next: String) -> String {
@@ -1552,6 +2047,96 @@ public struct RuntimeVitalDBObservationSnapshot: Codable, Equatable, Sendable {
         }
         return unavailable()
     }
+
+    enum CodingKeys: String, CodingKey {
+        case state
+        case observation
+        case readError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.state = try container.decode(RuntimeVitalDBObservationReadState.self, forKey: .state)
+        self.observation = try container.decodeIfPresent(VitalDBObservationDocument.self, forKey: .observation)
+        self.readError = try container.decodeIfPresent(String.self, forKey: .readError)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        if let observation {
+            try container.encode(observation, forKey: .observation)
+        } else {
+            try container.encodeNil(forKey: .observation)
+        }
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
+    }
+}
+
+public enum RuntimeControlConditionStatus: String, Codable, Equatable, Sendable {
+    case trueValue = "True"
+    case falseValue = "False"
+    case unknown = "Unknown"
+}
+
+public struct RuntimeControlCondition: Codable, Equatable, Sendable {
+    public let type: String
+    public let status: RuntimeControlConditionStatus
+    public let reason: String
+    public let message: String?
+    public let observedAt: String?
+
+    public init(
+        type: String,
+        status: RuntimeControlConditionStatus,
+        reason: String,
+        message: String? = nil,
+        observedAt: String? = nil
+    ) {
+        self.type = type
+        self.status = status
+        self.reason = reason
+        self.message = message
+        self.observedAt = observedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case status
+        case reason
+        case message
+        case observedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.type = try container.decode(String.self, forKey: .type)
+        self.status = try container.decode(RuntimeControlConditionStatus.self, forKey: .status)
+        self.reason = try container.decode(String.self, forKey: .reason)
+        self.message = try container.decodeIfPresent(String.self, forKey: .message)
+        self.observedAt = try container.decodeIfPresent(String.self, forKey: .observedAt)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encode(status, forKey: .status)
+        try container.encode(reason, forKey: .reason)
+        if let message {
+            try container.encode(message, forKey: .message)
+        } else {
+            try container.encodeNil(forKey: .message)
+        }
+        if let observedAt {
+            try container.encode(observedAt, forKey: .observedAt)
+        } else {
+            try container.encodeNil(forKey: .observedAt)
+        }
+    }
 }
 
 public struct RuntimeControlOverview: Codable, Equatable, Sendable {
@@ -1562,6 +2147,7 @@ public struct RuntimeControlOverview: Codable, Equatable, Sendable {
     public let vitalDBObservation: VitalDBObservationDocument?
     public let vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot
     public let vitalRecorder: RuntimeVitalRecorderSummary
+    public let conditions: [RuntimeControlCondition]
 
     public init(
         status: RuntimeStatus,
@@ -1572,16 +2158,95 @@ public struct RuntimeControlOverview: Codable, Equatable, Sendable {
         vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot? = nil,
         statusEvaluationTime: String? = nil
     ) {
+        let snapshot = vitalDBObservationSnapshot ?? .fromOptional(vitalDBObservation)
+        let currentObservation = snapshot.observation
         self.status = status
         self.settings = settings
         self.release = release
         self.install = install
-        self.vitalDBObservation = vitalDBObservation
-        self.vitalDBObservationSnapshot = vitalDBObservationSnapshot ?? .fromOptional(vitalDBObservation)
+        self.vitalDBObservation = currentObservation
+        self.vitalDBObservationSnapshot = snapshot
         self.vitalRecorder = RuntimeVitalRecorderSummary(
             recorderIngressStatusRead: nil,
-            vitalDBObservation: vitalDBObservation,
+            vitalDBObservation: currentObservation,
             statusEvaluationTime: statusEvaluationTime
         )
+        self.conditions = [
+            Self.vitalDBObservationCondition(snapshot)
+        ]
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case settings
+        case release
+        case install
+        case vitalDBObservation
+        case vitalDBObservationSnapshot
+        case vitalRecorder
+        case conditions
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.status = try container.decode(RuntimeStatus.self, forKey: .status)
+        self.settings = try container.decode(RuntimeSettings.self, forKey: .settings)
+        self.release = try container.decode(RuntimeReleaseInfo.self, forKey: .release)
+        self.install = try container.decode(RuntimeInstallInfo.self, forKey: .install)
+        self.vitalDBObservation = try container.decodeIfPresent(VitalDBObservationDocument.self, forKey: .vitalDBObservation)
+        self.vitalDBObservationSnapshot = try container.decode(
+            RuntimeVitalDBObservationSnapshot.self,
+            forKey: .vitalDBObservationSnapshot
+        )
+        self.vitalRecorder = try container.decode(RuntimeVitalRecorderSummary.self, forKey: .vitalRecorder)
+        self.conditions = try container.decodeIfPresent([RuntimeControlCondition].self, forKey: .conditions)
+            ?? [Self.vitalDBObservationCondition(vitalDBObservationSnapshot)]
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(status, forKey: .status)
+        try container.encode(settings, forKey: .settings)
+        try container.encode(release, forKey: .release)
+        try container.encode(install, forKey: .install)
+        if let vitalDBObservation {
+            try container.encode(vitalDBObservation, forKey: .vitalDBObservation)
+        } else {
+            try container.encodeNil(forKey: .vitalDBObservation)
+        }
+        try container.encode(vitalDBObservationSnapshot, forKey: .vitalDBObservationSnapshot)
+        try container.encode(vitalRecorder, forKey: .vitalRecorder)
+        try container.encode(conditions, forKey: .conditions)
+    }
+
+    private static func vitalDBObservationCondition(
+        _ snapshot: RuntimeVitalDBObservationSnapshot
+    ) -> RuntimeControlCondition {
+        switch snapshot.state {
+        case .loaded:
+            return RuntimeControlCondition(
+                type: "VitalDBObservationReady",
+                status: .trueValue,
+                reason: snapshot.readError == nil ? "Loaded" : "LoadedWithReadIssues",
+                message: snapshot.readError,
+                observedAt: snapshot.observation?.observedAt
+            )
+        case .unavailable:
+            return RuntimeControlCondition(
+                type: "VitalDBObservationReady",
+                status: .unknown,
+                reason: "Unavailable",
+                message: snapshot.readError,
+                observedAt: nil
+            )
+        case .failed:
+            return RuntimeControlCondition(
+                type: "VitalDBObservationReady",
+                status: .falseValue,
+                reason: "ReadFailed",
+                message: snapshot.readError,
+                observedAt: nil
+            )
+        }
     }
 }

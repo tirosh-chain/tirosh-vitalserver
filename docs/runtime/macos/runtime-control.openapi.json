@@ -121,6 +121,31 @@
         }
       }
     },
+    "/runtime/operation-state": {
+      "get": {
+        "operationId": "getRuntimeOperationState",
+        "summary": "Read runtime operation state",
+        "description": "Read the API-owned operation state resource. It preserves unavailable, failed, loaded, and stale operation subresource meanings instead of requiring clients to infer them from RuntimeStatus fields or Host files.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Runtime operation state read model",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeOperationState"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/status/stream": {
       "get": {
         "operationId": "streamRuntimeStatus",
@@ -162,6 +187,31 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RuntimeLabScenarioList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/lab/vital-files": {
+      "get": {
+        "operationId": "listRuntimeLabVitalFiles",
+        "summary": "List Runtime Lab vital files",
+        "description": "Reads mounted vital files available to Runtime Lab through the Runtime Control boundary. Missing or unavailable Lab storage is reported through the response state and readError, not as an empty success.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "readOnlyLocal",
+        "x-runtime-control-access": "browserSafe",
+        "responses": {
+          "200": {
+            "description": "Runtime Lab vital file list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabVitalFileList"
                 }
               }
             }
@@ -2231,6 +2281,266 @@
       }
     },
     "schemas": {
+      "RuntimeOperation": {
+        "type": "string",
+        "description": "Runtime operation identifier. Clients must preserve unknown values."
+      },
+      "RuntimeInstallState": {
+        "type": "string",
+        "description": "Runtime install state identifier. Clients must preserve unknown values."
+      },
+      "RuntimeInstallMode": {
+        "type": "string",
+        "description": "Runtime install mode identifier. Clients must preserve unknown values."
+      },
+      "RuntimeWorkflowStep": {
+        "type": "string",
+        "description": "Runtime workflow step identifier. Clients must preserve unknown values."
+      },
+      "RuntimeInstallStateDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "state",
+          "mode",
+          "currentStep",
+          "updatedAt",
+          "message",
+          "blockers"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RuntimeInstallState"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/RuntimeInstallMode"
+          },
+          "currentStep": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeWorkflowStep"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RuntimeOperationState": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "API-owned runtime operation state resource. Missing install state, failed reads, stale leases, and loaded operation documents remain distinct.",
+        "required": [
+          "activeOperation",
+          "runtimeStatusUpdatedAt",
+          "install",
+          "lease"
+        ],
+        "properties": {
+          "activeOperation": {
+            "description": "Operation selected by the operation-state owner for client display and refresh decisions. Clients must not recompute it from RuntimeStatus, install, or lease subresources.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeOperation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtimeStatusUpdatedAt": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "install": {
+            "$ref": "#/components/schemas/RuntimeInstallOperationState"
+          },
+          "lease": {
+            "$ref": "#/components/schemas/RuntimeOperationLeaseState"
+          }
+        }
+      },
+      "RuntimeInstallOperationState": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Explicit runtime install operation state read result.",
+        "required": [
+          "state",
+          "document",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeOperationResourceReadState"
+          },
+          "document": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeInstallStateDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readError": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeOperationLeaseState": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Explicit runtime operation lease read result. The lease is Host-owned operation state; stale, missing, and failed reads must not be collapsed.",
+        "required": [
+          "state",
+          "document",
+          "readError",
+          "staleReason"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeOperationResourceReadState"
+          },
+          "document": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeOperationLeaseDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readError": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "staleReason": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeOperationLeaseDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "operationId",
+          "operation",
+          "ownerPID",
+          "startedAt",
+          "heartbeatAt",
+          "expiresAt",
+          "message"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "integer"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/RuntimeOperation"
+          },
+          "ownerPID": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "heartbeatAt": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeOperationResourceReadState": {
+        "type": "string",
+        "enum": [
+          "loaded",
+          "unavailable",
+          "failed",
+          "stale"
+        ]
+      },
       "RuntimeControlOverview": {
         "type": "object",
         "additionalProperties": false,
@@ -2240,8 +2550,10 @@
           "settings",
           "release",
           "install",
+          "vitalDBObservation",
           "vitalDBObservationSnapshot",
-          "vitalRecorder"
+          "vitalRecorder",
+          "conditions"
         ],
         "properties": {
           "status": {
@@ -2271,15 +2583,74 @@
           },
           "vitalRecorder": {
             "$ref": "#/components/schemas/RuntimeVitalRecorderSummary"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeControlCondition"
+            }
           }
         }
+      },
+      "RuntimeControlCondition": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "API-owned status condition preserving explicit read state for overview consumers.",
+        "required": [
+          "type",
+          "status",
+          "reason",
+          "message",
+          "observedAt"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RuntimeControlConditionStatus"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observedAt": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeControlConditionStatus": {
+        "type": "string",
+        "enum": [
+          "True",
+          "False",
+          "Unknown"
+        ]
       },
       "RuntimeVitalDBObservationSnapshot": {
         "type": "object",
         "additionalProperties": false,
         "description": "Explicit latest VitalDB observation read state. observation remains null when the observability read path has no latest snapshot or failed before producing one.",
         "required": [
-          "state"
+          "state",
+          "observation",
+          "readError"
         ],
         "properties": {
           "state": {
@@ -2408,12 +2779,19 @@
         "additionalProperties": false,
         "description": "Aggregated history of VRecorders keyed by vrcode.",
         "required": [
+          "state",
+          "updatedAt",
           "recorders",
           "beds",
           "summary",
-          "activityHistory"
+          "activityHistory",
+          "recorderIngressStatusRead",
+          "readError"
         ],
         "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderHistoryState"
+          },
           "updatedAt": {
             "type": [
               "string",
@@ -2456,6 +2834,14 @@
             "description": "Recorder history read issue. Present when observation/current/activity projection reads failed and the recorders/beds lists may be incomplete."
           }
         }
+      },
+      "RuntimeVitalRecorderHistoryState": {
+        "type": "string",
+        "enum": [
+          "loaded",
+          "partiallyLoaded",
+          "readFailed"
+        ]
       },
       "RuntimeVitalRecorderHistorySummary": {
         "type": "object",
@@ -2522,7 +2908,10 @@
         "description": "Metadata for the durable recorder activity bucket projection used by recorder charts.",
         "required": [
           "source",
-          "bucketCount"
+          "bucketCount",
+          "earliestBucketStartedAt",
+          "latestBucketStartedAt",
+          "readError"
         ],
         "properties": {
           "source": {
@@ -2650,7 +3039,11 @@
         "required": [
           "index",
           "count",
-          "windowSeconds"
+          "windowSeconds",
+          "windowStartedAt",
+          "windowEndedAt",
+          "firstBucketStartedAt",
+          "latestBucketStartedAt"
         ],
         "properties": {
           "index": {
@@ -2698,7 +3091,9 @@
           "state",
           "query",
           "page",
-          "buckets"
+          "buckets",
+          "latestSampleAt",
+          "readError"
         ],
         "properties": {
           "state": {
@@ -2737,9 +3132,22 @@
           "vrcode",
           "status",
           "visibility",
+          "lastIP",
+          "version",
+          "bedID",
+          "bedName",
+          "patientConnected",
+          "firstSeenAt",
+          "lastSeenAt",
           "observationCount",
           "duplicateObservationCount",
           "currentAnomalyCount",
+          "latestAnomalyKind",
+          "latestAnomalySeverity",
+          "latestAnomalyMessage",
+          "latestAnomalyObservedAt",
+          "activityTimeline",
+          "redisIPSync",
           "presentInLatestObservation"
         ],
         "properties": {
@@ -2852,11 +3260,18 @@
             "description": "True when this recorder is present in the latest VitalDB observation snapshot; false means it is historical."
           },
           "activityTimeline": {
-            "type": "array",
-            "description": "Chronological activity samples for the VRecorder, derived from VitalDB observer snapshots.",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeVitalRecorderActivityPoint"
-            }
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/RuntimeVitalRecorderActivityPoint"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chronological activity samples for the VRecorder, derived from VitalDB observer snapshots."
           },
           "redisIPSync": {
             "oneOf": [
@@ -2891,7 +3306,14 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "status"
+          "status",
+          "redisKey",
+          "selectedIp",
+          "ipSource",
+          "redisValue",
+          "lastWriteAt",
+          "lastVerifiedAt",
+          "lastFailure"
         ],
         "properties": {
           "status": {
@@ -3048,11 +3470,23 @@
         "description": "Aggregated history of one VitalDB bed keyed by bedID.",
         "required": [
           "bedID",
+          "name",
+          "vrcode",
           "visibility",
+          "linkedRecorderStatus",
+          "linkedRecorderIP",
+          "linkedRecorderLastSeenAt",
           "status",
+          "patientConnected",
+          "firstSeenAt",
+          "lastSeenAt",
           "observationCount",
           "duplicateObservationCount",
-          "currentAnomalyCount"
+          "currentAnomalyCount",
+          "latestAnomalyKind",
+          "latestAnomalySeverity",
+          "latestAnomalyMessage",
+          "latestAnomalyObservedAt"
         ],
         "properties": {
           "bedID": {
@@ -3558,6 +3992,62 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RuntimeLabScenario"
+            }
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabVitalFile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "displayName",
+          "relativePath",
+          "guestPath",
+          "sizeBytes"
+        ],
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "relativePath": {
+            "type": "string"
+          },
+          "guestPath": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "modifiedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabVitalFileList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "vitalFiles"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeLabReadState"
+          },
+          "vitalFiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeLabVitalFile"
             }
           },
           "readError": {
@@ -4559,11 +5049,18 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "readState"
+          "readState",
+          "httpStatus",
+          "document",
+          "readError"
         ],
         "properties": {
           "readState": {
             "$ref": "#/components/schemas/RuntimeRecorderIngressStatusReadState"
+          },
+          "httpStatus": {
+            "type": "string",
+            "description": "HTTP status or explicit probe status text returned by the recorder ingress status read attempt."
           },
           "document": {
             "oneOf": [

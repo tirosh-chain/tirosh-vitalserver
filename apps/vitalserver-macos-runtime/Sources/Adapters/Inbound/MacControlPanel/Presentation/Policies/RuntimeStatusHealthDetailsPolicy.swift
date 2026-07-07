@@ -74,8 +74,23 @@ public struct RuntimeStatusHealthDetailsPolicy {
 
     public func healthDetails(
         status: RuntimeStatus,
+        operationState: RuntimeOperationState,
         recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?,
         now: Date
+    ) -> [RuntimeStatusHealthDetailItem] {
+        makeHealthDetails(
+            status: status,
+            operationState: operationState,
+            recorderIngressStatusRead: recorderIngressStatusRead,
+            now: now
+        )
+    }
+
+    private func makeHealthDetails(
+        status: RuntimeStatus,
+        operationState: RuntimeOperationState,
+        recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult?,
+        now _: Date
     ) -> [RuntimeStatusHealthDetailItem] {
         var items = [
             RuntimeStatusHealthDetailItem(
@@ -131,15 +146,7 @@ public struct RuntimeStatusHealthDetailsPolicy {
             ),
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.vitalServerName,
-                value: value(guestReadinessPolicy.guestHTTPValue(
-                    status: status,
-                    computedValue: httpValuePolicy.httpValue(
-                        status.guestHTTP,
-                        uptimeText: nil
-                    ),
-                    waitingText: vocabulary.waitingText,
-                    staleText: vocabulary.guestStateStaleText
-                ))
+                value: value(guestHTTPValue(status: status, operationState: operationState))
             ),
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.hostProxyName,
@@ -166,6 +173,20 @@ public struct RuntimeStatusHealthDetailsPolicy {
             ),
         ])
         return items
+    }
+
+    private func guestHTTPValue(
+        status: RuntimeStatus,
+        operationState: RuntimeOperationState
+    ) -> RuntimeStatusHTTPValue {
+        let computedValue = httpValuePolicy.httpValue(status.guestHTTP, uptimeText: nil)
+        return guestReadinessPolicy.guestHTTPValue(
+            status: status,
+            operationState: operationState,
+            computedValue: computedValue,
+            waitingText: vocabulary.waitingText,
+            staleText: vocabulary.guestStateStaleText
+        )
     }
 
     private func guestServiceHealthDetails(status: RuntimeStatus) -> [RuntimeStatusHealthDetailItem] {

@@ -528,7 +528,7 @@ def usecases() -> GuestControlUseCases:
     )
 
 
-def test_default_usecases_delay_postgres_schema_until_readiness(
+def test_default_usecases_ensure_postgres_schema_during_composition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     migrations: list[str] = []
@@ -567,9 +567,9 @@ def test_default_usecases_delay_postgres_schema_until_readiness(
 
     usecases = guest_control_api.build_default_usecases()
 
-    assert migrations == []
-    assert usecases.readiness()["status"] == "ready"
     assert migrations == ["operations", "vitaldb"]
+    assert usecases.readiness()["status"] == "ready"
+    assert migrations == ["operations", "vitaldb", "operations", "vitaldb"]
     operation = usecases.restart_service("app")
     assert operation.operation_id.startswith("op_app_restart_")
 

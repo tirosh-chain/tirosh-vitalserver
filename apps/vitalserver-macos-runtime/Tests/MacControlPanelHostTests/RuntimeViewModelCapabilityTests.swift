@@ -1479,6 +1479,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var lastAppliedSettings: RuntimeSettings?
     var settings = RuntimeSettings()
     var status = RuntimeStatus()
+    var operationState = RuntimeOperationState(activeOperation: nil, runtimeStatusUpdatedAt: nil, install: .unavailable())
     var healthStatus = RuntimeStatus()
     var vitalDBObservation: VitalDBObservationDocument?
     var vitalDBVisibilityHistory = RuntimeVitalRecorderHistory(updatedAt: "2026-07-01T00:00:00+00:00")
@@ -1496,6 +1497,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         loadStatusCount += 1
         lastLoadStatusSettings = settings
         return status
+    }
+
+    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState {
+        operationState
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {

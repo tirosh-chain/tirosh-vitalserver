@@ -11,6 +11,7 @@ import Errors
 final class MacRuntimeControlClientWorkerTests: XCTestCase {
     func testReadWorkerDelegatesReadModelsToInjectedReaders() async throws {
         let statusReader = AdapterStubStatusReader()
+        let operationStateReader = AdapterStubOperationStateReader(activeOperation: .applyBundle)
         let observabilityReader = AdapterStubObservabilityReader()
         let fileReader = AdapterStubFileReader()
         let settingsReader = AdapterStubSettingsReader()
@@ -22,6 +23,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
                 services: []
             ),
             statusReader: statusReader,
+            operationStateReader: operationStateReader,
             observabilityReader: observabilityReader,
             fileReader: fileReader,
             settingsReader: settingsReader
@@ -30,6 +32,7 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         let settings = await worker.loadSettings()
         let status = await worker.loadStatus(settings: settings)
         let health = await worker.loadHealthStatus(settings: settings)
+        let operationState = await worker.loadOperationState(status: RuntimeStatus())
         let limitedEvents = await worker.loadRuntimeEvents(limit: 5)
         let queriedEvents = await worker.loadRuntimeEvents(query: RuntimeEventQuery(limit: 7))
         let snapshot = await worker.loadVitalDBObservationSnapshot()
@@ -45,6 +48,9 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertEqual(settings.proxyPort, 19080)
         XCTAssertEqual(status.statusMessage, "status")
         XCTAssertEqual(health.statusMessage, "health")
+        XCTAssertEqual(operationState.activeOperation, .applyBundle)
+        XCTAssertEqual(operationState.lease.state, .failed)
+        XCTAssertEqual(operationState.lease.readError, "lease read failed")
         XCTAssertEqual(limitedEvents.matchingCount, 5)
         XCTAssertEqual(queriedEvents.matchingCount, 7)
         XCTAssertEqual(snapshot.observation?.observedAt, "2026-05-30T00:00:00Z")
@@ -139,6 +145,61 @@ final class MacRuntimeControlClientWorkerTests: XCTestCase {
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--clean") })
         XCTAssertFalse(runner.shellCommands.contains { $0.contains("--force-clean-uninstaller") })
         XCTAssertTrue(runner.shellCommands.contains { $0.contains("--admin-password-file") })
+    }
+
+    func testOperationStateReaderPreservesLeaseReadStates() {
+        let now = ISO8601DateFormatter().date(from: "2026-07-08T00:00:10Z")!
+        let activeLease = RuntimeOperationLeaseDocument(
+            operationId: "active-lease",
+            operation: .applyBundle,
+            ownerPID: 101,
+            startedAt: "2026-07-08T00:00:00Z",
+            heartbeatAt: "2026-07-08T00:00:05Z",
+            expiresAt: "2026-07-08T00:01:00Z",
+            message: "active"
+        )
+        let expiredLease = RuntimeOperationLeaseDocument(
+            operationId: "expired-lease",
+            operation: .applyBundle,
+            ownerPID: 101,
+            startedAt: "2026-07-08T00:00:00Z",
+            heartbeatAt: "2026-07-08T00:00:05Z",
+            expiresAt: "2026-07-08T00:00:00Z",
+            message: "expired"
+        )
+
+        let missing = SystemRuntimeOperationStateReader(
+            operationLeaseRepository: AdapterStubOperationLeaseRepository(loadResult: .missing),
+            now: { now }
+        ).loadOperationState(status: RuntimeStatus())
+        let failed = SystemRuntimeOperationStateReader(
+            operationLeaseRepository: AdapterStubOperationLeaseRepository(loadResult: .failed("lease denied")),
+            now: { now }
+        ).loadOperationState(status: RuntimeStatus())
+        let loaded = SystemRuntimeOperationStateReader(
+            operationLeaseRepository: AdapterStubOperationLeaseRepository(loadResult: .loaded(activeLease)),
+            now: { now }
+        ).loadOperationState(status: RuntimeStatus(operation: .applyBundle))
+        let stale = SystemRuntimeOperationStateReader(
+            operationLeaseRepository: AdapterStubOperationLeaseRepository(loadResult: .loaded(expiredLease)),
+            now: { now }
+        ).loadOperationState(status: RuntimeStatus())
+
+        XCTAssertEqual(missing.lease.state, .unavailable)
+        XCTAssertNil(missing.lease.document)
+
+        XCTAssertEqual(failed.lease.state, .failed)
+        XCTAssertEqual(failed.lease.readError, "lease denied")
+
+        XCTAssertEqual(loaded.activeOperation, .applyBundle)
+        XCTAssertEqual(loaded.operationForPresentation, .applyBundle)
+        XCTAssertEqual(loaded.lease.state, .loaded)
+        XCTAssertEqual(loaded.lease.document, activeLease)
+
+        XCTAssertNil(stale.activeOperation)
+        XCTAssertEqual(stale.lease.state, .stale)
+        XCTAssertEqual(stale.lease.document, expiredLease)
+        XCTAssertTrue(stale.lease.staleReason?.contains("expired-lease") == true)
     }
 
     func testApplySettingsReportsAdminPasswordCleanupFailureAsOutputIssue() async throws {
@@ -361,6 +422,47 @@ private final class AdapterStubStatusReader: RuntimeStatusReading {
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
         RuntimeStatus(statusMessage: "health")
+    }
+}
+
+private final class AdapterStubOperationStateReader: RuntimeOperationStateReading {
+    let activeOperation: RuntimeOperation?
+
+    init(activeOperation: RuntimeOperation? = nil) {
+        self.activeOperation = activeOperation
+    }
+
+    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState {
+        RuntimeOperationState(
+            activeOperation: activeOperation,
+            runtimeStatusUpdatedAt: status.updatedAt,
+            install: .unavailable(),
+            lease: .failed(readError: "lease read failed")
+        )
+    }
+}
+
+private struct AdapterStubOperationLeaseRepository: RuntimeOperationLeaseRepository {
+    let result: RuntimeOperationLeaseLoadResult
+
+    init(loadResult: RuntimeOperationLeaseLoadResult) {
+        self.result = loadResult
+    }
+
+    func loadResult() -> RuntimeOperationLeaseLoadResult {
+        result
+    }
+
+    func acquire(_ document: RuntimeOperationLeaseDocument) throws {
+        XCTFail("acquire should not be called by operation state reader")
+    }
+
+    func heartbeat(operationId: String, heartbeatAt: String, expiresAt: String?) throws {
+        XCTFail("heartbeat should not be called by operation state reader")
+    }
+
+    func release(operationId: String) throws {
+        XCTFail("release should not be called by operation state reader")
     }
 }
 

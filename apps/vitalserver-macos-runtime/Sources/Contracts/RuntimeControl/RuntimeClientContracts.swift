@@ -33,6 +33,7 @@ public protocol RuntimeControlClient {
 
     func loadSettings() -> RuntimeSettings
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus
+    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus
     func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory

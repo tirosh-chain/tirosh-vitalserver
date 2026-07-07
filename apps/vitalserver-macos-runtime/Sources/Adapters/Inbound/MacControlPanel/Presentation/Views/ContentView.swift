@@ -390,7 +390,8 @@ public struct ContentView: View {
         while !Task.isCancelled {
             await viewModel.refreshHealthStatus()
             try? await Task.sleep(nanoseconds: statusPollingIntervalPolicy.statusPollingIntervalNanoseconds(
-                status: viewModel.status
+                status: viewModel.status,
+                operationState: viewModel.operationState
             ))
         }
     }

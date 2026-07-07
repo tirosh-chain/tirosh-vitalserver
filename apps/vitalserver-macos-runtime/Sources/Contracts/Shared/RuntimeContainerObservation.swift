@@ -89,19 +89,19 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.startedAt = try container.decodeIfPresent(String.self, forKey: .startedAt)
         self.uptimeSeconds = try container.decodeIfPresent(Int.self, forKey: .uptimeSeconds)
-        self.activeWebSockets = try container.decodeIfPresent(Int.self, forKey: .activeWebSockets) ?? 0
-        self.activeRecorderConnections = try container.decodeIfPresent(Int.self, forKey: .activeRecorderConnections) ?? 0
-        self.recorders = try container.decodeIfPresent([RuntimeRecorderConnectionObservation].self, forKey: .recorders) ?? []
-        self.httpRequests = try container.decodeIfPresent(Int.self, forKey: .httpRequests) ?? 0
-        self.socketIoEventsSeen = try container.decodeIfPresent(Int.self, forKey: .socketIoEventsSeen) ?? 0
-        self.socketIoParseFailures = try container.decodeIfPresent(Int.self, forKey: .socketIoParseFailures) ?? 0
-        self.auditWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditWriteFailures) ?? 0
-        self.auditFileWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditFileWriteFailures) ?? 0
-        self.auditStdoutWriteFailures = try container.decodeIfPresent(Int.self, forKey: .auditStdoutWriteFailures) ?? 0
-        self.failureLogWriteFailures = try container.decodeIfPresent(Int.self, forKey: .failureLogWriteFailures) ?? 0
-        self.redisIpWriteFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpWriteFailures) ?? 0
-        self.redisIpVerifyFailures = try container.decodeIfPresent(Int.self, forKey: .redisIpVerifyFailures) ?? 0
-        self.redisIpVerifyMismatches = try container.decodeIfPresent(Int.self, forKey: .redisIpVerifyMismatches) ?? 0
+        self.activeWebSockets = try container.decode(Int.self, forKey: .activeWebSockets)
+        self.activeRecorderConnections = try container.decode(Int.self, forKey: .activeRecorderConnections)
+        self.recorders = try container.decode([RuntimeRecorderConnectionObservation].self, forKey: .recorders)
+        self.httpRequests = try container.decode(Int.self, forKey: .httpRequests)
+        self.socketIoEventsSeen = try container.decode(Int.self, forKey: .socketIoEventsSeen)
+        self.socketIoParseFailures = try container.decode(Int.self, forKey: .socketIoParseFailures)
+        self.auditWriteFailures = try container.decode(Int.self, forKey: .auditWriteFailures)
+        self.auditFileWriteFailures = try container.decode(Int.self, forKey: .auditFileWriteFailures)
+        self.auditStdoutWriteFailures = try container.decode(Int.self, forKey: .auditStdoutWriteFailures)
+        self.failureLogWriteFailures = try container.decode(Int.self, forKey: .failureLogWriteFailures)
+        self.redisIpWriteFailures = try container.decode(Int.self, forKey: .redisIpWriteFailures)
+        self.redisIpVerifyFailures = try container.decode(Int.self, forKey: .redisIpVerifyFailures)
+        self.redisIpVerifyMismatches = try container.decode(Int.self, forKey: .redisIpVerifyMismatches)
         self.throughput = try container.decodeIfPresent(
             RuntimeRecorderIngressThroughputStatus.self,
             forKey: .throughput
@@ -135,6 +135,16 @@ public struct RuntimeRecorderIngressStatusDocument: Codable, Equatable, Sendable
         try container.encodeIfPresent(rawArchive, forKey: .rawArchive)
         try container.encodeIfPresent(spool, forKey: .spool)
         try container.encodeIfPresent(replay, forKey: .replay)
+    }
+}
+
+private extension KeyedEncodingContainer {
+    mutating func encodeExplicitOptional<T: Encodable>(_ value: T?, forKey key: Key) throws {
+        if let value {
+            try encode(value, forKey: key)
+        } else {
+            try encodeNil(forKey: key)
+        }
     }
 }
 
@@ -564,6 +574,43 @@ public struct RuntimeRecorderRedisIPSyncObservation: Codable, Equatable, Sendabl
         self.lastWriteAt = lastWriteAt
         self.lastVerifiedAt = lastVerifiedAt
         self.lastFailure = lastFailure
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status
+        case redisKey
+        case selectedIp
+        case ipSource
+        case redisValue
+        case lastWriteAt
+        case lastVerifiedAt
+        case lastFailure
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            status: try container.decode(RuntimeRecorderRedisIPSyncStatus.self, forKey: .status),
+            redisKey: try container.decodeIfPresent(String.self, forKey: .redisKey),
+            selectedIp: try container.decodeIfPresent(String.self, forKey: .selectedIp),
+            ipSource: try container.decodeIfPresent(String.self, forKey: .ipSource),
+            redisValue: try container.decodeIfPresent(String.self, forKey: .redisValue),
+            lastWriteAt: try container.decodeIfPresent(String.self, forKey: .lastWriteAt),
+            lastVerifiedAt: try container.decodeIfPresent(String.self, forKey: .lastVerifiedAt),
+            lastFailure: try container.decodeIfPresent(String.self, forKey: .lastFailure)
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(status, forKey: .status)
+        try container.encodeExplicitOptional(redisKey, forKey: .redisKey)
+        try container.encodeExplicitOptional(selectedIp, forKey: .selectedIp)
+        try container.encodeExplicitOptional(ipSource, forKey: .ipSource)
+        try container.encodeExplicitOptional(redisValue, forKey: .redisValue)
+        try container.encodeExplicitOptional(lastWriteAt, forKey: .lastWriteAt)
+        try container.encodeExplicitOptional(lastVerifiedAt, forKey: .lastVerifiedAt)
+        try container.encodeExplicitOptional(lastFailure, forKey: .lastFailure)
     }
 }
 

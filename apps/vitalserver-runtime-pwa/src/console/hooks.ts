@@ -46,6 +46,15 @@ export function useRuntimeOverview() {
   });
 }
 
+export function useRuntimeOperationState() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.operationState,
+    queryFn: () => runtimeControlGateway.getOperationState(),
+    refetchInterval: 2_000
+  });
+}
+
 export function useGuestStackStatus() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useQuery({

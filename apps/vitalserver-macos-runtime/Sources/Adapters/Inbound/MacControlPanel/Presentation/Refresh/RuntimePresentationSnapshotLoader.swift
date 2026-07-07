@@ -32,6 +32,13 @@ struct RuntimePresentationSnapshotLoader {
         return controlClient.loadStatus(settings: settings)
     }
 
+    func loadOperationState(status: RuntimeStatus) async -> RuntimeOperationState {
+        if let snapshotReader {
+            return await snapshotReader.loadOperationState(status: status)
+        }
+        return controlClient.loadOperationState(status: status)
+    }
+
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
         if let snapshotReader {
             return await snapshotReader.loadHealthStatus(settings: settings)

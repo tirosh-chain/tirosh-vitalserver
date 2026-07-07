@@ -65,6 +65,7 @@ describe("recorderIngressQueueStatus", () => {
     expect(
       recorderIngressQueueStatus({
         readState: "commandFailed",
+        httpStatus: "failed",
         document: null,
         readError:
           "command-failed-7 exitCode=7 stderr=curl: (7) Failed to connect to 127.0.0.1 port 80"
@@ -76,6 +77,7 @@ describe("recorderIngressQueueStatus", () => {
     expect(
       recorderIngressQueueStatus({
         readState: "commandFailed",
+        httpStatus: "failed",
         document: null,
         readError: null
       } as Parameters<typeof recorderIngressQueueStatus>[0])
@@ -86,6 +88,7 @@ describe("recorderIngressQueueStatus", () => {
     expect(
       recorderIngressQueueStatus({
         readState: "loaded",
+        httpStatus: "200",
         readError: null,
         document: {
           activeWebSockets: 1,

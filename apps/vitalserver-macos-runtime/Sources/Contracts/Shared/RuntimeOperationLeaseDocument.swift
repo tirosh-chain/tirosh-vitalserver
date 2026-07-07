@@ -27,4 +27,51 @@ public struct RuntimeOperationLeaseDocument: Codable, Equatable, Sendable {
         self.expiresAt = expiresAt
         self.message = message
     }
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case operationId
+        case operation
+        case ownerPID
+        case startedAt
+        case heartbeatAt
+        case expiresAt
+        case message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        self.operationId = try container.decode(String.self, forKey: .operationId)
+        self.operation = try container.decode(RuntimeOperation.self, forKey: .operation)
+        self.ownerPID = try container.decodeIfPresent(Int.self, forKey: .ownerPID)
+        self.startedAt = try container.decode(String.self, forKey: .startedAt)
+        self.heartbeatAt = try container.decode(String.self, forKey: .heartbeatAt)
+        self.expiresAt = try container.decodeIfPresent(String.self, forKey: .expiresAt)
+        self.message = try container.decodeIfPresent(String.self, forKey: .message)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(operationId, forKey: .operationId)
+        try container.encode(operation, forKey: .operation)
+        if let ownerPID {
+            try container.encode(ownerPID, forKey: .ownerPID)
+        } else {
+            try container.encodeNil(forKey: .ownerPID)
+        }
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encode(heartbeatAt, forKey: .heartbeatAt)
+        if let expiresAt {
+            try container.encode(expiresAt, forKey: .expiresAt)
+        } else {
+            try container.encodeNil(forKey: .expiresAt)
+        }
+        if let message {
+            try container.encode(message, forKey: .message)
+        } else {
+            try container.encodeNil(forKey: .message)
+        }
+    }
 }

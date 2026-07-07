@@ -109,7 +109,7 @@ struct RuntimeAdvancedPanel: View {
         advancedCard(AppConstants.Labels.sectionDiagnostics) {
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 statusRow(AppConstants.Labels.runtimeState) { statusBadge }
-                statusRow(AppConstants.Labels.operation, viewModel.presentationFormatter.activeOperationText(viewModel.status))
+                statusRow(AppConstants.Labels.operation, viewModel.presentationFormatter.activeOperationText(viewModel.operationState))
                 statusRow(AppConstants.Labels.runtimeVersion, viewModel.status.runtimeVersion ?? AppConstants.StatusText.unknown)
                 statusRow(AppConstants.Labels.updatedAt, viewModel.presentationFormatter.systemTimeText(viewModel.status.updatedAt))
                 if !viewModel.status.failureReasons.isEmpty {
@@ -134,7 +134,7 @@ struct RuntimeAdvancedPanel: View {
     }
 
     private var vmHealthItems: [RuntimeStatusDisplayPolicy.HealthItem] {
-        displayPolicy.advancedVMHealth(status: viewModel.status)
+        displayPolicy.advancedVMHealth(status: viewModel.status, operationState: viewModel.operationState)
     }
 
     private var serviceHealthCard: some View {
@@ -150,6 +150,7 @@ struct RuntimeAdvancedPanel: View {
     private var serviceHealthItems: [RuntimeStatusDisplayPolicy.ServiceHealthItem] {
         displayPolicy.advancedServiceHealth(
             status: viewModel.status,
+            operationState: viewModel.operationState,
             redisRelaySettings: viewModel.runtimeSettings.redisRelay,
             now: uptimeNow
         )

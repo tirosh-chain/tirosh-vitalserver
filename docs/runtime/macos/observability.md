@@ -336,7 +336,7 @@ Recorder `online` and `stale` are explicit observer states. Consumers must not i
 | Observer API contract | `docs/api/vitaldb-observer.openapi.yaml` | observer app | guest state writer, future tools | observer 내부 API 계약 |
 | Testkit scenario config | `config/testkit.toml` | 개발자 | `scripts/test_vitalserver.py`, testkit | 테스트 실행 파라미터 SoT |
 
-핵심 원칙은 `vitaldb-observer`가 관측을 생산하지만 최종 관측 상태의 owner는 아니라는 점입니다. v2 VitalDB observation SoT는 Guest/Postgres read model이며 Host는 Guest Control API를 소비합니다. UI나 Runtime Control API는 observer container, guest `runtime-state.json`, Host `runtime-status.json`의 embedded observation을 직접 신뢰하지 않습니다. Remote Console의 Observability anomaly detail은 `RuntimeVitalDBObservationSnapshot`을 기준으로 표시합니다. Snapshot `failed`/`unavailable`은 stale status 값으로 대체하지 않고 read issue 또는 unavailable state로 노출해야 합니다. Host SQLite projection은 transitional diagnostics 또는 migration evidence로만 남고, current product health/read model의 canonical source가 아닙니다. Guest VitalDB read model provider가 구성된 live path에서는 Host SQLite projection을 최신 observation snapshot fallback으로도 사용하지 않습니다.
+핵심 원칙은 `vitaldb-observer`가 관측을 생산하지만 최종 관측 상태의 owner는 아니라는 점입니다. v2 VitalDB observation SoT는 Guest/Postgres read model이며 Host는 Guest Control API를 소비합니다. UI나 Runtime Control API는 observer container, guest `runtime-state.json`, Host `runtime-status.json`의 embedded observation을 직접 신뢰하지 않습니다. Remote Console의 Observability anomaly detail은 `RuntimeVitalDBObservationSnapshot`을 기준으로 표시합니다. Snapshot `failed`/`unavailable`은 stale status 값으로 대체하지 않고 read issue 또는 unavailable state로 노출해야 합니다. Host SQLite projection은 transitional diagnostics 또는 migration evidence로만 남고, current product health/read model의 canonical source가 아닙니다. Guest VitalDB read model provider가 구성된 live path에서는 Host SQLite projection을 최신 observation snapshot fallback으로도 사용하지 않습니다. Recorder/bed live history는 Guest VitalDB read model provider가 없으면 explicit `readFailed`/read issue로 남겨야 하며, latest observation provider나 Host projection을 recorder/bed state fallback으로 사용하지 않습니다.
 
 ## 6. Canonical source policy
 
@@ -546,7 +546,7 @@ recorder-ingress 상태는 Guest Control API `GET /v1/recorder-ingress/status`
 - Guest Control API `GET /v1/recorder-ingress/status` read 결과
 - recorder ingress status counter snapshot
 
-이 모델은 Guest Control API가 제공한 explicit read 결과입니다. Helper UI는 `RuntimeRecorderIngressStatusReadResult`를 그대로 받아 read state와 recorder-ingress counter를 표시할 수 있지만, 접근 실패를 service liveness나 product recovery state로 추정하지 않습니다. audit write failure counter는 관측값으로 보존하지만 즉시 runtime recovery 실패로 판단하지 않습니다.
+이 모델은 Guest Control API가 제공한 explicit read 결과입니다. Helper UI는 `RuntimeRecorderIngressStatusReadResult`를 그대로 받아 read state와 recorder-ingress counter를 표시할 수 있지만, 접근 실패를 service liveness나 product recovery state로 추정하지 않습니다. audit write failure counter는 관측값으로 보존하지만 즉시 runtime recovery 실패로 판단하지 않습니다. Recorder-ingress counter는 active connection 보조 정보와 diagnostics evidence이며, ingress-only recorder를 product recorder로 생성하거나 Guest/Postgres read model의 recorder online/stale/lastSeen/IP state를 수정하는 source가 아닙니다.
 
 남은 후보:
 

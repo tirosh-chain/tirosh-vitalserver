@@ -108,6 +108,30 @@ describe("RuntimeControlApiClient", () => {
       "/runtime/capabilities": fullCapabilities(),
       "/runtime/overview": fullRuntimeOverview(),
       "/runtime/status": { runtimeState: "healthy" },
+      "/runtime/operation-state": {
+        activeOperation: "apply-bundle",
+        runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+        install: {
+          state: "unavailable",
+          document: null,
+          readError: null
+        },
+        lease: {
+          state: "stale",
+          document: {
+            schemaVersion: 1,
+            operationId: "operation-1",
+            operation: "apply-bundle",
+            ownerPID: 123,
+            startedAt: "2026-07-08T00:00:00Z",
+            heartbeatAt: "2026-07-08T00:00:01Z",
+            expiresAt: "2026-07-08T00:00:02Z",
+            message: "applying bundle"
+          },
+          readError: null,
+          staleReason: "expired"
+        }
+      },
       "/runtime/settings": fullSettings({ proxyPort: 80 }),
       "/lab/scenarios": {
         state: "loaded",
@@ -204,6 +228,10 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.getCapabilities()).resolves.toMatchObject({ canUseLab: true });
     await expect(client.getOverview()).resolves.toMatchObject({ status: { runtimeState: "healthy" } });
     await expect(client.getStatus()).resolves.toMatchObject({ runtimeState: "healthy" });
+    await expect(client.getOperationState()).resolves.toMatchObject({
+      activeOperation: "apply-bundle",
+      lease: { state: "stale", staleReason: "expired" }
+    });
     await expect(client.getSettings()).resolves.toMatchObject({ proxyPort: 80 });
     await expect(client.getLabScenarios()).resolves.toMatchObject({ state: "loaded" });
     await expect(client.getLabBeds()).resolves.toMatchObject({ beds: [{ name: "OR-A" }] });
@@ -492,7 +520,16 @@ function fullRuntimeOverview() {
       source: "unavailable",
       observedAt: null,
       latestRecorder: null
-    }
+    },
+    conditions: [
+      {
+        type: "VitalDBObservationReady",
+        status: "Unknown",
+        reason: "Unavailable",
+        message: null,
+        observedAt: null
+      }
+    ]
   };
 }
 
@@ -533,6 +570,7 @@ function labSessionResponse() {
 
 function fullVitalRecorderHistory() {
   return {
+    state: "loaded",
     updatedAt: null,
     recorders: [],
     beds: [],
@@ -555,6 +593,7 @@ function fullVitalRecorderHistory() {
       latestBucketStartedAt: null,
       readError: null
     },
+    recorderIngressStatusRead: null,
     readError: null
   };
 }

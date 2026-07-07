@@ -200,7 +200,8 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
             currentRuntimeStatus: .loaded(status(
                 level: .initializing,
                 operation: .install,
-                updatedAt: "2026-05-31T00:00:00Z"
+                updatedAt: "2026-05-31T00:00:00Z",
+                progress: progress(operation: .install, phase: .running)
             )),
             snapshots: [
                 healthSnapshot(
@@ -526,7 +527,8 @@ private func runningLifecycle() -> RuntimeVMLifecycleDocument {
 private func status(
     level: RuntimeStatusLevel,
     operation: RuntimeOperation,
-    updatedAt: String
+    updatedAt: String,
+    progress: RuntimeProgressDocument? = nil
 ) -> RuntimeStatusDocument {
     RuntimeStatusDocument(
         product: "VitalServerHelper",
@@ -549,6 +551,23 @@ private func status(
         rootfsBase: .present,
         vmDisk: .present,
         failureReasons: [],
-        latestBackup: nil
+        latestBackup: nil,
+        progress: progress
+    )
+}
+
+private func progress(
+    operation: RuntimeOperation,
+    phase: RuntimeProgressPhase
+) -> RuntimeProgressDocument {
+    RuntimeProgressDocument(
+        operation: operation,
+        phase: phase,
+        step: nil,
+        stepStatus: nil,
+        message: "progress",
+        reasonCodes: [],
+        startedAt: nil,
+        updatedAt: "2026-05-31T00:00:00Z"
     )
 }

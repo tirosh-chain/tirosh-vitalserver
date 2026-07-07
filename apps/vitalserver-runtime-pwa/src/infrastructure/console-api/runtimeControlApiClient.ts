@@ -33,6 +33,7 @@ import type {
   RuntimeLogExportResult,
   RuntimeLogTextRequest,
   RuntimeLogTextResponse,
+  RuntimeOperationState,
   RuntimeSettings,
   RuntimeStatus,
   RuntimeUninstallRequest,
@@ -57,6 +58,7 @@ import {
   runtimeLabSessionResponseSchema,
   runtimeLogExportResultSchema,
   runtimeLogTextResponseSchema,
+  runtimeOperationStateSchema,
   runtimeOverviewSchema,
   runtimeSettingsSchema,
   runtimeStatusSchema,
@@ -100,6 +102,10 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
 
   getStatus(): Promise<RuntimeStatus> {
     return this.get("/runtime/status", runtimeStatusSchema);
+  }
+
+  getOperationState(): Promise<RuntimeOperationState> {
+    return this.get("/runtime/operation-state", runtimeOperationStateSchema);
   }
 
   getSettings(): Promise<RuntimeSettings> {

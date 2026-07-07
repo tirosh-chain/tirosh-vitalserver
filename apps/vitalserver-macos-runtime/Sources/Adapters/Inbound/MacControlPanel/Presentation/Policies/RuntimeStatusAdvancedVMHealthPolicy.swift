@@ -29,9 +29,23 @@ public struct RuntimeStatusAdvancedVMHealthPolicy {
         self.serviceValuePolicy = RuntimeStatusServiceValuePolicy(vocabulary: vocabulary)
     }
 
-    public func vmHealth(status: RuntimeStatus) -> [RuntimeStatusHealthDetailItem] {
-        let installInProgress = RuntimeActiveOperationPolicy.isInstallInProgress(status)
-        let initializationInProgress = RuntimeActiveOperationPolicy.isInitializationInProgress(status)
+    public func vmHealth(
+        status: RuntimeStatus,
+        operationState: RuntimeOperationState
+    ) -> [RuntimeStatusHealthDetailItem] {
+        let operation = operationState.operationForPresentation
+        return vmHealth(
+            status: status,
+            installInProgress: RuntimeActiveOperationPolicy.isInstallOperation(operation),
+            initializationInProgress: RuntimeActiveOperationPolicy.isInitializationInProgress(status)
+        )
+    }
+
+    private func vmHealth(
+        status: RuntimeStatus,
+        installInProgress: Bool,
+        initializationInProgress: Bool
+    ) -> [RuntimeStatusHealthDetailItem] {
         var items = [
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.runtimeInstallationLabel,

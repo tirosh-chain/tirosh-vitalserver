@@ -690,7 +690,7 @@ final class RuntimeControlContractsTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(RuntimeActiveOperationPolicy.isUpdateInProgress(status))
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isUpdateProgressInProgress(status.progress))
     }
 
     func testActiveOperationPolicyTreatsNonTerminalInstallProgressAsInProgress() {
@@ -709,7 +709,7 @@ final class RuntimeControlContractsTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isInstallProgressInProgress(status.progress))
     }
 
     func testActiveOperationPolicyDoesNotTreatTerminalProgressAsInProgress() {
@@ -728,7 +728,7 @@ final class RuntimeControlContractsTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(status))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateProgressInProgress(status.progress))
     }
 
     func testActiveOperationPolicyTreatsNonTerminalRestoreProgressAsRecoveryInProgress() {
@@ -747,7 +747,7 @@ final class RuntimeControlContractsTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(RuntimeActiveOperationPolicy.isRecoveryInProgress(status))
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isRecoveryProgressInProgress(status.progress))
     }
 
     func testActiveOperationPolicyDoesNotTreatTerminalRestoreProgressAsRecoveryInProgress() {
@@ -766,7 +766,7 @@ final class RuntimeControlContractsTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(RuntimeActiveOperationPolicy.isRecoveryInProgress(status))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isRecoveryProgressInProgress(status.progress))
     }
 
     func testActiveOperationPolicyDoesNotTreatTerminalInstallProgressAsInProgress() {
@@ -785,28 +785,40 @@ final class RuntimeControlContractsTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallProgressInProgress(status.progress))
     }
 
-    func testActiveOperationPolicyFallsBackToRuntimeStateForLegacyStatusWithoutProgress() {
+    func testActiveOperationPolicyDoesNotInferUpdateOrRecoveryFromLegacyStatusOperation() {
         let updating = RuntimeStatus(runtimeState: .updating, operation: .applyBundle)
         let recoveringUpdate = RuntimeStatus(runtimeState: .recovering, operation: .activateGuestUpdate)
         let recoveringRollback = RuntimeStatus(runtimeState: .recovering, operation: .rollback)
         let healthy = RuntimeStatus(runtimeState: .healthy, operation: .applyBundle)
         let nonUpdate = RuntimeStatus(runtimeState: .updating, operation: .repairVMDisk)
 
-        XCTAssertTrue(RuntimeActiveOperationPolicy.isUpdateInProgress(updating))
-        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(recoveringUpdate))
-        XCTAssertTrue(RuntimeActiveOperationPolicy.isRecoveryInProgress(recoveringUpdate))
-        XCTAssertTrue(RuntimeActiveOperationPolicy.isRecoveryInProgress(recoveringRollback))
-        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(healthy))
-        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(nonUpdate))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateProgressInProgress(updating.progress))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateProgressInProgress(recoveringUpdate.progress))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isRecoveryProgressInProgress(recoveringUpdate.progress))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isRecoveryProgressInProgress(recoveringRollback.progress))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateProgressInProgress(healthy.progress))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateProgressInProgress(nonUpdate.progress))
+    }
+
+    func testActiveOperationPolicyUsesExplicitOperationForPresentationState() {
+        let updating = RuntimeStatus(runtimeState: .healthy, operation: .watchdog)
+        let recovering = RuntimeStatus(runtimeState: .recovering, operation: .watchdog)
+
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isUpdateInProgress(updating, operation: .applyBundle))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isRecoveryInProgress(updating, operation: .applyBundle))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isUpdateInProgress(recovering, operation: .applyBundle))
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isRecoveryInProgress(recovering, operation: .applyBundle))
+        XCTAssertTrue(RuntimeActiveOperationPolicy.isRecoveryInProgress(recovering, operation: .rollback))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isRecoveryInProgress(recovering, operation: nil))
     }
 
     func testActiveOperationPolicyTreatsInitializingRuntimeStateAsInitializationInProgress() {
         let initializing = RuntimeStatus(runtimeState: .initializing, operation: .install)
 
-        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(initializing))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallProgressInProgress(initializing.progress))
         XCTAssertTrue(RuntimeActiveOperationPolicy.isInitializationInProgress(initializing))
     }
 
@@ -814,8 +826,8 @@ final class RuntimeControlContractsTests: XCTestCase {
         let installing = RuntimeStatus(runtimeState: .degraded, operation: .install)
         let degradedWithoutInstallOperation = RuntimeStatus(runtimeState: .degraded, operation: .health)
 
-        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(installing))
-        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(degradedWithoutInstallOperation))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallProgressInProgress(installing.progress))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallProgressInProgress(degradedWithoutInstallOperation.progress))
     }
 
     func testActiveOperationPolicyUsesInitializingStatusForProvisionedInstallState() {
@@ -830,7 +842,7 @@ final class RuntimeControlContractsTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallProgressInProgress(status.progress))
         XCTAssertTrue(RuntimeActiveOperationPolicy.isInitializationInProgress(status))
     }
 
@@ -856,7 +868,7 @@ final class RuntimeControlContractsTests: XCTestCase {
             hostProxyHTTP: "200"
         )
 
-        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallProgressInProgress(status.progress))
         XCTAssertFalse(RuntimeActiveOperationPolicy.isInitializationInProgress(status))
     }
 
@@ -872,7 +884,7 @@ final class RuntimeControlContractsTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallInProgress(status))
+        XCTAssertFalse(RuntimeActiveOperationPolicy.isInstallProgressInProgress(status.progress))
     }
 
     func testRuntimeStatusIncludesDataDirectoryStats() throws {
@@ -887,6 +899,128 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded.dataStorageError, "volume read failed")
         XCTAssertEqual(decoded.dataDirectoryStats?.fileCount, 2)
         XCTAssertEqual(decoded.dataDirectoryStats?.sizeBytes, 1024)
+    }
+
+    func testRuntimeInstallOperationStatePreservesStatusInstallReadMeanings() {
+        let installDocument = RuntimeInstallStateDocument(
+            state: .stepStarted,
+            mode: .full,
+            currentStep: .replaceRootfsBase,
+            updatedAt: "2026-07-08T00:00:00Z",
+            message: "install step running"
+        )
+        let loaded = RuntimeInstallOperationState.fromRuntimeStatusInstallRead(RuntimeStatus(
+            installStateDocument: installDocument,
+            updatedAt: "2026-07-08T00:00:02Z"
+        ))
+        let unavailable = RuntimeInstallOperationState.fromRuntimeStatusInstallRead(RuntimeStatus())
+        let statusOperationOnly = RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: nil,
+            install: RuntimeInstallOperationState.fromRuntimeStatusInstallRead(RuntimeStatus(operation: .applyBundle))
+        )
+        let installOperationState = RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:02Z",
+            install: loaded
+        )
+        let failed = RuntimeInstallOperationState.fromRuntimeStatusInstallRead(RuntimeStatus(
+            installStateDocumentError: "runtime install state decode failed"
+        ))
+
+        XCTAssertEqual(loaded.state, .loaded)
+        XCTAssertEqual(loaded.document, installDocument)
+        XCTAssertNil(loaded.readError)
+
+        XCTAssertEqual(unavailable.state, .unavailable)
+        XCTAssertNil(unavailable.document)
+        XCTAssertNil(unavailable.readError)
+
+        XCTAssertNil(statusOperationOnly.activeOperation)
+        XCTAssertNil(statusOperationOnly.operationForPresentation)
+        XCTAssertEqual(installOperationState.activeOperation, .install)
+        XCTAssertEqual(installOperationState.operationForPresentation, .install)
+        XCTAssertEqual(installOperationState.runtimeStatusUpdatedAt, "2026-07-08T00:00:02Z")
+
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertNil(failed.document)
+        XCTAssertEqual(failed.readError, "runtime install state decode failed")
+    }
+
+    func testRuntimeOperationLeaseStatePreservesReadAndStaleMeanings() {
+        let document = RuntimeOperationLeaseDocument(
+            operationId: "operation-1",
+            operation: .applyBundle,
+            ownerPID: 123,
+            startedAt: "2026-07-08T00:00:00Z",
+            heartbeatAt: "2026-07-08T00:00:01Z",
+            expiresAt: "2026-07-08T00:00:02Z",
+            message: "applying bundle"
+        )
+        let loaded = RuntimeOperationLeaseState.loaded(document)
+        let unavailable = RuntimeOperationLeaseState.unavailable()
+        let failed = RuntimeOperationLeaseState.failed(readError: "lease decode failed")
+        let stale = RuntimeOperationLeaseState.stale(document, staleReason: "expired")
+
+        XCTAssertEqual(loaded.state, .loaded)
+        XCTAssertEqual(loaded.document, document)
+        XCTAssertNil(loaded.readError)
+        XCTAssertNil(loaded.staleReason)
+
+        XCTAssertEqual(unavailable.state, .unavailable)
+        XCTAssertNil(unavailable.document)
+        XCTAssertNil(unavailable.readError)
+
+        XCTAssertEqual(failed.state, .failed)
+        XCTAssertNil(failed.document)
+        XCTAssertEqual(failed.readError, "lease decode failed")
+
+        XCTAssertEqual(stale.state, .stale)
+        XCTAssertEqual(stale.document, document)
+        XCTAssertEqual(stale.staleReason, "expired")
+        XCTAssertNil(stale.readError)
+    }
+
+    func testRuntimeOperationStateEncodesNullableOperationFieldsAsExplicitNull() throws {
+        let installDocument = RuntimeInstallStateDocument(
+            state: .started,
+            mode: .full,
+            updatedAt: "2026-07-08T00:00:00Z"
+        )
+        let leaseDocument = RuntimeOperationLeaseDocument(
+            operationId: "operation-1",
+            operation: .applyBundle,
+            ownerPID: nil,
+            startedAt: "2026-07-08T00:00:00Z",
+            heartbeatAt: "2026-07-08T00:00:01Z",
+            expiresAt: nil,
+            message: nil
+        )
+        let operationState = RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: nil,
+            install: .loaded(installDocument),
+            lease: .loaded(leaseDocument)
+        )
+
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(operationState)) as? [String: Any]
+        )
+        let install = try XCTUnwrap(json["install"] as? [String: Any])
+        let installDocumentJSON = try XCTUnwrap(install["document"] as? [String: Any])
+        let lease = try XCTUnwrap(json["lease"] as? [String: Any])
+        let leaseDocumentJSON = try XCTUnwrap(lease["document"] as? [String: Any])
+
+        XCTAssertEqual(json["activeOperation"] as? String, "install")
+        XCTAssertTrue(json["runtimeStatusUpdatedAt"] is NSNull)
+        XCTAssertTrue(install["readError"] is NSNull)
+        XCTAssertTrue(installDocumentJSON["currentStep"] is NSNull)
+        XCTAssertTrue(installDocumentJSON["message"] is NSNull)
+        XCTAssertTrue(lease["readError"] is NSNull)
+        XCTAssertTrue(lease["staleReason"] is NSNull)
+        XCTAssertTrue(leaseDocumentJSON["ownerPID"] is NSNull)
+        XCTAssertTrue(leaseDocumentJSON["expiresAt"] is NSNull)
+        XCTAssertTrue(leaseDocumentJSON["message"] is NSNull)
     }
 
     func testRuntimeEventCursorWireCodecRoundTripsOpaqueCursor() {
@@ -977,10 +1111,13 @@ final class RuntimeControlContractsTests: XCTestCase {
 
         let encoded = try JSONEncoder().encode(snapshot)
         let decoded = try JSONDecoder().decode(RuntimeVitalDBObservationSnapshot.self, from: encoded)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
 
         XCTAssertEqual(decoded.state, .unavailable)
         XCTAssertNil(decoded.observation)
         XCTAssertEqual(decoded.readError, "sqlite=read failed")
+        XCTAssertTrue(json["observation"] is NSNull)
+        XCTAssertEqual(json["readError"] as? String, "sqlite=read failed")
     }
 
     func testVitalDBObservationSnapshotFromOptionalPreservesLoadedReadError() {
@@ -1005,11 +1142,13 @@ final class RuntimeControlContractsTests: XCTestCase {
 
         let encoded = try JSONEncoder().encode(history)
         let decoded = try JSONDecoder().decode(RuntimeVitalRelationshipHistory.self, from: encoded)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
 
         XCTAssertEqual(decoded.state, .readFailed)
         XCTAssertEqual(decoded.assignments, [])
         XCTAssertEqual(decoded.events, [])
         XCTAssertEqual(decoded.readError, "assignments=read failed")
+        XCTAssertEqual(json["readError"] as? String, "assignments=read failed")
     }
 
     func testVitalRelationshipHistoryPreservesExplicitPartialStateAndDecodesLegacyPayload() throws {
@@ -1069,6 +1208,11 @@ final class RuntimeControlContractsTests: XCTestCase {
 
         let encoded = try JSONEncoder().encode(partial)
         let decoded = try JSONDecoder().decode(RuntimeVitalRecorderHistory.self, from: encoded)
+        let decodedJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let activityHistoryJSON = try XCTUnwrap(decodedJSON["activityHistory"] as? [String: Any])
+        let failedJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(failed)) as? [String: Any]
+        )
         let legacy = try JSONDecoder().decode(RuntimeVitalRecorderHistory.self, from: Data("""
         {
           "recorders": [],
@@ -1082,8 +1226,55 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded.recorders.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(decoded.readError, "currentObservation=runtimeState=missing")
         XCTAssertEqual(failed.state, .readFailed)
+        XCTAssertEqual(decodedJSON["state"] as? String, "partiallyLoaded")
+        XCTAssertEqual(decodedJSON["readError"] as? String, "currentObservation=runtimeState=missing")
+        XCTAssertEqual(decodedJSON["updatedAt"] as? String, "2026-05-26T00:00:00Z")
+        XCTAssertTrue(decodedJSON["recorderIngressStatusRead"] is NSNull)
+        XCTAssertTrue(activityHistoryJSON["earliestBucketStartedAt"] is NSNull)
+        XCTAssertTrue(activityHistoryJSON["latestBucketStartedAt"] is NSNull)
+        XCTAssertTrue(activityHistoryJSON["readError"] is NSNull)
+        XCTAssertEqual(failedJSON["state"] as? String, "readFailed")
+        XCTAssertEqual(failedJSON["readError"] as? String, "observations=read failed")
         XCTAssertEqual(legacy.state, .readFailed)
         XCTAssertEqual(legacy.readError, "legacy recorder read failed")
+    }
+
+    func testRecorderIngressStatusReadResultEncodesExplicitReadEvidence() throws {
+        let loaded = RuntimeRecorderIngressStatusReadResult(
+            httpStatus: "200",
+            document: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 1),
+            readError: nil
+        )
+        let failed = RuntimeRecorderIngressStatusReadResult(
+            httpStatus: RuntimeHTTPStatusText.failed,
+            document: nil,
+            readError: "command-failed recorder ingress status"
+        )
+
+        let loadedJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(loaded)) as? [String: Any]
+        )
+        let failedJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(failed)) as? [String: Any]
+        )
+        let legacy = try JSONDecoder().decode(RuntimeRecorderIngressStatusReadResult.self, from: Data("""
+        {
+          "readState": "readFailed",
+          "readError": "legacy read failed"
+        }
+        """.utf8))
+
+        XCTAssertEqual(loadedJSON["readState"] as? String, "loaded")
+        XCTAssertEqual(loadedJSON["httpStatus"] as? String, "200")
+        XCTAssertNotNil(loadedJSON["document"] as? [String: Any])
+        XCTAssertTrue(loadedJSON["readError"] is NSNull)
+        XCTAssertEqual(failedJSON["readState"] as? String, "commandFailed")
+        XCTAssertEqual(failedJSON["httpStatus"] as? String, RuntimeHTTPStatusText.failed)
+        XCTAssertTrue(failedJSON["document"] is NSNull)
+        XCTAssertEqual(failedJSON["readError"] as? String, "command-failed recorder ingress status")
+        XCTAssertEqual(legacy.readState, .readFailed)
+        XCTAssertEqual(legacy.httpStatus, "")
+        XCTAssertEqual(legacy.readError, "legacy read failed")
     }
 
     func testVitalRecorderHistoryAggregatesByVrcode() {
@@ -1332,7 +1523,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(history.summary.staleRecorders, 1)
     }
 
-    func testVitalRecorderHistoryUsesRecentRecorderIngressActivityToKeepSendingRecorderOnline() {
+    func testVitalRecorderHistoryDoesNotUseRecorderIngressActivityToOverrideRecorderState() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:12:00Z",
             ready: true,
@@ -1369,10 +1560,11 @@ final class RuntimeControlContractsTests: XCTestCase {
             recorderIngressStatusRead: ingressRead
         )
 
-        XCTAssertEqual(history.recorders.first?.status, .online)
-        XCTAssertEqual(history.recorders.first?.lastSeenAt, "2026-05-26T00:11:45Z")
-        XCTAssertEqual(history.summary.onlineRecorders, 1)
-        XCTAssertEqual(history.summary.staleRecorders, 0)
+        XCTAssertEqual(history.recorders.first?.status, .stale)
+        XCTAssertEqual(history.recorders.first?.lastSeenAt, "2026-05-26T00:00:00Z")
+        XCTAssertEqual(history.summary.onlineRecorders, 0)
+        XCTAssertEqual(history.summary.staleRecorders, 1)
+        XCTAssertEqual(history.recorderIngressStatusRead, ingressRead)
     }
 
     func testVitalRecorderHistoryUsesExplicitRecorderIngressStatusReadWithoutContainerObservation() {
@@ -1412,10 +1604,11 @@ final class RuntimeControlContractsTests: XCTestCase {
             recorderIngressStatusRead: ingressRead
         )
 
-        XCTAssertEqual(history.recorders.first?.status, .online)
-        XCTAssertEqual(history.recorders.first?.lastSeenAt, "2026-05-26T00:11:45Z")
-        XCTAssertEqual(history.summary.onlineRecorders, 1)
-        XCTAssertEqual(history.summary.staleRecorders, 0)
+        XCTAssertEqual(history.recorders.first?.status, .stale)
+        XCTAssertEqual(history.recorders.first?.lastSeenAt, "2026-05-26T00:00:00Z")
+        XCTAssertEqual(history.summary.onlineRecorders, 0)
+        XCTAssertEqual(history.summary.staleRecorders, 1)
+        XCTAssertEqual(history.recorderIngressStatusRead, ingressRead)
     }
 
     func testVitalRecorderHistoryCodablePreservesRecorderIngressStatusRead() throws {
@@ -1447,7 +1640,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded.recorderIngressStatusRead, ingressRead)
     }
 
-    func testVitalRecorderHistoryIncludesRecorderObservedOnlyByRecorderIngressActivity() {
+    func testVitalRecorderHistoryDoesNotCreateRecorderObservedOnlyByRecorderIngressActivity() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:12:00Z",
             ready: true,
@@ -1475,11 +1668,10 @@ final class RuntimeControlContractsTests: XCTestCase {
             recorderIngressStatusRead: ingressRead
         )
 
-        XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_INGRESS_ONLY"])
-        XCTAssertEqual(history.recorders.first?.status, .online)
-        XCTAssertEqual(history.recorders.first?.lastIP, "192.168.64.21")
-        XCTAssertEqual(history.recorders.first?.lastSeenAt, "2026-05-26T00:11:30Z")
-        XCTAssertEqual(history.recorders.first?.presentInLatestObservation, false)
+        XCTAssertEqual(history.recorders, [])
+        XCTAssertEqual(history.summary.knownRecorders, 0)
+        XCTAssertEqual(history.summary.onlineRecorders, 0)
+        XCTAssertEqual(history.recorderIngressStatusRead, ingressRead)
     }
 
     func testVitalRecorderHistoryMergesRecorderRedisIPSyncFromRecorderIngressStatus() {
@@ -1812,6 +2004,214 @@ final class RuntimeControlContractsTests: XCTestCase {
         }
     }
 
+    func testVitalRecorderActivityWindowEncodesNullableReadFieldsAsExplicitNull() throws {
+        let window = RuntimeVitalRecorderActivityWindow(
+            state: .empty,
+            query: RuntimeVitalRecorderActivityWindowQuery(vrcode: "VR_A", pageIndex: nil),
+            page: RuntimeVitalRecorderActivityWindowPage(
+                index: 0,
+                count: 1,
+                windowSeconds: 3600,
+                windowStartedAt: nil,
+                windowEndedAt: nil,
+                firstBucketStartedAt: nil,
+                latestBucketStartedAt: nil
+            ),
+            buckets: [],
+            latestSampleAt: nil,
+            readError: nil
+        )
+
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(window)) as? [String: Any]
+        )
+        let pageJSON = try XCTUnwrap(json["page"] as? [String: Any])
+        let decoded = try JSONDecoder().decode(
+            RuntimeVitalRecorderActivityWindow.self,
+            from: JSONEncoder().encode(window)
+        )
+
+        XCTAssertEqual(decoded.state, .empty)
+        XCTAssertTrue(pageJSON["windowStartedAt"] is NSNull)
+        XCTAssertTrue(pageJSON["windowEndedAt"] is NSNull)
+        XCTAssertTrue(pageJSON["firstBucketStartedAt"] is NSNull)
+        XCTAssertTrue(pageJSON["latestBucketStartedAt"] is NSNull)
+        XCTAssertTrue(json["latestSampleAt"] is NSNull)
+        XCTAssertTrue(json["readError"] is NSNull)
+    }
+
+    func testVitalRecorderActivityWindowPreservesReadFailure() throws {
+        let window = RuntimeVitalRecorderActivityWindow(
+            state: .readFailed,
+            query: RuntimeVitalRecorderActivityWindowQuery(vrcode: "VR_A"),
+            page: RuntimeVitalRecorderActivityWindowPage(
+                index: 0,
+                count: 1,
+                windowSeconds: 3600,
+                windowStartedAt: nil,
+                windowEndedAt: nil,
+                firstBucketStartedAt: nil,
+                latestBucketStartedAt: nil
+            ),
+            buckets: [],
+            latestSampleAt: nil,
+            readError: "activity projection read failed"
+        )
+
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(window)) as? [String: Any]
+        )
+        let decoded = try JSONDecoder().decode(
+            RuntimeVitalRecorderActivityWindow.self,
+            from: JSONEncoder().encode(window)
+        )
+
+        XCTAssertEqual(decoded.state, .readFailed)
+        XCTAssertEqual(decoded.readError, "activity projection read failed")
+        XCTAssertEqual(json["readError"] as? String, "activity projection read failed")
+        XCTAssertTrue(json["latestSampleAt"] is NSNull)
+    }
+
+    func testVitalRecorderRecordEncodesNullableFieldsAsExplicitNull() throws {
+        let record = RuntimeVitalRecorderRecord(
+            vrcode: "VR_NULL",
+            status: .notObserved,
+            lastIP: nil,
+            version: nil,
+            bedID: nil,
+            bedName: nil,
+            patientConnected: nil,
+            firstSeenAt: nil,
+            lastSeenAt: nil,
+            observationCount: 0,
+            duplicateObservationCount: 0,
+            currentAnomalyCount: 0,
+            latestAnomalyKind: nil,
+            latestAnomalySeverity: nil,
+            latestAnomalyMessage: nil,
+            latestAnomalyObservedAt: nil,
+            presentInLatestObservation: false,
+            visibility: .visible,
+            activityTimeline: nil,
+            redisIPSync: nil
+        )
+
+        let encoded = try JSONEncoder().encode(record)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let decoded = try JSONDecoder().decode(RuntimeVitalRecorderRecord.self, from: encoded)
+        let legacy = try JSONDecoder().decode(RuntimeVitalRecorderRecord.self, from: Data("""
+        {
+          "vrcode": "VR_LEGACY",
+          "status": "notObserved",
+          "visibility": "visible",
+          "observationCount": 0,
+          "duplicateObservationCount": 0,
+          "currentAnomalyCount": 0,
+          "presentInLatestObservation": false
+        }
+        """.utf8))
+
+        XCTAssertEqual(decoded.vrcode, "VR_NULL")
+        for field in [
+            "lastIP",
+            "version",
+            "bedID",
+            "bedName",
+            "patientConnected",
+            "firstSeenAt",
+            "lastSeenAt",
+            "latestAnomalyKind",
+            "latestAnomalySeverity",
+            "latestAnomalyMessage",
+            "latestAnomalyObservedAt",
+            "activityTimeline",
+            "redisIPSync",
+        ] {
+            XCTAssertTrue(json[field] is NSNull, field)
+        }
+        XCTAssertEqual(legacy.vrcode, "VR_LEGACY")
+        XCTAssertNil(legacy.activityTimeline)
+        XCTAssertNil(legacy.redisIPSync)
+    }
+
+    func testVitalBedRecordEncodesNullableFieldsAsExplicitNull() throws {
+        let record = RuntimeVitalBedRecord(
+            bedID: "bed-null",
+            name: nil,
+            vrcode: nil,
+            linkedRecorderStatus: nil,
+            linkedRecorderIP: nil,
+            linkedRecorderLastSeenAt: nil,
+            status: .notObserved,
+            patientConnected: nil,
+            firstSeenAt: nil,
+            lastSeenAt: nil,
+            observationCount: 0,
+            duplicateObservationCount: 0,
+            currentAnomalyCount: 0,
+            latestAnomalyKind: nil,
+            latestAnomalySeverity: nil,
+            latestAnomalyMessage: nil,
+            latestAnomalyObservedAt: nil,
+            visibility: .visible
+        )
+
+        let encoded = try JSONEncoder().encode(record)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let decoded = try JSONDecoder().decode(RuntimeVitalBedRecord.self, from: encoded)
+        let legacy = try JSONDecoder().decode(RuntimeVitalBedRecord.self, from: Data("""
+        {
+          "bedID": "bed-legacy",
+          "visibility": "visible",
+          "status": "notObserved",
+          "observationCount": 0,
+          "duplicateObservationCount": 0,
+          "currentAnomalyCount": 0
+        }
+        """.utf8))
+
+        XCTAssertEqual(decoded.bedID, "bed-null")
+        for field in [
+            "name",
+            "vrcode",
+            "linkedRecorderStatus",
+            "linkedRecorderIP",
+            "linkedRecorderLastSeenAt",
+            "patientConnected",
+            "firstSeenAt",
+            "lastSeenAt",
+            "latestAnomalyKind",
+            "latestAnomalySeverity",
+            "latestAnomalyMessage",
+            "latestAnomalyObservedAt",
+        ] {
+            XCTAssertTrue(json[field] is NSNull, field)
+        }
+        XCTAssertEqual(legacy.bedID, "bed-legacy")
+        XCTAssertNil(legacy.linkedRecorderStatus)
+    }
+
+    func testRecorderRedisIPSyncObservationEncodesNullableFieldsAsExplicitNull() throws {
+        let observation = RuntimeRecorderRedisIPSyncObservation(status: .unavailable)
+
+        let encoded = try JSONEncoder().encode(observation)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let decoded = try JSONDecoder().decode(RuntimeRecorderRedisIPSyncObservation.self, from: encoded)
+
+        XCTAssertEqual(decoded.status, .unavailable)
+        for field in [
+            "redisKey",
+            "selectedIp",
+            "ipSource",
+            "redisValue",
+            "lastWriteAt",
+            "lastVerifiedAt",
+            "lastFailure",
+        ] {
+            XCTAssertTrue(json[field] is NSNull, field)
+        }
+    }
+
     func testVitalRecorderSummaryCountsUniqueVrcodes() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:01:00Z",
@@ -1878,7 +2278,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(summary.staleRecorders, 1)
     }
 
-    func testVitalRecorderSummaryUsesRecentRecorderIngressActivityForCurrentRecorderStatus() {
+    func testVitalRecorderSummaryDoesNotUseRecorderIngressActivityForCurrentRecorderStatus() {
         let observation = VitalDBObservationDocument(
             observedAt: "2026-05-26T00:12:00Z",
             ready: true,
@@ -1916,10 +2316,10 @@ final class RuntimeControlContractsTests: XCTestCase {
 
         XCTAssertEqual(summary.activeConnections, 1)
         XCTAssertEqual(summary.knownRecorders, 1)
-        XCTAssertEqual(summary.onlineRecorders, 1)
-        XCTAssertEqual(summary.staleRecorders, 0)
+        XCTAssertEqual(summary.onlineRecorders, 0)
+        XCTAssertEqual(summary.staleRecorders, 1)
         XCTAssertEqual(summary.latestRecorder?.vrcode, "VR_RECONNECTED")
-        XCTAssertEqual(summary.latestRecorder?.lastSeenAt, "2026-05-26T00:11:45Z")
+        XCTAssertEqual(summary.latestRecorder?.lastSeenAt, "2026-05-26T00:00:00Z")
     }
 
     func testVitalRecorderSummaryRequiresExplicitRecorderIngressStatusRead() {
@@ -1951,7 +2351,7 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(summary.latestRecorder?.lastSeenAt, "2026-05-26T00:00:00Z")
     }
 
-    func testRuntimeControlOverviewDoesNotFallbackToStatusVitalDBObservation() {
+    func testRuntimeControlOverviewDoesNotFallbackToStatusVitalDBObservation() throws {
         let staleObservation = VitalDBObservationDocument(
             observedAt: "2026-05-24T00:00:00Z",
             ready: true,
@@ -1975,7 +2375,7 @@ final class RuntimeControlContractsTests: XCTestCase {
             settings: RuntimeSettings(),
             release: RuntimeReleaseInfo(helperVersion: "0.1.0", minimumUpdaterVersion: "0.1.0", vitalServerVersion: "0.0.0", services: []),
             install: RuntimeInstallInfo(),
-            vitalDBObservation: nil,
+            vitalDBObservation: staleObservation,
             vitalDBObservationSnapshot: .unavailable(readError: "sqlite=read failed")
         )
         let loadedOverview = RuntimeControlOverview(
@@ -1992,8 +2392,36 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(unavailableOverview.vitalRecorder.source, .unavailable)
         XCTAssertNil(unavailableOverview.vitalRecorder.knownRecorders)
         XCTAssertNil(unavailableOverview.vitalRecorder.activeConnections)
+        XCTAssertEqual(unavailableOverview.conditions, [
+            RuntimeControlCondition(
+                type: "VitalDBObservationReady",
+                status: .unknown,
+                reason: "Unavailable",
+                message: "sqlite=read failed"
+            ),
+        ])
+        let unavailableJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(unavailableOverview)) as? [String: Any]
+        )
+        let unavailableSnapshotJSON = try XCTUnwrap(
+            unavailableJSON["vitalDBObservationSnapshot"] as? [String: Any]
+        )
+        let unavailableConditionsJSON = try XCTUnwrap(unavailableJSON["conditions"] as? [[String: Any]])
+        XCTAssertTrue(unavailableJSON["vitalDBObservation"] is NSNull)
+        XCTAssertTrue(unavailableSnapshotJSON["observation"] is NSNull)
+        XCTAssertEqual(unavailableSnapshotJSON["readError"] as? String, "sqlite=read failed")
+        XCTAssertEqual(unavailableConditionsJSON.first?["message"] as? String, "sqlite=read failed")
+        XCTAssertTrue(unavailableConditionsJSON.first?["observedAt"] is NSNull)
         XCTAssertEqual(loadedOverview.vitalDBObservation?.recorders.map(\.vrcode), ["FRESH"])
         XCTAssertEqual(loadedOverview.vitalRecorder.latestRecorder?.vrcode, "FRESH")
+        XCTAssertEqual(loadedOverview.conditions, [
+            RuntimeControlCondition(
+                type: "VitalDBObservationReady",
+                status: .trueValue,
+                reason: "Loaded",
+                observedAt: "2026-05-26T00:00:00Z"
+            ),
+        ])
     }
 
     func testVitalRecorderSummaryDoesNotInferRecorderStateFromRecorderIngressConnections() {

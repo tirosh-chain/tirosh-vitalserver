@@ -96,11 +96,38 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertEqual(snapshot.state, .failed)
         XCTAssertEqual(snapshot.readError, "guestControl=unavailable")
         XCTAssertEqual(history.state, .readFailed)
-        XCTAssertEqual(history.readError, "currentObservation=guestControl=unavailable")
+        XCTAssertEqual(history.readError, "currentObservation=guestControl=readModelProviderUnavailable")
         XCTAssertEqual(relationships.state, .readFailed)
         XCTAssertEqual(relationships.readError, "Guest VitalDB relationship read model is unavailable.")
         XCTAssertEqual(window.state, .readFailed)
         XCTAssertEqual(window.readError, "Guest VitalDB activity read model is unavailable.")
+    }
+
+    func testVitalDBRecordersDoNotUseCurrentObservationProviderWhenGuestReadModelProviderIsMissing() {
+        let reader = SystemRuntimeObservabilityReader(
+            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
+                .loaded(
+                    VitalDBObservationDocument(
+                        source: "guest-control-api",
+                        observedAt: "2026-07-01T00:00:00+00:00",
+                        ready: true,
+                        recorderOnlineThresholdSeconds: 60,
+                        recorders: [
+                            VitalDBRecorderObservation(vrcode: "VR_CURRENT", online: true),
+                        ]
+                    ),
+                    source: .guestControlAPI
+                )
+            }
+        )
+
+        let history = reader.loadVitalDBRecorders()
+
+        XCTAssertEqual(history.state, .readFailed)
+        XCTAssertNil(history.updatedAt)
+        XCTAssertEqual(history.recorders, [])
+        XCTAssertEqual(history.readError, "currentObservation=guestControl=readModelProviderUnavailable")
     }
 
     func testLiveCurrentObservationProviderReadsGuestControlAPI() {
@@ -708,7 +735,7 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         )
     }
 
-    func testLoadVitalDBRecordersUsesInjectedRecorderIngressStatusReadProvider() {
+    func testLoadVitalDBRecordersPreservesInjectedRecorderIngressStatusWithoutCreatingRecorders() {
         let currentObservation = VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:10Z",
             ready: true,
@@ -735,19 +762,22 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .loaded(currentObservation, source: .guestControlAPI)
             },
+            guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider {
+                .loaded(currentObservation, source: .guestControlAPI)
+            },
             recorderIngressStatusReadProvider: StubRecorderIngressStatusReadProvider(result: ingressRead)
         )
 
         let history = reader.loadVitalDBRecorders()
 
-        XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_INGRESS_ONLY"])
-        XCTAssertEqual(history.recorders.first?.lastIP, "192.168.64.21")
-        XCTAssertEqual(history.recorders.first?.lastSeenAt, "2026-05-31T00:00:09Z")
+        XCTAssertEqual(history.recorders, [])
+        XCTAssertEqual(history.summary.knownRecorders, 0)
+        XCTAssertEqual(history.recorderIngressStatusRead, ingressRead)
         XCTAssertEqual(history.activityHistory.source, .notProvided)
         XCTAssertNil(history.readError)
     }
 
-    func testLoadVitalDBRecorderSummariesUsesInjectedRecorderIngressStatusReadProvider() {
+    func testLoadVitalDBRecorderSummariesPreservesIngressActiveConnectionsWithoutCreatingRecorders() {
         let currentObservation = VitalDBObservationDocument(
             observedAt: "2026-05-31T00:00:10Z",
             ready: true,
@@ -774,13 +804,17 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
             currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
                 .loaded(currentObservation, source: .guestControlAPI)
             },
+            guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider {
+                .loaded(currentObservation, source: .guestControlAPI)
+            },
             recorderIngressStatusReadProvider: StubRecorderIngressStatusReadProvider(result: ingressRead)
         )
 
         let history = reader.loadVitalDBRecorderSummaries()
 
-        XCTAssertEqual(history.recorders.map(\.vrcode), ["VR_SUMMARY"])
-        XCTAssertEqual(history.summary.knownRecorders, 1)
+        XCTAssertEqual(history.recorders, [])
+        XCTAssertEqual(history.summary.knownRecorders, 0)
+        XCTAssertEqual(history.recorderIngressStatusRead?.document?.activeRecorderConnections, 1)
         XCTAssertEqual(history.activityHistory.source, .notProvided)
     }
 
@@ -904,6 +938,62 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertEqual(window.state, .loaded)
         XCTAssertEqual(window.buckets.map(\.messageCount), [2])
         XCTAssertNil(window.readError)
+    }
+
+    func testLoadVitalDBRecorderActivityWindowPreservesLoadedEmptyRead() {
+        let reader = SystemRuntimeObservabilityReader(
+            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
+                .unavailable()
+            },
+            guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider { vrcode in
+                RuntimeGuestControlVitalDBRecorderActivityRead(
+                    state: .loaded,
+                    vrcode: vrcode,
+                    buckets: [],
+                    readError: nil
+                )
+            }
+        )
+
+        let window = reader.loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery(
+            vrcode: "VR_EMPTY",
+            bucketSeconds: 60,
+            period: .all,
+            pageIndex: 0
+        ))
+
+        XCTAssertEqual(window.state, .empty)
+        XCTAssertEqual(window.buckets, [])
+        XCTAssertNil(window.readError)
+    }
+
+    func testLoadVitalDBRecorderActivityWindowPreservesGuestReadFailure() {
+        let reader = SystemRuntimeObservabilityReader(
+            paths: RuntimePaths(runtimeObservabilityDB: "/projection.sqlite"),
+            currentObservationProvider: RuntimeVitalDBCurrentObservationProvider {
+                .unavailable()
+            },
+            guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider { vrcode in
+                RuntimeGuestControlVitalDBRecorderActivityRead(
+                    state: .unavailable,
+                    vrcode: vrcode,
+                    buckets: [],
+                    readError: "Guest activity read model is empty."
+                )
+            }
+        )
+
+        let window = reader.loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery(
+            vrcode: "VR_UNAVAILABLE",
+            bucketSeconds: 60,
+            period: .all,
+            pageIndex: 0
+        ))
+
+        XCTAssertEqual(window.state, .readFailed)
+        XCTAssertEqual(window.buckets, [])
+        XCTAssertEqual(window.readError, "Guest activity read model is empty.")
     }
 
     func testDiagnosticsProjectionReaderProjectsAssignmentsAndRelationshipEvents() throws {
@@ -1059,6 +1149,30 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertEqual(history.assignments, [])
         XCTAssertEqual(history.events, [])
         XCTAssertEqual(history.readError, "VitalDB relationship read model is empty.")
+    }
+
+    func testLiveVitalDBRelationshipProviderPreservesLoadedEmptyRead() {
+        let provider = RuntimeVitalDBGuestRelationshipProvider.live(
+            guestControlBaseURL: { "http://127.0.0.1:18330" },
+            guestControlGateway: { _ in
+                GuestVitalDBObservationGatewayStub(
+                    read: RuntimeGuestControlVitalDBObservationRead(state: .unavailable),
+                    relationshipRead: RuntimeGuestControlVitalDBRelationshipRead(
+                        state: .loaded,
+                        assignments: [],
+                        events: [],
+                        readError: nil
+                    )
+                )
+            }
+        )
+
+        let history = provider.load()
+
+        XCTAssertEqual(history.state, .loaded)
+        XCTAssertEqual(history.assignments, [])
+        XCTAssertEqual(history.events, [])
+        XCTAssertNil(history.readError)
     }
 
     private func temporaryDirectory() throws -> URL {

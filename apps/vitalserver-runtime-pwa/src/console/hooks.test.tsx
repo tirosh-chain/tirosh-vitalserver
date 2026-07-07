@@ -38,6 +38,7 @@ import {
   useRuntimeCapabilities,
   useRuntimeDataBackups,
   useRuntimeEvents,
+  useRuntimeOperationState,
   useRuntimeOverview,
   useRuntimeSettings,
   useStartGuestService,
@@ -63,6 +64,7 @@ describe("console hooks", () => {
     const wrapper = createWrapper(gateway);
 
     await expectQuery(useRuntimeOverview, wrapper, gateway.getOverview);
+    await expectQuery(useRuntimeOperationState, wrapper, gateway.getOperationState);
     await expectQuery(useRuntimeCapabilities, wrapper, gateway.getCapabilities);
     await expectQuery(useRuntimeSettings, wrapper, gateway.getSettings);
     await expectQuery(useVitalDBRecorders, wrapper, gateway.getRecorders);
@@ -308,6 +310,12 @@ function createGateway(): GatewayMock {
     getBeds: vi.fn().mockResolvedValue([]),
     getCapabilities: vi.fn().mockResolvedValue(fullCapabilities()),
     getOverview: vi.fn().mockResolvedValue({ status: { runtimeState: "healthy" } }),
+    getOperationState: vi.fn().mockResolvedValue({
+      activeOperation: "apply-bundle",
+      runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+      install: { state: "unavailable", document: null, readError: null },
+      lease: { state: "unavailable", document: null, readError: null, staleReason: null }
+    }),
     getRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
     getRelationships: vi.fn().mockResolvedValue({
       state: "loaded",
@@ -516,6 +524,7 @@ function labSessionResponse() {
 
 function fullVitalRecorderHistory() {
   return {
+    state: "loaded",
     updatedAt: null,
     recorders: [],
     beds: [],
@@ -538,6 +547,7 @@ function fullVitalRecorderHistory() {
       latestBucketStartedAt: null,
       readError: null
     },
+    recorderIngressStatusRead: null,
     readError: null
   };
 }

@@ -44,6 +44,7 @@ const hooks = vi.hoisted(() => ({
   useRuntimeCapabilities: vi.fn(),
   useRuntimeDataBackups: vi.fn(),
   useRuntimeEvents: vi.fn(),
+  useRuntimeOperationState: vi.fn(),
   useRuntimeOverview: vi.fn(),
   useRuntimeSettings: vi.fn(),
   useStartLabSession: vi.fn(),
@@ -578,7 +579,7 @@ describe("runtime console pages", () => {
           {
             ...recorders().recorders[0],
             status: "notObserved",
-            activityTimeline: undefined
+            activityTimeline: null
           }
         ]
       })
@@ -588,7 +589,7 @@ describe("runtime console pages", () => {
 
     expect(screen.getAllByText("Not observed").length).toBeGreaterThan(0);
     expect(
-      screen.getByText("Recorder activity history is not reported.")
+      screen.getByText("activityTimeline is not reported")
     ).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /Packet activity/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/Last sample/)).not.toBeInTheDocument();
@@ -972,6 +973,10 @@ describe("runtime console pages", () => {
     expect(screen.getByText("Runtime Control API")).toBeInTheDocument();
     expect(screen.getByText("Recorder Ingress API")).toBeInTheDocument();
     expect(screen.getByText("VitalDB Observer API")).toBeInTheDocument();
+    expect(screen.getByText("apply-bundle")).toBeInTheDocument();
+    expect(
+      screen.getByText("install: unavailable, lease: stale, lease staleReason: expired")
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("link", {
         name: "http://127.0.0.1:18080/swagger/docs/macos-runtime/runtime-control.openapi.json"
@@ -1191,6 +1196,7 @@ describe("runtime console pages", () => {
 function setupDefaultHooks() {
   hooks.useRuntimeCapabilities.mockReturnValue(query(capabilities()));
   hooks.useRuntimeOverview.mockReturnValue(query(overview()));
+  hooks.useRuntimeOperationState.mockReturnValue(query(operationState()));
   hooks.useGuestStackStatus.mockReturnValue(query(guestStackStatus()));
   hooks.useRuntimeSettings.mockReturnValue(query(settings()));
   hooks.useVitalDBRecorders.mockReturnValue(query(recorders()));
@@ -1385,6 +1391,42 @@ function overview() {
       staleRecorders: 0,
       knownBeds: 1,
       recorderAnomalies: 1
+    },
+    conditions: [
+      {
+        type: "VitalDBObservationReady",
+        status: "True",
+        reason: "Loaded",
+        message: null,
+        observedAt: "2026-05-31T01:00:00Z"
+      }
+    ]
+  };
+}
+
+function operationState() {
+  return {
+    activeOperation: "apply-bundle",
+    runtimeStatusUpdatedAt: "2026-05-31T01:00:00Z",
+    install: {
+      state: "unavailable",
+      document: null,
+      readError: null
+    },
+    lease: {
+      state: "stale",
+      document: {
+        schemaVersion: 1,
+        operationId: "operation-1",
+        operation: "apply-bundle",
+        ownerPID: 123,
+        startedAt: "2026-05-31T00:00:00Z",
+        heartbeatAt: "2026-05-31T00:00:05Z",
+        expiresAt: "2026-05-31T00:00:10Z",
+        message: "applying bundle"
+      },
+      readError: null,
+      staleReason: "expired"
     }
   };
 }
@@ -1476,6 +1518,7 @@ function recorderIngressSettings() {
 
 function recorders() {
   return {
+    state: "loaded",
     updatedAt: "2026-05-31T01:00:00Z",
     recorders: [
       {
@@ -1543,6 +1586,7 @@ function recorders() {
     },
     recorderIngressStatusRead: {
       readState: "loaded",
+      httpStatus: "200",
       readError: null,
       document: {
         activeWebSockets: 3,

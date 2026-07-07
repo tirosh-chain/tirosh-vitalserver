@@ -31,7 +31,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         )
         commandRunner.results[Constants.Commands.curl] = RuntimeProcessResult(
             exitCode: 0,
-            stdout: #"{"activeWebSockets":1,"auditFileWriteFailures":0,"auditStdoutWriteFailures":0,"auditWriteFailures":0,"httpRequests":2,"redisIpWriteFailures":0,"socketIoEventsSeen":3,"socketIoParseFailures":0}"#,
+            stdout: #"{"activeWebSockets":1,"activeRecorderConnections":0,"recorders":[],"auditFileWriteFailures":0,"auditStdoutWriteFailures":0,"auditWriteFailures":0,"failureLogWriteFailures":0,"httpRequests":2,"redisIpWriteFailures":0,"redisIpVerifyFailures":0,"redisIpVerifyMismatches":0,"socketIoEventsSeen":3,"socketIoParseFailures":0}"#,
             stderr: ""
         )
         let serviceManager = RuntimeServiceManagerSpy()
@@ -52,7 +52,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
             status: .failed,
             message: "stale bootstrap failure",
             reasonCodes: [.guestBootstrapFailed],
-            updatedAt: "2027-01-15T08:00:00Z"
+            updatedAt: "2026-01-15T08:00:00Z"
         )
 
         let checker = RuntimeHealthChecker(
@@ -99,7 +99,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertEqual(snapshot.vmDisk, .present)
     }
 
-    func testSnapshotReadsVMIPFromRuntimeStateWhenLegacyVMIPFileIsAbsent() {
+    func testSnapshotDoesNotReadVMIPFromRuntimeStateWhenVMIPFileIsAbsent() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
@@ -148,8 +148,9 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         let snapshot = healthSnapshot(from: checker)
 
-        XCTAssertEqual(snapshot.vmIP, "192.168.64.203")
-        XCTAssertFalse(snapshot.failureReasons.contains(RuntimeFailureReason.guestHTTP(RuntimeHTTPStatusText.missingVMIP)))
+        XCTAssertNil(snapshot.vmIP)
+        XCTAssertEqual(snapshot.guestHTTP, "guestControl=\(RuntimeHTTPStatusText.missingVMIP)")
+        XCTAssertTrue(snapshot.failureReasons.contains(.guestHTTP(RuntimeHTTPStatusText.missingVMIP)))
     }
 
     func testSnapshotReadsGuestServiceStatusesThroughGuestControlGateway() {
@@ -270,7 +271,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertFalse(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertNil(snapshot.proxyPort)
         XCTAssertEqual(snapshot.vmIP, nil)
-        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.missingVMIP)
+        XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
         XCTAssertFalse(httpProber.requestedURLs.contains("http://192.168.64.3/ready"))
         XCTAssertFalse(httpProber.requestedURLs.contains(Constants.Runtime.proxyHealthURL(port: RuntimeInstallSettings.defaultProxyPort)))
         XCTAssertTrue(snapshot.failureReasons.contains(.missingVMBin))
@@ -309,7 +310,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         XCTAssertEqual(snapshot.vmLifecycle?.state, .bootstrapping)
         XCTAssertEqual(snapshot.vmState, .starting)
-        XCTAssertTrue(snapshot.vmErrors.contains(.runtimeStateMissing))
+        XCTAssertFalse(snapshot.vmErrors.contains(.runtimeStateMissing))
         XCTAssertFalse(snapshot.failureReasons.contains(.vmLifecycleDocumentStale))
     }
 
@@ -338,7 +339,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(snapshot.failureReasons.contains(.vmLifecycleDocumentStale))
     }
 
-    func testSnapshotReportsRuntimeStateMissingGuestHTTPAsInvalid() {
+    func testSnapshotDoesNotPromoteRuntimeStateMissingGuestHTTPToCurrentHealth() {
         let installedPaths = InstalledRuntimePaths(productRoot: URL(fileURLWithPath: "/product"))
         let fileStore = RuntimeFileStoreSpy()
         fileStore.files[URL(fileURLWithPath: Constants.InstallPaths.vmBin)] = Data()
@@ -371,7 +372,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertEqual(snapshot.guestHTTP, RuntimeHTTPStatusText.notRead)
         XCTAssertFalse(snapshot.failureReasons.contains(.guestRuntimeStateInvalid))
         XCTAssertFalse(snapshot.failureReasons.contains(.guestHTTP(RuntimeHTTPStatusText.missingGuestHTTP)))
-        XCTAssertEqual(snapshot.vmState, .unreachable)
+        XCTAssertEqual(snapshot.vmState, .running)
     }
 
     func testSnapshotKeepsGuestRuntimeStateReadFailureOutOfCurrentHealth() {
@@ -449,16 +450,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
     func testSnapshotReportsMissingBootstrapResultWhenGuestHTTPFailsOutsideBootstrapLifecycle() {
         let fixture = healthyRuntimeFixture(guestHTTP: "failed")
-        let checker = RuntimeHealthChecker(
-            installedPaths: fixture.installedPaths,
-            fileStore: fixture.fileStore,
-            serviceManager: fixture.serviceManager,
-            commandRunner: fixture.commandRunner,
-            httpProber: fixture.httpProber,
-            guestBootstrapResultReader: fixture.guestGateway,
-        )
-
-        let snapshot = healthSnapshot(from: checker)
+        let snapshot = healthSnapshot(from: fixture.checker)
 
         XCTAssertTrue(snapshot.vmErrors.contains(.guestBootstrapResultMissing))
         XCTAssertTrue(snapshot.failureReasons.contains(.guestBootstrapResultMissing))
@@ -468,16 +460,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
     func testSnapshotReportsUnavailableBootstrapResultWhenGuestHTTPFails() {
         let fixture = healthyRuntimeFixture(guestHTTP: "failed")
         fixture.guestGateway.bootstrapResultResult = .failed("permission denied")
-        let checker = RuntimeHealthChecker(
-            installedPaths: fixture.installedPaths,
-            fileStore: fixture.fileStore,
-            serviceManager: fixture.serviceManager,
-            commandRunner: fixture.commandRunner,
-            httpProber: fixture.httpProber,
-            guestBootstrapResultReader: fixture.guestGateway,
-        )
-
-        let snapshot = healthSnapshot(from: checker)
+        let snapshot = healthSnapshot(from: fixture.checker)
 
         XCTAssertTrue(snapshot.vmErrors.contains(.guestBootstrapResultUnavailable))
         XCTAssertTrue(snapshot.failureReasons.contains(.guestBootstrapResultUnavailable))
@@ -1104,7 +1087,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         let snapshot = healthSnapshot(from: checker)
 
-        XCTAssertEqual(snapshot.vmState, .unreachable)
+        XCTAssertEqual(snapshot.vmState, .running)
         XCTAssertFalse(snapshot.failureReasons.contains(.guestRuntimeStateStale))
         XCTAssertFalse(snapshot.failureReasons.contains(.guestRuntimeStateInvalid))
         XCTAssertEqual(snapshot.vmIP, nil)
@@ -1148,8 +1131,8 @@ final class RuntimeHealthCheckerTests: XCTestCase {
 
         let snapshot = healthSnapshot(from: checker)
 
-        XCTAssertEqual(snapshot.vmState, .unreachable)
-        XCTAssertTrue(snapshot.vmErrors.contains(.runtimeStateMissing))
+        XCTAssertEqual(snapshot.vmState, .running)
+        XCTAssertFalse(snapshot.vmErrors.contains(.runtimeStateMissing))
         XCTAssertFalse(snapshot.vmErrors.contains(.launchFailed("virtualization")))
         XCTAssertFalse(snapshot.vmErrors.contains(.diskAttachmentInvalid))
         XCTAssertFalse(snapshot.vmErrors.contains(.guestFilesystemError))
@@ -1186,7 +1169,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         )
         commandRunner.results[Constants.Commands.curl] = RuntimeProcessResult(
             exitCode: 0,
-            stdout: #"{"activeWebSockets":0,"auditFileWriteFailures":0,"auditStdoutWriteFailures":0,"auditWriteFailures":0,"httpRequests":0,"redisIpWriteFailures":0,"socketIoEventsSeen":0,"socketIoParseFailures":0}"#,
+            stdout: #"{"activeWebSockets":0,"activeRecorderConnections":0,"recorders":[],"auditFileWriteFailures":0,"auditStdoutWriteFailures":0,"auditWriteFailures":0,"failureLogWriteFailures":0,"httpRequests":0,"redisIpWriteFailures":0,"redisIpVerifyFailures":0,"redisIpVerifyMismatches":0,"socketIoEventsSeen":0,"socketIoParseFailures":0}"#,
             stderr: ""
         )
 

@@ -129,6 +129,7 @@ struct RuntimeControlHTTPCommandRoutes {
              .overviewStream,
              .status,
              .statusStream,
+             .operationState,
              .events,
              .eventStream,
              .vitalDBObservation,

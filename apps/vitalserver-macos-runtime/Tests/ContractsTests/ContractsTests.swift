@@ -36,6 +36,28 @@ final class ContractsTests: XCTestCase {
         {
           "activeWebSockets": 1,
           "activeRecorderConnections": 1,
+          "recorders": [
+            {
+              "vrcode": "VR001",
+              "activeConnections": 1,
+              "spool": {
+                "pendingItems": 3
+              },
+              "replay": {
+                "retryableFailures": 1
+              }
+            }
+          ],
+          "httpRequests": 0,
+          "socketIoEventsSeen": 0,
+          "socketIoParseFailures": 0,
+          "auditWriteFailures": 0,
+          "auditFileWriteFailures": 0,
+          "auditStdoutWriteFailures": 0,
+          "failureLogWriteFailures": 0,
+          "redisIpWriteFailures": 0,
+          "redisIpVerifyFailures": 0,
+          "redisIpVerifyMismatches": 0,
           "spool": {
             "mode": "spool_and_replay",
             "status": "ready",
@@ -126,7 +148,25 @@ final class ContractsTests: XCTestCase {
 
         let legacy = try JSONDecoder().decode(
             RuntimeRecorderIngressStatusDocument.self,
-            from: Data(#"{"activeWebSockets":1,"activeRecorderConnections":1}"#.utf8)
+            from: Data(
+                """
+                {
+                  "activeWebSockets": 1,
+                  "activeRecorderConnections": 1,
+                  "recorders": [],
+                  "httpRequests": 0,
+                  "socketIoEventsSeen": 0,
+                  "socketIoParseFailures": 0,
+                  "auditWriteFailures": 0,
+                  "auditFileWriteFailures": 0,
+                  "auditStdoutWriteFailures": 0,
+                  "failureLogWriteFailures": 0,
+                  "redisIpWriteFailures": 0,
+                  "redisIpVerifyFailures": 0,
+                  "redisIpVerifyMismatches": 0
+                }
+                """.utf8
+            )
         )
         XCTAssertNil(legacy.spool)
         XCTAssertNil(legacy.replay)
@@ -134,7 +174,37 @@ final class ContractsTests: XCTestCase {
         XCTAssertThrowsError(
             try JSONDecoder().decode(
                 RuntimeRecorderIngressStatusDocument.self,
-                from: Data(#"{"activeWebSockets":1,"activeRecorderConnections":1,"replay":{"adaptive":{"memoryGuardStatus":"not-ready"}}}"#.utf8)
+                from: Data(#"{"activeWebSockets":1,"activeRecorderConnections":1}"#.utf8)
+            )
+        )
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                RuntimeRecorderIngressStatusDocument.self,
+                from: Data(
+                    """
+                    {
+                      "activeWebSockets": 1,
+                      "activeRecorderConnections": 1,
+                      "recorders": [],
+                      "httpRequests": 0,
+                      "socketIoEventsSeen": 0,
+                      "socketIoParseFailures": 0,
+                      "auditWriteFailures": 0,
+                      "auditFileWriteFailures": 0,
+                      "auditStdoutWriteFailures": 0,
+                      "failureLogWriteFailures": 0,
+                      "redisIpWriteFailures": 0,
+                      "redisIpVerifyFailures": 0,
+                      "redisIpVerifyMismatches": 0,
+                      "replay": {
+                        "adaptive": {
+                          "memoryGuardStatus": "not-ready"
+                        }
+                      }
+                    }
+                    """.utf8
+                )
             )
         )
     }

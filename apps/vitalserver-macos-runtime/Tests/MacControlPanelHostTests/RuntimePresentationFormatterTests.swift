@@ -140,7 +140,7 @@ final class RuntimePresentationFormatterTests: XCTestCase {
         XCTAssertEqual(formatter.progressDisplayMessage(status), "Running: Replace Rootfs Base")
     }
 
-    func testUpdateOperationDisplayMessageRestoresFileBackedUpdateProgress() {
+    func testUpdateOperationDisplayMessageUsesProgressMessageWhenOperationStateIsActive() {
         let progress = RuntimeProgressDocument(
             operation: .applyBundle,
             phase: .running,
@@ -156,9 +156,17 @@ final class RuntimePresentationFormatterTests: XCTestCase {
             operation: .applyBundle,
             progress: progress
         )
+        let operationState = RuntimeOperationState(
+            activeOperation: .applyBundle,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
 
-        XCTAssertTrue(formatter.updateOperationInProgress(status))
-        XCTAssertEqual(formatter.updateOperationDisplayMessage(status), "Running: Start Runtime Services")
+        XCTAssertTrue(formatter.updateOperationInProgress(operationState))
+        XCTAssertEqual(
+            formatter.updateOperationDisplayMessage(status, operationState: operationState),
+            "Running: Start Runtime Services"
+        )
     }
 
     func testCompletedUpdateProgressIsNotRestoredAsActive() {
@@ -178,46 +186,83 @@ final class RuntimePresentationFormatterTests: XCTestCase {
             progress: progress
         )
 
-        XCTAssertFalse(formatter.updateOperationInProgress(status))
-        XCTAssertNil(formatter.updateOperationDisplayMessage(status))
+        let operationState = RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
+
+        XCTAssertFalse(formatter.updateOperationInProgress(operationState))
+        XCTAssertNil(formatter.updateOperationDisplayMessage(status, operationState: operationState))
     }
 
-    func testActiveOperationTextUsesNonTerminalProgressOperation() {
+    func testUpdateOperationDisplayMessageUsesOperationStateResource() {
         let progress = RuntimeProgressDocument(
-            operation: .install,
+            operation: .applyBundle,
             phase: .running,
-            step: nil,
-            stepStatus: nil,
-            message: "installing",
+            step: .startRuntimeServices,
+            stepStatus: .started,
+            message: "starting runtime services",
             reasonCodes: [],
             startedAt: nil,
-            updatedAt: "2026-06-08T00:00:00Z"
+            updatedAt: "2026-05-27T01:36:00Z"
         )
         let status = RuntimeStatus(
-            operation: .status,
+            runtimeState: .healthy,
+            operation: .watchdog,
             progress: progress
         )
+        let operationState = RuntimeOperationState(
+            activeOperation: .applyBundle,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
 
-        XCTAssertEqual(formatter.activeOperationText(status), "Install")
+        XCTAssertTrue(formatter.updateOperationInProgress(operationState))
+        XCTAssertEqual(
+            formatter.updateOperationDisplayMessage(status, operationState: operationState),
+            "Running: Start Runtime Services"
+        )
     }
 
-    func testActiveOperationTextIgnoresTerminalProgressOperation() {
-        let progress = RuntimeProgressDocument(
-            operation: .install,
-            phase: .completed,
-            step: nil,
-            stepStatus: nil,
-            message: "completed",
-            reasonCodes: [],
-            startedAt: nil,
-            updatedAt: "2026-06-08T00:00:00Z"
-        )
+    func testUpdateOperationDisplayMessageDoesNotInferFromLegacyStatusOperation() {
         let status = RuntimeStatus(
-            operation: .status,
-            progress: progress
+            runtimeState: .updating,
+            operation: .applyBundle,
+            statusMessage: "updating"
+        )
+        let operationState = RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
         )
 
-        XCTAssertEqual(formatter.activeOperationText(status), "Status")
+        XCTAssertFalse(formatter.updateOperationInProgress(operationState))
+        XCTAssertNil(formatter.updateOperationDisplayMessage(status, operationState: operationState))
+    }
+
+    func testActiveOperationTextUsesOperationStateResource() {
+        let operationState = RuntimeOperationState(
+            activeOperation: .applyBundle,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
+
+        XCTAssertEqual(formatter.activeOperationText(operationState), "Apply Bundle")
+    }
+
+    func testActiveOperationTextUsesInstallOperationState() {
+        let operationState = RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .loaded(RuntimeInstallStateDocument(
+                state: .stepStarted,
+                mode: .full,
+                updatedAt: "2026-07-08T00:00:00Z"
+            ))
+        )
+
+        XCTAssertEqual(formatter.activeOperationText(operationState), "Install")
     }
 
     func testRuntimeStateAndOperationTextUseStandardDisplayVocabulary() {

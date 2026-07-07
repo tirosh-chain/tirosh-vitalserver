@@ -78,6 +78,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runtime/operation-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read runtime operation state
+         * @description Read the API-owned operation state resource. It preserves unavailable, failed, loaded, and stale operation subresource meanings instead of requiring clients to infer them from RuntimeStatus fields or Host files.
+         */
+        get: operations["getRuntimeOperationState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/status/stream": {
         parameters: {
             query?: never;
@@ -110,6 +130,26 @@ export interface paths {
          * @description Reads product-facing Lab scenarios. Scenario names are product scenarios and do not expose fixture or source file origins.
          */
         get: operations["listRuntimeLabScenarios"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lab/vital-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runtime Lab vital files
+         * @description Reads mounted vital files available to Runtime Lab through the Runtime Control boundary. Missing or unavailable Lab storage is reported through the response state and readError, not as an empty success.
+         */
+        get: operations["listRuntimeLabVitalFiles"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1268,21 +1308,82 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Runtime operation identifier. Clients must preserve unknown values. */
+        RuntimeOperation: string;
+        /** @description Runtime install state identifier. Clients must preserve unknown values. */
+        RuntimeInstallState: string;
+        /** @description Runtime install mode identifier. Clients must preserve unknown values. */
+        RuntimeInstallMode: string;
+        /** @description Runtime workflow step identifier. Clients must preserve unknown values. */
+        RuntimeWorkflowStep: string;
+        RuntimeInstallStateDocument: {
+            schemaVersion: number;
+            state: components["schemas"]["RuntimeInstallState"];
+            mode: components["schemas"]["RuntimeInstallMode"];
+            currentStep: components["schemas"]["RuntimeWorkflowStep"] | null;
+            updatedAt: string;
+            message: string | null;
+            blockers: string[];
+        };
+        /** @description API-owned runtime operation state resource. Missing install state, failed reads, stale leases, and loaded operation documents remain distinct. */
+        RuntimeOperationState: {
+            /** @description Operation selected by the operation-state owner for client display and refresh decisions. Clients must not recompute it from RuntimeStatus, install, or lease subresources. */
+            activeOperation: components["schemas"]["RuntimeOperation"] | null;
+            runtimeStatusUpdatedAt: string | null;
+            install: components["schemas"]["RuntimeInstallOperationState"];
+            lease: components["schemas"]["RuntimeOperationLeaseState"];
+        };
+        /** @description Explicit runtime install operation state read result. */
+        RuntimeInstallOperationState: {
+            state: components["schemas"]["RuntimeOperationResourceReadState"];
+            document: components["schemas"]["RuntimeInstallStateDocument"] | null;
+            readError: string | null;
+        };
+        /** @description Explicit runtime operation lease read result. The lease is Host-owned operation state; stale, missing, and failed reads must not be collapsed. */
+        RuntimeOperationLeaseState: {
+            state: components["schemas"]["RuntimeOperationResourceReadState"];
+            document: components["schemas"]["RuntimeOperationLeaseDocument"] | null;
+            readError: string | null;
+            staleReason: string | null;
+        };
+        RuntimeOperationLeaseDocument: {
+            schemaVersion: number;
+            operationId: string;
+            operation: components["schemas"]["RuntimeOperation"];
+            ownerPID: number | null;
+            startedAt: string;
+            heartbeatAt: string;
+            expiresAt: string | null;
+            message: string | null;
+        };
+        /** @enum {string} */
+        RuntimeOperationResourceReadState: "loaded" | "unavailable" | "failed" | "stale";
         /** @description Aggregated PWA read model aligned with the native runtime status UI. */
         RuntimeControlOverview: {
             status: components["schemas"]["RuntimeStatus"];
             settings: components["schemas"]["RuntimeSettings"];
             release: components["schemas"]["RuntimeReleaseInfo"];
             install: components["schemas"]["RuntimeInstallInfo"];
-            vitalDBObservation?: components["schemas"]["VitalDBObservationDocument"] | null;
+            vitalDBObservation: components["schemas"]["VitalDBObservationDocument"] | null;
             vitalDBObservationSnapshot: components["schemas"]["RuntimeVitalDBObservationSnapshot"];
             vitalRecorder: components["schemas"]["RuntimeVitalRecorderSummary"];
+            conditions: components["schemas"]["RuntimeControlCondition"][];
         };
+        /** @description API-owned status condition preserving explicit read state for overview consumers. */
+        RuntimeControlCondition: {
+            type: string;
+            status: components["schemas"]["RuntimeControlConditionStatus"];
+            reason: string;
+            message: string | null;
+            observedAt: string | null;
+        };
+        /** @enum {string} */
+        RuntimeControlConditionStatus: "True" | "False" | "Unknown";
         /** @description Explicit latest VitalDB observation read state. observation remains null when the observability read path has no latest snapshot or failed before producing one. */
         RuntimeVitalDBObservationSnapshot: {
             state: components["schemas"]["RuntimeVitalDBObservationReadState"];
-            observation?: components["schemas"]["VitalDBObservationDocument"] | null;
-            readError?: string | null;
+            observation: components["schemas"]["VitalDBObservationDocument"] | null;
+            readError: string | null;
         };
         /** @enum {string} */
         RuntimeVitalDBObservationReadState: "loaded" | "unavailable" | "failed";
@@ -1308,15 +1409,18 @@ export interface components {
         RuntimeVitalRecorderSummarySource: "vitalDBObservation" | "unavailable";
         /** @description Aggregated history of VRecorders keyed by vrcode. */
         RuntimeVitalRecorderHistory: {
-            updatedAt?: string | null;
+            state: components["schemas"]["RuntimeVitalRecorderHistoryState"];
+            updatedAt: string | null;
             recorders: components["schemas"]["RuntimeVitalRecorderRecord"][];
             beds: components["schemas"]["RuntimeVitalBedRecord"][];
             summary: components["schemas"]["RuntimeVitalRecorderHistorySummary"];
             activityHistory: components["schemas"]["RuntimeVitalRecorderActivityHistory"];
-            recorderIngressStatusRead?: components["schemas"]["RuntimeRecorderIngressStatusReadResult"] | null;
+            recorderIngressStatusRead: components["schemas"]["RuntimeRecorderIngressStatusReadResult"] | null;
             /** @description Recorder history read issue. Present when observation/current/activity projection reads failed and the recorders/beds lists may be incomplete. */
-            readError?: string | null;
+            readError: string | null;
         };
+        /** @enum {string} */
+        RuntimeVitalRecorderHistoryState: "loaded" | "partiallyLoaded" | "readFailed";
         /** @description Provider-owned summary for the derived Vital Recorder and Bed history read model. */
         RuntimeVitalRecorderHistorySummary: {
             knownRecorders: number;
@@ -1334,9 +1438,9 @@ export interface components {
         RuntimeVitalRecorderActivityHistory: {
             source: components["schemas"]["RuntimeVitalRecorderActivityHistorySource"];
             bucketCount: number;
-            earliestBucketStartedAt?: string | null;
-            latestBucketStartedAt?: string | null;
-            readError?: string | null;
+            earliestBucketStartedAt: string | null;
+            latestBucketStartedAt: string | null;
+            readError: string | null;
         };
         RuntimeVitalDBRecorderVisibilityRequest: {
             vrcodes: string[];
@@ -1364,30 +1468,30 @@ export interface components {
             index: number;
             count: number;
             windowSeconds: number;
-            windowStartedAt?: string | null;
-            windowEndedAt?: string | null;
-            firstBucketStartedAt?: string | null;
-            latestBucketStartedAt?: string | null;
+            windowStartedAt: string | null;
+            windowEndedAt: string | null;
+            firstBucketStartedAt: string | null;
+            latestBucketStartedAt: string | null;
         };
         RuntimeVitalRecorderActivityWindow: {
             state: components["schemas"]["RuntimeVitalRecorderActivityWindowState"];
             query: components["schemas"]["RuntimeVitalRecorderActivityWindowQuery"];
             page: components["schemas"]["RuntimeVitalRecorderActivityWindowPage"];
             buckets: components["schemas"]["RuntimeVitalRecorderActivityBucket"][];
-            latestSampleAt?: string | null;
-            readError?: string | null;
+            latestSampleAt: string | null;
+            readError: string | null;
         };
         RuntimeVitalRecorderRecord: {
             vrcode: string;
             status: components["schemas"]["RuntimeVitalRecorderStatus"];
             visibility: components["schemas"]["RuntimeVitalRecordVisibility"];
-            lastIP?: string | null;
-            version?: string | null;
-            bedID?: string | null;
-            bedName?: string | null;
-            patientConnected?: boolean | null;
-            firstSeenAt?: string | null;
-            lastSeenAt?: string | null;
+            lastIP: string | null;
+            version: string | null;
+            bedID: string | null;
+            bedName: string | null;
+            patientConnected: boolean | null;
+            firstSeenAt: string | null;
+            lastSeenAt: string | null;
             /** @description Number of stored VitalDB observation snapshots that included this VRecorder identity after same-snapshot duplicates were collapsed. */
             observationCount: number;
             /** @description Number of extra source recorder records collapsed because they shared this VRecorder identity in a snapshot. */
@@ -1397,30 +1501,30 @@ export interface components {
              * @description Kind of the latest current anomaly for this VRecorder, or null when no current anomaly exists.
              * @enum {string|null}
              */
-            latestAnomalyKind?: "offline" | "duplicate-ip" | "backend-unavailable" | "stale-recorder" | "observer-unhealthy" | null;
-            latestAnomalySeverity?: components["schemas"]["VitalDBAnomalySeverity"] | null;
+            latestAnomalyKind: "offline" | "duplicate-ip" | "backend-unavailable" | "stale-recorder" | "observer-unhealthy" | null;
+            latestAnomalySeverity: components["schemas"]["VitalDBAnomalySeverity"] | null;
             /** @description Message from the latest current anomaly for this VRecorder, or null when no current anomaly exists. */
-            latestAnomalyMessage?: string | null;
+            latestAnomalyMessage: string | null;
             /** @description Timestamp of the latest current anomaly for this VRecorder, or null when no current anomaly exists. */
-            latestAnomalyObservedAt?: string | null;
+            latestAnomalyObservedAt: string | null;
             /** @description True when this recorder is present in the latest VitalDB observation snapshot; false means it is historical. */
             presentInLatestObservation: boolean;
             /** @description Chronological activity samples for the VRecorder, derived from VitalDB observer snapshots. */
-            activityTimeline?: components["schemas"]["RuntimeVitalRecorderActivityPoint"][];
+            activityTimeline: components["schemas"]["RuntimeVitalRecorderActivityPoint"][] | null;
             /** @description Recorder-specific Redis ip_<vrcode> synchronization state reported by the recorder ingress. */
-            redisIPSync?: components["schemas"]["RuntimeRecorderRedisIPSyncObservation"] | null;
+            redisIPSync: components["schemas"]["RuntimeRecorderRedisIPSyncObservation"] | null;
         };
         /** @enum {string} */
         RuntimeRecorderRedisIPSyncStatus: "unknown" | "unavailable" | "disabled" | "pending" | "written" | "correcting" | "corrected" | "verified" | "mismatch" | "write_failed" | "verify_failed";
         RuntimeRecorderRedisIPSyncObservation: {
             status: components["schemas"]["RuntimeRecorderRedisIPSyncStatus"];
-            redisKey?: string | null;
-            selectedIp?: string | null;
-            ipSource?: string | null;
-            redisValue?: string | null;
-            lastWriteAt?: string | null;
-            lastVerifiedAt?: string | null;
-            lastFailure?: string | null;
+            redisKey: string | null;
+            selectedIp: string | null;
+            ipSource: string | null;
+            redisValue: string | null;
+            lastWriteAt: string | null;
+            lastVerifiedAt: string | null;
+            lastFailure: string | null;
         };
         /** @description One recorder activity bucket from the VitalDB observer. */
         RuntimeVitalRecorderActivityBucket: {
@@ -1449,19 +1553,19 @@ export interface components {
         /** @description Aggregated history of one VitalDB bed keyed by bedID. */
         RuntimeVitalBedRecord: {
             bedID: string;
-            name?: string | null;
-            vrcode?: string | null;
+            name: string | null;
+            vrcode: string | null;
             visibility: components["schemas"]["RuntimeVitalRecordVisibility"];
             /** @description Explicit status of the VRecorder linked to this bed, or null when no linked recorder record is available. */
-            linkedRecorderStatus?: components["schemas"]["RuntimeVitalRecorderStatus"] | null;
+            linkedRecorderStatus: components["schemas"]["RuntimeVitalRecorderStatus"] | null;
             /** @description IP address reported by the VRecorder linked to this bed, or null when no linked recorder record is available. */
-            linkedRecorderIP?: string | null;
+            linkedRecorderIP: string | null;
             /** @description Last seen timestamp reported by the VRecorder linked to this bed, or null when no linked recorder record is available. */
-            linkedRecorderLastSeenAt?: string | null;
+            linkedRecorderLastSeenAt: string | null;
             status: components["schemas"]["RuntimeVitalBedStatus"];
-            patientConnected?: boolean | null;
-            firstSeenAt?: string | null;
-            lastSeenAt?: string | null;
+            patientConnected: boolean | null;
+            firstSeenAt: string | null;
+            lastSeenAt: string | null;
             /** @description Number of stored VitalDB observation snapshots that included this bed identity after same-snapshot duplicates were collapsed. */
             observationCount: number;
             /** @description Number of extra source bed records collapsed because they shared this bed identity in a snapshot. */
@@ -1471,12 +1575,12 @@ export interface components {
              * @description Kind of the latest current anomaly for this bed, or null when no current anomaly exists.
              * @enum {string|null}
              */
-            latestAnomalyKind?: "offline" | "duplicate-ip" | "backend-unavailable" | "stale-recorder" | "observer-unhealthy" | null;
-            latestAnomalySeverity?: components["schemas"]["VitalDBAnomalySeverity"] | null;
+            latestAnomalyKind: "offline" | "duplicate-ip" | "backend-unavailable" | "stale-recorder" | "observer-unhealthy" | null;
+            latestAnomalySeverity: components["schemas"]["VitalDBAnomalySeverity"] | null;
             /** @description Message from the latest current anomaly for this bed, or null when no current anomaly exists. */
-            latestAnomalyMessage?: string | null;
+            latestAnomalyMessage: string | null;
             /** @description Timestamp of the latest current anomaly for this bed, or null when no current anomaly exists. */
-            latestAnomalyObservedAt?: string | null;
+            latestAnomalyObservedAt: string | null;
         };
         /** @enum {string} */
         RuntimeVitalBedStatus: "online" | "stale" | "offline" | "notObserved" | "unknown";
@@ -1562,6 +1666,18 @@ export interface components {
         RuntimeLabScenarioList: {
             state: components["schemas"]["RuntimeLabReadState"];
             scenarios: components["schemas"]["RuntimeLabScenario"][];
+            readError?: string | null;
+        };
+        RuntimeLabVitalFile: {
+            displayName: string;
+            relativePath: string;
+            guestPath: string;
+            sizeBytes: number;
+            modifiedAt?: string | null;
+        };
+        RuntimeLabVitalFileList: {
+            state: components["schemas"]["RuntimeLabReadState"];
+            vitalFiles: components["schemas"]["RuntimeLabVitalFile"][];
             readError?: string | null;
         };
         RuntimeLabBed: {
@@ -1776,8 +1892,10 @@ export interface components {
         RuntimeRecorderIngressStatusReadState: "notRead" | "loaded" | "commandFailed" | "emptyResponse" | "outputInvalid" | "invalidResponse" | "readFailed";
         RuntimeRecorderIngressStatusReadResult: {
             readState: components["schemas"]["RuntimeRecorderIngressStatusReadState"];
-            document?: components["schemas"]["RuntimeRecorderIngressStatusDocument"] | null;
-            readError?: string | null;
+            /** @description HTTP status or explicit probe status text returned by the recorder ingress status read attempt. */
+            httpStatus: string;
+            document: components["schemas"]["RuntimeRecorderIngressStatusDocument"] | null;
+            readError: string | null;
         };
         RuntimeRecorderIngressStatusDocument: {
             startedAt?: string | null;
@@ -2317,6 +2435,27 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    getRuntimeOperationState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime operation state read model */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeOperationState"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     streamRuntimeStatus: {
         parameters: {
             query?: never;
@@ -2354,6 +2493,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuntimeLabScenarioList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listRuntimeLabVitalFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Runtime Lab vital file list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabVitalFileList"];
                 };
             };
             401: components["responses"]["Unauthorized"];

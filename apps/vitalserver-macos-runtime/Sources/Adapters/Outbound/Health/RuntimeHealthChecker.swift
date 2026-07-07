@@ -219,23 +219,7 @@ public struct RuntimeHealthChecker {
     }
 
     private func readVMIP() -> String? {
-        readVMIPFromRuntimeState() ?? readVMIPFile()
-    }
-
-    private func readVMIPFromRuntimeState() -> String? {
-        let url = context.installedPaths.runtimeState
-        guard fileStore.pathState(at: url) == .file else {
-            return nil
-        }
-        do {
-            let document = try JSONDecoder().decode(
-                GuestRuntimeStateDocument.self,
-                from: try fileStore.readData(url)
-            )
-            return nonEmpty(document.vmIP)
-        } catch {
-            return nil
-        }
+        readVMIPFile()
     }
 
     private func readVMIPFile() -> String? {

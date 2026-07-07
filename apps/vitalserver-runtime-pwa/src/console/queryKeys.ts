@@ -2,6 +2,7 @@ import type { RuntimeLogSource } from "@/domain/runtime-control/contracts/runtim
 
 export const consoleQueryKeys = {
   overview: ["console", "overview"] as const,
+  operationState: ["console", "operation-state"] as const,
   guestStackStatus: ["console", "guest-stack-status"] as const,
   capabilities: ["console", "capabilities"] as const,
   settings: ["console", "settings"] as const,

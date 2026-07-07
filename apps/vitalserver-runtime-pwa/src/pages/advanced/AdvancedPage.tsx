@@ -13,6 +13,7 @@ import {
   useRepairVMDisk,
   useRuntimeDataBackups,
   useRuntimeCapabilities,
+  useRuntimeOperationState,
   useRuntimeSettings,
   useRuntimeOverview,
   useRestartGuestService,
@@ -28,6 +29,7 @@ import {
 import type {
   RuntimeSettings,
   RuntimeControlOverview,
+  RuntimeOperationState,
   RuntimeGuestControlStackStatus,
   RuntimeGuestControlServiceOperation,
   RuntimeBackup
@@ -52,6 +54,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 export function AdvancedPage() {
   const appSettings = useAppSettings();
   const overview = useRuntimeOverview();
+  const operationState = useRuntimeOperationState();
   const capabilities = useRuntimeCapabilities();
   const guestStackStatus = useGuestStackStatus();
   const hostBackups = useHostBackups();
@@ -197,7 +200,11 @@ export function AdvancedPage() {
   return (
     <div className="page-stack">
       <Panel title="Diagnostics">
-        <Diagnostics overview={overview.data} />
+          <Diagnostics
+            overview={overview.data}
+            operationState={operationState.data}
+            operationStateError={operationState.error}
+          />
         {overview.isError ? (
           <ErrorState title="Failed to read runtime diagnostics" error={overview.error} />
         ) : null}
@@ -515,7 +522,15 @@ export function AdvancedPage() {
   );
 }
 
-function Diagnostics({ overview }: { overview: RuntimeControlOverview | undefined }) {
+function Diagnostics({
+  overview,
+  operationState,
+  operationStateError
+}: {
+  overview: RuntimeControlOverview | undefined;
+  operationState: RuntimeOperationState | undefined;
+  operationStateError: Error | null;
+}) {
   const status = overview?.status;
   return (
     <KeyValueRows
@@ -528,7 +543,11 @@ function Diagnostics({ overview }: { overview: RuntimeControlOverview | undefine
             </StatusBadge>
           )
         },
-        { label: "Operation", value: status?.operation ?? "Unknown" },
+        {
+          label: "Operation",
+          value: operationState?.activeOperation ?? NOT_REPORTED,
+          detail: operationStateDetail(operationState, operationStateError)
+        },
         { label: "Runtime version", value: status?.runtimeVersion ?? "Unknown" },
         { label: "VM IP", value: status?.vmIP ?? "Waiting" },
         ...(status?.statusDocumentError
@@ -548,6 +567,33 @@ function Diagnostics({ overview }: { overview: RuntimeControlOverview | undefine
       ]}
     />
   );
+}
+
+function operationStateDetail(
+  operationState: RuntimeOperationState | undefined,
+  operationStateError: Error | null
+) {
+  if (operationStateError) {
+    return `Operation state read failed: ${operationStateError.message}`;
+  }
+  if (!operationState) {
+    return "Operation state not reported";
+  }
+
+  const details = [
+    `install: ${operationState.install.state}`,
+    `lease: ${operationState.lease.state}`
+  ];
+  if (operationState.install.readError) {
+    details.push(`install readError: ${operationState.install.readError}`);
+  }
+  if (operationState.lease.readError) {
+    details.push(`lease readError: ${operationState.lease.readError}`);
+  }
+  if (operationState.lease.staleReason) {
+    details.push(`lease staleReason: ${operationState.lease.staleReason}`);
+  }
+  return details.join(", ");
 }
 
 function VMHealth({ overview }: { overview: RuntimeControlOverview | undefined }) {

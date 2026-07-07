@@ -9,37 +9,175 @@ import Foundation
 final class RuntimeStatusDisplayPolicyTests: XCTestCase {
     private let policy = RuntimeStatusDisplayPolicy()
 
-    func testStatusPollingIntervalUsesFastRefreshDuringInstall() {
+    func testStatusPollingIntervalUsesFastRefreshDuringActiveOperationState() {
         let pollingPolicy = RuntimeStatusPollingIntervalPolicy()
-        let status = RuntimeStatus(
-            runtimeState: .installing,
-            operation: .install,
-            progress: RuntimeProgressDocument(
-                operation: .install,
-                phase: .running,
-                step: nil,
-                stepStatus: nil,
-                message: "installing",
-                reasonCodes: [],
-                startedAt: nil,
-                updatedAt: "2026-06-08T00:00:00Z"
-            )
+        let operationState = RuntimeOperationState(
+            activeOperation: .applyBundle,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
         )
 
         XCTAssertEqual(
-            pollingPolicy.statusPollingIntervalNanoseconds(status: status),
+            pollingPolicy.statusPollingIntervalNanoseconds(status: RuntimeStatus(runtimeState: .healthy), operationState: operationState),
             RuntimeStatusPollingIntervalPolicy.activeOperationInterval
         )
     }
 
-    func testStatusPollingIntervalUsesSteadyRefreshOutsideActiveOperation() {
+    func testStatusPollingIntervalDoesNotInferActiveOperationFromLegacyStatusOperation() {
         let pollingPolicy = RuntimeStatusPollingIntervalPolicy()
         let status = RuntimeStatus(runtimeState: .healthy, operation: .watchdog)
+        let operationState = RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
 
         XCTAssertEqual(
-            pollingPolicy.statusPollingIntervalNanoseconds(status: status),
+            pollingPolicy.statusPollingIntervalNanoseconds(status: status, operationState: operationState),
             RuntimeStatusPollingIntervalPolicy.steadyStateInterval
         )
+    }
+
+    func testOverallHealthUsesOperationStateForActiveOperationPresentation() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            runtimeInstallationState: .present,
+            runtimeState: .healthy,
+            operation: .watchdog
+        )
+        let operationState = RuntimeOperationState(
+            activeOperation: .applyBundle,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
+
+        let value = policy.overallHealth(status: status, operationState: operationState)
+
+        XCTAssertEqual(value.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(value.severity, .warning)
+    }
+
+    func testOverallHealthDoesNotInferActiveOperationFromLegacyStatusOperation() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            runtimeInstallationState: .present,
+            vmServiceState: .loaded,
+            proxyServiceState: .loaded,
+            watchdogServiceState: .loaded,
+            runtimeState: .healthy,
+            operation: .applyBundle,
+            vmIP: "192.168.64.10",
+            guestHTTP: "200",
+            hostProxyHTTP: "200"
+        )
+        let operationState = RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
+
+        let value = policy.overallHealth(status: status, operationState: operationState)
+
+        XCTAssertEqual(value.text, AppConstants.StatusText.healthy)
+        XCTAssertEqual(value.severity, RuntimeStatusDisplayPolicy.Severity.healthy)
+    }
+
+    func testVitalServerAvailabilityUsesOperationStateForActiveOperationPresentation() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            runtimeInstallationState: .present,
+            runtimeState: .healthy,
+            operation: .watchdog,
+            hostProxyHTTP: nil
+        )
+        let operationState = RuntimeOperationState(
+            activeOperation: .applyBundle,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
+
+        let value = policy.vitalServerAvailability(status: status, operationState: operationState)
+
+        XCTAssertEqual(value.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(value.severity, RuntimeStatusDisplayPolicy.Severity.warning)
+    }
+
+    func testVitalServerAvailabilityDoesNotInferActiveOperationFromLegacyStatusOperation() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            runtimeInstallationState: .executable,
+            runtimeState: .healthy,
+            operation: .applyBundle,
+            hostProxyHTTP: "503"
+        )
+        let operationState = RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
+
+        let value = policy.vitalServerAvailability(status: status, operationState: operationState)
+
+        XCTAssertEqual(value.text, AppConstants.StatusText.unavailable)
+        XCTAssertEqual(value.severity, RuntimeStatusDisplayPolicy.Severity.warning)
+    }
+
+    func testAdvancedHealthUsesOperationStateForActiveOperationPresentation() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            runtimeInstallationState: .executable,
+            vmServiceState: .loaded,
+            proxyServiceState: .loaded,
+            guestLogSyncServiceState: .loaded,
+            sleepPreventionServiceState: .loaded,
+            watchdogServiceState: .loaded,
+            runtimeState: .healthy,
+            operation: .watchdog,
+            guestHTTP: "503",
+            hostProxyHTTP: "503"
+        )
+        let operationState = RuntimeOperationState(
+            activeOperation: .applyBundle,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
+
+        let vmHealth = policy.advancedVMHealth(status: status, operationState: operationState)
+        let serviceHealth = policy.advancedServiceHealth(status: status, operationState: operationState)
+
+        XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, AppConstants.StatusText.running)
+        XCTAssertEqual(item(AppConstants.Labels.proxyService, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+        XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.updating)
+    }
+
+    func testAdvancedHealthDoesNotInferActiveOperationFromLegacyStatusOperation() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            runtimeInstallationState: .executable,
+            vmServiceState: .loaded,
+            proxyServiceState: .loaded,
+            guestLogSyncServiceState: .loaded,
+            sleepPreventionServiceState: .loaded,
+            watchdogServiceState: .loaded,
+            runtimeState: .updating,
+            operation: .applyBundle,
+            guestHTTP: "503",
+            hostProxyHTTP: "503"
+        )
+        let operationState = RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
+
+        let vmHealth = policy.advancedVMHealth(status: status, operationState: operationState)
+        let serviceHealth = policy.advancedServiceHealth(status: status, operationState: operationState)
+
+        XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, AppConstants.StatusText.running)
+        XCTAssertEqual(item(AppConstants.Labels.proxyService, in: serviceHealth)?.value.text, AppConstants.StatusText.running)
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceHealth)?.value.text, AppConstants.StatusText.unavailable)
+        XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceHealth)?.value.text, AppConstants.StatusText.unavailable)
     }
 
     func testServiceStatePresentationPolicyOwnsServiceStateSeverity() {
@@ -81,7 +219,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         let recorderIngressStatusRead = recorderIngressStatusRead()
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
         XCTAssertNil(item(GeneratedRelease.hostProxyName, in: items)?.value.uptimeText)
@@ -104,7 +242,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestHTTP: "200",
             hostProxyHTTP: "200"
         )
-        let value = policy.overallHealth(status: status)
+        let value = policy.overallHealth(status: status, operationState: operationState())
 
         XCTAssertEqual(value.text, AppConstants.StatusText.healthy)
         XCTAssertNil(value.uptimeText)
@@ -122,8 +260,9 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: nil
         )
 
-        let overall = policy.overallHealth(status: status)
-        let vitalServer = policy.vitalServerAvailability(status: status)
+        let operationState = operationState(activeOperation: .applyBundle)
+        let overall = policy.overallHealth(status: status, operationState: operationState)
+        let vitalServer = policy.vitalServerAvailability(status: status, operationState: operationState)
 
         XCTAssertEqual(overall.text, AppConstants.StatusText.updating)
         XCTAssertEqual(overall.severity, .warning)
@@ -153,8 +292,9 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             )
         )
 
-        let overall = policy.overallHealth(status: status)
-        let vitalServer = policy.vitalServerAvailability(status: status)
+        let operationState = installingOperationState()
+        let overall = policy.overallHealth(status: status, operationState: operationState)
+        let vitalServer = policy.vitalServerAvailability(status: status, operationState: operationState)
 
         XCTAssertEqual(overall.text, AppConstants.StatusText.installing)
         XCTAssertEqual(overall.severity, .warning)
@@ -182,8 +322,9 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             redisUIHTTP: "503",
             swaggerUIHTTP: nil
         )
-        let vmHealth = policy.advancedVMHealth(status: status)
-        let serviceHealth = policy.advancedServiceHealth(status: status)
+        let operationState = operationState(activeOperation: .applyBundle)
+        let vmHealth = policy.advancedVMHealth(status: status, operationState: operationState)
+        let serviceHealth = policy.advancedServiceHealth(status: status, operationState: operationState)
 
         XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, AppConstants.StatusText.stopped)
         XCTAssertNil(item(AppConstants.Labels.vmService, in: serviceHealth))
@@ -216,9 +357,10 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             swaggerUIHTTP: nil
         )
 
-        let overall = policy.overallHealth(status: status)
-        let vitalServer = policy.vitalServerAvailability(status: status)
-        let serviceHealth = policy.advancedServiceHealth(status: status)
+        let operationState = operationState(activeOperation: .applyBundle)
+        let overall = policy.overallHealth(status: status, operationState: operationState)
+        let vitalServer = policy.vitalServerAvailability(status: status, operationState: operationState)
+        let serviceHealth = policy.advancedServiceHealth(status: status, operationState: operationState)
 
         XCTAssertEqual(overall.text, AppConstants.StatusText.recovering)
         XCTAssertEqual(vitalServer.text, AppConstants.StatusText.recovering)
@@ -259,8 +401,9 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                 updatedAt: "2026-06-08T00:00:00Z"
             )
         )
-        let vmHealth = policy.advancedVMHealth(status: status)
-        let serviceHealth = policy.advancedServiceHealth(status: status)
+        let operationState = installingOperationState()
+        let vmHealth = policy.advancedVMHealth(status: status, operationState: operationState)
+        let serviceHealth = policy.advancedServiceHealth(status: status, operationState: operationState)
 
         XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, AppConstants.StatusText.installing)
         XCTAssertNil(item(AppConstants.Labels.vmService, in: serviceHealth))
@@ -298,10 +441,10 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             redisUIHTTP: "503",
             swaggerUIHTTP: nil
         )
-        let overall = policy.overallHealth(status: status)
-        let vitalServer = policy.vitalServerAvailability(status: status)
-        let vmHealth = policy.advancedVMHealth(status: status)
-        let serviceHealth = policy.advancedServiceHealth(status: status)
+        let overall = policy.overallHealth(status: status, operationState: operationState(activeOperation: .runtimeDataRestore))
+        let vitalServer = policy.vitalServerAvailability(status: status, operationState: operationState())
+        let vmHealth = policy.advancedVMHealth(status: status, operationState: operationState())
+        let serviceHealth = policy.advancedServiceHealth(status: status, operationState: operationState())
 
         XCTAssertEqual(overall.text, AppConstants.StatusText.initializing)
         XCTAssertEqual(vitalServer.text, AppConstants.StatusText.initializing)
@@ -321,8 +464,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             operation: .applyBundle
         )
 
-        let vmHealth = policy.advancedVMHealth(status: status)
-        let serviceHealth = policy.advancedServiceHealth(status: status)
+        let vmHealth = policy.advancedVMHealth(status: status, operationState: operationState())
+        let serviceHealth = policy.advancedServiceHealth(status: status, operationState: operationState())
 
         XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, "Permission denied")
         XCTAssertNil(item(AppConstants.Labels.vmService, in: serviceHealth))
@@ -341,7 +484,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
 
-        let value = policy.overallHealth(status: status)
+        let value = policy.overallHealth(status: status, operationState: operationState())
 
         XCTAssertEqual(value.text, AppConstants.StatusText.unknown)
         XCTAssertEqual(value.severity, .neutral)
@@ -442,7 +585,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
 
         let action = policy.actionNeeded(status: status)
-        let details = policy.healthDetails(status: status)
+        let details = policy.healthDetails(status: status, operationState: operationState())
 
         XCTAssertEqual(action?.recommendedAction, AppConstants.Actions.openLogs)
         XCTAssertEqual(item(AppConstants.Labels.statusReadIssues, in: details)?.value.text, "hostProxyHTTP: exitCode=28 stderr=timeout")
@@ -462,8 +605,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         let recorderIngressStatusRead = recorderIngressStatusRead()
 
-        let summary = policy.vitalServerAvailability(status: status)
-        let details = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
+        let summary = policy.vitalServerAvailability(status: status, operationState: operationState())
+        let details = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(summary.text, AppConstants.StatusText.reachable)
         XCTAssertEqual(item(AppConstants.Labels.runtimeInstallation, in: details)?.value.text, AppConstants.StatusText.installed)
@@ -505,7 +648,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             ]
         )
 
-        let details = policy.healthDetails(status: status)
+        let details = policy.healthDetails(status: status, operationState: operationState())
 
         XCTAssertEqual(item("\(AppConstants.Labels.guestProductServices): redis", in: details)?.value.text, AppConstants.StatusText.healthy)
         XCTAssertEqual(item("\(AppConstants.Labels.guestProductServices): redis", in: details)?.value.severity, .healthy)
@@ -527,7 +670,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             vmServiceState: .notLoaded
         )
 
-        let details = policy.healthDetails(status: status)
+        let details = policy.healthDetails(status: status, operationState: operationState())
         let installation = item(AppConstants.Labels.runtimeInstallation, in: details)?.value
 
         XCTAssertEqual(installation?.text, "Present but not executable")
@@ -541,8 +684,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
 
-        let overall = policy.overallHealth(status: status)
-        let vitalServer = policy.vitalServerAvailability(status: status)
+        let overall = policy.overallHealth(status: status, operationState: operationState())
+        let vitalServer = policy.vitalServerAvailability(status: status, operationState: operationState())
         let actionNeeded = policy.actionNeeded(status: status)
 
         XCTAssertEqual(overall.text, "Present but not executable")
@@ -561,7 +704,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             vmServiceLoaded: true,
             proxyServiceLoaded: true,
             watchdogServiceLoaded: true,
-            runtimeState: .critical,
+            runtimeState: .recovering,
             operation: .watchdog,
             guestHTTP: "failed",
             hostProxyHTTP: "failed",
@@ -577,7 +720,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             )
         )
 
-        let overall = policy.overallHealth(status: status)
+        let overall = policy.overallHealth(status: status, operationState: operationState())
 
         XCTAssertEqual(overall.text, AppConstants.StatusText.recovering)
         XCTAssertEqual(overall.severity, RuntimeStatusDisplayPolicy.Severity.warning)
@@ -596,7 +739,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         let recorderIngressStatusRead = recorderIngressStatusRead()
         let now = ISO8601DateFormatter().date(from: "2026-05-26T04:35:40Z")!
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead, now: now)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead, now: now)
 
         XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
     }
@@ -613,7 +756,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         let now = ISO8601DateFormatter().date(from: "2026-06-13T00:00:05Z")!
 
-        let items = policy.advancedServiceHealth(status: status, now: now)
+        let items = policy.advancedServiceHealth(status: status, operationState: operationState(), now: now)
 
         XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
     }
@@ -630,7 +773,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         let now = ISO8601DateFormatter().date(from: "2026-06-13T00:00:00Z")!
 
-        let items = policy.advancedServiceHealth(status: status, now: now)
+        let items = policy.advancedServiceHealth(status: status, operationState: operationState(), now: now)
 
         XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
     }
@@ -648,7 +791,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         let recorderIngressStatusRead = recorderIngressStatusRead()
         let now = ISO8601DateFormatter().date(from: "2026-05-26T04:35:40Z")!
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead, now: now)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead, now: now)
 
         XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
     }
@@ -666,7 +809,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         let recorderIngressStatusRead = recorderIngressStatusRead()
         let now = ISO8601DateFormatter().date(from: "2026-05-26T04:35:40Z")!
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead, now: now)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead, now: now)
 
         XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
     }
@@ -683,7 +826,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         let recorderIngressStatusRead = recorderIngressStatusRead()
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertNil(item(GeneratedRelease.vitalServerName, in: items)?.value.uptimeText)
     }
@@ -706,7 +849,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             redisUIHTTP: "200",
             swaggerUIHTTP: "200"
         )
-        let items = policy.advancedServiceHealth(status: status)
+        let items = policy.advancedServiceHealth(status: status, operationState: operationState())
 
         XCTAssertEqual(items.map(\.label), [
             AppConstants.Labels.proxyService,
@@ -753,7 +896,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                 ),
             ]
         )
-        let items = policy.advancedServiceHealth(status: status)
+        let items = policy.advancedServiceHealth(status: status, operationState: operationState())
 
         let appLabel = "\(AppConstants.Labels.guestProductServices): app"
         let recorderIngressLabel = "\(AppConstants.Labels.guestProductServices): recorder-ingress"
@@ -800,6 +943,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         let items = policy.advancedServiceHealth(
             status: status,
+            operationState: operationState(),
             redisRelaySettings: RuntimeRedisRelaySettings(enabled: true)
         )
 
@@ -818,7 +962,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             guestServicesReadState: .failed,
             guestServicesReadError: "guest control api timed out"
         )
-        let items = policy.advancedServiceHealth(status: status)
+        let items = policy.advancedServiceHealth(status: status, operationState: operationState())
 
         let guestServices = item(AppConstants.Labels.guestProductServices, in: items)
         XCTAssertEqual(guestServices?.value.text, "guest control api timed out")
@@ -841,6 +985,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         let settings = RuntimeRedisRelaySettings(enabled: true)
         let items = policy.advancedServiceHealth(
             status: status,
+            operationState: operationState(),
             redisRelaySettings: settings
         )
 
@@ -862,6 +1007,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
 
         let items = policy.advancedServiceHealth(
             status: status,
+            operationState: operationState(),
             redisRelaySettings: RuntimeRedisRelaySettings(enabled: false)
         )
 
@@ -883,6 +1029,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         let settings = RuntimeRedisRelaySettings(enabled: true)
         let items = policy.advancedServiceHealth(
             status: status,
+            operationState: operationState(),
             redisRelaySettings: settings
         )
 
@@ -904,8 +1051,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             watchdogServiceState: .loaded
         )
 
-        let vmItems = policy.advancedVMHealth(status: status)
-        let serviceItems = policy.advancedServiceHealth(status: status)
+        let vmItems = policy.advancedVMHealth(status: status, operationState: operationState())
+        let serviceItems = policy.advancedServiceHealth(status: status, operationState: operationState())
 
         XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmItems)?.value.text, "Permission denied")
         XCTAssertNil(item(AppConstants.Labels.vmService, in: serviceItems))
@@ -925,9 +1072,9 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: nil
         )
 
-        let healthDetails = policy.healthDetails(status: status)
-        let vmHealth = policy.advancedVMHealth(status: status)
-        let serviceHealth = policy.advancedServiceHealth(status: status)
+        let healthDetails = policy.healthDetails(status: status, operationState: operationState())
+        let vmHealth = policy.advancedVMHealth(status: status, operationState: operationState())
+        let serviceHealth = policy.advancedServiceHealth(status: status, operationState: operationState())
 
         XCTAssertEqual(item(AppConstants.Labels.watchdog, in: healthDetails)?.value.text, AppConstants.StatusText.unavailable)
         XCTAssertEqual(item(AppConstants.Labels.vmService, in: vmHealth)?.value.text, AppConstants.StatusText.unavailable)
@@ -957,8 +1104,8 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             swaggerUIHTTP: "200"
         )
 
-        let vmItems = policy.advancedVMHealth(status: status)
-        let serviceItems = policy.advancedServiceHealth(status: status)
+        let vmItems = policy.advancedVMHealth(status: status, operationState: operationState())
+        let serviceItems = policy.advancedServiceHealth(status: status, operationState: operationState())
 
         XCTAssertEqual(item(AppConstants.Labels.vmState, in: vmItems)?.value.text, AppConstants.StatusText.failed)
         XCTAssertEqual(item(AppConstants.Labels.vmState, in: vmItems)?.value.severity, .critical)
@@ -993,9 +1140,9 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             failureReasons: [.guestRuntimeStateStale]
         )
 
-        let details = policy.healthDetails(status: status)
-        let vmItems = policy.advancedVMHealth(status: status)
-        let serviceItems = policy.advancedServiceHealth(status: status)
+        let details = policy.healthDetails(status: status, operationState: operationState())
+        let vmItems = policy.advancedVMHealth(status: status, operationState: operationState())
+        let serviceItems = policy.advancedServiceHealth(status: status, operationState: operationState())
 
         XCTAssertEqual(item(AppConstants.Labels.vmIPAddress, in: details)?.value.text, AppConstants.StatusText.waiting)
         XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: details)?.value.text, "Guest runtime state stale")
@@ -1009,6 +1156,53 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceItems)?.value.severity, .warning)
         XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: serviceItems)?.httpStatus, RuntimeHTTPStatusText.missingVMIP)
         XCTAssertEqual(item(GeneratedRelease.hostProxyName, in: serviceItems)?.value.text, AppConstants.StatusText.reachable)
+    }
+
+    func testHealthDetailsUsesOperationStateForGuestReadinessPresentation() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceState: .loaded,
+            proxyServiceState: .loaded,
+            watchdogServiceState: .loaded,
+            operation: .watchdog,
+            vmState: .starting,
+            guestHTTP: RuntimeHTTPStatusText.missingVMIP,
+            hostProxyHTTP: "200"
+        )
+        let operationState = RuntimeOperationState(
+            activeOperation: .applyBundle,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
+
+        let details = policy.healthDetails(status: status, operationState: operationState)
+
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: details)?.value.text, AppConstants.StatusText.failed)
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: details)?.value.severity, .warning)
+    }
+
+    func testHealthDetailsDoesNotInferGuestReadinessOperationFromLegacyStatusOperation() {
+        let status = RuntimeStatus(
+            runtimeInstalled: true,
+            vmServiceState: .loaded,
+            proxyServiceState: .loaded,
+            watchdogServiceState: .loaded,
+            runtimeState: .updating,
+            operation: .applyBundle,
+            vmState: .starting,
+            guestHTTP: RuntimeHTTPStatusText.missingVMIP,
+            hostProxyHTTP: "200"
+        )
+        let operationState = RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
+
+        let details = policy.healthDetails(status: status, operationState: operationState)
+
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: details)?.value.text, AppConstants.StatusText.waiting)
+        XCTAssertEqual(item(GeneratedRelease.vitalServerName, in: details)?.value.severity, .warning)
     }
 
     func testGuestStateStaleAfterVMRunningRemainsFailurePresentation() {
@@ -1027,9 +1221,9 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             failureReasons: [.guestRuntimeStateStale]
         )
 
-        let details = policy.healthDetails(status: status)
-        let vmItems = policy.advancedVMHealth(status: status)
-        let serviceItems = policy.advancedServiceHealth(status: status)
+        let details = policy.healthDetails(status: status, operationState: operationState())
+        let vmItems = policy.advancedVMHealth(status: status, operationState: operationState())
+        let serviceItems = policy.advancedServiceHealth(status: status, operationState: operationState())
 
         XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: details)?.value.severity, .critical)
         XCTAssertEqual(item(AppConstants.Labels.vmErrors, in: vmItems)?.value.severity, .critical)
@@ -1056,7 +1250,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             vmErrors: [.runtimeStateStale, .diskAttachmentInvalid, .guestDiskIO, .guestHTTP("failed")]
         )
 
-        let items = policy.healthDetails(status: status)
+        let items = policy.healthDetails(status: status, operationState: operationState())
 
         XCTAssertEqual(
             item(AppConstants.Labels.vmErrors, in: items)?.value.text,
@@ -1074,7 +1268,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             failureReasons: [.hostProxyHTTP("503"), .guestRuntimeStateStale]
         )
 
-        let items = policy.healthDetails(status: status)
+        let items = policy.healthDetails(status: status, operationState: operationState())
 
         XCTAssertEqual(
             item(AppConstants.Labels.failureReasons, in: items)?.value.text,
@@ -1154,7 +1348,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
 
         XCTAssertEqual(summary.activeConnections, "2")
-        XCTAssertEqual(summary.knownRecorders, "4")
+        XCTAssertEqual(summary.knownRecorders, "2")
         XCTAssertEqual(summary.onlineRecorders, "1")
         XCTAssertEqual(summary.staleRecorders, "1")
         XCTAssertEqual(summary.knownBeds, "1")
@@ -1220,7 +1414,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             hostProxyHTTP: "200"
         )
 
-        let value = policy.vitalServerAvailability(status: status, now: now)
+        let value = policy.vitalServerAvailability(status: status, operationState: operationState(), now: now)
 
         XCTAssertNil(value.uptimeText)
     }
@@ -1236,7 +1430,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         let recorderIngressStatusRead = recorderIngressStatusRead()
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: items)?.value.text, AppConstants.StatusText.unavailable)
         XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: items)?.value.severity, .warning)
@@ -1263,7 +1457,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             )
         )
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, "healthy, 0 pending")
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .healthy)
@@ -1399,7 +1593,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             )
         )
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(
             item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text,
@@ -1464,7 +1658,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             )
         )
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(
             item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text,
@@ -1490,7 +1684,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             )
         )
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(
             item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text,
@@ -1505,7 +1699,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             document: RuntimeRecorderIngressStatusDocument(activeRecorderConnections: 2)
         )
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, AppConstants.StatusText.notReported)
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .neutral)
@@ -1519,7 +1713,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             readError: "curl failed"
         )
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.text, AppConstants.StatusText.notReady)
         XCTAssertEqual(item(AppConstants.Labels.recorderIngressQueue, in: items)?.value.severity, .warning)
@@ -1549,7 +1743,7 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         let recorderIngressStatusRead = recorderIngressStatusRead()
 
-        let items = policy.healthDetails(status: status, recorderIngressStatusRead: recorderIngressStatusRead)
+        let items = policy.healthDetails(status: status, operationState: operationState(), recorderIngressStatusRead: recorderIngressStatusRead)
 
         XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: items)?.value.text, AppConstants.StatusText.unavailable)
         XCTAssertEqual(item(AppConstants.Labels.guestProductServices, in: items)?.value.severity, .warning)
@@ -1600,6 +1794,27 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
             httpStatus: httpStatus,
             document: document,
             readError: readError
+        )
+    }
+
+    private func operationState(activeOperation: RuntimeOperation? = nil) -> RuntimeOperationState {
+        RuntimeOperationState(
+            activeOperation: activeOperation,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .unavailable()
+        )
+    }
+
+    private func installingOperationState() -> RuntimeOperationState {
+        RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+            install: .loaded(RuntimeInstallStateDocument(
+                state: .stepStarted,
+                mode: .full,
+                updatedAt: "2026-07-08T00:00:00Z",
+                message: "installing"
+            ))
         )
     }
 

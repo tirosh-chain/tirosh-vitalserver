@@ -6,14 +6,14 @@ public struct RuntimeStatusPollingIntervalPolicy {
 
     public init() {}
 
-    public func statusPollingIntervalNanoseconds(status: RuntimeStatus) -> UInt64 {
-        if RuntimeActiveOperationPolicy.isInstallInProgress(status)
-            || RuntimeActiveOperationPolicy.isInitializationInProgress(status)
-            || RuntimeActiveOperationPolicy.isUpdateInProgress(status)
-            || RuntimeActiveOperationPolicy.isRecoveryInProgress(status)
-            || status.runtimeState == .recovering {
+    public func statusPollingIntervalNanoseconds(
+        status: RuntimeStatus,
+        operationState: RuntimeOperationState
+    ) -> UInt64 {
+        if operationState.hasActiveOperation || status.runtimeState == .recovering {
             return Self.activeOperationInterval
         }
         return Self.steadyStateInterval
     }
+
 }

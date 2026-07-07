@@ -949,7 +949,18 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
               "readState": "loaded",
               "httpStatus": "200",
               "document": {
+                "activeWebSockets": 1,
                 "activeRecorderConnections": 1,
+                "httpRequests": 0,
+                "socketIoEventsSeen": 0,
+                "socketIoParseFailures": 0,
+                "auditWriteFailures": 0,
+                "auditFileWriteFailures": 0,
+                "auditStdoutWriteFailures": 0,
+                "failureLogWriteFailures": 0,
+                "redisIpWriteFailures": 0,
+                "redisIpVerifyFailures": 0,
+                "redisIpVerifyMismatches": 0,
                 "recorders": [
                   {
                     "vrcode": "VR_GUEST",

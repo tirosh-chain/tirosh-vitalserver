@@ -6,6 +6,7 @@ public enum RuntimeControlAPIEndpoint: String, CaseIterable, Codable, Equatable,
     case overviewStream
     case status
     case statusStream
+    case operationState
     case events
     case eventStream
     case vitalDBObservation

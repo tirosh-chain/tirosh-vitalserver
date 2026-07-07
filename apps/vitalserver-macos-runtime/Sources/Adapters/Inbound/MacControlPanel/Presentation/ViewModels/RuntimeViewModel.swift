@@ -6,6 +6,7 @@ import Errors
 @MainActor
 public final class RuntimeViewModel: ObservableObject {
     @Published var status: RuntimeStatus
+    @Published var operationState: RuntimeOperationState
     @Published private(set) var runtimeSettings = RuntimeSettings()
     @Published private(set) var savedSettings = RuntimeSettings()
     @Published var settings = RuntimeSettings()
@@ -128,10 +129,12 @@ public final class RuntimeViewModel: ObservableObject {
             fillMissing: initialSettings == nil
         )
         let resolvedStatus = initialStatus ?? controlClient.loadStatus(settings: displayRuntimeSettings)
+        let resolvedOperationState = controlClient.loadOperationState(status: resolvedStatus)
         self.runtimeSettings = displayRuntimeSettings
         self.savedSettings = displaySettings
         self.settings = displaySettings
         self.status = resolvedStatus
+        self.operationState = resolvedOperationState
         let snapshots = RuntimePresentationSnapshotLoader(
             controlClient: controlClient,
             hostClient: hostClient,
@@ -182,14 +185,14 @@ public final class RuntimeViewModel: ObservableObject {
     }
 
     var shouldShowUpdateProgress: Bool {
-        isApplyingUpdateBundle || presentationFormatter.updateOperationInProgress(status)
+        isApplyingUpdateBundle || presentationFormatter.updateOperationInProgress(operationState)
     }
 
     var updateProgressMessage: String {
         if isApplyingUpdateBundle {
             return operationDetail.isEmpty ? message : operationDetail
         }
-        return presentationFormatter.updateOperationDisplayMessage(status) ?? message
+        return presentationFormatter.updateOperationDisplayMessage(status, operationState: operationState) ?? message
     }
 
     var backupOperationProgressMessage: String {
@@ -667,6 +670,7 @@ public final class RuntimeViewModel: ObservableObject {
 private extension RuntimeViewModel {
     func applyStatusRefreshResult(_ result: RuntimeStatusRefreshResult) {
         status = result.status
+        operationState = result.operationState
         if let selectedLogSource = result.selectedLogSource {
             self.selectedLogSource = selectedLogSource
         }

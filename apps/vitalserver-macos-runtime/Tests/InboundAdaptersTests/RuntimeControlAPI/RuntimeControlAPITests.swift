@@ -698,6 +698,10 @@ final class RuntimeControlAPITests: XCTestCase {
             RuntimeInstallInfo.self,
             from: router.route(.init(method: .get, path: "/runtime/install"))
         )
+        let operationState = try await decode(
+            RuntimeOperationState.self,
+            from: router.route(.init(method: .get, path: "/runtime/operation-state"))
+        )
         let events = try await decode(
             RuntimeEventHistory.self,
             from: router.route(.init(method: .get, path: "/runtime/events"))
@@ -739,6 +743,14 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(overview.status.runtimeVersion, "1.2.3")
         XCTAssertEqual(overview.vitalDBObservationSnapshot.state, .loaded)
         XCTAssertEqual(overview.vitalDBObservationSnapshot.observation?.recorders.map(\.vrcode), ["VR_A"])
+        XCTAssertEqual(overview.conditions, [
+            RuntimeControlCondition(
+                type: "VitalDBObservationReady",
+                status: .trueValue,
+                reason: "Loaded",
+                observedAt: "2026-05-25T00:00:00Z"
+            ),
+        ])
         XCTAssertEqual(overview.vitalRecorder.knownRecorders, 1)
         XCTAssertEqual(overview.vitalRecorder.onlineRecorders, 1)
         XCTAssertEqual(overview.vitalRecorder.latestRecorder?.vrcode, "VR_A")
@@ -746,6 +758,14 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(health.statusMessage, "healthy")
         XCTAssertEqual(release.helperVersion, "0.1.0")
         XCTAssertEqual(installInfo.runtimeHomePath, "/runtime/home")
+        XCTAssertEqual(operationState.activeOperation, nil)
+        XCTAssertEqual(operationState.install.state, .unavailable)
+        XCTAssertNil(operationState.install.document)
+        XCTAssertNil(operationState.install.readError)
+        XCTAssertEqual(operationState.lease.state, .unavailable)
+        XCTAssertNil(operationState.lease.document)
+        XCTAssertNil(operationState.lease.readError)
+        XCTAssertNil(operationState.lease.staleReason)
         XCTAssertEqual(events.events.map(\.id), ["event-1"])
         XCTAssertEqual(vitalDBObservation?.recorders.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(vitalRecorders.recorders.map(\.vrcode), ["VR_A"])
@@ -872,6 +892,14 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertNil(overview.vitalDBObservation)
         XCTAssertEqual(overview.vitalDBObservationSnapshot.state, .unavailable)
         XCTAssertEqual(overview.vitalDBObservationSnapshot.readError, "sqlite=read failed")
+        XCTAssertEqual(overview.conditions, [
+            RuntimeControlCondition(
+                type: "VitalDBObservationReady",
+                status: .unknown,
+                reason: "Unavailable",
+                message: "sqlite=read failed"
+            ),
+        ])
         XCTAssertNil(overview.vitalRecorder.knownRecorders)
     }
 
@@ -2603,6 +2631,7 @@ private final class RuntimeControlStreamTestClock: @unchecked Sendable {
 
 private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
     var status: RuntimeStatus?
+    var operationState = RuntimeOperationState(activeOperation: nil, runtimeStatusUpdatedAt: nil, install: .unavailable())
     var eventHistory: RuntimeEventHistory?
     var vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot?
 
@@ -2624,6 +2653,10 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
             statusMessage: "ready",
             runtimeVersion: "1.2.3"
         )
+    }
+
+    func loadOperationState() async throws -> RuntimeOperationState {
+        operationState
     }
 
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
@@ -2926,6 +2959,7 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     var backupLatestPaths: [String?] = []
     var loadBackupsError: Error?
     var exportLogsError: Error?
+    var operationState = RuntimeOperationState(activeOperation: nil, runtimeStatusUpdatedAt: nil, install: .unavailable())
     var vitalDBObservationSnapshot: RuntimeVitalDBObservationSnapshot?
     var vitalDBObservation: VitalDBObservationDocument? = VitalDBObservationDocument(
         observedAt: "2026-05-25T00:00:00Z",
@@ -2941,6 +2975,10 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
     func loadStatus(settings: RuntimeSettings) -> RuntimeStatus {
         statusSettings.append(settings)
         return RuntimeStatus(statusMessage: "status with \(settings.cpuCount) CPUs", latestBackup: "latest-backup")
+    }
+
+    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState {
+        operationState
     }
 
     func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {

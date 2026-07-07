@@ -9,6 +9,7 @@ import Errors
 public actor MacRuntimeControlReadWorker {
     private let releaseInfo: RuntimeReleaseInfo
     private let statusReader: any RuntimeStatusReading
+    private let operationStateReader: any RuntimeOperationStateReading
     private let observabilityReader: any RuntimeObservabilityReading
     private let fileReader: any RuntimeHostFileReading
     private let settingsReader: any RuntimeSettingsReading
@@ -19,6 +20,7 @@ public actor MacRuntimeControlReadWorker {
         self.init(
             releaseInfo: releaseInfo,
             statusReader: SystemRuntimeStatusReader(paths: paths),
+            operationStateReader: SystemRuntimeOperationStateReader.live(paths: paths),
             observabilityReader: SystemRuntimeObservabilityReader.live(paths: paths),
             fileReader: fileReader,
             settingsReader: SystemRuntimeSettingsReader()
@@ -28,12 +30,14 @@ public actor MacRuntimeControlReadWorker {
     init(
         releaseInfo: RuntimeReleaseInfo,
         statusReader: any RuntimeStatusReading,
+        operationStateReader: any RuntimeOperationStateReading = SystemRuntimeOperationStateReader.live(paths: RuntimePaths()),
         observabilityReader: any RuntimeObservabilityReading = SystemRuntimeObservabilityReader.live(paths: RuntimePaths()),
         fileReader: any RuntimeHostFileReading,
         settingsReader: any RuntimeSettingsReading
     ) {
         self.releaseInfo = releaseInfo
         self.statusReader = statusReader
+        self.operationStateReader = operationStateReader
         self.observabilityReader = observabilityReader
         self.fileReader = fileReader
         self.settingsReader = settingsReader
@@ -49,6 +53,10 @@ public actor MacRuntimeControlReadWorker {
 
     public func loadHealthStatus(settings: RuntimeSettings) async -> RuntimeStatus {
         await statusReader.loadHealthStatus(settings: settings)
+    }
+
+    public func loadOperationState(status: RuntimeStatus) async -> RuntimeOperationState {
+        operationStateReader.loadOperationState(status: status)
     }
 
     public func loadRuntimeEvents(limit: Int) -> RuntimeEventHistory {
@@ -113,6 +121,72 @@ public actor MacRuntimeControlReadWorker {
             backupsPath: RuntimeControlClientConstants.Paths.backups,
             redisBackupsPath: RuntimeControlClientConstants.Paths.redisBackups,
             runtimeDataBackupsPath: RuntimeControlClientConstants.Paths.runtimeDataBackups
+        )
+    }
+}
+
+protocol RuntimeOperationStateReading: Sendable {
+    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState
+}
+
+struct SystemRuntimeOperationStateReader: RuntimeOperationStateReading, @unchecked Sendable {
+    private let operationLeaseRepository: any RuntimeOperationLeaseRepository
+    private let now: @Sendable () -> Date
+
+    init(
+        operationLeaseRepository: any RuntimeOperationLeaseRepository,
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
+        self.operationLeaseRepository = operationLeaseRepository
+        self.now = now
+    }
+
+    static func live(paths: RuntimePaths) -> Self {
+        Self(operationLeaseRepository: JSONFileRuntimeOperationLeaseRepository(
+            url: URL(fileURLWithPath: paths.runtimeOperationLease)
+        ))
+    }
+
+    func loadOperationState(status: RuntimeStatus) -> RuntimeOperationState {
+        return RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: status.updatedAt,
+            install: RuntimeInstallOperationState.fromRuntimeStatusInstallRead(status),
+            lease: leaseState(from: operationLeaseRepository.loadResult(), now: now())
+        )
+    }
+
+    private func leaseState(
+        from loadResult: RuntimeOperationLeaseLoadResult,
+        now: Date
+    ) -> RuntimeOperationLeaseState {
+        switch loadResult {
+        case .missing:
+            return .unavailable()
+        case .failed(let message):
+            return .failed(readError: message)
+        case .loaded(let document):
+            return leaseState(from: document, now: now)
+        }
+    }
+
+    private func leaseState(
+        from document: RuntimeOperationLeaseDocument,
+        now: Date
+    ) -> RuntimeOperationLeaseState {
+        guard let expiresAt = document.expiresAt else {
+            return .loaded(document)
+        }
+        guard let expirationDate = ISO8601DateFormatter().date(from: expiresAt) else {
+            return .failed(readError: "runtime operation lease expiresAt is invalid operationId=\(document.operationId) expiresAt=\(expiresAt)")
+        }
+        guard now > expirationDate else {
+            return .loaded(document)
+        }
+        let expiredSeconds = Int(now.timeIntervalSince(expirationDate).rounded())
+        return .stale(
+            document,
+            staleReason: "runtime operation lease expired operationId=\(document.operationId) expiresAt=\(expiresAt) expiredSeconds=\(expiredSeconds)"
         )
     }
 }

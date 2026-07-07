@@ -11,6 +11,7 @@ struct RuntimePaths {
     let runtimeStatus: String
     let redisRelayStatus: String
     let runtimeInstallState: String
+    let runtimeOperationLease: String
     let runtimeEvents: String
     let runtimeObservabilityDB: String
 
@@ -21,6 +22,7 @@ struct RuntimePaths {
         runtimeStatus: String = RuntimeControlClientConstants.Paths.runtimeStatus,
         redisRelayStatus: String = RuntimeControlClientConstants.Paths.redisRelayStatus,
         runtimeInstallState: String = RuntimeControlClientConstants.Paths.runtimeInstallState,
+        runtimeOperationLease: String = RuntimeControlClientConstants.Paths.runtimeOperationLease,
         runtimeEvents: String = RuntimeControlClientConstants.Paths.runtimeEvents,
         runtimeObservabilityDB: String = RuntimeControlClientConstants.Paths.runtimeObservabilityDB
     ) {
@@ -30,6 +32,7 @@ struct RuntimePaths {
         self.runtimeStatus = runtimeStatus
         self.redisRelayStatus = redisRelayStatus
         self.runtimeInstallState = runtimeInstallState
+        self.runtimeOperationLease = runtimeOperationLease
         self.runtimeEvents = runtimeEvents
         self.runtimeObservabilityDB = runtimeObservabilityDB
     }

@@ -25,14 +25,12 @@ public struct RuntimeStatusGuestReadinessPresentationPolicy {
 
     public func guestHTTPValue(
         status: RuntimeStatus,
+        operationState: RuntimeOperationState,
         computedValue: RuntimeStatusHTTPValue,
         waitingText: String,
         staleText: String
     ) -> RuntimeStatusHTTPValue {
-        guard !RuntimeActiveOperationPolicy.isInstallInProgress(status),
-              !RuntimeActiveOperationPolicy.isInitializationInProgress(status),
-              !RuntimeActiveOperationPolicy.isUpdateInProgress(status)
-        else {
+        guard !shouldPreserveComputedGuestHTTP(status: status, operationState: operationState) else {
             return computedValue
         }
         guard isWaitingForInitialGuestState(status),
@@ -68,5 +66,20 @@ public struct RuntimeStatusGuestReadinessPresentationPolicy {
         default:
             return false
         }
+    }
+
+    private func shouldPreserveComputedGuestHTTP(
+        status: RuntimeStatus,
+        operationState: RuntimeOperationState
+    ) -> Bool {
+        if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
+            return true
+        }
+        guard let operation = operationState.operationForPresentation else {
+            return false
+        }
+        return RuntimeActiveOperationPolicy.isInstallOperation(operation)
+            || RuntimeActiveOperationPolicy.isRecoveryOperation(operation)
+            || RuntimeActiveOperationPolicy.isUpdateOperation(operation)
     }
 }

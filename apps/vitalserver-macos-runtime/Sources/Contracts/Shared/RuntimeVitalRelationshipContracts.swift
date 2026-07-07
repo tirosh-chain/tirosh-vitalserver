@@ -159,7 +159,11 @@ public struct RuntimeVitalRelationshipHistory: Codable, Equatable, Sendable {
         try container.encode(state, forKey: .state)
         try container.encode(assignments, forKey: .assignments)
         try container.encode(events, forKey: .events)
-        try container.encodeIfPresent(readError, forKey: .readError)
+        if let readError {
+            try container.encode(readError, forKey: .readError)
+        } else {
+            try container.encodeNil(forKey: .readError)
+        }
     }
 
     private static func defaultState(

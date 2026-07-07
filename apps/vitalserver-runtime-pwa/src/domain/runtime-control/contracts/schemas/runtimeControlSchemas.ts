@@ -3,9 +3,12 @@ import { z } from "zod";
 import { runtimeEventTypeValues } from "@/domain/runtime-control/contracts/runtimeEventTypes";
 
 const nullableString = z.string().nullable().optional();
+const requiredNullableString = z.string().nullable();
 const nullableNumber = z.number().nullable().optional();
 const nullableBoolean = z.boolean().nullable().optional();
+const requiredNullableBoolean = z.boolean().nullable();
 const unknownRecord = z.record(z.string(), z.unknown());
+const requiredNullableRecord = unknownRecord.nullable();
 const resourceUsageSchema = unknownRecord.nullable();
 const knownRuntimeStateSchema = z.enum([
   "installing",
@@ -115,10 +118,21 @@ const vitalDBObservationReadStateSchema = z.enum([
   "unavailable",
   "failed"
 ]);
+const vitalRecorderHistoryStateSchema = z.enum([
+  "loaded",
+  "partiallyLoaded",
+  "readFailed"
+]);
 const runtimeGuestServicesReadStateSchema = z.enum([
   "unavailable",
   "loaded",
   "failed"
+]);
+const runtimeOperationResourceReadStateSchema = z.enum([
+  "loaded",
+  "unavailable",
+  "failed",
+  "stale"
 ]);
 const runtimeGuestControlServiceStatusSchema = z
   .object({
@@ -458,8 +472,8 @@ const runtimeRecorderIngressStatusDocumentSchema = z
     auditFileWriteFailures: z.number(),
     auditStdoutWriteFailures: z.number(),
     redisIpWriteFailures: z.number(),
-    redisIpVerifyFailures: z.number().optional(),
-    redisIpVerifyMismatches: z.number().optional(),
+    redisIpVerifyFailures: z.number(),
+    redisIpVerifyMismatches: z.number(),
     throughput: runtimeRecorderIngressThroughputStatusSchema.nullable().optional(),
     rawArchive: runtimeRecorderIngressRawArchiveStatusSchema.nullable().optional(),
     spool: runtimeRecorderIngressSpoolStatusSchema.nullable().optional(),
@@ -480,8 +494,9 @@ const runtimeRecorderIngressStatusReadStateSchema = z.enum([
 const runtimeRecorderIngressStatusReadResultSchema = z
   .object({
     readState: runtimeRecorderIngressStatusReadStateSchema,
-    document: runtimeRecorderIngressStatusDocumentSchema.nullable().optional(),
-    readError: nullableString
+    httpStatus: z.string(),
+    document: runtimeRecorderIngressStatusDocumentSchema.nullable(),
+    readError: requiredNullableString
   })
   .passthrough();
 
@@ -574,8 +589,8 @@ export const vitalDBObservationSchema = z
 const runtimeVitalDBObservationSnapshotSchema = z
   .object({
     state: vitalDBObservationReadStateSchema,
-    observation: vitalDBObservationSchema.nullable().optional(),
-    readError: nullableString
+    observation: vitalDBObservationSchema.nullable(),
+    readError: requiredNullableString
   })
   .passthrough()
   .superRefine((snapshot, context) => {
@@ -594,6 +609,16 @@ const runtimeVitalDBObservationSnapshotSchema = z
       });
     }
   });
+
+const runtimeControlConditionSchema = z
+  .object({
+    type: z.string(),
+    status: z.enum(["True", "False", "Unknown"]),
+    reason: z.string(),
+    message: requiredNullableString,
+    observedAt: requiredNullableString
+  })
+  .passthrough();
 
 export const runtimeStatusSchema = z
   .object({
@@ -636,6 +661,71 @@ export const runtimeStatusSchema = z
     proxyPort: z.number().optional(),
     failureReasons: z.array(z.string()).optional(),
     progress: unknownRecord.nullable().optional()
+  })
+  .passthrough();
+
+const runtimeInstallOperationStateSchema = z
+  .object({
+    state: runtimeOperationResourceReadStateSchema,
+    document: requiredNullableRecord,
+    readError: requiredNullableString
+  })
+  .passthrough()
+  .superRefine((install, context) => {
+    if (install.state === "loaded" && install.document == null) {
+      context.addIssue({
+        code: "custom",
+        path: ["document"],
+        message: "loaded install operation state must include document"
+      });
+    }
+    if (install.state === "failed" && isBlank(install.readError)) {
+      context.addIssue({
+        code: "custom",
+        path: ["readError"],
+        message: "failed install operation state must include readError"
+      });
+    }
+  });
+
+const runtimeOperationLeaseStateSchema = z
+  .object({
+    state: runtimeOperationResourceReadStateSchema,
+    document: requiredNullableRecord,
+    readError: requiredNullableString,
+    staleReason: requiredNullableString
+  })
+  .passthrough()
+  .superRefine((lease, context) => {
+    if ((lease.state === "loaded" || lease.state === "stale") && lease.document == null) {
+      context.addIssue({
+        code: "custom",
+        path: ["document"],
+        message: `${lease.state} operation lease state must include document`
+      });
+    }
+    if (lease.state === "failed" && isBlank(lease.readError)) {
+      context.addIssue({
+        code: "custom",
+        path: ["readError"],
+        message: "failed operation lease state must include readError"
+      });
+    }
+    if (lease.state === "stale" && isBlank(lease.staleReason)) {
+      context.addIssue({
+        code: "custom",
+        path: ["staleReason"],
+        message: "stale operation lease state must include staleReason"
+      });
+    }
+  });
+
+export const runtimeOperationStateSchema = z
+  .object({
+    activeOperation: requiredNullableString,
+    runtimeStatusUpdatedAt: requiredNullableString,
+    install: runtimeInstallOperationStateSchema,
+    lease: runtimeOperationLeaseStateSchema
   })
   .passthrough();
 
@@ -690,9 +780,10 @@ export const runtimeOverviewSchema = z
     settings: runtimeSettingsSchema,
     release: unknownRecord,
     install: unknownRecord,
-    vitalDBObservation: vitalDBObservationSchema.nullable().optional(),
+    vitalDBObservation: vitalDBObservationSchema.nullable(),
     vitalDBObservationSnapshot: runtimeVitalDBObservationSnapshotSchema,
-    vitalRecorder: runtimeVitalRecorderSummarySchema
+    vitalRecorder: runtimeVitalRecorderSummarySchema,
+    conditions: z.array(runtimeControlConditionSchema)
   })
   .passthrough();
 
@@ -773,13 +864,13 @@ const recorderRedisIPSyncStatusSchema = z.enum([
 const recorderRedisIPSyncObservationSchema = z
   .object({
     status: recorderRedisIPSyncStatusSchema,
-    redisKey: nullableString.optional(),
-    selectedIp: nullableString.optional(),
-    ipSource: nullableString.optional(),
-    redisValue: nullableString.optional(),
-    lastWriteAt: nullableString.optional(),
-    lastVerifiedAt: nullableString.optional(),
-    lastFailure: nullableString.optional()
+    redisKey: requiredNullableString,
+    selectedIp: requiredNullableString,
+    ipSource: requiredNullableString,
+    redisValue: requiredNullableString,
+    lastWriteAt: requiredNullableString,
+    lastVerifiedAt: requiredNullableString,
+    lastFailure: requiredNullableString
   })
   .passthrough();
 
@@ -787,46 +878,46 @@ const vitalDBRecorderRecordSchema = z
   .object({
     vrcode: z.string(),
     status: recorderStatusSchema,
-    lastIP: nullableString,
-    version: nullableString,
-    bedID: nullableString,
-    bedName: nullableString,
-    patientConnected: nullableBoolean,
-    firstSeenAt: nullableString,
-    lastSeenAt: nullableString,
+    lastIP: requiredNullableString,
+    version: requiredNullableString,
+    bedID: requiredNullableString,
+    bedName: requiredNullableString,
+    patientConnected: requiredNullableBoolean,
+    firstSeenAt: requiredNullableString,
+    lastSeenAt: requiredNullableString,
     observationCount: z.number(),
     duplicateObservationCount: z.number(),
     currentAnomalyCount: z.number(),
-    latestAnomalyKind: vitalDBAnomalyKindSchema.nullable().optional(),
-    latestAnomalySeverity: anomalySeveritySchema.nullable().optional(),
-    latestAnomalyMessage: nullableString.optional(),
-    latestAnomalyObservedAt: nullableString.optional(),
+    latestAnomalyKind: vitalDBAnomalyKindSchema.nullable(),
+    latestAnomalySeverity: anomalySeveritySchema.nullable(),
+    latestAnomalyMessage: requiredNullableString,
+    latestAnomalyObservedAt: requiredNullableString,
     presentInLatestObservation: z.boolean(),
     visibility: vitalDBRecordVisibilitySchema,
-    activityTimeline: z.array(recorderActivityPointSchema).optional(),
-    redisIPSync: recorderRedisIPSyncObservationSchema.nullable().optional()
+    activityTimeline: z.array(recorderActivityPointSchema).nullable(),
+    redisIPSync: recorderRedisIPSyncObservationSchema.nullable()
   })
   .passthrough();
 
 const vitalDBBedRecordSchema = z
   .object({
     bedID: z.string(),
-    name: nullableString,
-    vrcode: nullableString,
-    linkedRecorderStatus: recorderStatusSchema.nullable().optional(),
-    linkedRecorderIP: nullableString.optional(),
-    linkedRecorderLastSeenAt: nullableString.optional(),
+    name: requiredNullableString,
+    vrcode: requiredNullableString,
+    linkedRecorderStatus: recorderStatusSchema.nullable(),
+    linkedRecorderIP: requiredNullableString,
+    linkedRecorderLastSeenAt: requiredNullableString,
     status: bedStatusSchema,
-    patientConnected: nullableBoolean,
-    firstSeenAt: nullableString,
-    lastSeenAt: nullableString,
+    patientConnected: requiredNullableBoolean,
+    firstSeenAt: requiredNullableString,
+    lastSeenAt: requiredNullableString,
     observationCount: z.number(),
     duplicateObservationCount: z.number(),
     currentAnomalyCount: z.number(),
-    latestAnomalyKind: vitalDBAnomalyKindSchema.nullable().optional(),
-    latestAnomalySeverity: anomalySeveritySchema.nullable().optional(),
-    latestAnomalyMessage: nullableString.optional(),
-    latestAnomalyObservedAt: nullableString.optional(),
+    latestAnomalyKind: vitalDBAnomalyKindSchema.nullable(),
+    latestAnomalySeverity: anomalySeveritySchema.nullable(),
+    latestAnomalyMessage: requiredNullableString,
+    latestAnomalyObservedAt: requiredNullableString,
     visibility: vitalDBRecordVisibilitySchema
   })
   .passthrough();
@@ -856,23 +947,22 @@ const recorderActivityHistorySchema = z
   .object({
     source: recorderActivityHistorySourceSchema,
     bucketCount: z.number(),
-    earliestBucketStartedAt: nullableString,
-    latestBucketStartedAt: nullableString,
-    readError: nullableString
+    earliestBucketStartedAt: requiredNullableString,
+    latestBucketStartedAt: requiredNullableString,
+    readError: requiredNullableString
   })
   .passthrough();
 
 export const vitalDBRecordersSchema = z
   .object({
-    updatedAt: nullableString,
+    state: vitalRecorderHistoryStateSchema,
+    updatedAt: requiredNullableString,
     recorders: z.array(vitalDBRecorderRecordSchema),
     beds: z.array(vitalDBBedRecordSchema),
     summary: vitalDBRecorderHistorySummarySchema,
     activityHistory: recorderActivityHistorySchema,
-    recorderIngressStatusRead: runtimeRecorderIngressStatusReadResultSchema
-      .nullable()
-      .optional(),
-    readError: nullableString
+    recorderIngressStatusRead: runtimeRecorderIngressStatusReadResultSchema.nullable(),
+    readError: requiredNullableString
   })
   .passthrough();
 
@@ -914,7 +1004,7 @@ export const vitalDBRelationshipsSchema = z
     state: z.enum(["loaded", "partiallyLoaded", "readFailed"]),
     assignments: z.array(vitalDBRelationshipAssignmentSchema),
     events: z.array(vitalDBRelationshipEventSchema),
-    readError: nullableString
+    readError: requiredNullableString
   })
   .passthrough();
 

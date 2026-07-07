@@ -86,6 +86,7 @@ public struct RuntimeControlAPIStreamConfiguration: Equatable, Sendable {
 public protocol RuntimeControlAPIReadHandler {
     func loadCapabilities() async throws -> RuntimeControlCapabilities
     func loadStatus() async throws -> RuntimeStatus
+    func loadOperationState() async throws -> RuntimeOperationState
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory

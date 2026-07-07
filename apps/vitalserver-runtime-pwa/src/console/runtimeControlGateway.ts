@@ -23,6 +23,7 @@ import type {
   RuntimeLogExportResult,
   RuntimeLogTextRequest,
   RuntimeLogTextResponse,
+  RuntimeOperationState,
   RuntimeSettings,
   RuntimeStatus,
   RuntimeUninstallRequest,
@@ -46,6 +47,7 @@ export type RuntimeControlGateway = {
   getCapabilities(): Promise<RuntimeControlCapabilities>;
   getOverview(): Promise<RuntimeControlOverview>;
   getStatus(): Promise<RuntimeStatus>;
+  getOperationState(): Promise<RuntimeOperationState>;
   getSettings(): Promise<RuntimeSettings>;
   applySettings(request: RuntimeApplySettingsRequest): Promise<RuntimeCommandResponse>;
   getLabScenarios(): Promise<RuntimeLabScenarioList>;

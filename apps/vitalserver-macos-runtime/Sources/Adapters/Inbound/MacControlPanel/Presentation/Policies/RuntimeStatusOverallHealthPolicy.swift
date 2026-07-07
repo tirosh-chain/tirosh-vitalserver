@@ -47,18 +47,23 @@ public struct RuntimeStatusOverallHealthPolicy {
         self.vocabulary = vocabulary
     }
 
-    public func overallHealth(status: RuntimeStatus) -> RuntimeStatusOverallHealthValue {
-        if RuntimeActiveOperationPolicy.isInstallInProgress(status) {
-            return value(vocabulary.installingText, .warning)
+    public func overallHealth(
+        status: RuntimeStatus,
+        operationState: RuntimeOperationState
+    ) -> RuntimeStatusOverallHealthValue {
+        if let operation = operationState.operationForPresentation {
+            if RuntimeActiveOperationPolicy.isInstallOperation(operation) {
+                return value(vocabulary.installingText, .warning)
+            }
+            if RuntimeActiveOperationPolicy.isRecoveryInProgress(status, operation: operation) {
+                return value(vocabulary.recoveringText, .warning)
+            }
+            if RuntimeActiveOperationPolicy.isUpdateInProgress(status, operation: operation) {
+                return value(vocabulary.updatingText, .warning)
+            }
         }
-        if RuntimeActiveOperationPolicy.isInitializationInProgress(status) {
+        if status.runtimeState == .initializing {
             return value(vocabulary.initializingText, .warning)
-        }
-        if RuntimeActiveOperationPolicy.isUpdateInProgress(status) {
-            return value(vocabulary.updatingText, .warning)
-        }
-        if RuntimeActiveOperationPolicy.isRecoveryInProgress(status) {
-            return value(vocabulary.recoveringText, .warning)
         }
         if RuntimeReadinessPolicy.isReady(status) {
             return value(vocabulary.healthyText, .healthy)

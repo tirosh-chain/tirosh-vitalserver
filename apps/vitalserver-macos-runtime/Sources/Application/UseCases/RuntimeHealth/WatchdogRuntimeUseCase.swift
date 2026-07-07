@@ -263,28 +263,7 @@ public struct WatchdogRuntimeUseCase {
         now: Date,
         graceSeconds: TimeInterval
     ) -> WatchdogRuntimeManagedOperationGuardPlan {
-        guard status.status == .installing ||
-            status.status == .updating ||
-            status.status == .recovering else {
-            return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: nil, logMessage: nil)
-        }
-        guard RuntimeManagedOperationPolicy.isProtectedFromWatchdogRecovery(status.operation) else {
-            return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: nil, logMessage: nil)
-        }
-        guard let updatedAt = ISO8601DateFormatter().date(from: status.updatedAt) else {
-            return WatchdogRuntimeManagedOperationGuardPlan(
-                activeOperation: nil,
-                logMessage: "watchdog active operation guard ignored invalid updatedAt operation=\(status.operation.rawValue) updatedAt=\(status.updatedAt)"
-            )
-        }
-        let age = now.timeIntervalSince(updatedAt)
-        if age > graceSeconds {
-            return WatchdogRuntimeManagedOperationGuardPlan(
-                activeOperation: nil,
-                logMessage: "watchdog active operation guard expired operation=\(status.operation.rawValue) ageSeconds=\(formatAgeSeconds(age))"
-            )
-        }
-        return WatchdogRuntimeManagedOperationGuardPlan(activeOperation: status.operation, logMessage: nil)
+        WatchdogRuntimeManagedOperationGuardPlan(activeOperation: nil, logMessage: nil)
     }
 
     public func guestBootstrapManagedOperationGuardPlan(
@@ -436,7 +415,9 @@ public struct WatchdogRuntimeUseCase {
         }
         guard case .loaded(let status) = currentStatus,
               status.status == .initializing,
-              status.operation == .install else {
+              let progress = status.progress,
+              progress.operation == .install,
+              !isTerminalProgressPhase(progress.phase) else {
             return plan
         }
         return WatchdogRuntimeObservedStatusPlan(
@@ -453,6 +434,15 @@ public struct WatchdogRuntimeUseCase {
             statusMessage: "runtime watchdog passed",
             printMessage: "watchdog: ok"
         )
+    }
+
+    private func isTerminalProgressPhase(_ phase: RuntimeProgressPhase) -> Bool {
+        switch phase {
+        case .completed, .failed, .cancelled:
+            return true
+        default:
+            return false
+        }
     }
 
     private func suppressedPlan(reason: String) -> WatchdogRuntimeObservedStatusPlan {

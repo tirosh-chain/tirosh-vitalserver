@@ -6,6 +6,7 @@ import {
   runtimeEventHistorySchema,
   runtimeLogExportResultSchema,
   runtimeLogTextResponseSchema,
+  runtimeOperationStateSchema,
   runtimeOverviewSchema,
   runtimeSettingsSchema,
   runtimeUpdateBundleSummaryResponseSchema,
@@ -31,6 +32,71 @@ describe("runtime control contract schemas", () => {
         stderr: ""
       }
     });
+  });
+
+  it("preserves operation state read meanings", () => {
+    expect(
+      runtimeOperationStateSchema.parse({
+        activeOperation: "apply-bundle",
+        runtimeStatusUpdatedAt: "2026-07-08T00:00:00Z",
+        install: {
+          state: "failed",
+          document: null,
+          readError: "install state decode failed"
+        },
+        lease: {
+          state: "stale",
+          document: {
+            schemaVersion: 1,
+            operationId: "operation-1",
+            operation: "apply-bundle",
+            ownerPID: 123,
+            startedAt: "2026-07-08T00:00:00Z",
+            heartbeatAt: "2026-07-08T00:00:01Z",
+            expiresAt: "2026-07-08T00:00:02Z",
+            message: null
+          },
+          readError: null,
+          staleReason: "expired"
+        }
+      })
+    ).toMatchObject({
+      install: { state: "failed", readError: "install state decode failed" },
+      lease: { state: "stale", staleReason: "expired" }
+    });
+  });
+
+  it("rejects failed or stale operation state without explicit reason", () => {
+    expect(() =>
+      runtimeOperationStateSchema.parse({
+        activeOperation: null,
+        runtimeStatusUpdatedAt: null,
+        install: {
+          state: "failed",
+          document: null,
+          readError: null
+        },
+        lease: {
+          state: "stale",
+          document: null,
+          readError: null,
+          staleReason: null
+        }
+      })
+    ).toThrow();
+  });
+
+  it("rejects operation state payloads that omit explicit null fields", () => {
+    expect(() =>
+      runtimeOperationStateSchema.parse({
+        install: {
+          state: "unavailable"
+        },
+        lease: {
+          state: "unavailable"
+        }
+      })
+    ).toThrow();
   });
 
   it("accepts unknown runtime state values in overview responses", () => {
@@ -94,6 +160,16 @@ describe("runtime control contract schemas", () => {
       runtimeOverviewSchema.parse(
         fullRuntimeOverview({
           vitalDBObservationSnapshot: {
+            state: "unavailable"
+          }
+        })
+      )
+    ).toThrow();
+
+    expect(() =>
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          vitalDBObservationSnapshot: {
             state: "loaded",
             observation: null,
             readError: null
@@ -130,6 +206,26 @@ describe("runtime control contract schemas", () => {
         source: "vitaldb-observer"
       }
     });
+  });
+
+  it("requires explicit RuntimeOverview nullable fields and conditions", () => {
+    const { vitalDBObservation: _observation, conditions: _conditions, ...missingOverviewFields } =
+      fullRuntimeOverviewShape();
+
+    expect(() => runtimeOverviewSchema.parse(missingOverviewFields)).toThrow();
+    expect(() =>
+      runtimeOverviewSchema.parse(
+        fullRuntimeOverview({
+          conditions: [
+            {
+              type: "VitalDBObservationReady",
+              status: "Unknown",
+              reason: "Unavailable"
+            }
+          ]
+        })
+      )
+    ).toThrow();
   });
 
   it("requires explicit Vital Recorder summary source and observed metrics", () => {
@@ -475,13 +571,7 @@ describe("runtime control contract schemas", () => {
       vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
         recorders: [
           {
-            vrcode: "VR_TEST",
-            status: "online",
-            visibility: "visible",
-            observationCount: 1,
-            duplicateObservationCount: 0,
-            currentAnomalyCount: 0,
-            presentInLatestObservation: true,
+            ...fullVitalRecorderRecord(),
             activityTimeline: [{ messageCount: "not-a-number" }]
           }
         ]
@@ -494,13 +584,7 @@ describe("runtime control contract schemas", () => {
       vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
         recorders: [
           {
-            vrcode: "VR_TEST",
-            status: "online",
-            visibility: "visible",
-            observationCount: 1,
-            duplicateObservationCount: 0,
-            currentAnomalyCount: 0,
-            presentInLatestObservation: true,
+            ...fullVitalRecorderRecord(),
             activityTimeline: [
               {
                 observedAt: "2026-05-28T00:01:00Z",
@@ -533,25 +617,21 @@ describe("runtime control contract schemas", () => {
   it("accepts not-observed VitalDB recorder and bed status values", () => {
     const parsedRecorders = vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
       recorders: [
-        {
+        fullVitalRecorderRecord({
           vrcode: "VR_HISTORY",
           status: "notObserved",
-          visibility: "visible",
           observationCount: 1,
           duplicateObservationCount: 1,
-          currentAnomalyCount: 0,
           presentInLatestObservation: false
-        }
+        })
       ],
       beds: [
-        {
+        fullVitalBedRecord({
           bedID: "bed-history",
           status: "notObserved",
-          visibility: "visible",
           observationCount: 1,
-          duplicateObservationCount: 2,
-          currentAnomalyCount: 0
-        }
+          duplicateObservationCount: 2
+        })
       ]
     }));
 
@@ -618,6 +698,50 @@ describe("runtime control contract schemas", () => {
     });
   });
 
+  it("requires explicit nullable Vital Recorder and bed detail fields", () => {
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        recorders: [
+          fullVitalRecorderRecord({
+            latestAnomalyKind: undefined
+          })
+        ]
+      }))
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        recorders: [
+          fullVitalRecorderRecord({
+            activityTimeline: undefined
+          })
+        ]
+      }))
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        recorders: [
+          fullVitalRecorderRecord({
+            redisIPSync: {
+              status: "unavailable"
+            }
+          })
+        ]
+      }))
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        beds: [
+          fullVitalBedRecord({
+            linkedRecorderStatus: undefined
+          })
+        ]
+      }))
+    ).toThrow();
+  });
+
   it("requires explicit VitalDB read model visibility", () => {
     expect(() =>
       vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
@@ -667,12 +791,69 @@ describe("runtime control contract schemas", () => {
 
     expect(() =>
       vitalDBRecordersSchema.parse({
+        state: "loaded",
+        updatedAt: null,
         recorders: [],
         beds: [],
+        summary: fullVitalRecorderHistorySummary(),
         activityHistory: {
           source: "readModelProjection"
-        }
+        },
+        recorderIngressStatusRead: null,
+        readError: null
       })
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        state: undefined
+      }))
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        readError: undefined
+      }))
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        recorderIngressStatusRead: undefined
+      }))
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        recorderIngressStatusRead: {
+          readState: "loaded",
+          document: null,
+          readError: null
+        }
+      }))
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        recorderIngressStatusRead: {
+          readState: "loaded",
+          httpStatus: "200",
+          readError: null
+        }
+      }))
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRecordersSchema.parse(fullVitalRecorderHistory({
+        recorderIngressStatusRead: {
+          readState: "loaded",
+          httpStatus: "200",
+          document: {
+            ...fullRecorderIngressStatusDocument(),
+            redisIpVerifyFailures: undefined
+          },
+          readError: null
+        }
+      }))
     ).toThrow();
 
     expect(
@@ -687,9 +868,11 @@ describe("runtime control contract schemas", () => {
     expect(() =>
       vitalDBRecordersSchema.parse({
         updatedAt: "2026-05-31T01:00:00Z",
+        state: "loaded",
         recorders: [],
         beds: [],
         activityHistory: fullRecorderActivityHistory(),
+        recorderIngressStatusRead: null,
         readError: null
       })
     ).toThrow();
@@ -706,6 +889,12 @@ describe("runtime control contract schemas", () => {
         assignments: [],
         readError: null
       })
+    ).toThrow();
+
+    expect(() =>
+      vitalDBRelationshipsSchema.parse(fullRelationships({
+        readError: undefined
+      }))
     ).toThrow();
 
     expect(vitalDBRelationshipsSchema.parse(fullRelationships())).toEqual(
@@ -818,7 +1007,16 @@ function fullRuntimeOverviewShape() {
       source: "unavailable" as const,
       observedAt: null,
       latestRecorder: null
-    }
+    },
+    conditions: [
+      {
+        type: "VitalDBObservationReady",
+        status: "Unknown" as const,
+        reason: "Unavailable",
+        message: null,
+        observedAt: null
+      }
+    ]
   };
 }
 
@@ -953,11 +1151,13 @@ function fullRecorderActivityHistory(overrides: Record<string, unknown> = {}) {
 
 function fullVitalRecorderHistory(overrides: Record<string, unknown> = {}) {
   return {
+    state: "loaded",
     updatedAt: "2026-05-31T01:00:00Z",
     recorders: [],
     beds: [],
     summary: fullVitalRecorderHistorySummary(),
     activityHistory: fullRecorderActivityHistory(),
+    recorderIngressStatusRead: null,
     readError: null,
     ...overrides
   };
@@ -975,6 +1175,25 @@ function fullVitalRecorderHistorySummary(overrides: Record<string, unknown> = {}
     staleBeds: 0,
     bedAssignments: 0,
     bedAnomalies: 0,
+    ...overrides
+  };
+}
+
+function fullRecorderIngressStatusDocument(overrides: Record<string, unknown> = {}) {
+  return {
+    activeWebSockets: 0,
+    activeRecorderConnections: 0,
+    recorders: [],
+    httpRequests: 0,
+    socketIoEventsSeen: 0,
+    socketIoParseFailures: 0,
+    auditWriteFailures: 0,
+    auditFileWriteFailures: 0,
+    auditStdoutWriteFailures: 0,
+    failureLogWriteFailures: 0,
+    redisIpWriteFailures: 0,
+    redisIpVerifyFailures: 0,
+    redisIpVerifyMismatches: 0,
     ...overrides
   };
 }
@@ -1046,8 +1265,13 @@ function fullVitalRecorderRecord(overrides: Record<string, unknown> = {}) {
     observationCount: 1,
     duplicateObservationCount: 0,
     currentAnomalyCount: 0,
+    latestAnomalyKind: null,
     latestAnomalySeverity: null,
+    latestAnomalyMessage: null,
+    latestAnomalyObservedAt: null,
     presentInLatestObservation: true,
+    activityTimeline: null,
+    redisIPSync: null,
     ...overrides
   };
 }
@@ -1057,6 +1281,9 @@ function fullVitalBedRecord(overrides: Record<string, unknown> = {}) {
     bedID: "bed-1",
     name: null,
     vrcode: null,
+    linkedRecorderStatus: null,
+    linkedRecorderIP: null,
+    linkedRecorderLastSeenAt: null,
     status: "online",
     visibility: "visible",
     patientConnected: null,
@@ -1065,7 +1292,10 @@ function fullVitalBedRecord(overrides: Record<string, unknown> = {}) {
     observationCount: 1,
     duplicateObservationCount: 0,
     currentAnomalyCount: 0,
+    latestAnomalyKind: null,
     latestAnomalySeverity: null,
+    latestAnomalyMessage: null,
+    latestAnomalyObservedAt: null,
     ...overrides
   };
 }

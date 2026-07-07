@@ -11,6 +11,8 @@ public extension RuntimeControlAPIEndpoint {
             return .init(method: .get, path: "/runtime/status", scope: .runtimeControl)
         case .statusStream:
             return .init(method: .get, path: "/runtime/status/stream", scope: .runtimeControl)
+        case .operationState:
+            return .init(method: .get, path: "/runtime/operation-state", scope: .runtimeControl)
         case .events:
             return .init(method: .get, path: "/runtime/events", scope: .runtimeControl)
         case .eventStream:

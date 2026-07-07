@@ -271,7 +271,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         }
         return RuntimeVitalDBRecorderProjectionReads(
             observations: .loaded([]),
-            currentObservation: currentObservationProvider.load(),
+            currentObservation: .unavailable(readIssues: ["guestControl=readModelProviderUnavailable"]),
             activityBuckets: .notLoaded
         )
     }

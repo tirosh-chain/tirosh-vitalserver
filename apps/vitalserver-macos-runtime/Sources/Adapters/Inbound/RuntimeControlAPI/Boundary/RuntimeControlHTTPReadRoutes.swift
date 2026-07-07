@@ -28,6 +28,8 @@ struct RuntimeControlHTTPReadRoutes {
                 event: "runtime-status",
                 value: handler.loadStatus()
             )
+        case .operationState:
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadOperationState())
         case .events:
             let query = try request.runtimeEventQuery()
             return try await RuntimeControlHTTPResponseFactory.json(handler.loadEvents(query: query))

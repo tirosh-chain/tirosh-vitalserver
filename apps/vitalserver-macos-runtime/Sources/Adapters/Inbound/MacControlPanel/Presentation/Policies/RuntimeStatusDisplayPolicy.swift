@@ -73,12 +73,20 @@ struct RuntimeStatusDisplayPolicy {
         vocabulary: AppRuntimeStatusVitalServerAvailabilityVocabulary()
     )
 
-    func overallHealth(status: RuntimeStatus) -> StatusValue {
-        statusValue(overallHealthPolicy.overallHealth(status: status))
+    func overallHealth(status: RuntimeStatus, operationState: RuntimeOperationState) -> StatusValue {
+        statusValue(overallHealthPolicy.overallHealth(status: status, operationState: operationState))
     }
 
-    func vitalServerAvailability(status: RuntimeStatus, now: Date = Date()) -> StatusValue {
-        statusValue(vitalServerAvailabilityPolicy.availability(status: status, now: now))
+    func vitalServerAvailability(
+        status: RuntimeStatus,
+        operationState: RuntimeOperationState,
+        now: Date = Date()
+    ) -> StatusValue {
+        statusValue(vitalServerAvailabilityPolicy.availability(
+            status: status,
+            operationState: operationState,
+            now: now
+        ))
     }
 
     func remoteConsoleAvailability(status: RuntimeStatus, now: Date = Date()) -> StatusValue {
@@ -95,11 +103,13 @@ struct RuntimeStatusDisplayPolicy {
 
     func healthDetails(
         status: RuntimeStatus,
+        operationState: RuntimeOperationState,
         recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult? = nil,
         now: Date = Date()
     ) -> [HealthItem] {
         healthDetailsPolicy.healthDetails(
             status: status,
+            operationState: operationState,
             recorderIngressStatusRead: recorderIngressStatusRead,
             now: now
         ).map(healthItem)
@@ -198,17 +208,19 @@ struct RuntimeStatusDisplayPolicy {
         ]
     }
 
-    func advancedVMHealth(status: RuntimeStatus) -> [HealthItem] {
-        advancedVMHealthPolicy.vmHealth(status: status).map(healthItem)
+    func advancedVMHealth(status: RuntimeStatus, operationState: RuntimeOperationState) -> [HealthItem] {
+        advancedVMHealthPolicy.vmHealth(status: status, operationState: operationState).map(healthItem)
     }
 
     func advancedServiceHealth(
         status: RuntimeStatus,
+        operationState: RuntimeOperationState,
         redisRelaySettings: RuntimeRedisRelaySettings = RuntimeRedisRelaySettings(),
         now: Date = Date()
     ) -> [ServiceHealthItem] {
         advancedServiceHealthPolicy.serviceHealth(
             status: status,
+            operationState: operationState,
             redisRelaySettings: redisRelaySettings,
             now: now
         ).map(serviceHealthItem)

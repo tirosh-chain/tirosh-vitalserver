@@ -141,7 +141,7 @@ struct RuntimeStatusPanel: View {
     }
 
     private var overallHealthValue: RuntimeStatusDisplayPolicy.StatusValue {
-        displayPolicy.overallHealth(status: viewModel.status)
+        displayPolicy.overallHealth(status: viewModel.status, operationState: viewModel.operationState)
     }
 
     private var overallHealthColor: Color {
@@ -180,7 +180,11 @@ struct RuntimeStatusPanel: View {
     }
 
     private var vitalServerAvailability: RuntimeStatusDisplayPolicy.StatusValue {
-        displayPolicy.vitalServerAvailability(status: viewModel.status, now: uptimeNow)
+        displayPolicy.vitalServerAvailability(
+            status: viewModel.status,
+            operationState: viewModel.operationState,
+            now: uptimeNow
+        )
     }
 
     private var remoteConsoleAvailability: RuntimeStatusDisplayPolicy.StatusValue {

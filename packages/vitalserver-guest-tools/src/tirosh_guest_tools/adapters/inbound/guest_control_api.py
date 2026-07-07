@@ -46,6 +46,8 @@ class GuestControlAPIError(Exception):
 def build_default_usecases() -> GuestControlUseCases:
     operations = PostgresOperationRepository()
     vitaldb_read_model = PostgresVitalDBReadModelRepository()
+    operations.ensure_schema()
+    vitaldb_read_model.ensure_schema()
     return GuestControlUseCases(
         service_control=ComposeGuestControlAdapter(),
         product_lab=ProductLabServiceAdapter(),

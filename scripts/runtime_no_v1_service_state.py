@@ -3054,7 +3054,7 @@ def check_cli_consumes_guest_control_product_apis() -> CheckResult:
             '"lab-vital-replay"',
         ],
         relative(lifecycle_path): [
-            "HTTPRuntimeGuestControlGateway(baseURL:",
+            "HTTPRuntimeGuestControlGateway(",
             "RuntimeGuestProductServiceControlUseCase()",
             "gateway.stackStatus()",
             "gateway.labScenarios()",
@@ -4571,7 +4571,7 @@ def check_host_health_uses_guest_control_ready_for_guest_readiness() -> CheckRes
     required = {
         relative(health_checker_path): [
             "guestControlReadiness()",
-            "guestControlGateway().ready()",
+            "guestControlGateway(baseURL).ready()",
             "readVMIPFile()",
         ],
         relative(gateway_path): [

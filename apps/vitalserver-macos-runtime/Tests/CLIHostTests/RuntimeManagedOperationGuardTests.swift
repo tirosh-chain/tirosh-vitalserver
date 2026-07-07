@@ -8,7 +8,7 @@ import XCTest
 import Errors
 
 final class RuntimeManagedOperationGuardTests: XCTestCase {
-    func testBlocksWatchdogRecoveryDuringFreshApplyBundleOperation() {
+    func testDoesNotBlockWatchdogRecoveryFromStatusOperationWithoutLease() {
         let repository = RuntimeStatusRepositorySpy()
         repository.loaded = status(
             level: .updating,
@@ -20,7 +20,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
             now: "2026-05-22T00:05:00Z"
         )
 
-        XCTAssertEqual(guardPolicy.activeOperation(), .applyBundle)
+        XCTAssertNil(guardPolicy.activeOperation())
     }
 
     func testOperationLeaseBlocksWatchdogRecoveryEvenWhenStatusIsHealthy() {
@@ -64,7 +64,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         ])
     }
 
-    func testExpiredOperationLeaseFallsBackToStatusGuard() {
+    func testExpiredOperationLeaseDoesNotFallbackToStatusOperation() {
         let repository = RuntimeStatusRepositorySpy()
         repository.loaded = status(
             level: .updating,
@@ -83,13 +83,13 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
             log: { messages.append($0) }
         )
 
-        XCTAssertEqual(guardPolicy.activeOperation(), .rollback)
+        XCTAssertNil(guardPolicy.activeOperation())
         XCTAssertEqual(messages, [
             "watchdog operation lease guard expired operation=apply-bundle operationId=apply-1 expiredSeconds=60",
         ])
     }
 
-    func testBlocksWatchdogRecoveryDuringInstall() {
+    func testStatusInstallDoesNotBlockWatchdogRecoveryWithoutLease() {
         let repository = RuntimeStatusRepositorySpy()
         repository.loaded = status(
             level: .installing,
@@ -101,10 +101,10 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
             now: "2026-05-22T00:05:00Z"
         )
 
-        XCTAssertEqual(guardPolicy.activeOperation(), .install)
+        XCTAssertNil(guardPolicy.activeOperation())
     }
 
-    func testBlocksWatchdogRecoveryDuringConfigureRestart() {
+    func testStatusConfigureDoesNotBlockWatchdogRecoveryWithoutLease() {
         let repository = RuntimeStatusRepositorySpy()
         repository.loaded = status(
             level: .recovering,
@@ -116,7 +116,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
             now: "2026-05-22T00:05:00Z"
         )
 
-        XCTAssertEqual(guardPolicy.activeOperation(), .configure)
+        XCTAssertNil(guardPolicy.activeOperation())
     }
 
     func testDoesNotBlockWatchdogRecoveryAfterInstallProvisionCompletes() {
@@ -220,6 +220,11 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
             )
             let guardPolicy = managedOperationGuard(
                 repository: repository,
+                operationLease: .loaded(operationLease(
+                    operationId: "managed-\(operation.rawValue)",
+                    operation: operation,
+                    expiresAt: nil
+                )),
                 now: "2026-05-22T00:05:00Z"
             )
 
@@ -227,7 +232,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         }
     }
 
-    func testDoesNotBlockWatchdogRecoveryAfterGracePeriod() {
+    func testStatusOperationDoesNotEmitExpiredOperationGuardLog() {
         var messages: [String] = []
         let repository = RuntimeStatusRepositorySpy()
         repository.loaded = status(
@@ -242,9 +247,7 @@ final class RuntimeManagedOperationGuardTests: XCTestCase {
         )
 
         XCTAssertNil(guardPolicy.activeOperation())
-        XCTAssertEqual(messages, [
-            "watchdog active operation guard expired operation=rollback ageSeconds=1860",
-        ])
+        XCTAssertEqual(messages, [])
     }
 
     func testIgnoresNonManagedOperations() {

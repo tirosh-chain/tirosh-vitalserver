@@ -48,6 +48,16 @@ struct MacRuntimeControlAPIHandler: RuntimeControlAPIReadHandler {
         )
     }
 
+    func loadOperationState() async throws -> RuntimeOperationState {
+        let settings = await readWorker.loadSettings()
+        let status = await readWorker.loadStatus(settings: settings)
+        let localStatus = RuntimeControlLocalAPIStatusAssembler.applyingLocalAPIStatus(
+            to: status,
+            read: localAPIStatus
+        )
+        return await readWorker.loadOperationState(status: localStatus)
+    }
+
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory {
         await readWorker.loadRuntimeEvents(query: query)
     }
