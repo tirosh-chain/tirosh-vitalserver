@@ -196,6 +196,78 @@ final class RuntimeObservabilityReaderTests: XCTestCase {
         XCTAssertEqual(read.readIssues, [])
     }
 
+    func testLiveGuestReadModelProviderMergesLabRecordersAndBeds() {
+        let provider = RuntimeVitalDBGuestReadModelProvider.live(
+            guestControlBaseURL: { "http://127.0.0.1:18330" },
+            guestControlGateway: { _ in
+                GuestVitalDBObservationGatewayStub(
+                    read: RuntimeGuestControlVitalDBObservationRead(state: .unavailable),
+                    recorderRead: RuntimeGuestControlVitalDBRecorderRead(
+                        state: .loaded,
+                        recorders: [
+                            VitalDBRecorderObservation(
+                                vrcode: "VR_GUEST",
+                                lastSeenAt: "2026-07-01T00:00:00+00:00",
+                                online: true
+                            ),
+                        ],
+                        observedAt: "2026-07-01T00:00:00+00:00",
+                        ready: true,
+                        recorderOnlineThresholdSeconds: 60
+                    ),
+                    bedRead: RuntimeGuestControlVitalDBBedRead(
+                        state: .loaded,
+                        beds: [
+                            VitalDBBedObservation(
+                                bedID: "bed-a",
+                                name: "OR-A",
+                                vrcode: "VR_GUEST",
+                                lastSeenAt: "2026-07-01T00:00:00+00:00",
+                                online: true
+                            ),
+                        ],
+                        observedAt: "2026-07-01T00:00:00+00:00",
+                        ready: true,
+                        recorderOnlineThresholdSeconds: 60
+                    ),
+                    labRecorders: RuntimeLabRecorderList(
+                        state: .loaded,
+                        recorders: [
+                            RuntimeLabRecorder(
+                                recorderId: "rec-lab-1",
+                                sessionId: "session-lab-1",
+                                bedId: "bed-b",
+                                vrcode: "VR_LAB_1",
+                                state: .running,
+                                createdAt: "2026-07-01T00:00:00+00:00"
+                            )
+                        ]
+                    ),
+                    labBeds: RuntimeLabBedList(
+                        state: .loaded,
+                        beds: [
+                            RuntimeLabBed(
+                                bedId: "bed-b",
+                                sessionId: "session-lab-1",
+                                name: "Lab Bed",
+                                state: .running,
+                                createdAt: "2026-07-01T00:00:00+00:00"
+                            )
+                        ]
+                    )
+                )
+            }
+        )
+
+        let read = provider.load()
+
+        XCTAssertEqual(read.source, .guestControlAPI)
+        XCTAssertEqual(read.observation?.recorders.map(\.vrcode), ["VR_GUEST", "VR_LAB_1"])
+        XCTAssertEqual(read.observation?.beds.map(\.bedID), ["bed-a", "bed-b"])
+        XCTAssertEqual(read.observation?.beds.first(where: { $0.bedID == "bed-b" })?.vrcode, "VR_LAB_1")
+        XCTAssertEqual(read.readIssues, [])
+    }
+
     func testLiveGuestReadModelProviderRejectsMismatchedReadMetadata() {
         let provider = RuntimeVitalDBGuestReadModelProvider.live(
             guestControlBaseURL: { "http://127.0.0.1:18330" },
@@ -1163,13 +1235,15 @@ private struct StubRecorderIngressStatusReadProvider: RuntimeRecorderIngressStat
     }
 }
 
-private struct GuestVitalDBObservationGatewayStub: RuntimeGuestControlGateway {
+private struct GuestVitalDBObservationGatewayStub: RuntimeGuestControlGateway, RuntimeGuestProductLabGateway {
     let read: RuntimeGuestControlVitalDBObservationRead
     let recorderRead: RuntimeGuestControlVitalDBRecorderRead
     let bedRead: RuntimeGuestControlVitalDBBedRead
     let relationshipRead: RuntimeGuestControlVitalDBRelationshipRead
     let activityRead: RuntimeGuestControlVitalDBRecorderActivityRead
     let recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult
+    let _labRecorders: RuntimeLabRecorderList
+    let _labBeds: RuntimeLabBedList
 
     init(
         read: RuntimeGuestControlVitalDBObservationRead,
@@ -1177,6 +1251,8 @@ private struct GuestVitalDBObservationGatewayStub: RuntimeGuestControlGateway {
         bedRead: RuntimeGuestControlVitalDBBedRead = .init(state: .unavailable),
         relationshipRead: RuntimeGuestControlVitalDBRelationshipRead = .init(state: .unavailable),
         activityRead: RuntimeGuestControlVitalDBRecorderActivityRead = .init(state: .unavailable),
+        labRecorders: RuntimeLabRecorderList = .init(state: .loaded, recorders: []),
+        labBeds: RuntimeLabBedList = .init(state: .loaded, beds: []),
         recorderIngressStatusRead: RuntimeRecorderIngressStatusReadResult = .init(
             readState: .readFailed,
             httpStatus: RuntimeHTTPStatusText.failed,
@@ -1189,6 +1265,8 @@ private struct GuestVitalDBObservationGatewayStub: RuntimeGuestControlGateway {
         self.bedRead = bedRead
         self.relationshipRead = relationshipRead
         self.activityRead = activityRead
+        self._labRecorders = labRecorders
+        self._labBeds = labBeds
         self.recorderIngressStatusRead = recorderIngressStatusRead
     }
 
@@ -1251,6 +1329,70 @@ private struct GuestVitalDBObservationGatewayStub: RuntimeGuestControlGateway {
 
     func recorderIngressStatus() throws -> RuntimeRecorderIngressStatusReadResult {
         recorderIngressStatusRead
+    }
+
+    func labScenarios() throws -> RuntimeLabScenarioList {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("labScenarios")
+    }
+
+    func labVitalFiles() throws -> RuntimeLabVitalFileList {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("labVitalFiles")
+    }
+
+    func labBeds() throws -> RuntimeLabBedList {
+        _labBeds
+    }
+
+    func labRecorders() throws -> RuntimeLabRecorderList {
+        _labRecorders
+    }
+
+    func createLabBeds(_ request: RuntimeLabBedCreateRequest) throws -> RuntimeLabBedList {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("createLabBeds")
+    }
+
+    func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) throws -> RuntimeLabBedList {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("deleteLabBeds")
+    }
+
+    func resetLabBeds() throws -> RuntimeLabBedList {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("resetLabBeds")
+    }
+
+    func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) throws -> RuntimeLabRecorderList {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("createLabRecorders")
+    }
+
+    func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) throws -> RuntimeLabRecorderList {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("deleteLabRecorders")
+    }
+
+    func resetLabRecorders() throws -> RuntimeLabRecorderList {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("resetLabRecorders")
+    }
+
+    func createLabSession(_ request: RuntimeLabSessionCreateRequest) throws -> RuntimeLabSessionResponse {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("createLabSession")
+    }
+
+    func labSession(_ sessionId: String) throws -> RuntimeLabSessionResponse {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("labSession")
+    }
+
+    func startLabSession(_ sessionId: String) throws -> RuntimeLabSessionResponse {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("startLabSession")
+    }
+
+    func stopLabSession(_ sessionId: String) throws -> RuntimeLabSessionResponse {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("stopLabSession")
+    }
+
+    func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) throws -> RuntimeLabSessionResponse {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("replayLabVitalFile")
+    }
+
+    func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) throws -> RuntimeLabVitalFileUploadResponse {
+        throw GuestVitalDBObservationGatewayStubError.unexpectedCall("uploadLabVitalFile")
     }
 }
 

@@ -364,7 +364,7 @@ public struct WatchdogRuntimeUseCase {
             return .unrecoverable(terminalPlan(
                 reason: reason,
                 finalStatus: .critical,
-                finalStatusMessage: "watchdog cannot recover missing installed artifacts: \(reason)",
+                finalStatusMessage: "watchdog cannot recover runtime automatically: \(reason)",
                 printMessage: "watchdog: critical"
             ))
         case .recover(let reason, let plan):

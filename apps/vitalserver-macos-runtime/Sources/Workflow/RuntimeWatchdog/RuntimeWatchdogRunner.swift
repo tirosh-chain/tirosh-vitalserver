@@ -109,6 +109,7 @@ public struct RuntimeWatchdogRunner {
         log: (String) -> Void,
         printLine: (String) -> Void
     ) throws {
+        let snapshot = completeReachableVMLifecycleIfNeeded(snapshot, operations: operations, log: log)
         let plan = useCase.observedStatusPlan(
             plan,
             currentStatus: operations.currentRuntimeStatus()
@@ -122,23 +123,68 @@ public struct RuntimeWatchdogRunner {
         printLine(plan.printMessage)
     }
 
+    private func completeReachableVMLifecycleIfNeeded(
+        _ snapshot: RuntimeHealthSnapshot,
+        operations: RuntimeWatchdogActions,
+        log: (String) -> Void
+    ) -> RuntimeHealthSnapshot {
+        guard snapshot.vmService == .loaded,
+              snapshot.vmIP != nil,
+              isSuccessfulHTTPStatus(snapshot.guestHTTP),
+              isSuccessfulHTTPStatus(snapshot.hostProxyHTTP)
+        else {
+            return snapshot
+        }
+        return completeVMLifecycleIfNeeded(
+            snapshot,
+            operations: operations,
+            log: log,
+            markReason: "Guest control and host proxy reported reachable",
+            eventMessage: "VM lifecycle marked running after reachable runtime observation"
+        )
+    }
+
     private func completeHealthyVMLifecycleIfNeeded(
         _ snapshot: RuntimeHealthSnapshot,
         operations: RuntimeWatchdogActions,
         log: (String) -> Void
     ) -> RuntimeHealthSnapshot {
         let plan = useCase.lifecycleMarkPlan(snapshot)
+        return completeVMLifecycleIfNeeded(
+            snapshot,
+            operations: operations,
+            log: log,
+            markReason: "Guest runtime reported healthy",
+            eventMessage: plan.eventMessage
+        )
+    }
+
+    private func completeVMLifecycleIfNeeded(
+        _ snapshot: RuntimeHealthSnapshot,
+        operations: RuntimeWatchdogActions,
+        log: (String) -> Void,
+        markReason: String,
+        eventMessage: String
+    ) -> RuntimeHealthSnapshot {
+        let plan = useCase.lifecycleMarkPlan(snapshot)
         guard let lifecycle = plan.lifecycle else {
             return snapshot
         }
         do {
-            try operations.markVMLifecycleRunning(lifecycle, "Guest runtime reported healthy")
-            operations.recordLifecycleEvent(.watchdog, plan.eventMessage, .statusChanged)
+            try operations.markVMLifecycleRunning(lifecycle, markReason)
+            operations.recordLifecycleEvent(.watchdog, eventMessage, .statusChanged)
             return operations.healthSnapshot()
         } catch {
             log(useCase.lifecycleMarkFailedLogMessage(error: error))
             return snapshot
         }
+    }
+
+    private func isSuccessfulHTTPStatus(_ value: String) -> Bool {
+        guard let code = Int(value) else {
+            return false
+        }
+        return code >= 200 && code < 300
     }
 
     private func executeRecoveryDecision(

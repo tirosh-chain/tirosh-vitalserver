@@ -397,6 +397,41 @@
         }
       }
     },
+    "/lab/vital-files/upload": {
+      "post": {
+        "operationId": "uploadRuntimeLabVitalFile",
+        "summary": "Upload a vital file through Runtime Lab",
+        "description": "Uploads a mounted .vital file through the configured lab upload endpoint.",
+        "x-runtime-control-scope": "runtimeControl",
+        "x-runtime-control-implementation": "localServerMediated",
+        "x-runtime-control-access": "localServerMediated",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeLabVitalFileUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Runtime Lab vital file upload response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLabVitalFileUploadResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/runtime/guest/services": {
       "get": {
         "operationId": "listRuntimeGuestServices",
@@ -3445,6 +3480,21 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeGuestControlServiceStatus"
             }
+          },
+          "cpuUsagePercent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "memory": {
+            "$ref": "#/components/schemas/ResourceUsage"
+          },
+          "systemDisk": {
+            "$ref": "#/components/schemas/ResourceUsage"
+          },
+          "vitalFilesDisk": {
+            "$ref": "#/components/schemas/ResourceUsage"
           }
         }
       },
@@ -3817,6 +3867,97 @@
           }
         }
       },
+      "RuntimeLabVitalFileUploadRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "vitalFilePath",
+          "targetURL"
+        ],
+        "properties": {
+          "vitalFilePath": {
+            "type": "string"
+          },
+          "targetURL": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "vrcode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeLabVitalFileUploadResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeLabReadState"
+          },
+          "operationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "upload": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "required": [
+              "filename",
+              "endpoint",
+              "targetURL",
+              "statusCode",
+              "bytesSent",
+              "responseText",
+              "ok"
+            ],
+            "properties": {
+              "filename": {
+                "type": "string"
+              },
+              "endpoint": {
+                "type": "string"
+              },
+              "targetURL": {
+                "type": "string"
+              },
+              "statusCode": {
+                "type": "integer"
+              },
+              "bytesSent": {
+                "type": "integer"
+              },
+              "responseText": {
+                "type": "string"
+              },
+              "ok": {
+                "type": "boolean"
+              }
+            }
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "RuntimeGuestControlServiceStatus": {
         "type": "object",
         "additionalProperties": false,
@@ -3850,6 +3991,9 @@
               "integer",
               "null"
             ]
+          },
+          "memory": {
+            "$ref": "#/components/schemas/ResourceUsage"
           }
         }
       },

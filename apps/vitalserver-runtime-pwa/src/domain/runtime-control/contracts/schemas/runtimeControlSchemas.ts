@@ -127,14 +127,19 @@ const runtimeGuestControlServiceStatusSchema = z
     health: z.string(),
     observedAt: z.string(),
     container: nullableString,
-    exitCode: nullableNumber
+    exitCode: nullableNumber,
+    memory: resourceUsageSchema.optional()
   })
   .passthrough();
 export const runtimeGuestControlStackStatusSchema = z
   .object({
     state: z.string(),
     observedAt: z.string(),
-    services: z.array(runtimeGuestControlServiceStatusSchema)
+    services: z.array(runtimeGuestControlServiceStatusSchema),
+    cpuUsagePercent: nullableNumber,
+    memory: resourceUsageSchema.optional(),
+    systemDisk: resourceUsageSchema.optional(),
+    vitalFilesDisk: resourceUsageSchema.optional()
   })
   .passthrough();
 export const runtimeGuestControlServiceOperationSchema = z

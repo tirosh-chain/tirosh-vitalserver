@@ -198,7 +198,7 @@ class LabSessionStore(Protocol):
         """Return the Lab-owned recorder read model."""
 
     def create_beds(self, request: LabBedCreateInput) -> tuple[LabBed, ...]:
-        """Create explicit Lab-managed beds and their default recorders."""
+        """Create explicit Lab-managed beds without implicit recorder creation."""
 
     def delete_beds(self, request: LabBedDeleteInput) -> tuple[LabBed, ...]:
         """Delete explicit Lab-managed beds and attached recorders."""
@@ -260,7 +260,7 @@ class InMemoryLabSessionStore:
             updated_at=now,
         )
         self.sessions[session.session_id] = session
-        self._save_session_read_model(session, state="accepted")
+        self._save_session_read_model(session, state="accepted", with_recorders=True)
         return session
 
     def get(self, session_id: str) -> LabSession | None:
@@ -272,7 +272,7 @@ class InMemoryLabSessionStore:
             return None
         session.state = "running"
         session.updated_at = utc_now_iso()
-        self._save_session_read_model(session, state="running")
+        self._save_session_read_model(session, state="running", with_recorders=True)
         return session
 
     def stop(self, session_id: str) -> LabSession | None:
@@ -281,7 +281,7 @@ class InMemoryLabSessionStore:
             return None
         session.state = "stopped"
         session.updated_at = utc_now_iso()
-        self._save_session_read_model(session, state="stopped")
+        self._save_session_read_model(session, state="stopped", with_recorders=True)
         return session
 
     def list_beds(self) -> tuple[LabBed, ...]:
@@ -312,15 +312,20 @@ class InMemoryLabSessionStore:
             )
 
     def create_beds(self, request: LabBedCreateInput) -> tuple[LabBed, ...]:
-        self.create(
-            LabSessionCreateInput(
-                scenario_id="manual-lab-beds",
-                name=request.prefix,
-                recorder_count=request.count,
-                target_url=request.target_url,
-                bed_room_names=request.room_names,
-            )
+        session = LabSession(
+            session_id=self.id_factory(),
+            scenario_id="manual-lab-beds",
+            name=request.prefix,
+            recorder_count=request.count,
+            target_url=request.target_url,
+            bed_room_names=request.room_names,
+            vital_file_path=None,
+            state="accepted",
+            created_at=utc_now_iso(),
+            updated_at=utc_now_iso(),
         )
+        self.sessions[session.session_id] = session
+        self._save_session_read_model(session, state="accepted", with_recorders=False)
         return self.list_beds()
 
     def delete_beds(self, request: LabBedDeleteInput) -> tuple[LabBed, ...]:
@@ -384,7 +389,13 @@ class InMemoryLabSessionStore:
         self.recorders.clear()
         return self.list_recorders()
 
-    def _save_session_read_model(self, session: LabSession, *, state: str) -> None:
+    def _save_session_read_model(
+        self,
+        session: LabSession,
+        *,
+        state: str,
+        with_recorders: bool,
+    ) -> None:
         names = bed_room_names_for_session(
             name=session.name,
             recorder_count=session.recorder_count,
@@ -399,22 +410,23 @@ class InMemoryLabSessionStore:
                 created_at=session.created_at,
                 updated_at=session.updated_at,
             )
-            recorder = lab_recorder_for_bed(
-                session_id=session.session_id,
-                bed_id=bed.bed_id,
-                state=state,
-                index=index,
-                created_at=session.created_at,
-                updated_at=session.updated_at,
-            )
-            previous_recorder = self.recorders.get(recorder.recorder_id)
-            if previous_recorder is not None:
-                recorder = recorder_with_preserved_execution(
-                    recorder,
-                    previous_recorder,
-                )
             self.beds[bed.bed_id] = bed
-            self.recorders[recorder.recorder_id] = recorder
+            if with_recorders:
+                recorder = lab_recorder_for_bed(
+                    session_id=session.session_id,
+                    bed_id=bed.bed_id,
+                    state=state,
+                    index=index,
+                    created_at=session.created_at,
+                    updated_at=session.updated_at,
+                )
+                previous_recorder = self.recorders.get(recorder.recorder_id)
+                if previous_recorder is not None:
+                    recorder = recorder_with_preserved_execution(
+                        recorder,
+                        previous_recorder,
+                    )
+                self.recorders[recorder.recorder_id] = recorder
 
 
 def resolved_bed_room_names(request: LabSessionCreateInput) -> tuple[str, ...]:

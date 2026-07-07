@@ -76,15 +76,30 @@ extension RuntimeViewModel {
 
     func refreshProductLabScenarios() async {
         recordLabActionMessage(RuntimeLabPanelText.loadingLabScenarios)
+        var failures: [String] = []
+
         do {
             applyLabScenarios(try await controlClient.loadLabScenarios())
-            applyLabVitalFiles(try await controlClient.loadLabVitalFiles())
-            await refreshProductLabReadModels()
-            recordLabActionMessage(RuntimeLabPanelText.loadedLabScenarios(labScenarios.scenarios.count))
         } catch {
             applyLabScenarios(RuntimeLabScenarioList.unavailable(readError: error.localizedDescription))
-            recordLabActionMessage(error.localizedDescription, tone: .failure)
+            failures.append("scenarios: \(error.localizedDescription)")
         }
+
+        do {
+            applyLabVitalFiles(try await controlClient.loadLabVitalFiles())
+        } catch {
+            applyLabVitalFiles(RuntimeLabVitalFileList.unavailable(readError: error.localizedDescription))
+            failures.append("vital files: \(error.localizedDescription)")
+        }
+
+        await refreshProductLabReadModels()
+
+        if failures.isEmpty {
+            recordLabActionMessage(RuntimeLabPanelText.loadedLabScenarios(labScenarios.scenarios.count))
+            return
+        }
+
+        recordLabActionMessage(failures.joined(separator: ", "), tone: .failure)
     }
 
     func createProductLabSession() async {
@@ -224,11 +239,17 @@ extension RuntimeViewModel {
         guard labCanUseProductLab else {
             return
         }
+
         do {
             applyLabBeds(try await controlClient.loadLabBeds())
-            applyLabRecorders(try await controlClient.loadLabRecorders())
         } catch {
             labBeds = RuntimeLabBedList.unavailable(readError: error.localizedDescription)
+            recordLabActionMessage(error.localizedDescription, tone: .failure)
+        }
+
+        do {
+            applyLabRecorders(try await controlClient.loadLabRecorders())
+        } catch {
             labRecorders = RuntimeLabRecorderList.unavailable(readError: error.localizedDescription)
             recordLabActionMessage(error.localizedDescription, tone: .failure)
         }
@@ -250,6 +271,7 @@ extension RuntimeViewModel {
                 targetURL: labTargetURL.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             )))
             applyLabRecorders(try await controlClient.loadLabRecorders())
+            await refreshVitalRecorders()
             recordLabActionMessage(RuntimeLabPanelText.createdLabBeds(labBeds.beds.count))
         } catch {
             recordLabActionMessage(error.localizedDescription, tone: .failure)
@@ -269,6 +291,7 @@ extension RuntimeViewModel {
         do {
             applyLabBeds(try await controlClient.deleteLabBeds(RuntimeLabBedDeleteRequest(bedIds: [bedID])))
             applyLabRecorders(try await controlClient.loadLabRecorders())
+            await refreshVitalRecorders()
             recordLabActionMessage(RuntimeLabPanelText.deletedLabBed)
         } catch {
             recordLabActionMessage(error.localizedDescription, tone: .failure)
@@ -287,6 +310,7 @@ extension RuntimeViewModel {
         do {
             applyLabBeds(try await controlClient.resetLabBeds())
             applyLabRecorders(try await controlClient.loadLabRecorders())
+            await refreshVitalRecorders()
             selectedLabSessionID = ""
             recordLabActionMessage(RuntimeLabPanelText.resetLabBeds)
         } catch {
@@ -306,6 +330,7 @@ extension RuntimeViewModel {
         recordLabActionMessage(RuntimeLabPanelText.creatingLabRecorder)
         do {
             applyLabRecorders(try await controlClient.createLabRecorders(RuntimeLabRecorderCreateRequest(bedIds: [bedID])))
+            await refreshVitalRecorders()
             recordLabActionMessage(RuntimeLabPanelText.createdLabRecorder)
         } catch {
             recordLabActionMessage(error.localizedDescription, tone: .failure)
@@ -324,6 +349,7 @@ extension RuntimeViewModel {
         recordLabActionMessage(RuntimeLabPanelText.deletingLabRecorder)
         do {
             applyLabRecorders(try await controlClient.deleteLabRecorders(RuntimeLabRecorderDeleteRequest(recorderIds: [recorderID])))
+            await refreshVitalRecorders()
             recordLabActionMessage(RuntimeLabPanelText.deletedLabRecorder)
         } catch {
             recordLabActionMessage(error.localizedDescription, tone: .failure)
@@ -341,6 +367,7 @@ extension RuntimeViewModel {
         recordLabActionMessage(RuntimeLabPanelText.resettingLabRecorders)
         do {
             applyLabRecorders(try await controlClient.resetLabRecorders())
+            await refreshVitalRecorders()
             recordLabActionMessage(RuntimeLabPanelText.resetLabRecorders)
         } catch {
             recordLabActionMessage(error.localizedDescription, tone: .failure)

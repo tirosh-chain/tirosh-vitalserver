@@ -50,7 +50,13 @@ public struct RuntimeRedisRelayStatusRead {
 
 public enum RuntimeGuestServicesRead: Equatable, Sendable {
     case unavailable
-    case loaded(services: [String], statuses: [RuntimeGuestControlServiceStatus])
+    case loaded(
+        services: [String],
+        statuses: [RuntimeGuestControlServiceStatus],
+        cpuUsagePercent: Double?,
+        memory: ResourceUsage?,
+        systemDisk: ResourceUsage?
+    )
     case failed(String)
 }
 
@@ -466,12 +472,12 @@ public enum RuntimeControlStatusAssembler {
             guestServices: guestServicesRead.services,
             guestServiceStatuses: guestServicesRead.statuses,
             guestServicesReadError: guestServicesRead.error,
-            cpuUsagePercent: nil,
-            memory: nil,
-            vitalServerMemory: nil,
-            recorderIngressMemory: nil,
-            redisMemory: nil,
-            systemDisk: nil,
+            cpuUsagePercent: guestServicesRead.cpuUsagePercent,
+            memory: guestServicesRead.memory,
+            vitalServerMemory: guestServicesRead.memory(for: "app"),
+            recorderIngressMemory: guestServicesRead.memory(for: "recorder-ingress"),
+            redisMemory: guestServicesRead.memory(for: "redis"),
+            systemDisk: guestServicesRead.systemDisk,
             dataStorage: nil,
             proxyPort: document?.proxyPort,
             proxyPortReadState: document?.proxyPortReadState,
@@ -496,7 +502,7 @@ private extension RuntimeGuestServicesRead {
 
     var services: [String]? {
         switch self {
-        case .loaded(let services, _):
+        case .loaded(let services, _, _, _, _):
             return services
         case .unavailable, .failed:
             return nil
@@ -505,7 +511,7 @@ private extension RuntimeGuestServicesRead {
 
     var statuses: [RuntimeGuestControlServiceStatus] {
         switch self {
-        case .loaded(_, let statuses):
+        case .loaded(_, let statuses, _, _, _):
             return statuses
         case .unavailable, .failed:
             return []
@@ -517,6 +523,48 @@ private extension RuntimeGuestServicesRead {
         case .failed(let message):
             return message
         case .unavailable, .loaded:
+            return nil
+        }
+    }
+
+    var cpuUsagePercent: Double? {
+        switch self {
+        case .loaded(_, _, let cpuUsagePercent, _, _):
+            return cpuUsagePercent
+        case .unavailable, .failed:
+            return nil
+        }
+    }
+
+    var memory: ResourceUsage? {
+        switch self {
+        case .loaded(_, _, _, let memory, _):
+            return memory
+        case .unavailable, .failed:
+            return nil
+        }
+    }
+
+    var systemDisk: ResourceUsage? {
+        switch self {
+        case .loaded(_, _, _, _, let systemDisk):
+            return systemDisk
+        case .unavailable, .failed:
+            return nil
+        }
+    }
+
+    func memory(for service: String) -> RuntimeContainerMemoryUsage? {
+        switch self {
+        case .loaded(_, let statuses, _, _, _):
+            guard let memory = statuses.first(where: { $0.service == service })?.memory else {
+                return nil
+            }
+            return RuntimeContainerMemoryUsage(
+                usedBytes: memory.usedBytes,
+                limitBytes: memory.totalBytes
+            )
+        case .unavailable, .failed:
             return nil
         }
     }

@@ -4,7 +4,7 @@ import XCTest
 import Errors
 
 final class RuntimeControlStatusAssemblerTests: XCTestCase {
-    func testMakeStatusDoesNotPublishGuestRuntimeStateResourceFields() {
+    func testMakeStatusDoesNotPublishResourceFieldsWithoutGuestStackResourceRead() {
         let status = RuntimeControlStatusAssembler.makeStatus(
             statusRead: RuntimeStatusDocumentRead(
                 document: statusDocument(proxyPort: 19090),
@@ -55,7 +55,10 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
                         health: "healthy",
                         observedAt: "2026-07-01T00:00:00+00:00"
                     ),
-                ]
+                ],
+                cpuUsagePercent: nil,
+                memory: nil,
+                systemDisk: nil
             ),
             liveDiagnostics: liveDiagnostics()
         )
@@ -65,6 +68,53 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         XCTAssertEqual(status.guestServiceStatuses.map(\.service), ["app", "postgres"])
         XCTAssertNil(status.guestServicesReadError)
         XCTAssertEqual(status.readIssues, [])
+    }
+
+    func testMakeStatusPublishesGuestStackResourceRead() {
+        let status = RuntimeControlStatusAssembler.makeStatus(
+            statusRead: RuntimeStatusDocumentRead(
+                document: statusDocument(proxyPort: 19090),
+                error: nil,
+                issue: nil
+            ),
+            guestServicesRead: .loaded(
+                services: ["app", "recorder-ingress", "redis"],
+                statuses: [
+                    RuntimeGuestControlServiceStatus(
+                        service: "app",
+                        state: "running",
+                        health: "healthy",
+                        observedAt: "2026-07-01T00:00:00+00:00",
+                        memory: ResourceUsage(usedBytes: 1, totalBytes: 10)
+                    ),
+                    RuntimeGuestControlServiceStatus(
+                        service: "recorder-ingress",
+                        state: "running",
+                        health: "healthy",
+                        observedAt: "2026-07-01T00:00:00+00:00",
+                        memory: ResourceUsage(usedBytes: 2, totalBytes: 10)
+                    ),
+                    RuntimeGuestControlServiceStatus(
+                        service: "redis",
+                        state: "running",
+                        health: "healthy",
+                        observedAt: "2026-07-01T00:00:00+00:00",
+                        memory: ResourceUsage(usedBytes: 3, totalBytes: 10)
+                    ),
+                ],
+                cpuUsagePercent: 12.5,
+                memory: ResourceUsage(usedBytes: 4, totalBytes: 10),
+                systemDisk: ResourceUsage(usedBytes: 5, totalBytes: 10)
+            ),
+            liveDiagnostics: liveDiagnostics()
+        )
+
+        XCTAssertEqual(status.cpuUsagePercent, 12.5)
+        XCTAssertEqual(status.memory, ResourceUsage(usedBytes: 4, totalBytes: 10))
+        XCTAssertEqual(status.systemDisk, ResourceUsage(usedBytes: 5, totalBytes: 10))
+        XCTAssertEqual(status.vitalServerMemory, RuntimeContainerMemoryUsage(usedBytes: 1, limitBytes: 10))
+        XCTAssertEqual(status.recorderIngressMemory, RuntimeContainerMemoryUsage(usedBytes: 2, limitBytes: 10))
+        XCTAssertEqual(status.redisMemory, RuntimeContainerMemoryUsage(usedBytes: 3, limitBytes: 10))
     }
 
     func testMakeStatusPreservesGuestServicesReadFailureSeparately() {

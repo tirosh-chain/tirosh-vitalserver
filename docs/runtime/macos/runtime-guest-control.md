@@ -110,6 +110,21 @@ diagnostics evidence and must not create current health failure reasons.
 `runtime-state.json` remains bootstrap and diagnostics evidence, not the
 authority for current Guest API readiness.
 
+Guest Control API is the Guest-side control plane and must not be ordered after
+the Docker Compose product stack. The `tirosh-vitalserver-guest-control-api`
+systemd unit may depend on Docker and network readiness, but it must stay
+independent from `tirosh-vitalserver-compose.service`. Otherwise a slow or
+failed Compose startup can leave the Host with a VM IP but no `/ready` or
+`/v1/stack/status` endpoint, so Runtime Control can only report Guest Control
+timeouts instead of observing or reconciling the stack.
+
+Host watchdog must also complete the Host-owned VM lifecycle when the Guest
+Control readiness probe and Host proxy probe are explicitly reachable. Guest
+service observation can still be degraded or failed, but it must not keep
+`vm-lifecycle.json` in `bootstrapping` once the Host can reach the Guest
+control plane and proxy. Otherwise Status UI keeps showing a starting or
+critical VM even though the installed runtime is already serving requests.
+
 Host watchdog managed-operation guards also avoid Guest runtime-state reads.
 The guard may compare a running bootstrap result with the Host-owned VM
 lifecycle `bootID`, but it must not read `runtime-state.json.bootID` to decide
@@ -124,6 +139,8 @@ It must not compare against `GuestRuntimeStateDocument.bootID` for current
 health or recovery decisions.
 
 Runtime Control status reads no longer read `runtime-state.json` directly. The status reader may use the explicit VM IP already published in `runtime-status.json` to call Guest Control API, but it must not fall back to Guest runtime-state files for product service liveness, VM IP discovery, CPU, memory, or disk status. `RuntimeControlStatusAssembler` also does not accept a Guest runtime-state read input, so Host-readable runtime-state documents cannot be promoted into current RuntimeStatus resource fields through a test-only or alternate caller path.
+
+Guest-owned resource usage is published by Guest Control `GET /v1/stack/status`. The stack status document carries explicit `cpuUsagePercent`, VM `memory`, VM `systemDisk`, and per-service container `memory` values. Helper Status UI consumes those fields as a service consumer; it must not infer VM or container resource usage from files, logs, container diagnostics fallback, or missing fields.
 
 Swift and PWA Status recorder-ingress queue and detail rows consume explicit `recorderIngressStatusRead` documents sourced from Guest Control API `GET /v1/recorder-ingress/status`. `RuntimeStatus` does not publish `containerObservation`, so recorder-ingress display cannot fall back to the v1 container diagnostics payload.
 
@@ -153,6 +170,7 @@ GET  /lab/sessions/{sessionId}
 POST /lab/sessions/{sessionId}/start
 POST /lab/sessions/{sessionId}/stop
 POST /lab/vital-files/replay
+POST /lab/vital-files/upload
 ```
 
 The Host contract explicitly returns `unavailable` when Guest Control or Product Lab is not reachable. Missing Lab backend, failed Lab reads, and empty scenario lists must remain different meanings.
@@ -170,6 +188,7 @@ GET  /v1/lab/sessions/{sessionId}
 POST /v1/lab/sessions/{sessionId}/start
 POST /v1/lab/sessions/{sessionId}/stop
 POST /v1/lab/vital-files/replay
+POST /v1/lab/vital-files/upload
 ```
 
 Command-style Lab requests create persisted Guest Control operations using the same Postgres operation repository as service restart. Lab operation failures are saved as failed operations and returned through the Lab response `readError` instead of being converted into an empty scenario list or a successful stopped session.
@@ -186,6 +205,7 @@ The current Guest adapter maps these Product Lab commands to the `lab` service A
 | Start session | `POST http://lab:8080/lab/sessions/{sessionId}/start` |
 | Stop session | `POST http://lab:8080/lab/sessions/{sessionId}/stop` |
 | `.vital` replay | `POST http://lab:8080/lab/vital-files/replay` |
+| `.vital` upload | `POST http://lab:8080/lab/vital-files/upload` |
 
 This makes Product Lab the product boundary and removes the TestKit adapter from the Guest Control Lab execution path.
 

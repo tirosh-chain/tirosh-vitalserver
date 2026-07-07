@@ -168,7 +168,13 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             let stackStatus = try gateway.stackStatus()
             let statuses = stackStatus.services
             let services = statuses.map(\.service)
-            return .loaded(services: services, statuses: statuses)
+            return .loaded(
+                services: services,
+                statuses: statuses,
+                cpuUsagePercent: stackStatus.cpuUsagePercent,
+                memory: stackStatus.memory,
+                systemDisk: stackStatus.systemDisk
+            )
         } catch {
             return .failed(runtimeStatusGuestServicesReadErrorDescription(error))
         }

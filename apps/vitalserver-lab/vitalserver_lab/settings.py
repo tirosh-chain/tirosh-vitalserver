@@ -15,6 +15,7 @@ class LabSettings:
     database_url: str | None
     psql_command: str
     vital_files_mount: Path
+    recorder_payload_endpoint: str = "/api/send"
 
 
 class LabSettingsConfigurationError(Exception):
@@ -56,6 +57,10 @@ def load_settings() -> LabSettings:
         allow_memory_store=bool_from_env("VITALSERVER_LAB_ALLOW_MEMORY_STORE"),
         database_url=os.environ.get("VITALSERVER_LAB_DATABASE_URL"),
         psql_command=os.environ.get("VITALSERVER_LAB_PSQL_COMMAND", "psql"),
+        recorder_payload_endpoint=os.environ.get(
+            "VITALSERVER_LAB_RECORDER_PAYLOAD_ENDPOINT",
+            "/api/send",
+        ),
         vital_files_mount=Path(
             os.environ.get(
                 "VITALSERVER_LAB_VITAL_FILES_MOUNT",

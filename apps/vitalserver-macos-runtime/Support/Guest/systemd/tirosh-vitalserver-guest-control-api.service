@@ -1,6 +1,6 @@
 [Unit]
 Description=Tirosh VitalServer Guest Control API
-After=docker.service network-online.target tirosh-vitalserver-compose.service
+After=docker.service network-online.target
 Requires=docker.service
 Wants=network-online.target
 

@@ -89,6 +89,7 @@ public struct RuntimeGuestControlServiceStatus: Codable, Equatable, Sendable {
     public let observedAt: String
     public let container: String?
     public let exitCode: Int?
+    public let memory: ResourceUsage?
 
     public init(
         service: String,
@@ -96,7 +97,8 @@ public struct RuntimeGuestControlServiceStatus: Codable, Equatable, Sendable {
         health: String,
         observedAt: String,
         container: String? = nil,
-        exitCode: Int? = nil
+        exitCode: Int? = nil,
+        memory: ResourceUsage? = nil
     ) {
         self.service = service
         self.state = state
@@ -104,6 +106,7 @@ public struct RuntimeGuestControlServiceStatus: Codable, Equatable, Sendable {
         self.observedAt = observedAt
         self.container = container
         self.exitCode = exitCode
+        self.memory = memory
     }
 }
 
@@ -111,15 +114,27 @@ public struct RuntimeGuestControlStackStatus: Codable, Equatable, Sendable {
     public let state: String
     public let observedAt: String
     public let services: [RuntimeGuestControlServiceStatus]
+    public let cpuUsagePercent: Double?
+    public let memory: ResourceUsage?
+    public let systemDisk: ResourceUsage?
+    public let vitalFilesDisk: ResourceUsage?
 
     public init(
         state: String,
         observedAt: String,
-        services: [RuntimeGuestControlServiceStatus]
+        services: [RuntimeGuestControlServiceStatus],
+        cpuUsagePercent: Double? = nil,
+        memory: ResourceUsage? = nil,
+        systemDisk: ResourceUsage? = nil,
+        vitalFilesDisk: ResourceUsage? = nil
     ) {
         self.state = state
         self.observedAt = observedAt
         self.services = services
+        self.cpuUsagePercent = cpuUsagePercent
+        self.memory = memory
+        self.systemDisk = systemDisk
+        self.vitalFilesDisk = vitalFilesDisk
     }
 }
 

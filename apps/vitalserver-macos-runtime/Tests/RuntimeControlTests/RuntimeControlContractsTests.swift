@@ -72,7 +72,8 @@ final class RuntimeControlContractsTests: XCTestCase {
                     health: "healthy",
                     observedAt: "2026-07-01T00:00:00+00:00",
                     container: "vitalserver-app-1",
-                    exitCode: 0
+                    exitCode: 0,
+                    memory: ResourceUsage(usedBytes: 1, totalBytes: 10)
                 ),
                 RuntimeGuestControlServiceStatus(
                     service: "redis",
@@ -80,7 +81,11 @@ final class RuntimeControlContractsTests: XCTestCase {
                     health: "not_reported",
                     observedAt: "2026-07-01T00:00:00+00:00"
                 ),
-            ]
+            ],
+            cpuUsagePercent: 12.5,
+            memory: ResourceUsage(usedBytes: 2, totalBytes: 10),
+            systemDisk: ResourceUsage(usedBytes: 3, totalBytes: 10),
+            vitalFilesDisk: ResourceUsage(usedBytes: 4, totalBytes: 10)
         )
 
         let encoded = try JSONEncoder().encode(status)
@@ -89,7 +94,12 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded, status)
         XCTAssertEqual(decoded.services.map(\.service), ["app", "redis"])
         XCTAssertEqual(decoded.services.first?.container, "vitalserver-app-1")
+        XCTAssertEqual(decoded.services.first?.memory, ResourceUsage(usedBytes: 1, totalBytes: 10))
         XCTAssertEqual(decoded.services.last?.state, "absent")
+        XCTAssertEqual(decoded.cpuUsagePercent, 12.5)
+        XCTAssertEqual(decoded.memory, ResourceUsage(usedBytes: 2, totalBytes: 10))
+        XCTAssertEqual(decoded.systemDisk, ResourceUsage(usedBytes: 3, totalBytes: 10))
+        XCTAssertEqual(decoded.vitalFilesDisk, ResourceUsage(usedBytes: 4, totalBytes: 10))
     }
 
     func testGuestControlVitalDBObservationReadRoundTripsThroughJSON() throws {

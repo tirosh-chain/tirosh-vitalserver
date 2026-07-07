@@ -99,6 +99,7 @@ def collect_services() -> dict[str, str]:
         RuntimeService.RUNTIME_STATE.value,
         RuntimeService.COMPOSE.value,
         RuntimeService.CONTAINER_LOGS.value,
+        RuntimeService.GUEST_CONTROL_API.value,
     ]
     return {
         service: compact_output(run_command(["systemctl", "is-active", service]))

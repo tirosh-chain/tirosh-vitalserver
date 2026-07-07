@@ -36,6 +36,7 @@ GET  /lab/sessions/{sessionId}
 POST /lab/sessions/{sessionId}/start
 POST /lab/sessions/{sessionId}/stop
 POST /lab/vital-files/replay
+POST /lab/vital-files/upload
 ```
 
 Read failures remain explicit. Missing sessions, invalid request bodies,

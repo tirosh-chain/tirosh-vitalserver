@@ -628,7 +628,8 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                     service: "app",
                     state: "running",
                     health: "healthy",
-                    observedAt: "2026-07-01T00:00:00+00:00"
+                    observedAt: "2026-07-01T00:00:00+00:00",
+                    memory: ResourceUsage(usedBytes: 1, totalBytes: 10)
                 ),
                 "postgres": RuntimeGuestControlServiceStatus(
                     service: "postgres",
@@ -636,7 +637,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
                     health: "healthy",
                     observedAt: "2026-07-01T00:00:00+00:00"
                 ),
-            ]
+            ],
+            cpuUsagePercent: 12.5,
+            memory: ResourceUsage(usedBytes: 2, totalBytes: 10),
+            systemDisk: ResourceUsage(usedBytes: 3, totalBytes: 10)
         )
         let reader = SystemRuntimeStatusReader(
             paths: RuntimePaths(
@@ -653,6 +657,10 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(status.guestServicesReadState, .loaded)
         XCTAssertEqual(status.guestServices, ["app", "postgres"])
         XCTAssertEqual(status.guestServiceStatuses.map(\.service), ["app", "postgres"])
+        XCTAssertEqual(status.cpuUsagePercent, 12.5)
+        XCTAssertEqual(status.memory, ResourceUsage(usedBytes: 2, totalBytes: 10))
+        XCTAssertEqual(status.systemDisk, ResourceUsage(usedBytes: 3, totalBytes: 10))
+        XCTAssertEqual(status.vitalServerMemory, RuntimeContainerMemoryUsage(usedBytes: 1, limitBytes: 10))
         XCTAssertNil(status.guestServicesReadError)
         XCTAssertEqual(gateway.stackStatusCount, 1)
         XCTAssertEqual(gateway.listServicesCount, 0)
@@ -1994,6 +2002,9 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
     private let statuses: [String: RuntimeGuestControlServiceStatus]
     private let statusFailures: [String: Error]
     private let stackStatusFailure: Error?
+    private let cpuUsagePercent: Double?
+    private let memory: ResourceUsage?
+    private let systemDisk: ResourceUsage?
     private let readiness: RuntimeGuestControlReadiness
     private let readinessFailure: Error?
     private(set) var readyCount = 0
@@ -2006,6 +2017,9 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
         statuses: [String: RuntimeGuestControlServiceStatus],
         statusFailures: [String: Error] = [:],
         stackStatusFailure: Error? = nil,
+        cpuUsagePercent: Double? = nil,
+        memory: ResourceUsage? = nil,
+        systemDisk: ResourceUsage? = nil,
         readiness: RuntimeGuestControlReadiness = RuntimeGuestControlReadiness(
             status: "ready"
         ),
@@ -2015,6 +2029,9 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
         self.statuses = statuses
         self.statusFailures = statusFailures
         self.stackStatusFailure = stackStatusFailure
+        self.cpuUsagePercent = cpuUsagePercent
+        self.memory = memory
+        self.systemDisk = systemDisk
         self.readiness = readiness
         self.readinessFailure = readinessFailure
     }
@@ -2047,7 +2064,10 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
                     health: "not_reported",
                     observedAt: "2026-07-01T00:00:00+00:00"
                 )
-            }
+            },
+            cpuUsagePercent: cpuUsagePercent,
+            memory: memory,
+            systemDisk: systemDisk
         )
     }
 

@@ -4,6 +4,10 @@ import Application
 import Contracts
 import Errors
 
+private protocol RuntimeLabResponseUnavailableFactory {
+    static func unavailable(readError: String) -> Self
+}
+
 /// Owns host mutations and privileged runtime commands.
 /// SwiftUI and the development API call through this actor so MainActor only coordinates UI state.
 public actor MacRuntimeControlCommandWorker {
@@ -141,19 +145,16 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func restoreRedisBackup(backupURL: URL) async throws -> RuntimeCommandResult {
-        let baseURL = try guestControlBaseURL()
         let controller = guestMaintenanceController
         let archive = backupURL.path
-        return try await Task.detached(priority: .userInitiated) {
-            let gateway = try HTTPRuntimeGuestControlGateway(
-                baseURL: baseURL
+        return try await runGuestControlCommand { gateway in
+            RuntimeCommandResult(
+                guestControlOperation: try controller.restoreRedisBackup(
+                    archive: archive,
+                    gateway: gateway
+                )
             )
-            let operation = try controller.restoreRedisBackup(
-                archive: archive,
-                gateway: gateway
-            )
-            return RuntimeCommandResult(guestControlOperation: operation)
-        }.value
+        }
     }
 
     public func restoreRuntimeDataBackup(backupURL: URL) async throws -> RuntimeCommandResult {
@@ -178,15 +179,12 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func repairDatastore() async throws -> RuntimeCommandResult {
-        let baseURL = try guestControlBaseURL()
         let controller = guestMaintenanceController
-        return try await Task.detached(priority: .userInitiated) {
-            let gateway = try HTTPRuntimeGuestControlGateway(
-                baseURL: baseURL
+        return try await runGuestControlCommand { gateway in
+            RuntimeCommandResult(
+                guestControlOperation: try controller.repairDatastore(gateway: gateway)
             )
-            let operation = try controller.repairDatastore(gateway: gateway)
-            return RuntimeCommandResult(guestControlOperation: operation)
-        }.value
+        }
     }
 
     public func repairVMDisk() async throws -> RuntimeCommandResult {
@@ -223,15 +221,12 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func createRedisBackup() async throws -> RuntimeCommandResult {
-        let baseURL = try guestControlBaseURL()
         let controller = guestMaintenanceController
-        return try await Task.detached(priority: .userInitiated) {
-            let gateway = try HTTPRuntimeGuestControlGateway(
-                baseURL: baseURL
+        return try await runGuestControlCommand { gateway in
+            RuntimeCommandResult(
+                guestControlOperation: try controller.createRedisBackup(gateway: gateway)
             )
-            let operation = try controller.createRedisBackup(gateway: gateway)
-            return RuntimeCommandResult(guestControlOperation: operation)
-        }.value
+        }
     }
 
     public func createRuntimeDataBackup() async throws -> RuntimeCommandResult {
@@ -246,253 +241,108 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func listGuestServices() async throws -> RuntimeGuestControlServiceList {
-        let baseURL = try guestControlBaseURL()
-        return try await Task.detached(priority: .userInitiated) {
-            let gateway = try HTTPRuntimeGuestControlGateway(
-                baseURL: baseURL
-            )
-            return try gateway.listServices()
-        }.value
+        return try await runGuestControlCommand { gateway in
+            try gateway.listServices()
+        }
     }
 
     public func guestStackStatus() async throws -> RuntimeGuestControlStackStatus {
-        let baseURL = try guestControlBaseURL()
-        return try await Task.detached(priority: .userInitiated) {
-            let gateway = try HTTPRuntimeGuestControlGateway(
-                baseURL: baseURL
-            )
-            return try gateway.stackStatus()
-        }.value
+        return try await runGuestControlCommand { gateway in
+            try gateway.stackStatus()
+        }
     }
 
     public func guestServiceStatus(_ service: String) async throws -> RuntimeGuestControlServiceStatus {
-        let baseURL = try guestControlBaseURL()
-        return try await Task.detached(priority: .userInitiated) {
-            let gateway = try HTTPRuntimeGuestControlGateway(
-                baseURL: baseURL
-            )
-            return try gateway.serviceStatus(service)
-        }.value
+        return try await runGuestControlCommand { gateway in
+            try gateway.serviceStatus(service)
+        }
     }
 
     public func startGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
-        let baseURL = try guestControlBaseURL(override: request.guestControlBaseURL)
         let controller = guestProductServiceController
-        return try await Task.detached(priority: .userInitiated) {
-            let gateway = try HTTPRuntimeGuestControlGateway(
-                baseURL: baseURL
-            )
-            return try controller.startService(
-                request.service,
-                gateway: gateway
-            )
-        }.value
+        let baseURLOverride = request.guestControlBaseURL
+        let service = request.service
+        return try await runGuestControlCommand(override: baseURLOverride) { gateway in
+            try controller.startService(service, gateway: gateway)
+        }
     }
 
     public func stopGuestService(_ request: RuntimeGuestServiceControlRequest) async throws -> RuntimeGuestControlServiceOperation {
-        let baseURL = try guestControlBaseURL(override: request.guestControlBaseURL)
         let controller = guestProductServiceController
-        return try await Task.detached(priority: .userInitiated) {
-            let gateway = try HTTPRuntimeGuestControlGateway(
-                baseURL: baseURL
-            )
-            return try controller.stopService(
-                request.service,
-                gateway: gateway
-            )
-        }.value
+        let baseURLOverride = request.guestControlBaseURL
+        let service = request.service
+        return try await runGuestControlCommand(override: baseURLOverride) { gateway in
+            try controller.stopService(service, gateway: gateway)
+        }
     }
 
     public func restartGuestService(_ request: RuntimeGuestServiceRestartRequest) async throws -> RuntimeGuestControlServiceOperation {
-        let baseURL = try guestControlBaseURL(override: request.guestControlBaseURL)
         let controller = guestProductServiceController
-        return try await Task.detached(priority: .userInitiated) {
-            let gateway = try HTTPRuntimeGuestControlGateway(
-                baseURL: baseURL
-            )
-            return try controller.restartService(
-                request.service,
-                gateway: gateway
-            )
-        }.value
+        let baseURLOverride = request.guestControlBaseURL
+        let service = request.service
+        return try await runGuestControlCommand(override: baseURLOverride) { gateway in
+            try controller.restartService(service, gateway: gateway)
+        }
     }
 
     public func loadLabScenarios() async throws -> RuntimeLabScenarioList {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabScenarioList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.labScenarios()
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
-                    baseURL: baseURL
-                )
-                return try gateway.labScenarios()
-            } catch {
-                return RuntimeLabScenarioList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func loadLabVitalFiles() async throws -> RuntimeLabVitalFileList {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabVitalFileList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.labVitalFiles()
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
-                    baseURL: baseURL
-                )
-                return try gateway.labVitalFiles()
-            } catch {
-                return RuntimeLabVitalFileList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func loadLabBeds() async throws -> RuntimeLabBedList {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.labBeds()
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
-                    baseURL: baseURL
-                )
-                return try gateway.labBeds()
-            } catch {
-                return RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func loadLabRecorders() async throws -> RuntimeLabRecorderList {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.labRecorders()
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
-                    baseURL: baseURL
-                )
-                return try gateway.labRecorders()
-            } catch {
-                return RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func createLabBeds(_ request: RuntimeLabBedCreateRequest) async throws -> RuntimeLabBedList {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.createLabBeds(request)
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(baseURL: baseURL)
-                return try gateway.createLabBeds(request)
-            } catch {
-                return RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func deleteLabBeds(_ request: RuntimeLabBedDeleteRequest) async throws -> RuntimeLabBedList {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.deleteLabBeds(request)
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(baseURL: baseURL)
-                return try gateway.deleteLabBeds(request)
-            } catch {
-                return RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func resetLabBeds() async throws -> RuntimeLabBedList {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.resetLabBeds()
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(baseURL: baseURL)
-                return try gateway.resetLabBeds()
-            } catch {
-                return RuntimeLabBedList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func createLabRecorders(_ request: RuntimeLabRecorderCreateRequest) async throws -> RuntimeLabRecorderList {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.createLabRecorders(request)
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(baseURL: baseURL)
-                return try gateway.createLabRecorders(request)
-            } catch {
-                return RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func deleteLabRecorders(_ request: RuntimeLabRecorderDeleteRequest) async throws -> RuntimeLabRecorderList {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.deleteLabRecorders(request)
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(baseURL: baseURL)
-                return try gateway.deleteLabRecorders(request)
-            } catch {
-                return RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func resetLabRecorders() async throws -> RuntimeLabRecorderList {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.resetLabRecorders()
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(baseURL: baseURL)
-                return try gateway.resetLabRecorders()
-            } catch {
-                return RuntimeLabRecorderList.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
@@ -544,117 +394,39 @@ public actor MacRuntimeControlCommandWorker {
     }
 
     public func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.createLabSession(request)
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
-                    baseURL: baseURL
-                )
-                return try gateway.createLabSession(request)
-            } catch {
-                return RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.labSession(sessionId)
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
-                    baseURL: baseURL
-                )
-                return try gateway.labSession(sessionId)
-            } catch {
-                return RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.startLabSession(sessionId)
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
-                    baseURL: baseURL
-                )
-                return try gateway.startLabSession(sessionId)
-            } catch {
-                return RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func stopLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.stopLabSession(sessionId)
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
-                    baseURL: baseURL
-                )
-                return try gateway.stopLabSession(sessionId)
-            } catch {
-                return RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func replayLabVitalFile(_ request: RuntimeLabVitalFileReplayRequest) async throws -> RuntimeLabSessionResponse {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.replayLabVitalFile(request)
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
-                    baseURL: baseURL
-                )
-                return try gateway.replayLabVitalFile(request)
-            } catch {
-                return RuntimeLabSessionResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func uploadLabVitalFile(_ request: RuntimeLabVitalFileUploadRequest) async throws -> RuntimeLabVitalFileUploadResponse {
-        let baseURL: String
-        do {
-            baseURL = try guestControlBaseURL()
-        } catch {
-            return RuntimeLabVitalFileUploadResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        return await runGuestProductLabCommand {
+            try $0.uploadLabVitalFile(request)
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(
-                    baseURL: baseURL
-                )
-                return try gateway.uploadLabVitalFile(request)
-            } catch {
-                return RuntimeLabVitalFileUploadResponse.unavailable(readError: "Runtime Lab gateway failed: \(error)")
-            }
-        }.value
     }
 
     public func exportLogs(to destination: URL) async throws -> RuntimeLogExportResult {
@@ -695,10 +467,36 @@ public actor MacRuntimeControlCommandWorker {
         if let vmIP = read.document?.vmIP?.trimmingCharacters(in: .whitespacesAndNewlines), !vmIP.isEmpty {
             return RuntimeControlClientConstants.Product.guestControlAPIBaseURL(vmIP: vmIP)
         }
-        if let error = read.error {
-            throw RuntimeClientError.guestControlUnavailable("runtime status read failed: \(error)")
+        if read.error != nil {
+            return RuntimeControlClientConstants.Product.localGuestControlAPIBaseURL
         }
-        throw RuntimeClientError.guestControlUnavailable("runtime status vmIP is missing.")
+        return RuntimeControlClientConstants.Product.localGuestControlAPIBaseURL
+    }
+
+    private func runGuestControlCommand<T>(
+        override: String? = nil,
+        _ command: @escaping @Sendable (any RuntimeGuestControlGateway) throws -> T
+    ) async throws -> T {
+        let baseURL = try guestControlBaseURL(override: override)
+        let gateway = try HTTPRuntimeGuestControlGateway(baseURL: baseURL)
+        return try command(gateway)
+    }
+
+    private func runGuestProductLabCommand<T: RuntimeLabResponseUnavailableFactory>(
+        _ command: @escaping @Sendable (any RuntimeGuestProductLabGateway) throws -> T
+    ) async -> T {
+        let baseURL: String
+        do {
+            baseURL = try guestControlBaseURL()
+        } catch {
+            return T.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        }
+        do {
+            let gateway: any RuntimeGuestProductLabGateway = try HTTPRuntimeGuestControlGateway(baseURL: baseURL)
+            return try command(gateway)
+        } catch {
+            return T.unavailable(readError: "Runtime Lab gateway failed: \(error)")
+        }
     }
 
     private func runVitalDBVisibilityCommand(
@@ -707,30 +505,23 @@ public actor MacRuntimeControlCommandWorker {
             RuntimeGuestControlVitalDBBedRead
         )
     ) async -> RuntimeVitalRecorderHistory {
-        let baseURL: String
         do {
-            baseURL = try guestControlBaseURL()
+            let reads = try await runGuestControlCommand { gateway in
+                try command(gateway)
+            }
+            let current = RuntimeVitalDBGuestReadModelProvider.makeCurrentObservation(
+                recorders: reads.0,
+                beds: reads.1
+            )
+            guard let observation = current.observation else {
+                return RuntimeVitalRecorderHistory(
+                    readError: current.readIssues.joined(separator: "; ")
+                )
+            }
+            return RuntimeVitalRecorderHistory(observations: [observation])
         } catch {
             return RuntimeVitalRecorderHistory(readError: "VitalDB read model command failed: \(error)")
         }
-        return await Task.detached(priority: .userInitiated) {
-            do {
-                let gateway: any RuntimeGuestControlGateway = try HTTPRuntimeGuestControlGateway(baseURL: baseURL)
-                let reads = try command(gateway)
-                let current = RuntimeVitalDBGuestReadModelProvider.makeCurrentObservation(
-                    recorders: reads.0,
-                    beds: reads.1
-                )
-                guard let observation = current.observation else {
-                    return RuntimeVitalRecorderHistory(
-                        readError: current.readIssues.joined(separator: "; ")
-                    )
-                }
-                return RuntimeVitalRecorderHistory(observations: [observation])
-            } catch {
-                return RuntimeVitalRecorderHistory(readError: "VitalDB read model command failed: \(error)")
-            }
-        }.value
     }
 
     private func runPrivileged(_ shellCommand: String) async -> RuntimeCommandResult {
@@ -761,6 +552,13 @@ private struct RuntimeTemporarySettingsFile {
     let url: URL
     let label: String
 }
+
+extension RuntimeLabScenarioList: RuntimeLabResponseUnavailableFactory {}
+extension RuntimeLabVitalFileList: RuntimeLabResponseUnavailableFactory {}
+extension RuntimeLabBedList: RuntimeLabResponseUnavailableFactory {}
+extension RuntimeLabRecorderList: RuntimeLabResponseUnavailableFactory {}
+extension RuntimeLabSessionResponse: RuntimeLabResponseUnavailableFactory {}
+extension RuntimeLabVitalFileUploadResponse: RuntimeLabResponseUnavailableFactory {}
 
 private struct UnavailableRuntimeGuestProductServiceCommandController: RuntimeGuestProductServiceCommandControlling {
     func startService(

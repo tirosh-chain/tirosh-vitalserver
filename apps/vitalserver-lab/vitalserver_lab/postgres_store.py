@@ -85,7 +85,7 @@ class PostgresLabSessionStore:
             updated_at=now,
         )
         self._save(session, stage="lab session create")
-        self._save_session_read_model(session, state="accepted")
+        self._save_session_read_model(session, state="accepted", with_recorders=True)
         return session
 
     def get(self, session_id: str) -> LabSession | None:
@@ -124,7 +124,7 @@ class PostgresLabSessionStore:
         session.state = state
         session.updated_at = utc_now_iso()
         self._save(session, stage=f"lab session {state}")
-        self._save_session_read_model(session, state=state)
+        self._save_session_read_model(session, state=state, with_recorders=True)
         return session
 
     def list_beds(self) -> tuple[LabBed, ...]:
@@ -187,15 +187,21 @@ class PostgresLabSessionStore:
             )
 
     def create_beds(self, request: LabBedCreateInput) -> tuple[LabBed, ...]:
-        self.create(
-            LabSessionCreateInput(
-                scenario_id="manual-lab-beds",
-                name=request.prefix,
-                recorder_count=request.count,
-                target_url=request.target_url,
-                bed_room_names=request.room_names,
-            )
+        now = utc_now_iso()
+        session = LabSession(
+            session_id=self.id_factory(),
+            scenario_id="manual-lab-beds",
+            name=request.prefix,
+            recorder_count=request.count,
+            target_url=request.target_url,
+            bed_room_names=request.room_names,
+            vital_file_path=None,
+            state="accepted",
+            created_at=now,
+            updated_at=now,
         )
+        self._save(session, stage="lab manual beds create")
+        self._save_session_read_model(session, state="accepted", with_recorders=False)
         return self.list_beds()
 
     def delete_beds(self, request: LabBedDeleteInput) -> tuple[LabBed, ...]:
@@ -295,7 +301,13 @@ class PostgresLabSessionStore:
         )
         self._run_psql(sql, stage=stage)
 
-    def _save_session_read_model(self, session: LabSession, *, state: str) -> None:
+    def _save_session_read_model(
+        self,
+        session: LabSession,
+        *,
+        state: str,
+        with_recorders: bool,
+    ) -> None:
         existing_recorders = {
             recorder.recorder_id: recorder
             for recorder in self.list_recorders()
@@ -310,37 +322,35 @@ class PostgresLabSessionStore:
                 created_at=session.created_at,
                 updated_at=session.updated_at,
             )
-            recorder = lab_recorder_for_bed(
-                session_id=session.session_id,
-                bed_id=bed.bed_id,
-                state=state,
-                index=index,
-                created_at=session.created_at,
-                updated_at=session.updated_at,
+            sql = _upsert_read_model_sql(
+                table="lab_beds",
+                key_field="bed_id",
+                key_value=bed.bed_id,
+                document=bed.as_json(),
+                updated_at=bed.updated_at,
             )
-            previous_recorder = existing_recorders.get(recorder.recorder_id)
-            if previous_recorder is not None:
-                recorder = recorder_with_preserved_execution(
-                    recorder,
-                    previous_recorder,
+            if with_recorders:
+                recorder = lab_recorder_for_bed(
+                    session_id=session.session_id,
+                    bed_id=bed.bed_id,
+                    state=state,
+                    index=index,
+                    created_at=session.created_at,
+                    updated_at=session.updated_at,
                 )
-            sql = (
-                _upsert_read_model_sql(
-                    table="lab_beds",
-                    key_field="bed_id",
-                    key_value=bed.bed_id,
-                    document=bed.as_json(),
-                    updated_at=bed.updated_at,
-                )
-                + "\n"
-                + _upsert_read_model_sql(
+                previous_recorder = existing_recorders.get(recorder.recorder_id)
+                if previous_recorder is not None:
+                    recorder = recorder_with_preserved_execution(
+                        recorder,
+                        previous_recorder,
+                    )
+                sql += "\n" + _upsert_read_model_sql(
                     table="lab_recorders",
                     key_field="recorder_id",
                     key_value=recorder.recorder_id,
                     document=recorder.as_json(),
                     updated_at=recorder.updated_at,
                 )
-            )
             self._run_psql(sql, stage="lab session read model save")
 
     def _run_psql(

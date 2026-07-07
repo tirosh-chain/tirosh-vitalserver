@@ -16,11 +16,18 @@ from vitalserver_lab.execution import (
 from vitalserver_lab.model import (
     DEFAULT_SCENARIOS,
     InMemoryLabSessionStore,
+    LabSessionStore,
     LabSessionCreateInput,
     LabSessionStoreUnavailable,
+    LabBed,
+    LabRecorder,
 )
 from vitalserver_lab.postgres_store import PostgresLabSessionStore
-from vitalserver_lab.server import build_session_store, route_lab_request
+from vitalserver_lab.server import (
+    build_execution_engine,
+    build_session_store,
+    route_lab_request,
+)
 from vitalserver_lab.settings import (
     LabSettings,
     LabSettingsConfigurationError,
@@ -100,6 +107,43 @@ def test_load_settings_reports_invalid_port_configuration(monkeypatch: Any) -> N
     assert error.value.message == "VITALSERVER_LAB_PORT must be an integer."
 
 
+def test_load_settings_recorder_payload_endpoint_default(monkeypatch: Any) -> None:
+    monkeypatch.delenv("VITALSERVER_LAB_RECORDER_PAYLOAD_ENDPOINT", raising=False)
+
+    settings = load_settings()
+
+    assert settings.recorder_payload_endpoint == "/api/send"
+
+
+def test_load_settings_recorder_payload_endpoint_override(monkeypatch: Any) -> None:
+    monkeypatch.setenv(
+        "VITALSERVER_LAB_RECORDER_PAYLOAD_ENDPOINT",
+        "/upload",
+    )
+
+    settings = load_settings()
+
+    assert settings.recorder_payload_endpoint == "/upload"
+
+
+def test_build_execution_engine_normalizes_endpoint_slash() -> None:
+    settings = load_settings()
+    settings = LabSettings(
+        host=settings.host,
+        port=settings.port,
+        service_name=settings.service_name,
+        session_store=settings.session_store,
+        allow_memory_store=True,
+        database_url=None,
+        psql_command=settings.psql_command,
+        recorder_payload_endpoint="api/send",
+        vital_files_mount=settings.vital_files_mount,
+    )
+    engine = build_execution_engine(settings=settings)
+
+    assert getattr(engine.sender, "endpoint") == "/api/send"
+
+
 def test_load_settings_reports_non_positive_port_configuration(
     monkeypatch: Any,
 ) -> None:
@@ -151,6 +195,17 @@ def test_vital_files_are_served_from_configured_mount(tmp_path: Path) -> None:
             "modifiedAt": response["body"]["vitalFiles"][0]["modifiedAt"],
         }
     ]
+
+
+def test_lab_vital_files_report_mount_missing(tmp_path: Path) -> None:
+    missing_mount = tmp_path / "missing"
+    with running_server(vital_files_mount=missing_mount) as address:
+        response = request(address, "GET", "/lab/vital-files")
+
+    assert response["status"] == 404
+    assert response["body"]["state"] == "failed"
+    assert response["body"]["vitalFiles"] == []
+    assert response["body"]["readError"] == "Configured vital files mount is not available."
 
 
 def test_create_session_returns_product_lab_session() -> None:
@@ -276,12 +331,12 @@ def test_lab_bed_management_creates_and_deletes_product_read_model() -> None:
             "/lab/beds/delete",
             {"bedIds": ["manual_session_1-bed-1"]},
         )
+        recorders = request(address, "GET", "/lab/recorders")
 
     assert created["status"] == 202
     assert [bed["name"] for bed in created["body"]["beds"]] == ["Lab-A", "Lab-B"]
-    assert [
-        recorder.vrcode for recorder in address.store.list_recorders()
-    ] == ["LAB-manual_session_1-2"]
+    assert recorders["status"] == 200
+    assert recorders["body"]["recorders"] == []
     assert deleted["status"] == 202
     assert [bed["bedId"] for bed in deleted["body"]["beds"]] == [
         "manual_session_1-bed-2"
@@ -304,6 +359,73 @@ def test_lab_bed_management_reset_removes_beds_and_attached_recorders() -> None:
     assert recorders["body"]["recorders"] == []
 
 
+def test_lab_beds_not_available_returns_failed_state() -> None:
+    with running_server(session_store=UnavailableReadModelStore()) as address:
+        response = request(address, "GET", "/lab/beds")
+
+    assert response["status"] == 503
+    assert response["body"]["state"] == "failed"
+    assert response["body"]["beds"] == []
+    assert response["body"]["readError"] == "lab session read model is unavailable"
+
+
+def test_lab_recorders_not_available_returns_failed_state() -> None:
+    with running_server(session_store=UnavailableReadModelStore()) as address:
+        response = request(address, "GET", "/lab/recorders")
+
+    assert response["status"] == 503
+    assert response["body"]["state"] == "failed"
+    assert response["body"]["recorders"] == []
+    assert response["body"]["readError"] == "lab session read model is unavailable"
+
+
+def test_lab_bed_create_failure_bubbles_as_service_unavailable() -> None:
+    with running_server(session_store=UnavailableReadModelStore()) as address:
+        response = request(
+            address,
+            "POST",
+            "/lab/beds/create",
+            {"roomNames": ["Bed-A"]},
+        )
+
+    assert response["status"] == 503
+    assert response["body"]["state"] == "failed"
+    assert response["body"]["readError"] == "lab session read model is unavailable"
+
+
+def test_lab_session_start_returns_service_unavailable_if_read_model_is_broken() -> None:
+    class ReadModelUnavailableAfterStartStore(InMemoryLabSessionStore):
+        def list_beds(self) -> tuple[LabBed, ...]:
+            raise LabSessionStoreUnavailable(
+                "lab session read model is unavailable",
+                kind="labReadModelUnavailable",
+            )
+
+        def list_recorders(self) -> tuple[LabRecorder, ...]:
+            raise LabSessionStoreUnavailable(
+                "lab session read model is unavailable",
+                kind="labReadModelUnavailable",
+            )
+
+    with running_server(session_store=ReadModelUnavailableAfterStartStore()) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "name": "Session with unavailable read model",
+                "recorderCount": 1,
+            },
+        )
+        response = request(address, "POST", "/lab/sessions/lab_session_1/start")
+
+    assert response["status"] == 503
+    assert response["body"]["state"] == "failed"
+    assert response["body"]["operationId"] == "lab-session-start-lab_session_1"
+    assert response["body"]["readError"] == "lab session read model is unavailable"
+
+
 def test_lab_recorder_management_creates_and_deletes_product_read_model() -> None:
     with running_server(["manual_session_1"]) as address:
         request(
@@ -322,18 +444,15 @@ def test_lab_recorder_management_creates_and_deletes_product_read_model() -> Non
             address,
             "POST",
             "/lab/recorders/delete",
-            {"recorderIds": ["manual_session_1-recorder-2"]},
+            {"recorderIds": ["manual_session_1-recorder-1"]},
         )
 
     assert created["status"] == 202
     assert [recorder["recorderId"] for recorder in created["body"]["recorders"]] == [
         "manual_session_1-recorder-1",
-        "manual_session_1-recorder-2",
     ]
     assert deleted["status"] == 202
-    assert [recorder["recorderId"] for recorder in deleted["body"]["recorders"]] == [
-        "manual_session_1-recorder-1"
-    ]
+    assert deleted["body"]["recorders"] == []
 
 
 def test_session_start_sends_lab_recorder_payloads_and_updates_read_model() -> None:
@@ -591,11 +710,13 @@ class running_server:
         sender: FakeSender | None = None,
         uploader: FakeVitalFileUploader | None = None,
         vital_files_mount: Path | None = None,
+        session_store: LabSessionStore | None = None,
     ) -> None:
         self.ids = ids or ["lab_session_1"]
         self.sender = sender or FakeSender()
         self.uploader = uploader or FakeVitalFileUploader()
         self.vital_files_mount = vital_files_mount or Path("/mnt/tirosh-vital-files")
+        self.session_store = session_store
 
     def __enter__(self) -> running_server:
         counter = iter(self.ids)
@@ -609,7 +730,13 @@ class running_server:
             psql_command="psql",
             vital_files_mount=self.vital_files_mount,
         )
-        self.store = InMemoryLabSessionStore(id_factory=lambda: next(counter))
+        self.store = (
+            self.session_store
+            if self.session_store is not None
+            else InMemoryLabSessionStore(id_factory=lambda: next(counter))
+        )
+        if isinstance(self.store, InMemoryLabSessionStore):
+            self.store.id_factory = lambda: next(counter)
         self.engine = LabExecutionEngine(
             sender=self.sender,
             vital_file_uploader=self.uploader,
@@ -750,6 +877,86 @@ class UnavailableStore:
     def save_recorder_execution_results(self, results: Any) -> None:
         del results
         raise AssertionError("save_recorder_execution_results should not be called")
+
+
+class UnavailableReadModelStore:
+    def ensure_ready(self) -> None:
+        return None
+
+    def create(self, request: Any) -> Any:
+        del request
+        raise AssertionError("create should not be called")
+
+    def get(self, session_id: str) -> Any:
+        del session_id
+        raise AssertionError("get should not be called")
+
+    def start(self, session_id: str) -> Any:
+        del session_id
+        raise AssertionError("start should not be called")
+
+    def stop(self, session_id: str) -> Any:
+        del session_id
+        raise AssertionError("stop should not be called")
+
+    def list_beds(self) -> Any:
+        raise LabSessionStoreUnavailable(
+            "lab session read model is unavailable",
+            kind="labReadModelUnavailable",
+        )
+
+    def list_recorders(self) -> Any:
+        raise LabSessionStoreUnavailable(
+            "lab session read model is unavailable",
+            kind="labReadModelUnavailable",
+        )
+
+    def create_beds(self, request: Any) -> Any:
+        del request
+        raise LabSessionStoreUnavailable(
+            "lab session read model is unavailable",
+            kind="labReadModelUnavailable",
+        )
+
+    def delete_beds(self, request: Any) -> Any:
+        del request
+        raise LabSessionStoreUnavailable(
+            "lab session read model is unavailable",
+            kind="labReadModelUnavailable",
+        )
+
+    def reset_beds(self) -> Any:
+        raise LabSessionStoreUnavailable(
+            "lab session read model is unavailable",
+            kind="labReadModelUnavailable",
+        )
+
+    def create_recorders(self, request: Any) -> Any:
+        del request
+        raise LabSessionStoreUnavailable(
+            "lab session read model is unavailable",
+            kind="labReadModelUnavailable",
+        )
+
+    def delete_recorders(self, request: Any) -> Any:
+        del request
+        raise LabSessionStoreUnavailable(
+            "lab session read model is unavailable",
+            kind="labReadModelUnavailable",
+        )
+
+    def reset_recorders(self) -> Any:
+        raise LabSessionStoreUnavailable(
+            "lab session read model is unavailable",
+            kind="labReadModelUnavailable",
+        )
+
+    def save_recorder_execution_results(self, results: Any) -> None:
+        del results
+        raise LabSessionStoreUnavailable(
+            "lab session read model is unavailable",
+            kind="labReadModelUnavailable",
+        )
 
 
 def test_postgres_store_runs_schema_migration(monkeypatch: Any) -> None:

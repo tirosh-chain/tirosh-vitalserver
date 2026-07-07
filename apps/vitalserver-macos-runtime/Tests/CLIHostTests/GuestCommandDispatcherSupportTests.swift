@@ -55,6 +55,10 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertFalse(operations.contains("command-poller"))
         XCTAssertTrue(operations.contains("\"tirosh-vitalserver-sync-host-time\""))
         XCTAssertTrue(operations.contains("\"tirosh-vitalserver-sync-host-time.service\""))
+        let guestControlAPIUnit = try readGuestSupportFile(
+            "systemd/tirosh-vitalserver-guest-control-api.service"
+        )
+        XCTAssertFalse(guestControlAPIUnit.contains("tirosh-vitalserver-compose.service"))
         let observabilityUnit = try readGuestSupportFile(
             "systemd/tirosh-guest-observability.service"
         )
@@ -328,6 +332,7 @@ final class GuestCommandDispatcherSupportTests: XCTestCase {
         XCTAssertTrue(syncHostTimeService.contains("Before=docker.service"))
         XCTAssertTrue(syncHostTimeService.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-sync-host-time"))
         XCTAssertTrue(guestControlAPIService.contains("ExecStart=/usr/local/bin/tirosh-vitalserver-guest-control-api"))
+        XCTAssertFalse(guestControlAPIService.contains("tirosh-vitalserver-compose.service"))
         XCTAssertTrue(
             activationService.contains(
                 "Conflicts=tirosh-vitalserver-compose.service"

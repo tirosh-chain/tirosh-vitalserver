@@ -45,7 +45,7 @@ class LabServer(ThreadingHTTPServer):
         self.settings = settings
         self.scenarios = scenarios
         self.session_store = session_store or build_session_store(settings)
-        self.execution_engine = execution_engine or build_execution_engine()
+        self.execution_engine = execution_engine or build_execution_engine(settings=settings)
 
 
 class LabRequestHandler(BaseHTTPRequestHandler):
@@ -768,8 +768,14 @@ def build_session_store(settings: LabSettings) -> LabSessionStore:
     )
 
 
-def build_execution_engine() -> LabExecutionEngine:
-    return LabExecutionEngine(sender=VitalServerRecorderPayloadSender())
+def build_execution_engine(settings: LabSettings | None = None) -> LabExecutionEngine:
+    settings = settings or load_settings()
+    endpoint = settings.recorder_payload_endpoint
+    if not endpoint.startswith("/"):
+        endpoint = f"/{endpoint}"
+    return LabExecutionEngine(
+        sender=VitalServerRecorderPayloadSender(endpoint=endpoint)
+    )
 
 
 def main() -> None:

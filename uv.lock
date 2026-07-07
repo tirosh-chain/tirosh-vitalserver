@@ -2248,7 +2248,7 @@ wheels = [
 
 [[package]]
 name = "tirosh-vitalserver"
-version = "0.1.0"
+version = "0.2.0"
 source = { virtual = "." }
 dependencies = [
     { name = "jupyter" },
@@ -2291,7 +2291,7 @@ docs = [{ name = "mkdocs", specifier = ">=1.6.0" }]
 
 [[package]]
 name = "tirosh-vitalserver-core"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/vitalserver-core" }
 
 [[package]]
@@ -2306,7 +2306,7 @@ source = { editable = "packages/vitalserver-guest-tools" }
 
 [[package]]
 name = "tirosh-vitalserver-recorder-recovery"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "apps/vitalserver-recorder-recovery" }
 dependencies = [
     { name = "fastapi" },

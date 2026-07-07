@@ -228,6 +228,41 @@ final class RuntimeWatchdogRunnerTests: XCTestCase {
         XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoveryDeferred])
     }
 
+    func testReachableBootstrappingVMLifecycleIsMarkedRunningBeforeDeferredStatusWrite() throws {
+        let lifecycle = RuntimeVMLifecycleDocument(
+            state: .bootstrapping,
+            operation: .startServices,
+            startedAt: "2026-05-31T00:00:00Z",
+            updatedAt: "2026-05-31T00:00:01Z",
+            deadlineAt: "2999-01-01T00:00:00Z"
+        )
+        let harness = WatchdogHarness(snapshots: [
+            healthSnapshot(
+                vmLifecycle: lifecycle,
+                vmState: .starting,
+                failureReasons: [.guestServiceObservationReadFailed("guest-control-timeout")]
+            ),
+            healthSnapshot(
+                vmLifecycle: RuntimeVMLifecycleDocument(
+                    state: .running,
+                    operation: .startServices,
+                    startedAt: "2026-05-31T00:00:00Z",
+                    updatedAt: "2026-05-31T00:02:00Z"
+                ),
+                failureReasons: [.guestServiceObservationReadFailed("guest-control-timeout")]
+            ),
+        ])
+
+        try harness.runner.run()
+
+        XCTAssertEqual(harness.healthCalls, 2)
+        XCTAssertEqual(harness.runningLifecycleStates, [.bootstrapping])
+        XCTAssertEqual(harness.lifecycleEvents.map(\.eventType), [.statusChanged])
+        XCTAssertEqual(harness.writtenStatuses.map(\.status), [.degraded])
+        XCTAssertEqual(harness.observedStatuses.last?.snapshot.vmLifecycle?.state, .running)
+        XCTAssertEqual(harness.observedEvents.map(\.eventType), [.recoveryDeferred])
+    }
+
     func testVMLifecycleMarkFailureKeepsOriginalHealthySnapshotVisible() throws {
         let lifecycle = RuntimeVMLifecycleDocument(
             state: .bootstrapping,

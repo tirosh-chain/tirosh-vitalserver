@@ -140,6 +140,7 @@ Runtime Lab is the product-facing boundary for virtual recorder scenarios and `.
 | `POST` | `/lab/sessions/{sessionId}/start` | start one Product Lab session |
 | `POST` | `/lab/sessions/{sessionId}/stop` | stop one Product Lab session |
 | `POST` | `/lab/vital-files/replay` | create a virtual recorder session from a configured `.vital` file path |
+| `POST` | `/lab/vital-files/upload` | upload a selected mounted `.vital` file to VitalServer storage |
 
 `RuntimeLabScenarioList.state` and `RuntimeLabSessionResponse.state` preserve `loaded`, `failed`, and `unavailable` as different meanings. The API must not convert a missing Lab backend, Product Lab HTTP failure, or invalid Lab response into an empty scenario list or a successful stopped session. Command-style Lab requests also preserve the Guest operation id when Guest Control accepts the command.
 
@@ -270,6 +271,7 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 | `POST` | `/lab/sessions/{sessionId}/start` | start Product Lab session |
 | `POST` | `/lab/sessions/{sessionId}/stop` | stop Product Lab session |
 | `POST` | `/lab/vital-files/replay` | create Product Lab `.vital` replay session |
+| `POST` | `/lab/vital-files/upload` | enqueue `.vital` file upload for VitalServer storage |
 | `POST` | `/runtime/health` | active health refresh |
 | `GET` | `/runtime/settings` | current runtime settings |
 | `PUT` | `/runtime/settings` | apply runtime settings |
@@ -314,7 +316,7 @@ Runtime Control API는 wire payload에서 `runtimeInstalled`, `runtimeState`, `o
 | Access | 의미 | 현재 route |
 |---|---|---|
 | `browserSafe` | 브라우저/PWA가 local Runtime Control server에 직접 호출 가능한 read-only runtime control | `GET /runtime/capabilities`, `GET /runtime/overview`, `GET /runtime/overview/stream`, `GET /runtime/status`, `GET /runtime/status/stream`, `GET /runtime/guest/stack/status`, `GET /runtime/guest/services`, `GET /runtime/guest/services/{service}/status`, `GET /runtime/events`, `GET /runtime/events/stream`, `GET /vitaldb/observations/latest`, `GET /vitaldb/observations/stream`, `GET /vitaldb/recorders`, `GET /vitaldb/recorders/{vrcode}`, `GET /vitaldb/beds`, `GET /vitaldb/beds/{bedID}`, `GET /vitaldb/relationships`, `GET /lab/scenarios`, `GET /lab/beds`, `GET /lab/recorders`, `GET /lab/sessions/{sessionId}`, `POST /runtime/health`, `GET /runtime/settings`, `GET /runtime/release`, `GET /runtime/install` |
-| `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, Product Lab session commands, Redis backup create/list/restore, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
+| `localServerMediated` | 브라우저가 직접 host resource를 만지지 않고 local server가 권한/파일/프로세스 작업을 중재해야 함 | runtime write/admin routes, Product Lab session commands, Product Lab `replay` and `upload`, Redis backup create/list/restore, backups list/delete/rollback, log read/stream, update bundle summary/verify/apply |
 | `nativeShellOnly` | 브라우저 endpoint만으로는 UX나 보안 경계가 충분하지 않아 native shell mediation이 필요함 | `POST /host/logs/export` |
 
 Portable `/runtime/*` route는 `RuntimeControlFileReference`를 사용하지 않습니다. 파일, update bundle, backup, log export destination처럼 host resource를 가리키는 값은 `/host/*` affordance에서만 `RuntimeControlFileReference`로 표현합니다.

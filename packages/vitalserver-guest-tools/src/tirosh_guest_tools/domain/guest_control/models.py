@@ -5,6 +5,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
+from tirosh_guest_tools.domain.runtime_state import RuntimeResourceUsage
+
 
 class ServiceCommand(StrEnum):
     START = "start"
@@ -53,6 +55,7 @@ class ServiceStatus:
     observed_at: datetime
     container: str = ""
     exit_code: int | None = None
+    memory: RuntimeResourceUsage | None = None
 
     def as_json(self) -> dict[str, Any]:
         document: dict[str, Any] = {
@@ -65,6 +68,8 @@ class ServiceStatus:
             document["container"] = self.container
         if self.exit_code is not None:
             document["exitCode"] = self.exit_code
+        if self.memory is not None:
+            document["memory"] = self.memory.as_json()
         return document
 
 
@@ -73,13 +78,26 @@ class StackStatus:
     state: str
     services: list[ServiceStatus]
     observed_at: datetime
+    cpu_usage_percent: float | None = None
+    memory: RuntimeResourceUsage | None = None
+    system_disk: RuntimeResourceUsage | None = None
+    vital_files_disk: RuntimeResourceUsage | None = None
 
     def as_json(self) -> dict[str, Any]:
-        return {
+        document: dict[str, Any] = {
             "state": self.state,
             "observedAt": self.observed_at.isoformat(),
             "services": [service.as_json() for service in self.services],
         }
+        if self.cpu_usage_percent is not None:
+            document["cpuUsagePercent"] = self.cpu_usage_percent
+        if self.memory is not None:
+            document["memory"] = self.memory.as_json()
+        if self.system_disk is not None:
+            document["systemDisk"] = self.system_disk.as_json()
+        if self.vital_files_disk is not None:
+            document["vitalFilesDisk"] = self.vital_files_disk.as_json()
+        return document
 
 
 @dataclass(frozen=True)

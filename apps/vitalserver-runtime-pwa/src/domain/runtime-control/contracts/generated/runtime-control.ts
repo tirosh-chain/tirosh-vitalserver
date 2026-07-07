@@ -258,6 +258,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lab/vital-files/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a vital file through Runtime Lab
+         * @description Uploads a mounted .vital file through the configured lab upload endpoint.
+         */
+        post: operations["uploadRuntimeLabVitalFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runtime/guest/services": {
         parameters: {
             query?: never;
@@ -1524,6 +1544,10 @@ export interface components {
             state: string;
             observedAt: string;
             services: components["schemas"]["RuntimeGuestControlServiceStatus"][];
+            cpuUsagePercent?: number | null;
+            memory?: components["schemas"]["ResourceUsage"];
+            systemDisk?: components["schemas"]["ResourceUsage"];
+            vitalFilesDisk?: components["schemas"]["ResourceUsage"];
         };
         /** @enum {string} */
         RuntimeLabReadState: "loaded" | "unavailable" | "failed";
@@ -1602,6 +1626,26 @@ export interface components {
             sessionName?: string | null;
             targetURL?: string | null;
         };
+        RuntimeLabVitalFileUploadRequest: {
+            vitalFilePath: string;
+            targetURL: string;
+            endpoint?: string | null;
+            vrcode?: string | null;
+        };
+        RuntimeLabVitalFileUploadResponse: {
+            state: components["schemas"]["RuntimeLabReadState"];
+            operationId?: string | null;
+            upload?: {
+                filename: string;
+                endpoint: string;
+                targetURL: string;
+                statusCode: number;
+                bytesSent: number;
+                responseText: string;
+                ok: boolean;
+            } | null;
+            readError?: string | null;
+        };
         RuntimeGuestControlServiceStatus: {
             service: string;
             state: string;
@@ -1609,6 +1653,7 @@ export interface components {
             observedAt: string;
             container?: string | null;
             exitCode?: number | null;
+            memory?: components["schemas"]["ResourceUsage"];
         };
         RuntimeGuestServiceRestartRequest: {
             service: string;
@@ -2470,6 +2515,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuntimeLabSessionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    uploadRuntimeLabVitalFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuntimeLabVitalFileUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Runtime Lab vital file upload response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeLabVitalFileUploadResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];
