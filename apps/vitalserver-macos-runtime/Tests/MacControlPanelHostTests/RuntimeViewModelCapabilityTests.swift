@@ -952,6 +952,9 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         client.vitalDBVisibilityHistory = RuntimeVitalRecorderHistory(
             updatedAt: "2026-07-01T00:00:00+00:00"
         )
+        client.vitalDBBedVisibilityHistory = RuntimeVitalBedHistory(
+            updatedAt: "2026-07-01T00:00:00+00:00"
+        )
         let viewModel = RuntimeViewModel(
             controlClient: client,
             hostClient: client,
@@ -1509,6 +1512,7 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
     var healthStatus = RuntimeStatus()
     var vitalDBObservation: VitalDBObservationDocument?
     var vitalDBVisibilityHistory = RuntimeVitalRecorderHistory(updatedAt: "2026-07-01T00:00:00+00:00")
+    var vitalDBBedVisibilityHistory = RuntimeVitalBedHistory(updatedAt: "2026-07-01T00:00:00+00:00")
 
     init(capabilities: RuntimeControlCapabilities) {
         self.capabilities = capabilities
@@ -1556,6 +1560,10 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
         return RuntimeVitalRecorderHistory()
     }
 
+    func loadVitalDBBeds() -> RuntimeVitalBedHistory {
+        RuntimeVitalBedHistory()
+    }
+
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {
         RuntimeVitalRelationshipHistory()
     }
@@ -1583,23 +1591,23 @@ private final class FakeRuntimeClient: RuntimeControlClient, RuntimeHostClient {
 
     func hideVitalDBBeds(
         _ request: RuntimeVitalDBBedVisibilityRequest
-    ) async throws -> RuntimeVitalRecorderHistory {
+    ) async throws -> RuntimeVitalBedHistory {
         hiddenBedRequests.append(request)
-        return vitalDBVisibilityHistory
+        return vitalDBBedVisibilityHistory
     }
 
     func unhideVitalDBBeds(
         _ request: RuntimeVitalDBBedVisibilityRequest
-    ) async throws -> RuntimeVitalRecorderHistory {
+    ) async throws -> RuntimeVitalBedHistory {
         unhiddenBedRequests.append(request)
-        return vitalDBVisibilityHistory
+        return vitalDBBedVisibilityHistory
     }
 
     func deleteVitalDBBeds(
         _ request: RuntimeVitalDBBedVisibilityRequest
-    ) async throws -> RuntimeVitalRecorderHistory {
+    ) async throws -> RuntimeVitalBedHistory {
         deletedBedRequests.append(request)
-        return vitalDBVisibilityHistory
+        return vitalDBBedVisibilityHistory
     }
 
     func loadBackups(latestBackupPath: String?) throws -> [RuntimeBackup] {

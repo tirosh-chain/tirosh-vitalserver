@@ -75,6 +75,10 @@ public actor MacRuntimeControlReadWorker {
         observabilityReader.loadVitalDBRecorders()
     }
 
+    public func loadVitalDBBeds() -> RuntimeVitalBedHistory {
+        observabilityReader.loadVitalDBBeds()
+    }
+
     public func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
         observabilityReader.loadVitalDBRecorderSummaries()
     }

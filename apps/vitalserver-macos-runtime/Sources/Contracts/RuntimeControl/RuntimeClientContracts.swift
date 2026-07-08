@@ -39,6 +39,7 @@ public protocol RuntimeControlClient {
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory
+    func loadVitalDBBeds() -> RuntimeVitalBedHistory
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
@@ -57,9 +58,9 @@ public protocol RuntimeControlClient {
     func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
     func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
     func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
-    func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
-    func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
-    func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory
+    func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory
+    func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory
     func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse
     func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
     func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
@@ -79,6 +80,10 @@ public protocol RuntimeControlClient {
 public extension RuntimeControlClient {
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
         loadVitalDBRecorders()
+    }
+
+    func loadVitalDBBeds() -> RuntimeVitalBedHistory {
+        .failed(readError: "vitaldb-beds reader is unavailable")
     }
 
     func loadVitalDBRecorderActivityWindow(
@@ -112,19 +117,19 @@ public extension RuntimeControlClient {
 
     func hideVitalDBBeds(
         _ request: RuntimeVitalDBBedVisibilityRequest
-    ) async throws -> RuntimeVitalRecorderHistory {
+    ) async throws -> RuntimeVitalBedHistory {
         throw RuntimeControlClientUnsupportedError.unavailable("vitaldb-beds-hide")
     }
 
     func unhideVitalDBBeds(
         _ request: RuntimeVitalDBBedVisibilityRequest
-    ) async throws -> RuntimeVitalRecorderHistory {
+    ) async throws -> RuntimeVitalBedHistory {
         throw RuntimeControlClientUnsupportedError.unavailable("vitaldb-beds-unhide")
     }
 
     func deleteVitalDBBeds(
         _ request: RuntimeVitalDBBedVisibilityRequest
-    ) async throws -> RuntimeVitalRecorderHistory {
+    ) async throws -> RuntimeVitalBedHistory {
         throw RuntimeControlClientUnsupportedError.unavailable("vitaldb-beds-delete")
     }
 

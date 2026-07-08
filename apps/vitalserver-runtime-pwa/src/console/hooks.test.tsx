@@ -322,12 +322,12 @@ function createGateway(): GatewayMock {
       readError: null
     }),
     deleteHostBackup: vi.fn().mockResolvedValue(commandResult),
-    deleteBeds: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
+    deleteBeds: vi.fn().mockResolvedValue(fullVitalBedHistory()),
     deleteRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
     deleteRuntimeDataBackup: vi.fn().mockResolvedValue(commandResult),
     deleteUpdateBackup: vi.fn().mockResolvedValue(commandResult),
     exportLogs: vi.fn().mockResolvedValue({ destination: "file:///tmp/logs.zip" }),
-    getBeds: vi.fn().mockResolvedValue([]),
+    getBeds: vi.fn().mockResolvedValue(fullVitalBedHistory()),
     getCapabilities: vi.fn().mockResolvedValue(fullCapabilities()),
     getOverview: vi.fn().mockResolvedValue({ status: { runtimeState: "healthy" } }),
     getOperationState: vi.fn().mockResolvedValue({
@@ -343,7 +343,7 @@ function createGateway(): GatewayMock {
       events: [],
       readError: null
     }),
-    hideBeds: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
+    hideBeds: vi.fn().mockResolvedValue(fullVitalBedHistory()),
     hideRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
     getRuntimeEvents: vi.fn().mockResolvedValue({ events: [] }),
     getGuestStackStatus: vi.fn().mockResolvedValue({
@@ -404,7 +404,7 @@ function createGateway(): GatewayMock {
     stopLabSession: vi.fn().mockResolvedValue(labSessionResponse()),
     summarizeUpdateBundle: vi.fn().mockResolvedValue({ summary: "ok" }),
     uninstallRuntime: vi.fn().mockResolvedValue(commandResult),
-    unhideBeds: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
+    unhideBeds: vi.fn().mockResolvedValue(fullVitalBedHistory()),
     unhideRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
     uploadLabVitalFile: vi.fn().mockResolvedValue({
       state: "loaded",
@@ -581,6 +581,22 @@ function fullVitalRecorderHistory() {
       readError: null
     },
     recorderIngressStatusRead: null,
+    readError: null
+  };
+}
+
+function fullVitalBedHistory() {
+  return {
+    state: "loaded",
+    updatedAt: null,
+    beds: [],
+    summary: {
+      knownBeds: 0,
+      onlineBeds: 0,
+      staleBeds: 0,
+      bedAssignments: 0,
+      bedAnomalies: 0
+    },
     readError: null
   };
 }

@@ -8,6 +8,7 @@ protocol RuntimeObservabilityReading: Sendable {
     func loadRuntimeEvents(query: RuntimeEventQuery) -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() -> RuntimeVitalRecorderHistory
+    func loadVitalDBBeds() -> RuntimeVitalBedHistory
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory
@@ -16,6 +17,10 @@ protocol RuntimeObservabilityReading: Sendable {
 extension RuntimeObservabilityReading {
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
         loadVitalDBRecorders()
+    }
+
+    func loadVitalDBBeds() -> RuntimeVitalBedHistory {
+        .failed(readError: "Guest VitalDB bed read model is unavailable.")
     }
 
     func loadVitalDBRecorderActivityWindow(
@@ -82,6 +87,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
     private let fileStore: RuntimeFileStore
     private let currentObservationProvider: RuntimeVitalDBCurrentObservationProvider
     private let guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider?
+    private let guestVitalDBBedReadModelProvider: RuntimeVitalDBGuestBedReadModelProvider?
     private let guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider?
     private let guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider?
     private let recorderIngressStatusReadProvider: (any RuntimeRecorderIngressStatusReadProviding)?
@@ -91,6 +97,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         fileStore: RuntimeFileStore = SystemRuntimeFileStore(),
         currentObservationProvider: RuntimeVitalDBCurrentObservationProvider,
         guestVitalDBReadModelProvider: RuntimeVitalDBGuestReadModelProvider? = nil,
+        guestVitalDBBedReadModelProvider: RuntimeVitalDBGuestBedReadModelProvider? = nil,
         guestVitalDBActivityProvider: RuntimeVitalDBGuestActivityProvider? = nil,
         guestVitalDBRelationshipProvider: RuntimeVitalDBGuestRelationshipProvider? = nil,
         recorderIngressStatusReadProvider: (any RuntimeRecorderIngressStatusReadProviding)? = nil
@@ -99,6 +106,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
         self.fileStore = fileStore
         self.currentObservationProvider = currentObservationProvider
         self.guestVitalDBReadModelProvider = guestVitalDBReadModelProvider
+        self.guestVitalDBBedReadModelProvider = guestVitalDBBedReadModelProvider
         self.guestVitalDBActivityProvider = guestVitalDBActivityProvider
         self.guestVitalDBRelationshipProvider = guestVitalDBRelationshipProvider
         self.recorderIngressStatusReadProvider = recorderIngressStatusReadProvider
@@ -113,6 +121,7 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             fileStore: fileStore,
             currentObservationProvider: .live(paths: paths, fileStore: fileStore),
             guestVitalDBReadModelProvider: .live(),
+            guestVitalDBBedReadModelProvider: .live(),
             guestVitalDBActivityProvider: .live(),
             guestVitalDBRelationshipProvider: .live(),
             recorderIngressStatusReadProvider: RuntimeRecorderIngressGuestStatusReadProvider()
@@ -150,6 +159,13 @@ struct SystemRuntimeObservabilityReader: RuntimeObservabilityReading, @unchecked
             recorderIngressStatusRead: recorderIngressStatusReadProvider?.loadRecorderIngressStatusRead(),
             statusEvaluationTime: currentTimestamp()
         )
+    }
+
+    func loadVitalDBBeds() -> RuntimeVitalBedHistory {
+        if let guestVitalDBBedReadModelProvider {
+            return guestVitalDBBedReadModelProvider.load()
+        }
+        return .failed(readError: "Guest VitalDB bed read model is unavailable.")
     }
 
     func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {

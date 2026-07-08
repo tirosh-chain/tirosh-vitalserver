@@ -1824,10 +1824,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/RuntimeVitalBedRecord"
-                  }
+                  "$ref": "#/components/schemas/RuntimeVitalBedHistory"
                 }
               }
             }
@@ -1858,11 +1855,11 @@
         },
         "responses": {
           "200": {
-            "description": "Vital Recorder history after the bed hide command.",
+            "description": "VitalDB bed history after the bed hide command.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeVitalRecorderHistory"
+                  "$ref": "#/components/schemas/RuntimeVitalBedHistory"
                 }
               }
             }
@@ -1893,11 +1890,11 @@
         },
         "responses": {
           "200": {
-            "description": "Vital Recorder history after the bed unhide command.",
+            "description": "VitalDB bed history after the bed unhide command.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeVitalRecorderHistory"
+                  "$ref": "#/components/schemas/RuntimeVitalBedHistory"
                 }
               }
             }
@@ -1928,11 +1925,11 @@
         },
         "responses": {
           "200": {
-            "description": "Vital Recorder history after the bed delete command.",
+            "description": "VitalDB bed history after the bed delete command.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RuntimeVitalRecorderHistory"
+                  "$ref": "#/components/schemas/RuntimeVitalBedHistory"
                 }
               }
             }
@@ -2835,6 +2832,45 @@
           }
         }
       },
+      "RuntimeVitalBedHistory": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Aggregated history of VitalDB beds keyed by bedID.",
+        "required": [
+          "state",
+          "updatedAt",
+          "beds",
+          "summary",
+          "readError"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeVitalRecorderHistoryState"
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "beds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeVitalBedRecord"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RuntimeVitalBedHistorySummary"
+          },
+          "readError": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Bed history read issue. Present when the Guest/Postgres bed read document is failed or incomplete."
+          }
+        }
+      },
       "RuntimeVitalRecorderHistoryState": {
         "type": "string",
         "enum": [
@@ -2842,6 +2878,40 @@
           "partiallyLoaded",
           "readFailed"
         ]
+      },
+      "RuntimeVitalBedHistorySummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Provider-owned summary for the derived VitalDB Bed history read model.",
+        "required": [
+          "knownBeds",
+          "onlineBeds",
+          "staleBeds",
+          "bedAssignments",
+          "bedAnomalies"
+        ],
+        "properties": {
+          "knownBeds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "onlineBeds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "staleBeds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bedAssignments": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "bedAnomalies": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
       },
       "RuntimeVitalRecorderHistorySummary": {
         "type": "object",

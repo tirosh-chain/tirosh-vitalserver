@@ -38,6 +38,10 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         client.loadVitalDBRecorders()
     }
 
+    public func loadVitalDBBeds() async throws -> RuntimeVitalBedHistory {
+        client.loadVitalDBBeds()
+    }
+
     public func loadVitalDBRecorderActivityWindow(
         query: RuntimeVitalRecorderActivityWindowQuery
     ) async throws -> RuntimeVitalRecorderActivityWindow {
@@ -117,15 +121,15 @@ public struct RuntimeControlClientAPIReadHandler: RuntimeControlAPIReadHandler {
         try await client.deleteVitalDBRecorders(request)
     }
 
-    public func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+    public func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
         try await client.hideVitalDBBeds(request)
     }
 
-    public func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+    public func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
         try await client.unhideVitalDBBeds(request)
     }
 
-    public func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+    public func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
         try await client.deleteVitalDBBeds(request)
     }
 

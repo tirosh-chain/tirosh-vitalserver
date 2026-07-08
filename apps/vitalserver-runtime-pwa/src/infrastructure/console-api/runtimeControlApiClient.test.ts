@@ -216,10 +216,10 @@ describe("RuntimeControlApiClient", () => {
       "/vitaldb/recorders/hide": fullVitalRecorderHistory(),
       "/vitaldb/recorders/unhide": fullVitalRecorderHistory(),
       "/vitaldb/recorders/delete": fullVitalRecorderHistory(),
-      "/vitaldb/beds": [],
-      "/vitaldb/beds/hide": fullVitalRecorderHistory(),
-      "/vitaldb/beds/unhide": fullVitalRecorderHistory(),
-      "/vitaldb/beds/delete": fullVitalRecorderHistory(),
+      "/vitaldb/beds": fullVitalBedHistory(),
+      "/vitaldb/beds/hide": fullVitalBedHistory(),
+      "/vitaldb/beds/unhide": fullVitalBedHistory(),
+      "/vitaldb/beds/delete": fullVitalBedHistory(),
       "/vitaldb/relationships": {
         state: "loaded",
         assignments: [],
@@ -293,7 +293,7 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.hideRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
     await expect(client.unhideRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
     await expect(client.deleteRecorders({ vrcodes: ["VR_A"] })).resolves.toMatchObject({ recorders: [] });
-    await expect(client.getBeds()).resolves.toEqual([]);
+    await expect(client.getBeds()).resolves.toMatchObject({ beds: [] });
     await expect(client.hideBeds({ bedIDs: ["bed-a"] })).resolves.toMatchObject({ beds: [] });
     await expect(client.unhideBeds({ bedIDs: ["bed-a"] })).resolves.toMatchObject({ beds: [] });
     await expect(client.deleteBeds({ bedIDs: ["bed-a"] })).resolves.toMatchObject({ beds: [] });
@@ -624,6 +624,22 @@ function fullVitalRecorderHistory() {
       readError: null
     },
     recorderIngressStatusRead: null,
+    readError: null
+  };
+}
+
+function fullVitalBedHistory() {
+  return {
+    state: "loaded",
+    updatedAt: null,
+    beds: [],
+    summary: {
+      knownBeds: 0,
+      onlineBeds: 0,
+      staleBeds: 0,
+      bedAssignments: 0,
+      bedAnomalies: 0
+    },
     readError: null
   };
 }

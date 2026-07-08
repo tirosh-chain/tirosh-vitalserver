@@ -8,6 +8,7 @@ import {
   runtimeOverviewSchema,
   runtimeGuestControlStackStatusSchema,
   runtimeStatusSchema,
+  vitalDBBedsSchema,
   vitalDBRecordersSchema,
   vitalDBRelationshipsSchema
 } from "./schemas/runtimeControlSchemas";
@@ -140,10 +141,9 @@ export type VitalDBRecorderVisibilityRequest = {
   vrcodes: string[];
 };
 
-export type VitalDBBeds =
-  paths["/vitaldb/beds"]["get"]["responses"]["200"]["content"]["application/json"];
+export type VitalDBBeds = z.infer<typeof vitalDBBedsSchema>;
 
-export type VitalDBBedRecord = VitalDBBeds[number];
+export type VitalDBBedRecord = VitalDBBeds["beds"][number];
 
 export type VitalDBBedVisibilityRequest = {
   bedIDs: string[];

@@ -293,16 +293,16 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
     return this.get("/vitaldb/beds", vitalDBBedsSchema);
   }
 
-  hideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBRecorders> {
-    return this.post("/vitaldb/beds/hide", request, vitalDBRecordersSchema);
+  hideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBBeds> {
+    return this.post("/vitaldb/beds/hide", request, vitalDBBedsSchema);
   }
 
-  unhideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBRecorders> {
-    return this.post("/vitaldb/beds/unhide", request, vitalDBRecordersSchema);
+  unhideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBBeds> {
+    return this.post("/vitaldb/beds/unhide", request, vitalDBBedsSchema);
   }
 
-  deleteBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBRecorders> {
-    return this.post("/vitaldb/beds/delete", request, vitalDBRecordersSchema);
+  deleteBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBBeds> {
+    return this.post("/vitaldb/beds/delete", request, vitalDBBedsSchema);
   }
 
   getRelationships(): Promise<VitalDBRelationships> {

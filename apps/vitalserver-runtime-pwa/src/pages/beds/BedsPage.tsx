@@ -5,7 +5,7 @@ import {
   useHideVitalDBBeds,
   useLabBeds,
   useUnhideVitalDBBeds,
-  useVitalDBRecorders,
+  useVitalDBBeds,
   useVitalDBRelationships
 } from "@/console/hooks";
 import type {
@@ -32,15 +32,15 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { RelationshipHistory } from "@/pages/relationships/RelationshipHistory";
 
 export function BedsPage() {
-  const recordersQuery = useVitalDBRecorders();
+  const bedsQuery = useVitalDBBeds();
   const relationshipsQuery = useVitalDBRelationships();
   const labBedsQuery = useLabBeds();
   const allBeds = useMemo(
     () =>
-      recordersQuery.data === undefined
+      bedsQuery.data === undefined
         ? null
-        : [...recordersQuery.data.beds].sort(sortByLastSeen),
-    [recordersQuery.data]
+        : [...bedsQuery.data.beds].sort(sortByLastSeen),
+    [bedsQuery.data]
   );
   const [searchText, setSearchText] = useState("");
   const [showHidden, setShowHidden] = useState(false);
@@ -62,7 +62,7 @@ export function BedsPage() {
     beds?.[0] ??
     null;
 
-  const summary = recordersQuery.data?.summary ?? null;
+  const summary = bedsQuery.data?.summary ?? null;
 
   return (
     <div className="page-stack">
@@ -86,8 +86,8 @@ export function BedsPage() {
             </label>
             <button
               type="button"
-              disabled={recordersQuery.isFetching}
-              onClick={() => recordersQuery.refetch()}
+              disabled={bedsQuery.isFetching}
+              onClick={() => bedsQuery.refetch()}
             >
               Refresh
             </button>
@@ -106,7 +106,7 @@ export function BedsPage() {
             { label: "Bed anomalies", value: summary?.bedAnomalies ?? NOT_REPORTED },
             {
               label: "Data updated",
-              value: formatLocalDateTime(recordersQuery.data?.updatedAt)
+              value: formatLocalDateTime(bedsQuery.data?.updatedAt)
             }
           ]}
         />
@@ -115,12 +115,12 @@ export function BedsPage() {
           <p className="form-error">{mutationErrorMessage(visibilityMutationError)}</p>
         ) : null}
 
-        {recordersQuery.isPending ? (
+        {bedsQuery.isPending ? (
           <p className="empty-state">Loading beds...</p>
-        ) : recordersQuery.isError ? (
+        ) : bedsQuery.isError ? (
           <ErrorState
             title="Bed history is not available"
-            error={recordersQuery.error}
+            error={bedsQuery.error}
           />
         ) : beds === null ? (
           <ErrorState

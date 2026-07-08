@@ -366,27 +366,21 @@ public actor MacRuntimeControlCommandWorker {
         }
     }
 
-    public func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
-        await runVitalDBVisibilityCommand { gateway in
-            let beds = try gateway.hideVitalDBBeds(request)
-            let recorders = try gateway.vitalDBRecorders()
-            return (recorders, beds)
+    public func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
+        await runVitalDBBedVisibilityCommand { gateway in
+            try gateway.hideVitalDBBeds(request)
         }
     }
 
-    public func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
-        await runVitalDBVisibilityCommand { gateway in
-            let beds = try gateway.unhideVitalDBBeds(request)
-            let recorders = try gateway.vitalDBRecorders()
-            return (recorders, beds)
+    public func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
+        await runVitalDBBedVisibilityCommand { gateway in
+            try gateway.unhideVitalDBBeds(request)
         }
     }
 
-    public func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
-        await runVitalDBVisibilityCommand { gateway in
-            let beds = try gateway.deleteVitalDBBeds(request)
-            let recorders = try gateway.vitalDBRecorders()
-            return (recorders, beds)
+    public func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
+        await runVitalDBBedVisibilityCommand { gateway in
+            try gateway.deleteVitalDBBeds(request)
         }
     }
 
@@ -534,6 +528,19 @@ public actor MacRuntimeControlCommandWorker {
             return RuntimeVitalRecorderHistory(observations: [observation])
         } catch {
             return RuntimeVitalRecorderHistory(readError: "VitalDB read model command failed: \(error)")
+        }
+    }
+
+    private func runVitalDBBedVisibilityCommand(
+        _ command: @escaping @Sendable (any RuntimeGuestControlGateway) throws -> RuntimeGuestControlVitalDBBedRead
+    ) async -> RuntimeVitalBedHistory {
+        do {
+            let read = try await runGuestControlCommand { gateway in
+                try command(gateway)
+            }
+            return RuntimeVitalDBBedHistoryAssembler.makeHistory(read: read)
+        } catch {
+            return .failed(readError: "VitalDB bed read model command failed: \(error)")
         }
     }
 

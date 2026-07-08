@@ -57,6 +57,7 @@ def main() -> int:
         check_runtime_config_does_not_enable_testkit(),
         check_product_packaging_uses_lab_not_testkit(),
         check_vitaldb_read_models_do_not_name_host_sqlite_as_source(),
+        check_vitaldb_beds_use_explicit_bed_read_document(),
         check_vitaldb_host_sqlite_projection_requires_diagnostics_mode(),
         check_host_does_not_write_vitaldb_sqlite_projection(),
         check_host_health_does_not_promote_vitaldb_read_model_failures(),
@@ -5142,6 +5143,59 @@ def check_runtime_proof_acceptance_targets_are_explicit() -> CheckResult:
         True,
         "Runtime v2 review, Swift focused, HTTP E2E, and VM smoke "
         "acceptance targets are explicit",
+    )
+
+
+def check_vitaldb_beds_use_explicit_bed_read_document() -> CheckResult:
+    read_routes = (
+        MACOS_RUNTIME
+        / "Sources/Adapters/Inbound/RuntimeControlAPI/Boundary/RuntimeControlHTTPReadRoutes.swift"
+    )
+    beds_page = PWA / "src/pages/beds/BedsPage.tsx"
+    runtime_control_types = (
+        PWA / "src/domain/runtime-control/contracts/runtimeControlTypes.ts"
+    )
+    schema_path = (
+        PWA
+        / "src/domain/runtime-control/contracts/schemas/runtimeControlSchemas.ts"
+    )
+    openapi_path = ROOT / "docs/runtime/macos/runtime-control.openapi.json"
+    route_text = read(read_routes)
+    page_text = read(beds_page)
+    types_text = read(runtime_control_types)
+    schema_text = read(schema_path)
+    openapi_text = read(openapi_path)
+
+    missing = []
+    if "handler.loadVitalDBBeds()" not in route_text:
+        missing.append("RuntimeControlHTTPReadRoutes.loadVitalDBBeds")
+    if "useVitalDBBeds" not in page_text:
+        missing.append("BedsPage.useVitalDBBeds")
+    if "z.infer<typeof vitalDBBedsSchema>" not in types_text:
+        missing.append("VitalDBBeds.zod-inferred-type")
+    if "export const vitalDBBedsSchema = z" not in schema_text or "beds: z.array" not in schema_text:
+        missing.append("vitalDBBedsSchema.document")
+    if '"$ref": "#/components/schemas/RuntimeVitalBedHistory"' not in openapi_text:
+        missing.append("OpenAPI.RuntimeVitalBedHistory")
+
+    forbidden = []
+    if "handler.loadVitalDBRecorders().beds" in route_text:
+        forbidden.append("RuntimeControlHTTPReadRoutes.recorder-history-beds-slice")
+    if "useVitalDBRecorders" in page_text:
+        forbidden.append("BedsPage.useVitalDBRecorders")
+    if "export const vitalDBBedsSchema = z.array" in schema_text:
+        forbidden.append("vitalDBBedsSchema.array")
+
+    if missing or forbidden:
+        return CheckResult(
+            "vitaldb-beds-explicit-bed-read-document",
+            False,
+            f"missing={missing} forbidden={forbidden}",
+        )
+    return CheckResult(
+        "vitaldb-beds-explicit-bed-read-document",
+        True,
+        "Runtime Control and PWA Beds read paths consume explicit Guest/Postgres Bed history documents",
     )
 
 

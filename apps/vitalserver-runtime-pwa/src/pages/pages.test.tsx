@@ -649,6 +649,8 @@ describe("runtime console pages", () => {
   });
 
   it("renders beds, filters rows, and shows selected bed details", () => {
+    hooks.useVitalDBRecorders.mockReturnValue(failedQuery(new Error("recorders denied")));
+
     renderPage(<BedsPage />);
 
     expect(screen.getByText("Known beds")).toBeInTheDocument();
@@ -693,7 +695,7 @@ describe("runtime console pages", () => {
   });
 
   it("does not render missing bed query data as an empty bed list", () => {
-    hooks.useVitalDBRecorders.mockReturnValue(query(undefined));
+    hooks.useVitalDBBeds.mockReturnValue(query(undefined));
 
     renderPage(<BedsPage />);
 
@@ -1344,7 +1346,7 @@ describe("runtime console pages", () => {
 
   it("shows page-level query errors", () => {
     hooks.useRuntimeOverview.mockReturnValue(failedQuery(new Error("overview denied")));
-    hooks.useVitalDBRecorders.mockReturnValue(failedQuery(new Error("beds denied")));
+    hooks.useVitalDBBeds.mockReturnValue(failedQuery(new Error("beds denied")));
 
     const { rerender } = renderPage(<StatusPage />);
     expect(screen.getByRole("alert")).toHaveTextContent("overview denied");
@@ -1365,7 +1367,7 @@ function setupDefaultHooks() {
   hooks.useGuestStackStatus.mockReturnValue(query(guestStackStatus()));
   hooks.useRuntimeSettings.mockReturnValue(query(settings()));
   hooks.useVitalDBRecorders.mockReturnValue(query(recorders()));
-  hooks.useVitalDBBeds.mockReturnValue(query(beds()));
+  hooks.useVitalDBBeds.mockReturnValue(query(bedHistory()));
   hooks.useVitalDBRelationships.mockReturnValue(query(relationships()));
   hooks.useRuntimeEvents.mockReturnValue(query(events()));
   hooks.useHostLogs.mockReturnValue(query({ text: "line one\nline two" }));
@@ -1899,6 +1901,22 @@ function beds() {
       visibility: "visible"
     }
   ];
+}
+
+function bedHistory() {
+  return {
+    state: "loaded",
+    updatedAt: "2026-05-31T01:00:00Z",
+    beds: beds(),
+    summary: {
+      knownBeds: 1,
+      onlineBeds: 1,
+      staleBeds: 0,
+      bedAssignments: 1,
+      bedAnomalies: 1
+    },
+    readError: null
+  };
 }
 
 function relationships() {

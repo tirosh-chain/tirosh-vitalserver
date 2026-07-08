@@ -298,19 +298,19 @@ public final class RuntimeViewModel: ObservableObject {
     }
 
     func hideVitalDBBed(bedID: String) async {
-        await runVitalDBVisibilityAction(successMessage: "Bed hidden.") {
+        await runVitalDBBedVisibilityAction(successMessage: "Bed hidden.") {
             try await controlClient.hideVitalDBBeds(.init(bedIDs: [bedID]))
         }
     }
 
     func unhideVitalDBBed(bedID: String) async {
-        await runVitalDBVisibilityAction(successMessage: "Bed visible.") {
+        await runVitalDBBedVisibilityAction(successMessage: "Bed visible.") {
             try await controlClient.unhideVitalDBBeds(.init(bedIDs: [bedID]))
         }
     }
 
     func deleteVitalDBBed(bedID: String) async {
-        await runVitalDBVisibilityAction(successMessage: "Hidden bed deleted.") {
+        await runVitalDBBedVisibilityAction(successMessage: "Hidden bed deleted.") {
             try await controlClient.deleteVitalDBBeds(.init(bedIDs: [bedID]))
         }
     }
@@ -324,6 +324,34 @@ public final class RuntimeViewModel: ObservableObject {
         defer { isRunningVitalDBVisibilityAction = false }
         do {
             vitalRecorders = try await action()
+            vitalDBVisibilityActionMessage = successMessage
+        } catch {
+            vitalDBVisibilityActionMessage = error.localizedDescription
+        }
+    }
+
+    private func runVitalDBBedVisibilityAction(
+        successMessage: String,
+        action: () async throws -> RuntimeVitalBedHistory
+    ) async {
+        isRunningVitalDBVisibilityAction = true
+        vitalDBVisibilityActionMessage = "Updating VitalDB visibility..."
+        defer { isRunningVitalDBVisibilityAction = false }
+        do {
+            let bedHistory = try await action()
+            vitalRecorders = RuntimeVitalRecorderHistory(
+                state: bedHistory.state,
+                updatedAt: bedHistory.updatedAt,
+                recorders: vitalRecorders.recorders,
+                beds: bedHistory.beds,
+                summary: RuntimeVitalRecorderHistorySummary(
+                    recorders: vitalRecorders.recorders,
+                    beds: bedHistory.beds
+                ),
+                activityHistory: vitalRecorders.activityHistory,
+                recorderIngressStatusRead: vitalRecorders.recorderIngressStatusRead,
+                readError: bedHistory.readError
+            )
             vitalDBVisibilityActionMessage = successMessage
         } catch {
             vitalDBVisibilityActionMessage = error.localizedDescription

@@ -1419,8 +1419,25 @@ export interface components {
             /** @description Recorder history read issue. Present when observation/current/activity projection reads failed and the recorders/beds lists may be incomplete. */
             readError: string | null;
         };
+        /** @description Aggregated history of VitalDB beds keyed by bedID. */
+        RuntimeVitalBedHistory: {
+            state: components["schemas"]["RuntimeVitalRecorderHistoryState"];
+            updatedAt: string | null;
+            beds: components["schemas"]["RuntimeVitalBedRecord"][];
+            summary: components["schemas"]["RuntimeVitalBedHistorySummary"];
+            /** @description Bed history read issue. Present when the Guest/Postgres bed read document is failed or incomplete. */
+            readError: string | null;
+        };
         /** @enum {string} */
         RuntimeVitalRecorderHistoryState: "loaded" | "partiallyLoaded" | "readFailed";
+        /** @description Provider-owned summary for the derived VitalDB Bed history read model. */
+        RuntimeVitalBedHistorySummary: {
+            knownBeds: number;
+            onlineBeds: number;
+            staleBeds: number;
+            bedAssignments: number;
+            bedAnomalies: number;
+        };
         /** @description Provider-owned summary for the derived Vital Recorder and Bed history read model. */
         RuntimeVitalRecorderHistorySummary: {
             knownRecorders: number;
@@ -3661,7 +3678,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RuntimeVitalBedRecord"][];
+                    "application/json": components["schemas"]["RuntimeVitalBedHistory"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -3680,13 +3697,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Vital Recorder history after the bed hide command. */
+            /** @description VitalDB bed history after the bed hide command. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RuntimeVitalRecorderHistory"];
+                    "application/json": components["schemas"]["RuntimeVitalBedHistory"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -3705,13 +3722,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Vital Recorder history after the bed unhide command. */
+            /** @description VitalDB bed history after the bed unhide command. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RuntimeVitalRecorderHistory"];
+                    "application/json": components["schemas"]["RuntimeVitalBedHistory"];
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -3730,13 +3747,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Vital Recorder history after the bed delete command. */
+            /** @description VitalDB bed history after the bed delete command. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RuntimeVitalRecorderHistory"];
+                    "application/json": components["schemas"]["RuntimeVitalBedHistory"];
                 };
             };
             401: components["responses"]["Unauthorized"];

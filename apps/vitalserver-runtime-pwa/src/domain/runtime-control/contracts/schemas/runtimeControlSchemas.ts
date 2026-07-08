@@ -1043,6 +1043,16 @@ const vitalDBRecorderHistorySummarySchema = z
   })
   .passthrough();
 
+const vitalDBBedHistorySummarySchema = z
+  .object({
+    knownBeds: z.number(),
+    onlineBeds: z.number(),
+    staleBeds: z.number(),
+    bedAssignments: z.number(),
+    bedAnomalies: z.number()
+  })
+  .passthrough();
+
 const recorderActivityHistorySourceSchema = z.enum([
   "readModelProjection",
   "unavailable",
@@ -1072,7 +1082,15 @@ export const vitalDBRecordersSchema = z
   })
   .passthrough();
 
-export const vitalDBBedsSchema = z.array(vitalDBBedRecordSchema);
+export const vitalDBBedsSchema = z
+  .object({
+    state: vitalRecorderHistoryStateSchema,
+    updatedAt: requiredNullableString,
+    beds: z.array(vitalDBBedRecordSchema),
+    summary: vitalDBBedHistorySummarySchema,
+    readError: requiredNullableString
+  })
+  .passthrough();
 
 const vitalDBRelationshipAssignmentSchema = z
   .object({

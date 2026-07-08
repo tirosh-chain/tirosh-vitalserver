@@ -90,6 +90,7 @@ public protocol RuntimeControlAPIReadHandler {
     func loadEvents(query: RuntimeEventQuery) async throws -> RuntimeEventHistory
     func loadVitalDBObservationSnapshot() async throws -> RuntimeVitalDBObservationSnapshot
     func loadVitalDBRecorders() async throws -> RuntimeVitalRecorderHistory
+    func loadVitalDBBeds() async throws -> RuntimeVitalBedHistory
     func loadVitalDBRecorderActivityWindow(query: RuntimeVitalRecorderActivityWindowQuery) async throws -> RuntimeVitalRecorderActivityWindow
     func loadVitalDBRelationships() async throws -> RuntimeVitalRelationshipHistory
     func loadHealthStatus() async throws -> RuntimeStatus
@@ -109,9 +110,9 @@ public protocol RuntimeControlAPIReadHandler {
     func hideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
     func unhideVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
     func deleteVitalDBRecorders(_ request: RuntimeVitalDBRecorderVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
-    func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
-    func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
-    func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory
+    func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory
+    func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory
+    func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory
     func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse
     func loadLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
     func startLabSession(sessionId: String) async throws -> RuntimeLabSessionResponse
@@ -199,16 +200,20 @@ public extension RuntimeControlAPIReadHandler {
         RuntimeVitalRecorderHistory(readError: "VitalDB read model gateway is unavailable.")
     }
 
-    func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
-        RuntimeVitalRecorderHistory(readError: "VitalDB read model gateway is unavailable.")
+    func loadVitalDBBeds() async throws -> RuntimeVitalBedHistory {
+        .failed(readError: "VitalDB bed read model gateway is unavailable.")
     }
 
-    func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
-        RuntimeVitalRecorderHistory(readError: "VitalDB read model gateway is unavailable.")
+    func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
+        .failed(readError: "VitalDB bed read model gateway is unavailable.")
     }
 
-    func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
-        RuntimeVitalRecorderHistory(readError: "VitalDB read model gateway is unavailable.")
+    func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
+        .failed(readError: "VitalDB bed read model gateway is unavailable.")
+    }
+
+    func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
+        .failed(readError: "VitalDB bed read model gateway is unavailable.")
     }
 
     func createLabSession(_ request: RuntimeLabSessionCreateRequest) async throws -> RuntimeLabSessionResponse {

@@ -898,6 +898,42 @@ public enum RuntimeVitalRecorderHistoryState: String, Codable, Equatable, Sendab
     case readFailed
 }
 
+public struct RuntimeVitalBedHistory: Codable, Equatable, Sendable {
+    public let state: RuntimeVitalRecorderHistoryState
+    public let updatedAt: String?
+    public let beds: [RuntimeVitalBedRecord]
+    public let summary: RuntimeVitalBedHistorySummary
+    public let readError: String?
+
+    public init(
+        state: RuntimeVitalRecorderHistoryState? = nil,
+        updatedAt: String? = nil,
+        beds: [RuntimeVitalBedRecord] = [],
+        summary: RuntimeVitalBedHistorySummary? = nil,
+        readError: String? = nil
+    ) {
+        self.state = state ?? Self.defaultState(beds: beds, readError: readError)
+        self.updatedAt = updatedAt
+        self.beds = beds
+        self.summary = summary ?? RuntimeVitalBedHistorySummary(beds: beds)
+        self.readError = readError
+    }
+
+    public static func failed(readError: String) -> RuntimeVitalBedHistory {
+        RuntimeVitalBedHistory(state: .readFailed, readError: readError)
+    }
+
+    private static func defaultState(
+        beds: [RuntimeVitalBedRecord],
+        readError: String?
+    ) -> RuntimeVitalRecorderHistoryState {
+        guard readError != nil else {
+            return .loaded
+        }
+        return beds.isEmpty ? .readFailed : .partiallyLoaded
+    }
+}
+
 public struct RuntimeVitalRecorderHistory: Codable, Equatable, Sendable {
     public let state: RuntimeVitalRecorderHistoryState
     public let updatedAt: String?
@@ -1242,6 +1278,49 @@ public struct RuntimeVitalRecorderHistorySummary: Codable, Equatable, Sendable {
             staleBeds: currentBeds.filter { $0.status == .stale }.count,
             bedAssignments: currentBeds.filter { $0.vrcode?.isEmpty == false }.count,
             bedAnomalies: currentBeds.reduce(0) { $0 + $1.currentAnomalyCount }
+        )
+    }
+}
+
+public struct RuntimeVitalBedHistorySummary: Codable, Equatable, Sendable {
+    public let knownBeds: Int
+    public let onlineBeds: Int
+    public let staleBeds: Int
+    public let bedAssignments: Int
+    public let bedAnomalies: Int
+
+    public init(
+        knownBeds: Int = 0,
+        onlineBeds: Int = 0,
+        staleBeds: Int = 0,
+        bedAssignments: Int = 0,
+        bedAnomalies: Int = 0
+    ) {
+        self.knownBeds = knownBeds
+        self.onlineBeds = onlineBeds
+        self.staleBeds = staleBeds
+        self.bedAssignments = bedAssignments
+        self.bedAnomalies = bedAnomalies
+    }
+
+    public init(beds: [RuntimeVitalBedRecord]) {
+        let currentBeds = beds.filter { $0.status != .notObserved }
+        self.init(
+            knownBeds: beds.count,
+            onlineBeds: currentBeds.filter { $0.status == .online }.count,
+            staleBeds: currentBeds.filter { $0.status == .stale }.count,
+            bedAssignments: currentBeds.filter { $0.vrcode?.isEmpty == false }.count,
+            bedAnomalies: currentBeds.reduce(0) { $0 + $1.currentAnomalyCount }
+        )
+    }
+
+    public init(recorderSummary: RuntimeVitalRecorderHistorySummary) {
+        self.init(
+            knownBeds: recorderSummary.knownBeds,
+            onlineBeds: recorderSummary.onlineBeds,
+            staleBeds: recorderSummary.staleBeds,
+            bedAssignments: recorderSummary.bedAssignments,
+            bedAnomalies: recorderSummary.bedAnomalies
         )
     }
 }

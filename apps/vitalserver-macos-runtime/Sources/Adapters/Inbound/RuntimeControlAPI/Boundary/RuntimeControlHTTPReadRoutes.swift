@@ -59,10 +59,10 @@ struct RuntimeControlHTTPReadRoutes {
                 handler.loadVitalDBRecorderActivityWindow(query: query)
             )
         case .vitalDBBeds:
-            return try await RuntimeControlHTTPResponseFactory.json(handler.loadVitalDBRecorders().beds)
+            return try await RuntimeControlHTTPResponseFactory.json(handler.loadVitalDBBeds())
         case .vitalDBBed:
             let bedID = try request.vitalDBBedID()
-            let beds = try await handler.loadVitalDBRecorders().beds
+            let beds = try await handler.loadVitalDBBeds().beds
             guard let bed = beds.first(where: { $0.bedID == bedID }) else {
                 return RuntimeControlHTTPResponseFactory.resourceNotFound("VitalDB bed not found: \(bedID)")
             }

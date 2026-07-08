@@ -96,9 +96,9 @@ export type RuntimeControlGateway = {
   unhideRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders>;
   deleteRecorders(request: VitalDBRecorderVisibilityRequest): Promise<VitalDBRecorders>;
   getBeds(): Promise<VitalDBBeds>;
-  hideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBRecorders>;
-  unhideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBRecorders>;
-  deleteBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBRecorders>;
+  hideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBBeds>;
+  unhideBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBBeds>;
+  deleteBeds(request: VitalDBBedVisibilityRequest): Promise<VitalDBBeds>;
   getRelationships(): Promise<VitalDBRelationships>;
   readLogs(request: RuntimeLogTextRequest): Promise<RuntimeLogTextResponse>;
   exportLogs(request: RuntimeExportLogsRequest): Promise<RuntimeLogExportResult>;

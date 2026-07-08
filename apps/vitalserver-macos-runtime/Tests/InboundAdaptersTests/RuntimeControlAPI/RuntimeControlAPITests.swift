@@ -726,7 +726,7 @@ final class RuntimeControlAPITests: XCTestCase {
             ))
         )
         let vitalBeds = try await decode(
-            [RuntimeVitalBedRecord].self,
+            RuntimeVitalBedHistory.self,
             from: router.route(.init(method: .get, path: "/vitaldb/beds"))
         )
         let vitalBed = try await decode(
@@ -777,7 +777,7 @@ final class RuntimeControlAPITests: XCTestCase {
         XCTAssertEqual(vitalRecorderActivity.query.period, .all)
         XCTAssertEqual(vitalRecorderActivity.query.pageIndex, 0)
         XCTAssertEqual(vitalRecorderActivity.buckets.first?.messageCount, 3)
-        XCTAssertEqual(vitalBeds.map(\.bedID), ["bed-a"])
+        XCTAssertEqual(vitalBeds.beds.map(\.bedID), ["bed-a"])
         XCTAssertEqual(vitalBed.vrcode, "VR_A")
         XCTAssertEqual(vitalRelationships.assignments.map(\.vrcode), ["VR_A"])
         XCTAssertEqual(vitalRelationships.events.first?.eventType, .handoff)
@@ -2744,6 +2744,17 @@ private struct StubRuntimeControlAPIReadHandler: RuntimeControlAPIReadHandler {
         )
     }
 
+    func loadVitalDBBeds() async throws -> RuntimeVitalBedHistory {
+        let history = try await loadVitalDBRecorders()
+        return RuntimeVitalBedHistory(
+            state: history.state,
+            updatedAt: history.updatedAt,
+            beds: history.beds,
+            summary: RuntimeVitalBedHistorySummary(recorderSummary: history.summary),
+            readError: history.readError
+        )
+    }
+
     func loadVitalDBRecorderActivityWindow(
         query: RuntimeVitalRecorderActivityWindowQuery
     ) async throws -> RuntimeVitalRecorderActivityWindow {
@@ -3057,6 +3068,17 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
         RuntimeVitalRecorderHistory(observations: [loadVitalDBObservationSnapshot().observation].compactMap { $0 })
     }
 
+    func loadVitalDBBeds() -> RuntimeVitalBedHistory {
+        let history = loadVitalDBRecorders()
+        return RuntimeVitalBedHistory(
+            state: history.state,
+            updatedAt: history.updatedAt,
+            beds: history.beds,
+            summary: RuntimeVitalBedHistorySummary(recorderSummary: history.summary),
+            readError: history.readError
+        )
+    }
+
     func hideVitalDBRecorders(
         _ request: RuntimeVitalDBRecorderVisibilityRequest
     ) async throws -> RuntimeVitalRecorderHistory {
@@ -3077,20 +3099,20 @@ private final class FakeRuntimeControlClient: RuntimeControlClient, RuntimeHostC
 
     func hideVitalDBBeds(
         _ request: RuntimeVitalDBBedVisibilityRequest
-    ) async throws -> RuntimeVitalRecorderHistory {
-        loadVitalDBRecorders()
+    ) async throws -> RuntimeVitalBedHistory {
+        loadVitalDBBeds()
     }
 
     func unhideVitalDBBeds(
         _ request: RuntimeVitalDBBedVisibilityRequest
-    ) async throws -> RuntimeVitalRecorderHistory {
-        loadVitalDBRecorders()
+    ) async throws -> RuntimeVitalBedHistory {
+        loadVitalDBBeds()
     }
 
     func deleteVitalDBBeds(
         _ request: RuntimeVitalDBBedVisibilityRequest
-    ) async throws -> RuntimeVitalRecorderHistory {
-        loadVitalDBRecorders()
+    ) async throws -> RuntimeVitalBedHistory {
+        loadVitalDBBeds()
     }
 
     func loadVitalDBRelationships() -> RuntimeVitalRelationshipHistory {

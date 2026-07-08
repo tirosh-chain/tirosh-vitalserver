@@ -97,6 +97,10 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         observabilityReader.loadVitalDBRecorders()
     }
 
+    public func loadVitalDBBeds() -> RuntimeVitalBedHistory {
+        observabilityReader.loadVitalDBBeds()
+    }
+
     public func loadVitalDBRecorderSummaries() -> RuntimeVitalRecorderHistory {
         observabilityReader.loadVitalDBRecorderSummaries()
     }
@@ -281,15 +285,15 @@ public struct MacRuntimeControlClient: RuntimeControlClient, RuntimeHostClient {
         try await commandWorker.deleteVitalDBRecorders(request)
     }
 
-    public func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+    public func hideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
         try await commandWorker.hideVitalDBBeds(request)
     }
 
-    public func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+    public func unhideVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
         try await commandWorker.unhideVitalDBBeds(request)
     }
 
-    public func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalRecorderHistory {
+    public func deleteVitalDBBeds(_ request: RuntimeVitalDBBedVisibilityRequest) async throws -> RuntimeVitalBedHistory {
         try await commandWorker.deleteVitalDBBeds(request)
     }
 
