@@ -8,6 +8,7 @@ import {
   runtimeLogTextResponseSchema,
   runtimeOperationStateSchema,
   runtimeOverviewSchema,
+  runtimeStatusSchema,
   runtimeSettingsSchema,
   runtimeUpdateBundleSummaryResponseSchema,
   vitalDBObservationSchema,
@@ -140,6 +141,52 @@ describe("runtime control contract schemas", () => {
     ).toMatchObject({
       runtimeState: "healthy",
       statusMessage: "loaded"
+    });
+  });
+
+  it("requires explicit Guest service arrays when RuntimeStatus says Guest services are loaded", () => {
+    expect(
+      runtimeStatusSchema.parse({
+        runtimeState: "healthy",
+        guestServicesReadState: "loaded",
+        guestServiceStatuses: [],
+        guestServiceResources: [],
+        guestServiceResourceReadIssues: []
+      })
+    ).toMatchObject({
+      guestServicesReadState: "loaded",
+      guestServiceStatuses: [],
+      guestServiceResources: [],
+      guestServiceResourceReadIssues: []
+    });
+
+    expect(() =>
+      runtimeStatusSchema.parse({
+        runtimeState: "healthy",
+        guestServicesReadState: "loaded",
+        guestServiceStatuses: []
+      })
+    ).toThrow(/guestServiceResources/);
+  });
+
+  it("requires an explicit read error when RuntimeStatus says Guest service reads failed", () => {
+    expect(() =>
+      runtimeStatusSchema.parse({
+        runtimeState: "degraded",
+        guestServicesReadState: "failed",
+        guestServicesReadError: ""
+      })
+    ).toThrow(/guestServicesReadError/);
+
+    expect(
+      runtimeStatusSchema.parse({
+        runtimeState: "degraded",
+        guestServicesReadState: "failed",
+        guestServicesReadError: "guest control api timed out"
+      })
+    ).toMatchObject({
+      guestServicesReadState: "failed",
+      guestServicesReadError: "guest control api timed out"
     });
   });
 

@@ -32,6 +32,7 @@ import type {
   RuntimeOperationState,
   RuntimeGuestControlStackStatus,
   RuntimeGuestControlServiceOperation,
+  RuntimeStatus,
   RuntimeBackup
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
 import { validateRuntimeSettings } from "@/domain/runtime-control/settings/runtimeSettingsPolicy";
@@ -218,6 +219,7 @@ export function AdvancedPage() {
         <ServiceHealth overview={overview.data} />
         <GuestServiceControls
           stackStatus={guestStackStatus.data}
+          runtimeStatus={overview.data?.status}
           stackStatusError={guestStackStatus.isError ? guestStackStatus.error : null}
           disabled={!canControlGuestServices}
           isPending={
@@ -768,6 +770,7 @@ function APICatalog({ overview }: { overview: RuntimeControlOverview | undefined
 
 function GuestServiceControls({
   stackStatus,
+  runtimeStatus,
   stackStatusError,
   disabled,
   isPending,
@@ -776,6 +779,7 @@ function GuestServiceControls({
   onRestart
 }: {
   stackStatus: RuntimeGuestControlStackStatus | undefined;
+  runtimeStatus: RuntimeStatus | undefined;
   stackStatusError: Error | null;
   disabled: boolean;
   isPending: boolean;
@@ -784,8 +788,23 @@ function GuestServiceControls({
   onRestart: (service: string) => void;
 }) {
   const statuses = stackStatus?.services ?? [];
+  const resourceByService = new Map(
+    (runtimeStatus?.guestServiceResources ?? []).map((resource) => [
+      resource.service,
+      resource
+    ])
+  );
+  const resourceIssueByService = new Map(
+    (runtimeStatus?.guestServiceResourceReadIssues ?? []).map((issue) => [
+      issue.service,
+      issue
+    ])
+  );
   const knownServices = statuses
     .map((serviceStatus) => serviceStatus.service)
+    .concat(Array.from(resourceByService.keys()))
+    .concat(Array.from(resourceIssueByService.keys()))
+    .filter((service, index, services) => services.indexOf(service) === index)
     .sort();
   const stackStatusIssue =
     stackStatus && stackStatus.state !== "loaded"
@@ -808,11 +827,21 @@ function GuestServiceControls({
             const serviceStatus = statuses.find(
               (candidate) => candidate.service === service
             );
+            const resource = resourceByService.get(service);
             return {
               id: service,
               service,
               state: serviceStatus?.state ?? NOT_REPORTED,
-              health: serviceStatus?.health ?? NOT_REPORTED
+              health: serviceStatus?.health ?? NOT_REPORTED,
+              desired: resource?.spec.desiredState ?? resource?.spec.state ?? NOT_REPORTED,
+              observed:
+                resource?.status.observedState ??
+                resource?.status.state ??
+                NOT_REPORTED,
+              condition: resource?.conditions[0]
+                ? `${resource.conditions[0].reason}: ${resource.conditions[0].message}`
+                : NOT_REPORTED,
+              resourceIssue: resourceIssueByService.get(service)?.message ?? ""
             };
           })}
           getRowKey={(row) => row.id}
@@ -820,6 +849,14 @@ function GuestServiceControls({
             { key: "service", header: "Service", render: (row) => row.service },
             { key: "state", header: "State", render: (row) => row.state },
             { key: "health", header: "Health", render: (row) => row.health },
+            { key: "desired", header: "Desired", render: (row) => row.desired },
+            { key: "observed", header: "Observed", render: (row) => row.observed },
+            { key: "condition", header: "Condition", render: (row) => row.condition },
+            {
+              key: "resourceIssue",
+              header: "Resource read",
+              render: (row) => row.resourceIssue || "OK"
+            },
             {
               key: "actions",
               header: "Actions",

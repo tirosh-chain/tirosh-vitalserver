@@ -83,6 +83,7 @@ def main() -> int:
         check_guest_service_control_has_separate_capability(),
         check_guest_capability_checks_use_guest_control_api(),
         check_cli_consumes_guest_control_product_apis(),
+        check_cli_guest_control_default_url_uses_runtime_status(),
         check_product_readmes_do_not_promote_legacy_sources(),
         check_testkit_package_is_dev_tooling_only(),
         check_runtime_proof_local_artifacts_and_private_samples_are_ignored(),
@@ -3224,6 +3225,45 @@ def check_cli_consumes_guest_control_product_apis() -> CheckResult:
         "cli-guest-product-apis",
         True,
         "CLI consumes Guest Control service, Lab, and VitalDB product APIs",
+    )
+
+
+def check_cli_guest_control_default_url_uses_runtime_status() -> CheckResult:
+    service_support_path = (
+        MACOS_RUNTIME
+        / "Sources/Hosts/CLI/ProcessBoundary/Support"
+        / "RuntimeLifecycle+ServiceSupport.swift"
+    )
+    text = read(service_support_path)
+    required = [
+        "JSONFileRuntimeStatusRepository(",
+        "installedPaths.runtimeStatus",
+        "guestControlAPIBaseURL(vmIP: vmIP)",
+        '"http://\\(vmIP):18330"',
+        "runtime status document is missing",
+        "runtime status read failed",
+    ]
+    forbidden = [
+        "GuestRuntimeStateDocument",
+        "installedPaths.runtimeState",
+        "runtimeStateVMIP",
+        "try?",
+    ]
+    missing = [token for token in required if token not in text]
+    present = [token for token in forbidden if token in text]
+    if missing or present:
+        return CheckResult(
+            "cli-guest-control-default-url-runtime-status",
+            False,
+            (
+                f"missing={missing} forbidden_present={present} "
+                f"path={relative(service_support_path)}"
+            ),
+        )
+    return CheckResult(
+        "cli-guest-control-default-url-runtime-status",
+        True,
+        "CLI derives the default Guest Control URL from explicit runtime status reads",
     )
 
 

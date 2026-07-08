@@ -209,11 +209,13 @@ public struct RuntimeStatusHealthDetailsPolicy {
             return orderedGuestServiceStatuses(status)
                 .filter { $0.service != "redis-relay" }
                 .map { serviceStatus in
-                    RuntimeStatusHealthDetailItem(
+                    let resource = status.guestServiceResources.first { $0.service == serviceStatus.service }
+                    let readIssue = status.guestServiceResourceReadIssues.first { $0.service == serviceStatus.service }
+                    return RuntimeStatusHealthDetailItem(
                         label: "\(vocabulary.guestProductServicesLabel): \(serviceStatus.service)",
                         value: RuntimeStatusHealthDetailValue(
-                            text: guestServiceText(serviceStatus),
-                            severity: guestServiceSeverity(serviceStatus),
+                            text: guestServiceText(serviceStatus, resource: resource, readIssue: readIssue),
+                            severity: guestServiceSeverity(serviceStatus, readIssue: readIssue),
                             uptimeText: nil
                         )
                     )
@@ -237,19 +239,41 @@ public struct RuntimeStatusHealthDetailsPolicy {
         return orderedStatuses
     }
 
-    private func guestServiceText(_ serviceStatus: RuntimeGuestControlServiceStatus) -> String {
+    private func guestServiceText(
+        _ serviceStatus: RuntimeGuestControlServiceStatus,
+        resource: RuntimeGuestServiceResource?,
+        readIssue: RuntimeGuestServiceResourceReadIssue?
+    ) -> String {
+        if let readIssue {
+            return "Resource read failed: \(readIssue.message)"
+        }
+        var parts: [String] = []
         if !serviceStatus.health.isEmpty, serviceStatus.health != "unknown" {
-            return vocabulary.containerHealthText(serviceStatus.health)
+            parts.append(vocabulary.containerHealthText(serviceStatus.health))
+        } else if !serviceStatus.state.isEmpty {
+            parts.append(vocabulary.containerStateText(serviceStatus.state))
+        } else {
+            parts.append(vocabulary.notReportedText)
         }
-        if !serviceStatus.state.isEmpty {
-            return vocabulary.containerStateText(serviceStatus.state)
+        if let resource {
+            let desired = resource.spec.desiredState ?? resource.spec.state
+            let observed = resource.status.observedState ?? resource.status.state
+            parts.append("desired \(desired)")
+            parts.append("observed \(observed)")
+            if let condition = resource.conditions.first {
+                parts.append("\(condition.reason): \(condition.message)")
+            }
         }
-        return vocabulary.notReportedText
+        return parts.joined(separator: " | ")
     }
 
     private func guestServiceSeverity(
-        _ serviceStatus: RuntimeGuestControlServiceStatus
+        _ serviceStatus: RuntimeGuestControlServiceStatus,
+        readIssue: RuntimeGuestServiceResourceReadIssue?
     ) -> RuntimeStatusReachabilityPolicy.Severity {
+        if readIssue != nil {
+            return .warning
+        }
         switch serviceStatus.health.lowercased() {
         case "healthy":
             return .healthy

@@ -26,29 +26,32 @@ extension RuntimeLifecycle {
     }
 
     private func defaultGuestControlBaseURL() throws -> String {
-        guard let vmIP = runtimeStateVMIP() else {
+        switch JSONFileRuntimeStatusRepository(
+            url: installedPaths.runtimeStatus,
+            fileStore: fileStore
+        ).loadResult() {
+        case .loaded(let document):
+            guard let vmIP = document.vmIP?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !vmIP.isEmpty
+            else {
+                throw LauncherError.runtimeOperationFailed(
+                    "guest control API is unavailable: \(RuntimeHTTPStatusText.missingVMIP)"
+                )
+            }
+            return guestControlAPIBaseURL(vmIP: vmIP)
+        case .missing:
             throw LauncherError.runtimeOperationFailed(
-                "guest control API is unavailable: \(RuntimeHTTPStatusText.missingVMIP)"
+                "guest control API is unavailable: runtime status document is missing"
+            )
+        case .failed(let message):
+            throw LauncherError.runtimeOperationFailed(
+                "guest control API is unavailable: runtime status read failed: \(message)"
             )
         }
-        return "http://\(vmIP):18330"
     }
 
-    private func runtimeStateVMIP() -> String? {
-        let url = installedPaths.runtimeState
-        guard fileStore.pathState(at: url) == .file else {
-            return nil
-        }
-        do {
-            let document = try JSONDecoder().decode(
-                GuestRuntimeStateDocument.self,
-                from: try fileStore.readData(url)
-            )
-            let trimmed = document.vmIP?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return trimmed.isEmpty ? nil : trimmed
-        } catch {
-            return nil
-        }
+    private func guestControlAPIBaseURL(vmIP: String) -> String {
+        "http://\(vmIP):18330"
     }
 
     func isLaunchdLoaded(_ service: RuntimeManagedService) -> Bool {

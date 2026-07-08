@@ -645,16 +645,49 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     health: "healthy",
                     observedAt: "2026-07-01T00:00:00Z"
                 ),
+            ],
+            guestServiceResources: [
+                RuntimeGuestServiceResource(
+                    service: "redis",
+                    spec: RuntimeGuestServiceSpec(
+                        state: "configured",
+                        desiredState: "running",
+                        updatedAt: "2026-07-01T00:00:00Z"
+                    ),
+                    status: RuntimeGuestServiceStatusRead(
+                        state: "loaded",
+                        observedState: "running",
+                        observedAt: "2026-07-01T00:00:00Z"
+                    ),
+                    conditions: [
+                        RuntimeGuestServiceCondition(
+                            type: "Reconciled",
+                            status: "true",
+                            reason: "DesiredStateObserved",
+                            message: "matched desired state",
+                            observedAt: "2026-07-01T00:00:00Z"
+                        )
+                    ]
+                )
+            ],
+            guestServiceResourceReadIssues: [
+                RuntimeGuestServiceResourceReadIssue(
+                    service: "vitaldb-observer",
+                    message: "resource document decode failed"
+                )
             ]
         )
 
         let details = policy.healthDetails(status: status, operationState: operationState())
 
-        XCTAssertEqual(item("\(AppConstants.Labels.guestProductServices): redis", in: details)?.value.text, AppConstants.StatusText.healthy)
+        XCTAssertEqual(
+            item("\(AppConstants.Labels.guestProductServices): redis", in: details)?.value.text,
+            "\(AppConstants.StatusText.healthy) | desired running | observed running | DesiredStateObserved: matched desired state"
+        )
         XCTAssertEqual(item("\(AppConstants.Labels.guestProductServices): redis", in: details)?.value.severity, .healthy)
         XCTAssertEqual(
             item("\(AppConstants.Labels.guestProductServices): vitaldb-observer", in: details)?.value.text,
-            AppConstants.StatusText.containerState("exited")
+            "Resource read failed: resource document decode failed"
         )
         XCTAssertEqual(
             item("\(AppConstants.Labels.guestProductServices): vitaldb-observer", in: details)?.value.severity,
@@ -894,6 +927,36 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     health: "healthy",
                     observedAt: "2026-07-01T00:00:00Z"
                 ),
+            ],
+            guestServiceResources: [
+                RuntimeGuestServiceResource(
+                    service: "app",
+                    spec: RuntimeGuestServiceSpec(
+                        state: "configured",
+                        desiredState: "running",
+                        updatedAt: "2026-07-01T00:00:00Z"
+                    ),
+                    status: RuntimeGuestServiceStatusRead(
+                        state: "loaded",
+                        observedState: "running",
+                        observedAt: "2026-07-01T00:00:00Z"
+                    ),
+                    conditions: [
+                        RuntimeGuestServiceCondition(
+                            type: "Reconciled",
+                            status: "true",
+                            reason: "DesiredStateObserved",
+                            message: "matched desired state",
+                            observedAt: "2026-07-01T00:00:00Z"
+                        )
+                    ]
+                )
+            ],
+            guestServiceResourceReadIssues: [
+                RuntimeGuestServiceResourceReadIssue(
+                    service: "recorder-ingress",
+                    message: "resource controller unavailable"
+                )
             ]
         )
         let items = policy.advancedServiceHealth(status: status, operationState: operationState())
@@ -902,9 +965,12 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         let recorderIngressLabel = "\(AppConstants.Labels.guestProductServices): recorder-ingress"
         let app = item(appLabel, in: items)
         let recorderIngress = item(recorderIngressLabel, in: items)
-        XCTAssertEqual(app?.value.text, AppConstants.StatusText.healthy)
+        XCTAssertEqual(
+            app?.value.text,
+            "\(AppConstants.StatusText.healthy) | desired running | observed running | DesiredStateObserved: matched desired state"
+        )
         XCTAssertEqual(app?.value.severity, .healthy)
-        XCTAssertEqual(recorderIngress?.value.text, AppConstants.StatusText.containerHealth("unhealthy"))
+        XCTAssertEqual(recorderIngress?.value.text, "Resource read failed: resource controller unavailable")
         XCTAssertEqual(recorderIngress?.value.severity, .warning)
         XCTAssertLessThan(
             items.firstIndex { $0.label == appLabel } ?? Int.max,

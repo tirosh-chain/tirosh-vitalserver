@@ -1047,6 +1047,64 @@ describe("runtime console pages", () => {
     expect(screen.queryByText("VitalDB Observer")).not.toBeInTheDocument();
   });
 
+  it("shows Guest service desired, observed, and resource read states from RuntimeStatus", () => {
+    const runtimeOverview = overview();
+    hooks.useRuntimeOverview.mockReturnValue(
+      query({
+        ...runtimeOverview,
+        status: {
+          ...runtimeOverview.status,
+          guestServicesReadState: "loaded",
+          guestServiceStatuses: [],
+          guestServiceResources: [
+            {
+              service: "app",
+              spec: {
+                state: "configured",
+                desiredState: "running",
+                updatedAt: "2026-05-31T01:00:00Z"
+              },
+              status: {
+                state: "loaded",
+                observedState: "running",
+                observedAt: "2026-05-31T01:00:00Z"
+              },
+              conditions: [
+                {
+                  type: "Reconciled",
+                  status: "true",
+                  reason: "DesiredStateObserved",
+                  message: "matched desired state",
+                  observedAt: "2026-05-31T01:00:00Z"
+                }
+              ],
+              lastOperationId: "op-app-1"
+            }
+          ],
+          guestServiceResourceReadIssues: [
+            {
+              service: "postgres",
+              message: "resource document decode failed"
+            }
+          ]
+        }
+      })
+    );
+
+    renderPage(<AdvancedPage />);
+
+    expect(screen.getByRole("columnheader", { name: "Desired" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Observed" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Resource read" })).toBeInTheDocument();
+    const appRow = screen.getByRole("row", { name: /app running healthy running running/i });
+    expect(within(appRow).getByText("DesiredStateObserved: matched desired state")).toBeInTheDocument();
+    expect(within(appRow).getByText("OK")).toBeInTheDocument();
+    const postgresRow = screen.getByRole("row", {
+      name: /postgres Not reported Not reported Not reported Not reported Not reported resource document decode failed/i
+    });
+    expect(postgresRow).toBeInTheDocument();
+  });
+
   it("shows non-loaded Guest stack status without treating it as an empty service list", () => {
     hooks.useGuestStackStatus.mockReturnValue(
       query({

@@ -718,7 +718,31 @@ export const runtimeStatusSchema = z
     failureReasons: z.array(z.string()).optional(),
     progress: unknownRecord.nullable().optional()
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((status, context) => {
+    if (status.guestServicesReadState === "loaded") {
+      for (const field of [
+        "guestServiceStatuses",
+        "guestServiceResources",
+        "guestServiceResourceReadIssues"
+      ] as const) {
+        if (!Array.isArray(status[field])) {
+          context.addIssue({
+            code: "custom",
+            path: [field],
+            message: `loaded guest service reads must include ${field}`
+          });
+        }
+      }
+    }
+    if (status.guestServicesReadState === "failed" && isBlank(status.guestServicesReadError)) {
+      context.addIssue({
+        code: "custom",
+        path: ["guestServicesReadError"],
+        message: "failed guest service reads must include guestServicesReadError"
+      });
+    }
+  });
 
 const runtimeInstallOperationStateSchema = z
   .object({
