@@ -58,7 +58,6 @@ final class EvaluateRuntimeHealthUseCaseTests: XCTestCase {
             swaggerUIHTTP: observation.swaggerUIHTTP,
             guestServiceStatuses: observation.guestServiceStatuses,
             vitalDBObservation: observation.vitalDBObservation,
-            reportedVMErrors: observation.reportedVMErrors,
             configurationFailureReasons: [],
             proxyPortFailureReasons: [],
             guestBootstrapAssessment: .noFailure
@@ -207,7 +206,6 @@ private func observation(
         redisUIHTTP: "200",
         swaggerUIHTTP: "200",
         vitalDBObservation: .notReported,
-        reportedVMErrors: [],
         configurationFailureReasons: [],
         proxyPortFailureReasons: [],
         guestBootstrapResult: guestBootstrapResult,

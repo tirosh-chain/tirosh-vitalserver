@@ -856,7 +856,7 @@ def test_guest_service_resource_get_is_side_effect_free() -> None:
     assert operations.status_snapshots == []
 
 
-def test_guest_service_resource_get_seeds_missing_product_service_spec() -> None:
+def test_guest_service_resource_get_reports_missing_spec_without_seeding() -> None:
     operations = FakeOperations()
     usecases = GuestControlUseCases(
         service_control=FakeServiceControl(),
@@ -867,14 +867,15 @@ def test_guest_service_resource_get_seeds_missing_product_service_spec() -> None
 
     document = usecases.get_guest_service_resource("app")
 
-    assert document["spec"]["state"] == "configured"
-    assert document["spec"]["desiredState"] == "running"
-    assert document["status"]["state"] == "loaded"
-    assert document["status"]["observedState"] == "running"
-    assert document["conditions"][0]["reason"] == "DesiredStateObserved"
-    assert operations.service_resources["app"].spec.as_json()["desiredState"] == (
-        "running"
-    )
+    assert document["spec"]["state"] == "missing"
+    assert document["spec"]["desiredState"] is None
+    assert document["status"]["state"] == "failed"
+    assert document["status"]["readError"] == {
+        "kind": "guestServiceStatusNotObserved",
+        "message": "Guest service status has not been observed.",
+    }
+    assert document["conditions"] == []
+    assert operations.service_resources == {}
 
 
 def test_observe_guest_service_reads_and_persists_loaded_status() -> None:
@@ -888,12 +889,13 @@ def test_observe_guest_service_reads_and_persists_loaded_status() -> None:
 
     document = usecases.observe_guest_service("app")
 
-    assert document["spec"]["state"] == "configured"
-    assert document["spec"]["desiredState"] == "running"
+    assert document["spec"]["state"] == "missing"
+    assert document["spec"]["desiredState"] is None
     assert document["status"]["state"] == "loaded"
     assert document["status"]["observedState"] == "running"
-    assert document["conditions"][0]["reason"] == "DesiredStateObserved"
+    assert document["conditions"][0]["reason"] == "SpecMissing"
     assert operations.status_snapshots[0].service == "app"
+    assert operations.service_resources["app"].spec.as_json()["state"] == "missing"
     assert operations.service_resources["app"].status.as_json()["observedState"] == (
         "running"
     )
@@ -994,15 +996,12 @@ def test_get_stack_status_persists_each_service_status_snapshot() -> None:
     assert status.state == "loaded"
     assert [service.service for service in status.services] == ["app", "redis"]
     assert operations.status_snapshots == status.services
-    assert operations.service_resources["app"].spec.as_json()["desiredState"] == (
-        "running"
-    )
+    assert operations.service_resources["app"].spec.as_json()["state"] == "missing"
+    assert operations.service_resources["app"].spec.as_json()["desiredState"] is None
     assert operations.service_resources["app"].status.as_json()["observedState"] == (
         "running"
     )
-    assert operations.service_resources["app"].conditions[0].reason == (
-        "DesiredStateObserved"
-    )
+    assert operations.service_resources["app"].conditions[0].reason == "SpecMissing"
 
 
 def test_get_stack_status_preserves_existing_guest_service_desired_state() -> None:
@@ -1170,7 +1169,7 @@ def test_restart_service_status_snapshot_failure_is_persisted_as_failed_operatio
     assert operations.status_snapshots == []
 
 
-def test_reconcile_guest_service_seeds_missing_spec_before_deciding() -> None:
+def test_reconcile_guest_service_without_spec_is_blocked() -> None:
     operations = FakeOperations()
     service_control = FakeServiceControl()
     usecases = GuestControlUseCases(
@@ -1182,15 +1181,17 @@ def test_reconcile_guest_service_seeds_missing_spec_before_deciding() -> None:
 
     operation = usecases.reconcile_guest_service("app")
 
-    assert operation.state == OperationState.COMPLETED
-    assert operation.failure is None
+    assert operation.state == OperationState.FAILED
+    assert operation.failure is not None
+    assert operation.failure.kind == "guestServiceReconcileBlocked"
+    assert operation.failure.message == "Guest service desired state is not configured."
     assert service_control.started == []
-    assert operations.service_resources["app"].spec.as_json()["desiredState"] == (
-        "running"
-    )
-    assert operations.service_resources["app"].conditions[0].reason == (
-        "DesiredStateObserved"
-    )
+    assert service_control.stopped == []
+    assert service_control.restarted == []
+    assert operations.service_resources["app"].spec.as_json()["state"] == "missing"
+    assert operations.service_resources["app"].spec.as_json()["desiredState"] is None
+    assert operations.service_resources["app"].conditions[0].reason == "SpecMissing"
+    assert operations.service_resources["app"].last_operation_id == "op_app_reconcile_1"
 
 
 def test_reconcile_services_persists_operation_transitions() -> None:

@@ -19,7 +19,6 @@ public struct RuntimeHealthInput: Equatable {
     public let swaggerUIHTTP: String
     public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
     public let vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
-    public let reportedVMErrors: [RuntimeVMError]
     public let configurationFailureReasons: [RuntimeFailureReason]
     public let proxyPortFailureReasons: [RuntimeFailureReason]
     public let guestBootstrapAssessment: GuestBootstrapAssessment
@@ -42,7 +41,6 @@ public struct RuntimeHealthInput: Equatable {
         swaggerUIHTTP: String,
         guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
         vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>,
-        reportedVMErrors: [RuntimeVMError] = [],
         configurationFailureReasons: [RuntimeFailureReason] = [],
         proxyPortFailureReasons: [RuntimeFailureReason] = [],
         guestBootstrapAssessment: GuestBootstrapAssessment
@@ -64,7 +62,6 @@ public struct RuntimeHealthInput: Equatable {
         self.swaggerUIHTTP = swaggerUIHTTP
         self.guestServiceStatuses = guestServiceStatuses
         self.vitalDBObservation = vitalDBObservation
-        self.reportedVMErrors = reportedVMErrors
         self.configurationFailureReasons = configurationFailureReasons
         self.proxyPortFailureReasons = proxyPortFailureReasons
         self.guestBootstrapAssessment = guestBootstrapAssessment

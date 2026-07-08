@@ -375,59 +375,28 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         XCTAssertEqual(RuntimeHealthEvaluator.evaluate(healthyInput(guestHTTP: "failed")).vmState, .unreachable)
     }
 
-    func testReportedVMErrorsMarkVMFailedAndRemainObservable() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            reportedVMErrors: [.launchFailed("virtualization"), .diskAttachmentInvalid, .guestFilesystemReadOnly, .guestDiskIO]
-        ))
-
-        XCTAssertEqual(snapshot.vmState, .failed)
-        XCTAssertEqual(snapshot.vmErrors, [
-            .launchFailed("virtualization"),
-            .diskAttachmentInvalid,
-            .guestFilesystemReadOnly,
-            .guestDiskIO,
-        ])
-        XCTAssertEqual(snapshot.failureReasons, [
-            .vmLaunchFailed("virtualization"),
-            .vmDiskAttachmentInvalid,
-            .guestFilesystemReadOnly,
-            .guestDiskIO,
-        ])
-        XCTAssertEqual(snapshot.failureReasons.map(\.rawValue), [
-            "vm-launch-failed-virtualization",
-            "vm-disk-attachment-invalid",
-            "guest-filesystem-read-only",
-            "guest-disk-io-error",
-        ])
-    }
-
-    func testLegacyRuntimeStateVMErrorsAreNotCurrentHealthInput() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            reportedVMErrors: [
-                .runtimeStateMissing,
-                .runtimeStateInvalid,
-                .runtimeStateStale,
-            ]
-        ))
-
-        XCTAssertEqual(snapshot.vmState, .running)
-        XCTAssertEqual(snapshot.vmErrors, [])
-        XCTAssertEqual(snapshot.failureReasons, [])
-    }
-
     func testVMLifecycleTerminalReasonReportsStoragePreservingVMError() {
-        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
-            vmLifecycle: RuntimeVMLifecycleDocument(
-                state: .failed,
-                startedAt: "2026-05-31T00:00:00Z",
-                updatedAt: "2026-05-31T00:00:05Z",
-                terminalReason: .diskAttachmentInvalid
-            )
-        ))
+        let cases: [(RuntimeVMLifecycleTerminalReason, RuntimeVMError, RuntimeFailureReason)] = [
+            (.launchFailed, .launchFailed("launch-failed"), .vmLaunchFailed("launch-failed")),
+            (.diskAttachmentInvalid, .diskAttachmentInvalid, .vmDiskAttachmentInvalid),
+            (.guestFilesystemReadOnly, .guestFilesystemReadOnly, .guestFilesystemReadOnly),
+            (.guestDiskIO, .guestDiskIO, .guestDiskIO),
+        ]
 
-        XCTAssertEqual(snapshot.vmState, .failed)
-        XCTAssertEqual(snapshot.vmErrors, [.diskAttachmentInvalid])
-        XCTAssertEqual(snapshot.failureReasons, [.vmDiskAttachmentInvalid])
+        for (terminalReason, expectedVMError, expectedFailureReason) in cases {
+            let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
+                vmLifecycle: RuntimeVMLifecycleDocument(
+                    state: .failed,
+                    startedAt: "2026-05-31T00:00:00Z",
+                    updatedAt: "2026-05-31T00:00:05Z",
+                    terminalReason: terminalReason
+                )
+            ))
+
+            XCTAssertEqual(snapshot.vmState, .failed)
+            XCTAssertEqual(snapshot.vmErrors, [expectedVMError])
+            XCTAssertEqual(snapshot.failureReasons, [expectedFailureReason])
+        }
     }
 
     private func healthyInput(
@@ -449,7 +418,6 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         vitalDBObservation: VitalDBObservationDocument? = nil,
         guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
         vitalDBObservationInput: RuntimeObservationInput<VitalDBObservationDocument>? = nil,
-        reportedVMErrors: [RuntimeVMError] = [],
         proxyPortFailureReasons: [RuntimeFailureReason] = [],
         guestBootstrapAssessment: GuestBootstrapAssessment = .noFailure
     ) -> RuntimeHealthInput {
@@ -475,7 +443,6 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
             vitalDBObservation: vitalDBObservationInput
                 ?? vitalDBObservation.map(RuntimeObservationInput.loaded)
                 ?? .notReported,
-            reportedVMErrors: reportedVMErrors,
             proxyPortFailureReasons: proxyPortFailureReasons,
             guestBootstrapAssessment: guestBootstrapAssessment
         )

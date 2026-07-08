@@ -637,7 +637,7 @@ Linux guest bootstrap, Docker Compose stack, update/repair execution
 
 ```text
 [Guest VM]
-runtime-state.json, Guest Control operation/read documents, guest logs
+VM IP/bootstrap HTTP readiness, Guest Control operation/read documents, guest logs
         |
         | Guest Control API and diagnostics files
         v

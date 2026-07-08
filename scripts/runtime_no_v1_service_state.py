@@ -63,7 +63,7 @@ def main() -> int:
         check_host_health_does_not_promote_vitaldb_read_model_failures(),
         check_host_health_uses_guest_control_ready_for_guest_readiness(),
         check_host_proxy_runtime_state_read_is_vm_bootstrap_only(),
-        check_current_health_filters_legacy_runtime_state_vm_errors(),
+        check_current_health_has_no_reported_vm_error_input(),
         check_managed_operation_guard_does_not_read_runtime_state(),
         check_guest_bootstrap_current_boot_uses_vm_lifecycle(),
         check_health_recovery_policies_do_not_accept_diagnostics_observations(),
@@ -4404,8 +4404,16 @@ def check_health_recovery_policies_do_not_accept_diagnostics_observations(
     )
 
 
-def check_current_health_filters_legacy_runtime_state_vm_errors(
+def check_current_health_has_no_reported_vm_error_input(
 ) -> CheckResult:
+    usecase_path = (
+        MACOS_RUNTIME
+        / "Sources/Application/UseCases/RuntimeHealth"
+        / "EvaluateRuntimeHealthUseCase.swift"
+    )
+    evaluator_path = (
+        MACOS_RUNTIME / "Sources/Domain/Policies/RuntimeHealthEvaluator.swift"
+    )
     policy_path = (
         MACOS_RUNTIME / "Sources/Domain/Policies/RuntimeVMHealthPolicy.swift"
     )
@@ -4413,24 +4421,32 @@ def check_current_health_filters_legacy_runtime_state_vm_errors(
         MACOS_RUNTIME
         / "Tests/DomainTests/Policies/RuntimeHealthEvaluatorTests.swift"
     )
+    usecase_text = read(usecase_path)
+    evaluator_text = read(evaluator_path)
     policy_text = read(policy_path)
     tests_text = read(tests_path)
     required = {
-        relative(policy_path): [
-            "currentHealthVMErrors(input.reportedVMErrors)",
-            "case .runtimeStateMissing, .runtimeStateInvalid, .runtimeStateStale:",
-            "return false",
-        ],
         relative(tests_path): [
-            "testLegacyRuntimeStateVMErrorsAreNotCurrentHealthInput",
-            "reportedVMErrors: [",
-            ".runtimeStateMissing",
-            ".runtimeStateInvalid",
-            ".runtimeStateStale",
-            "XCTAssertEqual(snapshot.vmErrors, [])",
+            "testVMLifecycleTerminalReasonReportsStoragePreservingVMError",
+            "RuntimeVMLifecycleDocument(",
+            "terminalReason:",
+        ],
+    }
+    forbidden = {
+        relative(usecase_path): [
+            "reportedVMErrors",
+        ],
+        relative(evaluator_path): [
+            "reportedVMErrors",
+        ],
+        relative(policy_path): [
+            "input.reportedVMErrors",
+            "currentHealthVMErrors",
         ],
     }
     texts = {
+        relative(usecase_path): usecase_text,
+        relative(evaluator_path): evaluator_text,
         relative(policy_path): policy_text,
         relative(tests_path): tests_text,
     }
@@ -4439,16 +4455,22 @@ def check_current_health_filters_legacy_runtime_state_vm_errors(
         for path, tokens in required.items()
         if any(token not in texts[path] for token in tokens)
     }
-    if missing:
+    present = {
+        path: [token for token in tokens if token in texts[path]]
+        for path, tokens in forbidden.items()
+        if any(token in texts[path] for token in tokens)
+    }
+    if missing or present:
         return CheckResult(
-            "current-health-filters-legacy-runtime-state-vm-errors",
+            "current-health-no-reported-vm-error-input",
             False,
-            f"missing={missing}",
+            f"missing={missing} forbidden_present={present}",
         )
     return CheckResult(
-        "current-health-filters-legacy-runtime-state-vm-errors",
+        "current-health-no-reported-vm-error-input",
         True,
-        "Current health evaluation filters legacy runtime-state VM errors",
+        "Current health evaluation has no arbitrary reported VM error input; "
+        "VM terminal errors come from the explicit VM lifecycle document",
     )
 
 
@@ -5026,6 +5048,7 @@ def check_recorder_ingress_does_not_read_runtime_state_memory_guard(
         ROOT / "apps/vitalserver-recorder-ingress/src",
         ROOT / "apps/vitalserver-recorder-ingress/tests/unit",
         MACOS_RUNTIME / "Support/Guest/compose.yaml",
+        ROOT / "docs/recorder/send-data-flow-control.md",
     ]
     forbidden = [
         "RECORDER_INGRESS_RUNTIME_STATE_PATH",

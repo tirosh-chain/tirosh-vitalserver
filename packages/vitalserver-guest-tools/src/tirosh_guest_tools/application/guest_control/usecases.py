@@ -23,7 +23,6 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceObservedState,
     GuestServiceResource,
     GuestServiceSpec,
-    GuestServiceSpecState,
     GuestServiceStatusRead,
     OperationEvent,
     OperationFailure,
@@ -54,8 +53,6 @@ from tirosh_guest_tools.domain.guest_control.service_reconcile_policy import (
     GuestServiceReconcileEffect,
     reconcile_guest_service,
 )
-
-DEFAULT_PRODUCT_SERVICE_DESIRED_STATE = GuestServiceDesiredState.RUNNING
 
 
 class GuestControlUseCases:
@@ -387,13 +384,9 @@ class GuestControlUseCases:
 
     def _load_guest_service_resource(self, service: str) -> GuestServiceResource:
         resource = self._operations.get_guest_service_resource(service)
-        if resource is not None and resource.spec.state != GuestServiceSpecState.MISSING:
+        if resource is not None:
             return resource
-        return self._seed_guest_service_resource(
-            service,
-            previous=resource,
-            status_read=self._read_guest_service_status(service),
-        )
+        return self._missing_guest_service_resource(service)
 
     def _sync_guest_service_resource_status(
         self,
@@ -408,28 +401,22 @@ class GuestControlUseCases:
         self._operations.save_guest_service_resource(resource)
         return resource
 
-    def _seed_guest_service_resource(
+    def _missing_guest_service_resource(
         self,
         service: str,
-        *,
-        previous: GuestServiceResource | None,
-        status_read: GuestServiceStatusRead,
     ) -> GuestServiceResource:
-        now = self._clock.now()
-        spec = GuestServiceSpec.configured(
-            desired_state=DEFAULT_PRODUCT_SERVICE_DESIRED_STATE,
-            updated_at=now,
-        )
         resource = GuestServiceResource(
             service=service,
-            spec=spec,
-            status=status_read,
-            conditions=self._guest_service_conditions(spec, status_read),
-            last_operation_id=previous.last_operation_id
-            if previous is not None
-            else None,
+            spec=GuestServiceSpec.missing(),
+            status=GuestServiceStatusRead.failed(
+                OperationFailure(
+                    kind="guestServiceStatusNotObserved",
+                    message="Guest service status has not been observed.",
+                )
+            ),
+            conditions=[],
+            last_operation_id=None,
         )
-        self._operations.save_guest_service_resource(resource)
         return resource
 
     def _guest_service_resource_with_status(

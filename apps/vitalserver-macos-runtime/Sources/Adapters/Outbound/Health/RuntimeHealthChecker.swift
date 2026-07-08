@@ -101,7 +101,8 @@ public struct RuntimeHealthChecker {
         let hostProxyHTTP = proxyPort.map { httpProber.statusRead(url: context.proxyHealthURL($0)) }
         let redisUIHTTP = proxyPort.map { httpProber.statusRead(url: context.redisUIHealthURL($0)) }
         let swaggerUIHTTP = proxyPort.map { httpProber.statusRead(url: context.swaggerUIHealthURL($0)) }
-        let guestAddressRead = guestAddressProvider.readGuestAddress()
+        let guestControlObservation = guestControlReadiness()
+        let guestAddressRead = guestControlObservation.guestAddressRead
 
         return RuntimeHealthObservationReads(
             vmExecutable: fileState(path: context.vmExecutablePath),
@@ -113,7 +114,7 @@ public struct RuntimeHealthChecker {
             watchdogService: launchdState(.watchdog),
             vmLifecycleLoadResult: vmLifecycleLoadResult(),
             guestAddressRead: guestAddressRead,
-            guestControlReadiness: guestControlReadiness(guestAddressRead),
+            guestControlReadiness: guestControlObservation.readiness,
             proxyPortReadState: proxyPortRead.state,
             hostProxyHTTP: hostProxyHTTP,
             redisUIHTTP: redisUIHTTP,
@@ -220,6 +221,18 @@ public struct RuntimeHealthChecker {
         }
     }
 
+    private func guestControlReadiness() -> RuntimeGuestControlReadinessObservation {
+        let guestAddressRead = readVMIPFile()
+        return RuntimeGuestControlReadinessObservation(
+            guestAddressRead: guestAddressRead,
+            readiness: guestControlReadiness(guestAddressRead)
+        )
+    }
+
+    private func readVMIPFile() -> RuntimeGuestAddressReadResult {
+        guestAddressProvider.readGuestAddress()
+    }
+
     private func guestControlBaseURL(_ guestAddressRead: RuntimeGuestAddressReadResult) -> String? {
         guard let guestAddress = guestAddressRead.loadedAddress else {
             return nil
@@ -299,4 +312,9 @@ private struct RuntimeProxyPortReadResult {
     var port: Int? {
         state.port
     }
+}
+
+private struct RuntimeGuestControlReadinessObservation {
+    let guestAddressRead: RuntimeGuestAddressReadResult
+    let readiness: RuntimeGuestControlReadinessRead
 }

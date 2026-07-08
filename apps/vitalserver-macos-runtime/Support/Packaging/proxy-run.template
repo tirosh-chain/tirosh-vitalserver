@@ -124,7 +124,7 @@ guest_address_state="not-read"
 guest_address_reason=""
 vm_ip=""
 
-read_guest_address() {
+read_vm_ip() {
   guest_address_state=""
   guest_address_reason=""
   vm_ip=""
@@ -194,7 +194,7 @@ trap stop_nginx EXIT INT TERM
 last_upstream=""
 last_wait_message=""
 while true; do
-  read_guest_address
+  read_vm_ip
   if [ "${guest_address_state}" = "loaded" ]; then
     upstream="${vm_ip}:80"
     guest_http="$(read_guest_http)"
@@ -206,7 +206,7 @@ while true; do
       fi
       wait_key="bootstrap:${upstream}:${guest_http:-missing}"
       if [ "${last_wait_message}" != "${wait_key}" ]; then
-        log_err "waiting for VM runtime bootstrap: upstream=http://${upstream}/ guestHTTP=${guest_http:-missing}"
+        log_err "waiting for VM runtime bootstrap: upstream=http://${upstream}/; waiting for VM runtime state guestHTTP=${guest_http:-missing}"
         last_wait_message="${wait_key}"
       fi
       last_upstream=""

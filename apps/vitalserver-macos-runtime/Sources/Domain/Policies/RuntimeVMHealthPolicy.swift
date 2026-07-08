@@ -45,7 +45,6 @@ public enum RuntimeVMHealthPolicy {
         errors.append(contentsOf: guestBootstrapErrors(input))
         return uniqueErrors(
             errors
-                + currentHealthVMErrors(input.reportedVMErrors)
                 + (input.vmLifecycle?.reportedVMErrors ?? [])
         )
     }
@@ -163,17 +162,6 @@ public enum RuntimeVMHealthPolicy {
             return true
         default:
             return false
-        }
-    }
-
-    private static func currentHealthVMErrors(_ errors: [RuntimeVMError]) -> [RuntimeVMError] {
-        errors.filter { error in
-            switch error {
-            case .runtimeStateMissing, .runtimeStateInvalid, .runtimeStateStale:
-                return false
-            default:
-                return true
-            }
         }
     }
 

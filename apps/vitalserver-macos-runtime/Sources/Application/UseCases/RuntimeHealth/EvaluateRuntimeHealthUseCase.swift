@@ -20,7 +20,6 @@ public struct RuntimeHealthObservation {
     public let swaggerUIHTTP: String
     public let guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]>
     public let vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>
-    public let reportedVMErrors: [RuntimeVMError]
     public let configurationFailureReasons: [RuntimeFailureReason]
     public let proxyPortFailureReasons: [RuntimeFailureReason]
     public let guestBootstrapResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>
@@ -45,7 +44,6 @@ public struct RuntimeHealthObservation {
         swaggerUIHTTP: String,
         guestServiceStatuses: RuntimeObservationInput<[RuntimeGuestControlServiceStatus]> = .notReported,
         vitalDBObservation: RuntimeObservationInput<VitalDBObservationDocument>,
-        reportedVMErrors: [RuntimeVMError],
         configurationFailureReasons: [RuntimeFailureReason],
         proxyPortFailureReasons: [RuntimeFailureReason],
         guestBootstrapResult: RuntimeGuestDocumentLoadResult<GuestBootstrapResultDocument>,
@@ -69,7 +67,6 @@ public struct RuntimeHealthObservation {
         self.swaggerUIHTTP = swaggerUIHTTP
         self.guestServiceStatuses = guestServiceStatuses
         self.vitalDBObservation = vitalDBObservation
-        self.reportedVMErrors = reportedVMErrors
         self.configurationFailureReasons = configurationFailureReasons
         self.proxyPortFailureReasons = proxyPortFailureReasons
         self.guestBootstrapResult = guestBootstrapResult
@@ -121,7 +118,6 @@ public struct EvaluateRuntimeHealthUseCase {
             swaggerUIHTTP: httpStatusText(reads.swaggerUIHTTP),
             guestServiceStatuses: reads.guestServiceStatuses,
             vitalDBObservation: reads.vitalDBObservation,
-            reportedVMErrors: [],
             configurationFailureReasons: reads.proxyPortReadState.failureReasons
                 + vmLifecycle.failureReasons
                 + guestReadinessInput.failureReasons,
@@ -200,7 +196,6 @@ public struct EvaluateRuntimeHealthUseCase {
             swaggerUIHTTP: observation.swaggerUIHTTP,
             guestServiceStatuses: observation.guestServiceStatuses,
             vitalDBObservation: observation.vitalDBObservation,
-            reportedVMErrors: observation.reportedVMErrors,
             configurationFailureReasons: observation.configurationFailureReasons,
             proxyPortFailureReasons: observation.proxyPortFailureReasons,
             guestBootstrapAssessment: GuestBootstrapEvaluator.assessCurrentBoot(
