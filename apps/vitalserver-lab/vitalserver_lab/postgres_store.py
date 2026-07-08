@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 from uuid import uuid4
 
@@ -19,6 +20,7 @@ from .model import (
     LabSessionStoreUnavailable,
     lab_bed_for_session,
     lab_recorder_for_bed,
+    explicit_beds_for_session,
     matching_beds,
     matching_beds_for_recorder_create,
     matching_recorders,
@@ -61,10 +63,12 @@ class PostgresLabSessionStore:
         database_url: str,
         *,
         psql_command: str = "psql",
+        psql_timeout_seconds: float = 15,
         id_factory: Callable[[], str] | None = None,
     ) -> None:
         self.database_url = database_url
         self.psql_command = psql_command
+        self.psql_timeout_seconds = psql_timeout_seconds
         self.id_factory = id_factory or (lambda: f"lab_{uuid4().hex}")
 
     def ensure_ready(self) -> None:
@@ -72,20 +76,38 @@ class PostgresLabSessionStore:
 
     def create(self, request: LabSessionCreateInput) -> LabSession:
         now = utc_now_iso()
+        selected_beds = (
+            explicit_beds_for_session(self.list_beds(), request.bed_ids)
+            if request.bed_ids
+            else ()
+        )
+        bed_room_names = (
+            tuple(bed.name for bed in selected_beds)
+            if selected_beds
+            else resolved_bed_room_names(request)
+        )
         session = LabSession(
             session_id=self.id_factory(),
             scenario_id=request.scenario_id,
             name=request.name,
-            recorder_count=request.recorder_count,
+            recorder_count=len(selected_beds) if selected_beds else request.recorder_count,
             target_url=request.target_url,
-            bed_room_names=resolved_bed_room_names(request),
+            bed_room_names=bed_room_names,
+            bed_ids=tuple(bed.bed_id for bed in selected_beds),
             vital_file_path=request.vital_file_path,
             state="accepted",
             created_at=now,
             updated_at=now,
         )
         self._save(session, stage="lab session create")
-        self._save_session_read_model(session, state="accepted", with_recorders=True)
+        if selected_beds:
+            self._occupy_existing_read_model_beds(
+                session,
+                selected_beds,
+                state="accepted",
+            )
+        else:
+            self._save_session_read_model(session, state="accepted", with_recorders=True)
         return session
 
     def get(self, session_id: str) -> LabSession | None:
@@ -124,7 +146,7 @@ class PostgresLabSessionStore:
         session.state = state
         session.updated_at = utc_now_iso()
         self._save(session, stage=f"lab session {state}")
-        self._save_session_read_model(session, state=state, with_recorders=True)
+        self._save_session_state_read_model(session, state=state)
         return session
 
     def list_beds(self) -> tuple[LabBed, ...]:
@@ -195,6 +217,7 @@ class PostgresLabSessionStore:
             recorder_count=request.count,
             target_url=request.target_url,
             bed_room_names=request.room_names,
+            bed_ids=(),
             vital_file_path=None,
             state="accepted",
             created_at=now,
@@ -353,6 +376,88 @@ class PostgresLabSessionStore:
                 )
             self._run_psql(sql, stage="lab session read model save")
 
+    def _save_session_state_read_model(self, session: LabSession, *, state: str) -> None:
+        if session.bed_ids:
+            self._occupy_existing_read_model_beds(
+                session,
+                explicit_beds_for_session(self.list_beds(), session.bed_ids),
+                state=state,
+            )
+            return
+        self._save_session_read_model(session, state=state, with_recorders=True)
+
+    def _occupy_existing_read_model_beds(
+        self,
+        session: LabSession,
+        beds: tuple[LabBed, ...],
+        *,
+        state: str,
+    ) -> None:
+        recorders_by_bed_id: dict[str, list[LabRecorder]] = {}
+        for recorder in self.list_recorders():
+            recorders_by_bed_id.setdefault(recorder.bed_id, []).append(recorder)
+        statements: list[str] = []
+        for index, bed in enumerate(beds, start=1):
+            updated_bed = replace(
+                bed,
+                session_id=session.session_id,
+                state=state,
+                updated_at=session.updated_at,
+            )
+            statements.append(
+                _upsert_read_model_sql(
+                    table="lab_beds",
+                    key_field="bed_id",
+                    key_value=updated_bed.bed_id,
+                    document=updated_bed.as_json(),
+                    updated_at=updated_bed.updated_at,
+                )
+            )
+            existing_recorders = sorted(
+                recorders_by_bed_id.get(bed.bed_id, []),
+                key=lambda recorder: recorder.recorder_id,
+            )
+            if existing_recorders:
+                for recorder in existing_recorders:
+                    updated_recorder = replace(
+                        recorder,
+                        session_id=session.session_id,
+                        state=state,
+                        updated_at=session.updated_at,
+                    )
+                    statements.append(
+                        _upsert_read_model_sql(
+                            table="lab_recorders",
+                            key_field="recorder_id",
+                            key_value=updated_recorder.recorder_id,
+                            document=updated_recorder.as_json(),
+                            updated_at=updated_recorder.updated_at,
+                        )
+                    )
+                continue
+            recorder = lab_recorder_for_bed(
+                session_id=session.session_id,
+                bed_id=bed.bed_id,
+                state=state,
+                index=index,
+                created_at=session.created_at,
+                updated_at=session.updated_at,
+            )
+            statements.append(
+                _upsert_read_model_sql(
+                    table="lab_recorders",
+                    key_field="recorder_id",
+                    key_value=recorder.recorder_id,
+                    document=recorder.as_json(),
+                    updated_at=recorder.updated_at,
+                )
+            )
+        if statements:
+            self._run_psql(
+                "\n".join(statements),
+                stage="lab session existing read model occupy",
+            )
+
     def _run_psql(
         self,
         sql: str,
@@ -374,11 +479,20 @@ class PostgresLabSessionStore:
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=self.psql_timeout_seconds,
             )
         except OSError as error:
             raise LabSessionStoreUnavailable(
                 f"postgres command could not start during {stage}: {error}",
                 kind="postgresCommandUnavailable",
+            ) from error
+        except subprocess.TimeoutExpired as error:
+            raise LabSessionStoreUnavailable(
+                (
+                    f"postgres command timed out during {stage}: "
+                    f"timeoutSeconds={self.psql_timeout_seconds:g}"
+                ),
+                kind="postgresCommandTimedOut",
             ) from error
         except subprocess.CalledProcessError as error:
             message = (
@@ -438,6 +552,7 @@ def session_from_json(document: dict[str, Any]) -> LabSession:
         recorder_count=required_int(document, "recorderCount"),
         target_url=optional_string(document.get("targetURL")),
         bed_room_names=string_tuple(document.get("bedRoomNames"), "bedRoomNames"),
+        bed_ids=string_tuple_or_empty(document.get("bedIds"), "bedIds"),
         vital_file_path=optional_string(document.get("vitalFilePath")),
         state=required_string(document, "state"),
         created_at=required_string(document, "createdAt"),
@@ -545,3 +660,11 @@ def string_tuple(value: object, field: str) -> tuple[str, ...]:
             )
         items.append(item)
     return tuple(items)
+
+
+def string_tuple_or_empty(value: object, field: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, list) and not value:
+        return ()
+    return string_tuple(value, field)

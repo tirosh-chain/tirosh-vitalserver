@@ -52,6 +52,7 @@ class LabSessionCreateInput:
     recorder_count: int
     target_url: str | None
     bed_room_names: tuple[str, ...] = ()
+    bed_ids: tuple[str, ...] = ()
     vital_file_path: str | None = None
 
 
@@ -91,6 +92,7 @@ class LabSession:
     recorder_count: int
     target_url: str | None
     bed_room_names: tuple[str, ...]
+    bed_ids: tuple[str, ...]
     vital_file_path: str | None
     state: str
     created_at: str
@@ -104,6 +106,7 @@ class LabSession:
             "recorderCount": self.recorder_count,
             "targetURL": self.target_url,
             "bedRoomNames": list(self.bed_room_names),
+            "bedIds": list(self.bed_ids),
             "state": self.state,
             "createdAt": self.created_at,
             "updatedAt": self.updated_at,
@@ -247,20 +250,38 @@ class InMemoryLabSessionStore:
 
     def create(self, request: LabSessionCreateInput) -> LabSession:
         now = utc_now_iso()
+        selected_beds = (
+            explicit_beds_for_session(self.list_beds(), request.bed_ids)
+            if request.bed_ids
+            else ()
+        )
+        bed_room_names = (
+            tuple(bed.name for bed in selected_beds)
+            if selected_beds
+            else resolved_bed_room_names(request)
+        )
         session = LabSession(
             session_id=self.id_factory(),
             scenario_id=request.scenario_id,
             name=request.name,
-            recorder_count=request.recorder_count,
+            recorder_count=len(selected_beds) if selected_beds else request.recorder_count,
             target_url=request.target_url,
-            bed_room_names=resolved_bed_room_names(request),
+            bed_room_names=bed_room_names,
+            bed_ids=tuple(bed.bed_id for bed in selected_beds),
             vital_file_path=request.vital_file_path,
             state="accepted",
             created_at=now,
             updated_at=now,
         )
         self.sessions[session.session_id] = session
-        self._save_session_read_model(session, state="accepted", with_recorders=True)
+        if selected_beds:
+            self._occupy_existing_read_model_beds(
+                session,
+                selected_beds,
+                state="accepted",
+            )
+        else:
+            self._save_session_read_model(session, state="accepted", with_recorders=True)
         return session
 
     def get(self, session_id: str) -> LabSession | None:
@@ -272,7 +293,7 @@ class InMemoryLabSessionStore:
             return None
         session.state = "running"
         session.updated_at = utc_now_iso()
-        self._save_session_read_model(session, state="running", with_recorders=True)
+        self._save_session_state_read_model(session, state="running")
         return session
 
     def stop(self, session_id: str) -> LabSession | None:
@@ -281,7 +302,7 @@ class InMemoryLabSessionStore:
             return None
         session.state = "stopped"
         session.updated_at = utc_now_iso()
-        self._save_session_read_model(session, state="stopped", with_recorders=True)
+        self._save_session_state_read_model(session, state="stopped")
         return session
 
     def list_beds(self) -> tuple[LabBed, ...]:
@@ -319,6 +340,7 @@ class InMemoryLabSessionStore:
             recorder_count=request.count,
             target_url=request.target_url,
             bed_room_names=request.room_names,
+            bed_ids=(),
             vital_file_path=None,
             state="accepted",
             created_at=utc_now_iso(),
@@ -428,6 +450,56 @@ class InMemoryLabSessionStore:
                     )
                 self.recorders[recorder.recorder_id] = recorder
 
+    def _save_session_state_read_model(self, session: LabSession, *, state: str) -> None:
+        if session.bed_ids:
+            self._occupy_existing_read_model_beds(
+                session,
+                explicit_beds_for_session(self.list_beds(), session.bed_ids),
+                state=state,
+            )
+            return
+        self._save_session_read_model(session, state=state, with_recorders=True)
+
+    def _occupy_existing_read_model_beds(
+        self,
+        session: LabSession,
+        beds: tuple[LabBed, ...],
+        *,
+        state: str,
+    ) -> None:
+        recorders_by_bed_id: dict[str, list[LabRecorder]] = {}
+        for recorder in self.recorders.values():
+            recorders_by_bed_id.setdefault(recorder.bed_id, []).append(recorder)
+        for index, bed in enumerate(beds, start=1):
+            self.beds[bed.bed_id] = replace(
+                bed,
+                session_id=session.session_id,
+                state=state,
+                updated_at=session.updated_at,
+            )
+            existing_recorders = sorted(
+                recorders_by_bed_id.get(bed.bed_id, []),
+                key=lambda recorder: recorder.recorder_id,
+            )
+            if existing_recorders:
+                for recorder in existing_recorders:
+                    self.recorders[recorder.recorder_id] = replace(
+                        recorder,
+                        session_id=session.session_id,
+                        state=state,
+                        updated_at=session.updated_at,
+                    )
+                continue
+            recorder = lab_recorder_for_bed(
+                session_id=session.session_id,
+                bed_id=bed.bed_id,
+                state=state,
+                index=index,
+                created_at=session.created_at,
+                updated_at=session.updated_at,
+            )
+            self.recorders[recorder.recorder_id] = recorder
+
 
 def resolved_bed_room_names(request: LabSessionCreateInput) -> tuple[str, ...]:
     return bed_room_names_for_session(
@@ -448,6 +520,22 @@ def bed_room_names_for_session(
     if recorder_count == 1:
         return (name,)
     return (name, *(f"{name}-{index}" for index in range(2, recorder_count + 1)))
+
+
+def explicit_beds_for_session(
+    beds: tuple[LabBed, ...],
+    bed_ids: tuple[str, ...],
+) -> tuple[LabBed, ...]:
+    if not bed_ids:
+        return ()
+    by_id = {bed.bed_id: bed for bed in beds}
+    missing = tuple(bed_id for bed_id in bed_ids if bed_id not in by_id)
+    if missing:
+        raise LabSessionStoreUnavailable(
+            "No Lab beds matched the session create request: " + ", ".join(missing),
+            kind="labSessionCreateBedTargetMissing",
+        )
+    return tuple(by_id[bed_id] for bed_id in bed_ids)
 
 
 def lab_bed_for_session(
@@ -579,10 +667,58 @@ DEFAULT_SCENARIOS = (
         description="Stable vital signs for product workflow verification.",
     ),
     LabScenario(
+        scenario_id="postoperative-recovery",
+        name="Postoperative Recovery",
+        category="generated",
+        description="Improving heart rate, oxygenation, blood pressure, and temperature.",
+    ),
+    LabScenario(
+        scenario_id="hypotension-episode",
+        name="Hypotension Episode",
+        category="generated",
+        description="Low arterial pressure with compensatory tachycardia.",
+    ),
+    LabScenario(
+        scenario_id="hypertension-episode",
+        name="Hypertension Episode",
+        category="generated",
+        description="Elevated arterial pressure for alarm and trend workflow checks.",
+    ),
+    LabScenario(
+        scenario_id="tachycardia-response",
+        name="Tachycardia Response",
+        category="generated",
+        description="Fast heart rate with otherwise stable monitoring values.",
+    ),
+    LabScenario(
+        scenario_id="bradycardia-response",
+        name="Bradycardia Response",
+        category="generated",
+        description="Slow heart rate with visible pulse and ECG changes.",
+    ),
+    LabScenario(
+        scenario_id="desaturation-event",
+        name="Desaturation Event",
+        category="generated",
+        description="Oxygen saturation drop with increased respiratory rate.",
+    ),
+    LabScenario(
         scenario_id="respiratory-variation",
         name="Respiratory Variation",
         category="generated",
         description="Periodic respiration-linked waveform and value changes.",
+    ),
+    LabScenario(
+        scenario_id="fever-trend",
+        name="Fever Trend",
+        category="generated",
+        description="Rising temperature with mild tachycardia.",
+    ),
+    LabScenario(
+        scenario_id="arrhythmia-like-variation",
+        name="Arrhythmia-like Variation",
+        category="generated",
+        description="Irregular pulse intervals for display and event handling checks.",
     ),
     LabScenario(
         scenario_id="vital-file-replay",

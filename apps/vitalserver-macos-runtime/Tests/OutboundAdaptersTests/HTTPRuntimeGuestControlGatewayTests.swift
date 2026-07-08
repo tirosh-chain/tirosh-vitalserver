@@ -47,6 +47,27 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/ready"])
     }
 
+    func testRequestsUseConfiguredTimeout() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "status": "ready",
+              "dependencies": []
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client,
+            timeout: 5
+        )
+
+        _ = try gateway.ready()
+
+        XCTAssertEqual(client.requests.first?.timeoutInterval, 5)
+    }
+
     func testReadyDecodesDependencyFailureDocumentFromServiceUnavailableResponse() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 503,
@@ -181,6 +202,12 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
                   "health": "not_reported",
                   "observedAt": "2026-07-01T00:00:00+00:00"
                 }
+              ],
+              "probeErrors": [
+                {
+                  "source": "docker stats",
+                  "message": "timed out after 1 seconds"
+                }
               ]
             }
             """
@@ -199,6 +226,12 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(status.services.first?.exitCode, 0)
         XCTAssertEqual(status.services.last?.state, "absent")
         XCTAssertEqual(status.services.last?.health, "not_reported")
+        XCTAssertEqual(status.probeErrors, [
+            GuestRuntimeProbeError(
+                source: "docker stats",
+                message: "timed out after 1 seconds"
+            )
+        ])
         XCTAssertEqual(client.requests.map(\.httpMethod), ["GET"])
         XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/stack/status"])
     }

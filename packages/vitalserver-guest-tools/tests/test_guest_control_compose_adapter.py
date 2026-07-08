@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from typing import Any
 
 import pytest
@@ -85,7 +86,7 @@ def test_compose_adapter_reports_stack_resource_usage(monkeypatch: Any) -> None:
     monkeypatch.setattr(
         guest_control,
         "container_memory_usages",
-        lambda: {
+        lambda errors, container_names: {
             "vitalserver-app-1": RuntimeResourceUsage(
                 used_bytes=256,
                 total_bytes=1024,
@@ -122,6 +123,134 @@ def test_compose_adapter_reports_stack_resource_usage(monkeypatch: Any) -> None:
         "usedBytes": 256,
         "totalBytes": 1024,
     }
+    assert document["probeErrors"] == []
+
+
+def test_compose_adapter_reports_container_memory_probe_errors(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(compose_app, "compose_services", lambda: {"app"})
+    monkeypatch.setattr(
+        compose_app,
+        "inspect_compose_service_states",
+        lambda: [
+            compose_app.ComposeServiceState(
+                service="app",
+                container="vitalserver-app-1",
+                state="running",
+                health="healthy",
+                exit_code=0,
+            )
+        ],
+    )
+
+    def memory_probe(
+        errors: list[Any],
+        container_names: list[str],
+    ) -> dict[str, RuntimeResourceUsage]:
+        assert container_names == ["vitalserver-app-1"]
+        errors.append(
+            guest_control.ProbeError(source="docker inspect memory", message="timeout")
+        )
+        return {}
+
+    monkeypatch.setattr(guest_control, "container_memory_usages", memory_probe)
+    monkeypatch.setattr(guest_control.runtime_collector, "cpu_usage_percent", lambda errors: None)
+    monkeypatch.setattr(guest_control.runtime_collector, "memory_usage", lambda errors: None)
+    monkeypatch.setattr(guest_control.runtime_collector, "disk_usage", lambda path, errors: None)
+
+    document = ComposeGuestControlAdapter().get_stack_status().as_json()
+
+    assert document["probeErrors"] == [
+        {"source": "docker inspect memory", "message": "timeout"}
+    ]
+
+
+def test_container_memory_probe_uses_short_optional_timeout(
+    monkeypatch: Any,
+) -> None:
+    calls: list[float] = []
+
+    def run_stub(*args: Any, **kwargs: Any) -> Any:
+        calls.append(kwargs["timeout"])
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=kwargs["timeout"])
+
+    monkeypatch.setattr(guest_control.subprocess, "run", run_stub)
+
+    errors: list[guest_control.ProbeError] = []
+    usages = guest_control.container_memory_usages(errors, ["vitalserver-app-1"])
+
+    assert usages == {}
+    assert calls == [guest_control.DOCKER_INSPECT_TIMEOUT_SECONDS]
+    assert guest_control.DOCKER_INSPECT_TIMEOUT_SECONDS < 5
+    assert len(errors) == 1
+    assert errors[0].source == "docker inspect memory"
+    assert "timed out" in errors[0].message
+
+
+def test_docker_inspect_memory_usage_reads_container_cgroup(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    cgroup = tmp_path / "docker.scope"
+    cgroup.mkdir()
+    (cgroup / "memory.current").write_text("256", encoding="utf-8")
+    (cgroup / "memory.max").write_text("1024", encoding="utf-8")
+    monkeypatch.setattr(guest_control, "memory_cgroup_path", lambda pid: cgroup)
+
+    usage = guest_control.resource_usage_from_docker_inspect(
+        {
+            "Name": "/vitalserver-app-1",
+            "State": {"Pid": 123},
+            "HostConfig": {"Memory": 2048},
+        }
+    )
+
+    assert usage == RuntimeResourceUsage(used_bytes=256, total_bytes=1024)
+
+
+def test_docker_inspect_memory_usage_uses_configured_limit_when_cgroup_is_unlimited(
+    monkeypatch: Any,
+    tmp_path: Any,
+) -> None:
+    cgroup = tmp_path / "docker.scope"
+    cgroup.mkdir()
+    (cgroup / "memory.current").write_text("256", encoding="utf-8")
+    (cgroup / "memory.max").write_text("max", encoding="utf-8")
+    monkeypatch.setattr(guest_control, "memory_cgroup_path", lambda pid: cgroup)
+
+    usage = guest_control.resource_usage_from_docker_inspect(
+        {
+            "Name": "/vitalserver-app-1",
+            "State": {"Pid": 123},
+            "HostConfig": {"Memory": 2048},
+        }
+    )
+
+    assert usage == RuntimeResourceUsage(used_bytes=256, total_bytes=2048)
+
+
+def test_container_memory_probe_keeps_unavailable_cgroup_as_missing_metric(
+    monkeypatch: Any,
+) -> None:
+    completed = subprocess.CompletedProcess(
+        args=["docker", "inspect"],
+        returncode=0,
+        stdout='{"Name":"/vitalserver-app-1","State":{"Pid":123},"HostConfig":{"Memory":2048}}\n',
+        stderr="",
+    )
+    monkeypatch.setattr(
+        guest_control.subprocess,
+        "run",
+        lambda *args, **kwargs: completed,
+    )
+    monkeypatch.setattr(guest_control, "memory_cgroup_path", lambda pid: None)
+
+    errors: list[guest_control.ProbeError] = []
+    usages = guest_control.container_memory_usages(errors, ["vitalserver-app-1"])
+
+    assert usages == {}
+    assert errors == []
 
 
 def test_docker_stats_memory_usage_parser_preserves_units() -> None:

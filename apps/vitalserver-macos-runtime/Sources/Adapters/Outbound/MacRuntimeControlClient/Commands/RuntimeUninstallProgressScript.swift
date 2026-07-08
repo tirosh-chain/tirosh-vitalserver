@@ -43,6 +43,7 @@ enum RuntimeUninstallProgressScript {
     static let terminalFreshInstallReadinessNotCheckedMessage = "Fresh install readiness was not checked by clean uninstall."
     static let terminalOpenFailedMessage = "uninstall progress viewer failed to open"
     static let terminalOpenSkippedMessage = "uninstall progress viewer open skipped"
+    static let terminalCloseDelaySeconds = 30
 
     static func viewerScript(
         logPath: String,
@@ -182,8 +183,8 @@ enum RuntimeUninstallProgressScript {
           fi
           sleep 1
         done
-        printf "Press Return to close this window."
-        read -r _
+        printf "This window will close automatically in \(terminalCloseDelaySeconds)s. Press Return to close now."
+        read -r -t \(terminalCloseDelaySeconds) _ || true
         """
     }
 

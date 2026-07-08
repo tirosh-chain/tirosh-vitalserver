@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
+import time
+import zlib
 from pathlib import Path
 from typing import Any
 
@@ -12,15 +15,16 @@ from vitalserver_lab.execution import (
     LabRecorderSendError,
     LabRecorderSendReceipt,
     LabVitalFileUploadReceipt,
+    VitalServerRecorderPayloadSender,
 )
 from vitalserver_lab.model import (
     DEFAULT_SCENARIOS,
     InMemoryLabSessionStore,
-    LabSessionStore,
-    LabSessionCreateInput,
-    LabSessionStoreUnavailable,
     LabBed,
     LabRecorder,
+    LabSessionCreateInput,
+    LabSessionStore,
+    LabSessionStoreUnavailable,
 )
 from vitalserver_lab.postgres_store import PostgresLabSessionStore
 from vitalserver_lab.server import (
@@ -107,26 +111,7 @@ def test_load_settings_reports_invalid_port_configuration(monkeypatch: Any) -> N
     assert error.value.message == "VITALSERVER_LAB_PORT must be an integer."
 
 
-def test_load_settings_recorder_payload_endpoint_default(monkeypatch: Any) -> None:
-    monkeypatch.delenv("VITALSERVER_LAB_RECORDER_PAYLOAD_ENDPOINT", raising=False)
-
-    settings = load_settings()
-
-    assert settings.recorder_payload_endpoint == "/api/send"
-
-
-def test_load_settings_recorder_payload_endpoint_override(monkeypatch: Any) -> None:
-    monkeypatch.setenv(
-        "VITALSERVER_LAB_RECORDER_PAYLOAD_ENDPOINT",
-        "/upload",
-    )
-
-    settings = load_settings()
-
-    assert settings.recorder_payload_endpoint == "/upload"
-
-
-def test_build_execution_engine_normalizes_endpoint_slash() -> None:
+def test_build_execution_engine_uses_socketio_sender() -> None:
     settings = load_settings()
     settings = LabSettings(
         host=settings.host,
@@ -136,12 +121,37 @@ def test_build_execution_engine_normalizes_endpoint_slash() -> None:
         allow_memory_store=True,
         database_url=None,
         psql_command=settings.psql_command,
-        recorder_payload_endpoint="api/send",
         vital_files_mount=settings.vital_files_mount,
     )
     engine = build_execution_engine(settings=settings)
 
-    assert getattr(engine.sender, "endpoint") == "/api/send"
+    assert isinstance(engine.sender, VitalServerRecorderPayloadSender)
+
+
+def test_socketio_payload_sender_emits_join_and_send_data(monkeypatch: Any) -> None:
+    client = FakeSocketIOClient()
+    monkeypatch.setitem(sys.modules, "socketio", FakeSocketIOModule(client))
+    sender = VitalServerRecorderPayloadSender(timeout_seconds=1)
+
+    receipt = sender.send(
+        target_url="http://edge/",
+        payload={
+            "vrcode": "LAB-VR-1",
+            "ver": "vitalserver-lab",
+            "rooms": {"OR-A": {"roomname": "OR-A"}},
+        },
+    )
+
+    assert receipt.transport == "socket.io"
+    assert receipt.bytes_sent > 0
+    assert client.connected_url == "http://edge/"
+    assert client.emitted[0] == ("join_vr", "LAB-VR-1")
+    event, encoded = client.emitted[1]
+    assert event == "send_data"
+    decoded = json.loads(zlib.decompress(encoded))
+    assert decoded["vrcode"] == "LAB-VR-1"
+    assert decoded["rooms"] == {"OR-A": {"roomname": "OR-A"}}
+    assert client.disconnected is True
 
 
 def test_load_settings_reports_non_positive_port_configuration(
@@ -168,7 +178,15 @@ def test_scenarios_are_served_from_lab_product_api() -> None:
     ]
     assert scenario_ids == [
         "baseline-monitoring",
+        "postoperative-recovery",
+        "hypotension-episode",
+        "hypertension-episode",
+        "tachycardia-response",
+        "bradycardia-response",
+        "desaturation-event",
         "respiratory-variation",
+        "fever-trend",
+        "arrhythmia-like-variation",
         "vital-file-replay",
     ]
 
@@ -233,6 +251,7 @@ def test_create_session_returns_product_lab_session() -> None:
         "recorderCount": 2,
         "targetURL": "http://edge/",
         "bedRoomNames": ["OR-A", "OR-B"],
+        "bedIds": [],
         "state": "accepted",
         "createdAt": response["body"]["session"]["createdAt"],
         "updatedAt": response["body"]["session"]["updatedAt"],
@@ -359,6 +378,54 @@ def test_lab_bed_management_reset_removes_beds_and_attached_recorders() -> None:
     assert recorders["body"]["recorders"] == []
 
 
+def test_lab_session_create_can_occupy_existing_lab_bed_and_recorder() -> None:
+    with running_server(["manual_session_1", "lab_session_2"]) as address:
+        request(
+            address,
+            "POST",
+            "/lab/beds/create",
+            {"roomNames": ["Lab-A"]},
+        )
+        request(
+            address,
+            "POST",
+            "/lab/recorders/create",
+            {"bedIds": ["manual_session_1-bed-1"]},
+        )
+        created = request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "name": "Occupy existing bed",
+                "bedIds": ["manual_session_1-bed-1"],
+            },
+        )
+        request(address, "POST", "/lab/sessions/lab_session_2/start")
+        beds = request(address, "GET", "/lab/beds")
+        recorders = request(address, "GET", "/lab/recorders")
+
+    assert created["status"] == 202
+    assert created["body"]["session"]["recorderCount"] == 1
+    assert created["body"]["session"]["bedRoomNames"] == ["Lab-A"]
+    assert created["body"]["session"]["bedIds"] == ["manual_session_1-bed-1"]
+    assert beds["body"]["beds"] == [
+        {
+            "bedId": "manual_session_1-bed-1",
+            "sessionId": "lab_session_2",
+            "name": "Lab-A",
+            "state": "running",
+            "createdAt": beds["body"]["beds"][0]["createdAt"],
+            "updatedAt": beds["body"]["beds"][0]["updatedAt"],
+        }
+    ]
+    assert recorders["body"]["recorders"][0]["recorderId"] == "manual_session_1-recorder-1"
+    assert recorders["body"]["recorders"][0]["sessionId"] == "lab_session_2"
+    assert recorders["body"]["recorders"][0]["bedId"] == "manual_session_1-bed-1"
+    assert recorders["body"]["recorders"][0]["state"] == "running"
+
+
 def test_lab_beds_not_available_returns_failed_state() -> None:
     with running_server(session_store=UnavailableReadModelStore()) as address:
         response = request(address, "GET", "/lab/beds")
@@ -477,11 +544,64 @@ def test_session_start_sends_lab_recorder_payloads_and_updates_read_model() -> N
     assert sender.calls[0]["target_url"] == "http://edge/"
     assert sender.calls[0]["payload"]["vrcode"] == "LAB-lab_session_1-1"
     assert list(sender.calls[0]["payload"]["rooms"].keys()) == ["OR-A"]
+    track_names = {
+        track["name"]
+        for track in sender.calls[0]["payload"]["rooms"]["OR-A"]["trks"]
+    }
+    assert track_names == {
+        "HR",
+        "PLETH_SPO2",
+        "ART_SBP",
+        "ART_DBP",
+        "ART_MBP",
+        "RR",
+        "BT",
+        "ECG",
+        "PLETH",
+        "CO2",
+    }
+    assert all(
+        isinstance(track.get("montype"), str) and track["montype"]
+        for track in sender.calls[0]["payload"]["rooms"]["OR-A"]["trks"]
+    )
     recorder = recorders["body"]["recorders"][0]
     assert recorder["messagesSent"] == 1
     assert recorder["lastSendState"] == "sent"
     assert recorder["lastSendError"] is None
     assert recorder["lastSendAt"] is not None
+
+
+def test_session_start_streams_until_session_stop() -> None:
+    sender = FakeSender()
+    with running_server(
+        ["lab_session_1"],
+        sender=sender,
+        frame_interval_seconds=0.01,
+    ) as address:
+        request(
+            address,
+            "POST",
+            "/lab/sessions",
+            {
+                "scenarioId": "baseline-monitoring",
+                "name": "Streaming session",
+                "recorderCount": 1,
+                "targetURL": "http://edge/",
+                "bedRoomNames": ["OR-A"],
+            },
+        )
+        started = request(address, "POST", "/lab/sessions/lab_session_1/start")
+        time.sleep(0.05)
+        running_recorders = request(address, "GET", "/lab/recorders")
+        stopped = request(address, "POST", "/lab/sessions/lab_session_1/stop")
+        sent_at_stop = len(sender.calls)
+        time.sleep(0.03)
+        sent_after_stop_wait = len(sender.calls)
+
+    assert started["status"] == 202
+    assert stopped["status"] == 202
+    assert running_recorders["body"]["recorders"][0]["messagesSent"] > 1
+    assert sent_after_stop_wait == sent_at_stop
 
 
 def test_session_start_records_recorder_send_failure() -> None:
@@ -711,12 +831,14 @@ class running_server:
         uploader: FakeVitalFileUploader | None = None,
         vital_files_mount: Path | None = None,
         session_store: LabSessionStore | None = None,
+        frame_interval_seconds: float = 1.0,
     ) -> None:
         self.ids = ids or ["lab_session_1"]
         self.sender = sender or FakeSender()
         self.uploader = uploader or FakeVitalFileUploader()
         self.vital_files_mount = vital_files_mount or Path("/mnt/tirosh-vital-files")
         self.session_store = session_store
+        self.frame_interval_seconds = frame_interval_seconds
 
     def __enter__(self) -> running_server:
         counter = iter(self.ids)
@@ -740,10 +862,12 @@ class running_server:
         self.engine = LabExecutionEngine(
             sender=self.sender,
             vital_file_uploader=self.uploader,
+            frame_interval_seconds=self.frame_interval_seconds,
         )
         return self
 
     def __exit__(self, *_: object) -> None:
+        self.engine.shutdown()
         return None
 
 
@@ -777,7 +901,7 @@ class FakeSender:
         payload: dict[str, object],
     ) -> LabRecorderSendReceipt:
         self.calls.append({"target_url": target_url, "payload": payload})
-        return LabRecorderSendReceipt(status_code=200, bytes_sent=123)
+        return LabRecorderSendReceipt(transport="fake", bytes_sent=123)
 
 
 class FailingSender:
@@ -790,6 +914,39 @@ class FailingSender:
         del target_url
         del payload
         raise LabRecorderSendError("send dependency unavailable")
+
+
+class FakeSocketIOModule:
+    def __init__(self, client: FakeSocketIOClient) -> None:
+        self.client = client
+
+    def Client(self, **kwargs: Any) -> FakeSocketIOClient:
+        self.client.client_options = kwargs
+        return self.client
+
+
+class FakeSocketIOClient:
+    def __init__(self) -> None:
+        self.connected = False
+        self.disconnected = False
+        self.connected_url: str | None = None
+        self.client_options: dict[str, Any] = {}
+        self.emitted: list[tuple[str, Any]] = []
+
+    def connect(self, url: str, *, transports: list[str]) -> None:
+        self.connected = True
+        self.connected_url = url
+        self.transports = transports
+
+    def emit(self, event: str, data: Any) -> None:
+        self.emitted.append((event, data))
+
+    def sleep(self, seconds: float) -> None:
+        self.sleep_seconds = seconds
+
+    def disconnect(self) -> None:
+        self.connected = False
+        self.disconnected = True
 
 
 class FakeVitalFileUploader:
@@ -968,10 +1125,12 @@ def test_postgres_store_runs_schema_migration(monkeypatch: Any) -> None:
         check: bool,
         capture_output: bool,
         text: bool,
+        timeout: float,
     ) -> subprocess.CompletedProcess[str]:
         assert check is True
         assert capture_output is True
         assert text is True
+        assert timeout == 15
         calls.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
@@ -998,10 +1157,12 @@ def test_postgres_store_persists_and_reads_lab_session(monkeypatch: Any) -> None
         check: bool,
         capture_output: bool,
         text: bool,
+        timeout: float,
     ) -> subprocess.CompletedProcess[str]:
         del check
         del capture_output
         del text
+        del timeout
         sql = command[-1]
         saved_sql.append(sql)
         if "FROM lab_recorders" in sql:
@@ -1051,10 +1212,12 @@ def test_postgres_store_persists_private_vital_file_replay_source(
         check: bool,
         capture_output: bool,
         text: bool,
+        timeout: float,
     ) -> subprocess.CompletedProcess[str]:
         del check
         del capture_output
         del text
+        del timeout
         sql = command[-1]
         saved_sql.append(sql)
         if "FROM lab_recorders" in sql:
@@ -1095,10 +1258,12 @@ def test_postgres_store_reports_psql_failure(monkeypatch: Any) -> None:
         check: bool,
         capture_output: bool,
         text: bool,
+        timeout: float,
     ) -> subprocess.CompletedProcess[str]:
         del check
         del capture_output
         del text
+        del timeout
         raise subprocess.CalledProcessError(
             2,
             command,
@@ -1122,11 +1287,13 @@ def test_postgres_store_reports_psql_command_start_failure(monkeypatch: Any) -> 
         check: bool,
         capture_output: bool,
         text: bool,
+        timeout: float,
     ) -> subprocess.CompletedProcess[str]:
         del command
         del check
         del capture_output
         del text
+        del timeout
         raise FileNotFoundError("psql")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -1136,3 +1303,29 @@ def test_postgres_store_reports_psql_command_start_failure(monkeypatch: Any) -> 
 
     assert error.value.kind == "postgresCommandUnavailable"
     assert "postgres command could not start" in error.value.message
+
+
+def test_postgres_store_reports_psql_timeout(monkeypatch: Any) -> None:
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool,
+        capture_output: bool,
+        text: bool,
+        timeout: float,
+    ) -> subprocess.CompletedProcess[str]:
+        del check
+        del capture_output
+        del text
+        raise subprocess.TimeoutExpired(command, timeout)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(LabSessionStoreUnavailable) as error:
+        PostgresLabSessionStore(
+            "postgresql://lab-db",
+            psql_timeout_seconds=3,
+        ).ensure_ready()
+
+    assert error.value.kind == "postgresCommandTimedOut"
+    assert "timeoutSeconds=3" in error.value.message

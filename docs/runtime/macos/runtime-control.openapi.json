@@ -3894,13 +3894,30 @@
           }
         }
       },
+      "RuntimeGuestControlProbeError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "message"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
       "RuntimeGuestControlStackStatus": {
         "type": "object",
         "additionalProperties": false,
         "required": [
           "state",
           "observedAt",
-          "services"
+          "services",
+          "probeErrors"
         ],
         "properties": {
           "state": {
@@ -3929,6 +3946,12 @@
           },
           "vitalFilesDisk": {
             "$ref": "#/components/schemas/ResourceUsage"
+          },
+          "probeErrors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeGuestControlProbeError"
+            }
           }
         }
       },
@@ -4250,6 +4273,12 @@
               "null"
             ]
           },
+          "bedIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "createdAt": {
             "type": [
               "string",
@@ -4330,6 +4359,12 @@
               "string",
               "null"
             ]
+          },
+          "bedIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -4736,6 +4771,59 @@
           "failed"
         ]
       },
+      "RuntimeGuestAddressSource": {
+        "type": "string",
+        "enum": [
+          "vm-ip"
+        ],
+        "description": "Source that produced the explicit Guest address read result."
+      },
+      "RuntimeGuestAddressReadState": {
+        "type": "string",
+        "enum": [
+          "notReported",
+          "loaded",
+          "missing",
+          "invalid",
+          "stale",
+          "readFailed"
+        ],
+        "description": "Explicit Guest address read state. Missing, invalid, stale, and read-failed are distinct from a loaded address."
+      },
+      "RuntimeGuestAddressReadResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/RuntimeGuestAddressReadState"
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeGuestAddressSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "RuntimeStatus": {
         "type": "object",
         "additionalProperties": true,
@@ -4814,6 +4902,17 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeVMError"
             }
+          },
+          "guestAddressRead": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeGuestAddressReadResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Typed Guest address read evidence preserved from runtime health. The compatibility vmIP field is populated only from a loaded address."
           },
           "latestBackup": {
             "type": [
@@ -4902,6 +5001,13 @@
             "items": {
               "$ref": "#/components/schemas/RuntimeGuestServiceResourceReadIssue"
             }
+          },
+          "guestStackProbeErrors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeGuestControlProbeError"
+            },
+            "description": "Optional Guest stack probe failures returned with a loaded stack status. These are diagnostics evidence and must not be treated as Guest service read failure."
           },
           "guestServicesReadError": {
             "type": [

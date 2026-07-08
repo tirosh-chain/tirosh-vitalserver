@@ -675,6 +675,12 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     service: "vitaldb-observer",
                     message: "resource document decode failed"
                 )
+            ],
+            guestStackProbeErrors: [
+                GuestRuntimeProbeError(
+                    source: "docker stats",
+                    message: "timed out after 1 seconds"
+                )
             ]
         )
 
@@ -691,6 +697,14 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         )
         XCTAssertEqual(
             item("\(AppConstants.Labels.guestProductServices): vitaldb-observer", in: details)?.value.severity,
+            .warning
+        )
+        XCTAssertEqual(
+            item("\(AppConstants.Labels.guestProductServices) probes", in: details)?.value.text,
+            "docker stats: timed out after 1 seconds"
+        )
+        XCTAssertEqual(
+            item("\(AppConstants.Labels.guestProductServices) probes", in: details)?.value.severity,
             .warning
         )
         XCTAssertNil(item("\(AppConstants.Labels.guestProductServices): redis-relay", in: details))
@@ -957,6 +971,12 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
                     service: "recorder-ingress",
                     message: "resource controller unavailable"
                 )
+            ],
+            guestStackProbeErrors: [
+                GuestRuntimeProbeError(
+                    source: "docker stats",
+                    message: "timed out after 1 seconds"
+                )
             ]
         )
         let items = policy.advancedServiceHealth(status: status, operationState: operationState())
@@ -972,6 +992,14 @@ final class RuntimeStatusDisplayPolicyTests: XCTestCase {
         XCTAssertEqual(app?.value.severity, .healthy)
         XCTAssertEqual(recorderIngress?.value.text, "Resource read failed: resource controller unavailable")
         XCTAssertEqual(recorderIngress?.value.severity, .warning)
+        XCTAssertEqual(
+            item("\(AppConstants.Labels.guestProductServices) probes", in: items)?.value.text,
+            "docker stats: timed out after 1 seconds"
+        )
+        XCTAssertEqual(
+            item("\(AppConstants.Labels.guestProductServices) probes", in: items)?.value.severity,
+            .warning
+        )
         XCTAssertLessThan(
             items.firstIndex { $0.label == appLabel } ?? Int.max,
             items.firstIndex { $0.label == recorderIngressLabel } ?? Int.max

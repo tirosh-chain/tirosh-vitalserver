@@ -61,6 +61,30 @@ CREATE TABLE IF NOT EXISTS guest_service_resources (
 );
 CREATE INDEX IF NOT EXISTS guest_service_resources_updated_at_idx
     ON guest_service_resources (updated_at);
+
+UPDATE guest_service_resources
+SET document = jsonb_set(
+        document,
+        '{status,serviceStatus,health}',
+        '"not_reported"'::jsonb,
+        true
+    ),
+    updated_at = now()
+WHERE document #>> '{status,state}' = 'loaded'
+  AND (
+      document #>> '{status,serviceStatus,health}' IS NULL
+      OR document #>> '{status,serviceStatus,health}' = ''
+  );
+
+UPDATE service_status_snapshots
+SET document = jsonb_set(
+        document,
+        '{health}',
+        '"not_reported"'::jsonb,
+        true
+    )
+WHERE document ->> 'health' IS NULL
+   OR document ->> 'health' = '';
 """
 
 

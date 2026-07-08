@@ -872,9 +872,11 @@ def test_guest_service_observe_route_returns_observed_resource(
 
     assert status == HTTPStatus.ACCEPTED
     assert document["service"] == "app"
-    assert document["spec"]["state"] == "missing"
+    assert document["spec"]["state"] == "configured"
+    assert document["spec"]["desiredState"] == "running"
     assert document["status"]["state"] == "loaded"
     assert document["status"]["observedState"] == "running"
+    assert document["conditions"][0]["reason"] == "DesiredStateObserved"
 
 
 def test_guest_service_spec_invalid_request_returns_bad_request() -> None:

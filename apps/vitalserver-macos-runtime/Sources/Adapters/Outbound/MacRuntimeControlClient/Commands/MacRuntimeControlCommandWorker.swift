@@ -23,14 +23,14 @@ public actor MacRuntimeControlCommandWorker {
             privilegedCommandRunner: SystemPrivilegedCommandRunner(),
             actionEnvironment: SystemRuntimeActionEnvironment(),
             logExporter: MacRuntimeControlLogExporter(),
-            guestProductServiceController: RuntimeGuestProductServiceControlUseCase(),
-            guestMaintenanceController: RuntimeGuestMaintenanceControlUseCase()
+            guestProductServiceController: UnavailableRuntimeGuestProductServiceController(),
+            guestMaintenanceController: UnavailableRuntimeGuestMaintenanceController()
         )
     }
 
     public init(
         guestProductServiceController: any RuntimeGuestProductServiceCommandControlling,
-        guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling = RuntimeGuestMaintenanceControlUseCase(),
+        guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling,
         guestControlBaseURLOverride: String? = nil
     ) {
         self.init(
@@ -47,8 +47,8 @@ public actor MacRuntimeControlCommandWorker {
         privilegedCommandRunner: any PrivilegedCommandRunning,
         actionEnvironment: any RuntimeActionEnvironment,
         logExporter: any RuntimeLogExporting,
-        guestProductServiceController: any RuntimeGuestProductServiceCommandControlling = RuntimeGuestProductServiceControlUseCase(),
-        guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling = RuntimeGuestMaintenanceControlUseCase(),
+        guestProductServiceController: any RuntimeGuestProductServiceCommandControlling = UnavailableRuntimeGuestProductServiceController(),
+        guestMaintenanceController: any RuntimeGuestMaintenanceCommandControlling = UnavailableRuntimeGuestMaintenanceController(),
         guestControlBaseURLOverride: String? = nil
     ) {
         self.privilegedCommandRunner = privilegedCommandRunner
@@ -464,10 +464,26 @@ public actor MacRuntimeControlCommandWorker {
         if let vmIP = read.document?.vmIP?.trimmingCharacters(in: .whitespacesAndNewlines), !vmIP.isEmpty {
             return RuntimeControlClientConstants.Product.guestControlAPIBaseURL(vmIP: vmIP)
         }
-        if read.error != nil {
-            return RuntimeControlClientConstants.Product.localGuestControlAPIBaseURL
+        if let guestAddressRead = read.document?.guestAddressRead,
+           guestAddressRead.state != .notReported
+        {
+            throw RuntimeClientError.guestControlUnavailable(
+                "guest address is unavailable: \(guestAddressRead.failureStatusText)"
+            )
         }
-        return RuntimeControlClientConstants.Product.localGuestControlAPIBaseURL
+        if let error = read.error?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
+            throw RuntimeClientError.guestControlUnavailable(
+                "runtime status document read failed: \(error)"
+            )
+        }
+        if let issue = read.issue {
+            throw RuntimeClientError.guestControlUnavailable(
+                "\(issue.source) is unavailable: \(issue.message)"
+            )
+        }
+        throw RuntimeClientError.guestControlUnavailable(
+            "runtime status document does not report vmIP"
+        )
     }
 
     private func runGuestControlCommand<T>(
@@ -526,6 +542,80 @@ public actor MacRuntimeControlCommandWorker {
     }
 }
 
+private struct UnavailableRuntimeGuestProductServiceController: RuntimeGuestProductServiceCommandControlling {
+    func startService(
+        _ service: String,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw unavailable()
+    }
+
+    func stopService(
+        _ service: String,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw unavailable()
+    }
+
+    func restartService(
+        _ service: String,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw unavailable()
+    }
+
+    private func unavailable() -> RuntimeClientError {
+        .guestControlUnavailable("guest product service controller unavailable")
+    }
+}
+
+private struct UnavailableRuntimeGuestMaintenanceController: RuntimeGuestMaintenanceCommandControlling {
+    func createRedisBackup(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw unavailable()
+    }
+
+    func restoreRedisBackup(
+        archive: String,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw unavailable()
+    }
+
+    func repairDatastore(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw unavailable()
+    }
+
+    func activateUpdate(
+        requestId: String,
+        version: String,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw unavailable()
+    }
+
+    func prepareUpdateShutdown(
+        requestId: String,
+        version: String,
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw unavailable()
+    }
+
+    func requestGuestPoweroff(
+        gateway: RuntimeGuestControlGateway
+    ) throws -> RuntimeGuestControlServiceOperation {
+        throw unavailable()
+    }
+
+    private func unavailable() -> RuntimeClientError {
+        .guestControlUnavailable("guest maintenance controller unavailable")
+    }
+}
+
 private extension RuntimeCommandResult {
     init(guestControlOperation operation: RuntimeGuestControlServiceOperation) {
         let archive = operation.result?.archive?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -556,29 +646,6 @@ extension RuntimeLabBedList: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabRecorderList: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabSessionResponse: RuntimeLabResponseUnavailableFactory {}
 extension RuntimeLabVitalFileUploadResponse: RuntimeLabResponseUnavailableFactory {}
-
-private struct UnavailableRuntimeGuestProductServiceCommandController: RuntimeGuestProductServiceCommandControlling {
-    func startService(
-        _ service: String,
-        gateway: RuntimeGuestControlGateway
-    ) throws -> RuntimeGuestControlServiceOperation {
-        throw RuntimeClientError.guestControlUnavailable("guest product service controller is unavailable.")
-    }
-
-    func stopService(
-        _ service: String,
-        gateway: RuntimeGuestControlGateway
-    ) throws -> RuntimeGuestControlServiceOperation {
-        throw RuntimeClientError.guestControlUnavailable("guest product service controller is unavailable.")
-    }
-
-    func restartService(
-        _ service: String,
-        gateway: RuntimeGuestControlGateway
-    ) throws -> RuntimeGuestControlServiceOperation {
-        throw RuntimeClientError.guestControlUnavailable("guest product service controller is unavailable.")
-    }
-}
 
 private extension RuntimeCommandResult {
     func appendingOutputIssue(_ issue: RuntimeCommandOutputIssue) -> RuntimeCommandResult {

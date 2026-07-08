@@ -438,7 +438,7 @@ VitalServerHelper.pkg
 | macOS 재부팅 후 자동 기동 | VM/proxy LaunchDaemon `RunAtLoad`, start-on-boot policy |
 | VM launcher 비정상 종료 복구 | VM LaunchDaemon `KeepAlive`, detached VM process, watchdog recovery |
 | host nginx proxy 비정상 종료 복구 | proxy LaunchDaemon `KeepAlive`, `vitalserver-proxy-run` loop, watchdog recovery |
-| VM IP 변경 대응 | `vitalserver-proxy-run`이 guest `runtime-state.json`의 VM IP/bootstrap HTTP readiness만 읽고 nginx config reload |
+| VM IP 변경 대응 | `vitalserver-proxy-run`이 Guest `vm-ip` bootstrap file과 `runtime-state.json.guestHTTP` readiness evidence를 읽고 nginx config reload |
 | guest service 복구 | guest systemd unit, Docker, nginx, Compose restart policy |
 | 설치/업데이트 실패 진단 | 고정 log path, runtime status/health command |
 | update 실패 복구 | apply 전 backup, health check 실패 시 rollback |

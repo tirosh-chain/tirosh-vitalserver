@@ -151,13 +151,25 @@ describe("runtime control contract schemas", () => {
         guestServicesReadState: "loaded",
         guestServiceStatuses: [],
         guestServiceResources: [],
-        guestServiceResourceReadIssues: []
+        guestServiceResourceReadIssues: [],
+        guestStackProbeErrors: [
+          {
+            source: "docker stats",
+            message: "timed out after 1 seconds"
+          }
+        ]
       })
     ).toMatchObject({
       guestServicesReadState: "loaded",
       guestServiceStatuses: [],
       guestServiceResources: [],
-      guestServiceResourceReadIssues: []
+      guestServiceResourceReadIssues: [],
+      guestStackProbeErrors: [
+        {
+          source: "docker stats",
+          message: "timed out after 1 seconds"
+        }
+      ]
     });
 
     expect(() =>

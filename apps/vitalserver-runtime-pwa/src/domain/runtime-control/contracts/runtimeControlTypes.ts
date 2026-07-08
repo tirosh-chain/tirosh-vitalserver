@@ -1,10 +1,12 @@
 import type { components, paths } from "./generated/runtime-control";
 import {
   runtimeLabBedListSchema,
+  runtimeLabVitalFileListSchema,
   runtimeLabRecorderListSchema,
   runtimeEventHistorySchema,
   runtimeOperationStateSchema,
   runtimeOverviewSchema,
+  runtimeGuestControlStackStatusSchema,
   runtimeStatusSchema,
   vitalDBRecordersSchema,
   vitalDBRelationshipsSchema
@@ -52,6 +54,16 @@ export type RuntimeLabSessionCreateRequest =
 export type RuntimeLabVitalFileReplayRequest =
   paths["/lab/vital-files/replay"]["post"]["requestBody"]["content"]["application/json"];
 
+export type RuntimeLabVitalFileList = z.infer<typeof runtimeLabVitalFileListSchema>;
+
+export type RuntimeLabVitalFile = RuntimeLabVitalFileList["vitalFiles"][number];
+
+export type RuntimeLabVitalFileUploadRequest =
+  paths["/lab/vital-files/upload"]["post"]["requestBody"]["content"]["application/json"];
+
+export type RuntimeLabVitalFileUploadResponse =
+  paths["/lab/vital-files/upload"]["post"]["responses"]["200"]["content"]["application/json"];
+
 export type RuntimeGuestServiceControlRequest =
   components["schemas"]["RuntimeGuestServiceRestartRequest"];
 
@@ -59,7 +71,7 @@ export type RuntimeGuestControlServiceOperation =
   components["schemas"]["RuntimeGuestControlServiceOperation"];
 
 export type RuntimeGuestControlStackStatus =
-  components["schemas"]["RuntimeGuestControlStackStatus"];
+  z.infer<typeof runtimeGuestControlStackStatusSchema>;
 
 export type RuntimeGuestControlServiceStatus =
   components["schemas"]["RuntimeGuestControlServiceStatus"];

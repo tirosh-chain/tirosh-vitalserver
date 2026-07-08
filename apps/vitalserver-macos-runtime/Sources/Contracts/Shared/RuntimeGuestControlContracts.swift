@@ -210,6 +210,7 @@ public struct RuntimeGuestControlStackStatus: Codable, Equatable, Sendable {
     public let memory: ResourceUsage?
     public let systemDisk: ResourceUsage?
     public let vitalFilesDisk: ResourceUsage?
+    public let probeErrors: [GuestRuntimeProbeError]
 
     public init(
         state: String,
@@ -218,7 +219,8 @@ public struct RuntimeGuestControlStackStatus: Codable, Equatable, Sendable {
         cpuUsagePercent: Double? = nil,
         memory: ResourceUsage? = nil,
         systemDisk: ResourceUsage? = nil,
-        vitalFilesDisk: ResourceUsage? = nil
+        vitalFilesDisk: ResourceUsage? = nil,
+        probeErrors: [GuestRuntimeProbeError] = []
     ) {
         self.state = state
         self.observedAt = observedAt
@@ -227,6 +229,7 @@ public struct RuntimeGuestControlStackStatus: Codable, Equatable, Sendable {
         self.memory = memory
         self.systemDisk = systemDisk
         self.vitalFilesDisk = vitalFilesDisk
+        self.probeErrors = probeErrors
     }
 }
 

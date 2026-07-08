@@ -64,6 +64,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
         XCTAssertTrue(command.contains("write_result \"completed\" 0 true \"uninstall completed\" \"not-checked\""))
         XCTAssertTrue(command.contains("\"freshInstallReadiness\""))
         XCTAssertTrue(command.contains("tail -n 0 -F"))
+        XCTAssertTrue(command.contains("read -r -t \(RuntimeUninstallProgressScript.terminalCloseDelaySeconds) _ || true"))
         XCTAssertTrue(command.contains("worker_pid_file="))
         XCTAssertTrue(command.contains("/usr/local/bin/tirosh-vitalserver-uninstall"))
         XCTAssertTrue(command.contains("--force-clean-uninstaller"))
@@ -160,6 +161,7 @@ final class RuntimeCommandFactoryTests: XCTestCase {
 
         XCTAssertTrue(viewer.contains("worker_process_exited()"))
         XCTAssertTrue(viewer.contains("ps -p \"${worker_pid}\" -o pid="))
+        XCTAssertTrue(viewer.contains("read -r -t \(RuntimeUninstallProgressScript.terminalCloseDelaySeconds) _ || true"))
         XCTAssertFalse(viewer.contains("kill -0 \"${worker_pid}\""))
     }
 

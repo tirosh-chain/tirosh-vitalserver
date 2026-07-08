@@ -143,6 +143,7 @@ public struct RuntimeHealthObservationReads {
     public let proxyService: RuntimeServiceState
     public let watchdogService: RuntimeServiceState
     public let vmLifecycleLoadResult: RuntimeGuestDocumentLoadResult<RuntimeVMLifecycleDocument>
+    public let guestAddressRead: RuntimeGuestAddressReadResult
     public let guestControlReadiness: RuntimeGuestControlReadinessRead
     public let proxyPortReadState: RuntimeProxyPortReadState
     public let hostProxyHTTP: RuntimeHTTPProbeResult?
@@ -166,6 +167,7 @@ public struct RuntimeHealthObservationReads {
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
         vmLifecycleLoadResult: RuntimeGuestDocumentLoadResult<RuntimeVMLifecycleDocument>,
+        guestAddressRead: RuntimeGuestAddressReadResult = .notReported,
         guestControlReadiness: RuntimeGuestControlReadinessRead = .notReported,
         proxyPortReadState: RuntimeProxyPortReadState,
         hostProxyHTTP: RuntimeHTTPProbeResult?,
@@ -188,6 +190,7 @@ public struct RuntimeHealthObservationReads {
         self.proxyService = proxyService
         self.watchdogService = watchdogService
         self.vmLifecycleLoadResult = vmLifecycleLoadResult
+        self.guestAddressRead = guestAddressRead
         self.guestControlReadiness = guestControlReadiness
         self.proxyPortReadState = proxyPortReadState
         self.hostProxyHTTP = hostProxyHTTP

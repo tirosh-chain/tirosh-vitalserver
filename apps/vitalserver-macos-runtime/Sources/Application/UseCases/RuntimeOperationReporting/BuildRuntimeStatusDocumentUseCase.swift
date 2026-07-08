@@ -117,6 +117,7 @@ public struct BuildRuntimeStatusDocumentUseCase {
             watchdogService: input.current.watchdogService,
             vmState: input.current.vmState,
             vmErrors: input.current.vmErrors,
+            guestAddressRead: input.current.guestAddressRead,
             vmIP: input.current.vmIP,
             proxyPort: input.current.proxyPort,
             hostProxyHTTP: input.current.hostProxyHTTP,

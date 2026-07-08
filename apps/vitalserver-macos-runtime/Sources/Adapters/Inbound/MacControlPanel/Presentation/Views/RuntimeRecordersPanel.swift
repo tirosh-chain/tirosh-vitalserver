@@ -22,6 +22,7 @@ struct RuntimeRecordersPanel: View {
             header
             recorderList
             recorderDetails
+            productLabRecorders
         }
     }
 
@@ -133,6 +134,7 @@ struct RuntimeRecordersPanel: View {
         Button(AppConstants.Actions.refresh) {
             Task {
                 await viewModel.refreshVitalRecorders()
+                await viewModel.refreshProductLabReadModels()
             }
         }
     }
@@ -291,6 +293,78 @@ struct RuntimeRecordersPanel: View {
                 .font(.title3)
                 .fontWeight(.semibold)
         }
+    }
+
+    private var productLabRecorders: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(AppConstants.Labels.productLabRecorders)
+                    .font(.headline)
+                Text("\(viewModel.labRecorders.recorders.count)")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("Read: \(labReadStateText(viewModel.labRecorders.state))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let readError = viewModel.labRecorders.readError {
+                Text("Read issue: \(readError)")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
+            if viewModel.labRecorders.recorders.isEmpty {
+                Text("No Product Lab recorder data")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                ScrollView(.horizontal) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        productLabRecorderHeaderRow
+                        ForEach(viewModel.labRecorders.recorders, id: \.recorderId) { recorder in
+                            Divider()
+                            productLabRecorderRow(recorder)
+                        }
+                    }
+                    .frame(minWidth: 1080, alignment: .leading)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
+    }
+
+    private var productLabRecorderHeaderRow: some View {
+        HStack(spacing: 12) {
+            tableHeader("VRecorder", minWidth: 180)
+            tableHeader("Recorder ID", minWidth: 220)
+            tableHeader("Bed", minWidth: 220)
+            tableHeader("Session", minWidth: 220)
+            tableHeader("State", minWidth: 90)
+            tableHeader("Send", minWidth: 110)
+            tableHeader("Updated", minWidth: 160)
+        }
+        .padding(10)
+    }
+
+    private func productLabRecorderRow(_ recorder: RuntimeLabRecorder) -> some View {
+        HStack(spacing: 12) {
+            tableValue(recorder.vrcode, minWidth: 180, weight: .semibold)
+            tableValue(recorder.recorderId, minWidth: 220)
+            tableValue(recorder.bedId, minWidth: 220)
+            tableValue(recorder.sessionId, minWidth: 220)
+            Text(labSessionStateText(recorder.state))
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(labSessionStateColor(recorder.state))
+                .frame(minWidth: 90, alignment: .leading)
+            tableValue(labRecorderSendText(recorder), minWidth: 110)
+            tableValue(viewModel.presentationFormatter.systemTimeText(recorder.updatedAt), minWidth: 160)
+        }
+        .padding(10)
     }
 
     private func selectedRecorderSummary(_ recorder: RuntimeVitalRecorderRecord) -> some View {
@@ -712,6 +786,39 @@ struct RuntimeRecordersPanel: View {
             .truncationMode(.middle)
             .textSelection(.enabled)
             .frame(minWidth: minWidth, alignment: .leading)
+    }
+
+    private func labReadStateText(_ state: RuntimeLabReadState) -> String {
+        switch state {
+        case .loaded:
+            return "loaded"
+        case .unavailable:
+            return "unavailable"
+        case .failed:
+            return "failed"
+        }
+    }
+
+    private func labSessionStateText(_ state: RuntimeLabSessionState) -> String {
+        state.rawValue
+    }
+
+    private func labSessionStateColor(_ state: RuntimeLabSessionState) -> Color {
+        switch state {
+        case .accepted, .running:
+            return .green
+        case .stopped:
+            return .secondary
+        case .failed, .unavailable:
+            return .orange
+        }
+    }
+
+    private func labRecorderSendText(_ recorder: RuntimeLabRecorder) -> String {
+        if recorder.lastSendState == .sent {
+            return "sent \(recorder.messagesSent)"
+        }
+        return recorder.lastSendState.rawValue
     }
 
     private func tableIPValue(_ recorder: RuntimeVitalRecorderRecord, minWidth: CGFloat) -> some View {

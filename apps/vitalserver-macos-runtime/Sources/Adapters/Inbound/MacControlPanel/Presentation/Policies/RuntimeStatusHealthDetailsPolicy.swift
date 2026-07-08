@@ -160,6 +160,9 @@ public struct RuntimeStatusHealthDetailsPolicy {
             ),
         ])
         items.append(contentsOf: guestServiceHealthDetails(status: status))
+        if let probeErrorItem = guestStackProbeErrorHealthDetail(status) {
+            items.append(probeErrorItem)
+        }
         items.append(contentsOf: [
             RuntimeStatusHealthDetailItem(
                 label: vocabulary.recorderIngressQueueLabel,
@@ -173,6 +176,21 @@ public struct RuntimeStatusHealthDetailsPolicy {
             ),
         ])
         return items
+    }
+
+    private func guestStackProbeErrorHealthDetail(_ status: RuntimeStatus) -> RuntimeStatusHealthDetailItem? {
+        guard !status.guestStackProbeErrors.isEmpty else {
+            return nil
+        }
+        return RuntimeStatusHealthDetailItem(
+            label: "\(vocabulary.guestProductServicesLabel) probes",
+            value: value(
+                status.guestStackProbeErrors
+                    .map { "\($0.source): \($0.message)" }
+                    .joined(separator: ", "),
+                .warning
+            )
+        )
     }
 
     private func guestHTTPValue(

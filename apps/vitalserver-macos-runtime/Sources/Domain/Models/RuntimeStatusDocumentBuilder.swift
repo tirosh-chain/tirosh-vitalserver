@@ -56,6 +56,7 @@ public enum RuntimeStatusDocumentBuilder {
             watchdogService: input.healthSnapshot.watchdogService,
             vmState: input.healthSnapshot.vmState,
             vmErrors: input.healthSnapshot.vmErrors,
+            guestAddressRead: input.healthSnapshot.guestAddressRead,
             vmIP: input.healthSnapshot.vmIP,
             proxyPort: input.healthSnapshot.proxyPort,
             proxyPortReadState: input.healthSnapshot.proxyPortReadState,

@@ -47,6 +47,7 @@ class VitalDBReadModelWriter(Protocol):
 def write_runtime_state(
     runtime_state: Path,
     *,
+    vm_ip_file: Path | None = None,
     guest_http: RuntimeHTTPProbeStatus | str | None = None,
     redis_ui_http: RuntimeHTTPProbeStatus | str | None = None,
     swagger_ui_http: RuntimeHTTPProbeStatus | str | None = None,
@@ -62,6 +63,7 @@ def write_runtime_state(
     write_runtime_state_document(
         runtime_state,
         state,
+        vm_ip_file=vm_ip_file,
         vitaldb_read_model=vitaldb_read_model,
         vitaldb_observation=vitaldb_observation,
     )
@@ -84,6 +86,7 @@ def write_runtime_state_document(
     runtime_state: Path,
     state: GuestRuntimeState,
     *,
+    vm_ip_file: Path | None = None,
     vitaldb_read_model: VitalDBReadModelWriter | None = None,
     vitaldb_observation: dict[str, object] | None = None,
 ) -> None:
@@ -94,10 +97,27 @@ def write_runtime_state_document(
         encoding="utf-8",
     )
     os.replace(temporary, runtime_state)
+    if vm_ip_file is not None:
+        write_vm_ip_file(vm_ip_file, state.vm_ip)
     save_vitaldb_read_models(
         vitaldb_observation,
         vitaldb_read_model=vitaldb_read_model,
     )
+
+
+def write_vm_ip_file(vm_ip_file: Path, vm_ip: str | None) -> None:
+    vm_ip_file.parent.mkdir(parents=True, exist_ok=True)
+    normalized = None if vm_ip is None else vm_ip.strip()
+    if not normalized:
+        try:
+            vm_ip_file.unlink()
+        except FileNotFoundError:
+            pass
+        return
+
+    temporary = vm_ip_file.with_name(f"{vm_ip_file.name}.tmp")
+    temporary.write_text(f"{normalized}\n", encoding="utf-8")
+    os.replace(temporary, vm_ip_file)
 
 
 def save_vitaldb_read_models(

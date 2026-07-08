@@ -92,6 +92,7 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
         XCTAssertFalse(snapshot.failureReasons.contains(.guestBootstrapFailed))
         XCTAssertTrue(httpProber.requestedURLs.contains("http://127.0.0.1:8080/ready"))
+        XCTAssertEqual(snapshot.guestAddressRead, .loaded(address: "192.168.64.2", source: .vmIPFile))
         XCTAssertEqual(snapshot.vmIP, "192.168.64.2")
         XCTAssertEqual(snapshot.proxyPort, 8080)
         XCTAssertEqual(snapshot.hostProxyHTTP, "200")
@@ -149,8 +150,38 @@ final class RuntimeHealthCheckerTests: XCTestCase {
         let snapshot = healthSnapshot(from: checker)
 
         XCTAssertNil(snapshot.vmIP)
+        XCTAssertEqual(snapshot.guestAddressRead.state, .missing)
+        XCTAssertTrue(snapshot.guestAddressRead.reason?.contains("vm-ip file missing") == true)
         XCTAssertEqual(snapshot.guestHTTP, "guestControl=\(RuntimeHTTPStatusText.missingVMIP)")
         XCTAssertTrue(snapshot.failureReasons.contains(.guestHTTP(RuntimeHTTPStatusText.missingVMIP)))
+    }
+
+    func testSnapshotPreservesEmptyVMIPFileAsInvalidGuestAddress() {
+        let fixture = healthyRuntimeFixture(guestHTTP: "200")
+        fixture.fileStore.files[fixture.installedPaths.vmIPFile] = Data("\n".utf8)
+
+        let snapshot = healthSnapshot(from: fixture.checker)
+
+        XCTAssertEqual(snapshot.guestAddressRead.state, .invalid)
+        XCTAssertTrue(snapshot.guestAddressRead.reason?.contains("vm-ip file empty") == true)
+        XCTAssertNil(snapshot.vmIP)
+        XCTAssertTrue(snapshot.guestHTTP.contains("guestControl=invalid-guest-address"))
+        XCTAssertEqual(fixture.guestControlGateway.readyCount, 0)
+        XCTAssertEqual(fixture.guestControlGateway.stackStatusCount, 0)
+    }
+
+    func testSnapshotPreservesVMIPFileReadFailureAsGuestAddressReadFailed() {
+        let fixture = healthyRuntimeFixture(guestHTTP: "200")
+        fixture.fileStore.readDataErrors[fixture.installedPaths.vmIPFile] = CocoaError(.fileReadNoPermission)
+
+        let snapshot = healthSnapshot(from: fixture.checker)
+
+        XCTAssertEqual(snapshot.guestAddressRead.state, .readFailed)
+        XCTAssertTrue(snapshot.guestAddressRead.reason?.contains("vm-ip file read failed") == true)
+        XCTAssertNil(snapshot.vmIP)
+        XCTAssertTrue(snapshot.guestHTTP.contains("guestControl=guest-address-read-failed"))
+        XCTAssertEqual(fixture.guestControlGateway.readyCount, 0)
+        XCTAssertEqual(fixture.guestControlGateway.stackStatusCount, 0)
     }
 
     func testSnapshotReadsGuestServiceStatusesThroughGuestControlGateway() {

@@ -10,15 +10,19 @@ import {
   useLabRecorders,
   useLabScenarios,
   useLabSession,
+  useLabVitalFiles,
   useReplayLabVitalFile,
   useResetLabBeds,
   useResetLabRecorders,
   useRuntimeCapabilities,
   useStartLabSession,
-  useStopLabSession
+  useStopLabSession,
+  useUploadLabVitalFile
 } from "@/console/hooks";
 import type {
   RuntimeLabBed,
+  RuntimeLabVitalFile,
+  RuntimeLabVitalFileUploadResponse,
   RuntimeLabRecorder,
   RuntimeLabScenario,
   RuntimeLabSessionResponse
@@ -34,6 +38,7 @@ export function LabPage() {
   const scenarios = useLabScenarios();
   const beds = useLabBeds();
   const recorders = useLabRecorders();
+  const vitalFiles = useLabVitalFiles();
   const createBeds = useCreateLabBeds();
   const deleteBeds = useDeleteLabBeds();
   const resetBeds = useResetLabBeds();
@@ -44,10 +49,13 @@ export function LabPage() {
   const startSession = useStartLabSession();
   const stopSession = useStopLabSession();
   const replayVitalFile = useReplayLabVitalFile();
+  const uploadVitalFile = useUploadLabVitalFile();
 
   const [selectedScenarioId, setSelectedScenarioId] = useState("");
+  const [targetURL, setTargetURL] = useState("");
   const [sessionName, setSessionName] = useState("Lab session");
   const [recorderCount, setRecorderCount] = useState(1);
+  const [sessionBedTargets, setSessionBedTargets] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [bedRoomNames, setBedRoomNames] = useState("Lab-1");
   const [bedPrefix, setBedPrefix] = useState("Lab bed");
@@ -56,11 +64,16 @@ export function LabPage() {
   const [deleteRecorderTargets, setDeleteRecorderTargets] = useState("");
   const [vitalFilePath, setVitalFilePath] = useState("");
   const [vitalReplayName, setVitalReplayName] = useState("Vital file replay");
+  const [vitalUploadEndpoint, setVitalUploadEndpoint] = useState("");
+  const [vitalUploadVrcode, setVitalUploadVrcode] = useState("");
   const [lastResponse, setLastResponse] =
     useState<RuntimeLabSessionResponse | null>(null);
+  const [lastUpload, setLastUpload] =
+    useState<RuntimeLabVitalFileUploadResponse | null>(null);
 
   const session = useLabSession(selectedSessionId.trim() || null);
   const scenarioOptions = scenarios.data?.scenarios ?? [];
+  const vitalFileOptions = vitalFiles.data?.vitalFiles ?? [];
   const selectedScenario = useMemo(
     () => scenarioOptions.find((scenario) => scenario.scenarioId === selectedScenarioId),
     [scenarioOptions, selectedScenarioId]
@@ -75,6 +88,12 @@ export function LabPage() {
     }
   }, [scenarioOptions, selectedScenarioId]);
 
+  useEffect(() => {
+    if (vitalFilePath.length === 0 && vitalFileOptions.length > 0) {
+      setVitalFilePath(vitalFileOptions[0]?.guestPath ?? "");
+    }
+  }, [vitalFileOptions, vitalFilePath]);
+
   const isBusy =
     createSession.isPending ||
     createBeds.isPending ||
@@ -85,11 +104,13 @@ export function LabPage() {
     resetRecorders.isPending ||
     startSession.isPending ||
     stopSession.isPending ||
-    replayVitalFile.isPending;
+    replayVitalFile.isPending ||
+    uploadVitalFile.isPending;
   const latestError =
     scenarios.error ??
     beds.error ??
     recorders.error ??
+    vitalFiles.error ??
     session.error ??
     capabilities.error ??
     createBeds.error ??
@@ -101,7 +122,8 @@ export function LabPage() {
     createSession.error ??
     startSession.error ??
     stopSession.error ??
-    replayVitalFile.error;
+    replayVitalFile.error ??
+    uploadVitalFile.error;
   const labCapability = capabilities.data?.canUseLab;
   const activeResponse = session.data ?? lastResponse;
   const activeSessionId = activeResponse?.session?.sessionId ?? selectedSessionId.trim();
@@ -112,19 +134,27 @@ export function LabPage() {
     recorderCount >= 1 &&
     !isBusy;
   const canControl = labCapability === true && activeSessionId.length > 0 && !isBusy;
-  const canReplay = labCapability === true && vitalFilePath.trim().length > 0 && !isBusy;
+  const hasTargetURL = targetURL.trim().length > 0;
+  const canReplay =
+    labCapability === true && vitalFilePath.trim().length > 0 && hasTargetURL && !isBusy;
+  const canUpload =
+    labCapability === true && vitalFilePath.trim().length > 0 && hasTargetURL && !isBusy;
   const canCreateBeds = labCapability === true && splitList(bedRoomNames).length > 0 && !isBusy;
   const canDeleteBeds = labCapability === true && splitList(deleteBedTargets).length > 0 && !isBusy;
   const canCreateRecorders = labCapability === true && splitList(recorderBedTargets).length > 0 && !isBusy;
   const canDeleteRecorders = labCapability === true && splitList(deleteRecorderTargets).length > 0 && !isBusy;
 
   const create = () => {
+    const bedIds = splitList(sessionBedTargets);
+    const resolvedRecorderCount =
+      bedIds.length > 0 ? bedIds.length : Math.max(1, Math.trunc(recorderCount));
     createSession.mutate(
       {
         scenarioId: selectedScenarioId.trim(),
         name: sessionName.trim() || null,
-        recorderCount: Math.max(1, Math.trunc(recorderCount)),
-        targetURL: null
+        recorderCount: resolvedRecorderCount,
+        targetURL: optionalText(targetURL),
+        bedIds
       },
       {
         onSuccess: (response) => {
@@ -158,7 +188,7 @@ export function LabPage() {
       {
         vitalFilePath: vitalFilePath.trim(),
         sessionName: vitalReplayName.trim() || null,
-        targetURL: null
+        targetURL: optionalText(targetURL)
       },
       {
         onSuccess: (response) => {
@@ -175,8 +205,24 @@ export function LabPage() {
       count: roomNames.length,
       roomNames,
       prefix: bedPrefix.trim() || null,
-      targetURL: null
+      targetURL: optionalText(targetURL)
     });
+  };
+
+  const upload = () => {
+    uploadVitalFile.mutate(
+      {
+        vitalFilePath: vitalFilePath.trim(),
+        targetURL: targetURL.trim(),
+        endpoint: optionalText(vitalUploadEndpoint),
+        vrcode: optionalText(vitalUploadVrcode)
+      },
+      {
+        onSuccess: (response) => {
+          setLastUpload(response);
+        }
+      }
+    );
   };
 
   const deleteManualBeds = () => {
@@ -213,7 +259,9 @@ export function LabPage() {
               value: labCapability === undefined ? NOT_REPORTED : String(labCapability)
             },
             { label: "Scenarios", value: scenarioOptions.length },
+            { label: "Vital files", value: vitalFileOptions.length },
             { label: "Read error", value: scenarios.data?.readError ?? "-" },
+            { label: "Vital file read error", value: vitalFiles.data?.readError ?? "-" },
             { label: "Selected", value: selectedScenario?.name ?? NOT_REPORTED }
           ]}
         />
@@ -255,6 +303,24 @@ export function LabPage() {
               min="1"
               value={recorderCount}
               onChange={(event) => setRecorderCount(Number(event.target.value))}
+            />
+          </label>
+          <label className="full-width">
+            Target URL
+            <input
+              type="url"
+              value={targetURL}
+              onChange={(event) => setTargetURL(event.target.value)}
+              placeholder="http://vitalserver:8000"
+            />
+          </label>
+          <label className="full-width">
+            Session bed IDs
+            <input
+              type="text"
+              value={sessionBedTargets}
+              onChange={(event) => setSessionBedTargets(event.target.value)}
+              placeholder="manual_session_1-bed-1, manual_session_1-bed-2"
             />
           </label>
           <label className="full-width">
@@ -418,14 +484,22 @@ export function LabPage() {
       <Panel
         title="Vital file replay"
         actions={
-          <button
-            type="button"
-            className="ui-button-primary"
-            disabled={!canReplay}
-            onClick={replay}
-          >
-            Replay
-          </button>
+          <>
+            <button type="button" disabled={vitalFiles.isFetching} onClick={() => vitalFiles.refetch()}>
+              Refresh files
+            </button>
+            <button type="button" disabled={!canUpload} onClick={upload}>
+              Upload file
+            </button>
+            <button
+              type="button"
+              className="ui-button-primary"
+              disabled={!canReplay}
+              onClick={replay}
+            >
+              Replay
+            </button>
+          </>
         }
       >
         <div className="settings-grid">
@@ -439,16 +513,46 @@ export function LabPage() {
           </label>
           <label>
             Vital file path
-            <input
-              type="text"
+            <select
               value={vitalFilePath}
               onChange={(event) => setVitalFilePath(event.target.value)}
+              disabled={vitalFileOptions.length === 0}
+            >
+              {vitalFileOptions.map((vitalFile) => (
+                <option key={vitalFile.guestPath} value={vitalFile.guestPath}>
+                  {vitalFile.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Upload endpoint
+            <input
+              type="text"
+              value={vitalUploadEndpoint}
+              onChange={(event) => setVitalUploadEndpoint(event.target.value)}
+              placeholder="/upload"
+            />
+          </label>
+          <label>
+            Upload vrcode
+            <input
+              type="text"
+              value={vitalUploadVrcode}
+              onChange={(event) => setVitalUploadVrcode(event.target.value)}
             />
           </label>
         </div>
+        <VitalFileList vitalFiles={vitalFileOptions} />
+        <VitalUploadSummary response={lastUpload} />
       </Panel>
     </div>
   );
+}
+
+function optionalText(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function LabReadModelList({
@@ -492,6 +596,78 @@ function LabReadModelList({
       ))}
     </div>
   );
+}
+
+function VitalFileList({ vitalFiles }: { vitalFiles: RuntimeLabVitalFile[] }) {
+  if (vitalFiles.length === 0) {
+    return <p className="muted">No vital files reported.</p>;
+  }
+
+  return (
+    <div className="session-list">
+      {vitalFiles.slice(0, 8).map((vitalFile) => (
+        <div key={vitalFile.guestPath} className="session-row">
+          <div>
+            <strong>{vitalFile.displayName}</strong>
+            <span className="muted">{formatBytes(vitalFile.sizeBytes)}</span>
+          </div>
+          <KeyValueRows
+            rows={[
+              { label: "Guest path", value: vitalFile.guestPath },
+              { label: "Relative path", value: vitalFile.relativePath },
+              { label: "Modified", value: vitalFile.modifiedAt ?? NOT_REPORTED }
+            ]}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function VitalUploadSummary({
+  response
+}: {
+  response: RuntimeLabVitalFileUploadResponse | null | undefined;
+}) {
+  if (!response) {
+    return null;
+  }
+
+  return (
+    <KeyValueRows
+      rows={[
+        {
+          label: "Upload state",
+          value: (
+            <StatusBadge tone={labStateTone(response.state)}>
+              {response.state}
+            </StatusBadge>
+          )
+        },
+        { label: "Operation", value: response.operationId ?? NOT_REPORTED },
+        { label: "Endpoint", value: response.upload?.endpoint ?? NOT_REPORTED },
+        { label: "Status", value: response.upload?.statusCode ?? NOT_REPORTED },
+        { label: "Bytes sent", value: response.upload?.bytesSent ?? NOT_REPORTED },
+        { label: "Read error", value: response.readError ?? "-" }
+      ]}
+    />
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes)) {
+    return NOT_REPORTED;
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KiB`;
+  }
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+  }
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
 }
 
 function splitList(value: string): string[] {

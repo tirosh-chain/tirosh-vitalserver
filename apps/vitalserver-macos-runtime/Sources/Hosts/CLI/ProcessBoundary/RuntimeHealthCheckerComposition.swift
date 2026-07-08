@@ -16,6 +16,7 @@ public enum RuntimeHealthCheckerComposition {
         plistBuddyPath: String,
         lsofPath: String,
         curlPath: String,
+        guestAddressProvider: (any RuntimeGuestAddressProvider)? = nil,
         guestControlGateway: (@Sendable () throws -> any RuntimeGuestControlGateway)? = nil,
         guestControlGatewayForBaseURL: (@Sendable (String) throws -> any RuntimeGuestControlGateway)? = nil,
         now: @escaping @Sendable () -> Date = Date.init
@@ -32,6 +33,7 @@ public enum RuntimeHealthCheckerComposition {
             commandRunner: commandRunner,
             httpProber: httpProber,
             guestBootstrapResultReader: guestBootstrapResultReader,
+            guestAddressProvider: guestAddressProvider,
             guestControlGateway: guestControlGateway,
             guestControlGatewayForBaseURL: guestControlGatewayForBaseURL,
             now: now

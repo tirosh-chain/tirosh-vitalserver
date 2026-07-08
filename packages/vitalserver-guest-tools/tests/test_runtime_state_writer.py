@@ -119,6 +119,63 @@ def test_write_runtime_state_document_updates_vitaldb_postgres_read_models(
     assert writer.relationship_observed_at == datetime(2026, 7, 1, tzinfo=UTC)
 
 
+def test_write_runtime_state_document_writes_vm_ip_file(
+    tmp_path: Path,
+) -> None:
+    state = GuestRuntimeState(
+        updated_at="2026-07-01T00:00:01+00:00",
+        vm_ip="192.168.64.2",
+        boot_id="boot-1",
+        cpu_usage_percent=10.0,
+        guest_http=None,
+        memory=None,
+        probe_errors=[],
+        redis_ui_http=None,
+        system_disk=None,
+        disk_health=None,
+        swagger_ui_http=None,
+        vital_files_disk=None,
+    )
+    vm_ip_file = tmp_path / "vm-ip"
+
+    state_writer.write_runtime_state_document(
+        tmp_path / "runtime-state.json",
+        state,
+        vm_ip_file=vm_ip_file,
+    )
+
+    assert vm_ip_file.read_text(encoding="utf-8") == "192.168.64.2\n"
+
+
+def test_write_runtime_state_document_removes_stale_vm_ip_file_when_ip_missing(
+    tmp_path: Path,
+) -> None:
+    state = GuestRuntimeState(
+        updated_at="2026-07-01T00:00:01+00:00",
+        vm_ip=None,
+        boot_id="boot-1",
+        cpu_usage_percent=10.0,
+        guest_http=None,
+        memory=None,
+        probe_errors=[],
+        redis_ui_http=None,
+        system_disk=None,
+        disk_health=None,
+        swagger_ui_http=None,
+        vital_files_disk=None,
+    )
+    vm_ip_file = tmp_path / "vm-ip"
+    vm_ip_file.write_text("192.168.64.2\n", encoding="utf-8")
+
+    state_writer.write_runtime_state_document(
+        tmp_path / "runtime-state.json",
+        state,
+        vm_ip_file=vm_ip_file,
+    )
+
+    assert not vm_ip_file.exists()
+
+
 def test_write_runtime_state_document_uses_previous_relationship_history(
     tmp_path: Path,
 ) -> None:

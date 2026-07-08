@@ -3,11 +3,13 @@ import { useMemo, useState } from "react";
 import {
   useDeleteVitalDBRecorders,
   useHideVitalDBRecorders,
+  useLabRecorders,
   useUnhideVitalDBRecorders,
   useVitalDBRecorders,
   useVitalDBRelationships
 } from "@/console/hooks";
 import type {
+  RuntimeLabRecorder,
   VitalDBRecorderRecord,
   VitalDBRecorders,
   VitalDBRelationships
@@ -34,6 +36,7 @@ import { RelationshipHistory } from "@/pages/relationships/RelationshipHistory";
 export function RecordersPage() {
   const recordersQuery = useVitalDBRecorders();
   const relationshipsQuery = useVitalDBRelationships();
+  const labRecordersQuery = useLabRecorders();
   const allRecorders = useMemo(
     () =>
       recordersQuery.data === undefined
@@ -162,7 +165,7 @@ export function RecordersPage() {
             getRowKey={(recorder) => recorder.vrcode}
             selectedKey={selectedRecorder?.vrcode}
             onSelectRow={(recorder) => setSelectedVrcode(recorder.vrcode)}
-            emptyText="No VRecorders found."
+            emptyText="No VitalDB VRecorder observations found."
             columns={[
               {
                 key: "vrcode",
@@ -274,7 +277,109 @@ export function RecordersPage() {
           relationshipsError={relationshipsQuery.error}
         />
       ) : null}
+
+      <LabRecordersPanel
+        recorders={labRecordersQuery.data?.recorders ?? []}
+        state={labRecordersQuery.data?.state}
+        readError={labRecordersQuery.data?.readError ?? null}
+        isPending={labRecordersQuery.isPending}
+        isError={labRecordersQuery.isError}
+        error={labRecordersQuery.error}
+        isFetching={labRecordersQuery.isFetching}
+        onRefresh={() => labRecordersQuery.refetch()}
+      />
     </div>
+  );
+}
+
+function LabRecordersPanel({
+  recorders,
+  state,
+  readError,
+  isPending,
+  isError,
+  error,
+  isFetching,
+  onRefresh
+}: {
+  recorders: RuntimeLabRecorder[];
+  state: string | undefined;
+  readError: string | null;
+  isPending: boolean;
+  isError: boolean;
+  error: unknown;
+  isFetching: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <Panel
+      title="Product Lab recorders"
+      actions={
+        <button type="button" disabled={isFetching} onClick={onRefresh}>
+          Refresh
+        </button>
+      }
+    >
+      <MetricStrip
+        metrics={[
+          { label: "Lab recorders", value: recorders.length },
+          { label: "Read state", value: state ?? NOT_REPORTED },
+          { label: "Read error", value: readError ?? "-" }
+        ]}
+      />
+      {isPending ? (
+        <p className="empty-state">Loading Product Lab recorders...</p>
+      ) : isError ? (
+        <ErrorState title="Product Lab recorders are not available" error={error} />
+      ) : (
+        <DataTable
+          rows={recorders}
+          getRowKey={(recorder) => recorder.recorderId}
+          emptyText="No Product Lab recorders found."
+          columns={[
+            {
+              key: "vrcode",
+              header: "VRecorder",
+              render: (recorder) => <strong>{recorder.vrcode}</strong>
+            },
+            {
+              key: "recorderId",
+              header: "Recorder ID",
+              render: (recorder) => recorder.recorderId
+            },
+            {
+              key: "bed",
+              header: "Bed",
+              render: (recorder) => recorder.bedId
+            },
+            {
+              key: "session",
+              header: "Session",
+              render: (recorder) => recorder.sessionId
+            },
+            {
+              key: "state",
+              header: "State",
+              render: (recorder) => (
+                <StatusBadge tone={labStateTone(recorder.state)}>
+                  {recorder.state}
+                </StatusBadge>
+              )
+            },
+            {
+              key: "send",
+              header: "Send",
+              render: (recorder) => recorder.lastSendState
+            },
+            {
+              key: "updated",
+              header: "Updated",
+              render: (recorder) => formatLocalDateTime(recorder.updatedAt)
+            }
+          ]}
+        />
+      )}
+    </Panel>
   );
 }
 
@@ -461,6 +566,20 @@ function formatVisibility(value: VitalDBRecorderRecord["visibility"]): string {
 
 function mutationErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function labStateTone(state: string): "success" | "warning" | "danger" | "neutral" {
+  switch (state) {
+    case "running":
+      return "success";
+    case "accepted":
+    case "stopped":
+      return "warning";
+    case "failed":
+      return "danger";
+    default:
+      return "neutral";
+  }
 }
 
 function sortByLastSeen(

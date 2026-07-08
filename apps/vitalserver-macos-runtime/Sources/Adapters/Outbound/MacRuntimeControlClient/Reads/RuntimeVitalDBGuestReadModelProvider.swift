@@ -21,7 +21,7 @@ struct RuntimeVitalDBGuestReadModelProvider {
         guestControlGateway: @escaping @Sendable (String) throws -> any RuntimeGuestControlGateway = {
             try HTTPRuntimeGuestControlGateway(
                 baseURL: $0,
-                timeout: RuntimeControlClientConstants.Product.guestControlAPIStatusReadTimeoutSeconds
+                timeout: RuntimeControlClientConstants.Product.guestControlAPIProductReadModelTimeoutSeconds
             )
         }
     ) -> RuntimeVitalDBGuestReadModelProvider {
@@ -250,7 +250,7 @@ struct RuntimeVitalDBGuestActivityProvider {
         guestControlGateway: @escaping @Sendable (String) throws -> any RuntimeGuestControlGateway = {
             try HTTPRuntimeGuestControlGateway(
                 baseURL: $0,
-                timeout: RuntimeControlClientConstants.Product.guestControlAPIStatusReadTimeoutSeconds
+                timeout: RuntimeControlClientConstants.Product.guestControlAPIProductReadModelTimeoutSeconds
             )
         }
     ) -> RuntimeVitalDBGuestActivityProvider {

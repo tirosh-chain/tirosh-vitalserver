@@ -298,9 +298,10 @@ private extension RuntimeInstallOperationState {
              .provisionPayloadVerified,
              .stepStarted,
              .stepCompleted,
-             .provisioned,
              .unknown:
             return true
+        case .provisioned:
+            return false
         }
     }
 }

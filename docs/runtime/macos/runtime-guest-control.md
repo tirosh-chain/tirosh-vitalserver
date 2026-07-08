@@ -101,14 +101,22 @@ Runtime Control product payloads must not expose `containerObservation.composeSe
 Runtime watchdog and recovery planning also consume explicit Guest Control service status. Guest service failures produce Guest-owned service failure reasons and plan Guest stack reconcile through the Guest Control API. Guest service status reads must remain explicit when they are missing, loaded, failed, or unavailable.
 
 Runtime health checks use Guest Control API `/ready` for Guest readiness. The
-Host may still read the `vm-ip` bootstrap discovery file to address Guest APIs,
-but `runtime-state.json.guestHTTP` and `runtime-state.json.vmIP` are not current
-health inputs. When Guest Control readiness is not reported, current Guest
-readiness is `notReported`; it is not reconstructed from runtime-state. Guest
-runtime-state load, metadata, freshness, and disk-health reads remain
+Host addresses Guest APIs through a typed Guest address provider. During the
+compatibility window that provider reads the `vm-ip` bootstrap discovery file,
+but it preserves loaded, missing, invalid, stale, and read-failed states instead
+of collapsing failures to a missing address. `runtime-state.json.vmIP` is not a
+fallback address source. When Guest Control readiness is not reported, current
+Guest readiness is `notReported`; it is not reconstructed from runtime-state.
+Guest runtime-state load, metadata, freshness, and disk-health reads remain
 diagnostics evidence and must not create current health failure reasons.
-`runtime-state.json` remains bootstrap and diagnostics evidence, not the
-authority for current Guest API readiness.
+`runtime-state.json` remains bootstrap readiness and diagnostics evidence, not
+the authority for current Guest API readiness.
+
+Runtime status documents preserve the typed Guest address read result from the
+health snapshot in addition to the compatibility `vmIP` field. `vmIP` remains a
+display and legacy client field derived from a loaded address; missing, invalid,
+stale, and read-failed address reads stay distinguishable through
+`guestAddressRead`.
 
 Guest Control API is the Guest-side control plane and must not be ordered after
 the Docker Compose product stack. The `tirosh-vitalserver-guest-control-api`
@@ -142,6 +150,30 @@ Runtime Control status reads no longer read `runtime-state.json` directly. The s
 
 Guest-owned resource usage is published by Guest Control `GET /v1/stack/status`. The stack status document carries explicit `cpuUsagePercent`, VM `memory`, VM `systemDisk`, and per-service container `memory` values. Helper Status UI consumes those fields as a service consumer; it must not infer VM or container resource usage from files, logs, container diagnostics fallback, or missing fields. Runtime Control status also reads GuestService controller resources through Guest Control `GET /v1/services/{service}/resource`, preserving desired state, observed state, conditions, and per-service resource read issues in `RuntimeStatus`.
 
+Guest Control observation endpoints must keep their own probe budgets smaller
+than the Host read timeout. Required service-state reads may fail the endpoint
+when the state owner cannot provide an explicit document. Optional resource
+metrics must not consume the whole endpoint budget or block service-state
+delivery. Container memory uses Docker inspect metadata plus container memory
+cgroup files instead of waiting for `docker stats --no-stream`. Slow optional
+probes return missing metric fields plus explicit `probeErrors`; they must not
+turn a loaded stack status into an empty success or a Host-side timeout. The
+operational budget rule is:
+
+```text
+Host Guest Control read timeout > Guest endpoint required read budget > optional probe budget
+```
+
+This relationship belongs in the Guest Control contract and tests. Operators
+should not have to memorize every UI polling interval, watchdog interval, and
+Guest probe timeout to decide whether a timeout is meaningful.
+
+RuntimeStatus preserves loaded stack-status optional probe failures as
+`guestStackProbeErrors`. That field is diagnostics evidence for UI and API
+clients. It is not `guestServicesReadError`, and it must not create runtime
+failure reasons or watchdog recovery plans when service statuses are loaded and
+healthy.
+
 Swift and PWA Status recorder-ingress queue and detail rows consume explicit `recorderIngressStatusRead` documents sourced from Guest Control API `GET /v1/recorder-ingress/status`. `RuntimeStatus` does not publish `containerObservation`, so recorder-ingress display cannot fall back to the v1 container diagnostics payload.
 
 The Host `runtime-status.json` document also does not carry
@@ -169,6 +201,10 @@ POST /lab/sessions
 GET  /lab/sessions/{sessionId}
 POST /lab/sessions/{sessionId}/start
 POST /lab/sessions/{sessionId}/stop
+GET  /lab/beds
+POST /lab/beds/create
+POST /lab/recorders/create
+GET  /lab/recorders
 POST /lab/vital-files/replay
 POST /lab/vital-files/upload
 ```
@@ -187,6 +223,10 @@ POST /v1/lab/sessions
 GET  /v1/lab/sessions/{sessionId}
 POST /v1/lab/sessions/{sessionId}/start
 POST /v1/lab/sessions/{sessionId}/stop
+GET  /v1/lab/beds
+POST /v1/lab/beds/create
+POST /v1/lab/recorders/create
+GET  /v1/lab/recorders
 POST /v1/lab/vital-files/replay
 POST /v1/lab/vital-files/upload
 ```
@@ -208,6 +248,22 @@ The current Guest adapter maps these Product Lab commands to the `lab` service A
 | `.vital` upload | `POST http://lab:8080/lab/vital-files/upload` |
 
 This makes Product Lab the product boundary and removes the TestKit adapter from the Guest Control Lab execution path.
+
+Product Lab session creation does not infer ownership from existing beds,
+recorders, fixture names, or previous command output. A session that should
+occupy existing Lab resources must pass explicit `bedIds` in
+`RuntimeLabSessionCreateRequest`. The Lab service validates those bed IDs
+against its Lab-owned bed read model, carries those bed IDs on the session
+response, and updates the matching Lab bed/recorder read model rows to the
+session state. When no `bedIds` are provided, session creation creates a new
+session-scoped Lab read model from `recorderCount` and optional
+`bedRoomNames`.
+
+The regular VitalDB Bed and Recorder tabs continue to display Guest/Postgres
+VitalDB observation state. Helper also surfaces Product Lab beds and
+recorders separately so Lab-managed virtual resources are visible without
+pretending they are VitalDB-observed resources before the upstream product
+read model reports them.
 
 CLI automation uses the same boundary. `vitalserver-vm runtime lab-*` commands call Guest Control `/v1/lab/*` and print the returned Product Lab contracts as JSON. The Host CLI must not read Lab fixture files, TestKit state files, or container-local process state to infer session state.
 
@@ -241,8 +297,8 @@ Runtime files remain valid for bootstrap, host proxy discovery, health evidence,
 | Product service restart operation | Guest Control API + Postgres operation state | none |
 | Product Lab scenarios/sessions | Guest Control API + Lab service | none |
 | Guest stack reconcile operation | Guest Control API + Postgres operation state | none |
-| VM boot discovery | Guest bootstrap/runtime-state writer | explicit bootstrap contract |
-| Host nginx proxy target | Host proxy consuming Guest bootstrap state | explicit discovery input |
+| VM boot discovery | Guest bootstrap/runtime-state writer | `vm-ip` compatibility file, then typed address provider |
+| Host nginx proxy target | Host proxy consuming Guest address/bootstrap readiness | explicit discovery input |
 | Health proof evidence | Runtime smoke/status readers | explicit evidence with read state/error |
 
 ### 3-3. Runtime v2 review and acceptance proof
@@ -303,7 +359,7 @@ HTTP server can serve the core read endpoints over loopback.
 
 The remaining acceptance proof is an end-to-end VM smoke run. `make runtime/proof/smoke` runs the dev golden runtime boot smoke so the test-enabled runtime proves Guest Control API readiness, service readback, restart operation persistence, Product Lab scenario/session operation acceptance, Runtime Control API exposure, and Swift/PWA-facing status read model behavior in the packaged runtime.
 
-`make runtime/proof/no-v1-service-state` is the fast static cleanup proof. It checks that Host product service liveness uses Guest Control API, `RuntimeContainerObservation` is not a production contract, `runtime-state.json` no longer carries container service state, VitalDB observation state, or capability state, Host no longer keeps `RuntimeGuestRuntimeStatePolicy` or runtime-state freshness observation as a runtime-state guestHTTP/vmIP promotion path, host proxy runtime-state reads are limited to VM IP/bootstrap HTTP discovery, `runtime-status.json` no longer carries container diagnostics evidence or a VitalDB observation contract field, `RuntimeStatus` no longer carries legacy VitalDB observation state, runtime boot smoke validates product services through Guest Control stack status, Redis backup has no request/result file bridge, `/dev/testkit` product surfaces are absent, runtime config no longer carries TestKit enablement, product packaging includes Lab and excludes TestKit runtime artifacts, VitalDB read-model contracts do not name Host SQLite as a product source, Host SQLite VitalDB projection reads require explicit diagnostics mode behind a dedicated diagnostics adapter, Host status publishing does not write VitalDB observations into Host SQLite, Host runtime health does not promote VitalDB read-model failures into recovery reasons, Host recorder-ingress status reads go through Guest Control API only, and whole-stack start/stop plus Host maintenance commands are absent from the product `RuntimeControlClient` and product client callers. It also checks that whole-stack start/stop is absent from Runtime Control HTTP, PWA, and Swift product presentation surfaces, that runtime-data backup/restore plus update activation/shutdown consume Guest Control maintenance API instead of request/result files, that shared Host/Guest contracts no longer publish legacy `*.request` or `*-result.json` filenames, and that Swift production source no longer carries legacy guest result document contracts or polling evaluators.
+`make runtime/proof/no-v1-service-state` is the fast static cleanup proof. It checks that Host product service liveness uses Guest Control API, `RuntimeContainerObservation` is not a production contract, `runtime-state.json` no longer carries container service state, VitalDB observation state, or capability state, Host no longer keeps `RuntimeGuestRuntimeStatePolicy` or runtime-state freshness observation as a runtime-state guestHTTP/vmIP promotion path, host proxy does not parse `runtime-state.json.vmIP` and uses explicit Guest address discovery plus bootstrap HTTP evidence, `runtime-status.json` no longer carries container diagnostics evidence or a VitalDB observation contract field, `RuntimeStatus` no longer carries legacy VitalDB observation state, runtime boot smoke validates product services through Guest Control stack status, Redis backup has no request/result file bridge, `/dev/testkit` product surfaces are absent, runtime config no longer carries TestKit enablement, product packaging includes Lab and excludes TestKit runtime artifacts, VitalDB read-model contracts do not name Host SQLite as a product source, Host SQLite VitalDB projection reads require explicit diagnostics mode behind a dedicated diagnostics adapter, Host status publishing does not write VitalDB observations into Host SQLite, Host runtime health does not promote VitalDB read-model failures into recovery reasons, Host recorder-ingress status reads go through Guest Control API only, and whole-stack start/stop plus Host maintenance commands are absent from the product `RuntimeControlClient` and product client callers. It also checks that whole-stack start/stop is absent from Runtime Control HTTP, PWA, and Swift product presentation surfaces, that runtime-data backup/restore plus update activation/shutdown consume Guest Control maintenance API instead of request/result files, that shared Host/Guest contracts no longer publish legacy `*.request` or `*-result.json` filenames, and that Swift production source no longer carries legacy guest result document contracts or polling evaluators.
 
 The same proof also checks that Guest maintenance capability preflight reads
 come from Guest Control `GET /v1/capabilities`. Capability checks must preserve

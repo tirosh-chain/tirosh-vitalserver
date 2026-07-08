@@ -64,7 +64,7 @@ public struct RuntimeLifecycleComposition {
             guestControlGatewayForBaseURL: { baseURL in
                 try HTTPRuntimeGuestControlGateway(
                     baseURL: baseURL,
-                    timeout: RuntimeLifecycleComposition.guestControlAPIStatusReadTimeoutSeconds
+                    timeout: RuntimeLifecycleComposition.guestControlAPIStackStatusTimeoutSeconds
                 )
             }
         )
@@ -135,5 +135,5 @@ public struct RuntimeLifecycleComposition {
 }
 
 private extension RuntimeLifecycleComposition {
-    static let guestControlAPIStatusReadTimeoutSeconds: TimeInterval = 1
+    static let guestControlAPIStackStatusTimeoutSeconds: TimeInterval = 5
 }

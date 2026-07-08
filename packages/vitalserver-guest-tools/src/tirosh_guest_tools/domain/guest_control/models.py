@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from tirosh_guest_tools.domain.runtime_state import RuntimeResourceUsage
+from tirosh_guest_tools.domain.runtime_state import ProbeError, RuntimeResourceUsage
 
 
 class ServiceCommand(StrEnum):
@@ -219,6 +219,7 @@ class StackStatus:
     memory: RuntimeResourceUsage | None = None
     system_disk: RuntimeResourceUsage | None = None
     vital_files_disk: RuntimeResourceUsage | None = None
+    probe_errors: list[ProbeError] | None = None
 
     def as_json(self) -> dict[str, Any]:
         document: dict[str, Any] = {
@@ -234,6 +235,9 @@ class StackStatus:
             document["systemDisk"] = self.system_disk.as_json()
         if self.vital_files_disk is not None:
             document["vitalFilesDisk"] = self.vital_files_disk.as_json()
+        document["probeErrors"] = [
+            error.as_json() for error in (self.probe_errors or [])
+        ]
         return document
 
 

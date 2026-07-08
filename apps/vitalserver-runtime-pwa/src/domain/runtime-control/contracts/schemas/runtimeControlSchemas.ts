@@ -128,6 +128,15 @@ const runtimeGuestServicesReadStateSchema = z.enum([
   "loaded",
   "failed"
 ]);
+const runtimeGuestAddressSourceSchema = z.enum(["vm-ip"]);
+const runtimeGuestAddressReadStateSchema = z.enum([
+  "notReported",
+  "loaded",
+  "missing",
+  "invalid",
+  "stale",
+  "readFailed"
+]);
 const runtimeOperationResourceReadStateSchema = z.enum([
   "loaded",
   "unavailable",
@@ -169,6 +178,14 @@ const runtimeGuestServiceStatusReadSchema = z
       .optional()
   })
   .passthrough();
+const runtimeGuestAddressReadResultSchema = z
+  .object({
+    state: runtimeGuestAddressReadStateSchema,
+    address: nullableString,
+    source: runtimeGuestAddressSourceSchema.nullable().optional(),
+    reason: nullableString
+  })
+  .passthrough();
 const runtimeGuestServiceConditionSchema = z
   .object({
     type: z.string(),
@@ -193,6 +210,12 @@ const runtimeGuestServiceResourceReadIssueSchema = z
     message: z.string()
   })
   .passthrough();
+const runtimeProbeErrorSchema = z
+  .object({
+    source: z.string(),
+    message: z.string()
+  })
+  .passthrough();
 export const runtimeGuestControlStackStatusSchema = z
   .object({
     state: z.string(),
@@ -201,7 +224,8 @@ export const runtimeGuestControlStackStatusSchema = z
     cpuUsagePercent: nullableNumber,
     memory: resourceUsageSchema.optional(),
     systemDisk: resourceUsageSchema.optional(),
-    vitalFilesDisk: resourceUsageSchema.optional()
+    vitalFilesDisk: resourceUsageSchema.optional(),
+    probeErrors: z.array(runtimeProbeErrorSchema)
   })
   .passthrough();
 export const runtimeGuestControlServiceOperationSchema = z
@@ -685,6 +709,7 @@ export const runtimeStatusSchema = z
     runtimeVersion: nullableString,
     vmState: vmStateSchema.optional(),
     vmErrors: z.array(z.string()).nullable().optional(),
+    guestAddressRead: runtimeGuestAddressReadResultSchema.nullable().optional(),
     latestBackup: nullableString,
     vmIP: nullableString,
     guestHTTP: nullableString,
@@ -711,6 +736,7 @@ export const runtimeStatusSchema = z
       .array(runtimeGuestServiceResourceReadIssueSchema)
       .nullable()
       .optional(),
+    guestStackProbeErrors: z.array(runtimeProbeErrorSchema).optional(),
     guestServicesReadError: nullableString,
     dataDirectoryStats: runtimeDataDirectoryStatsSchema.nullable().optional(),
     dataDirectoryStatsError: nullableString,
@@ -1177,6 +1203,16 @@ const runtimeLabRecorderSchema = z
   })
   .passthrough();
 
+const runtimeLabVitalFileSchema = z
+  .object({
+    displayName: z.string(),
+    relativePath: z.string(),
+    guestPath: z.string(),
+    sizeBytes: z.number(),
+    modifiedAt: nullableString
+  })
+  .passthrough();
+
 export const runtimeLabScenarioListSchema = z
   .object({
     state: runtimeLabReadStateSchema,
@@ -1201,12 +1237,41 @@ export const runtimeLabRecorderListSchema = z
   })
   .passthrough();
 
+export const runtimeLabVitalFileListSchema = z
+  .object({
+    state: runtimeLabReadStateSchema,
+    vitalFiles: z.array(runtimeLabVitalFileSchema),
+    readError: nullableString
+  })
+  .passthrough();
+
 export const runtimeLabSessionResponseSchema = z
   .object({
     state: runtimeLabReadStateSchema,
     session: runtimeLabSessionSchema.nullable().optional(),
     operationId: nullableString,
     labOperationId: nullableString,
+    readError: nullableString
+  })
+  .passthrough();
+
+export const runtimeLabVitalFileUploadResponseSchema = z
+  .object({
+    state: runtimeLabReadStateSchema,
+    upload: z
+      .object({
+        filename: z.string(),
+        endpoint: z.string(),
+        targetURL: z.string(),
+        statusCode: z.number(),
+        bytesSent: z.number(),
+        responseText: z.string(),
+        ok: z.boolean()
+      })
+      .passthrough()
+      .nullable(),
+    operationId: nullableString,
+    labOperationId: nullableString.optional(),
     readError: nullableString
   })
   .passthrough();

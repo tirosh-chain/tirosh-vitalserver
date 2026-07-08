@@ -11,6 +11,7 @@ public struct RuntimeHealthSnapshot: Equatable {
     public let vmLifecycle: RuntimeVMLifecycleDocument?
     public let vmState: RuntimeVMState
     public let vmErrors: [RuntimeVMError]
+    public let guestAddressRead: RuntimeGuestAddressReadResult
     public let vmIP: String?
     public let proxyPort: Int?
     public let proxyPortReadState: RuntimeProxyPortReadState
@@ -33,6 +34,7 @@ public struct RuntimeHealthSnapshot: Equatable {
         vmLifecycle: RuntimeVMLifecycleDocument? = nil,
         vmState: RuntimeVMState,
         vmErrors: [RuntimeVMError] = [],
+        guestAddressRead: RuntimeGuestAddressReadResult = .notReported,
         vmIP: String?,
         proxyPort: Int?,
         proxyPortReadState: RuntimeProxyPortReadState? = nil,
@@ -54,6 +56,7 @@ public struct RuntimeHealthSnapshot: Equatable {
         self.vmLifecycle = vmLifecycle
         self.vmState = vmState
         self.vmErrors = vmErrors
+        self.guestAddressRead = guestAddressRead
         self.vmIP = vmIP
         self.proxyPort = proxyPort
         self.proxyPortReadState = proxyPortReadState ?? .observed(proxyPort)

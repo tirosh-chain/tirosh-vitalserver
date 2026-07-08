@@ -11,6 +11,7 @@ proxy_nginx_access_log="${VITALSERVER_PROXY_NGINX_ACCESS_LOG:-${runtime_logs}/pr
 proxy_nginx_error_log="${VITALSERVER_PROXY_NGINX_ERROR_LOG:-${runtime_logs}/proxy-nginx.error.log}"
 
 state_file="${vm_home}/data/run/runtime-state.json"
+vm_ip_file="${vm_home}/data/run/vm-ip"
 template="${vm_home}/Support/Proxy/vitalserver.conf.template"
 config="${nginx_prefix}/vitalserver.conf"
 pid_file="${nginx_prefix}/logs/nginx.pid"
@@ -119,8 +120,42 @@ read_state_value() {
   printf "%s" "${value}" | tr -d '[:space:]'
 }
 
-read_vm_ip() {
-  read_state_value vmIP
+guest_address_state="not-read"
+guest_address_reason=""
+vm_ip=""
+
+read_guest_address() {
+  guest_address_state=""
+  guest_address_reason=""
+  vm_ip=""
+
+  if [ ! -e "${vm_ip_file}" ]; then
+    guest_address_state="missing"
+    guest_address_reason="vm-ip file missing path=${vm_ip_file}"
+    return
+  fi
+  if [ ! -f "${vm_ip_file}" ]; then
+    guest_address_state="invalid"
+    guest_address_reason="vm-ip path is not a regular file path=${vm_ip_file}"
+    return
+  fi
+
+  local value=""
+  if ! value="$(cat "${vm_ip_file}" 2>/dev/null)"; then
+    guest_address_state="read-failed"
+    guest_address_reason="vm-ip file read failed path=${vm_ip_file}"
+    return
+  fi
+
+  value="$(printf "%s" "${value}" | tr -d '[:space:]')"
+  if [ -z "${value}" ]; then
+    guest_address_state="invalid"
+    guest_address_reason="vm-ip file empty path=${vm_ip_file}"
+    return
+  fi
+
+  guest_address_state="loaded"
+  vm_ip="${value}"
 }
 
 read_guest_http() {
@@ -159,8 +194,8 @@ trap stop_nginx EXIT INT TERM
 last_upstream=""
 last_wait_message=""
 while true; do
-  vm_ip="$(read_vm_ip)"
-  if [ -n "${vm_ip}" ]; then
+  read_guest_address
+  if [ "${guest_address_state}" = "loaded" ]; then
     upstream="${vm_ip}:80"
     guest_http="$(read_guest_http)"
 
@@ -204,12 +239,15 @@ while true; do
       last_upstream=""
     fi
   elif nginx_is_running; then
-    log_err "VM runtime state is missing; stopping proxy with stale upstream: ${state_file}"
+    log_err "VM guest address is ${guest_address_state}; stopping proxy with stale upstream: ${guest_address_reason}"
     stop_nginx
     last_upstream=""
-  elif [ "${last_wait_message}" != "missing-state" ]; then
-    log_err "waiting for VM runtime state: ${state_file}"
-    last_wait_message="missing-state"
+  else
+    wait_key="guest-address:${guest_address_state}:${guest_address_reason}"
+    if [ "${last_wait_message}" != "${wait_key}" ]; then
+      log_err "waiting for VM guest address: state=${guest_address_state} reason=${guest_address_reason}"
+      last_wait_message="${wait_key}"
+    fi
   fi
 
   sleep "${VITALSERVER_PROXY_RELOAD_INTERVAL:-2}"

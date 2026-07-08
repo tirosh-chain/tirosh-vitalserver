@@ -42,7 +42,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             }
             return try HTTPRuntimeGuestControlGateway(
                 baseURL: baseURL,
-                timeout: RuntimeControlClientConstants.Product.guestControlAPIStatusReadTimeoutSeconds
+                timeout: RuntimeControlClientConstants.Product.guestControlAPIStackStatusTimeoutSeconds
             )
         }
         self.runCommand = runCommand
@@ -177,6 +177,7 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
                 statuses: statuses,
                 resources: resourceRead.guestServiceResources,
                 resourceReadIssues: resourceRead.guestServiceResourceReadIssues,
+                probeErrors: stackStatus.probeErrors,
                 cpuUsagePercent: stackStatus.cpuUsagePercent,
                 memory: stackStatus.memory,
                 systemDisk: stackStatus.systemDisk

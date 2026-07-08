@@ -286,7 +286,7 @@ PoC에서는 VM IP를 확인한 뒤 아래처럼 host proxy upstream을 지정�
 make runtime/up
 ```
 
-`make runtime/up`은 VM을 background로 시작하고, guest가 shared directory에 기록한 runtime state와 guest HTTP readiness를 기다린 뒤 host nginx upstream을 `<vm-ip>:80`으로 설정합니다.
+`make runtime/up`은 VM을 background로 시작하고, guest가 shared directory에 기록한 `vm-ip` bootstrap address와 guest HTTP readiness evidence를 기다린 뒤 host nginx upstream을 `<vm-ip>:80`으로 설정합니다.
 
 VM IP만 확인하거나 proxy를 다시 붙이고 싶을 때는 아래 target을 사용합니다.
 

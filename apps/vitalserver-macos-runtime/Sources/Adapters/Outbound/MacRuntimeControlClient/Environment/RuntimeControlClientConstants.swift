@@ -30,7 +30,10 @@ enum RuntimeControlClientConstants {
         }
 
         static let localGuestControlAPIBaseURL = "http://127.0.0.1:18330"
-        static let guestControlAPIStatusReadTimeoutSeconds: TimeInterval = 1
+        static let guestControlAPIReadinessTimeoutSeconds: TimeInterval = 5
+        static let guestControlAPIStackStatusTimeoutSeconds: TimeInterval = 5
+        static let guestControlAPIProductReadModelTimeoutSeconds: TimeInterval = 5
+        static let guestControlAPIDiagnosticsTimeoutSeconds: TimeInterval = 5
     }
 
     enum StatusText {

@@ -20,7 +20,7 @@ watchdog recovery failed: host-proxy-http-502
 
 원인:
 
-`guest-http-missing-vm-ip`는 VM 첫 부팅 중 아직 `/Library/Application Support/TiroshVitalServer/vm/data/run/runtime-state.json`에 VM IP가 기록되지 않았을 때 나올 수 있습니다. Host proxy는 `runtime-state.json`만 읽고 legacy `vm-ip` 파일로 보정하지 않습니다. 이후 VM IP가 생겼는데도 `host-proxy-http-502`가 계속 남으면 host nginx proxy 쪽을 봅니다.
+`guest-http-missing-vm-ip`는 VM 첫 부팅 중 아직 Guest address bootstrap evidence가 준비되지 않았을 때 나올 수 있습니다. 현재 Host proxy는 `runtime-state.json.vmIP`를 address fallback으로 읽지 않고, explicit `vm-ip` bootstrap file과 `runtime-state.json.guestHTTP` readiness evidence를 기다립니다. 이후 Guest address가 생겼는데도 `host-proxy-http-502`가 계속 남으면 host nginx proxy 쪽을 봅니다.
 
 이번 사례에서는 guest VM IP는 생성됐지만, 설치된 host nginx가 port 80을 bind하지 못했습니다.
 

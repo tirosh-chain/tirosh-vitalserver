@@ -119,6 +119,40 @@ final class RuntimeHealthEvaluatorTests: XCTestCase {
         XCTAssertEqual(snapshot.failureReasons, [])
     }
 
+    func testStackStatusProbeErrorsDoNotBecomeRuntimeHealthFailuresWhenServicesAreHealthy() {
+        let stackStatus = RuntimeGuestControlStackStatus(
+            state: "loaded",
+            observedAt: "2026-07-01T00:00:00Z",
+            services: [
+                RuntimeGuestControlServiceStatus(
+                    service: "app",
+                    state: "running",
+                    health: "healthy",
+                    observedAt: "2026-07-01T00:00:00Z"
+                ),
+            ],
+            probeErrors: [
+                GuestRuntimeProbeError(
+                    source: "docker stats",
+                    message: "timed out after 1 seconds"
+                ),
+            ]
+        )
+
+        let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
+            guestServiceStatuses: .loaded(stackStatus.services)
+        ))
+
+        XCTAssertEqual(stackStatus.probeErrors, [
+            GuestRuntimeProbeError(
+                source: "docker stats",
+                message: "timed out after 1 seconds"
+            ),
+        ])
+        XCTAssertTrue(RuntimeHealthSnapshotPolicy.isHealthy(snapshot))
+        XCTAssertEqual(snapshot.failureReasons, [])
+    }
+
     func testGuestServiceStatusesAreTheRecorderIngressHealthAuthority() {
         let snapshot = RuntimeHealthEvaluator.evaluate(healthyInput(
             guestServiceStatuses: .loaded([

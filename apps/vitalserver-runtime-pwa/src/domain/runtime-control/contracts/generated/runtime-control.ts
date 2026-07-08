@@ -1644,6 +1644,10 @@ export interface components {
         RuntimeGuestControlServiceList: {
             services: string[];
         };
+        RuntimeGuestControlProbeError: {
+            source: string;
+            message: string;
+        };
         RuntimeGuestControlStackStatus: {
             state: string;
             observedAt: string;
@@ -1652,6 +1656,7 @@ export interface components {
             memory?: components["schemas"]["ResourceUsage"];
             systemDisk?: components["schemas"]["ResourceUsage"];
             vitalFilesDisk?: components["schemas"]["ResourceUsage"];
+            probeErrors: components["schemas"]["RuntimeGuestControlProbeError"][];
         };
         /** @enum {string} */
         RuntimeLabReadState: "loaded" | "unavailable" | "failed";
@@ -1720,6 +1725,7 @@ export interface components {
             name?: string | null;
             recorderCount: number;
             targetURL: string | null;
+            bedIds?: string[];
             createdAt?: string | null;
             updatedAt?: string | null;
         };
@@ -1736,6 +1742,7 @@ export interface components {
             /** @default 1 */
             recorderCount: number;
             targetURL?: string | null;
+            bedIds?: string[];
         };
         RuntimeLabVitalFileReplayRequest: {
             vitalFilePath: string;
@@ -1824,6 +1831,22 @@ export interface components {
         };
         /** @enum {string} */
         RuntimeGuestServicesReadState: "unavailable" | "loaded" | "failed";
+        /**
+         * @description Source that produced the explicit Guest address read result.
+         * @enum {string}
+         */
+        RuntimeGuestAddressSource: "vm-ip";
+        /**
+         * @description Explicit Guest address read state. Missing, invalid, stale, and read-failed are distinct from a loaded address.
+         * @enum {string}
+         */
+        RuntimeGuestAddressReadState: "notReported" | "loaded" | "missing" | "invalid" | "stale" | "readFailed";
+        RuntimeGuestAddressReadResult: {
+            state: components["schemas"]["RuntimeGuestAddressReadState"];
+            address?: string | null;
+            source?: components["schemas"]["RuntimeGuestAddressSource"] | null;
+            reason?: string | null;
+        };
         RuntimeStatus: {
             runtimeInstalled?: boolean;
             vmServiceLoaded?: boolean;
@@ -1843,6 +1866,8 @@ export interface components {
             runtimeVersion?: string | null;
             vmState?: components["schemas"]["RuntimeVMState"];
             vmErrors?: components["schemas"]["RuntimeVMError"][] | null;
+            /** @description Typed Guest address read evidence preserved from runtime health. The compatibility vmIP field is populated only from a loaded address. */
+            guestAddressRead?: components["schemas"]["RuntimeGuestAddressReadResult"] | null;
             latestBackup?: string | null;
             vmIP?: string | null;
             guestHTTP?: string | null;
@@ -1859,6 +1884,8 @@ export interface components {
             guestServiceStatuses?: components["schemas"]["RuntimeGuestControlServiceStatus"][];
             guestServiceResources?: components["schemas"]["RuntimeGuestServiceResource"][];
             guestServiceResourceReadIssues?: components["schemas"]["RuntimeGuestServiceResourceReadIssue"][];
+            /** @description Optional Guest stack probe failures returned with a loaded stack status. These are diagnostics evidence and must not be treated as Guest service read failure. */
+            guestStackProbeErrors?: components["schemas"]["RuntimeGuestControlProbeError"][];
             guestServicesReadError?: string | null;
             cpuUsagePercent?: number | null;
             memory?: components["schemas"]["ResourceUsage"];

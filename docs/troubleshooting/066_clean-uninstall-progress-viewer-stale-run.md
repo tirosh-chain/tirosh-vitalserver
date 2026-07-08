@@ -68,3 +68,4 @@ Worker는 예상하지 못한 종료에서도 `running` result를 남기지 않�
 - 2026-06-10: 같은 증상이 반복되어 viewer가 owned worker PID 종료를 본 뒤에도 짧게 terminal marker를 재확인하도록 보강했습니다. Backend uninstall success marker가 있으면 Terminal viewer는 완료로 표시해야 합니다.
 - 2026-06-11: Terminal viewer가 user 권한에서 root-owned worker PID를 `kill -0`으로 확인하면서 permission failure를 worker exit로 오판하는 케이스를 확인했습니다. Viewer의 worker liveness check를 `ps -p` 기반으로 바꾸고, signal permission을 uninstall state로 사용하지 않도록 테스트를 추가했습니다.
 - 2026-06-17: Helper clean uninstall이 `started` marker 이후 terminal marker 없이 끊기고 result document가 `running`에 머무는 케이스를 확인했습니다. Worker `EXIT` trap이 terminal marker 부재를 `missing-marker` 실패 result로 닫도록 보강했습니다.
+- 2026-07-08: clean uninstall은 `completed` result와 success marker로 끝났지만 Terminal viewer가 `Press Return` 입력을 무기한 기다리면서 stale progress process가 남는 케이스를 확인했습니다. Viewer는 완료/실패 표시 후 짧은 확인 시간을 제공하고 자동 종료해야 하며, stale viewer process는 runtime 상태로 해석하지 않습니다.

@@ -70,26 +70,7 @@ struct RuntimeLabPanel: View {
                                 .truncationMode(.middle)
                         }
                     }
-                    if let readError = viewModel.labScenarios.readError ?? viewModel.labSessionResponse.readError,
-                       !readError.isEmpty {
-                        statusRow(AppConstants.Labels.lastError) {
-                            Text(readError)
-                                .fontWeight(.medium)
-                                .foregroundStyle(.red)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    if let readError = viewModel.labBeds.readError ?? viewModel.labRecorders.readError,
-                       !readError.isEmpty {
-                        statusRow(AppConstants.Labels.lastError) {
-                            Text(readError)
-                                .fontWeight(.medium)
-                                .foregroundStyle(.red)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    if let readError = viewModel.labVitalFiles.readError,
-                       !readError.isEmpty {
+                    ForEach(labReadIssues, id: \.self) { readError in
                         statusRow(AppConstants.Labels.lastError) {
                             Text(readError)
                                 .fontWeight(.medium)
@@ -107,108 +88,138 @@ struct RuntimeLabPanel: View {
                     }
                 }
 
-                labBedManagementSection
-                labRecorderManagementSection
+                labSessionSection
+                labVitalFileReplaySection
+                labResourceManagementSection
+            }
+        }
+    }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 12) {
-                        TextField("Session name", text: $viewModel.labSessionName)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 260)
+    private var labSessionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+            Text(RuntimeLabPanelText.productLabSession)
+                .font(.headline)
+            HStack(spacing: 12) {
+                TextField("Session name", text: $viewModel.labSessionName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 260)
 
-                        Stepper(
-                            "\(AppConstants.Labels.recorders): \(viewModel.labRecorderCount)",
-                            value: $viewModel.labRecorderCount,
-                            in: 1...200
-                        )
-                        .frame(width: 190, alignment: .trailing)
-                    }
+                Stepper(
+                    "\(AppConstants.Labels.recorders): \(viewModel.labRecorderCount)",
+                    value: $viewModel.labRecorderCount,
+                    in: 1...200
+                )
+                .frame(width: 190, alignment: .trailing)
+            }
 
-                    HStack(spacing: 8) {
-                        Button(AppConstants.Actions.refresh) {
-                            Task { await viewModel.refreshProductLabScenarios() }
-                        }
-                        .disabled(viewModel.isRunningLabAction)
-
-                        Button(AppConstants.Actions.create) {
-                            Task { await viewModel.createProductLabSession() }
-                        }
-                        .disabled(!viewModel.labCanCreateSession)
-
-                        Button(AppConstants.Actions.start) {
-                            Task { await viewModel.startProductLabSession() }
-                        }
-                        .disabled(!viewModel.labCanControlSelectedSession)
-
-                        Button(AppConstants.Actions.stop) {
-                            Task { await viewModel.stopProductLabSession() }
-                        }
-                        .disabled(!viewModel.labCanControlSelectedSession)
-
-                        if viewModel.isRunningLabAction {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-                    }
+            HStack(spacing: 8) {
+                TextField(RuntimeLabPanelText.labSessionBedIDs, text: $viewModel.labSessionBedIDs)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 360)
+                Button(RuntimeLabPanelText.useSelectedLabBed) {
+                    viewModel.labSessionBedIDs = viewModel.selectedLabBedID
                 }
+                .disabled(viewModel.selectedLabBedID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
 
-                Divider()
+            HStack(spacing: 8) {
+                Button(AppConstants.Actions.refresh) {
+                    Task { await viewModel.refreshProductLabScenarios() }
+                }
+                .disabled(viewModel.isRunningLabAction)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        TextField(RuntimeLabPanelText.vitalFileFilter, text: $viewModel.labVitalFileQuery)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 220)
+                Button(AppConstants.Actions.create) {
+                    Task { await viewModel.createProductLabSession() }
+                }
+                .disabled(!viewModel.labCanCreateSession)
 
-                        Picker(RuntimeLabPanelText.vitalFileSource, selection: $viewModel.selectedLabVitalFileGuestPath) {
-                            if viewModel.labFilteredVitalFiles.isEmpty {
-                                Text(AppConstants.Values.empty).tag("")
-                            } else {
-                                ForEach(viewModel.labFilteredVitalFiles, id: \.guestPath) { vitalFile in
-                                    Text(vitalFile.relativePath).tag(vitalFile.guestPath)
-                                }
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(maxWidth: 360)
-                    }
+                Button(AppConstants.Actions.start) {
+                    Task { await viewModel.startProductLabSession() }
+                }
+                .disabled(!viewModel.labCanControlSelectedSession)
 
-                    HStack {
-                        Button(RuntimeLabPanelText.choosingVitalFileForPlayback) {
-                            viewModel.chooseVitalFileForProductLabReplay()
-                        }
-                        Text(vitalFilePlaybackName(viewModel.labVitalFilePath))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
+                Button(AppConstants.Actions.stop) {
+                    Task { await viewModel.stopProductLabSession() }
+                }
+                .disabled(!viewModel.labCanControlSelectedSession)
 
-                    Button("Replay .vital file") {
-                        Task { await viewModel.replayVitalFileWithProductLab() }
-                    }
-                    .disabled(!viewModel.labCanReplayVitalFile)
-
-                    Button("Upload .vital file") {
-                        Task { await viewModel.uploadVitalFileToProductLab() }
-                    }
-                    .disabled(!viewModel.labCanUploadVitalFile)
-
-                    if let upload = viewModel.labVitalFileUploadResponse.upload {
-                        Text("\(upload.filename) · HTTP \(upload.statusCode)")
-                            .font(.caption)
-                            .foregroundStyle(upload.ok ? Color.secondary : Color.red)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
+                if viewModel.isRunningLabAction {
+                    ProgressView()
+                        .controlSize(.small)
                 }
             }
         }
     }
 
-    private var labBedManagementSection: some View {
+    private var labVitalFileReplaySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+            Text(RuntimeLabPanelText.vitalFileReplay)
+                .font(.headline)
+            HStack(spacing: 8) {
+                TextField(RuntimeLabPanelText.vitalFileFilter, text: $viewModel.labVitalFileQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 220)
+
+                Picker(RuntimeLabPanelText.vitalFileSource, selection: $viewModel.selectedLabVitalFileGuestPath) {
+                    if viewModel.labFilteredVitalFiles.isEmpty {
+                        Text(AppConstants.Values.empty).tag("")
+                    } else {
+                        ForEach(viewModel.labFilteredVitalFiles, id: \.guestPath) { vitalFile in
+                            Text(vitalFile.relativePath).tag(vitalFile.guestPath)
+                        }
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 360)
+            }
+
+            HStack {
+                Button(RuntimeLabPanelText.choosingVitalFileForPlayback) {
+                    viewModel.chooseVitalFileForProductLabReplay()
+                }
+                Text(vitalFilePlaybackName(viewModel.labVitalFilePath))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            HStack(spacing: 8) {
+                Button("Replay .vital file") {
+                    Task { await viewModel.replayVitalFileWithProductLab() }
+                }
+                .disabled(!viewModel.labCanReplayVitalFile)
+
+                Button("Upload .vital file") {
+                    Task { await viewModel.uploadVitalFileToProductLab() }
+                }
+                .disabled(!viewModel.labCanUploadVitalFile)
+            }
+
+            if let upload = viewModel.labVitalFileUploadResponse.upload {
+                Text("\(upload.filename) · HTTP \(upload.statusCode)")
+                    .font(.caption)
+                    .foregroundStyle(upload.ok ? Color.secondary : Color.red)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+    }
+
+    private var labResourceManagementSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Divider()
+            Text(RuntimeLabPanelText.productLabResources)
+                .font(.headline)
+            labBedManagementSection
+            labRecorderManagementSection
+        }
+    }
+
+    private var labBedManagementSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 Text(RuntimeLabPanelText.labBedManagement)
                     .font(.headline)
@@ -350,6 +361,36 @@ struct RuntimeLabPanel: View {
                 .truncationMode(.middle)
         }
         .buttonStyle(.link)
+    }
+
+    private var labReadIssues: [String] {
+        let rawIssues = [
+            viewModel.labScenarios.readError,
+            viewModel.labSessionResponse.readError,
+            viewModel.labBeds.readError,
+            viewModel.labRecorders.readError,
+            viewModel.labVitalFiles.readError,
+        ]
+        var seen: Set<String> = []
+        return rawIssues.compactMap { issue in
+            let value = labReadIssueDisplayText(issue)
+            guard !value.isEmpty, !seen.contains(value) else {
+                return nil
+            }
+            seen.insert(value)
+            return value
+        }
+    }
+
+    private func labReadIssueDisplayText(_ issue: String?) -> String {
+        let value = issue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !value.isEmpty else {
+            return ""
+        }
+        if value.contains("missing-vm-ip") {
+            return "Product Lab unavailable: guest address is unavailable (missing-vm-ip)."
+        }
+        return value
     }
 
     private var labActionMessageColor: Color {

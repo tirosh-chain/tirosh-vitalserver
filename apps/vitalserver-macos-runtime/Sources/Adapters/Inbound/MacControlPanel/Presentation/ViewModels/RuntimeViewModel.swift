@@ -74,6 +74,7 @@ public final class RuntimeViewModel: ObservableObject {
     @Published var selectedLabBedID = ""
     @Published var selectedLabRecorderID = ""
     @Published var labSessionName = ""
+    @Published var labSessionBedIDs = ""
     @Published var labRecorderCount = 1
     @Published var labBedCount = 1
     @Published var labBedPrefix = "Lab bed"

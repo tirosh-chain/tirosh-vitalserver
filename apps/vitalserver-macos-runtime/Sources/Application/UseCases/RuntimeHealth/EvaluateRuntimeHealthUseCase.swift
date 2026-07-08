@@ -11,6 +11,7 @@ public struct RuntimeHealthObservation {
     public let proxyService: RuntimeServiceState
     public let watchdogService: RuntimeServiceState
     public let vmLifecycle: RuntimeVMLifecycleDocument?
+    public let guestAddressRead: RuntimeGuestAddressReadResult
     public let guestReadiness: RuntimeGuestReadinessInput
     public let proxyPort: Int?
     public let proxyPortReadState: RuntimeProxyPortReadState
@@ -35,6 +36,7 @@ public struct RuntimeHealthObservation {
         proxyService: RuntimeServiceState,
         watchdogService: RuntimeServiceState,
         vmLifecycle: RuntimeVMLifecycleDocument?,
+        guestAddressRead: RuntimeGuestAddressReadResult = .notReported,
         guestReadiness: RuntimeGuestReadinessInput,
         proxyPort: Int?,
         proxyPortReadState: RuntimeProxyPortReadState,
@@ -58,6 +60,7 @@ public struct RuntimeHealthObservation {
         self.proxyService = proxyService
         self.watchdogService = watchdogService
         self.vmLifecycle = vmLifecycle
+        self.guestAddressRead = guestAddressRead
         self.guestReadiness = guestReadiness
         self.proxyPort = proxyPort
         self.proxyPortReadState = proxyPortReadState
@@ -109,6 +112,7 @@ public struct EvaluateRuntimeHealthUseCase {
             proxyService: reads.proxyService,
             watchdogService: reads.watchdogService,
             vmLifecycle: vmLifecycle.document,
+            guestAddressRead: reads.guestAddressRead,
             guestReadiness: guestReadinessInput.state,
             proxyPort: reads.proxyPortReadState.port,
             proxyPortReadState: reads.proxyPortReadState,
@@ -187,6 +191,7 @@ public struct EvaluateRuntimeHealthUseCase {
             proxyService: observation.proxyService,
             watchdogService: observation.watchdogService,
             vmLifecycle: observation.vmLifecycle,
+            guestAddressRead: observation.guestAddressRead,
             guestReadiness: observation.guestReadiness,
             proxyPort: observation.proxyPort,
             proxyPortReadState: observation.proxyPortReadState,

@@ -9,6 +9,7 @@ import type {
   RuntimeLabRecorderCreateRequest,
   RuntimeLabRecorderDeleteRequest,
   RuntimeLabSessionCreateRequest,
+  RuntimeLabVitalFileUploadRequest,
   RuntimeLabVitalFileReplayRequest,
   RuntimeGuestServiceControlRequest,
   RuntimeLogTextRequest,
@@ -73,7 +74,8 @@ export const runtimeLabSessionCreateRequestSchema = z.object({
   scenarioId: nonEmptyString,
   name: z.string().trim().min(1).nullable().optional(),
   recorderCount: z.number().int().min(1).max(500),
-  targetURL: z.string().trim().min(1).nullable().optional()
+  targetURL: z.string().trim().min(1).nullable().optional(),
+  bedIds: z.array(nonEmptyString).optional()
 }) satisfies z.ZodType<RuntimeLabSessionCreateRequest>;
 
 export const runtimeLabBedCreateRequestSchema = z.object({
@@ -105,6 +107,13 @@ export const runtimeLabVitalFileReplayRequestSchema = z.object({
   sessionName: z.string().trim().min(1).nullable().optional(),
   targetURL: z.string().trim().min(1).nullable().optional()
 }) satisfies z.ZodType<RuntimeLabVitalFileReplayRequest>;
+
+export const runtimeLabVitalFileUploadRequestSchema = z.object({
+  vitalFilePath: nonEmptyString,
+  targetURL: nonEmptyString,
+  endpoint: z.string().trim().min(1).nullable().optional(),
+  vrcode: z.string().trim().min(1).nullable().optional()
+}) satisfies z.ZodType<RuntimeLabVitalFileUploadRequest>;
 
 export const vitalDBRecorderVisibilityRequestSchema = z.object({
   vrcodes: z.array(nonEmptyString).min(1)

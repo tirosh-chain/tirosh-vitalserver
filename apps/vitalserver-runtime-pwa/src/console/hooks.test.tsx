@@ -25,6 +25,7 @@ import {
   useLabRecorders,
   useLabScenarios,
   useLabSession,
+  useLabVitalFiles,
   useReplayLabVitalFile,
   useRedisBackups,
   useRepairDatastore,
@@ -48,6 +49,7 @@ import {
   useUnhideVitalDBBeds,
   useUnhideVitalDBRecorders,
   useUninstallRuntime,
+  useUploadLabVitalFile,
   useVerifyUpdateBundle,
   useVitalDBBeds,
   useVitalDBRelationships,
@@ -73,6 +75,7 @@ describe("console hooks", () => {
     await expectQuery(useLabScenarios, wrapper, gateway.getLabScenarios);
     await expectQuery(useLabBeds, wrapper, gateway.getLabBeds);
     await expectQuery(useLabRecorders, wrapper, gateway.getLabRecorders);
+    await expectQuery(useLabVitalFiles, wrapper, gateway.getLabVitalFiles);
     await expectQuery(useHostBackups, wrapper, gateway.listHostBackups);
     await expectQuery(useRedisBackups, wrapper, gateway.listRedisBackups);
     await expectQuery(useRuntimeDataBackups, wrapper, gateway.listRuntimeDataBackups);
@@ -230,6 +233,23 @@ describe("console hooks", () => {
       sessionName: "Replay",
       targetURL: null
     });
+
+    await mutateHook(
+      () => useUploadLabVitalFile(),
+      {
+        vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
+        targetURL: "http://vitalserver:8000",
+        endpoint: null,
+        vrcode: null
+      },
+      wrapper
+    );
+    expect(gateway.uploadLabVitalFile).toHaveBeenCalledWith({
+      vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
+      targetURL: "http://vitalserver:8000",
+      endpoint: null,
+      vrcode: null
+    });
   });
 
 });
@@ -329,7 +349,8 @@ function createGateway(): GatewayMock {
     getGuestStackStatus: vi.fn().mockResolvedValue({
       state: "loaded",
       observedAt: "2026-07-01T00:00:00+00:00",
-      services: []
+      services: [],
+      probeErrors: []
     }),
     getLabScenarios: vi.fn().mockResolvedValue({
       state: "loaded",
@@ -344,6 +365,11 @@ function createGateway(): GatewayMock {
     getLabRecorders: vi.fn().mockResolvedValue({
       state: "loaded",
       recorders: [],
+      readError: null
+    }),
+    getLabVitalFiles: vi.fn().mockResolvedValue({
+      state: "loaded",
+      vitalFiles: [],
       readError: null
     }),
     getLabSession: vi.fn().mockResolvedValue(labSessionResponse()),
@@ -380,6 +406,13 @@ function createGateway(): GatewayMock {
     uninstallRuntime: vi.fn().mockResolvedValue(commandResult),
     unhideBeds: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
     unhideRecorders: vi.fn().mockResolvedValue(fullVitalRecorderHistory()),
+    uploadLabVitalFile: vi.fn().mockResolvedValue({
+      state: "loaded",
+      upload: null,
+      operationId: "lab-vital-file-upload",
+      labOperationId: null,
+      readError: null
+    }),
     verifyUpdateBundle: vi.fn().mockResolvedValue(commandResult)
   };
 }

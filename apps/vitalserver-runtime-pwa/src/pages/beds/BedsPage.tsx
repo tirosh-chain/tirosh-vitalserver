@@ -3,11 +3,13 @@ import { useMemo, useState } from "react";
 import {
   useDeleteVitalDBBeds,
   useHideVitalDBBeds,
+  useLabBeds,
   useUnhideVitalDBBeds,
   useVitalDBRecorders,
   useVitalDBRelationships
 } from "@/console/hooks";
 import type {
+  RuntimeLabBed,
   VitalDBBedRecord,
   VitalDBRelationships
 } from "@/domain/runtime-control/contracts/runtimeControlTypes";
@@ -32,6 +34,7 @@ import { RelationshipHistory } from "@/pages/relationships/RelationshipHistory";
 export function BedsPage() {
   const recordersQuery = useVitalDBRecorders();
   const relationshipsQuery = useVitalDBRelationships();
+  const labBedsQuery = useLabBeds();
   const allBeds = useMemo(
     () =>
       recordersQuery.data === undefined
@@ -132,7 +135,7 @@ export function BedsPage() {
             getRowKey={(bed) => bed.bedID}
             selectedKey={selectedBed?.bedID}
             onSelectRow={(bed) => setSelectedBedID(bed.bedID)}
-            emptyText="No beds found."
+            emptyText="No VitalDB bed observations found."
             columns={[
               {
                 key: "bed",
@@ -225,7 +228,95 @@ export function BedsPage() {
           relationshipsError={relationshipsQuery.error}
         />
       ) : null}
+
+      <LabBedsPanel
+        beds={labBedsQuery.data?.beds ?? []}
+        state={labBedsQuery.data?.state}
+        readError={labBedsQuery.data?.readError ?? null}
+        isPending={labBedsQuery.isPending}
+        isError={labBedsQuery.isError}
+        error={labBedsQuery.error}
+        isFetching={labBedsQuery.isFetching}
+        onRefresh={() => labBedsQuery.refetch()}
+      />
     </div>
+  );
+}
+
+function LabBedsPanel({
+  beds,
+  state,
+  readError,
+  isPending,
+  isError,
+  error,
+  isFetching,
+  onRefresh
+}: {
+  beds: RuntimeLabBed[];
+  state: string | undefined;
+  readError: string | null;
+  isPending: boolean;
+  isError: boolean;
+  error: unknown;
+  isFetching: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <Panel
+      title="Product Lab beds"
+      actions={
+        <button type="button" disabled={isFetching} onClick={onRefresh}>
+          Refresh
+        </button>
+      }
+    >
+      <MetricStrip
+        metrics={[
+          { label: "Lab beds", value: beds.length },
+          { label: "Read state", value: state ?? NOT_REPORTED },
+          { label: "Read error", value: readError ?? "-" }
+        ]}
+      />
+      {isPending ? (
+        <p className="empty-state">Loading Product Lab beds...</p>
+      ) : isError ? (
+        <ErrorState title="Product Lab beds are not available" error={error} />
+      ) : (
+        <DataTable
+          rows={beds}
+          getRowKey={(bed) => bed.bedId}
+          emptyText="No Product Lab beds found."
+          columns={[
+            {
+              key: "name",
+              header: "Name",
+              render: (bed) => <strong>{bed.name}</strong>
+            },
+            {
+              key: "bedId",
+              header: "Bed ID",
+              render: (bed) => bed.bedId
+            },
+            {
+              key: "session",
+              header: "Session",
+              render: (bed) => bed.sessionId
+            },
+            {
+              key: "state",
+              header: "State",
+              render: (bed) => <StatusBadge tone={labStateTone(bed.state)}>{bed.state}</StatusBadge>
+            },
+            {
+              key: "updated",
+              header: "Updated",
+              render: (bed) => formatLocalDateTime(bed.updatedAt)
+            }
+          ]}
+        />
+      )}
+    </Panel>
   );
 }
 
@@ -335,6 +426,20 @@ function formatVisibility(value: VitalDBBedRecord["visibility"]): string {
 
 function mutationErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function labStateTone(state: string): "success" | "warning" | "danger" | "neutral" {
+  switch (state) {
+    case "running":
+      return "success";
+    case "accepted":
+    case "stopped":
+      return "warning";
+    case "failed":
+      return "danger";
+    default:
+      return "neutral";
+  }
 }
 
 function shorten(value: string): string {

@@ -93,6 +93,12 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
                         message: "resource read failed"
                     )
                 ],
+                probeErrors: [
+                    GuestRuntimeProbeError(
+                        source: "docker stats",
+                        message: "timed out after 1 seconds"
+                    )
+                ],
                 cpuUsagePercent: nil,
                 memory: nil,
                 systemDisk: nil
@@ -110,6 +116,12 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
             RuntimeGuestServiceResourceReadIssue(
                 service: "postgres",
                 message: "resource read failed"
+            )
+        ])
+        XCTAssertEqual(status.guestStackProbeErrors, [
+            GuestRuntimeProbeError(
+                source: "docker stats",
+                message: "timed out after 1 seconds"
             )
         ])
         XCTAssertNil(status.guestServicesReadError)

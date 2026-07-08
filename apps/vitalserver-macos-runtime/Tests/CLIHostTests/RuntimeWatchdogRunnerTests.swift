@@ -487,6 +487,7 @@ private func healthSnapshot(
     vmLifecycle: RuntimeVMLifecycleDocument? = nil,
     vmState: RuntimeVMState = .running,
     vmErrors: [RuntimeVMError] = [],
+    guestAddressRead: RuntimeGuestAddressReadResult? = nil,
     vmIP: String? = "192.168.64.2",
     proxyPort: Int? = 80,
     hostProxyHTTP: String = "200",
@@ -506,6 +507,8 @@ private func healthSnapshot(
         vmLifecycle: vmLifecycle,
         vmState: vmState,
         vmErrors: vmErrors,
+        guestAddressRead: guestAddressRead ?? vmIP.map { .loaded(address: $0, source: .vmIPFile) }
+            ?? .missing("vm-ip file missing"),
         vmIP: vmIP,
         proxyPort: proxyPort,
         hostProxyHTTP: hostProxyHTTP,

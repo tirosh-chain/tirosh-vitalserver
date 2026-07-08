@@ -4,8 +4,10 @@ import json
 import re
 import subprocess
 from datetime import UTC, datetime
+from pathlib import Path
 
 from tirosh_guest_tools.adapters.outbound.runtime import collector as runtime_collector
+from tirosh_guest_tools.adapters.outbound.runtime.probes import append_probe_error
 from tirosh_guest_tools.application import compose as compose_app
 from tirosh_guest_tools.application.runtime_state import write_current_state
 from tirosh_guest_tools.contracts import RuntimeService
@@ -19,6 +21,9 @@ from tirosh_guest_tools.domain.guest_control.models import (
 from tirosh_guest_tools.domain.operations import ComposeAction
 from tirosh_guest_tools.domain.runtime_state import ProbeError, RuntimeResourceUsage
 from tirosh_guest_tools.infrastructure.common import systemctl
+
+DOCKER_INSPECT_TIMEOUT_SECONDS = 1
+CGROUP_ROOT = Path("/sys/fs/cgroup")
 
 
 class ComposeGuestControlAdapter:
@@ -46,9 +51,9 @@ class ComposeGuestControlAdapter:
                 kind="guest-stack-status-read-failed",
             ) from error
 
-        container_memory = container_memory_usages()
         for state in states:
             if state.service == service:
+                container_memory = container_memory_usages([], [state.container])
                 return ServiceStatus(
                     service=state.service,
                     container=state.container,
@@ -70,7 +75,6 @@ class ComposeGuestControlAdapter:
         available_services = self.list_services()
         observed_at = datetime.now(UTC)
         probe_errors: list[ProbeError] = []
-        container_memory = container_memory_usages()
         try:
             states = compose_app.inspect_compose_service_states()
         except GuestDependencyError as error:
@@ -83,6 +87,12 @@ class ComposeGuestControlAdapter:
                 f"guest stack status read failed: {error}",
                 kind="guest-stack-status-read-failed",
             ) from error
+        container_names = [
+            state.container
+            for state in states
+            if state.container
+        ]
+        container_memory = container_memory_usages(probe_errors, container_names)
 
         states_by_service = {state.service: state for state in states}
         service_statuses = [
@@ -105,6 +115,7 @@ class ComposeGuestControlAdapter:
                 "/mnt/tirosh-vital-files",
                 probe_errors,
             ),
+            probe_errors=probe_errors,
         )
 
     def start_service(self, service: str) -> None:
@@ -171,18 +182,38 @@ class ComposeGuestControlAdapter:
             ) from error
 
 
-def container_memory_usages() -> dict[str, RuntimeResourceUsage]:
+def container_memory_usages(
+    probe_errors: list[ProbeError],
+    container_names: list[str],
+) -> dict[str, RuntimeResourceUsage]:
+    if not container_names:
+        return {}
     try:
         completed = subprocess.run(
-            ["docker", "stats", "--no-stream", "--format", "{{json .}}"],
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{json .}}",
+                *container_names,
+            ],
             check=False,
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=DOCKER_INSPECT_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError as error:
+        append_probe_error(probe_errors, "docker inspect memory", error)
+        return {}
+    except subprocess.TimeoutExpired as error:
+        append_probe_error(probe_errors, "docker inspect memory", error)
         return {}
     if completed.returncode != 0:
+        append_probe_error(
+            probe_errors,
+            "docker inspect memory",
+            completed.stderr.strip() or f"exit code {completed.returncode}",
+        )
         return {}
 
     usages: dict[str, RuntimeResourceUsage] = {}
@@ -191,15 +222,107 @@ def container_memory_usages() -> dict[str, RuntimeResourceUsage]:
             continue
         try:
             document = json.loads(line)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as error:
+            append_probe_error(probe_errors, "docker inspect memory", error)
             continue
-        name = str(document.get("Name") or "").strip()
-        usage = resource_usage_from_docker_mem_usage(
-            str(document.get("MemUsage") or "")
-        )
-        if name and usage is not None:
-            usages[name] = usage
+        name = docker_inspect_container_name(document)
+        if not name:
+            append_probe_error(
+                probe_errors,
+                "docker inspect memory",
+                "container name missing",
+            )
+            continue
+        usage = resource_usage_from_docker_inspect(document)
+        if usage is None:
+            continue
+        usages[name] = usage
     return usages
+
+
+def docker_inspect_container_name(document: dict[str, object]) -> str:
+    name = str(document.get("Name") or "").strip().lstrip("/")
+    if name:
+        return name
+    config = document.get("Config")
+    if isinstance(config, dict):
+        hostname = str(config.get("Hostname") or "").strip()
+        if hostname:
+            return hostname
+    return ""
+
+
+def resource_usage_from_docker_inspect(
+    document: dict[str, object],
+) -> RuntimeResourceUsage | None:
+    state = document.get("State")
+    if not isinstance(state, dict):
+        return None
+    pid = state.get("Pid")
+    if not isinstance(pid, int) or pid <= 0:
+        return None
+
+    cgroup_path = memory_cgroup_path(pid)
+    if cgroup_path is None:
+        return None
+
+    used = read_cgroup_int(cgroup_path / "memory.current")
+    if used is None:
+        return None
+    total = read_cgroup_memory_limit(cgroup_path / "memory.max")
+    if total is None:
+        total = docker_inspect_memory_limit(document)
+    if total is None:
+        return None
+    return RuntimeResourceUsage(used_bytes=used, total_bytes=total)
+
+
+def memory_cgroup_path(pid: int) -> Path | None:
+    try:
+        cgroup_lines = Path(f"/proc/{pid}/cgroup").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in cgroup_lines:
+        parts = line.split(":", maxsplit=2)
+        if len(parts) != 3:
+            continue
+        controllers = parts[1].split(",")
+        if parts[1] == "" or "memory" in controllers:
+            relative = parts[2].lstrip("/")
+            path = CGROUP_ROOT / relative
+            if (path / "memory.current").exists():
+                return path
+    return None
+
+
+def read_cgroup_int(path: Path) -> int | None:
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+
+def read_cgroup_memory_limit(path: Path) -> int | None:
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if value == "max":
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def docker_inspect_memory_limit(document: dict[str, object]) -> int | None:
+    host_config = document.get("HostConfig")
+    if not isinstance(host_config, dict):
+        return None
+    memory = host_config.get("Memory")
+    if isinstance(memory, int) and memory > 0:
+        return memory
+    return None
 
 
 def resource_usage_from_docker_mem_usage(value: str) -> RuntimeResourceUsage | None:

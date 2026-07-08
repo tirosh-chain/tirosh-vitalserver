@@ -109,6 +109,7 @@ public struct RuntimeLabSession: Codable, Equatable, Sendable {
     public let name: String?
     public let recorderCount: Int
     public let targetURL: String?
+    public let bedIds: [String]?
     public let createdAt: String?
     public let updatedAt: String?
 
@@ -119,6 +120,7 @@ public struct RuntimeLabSession: Codable, Equatable, Sendable {
         name: String? = nil,
         recorderCount: Int,
         targetURL: String?,
+        bedIds: [String]? = nil,
         createdAt: String? = nil,
         updatedAt: String? = nil
     ) {
@@ -128,6 +130,7 @@ public struct RuntimeLabSession: Codable, Equatable, Sendable {
         self.name = name
         self.recorderCount = recorderCount
         self.targetURL = targetURL
+        self.bedIds = bedIds
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -338,17 +341,20 @@ public struct RuntimeLabSessionCreateRequest: Codable, Equatable, Sendable {
     public let name: String?
     public let recorderCount: Int
     public let targetURL: String?
+    public let bedIds: [String]?
 
     public init(
         scenarioId: String,
         name: String? = nil,
         recorderCount: Int = 1,
-        targetURL: String? = nil
+        targetURL: String? = nil,
+        bedIds: [String]? = nil
     ) {
         self.scenarioId = scenarioId
         self.name = name
         self.recorderCount = recorderCount
         self.targetURL = targetURL
+        self.bedIds = bedIds
     }
 }
 

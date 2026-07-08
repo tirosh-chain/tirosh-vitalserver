@@ -16,6 +16,7 @@ import type {
   RuntimeLabRecorderCreateRequest,
   RuntimeLabRecorderDeleteRequest,
   RuntimeLabSessionCreateRequest,
+  RuntimeLabVitalFileUploadRequest,
   RuntimeLabVitalFileReplayRequest,
   RuntimeLogSource,
   VitalDBBedVisibilityRequest,
@@ -30,6 +31,7 @@ import {
   runtimeLabRecorderDeleteRequestSchema,
   runtimeLabSessionIdSchema,
   runtimeLabSessionCreateRequestSchema,
+  runtimeLabVitalFileUploadRequestSchema,
   runtimeLabVitalFileReplayRequestSchema,
   runtimeLogTextRequestSchema,
   runtimeRepairProxyRequestSchema,
@@ -132,6 +134,15 @@ export function useLabRecorders() {
   });
 }
 
+export function useLabVitalFiles() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useQuery({
+    queryKey: consoleQueryKeys.labVitalFiles,
+    queryFn: () => runtimeControlGateway.getLabVitalFiles(),
+    refetchInterval: 10_000
+  });
+}
+
 export function useCreateLabBeds() {
   const runtimeControlGateway = useRuntimeControlGateway();
   return useLabMutation((request: RuntimeLabBedCreateRequest) =>
@@ -216,6 +227,15 @@ export function useReplayLabVitalFile() {
   return useLabMutation((request: RuntimeLabVitalFileReplayRequest) =>
     runtimeControlGateway.replayLabVitalFile(
       parseConsoleRequest(runtimeLabVitalFileReplayRequestSchema, request)
+    )
+  );
+}
+
+export function useUploadLabVitalFile() {
+  const runtimeControlGateway = useRuntimeControlGateway();
+  return useLabMutation((request: RuntimeLabVitalFileUploadRequest) =>
+    runtimeControlGateway.uploadLabVitalFile(
+      parseConsoleRequest(runtimeLabVitalFileUploadRequestSchema, request)
     )
   );
 }

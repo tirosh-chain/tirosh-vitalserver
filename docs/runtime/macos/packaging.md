@@ -347,7 +347,7 @@ Install VitalServer Helper.pkg
       -> remove install settings JSON
 ```
 
-VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 Apple Virtualization VM을 띄웁니다. guest cloud-init은 `seed.iso`의 `runcmd`로 `/mnt/tirosh/deploy/bootstrap.sh`를 실행합니다. guest bootstrap은 Docker image bundle을 load하고 Compose stack 안의 edge nginx container를 구성한 뒤 `/mnt/tirosh/run/runtime-state.json`에 VM IP와 guest HTTP readiness를 기록합니다. proxy service의 `vitalserver-proxy-run`은 이 runtime state를 기다렸다가 host nginx config를 렌더링하고 nginx를 시작 또는 reload합니다.
+VM service가 시작되면 `vitalserver-vm start`가 `vm-config.json`을 읽어 Apple Virtualization VM을 띄웁니다. guest cloud-init은 `seed.iso`의 `runcmd`로 `/mnt/tirosh/deploy/bootstrap.sh`를 실행합니다. guest bootstrap은 Docker image bundle을 load하고 Compose stack 안의 edge nginx container를 구성한 뒤 `/mnt/tirosh/run/runtime-state.json`에 guest HTTP readiness를, `/mnt/tirosh/run/vm-ip`에 bootstrap Guest address를 기록합니다. proxy service의 `vitalserver-proxy-run`은 `vm-ip`와 readiness evidence를 기다렸다가 host nginx config를 렌더링하고 nginx를 시작 또는 reload합니다.
 
 설치 시 설정값은 MDM 또는 고급 설치 wrapper가 `installer` 실행 전에 `/private/tmp/tirosh-vitalserver-install.json`에 쓸 수 있습니다. 이 파일은 partial JSON이며 `postinstall` 이후 삭제됩니다. 일반 사용자 설치는 기본값으로 진행하고, 설치 후 Helper app의 Settings에서 runtime 설정을 변경합니다.
 
@@ -418,7 +418,7 @@ make dist/troubleshooting/release
 | runtime status | RuntimeLifecycle | `runtime-status.json` | health/install/update/rollback result | Helper/watchdog-readable status |
 | VM launch | launchd | `vitalserver-vm start` | `VITALSERVER_VM_HOME`, `VITALSERVER_VM_DETACHED=1`, `runtime/vm-config.json` | Virtualization.framework VM process |
 | watchdog | launchd | `vitalserver-vm runtime watchdog` | runtime files, launchd state, VM/bootstrap evidence, Guest Control readiness, HTTP health | runtime status update, VM/proxy kickstart |
-| host proxy | launchd | `vitalserver-proxy-run` | VM/proxy discovery evidence, proxy template, nginx binary | rendered host nginx config, nginx process |
+| host proxy | launchd | `vitalserver-proxy-run` | `vm-ip` Guest address discovery, bootstrap readiness evidence, proxy template, nginx binary | rendered host nginx config, nginx process |
 | guest bootstrap | cloud-init | `bootstrap.sh`, Guest tools wheel | VirtioFS mounts, `runtime-config.json`, Docker bundle | Docker Compose stack, edge nginx container, runtime state marker |
 | update verification | operator/Helper | `vitalserver-vm runtime verify-bundle` | bundle tarball | manifest/checksum validation |
 | update apply | operator/Helper | `vitalserver-vm runtime apply-bundle` | verified bundle tarball | staged bundle, backup, artifact replacement, migrations, health check |

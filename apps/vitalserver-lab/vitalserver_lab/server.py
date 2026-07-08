@@ -47,6 +47,10 @@ class LabServer(ThreadingHTTPServer):
         self.session_store = session_store or build_session_store(settings)
         self.execution_engine = execution_engine or build_execution_engine(settings=settings)
 
+    def server_close(self) -> None:
+        self.execution_engine.shutdown()
+        super().server_close()
+
 
 class LabRequestHandler(BaseHTTPRequestHandler):
     server: LabServer
@@ -283,6 +287,7 @@ def route_lab_request(
                         session=session,
                         beds=beds,
                         recorders=recorders,
+                        result_sink=session_store.save_recorder_execution_results,
                     )
                     session_store.save_recorder_execution_results(
                         execution_results,
@@ -292,6 +297,7 @@ def route_lab_request(
         elif parts[3] == "stop":
             operation_id = f"lab-session-stop-{session_id}"
             try:
+                execution_engine.stop_session(session_id)
                 session = session_store.stop(session_id)
             except LabSessionStoreUnavailable as error:
                 return _store_failure_response(error, operation_id=operation_id)
@@ -411,6 +417,21 @@ def _parse_session_create(
         )
     target_url = optional_string_field(payload, "targetURL")
     bed_room_names = optional_string_list_field(payload, "bedRoomNames")
+    bed_ids = optional_string_list_field(payload, "bedIds")
+    if bed_ids and bed_room_names:
+        raise LabRequestError(
+            "bedIds_with_bedRoomNames",
+            "bedIds cannot be combined with bedRoomNames.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    if bed_ids and "recorderCount" in payload and recorder_count != len(bed_ids):
+        raise LabRequestError(
+            "recorderCount_bedIds_mismatch",
+            "recorderCount must match bedIds when bedIds are provided.",
+            HTTPStatus.BAD_REQUEST,
+        )
+    if bed_ids:
+        recorder_count = len(bed_ids)
     if bed_room_names is not None and len(bed_room_names) < recorder_count:
         raise LabRequestError(
             "bedRoomNames_insufficient",
@@ -423,6 +444,7 @@ def _parse_session_create(
         recorder_count=recorder_count,
         target_url=target_url,
         bed_room_names=bed_room_names or (),
+        bed_ids=bed_ids or (),
     )
 
 
@@ -769,13 +791,8 @@ def build_session_store(settings: LabSettings) -> LabSessionStore:
 
 
 def build_execution_engine(settings: LabSettings | None = None) -> LabExecutionEngine:
-    settings = settings or load_settings()
-    endpoint = settings.recorder_payload_endpoint
-    if not endpoint.startswith("/"):
-        endpoint = f"/{endpoint}"
-    return LabExecutionEngine(
-        sender=VitalServerRecorderPayloadSender(endpoint=endpoint)
-    )
+    del settings
+    return LabExecutionEngine(sender=VitalServerRecorderPayloadSender())
 
 
 def main() -> None:

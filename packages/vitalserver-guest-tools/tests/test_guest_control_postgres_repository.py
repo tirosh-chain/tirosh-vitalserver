@@ -65,6 +65,9 @@ def test_postgres_repository_runs_schema_migration(monkeypatch: Any) -> None:
     assert "CREATE TABLE IF NOT EXISTS service_operation_events" in commands[1]
     assert "CREATE TABLE IF NOT EXISTS service_status_snapshots" in commands[1]
     assert "CREATE TABLE IF NOT EXISTS guest_service_resources" in commands[1]
+    assert "UPDATE guest_service_resources" in commands[1]
+    assert "UPDATE service_status_snapshots" in commands[1]
+    assert "'\"not_reported\"'::jsonb" in commands[1]
     assert commands[2] == "SELECT pg_advisory_unlock(66060002000);"
 
 

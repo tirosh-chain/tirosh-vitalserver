@@ -14,6 +14,7 @@ class RuntimeService(StrEnum):
 class RuntimeFileName(StrEnum):
     COMPOSE = "compose.yaml"
     COMPOSE_RUNTIME_LIMITS = "compose.runtime-limits.yaml"
+    VM_IP = "vm-ip"
     RUNTIME_STATE = "runtime-state.json"
     BOOTSTRAP_RESULT = "bootstrap-result.json"
     RUNTIME_CONFIG = "runtime-config.json"

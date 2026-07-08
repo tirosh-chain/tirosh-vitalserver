@@ -32,16 +32,13 @@ VM_NGINX_ARTIFACT_BIN := .artifacts/nginx/macos/bin/nginx
 VM_PKG_BUILD_DIR ?= $(call VM_TOML_VALUE,workspace.build_dir)
 VM_PKG_ROOTFS_CACHE ?= $(VM_PKG_BUILD_DIR)/rootfs-base.raw.gz
 VM_PKG_ROOTFS_CONTRACT_STAMP ?= $(VM_PKG_BUILD_DIR)/rootfs-base.contract
+VM_PKG_ROOTFS_GUEST_SUPPORT_INPUTS := $(shell find $(VM_MACOS_RUNTIME_DIR)/Support/Guest -type f | LC_ALL=C sort)
+VM_PKG_ROOTFS_GUEST_TOOLS_INPUTS := $(shell find packages/vitalserver-guest-tools/src -type f | LC_ALL=C sort)
 VM_PKG_ROOTFS_CONTRACT_INPUTS := \
 	config/vm-build.toml \
-	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/prepare-airgap-rootfs.sh \
-	$(VM_MACOS_RUNTIME_DIR)/Support/Guest/bootstrap.sh \
 	packages/vitalserver-guest-tools/pyproject.toml \
-	packages/vitalserver-guest-tools/src/tirosh_guest_tools/contracts.py \
-	packages/vitalserver-guest-tools/src/tirosh_guest_tools/application/bootstrap.py \
-	packages/vitalserver-guest-tools/src/tirosh_guest_tools/infrastructure/bootstrap_operations.py \
-	packages/vitalserver-guest-tools/src/tirosh_guest_tools/application/rootfs_smoke.py \
-	packages/vitalserver-guest-tools/src/tirosh_guest_tools/application/runtime_boot_smoke.py
+	$(VM_PKG_ROOTFS_GUEST_SUPPORT_INPUTS) \
+	$(VM_PKG_ROOTFS_GUEST_TOOLS_INPUTS)
 VM_PKG_ROOTFS_CONTRACT_FINGERPRINT := $(shell cksum $(VM_PKG_ROOTFS_CONTRACT_INPUTS) | cksum | awk '{print $$1 "-" $$2}')
 
 # Internal golden rootfs workspaces.

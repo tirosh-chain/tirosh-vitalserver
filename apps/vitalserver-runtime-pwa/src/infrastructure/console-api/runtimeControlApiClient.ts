@@ -29,6 +29,9 @@ import type {
   RuntimeLabScenarioList,
   RuntimeLabSessionCreateRequest,
   RuntimeLabSessionResponse,
+  RuntimeLabVitalFileList,
+  RuntimeLabVitalFileUploadRequest,
+  RuntimeLabVitalFileUploadResponse,
   RuntimeLabVitalFileReplayRequest,
   RuntimeLogExportResult,
   RuntimeLogTextRequest,
@@ -56,6 +59,8 @@ import {
   runtimeLabRecorderListSchema,
   runtimeLabScenarioListSchema,
   runtimeLabSessionResponseSchema,
+  runtimeLabVitalFileListSchema,
+  runtimeLabVitalFileUploadResponseSchema,
   runtimeLogExportResultSchema,
   runtimeLogTextResponseSchema,
   runtimeOperationStateSchema,
@@ -178,6 +183,20 @@ export class RuntimeControlApiClient implements RuntimeControlGateway {
       `${labSessionPath(sessionId)}/stop`,
       undefined,
       runtimeLabSessionResponseSchema
+    );
+  }
+
+  getLabVitalFiles(): Promise<RuntimeLabVitalFileList> {
+    return this.get("/lab/vital-files", runtimeLabVitalFileListSchema);
+  }
+
+  uploadLabVitalFile(
+    request: RuntimeLabVitalFileUploadRequest
+  ): Promise<RuntimeLabVitalFileUploadResponse> {
+    return this.post(
+      "/lab/vital-files/upload",
+      request,
+      runtimeLabVitalFileUploadResponseSchema
     );
   }
 

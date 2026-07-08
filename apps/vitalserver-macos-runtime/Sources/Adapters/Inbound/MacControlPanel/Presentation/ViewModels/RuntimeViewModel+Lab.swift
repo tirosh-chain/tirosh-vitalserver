@@ -118,11 +118,14 @@ extension RuntimeViewModel {
         recordLabActionMessage(RuntimeLabPanelText.creatingLabSession)
         message = RuntimeLabPanelText.creatingLabSession
         do {
+            let bedIDs = labSessionBedIDsList()
+            let recorderCount = bedIDs.isEmpty ? labRecorderCount : bedIDs.count
             applyLabSessionResponse(try await controlClient.createLabSession(RuntimeLabSessionCreateRequest(
                 scenarioId: selectedLabScenarioID,
                 name: labSessionName.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-                recorderCount: labRecorderCount,
-                targetURL: labTargetURL.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                recorderCount: recorderCount,
+                targetURL: labTargetURL.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                bedIds: bedIDs.isEmpty ? nil : bedIDs
             )))
             await refreshProductLabReadModels()
             recordLabSessionResult(RuntimeLabPanelText.createdLabSession)
@@ -189,6 +192,7 @@ extension RuntimeViewModel {
                 applyLabSessionResponse(try await controlClient.startLabSession(sessionId: sessionID))
             }
             await refreshProductLabReadModels()
+            await refreshVitalRecorders()
             recordLabSessionResult(RuntimeLabPanelText.replayedLabVitalFile)
         } catch {
             applyLabSessionResponse(RuntimeLabSessionResponse.unavailable(readError: error.localizedDescription))
@@ -399,6 +403,7 @@ extension RuntimeViewModel {
         do {
             applyLabSessionResponse(try await action(sessionID))
             await refreshProductLabReadModels()
+            await refreshVitalRecorders()
             recordLabSessionResult(successMessage)
         } catch {
             applyLabSessionResponse(RuntimeLabSessionResponse.unavailable(readError: error.localizedDescription))
@@ -482,6 +487,13 @@ extension RuntimeViewModel {
             hostFilePath: labVitalFilePath,
             hostRootPath: runtimeSettings.vitalFilesDirectory
         ) ?? ""
+    }
+
+    private func labSessionBedIDsList() -> [String] {
+        labSessionBedIDs
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 }
 

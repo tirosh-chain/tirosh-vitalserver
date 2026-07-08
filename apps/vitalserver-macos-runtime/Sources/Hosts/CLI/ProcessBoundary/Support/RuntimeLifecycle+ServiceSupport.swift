@@ -34,6 +34,13 @@ extension RuntimeLifecycle {
             guard let vmIP = document.vmIP?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !vmIP.isEmpty
             else {
+                if let guestAddressRead = document.guestAddressRead,
+                   guestAddressRead.state != .notReported
+                {
+                    throw LauncherError.runtimeOperationFailed(
+                        "guest control API is unavailable: \(guestAddressRead.failureStatusText)"
+                    )
+                }
                 throw LauncherError.runtimeOperationFailed(
                     "guest control API is unavailable: \(RuntimeHTTPStatusText.missingVMIP)"
                 )

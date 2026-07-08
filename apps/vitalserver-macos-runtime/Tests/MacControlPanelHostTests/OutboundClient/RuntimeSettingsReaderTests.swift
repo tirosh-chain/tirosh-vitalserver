@@ -640,7 +640,13 @@ final class RuntimeSettingsReaderTests: XCTestCase {
             ],
             cpuUsagePercent: 12.5,
             memory: ResourceUsage(usedBytes: 2, totalBytes: 10),
-            systemDisk: ResourceUsage(usedBytes: 3, totalBytes: 10)
+            systemDisk: ResourceUsage(usedBytes: 3, totalBytes: 10),
+            probeErrors: [
+                GuestRuntimeProbeError(
+                    source: "docker stats",
+                    message: "timed out after 1 seconds"
+                )
+            ]
         )
         let reader = SystemRuntimeStatusReader(
             paths: RuntimePaths(
@@ -663,6 +669,12 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(status.cpuUsagePercent, 12.5)
         XCTAssertEqual(status.memory, ResourceUsage(usedBytes: 2, totalBytes: 10))
         XCTAssertEqual(status.systemDisk, ResourceUsage(usedBytes: 3, totalBytes: 10))
+        XCTAssertEqual(status.guestStackProbeErrors, [
+            GuestRuntimeProbeError(
+                source: "docker stats",
+                message: "timed out after 1 seconds"
+            )
+        ])
         XCTAssertEqual(status.vitalServerMemory, RuntimeContainerMemoryUsage(usedBytes: 1, limitBytes: 10))
         XCTAssertNil(status.guestServicesReadError)
         XCTAssertEqual(gateway.stackStatusCount, 1)
@@ -2011,6 +2023,7 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
     private let cpuUsagePercent: Double?
     private let memory: ResourceUsage?
     private let systemDisk: ResourceUsage?
+    private let probeErrors: [GuestRuntimeProbeError]
     private let readiness: RuntimeGuestControlReadiness
     private let readinessFailure: Error?
     private(set) var readyCount = 0
@@ -2029,6 +2042,7 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
         cpuUsagePercent: Double? = nil,
         memory: ResourceUsage? = nil,
         systemDisk: ResourceUsage? = nil,
+        probeErrors: [GuestRuntimeProbeError] = [],
         readiness: RuntimeGuestControlReadiness = RuntimeGuestControlReadiness(
             status: "ready"
         ),
@@ -2043,6 +2057,7 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
         self.cpuUsagePercent = cpuUsagePercent
         self.memory = memory
         self.systemDisk = systemDisk
+        self.probeErrors = probeErrors
         self.readiness = readiness
         self.readinessFailure = readinessFailure
     }
@@ -2078,7 +2093,8 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
             },
             cpuUsagePercent: cpuUsagePercent,
             memory: memory,
-            systemDisk: systemDisk
+            systemDisk: systemDisk,
+            probeErrors: probeErrors
         )
     }
 

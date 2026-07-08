@@ -17,6 +17,9 @@ import type {
   RuntimeLabScenarioList,
   RuntimeLabSessionCreateRequest,
   RuntimeLabSessionResponse,
+  RuntimeLabVitalFileList,
+  RuntimeLabVitalFileUploadRequest,
+  RuntimeLabVitalFileUploadResponse,
   RuntimeLabVitalFileReplayRequest,
   RuntimeGuestControlServiceOperation,
   RuntimeGuestServiceControlRequest,
@@ -69,6 +72,10 @@ export type RuntimeControlGateway = {
   getLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
   startLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
   stopLabSession(sessionId: string): Promise<RuntimeLabSessionResponse>;
+  getLabVitalFiles(): Promise<RuntimeLabVitalFileList>;
+  uploadLabVitalFile(
+    request: RuntimeLabVitalFileUploadRequest
+  ): Promise<RuntimeLabVitalFileUploadResponse>;
   replayLabVitalFile(
     request: RuntimeLabVitalFileReplayRequest
   ): Promise<RuntimeLabSessionResponse>;

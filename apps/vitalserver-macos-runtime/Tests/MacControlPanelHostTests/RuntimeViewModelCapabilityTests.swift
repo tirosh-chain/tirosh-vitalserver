@@ -1056,6 +1056,31 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
         XCTAssertEqual(viewModel.labActionMessage, RuntimeLabPanelText.createdLabSession("lab-session-1"))
     }
 
+    func testProductLabCreateSessionCanTargetExistingLabBeds() async {
+        let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
+        let viewModel = RuntimeViewModel(
+            controlClient: client,
+            hostClient: client,
+            healthNotifications: NoopHealthNotifications()
+        )
+        viewModel.selectedLabScenarioID = "case-a"
+        viewModel.labSessionName = "Target existing beds"
+        viewModel.labRecorderCount = 5
+        viewModel.labSessionBedIDs = "manual_session_1-bed-1, manual_session_1-bed-2"
+
+        await viewModel.createProductLabSession()
+
+        XCTAssertEqual(client.labCreateRequests, [
+            RuntimeLabSessionCreateRequest(
+                scenarioId: "case-a",
+                name: "Target existing beds",
+                recorderCount: 2,
+                targetURL: "http://edge/",
+                bedIds: ["manual_session_1-bed-1", "manual_session_1-bed-2"]
+            )
+        ])
+    }
+
     func testProductLabVitalFileReplayUsesGuestMountedPath() async {
         let client = FakeRuntimeClient(capabilities: RuntimeControlCapabilities())
         let viewModel = RuntimeViewModel(
@@ -1079,6 +1104,7 @@ final class RuntimeViewModelCapabilityTests: XCTestCase {
             )
         ])
         XCTAssertEqual(client.labStartedSessionIDs, ["lab-replay-1"])
+        XCTAssertEqual(client.loadVitalDBRecordersCount, 1)
         XCTAssertEqual(viewModel.selectedLabSessionID, "lab-replay-1")
     }
 

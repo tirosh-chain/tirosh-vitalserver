@@ -175,6 +175,26 @@ describe("RuntimeControlApiClient", () => {
       "/lab/sessions/lab-1": labSessionResponse(),
       "/lab/sessions/lab-1/start": labSessionResponse(),
       "/lab/sessions/lab-1/stop": labSessionResponse(),
+      "/lab/vital-files": {
+        state: "loaded",
+        vitalFiles: [
+          {
+            displayName: "case.vital",
+            relativePath: "case.vital",
+            guestPath: "/mnt/tirosh-vital-files/case.vital",
+            sizeBytes: 1024,
+            modifiedAt: "2026-07-01T00:00:00+00:00"
+          }
+        ],
+        readError: null
+      },
+      "/lab/vital-files/upload": {
+        state: "loaded",
+        upload: null,
+        operationId: "lab-vital-file-upload",
+        labOperationId: null,
+        readError: null
+      },
       "/lab/vital-files/replay": labSessionResponse(),
       "/runtime/guest/stack/status": {
         state: "loaded",
@@ -186,7 +206,8 @@ describe("RuntimeControlApiClient", () => {
             health: "healthy",
             observedAt: "2026-07-01T00:00:00+00:00"
           }
-        ]
+        ],
+        probeErrors: []
       },
       "/runtime/guest/services/start": guestServiceOperation("start"),
       "/runtime/guest/services/stop": guestServiceOperation("stop"),
@@ -247,6 +268,15 @@ describe("RuntimeControlApiClient", () => {
     await expect(client.getLabSession("lab-1")).resolves.toMatchObject({ session: { sessionId: "lab-1" } });
     await expect(client.startLabSession("lab-1")).resolves.toMatchObject({ session: { state: "accepted" } });
     await expect(client.stopLabSession("lab-1")).resolves.toMatchObject({ session: { state: "accepted" } });
+    await expect(client.getLabVitalFiles()).resolves.toMatchObject({
+      vitalFiles: [{ displayName: "case.vital" }]
+    });
+    await expect(client.uploadLabVitalFile({
+      vitalFilePath: "/mnt/tirosh-vital-files/case.vital",
+      targetURL: "http://edge/",
+      endpoint: null,
+      vrcode: null
+    })).resolves.toMatchObject({ state: "loaded" });
     await expect(client.replayLabVitalFile({
       vitalFilePath: "/mnt/tirosh-vital-files/sample.vital",
       sessionName: "Replay",

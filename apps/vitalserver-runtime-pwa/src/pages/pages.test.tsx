@@ -30,6 +30,7 @@ const hooks = vi.hoisted(() => ({
   useLabRecorders: vi.fn(),
   useLabScenarios: vi.fn(),
   useLabSession: vi.fn(),
+  useLabVitalFiles: vi.fn(),
   useReplayLabVitalFile: vi.fn(),
   useResetLabBeds: vi.fn(),
   useResetLabRecorders: vi.fn(),
@@ -54,6 +55,7 @@ const hooks = vi.hoisted(() => ({
   useSummarizeUpdateBundle: vi.fn(),
   useUnhideVitalDBBeds: vi.fn(),
   useUnhideVitalDBRecorders: vi.fn(),
+  useUploadLabVitalFile: vi.fn(),
   useVerifyUpdateBundle: vi.fn(),
   useVitalDBBeds: vi.fn(),
   useVitalDBRelationships: vi.fn(),
@@ -526,7 +528,37 @@ describe("runtime console pages", () => {
     fireEvent.change(screen.getByPlaceholderText("Search VRecorders"), {
       target: { value: "missing" }
     });
-    expect(screen.getByText("No VRecorders found.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No VitalDB VRecorder observations found.")
+    ).toBeInTheDocument();
+  });
+
+  it("shows Product Lab recorders separately from VitalDB recorder observations", () => {
+    hooks.useLabRecorders.mockReturnValue(query({
+      state: "loaded",
+      readError: null,
+      recorders: [
+        {
+          recorderId: "lab-session-1-recorder-1",
+          sessionId: "lab-session-1",
+          bedId: "lab-session-1-bed-1",
+          vrcode: "LAB-lab-session-1-1",
+          state: "running",
+          createdAt: "2026-05-31T00:00:00Z",
+          updatedAt: "2026-05-31T00:00:10Z",
+          messagesSent: 1,
+          lastSendState: "sent",
+          lastSendAt: "2026-05-31T00:00:10Z",
+          lastSendError: null
+        }
+      ]
+    }));
+
+    renderPage(<RecordersPage />);
+
+    expect(screen.getByText("Product Lab recorders")).toBeInTheDocument();
+    expect(screen.getAllByText("LAB-lab-session-1-1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("lab-session-1-recorder-1").length).toBeGreaterThan(0);
   });
 
   it("browses all recorder activity in twelve hour windows with one minute buckets", () => {
@@ -632,7 +664,32 @@ describe("runtime console pages", () => {
     fireEvent.change(screen.getByPlaceholderText("Search beds"), {
       target: { value: "none" }
     });
-    expect(screen.getByText("No beds found.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No VitalDB bed observations found.")
+    ).toBeInTheDocument();
+  });
+
+  it("shows Product Lab beds separately from VitalDB bed observations", () => {
+    hooks.useLabBeds.mockReturnValue(query({
+      state: "loaded",
+      readError: null,
+      beds: [
+        {
+          bedId: "lab-session-1-bed-1",
+          sessionId: "lab-session-1",
+          name: "Lab OR-1",
+          state: "accepted",
+          createdAt: "2026-05-31T00:00:00Z",
+          updatedAt: "2026-05-31T00:00:10Z"
+        }
+      ]
+    }));
+
+    renderPage(<BedsPage />);
+
+    expect(screen.getByText("Product Lab beds")).toBeInTheDocument();
+    expect(screen.getAllByText("Lab OR-1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("lab-session-1-bed-1").length).toBeGreaterThan(0);
   });
 
   it("does not render missing bed query data as an empty bed list", () => {
@@ -643,7 +700,9 @@ describe("runtime console pages", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Bed history response is incomplete"
     );
-    expect(screen.queryByText("No beds found.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("No VitalDB bed observations found.")
+    ).not.toBeInTheDocument();
   });
 
   it("renders observability events and reacts to filters", () => {
@@ -1173,9 +1232,20 @@ describe("runtime console pages", () => {
     hooks.useStartLabSession.mockReturnValue(startLabSession);
     hooks.useStopLabSession.mockReturnValue(stopLabSession);
     hooks.useReplayLabVitalFile.mockReturnValue(replayLabVitalFile);
+    const uploadLabVitalFile = mutation({
+      state: "loaded",
+      upload: null,
+      operationId: "lab-vital-file-upload",
+      labOperationId: null,
+      readError: null
+    });
+    hooks.useUploadLabVitalFile.mockReturnValue(uploadLabVitalFile);
 
     renderPage(<LabPage />);
 
+    fireEvent.change(screen.getByLabelText("Target URL"), {
+      target: { value: "http://edge/" }
+    });
     fireEvent.change(screen.getByLabelText("Recorders"), {
       target: { value: "2" }
     });
@@ -1188,6 +1258,7 @@ describe("runtime console pages", () => {
     fireEvent.change(screen.getByLabelText("Vital file path"), {
       target: { value: "/mnt/tirosh-vital-files/case.vital" }
     });
+    fireEvent.click(screen.getByRole("button", { name: "Upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Replay" }));
 
     expect(createLabSession.mutate).toHaveBeenCalledWith(
@@ -1195,7 +1266,8 @@ describe("runtime console pages", () => {
         scenarioId: "baseline",
         name: "Case review",
         recorderCount: 2,
-        targetURL: null
+        targetURL: "http://edge/",
+        bedIds: []
       },
       expect.any(Object)
     );
@@ -1205,7 +1277,16 @@ describe("runtime console pages", () => {
       {
         vitalFilePath: "/mnt/tirosh-vital-files/case.vital",
         sessionName: "Vital file replay",
-        targetURL: null
+        targetURL: "http://edge/"
+      },
+      expect.any(Object)
+    );
+    expect(uploadLabVitalFile.mutate).toHaveBeenCalledWith(
+      {
+        vitalFilePath: "/mnt/tirosh-vital-files/case.vital",
+        targetURL: "http://edge/",
+        endpoint: null,
+        vrcode: null
       },
       expect.any(Object)
     );
@@ -1233,6 +1314,32 @@ describe("runtime console pages", () => {
       target: { value: "/mnt/tirosh-vital-files/case.vital" }
     });
     expect(screen.getByRole("button", { name: "Replay" })).toBeDisabled();
+  });
+
+  it("creates a Product Lab session for explicit Lab bed IDs", () => {
+    const createLabSession = mutation(labSessionResponse("accepted"));
+    hooks.useCreateLabSession.mockReturnValue(createLabSession);
+
+    renderPage(<LabPage />);
+
+    fireEvent.change(screen.getByLabelText("Recorders"), {
+      target: { value: "5" }
+    });
+    fireEvent.change(screen.getByLabelText("Session bed IDs"), {
+      target: { value: "manual_session_1-bed-1, manual_session_1-bed-2" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create session" }));
+
+    expect(createLabSession.mutate).toHaveBeenCalledWith(
+      {
+        scenarioId: "baseline",
+        name: "Lab session",
+        recorderCount: 2,
+        targetURL: null,
+        bedIds: ["manual_session_1-bed-1", "manual_session_1-bed-2"]
+      },
+      expect.any(Object)
+    );
   });
 
   it("shows page-level query errors", () => {
@@ -1287,6 +1394,19 @@ function setupDefaultHooks() {
     recorders: [],
     readError: null
   }));
+  hooks.useLabVitalFiles.mockReturnValue(query({
+    state: "loaded",
+    vitalFiles: [
+      {
+        displayName: "case.vital",
+        relativePath: "case.vital",
+        guestPath: "/mnt/tirosh-vital-files/case.vital",
+        sizeBytes: 1024,
+        modifiedAt: "2026-05-31T00:00:00Z"
+      }
+    ],
+    readError: null
+  }));
   hooks.useLabSession.mockReturnValue(query(labSessionResponse("accepted")));
 
   for (const mock of [
@@ -1325,6 +1445,7 @@ function setupDefaultHooks() {
     hooks.useUnhideVitalDBBeds,
     hooks.useUnhideVitalDBRecorders,
     hooks.useUninstallRuntime,
+    hooks.useUploadLabVitalFile,
     hooks.useVerifyUpdateBundle
   ]) {
     mock.mockReturnValue(pendingMutation());
@@ -1355,7 +1476,8 @@ function guestStackStatus() {
           observedAt: "2026-05-31T01:00:00Z"
         }
       }
-    ]
+    ],
+    probeErrors: []
   };
 }
 

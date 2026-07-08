@@ -9,6 +9,7 @@ export const consoleQueryKeys = {
   labScenarios: ["lab", "scenarios"] as const,
   labBeds: ["lab", "beds"] as const,
   labRecorders: ["lab", "recorders"] as const,
+  labVitalFiles: ["lab", "vital-files"] as const,
   labSession: (sessionId: string) => ["lab", "sessions", sessionId] as const,
   events: (query: { limit?: number; type?: string; since?: string }) =>
     ["console", "events", query] as const,

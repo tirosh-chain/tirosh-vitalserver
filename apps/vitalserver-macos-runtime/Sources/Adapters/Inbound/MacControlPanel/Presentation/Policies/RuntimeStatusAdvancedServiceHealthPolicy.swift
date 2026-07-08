@@ -262,7 +262,7 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                 ),
             ]
         case .loaded:
-            return orderedGuestServiceStatuses(status).map { serviceStatus in
+            var items: [RuntimeStatusAdvancedServiceHealthItem] = orderedGuestServiceStatuses(status).compactMap { serviceStatus in
                 guard serviceStatus.service != ComposeService.redisRelay.rawValue else {
                     return nil
                 }
@@ -272,8 +272,30 @@ public struct RuntimeStatusAdvancedServiceHealthPolicy {
                     httpStatus: nil,
                     action: nil
                 )
-            }.compactMap { $0 }
+            }
+            if let probeItem = guestStackProbeErrorItem(status) {
+                items.append(probeItem)
+            }
+            return items
         }
+    }
+
+    private func guestStackProbeErrorItem(_ status: RuntimeStatus) -> RuntimeStatusAdvancedServiceHealthItem? {
+        guard !status.guestStackProbeErrors.isEmpty else {
+            return nil
+        }
+        return RuntimeStatusAdvancedServiceHealthItem(
+            label: "\(vocabulary.guestProductServicesLabel) probes",
+            value: RuntimeStatusAdvancedServiceHealthValue(
+                text: status.guestStackProbeErrors
+                    .map { "\($0.source): \($0.message)" }
+                    .joined(separator: ", "),
+                severity: .warning,
+                uptimeText: nil
+            ),
+            httpStatus: nil,
+            action: nil
+        )
     }
 
     private func orderedGuestServiceStatuses(

@@ -50,7 +50,8 @@ final class MacRuntimeControlEnvironment: ObservableObject {
     static func live() -> MacRuntimeControlEnvironment {
         let readWorker = MacRuntimeControlReadWorker(releaseInfo: .generated)
         let commandWorker = MacRuntimeControlCommandWorker(
-            guestProductServiceController: RuntimeGuestProductServiceControlUseCase()
+            guestProductServiceController: RuntimeGuestProductServiceControlUseCase(),
+            guestMaintenanceController: RuntimeGuestMaintenanceControlUseCase()
         )
         let client = MacRuntimeControlClient(releaseInfo: .generated, commandWorker: commandWorker)
         let localAPISettings = RuntimeControlLocalAPISettingsCoordinator(

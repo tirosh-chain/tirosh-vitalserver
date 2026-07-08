@@ -108,6 +108,16 @@ VitalServer 운영 중 확인한 증상, 원인, 조치 방법의 진입점입�
 | TS-097 | Recorder ingress 재시작 후 VRecorder가 재접속하지 않는 것처럼 보임 | Runtime health / Recorder streaming / Proxy | implemented | [Recorder reconnect after ingress restart](097_recorder-reconnect-after-ingress-restart.md) |
 | TS-098 | TestKit 전송은 되지만 Operation에 timeout이 남음 | TestKit / macOS Helper UI | active | [TestKit operation timeout after session start](098_testkit-operation-timeout-after-session-start.md) |
 | TS-099 | Runtime v2 acceptance가 sandbox 환경 제약으로 완료되지 않음 | Runtime v2 acceptance / Local development | active | [Runtime v2 acceptance is blocked by local environment restrictions](099_runtime-acceptance-environment-blockers.md) |
+| TS-100 | Guest는 healthy인데 Host가 `missing-vm-ip`로 critical 표시 | Runtime health / Guest bootstrap | active | [Missing `vm-ip` bootstrap file after runtime-state refactor](100_missing-vm-ip-bootstrap-file-after-runtime-state-refactor.md) |
+| TS-101 | Docker image bundle build가 `context canceled`와 traceback으로 끝남 | Packaging / Local development / Docker image bundle | implemented | [Docker build context canceled after interrupt](101_docker-build-context-canceled-after-interrupt.md) |
+| TS-102 | Helper 설치 후 guest는 healthy인데 status가 Critical로 남음 | Runtime health / macOS Helper UI | active | [Helper status stays Critical after guest is healthy](102_helper-status-critical-after-healthy-guest.md) |
+| TS-103 | Guest service가 healthy인데 `SpecMissing`으로 표시됨 | Runtime health / Guest containers / macOS Helper UI | active | [Guest service spec missing while containers are healthy](103_guest-service-spec-missing-with-healthy-containers.md) |
+| TS-104 | 새 설치 후 runtime은 healthy인데 Helper가 Installing으로 남음 | Runtime health / macOS Helper UI / Packaging | active | [Helper stays Installing after provisioned install](104_helper-stays-installing-after-provisioned.md) |
+| TS-105 | Guest product services가 `/v1/stack/status` timeout으로 Degraded 표시 | Runtime health / Guest containers / macOS Helper UI | active | [Guest stack status times out on docker stats](105_guest-stack-status-timeout-from-docker-stats.md) |
+| TS-106 | Product Lab recorder start가 `/api/send` 404로 실패 | Product Lab / Recorder streaming / macOS Helper UI | active | [Product Lab recorder send 404](106_product-lab-recorder-send-404.md) |
+| TS-107 | 새 Helper 설치본이 이미 수정된 guest-tools 동작을 포함하지 않음 | Packaging / Guest bootstrap / Clean install | active | [Stale guest-tools rootfs cache in clean install](107_stale-guest-tools-rootfs-cache-in-clean-install.md) |
+| TS-108 | Product Lab은 `sent`인데 VitalDB recorder detail과 생체신호가 비어 있음 | Product Lab / Recorder streaming / Observability | active | [Product Lab send succeeds but VitalDB tracks are empty](108_product-lab-send-without-vitaldb-tracks.md) |
+| TS-109 | VM 재시작 후 `/v1/stack/status`가 stale service health 문서 때문에 503 | Runtime health / Guest containers / Data store | active | [Guest stack status fails on stale service health document](109_guest-stack-status-fails-on-stale-service-health.md) |
 
 ## Follow-up 규칙
 

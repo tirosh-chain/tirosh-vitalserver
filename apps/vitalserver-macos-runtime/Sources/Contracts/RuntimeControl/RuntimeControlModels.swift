@@ -822,6 +822,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         case guestServiceStatuses
         case guestServiceResources
         case guestServiceResourceReadIssues
+        case guestStackProbeErrors
         case guestServicesReadError
         case cpuUsagePercent
         case memory
@@ -882,6 +883,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var guestServiceStatuses: [RuntimeGuestControlServiceStatus]
     public var guestServiceResources: [RuntimeGuestServiceResource]
     public var guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
+    public var guestStackProbeErrors: [GuestRuntimeProbeError]
     public var guestServicesReadError: String?
     public var cpuUsagePercent: Double?
     public var memory: ResourceUsage?
@@ -942,6 +944,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         guestServiceStatuses: [RuntimeGuestControlServiceStatus] = [],
         guestServiceResources: [RuntimeGuestServiceResource] = [],
         guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
+        guestStackProbeErrors: [GuestRuntimeProbeError] = [],
         guestServicesReadError: String? = nil,
         cpuUsagePercent: Double? = nil,
         memory: ResourceUsage? = nil,
@@ -1001,6 +1004,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.guestServiceStatuses = guestServiceStatuses
         self.guestServiceResources = guestServiceResources
         self.guestServiceResourceReadIssues = guestServiceResourceReadIssues
+        self.guestStackProbeErrors = guestStackProbeErrors
         self.guestServicesReadError = guestServicesReadError
         self.cpuUsagePercent = cpuUsagePercent
         self.memory = memory
@@ -1064,6 +1068,7 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
             guestServiceStatuses: try container.decodeIfPresent([RuntimeGuestControlServiceStatus].self, forKey: .guestServiceStatuses) ?? [],
             guestServiceResources: try container.decodeIfPresent([RuntimeGuestServiceResource].self, forKey: .guestServiceResources) ?? [],
             guestServiceResourceReadIssues: try container.decodeIfPresent([RuntimeGuestServiceResourceReadIssue].self, forKey: .guestServiceResourceReadIssues) ?? [],
+            guestStackProbeErrors: try container.decodeIfPresent([GuestRuntimeProbeError].self, forKey: .guestStackProbeErrors) ?? [],
             guestServicesReadError: try container.decodeIfPresent(String.self, forKey: .guestServicesReadError),
             cpuUsagePercent: try container.decodeIfPresent(Double.self, forKey: .cpuUsagePercent),
             memory: try container.decodeIfPresent(ResourceUsage.self, forKey: .memory),

@@ -23,6 +23,7 @@ from tirosh_guest_tools.domain.guest_control.models import (
     GuestServiceObservedState,
     GuestServiceResource,
     GuestServiceSpec,
+    GuestServiceSpecState,
     GuestServiceStatusRead,
     OperationEvent,
     OperationFailure,
@@ -53,6 +54,8 @@ from tirosh_guest_tools.domain.guest_control.service_reconcile_policy import (
     GuestServiceReconcileEffect,
     reconcile_guest_service,
 )
+
+DEFAULT_PRODUCT_SERVICE_DESIRED_STATE = GuestServiceDesiredState.RUNNING
 
 
 class GuestControlUseCases:
@@ -213,13 +216,7 @@ class GuestControlUseCases:
         status_read = self._read_guest_service_status(service)
         if status_read.service_status is not None:
             self._operations.save_service_status_snapshot(status_read.service_status)
-        observed = GuestServiceResource(
-            service=service,
-            spec=resource.spec,
-            status=status_read,
-            conditions=resource.conditions,
-            last_operation_id=resource.last_operation_id,
-        )
+        observed = self._guest_service_resource_with_status(resource, status_read)
         self._operations.save_guest_service_resource(observed)
         return observed.as_json()
 
@@ -257,6 +254,7 @@ class GuestControlUseCases:
         status = self._service_control.get_stack_status()
         for service_status in status.services:
             self._operations.save_service_status_snapshot(service_status)
+            self._sync_guest_service_resource_status(service_status)
         return status
 
     def get_operation(self, operation_id: str) -> ServiceOperation | None:
@@ -359,10 +357,12 @@ class GuestControlUseCases:
             stack_status = self._service_control.get_stack_status()
             for service_status in stack_status.services:
                 self._operations.save_service_status_snapshot(service_status)
+                self._sync_guest_service_resource_status(service_status)
             return
 
         service_status = self._service_control.get_service_status(service)
         self._operations.save_service_status_snapshot(service_status)
+        self._sync_guest_service_resource_status(service_status)
 
     def _save_guest_service_spec(
         self,
@@ -387,28 +387,75 @@ class GuestControlUseCases:
 
     def _load_guest_service_resource(self, service: str) -> GuestServiceResource:
         resource = self._operations.get_guest_service_resource(service)
-        if resource is not None:
+        if resource is not None and resource.spec.state != GuestServiceSpecState.MISSING:
             return resource
-        now = self._clock.now()
-        return GuestServiceResource(
-            service=service,
-            spec=GuestServiceSpec.missing(),
-            status=GuestServiceStatusRead.failed(
-                OperationFailure(
-                    kind="guestServiceStatusNotObserved",
-                    message="Guest service status has not been observed.",
-                )
-            ),
-            conditions=[
-                _guest_service_condition(
-                    type="SpecConfigured",
-                    status="false",
-                    reason="SpecMissing",
-                    message="Guest service desired state is not configured.",
-                    observed_at=now,
-                )
-            ],
+        return self._seed_guest_service_resource(
+            service,
+            previous=resource,
+            status_read=self._read_guest_service_status(service),
         )
+
+    def _sync_guest_service_resource_status(
+        self,
+        service_status: ServiceStatus,
+    ) -> GuestServiceResource:
+        status_read = GuestServiceStatusRead.loaded(
+            service_status,
+            observed_state=_guest_service_observed_state(service_status.state),
+        )
+        resource = self._load_guest_service_resource(service_status.service)
+        resource = self._guest_service_resource_with_status(resource, status_read)
+        self._operations.save_guest_service_resource(resource)
+        return resource
+
+    def _seed_guest_service_resource(
+        self,
+        service: str,
+        *,
+        previous: GuestServiceResource | None,
+        status_read: GuestServiceStatusRead,
+    ) -> GuestServiceResource:
+        now = self._clock.now()
+        spec = GuestServiceSpec.configured(
+            desired_state=DEFAULT_PRODUCT_SERVICE_DESIRED_STATE,
+            updated_at=now,
+        )
+        resource = GuestServiceResource(
+            service=service,
+            spec=spec,
+            status=status_read,
+            conditions=self._guest_service_conditions(spec, status_read),
+            last_operation_id=previous.last_operation_id
+            if previous is not None
+            else None,
+        )
+        self._operations.save_guest_service_resource(resource)
+        return resource
+
+    def _guest_service_resource_with_status(
+        self,
+        resource: GuestServiceResource,
+        status_read: GuestServiceStatusRead,
+    ) -> GuestServiceResource:
+        return GuestServiceResource(
+            service=resource.service,
+            spec=resource.spec,
+            status=status_read,
+            conditions=self._guest_service_conditions(resource.spec, status_read),
+            last_operation_id=resource.last_operation_id,
+        )
+
+    def _guest_service_conditions(
+        self,
+        spec: GuestServiceSpec,
+        status_read: GuestServiceStatusRead,
+    ) -> list[GuestServiceCondition]:
+        return reconcile_guest_service(
+            spec=spec,
+            status=status_read,
+            requested_command=None,
+            now=self._clock.now(),
+        ).conditions
 
     def _read_guest_service_status(self, service: str) -> GuestServiceStatusRead:
         try:

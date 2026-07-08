@@ -15,6 +15,7 @@ from tirosh_guest_tools.infrastructure.common import (
 from tirosh_guest_tools.infrastructure.settings import SETTINGS
 
 RUNTIME_STATE_FILE = RUNTIME_DIR / RuntimeFileName.RUNTIME_STATE.value
+VM_IP_FILE = RUNTIME_DIR / RuntimeFileName.VM_IP.value
 
 
 def run_runtime_state_action(action: RuntimeStateAction | str) -> None:
@@ -34,4 +35,4 @@ def run_runtime_state_action(action: RuntimeStateAction | str) -> None:
 
 
 def write_current_state() -> None:
-    write_runtime_state(RUNTIME_STATE_FILE)
+    write_runtime_state(RUNTIME_STATE_FILE, vm_ip_file=VM_IP_FILE)

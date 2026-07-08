@@ -129,7 +129,7 @@ public struct RuntimeWatchdogRunner {
         log: (String) -> Void
     ) -> RuntimeHealthSnapshot {
         guard snapshot.vmService == .loaded,
-              snapshot.vmIP != nil,
+              snapshot.guestAddressRead.state == .loaded,
               isSuccessfulHTTPStatus(snapshot.guestHTTP),
               isSuccessfulHTTPStatus(snapshot.hostProxyHTTP)
         else {

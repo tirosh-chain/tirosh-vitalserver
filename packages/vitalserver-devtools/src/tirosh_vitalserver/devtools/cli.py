@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from tirosh_vitalserver.devtools.application import inputs as usecase_inputs
@@ -975,6 +976,13 @@ def main() -> int:
 
     try:
         return args.handler(args)
+    except KeyboardInterrupt:
+        print(
+            "interrupted by user while running vitalserver-devtools; "
+            "Docker may report context canceled after the interrupt",
+            file=sys.stderr,
+        )
+        return 130
     except DomainError as exc:
         raise SystemExit(str(exc)) from exc
 

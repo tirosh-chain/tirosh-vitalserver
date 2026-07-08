@@ -183,7 +183,7 @@ container log metadata read failure -> missing container log metadata
 8. UI는 상태를 새로 만들지 않습니다. UI policy는 제공된 상태를 표시용 text/severity로만 변환합니다.
 9. Progress/event 기록은 기존 status document의 명시 필드를 보존합니다. health snapshot placeholder를 만들어 채우지 않습니다.
 10. 내부 typed enum을 API read model로 옮길 때는 exhaustive mapping을 사용하고, unknown을 임의의 구체 값으로 바꾸지 않습니다.
-11. Guest HTTP 상태는 guest가 제공한 runtime-state만 사용합니다. `vm-ip` 파일을 이용해 Host가 guest readiness를 대신 probing하지 않습니다.
+11. Legacy Guest HTTP 상태는 guest가 제공한 runtime-state만 사용합니다. Current Guest Control readiness는 typed Guest address provider가 loaded address를 제공할 때만 Guest Control API로 읽고, `runtime-state.json.vmIP`로 address를 보정하지 않습니다.
 12. 보고되지 않은 container health는 `stable`이 아니라 `unreported`로 분류합니다.
 13. API/read model에서 미보고 경로와 식별자는 optional로 유지합니다. UI만 표시 단계에서 `Not reported`로 포맷합니다.
 14. timestamp 정렬은 explicit comparator를 사용합니다. `nil` timestamp를 빈 문자열로 변환하지 않습니다.
@@ -316,7 +316,8 @@ container log metadata read failure -> missing container log metadata
 - 2026-05-30: Latest backup 조회가 backup directory read failure를 empty list로 숨기지 않도록 변경했습니다. Status convenience path는 실패를 로그에 남기고, rollback preflight는 오류를 그대로 받습니다.
 - 2026-05-30: Runtime log collection이 존재하는 log source의 read/copy/size 실패를 조용히 skip하지 않고 throw하도록 변경했습니다. UI log preview는 실패 메시지를 표시하고, export logs는 실패를 호출자에게 전달합니다.
 - 2026-05-30: Guest log collection이 guest run directory read failure를 조용히 skip하지 않고 throw하도록 변경했습니다. Health/watchdog 경로는 실패를 로그로 남긴 뒤 본래 작업을 계속합니다.
-- 2026-05-30: Host proxy의 legacy `vm-ip` fallback을 제거했습니다. Proxy upstream은 Guest가 제공하는 `runtime-state.json`의 `vmIP`만 사용합니다. `guestHTTP` 필드가 누락된 runtime-state도 `bootstrap-pending`으로 추정하지 않고 `missing-guest-http`와 `guest-runtime-state-invalid`로 노출합니다.
+- 2026-05-30: Host proxy의 legacy `vm-ip` fallback을 제거했습니다. 당시 proxy upstream은 Guest가 제공하는 `runtime-state.json`의 `vmIP`만 사용했습니다. `guestHTTP` 필드가 누락된 runtime-state도 `bootstrap-pending`으로 추정하지 않고 `missing-guest-http`와 `guest-runtime-state-invalid`로 노출합니다.
+- 2026-07-08: Host proxy는 더 이상 `runtime-state.json.vmIP`를 address source로 파싱하지 않습니다. 단기 호환 provider는 explicit `vm-ip` bootstrap file을 읽고, `runtime-state.json.guestHTTP`는 bootstrap readiness evidence로만 사용합니다.
 - 2026-05-30: devtools health/status도 legacy `vm-ip` 파일을 읽지 않도록 변경했습니다. 개발 도구도 `runtime-state.json`의 `vmIP`와 `guestHTTP` 계약을 사용하고 missing/invalid state를 명시 오류로 표시합니다.
 - 2026-05-30: Apply bundle 시작 전 log directory 준비와 runtime log rotation 실패를 `try?`로 숨기지 않고 runtime log에 남기도록 변경했습니다.
 - 2026-05-30: Apply bundle 중 guest shutdown preparation cleanup 실패를 `try?`로 숨기지 않고 runtime log에 남기도록 변경했습니다.

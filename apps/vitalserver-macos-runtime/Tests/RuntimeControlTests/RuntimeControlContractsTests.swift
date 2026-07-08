@@ -214,6 +214,12 @@ final class RuntimeControlContractsTests: XCTestCase {
             vmIP: "192.168.64.2",
             guestHTTP: "200",
             hostProxyHTTP: "200",
+            guestStackProbeErrors: [
+                GuestRuntimeProbeError(
+                    source: "docker stats",
+                    message: "timed out after 1 seconds"
+                )
+            ],
             vitalServerMemory: RuntimeContainerMemoryUsage(usedBytes: 1_073_741_824, limitBytes: 4_294_967_296),
             recorderIngressMemory: RuntimeContainerMemoryUsage(usedBytes: 134_217_728, limitBytes: nil),
             redisMemory: RuntimeContainerMemoryUsage(usedBytes: 67_108_864, limitBytes: 536_870_912)
@@ -235,6 +241,12 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(decoded.vmServiceState, .loaded)
         XCTAssertEqual(decoded.proxyServiceState, .loaded)
         XCTAssertEqual(decoded.watchdogServiceState, .loaded)
+        XCTAssertEqual(decoded.guestStackProbeErrors, [
+            GuestRuntimeProbeError(
+                source: "docker stats",
+                message: "timed out after 1 seconds"
+            ),
+        ])
         XCTAssertEqual(decoded.vitalServerMemory?.percent, 25)
         XCTAssertEqual(decoded.recorderIngressMemory, RuntimeContainerMemoryUsage(usedBytes: 134_217_728, limitBytes: nil))
         XCTAssertEqual(decoded.redisMemory?.percent, 12.5)
@@ -257,6 +269,7 @@ final class RuntimeControlContractsTests: XCTestCase {
 
         XCTAssertNil(legacyInstalled.runtimeInstallationState)
         XCTAssertEqual(legacyInstalled.effectiveRuntimeInstallationState, .executable)
+        XCTAssertEqual(legacyInstalled.guestStackProbeErrors, [])
         XCTAssertEqual(legacyMissing.effectiveRuntimeInstallationState, .missing)
     }
 
@@ -945,6 +958,30 @@ final class RuntimeControlContractsTests: XCTestCase {
         XCTAssertEqual(failed.state, .failed)
         XCTAssertNil(failed.document)
         XCTAssertEqual(failed.readError, "runtime install state decode failed")
+    }
+
+    func testRuntimeOperationStateDoesNotTreatProvisionedInstallDocumentAsActiveInstall() {
+        let provisioned = RuntimeInstallStateDocument(
+            state: .provisioned,
+            mode: .provision,
+            updatedAt: "2026-07-08T00:00:00Z",
+            message: "runtime install provisioned"
+        )
+        let installRead = RuntimeInstallOperationState.fromRuntimeStatusInstallRead(RuntimeStatus(
+            installStateDocument: provisioned,
+            updatedAt: "2026-07-08T00:00:02Z"
+        ))
+
+        let operationState = RuntimeOperationState(
+            activeOperation: nil,
+            runtimeStatusUpdatedAt: "2026-07-08T00:00:02Z",
+            install: installRead
+        )
+
+        XCTAssertEqual(operationState.install.state, .loaded)
+        XCTAssertEqual(operationState.install.document, provisioned)
+        XCTAssertNil(operationState.activeOperation)
+        XCTAssertNil(operationState.operationForPresentation)
     }
 
     func testRuntimeOperationLeaseStatePreservesReadAndStaleMeanings() {

@@ -184,6 +184,8 @@ Product Lab virtual recorder 또는 dev testkit이 실제 VRecorder처럼 보이
 
 macOS runtime의 Helper UI는 Product Lab surface를 통해 virtual recorder를 제어합니다. Product Lab session, bed, recorder read model은 Runtime Control API `/lab/*`와 Guest Control API `/v1/lab/*` 계약을 거쳐 `apps/vitalserver-lab` service가 소유합니다. 이 경로는 Helper가 dev-only test harness를 직접 제어하지 않고도 VitalServer 수신, recorder-ingress, observer, Guest/Postgres read model 반영을 검증하기 위한 제품 경로입니다.
 
+Lab에서 별도로 만든 bed/recorder를 session이 사용해야 할 때는 session 생성 요청에 명시적인 `bedIds`를 전달해야 합니다. Helper나 Host는 기존 Lab bed/recorder를 이름, fixture, 이전 명령 결과로 추측해 점유하지 않습니다. `bedIds`가 없으면 Product Lab은 새 session-scoped bed/recorder read model을 만들고, `bedIds`가 있으면 Lab service가 해당 Lab-owned bed/recorder rows를 session 상태로 전이합니다.
+
 ### 7-3. 실제 network behavior 검증
 
 VM 또는 별도 장비에서 실제 VRecorder network behavior까지 검증할 때는 dev testkit이나 별도 virtual recorder runner를 bridged network로 DHCP LAN IP를 받는 환경에서 실행하고, VitalServer public proxy 주소로 접속합니다. Network Settings를 눌렀을 때 열린 페이지가 해당 virtual recorder 상태 페이지라면 VitalServer의 `join_vr` 처리, proxy IP 보존, Web Monitoring IP 전달이 함께 검증된 것입니다.

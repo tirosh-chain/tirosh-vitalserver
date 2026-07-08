@@ -44,6 +44,7 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
         XCTAssertEqual(document.watchdogService, .loaded)
         XCTAssertEqual(document.vmState, .unreachable)
         XCTAssertEqual(document.vmErrors ?? [], [.guestHTTP("failed")])
+        XCTAssertEqual(document.guestAddressRead, .loaded(address: "192.168.64.2", source: .vmIPFile))
         XCTAssertEqual(document.vmIP, "192.168.64.2")
         XCTAssertEqual(document.proxyPort, 80)
         XCTAssertEqual(document.proxyPortReadState, .loaded(80))
@@ -117,6 +118,7 @@ final class RuntimeStatusDocumentBuilderTests: XCTestCase {
             watchdogService: .loaded,
             vmState: failureReasons.isEmpty ? .running : .unreachable,
             vmErrors: failureReasons.isEmpty ? [] : [.guestHTTP("failed")],
+            guestAddressRead: .loaded(address: "192.168.64.2", source: .vmIPFile),
             vmIP: "192.168.64.2",
             proxyPort: 80,
             proxyPortReadState: .loaded(80),
