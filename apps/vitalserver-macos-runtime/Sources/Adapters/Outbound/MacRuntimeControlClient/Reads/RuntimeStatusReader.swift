@@ -168,9 +168,15 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
             let stackStatus = try gateway.stackStatus()
             let statuses = stackStatus.services
             let services = statuses.map(\.service)
+            let resourceRead = guestServiceResourcesRead(
+                services: services,
+                gateway: gateway
+            )
             return .loaded(
                 services: services,
                 statuses: statuses,
+                resources: resourceRead.guestServiceResources,
+                resourceReadIssues: resourceRead.guestServiceResourceReadIssues,
                 cpuUsagePercent: stackStatus.cpuUsagePercent,
                 memory: stackStatus.memory,
                 systemDisk: stackStatus.systemDisk
@@ -178,6 +184,28 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         } catch {
             return .failed(runtimeStatusGuestServicesReadErrorDescription(error))
         }
+    }
+
+    private func guestServiceResourcesRead(
+        services: [String],
+        gateway: RuntimeGuestControlGateway
+    ) -> RuntimeGuestServiceResourcesRead {
+        var guestServiceResources: [RuntimeGuestServiceResource] = []
+        var guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = []
+        for service in services {
+            do {
+                guestServiceResources.append(try gateway.serviceResource(service))
+            } catch {
+                guestServiceResourceReadIssues.append(RuntimeGuestServiceResourceReadIssue(
+                    service: service,
+                    message: runtimeStatusGuestServicesReadErrorDescription(error)
+                ))
+            }
+        }
+        return RuntimeGuestServiceResourcesRead(
+            guestServiceResources: guestServiceResources,
+            guestServiceResourceReadIssues: guestServiceResourceReadIssues
+        )
     }
 
     private func httpStatus(source: String, url: String) async -> RuntimeHTTPStatusRead {
@@ -247,6 +275,11 @@ struct SystemRuntimeStatusReader: RuntimeStatusReading, @unchecked Sendable {
         )
     }
 
+}
+
+private struct RuntimeGuestServiceResourcesRead {
+    let guestServiceResources: [RuntimeGuestServiceResource]
+    let guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
 }
 
 private func runtimeStatusGuestServicesReadErrorDescription(_ error: Error) -> String {

@@ -116,7 +116,13 @@ def check_runtime_status_reader_uses_guest_control() -> CheckResult:
         / "RuntimeStatusReader.swift"
     )
     text = read(path)
-    required = ["gateway.stackStatus()", "RuntimeGuestServicesRead"]
+    required = [
+        "gateway.stackStatus()",
+        "gateway.serviceResource(",
+        "RuntimeGuestServicesRead",
+        "guestServiceResources",
+        "guestServiceResourceReadIssues",
+    ]
     forbidden = [
         "containerServices",
         "composeServices",
@@ -137,7 +143,7 @@ def check_runtime_status_reader_uses_guest_control() -> CheckResult:
     return CheckResult(
         "runtime-status-reader-guest-control-source",
         True,
-        "product service liveness is read from Guest Control API "
+        "product service liveness and controller resources are read from Guest Control API "
         f"path={relative(path)}",
     )
 

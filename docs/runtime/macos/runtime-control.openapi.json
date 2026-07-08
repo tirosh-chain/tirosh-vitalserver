@@ -4487,6 +4487,151 @@
           }
         }
       },
+      "RuntimeGuestServiceSpec": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "desiredState": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeGuestServiceStatusRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "observedState": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "serviceStatus": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeGuestControlServiceStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "readError": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeGuestControlOperationFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "RuntimeGuestServiceCondition": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "status",
+          "reason",
+          "message",
+          "observedAt"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "RuntimeGuestServiceResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "service",
+          "spec",
+          "status",
+          "conditions"
+        ],
+        "properties": {
+          "service": {
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/RuntimeGuestServiceSpec"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RuntimeGuestServiceStatusRead"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeGuestServiceCondition"
+            }
+          },
+          "lastOperationId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuntimeGuestServiceResourceReadIssue": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "service",
+          "message"
+        ],
+        "properties": {
+          "service": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
       "RuntimeGuestServiceRestartRequest": {
         "type": "object",
         "additionalProperties": false,
@@ -4744,6 +4889,18 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/RuntimeGuestControlServiceStatus"
+            }
+          },
+          "guestServiceResources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeGuestServiceResource"
+            }
+          },
+          "guestServiceResourceReadIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeGuestServiceResourceReadIssue"
             }
           },
           "guestServicesReadError": {

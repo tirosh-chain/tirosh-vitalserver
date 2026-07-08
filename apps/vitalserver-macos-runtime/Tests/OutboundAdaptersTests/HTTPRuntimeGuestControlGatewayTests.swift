@@ -445,6 +445,57 @@ final class HTTPRuntimeGuestControlGatewayTests: XCTestCase {
         XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/services/app/status"])
     }
 
+    func testServiceResourceDecodesControllerResource() throws {
+        let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
+            statusCode: 200,
+            body: """
+            {
+              "service": "app",
+              "spec": {
+                "state": "configured",
+                "desiredState": "running",
+                "updatedAt": "2026-07-01T00:00:00+00:00"
+              },
+              "status": {
+                "state": "loaded",
+                "observedState": "running",
+                "observedAt": "2026-07-01T00:00:01+00:00",
+                "serviceStatus": {
+                  "service": "app",
+                  "state": "running",
+                  "health": "healthy",
+                  "observedAt": "2026-07-01T00:00:01+00:00"
+                },
+                "readError": null
+              },
+              "conditions": [
+                {
+                  "type": "Reconciled",
+                  "status": "true",
+                  "reason": "DesiredStateObserved",
+                  "message": "Guest service already matches desired running state.",
+                  "observedAt": "2026-07-01T00:00:02+00:00"
+                }
+              ],
+              "lastOperationId": "op_app_reconcile_1"
+            }
+            """
+        ))
+        let gateway = try HTTPRuntimeGuestControlGateway(
+            baseURL: "http://127.0.0.1:18330",
+            httpClient: client
+        )
+
+        let resource = try gateway.serviceResource("app")
+
+        XCTAssertEqual(resource.service, "app")
+        XCTAssertEqual(resource.spec.desiredState, "running")
+        XCTAssertEqual(resource.status.observedState, "running")
+        XCTAssertEqual(resource.conditions.first?.reason, "DesiredStateObserved")
+        XCTAssertEqual(resource.lastOperationId, "op_app_reconcile_1")
+        XCTAssertEqual(client.requests.map { $0.url?.absoluteString }, ["http://127.0.0.1:18330/v1/services/app/resource"])
+    }
+
     func testHTTPErrorPreservesGuestControlErrorDocument() throws {
         let client = CapturingRuntimeGuestControlHTTPClient(response: jsonResponse(
             statusCode: 404,

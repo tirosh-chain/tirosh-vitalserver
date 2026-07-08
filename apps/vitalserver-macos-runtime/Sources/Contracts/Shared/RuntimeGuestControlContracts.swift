@@ -110,6 +110,98 @@ public struct RuntimeGuestControlServiceStatus: Codable, Equatable, Sendable {
     }
 }
 
+public struct RuntimeGuestServiceSpec: Codable, Equatable, Sendable {
+    public let state: String
+    public let desiredState: String?
+    public let updatedAt: String?
+
+    public init(
+        state: String,
+        desiredState: String? = nil,
+        updatedAt: String? = nil
+    ) {
+        self.state = state
+        self.desiredState = desiredState
+        self.updatedAt = updatedAt
+    }
+}
+
+public struct RuntimeGuestServiceStatusRead: Codable, Equatable, Sendable {
+    public let state: String
+    public let observedState: String?
+    public let observedAt: String?
+    public let serviceStatus: RuntimeGuestControlServiceStatus?
+    public let readError: RuntimeGuestControlOperationFailure?
+
+    public init(
+        state: String,
+        observedState: String? = nil,
+        observedAt: String? = nil,
+        serviceStatus: RuntimeGuestControlServiceStatus? = nil,
+        readError: RuntimeGuestControlOperationFailure? = nil
+    ) {
+        self.state = state
+        self.observedState = observedState
+        self.observedAt = observedAt
+        self.serviceStatus = serviceStatus
+        self.readError = readError
+    }
+}
+
+public struct RuntimeGuestServiceCondition: Codable, Equatable, Sendable {
+    public let type: String
+    public let status: String
+    public let reason: String
+    public let message: String
+    public let observedAt: String
+
+    public init(
+        type: String,
+        status: String,
+        reason: String,
+        message: String,
+        observedAt: String
+    ) {
+        self.type = type
+        self.status = status
+        self.reason = reason
+        self.message = message
+        self.observedAt = observedAt
+    }
+}
+
+public struct RuntimeGuestServiceResource: Codable, Equatable, Sendable {
+    public let service: String
+    public let spec: RuntimeGuestServiceSpec
+    public let status: RuntimeGuestServiceStatusRead
+    public let conditions: [RuntimeGuestServiceCondition]
+    public let lastOperationId: String?
+
+    public init(
+        service: String,
+        spec: RuntimeGuestServiceSpec,
+        status: RuntimeGuestServiceStatusRead,
+        conditions: [RuntimeGuestServiceCondition],
+        lastOperationId: String? = nil
+    ) {
+        self.service = service
+        self.spec = spec
+        self.status = status
+        self.conditions = conditions
+        self.lastOperationId = lastOperationId
+    }
+}
+
+public struct RuntimeGuestServiceResourceReadIssue: Codable, Equatable, Sendable {
+    public let service: String
+    public let message: String
+
+    public init(service: String, message: String) {
+        self.service = service
+        self.message = message
+    }
+}
+
 public struct RuntimeGuestControlStackStatus: Codable, Equatable, Sendable {
     public let state: String
     public let observedAt: String

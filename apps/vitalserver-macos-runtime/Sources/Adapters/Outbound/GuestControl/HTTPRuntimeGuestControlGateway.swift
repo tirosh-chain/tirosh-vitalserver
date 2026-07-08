@@ -176,6 +176,10 @@ public struct HTTPRuntimeGuestControlGateway: RuntimeGuestControlGateway, Runtim
         try decode(RuntimeGuestControlServiceStatus.self, method: "GET", path: "/v1/services/\(pathSegment(service))/status")
     }
 
+    public func serviceResource(_ service: String) throws -> RuntimeGuestServiceResource {
+        try decode(RuntimeGuestServiceResource.self, method: "GET", path: "/v1/services/\(pathSegment(service))/resource")
+    }
+
     public func startService(_ service: String) throws -> RuntimeGuestControlServiceOperation {
         try decode(RuntimeGuestControlServiceOperation.self, method: "POST", path: "/v1/services/\(pathSegment(service))/start")
     }

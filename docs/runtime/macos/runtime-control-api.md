@@ -106,7 +106,7 @@ Runtime v2 exposes product service status and start/stop/restart through Guest C
 | `POST` | `/runtime/guest/services/stop` | request stop of one Guest product service and return the persisted operation document |
 | `POST` | `/runtime/guest/services/restart` | request restart of one Guest product service and return the persisted operation document |
 
-`RuntimeStatus.guestServicesReadState` carries the status reader result for UI/status snapshots. `loaded`, `failed`, and `unavailable` remain distinct. `failed` preserves `guestServicesReadError`; clients must not treat failed reads as an empty service list.
+`RuntimeStatus.guestServicesReadState` carries the status reader result for UI/status snapshots. `loaded`, `failed`, and `unavailable` remain distinct. `failed` preserves `guestServicesReadError`; clients must not treat failed reads as an empty service list. `RuntimeStatus.guestServiceResources` carries the Guest controller resource documents for desired state, observed state, conditions, and last operation id. `guestServiceResourceReadIssues` preserves per-service resource read failures instead of hiding them behind an empty resource list.
 
 Whole-stack runtime start/stop is not exposed through Runtime Control HTTP API.
 `vitalserver-vm runtime start-services` and `vitalserver-vm runtime stop-services`

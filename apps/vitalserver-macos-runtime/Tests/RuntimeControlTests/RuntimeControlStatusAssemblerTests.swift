@@ -56,6 +56,43 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
                         observedAt: "2026-07-01T00:00:00+00:00"
                     ),
                 ],
+                resources: [
+                    RuntimeGuestServiceResource(
+                        service: "app",
+                        spec: RuntimeGuestServiceSpec(
+                            state: "configured",
+                            desiredState: "running",
+                            updatedAt: "2026-07-01T00:00:00+00:00"
+                        ),
+                        status: RuntimeGuestServiceStatusRead(
+                            state: "loaded",
+                            observedState: "running",
+                            observedAt: "2026-07-01T00:00:00+00:00",
+                            serviceStatus: RuntimeGuestControlServiceStatus(
+                                service: "app",
+                                state: "running",
+                                health: "healthy",
+                                observedAt: "2026-07-01T00:00:00+00:00"
+                            )
+                        ),
+                        conditions: [
+                            RuntimeGuestServiceCondition(
+                                type: "Reconciled",
+                                status: "true",
+                                reason: "DesiredStateObserved",
+                                message: "Guest service already matches desired running state.",
+                                observedAt: "2026-07-01T00:00:01+00:00"
+                            )
+                        ],
+                        lastOperationId: "op_app_reconcile_1"
+                    )
+                ],
+                resourceReadIssues: [
+                    RuntimeGuestServiceResourceReadIssue(
+                        service: "postgres",
+                        message: "resource read failed"
+                    )
+                ],
                 cpuUsagePercent: nil,
                 memory: nil,
                 systemDisk: nil
@@ -66,6 +103,15 @@ final class RuntimeControlStatusAssemblerTests: XCTestCase {
         XCTAssertEqual(status.guestServicesReadState, .loaded)
         XCTAssertEqual(status.guestServices, ["app", "postgres"])
         XCTAssertEqual(status.guestServiceStatuses.map(\.service), ["app", "postgres"])
+        XCTAssertEqual(status.guestServiceResources.map(\.service), ["app"])
+        XCTAssertEqual(status.guestServiceResources.first?.spec.desiredState, "running")
+        XCTAssertEqual(status.guestServiceResources.first?.conditions.first?.reason, "DesiredStateObserved")
+        XCTAssertEqual(status.guestServiceResourceReadIssues, [
+            RuntimeGuestServiceResourceReadIssue(
+                service: "postgres",
+                message: "resource read failed"
+            )
+        ])
         XCTAssertNil(status.guestServicesReadError)
         XCTAssertEqual(status.readIssues, [])
     }

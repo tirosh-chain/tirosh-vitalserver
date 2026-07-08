@@ -1771,6 +1771,36 @@ export interface components {
             exitCode?: number | null;
             memory?: components["schemas"]["ResourceUsage"];
         };
+        RuntimeGuestServiceSpec: {
+            state: string;
+            desiredState?: string | null;
+            updatedAt?: string | null;
+        };
+        RuntimeGuestServiceStatusRead: {
+            state: string;
+            observedState?: string | null;
+            observedAt?: string | null;
+            serviceStatus?: components["schemas"]["RuntimeGuestControlServiceStatus"] | null;
+            readError?: components["schemas"]["RuntimeGuestControlOperationFailure"] | null;
+        };
+        RuntimeGuestServiceCondition: {
+            type: string;
+            status: string;
+            reason: string;
+            message: string;
+            observedAt: string;
+        };
+        RuntimeGuestServiceResource: {
+            service: string;
+            spec: components["schemas"]["RuntimeGuestServiceSpec"];
+            status: components["schemas"]["RuntimeGuestServiceStatusRead"];
+            conditions: components["schemas"]["RuntimeGuestServiceCondition"][];
+            lastOperationId?: string | null;
+        };
+        RuntimeGuestServiceResourceReadIssue: {
+            service: string;
+            message: string;
+        };
         RuntimeGuestServiceRestartRequest: {
             service: string;
             /** @description Optional development override for the Guest Control API base URL. */
@@ -1827,6 +1857,8 @@ export interface components {
             guestServicesReadState?: components["schemas"]["RuntimeGuestServicesReadState"] | null;
             guestServices?: string[] | null;
             guestServiceStatuses?: components["schemas"]["RuntimeGuestControlServiceStatus"][];
+            guestServiceResources?: components["schemas"]["RuntimeGuestServiceResource"][];
+            guestServiceResourceReadIssues?: components["schemas"]["RuntimeGuestServiceResourceReadIssue"][];
             guestServicesReadError?: string | null;
             cpuUsagePercent?: number | null;
             memory?: components["schemas"]["ResourceUsage"];

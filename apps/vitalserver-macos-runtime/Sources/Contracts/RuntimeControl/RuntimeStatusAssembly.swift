@@ -53,6 +53,8 @@ public enum RuntimeGuestServicesRead: Equatable, Sendable {
     case loaded(
         services: [String],
         statuses: [RuntimeGuestControlServiceStatus],
+        resources: [RuntimeGuestServiceResource] = [],
+        resourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
         cpuUsagePercent: Double?,
         memory: ResourceUsage?,
         systemDisk: ResourceUsage?
@@ -471,6 +473,8 @@ public enum RuntimeControlStatusAssembler {
             guestServicesReadState: guestServicesRead.state,
             guestServices: guestServicesRead.services,
             guestServiceStatuses: guestServicesRead.statuses,
+            guestServiceResources: guestServicesRead.resources,
+            guestServiceResourceReadIssues: guestServicesRead.resourceReadIssues,
             guestServicesReadError: guestServicesRead.error,
             cpuUsagePercent: guestServicesRead.cpuUsagePercent,
             memory: guestServicesRead.memory,
@@ -502,7 +506,7 @@ private extension RuntimeGuestServicesRead {
 
     var services: [String]? {
         switch self {
-        case .loaded(let services, _, _, _, _):
+        case .loaded(let services, _, _, _, _, _, _):
             return services
         case .unavailable, .failed:
             return nil
@@ -511,8 +515,26 @@ private extension RuntimeGuestServicesRead {
 
     var statuses: [RuntimeGuestControlServiceStatus] {
         switch self {
-        case .loaded(_, let statuses, _, _, _):
+        case .loaded(_, let statuses, _, _, _, _, _):
             return statuses
+        case .unavailable, .failed:
+            return []
+        }
+    }
+
+    var resources: [RuntimeGuestServiceResource] {
+        switch self {
+        case .loaded(_, _, let resources, _, _, _, _):
+            return resources
+        case .unavailable, .failed:
+            return []
+        }
+    }
+
+    var resourceReadIssues: [RuntimeGuestServiceResourceReadIssue] {
+        switch self {
+        case .loaded(_, _, _, let issues, _, _, _):
+            return issues
         case .unavailable, .failed:
             return []
         }
@@ -529,7 +551,7 @@ private extension RuntimeGuestServicesRead {
 
     var cpuUsagePercent: Double? {
         switch self {
-        case .loaded(_, _, let cpuUsagePercent, _, _):
+        case .loaded(_, _, _, _, let cpuUsagePercent, _, _):
             return cpuUsagePercent
         case .unavailable, .failed:
             return nil
@@ -538,7 +560,7 @@ private extension RuntimeGuestServicesRead {
 
     var memory: ResourceUsage? {
         switch self {
-        case .loaded(_, _, _, let memory, _):
+        case .loaded(_, _, _, _, _, let memory, _):
             return memory
         case .unavailable, .failed:
             return nil
@@ -547,7 +569,7 @@ private extension RuntimeGuestServicesRead {
 
     var systemDisk: ResourceUsage? {
         switch self {
-        case .loaded(_, _, _, _, let systemDisk):
+        case .loaded(_, _, _, _, _, _, let systemDisk):
             return systemDisk
         case .unavailable, .failed:
             return nil
@@ -556,7 +578,7 @@ private extension RuntimeGuestServicesRead {
 
     func memory(for service: String) -> RuntimeContainerMemoryUsage? {
         switch self {
-        case .loaded(_, let statuses, _, _, _):
+        case .loaded(_, let statuses, _, _, _, _, _):
             guard let memory = statuses.first(where: { $0.service == service })?.memory else {
                 return nil
             }

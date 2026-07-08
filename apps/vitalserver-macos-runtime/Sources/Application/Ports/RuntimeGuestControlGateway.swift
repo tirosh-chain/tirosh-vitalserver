@@ -6,6 +6,7 @@ public protocol RuntimeGuestControlGateway {
     func listServices() throws -> RuntimeGuestControlServiceList
     func stackStatus() throws -> RuntimeGuestControlStackStatus
     func serviceStatus(_ service: String) throws -> RuntimeGuestControlServiceStatus
+    func serviceResource(_ service: String) throws -> RuntimeGuestServiceResource
     func startService(_ service: String) throws -> RuntimeGuestControlServiceOperation
     func stopService(_ service: String) throws -> RuntimeGuestControlServiceOperation
     func restartService(_ service: String) throws -> RuntimeGuestControlServiceOperation
@@ -49,6 +50,10 @@ public extension RuntimeGuestControlGateway {
 
     func capabilities() throws -> RuntimeGuestControlCapabilities {
         throw RuntimeGuestControlGatewayCapabilityError.unavailable("capabilities")
+    }
+
+    func serviceResource(_: String) throws -> RuntimeGuestServiceResource {
+        throw RuntimeGuestControlGatewayCapabilityError.unavailable("guest-service-resource")
     }
 
     func vitalDBRecorders() throws -> RuntimeGuestControlVitalDBRecorderRead {

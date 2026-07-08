@@ -145,6 +145,54 @@ const runtimeGuestControlServiceStatusSchema = z
     memory: resourceUsageSchema.optional()
   })
   .passthrough();
+const runtimeGuestServiceSpecSchema = z
+  .object({
+    state: z.string(),
+    desiredState: nullableString,
+    updatedAt: nullableString
+  })
+  .passthrough();
+const runtimeGuestServiceStatusReadSchema = z
+  .object({
+    state: z.string(),
+    observedState: nullableString,
+    observedAt: nullableString,
+    serviceStatus: runtimeGuestControlServiceStatusSchema.nullable().optional(),
+    readError: z
+      .object({
+        kind: z.string(),
+        message: z.string(),
+        evidencePath: nullableString
+      })
+      .passthrough()
+      .nullable()
+      .optional()
+  })
+  .passthrough();
+const runtimeGuestServiceConditionSchema = z
+  .object({
+    type: z.string(),
+    status: z.string(),
+    reason: z.string(),
+    message: z.string(),
+    observedAt: z.string()
+  })
+  .passthrough();
+const runtimeGuestServiceResourceSchema = z
+  .object({
+    service: z.string(),
+    spec: runtimeGuestServiceSpecSchema,
+    status: runtimeGuestServiceStatusReadSchema,
+    conditions: z.array(runtimeGuestServiceConditionSchema),
+    lastOperationId: nullableString
+  })
+  .passthrough();
+const runtimeGuestServiceResourceReadIssueSchema = z
+  .object({
+    service: z.string(),
+    message: z.string()
+  })
+  .passthrough();
 export const runtimeGuestControlStackStatusSchema = z
   .object({
     state: z.string(),
@@ -653,6 +701,14 @@ export const runtimeStatusSchema = z
     guestServices: z.array(z.string()).nullable().optional(),
     guestServiceStatuses: z
       .array(runtimeGuestControlServiceStatusSchema)
+      .nullable()
+      .optional(),
+    guestServiceResources: z
+      .array(runtimeGuestServiceResourceSchema)
+      .nullable()
+      .optional(),
+    guestServiceResourceReadIssues: z
+      .array(runtimeGuestServiceResourceReadIssueSchema)
       .nullable()
       .optional(),
     guestServicesReadError: nullableString,

@@ -657,6 +657,9 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(status.guestServicesReadState, .loaded)
         XCTAssertEqual(status.guestServices, ["app", "postgres"])
         XCTAssertEqual(status.guestServiceStatuses.map(\.service), ["app", "postgres"])
+        XCTAssertEqual(status.guestServiceResources.map(\.service), ["app", "postgres"])
+        XCTAssertEqual(status.guestServiceResources.first?.status.observedState, "running")
+        XCTAssertEqual(status.guestServiceResourceReadIssues, [])
         XCTAssertEqual(status.cpuUsagePercent, 12.5)
         XCTAssertEqual(status.memory, ResourceUsage(usedBytes: 2, totalBytes: 10))
         XCTAssertEqual(status.systemDisk, ResourceUsage(usedBytes: 3, totalBytes: 10))
@@ -665,6 +668,7 @@ final class RuntimeSettingsReaderTests: XCTestCase {
         XCTAssertEqual(gateway.stackStatusCount, 1)
         XCTAssertEqual(gateway.listServicesCount, 0)
         XCTAssertEqual(gateway.statusRequests, [])
+        XCTAssertEqual(gateway.resourceRequests, ["app", "postgres"])
     }
 
     func testStatusReaderPreservesGuestStackStatusReadFailure() throws {
@@ -2000,6 +2004,8 @@ private final class SettingsReadFailureFileStore: RuntimeFileStore {
 private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, @unchecked Sendable {
     private let services: [String]
     private let statuses: [String: RuntimeGuestControlServiceStatus]
+    private let resources: [String: RuntimeGuestServiceResource]
+    private let resourceFailures: [String: Error]
     private let statusFailures: [String: Error]
     private let stackStatusFailure: Error?
     private let cpuUsagePercent: Double?
@@ -2011,10 +2017,13 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
     private(set) var listServicesCount = 0
     private(set) var stackStatusCount = 0
     private(set) var statusRequests: [String] = []
+    private(set) var resourceRequests: [String] = []
 
     init(
         services: [String],
         statuses: [String: RuntimeGuestControlServiceStatus],
+        resources: [String: RuntimeGuestServiceResource] = [:],
+        resourceFailures: [String: Error] = [:],
         statusFailures: [String: Error] = [:],
         stackStatusFailure: Error? = nil,
         cpuUsagePercent: Double? = nil,
@@ -2027,6 +2036,8 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
     ) {
         self.services = services
         self.statuses = statuses
+        self.resources = resources
+        self.resourceFailures = resourceFailures
         self.statusFailures = statusFailures
         self.stackStatusFailure = stackStatusFailure
         self.cpuUsagePercent = cpuUsagePercent
@@ -2080,6 +2091,30 @@ private final class FakeRuntimeGuestControlGateway: RuntimeGuestControlGateway, 
             throw RuntimeGuestControlGatewayTestError(message: "missing status for service \(service)")
         }
         return status
+    }
+
+    func serviceResource(_ service: String) throws -> RuntimeGuestServiceResource {
+        resourceRequests.append(service)
+        if let failure = resourceFailures[service] {
+            throw failure
+        }
+        if let resource = resources[service] {
+            return resource
+        }
+        guard let status = statuses[service] else {
+            throw RuntimeGuestControlGatewayTestError(message: "missing resource for service \(service)")
+        }
+        return RuntimeGuestServiceResource(
+            service: service,
+            spec: RuntimeGuestServiceSpec(state: "missing"),
+            status: RuntimeGuestServiceStatusRead(
+                state: "loaded",
+                observedState: status.state,
+                observedAt: status.observedAt,
+                serviceStatus: status
+            ),
+            conditions: []
+        )
     }
 
     func startService(_ service: String) throws -> RuntimeGuestControlServiceOperation {

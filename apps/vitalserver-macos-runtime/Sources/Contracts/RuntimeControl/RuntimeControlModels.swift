@@ -820,6 +820,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         case guestServicesReadState
         case guestServices
         case guestServiceStatuses
+        case guestServiceResources
+        case guestServiceResourceReadIssues
         case guestServicesReadError
         case cpuUsagePercent
         case memory
@@ -878,6 +880,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
     public var guestServicesReadState: RuntimeGuestServicesReadState?
     public var guestServices: [String]?
     public var guestServiceStatuses: [RuntimeGuestControlServiceStatus]
+    public var guestServiceResources: [RuntimeGuestServiceResource]
+    public var guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue]
     public var guestServicesReadError: String?
     public var cpuUsagePercent: Double?
     public var memory: ResourceUsage?
@@ -936,6 +940,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         guestServicesReadState: RuntimeGuestServicesReadState? = .unavailable,
         guestServices: [String]? = nil,
         guestServiceStatuses: [RuntimeGuestControlServiceStatus] = [],
+        guestServiceResources: [RuntimeGuestServiceResource] = [],
+        guestServiceResourceReadIssues: [RuntimeGuestServiceResourceReadIssue] = [],
         guestServicesReadError: String? = nil,
         cpuUsagePercent: Double? = nil,
         memory: ResourceUsage? = nil,
@@ -993,6 +999,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
         self.guestServicesReadState = guestServicesReadState
         self.guestServices = guestServices
         self.guestServiceStatuses = guestServiceStatuses
+        self.guestServiceResources = guestServiceResources
+        self.guestServiceResourceReadIssues = guestServiceResourceReadIssues
         self.guestServicesReadError = guestServicesReadError
         self.cpuUsagePercent = cpuUsagePercent
         self.memory = memory
@@ -1054,6 +1062,8 @@ public struct RuntimeStatus: Codable, Equatable, Sendable {
             guestServicesReadState: try container.decodeIfPresent(RuntimeGuestServicesReadState.self, forKey: .guestServicesReadState) ?? .unavailable,
             guestServices: try container.decodeIfPresent([String].self, forKey: .guestServices),
             guestServiceStatuses: try container.decodeIfPresent([RuntimeGuestControlServiceStatus].self, forKey: .guestServiceStatuses) ?? [],
+            guestServiceResources: try container.decodeIfPresent([RuntimeGuestServiceResource].self, forKey: .guestServiceResources) ?? [],
+            guestServiceResourceReadIssues: try container.decodeIfPresent([RuntimeGuestServiceResourceReadIssue].self, forKey: .guestServiceResourceReadIssues) ?? [],
             guestServicesReadError: try container.decodeIfPresent(String.self, forKey: .guestServicesReadError),
             cpuUsagePercent: try container.decodeIfPresent(Double.self, forKey: .cpuUsagePercent),
             memory: try container.decodeIfPresent(ResourceUsage.self, forKey: .memory),
